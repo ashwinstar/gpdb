@@ -10,13 +10,74 @@ try:
 except ImportError:
     sys.stderr.write("gpload needs pyyaml.  You can get it from http://pyyaml.org.\n")
     sys.exit(2)
+
+try:
+    import pg8000
+except ImportError:
+    sys.stderr.write("gpload needs pg8000.\n")
+    sys.exit(2)
  
-import os,signal,socket,subprocess,traceback
+import os,signal,socket,subprocess,threading,traceback
+
+def quote(a):
+    b = ["'"]
+    for c in a:
+	if c=="'":
+	    b.append("''")
+	else:
+	    b.append(c)
+    b.append("'")
+    return "".join(b)
+		
+
+class CatThread(threading.Thread):
+    def __init__(self,gpload,fd):
+	threading.Thread.__init__(self)
+	self.gpload = gpload
+	self.fd = fd
+    def run(self):
+	while 1:
+	    line = a.stdout.readline()
+	    if line=='':
+		break
+	    gpload.log(line.strip('\n'))
+
+def usage():
+    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] configfile\n"%sys.argv[0])
+    sys.exit(2)
+
+class options:
+    pass
 
 class gpload:
 
-    def __init__(self,config):
-	self.config = config
+    def __init__(self,argv):
+	self.exitValue = 0
+	self.options = options()
+	self.options.h = None
+	self.options.p = None
+	self.options.U = None
+	self.options.d = None
+	while argv:
+	    if argv[0]=='-h':
+		self.options.h = argv[1]
+		argv = argv[2:]
+	    elif argv[0]=='-p':
+		self.options.p = int(argv[1])
+		argv = argv[2:]
+	    elif argv[0]=='-U':
+		self.options.U = argv[1]
+		argv = argv[2:]
+	    elif argv[0]=='-d':
+		self.options.d = argv[1]
+		argv = argv[2:]
+	    else:
+		break
+	if len(argv)!=1:
+	    usage()
+	f = open(argv[0],'r')
+	self.config = yaml.load(f.read())
+	f.close()
 	self.logfile = None
 	self.subprocesses = []
 	logfile = self.getconfig('gpload.logfile',str)
@@ -48,13 +109,26 @@ class gpload:
 	    elif typ==dict:
 		self.log("This configuration must be a mapping--")
 	    elif typ==str:
-		self.log("This configuration must be a scalar--")
+		self.log("This configuration must be a scalar string--")
+	    elif typ==int:
+		self.log("This configuration must be a scalar integer--")
 	    else:
 		assert 0
 	    for j in xrange(i+1):
 		self.log('    '*j+s[j]+':')
 	    sys.exit(2)
 	return c
+
+    def read_config(self):
+	self.table = self.getconfig('gpload.into.connection.table',str)
+	if self.options.h==None:
+	    self.options.h = self.getconfig('gpload.into.connection.hostname',str)
+	if self.options.p==None:
+	    self.options.p = self.getconfig('gpload.into.connection.port',int)
+	if self.options.U==None:
+	    self.options.U = self.getconfig('gpload.into.connection.username',str)
+	if self.options.d==None:
+	    self.options.d = self.getconfig('gpload.into.connection.database',str)
 
     def start_gpfdists(self):
 	sources = self.getconfig('gpload.from.source')
@@ -64,9 +138,76 @@ class gpload:
 	    ipaddr = source.get('ipaddr',socket.gethostname())
 	    if type(ipaddr)!=list:
 		ipaddr = [ipaddr]
-	    print ipaddr
+	    if 'port' in source:
+		startPort = endPort = source['port']
+	    elif 'portrange' in source:
+		startPort = source['portrange']['start']
+		endPort = source['portrange']['end']
+	    else:
+		startPort = 8000
+		endPort = 9000
+	    infile = source.get('infile')
+	    if type(infile)!=list:
+		infile = [infile]
+	    a = subprocess.Popen("gpfdist -p %d -P %d"%(startPort,endPort),shell=True,stdout=subprocess.PIPE)
+	    self.subprocesses.append(a)
+	    while 1:
+		line = a.stdout.readline()
+		if line=='':
+		    self.log('Failed to start gpfdist.')
+		    sys.exit(2)
+		line = line.strip('\n')
+		self.log(line)
+		if line.startswith('Serving HTTP on port '):
+		    port = int(line[21:line.index(',')])
+		    break
+	    self.log('gpfdist is running on port %d'%port)
+	    CatThread(self,a.stdout)
+
+    def setup_connection(self):
+	self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
+
+    def read_columns(self):
+	columns = self.getconfig('gpload.from.columns',list,None)
+	if columns!=None:
+	    self.column_name = []
+	    self.column_type = []
+	    for d in columns:
+		key = d.keys()[0]
+		self.column_name.append(key)
+		self.column_type.append(d[key])
+
+    def read_table_metadata(self):
+	self.pg8000.execute("select * from information_schema.columns where table_name=%s order by ordinal_position"%quote(self.table))
+	count = 0
+	self.column_name = []
+	self.column_type = []
+	for row in self.pg8000.iterate_dict():
+	    count += 1
+	    ct = row['data_type']
+	    if row['character_maximum_length']!=None:
+		ct += '(%s)'%row['character_maximum_length']
+	    self.column_name.append(row['column_name'])
+	    self.column_type.append(ct)
+	if count==0:
+	    self.log('Table %s does not seem to exist.'%self.table)
+	    sys.exit(2)
+	self.log('Metadata for table %s is--'%self.table)
+	for i in xrange(len(self.column_name)):
+	    self.log('%s: %s'%(self.column_name[i],self.column_type[i]))
+	self.log('')
+
+    def read_mapping(self):
+	mapping = self.getconfig('gpload.into.mapping',dict,None)
+	if mapping!=None:
+	    pass
 
     def run2(self):
+	self.read_config()
+	self.setup_connection()
+	self.read_table_metadata()
+	self.read_columns()
+	self.read_mapping()
 	self.start_gpfdists()
 
     def run(self):
@@ -83,13 +224,6 @@ class gpload:
 		except OSError:
 		    pass
 
-def usage():
-    sys.stderr.write("%s configfile\n"%sys.argv[0])
-    sys.exit(2)
-
-if len(sys.argv)!=2:
-    usage()
-f = open(sys.argv[1],'r')
-g = gpload(yaml.load(f.read()))
-f.close()
+g = gpload(sys.argv[1:])
 g.run()
+sys.exit(g.exitValue)
