@@ -323,7 +323,7 @@ def ping_host(host, fail_exit=False):
     return ok
 
 def chk_postgres_version(host):
-    cmd = makeCommand('%s --version' % os.path.join(os.environ.get('GPHOME'), 'bin/postgres'))
+    cmd = makeCommand('%s --gp-version' % os.path.join(os.environ.get('GPHOME'), 'bin/postgres'))
     (ok, out) = run(cmd)
     if not ok:
         log_error('Unable to get postgres version')
