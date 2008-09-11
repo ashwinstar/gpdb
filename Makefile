@@ -307,13 +307,14 @@ pkgplr:
 	    mkdir -p $(PLRDIR)/contrib ; \
 	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/lib ; \
 	    cp -p $(INSTLOC)/share/postgresql/contrib/plr.sql $(PLRDIR)/contrib ; \
+	    cp -p $(BLD_TOP)/cdb-pg/src/pl/plr/README.plr $(PLRDIR)/ ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of plr components" ; \
 	    rm -f $(INSTLOC)/share/postgresql/contrib/plr.sql ; \
 	    rm -f $(INSTLOC)/lib/postgresql/plr.so ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Creating .zip" ; \
-	    zip -q -r $(INSTLOC)-plr-pkg.zip $(INSTLOC)-plr-pkg ; \
+	    zip -q -r $(PLRDIR).zip $(PLRDIR) ; \
 	    echo "" ; \
 	fi
 
