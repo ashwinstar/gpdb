@@ -169,13 +169,13 @@ datumCopyWithMemManager(Datum oldvalue, Datum value, bool typByVal, int typLen,
 		if (DatumGetPointer(oldvalue) != NULL)
 			old_realSize = MAXALIGN(datumGetSize(oldvalue, typByVal, typLen));
 		
-		realSize = MAXALIGN(datumGetSize(value, typByVal, typLen));
+		realSize = datumGetSize(value, typByVal, typLen);
 
 		if (old_realSize == 0 || old_realSize < realSize)
 		{
 			int alloc_size = MAXALIGN(mem_manager->realloc_ratio * old_realSize);
 			if (alloc_size < realSize)
-				alloc_size = realSize;
+				alloc_size = MAXALIGN(realSize);
 			
 			if (mem_manager->free)
 			{
@@ -265,12 +265,22 @@ initialize_aggregates(AggState *aggstate,
 			pergroupstate->transValue = peraggstate->initValue;
 		else
 		{
-			pergroupstate->transValue =
-				datumCopyWithMemManager(0,
-										peraggstate->initValue,
-										peraggstate->transtypeByVal,
-										peraggstate->transtypeLen,
-										mem_manager);
+			if (!peraggstate->transtypeByVal &&
+				!pergroupstate->transValueIsNull &&
+				DatumGetPointer(pergroupstate->transValue) != NULL)
+				pergroupstate->transValue =
+					datumCopyWithMemManager(pergroupstate->transValue,
+											peraggstate->initValue,
+											peraggstate->transtypeByVal,
+											peraggstate->transtypeLen,
+											mem_manager);
+			else
+				pergroupstate->transValue =
+					datumCopyWithMemManager(0,
+											peraggstate->initValue,
+											peraggstate->transtypeByVal,
+											peraggstate->transtypeLen,
+											mem_manager);
 		}
 		pergroupstate->transValueIsNull = peraggstate->initValueIsNull;
 
