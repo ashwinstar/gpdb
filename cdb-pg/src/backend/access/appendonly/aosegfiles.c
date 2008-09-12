@@ -311,7 +311,7 @@ lmark:	;
  * AppendOnly table. This is basically a physical snapshot that a
  * scanner can use to scan all the data in a local segment database.
  */
-FileSegInfo *GetAllFileSegInfo(Relation parentrel, int *totalsegs)
+FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *totalsegs)
 {
 	
 	Relation		pg_aoseg_rel;
@@ -332,7 +332,7 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, int *totalsegs)
 	/*
 	 * Get number of segment files for this relation
 	 */
-	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
+	aoscan = heap_beginscan(pg_aoseg_rel, snapshot, 0, NULL);
 	
 	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
 	{
@@ -351,7 +351,7 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, int *totalsegs)
 	 * Now get the actual segfile information 
 	 * (TODO: should combine both scans to 1. since they are very short it's ok for now).
 	 */
-	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
+	aoscan = heap_beginscan(pg_aoseg_rel, snapshot, 0, NULL);
 	
 	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
 	{	

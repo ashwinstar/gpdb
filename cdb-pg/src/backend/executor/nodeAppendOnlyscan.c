@@ -136,7 +136,7 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	 */
 	currentRelation = ExecOpenScanRelation(estate, node->scan.scanrelid);	
 	
-	currentScanDesc = appendonly_beginscan(currentRelation, 0,NULL);
+	currentScanDesc = appendonly_beginscan(currentRelation, estate->es_snapshot, 0, NULL);
 	
 	appendonlystate->ss.ss_currentRelation = currentRelation;
 	appendonlystate->aos_ScanDesc = currentScanDesc;

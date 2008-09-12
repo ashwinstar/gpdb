@@ -204,7 +204,7 @@ AORelCreateHashEntry(Oid relid)
 	 * in this hash entry.
 	 */
 	aorel = heap_open(relid, RowExclusiveLock);
-	allsfinfo = GetAllFileSegInfo(aorel, &total_segfiles);
+	allsfinfo = GetAllFileSegInfo(aorel, SnapshotNow, &total_segfiles);
 	heap_close(aorel, RowExclusiveLock);
 
 	onesfinfo = allsfinfo;

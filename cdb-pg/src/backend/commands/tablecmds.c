@@ -4391,7 +4391,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			if(newrel)
 				aoInsertDesc = appendonly_insert_init(newrel, segno);
 			
-			aoscan = appendonly_beginscan(oldrel, 0, NULL);
+			aoscan = appendonly_beginscan(oldrel, SnapshotNow, 0, NULL);
 			
 			/*
 			 * Switch to per-tuple memory context and reset it for each tuple
@@ -15111,7 +15111,7 @@ ATPExecPartSplit(Relation rel,
 	if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
 		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
 	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
-		aoscan = appendonly_beginscan(temprel, 0, NULL);
+		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
 
 	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 

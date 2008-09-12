@@ -11,6 +11,7 @@
 #define AOSEGFILES_H
 
 #include "utils/rel.h"
+#include "utils/tqual.h"
 
 #define Natts_pg_aoseg					4
 #define Anum_pg_aoseg_segno				1
@@ -58,7 +59,7 @@ extern FileSegInfo *
 GetFileSegInfo(Relation parentrel, int segno, bool forupdate);
 
 extern FileSegInfo *
-GetAllFileSegInfo(Relation parentrel, int *totalsegs);
+GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *totalsegs);
 
 extern void
 UpdateFileSegInfo(Relation parentrel, 

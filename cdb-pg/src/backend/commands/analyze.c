@@ -1030,7 +1030,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	/* Prepare for sampling rows */
 	rstate = init_selection_state(targrows);
 	
-	aoscandesc = appendonly_beginscan(onerel, 0, NULL);
+	aoscandesc = appendonly_beginscan(onerel, SnapshotNow, 0, NULL);
 		
 	slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
 

@@ -1461,7 +1461,7 @@ CopyTo(CopyState cstate)
 				TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
 				MemTupleBinding *mt_bind = create_memtuple_binding(tupDesc);
 				
-				aoscandesc = appendonly_beginscan(rel, 0, NULL);
+				aoscandesc = appendonly_beginscan(rel, ActiveSnapshot, 0, NULL);
 				
 				while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot)) != NULL)
 				{

@@ -80,7 +80,8 @@ typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
  * ----------------
  */
 
-extern AppendOnlyScanDesc appendonly_beginscan(Relation relation, 
+extern AppendOnlyScanDesc appendonly_beginscan(Relation relation,
+											   Snapshot snapshot,
 											   int nkeys, 
 											   ScanKey key);
 extern void appendonly_rescan(AppendOnlyScanDesc scan, ScanKey key);

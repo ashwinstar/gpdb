@@ -1243,7 +1243,7 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
  * ----------------
  */
 AppendOnlyScanDesc
-appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
+appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey key)
 {
 	AppendOnlyScanDesc	scan;
 	AppendOnlyEntry		*aoentry;
@@ -1294,7 +1294,7 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	/*
 	 * Get information about all the file segments we need to scan
 	 */
-	scan->aos_segfile_arr = GetAllFileSegInfo(relation, &scan->aos_total_segfiles);
+	scan->aos_segfile_arr = GetAllFileSegInfo(relation, snapshot, &scan->aos_total_segfiles);
 		
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
