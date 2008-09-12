@@ -174,7 +174,7 @@ glob_path(fstream_t*fs,const char*path)
     }
     path = strcpy(path2,path);
     do{
-	char*p=strchr(path,1);
+	char*p=strchr(path,' ');
 	if (p)
 	    *p++ = 0;
 	if (glob_and_copy(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){

@@ -51,6 +51,7 @@ class gpload:
 	self.options.U = None
 	self.options.d = None
 	self.name = 'gpload%s'%str(time.time()).replace('.','_')
+	self.cleanupSql = []
 	while argv:
 	    if argv[0]=='-h':
 		self.options.h = argv[1]
@@ -160,7 +161,7 @@ class gpload:
 	    self.log('gpfdist is running on port %d'%port)
 	    CatThread(self,a.stdout)
 	    for a in ipaddr:
-		self.locations.append('gpfdist://%s:%d/%s'%(a,port,'\1'.join(infile)))
+		self.locations.append('gpfdist://%s:%d/%s'%(a,port,'%20'.join(infile)))
 
     def setup_connection(self):
 	self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
@@ -186,10 +187,10 @@ class gpload:
 	self.into_columns = []
 	for row in self.pg8000.iterate_dict():
 	    count += 1
-	    ct = row['data_type']
+	    ct = str(row['data_type'])
 	    if row['character_maximum_length']!=None:
-		ct += '(%s)'%row['character_maximum_length']
-	    self.into_columns.append([row['column_name'],ct,None])
+		ct += '(%s)'%str(row['character_maximum_length'])
+	    self.into_columns.append([str(row['column_name']),ct,None])
 	if count==0:
 	    self.log('Table %s does not exist.'%self.table)
 	    sys.exit(2)
@@ -234,19 +235,57 @@ class gpload:
 	    sql += "limit %s "%limit
 	self.log(sql)
 	self.pg8000.execute(sql)
-	self.pg8000.execute('select * from ext_%s'%self.name)
-	self.log('result')
-	for row in self.pg8000.iterate_dict():
-	    self.log(str(row))
-	self.log('done')
+	self.cleanupSql.append('drop table if exists ext_%s'%self.name)
+	self.cleanupSql.append('drop table if exists ext_%s_errors'%self.name)
+
+    def read_errors(self):
 	self.pg8000.execute('select * from ext_%s_errors'%self.name)
-	self.log('errors')
-	for row in self.pg8000.iterate_dict():
-	    self.log(str(row))
-	self.log('done')
+	rows = list(self.pg8000.iterate_dict())
+	self.log("%d bad rows"%len(rows))
+	if len(rows):
+	    self.exitValue = 1
+	    f = open(self.getconfig('gpload.errors.errorfile',str),'w')
+	    f.write(self.format_rows(rows))
+	    f.close()
+
+    def format_rows(self,rows):
+	sb = []
+	if len(rows)!=0:
+	    r = sorted(rows[0].keys())
+	    size = map(len,r)
+	    for i in xrange(len(size)):
+		size[i] = max(size[i],reduce(max,map(lambda a:len(str(a[r[i]])),rows)))
+	    for i in xrange(len(size)):
+		if i:
+		    sb.append('|')
+		sb.append('%%%ds'%size[i]%r[i])
+	    sb.append('\n')
+	    sb.append('%s\n'%'+'.join(map(lambda i:'-'*i,size)))
+	    for row in rows:
+		for i in xrange(len(size)):
+		    if i:
+			sb.append('|')
+		    sb.append('%%%ds'%size[i]%row[r[i]])
+		sb.append('\n')
+	if len(rows)==1:
+	    sb.append('1 row\n')
+	else:
+	    sb.append('%d rows\n'%len(rows))
+	return ''.join(sb)
 
     def do_method_insert(self):
 	self.create_external_table()
+	cols = filter(lambda a:a[2]!=None,self.into_columns)
+	sql = 'insert into %s'%self.table
+	sql += '(%s)'%','.join(map(lambda a:a[0],cols))
+	sql += 'select %s '%','.join(map(lambda a:a[2],cols))
+	sql += 'from ext_%s'%self.name
+	self.log(sql)
+	self.pg8000.execute(sql)
+	self.read_errors()
+
+	self.pg8000.execute('select * from %s'%self.table)
+	self.log(self.format_rows(list(self.pg8000.iterate_dict())))
 
     def do_method(self):
 	method = self.getconfig('gpload.into.method.method',str,'insert').lower()
@@ -273,6 +312,11 @@ class gpload:
 		traceback.print_exc(file=self.logfile)
 	    raise
 	finally:
+	    for a in self.cleanupSql:
+		try:
+		    self.pg8000.execute(a)
+		except pg8000.errors.ProgrammingError:
+		    pass
 	    for a in self.subprocesses:
 		try:
 		    os.kill(a.pid,signal.SIGTERM)
