@@ -2074,9 +2074,10 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 			if (!SearchSysCacheExists(NAMESPACENAME,
 									  CStringGetDatum(curname),
 									  0, 0, 0))
-				ereport((source == PGC_S_TEST) ? NOTICE : ERROR,
-						(errcode(ERRCODE_UNDEFINED_SCHEMA),
-						 errmsg("schema \"%s\" does not exist", curname)));
+				if (Gp_role != GP_ROLE_EXECUTE)
+					ereport((source == PGC_S_TEST) ? NOTICE : ERROR,
+							(errcode(ERRCODE_UNDEFINED_SCHEMA),
+							 errmsg("schema \"%s\" does not exist", curname)));
 		}
 	}
 
