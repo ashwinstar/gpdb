@@ -391,7 +391,6 @@ static void session_attach(request_t* r);
 static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
-static void request_end(request_t* r, int error, const char* errmsg);
 
 /* send an error response */
 static void http_error(request_t* r, int code, const char* msg)
@@ -421,11 +420,8 @@ static void http_empty(request_t* r)
 	"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
-    int m;
     gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-    m = send(r->sock, buf, sizeof buf-1, 0);
-    if (m != sizeof buf-1) 
-	gfatal(FLINE, "assert failed");
+    send(r->sock, buf, sizeof buf-1, 0);
 }
 
 
@@ -793,8 +789,18 @@ static void do_write(int fd, short event, void* arg)
 	    if (n > 0) {
 		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
 		if (n < 0) {
-		    perror("send");
-		    request_end(r, 1, 0);
+/* EPIPE indicates remote socket intentionally shut down half of the pipe.
+If this was because of something like "select ... limit 10;", then it is fine
+that we couldn't transmit all the data--the segment didn't want it anyway.
+If it is because the segment crashed or something like that, hopefully we
+would find out about that in some other way anyway, so it is okay if we don't
+poison the session. */
+		    if (errno==EPIPE)
+			request_end(r,0,0);
+		    else{
+			perror("send");
+			request_end(r, 1, 0);
+		    }
 		    return;
 		}
 
@@ -816,8 +822,12 @@ static void do_write(int fd, short event, void* arg)
 
 	n = local_send(fd, b->byte + b->bot, n);
 	if (n < 0) {
-	    perror("send");
-	    request_end(r, 1, 0);
+	    if (errno==EPIPE)
+		request_end(r, 0, 0);
+	    else{
+		perror("send");
+		request_end(r, 1, 0);
+	    }
 	    return;
 	}
 	TR(("[%d] send data bytes off buf %d .. %d (top %d)\n", 
