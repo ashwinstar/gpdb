@@ -3788,7 +3788,11 @@ CheckForResetSession(void)
 		
 		gp_session_id = newSessionId;
 	    gp_command_count = 0;
-		
+
+		/* Update the slotid for our singleton reader. */
+		if (SharedLocalSnapshotSlot != NULL)
+			SharedLocalSnapshotSlot->slotid = gp_session_id;		
+
 		elog(LOG ,"The previous session was reset because its gang was disconnected (session id = %d). "
 			 "The new session id = %d",
 			 oldSessionId, newSessionId);
