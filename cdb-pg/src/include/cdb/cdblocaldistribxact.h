@@ -87,6 +87,12 @@ extern void LocalDistribXact_ChangeState(
 
 extern DistributedTransactionId LocalDistribXact_GetMaxDistributedXid(void);
 
+extern void LocalDistribXact_GetDistributedXid(
+	TransactionId					localXid,
+	LocalDistribXactRef				*localDistribXactRef,
+	DistributedTransactionTimeStamp *distribTimeStamp,
+	DistributedTransactionId 		*distribXid);
+
 extern char* LocalDistribXact_DisplayString(
 	LocalDistribXactRef		*localDistribXactRef);
 

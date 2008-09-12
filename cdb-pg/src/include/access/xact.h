@@ -215,4 +215,6 @@ extern const char *IsoLevelAsUpperString(int IsoLevel);
 
 extern void ShowSubtransactionsForSharedSnapshot(uint32 subcnt, const TransactionId *subxids);
 
+extern char* WatchCurrentTransactionString(void);
+
 #endif   /* XACT_H */

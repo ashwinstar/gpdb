@@ -341,12 +341,12 @@ ProcessCatchupEvent(void)
 	 */
 	if (IsTransactionOrTransactionBlock())
 	{
-		elog(DEBUG4, "ProcessCatchupEvent inside transaction");
+		elog(DEBUG1, "ProcessCatchupEvent inside transaction");
 		AcceptInvalidationMessages();
 	}
 	else
 	{
-		elog(DEBUG4, "ProcessCatchupEvent outside transaction");
+		elog(DEBUG1, "ProcessCatchupEvent outside transaction");
 
 		/*
 		 * Save distributed transaction context first.

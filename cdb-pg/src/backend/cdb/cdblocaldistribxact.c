@@ -1164,3 +1164,27 @@ LocalDistribXactCache_ShowStats(char *nameStr)
 			 LocalDistribXactCache.addCount, 
 			 LocalDistribXactCache.removeCount);
 }
+
+void
+LocalDistribXact_GetDistributedXid(
+	TransactionId					localXid,
+	LocalDistribXactRef				*localDistribXactRef,
+	DistributedTransactionTimeStamp *distribTimeStamp,
+	DistributedTransactionId 		*distribXid)
+{
+	LocalDistribXact 			ele;
+	
+	Assert(LocalDistribXactShared != NULL);
+
+	Assert(!LocalDistribXactRef_IsNil(localDistribXactRef));
+	Assert(distribTimeStamp != NULL);
+	Assert(distribXid != NULL);
+	
+	ele = LocalDistribXact_GetFromRef(
+								localXid, 
+								localDistribXactRef);
+
+	*distribTimeStamp = ele->distribTimeStamp;
+	*distribXid = ele->distribXid;
+
+}

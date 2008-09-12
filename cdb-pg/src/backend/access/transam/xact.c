@@ -525,6 +525,13 @@ GetCurrentTransactionNestLevel(void)
 	return s->nestingLevel;
 }
 
+static char WatchCurrentTransactionBuffer[2000];
+
+char* WatchCurrentTransactionString(void)
+{
+	return WatchCurrentTransactionBuffer;
+}
+
 /*
  *	TransactionIdIsCurrentTransactionId
  */
@@ -533,8 +540,12 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 {
 	TransactionState s;
 	bool isCurrentTransactionId = false;
+#ifdef WATCH_VISIBILITY_IN_ACTION
+	int count = 0;
 
-	/*
+	count += sprintf(&WatchCurrentTransactionBuffer[count],"TransactionIdIsCurrentTransactionId xid %u", xid);
+#endif
+    /*
 	 * We always say that BootstrapTransactionId is "not my transaction ID"
 	 * even when it is (ie, during bootstrap).	Along with the fact that
 	 * transam.c always treats BootstrapTransactionId as already committed,
@@ -548,12 +559,20 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 	 * any non-normal XID.
 	 */
 	if (!TransactionIdIsNormal(xid))
+	{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+		count += sprintf(&WatchCurrentTransactionBuffer[count]," not normal");
+#endif
 		return false;
-
+	}
+	
     if ((DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
 		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON))
 	{
-		/*
+#ifdef WATCH_VISIBILITY_IN_ACTION
+		count += sprintf(&WatchCurrentTransactionBuffer[count]," QE Reader or QE Entry DB singleton");
+#endif
+        /*
 		 * Naively, it seems like these should be Asserts()
 		 * (Assert(SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId));
 		 * but they can't be: this code is run in cursors where the writer is *supposed*
@@ -573,12 +592,38 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 			 */
 			if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
 			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
+#endif
 				isCurrentTransactionId = true;
 				elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
 			}
 			else
 			{
-				isCurrentTransactionId = CheckSharedSnapshotForSubtransaction(xid);
+				uint32 sub;
+				
+				isCurrentTransactionId = false;		// Assume.
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," subcnt %d", 
+				                 SharedLocalSnapshotSlot->subcnt);
+#endif
+				for(sub = 0; sub < SharedLocalSnapshotSlot->subcnt; sub++)
+				{
+					if (TransactionIdEquals(xid, SharedLocalSnapshotSlot->subxids[sub]))
+					{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+						count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid matched");
+#endif
+						isCurrentTransactionId = true;
+						break;
+					}
+					else
+					{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+						count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", SharedLocalSnapshotSlot->subxids[sub]);
+#endif
+					}
+				}
 				elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
 					 xid, (isCurrentTransactionId ? "true" : "false"));
 			}
@@ -587,12 +632,25 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		else
 		{
 			if (SharedLocalSnapshotSlot == NULL)
+			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," null slot");
+#endif				
 				elog(DEBUG1, "qExec Reader: snapshot slot is NULL");
+			}
 			else
+			{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+				count += sprintf(&WatchCurrentTransactionBuffer[count],
+				                 " shared xid %u mismatch top xid %d (segmateSync %d)",
+				                 SharedLocalSnapshotSlot->xid, TopTransactionStateData.transactionId,
+				                 SharedLocalSnapshotSlot->segmateSync);
+#endif
 				elog(DEBUG1, "qExec Reader: snapshot slot xid is %u distXid %u/%u (toptrans is %u)",
 					 SharedLocalSnapshotSlot->xid,
 					 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
 					 TopTransactionStateData.transactionId);
+			}
 		}
 
 		/*
@@ -614,6 +672,10 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 			
 	}
 
+#ifdef WATCH_VISIBILITY_IN_ACTION
+	count += sprintf(&WatchCurrentTransactionBuffer[count]," normal check");
+#endif
+
 	/*
 	 * We will return true for the Xid of the current subtransaction, any of
 	 * its subcommitted children, any of its parents, or any of their
@@ -630,11 +692,22 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		if (!TransactionIdIsValid(s->transactionId))
 			continue;			/* it can't have any child XIDs either */
 		if (TransactionIdEquals(xid, s->transactionId))
+		{
+#ifdef WATCH_VISIBILITY_IN_ACTION
+			if (s == &TopTransactionStateData)
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," is parent");
+			else
+				count += sprintf(&WatchCurrentTransactionBuffer[count]," is subtransaction");
+#endif
 			return true;
+		}
 		foreach(cell, s->childXids)
 		{
 			if (TransactionIdEquals(xid, lfirst_xid(cell)))
 				return true;
+#ifdef WATCH_VISIBILITY_IN_ACTION
+			count += sprintf(&WatchCurrentTransactionBuffer[count]," subxid %u did not match", lfirst_xid(cell));
+#endif
 		}
 	}
 
@@ -1226,6 +1299,54 @@ RecordSubTransactionCommit(void)
 
 		/* Record subtransaction subcommit */
 		TransactionIdSubCommit(xid);
+
+		/*
+		 * Write the distributed commit entry for the subtransaction so when
+		 * we are researching a transaction in the distributed snapshot logic,
+		 * we can see this subtransaction was part of a distributed transaction.
+		 */
+		switch (DistributedTransactionContext)
+		{
+		case DTX_CONTEXT_LOCAL_ONLY:
+			break;		// Ignore.
+			
+
+		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+		case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+		case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+			{
+				DistributedTransactionTimeStamp distribTransactionTimeStamp;
+				DistributedTransactionId distribXid;
+
+				LocalDistribXact_GetDistributedXid(
+									GetTopTransactionId(),
+									&MyProc->localDistribXactRef,
+									&distribTransactionTimeStamp,
+									&distribXid);
+				
+				DistributedLog_SetCommitted(
+										xid,
+										distribTransactionTimeStamp,
+										distribXid,
+										/* isRedo */ false);
+			}
+			break;
+
+		case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+		case DTX_CONTEXT_QE_READER:
+		case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		case DTX_CONTEXT_QE_FINISH_PREPARED:
+		case DTX_CONTEXT_QE_PREPARED:
+			elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+				 DtxContextToString(DistributedTransactionContext));
+			break;
+		
+		default:
+			elog(PANIC, "Unrecognized DTX transaction context: %d",
+				(int) DistributedTransactionContext);
+			break;
+		}		
 
 		END_CRIT_SECTION();
 	}
@@ -5435,6 +5556,10 @@ xact_redo_distributed_commit(xl_xact_commit *xlrec, TransactionId xid)
 	DistributedTransactionTimeStamp	distribTimeStamp;
 	DistributedTransactionId 		distribXid;
 
+	TransactionId *sub_xids;
+	TransactionId max_xid;
+	int			i;
+
 	/*
 	 * Make room in the DistributedLog, if necessary.
 	 */
@@ -5476,10 +5601,51 @@ xact_redo_distributed_commit(xl_xact_commit *xlrec, TransactionId xid)
 							/* isRedo */ true);
 
 	/*
-	 * Now update the CLOG and do local commit actions.
+	 * Now update the CLOG and do local commit actions.  
+	 *
+	 * NOTE: The following logic is a copy of xact_redo_commit, with the
+	 * only addition being redo of DistributeLog updates to subtransaction
+	 * log.
 	 */
-	xact_redo_commit(xlrec, xid);
+	TransactionIdCommit(xid);
 
+	/* Mark committed subtransactions as committed */
+	sub_xids = (TransactionId *) &(xlrec->xnodes[xlrec->nrels]);
+	TransactionIdCommitTree(xlrec->nsubxacts, sub_xids);
+
+	/* Make sure nextXid is beyond any XID mentioned in the record */
+	max_xid = xid;
+	for (i = 0; i < xlrec->nsubxacts; i++)
+	{
+		/*
+		 * Add the committed subtransactions to the DistributedLog, too.
+		 */
+		DistributedLog_SetCommitted(
+								sub_xids[i],
+								distribTimeStamp,
+								gxact_log->gxid,
+								/* isRedo */ true);
+		
+		if (TransactionIdPrecedes(max_xid, sub_xids[i]))
+			max_xid = sub_xids[i];
+	}
+	if (TransactionIdFollowsOrEquals(max_xid,
+									 ShmemVariableCache->nextXid))
+	{
+		ShmemVariableCache->nextXid = max_xid;
+		TransactionIdAdvance(ShmemVariableCache->nextXid);
+	}
+
+	/* Make sure files supposed to be dropped are dropped */
+	for (i = 0; i < xlrec->nrels; i++)
+	{
+		XLogDropRelation(xlrec->xnodes[i]);
+		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
+	}
+
+	/*
+	 * End copy of xact_redo_commit logic.
+	 */
 	redoDistributedCommitRecord(gxact_log);
 }
 

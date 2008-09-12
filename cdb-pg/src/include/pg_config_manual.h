@@ -260,3 +260,5 @@
 /* #define HEAPDEBUGALL */
 /* #define ACLDEBUG */
 /* #define RTDEBUG */
+
+/* #define WATCH_VISIBILITY_IN_ACTION */

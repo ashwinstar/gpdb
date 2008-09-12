@@ -105,7 +105,8 @@ typedef enum
 
 extern DistributedSnapshotCommitted DistributedSnapshotWithLocalMapping_CommittedTest(
 	DistributedSnapshotWithLocalMapping		*dslm,
-	TransactionId 							localXid);
+	TransactionId 							localXid,
+	bool									isXmax);
 
 extern void DistributedSnapshot_Reset(
 	DistributedSnapshot *distributedSnapshot);
