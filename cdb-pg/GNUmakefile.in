@@ -12,18 +12,21 @@ all:
 #	$(MAKE) -C doc all
 	$(MAKE) -C src all
 	$(MAKE) -C config all
+	$(MAKE) -C contrib/xlogdump all
 	@echo "All of Greenplum Database successfully made. Ready to install."
 
 install:
 #	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
+	$(MAKE) -C contrib/xlogdump $@
 	@echo "Greenplum Database installation complete."
 
 installdirs uninstall:
 #	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
+	$(MAKE) -C contrib/xlogdump $@
 
 distprep:
 #	$(MAKE) -C doc $@
@@ -38,6 +41,7 @@ clean:
 	$(MAKE) -C contrib $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
+	$(MAKE) -C contrib/xlogdump $@
 # Garbage from autoconf:
 	@rm -rf autom4te.cache/
 
