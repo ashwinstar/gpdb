@@ -9,6 +9,7 @@
 use Pod::Usage;
 use Getopt::Long;
 use Data::Dumper;
+use Time::Local;
 use strict;
 use warnings;
 
@@ -291,6 +292,850 @@ sub pw1
 
     return $biga2;
 }
+
+# make partition specs
+sub makespec
+{
+    my ($pspec, $pps) = @_;
+
+    if ($pps->{typ} !~ /range|list/i)
+    {
+        print STDERR "invalid partition type: $pps->{typ}\n";
+        return undef;
+    }
+    
+    if ($pps->{typ} =~ m/range/i)
+    {
+        $pspec->{start} = {};
+        $pspec->{end} = {};
+
+        if (exists($pps->{range_start}))
+        {
+            my @foo = keys(%{$pps->{range_start}->{colh}});
+
+            $pspec->{start}->{keys} = [];
+            push (@{$pspec->{start}->{keys}}, @foo);
+
+            $pspec->{start}->{values} = [];
+
+            for my $jjj (@foo)
+            {
+                push @{$pspec->{start}->{values}}, 
+                @{$pps->{range_start}->{colh}->{$jjj}};
+            }
+
+
+            @foo = keys(%{$pps->{range_start}->{colh_oper}});
+
+            $pspec->{start}->{inclusive} = 0 +
+                ($pps->{range_start}->{colh_oper}->{$foo[0]}->[0] =~ m/\=/);
+
+        }
+        if (exists($pps->{range_end}))
+        {
+            my @foo = keys(%{$pps->{range_end}->{colh}});
+
+            $pspec->{end}->{keys} = [];
+            push (@{$pspec->{end}->{keys}}, @foo);
+
+            $pspec->{end}->{values} = [];
+
+            for my $jjj (@foo)
+            {
+                push @{$pspec->{end}->{values}}, 
+                @{$pps->{range_end}->{colh}->{$jjj}};
+            }
+
+            @foo = keys(%{$pps->{range_end}->{colh_oper}});
+
+            $pspec->{end}->{inclusive} = 0 + 
+                ($pps->{range_end}->{colh_oper}->{$foo[0]}->[0] =~ m/\=/);
+
+        }
+
+    }
+    if ($pps->{typ} =~ m/list/i)
+    {
+        $pspec->{start} = {};
+
+        my @foo = keys(%{$pps->{colh}});
+
+        $pspec->{start}->{keys} = [];
+        push (@{$pspec->{start}->{keys}}, @foo);
+
+        $pspec->{start}->{values} = [];
+        
+        my $maxlen = 0;
+
+        # make sure have same number of key column values...
+        for my $jjj (@foo)
+        {
+            my $l2 = scalar(@{$pps->{colh}->{$jjj}});
+
+            if ($maxlen == 0)
+            {
+                $maxlen = $l2;
+            }
+            else
+            {
+                if ($l2 != $maxlen)
+                { 
+                    print STDERR "missing key columns: ",
+                    Data::Dumper->Dump([$pps]), "\n";
+                }
+            }
+        }
+
+        for my $ii (0..($maxlen-1))
+        {
+
+            # interleave the key values in order, 
+            # ie for columns a,b,c
+            # do values (a1,b1,c1,a2,b2,c2...)
+            for my $jjj (@foo)
+            {
+                push @{$pspec->{start}->{values}}, 
+                $pps->{colh}->{$jjj}->[$ii];
+            }
+        }
+
+    }
+
+    return $pspec;
+} # end makespec
+
+# generate partition defintitions
+sub genpartdefs
+{
+    my $reg_tabs = shift;
+
+    while (my ($kk, $vv) = each (%{$reg_tabs}))
+    {
+
+#        print "kk: $kk\n";
+
+#        print Data::Dumper->Dump([$vv]), "\n";
+        
+        next unless (exists($vv->{rules}));
+
+        my $ruleh = $vv->{rules};
+
+        while (my ($kk2, $vv2) = each (%{$ruleh}))
+        {
+            
+#            print "  rule: $kk2\n";
+#            print "    parent: $vv2->{parent}\n";
+#            print "    child:  $vv2->{child}\n";
+
+#            print Data::Dumper->Dump([$vv2]), "\n";
+
+            next unless (exists($vv2->{parsetree}) &&
+                         exists($vv2->{parsetree}->{partSpec}));
+
+            my $pps = $vv2->{parsetree}->{partSpec};
+
+            if (exists($vv->{pby}))
+            {
+                if ($vv->{pby}->{typ} ne $pps->{typ})
+                {
+                    print STDERR "partition type mismatch for rule $kk2\n";
+                    print STDERR "$vv->{pby}->{typ} vs $pps->{typ}\n";
+
+                }
+                else
+                {
+                    my $pspec = { child => $vv2->{child} };
+
+                    $pspec = makespec($pspec, $pps);
+
+                    push @{$vv->{pby}->{pspec}}, $pspec;
+                }
+            }
+            else
+            {
+                $vv->{pby} = {typ => $pps->{typ}, 
+                              pspec => [] };
+ 
+                my $pspec = { child => $vv2->{child} };
+                
+                $pspec = makespec($pspec, $pps);
+
+                push @{$vv->{pby}->{pspec}}, $pspec;
+               
+            }
+
+
+        } # end while kk2    
+
+        # sort the range partitions if possible
+        if (exists($vv->{pby})
+            && exists($vv->{pby}->{pspec})
+            && ($vv->{pby}->{typ} =~ m/range/i))
+        {
+            my $ps = $vv->{pby}->{pspec}->[0];
+            my $val1;
+
+#            print "\n\n\nsorting???\n\n\n";
+
+            if (defined($ps->{start}->{values}))
+            {
+                $val1 = $ps->{start}->{values}->[0];
+            }
+            elsif (defined($ps->{end}->{values}))
+            {
+                $val1 = $ps->{end}->{values}->[0];
+            }
+                
+            if (defined($val1))
+            {
+
+#                print "\n\n\nsorting $val1\n\n\n";
+
+                # numeric only
+                if ($val1 =~ m/^\d+$/)
+                {
+                    my @foo = 
+                        sort { $a->{start}->{values}->[0] <=>
+                                   $b->{start}->{values}->[0] } 
+                    @{$vv->{pby}->{pspec}};
+
+                    $vv->{pby}->{pspec} = \@foo;
+                }
+                elsif ($val1 =~ m/\:\:date$/)
+                {
+                    my @foo = 
+                        sort { $a->{start}->{values}->[0] cmp
+                                   $b->{start}->{values}->[0] } 
+                    @{$vv->{pby}->{pspec}};
+
+                    $vv->{pby}->{pspec} = \@foo;
+                }
+
+            }
+
+        }
+
+        if (exists($vv->{pby}))
+        {
+            my $p1 = 1;
+
+            for my $ps (@{$vv->{pby}->{pspec}})
+            {
+                # make a partition name
+                $ps->{name} = "p" . $p1 
+                    unless (exists($ps->{name}) &&
+                            defined($ps->{name}));
+                
+                $p1++;
+                
+                for my $tt (qw(start end))
+                {
+                    next
+                        unless (exists($ps->{$tt}));
+
+#                        print Data::Dumper->Dump([$ps->{$tt}]), "\n";
+                    
+                    if (exists($vv->{pby}->{keys}))
+                    {
+                        # test if keys match!!
+
+                        if (defined($ps->{$tt}->{keys}))
+                        {
+                            if (scalar($vv->{pby}->{keys})
+                                != scalar($ps->{$tt}->{keys}))
+                            {
+                                print STDERR "key count mismatch for ",
+                                Data::Dumper->Dump([$ps]), "\n";
+                                next;
+                            }
+                            for my $jjj (0..(scalar($vv->{pby}->{keys})-1))
+                            {
+                                if ($vv->{pby}->{keys}->[$jjj] ne
+                                    $ps->{$tt}->{keys}->[$jjj])
+                                {
+                                    print STDERR "key name mismatch for ",
+                                    Data::Dumper->Dump([$ps]), "\n";
+                                    next;
+                                }
+
+                            }
+
+                            delete $ps->{$tt}->{keys};
+                        }
+
+                    }
+                    else
+                    {
+                        $vv->{pby}->{keys} = [];
+                        
+                        push (@{$vv->{pby}->{keys}}, 
+                              @{$ps->{$tt}->{keys}})
+                            if (defined($ps->{$tt}->{keys}));
+                        
+                        delete $ps->{$tt}->{keys}
+                        if (defined($ps->{$tt}->{keys}));
+
+                    }
+                } # end for tt
+            }
+        } # end if pby
+
+
+    } # end while kk
+
+
+} # end genpartdefs
+
+sub genpartdefs2
+{
+    my $reg_tabs = shift;
+
+    my $do_fixup = 1;
+
+    my $magic_interval_fixup;
+
+    my $magic_suffix = "XGPX";
+
+    while (my ($kk, $vv) = each (%{$reg_tabs}))
+    {
+        if (exists($vv->{pby}))
+        {
+            $magic_interval_fixup = undef;
+
+            for my $psc (0..(scalar(@{$vv->{pby}->{pspec}}) - 1))
+            {
+                my $pspec = $vv->{pby}->{pspec}->[$psc];
+
+                if ($vv->{pby}->{typ} =~ m/range/i)
+                {
+                    my ($v1, $v2);
+                    my ($incex1, $incex2);
+
+                    $v1 = undef;
+                    $v2 = undef;
+
+                    $v1 = $pspec->{start}->{values}->[0]
+                        if (exists($pspec->{start}));
+                    $v2 = $pspec->{end}->{values}->[0]
+                        if (exists($pspec->{end}));
+
+                    if (defined($v1))
+                    {
+                        $incex1 = $pspec->{start}->{inclusive} ?
+                            "INCLUSIVE" : "EXCLUSIVE";
+                    }
+
+                    if (defined($v2))
+                    {
+                        $incex2 = $pspec->{end}->{inclusive} ?
+                            "INCLUSIVE" : "EXCLUSIVE";
+
+                        # XXX XXX: fixup the dual inclusive case if possible...
+                        if ($do_fixup && 
+                            ($v1 eq $v2) && ($incex2 eq "INCLUSIVE")
+                            && ($incex2 eq $incex1))
+                        {
+                            if ($v2 =~ m/^\d+$/)
+                            {
+                                if (1)
+                                {
+                                    my $pspec2 = $vv->{pby}->{pspec}->[$psc+1];
+
+                                    if (defined($pspec2))
+                                    {
+                                        my $v1_1;
+
+                                        $v1_1 = 
+                                            $pspec2->{start}->{values}->[0]
+                                            if (exists($pspec2->{start}));
+
+                                        $magic_interval_fixup = $v1_1 - $v2;
+
+                                    }
+                                }
+                                if (defined($magic_interval_fixup))
+                                {
+                                    $pspec->{end}->{original} 
+                                    = {values=>[$v2], inclusive=>1};
+                                    $v2 += $magic_interval_fixup;
+
+                                    $pspec->{end}->{values}->[0] = $v2;
+
+                                    $pspec->{end}->{inclusive} = 0;
+                                    $incex2 = "EXCLUSIVE";
+                                    $pspec->{end}->{magic_interval_fixup} =
+                                        $magic_interval_fixup;
+                                }
+                            }
+                            elsif ($v2 =~ m/\:\:date$/)
+                            {
+                                unless (defined($magic_interval_fixup))
+                                {
+                                    my $pspec2 = $vv->{pby}->{pspec}->[$psc+1];
+
+                                    if ($pspec2)
+                                    {
+                                        my $v1_1;
+
+                                        $v1_1 = 
+                                            $pspec2->{start}->{values}->[0]
+                                            if (exists($pspec2->{start}));
+
+#                                        $magic_interval_fixup = $v1_1 - $v2;
+
+                                        my @dat2 = 
+                                            ($v2 =~ m(^\'(\d\d\d\d)\-(\d\d)\-(\d\d)\'));
+                                        my @dat1_1 = 
+                                            ($v1_1 =~ m(^\'(\d\d\d\d)\-(\d\d)\-(\d\d)\'));
+
+                                        print STDERR "invalid date: $v2\n"
+                                            unless (3 == scalar(@dat2));
+                                        print STDERR "invalid date: $v1_1\n"
+                                            unless (3 == scalar(@dat1_1));
+
+                                        my $dd1 =
+                                          timelocal(0,0,0,
+                                                    $dat1_1[2],
+                                                    $dat1_1[1] - 1,
+                                                    $dat1_1[0]);
+
+                                        my $dd2 = 
+                                          timelocal(0,0,0,
+                                                    $dat2[2],
+                                                    $dat2[1] - 1,
+                                                    $dat2[0]);
+
+                                        $magic_interval_fixup = $dd1 - $dd2;
+
+
+                                    }
+                                }
+                                if (defined($magic_interval_fixup))
+                                {
+#                                    $v2 += $magic_interval_fixup;
+                                    my @dat2 = 
+                                        ($v2 =~ m(^\'(\d\d\d\d)\-(\d\d)\-(\d\d)\'));
+
+                                    $pspec->{end}->{original} 
+                                    = {values=>[$v2], inclusive=>1};
+
+                                    my $t2 =
+                                        timelocal(0,0,0,
+                                                  $dat2[2] ,
+                                                  $dat2[1] - 1,
+                                                  $dat2[0] )
+                                        + $magic_interval_fixup;
+
+                                    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) =
+                                        localtime($t2);
+
+                                    $year += 1900;
+                                    $mon++;
+
+                                    $v2 = sprintf('\'%04d-%02d-%02d\'::date',
+                                                  $year, $mon, $mday);
+
+                                    $incex2 = "EXCLUSIVE";
+                                    $pspec->{end}->{values}->[0] = $v2;
+
+                                    $pspec->{end}->{inclusive} = 0;
+                                    $pspec->{end}->{magic_interval_fixup} =
+                                        $magic_interval_fixup;
+
+                                }
+
+                            }
+                        }
+                    }
+                    
+                }
+
+            } # end for pspec
+
+        }
+
+    }
+
+} # end genpartdefs2
+
+sub genpartdefs3
+{
+    my $reg_tabs = shift;
+
+
+    while (my ($kk, $vv) = each (%{$reg_tabs}))
+    {
+        if (exists($vv->{pby}))
+        {
+            my $magic_interval_fixup;
+            my $good_fixup = 1;
+
+            for my $psc (0..(scalar(@{$vv->{pby}->{pspec}}) - 1))
+            {
+                my $pspec = $vv->{pby}->{pspec}->[$psc];
+
+
+                # check for subpartitions
+                if (exists($pspec->{child}))
+                {
+                    my $tname = $pspec->{child};
+
+                    # check for schema
+                    if ($tname !~ m/\./)
+                    {
+                        $tname = $vv->{Schema} . "." . $tname;
+                    }
+
+                    if (exists($reg_tabs->{$tname})
+                        &&
+                        exists($reg_tabs->{$tname}->{pby}))
+                    {
+                        $pspec->{subpartition} = $tname;
+                    }
+
+                }
+                
+
+                if ($vv->{pby}->{typ} =~ m/range/i)
+                {
+                    my ($v1, $v2);
+                    my ($incex1, $incex2);
+
+                    $v1 = undef;
+                    $v2 = undef;
+
+                    $v1 = $pspec->{start}->{values}->[0]
+                        if (exists($pspec->{start}));
+                    $v2 = $pspec->{end}->{values}->[0]
+                        if (exists($pspec->{end}));
+
+                    if (exists($pspec->{end})
+                        && exists($pspec->{end}->{magic_interval_fixup}))
+                    {
+                        if (defined($magic_interval_fixup))
+                        {
+                            if ($magic_interval_fixup != 
+                                $pspec->{end}->{magic_interval_fixup})
+                            {
+                                $good_fixup = 0;
+                                last;
+                            }
+
+                        }
+                        else
+                        {
+                            $magic_interval_fixup = 
+                                $pspec->{end}->{magic_interval_fixup};
+
+                        }
+                    }
+                }
+            } # end for my psc
+
+            if (defined($magic_interval_fixup) && $good_fixup)
+            {
+                $vv->{pby}->{every} = $magic_interval_fixup;
+            }
+            else
+            {
+            }
+
+
+        } # end if exists pby        
+
+    } # end while kk vv
+
+} # end genpartdefs3
+
+sub genpartdefs4
+{
+    my $reg_tabs = shift;
+
+    my $do_fixup = 1;
+
+    my $magic_suffix = "XGPX";
+
+    while (my ($kk, $vv) = each (%{$reg_tabs}))
+    {
+        if (exists($vv->{pby}))
+        {
+            my $newname = $kk . "_" . $magic_suffix;
+
+            my $ct_txt  = "create table $newname" . " (like " . $kk . ") ";
+            my $pby_txt = "partition by $vv->{pby}->{typ} " .
+                "(" . join(", ", @{$vv->{pby}->{keys}}) . ")";
+
+            my $spec_txt = "(\n";
+
+            for my $psc (0..(scalar(@{$vv->{pby}->{pspec}}) - 1))
+            {
+                my $pspec = $vv->{pby}->{pspec}->[$psc];
+
+                if (0 != $psc)
+                {
+                    $spec_txt .= ",\n";
+                }
+                else
+                {
+                    if (exists($vv->{pby}->{every}))
+                    {
+                        $spec_txt .=  '  /* ' . "every $vv->{pby}->{every}" 
+                            . ' */ ' . "\n";
+                    }
+                }
+
+                if (exists($pspec->{child}))
+                {
+                    if (exists($pspec->{name}) && defined($pspec->{name}))
+                    {
+                        $spec_txt .= '  /* ' . $pspec->{name} 
+                        . ' derived from: ' ;
+                    }
+                    else
+                    {
+                        $spec_txt .= '  /* derived from: ' ;
+                    }
+                    my $tname = $pspec->{child};
+
+                    # check for schema
+                    if ($tname !~ m/\./)
+                    {
+                        $tname = $vv->{Schema} . "." . $tname;
+                    }
+
+                    $spec_txt .=  $tname . ' */ '. "\n";
+
+                    # find oll the tables that are children of this table
+                    $vv->{pby}->{children} = []
+                        unless (exists($vv->{pby}->{children}));
+
+                    push @{$vv->{pby}->{children}}, $tname;
+
+                    # build up the parent/child tree
+                    {
+                        if (exists($reg_tabs->{$tname})
+                            && exists($reg_tabs->{$tname}->{pby}))
+                        {
+                            $reg_tabs->{$tname}->{pby}->{parent} = $kk;
+                        }
+
+                    }
+
+
+                }
+
+                $spec_txt .= "  ";
+                
+                $spec_txt .= "partition $pspec->{name} "
+                    if (exists($pspec->{name}) && defined($pspec->{name}));
+
+
+                if ($vv->{pby}->{typ} =~ m/range/i)
+                {
+                    my ($v1, $v2);
+                    my ($incex1, $incex2);
+
+                    $v1 = undef;
+                    $v2 = undef;
+
+                    $v1 = $pspec->{start}->{values}->[0]
+                        if (exists($pspec->{start}));
+                    $v2 = $pspec->{end}->{values}->[0]
+                        if (exists($pspec->{end}));
+
+                    if (defined($v1))
+                    {
+                        $spec_txt .= " START (" .  $v1 . ") ";
+
+                        $incex1 = $pspec->{start}->{inclusive} ?
+                            "INCLUSIVE" : "EXCLUSIVE";
+
+                        $spec_txt .= $incex1;
+                    }
+
+                    if (defined($v2))
+                    {
+                        $incex2 = $pspec->{end}->{inclusive} ?
+                            "INCLUSIVE" : "EXCLUSIVE";
+
+                        $spec_txt .=  " END (" .  $v2 . ") ";
+
+
+                       $spec_txt .= $incex2;
+                    }
+                    
+                }
+                if ($vv->{pby}->{typ} =~ m/list/i)
+                {
+                    my $numkeys = scalar(@{$vv->{pby}->{keys}});
+
+                    my @outi;
+
+                    # build the values clause, subgrouping by the key counts
+
+                    if ($numkeys > 1)
+                    {
+                        my @baz;
+
+                        push @baz, @{$pspec->{start}->{values}};
+
+                        while (scalar(@baz))
+                        {
+#                            print "a: ", scalar(@baz), "\n";
+
+                            my @foo = splice(@baz, 0, $numkeys);
+
+#                            print "b: ", scalar(@baz), "\n";
+
+                            push @outi, "(" . join(", ", @foo) . ")";
+                        }
+                    }
+                    else
+                    {
+                        push @outi, @{$pspec->{start}->{values}};
+                    }
+                    
+                    $spec_txt .= "values (" . join(", ", @outi) . ")";
+                }
+
+            } # end for pspec
+
+            $spec_txt .= "\n)";
+
+            $vv->{pby}->{ct_txt} =  $ct_txt ;
+            $vv->{pby}->{pby_txt} =  $pby_txt ;
+            $vv->{pby}->{spec_txt} =  $spec_txt ;
+
+        }
+
+    }
+
+} # end genpartdefs4
+
+sub genpartdef_subtree_fixup
+{
+    my ($reg_tabs, $pby) = @_;
+
+    return
+        unless (exists($pby->{children})
+                && !exists($pby->{did_subtree_fixup}));
+
+    my $child_pby_txt;
+
+    for my $child (@{$pby->{children}})
+    {
+        if (exists($reg_tabs->{$child})
+            && exists($reg_tabs->{$child}->{pby}))
+        {
+            # recurse
+            genpartdef_subtree_fixup($reg_tabs, 
+                                     $reg_tabs->{$child}->{pby});
+
+            if (!defined($child_pby_txt))
+            {
+                $child_pby_txt = $reg_tabs->{$child}->{pby}->{pby_txt};
+
+                my $c1 = $child_pby_txt;
+
+                $c1 =~ s/^partition/subpartition/;
+
+                # add the subpartition clause...
+                $pby->{pby_txt} .= "\n" . $c1;
+            }
+            else
+            {
+                if ($reg_tabs->{$child}->{pby}->{pby_txt} ne
+                    $child_pby_txt)
+                {
+                    print STDERR "subpartition mismatch: ", 
+                    Data::Dumper->Dump([$reg_tabs->{$child}->{pby}]), "\n";
+                }
+            }
+            
+        } # end if child
+        
+    } # end for child
+
+
+    my @foo = split(/\n/, $pby->{spec_txt});
+
+    for my $linnum (0..(scalar(@foo)-1))
+    {
+        next
+            unless ($foo[$linnum] =~ m/^\s+\/\*.*\s+derived from\:/);
+
+        my @baz = 
+            ($foo[$linnum] =~ m/^\s+\/\*.*\s+derived from\:\s+(.*)\s+\*\//);
+        
+        my $tname = shift @baz;
+
+#        print "\n\ngot one!! $tname\n\n";
+
+        next unless(exists($reg_tabs->{$tname})
+                    && exists($reg_tabs->{$tname}->{pby}));
+        
+        my $child_spec_txt = $reg_tabs->{$tname}->{pby}->{spec_txt};
+
+        $child_spec_txt =~ s/^(\s+)partition/$1subpartition/gm;
+
+        $child_spec_txt =~ s/^  /    /gm;
+
+        # fix up parens
+        $child_spec_txt =~ s/^\(/  \(/;
+        $child_spec_txt =~ s/\)$/  \)/;
+
+        my $has_comma = ($foo[$linnum+1] =~ m/\,$/);
+
+        $foo[$linnum+1] =~ s/\,$//; # remove the comma
+
+        $foo[$linnum+1] .= "\n" . $child_spec_txt;
+
+        $foo[$linnum+1] .= "," if ($has_comma);
+    }    
+
+    $pby->{spec_txt} = join("\n", @foo);    
+
+    $pby->{did_subtree_fixup} = 1;
+}
+
+sub genpartdefs5
+{
+    my $reg_tabs = shift;
+
+    my $do_fixup = 1;
+
+    while (my ($kk, $vv) = each (%{$reg_tabs}))
+    {
+        if (exists($vv->{pby}))
+        {
+            genpartdef_subtree_fixup($reg_tabs, $vv->{pby});
+        }
+    }
+
+} # end genpartdefs5
+
+sub printpartdefs
+{
+    my $reg_tabs = shift;
+
+    while (my ($kk, $vv) = each (%{$reg_tabs}))
+    {
+        if (exists($vv->{pby})
+            && !exists($vv->{pby}->{is_subpartition}))
+        {
+            my $ct_txt = $vv->{pby}->{ct_txt};
+            my $pby_txt = $vv->{pby}->{pby_txt};
+            my $spec_txt = $vv->{pby}->{spec_txt};
+
+            print "\n";
+            print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
+
+        }
+
+    }
+
+} # end printpartdefs
+
 
 sub classify_range_merge
 {
@@ -773,7 +1618,10 @@ sub classify_fn
         }
         else
         {
+            # if WHERE clause in rule does not have a column name 
+            # (eg WHERE 1=1)
             print STDERR "no colname!!!\n\n";
+            print STDERR Data::Dumper->Dump([$node]), "\n";
             $partSpec->{typ} = "UNKNOWN";
             return $partSpec;
         }
@@ -1453,7 +2301,8 @@ if (1)
     {
         if ($rr->{Type} =~ m/Table/i)
         {
-            $reg_tabs{$rr->{Name}} = $rr;
+#            $reg_tabs{$rr->{Name}} = $rr;
+            $reg_tabs{ $rr->{Schema} . "." . $rr->{Name} } = $rr;
         }
 
     }
@@ -1590,7 +2439,7 @@ if (1)
             my $rr = $vv->{rules};
             while (my ($kk2, $vv2) = each (%{$rr}))
             {
-                print STDERR $kk2, ":\n";
+#                print STDERR $kk2, ":\n";
                 if (exists($vv2->{where}))
                 {
                     my ($extracted, $remainder, $txt);
@@ -1626,7 +2475,19 @@ if (1)
 
     }}
 
-    print "\n";
+
+#    print Data::Dumper->Dump([%reg_tabs]), "\n";
+
+
+    genpartdefs(\%reg_tabs);
+    genpartdefs2(\%reg_tabs);
+    genpartdefs3(\%reg_tabs);
+    genpartdefs4(\%reg_tabs);
+    genpartdefs5(\%reg_tabs);
+    
+    print Data::Dumper->Dump([%reg_tabs]), "\n";
+
+    print "\n\n\n";
 
     if ($glob_dosql)
     {
@@ -1637,6 +2498,9 @@ if (1)
         prettydump(\%reg_tabs);
     }
 
+    print "\n\n\n";
+
+    printpartdefs(\%reg_tabs);
 
 }
 
