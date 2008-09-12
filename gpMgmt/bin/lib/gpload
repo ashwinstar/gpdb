@@ -17,10 +17,7 @@ except ImportError:
     sys.stderr.write("gpload needs pg8000.\n")
     sys.exit(2)
  
-import os,signal,socket,subprocess,threading,traceback
-
-def quote(a):
-    return "'"+"".join(map(lambda x:x=="'" and "''" or x,a))+"'"
+import os,signal,socket,subprocess,threading,time,traceback
 
 class CatThread(threading.Thread):
     def __init__(self,gpload,fd):
@@ -38,6 +35,9 @@ def usage():
     sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] configfile\n"%sys.argv[0])
     sys.exit(2)
 
+def quote(a):
+    return "'"+a.replace("'","''").replace('\\','\\\\')+"'"
+
 class options:
     pass
 
@@ -50,6 +50,7 @@ class gpload:
 	self.options.p = None
 	self.options.U = None
 	self.options.d = None
+	self.name = 'gpload%s'%str(time.time()).replace('.','_')
 	while argv:
 	    if argv[0]=='-h':
 		self.options.h = argv[1]
@@ -108,6 +109,7 @@ class gpload:
 		assert 0
 	    for j in xrange(i+1):
 		self.log('    '*j+s[j]+':')
+	    self.log("It is %s"%type(c))
 	    sys.exit(2)
 	return c
 
@@ -123,6 +125,7 @@ class gpload:
 	    self.options.d = self.getconfig('gpload.into.connection.database',str)
 
     def start_gpfdists(self):
+	self.locations = []
 	sources = self.getconfig('gpload.from.source')
 	if type(sources)!=list:
 	    sources = [sources]
@@ -141,8 +144,9 @@ class gpload:
 	    infile = source.get('infile')
 	    if type(infile)!=list:
 		infile = [infile]
-	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort)],stdout=subprocess.PIPE)
+	    a = subprocess.Popen(['gpfdist','-V','-p',str(startPort),'-P',str(endPort)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 	    self.subprocesses.append(a)
+	    CatThread(self,a.stderr)
 	    while 1:
 		line = a.stdout.readline()
 		if line=='':
@@ -155,6 +159,8 @@ class gpload:
 		    break
 	    self.log('gpfdist is running on port %d'%port)
 	    CatThread(self,a.stdout)
+	    for a in ipaddr:
+		self.locations.append('gpfdist://%s:%d/%s'%(a,port,'\1'.join(infile)))
 
     def setup_connection(self):
 	self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
@@ -162,48 +168,93 @@ class gpload:
     def read_columns(self):
 	columns = self.getconfig('gpload.from.columns',list,None)
 	if columns!=None:
-	    self.from_column_name = []
-	    self.from_column_type = []
+	    self.from_columns = []
 	    for d in columns:
 		key = d.keys()[0]
-		self.from_column_name.append(key)
-		self.from_column_type.append(d[key])
+		self.from_columns.append([key,d[key],None])
 	else:
-	    self.from_column_name = self.into_column_name
-	    self.from_column_type = self.into_column_type
+	    self.from_columns = self.into_columns
 	self.log('from columns are--')
-	for i in xrange(len(self.from_column_name)):
-	    self.log('%s: %s'%(self.from_column_name[i],self.from_column_type[i]))
+	self.log('')
+	for name,typ,mapto in self.from_columns:
+	    self.log('%s: %s'%(name,typ))
 	self.log('')
 
     def read_table_metadata(self):
-	self.pg8000.execute("select * from information_schema.columns where table_name=%s order by ordinal_position"%quote(self.table))
+	self.pg8000.execute("select * from information_schema.columns where table_name=$1 order by ordinal_position",self.table)
 	count = 0
-	self.into_column_name = []
-	self.into_column_type = []
+	self.into_columns = []
 	for row in self.pg8000.iterate_dict():
 	    count += 1
 	    ct = row['data_type']
 	    if row['character_maximum_length']!=None:
 		ct += '(%s)'%row['character_maximum_length']
-	    self.into_column_name.append(row['column_name'])
-	    self.into_column_type.append(ct)
+	    self.into_columns.append([row['column_name'],ct,None])
 	if count==0:
 	    self.log('Table %s does not exist.'%self.table)
 	    sys.exit(2)
-	self.log('table %s columns are--'%self.table)
-	for i in xrange(len(self.into_column_name)):
-	    self.log('%s: %s'%(self.into_column_name[i],self.into_column_type[i]))
-	self.log('')
-
-    def make_default_mapping(self):
-	pass
 
     def read_mapping(self):
 	mapping = self.getconfig('gpload.into.mapping',dict,None)
 	if mapping==None:
-	    self.make_default_mapping()
-	    return
+	    for a in self.into_columns:
+		if a[0].lower() in map(lambda a:a[0].lower(),self.from_columns):
+		    a[2] = a[0]
+	else:
+	    for key,value in mapping.iteritems():
+		try:
+		    i = map(lambda a:a[0],self.into_columns).index(key)
+		except ValueError:
+		    self.log('%s in mapping is not in table %s:.'%(key,self.table))
+		    sys.exit(2)
+		self.into_columns[i][2] = value
+	self.log('table %s columns are--'%self.table)
+	self.log('')
+	for name,typ,mapto in self.into_columns:
+	    self.log('%s: %s = %s'%(name,typ,mapto))
+	self.log('')
+
+    def create_external_table(self):
+	format = self.getconfig('gpload.from.format.format',str,'text').lower()
+	sql = "create external table ext_%s"%self.name
+	sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]),self.from_columns))
+	sql += "location(%s)"%','.join(map(quote,self.locations))
+	sql += "format%s("%quote(format)
+	sql += "delimiter%s"%quote(self.getconfig('gpload.from.format.delimiter',str))
+	if self.getconfig('gpload.from.format.header',bool,False):
+	    sql += "header "
+	if format=='csv':
+	    sql += "quote as%s"%self.getconfig('gpload.from.format.quote',str)
+	    sql += "escape as%s"%self.getconfig('gpload.from.format.escape',str)
+	sql += ")"
+	sql += "log errors into ext_%s_errors "%self.name
+	sql += "segment reject "
+	limit = self.getconfig('gpload.errors.segment_limit',str,None)
+	if limit!=None:
+	    sql += "limit %s "%limit
+	self.log(sql)
+	self.pg8000.execute(sql)
+	self.pg8000.execute('select * from ext_%s'%self.name)
+	self.log('result')
+	for row in self.pg8000.iterate_dict():
+	    self.log(str(row))
+	self.log('done')
+	self.pg8000.execute('select * from ext_%s_errors'%self.name)
+	self.log('errors')
+	for row in self.pg8000.iterate_dict():
+	    self.log(str(row))
+	self.log('done')
+
+    def do_method_insert(self):
+	self.create_external_table()
+
+    def do_method(self):
+	method = self.getconfig('gpload.into.method.method',str,'insert').lower()
+	if method=='insert':
+	    self.do_method_insert()
+	else:
+	    self.log('We do not implement method %s yet.'%method)
+	    sys.exit(2)
 
     def run2(self):
 	self.read_config()
@@ -212,6 +263,7 @@ class gpload:
 	self.read_columns()
 	self.read_mapping()
 	self.start_gpfdists()
+	self.do_method()
 
     def run(self):
 	try:
