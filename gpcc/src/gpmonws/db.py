@@ -82,6 +82,25 @@ def _metrics_consolidate(rows):
     return (tkeys, hkeys, ckeys, tab)
 
 
+def build_query_string(table, filter, interval):
+    agg_func = 'avg'
+
+    columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
+                'swap_total', 'swap_used', 'swap_page_in', 'swap_page_out',
+                'cpu_user', 'cpu_sys', 'cpu_idle', 'load0', 'load1', 'load2',
+                'quantum', 'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
+                'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
+                'net_wb_rate']
+
+    query_fragment = "select date_trunc('%s', ctime) as ctime, hostname" % interval
+    for column in columns:
+        query_fragment += ", %s(%s) as %s" % (agg_func, column, column)
+
+    query_fragment += " from %s %s" % (table, filter)
+    query_fragment += " group by date_trunc('%s', ctime), hostname " % interval
+    return query_fragment
+
+
 def metrics_next(prev, host):
     # check  connection to database 
     if conn == None:
@@ -122,36 +141,29 @@ def metrics_now(host):
 
 
 
-def metrics_upto_now(host, stime):
+def metrics_upto_now(host, stime, interval):
     filter = "where ctime >= '%s'" % stime
     if host:
         filter = filter + " and hostname='%s'" % host
 
-    query = '''
-select * from metrics_history %s
-union all 
-select * from metrics_tail %s
-union all 
-select * from metrics_now  %s
-''' % (filter, filter, filter)
+    query1 = build_query_string('metrics_history', filter, interval)
+    query2 = build_query_string('metrics_tail', filter, interval)
+    query3 = build_query_string('metrics_now', filter, interval)
+    query = "%s\nunion all\n%s\nunion all\n%s" % (query1, query2, query3)
 
-    sys.stderr.write('%s\n' % query)
     conn.execute(query)
     rows = [r for r in conn.iterate_dict()]
     return _metrics_consolidate(rows)
 
-def metrics_history(host, stime, etime):
+def metrics_history(host, stime, etime, interval):
     filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
     if host:
         filter = filter + " and hostname='%s'" % host
 
-    query = '''
-select * from metrics_history %s
-union all 
-select * from metrics_tail %s
-''' % (filter, filter)
+    query1 = build_query_string('metrics_history', filter, interval)
+    query2 = build_query_string('metrics_tail', filter, interval)
+    query = "%s\nunion all\n%s" % (query1, query2)
 
-    sys.stderr.write('%s\n' % query)
     conn.execute(query)
     rows = [r for r in conn.iterate_dict()]
     return _metrics_consolidate(rows)
@@ -166,4 +178,4 @@ def queries_now():
             r[k] = str(r[k])
             if k == 'query_text':
                 if len(r[k]) > 50: r[k] = r[k][:50]
-    return rows
+    return _metrics_consolidate(rows)

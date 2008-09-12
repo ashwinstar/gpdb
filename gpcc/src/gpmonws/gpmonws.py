@@ -1,4 +1,6 @@
-import os, sys, datetime, tempfile, error
+import os, sys, time, datetime, tempfile
+import error
+import interval
 
 gphome = os.environ.get('GPHOME')
 if not gphome:
@@ -56,7 +58,6 @@ class startdate:
     def GET(self):
 #        if not session.loggedin: 
 #            web.webapi.accessdenied()
-            
 
         web.header('Content-Type', 'text/xml')
         if startdate.stime == None:
@@ -139,12 +140,14 @@ class system:
                 return mkerr(error.DB, 'db.metrics_now failed')
 
         elif i.end == 'last':
-            res = db.metrics_upto_now(i.host, i.start)
+            i.interval = interval.check(i.start, timenow(), i.interval)
+            res = db.metrics_upto_now(i.host, i.start, i.interval)
             if not res:
                 return mkerr(error.DB, 'db.metrics_upto_now failed')
 
         else:
-            res = db.metrics_history(i.host, i.start, i.end)
+            i.interval = interval.check(i.start, i.end, i.interval)
+            res = db.metrics_history(i.host, i.start, i.end, i.interval)
             if not res:
                 return mkerr(error.DB, 'db.metrics_history failed')
 
