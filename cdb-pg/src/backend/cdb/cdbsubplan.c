@@ -11,6 +11,7 @@
 
 #include "postgres.h"
 #include "executor/nodeSubplan.h"		/* For ExecSetParamPlan */
+#include "executor/executor.h"          /* For CreateExprContext */
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsubplan.h"
@@ -138,6 +139,13 @@ preprocess_initplans(QueryDesc *queryDesc)
 			 */
 			queryDesc->params = augmentedPli;
 
+			/*
+			 * Use ExprContext to set the param. If ExprContext is not initialized,
+			 * create a new one here. (see MPP-3511)
+			 */
+			if (sps->planstate->ps_ExprContext == NULL)
+				sps->planstate->ps_ExprContext = CreateExprContext(estate);
+			
 			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, queryDesc);
 		}
 
