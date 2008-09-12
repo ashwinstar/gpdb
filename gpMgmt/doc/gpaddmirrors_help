@@ -170,13 +170,13 @@ Add mirroring to an existing Greenplum Database system using the same
 set of hosts as your primary data.  Calculate the mirror port by adding 100
 to the current primary segment port numbers:
 
-gpaddmirrors - p 100
+gpaddmirrors -p 100
 
 
 Add mirroring to an existing Greenplum Database system using a different 
 set of hosts from your primary data:
 
-gpaddmirrors -m mirror_config_file
+gpaddmirrors -i mirror_config_file
 
 Where the mirror_config_file looks like this:
 
@@ -185,7 +185,7 @@ mirror[1]=sdw2:50101:/gpdata/m2
 mirror[2]=sdw1:50100:/gpdata/m1
 mirror[3]=sdw1:50101:/gpdata/m2
 
-Output a sample mirror configuration file to use with gpaddmirrors -m:
+Output a sample mirror configuration file to use with gpaddmirrors -i:
 
 gpaddmirrors -o /home/gpadmin/sample_mirror_config
 
