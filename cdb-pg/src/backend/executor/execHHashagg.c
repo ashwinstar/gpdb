@@ -15,8 +15,6 @@
  *
  *-------------------------------------------------------------------------
  */
-#ifndef OLD_HASHAGG
-
 #include "postgres.h"
 
 #include "miscadmin.h" /* work_mem */
@@ -1912,5 +1910,3 @@ void destroy_agg_hash_table(AggState *aggstate)
 		aggstate->hhashtable = NULL;
 	}
 }
-
-#endif
