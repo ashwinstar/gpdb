@@ -4,8 +4,6 @@
 gpcheckos -- check os for consistency and compatibility with GPDB.
 
 Usage: gpcheckos [--version] [-?v] [-m] [-h host] [-f hostfile] [-c checkfile]
-
-
           --version : print version information
           -?        : print this help screen
           -v        : verbose mode
@@ -24,6 +22,20 @@ try:
     from datetime import datetime, timedelta
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
+
+def run(cmd):
+    f = None
+    ok = False
+    out = []
+    try:
+        f = os.popen(cmd)
+        for line in f:
+            out.append(line)
+        ok = not f.close()
+    finally:
+        if f: f.close()
+
+    return (ok, out)
 
 ###############################
 ###  This is the content of the file ./lib/gpsys.py
@@ -174,6 +186,23 @@ def do_platform(res):
             factor = list[3]
             if factor == 'Megabytes':
                 mem = val * 1024 * 1024
+        (ok, out) = run ("/usr/sbin/swap -s")
+        if ok:
+            if len(out) > 0:
+                x = out[0].split()
+                used = 0
+                avail = 0
+                if x[8][-1] == "k":
+                    used = int (x[8][:-1]) * 1024
+                else:
+                    used = int (x[8])
+                if x[10][-1] == "k":
+                    avail = int (x[10][:-1]) * 1024
+                else:
+                    avail = int (x[10])
+                swap = used + avail
+                res['platform.swap'] = swap
+
     elif (s.find('linux') >= 0):
 	ok, out = run("sh -c 'cat /proc/meminfo | grep MemTotal'")
         if ok:
@@ -904,8 +933,16 @@ try:
     if not value:
         perr(p0.x_peer, 'physical memory unavailable')
     else:
+        print 'checking: %s' % key
         match(session, key, value)
-        
+    physmem = value
+
+    # check swap. Must be at least memory size
+    key = 'platform.swap'
+    value = p0.x_res.get(key)
+    if value:
+          if value < physmem: 
+              perr(p0.x_peer, 'swap is less than memory size')
 
     key = 'platform.system'
     value = p0.x_res.get(key)
