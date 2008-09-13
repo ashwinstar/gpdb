@@ -2185,6 +2185,11 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+
                     pc->partid = (Node *)$2;
                     pc->arg1 = (Node *)$4;
                     pc->arg2 = (Node *)$5;
@@ -2200,6 +2205,11 @@ alter_table_partition_cmd:
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
 
                     pc->partid = (Node *)$2;
                     pc->arg1 = (Node *)$3;
@@ -2231,6 +2241,11 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+
                     pc->partid = NULL; 
                     pc->arg1 = (Node *)$5;
                     pc->arg2 = NULL;
@@ -2245,6 +2260,11 @@ alter_table_partition_cmd:
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
 
                     pc->partid = NULL; 
                     pc->arg1 = NULL;

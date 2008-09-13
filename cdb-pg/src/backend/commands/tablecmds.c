@@ -11366,7 +11366,6 @@ atpxPart_validate_spec(
 		List 			*pbykeys   		= NIL;
 		List 			*pbyopclass 	= NIL;
 		Oid 			 accessMethodId = BTREE_AM_OID; 
-		PartitionElem *el_templ = NULL; /* the template partition element */
 		
 		while (pNode2)
 		{
@@ -11545,17 +11544,9 @@ atpxPart_validate_spec(
 						 * PartitionElem.
 						 */
 						
-/*						if (el_templ)
-							el_templ->subSpec = (Node *)spec_tmpl;
-							else */
-							pBy2->partSpec 	= (Node *)spec_tmpl;
+						pBy2->partSpec 	= (Node *)spec_tmpl;
 							
-						el_templ = el;
 					} /* end if pnode_tmpl */
-					else
-					{
-						el_templ = el;
-					}
 
 					/* fixup the pnode_tmpl to get the right parlevel */
 					if (pNode2 && (pNode2->rules || pNode2->default_part))
