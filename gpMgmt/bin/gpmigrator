@@ -583,7 +583,7 @@ class GPUpgrade:
             logname = os.path.join(self.logdir, 'gpstart_%s.log' % today)
             if retcode == 1:
                 self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated starting server')
+                self.Log('WARN', 'Warnings generated starting cluster')
                 self.Log('WARN', 'Check %s for detailed warnings' % logname)
                 self.Log('WARN', '***************************************')
             if retcode > 1:
@@ -658,7 +658,7 @@ class GPUpgrade:
             logname = os.path.join(self.logdir, 'gpstop_%s.log' % today)
             if retcode == 1:
                 self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated starting server')
+                self.Log('WARN', 'Warnings generated starting cluster')
                 self.Log('WARN', 'Check %s for detailed warnings' % logname)
                 self.Log('WARN', '***************************************')
             if retcode > 1:
@@ -1092,7 +1092,7 @@ Cannot downgrade a database with append only tables     <<<<<
         dirs = set();
         data_dir = ''
         for seg in segments:
-            if (h[seg['host']] != h[segments[0]['host']]): 
+            if (seg['host'] != segments[0]['host']): 
                 continue
             newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
             dirs.add(newdir)
@@ -1129,7 +1129,7 @@ Cannot downgrade a database with append only tables     <<<<<
             # MIRROR_DATA_DIRECTORY, use any mirror
             mirror_data_dir = ''
             for seg in mirrors:
-                if (h[seg['host']] != h[mirrors[0]['host']]): 
+                if (seg['host'] != mirrors[0]['host']): 
                     continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
                 if newdir in dirs:
@@ -1317,7 +1317,7 @@ This issue must be resolved before upgrade can complete.
             logname = os.path.join(self.logdir, 'gpinitsystem_%s.log' % today)
             if retcode == 1:
                 self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated initializing serever')
+                self.Log('WARN', 'Warnings generated initializing upgraded cluster')
                 self.Log('WARN', 'Check %s for detailed warnings' % logname)
                 self.Log('WARN', '***************************************')
             if retcode > 1:
