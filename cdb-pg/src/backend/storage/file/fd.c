@@ -54,6 +54,11 @@
 
 #include "utils/debugbreak.h"
 
+// Provide some indirection here in case we have problems with lseek and
+// 64 bits on some platforms
+#define pg_lseek64(a,b,c) (int64)lseek(a,b,c)
+
+
 /*
  * We must leave some file descriptors free for system(), the dynamic loader,
  * and other code that tries to open files without consulting fd.c.  This
@@ -115,7 +120,7 @@ static int	max_safe_fds = 32;	/* default if not changed */
 
 #define FileIsNotOpen(file) (VfdCache[file].fd == VFD_CLOSED)
 
-#define FileUnknownPos (-1L)
+#define FileUnknownPos INT64CONST(-1)
 
 /* these are the assigned bits in fdstate below: */
 #define FD_TEMPORARY		(1 << 0)	/* T = delete when closed */
@@ -129,7 +134,7 @@ typedef struct vfd
 	File		nextFree;		/* link to next free VFD, if in freelist */
 	File		lruMoreRecently;	/* doubly linked recency-of-use list */
 	File		lruLessRecently;
-	long		seekPos;		/* current logical file position */
+	int64		seekPos;		/* current logical file position */
 	char	   *fileName;		/* name of file, or NULL for unused VFD */
 	/* NB: fileName is malloc'd, and must be free'd when closing the VFD */
 	int			fileFlags;		/* open(2) flags for (re)opening the file */
@@ -536,8 +541,8 @@ LruDelete(File file)
 	Delete(file);
 
 	/* save the seek position */
-	vfdP->seekPos = (long) lseek(vfdP->fd, 0L, SEEK_CUR);
-	Assert(vfdP->seekPos != -1L);
+	vfdP->seekPos = pg_lseek64(vfdP->fd, INT64CONST(0), SEEK_CUR);
+	Assert(vfdP->seekPos != INT64CONST(-1));
 
 	/* close the file */
 	if (close(vfdP->fd))
@@ -609,12 +614,12 @@ LruInsert(File file)
 		}
 
 		/* seek to the right position */
-		if (vfdP->seekPos != 0L)
+		if (vfdP->seekPos != INT64CONST(0))
 		{
-			long		returnValue;
+			int64		returnValue;
 
-			returnValue = (long) lseek(vfdP->fd, vfdP->seekPos, SEEK_SET);
-			Assert(returnValue != -1L);
+			returnValue = pg_lseek64(vfdP->fd, vfdP->seekPos, SEEK_SET);
+			Assert(returnValue != INT64CONST(-1));
 		}
 	}
 
@@ -839,7 +844,7 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	/* Saved flags are adjusted to be OK for re-opening file */
 	vfdP->fileFlags = fileFlags & ~(O_CREAT | O_TRUNC | O_EXCL);
 	vfdP->fileMode = fileMode;
-	vfdP->seekPos = 0;
+	vfdP->seekPos = INT64CONST(0);
 	vfdP->fdstate = 0x0;
 
 	return file;
@@ -1064,7 +1069,7 @@ FileReadIntr(File file, char *buffer, int amount, bool fRetryIntr)
 
 	Assert(FileIsValid(file));
 
-	DO_DB(elog(LOG, "FileRead: %d (%s) %ld %d %p",
+	DO_DB(elog(LOG, "FileRead: %d (%s) " INT64_FORMAT " %d %p",
 			   file, VfdCache[file].fileName,
 			   VfdCache[file].seekPos, amount, buffer));
 
@@ -1118,7 +1123,7 @@ FileWrite(File file, char *buffer, int amount)
 
 	Assert(FileIsValid(file));
 
-	DO_DB(elog(LOG, "FileWrite: %d (%s) %ld %d %p",
+	DO_DB(elog(LOG, "FileWrite: %d (%s) " INT64_FORMAT " %d %p",
 			   file, VfdCache[file].fileName,
 			   VfdCache[file].seekPos, amount, buffer));
 
@@ -1183,14 +1188,14 @@ FileSync(File file)
 	return pg_fsync(VfdCache[file].fd);
 }
 
-long
-FileSeek(File file, long offset, int whence)
+int64
+FileSeek(File file, int64 offset, int whence)
 {
 	int			returnCode;
 
 	Assert(FileIsValid(file));
 
-	DO_DB(elog(LOG, "FileSeek: %d (%s) %ld %ld %d",
+	DO_DB(elog(LOG, "FileSeek: %d (%s) " INT64_FORMAT " " INT64_FORMAT " %d",
 			   file, VfdCache[file].fileName,
 			   VfdCache[file].seekPos, offset, whence));
 
@@ -1199,8 +1204,8 @@ FileSeek(File file, long offset, int whence)
 		switch (whence)
 		{
 			case SEEK_SET:
-				if (offset < 0)
-					elog(ERROR, "invalid seek offset: %ld", offset);
+				if (offset < INT64CONST(0))
+					elog(ERROR, "invalid seek offset: " INT64_FORMAT, offset);
 				VfdCache[file].seekPos = offset;
 				break;
 			case SEEK_CUR:
@@ -1210,7 +1215,7 @@ FileSeek(File file, long offset, int whence)
 				returnCode = FileAccess(file);
 				if (returnCode < 0)
 					return returnCode;
-				VfdCache[file].seekPos = lseek(VfdCache[file].fd,
+				VfdCache[file].seekPos = pg_lseek64(VfdCache[file].fd,
 											   offset, whence);
 				break;
 			default:
@@ -1224,18 +1229,18 @@ FileSeek(File file, long offset, int whence)
 		{
 			case SEEK_SET:
 				if (offset < 0)
-					elog(ERROR, "invalid seek offset: %ld", offset);
+					elog(ERROR, "invalid seek offset: " INT64_FORMAT, offset);
 				if (VfdCache[file].seekPos != offset)
-					VfdCache[file].seekPos = lseek(VfdCache[file].fd,
+					VfdCache[file].seekPos = pg_lseek64(VfdCache[file].fd,
 												   offset, whence);
 				break;
 			case SEEK_CUR:
 				if (offset != 0 || VfdCache[file].seekPos == FileUnknownPos)
-					VfdCache[file].seekPos = lseek(VfdCache[file].fd,
+					VfdCache[file].seekPos = pg_lseek64(VfdCache[file].fd,
 												   offset, whence);
 				break;
 			case SEEK_END:
-				VfdCache[file].seekPos = lseek(VfdCache[file].fd,
+				VfdCache[file].seekPos = pg_lseek64(VfdCache[file].fd,
 											   offset, whence);
 				break;
 			default:
@@ -1250,7 +1255,7 @@ FileSeek(File file, long offset, int whence)
  * XXX not actually used but here for completeness
  */
 #ifdef NOT_USED
-long
+int64
 FileTell(File file)
 {
 	Assert(FileIsValid(file));
@@ -1274,6 +1279,7 @@ FileTruncate(File file, long offset)
 	if (returnCode < 0)
 		return returnCode;
 
+	// UNDONE: Does ftruncate take an int64 value?
 	returnCode = ftruncate(VfdCache[file].fd, (size_t) offset);
 	return returnCode;
 }
