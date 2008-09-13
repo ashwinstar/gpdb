@@ -30,6 +30,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
+#include "commands/schemacmds.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "storage/backendid.h"
@@ -2015,6 +2016,11 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		StartTransactionCommand();
 
 		RemoveTempRelations(myTempNamespace);
+
+		/* MPP-3390: drop pg_temp_N schema entry from pg_namespace */
+		RemoveSchemaById (myTempNamespace);
+		elog (DEBUG1, " Remove schema entry %u from pg_namespace", 
+									 myTempNamespace); 
 
 		CommitTransactionCommand();
 	}
