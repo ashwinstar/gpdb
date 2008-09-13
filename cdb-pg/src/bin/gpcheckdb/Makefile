@@ -22,13 +22,13 @@ gpcheckdb: $(OBJS) $(libpq_builddir)/libpq.a
 
 
 install: all installdirs
-	$(INSTALL_PROGRAM) gpcheckdb$(X) '$(DESTDIR)$(bindir)/gpcheckdb$(X)'
+	$(INSTALL_PROGRAM) gpcheckdb$(X) '$(DESTDIR)$(bindir)/lib/gpcheckdb$(X)'
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
 
 uninstall:
-	rm -f '$(DESTDIR)$(bindir)/gpcheckdb$(X)' 
+	rm -f '$(DESTDIR)$(bindir)/lib/gpcheckdb$(X)' 
 
 clean distclean:
 	rm -f gpcheckdb$(X) $(OBJS)

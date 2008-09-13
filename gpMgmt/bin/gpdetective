@@ -483,13 +483,13 @@ class GPDetective:
         '''
         self.log('checkCatalog')
 
-        checkcat = ['gpcheckcat'] 
+        checkcat = [libdir + '/gpcheckcat'] 
         if self.opt['-h']: checkcat.extend(['-h', str(self.opt['-h'])])
         if self.opt['-p']: checkcat.extend(['-p', str(self.opt['-p'])])
         if self.opt['-U']: checkcat.extend(['-U', str(self.opt['-U'])])
         if self.opt['-P']: checkcat.extend(['-P', str(self.opt['-P'])])
 
-        checkdb = ['gpcheckdb']
+        checkdb = [libdir + '/gpcheckdb']
         if self.opt['-h']: checkdb.extend(['-h', str(self.opt['-h'])])
         if self.opt['-p']: checkdb.extend(['-p', str(self.opt['-p'])])
         if self.opt['-U']: checkdb.extend(['-U', str(self.opt['-U'])])

@@ -29,7 +29,8 @@ def parse_int(val):
 
 ###############################
 class Global():
-    opt = {}
+    retcode   = 0;
+    opt       = {}
     opt['-h'] = None
     opt['-p'] = None
     opt['-P'] = None
@@ -37,9 +38,9 @@ class Global():
     opt['-v'] = False
     opt['-V'] = False
     opt['-g'] = None
-    cfg = None
-    dbname = None
-    db = {}
+    cfg       = None
+    dbname    = None
+    db        = {}
 
 GV = Global()
 # array of SQL statements. Key is dbid
@@ -203,6 +204,7 @@ def checkPGClass():
     if not err:
         print '[OK] pg_class'
     else:
+        GV.retcode = 1
         print '[ERROR] pg_class has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
         for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
@@ -233,6 +235,7 @@ def checkPGAttribute():
     if not err:
         print '[OK] pg_attribute'
     else:
+        GV.retcode = 1
         print '[ERROR] pg_attribute has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
         for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
@@ -265,6 +268,7 @@ def checkPGType():
     if not err:
         print '[OK] pg_type'
     else:
+        GV.retcode = 1
         print '[ERROR] pg_type has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
         for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
@@ -295,6 +299,7 @@ def checkPGExtTable():
     if not err:
         print '[OK] pg_exttable'
     else:
+        GV.retcode = 1
         print '[ERROR] pg_exttable has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
         for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
@@ -326,6 +331,7 @@ def checkPGClassToast():
     if not err:
         print '[OK] pg_class.reltoastrelid'
     else:
+        GV.retcode = 1
         print '[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
         for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
@@ -378,6 +384,7 @@ def checkPGNamespace():
         if not err:
             print '[OK] schema test %i' % count
         else:
+            GV.retcode = 1
             print '[ERROR] schema test %i has %d issue(s)' % (count, len(err))
             print '[ERROR] %s' % qry
             for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
@@ -615,6 +622,8 @@ def crossDbCheck():
 
 		if error == False:
 				print '[OK]'
+                else:
+				GV.retcode = 1
 
 #############
 if __name__ == '__main__':
@@ -654,4 +663,5 @@ if __name__ == '__main__':
                 file.write(line + '\n')
 
             file.close()
+    sys.exit(GV.retcode)
 

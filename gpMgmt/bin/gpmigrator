@@ -1259,9 +1259,18 @@ This issue must be resolved before upgrade can complete.
                WHERE datname != 'template0'
                ORDER by oid
             ''', port=self.masterport)
-        for db in databases:
-            self.RunCmd('gpcheckcat -p %s %s' % (self.config['MASTER_PORT'],db), 
-                        env=env)
+
+        try:
+            exec_cmd = libdir + '/gpcheckcat -p %d ' % \
+                self.config['MASTER_PORT']
+            for db in databases:
+                self.RunCmd(exec_cmd + db, env=env)
+
+        except CmdError, e:
+            self.Log('FATAL', '***************************************')
+            self.Log('FATAL', e.stdout);
+            self.Log('FATAL', '***************************************')
+            raise UpgradeError('Catalog Check Failed');
 
     #------------------------------------------------------------
     def DumpSchema(self):
@@ -1694,7 +1703,6 @@ try:
         u.InitNewDB()
         u.Startup(u.newenv, False)
         u.ImportSchema()
-        u.CheckCatalog(u.newenv)
         u.BuildMappings()
         u.Shutdown()
 
