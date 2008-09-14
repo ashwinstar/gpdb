@@ -3743,12 +3743,13 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(*entry);
+		ctl.hash = oid_hash;
 
 		estate->es_partition_state->result_partition_hash =
 			hash_create("Partition Result Relation Hash",
 						num_buckets,
 						&ctl,
-						HASH_ELEM);
+						HASH_ELEM | HASH_FUNCTION);
 	}
 
 	entry = hash_search(estate->es_partition_state->result_partition_hash,
@@ -3760,6 +3761,7 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 	{
 		resultRelInfo = estate->es_result_relations;
 		resultRelInfo += entry->offset;
+		Assert(RelationGetRelid(resultRelInfo->ri_RelationDesc) == targetid);
 	}
 	else
 	{
