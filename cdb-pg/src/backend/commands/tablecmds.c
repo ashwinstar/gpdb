@@ -14530,6 +14530,17 @@ ATPExecPartRename(Relation rel,
 			}
 		}
 
+		/* MPP-3523: the "label" portion of the new relation is
+		 * prt_`newpartname', and makeObjectName won't truncate this
+		 * portion of the partition name -- it will assert instead.
+		 */
+		if (strlen(newpartname) > (NAMEDATALEN - 8))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("name \"%s\" for child partition "
+							"is too long",
+							newpartname)));
+
 		relname = ChoosePartitionName(parentname,
 									  partDepth,
 									  newpartname,
@@ -14695,7 +14706,7 @@ ATPExecPartSplit(Relation rel,
 		 * 2) Exchange that table with the target partition P
 		 *    Now, T has all the data or P
 		 * 3) Drop partition P
-		 * 4) Create two new parwtitions in the place of the old one
+		 * 4) Create two new partitions in the place of the old one
 		 */
 
 		/* look up into info, if the user supplied it */
