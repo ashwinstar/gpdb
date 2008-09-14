@@ -375,6 +375,9 @@ static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel)
 static bool rel_is_child_partition(Oid relid);
 static Oid  rel_partition_get_master(Oid relid);
 
+static List *
+atpxRenameList(Relation rel, PartitionNode *pNode, 
+			   char *old_parentname, const char *new_parentname);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -2539,6 +2542,62 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 							   newrelname,
 							   true, true);
 	}
+
+	/* MPP-3059: recursive rename of partitioned table */
+	/* Note: the top-level RENAME has bAllowPartn=FALSE, while the
+	 * generated statements from this block set it to TRUE.  That way,
+	 * the rename of each partition is allowed, but this block doesn't
+	 * get invoked recursively.
+	 */
+	if (stmt && !rel_is_child_partition(myrelid) && !stmt->bAllowPartn &&
+		(Gp_role == GP_ROLE_DISPATCH))
+	{
+		PartitionNode *pNode;			
+
+		pNode = RelationBuildPartitionDesc(targetrelation, false);
+
+		if (pNode)
+		{
+			RenameStmt 			   	*renStmt 	 = makeNode(RenameStmt);
+			DestReceiver 		   	*dest  		 = None_Receiver;
+			List 					*renList 	 = NIL;
+
+			renStmt->renameType = OBJECT_TABLE;
+			renStmt->subname = NULL;
+			renStmt->bAllowPartn = true; /* allow rename of partitions */
+
+			/* rename the children as well */
+			renList = atpxRenameList(targetrelation, 
+									 pNode, oldrelname, newrelname);
+
+			/* process children if there are any */
+			if (renList)
+			{
+				ListCell 		*lc;			
+
+				foreach(lc, renList)
+				{
+					ListCell 		*lc2;			
+					List  			*lpair = lfirst(lc);
+
+					lc2 = list_head(lpair);
+
+					renStmt->relation = (RangeVar *)lfirst(lc2);
+					lc2 = lnext(lc2);
+					renStmt->newname = (char *)lfirst(lc2);
+
+					ProcessUtility(
+							(Node *) renStmt,
+							NULL, dest, NULL);		
+				}
+			}
+			
+			
+		}
+		
+			
+	}
+
 
 	/*
 	 * Close rel, but keep exclusive lock!
@@ -14310,7 +14369,7 @@ ATPExecPartModify(Relation rel,
 /* ALTER TABLE ... RENAME PARTITION */
 static List *
 atpxRenameList(Relation rel, PartitionNode *pNode, 
-			   char *old_parentname, char *new_parentname)
+			   char *old_parentname, const char *new_parentname)
 {
 	List *l1 = NIL;
 	ListCell *lc;			
