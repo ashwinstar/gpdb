@@ -259,7 +259,7 @@ void DropErrorTable(CdbSreh *cdbsreh)
 							 RelationGetRelationName(cdbsreh->errtbl));
 
 	/* DROP the relation on the QD */
-	RemoveRelation(errtbl_rv,DROP_RESTRICT);
+	RemoveRelation(errtbl_rv,DROP_RESTRICT, NULL);
 				   
 	/* dispatch the DROP to the QEs */
 	CdbDoCommand(dropstmt.data, false, /*no txn */ false, 

@@ -1721,6 +1721,7 @@ typedef struct DropStmt
 	ObjectType	removeType;		/* object type */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
 	bool		missing_ok;		/* skip error if object is missing? */
+	bool		bAllowPartn;	/* allow action on a partition */
 } DropStmt;
 
 /* ----------------------
@@ -1928,6 +1929,7 @@ typedef struct RenameStmt
 	char	   *subname;		/* name of contained object (column, rule,
 								 * trigger, etc) */
 	char	   *newname;		/* the new name */
+	bool		bAllowPartn;	/* allow action on a partition */
 } RenameStmt;
 
 /* ----------------------

@@ -675,14 +675,14 @@ ProcessUtility(Node *parsetree,
 							rel = makeRangeVarFromNameList(names);
 							if (CheckDropPermissions(rel, RELKIND_RELATION,
 													 stmt->missing_ok))
-								RemoveRelation(rel, stmt->behavior);
+								RemoveRelation(rel, stmt->behavior, stmt);
 							break;
 
 						case OBJECT_EXTTABLE:
 							rel = makeRangeVarFromNameList(names);
 							if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
 													 stmt->missing_ok))
-								RemoveRelation(rel, stmt->behavior);
+								RemoveRelation(rel, stmt->behavior, stmt);
 							break;
 							
 
@@ -690,7 +690,7 @@ ProcessUtility(Node *parsetree,
 							rel = makeRangeVarFromNameList(names);
 							if (CheckDropPermissions(rel, RELKIND_SEQUENCE,
 													 stmt->missing_ok))
-								RemoveRelation(rel, stmt->behavior);
+								RemoveRelation(rel, stmt->behavior, stmt);
 							break;
 
 						case OBJECT_VIEW:

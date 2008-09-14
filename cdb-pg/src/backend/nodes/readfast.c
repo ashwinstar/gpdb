@@ -610,6 +610,7 @@ _readDropStmt(const char ** str)
 	READ_ENUM_FIELD(removeType,ObjectType);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
+	READ_BOOL_FIELD(bAllowPartn);
 
 	READ_DONE();
 }
@@ -838,6 +839,7 @@ _readRenameStmt(const char ** str)
 	READ_STRING_FIELD(subname);
 	READ_STRING_FIELD(newname);
 	READ_ENUM_FIELD(renameType,ObjectType);
+	READ_BOOL_FIELD(bAllowPartn);
 
 	READ_DONE();
 }

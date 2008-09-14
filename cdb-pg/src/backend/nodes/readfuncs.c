@@ -742,6 +742,7 @@ _readDropStmt(void)
 	READ_ENUM_FIELD(removeType,ObjectType);
 	READ_ENUM_FIELD(behavior,DropBehavior);
 	READ_BOOL_FIELD(missing_ok);
+	READ_BOOL_FIELD(bAllowPartn);
 	local_node->missing_ok=true;
 
 	READ_DONE();
@@ -943,6 +944,7 @@ _readRenameStmt(void)
 	READ_STRING_FIELD(subname);
 	READ_STRING_FIELD(newname);
 	READ_ENUM_FIELD(renameType,ObjectType);
+	READ_BOOL_FIELD(bAllowPartn);
 
 	READ_DONE();
 }

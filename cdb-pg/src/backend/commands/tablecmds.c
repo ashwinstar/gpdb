@@ -371,10 +371,10 @@ static void exchange_part_rule(Oid oldrelid, Oid newrelid);
 static List * exchange_part_constraints(Partition *part, Relation oldrel, 
 										Relation newrel, bool validate);
 static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel);
-#if 0
+
 static bool rel_is_child_partition(Oid relid);
-static bool rel_partition_get_master(Oid relid);
-#endif
+static Oid  rel_partition_get_master(Oid relid);
+
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -1015,16 +1015,16 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
  *		Deletes a relation.
  */
 void
-RemoveRelation(const RangeVar *relation, DropBehavior behavior)
+RemoveRelation(const RangeVar *relation, DropBehavior behavior, 
+			   DropStmt *stmt)
 {
 	Oid			relOid;
 	ObjectAddress object;
 
 	relOid = RangeVarGetRelid(relation, false);
 
-#if 0 /* NOT YET */
-	/* if this is a child table of a partitioning configuration, complain */
-	if (rel_is_child_partition(relOid) && is_drop_stmt)
+	/* MPP-3260: disallow direct DROP TABLE of a partition */
+	if (stmt && rel_is_child_partition(relOid) && !stmt->bAllowPartn)
 	{
 		Oid master = rel_partition_get_master(relOid);
 		ereport(ERROR,
@@ -1035,7 +1035,6 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 						"\"%s\".  To drop it, use ALTER TABLE.",
 						get_rel_name(relOid), get_rel_name(master))));
 	}
-#endif
 
 	object.classId = RelationRelationId;
 	object.objectId = relOid;
@@ -2461,6 +2460,19 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	 * release until end of transaction.
 	 */
 	targetrelation = relation_open(myrelid, AccessExclusiveLock);
+
+	/* if this is a child table of a partitioning configuration, complain */
+	if (stmt && rel_is_child_partition(myrelid) && !stmt->bAllowPartn)
+	{
+		Oid master = rel_partition_get_master(myrelid);
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				errmsg("cannot rename partition \"%s\" directly",
+					   get_rel_name(myrelid)),
+				errhint("Table \"%s\" is a child partition of table "
+						"\"%s\".  To rename it, use ALTER TABLE.",
+						get_rel_name(myrelid), get_rel_name(master))));
+	}
 
 	oldrelname = pstrdup(RelationGetRelationName(targetrelation));
 	namespaceId = RelationGetNamespace(targetrelation);
@@ -9620,7 +9632,6 @@ rel_is_partitioned(Oid relid)
 	return found;
 }
 
-#if 0
 static Oid
 rel_partition_get_master(Oid relid)
 {
@@ -9701,7 +9712,6 @@ rel_is_child_partition(Oid relid)
 
 	return found;
 }
-#endif
 
 static Oid
 get_opfuncid_by_opname(List *opname, Oid lhsid, Oid rhsid)
@@ -12942,6 +12952,7 @@ ATPExecPartDrop(Relation rel,
 		heap_close(rel2, NoLock);
 
 		ds->removeType = OBJECT_TABLE;
+		ds->bAllowPartn = true; /* allow drop of partitions */
 
 		if (prule->topRule->children)
 		{
@@ -14553,6 +14564,7 @@ ATPExecPartRename(Relation rel,
 
 		renStmt->subname = NULL;
 		renStmt->newname = relname;
+		renStmt->bAllowPartn = true; /* allow rename of partitions */
 
 		if (prule && prule->topRule && prule->topRule->children)
 				pNode = prule->topRule->children;

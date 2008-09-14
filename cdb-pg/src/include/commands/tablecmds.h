@@ -25,7 +25,8 @@ extern void	DefineExternalRelation(CreateExternalStmt *stmt);
 
 extern void	DefinePartitionedRelation(CreateStmt *stmt, Oid reloid);
 
-extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior);
+extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior,
+						   DropStmt *stmt /* MPP */);
 
 extern bool RelationToRemoveIsTemp(const RangeVar *relation, DropBehavior behavior);
 

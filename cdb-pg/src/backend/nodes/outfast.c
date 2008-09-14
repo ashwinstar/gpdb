@@ -1887,6 +1887,7 @@ _outDropStmt(StringInfo str, DropStmt *node)
 	WRITE_ENUM_FIELD(removeType, ObjectType);
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	WRITE_BOOL_FIELD(missing_ok);
+	WRITE_BOOL_FIELD(bAllowPartn);
 
 	
 }
@@ -2068,7 +2069,7 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	WRITE_STRING_FIELD(subname);
 	WRITE_STRING_FIELD(newname);
 	WRITE_ENUM_FIELD(renameType,ObjectType);
-
+	WRITE_BOOL_FIELD(bAllowPartn);
 	
 }
 

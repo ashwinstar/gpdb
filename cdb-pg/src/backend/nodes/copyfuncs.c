@@ -2562,6 +2562,7 @@ _copyDropStmt(DropStmt *from)
 	COPY_SCALAR_FIELD(removeType);
 	COPY_SCALAR_FIELD(behavior);
 	COPY_SCALAR_FIELD(missing_ok);
+	COPY_SCALAR_FIELD(bAllowPartn);
 
 	return newnode;
 }
@@ -2703,6 +2704,7 @@ _copyRenameStmt(RenameStmt *from)
 	COPY_NODE_FIELD(objarg);
 	COPY_STRING_FIELD(subname);
 	COPY_STRING_FIELD(newname);
+	COPY_SCALAR_FIELD(bAllowPartn);
 
 	return newnode;
 }
