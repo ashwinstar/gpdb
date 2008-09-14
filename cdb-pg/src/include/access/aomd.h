@@ -12,8 +12,12 @@
 #include "storage/fd.h"
 #include "utils/rel.h"
 
-extern File
-OpenAOSegmentFile(Relation rel, BlockNumber segno, bool create);
+extern int
+AOSegmentFilePathNameLen(Relation rel);
+
+extern void
+OpenAOSegmentFile(Relation rel, int segno, bool create,
+	File *file, char *filepathname);
 
 extern void
 CloseAOSegmentFile(File file, Relation rel, BlockNumber segno);

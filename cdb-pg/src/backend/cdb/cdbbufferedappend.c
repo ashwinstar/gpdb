@@ -13,8 +13,6 @@
 
 #include "cdb/cdbbufferedappend.h"
 
-// #define BUFFEREDTEST_APPEND
-
 static void BufferedAppendWrite(
     BufferedAppend        *bufferedAppend);
 
@@ -80,6 +78,7 @@ void BufferedAppendInit(
 	 * File level members.
 	 */
 	bufferedAppend->file = -1;
+	bufferedAppend->filePathName = NULL;
     bufferedAppend->fileLen = 0;
 }
 
@@ -89,6 +88,7 @@ void BufferedAppendInit(
 void BufferedAppendSetFile(
     BufferedAppend       *bufferedAppend,
     File 				 file,
+    char				 *filePathName,
     int64				 eof)
 {
 	Assert(bufferedAppend != NULL);
@@ -99,10 +99,11 @@ void BufferedAppendSetFile(
 	Assert(bufferedAppend->fileLen == 0);
 
 	Assert(file >= 0);
-	Assert(eof >= 0);	// UNDONE: Should be a multiple of file-system block length.
+	Assert(eof >= 0);
 
 	bufferedAppend->position = eof;
 	bufferedAppend->file = file;
+	bufferedAppend->filePathName = filePathName;
 	bufferedAppend->fileLen = eof;
 }
 
@@ -115,71 +116,51 @@ static void BufferedAppendWrite(
 {
 	int32 writeLen;
 	uint8 *largeWriteMemory;
-	int64 currentWritePosition; 
 
 	writeLen = bufferedAppend->len;
 	Assert(bufferedAppend->len > 0);
 	largeWriteMemory = bufferedAppend->largeWriteMemory;
-	
-	currentWritePosition = (int64) lseek(bufferedAppend->file, 0, SEEK_CUR);
-	
-#ifdef BUFFEREDTEST_APPEND
-	if (currentWritePosition < 0)
-	{
-		fprintf(stderr,"unable to get current position (errcode %d)", 
-							   errno);
-		exit(1);
-	}
 
-	if (currentWritePosition != bufferedAppend->position)
+#ifdef USE_ASSERT_CHECKING
 	{
-		fprintf(stderr,"Current position mismatch actual " INT64_FORMAT "," 
-				"expected " INT64_FORMAT,
-				currentWritePosition, bufferedAppend->position);
-		exit(1);
-	}
-#else
-	if (currentWritePosition < 0)
-		ereport(ERROR, (errcode_for_file_access(),
-						errmsg("unable to get current position (errcode %d)", 
-							   errno)));
+		int64 currentWritePosition; 
 
-	if (currentWritePosition != bufferedAppend->position)
-		ereport(ERROR, (errcode_for_file_access(),
-						errmsg("Current position mismatch actual "
-							   INT64_FORMAT ", expected " INT64_FORMAT,
-							   currentWritePosition, bufferedAppend->position)));
-#endif
-		
+		currentWritePosition = FileSeek(bufferedAppend->file, 0, SEEK_CUR);
+		if (currentWritePosition < 0)
+			ereport(ERROR, (errcode_for_file_access(),
+							errmsg("unable to get current position for file \"%s\" (errcode %d)",
+							       bufferedAppend->filePathName,
+								   errno)));
+
+		if (currentWritePosition != bufferedAppend->position)
+			ereport(ERROR, (errcode_for_file_access(),
+							errmsg("Current position mismatch actual "
+								   INT64_FORMAT ", expected " INT64_FORMAT " in file \"%s\"",
+								   currentWritePosition, bufferedAppend->position,
+								   bufferedAppend->filePathName)));
+	}
+#endif	
+
 	while (writeLen > 0) 
 	{
-		int len = write(bufferedAppend->file, (char*)largeWriteMemory, writeLen);
+		int actualLen = FileWrite(
+							bufferedAppend->file,
+							(char*)largeWriteMemory,
+							writeLen);
 
-#ifdef BUFFEREDTEST_APPEND
-		if (len == 0) 
-		{
-			fprintf(stderr,"write beyond eof\n");
-			exit(1);
-		}
-		else if (len < 0)
-		{
-			fprintf(stderr,"unable to write file (errcode %d)\n", 
-								   errno);
-			exit(1);
-		}
-#else
-		if (len == 0) 
+		if (actualLen == 0) 
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("write beyond eof")));
-		else if (len < 0)
+							errmsg("no disk space for file \"%s\"",
+							       bufferedAppend->filePathName)));
+		else if (actualLen < 0)
 			ereport(ERROR, (errcode_for_file_access(),
-							errmsg("unable to write file (errcode %d)", 
+							errmsg("unable to write file \"%s\" (errcode %d)", 
+								   bufferedAppend->filePathName,
 								   errno)));
-#endif
-		writeLen -= len;
-		largeWriteMemory += len;
+		writeLen -= actualLen;
+		largeWriteMemory += actualLen;
 	}
-
+	
 	bufferedAppend->position += bufferedAppend->len;
 	bufferedAppend->len = 0;
 
@@ -389,12 +370,7 @@ int64 BufferedAppendCompleteFile(
 
 	fileLen = bufferedAppend->fileLen;
 
-#ifndef BUFFEREDTEST_APPEND
 	pg_fsync(bufferedAppend->file);
-#endif
-	
-	/* done with the file */
-	close(bufferedAppend->file);
 	
 	bufferedAppend->position = 0;
 	bufferedAppend->len = 0;
@@ -403,6 +379,7 @@ int64 BufferedAppendCompleteFile(
 	
 	bufferedAppend->fileLen = 0;
 	bufferedAppend->file = -1;
+	bufferedAppend->filePathName = NULL;
 
 	return fileLen;
 }

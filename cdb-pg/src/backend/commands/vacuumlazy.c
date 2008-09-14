@@ -906,8 +906,10 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		
 		for(segno = 0 ; segno < fstotal->totalfilesegs ; segno++)
 		{
+			char filenamepath[MAXPGPATH];
+			
 			/* Open and truncate the relation segfile beyond its eof */
-			relfile = OpenAOSegmentFile(aorel, segno, false);
+			OpenAOSegmentFile(aorel, segno, false, &relfile, filenamepath);
 			TruncateAOSegmentFile(relfile, aorel, (long)eof, elevel);			
 			CloseAOSegmentFile(relfile, aorel, segno);	
 		}

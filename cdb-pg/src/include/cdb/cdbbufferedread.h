@@ -44,6 +44,7 @@ typedef struct BufferedRead
 	 * File level members.
 	 */
 	File 				 file;
+    char				 *filePathName;
     int64                fileLen;
 } BufferedRead;
 
@@ -75,7 +76,8 @@ extern void BufferedReadInit(
 extern void BufferedReadSetFile(
     BufferedRead         *bufferedRead,
     File 				 file,
-    int64               fileLen);
+    char				 *filePathName,
+    int64                fileLen);
 
 /*
  * Return the position of the next read buffer in bytes.

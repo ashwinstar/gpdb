@@ -42,6 +42,7 @@ typedef struct BufferedAppend
 	 * File level members.
 	 */
 	File 				 file;
+    char				 *filePathName;
     int64                fileLen;
 } BufferedAppend;
 
@@ -73,6 +74,7 @@ extern void BufferedAppendInit(
 extern void BufferedAppendSetFile(
     BufferedAppend       *bufferedAppend,
     File 				 file,
+    char				 *filePathName,
     int64				 eof);
 
 /*

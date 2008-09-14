@@ -98,7 +98,8 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	if (key != NULL)
 		memcpy(scan->aos_key, key, scan->aos_nkeys * sizeof(ScanKeyData));
 
-	scan->aos_file = 0;
+	scan->aos_file = -1;
+	scan->aos_filenamepath[0] = '\0';
 	scan->aos_segfiles_processed = 0;
 	scan->aos_need_new_segfile = true; /* need to assign a file to be scanned */
 	scan->aos_done_all_segfiles = false;
@@ -362,10 +363,16 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	}
 
 	/* Open this file 'segment' */
-	scan->aos_file = OpenAOSegmentFile(reln, segno, false);		
+	OpenAOSegmentFile(reln, segno, /* create */ false,
+					  &scan->aos_file, scan->aos_filenamepath);
+	Assert(strlen(scan->aos_filenamepath) + 1 <= scan->aos_filenamepath_maxlen);
 
 	/* Set the file to be read with its eof */
-	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
+	BufferedReadSetFile(
+				&scan->bufferedRead,
+				scan->aos_file, 
+				scan->aos_filenamepath, 
+				eof);
 	
 	/* ready to go! */
 	scan->aos_need_new_segfile = false;
@@ -389,42 +396,53 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 static void
 SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 {
-	File			appendFile;
 	FileSegInfo		*fsinfo;
 	int64			eof;
+	int64			result;
 
 	/* Open the 'segment' file */
-	appendFile = OpenAOSegmentFile(aoInsertDesc->aoi_rel, 
-								   aoInsertDesc->cur_segno,
-								   true);
+	OpenAOSegmentFile(aoInsertDesc->aoi_rel, 
+					  aoInsertDesc->cur_segno, 
+					  /* create */ true,
+					  &aoInsertDesc->appendFile, 
+					  aoInsertDesc->appendFilePathName);		
+	Assert(strlen(aoInsertDesc->appendFilePathName) + 1 <= aoInsertDesc->appendFilePathNameMaxLen);
 	
 	/* get the information for the file segment we insert into */
 	fsinfo = GetFileSegInfo(aoInsertDesc->aoi_rel, 
 							aoInsertDesc->cur_segno,
-							true);
+							/* forupdate */ true);
 	
 	Assert(fsinfo);
+	eof = (int64)fsinfo->eof;
+	pfree(fsinfo);
+	fsinfo = NULL;
 			
 	/* Seek to the starting point (current eof from catalog) */
-	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
-	
-	if (eof < 0)
+	result = FileSeek(aoInsertDesc->appendFile, eof, SEEK_SET);
+	if (result != eof)
 	{
-		CloseAOSegmentFile(appendFile, 
-						   aoInsertDesc->aoi_rel, 
-						   aoInsertDesc->cur_segno); /* cleanup before ereport */
-						   
-		ereport(ERROR, (errcode_for_file_access(),
-		 	    errmsg("Cannot seek to end (error %d)", errno)));
+		FileClose(aoInsertDesc->appendFile);
+		aoInsertDesc->appendFile = -1;
+		aoInsertDesc->appendFilePathName[0] = '\0';
+        ereport(ERROR, 
+				(errcode(ERRCODE_IO_ERROR),
+			     errmsg("Append-only I/O error on %s.  FileSeek offset = " INT64_FORMAT ".  Error code = %d (%s)",
+        	 		    aoInsertDesc->appendFilePathName,
+             		    eof,
+             		    (int)result,
+             			strerror((int)result))));
 	}
 
-	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
+	BufferedAppendSetFile(
+				&aoInsertDesc->bufferedAppend, 
+				aoInsertDesc->appendFile, 
+				aoInsertDesc->appendFilePathName, 
+				eof);
 
 	/* reset counts */
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
-
-	pfree(fsinfo);
 }
 
 /*
@@ -438,7 +456,7 @@ CloseScannedFileSeg(AppendOnlyScanDesc scan)
 	 * slices don't either, so check first. 
 	 */
 	if(scan->aos_file > 0)
-	{		
+	{
 		if (Debug_appendonly_print_scan)
 			elog(LOG,
 				 "Append-only scan closing segment file #%d in table '%s' "
@@ -448,8 +466,9 @@ CloseScannedFileSeg(AppendOnlyScanDesc scan)
 			     scan->rowNumberInSegmentFile,
 			     scan->bufferCount);
 		
-		CloseAOSegmentFile(scan->aos_file, scan->aos_rd, SCANNED_SEGNO);
-		scan->aos_file = 0;
+		FileClose(scan->aos_file);
+		scan->aos_file = -1;
+		scan->aos_filenamepath[0] = '\0';
 	}
 	
 	/*
@@ -474,8 +493,11 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 	 */
 	doPadOutRemainder(aoInsertDesc, /* indicate till end of page */ -1);
 	
-	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
-	
+	/* 
+	 * Have the BufferedAppend module let go, but this does not close the file.
+	 */
+	fileLen = BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);
+
 	/* 
 	 * Update the AO segment info table with our new eof
 	 */
@@ -485,8 +507,10 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 					  aoInsertDesc->insertCount,
 					  aoInsertDesc->varblockCount);
 	
-	/* done with the rel file, close it */
-	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);
+
+	FileClose(aoInsertDesc->appendFile);
+	aoInsertDesc->appendFile = -1;
+	aoInsertDesc->appendFilePathName[0] = '\0';
 
 	if (Debug_appendonly_print_insert)
 		elog(LOG, 
@@ -1299,6 +1323,10 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	/*
 	 * initialize the scan descriptor
 	 */
+	scan->aos_file = -1;
+	scan->aos_filenamepath_maxlen = AOSegmentFilePathNameLen(relation) + 1;
+	scan->aos_filenamepath = (char*)palloc(scan->aos_filenamepath_maxlen);
+	scan->aos_filenamepath[0] = '\0';
 	scan->maxBufferLen = getLimitedMaxBufferLen(aoentry->blocksize);
 	scan->safefswritesize = aoentry->safefswritesize;
 	scan->aos_bufread_inited = false;
@@ -1442,6 +1470,11 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc->aoi_rel = rel;
 	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
 	
+	aoInsertDesc->appendFile = -1;
+	aoInsertDesc->appendFilePathNameMaxLen = AOSegmentFilePathNameLen(rel) + 1;
+	aoInsertDesc->appendFilePathName = (char*)palloc(aoInsertDesc->appendFilePathNameMaxLen);
+	aoInsertDesc->appendFilePathName[0] = '\0';
+
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;

@@ -13,8 +13,6 @@
 
 #include "cdb/cdbbufferedread.h"
 
-// #define BUFFEREDTEST_READ
-
 static void BufferedReadIo(
     BufferedRead        *bufferedRead);
 static uint8 *BufferedReadUseBeforeBuffer(
@@ -94,7 +92,8 @@ void BufferedReadInit(
  */
 void BufferedReadSetFile(
     BufferedRead       *bufferedRead,
-    File 				 file,
+    File 				file,
+    char				*filePathName,
     int64               fileLen)
 {
 	Assert(bufferedRead != NULL);
@@ -112,6 +111,7 @@ void BufferedReadSetFile(
 	Assert(fileLen >= 0);
 	
 	bufferedRead->file = file;
+    bufferedRead->filePathName = filePathName;
     bufferedRead->fileLen = fileLen;
 
 	if (fileLen > 0)
@@ -135,65 +135,49 @@ static void BufferedReadIo(
 {
 	int32 readLen;
 	uint8 *largeReadMemory;
-	int64 currentReadPosition; 
 
 	readLen = bufferedRead->readLen;
-	Assert(readLen > 0);
+	Assert(bufferedRead->readLen > 0);
 	largeReadMemory = bufferedRead->largeReadMemory;
 
-	currentReadPosition = (int64) lseek(bufferedRead->file, 0, SEEK_CUR);
-
-#ifdef BUFFEREDTEST_READ
-	if (currentReadPosition < 0)
+#ifdef USE_ASSERT_CHECKING
 	{
-		fprintf(stderr,"unable to get current position (errcode %d)", errno);
-		exit(1);
-	}
+		int64 currentReadPosition; 
 		
-	if (currentReadPosition != bufferedRead->position)
-	{
-		fprintf(stderr,"Current position mismatch actual " INT64_FORMAT ", expected " INT64_FORMAT,
-			    currentReadPosition, bufferedRead->position);
-		exit(1);
-	}
-#else
-	if (currentReadPosition < 0)
-	{
-		elog(ERROR, "unable to get current position (errcode %d)", errno);
-	}
-		
-	if (currentReadPosition != bufferedRead->position)
-	{
-		elog(ERROR, "Current position mismatch actual " INT64_FORMAT ", expected " INT64_FORMAT,
-			    currentReadPosition, bufferedRead->position);
+		currentReadPosition = FileSeek(bufferedRead->file, 0, SEEK_CUR);
+		if (currentReadPosition < 0)
+			ereport(ERROR, (errcode_for_file_access(),
+							errmsg("unable to get current position for file \"%s\" (errcode %d)",
+							       bufferedRead->filePathName,
+								   errno)));
+			
+		if (currentReadPosition != bufferedRead->position)
+		{
+			ereport(ERROR, (errcode_for_file_access(),
+							errmsg("Current position mismatch actual "
+								   INT64_FORMAT ", expected " INT64_FORMAT " in file \"%s\"",
+								   currentReadPosition, bufferedRead->position,
+								   bufferedRead->filePathName)));
+		}
 	}
 #endif
-
+	
 	while (readLen > 0) 
 	{
-		int actualLen = read(bufferedRead->file, (char*)largeReadMemory, readLen);
+		int actualLen = FileRead(
+							bufferedRead->file,
+							(char*)largeReadMemory,
+							readLen);
 
-#ifdef BUFFEREDTEST_READ
 		if (actualLen == 0) 
-		{
-			fprintf(stderr,"read beyond eof\n");
-			exit(1);
-		}
-		else if (actualLen < 0) 
-		{
-			fprintf(stderr,"unable to read file (errcode %d)\n", errno);
-			exit(1);
-		}
-#else
-		if (actualLen == 0) 
-		{
-			elog(ERROR, "read beyond eof\n");
-		}
-		else if (actualLen < 0) 
-		{
-			elog(ERROR, "unable to read file (errcode %d)\n", errno);
-		}
-#endif
+			ereport(ERROR, (errcode_for_file_access(),
+							errmsg("read beyond eof in file \"%s\"",
+							       bufferedRead->filePathName)));
+		else if (actualLen < 0)
+			ereport(ERROR, (errcode_for_file_access(),
+							errmsg("unable to read file \"%s\" (errcode %d)", 
+								   bufferedRead->filePathName,
+								   errno)));
 		readLen -= actualLen;
 		largeReadMemory += actualLen;
 	}
@@ -478,6 +462,7 @@ void BufferedReadCompleteFile(
 	Assert(bufferedRead->file >= 0);
 	
 	bufferedRead->file = -1;
+    bufferedRead->filePathName = NULL;
 	bufferedRead->fileLen = 0;
 	
     bufferedRead->bufferOffset = 0;

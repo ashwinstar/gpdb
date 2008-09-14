@@ -146,7 +146,10 @@ typedef struct AppendOnlyScanDescData
 	bool		aos_checksum;		/* is relation stored with checksums? */
 	
 	/* file segment scan state */
-	File	    aos_file;			/* the relation file */
+	File	    aos_file;			/* the current segment file */
+	int			aos_filenamepath_maxlen;
+	char		*aos_filenamepath;
+									/* the current segment file pathname. */
 	int			aos_total_segfiles;	/* the relation file segment number */
 	int			aos_segfiles_processed; /* num of segfiles already processed */
 	FileSegInfo *aos_segfile_arr;	/* array of all segfiles information */

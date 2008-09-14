@@ -44,6 +44,9 @@ typedef struct AppendOnlyInsertDescData
 {
 	Relation		aoi_rel;
 	MemTupleBinding *mt_bind;
+	File			appendFile;
+	int				appendFilePathNameMaxLen;
+	char			*appendFilePathName;
 	float8			insertCount;
 	float8			varblockCount;
 	BlockNumber		cur_segno;

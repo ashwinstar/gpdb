@@ -24,22 +24,39 @@
 #include <fcntl.h>
 #include <sys/file.h>
 
+int
+AOSegmentFilePathNameLen(Relation rel)
+{
+	char		*basepath;
+	int 		len;
+		
+	/* Get base path for this relation file */
+	basepath = relpath(rel->rd_node);
+
+	len = strlen(basepath) + 8;	// Generous.
+	
+	pfree(basepath);
+
+	return len;
+}
+
 /*
  * Open an Append Only relation file segment
  *
- * Note: because we use BasicOpenFile(), we are responsible for ensuring
- * the FD gets closed in any error exit path.  
+ * The fd module's PathNameOpenFile() is used to open the file, so the
+ * the File* routines can be used to read, write, close, etc, the file.
+ *
+ * The filepathname parameter assume sufficient space.
  */
-File
-OpenAOSegmentFile(Relation rel, BlockNumber segno, bool create)
+void
+OpenAOSegmentFile(Relation rel, int segno, bool create,
+	File *file, char *filepathname)
 {
-	File		aosegfile;
-	char		*path,
-				*fullpath;
-	int			fileflags = O_RDWR | PG_BINARY;
+	char	*basepath;
+	int		fileflags = O_RDWR | PG_BINARY;
 		
 	/* Get base path for this relation file */
-	path = relpath(rel->rd_node);
+	basepath = relpath(rel->rd_node);
 
 	/* 
 	 * Get the segfile extention. this code is borrowed from md.c 
@@ -47,41 +64,35 @@ OpenAOSegmentFile(Relation rel, BlockNumber segno, bool create)
 	if (segno > 0)
 	{
 		/* be sure we have enough space for the '.segno' */
-		fullpath = (char *) palloc(strlen(path) + 12);
-		sprintf(fullpath, "%s.%u", path, segno);
+		sprintf(filepathname, "%s.%u", basepath, segno);
 	}
 	else
-		fullpath = path;
+		strcpy(filepathname, basepath);
+	pfree(basepath);
 	
-	//elog(NOTICE, "requested to open getting new file, seg number %d", aoInsertDesc->cur_segno);
+	*file = PathNameOpenFile(filepathname, fileflags, 0600);
 	
-	aosegfile = BasicOpenFile(fullpath, fileflags, 0600);
-	
-	if(aosegfile < 0)
+	if(*file < 0)
 	{
 		if(!create)
 		{
 			/* we expected to find this file */
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not open append only file \"%s\"", fullpath)));
+					 errmsg("could not open append only file \"%s\"", filepathname)));
 		}
 		else
 		{
 			/* file doesn't exist. create a new one. */
 			fileflags |= O_CREAT;
-			aosegfile = BasicOpenFile(fullpath, fileflags, 0600);
+			*file = PathNameOpenFile(filepathname, fileflags, 0600);
 
-			if(aosegfile < 0)
+			if(*file < 0)
 				ereport(ERROR,
 						(errcode_for_file_access(),
-						 errmsg("failed to create a new file segment: \"%s\"", fullpath)));
+						 errmsg("failed to create a new file segment: \"%s\"", filepathname)));
 		}
 	}
-	
-	pfree(fullpath);
-	
-	return aosegfile;
 }
 
 /*
@@ -92,22 +103,8 @@ CloseAOSegmentFile(File aosegfile, Relation rel, BlockNumber segno)
 {
 	Assert(aosegfile > 0);
 	Assert(segno >= 0);
-	
-	if(close(aosegfile))
-	{
-		/* get file path for error report file (no need for absolute path) */
-		char *path = relpath(rel->rd_node);
-		
-		if(segno > 0)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not close append only file segment " 
-							"%s.%u", path, segno)));
-		else
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not close append only file %s", path)));
-	}
+
+	FileClose(aosegfile);
 }
 
 /*
