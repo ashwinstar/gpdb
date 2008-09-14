@@ -684,7 +684,7 @@ def update_gp_conf(mirrors):
     db = None
 
     # start master in admin mode
-    (ok, out) = gpmlib.run('gpstart -qam -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    (ok, out) = gpmlib.run('gpstart -qam -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
         gpmlib.error('start master in admin mode failed')
 
@@ -709,7 +709,7 @@ def update_gp_conf(mirrors):
         db = None
 
     # stop master
-    (ok, out) = gpmlib.run('gpstop -qma -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    (ok, out) = gpmlib.run('gpstop -qma -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
         gpmlib.error('stop master in admin mode failed')
 
@@ -1225,7 +1225,7 @@ def stop_database(failed_instance_array):
 
     if opt['-f']:
         gpmlib.log_info('Forcing shutdown the database')
-        (ok, out) = gpmlib.run('gpstop -zfa -d %s' % os.environ.get('MASTER_DATA_DIRECTORY'))
+        (ok, out) = gpmlib.run('gpstop -zfa -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
         gpmlib.log_info('Successfully shutdown the Greenplum Database instance')
     else:
         # stop the failed segment
@@ -1581,7 +1581,8 @@ try:
 
     # start master QD in admin mode if force restart
     if opt['-f']:
-        (ok, out) = gpmlib.run('gpstart -maq -d %s' % os.environ.get('MASTER_DATA_DIRECTORY'))
+        gpmlib.log_info('start master QD in admin mode', True)
+        (ok, out) = gpmlib.run('gpstart -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
 
     try:
         db = pg8000.Connection(host='localhost', port=master_port, 
@@ -1601,11 +1602,14 @@ try:
 
             # stop master QD
             gpmlib.log_info('Shutting down the master instance')
-            (ok, out) = gpmlib.run('gpstop -maq -d %s' % os.environ.get('MASTER_DATA_DIRECTORY'))
+            gpmlib.log_info('Shutting down the master instance', True)
+            (ok, out) = gpmlib.run('gpstop -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+            gpmlib.log_info('Successfully shutdown the master instance', True)
             gpmlib.log_info('Successfully shutdown the master instance')
 
             # start database
-            (ok, out) = gpmlib.run('gpstart -a -d %s' % os.environ.get('MASTER_DATA_DIRECTORY'))
+            gpmlib.log_info('Start the array', True)
+            (ok, out) = gpmlib.run('gpstart -a -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
         else:
             reset_qe_connect(db)
             
