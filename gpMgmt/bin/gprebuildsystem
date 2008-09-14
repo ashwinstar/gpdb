@@ -266,7 +266,7 @@ PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Obtained Primary port base $PORT_BASE"
 	PRIMARY_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"|tr '\n' ' '`
 	LOG_MSG "[INFO]:-Obtained Primary hostname list ${PRIMARY_HOST_ARRAY[@]}" 
-	DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9]*//g|$SORT -u|$TR '\n' ' '`
+	DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`
 	LOG_MSG "[INFO]:-Obtained Primary datadir list $DATA_DIRECTORY"
 	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	LOG_MSG "[INFO]:-Obtained Master hostname $MASTER_HOSTNAME"
@@ -287,7 +287,7 @@ PARSE_SQL_FILE () {
 		#DDD MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$TR '\n' ' '`
 		MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"|$TR '\n' ' '`
 		LOG_MSG "[INFO]:-Obtained Mirror host list ${MIRROR_HOST_ARRAY[@]}"
-		MIRROR_DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9]*//g|$SORT -u|$TR '\n' ' '`
+		MIRROR_DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`
 		LOG_MSG "[INFO]:-Obtained Mirror data directory $MIRROR_DATA_DIRECTORY"
 		#Get the mirror port base	
 		MIRROR_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
