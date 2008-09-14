@@ -204,7 +204,9 @@ bool		Debug_print_tablespace = false;
 bool		Debug_print_server_processes = false;
 bool		Debug_print_control_checkpoints = false;
 bool 		Debug_appendonly_print_insert = false;
+bool 		Debug_appendonly_print_insert_tuple = false;
 bool 		Debug_appendonly_print_scan = false;
+bool 		Debug_appendonly_print_scan_tuple = false;
 bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Test_appendonly_override = false;
 bool 		Test_checksum_override = false;
@@ -1735,12 +1737,32 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"debug_appendonly_print_insert_tuple", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only insert tuples (caution -- generates a lot of log!)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_insert_tuple,
+		false, NULL, NULL
+	},
+
+	{
 		{"debug_appendonly_print_scan", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print log messages for append-only scan."),
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_appendonly_print_scan,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_appendonly_print_scan_tuple", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only scan tuples (caution -- generates a lot of log!)."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_scan_tuple,
 		false, NULL, NULL
 	},
 

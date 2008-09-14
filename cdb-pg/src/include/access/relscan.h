@@ -183,6 +183,7 @@ typedef struct AppendOnlyScanDescData
 	/* synthetic system attributes */
 	ItemPointerData cdb_fake_ctid;
     Oid				cdb_fake_tableoid;
+	MemTupleBinding *mt_bind;
 
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */
 	

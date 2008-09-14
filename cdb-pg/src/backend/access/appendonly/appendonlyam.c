@@ -109,6 +109,9 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	 */
 	ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
     scan->cdb_fake_tableoid = RelationGetRelid(scan->aos_rd);
+
+	scan->rowNumber = 0;
+	scan->rowNumberInSegmentFile = 0;
 	
 	pgstat_count_heap_scan(&scan->aos_pgstat_info);
 }
@@ -436,6 +439,15 @@ CloseScannedFileSeg(AppendOnlyScanDesc scan)
 	 */
 	if(scan->aos_file > 0)
 	{		
+		if (Debug_appendonly_print_scan)
+			elog(LOG,
+				 "Append-only scan closing segment file #%d in table '%s' "
+				 "(records scanned in segment file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
+			     SCANNED_SEGNO,
+			     NameStr(scan->aos_rd->rd_rel->relname),
+			     scan->rowNumberInSegmentFile,
+			     scan->bufferCount);
+		
 		CloseAOSegmentFile(scan->aos_file, scan->aos_rd, SCANNED_SEGNO);
 		scan->aos_file = 0;
 	}
@@ -821,7 +833,6 @@ getNextBlock(
 								&rowCount))
 	{
 		/* done reading the file */
-		CloseScannedFileSeg(scan); /* TODO: seems like getNextStorageBlockInFile already closed it. it's a redundant call */
 		return false;			
 	}
 
@@ -914,6 +925,7 @@ static bool
 doProcessTuple(
 	AppendOnlyScanDesc 	scan,
 	MemTuple			tuple,
+	int32				tupleLen,
 	int 				nkeys,
 	ScanKey 			key,
 	TupleTableSlot 		*slot)
@@ -946,6 +958,15 @@ doProcessTuple(
 	
 	if (key != NULL)
 		HeapKeyTestUsingSlot(slot, nkeys, key, valid);
+
+	if (Debug_appendonly_print_scan_tuple && valid)
+		elog(LOG,"Append-only scan tuple for table '%s' "
+		     "(AOTupleId %s, tuple length %d, memtuple length %d, block count " INT64_FORMAT ")",
+		     NameStr(scan->aos_rd->rd_rel->relname),
+		     AOTupleIdToString(aoTupleId),
+		     tupleLen,
+		     memtuple_get_size(tuple, scan->mt_bind),
+		     scan->bufferCount);
 	
 	return valid;				
 }
@@ -1030,7 +1051,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 
 					if (doProcessTuple(
 									scan,
-									tuple, 
+									tuple,
+									itemLen,
 									nkeys,
 									key,
 									slot))
@@ -1048,6 +1070,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 		
 		case AoExecutorBlockKind_SingleRow:
 			{
+				int32 singleRowLen;
+				
 				Assert(scan->singleRow != NULL);
 				Assert(scan->singleRowLen != 0);
 				
@@ -1057,6 +1081,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 							 errmsg("Invalid tuple format in appendonlygettup")));			
 					
 				tuple = (MemTuple) scan->singleRow;
+				singleRowLen = scan->singleRowLen;
 				
 				scan->singleRow = NULL;
 				scan->singleRowLen = 0;
@@ -1064,7 +1089,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 				
 				if (doProcessTuple(
 								scan,
-								tuple, 
+								tuple,
+								singleRowLen,
 								nkeys,
 								key,
 								slot))
@@ -1291,6 +1317,8 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	scan->singleRow = NULL;
 	scan->singleRowLen = 0;
 
+	scan->mt_bind = create_memtuple_binding(RelationGetDescr(relation));
+	
 	/*
 	 * Get information about all the file segments we need to scan
 	 */
@@ -1413,6 +1441,7 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
 	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
+	
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
@@ -1596,6 +1625,24 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	pgstat_count_heap_insert(&relation->pgstat_info);
 
 	retOid = MemTupleGetOid(tup, aoInsertDesc->mt_bind);
+
+	if (Debug_appendonly_print_insert_tuple)
+	{
+		AOTupleId 	aoTupleId;
+		int64		rowNum = (int64)aoInsertDesc->insertCount;
+		
+		AOTupleIdInit_Init(&aoTupleId);
+		AOTupleIdInit_segmentFileNum(&aoTupleId, aoInsertDesc->cur_segno);
+		AOTupleIdInit_rowNum(&aoTupleId, rowNum);
+		
+		elog(LOG,"Append-only insert tuple for table '%s' "
+		     "(AOTupleId %s, memtuple length %d, block count " INT64_FORMAT ")",
+		     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+		     AOTupleIdToString(&aoTupleId),
+		     itemLen,
+		     aoInsertDesc->bufferCount);
+	}
+	
 	if(tup != instup)
 		pfree(tup);
 

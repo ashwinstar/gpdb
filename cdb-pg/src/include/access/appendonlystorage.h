@@ -75,14 +75,14 @@ typedef struct AOTupleId
 
 } AOTupleId;
 
-#define AOTupleIdGet_segmentFileNum(h)        ((h)->bytes_0_1&0xFFC0>>6)          // 10 bits
+#define AOTupleIdGet_segmentFileNum(h)        (((h)->bytes_0_1&0xFFC0)>>6)          // 10 bits
 #define AOTupleIdGet_rowNum(h) \
-          ((((uint64)((h)->bytes_0_1)&0x003F)<<32)|((uint64)(h)->bytes_2_5)
+          ((((uint64)((h)->bytes_0_1)&0x003F)<<32)|((uint64)(h)->bytes_2_5))
                          // top 6 bits                   all lower 32 bits          38 bits
                          
 
 // For single bits, set or clear directly.  Otherwise, use AND to clear field then OR to set.
-#define AOTupleIdSet_segmentFileNum(h,e)         {(h)->bytes_0_1&=0x003F;(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<6);}
+#define AOTupleIdSet_segmentFileNum(h,e)         {(h)->bytes_0_1&=0x03FF;(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<6);}
 #define AOTupleIdSet_rowNum(h,e)    {(h)->bytes_0_1&=0xFFC0;(h)->bytes_0_1|=(uint16)((0x0000003F00000000&(e))>>32);\
                                      (h)->bytes_2_5=(uint32)(e);}
 
@@ -147,5 +147,7 @@ extern bool AppendOnlyStorage_VerifyBlockChecksum(
 
 extern int32 AppendOnlyStorage_GetUncompressedLen(
 	uint8			*headerPtr);
+
+extern char* AOTupleIdToString(AOTupleId * aoTupleId);
 
 #endif   /* APPENDONLYSTORAGE_H */
