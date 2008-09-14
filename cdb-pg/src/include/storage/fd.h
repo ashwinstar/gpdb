@@ -78,6 +78,7 @@ extern int	FileReadIntr(File file, char *buffer, int amount, bool fRetryInt);
 extern int	FileWrite(File file, char *buffer, int amount);
 extern int	FileSync(File file);
 extern int64 FileSeek(File file, int64 offset, int whence);
+extern int64 FileNonVirtualCurSeek(File file);
 extern int	FileTruncate(File file, long offset);
 
 /* Operations that allow use of regular stdio --- USE WITH CAUTION */

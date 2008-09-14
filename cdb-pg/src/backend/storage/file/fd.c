@@ -1251,6 +1251,24 @@ FileSeek(File file, int64 offset, int whence)
 	return VfdCache[file].seekPos;
 }
 
+int64
+FileNonVirtualCurSeek(File file)
+{
+	int			returnCode;
+
+	Assert(FileIsValid(file));
+
+	DO_DB(elog(LOG, "FileNonVirtualCurSeek: %d (%s) virtual position" INT64_FORMAT,
+			   file, VfdCache[file].fileName,
+			   VfdCache[file].seekPos));
+
+	returnCode = FileAccess(file);
+	if (returnCode < 0)
+		return returnCode;
+
+	return pg_lseek64(VfdCache[file].fd, 0, SEEK_CUR);
+}
+
 /*
  * XXX not actually used but here for completeness
  */

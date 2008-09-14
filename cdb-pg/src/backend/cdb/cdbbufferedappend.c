@@ -125,7 +125,7 @@ static void BufferedAppendWrite(
 	{
 		int64 currentWritePosition; 
 
-		currentWritePosition = FileSeek(bufferedAppend->file, 0, SEEK_CUR);
+		currentWritePosition = FileNonVirtualCurSeek(bufferedAppend->file);
 		if (currentWritePosition < 0)
 			ereport(ERROR, (errcode_for_file_access(),
 							errmsg("unable to get current position for file \"%s\" (errcode %d)",
@@ -353,7 +353,8 @@ int64 BufferedAppendFileLen(
 
 /*
  * Flushes the current file for append.  Caller is resposible for closing
- * the file afterwards.
+ * the file afterwards.  That close will flush any buffered writes for the
+ * file.
  *
  * Returns the file length.
  */
@@ -370,8 +371,6 @@ int64 BufferedAppendCompleteFile(
 
 	fileLen = bufferedAppend->fileLen;
 
-	pg_fsync(bufferedAppend->file);
-	
 	bufferedAppend->position = 0;
 	bufferedAppend->len = 0;
 	

@@ -1387,7 +1387,10 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 	BufferedReadFinish(&scan->bufferedRead);
 	
 	if(scan->uncompressedBuffer)
+	{
 		pfree(scan->uncompressedBuffer);
+		scan->uncompressedBuffer = NULL;
+	}
 	
 	scan->aos_need_new_segfile = true;
 
@@ -1412,7 +1415,9 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	
 	CloseScannedFileSeg(scan);	
 	BufferedReadFinish(&scan->bufferedRead);
-		
+
+	pfree(scan->aos_filenamepath);
+	
 	pfree(scan);
 }
 
@@ -1466,7 +1471,7 @@ appendonly_insert_init(Relation rel, int segno)
 	/*
 	 * allocate and initialize the insert descriptor
 	 */	
-	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
+	aoInsertDesc  = (AppendOnlyInsertDesc) palloc0(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
 	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
 	
@@ -1495,7 +1500,12 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->maxBufferLen;
 
 	aoInsertDesc->nonCompressedHeader = NULL;
-	aoInsertDesc->uncompressedBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
+	
+	if (aoInsertDesc->shouldCompress)
+		aoInsertDesc->uncompressedBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
+	else
+		aoInsertDesc->uncompressedBuffer = NULL;
+	
 	aoInsertDesc->tempSpaceLen = aoInsertDesc->maxBufferLen / 8; /* TODO - come up with a more efficient calculation */
 	aoInsertDesc->tempSpace = (uint8 *) palloc(aoInsertDesc->tempSpaceLen * sizeof(uint8));
 	maxtupsize = aoInsertDesc->maxDataLen - VARBLOCK_HEADER_LEN - 4;
@@ -1504,11 +1514,6 @@ appendonly_insert_init(Relation rel, int segno)
 	
 	memoryLen = BufferedAppendMemoryLen(aoInsertDesc->maxBufferLen, aoInsertDesc->largeWriteLen);
 	memory = (uint8*)palloc(memoryLen);
-	
-	if (memory == NULL)
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Cannot allocate memory %d bytes",
-							   memoryLen)));
 	
 	/* 
 	 * set up the the buffered appender for this data load 

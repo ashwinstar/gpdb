@@ -144,7 +144,7 @@ static void BufferedReadIo(
 	{
 		int64 currentReadPosition; 
 		
-		currentReadPosition = FileSeek(bufferedRead->file, 0, SEEK_CUR);
+		currentReadPosition = FileNonVirtualCurSeek(bufferedRead->file);
 		if (currentReadPosition < 0)
 			ereport(ERROR, (errcode_for_file_access(),
 							errmsg("unable to get current position for file \"%s\" (errcode %d)",
