@@ -2276,6 +2276,28 @@ alter_table_partition_cmd:
 					$$ = (Node *)n;
 				}
 			| SPLIT 
+            DEFAULT PARTITION TabPartitionBoundarySpecStart
+            TabPartitionBoundarySpecEnd
+            opt_table_partition_split_into	
+				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					AlterPartitionId *pid = makeNode(AlterPartitionId);
+
+					pid->idtype = AT_AP_IDDefault;
+                    pid->partiddef = NULL;
+                    pid->location  = @2;
+
+                    pc->partid = (Node *)pid;
+                    pc->arg1 = (Node *)list_make2($4, $5);
+                    pc->arg2 = (Node *)$6;
+                    pc->location = @5;
+
+					n->subtype = AT_PartSplit;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| SPLIT 
             alter_table_partition_id_spec_with_opt_default AT 
             '(' part_values_or_spec_list ')'	
             opt_table_partition_split_into	
@@ -2284,7 +2306,7 @@ alter_table_partition_cmd:
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
                     pc->partid = (Node *)$2;
-                    pc->arg1 = (Node *)$5;
+                    pc->arg1 = (Node *)list_make2(NULL, $5);
                     pc->arg2 = (Node *)$7;
                     pc->location = @5;
 

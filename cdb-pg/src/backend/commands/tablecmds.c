@@ -14760,7 +14760,7 @@ ATPExecPartSplit(Relation rel,
 		char tmpname[NAMEDATALEN];
 		InhRelation *inh = makeNode(InhRelation);
 		DestReceiver *dest = None_Receiver;
-		Node *at = pc->arg1;
+		Node *at = lsecond((List *)pc->arg1);
 		AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
 		AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
 		AlterTableStmt *ats = makeNode(AlterTableStmt);

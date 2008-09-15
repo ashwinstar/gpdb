@@ -9340,18 +9340,30 @@ transformAlterTable_all_PartitionStmt(
 			{
 				bool rollup_vals = false;
 				AlterPartitionId *pid = (AlterPartitionId *) pci->partid;
-				List *l1 = (List *)pci->arg1;
+				List *l1 = (List *)lsecond((List *)pci->arg1);
 				ListCell *lc;
 				Relation rel = heap_openrv(rv, AccessShareLock);
 				PgPartRule *prule = get_part_rule(rel, pid, true, true,
 												  CurrentMemoryContext, NULL,
 												  false);
 				
+				if (linitial((List *)pci->arg1))
+				{
+					/* MPP-3465: need SPLIT DEFAULT START...END syntax */
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("SPLIT DEFAULT START...END "
+									"not yet implemented")));
+
+				}
+
 				if (prule->pNode->part->parkind == 'h')
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("SPLIT is not supported for HASH partitions")));
 			
+				
+
 				if (prule->pNode->part->parkind == 'r' ||
 					IsA(linitial(l1), A_Const))
 				{
@@ -9417,12 +9429,12 @@ transformAlterTable_all_PartitionStmt(
 						foreach(lc, l1)
 							new = lappend(new, linitial(lfirst(lc)));
 
-						pci->arg1 = (Node *)new;
+						pci->arg1 = (Node *)list_make2(NULL, new);
 					}
 					else
 					{
 						/* for LIST, leave it as is */
-						pci->arg1 = (Node *)l1;
+						pci->arg1 = (Node *)list_make2(NULL, l1);
 					}
 				}
 
