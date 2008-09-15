@@ -1825,7 +1825,7 @@ CopyToDispatch(CopyState cstate)
 static void
 copy_in_error_callback(void *arg)
 {
-
+	void *buff_orig;
 	CopyState	cstate = (CopyState) arg;
 	
 	/*
@@ -1842,6 +1842,11 @@ copy_in_error_callback(void *arg)
 	initStringInfo(&copy_of_line_buf);
 	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
 	
+	/* NB:  be sure not to add anymore appendStringInfo() calls between here
+	 *      and the pfree() at the bottom.
+	 */
+	buff_orig = copy_of_line_buf.data;
+		
 	/*
 	 * If our (copy of) linebuf has the embedded original row number, remove 
      * it. It is not part of the actual data, and should not be displayed.
@@ -1882,6 +1887,7 @@ copy_in_error_callback(void *arg)
 			&& cstate->executor_err_context.len > 0)
 	{
 		errcontext("%s", cstate->executor_err_context.data);
+		pfree(buff_orig);
 		return;
 	}
 	
@@ -1920,6 +1926,7 @@ copy_in_error_callback(void *arg)
 				errcontext("COPY %s, line %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno));
 		}
 	}	
+	pfree(buff_orig);
 }
 
 /*
