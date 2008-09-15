@@ -49,7 +49,7 @@ CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
                [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
 	 [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
-	 [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] ]
+	 [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS | PERCENT] ]
 </synopsis>
 
  </refsynopsisdiv>
