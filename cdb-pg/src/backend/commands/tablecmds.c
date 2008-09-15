@@ -3500,7 +3500,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 								   AccessExclusiveLock);
 
 
-				at = pc->arg1;
+				at = lsecond((List *)pc->arg1);
 				if (prule1->pNode->part->parkind == 'l')
 				{
 
