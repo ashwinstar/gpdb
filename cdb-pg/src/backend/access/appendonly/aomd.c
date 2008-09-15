@@ -117,7 +117,9 @@ TruncateAOSegmentFile(File aosegfile, Relation rel, long offset, int elevel)
 	
 	Assert(aosegfile > 0);
 	Assert(offset >= 0);
-	
+
+	// Must be converted to the the 'fd' module and 64-bit lengths...
+	Assert(false);
 	if (ftruncate(aosegfile, offset) < 0)
 		ereport(elevel,
 				(errmsg("\"%s\": failed to truncate data after eof", relname)));

@@ -872,7 +872,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	double		num_tuples;
 	double		totalbytes;
 	double		eof;
-	File		relfile;
+//	File		relfile;
 	PGRUsage	ru0;
 		
 	pg_rusage_init(&ru0);
@@ -901,18 +901,20 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	if(isVacFull)
 	{
 		/* FULL */
+
+		// UNDONE: Needs to be converted to 64-bit lengths...
+		// UNDONE: And, get the eof for each segment file...
+//		int segno = 0;
 		
-		int segno = 0;
-		
-		for(segno = 0 ; segno < fstotal->totalfilesegs ; segno++)
-		{
-			char filenamepath[MAXPGPATH];
+//		for(segno = 0 ; segno < fstotal->totalfilesegs ; segno++)
+//		{
+//			char filenamepath[MAXPGPATH];
 			
-			/* Open and truncate the relation segfile beyond its eof */
-			OpenAOSegmentFile(aorel, segno, false, &relfile, filenamepath);
-			TruncateAOSegmentFile(relfile, aorel, (long)eof, elevel);			
-			CloseAOSegmentFile(relfile, aorel, segno);	
-		}
+//			/* Open and truncate the relation segfile beyond its eof */
+//			OpenAOSegmentFile(aorel, segno, false, &relfile, filenamepath);
+//			TruncateAOSegmentFile(relfile, aorel, (long)eof, elevel);			
+//			CloseAOSegmentFile(relfile, aorel, segno);	
+//		}
 
 		/* fill in remaining VRelStats values */
 		((VRelStats *)vacrelstats)->rel_pages = nblocks;
