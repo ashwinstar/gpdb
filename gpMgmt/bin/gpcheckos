@@ -9,7 +9,6 @@ Usage: gpcheckos [--version] [-?v] [-m] [-h host] [-f hostfile] [-c checkfile]
           -v        : verbose mode
           -h host   : the host to connect to (multiple -h is okay)
           -f file   : a file listing all hosts to connect to
-          -c file   : a file containing specific checks for this installation
           -m        : check for query dispatcher settings
 '''
 
@@ -361,7 +360,6 @@ opt['-p'] = None
 opt['-u'] = os.environ.get('LOGNAME') or os.environ.get('USER')
 opt['-h'] = []
 opt['-f'] = False
-opt['-c'] = None
 opt['-m'] = False
 
 GPHOME = os.environ.get('GPHOME')
@@ -569,14 +567,14 @@ def print_version():
 def parseCommandLine():
     global opt, argcmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vmh:f:c:', ['version'])
+	(options, args) = getopt.getopt(sys.argv[1:], '?vmh:f:', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'):	      usage(0)
 	elif (switch[1] in 'v'):      opt[switch] = True
-	elif (switch[1] in 'cf'):     opt[switch] = val
+	elif (switch[1] in 'f'):     opt[switch] = val
 	elif (switch == '-h'):        opt[switch].append(val)
         elif (switch == '--version'): print_version()
         elif (switch == '-m'):        opt[switch] = True
@@ -874,13 +872,6 @@ try:
     conf = Config()
     if opt['-m']:
         conf.loads(masterconf, opt['-m'])
-
-    if opt['-c']:
-        print 'reading config file: %s' % opt['-c']
-        f = open(opt['-c'])
-        s = f.read()
-        f.close()
-        conf.loads(s, opt['-c'])
 
 
     session = sshGpSys()
