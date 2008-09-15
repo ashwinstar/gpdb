@@ -2883,7 +2883,7 @@ static struct config_int ConfigureNamesInt[] =
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_hashjoin_bloomfilter,
-		0, 0, 1, NULL, NULL
+		1, 0, 1, NULL, NULL
 	},
 
 	{
