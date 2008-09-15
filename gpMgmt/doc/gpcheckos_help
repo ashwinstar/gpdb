@@ -15,9 +15,13 @@ gpcheckos -? | --version
 DESCRIPTION
 *****************************************************
 
-The gpcheckos utility checks the operating system environment of 
-the specified hosts to make sure it complies with the requirements 
-for running Greenplum Database. It performs the following checks:
+The gpcheckos utility checks the operating system environment of the 
+specified hosts to make sure it complies with the requirements for 
+running Greenplum Database. This utility assumes that the hosts 
+involved in the check have the same hardware configuration. If your 
+master host has a different hardware configuration, it should be 
+checked separately from the segment hosts. gpcheckos performs the 
+following checks:
 
 * Software Binaries - Makes sure that each host has the same 
   Greenplum Database server binaries installed by comparing 
@@ -82,17 +86,23 @@ EXAMPLES
 *****************************************************
 
 Verify the OS environment on all the hosts in the 
-file host_file:
+file seg_host_file:
 
-gpcheckos -f host_file
+gpcheckos -f seg_host_file
+
 
 Verify the OS environment on the hosts named seg1 and 
 seg2 and run in verbose mode:
 
 gpcheckos -h seg1 -h seg2 -v
 
+
+Verify the OS environment on the master host only:
+
+gpcheckos -m -h mdw1
+
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpcheckperf
+gpcheckperf, gpchecknet
