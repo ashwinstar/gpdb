@@ -16513,6 +16513,13 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 						 errmsg("conflicting or redundant options")));
 			escape = strVal(defel->arg);
 		}
+		else if (strcmp(defel->defname, "force_notnull") == 0)
+		{
+			/* MPP-3502: disable for now */
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("FORCE NOT NULL not yet implemented")));
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
