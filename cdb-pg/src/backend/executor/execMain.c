@@ -53,6 +53,7 @@
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeSubplan.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h" /* temporary */
 #include "optimizer/clauses.h"
@@ -1760,6 +1761,52 @@ ExecContextForcesOids(PlanState *planstate, bool *hasoids)
 	return false;
 }
 
+void
+SendAOTupCounts(EState *estate)
+{
+	/* 
+	 * If we're inserting into partitions, send tuple counts for
+	 * AO tables back to the QD.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE && estate->es_result_partitions)
+	{
+		StringInfoData buf;
+		ResultRelInfo *resultRelInfo;
+		int aocount = 0;
+		int i;
+
+		resultRelInfo = estate->es_result_relations;
+		for (i = 0; i < estate->es_num_result_relations; i++)
+		{
+			if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+				aocount++;
+
+			resultRelInfo++;
+		}
+
+		if (aocount)
+		{
+			pq_beginmessage(&buf, 'o');
+			pq_sendint(&buf, aocount, 4);
+
+			resultRelInfo = estate->es_result_relations;
+			for (i = 0; i < estate->es_num_result_relations; i++)
+			{
+				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+				{
+					pq_sendint(&buf, 
+							   RelationGetRelid(resultRelInfo->ri_RelationDesc),
+							   4);
+					pq_sendint64(&buf,
+								 resultRelInfo->ri_aoprocessed);
+				}
+				resultRelInfo++;
+			}
+			pq_endmessage(&buf);
+		}
+	}
+
+}
 /* ----------------------------------------------------------------
  *		ExecEndPlan
  *
@@ -1796,17 +1843,21 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	ExecDropTupleTable(estate->es_tupleTable, true);
 	estate->es_tupleTable = NULL;
 
+	/* Report how many tuples we may have inserted into AO tables */
+	SendAOTupCounts(estate);
+
 	/*
 	 * close the result relation(s) if any, but hold locks until xact commit.
 	 */
 	resultRelInfo = estate->es_result_relations;
-	for (i = estate->es_num_result_relations; i > 0; i--)
+	for (i = 0; i < estate->es_num_result_relations; i++)
 	{
 		/* end (flush) the INSERT operation in the access layer */
 		if (estate->es_HeapInsertDesc)
 			heap_endinsert(estate->es_HeapInsertDesc);
 		if (resultRelInfo->ri_aoInsertDesc)
 			appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
+
 
 		/* Close indices and then the relation itself */
 		ExecCloseIndices(resultRelInfo);
@@ -2282,6 +2333,7 @@ ExecInsert(TupleTableSlot *slot,
 	
 	IncrAppended();
 	(estate->es_processed)++;
+	(resultRelInfo->ri_aoprocessed)++;
 	estate->es_lastoid = newId;
 	
 	if (relstorage != RELSTORAGE_AO)

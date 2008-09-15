@@ -62,6 +62,7 @@ makeCdbCopy(bool is_copy_in)
 	
 	/* init total_segs */
 	c->total_segs = getgpsegmentCount();
+	c->aotupcounts = NULL;
 
 	if (c->total_segs < 1)
 		ereport(ERROR,
@@ -731,7 +732,6 @@ cdbCopyEnd(CdbCopy *c)
 		
 	for (seg = 0; seg < size; seg++)
 	{
-		
 			q =&db_descriptors[seg];
 			elog(DEBUG1,"PQputCopyEnd seg %d    ",q->segindex);
 			/* end this COPY command */
@@ -831,6 +831,11 @@ cdbCopyEnd(CdbCopy *c)
 				if(res->numRejected > 0)
 					segment_rows_rejected = res->numRejected;
 				
+				/* Get AO tuple counts */
+				c->aotupcounts = process_aotupcounts(c->partitions,
+													 c->aotupcounts, 
+													 res->aotupcounts,
+													 res->naotupcounts);
 				/* free the PGresult object */
 				PQclear(res);
 			}
@@ -880,8 +885,9 @@ cdbCopyEnd(CdbCopy *c)
 
 		 
 	if (gp && c->primary_writer->dispatchagents == NULL)
-	for (seg = 0; seg < size; seg++)
 	{
+		for (seg = 0; seg < size; seg++)
+		{
 		
 			q = &db_descriptors[seg];
 			
@@ -993,6 +999,7 @@ cdbCopyEnd(CdbCopy *c)
 				failedSegDBs[failed_count] = q;
 				failed_count++;
 			}
+		}
 	}
 
 	/* If lost contact with segment db, try to reconnect. */

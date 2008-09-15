@@ -193,6 +193,20 @@ typedef struct
 	}			u;
 } PQArgBlock;
 
+typedef struct
+{
+	Oid aorelid;
+#ifdef HAVE_INT64	
+	int64 tupcount;
+#else
+#ifdef HAVE_LONG_INT_64
+	long int tupcount;
+#else
+	long long int tupcount;
+#endif 
+#endif
+} PQaoRelTupCount;
+
 /* ----------------
  * Exported functions of libpq
  * ----------------

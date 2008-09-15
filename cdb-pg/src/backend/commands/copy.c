@@ -3219,6 +3219,8 @@ CopyFromDispatch(CopyState cstate)
 				RESET_LINEBUF_WITH_LINENO;
 
 				cstate->processed++;
+				if (estate->es_result_partitions)
+					resultRelInfo->ri_aoprocessed++;
 				
 				if (cdbCopy->io_errors)
 				{
@@ -3324,6 +3326,47 @@ CopyFromDispatch(CopyState cstate)
 	 * Handle queued AFTER triggers
 	 */
 	//AfterTriggerEndQuery(estate);
+	
+	resultRelInfo = estate->es_result_relations;
+    for (i = estate->es_num_result_relations; i > 0; i--)
+    {
+		/* update AO tuple counts */
+    	if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+    	{
+			if (cdbCopy->aotupcounts)
+			{
+				HTAB *ht = cdbCopy->aotupcounts;
+				struct {
+					Oid relid;
+				    int64 tupcount;
+				} *ao;
+				bool found;
+				Oid relid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
+
+				ao = hash_search(ht, &relid, HASH_FIND, &found);
+				if (found)
+				{
+   	 				/* find out which segnos the result rels in the QE's used */
+    			    ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+    	    
+    				UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc, 
+											resultRelInfo->ri_aosegno, 
+											ao->tupcount);
+				}
+				else
+				{
+					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+					UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc, 
+											resultRelInfo->ri_aosegno, 
+											cstate->processed);
+				}
+			}
+    	}
+        /* Close indices and then the relation itself */
+        ExecCloseIndices(resultRelInfo);
+        heap_close(resultRelInfo->ri_RelationDesc, NoLock);
+        resultRelInfo++;
+    }
 
 	/*
 	 * free all resources besides ones that are needed for error reporting
@@ -3346,27 +3389,6 @@ CopyFromDispatch(CopyState cstate)
 	if(policy)
 		pfree(policy);
 	
-	resultRelInfo = estate->es_result_relations;
-    for (i = estate->es_num_result_relations; i > 0; i--)
-    {
-    	/* AO table? update row count on the master for the segfile we used */
-    	if(RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
-    	{
-    		/* find out which segnos the result rels in the QE's used */
-    	    ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
-    	    
-         	/* TODO (Gavin): we need to replace cstate->processed (total overall
-        	 * count) with a per resultrelinfo count. */
-    		UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc, 
-									resultRelInfo->ri_aosegno, 
-									cstate->processed /* WRONG if partitioned! */);
-
-    	}
-        /* Close indices and then the relation itself */
-        ExecCloseIndices(resultRelInfo);
-        heap_close(resultRelInfo->ri_RelationDesc, NoLock);
-        resultRelInfo++;
-    }
 	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
@@ -3848,13 +3870,29 @@ CopyFrom(CopyState cstate)
 				 * We might create a ResultRelInfo which needs to persist
 				 * the per tuple context.
 				 */
-				MemoryContextSwitchTo(oldcontext);
-				if (estate->es_result_partitions)
+				PG_TRY();
 				{
-					resultRelInfo = values_get_partition(values, nulls, 
-														 tupDesc, estate);
-					estate->es_result_relation_info = resultRelInfo;
+					MemoryContextSwitchTo(oldcontext);
+					if (estate->es_result_partitions)
+					{
+						resultRelInfo = values_get_partition(values, nulls, 
+															 tupDesc, estate);
+						estate->es_result_relation_info = resultRelInfo;
+					}
 				}
+				PG_CATCH();
+				{
+					COPY_HANDLE_ERROR;
+				}
+				PG_END_TRY();
+
+				if (cur_row_rejected)
+				{
+					MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+					IF_REJECT_LIMIT_REACHED_ABORT;
+					QE_GOTO_NEXT_ROW;							
+				}
+
 				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO &&
 					resultRelInfo->ri_aoInsertDesc == NULL)
 				{
@@ -3973,6 +4011,8 @@ CopyFrom(CopyState cstate)
 					 * count, so this counter is meaningless.
 					 */
 					cstate->processed++;
+					if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+						resultRelInfo->ri_aoprocessed++;
 				}
 
 				RESET_LINEBUF;
@@ -4010,6 +4050,8 @@ CopyFrom(CopyState cstate)
 	if(cstate->errMode != ALL_OR_NOTHING && Gp_role == GP_ROLE_EXECUTE)
 		SendNumRowsRejected(cstate->cdbsreh->rejectcount);
 
+	if (estate->es_result_partitions && Gp_role == GP_ROLE_EXECUTE)
+		SendAOTupCounts(estate);
 
 	pfree(attr_offsets);
 

@@ -13,11 +13,13 @@
 #ifndef CDBDISPATCHRESULT_H
 #define CDBDISPATCHRESULT_H
 
+#include "commands/tablecmds.h"
+#include "utils/hsearch.h"
+
 struct pg_result;                   /* PGresult ... #include "libpq-fe.h" */
 struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 struct StringInfoData;              /* #include "lib/stringinfo.h" */
 struct PQExpBufferData;             /* #include "libpq-int.h" */
-
 
 /*
  * CdbDispatchResult:
@@ -260,6 +262,12 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
  */
 int64
 cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex);
+
+HTAB *
+cdbdisp_sumAoTupCount(PartitionNode *parts, CdbDispatchResults *results);
+HTAB *process_aotupcounts(PartitionNode *parts, HTAB *ht, 
+					      void *aotupcounts,
+						  int naotupcounts);
 
 /*
  * If several tuples were eliminated/rejected from the result because of

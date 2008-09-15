@@ -213,7 +213,9 @@ struct pg_result
 
 	/* GPDB: number of rows rejected in SREH (protocol message 'j') */
 	int			numRejected;
-
+	/* GPDB: number of processed tuples for each AO partition */
+	int			naotupcounts;
+	PQaoRelTupCount *aotupcounts;
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */
@@ -521,6 +523,7 @@ extern int	pqPuts(const char *s, PGconn *conn);
 extern int	pqGetnchar(char *s, size_t len, PGconn *conn);
 extern int	pqPutnchar(const char *s, size_t len, PGconn *conn);
 extern int	pqGetInt(int *result, size_t bytes, PGconn *conn);
+extern int64 pqGetInt64(int64 *result, PGconn *conn);
 extern int	pqPutInt(int value, size_t bytes, PGconn *conn);
 extern int	pqPutMsgStart(char msg_type, bool force_len, PGconn *conn);
 extern int	pqPutMsgEnd(PGconn *conn);

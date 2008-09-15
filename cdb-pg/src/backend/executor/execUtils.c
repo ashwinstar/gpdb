@@ -1935,6 +1935,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
+		HTAB *aocounts = NULL;
 				
 		/*
 		 * If we are finishing a query before all the tuples of the query
@@ -1957,6 +1958,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
 			estate->es_lastoid =
 				cdbdisp_maxLastOid(pr, estate->es_cur_slice_idx);
+			aocounts = cdbdisp_sumAoTupCount(estate->es_result_partitions, pr);
 		}
 
 		/* sum up rejected rows if any (single row error handling only) */
@@ -1971,9 +1973,39 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * partition table
 		 * 1) passing es_processed is wrong. we need to find the per
 		 * partition totals inside of ExecUpdateAOtupCount and update each */
-		ExecUpdateAOtupCount(estate->es_result_relations, 
-							 estate->es_num_result_relations,
-							 estate->es_processed);
+		if (aocounts)
+		{
+			ListCell *lc;
+
+			foreach(lc, estate->es_result_aosegnos)
+			{
+				SegfileMapNode *map = lfirst(lc);
+				struct {
+					Oid relid;
+			   		int64 tupcount;
+				} *entry;
+				bool found;
+
+				entry = hash_search(aocounts,
+									&(map->relid),
+									HASH_ENTER,
+									&found);
+
+				if (found)
+				{
+					Relation r = heap_open(map->relid, AccessShareLock);
+					UpdateMasterAosegTotals(r, map->segno, entry->tupcount);
+					heap_close(r, NoLock);
+				}
+			}
+
+		}
+		else
+		{
+			ExecUpdateAOtupCount(estate->es_result_relations, 
+								 estate->es_num_result_relations,
+								 estate->es_processed);
+		}
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an

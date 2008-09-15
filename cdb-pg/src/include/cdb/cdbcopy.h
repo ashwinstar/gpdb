@@ -55,6 +55,7 @@ typedef struct CdbCopy
 									 * it is taken out of the list */
 	PartitionNode *partitions;
 	List		  *ao_segnos;
+	HTAB		  *aotupcounts; /* hash of ao relation id to processed tuple count */
 } CdbCopy;
 
 

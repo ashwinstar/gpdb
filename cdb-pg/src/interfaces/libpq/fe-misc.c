@@ -235,6 +235,42 @@ pqGetInt(int *result, size_t bytes, PGconn *conn)
 	return 0;
 }
 
+int64
+pqGetInt64(int64 *result, PGconn *conn)
+{
+    int64       tmp;
+    uint32      h32;
+    uint32      l32;
+
+	if (conn->inCursor + 8 > conn->inEnd)
+		return EOF;
+
+    memcpy(&h32, conn->inBuffer + conn->inCursor, 4);
+	conn->inCursor += 4;
+	memcpy(&l32, conn->inBuffer + conn->inCursor, 4);
+	conn->inCursor += 4;
+    h32 = ntohl(h32);
+    l32 = ntohl(l32);
+
+#ifdef INT64_IS_BUSTED
+    /* error out if incoming value is wider than 32 bits */
+    tmp = l32;
+    if ((tmp < 0) ? (h32 != -1) : (h32 != 0))
+	{
+		pqInternalNotice(&conn->noticeHooks,
+						 "binary value is out of range for type bigint");
+		return EOF;
+	}
+#else
+    tmp = h32;
+    tmp <<= 32;
+    tmp |= l32;
+#endif
+
+	*result = tmp;
+    return 0;
+}
+
 /*
  * pqPutInt
  * write an integer of 2 or 4 bytes, converting from host byte order

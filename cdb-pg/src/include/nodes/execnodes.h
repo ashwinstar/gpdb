@@ -257,6 +257,7 @@ typedef struct ResultRelInfo
 	ProjectionInfo *ri_projectReturning;
 	AppendOnlyInsertDescData *ri_aoInsertDesc;
 	int			ri_aosegno;
+	uint64		ri_aoprocessed; /* tuples processed for AO */
 } ResultRelInfo;
 
 /* ----------------
