@@ -72,6 +72,15 @@ static SlruCtlData DistributedLogCtlData;
  */
 static bool DistributedLogUpgrade = false;
 
+typedef struct DistributedLogShmem
+{
+	TransactionId	oldestXid;
+	bool			knowHighestUnusedPage;
+	int				highestUnusedPage;	
+} DistributedLogShmem;
+
+static DistributedLogShmem *DistributedLogShared = NULL;
+
 static int	DistributedLog_ZeroPage(int page, bool writeXlog);
 static bool DistributedLog_PagePrecedes(int page1, int page2);
 static void DistributedLog_WriteZeroPageXlogRec(int page);
@@ -81,8 +90,6 @@ static void DistributedLog_WriteTruncateXlogRec(int page);
 /*
  * Record that a distributed transaction committed in the distributed log.
  *
- * NB: this is a low-level routine and is NOT the preferred entry point
- * for most uses; TransactionLogUpdate() in transam.c is the intended caller.
  */
 void
 DistributedLog_SetCommitted(
@@ -165,9 +172,45 @@ DistributedLog_CommittedCheck(
 	
 	DistributedLogEntry *ptr;
 
-	/* lock is acquired by SimpleLruReadPage_ReadOnly */
+	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
 
-	slotno = SimpleLruReadPage_ReadOnly(DistributedLogCtl, page, localXid);
+	if (DistributedLogShared->knowHighestUnusedPage &&
+		page <= DistributedLogShared->highestUnusedPage)
+	{
+		/*
+		 * We prevously discovered we didn't have the page...
+		 */
+		LWLockRelease(DistributedLogControlLock);
+		*distribTimeStamp = 0;	// Set it to something.
+		*distribXid = 0;
+
+		return false;
+	}
+	
+	/*
+	 * Peek to see if page exists.
+	 */
+	if (!SimpleLruPageExists(DistributedLogCtl, page))
+	{
+		if (DistributedLogShared->knowHighestUnusedPage)
+		{
+			if (DistributedLogShared->highestUnusedPage > page)
+				DistributedLogShared->highestUnusedPage = page;
+		}
+		else
+		{
+			DistributedLogShared->knowHighestUnusedPage = true;
+			DistributedLogShared->highestUnusedPage = page;
+		}
+		
+		LWLockRelease(DistributedLogControlLock);
+		*distribTimeStamp = 0;	// Set it to something.
+		*distribXid = 0;
+
+		return false;
+	}
+		
+	slotno = SimpleLruReadPage(DistributedLogCtl, page, localXid);
 	ptr = (DistributedLogEntry *) DistributedLogCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 	*distribTimeStamp = ptr->distribTimeStamp;
@@ -284,14 +327,6 @@ DistributedLog_ScanForPrevCommitted(
 	return false;	// We'll never reach this.
 }
 
-typedef struct DistributedLogShmem
-{
-	TransactionId	oldestXid;
-	
-} DistributedLogShmem;
-
-static DistributedLogShmem *DistributedLogShared = NULL;
-
 static Size
 DistributedLog_SharedShmemSize(void)
 {
@@ -333,7 +368,11 @@ DistributedLog_ShmemInit(void)
 		elog(FATAL, "could not initialize Distributed Log shared memory");
 	
 	if (!found)
+	{
 		DistributedLogShared->oldestXid = InvalidTransactionId;
+		DistributedLogShared->knowHighestUnusedPage = false;
+		DistributedLogShared->highestUnusedPage = -1;
+	}
 }
 
 /*
