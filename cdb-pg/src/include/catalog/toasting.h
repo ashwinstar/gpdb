@@ -19,7 +19,10 @@
  */
 extern void AlterTableCreateToastTable(Oid relOid);
 
-extern void AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid * comptypeOid);
+extern void AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid,
+											  Oid newIndexOid,
+											  Oid *comptypeOid,
+											  bool is_part_child);
 
 extern void BootstrapToastTable(char *relName,
 					Oid toastOid, Oid toastIndexOid);

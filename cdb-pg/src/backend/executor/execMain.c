@@ -3578,8 +3578,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * CommandCounterIncrement(), so that the new tables will be visible for 
 	 * insertion.
 	 */
-	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
-	AlterTableCreateAoSegTableWithOid(intoRelationId, parseTree->intoOidInfo.aosegOid, parseTree->intoOidInfo.aosegIndexOid, &parseTree->intoOidInfo.aosegComptypeOid);
+	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid, false);
+	AlterTableCreateAoSegTableWithOid(intoRelationId, parseTree->intoOidInfo.aosegOid, parseTree->intoOidInfo.aosegIndexOid, &parseTree->intoOidInfo.aosegComptypeOid, false);
 
 	/*
 	 * And open the constructed table for writing.

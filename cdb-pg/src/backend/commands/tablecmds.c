@@ -372,8 +372,7 @@ static List * exchange_part_constraints(Partition *part, Relation oldrel,
 										Relation newrel, bool validate);
 static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel);
 
-static bool rel_is_child_partition(Oid relid);
-static Oid  rel_partition_get_master(Oid relid);
+static Oid rel_partition_get_master(Oid relid);
 
 static List *
 atpxRenameList(Relation rel, PartitionNode *pNode, 
@@ -705,12 +704,17 @@ DefineRelation_int(CreateStmt *stmt,
 	CommandCounterIncrement();
 
 	/*
-	 * Open the new relation and acquire exclusive lock on it.	This isn't
-	 * really necessary for locking out other backends (since they can't see
-	 * the new rel anyway until we commit), but it keeps the lock manager from
-	 * complaining about deadlock risks.
+	 * Open the new relation and acquire exclusive lock on it, unless we're
+	 * doing partition.	
+	 *
+	 * This isn't even necessary in the case of normal relations since other
+	 * backends can't see the new rel anyway until we commit), but it keeps 
+	 * the lock manager from complaining about deadlock risks.
 	 */
-	rel = relation_open(relationId, AccessExclusiveLock);
+	if (stmt->is_part_child)
+		rel = relation_open(relationId, NoLock);
+	else
+		rel = relation_open(relationId, AccessExclusiveLock);
 
 	/*
 	 * Now add any newly specified column default values and CHECK constraints
@@ -2967,6 +2971,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ListCell	*ltab;
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
+	bool is_partition = false;
 
 	cdb_sync_oid_to_segments();
 
@@ -2975,11 +2980,17 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
 
+		if (cmd->subtype == AT_PartAddInternal)
+			is_partition = true;
+
 		ATPrepCmd(&wqueue, rel, cmd, recurse, false);
 	}
 
-	/* Close the relation, but keep lock until commit */
-	relation_close(rel, NoLock);
+	if (is_partition)
+		relation_close(rel, AccessExclusiveLock);
+	else
+		/* Close the relation, but keep lock until commit */
+		relation_close(rel, NoLock);
 	
 	if (Gp_role == GP_ROLE_DISPATCH && oidInfoCount != NULL)
 	{
@@ -3797,9 +3808,9 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 	{
 		Oid tOid = InvalidOid;
 		Oid tiOid = InvalidOid;
-		
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 		Oid	*toastComptypeOid = NULL;
+		bool is_part = rel_is_child_partition(tab->relid);
 
 		if (tab->relkind == RELKIND_RELATION &&
 			(tab->subcmds[AT_PASS_ADD_COL] ||
@@ -3850,7 +3861,8 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				toastComptypeOid = &oidInfo[m].toastComptypeOid;
 			}
 			elog(DEBUG2,"Create Toast %d with Oid %u",m,tOid);
-			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid, toastComptypeOid);
+			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid,
+											  toastComptypeOid, is_part);
 			m++;
 			
 		}
@@ -9745,7 +9757,7 @@ rel_partition_get_master(Oid relid)
 
 }
 
-static bool
+bool
 rel_is_child_partition(Oid relid)
 {
 	Relation rel = heap_open(PartitionRuleRelationId, AccessShareLock);

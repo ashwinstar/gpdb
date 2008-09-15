@@ -641,8 +641,16 @@ ProcessUtility(Node *parsetree,
 		
 				if (relKind != RELKIND_COMPOSITE_TYPE && relKind != RELKIND_EXTERNAL)
 				{
-					AlterTableCreateToastTableWithOid(relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid, ((CreateStmt *) parsetree)->oidInfo.toastIndexOid, &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid));
-					AlterTableCreateAoSegTableWithOid(relOid, ((CreateStmt *) parsetree)->oidInfo.aosegOid, ((CreateStmt *) parsetree)->oidInfo.aosegIndexOid, &(((CreateStmt *) parsetree)->oidInfo.aosegComptypeOid));					
+					AlterTableCreateToastTableWithOid(relOid,
+						((CreateStmt *) parsetree)->oidInfo.toastOid, 
+						((CreateStmt *) parsetree)->oidInfo.toastIndexOid,
+					    &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid),
+						((CreateStmt *)parsetree)->is_part_child);
+					AlterTableCreateAoSegTableWithOid(relOid,
+						((CreateStmt *) parsetree)->oidInfo.aosegOid,
+						((CreateStmt *) parsetree)->oidInfo.aosegIndexOid,
+						&(((CreateStmt *) parsetree)->oidInfo.aosegComptypeOid),
+						((CreateStmt *)parsetree)->is_part_child);
 				}
 			}
 			break;

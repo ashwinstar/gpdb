@@ -63,7 +63,8 @@ AlterTableCreateToastTable(Oid relOid)
 }
 
 void
-AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid * comptypeOid)
+AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
+								  Oid * comptypeOid, bool is_part_child)
 {
 	Relation	rel;
 
@@ -72,7 +73,10 @@ AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid *
 	 * until end of transaction.  (This is probably redundant in all present
 	 * uses...)
 	 */
-	rel = heap_open(relOid, AccessExclusiveLock);
+	if (is_part_child)
+		rel = heap_open(relOid, NoLock);
+	else
+		rel = heap_open(relOid, AccessExclusiveLock);
 	
 	
 	

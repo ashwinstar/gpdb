@@ -1028,6 +1028,7 @@ heap_create_with_catalog(const char *relname,
 	 * the OID of the newly created relation.
 	 */
 	heap_close(new_rel_desc, NoLock);	/* do not unlock till end of xact */
+
 	heap_close(pg_class_desc, RowExclusiveLock);
 
 	return relid;
