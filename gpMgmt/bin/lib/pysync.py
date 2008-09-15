@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import os,sys
-if sys.hexversion<0x2050000:
-    sys.stderr.write("pysync.py needs python version at least 2.5.\n")
+if sys.hexversion<0x2040400:
+    sys.stderr.write("pysync.py needs python version at least 2.4.4.\n")
     sys.stderr.write("You are using %s\n"%sys.version)
     sys.stderr.write("Here is a guess at where the python executable is--\n")
     os.system("/bin/sh -c 'type python>&2'");
@@ -16,8 +16,8 @@ exec(sys.stdin.read(int(sys.stdin.readline())))
 """
 
 pysyncSource="""
-if sys.hexversion<0x2050000:
-    sys.stderr.write("pysync.py needs python version at least 2.5 on the remote computer.\\n")
+if sys.hexversion<0x2040400:
+    sys.stderr.write("pysync.py needs python version at least 2.4.4 on the remote computer.\\n")
     sys.stderr.write("You are using %s\\n"%sys.version)
     sys.stderr.write("Here is a guess at where the python executable is--\\n")
     os.system("/bin/sh -c 'type python>&2'");
@@ -423,11 +423,12 @@ class LocalPysync:
         args.append(cmd)
         self.p = None
 	try:
-            self.p = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
-	    self.work()
-        except OSError, e:
-            sys.stderr.write(str(e))
+	    try:
+		self.p = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+		self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
+		self.work()
+	    except OSError, e:
+		sys.stderr.write(str(e))
 	finally:
 	    if self.p:
                 os.kill(self.p.pid,9)
