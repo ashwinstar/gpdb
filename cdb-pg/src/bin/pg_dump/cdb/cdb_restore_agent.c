@@ -103,6 +103,7 @@ static pthread_t        g_main_tid = (pthread_t)0;
 static pthread_t        g_monitor_tid = (pthread_t)0;
 static bool             g_bOnErrorStop = false;
 PGconn*                 g_conn = NULL;
+pthread_mutex_t			g_threadSyncPoint = PTHREAD_MUTEX_INITIALIZER;
 
 static const char* logInfo = "INFO";
 static const char* logWarn = "WARN";
@@ -350,7 +351,7 @@ main(int argc, char **argv)
                     exit(1);
                 }
                 break;
-			case 4:         /* gp-c */ 
+			case 4:         /* gp-c */
 				g_compPg = strdup(optarg);
 				bCompUsed = true; /* backup data is coming from stdin (piped from gunzip) */
 				break;
@@ -435,7 +436,7 @@ main(int argc, char **argv)
         mpp_err_msg(logInfo, pszProgName, "missing required parameter gp-k (backup key)\n");
         exit(1);
     }
-   
+
     SegDB.dbid        = g_sourceDBID;
     SegDB.role		  = g_role;
     SegDB.port        = opts->pgport ? atoi( opts->pgport ) : 5432;
@@ -479,18 +480,18 @@ main(int argc, char **argv)
     }
 
     if ( g_gpdumpKey != NULL )
-    {       
-        /*  
+    {
+        /*
          * Open the database again, for writing status info
-         */     
+         */
         g_conn_status = MakeDBConnection( &SegDB, false );
-                    
+
         if ( PQstatus(g_conn_status) == CONNECTION_BAD )
-        {           
+        {
             exit_horribly(NULL, NULL, "Connection on host %s failed: %s",
                             StringNotNull(SegDB.pszHost, "localhost"),
                             PQerrorMessage(g_conn_status) );
-        }   
+        }
 
         g_main_tid = pthread_self();
 
@@ -500,7 +501,16 @@ main(int argc, char **argv)
             exit_horribly(NULL, NULL, "cannot allocate memory for gp_backup_status operation\n");
         }
 
-        /* Start monitoring for cancel requests */
+        /*
+         * Create thread for monitoring for cancel requests.  If we're
+         * running using PSQL, the monitor is not allowed to start until the
+         * worker process is forked.  This is done to prevent the forked process
+         * from being blocked by locks held by library routines
+         * (__tz_convert, for example).
+         */
+        if ( bUsePSQL ) {
+            pthread_mutex_lock( &g_threadSyncPoint );
+        }
         pthread_create(&g_monitor_tid,
                         NULL,
                         monitorThreadProc,
@@ -564,7 +574,7 @@ main(int argc, char **argv)
 
             /* Child Process */
             // launch psql, wait for it to finish
-            
+
             /* find psql in PATH or PGPATH */
             if ((psqlPg = testProgramExists( "psql" )) == NULL )
             {
@@ -572,14 +582,14 @@ main(int argc, char **argv)
             }
 
 			len = strlen(psqlPg);  /* psql */
-			
+
 			if(bCompUsed)
 			{
 				strcat(g_compPg, " -c "); /* decompress to stdout */
 				len += strlen(g_compPg);
 				len += strlen(" | "); /* de-comp pipe into psql*/
 			}
-				
+
             len += strlen( inputFileSpec ) + 4;
 
 			if ( g_bOnErrorStop )
@@ -597,7 +607,7 @@ main(int argc, char **argv)
 
 			/* add all the psql args to the command string */
             pszCmdLine = (char *) calloc( len + 1, 1 );
-			
+
 			/* If decompression is used start our command as such:
              * "/pathto/gunzip -c filename | /pathto/psql"
 			 * else just "/pathto/psql"
@@ -611,16 +621,16 @@ main(int argc, char **argv)
 			}
 			else
 				strcpy( pszCmdLine, psqlPg );
-			
+
 		   /* we use an input file only if no compression is used.
-		    * if compression is used, input is coming from stdin 
+		    * if compression is used, input is coming from stdin
 		    */
 		    if(!bCompUsed)
-		    {	
+		    {
 			  strcat( pszCmdLine, " -f " );
-			  strcat( pszCmdLine, inputFileSpec );				
+			  strcat( pszCmdLine, inputFileSpec );
 		    }
-							  
+
 			strcat( pszCmdLine, " -h " );
 			strcat( pszCmdLine, g_targetHost);
 			strcat( pszCmdLine, " -p " );
@@ -630,7 +640,7 @@ main(int argc, char **argv)
 			strcat( pszCmdLine, " -d " );
 			strcat( pszCmdLine, SegDB.pszDBName);
             strcat( pszCmdLine, " -a " );
-            
+
             if ( g_bOnErrorStop )
             {
                 strcat( pszCmdLine, " ");
@@ -641,19 +651,22 @@ main(int argc, char **argv)
                 putenv( "PGOPTIONS=-c gp_session_role=UTILITY" );
 			if ( g_role == ROLE_MASTER )
 				putenv( "PGOPTIONS=-c gp_session_role=DISPATCH" );
-			
+
 			mpp_err_msg(logInfo, pszProgName, "Command Line: %s\n", pszCmdLine);
 
             execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
 			mpp_err_msg(logInfo, pszProgName, "Error in gp_restore_agent - execl of %s with Command Line %s failed",
 			  "/bin/sh", pszCmdLine);
-            
+
 			_exit(127);
         }
         else
         {
-            // Parent .  Lets sleep and wake up until we see it's done
+        	// Allow the monitor thread to begin execution.
+        	pthread_mutex_unlock( &g_threadSyncPoint );
+
+        	// Parent .  Lets sleep and wake up until we see it's done
             while ( !bPSQLDone )
             {
                 sleep( 5 );
@@ -663,7 +676,7 @@ main(int argc, char **argv)
             if ( WIFEXITED(status) )
             {
                 rc = WEXITSTATUS(status);
-                
+
 				mpp_err_msg(logInfo, pszProgName,"psql finished with rc %d.\n", rc );
                 if ( rc != 0 )
                 {
@@ -831,8 +844,8 @@ void myChildHandler(int signo)
 /*
  * makeSureMonitorThreadEnds: This function adds a request for a TASK_FINISH
  * status row, and then waits for the g_monitor_tid to end.
- * This will happen as soon as the monitor thread processes this request. 
- */  
+ * This will happen as soon as the monitor thread processes this request.
+ */
 void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 {
 	StatusOp* pOp;
@@ -843,7 +856,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 			pszSuffix = SUFFIX_SUCCEED;
 		else
 			pszSuffix = SUFFIX_FAIL;
-			
+
 		pOp = CreateStatusOp( TASK_FINISH, TaskRC, pszSuffix, pszErrorMsg );
 		if ( pOp == NULL )
 		{
@@ -856,17 +869,17 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 		}
 		else
 			AddToStatusOpList( g_pStatusOpList, pOp );
-	
+
 		pthread_join( g_monitor_tid, NULL );
 	}
 }
 /*
  * monitorThreadProc: This function runs in a thread and owns the other connection to the database. g_conn_status
- * It listens using this connection for notifications.  A notification only arrives if we are to 
+ * It listens using this connection for notifications.  A notification only arrives if we are to
  * cancel. In that case, we cause the interrupt handler to be called by sending ourselves a SIGINT
  * signal.  The other duty of this thread, since it owns the g_conn_status, is to periodically examine
  * a linked list of gp_backup_status insert command requests.  If any are there, it causes an insert and a notify
- * to be sent.    
+ * to be sent.
  */
 void* monitorThreadProc(void *arg __attribute__((unused)))
 {
@@ -881,20 +894,24 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 	char* pszMsg;
 	fd_set input_mask;
 	PGnotify* notify;
-	
-	// Block SIGINT and SIGKILL signals (we want them only ion main thread)
 	sigset_t newset;
+
+	// Block until parent thread is ready for us to run.
+	pthread_mutex_lock( &g_threadSyncPoint );
+	pthread_mutex_unlock ( &g_threadSyncPoint );
+
+	// Block SIGINT and SIGKILL signals (we want them only ion main thread)
 	sigemptyset( &newset );
 	sigaddset( &newset, SIGINT );
 	sigaddset( &newset, SIGKILL );
 	pthread_sigmask( SIG_SETMASK, &newset, NULL );
-	
+
 	//mpp_msg(NULL, "Starting monitor thread at %s\n", GetTimeNow() );
 	mpp_err_msg(logInfo, pszProgName, "Starting monitor thread\n");
-	
+
 	/* Issue Listen command  */
 	DoCancelNotifyListen( g_conn_status, true, g_gpdumpKey, g_role, g_sourceDBID, g_targetDBID, NULL );
-	
+
 	// Now wait for a cancel notification
 	sock = PQsocket( g_conn_status );
 	FD_ZERO( &input_mask );
@@ -903,26 +920,26 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 	bGotCancelRequest = false;
 	PID = PQbackendPID( g_conn_status );
 
-	/* Once we've seen the TASK_FINISH insert request, we know to leave */ 	
+	/* Once we've seen the TASK_FINISH insert request, we know to leave */
 	while ( !bGotFinished )
 	{
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
-	
+
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			mpp_err_msg(logError, pszProgName, "select failed for backup key %s, instid %d, segid %d failed\n",
 					  g_gpdumpKey, g_role, g_sourceDBID);
 			bGotCancelRequest = true;
 		}
-	
+
 		if ( PQstatus( g_conn_status ) == CONNECTION_BAD )
 		{
 			mpp_err_msg(logError, pszProgName, "Status Connection went down for backup key %s, instid %d, segid %d\n",
 					  g_gpdumpKey, g_role, g_sourceDBID);
 			bGotCancelRequest = true;
 		}
-		
+
 		PQconsumeInput( g_conn_status );
 		nNotifies = 0;
 		bFromOtherProcess = false;
@@ -931,31 +948,31 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 			nNotifies++;
 
 			/* Need to make sure that the notify is from another process, since this processes
-			 * also issues notifies that aren't cancel requests. 
+			 * also issues notifies that aren't cancel requests.
 			 */
 			if ( notify->be_pid !=  PID )
 				bFromOtherProcess = true;
-			
-			PQfreemem( notify );			
+
+			PQfreemem( notify );
 		}
-			
+
 		if ( nNotifies > 0 && bFromOtherProcess )
 			bGotCancelRequest = true;
-		
+
 		if ( bGotCancelRequest )
 		{
 			mpp_err_msg(logInfo, pszProgName, "Notification received that we need to cancel for backup key %s, instid %d, segid %d failed\n",
 					  g_gpdumpKey, g_role, g_sourceDBID);
-			
+
 			pthread_kill( g_main_tid, SIGINT );
 		}
-		
+
 		/* Now deal with any insert requests */
 		Lock( g_pStatusOpList );
 		while ( NULL != (pOp = TakeFromStatusOpList(g_pStatusOpList)) )
 		{
 			DoCancelNotifyListen( g_conn_status, false, g_gpdumpKey, g_role, g_sourceDBID, g_targetDBID, pOp->pszSuffix );
-			
+
 			if ( pOp->TaskID == TASK_FINISH )
 			{
 				bGotFinished = true;
@@ -971,25 +988,25 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 					mpp_err_msg(logError, pszProgName, pszMsg);
 				}
 			}
-			
+
 			if ( pOp->TaskID == TASK_SET_SERIALIZABLE )
 			{
 				mpp_err_msg(logInfo, pszProgName, "TASK_SET_SERIALIZABLE");
 			}
-			
+
 			FreeStatusOp( pOp );
 		}
-		
+
 		Unlock( g_pStatusOpList );
 	}
-	
+
 	/* Close the g_conn_status connection. */
 	PQfinish(g_conn_status);
-	
+
 	return NULL;
 }
 /*
- * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.  
+ * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.
  * It checks to see whether there is an active transaction running on the g_conn connection
  * If so, it issues a PQrequestCancel.  This will cause the current statement to fail, which will
  * cause gp_dump to terminate gracefully.
@@ -1009,10 +1026,10 @@ void myHandler(int signo)
 	}
 }
 
-/* 
+/*
  * _check_database_version: This was copied here from pg_backup_db.c because it's declared static there.
  * We need to call it directly because in pg_dump.c it's called from ConnectDatabase
- * which we are not using. 
+ * which we are not using.
  */
 void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 {
@@ -1053,15 +1070,15 @@ void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 /*
 bool execMPPCatalogFunction(PGconn* pConn)
 {
-	const char* pszFunctionName		= "restore_gp_catalog"; 
-	const char* pszNamespaceName	= "mpp"; 
+	const char* pszFunctionName		= "restore_gp_catalog";
+	const char* pszNamespaceName	= "mpp";
 	bool		bRtn				= false;
 	PQExpBuffer bufQry				= NULL;
 	PGresult*	pRes				= NULL;
 	int ntups;
-	
+
 	bufQry = createPQExpBuffer();
-	
+
 	appendPQExpBuffer( bufQry, "SELECT count(*) from pg_catalog.pg_proc p"
 								" inner join pg_catalog.pg_namespace n"
 								" on p.pronamespace=n.oid"
@@ -1075,8 +1092,8 @@ bool execMPPCatalogFunction(PGconn* pConn)
 		mpp_err_msg("Query %s Command failed: %s",
 					bufQry->data, PQerrorMessage(pConn));
 		goto cleanup;
-	}			
-									
+	}
+
 	ntups = PQntuples(pRes);
 	if ( ntups == 0 )
 	{
@@ -1084,17 +1101,17 @@ bool execMPPCatalogFunction(PGconn* pConn)
 					bufQry->data, PQerrorMessage(pConn));
 		goto cleanup;
 	}
-	
+
 	if ( 0 == atoi( PQgetvalue(pRes, 0, 0)))
 	{
 		mpp_err_msg("Cannot execute function %s.%s() because it does not exist",
 					pszNamespaceName, pszFunctionName );
 		goto cleanup;
 	}
-	
+
 	PQclear(pRes);
 	resetPQExpBuffer(bufQry);
-	
+
 	appendPQExpBuffer( bufQry, "SELECT %s.%s()",
 						pszNamespaceName, pszFunctionName );
 
@@ -1105,7 +1122,7 @@ bool execMPPCatalogFunction(PGconn* pConn)
 					bufQry->data, PQerrorMessage(pConn) );
 		goto cleanup;
 	}
-	
+
 	bRtn = true;
 
 cleanup:
@@ -1113,7 +1130,7 @@ cleanup:
 		PQclear(pRes);
 	if ( bufQry != NULL )
 		destroyPQExpBuffer(bufQry);
-	
+
 	return bRtn;
 }
 */
@@ -1121,8 +1138,8 @@ cleanup:
 /* testProgramExists(char* pszProgramName) returns bool
  * This runs a shell with which pszProgramName > tempfile
  * piping the output to a temp file.
- * If the file is empty, then pszProgramName didn't exist 
- * on the path. 
+ * If the file is empty, then pszProgramName didn't exist
+ * on the path.
  */
 static char* testProgramExists(char* pszProgramName)
 {
@@ -1138,29 +1155,29 @@ static char* testProgramExists(char* pszProgramName)
 
     if ( pszProgramName == NULL || *pszProgramName == '\0' )
         return NULL;
-    
+
     /* The pszProgramName might have command line arguments, so we need to
-     * stop at the first whitespace 
+     * stop at the first whitespace
      */
     pszProgramNameLocal = malloc( strlen(pszProgramName) + 1 );
     if ( pszProgramNameLocal == NULL )
     {
         mpp_err_msg(logError, pszProgName, "out of memory");
     }
-    
+
     strcpy( pszProgramNameLocal, pszProgramName );
-    
+
     p = pszProgramNameLocal;
     while ( *p != '\0' )
     {
         if ( *p == ' ' || *p == '\t' || *p == '\n' )
             break;
-        
+
         p++;
     }
-    
+
     *p = '\0';
-    
+
     pszEnvPath = getenv( "PGPATH" );
     if ( pszEnvPath != NULL )
     {
@@ -1169,7 +1186,7 @@ static char* testProgramExists(char* pszProgramName)
         {
             mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
         }
-        
+
         sprintf( pszTestPath, "%s/%s", pszEnvPath, pszProgramNameLocal );
         if ( stat( pszTestPath, &buf ) >= 0 )
             return pszTestPath;
@@ -1177,18 +1194,18 @@ static char* testProgramExists(char* pszProgramName)
     pszEnvPath = getenv( "PATH" );
     if ( pszEnvPath == NULL )
         return NULL;
-    
+
     pszPath = (char *) malloc( strlen(pszEnvPath) + 1 );
     if ( pszPath == NULL )
     {
         mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
     }
-    
+
     strcpy( pszPath, pszEnvPath );
-    
+
     /* Try to create each level of the hierarchy that doesn't already exist */
     pColon = pszPath;
-    
+
     while ( pColon != NULL && *pColon != '\0' )
     {
         /* Find next delimiter */
@@ -1199,7 +1216,7 @@ static char* testProgramExists(char* pszProgramName)
             pColon++;
             continue;
         }
-        
+
         if ( pColonNext == NULL )
         {
             // See whether pszProgramName exists in subdirectory pColon
@@ -1208,7 +1225,7 @@ static char* testProgramExists(char* pszProgramName)
             {
                 mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
             }
-            
+
             sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
             if ( stat( pszTestPath, &buf ) >= 0 )
                 return pszTestPath;
@@ -1225,23 +1242,23 @@ static char* testProgramExists(char* pszProgramName)
         {
             mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
         }
-        
+
         sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
         if ( stat( pszTestPath, &buf ) >= 0 )
         {
             *pColonNext = ':';
             return pszTestPath;
         }
-        
+
         /* Put back the colon we overwrote above. */
         *pColonNext = ':';
 
         /* Advance past the colon. */
         pColon = pColonNext + 1;
-        
+
         /* free */
         free(pszTestPath);
     }
-    
+
     return NULL;
 }
