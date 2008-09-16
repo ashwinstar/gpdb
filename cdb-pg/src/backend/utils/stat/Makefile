@@ -13,7 +13,7 @@ OBJS = bayes.o pinv.o regress.o
 
 # Ugly gross hack.  Remove this
 CLAPACKDIR = $(filter %lib,($(foreach dir,$(LDFLAGS), \
-                $(if $(findstring cdb2/main/ext, $(dir)), \
+                $(if $(findstring /ext/, $(dir)), \
                    $(subst -L,,$(dir))))))
 
 CLAPACK = liblapack.a libblas.a libf2c.a 
@@ -30,7 +30,7 @@ depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
 
 clean: 
-	rm -f SUBSYS.o $(OBJS)
+	rm -f SUBSYS.o $(OBJS) $(CLAPACK)
 
 ifeq (depend,$(wildcard depend))
 include depend
