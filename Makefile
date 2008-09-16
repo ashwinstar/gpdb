@@ -16,7 +16,7 @@ ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
-GPLDIR=greenplum-db$(RELEASE)-gpl
+GPMONDIR=greenplum-db$(RELEASE)-gpmon
 PLRDIR=greenplum-db$(RELEASE)-plr
 GPDOCDIR=$(CURDIR)/docs/release
 
@@ -41,9 +41,9 @@ endif
 DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 
 DISTPATH=$(GPROOT)/$(GPDIR)
-GPLDISTPATH=$(GPROOT)/$(GPLDIR)
+GPMONDISTPATH=$(GPROOT)/$(GPMONDIR)
 DEVPATH=$(HOME)/$(GPDIR)
-GPLDEVPATH=$(HOME)/$(GPLDIR)
+GPMONDEVPATH=$(HOME)/$(GPMONDIR)
 
 CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
 
@@ -83,15 +83,15 @@ both : dbg opt ;
 
 dbg:
 	rsync -rlvt --exclude=devel/ --exclude=dist/ ./ devel/
-	cd devel && $(MAKE) HOME=`pwd` devel
+	cd devel && $(MAKE) HOME=`pwd` AUTH=true PG_LANG=true devel
 
 opt:
 	rsync -rlvt --exclude=devel/ --exclude=dist/ ./ dist/
-	cd dist && $(MAKE) GPROOT=`pwd` dist
+	cd dist && $(MAKE) GPROOT=`pwd` AUTH=true PG_LANG=true dist
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
-devel : GPLINSTLOC=$(GPLDEVPATH)
+devel : GPMONINSTLOC=$(GPMONDEVPATH)
 devel : CONFIGFLAGS+= --enable-cassert --enable-debug
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -100,13 +100,13 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
-devel_faultinj : GPLINSTLOC=$(GPLDEVPATH)
+devel_faultinj : GPMONINSTLOC=$(GPMONDEVPATH)
 devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
 devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -115,14 +115,14 @@ devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
 forceplan : INSTLOC=$(DEVPATH)
-forceplan : GPLINSTLOC=$(GPLDEVPATH)
+forceplan : GPMONINSTLOC=$(GPMONDEVPATH)
 forceplan : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
 forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -131,13 +131,13 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
-dist : GPLINSTLOC=$(GPLDISTPATH)
+dist : GPMONINSTLOC=$(GPMONDISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -146,13 +146,13 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
 dist_prof : INSTLOC=$(DISTPATH)
-dist_prof : GPLINSTLOC=$(GPLDISTPATH)
+dist_prof : GPMONINSTLOC=$(GPMONDISTPATH)
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -161,13 +161,13 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
 dist_faultinj : INSTLOC=$(DISTPATH)
-dist_faultinj : GPLINSTLOC=$(GPLDISTPATH)
+dist_faultinj : GPMONINSTLOC=$(GPMONDISTPATH)
 dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -177,7 +177,7 @@ dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
@@ -291,14 +291,14 @@ mgmtcopy :
 	@echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 
-gplcopy :
-	rm -rf $(GPLINSTLOC)
-	mkdir -p $(GPLINSTLOC)/bin
-	cp -r $(GPCC)/gpl/bin $(GPLINSTLOC)
-	chmod 755 $(GPLINSTLOC)/bin
-	chmod 555 $(GPLINSTLOC)/bin/*
-	cp -f $(GPCC)/src/gpmon/gpmon_2.sql $(GPLINSTLOC)
-	chmod 555 $(GPLINSTLOC)/gpmon_2.sql
+gpmoncopy :
+	rm -rf $(GPMONINSTLOC)
+	mkdir -p $(GPMONINSTLOC)/bin
+	(cd $(GPCC)/gpmon/ && tar cf - * ) | (cd $(GPMONINSTLOC) && tar xpf - )
+	chmod 755 $(GPMONINSTLOC)/bin
+	chmod 555 $(GPMONINSTLOC)/bin/*
+	chmod 755 $(GPMONINSTLOC)/lib
+	chmod 555 $(GPMONINSTLOC)/lib/*
 
 
 pkgplr: 

@@ -42,12 +42,12 @@ mkgpmon:
 	(cd src/gpmon; $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS) $(CFLAGS) \
 		-o gpsmon gpsmon.c gpmonlib.c $(APULIBS) $(APRLIBS) -levent \
 		$(GPSMON_LDFLAGS) -lsigar -lm )
-	@mkdir -p build/bin
-	@mkdir -p build/lib
-	@cp -f src/gpmon/gpmmon build/bin/
-	@mkdir -p gpl/bin
-	@mkdir -p gpl/lib
-	@cp -f src/gpmon/gpsmon gpl/bin/
+	@mkdir -p gpmon/bin
+	@mkdir -p gpmon/lib
+	@cp -f src/gpmon/gpmmon gpmon/bin/
+	@cp -f src/gpmon/gpsmon gpmon/bin/
+	@cp -f src/gpmon/gpmon_catqrynow.py gpmon/lib
+	@cp -f src/gpmon/gpmon_2.sql gpmon/
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
