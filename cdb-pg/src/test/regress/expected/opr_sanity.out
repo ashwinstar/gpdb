@@ -86,9 +86,21 @@ WHERE p1.oid < p2.oid AND
      p1.provolatile != p2.provolatile OR
      (p1.pronargs != p2.pronargs AND p1.oid 
 	  NOT IN (select winfunc from pg_window)));
- oid | proname | oid | proname 
------+---------+-----+---------
-(0 rows)
+ oid  |      proname      | oid  |       proname       
+------+-------------------+------+---------------------
+ 3211 | matrix_add        | 3212 | int2_matrix_accum
+ 3210 | matrix_add        | 3212 | int2_matrix_accum
+ 3209 | matrix_add        | 3212 | int2_matrix_accum
+ 3208 | matrix_add        | 3212 | int2_matrix_accum
+ 3211 | matrix_add        | 3213 | int4_matrix_accum
+ 3210 | matrix_add        | 3213 | int4_matrix_accum
+ 3209 | matrix_add        | 3213 | int4_matrix_accum
+ 3208 | matrix_add        | 3213 | int4_matrix_accum
+ 3213 | int4_matrix_accum | 3214 | int8_matrix_accum
+ 3212 | int2_matrix_accum | 3214 | int8_matrix_accum
+ 3213 | int4_matrix_accum | 3215 | float8_matrix_accum
+ 3212 | int2_matrix_accum | 3215 | float8_matrix_accum
+(12 rows)
 
 -- Look for uses of different type OIDs in the argument/result type fields
 -- for different aliases of the same built-in function.
@@ -111,8 +123,14 @@ WHERE p1.oid != p2.oid AND
  prorettype | prorettype 
 ------------+------------
          25 |       1043
+       1005 |       1007
+       1005 |       1016
+       1005 |       1022
+       1007 |       1016
+       1007 |       1022
+       1016 |       1022
        1114 |       1184
-(2 rows)
+(8 rows)
 
 SELECT DISTINCT p1.proargtypes[0], p2.proargtypes[0]
 FROM pg_proc AS p1, pg_proc AS p2
@@ -126,10 +144,16 @@ WHERE p1.oid != p2.oid AND
 -------------+-------------
           25 |        1042
           25 |        1043
+        1005 |        1007
+        1005 |        1016
+        1005 |        1022
+        1007 |        1016
+        1007 |        1022
+        1016 |        1022
         1114 |        1184
         1560 |        1562
         2277 |        2283
-(5 rows)
+(11 rows)
 
 SELECT DISTINCT p1.proargtypes[1], p2.proargtypes[1]
 FROM pg_proc AS p1, pg_proc AS p2
@@ -143,10 +167,16 @@ WHERE p1.oid != p2.oid AND
 -------------+-------------
           23 |          28
           25 |        1042
+        1005 |        1007
+        1005 |        1016
+        1005 |        1022
+        1007 |        1016
+        1007 |        1022
+        1016 |        1022
         1114 |        1184
         1560 |        1562
         2277 |        2283
-(5 rows)
+(11 rows)
 
 SELECT DISTINCT p1.proargtypes[2], p2.proargtypes[2]
 FROM pg_proc AS p1, pg_proc AS p2
@@ -1064,5 +1094,20 @@ WHERE p1.amproc = p2.oid AND
     p2.provolatile = 'v';
  amopclaid | amproc | prosrc 
 -----------+--------+--------
+(0 rows)
+
+-- Check for oid collisions between pg_proc/pg_type/pg_class
+SELECT *
+FROM
+  (SELECT *, count(*) over (partition by oid) as oid_count
+   FROM (select oid, 'pg_proc' as catalog, proname as name from pg_proc
+         union all
+         select oid, 'pg_type' as catalog, typname as name from pg_type
+         union all
+         select oid, 'pg_class' as catalgo, relname as name from pg_class) cats
+  ) cat_counts
+WHERE oid_count > 1;
+ oid | catalog | name | oid_count 
+-----+---------+------+-----------
 (0 rows)
 

@@ -231,7 +231,25 @@ DATA(insert ( 2242 bitand		  - bitand		  - -					0	1560	_null_ ));
 DATA(insert ( 2243 bitor		  - bitor		  - -					0	1560	_null_ ));
 
 /* MPP Aggregate -- array_sum -- special for prospective customer. */
-DATA(insert ( 6013	array_add 	- array_add		  - -					0	1007	"{}" ));
+DATA(insert ( 6013	array_add     - array_add	  - -					0	1007	"{}" ));
+
+/* sum(array[]) */
+DATA(insert ( 3216  int2_matrix_accum     - int8_matrix_accum     - -   0   1016    _null_ ));
+DATA(insert ( 3217  int4_matrix_accum     - int8_matrix_accum     - -   0   1016    _null_ ));
+DATA(insert ( 3218  int8_matrix_accum     - int8_matrix_accum     - -   0   1016    _null_ ));
+DATA(insert ( 3219  float8_matrix_accum   - float8_matrix_accum   - -   0   1022    _null_ ));
+
+/* pivot_sum(...) */
+DATA(insert ( 3226  int4_pivot_accum      - int8_matrix_accum     - -   0   1007    _null_ ));
+DATA(insert ( 3228  int8_pivot_accum      - int8_matrix_accum     - -   0   1016    _null_ ));
+DATA(insert ( 3230  float8_pivot_accum    - float8_matrix_accum   - -   0   1022    _null_ ));
+
+/* naive bayes classification */
+DATA(insert ( 3255  nb_classify_accum     - nb_classify_combine   - nb_classify_final   0   3251    _null_ ));
+
+/* multiple linear regression */
+DATA(insert ( 3261  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_coef   0   1022    "{0}" ));
+DATA(insert ( 3262  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_r2     0   1022    "{0}" ));
 
 
 /*

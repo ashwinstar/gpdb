@@ -851,3 +851,15 @@ FROM pg_amproc AS p1, pg_proc AS p2
 WHERE p1.amproc = p2.oid AND
     p1.amprocsubtype != 0 AND
     p2.provolatile = 'v';
+
+-- Check for oid collisions between pg_proc/pg_type/pg_class
+SELECT *
+FROM
+  (SELECT *, count(*) over (partition by oid) as oid_count
+   FROM (select oid, 'pg_proc' as catalog, proname as name from pg_proc
+         union all
+         select oid, 'pg_type' as catalog, typname as name from pg_type
+         union all
+         select oid, 'pg_class' as catalgo, relname as name from pg_class) cats
+  ) cat_counts
+WHERE oid_count > 1;

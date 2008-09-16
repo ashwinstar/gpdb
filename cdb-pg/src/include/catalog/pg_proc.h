@@ -4319,6 +4319,68 @@ DESCR("gin(internal)");
 DATA(insert OID = 2788 (  ginoptions	   PGNSP PGUID 12 f f t f s 2 17 f "1009 16" _null_ _null_ _null_  ginoptions - _null_ ));
 DESCR("gin(internal)");
 
+/* Greenplum Analytic functions */
+DATA(insert OID = 3200 (  matrix_transpose     PGNSP PGUID 12 f f t f i 1 2277 f "2277" _null_ _null_ _null_ matrix_transpose - _null_ ));
+DESCR("transpose a two dimensional matrix");
+DATA(insert OID = 3201 (  matrix_multiply     PGNSP PGUID 12 f f t f i 2 1016 f "1005 1005" _null_ _null_ _null_ matrix_multiply - _null_ ));
+DESCR("perform matrix multiplication on two matrices");
+DATA(insert OID = 3202 (  matrix_multiply     PGNSP PGUID 12 f f t f i 2 1016 f "1007 1007" _null_ _null_ _null_ matrix_multiply - _null_ ));
+DESCR("perform matrix multiplication on two matrices");
+DATA(insert OID = 3203 (  matrix_multiply     PGNSP PGUID 12 f f t f i 2 1016 f "1016 1016" _null_ _null_ _null_ matrix_multiply - _null_ ));
+DESCR("perform matrix multiplication on two matrices");
+DATA(insert OID = 3204 (  matrix_multiply     PGNSP PGUID 12 f f t f i 2 1022 f "1022 1022" _null_ _null_ _null_ matrix_multiply - _null_ ));
+DESCR("perform matrix multiplication on two matrices");
+DATA(insert OID = 3205 (  matrix_multiply     PGNSP PGUID 12 f f t f i 2 1016 f "1016 20" _null_ _null_ _null_ int8_matrix_smultiply - _null_ ));
+DESCR("multiply a matrix by a scalar value");
+DATA(insert OID = 3206 (  matrix_multiply     PGNSP PGUID 12 f f t f i 2 1022 f "1022 701" _null_ _null_ _null_ float8_matrix_smultiply - _null_ ));
+DESCR("multiply a matrix by a scalar value");
+DATA(insert OID = 3208 (  matrix_add    PGNSP PGUID 12 f f t f i 2 1005 f "1005 1005" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3209 (  matrix_add    PGNSP PGUID 12 f f t f i 2 1007 f "1007 1007" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3210 (  matrix_add    PGNSP PGUID 12 f f t f i 2 1016 f "1016 1016" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3211 (  matrix_add    PGNSP PGUID 12 f f t f i 2 1022 f "1022 1022" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3212 (  int2_matrix_accum    PGNSP PGUID 12 f f f f i 2 1016 f "1016 1005" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3213 (  int4_matrix_accum    PGNSP PGUID 12 f f f f i 2 1016 f "1016 1007" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3214 (  int8_matrix_accum    PGNSP PGUID 12 f f t f i 2 1016 f "1016 1016" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3215 (  float8_matrix_accum  PGNSP PGUID 12 f f t f i 2 1022 f "1022 1022" _null_ _null_ _null_ matrix_add - _null_ ));
+DESCR("perform matrix addition on two conformable matrices");
+DATA(insert OID = 3216 (  sum            PGNSP PGUID 12 t f f f i 1 1016 f "1005" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+DATA(insert OID = 3217 (  sum            PGNSP PGUID 12 t f f f i 1 1016 f "1007" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+DATA(insert OID = 3218 (  sum            PGNSP PGUID 12 t f f f i 1 1016 f "1016" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+DATA(insert OID = 3219 (  sum            PGNSP PGUID 12 t f f f i 1 1022 f "1022" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+/* 3220 - reserved for sum(numeric[]) */
+DATA(insert OID = 3225 (  int4_pivot_accum  PGNSP PGUID 12 f f f f i 4 1007 f "1007 1009 25 23" _null_ _null_ _null_  int4_pivot_accum - _null_ ));
+DATA(insert OID = 3226 (  pivot_sum         PGNSP PGUID 12 t f f f i 3 1007 f "1009 25 23" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+DATA(insert OID = 3227 (  int8_pivot_accum  PGNSP PGUID 12 f f f f i 4 1016 f "1016 1009 25 20" _null_ _null_ _null_  int8_pivot_accum - _null_ ));
+DATA(insert OID = 3228 (  pivot_sum         PGNSP PGUID 12 t f f f i 3 1016 f "1009 25 20" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+DATA(insert OID = 3229 (  float8_pivot_accum PGNSP PGUID 12 f f f f i 4 1022 f "1022 1009 25 701" _null_ _null_ _null_  float8_pivot_accum - _null_ ));
+DATA(insert OID = 3230 (  pivot_sum         PGNSP PGUID 12 t f f f i 3 1022 f "1009 25 701" _null_ _null_ _null_  aggregate_dummy - _null_ ));
+
+DATA(insert OID = 3240 (  unnest            PGNSP PGUID 12 f f t t i 1 2283 f "2277" _null_ _null_ _null_ unnest - _null_ ));
+/* 3241-324? reserved for unpivot, see pivot.c )); */
+
+/* 3250 = nb_classication class */
+/* 3251 = nb_classication type */
+DATA(insert OID = 3252 (  nb_classify_accum   PGNSP PGUID 12 f f f f i 5 3251 f "3251 1009 20 1016 1016" _null_ _null_ _null_ nb_classify_accum - _null_ ));
+DATA(insert OID = 3253 (  nb_classify_combine PGNSP PGUID 12 f f f f i 2 3251 f "3251 3251" _null_ _null_ _null_ nb_classify_combine - _null_ ));
+DATA(insert OID = 3254 (  nb_classify_final   PGNSP PGUID 12 f f t f i 1 25 f "3251" _null_ _null_ _null_ nb_classify_final - _null_ ));
+DATA(insert OID = 3255 (  nb_classify         PGNSP PGUID 12 t f f f i 4 25 f "1009 20 1016 1016" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+
+DATA(insert OID = 3256 (  pinv                PGNSP PGUID 12 f f t f i 1 1022 f "1022" _null_ _null_ _null_ pseudoinverse - _null_ ));
+DATA(insert OID = 3257 (  float8_mregr_accum  PGNSP PGUID 12 f f t f i 3 1022 f "1022 701 1022" _null_ _null_ _null_ float8_mregr_accum - _null_ ));
+DATA(insert OID = 3258 (  float8_mregr_combine PGNSP PGUID 12 f f t f i 2 1022 f "1022 1022" _null_ _null_ _null_ float8_mregr_combine - _null_ ));
+DATA(insert OID = 3259 (  float8_mregr_coef   PGNSP PGUID 12 f f t f i 1 1022 f "1022" _null_ _null_ _null_ float8_mregr_coef - _null_ ));
+DATA(insert OID = 3260 (  float8_mregr_r2     PGNSP PGUID 12 f f t f i 1 701 f "1022" _null_ _null_ _null_ float8_mregr_r2 - _null_ ));
+DATA(insert OID = 3261 (  mregr_coef          PGNSP PGUID 12 t f t f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+DATA(insert OID = 3262 (  mregr_r2            PGNSP PGUID 12 t f t f i 2 701 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+
+
 /* Greenplum MPP exposed internally-defined functions. */
 DATA(insert OID = 6003 (  gp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 f "25 25 25 25 25" _null_ _null_ _null_ gp_backup_launch__  - _null_  ));
 DESCR("launch mpp backup on outboard Postgres instances");
