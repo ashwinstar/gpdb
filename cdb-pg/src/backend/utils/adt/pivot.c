@@ -349,6 +349,13 @@ Datum unnest(PG_FUNCTION_ARGS)
 	/* get the saved state and use current as the result for this iteration */
 	fctx = (array_iter *) funcctx->user_fctx;
 
+	/* 
+	 * Initialization isn't necessary since array_next will set both values,
+	 * but this fixes compiler warnings.
+	 */
+	d = (Datum) NULL;
+	isna = false;
+
 	if (array_next(fctx, &d, &isna))
 	{
 		if (isna)

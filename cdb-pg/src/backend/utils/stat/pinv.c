@@ -16,9 +16,9 @@
 
 
 void pinv(long int rows,long int columns,float8 *A,float8 *Aplus);
-ArrayType *pinv_alloc_2darray(int rows, int columns, char *copyfrom, int elemtype);
 
-Datum pseudoinverse(PG_FUNCTION_ARGS)
+Datum 
+pseudoinverse(PG_FUNCTION_ARGS)
 {
 	long int    rows, columns;
 	float8     *A, *Aplus;
@@ -62,7 +62,6 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 
 
 	/*  Allocate a PG array for the result, "Aplus" is A+, the pseudo inverse of A */
-//    Aplus_PG = pinv_alloc_2darray(columns, rows, NULL, FLOAT8OID);
 	lbs[0] = 1; lbs[1] = 1;
 	dims[0] = columns; dims[1] = rows;
 	Aplus_PG = construct_md_array(NULL, NULL, 2, dims, lbs, FLOAT8OID, 

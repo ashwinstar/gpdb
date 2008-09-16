@@ -28,7 +28,8 @@ static void get_nb_state(HeapTupleHeader tuple,
 /*
  * nb_classify_accum - Naive Bayesian Classification Accumulator
  */
-Datum nb_classify_accum(PG_FUNCTION_ARGS)
+Datum 
+nb_classify_accum(PG_FUNCTION_ARGS)
 {
 	nb_classify_state  state;
 	Oid                resultType;
@@ -242,7 +243,8 @@ Datum nb_classify_accum(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(HeapTupleGetDatum(result));
 }
 
-Datum nb_classify_combine(PG_FUNCTION_ARGS)
+Datum 
+nb_classify_combine(PG_FUNCTION_ARGS)
 {
 	Oid                resultType;
 	TupleDesc          resultDesc;
@@ -296,7 +298,8 @@ Datum nb_classify_combine(PG_FUNCTION_ARGS)
 	PG_RETURN_DATUM(HeapTupleGetDatum(result));
 }
 
-Datum nb_classify_final(PG_FUNCTION_ARGS)
+Datum 
+nb_classify_final(PG_FUNCTION_ARGS)
 {
 	nb_classify_state  state;
 	int64             *total_data;
