@@ -362,19 +362,19 @@ PARSE_SQL_FILE () {
 	    ((HOME_COUNT=$HOME_COUNT+1))
 	done
 	
-	DATA_DIRECTORY=""
-	MIRROR_DATA_DIRECTORY=""
+	DATA_DIRECTORY=()
+	MIRROR_DATA_DIRECTORY=()
 	for DIR in ${FAKE_DATA_DIRECTORY[@]}
 	do
-	    DATA_DIRECTORY="$DATA_DIRECTORY $DIR"
+	    DATA_DIRECTORY=(${DATA_DIRECTORY[@]} $DIR)
 	done
-	LOG_MSG "[INFO]:-Obtained Primary data directory ${DATA_DIRECTORY}"
+	LOG_MSG "[INFO]:-Obtained Primary data directory ${DATA_DIRECTORY[@]}"
 	if [ $MIR_NUM -ne 0 ] ; then
 	    for DIR in ${FAKE_MIRROR_DATA_DIRECTORY[@]}
 	    do
-		MIRROR_DATA_DIRECTORY="$MIRROR_DATA_DIRECTORY $DIR"
+		MIRROR_DATA_DIRECTORY=(${MIRROR_DATA_DIRECTORY[@]} $DIR)
 	    done
-	    LOG_MSG "[INFO]:-Obtained Mirror data directory ${MIRROR_DATA_DIRECTORY}"
+	    LOG_MSG "[INFO]:-Obtained Mirror data directory ${MIRROR_DATA_DIRECTORY[@]}"
 	fi
 
 	DELETE_TEMP_DB	
