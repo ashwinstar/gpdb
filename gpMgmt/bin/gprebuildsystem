@@ -367,14 +367,15 @@ PARSE_SQL_FILE () {
 	for DIR in ${FAKE_DATA_DIRECTORY[@]}
 	do
 	    DATA_DIRECTORY=(${DATA_DIRECTORY[@]} $DIR)
+	    LOG_MSG "[INFO]:-Obtained Primary data directory $DIR"
 	done
-	LOG_MSG "[INFO]:-Obtained Primary data directory ${DATA_DIRECTORY[@]}"
+
 	if [ $MIR_NUM -ne 0 ] ; then
 	    for DIR in ${FAKE_MIRROR_DATA_DIRECTORY[@]}
 	    do
 		MIRROR_DATA_DIRECTORY=(${MIRROR_DATA_DIRECTORY[@]} $DIR)
+	    LOG_MSG "[INFO]:-Obtained Mirror data directory $DIR"
 	    done
-	    LOG_MSG "[INFO]:-Obtained Mirror data directory ${MIRROR_DATA_DIRECTORY[@]}"
 	fi
 
 	DELETE_TEMP_DB	
@@ -410,7 +411,11 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Primary segment configuration" 1
 	LOG_MSG "[INFO]:--------------------------------------" 1
 	LOG_MSG "[INFO]:-Primary hostname list                = ${PRIMARY_HOST_ARRAY[@]}" 1
-	LOG_MSG "[INFO]:-Primary data directory list          = ${DATA_DIRECTORY[@]}" 1
+	LOG_MSG "[INFO]:-Primary data directory list          =" 1
+	for DIR in ${DATA_DIRECTORY[@]}
+	do
+	    LOG_MSG "[INFO]:-                                       $DIR" 1
+	done
 	LOG_MSG "[INFO]:-Primary port base                    = $PORT_BASE" 1	
 	LOG_MSG "[INFO]:--------------------------------------" 1
 	LOG_MSG "[INFO]:-Mirror segment configuration" 1
@@ -423,7 +428,11 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Mirror type                          = Spread" 1
 	fi
 	LOG_MSG "[INFO]:-Mirror hostname list                 = ${MIRROR_HOST_ARRAY[@]}" 1
-	LOG_MSG "[INFO]:-Mirror data directory list           = ${MIRROR_DATA_DIRECTORY[@]}" 1
+	LOG_MSG "[INFO]:-Mirror data directory list           =" 1
+	for DIR in ${MIRROR_DATA_DIRECTORY[@]}
+	do
+	    LOG_MSG "[INFO]:-                                       $DIR" 1
+	done
 	LOG_MSG "[INFO]:-Mirror port base                     = $MIRROR_PORT_BASE" 1
 
 	else
