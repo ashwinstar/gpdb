@@ -6349,7 +6349,6 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
     child_tab_name->location = -1;
 
 	child_tab_stmt->relation = child_tab_name;
-	child_tab_stmt->is_part_child = true;
 
 	ereport(NOTICE,
 			(errmsg("%s will create partition \"%s\" for "
@@ -7156,7 +7155,6 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		/* we don't need this any more */
 		stmt->partitionBy = NULL;
-		stmt->is_part_child = true;
 	}
 
 } /* end transformPartitionBy */

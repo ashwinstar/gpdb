@@ -659,15 +659,10 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	HeapTuple	tuple;
 	Datum		reloptions;
 	bool		isNull;
-	bool		is_part;
 
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
 
-	if (rel_is_child_partition(OIDOldHeap))
-		is_part = true;
-	else
-		is_part = false;
 
 	if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
 	{
@@ -775,10 +770,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	 * CommandCounterIncrement(), so that the new tables will be visible for 
 	 * insertion.
 	 */
-	AlterTableCreateToastTableWithOid(OIDNewHeap, tOid, tiOid,
-									  toastComptypeOid, is_part);
-	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid,
-									  aosegComptypeOid, is_part);
+	AlterTableCreateToastTableWithOid(OIDNewHeap, tOid, tiOid, toastComptypeOid);
+	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid, aosegComptypeOid);
 		
 	heap_close(OldHeap, NoLock);
 

@@ -49,10 +49,11 @@ AlterTableCreateAoSegTable(Oid relOid)
 	Relation	rel;
 
 	/*
-	 * We've well and truly locked the table if we need to, so don't now.
-	 * This is useful for avoiding lock table overflows with partitioning.
+	 * Grab an exclusive lock on the target table, which we will NOT release
+	 * until end of transaction.  (This is probably redundant in all present
+	 * uses...)
 	 */
-	rel = heap_open(relOid, NoLock);
+	rel = heap_open(relOid, AccessExclusiveLock);
 
 	/* create_aoseg_table does all the work */
 	(void) create_aoseg_table(rel, InvalidOid, InvalidOid, NULL);
@@ -61,8 +62,7 @@ AlterTableCreateAoSegTable(Oid relOid)
 }
 
 void
-AlterTableCreateAoSegTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
-								  Oid * comptypeOid, bool is_part_child)
+AlterTableCreateAoSegTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid * comptypeOid)
 {
 	Relation	rel;
 
@@ -71,10 +71,7 @@ AlterTableCreateAoSegTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
 	 * until end of transaction.  (This is probably redundant in all present
 	 * uses...)
 	 */
-	if (is_part_child)
-		rel = heap_open(relOid, NoLock);
-	else
-		rel = heap_open(relOid, AccessExclusiveLock);
+	rel = heap_open(relOid, AccessExclusiveLock);
 	
 	/* create_aoseg_table does all the work */
 	(void) create_aoseg_table(rel, newOid, newIndexOid, comptypeOid);
@@ -202,11 +199,6 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 							   rel->rd_rel->reltablespace,
 							   classObjectId, (Datum) 0,
 							   true, false, true, false, false);
-
-	/* Unlock target table -- no one can see it */
-	UnlockRelationOid(aoseg_relid, ShareLock);
-	/* Unlock the index -- no one can see it anyway */
-	UnlockRelationOid(aoseg_idxid, AccessExclusiveLock);
 
 	/*
 	 * Store the aoseg table's OID in the parent relation's pg_class row

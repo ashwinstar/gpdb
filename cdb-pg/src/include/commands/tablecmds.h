@@ -86,7 +86,6 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 extern AttrNumber max_partition_attr(PartitionNode *pn);
 extern List *get_partition_attrs(PartitionNode *pn);
 extern int num_partition_levels(PartitionNode *pn);
-extern bool rel_is_child_partition(Oid relid);
 extern PartitionRule *ruleMakePartitionRule(HeapTuple tuple, 
 											TupleDesc tupdesc, 
 											MemoryContext mcxt);

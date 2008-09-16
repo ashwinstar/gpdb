@@ -1266,7 +1266,6 @@ typedef struct CreateStmt
 	char	    relKind;         /* CDB: force relkind to this */
 	GpPolicy  *policy;
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
-	bool		is_part_child;	/* CDB: partition child table? */
 } CreateStmt;
 
 /* ----------------------

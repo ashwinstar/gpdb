@@ -25,15 +25,13 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
-#include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 
 
-static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
-							   Oid *comptypeOid, bool is_part_child);
+static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid, Oid * comptypeOid);
 static bool needs_toast_table(Relation rel);
 
 
@@ -50,7 +48,6 @@ void
 AlterTableCreateToastTable(Oid relOid)
 {
 	Relation	rel;
-	bool is_part_child = rel_is_child_partition(relOid);
 
 	/*
 	 * Grab an exclusive lock on the target table, which we will NOT release
@@ -60,14 +57,13 @@ AlterTableCreateToastTable(Oid relOid)
 	rel = heap_open(relOid, AccessExclusiveLock);
 
 	/* create_toast_table does all the work */
-	(void) create_toast_table(rel, InvalidOid, InvalidOid, NULL, is_part_child);
+	(void) create_toast_table(rel, InvalidOid, InvalidOid, NULL);
 
 	heap_close(rel, NoLock);
 }
 
 void
-AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
-								  Oid * comptypeOid, bool is_part_child)
+AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid, Oid * comptypeOid)
 {
 	Relation	rel;
 
@@ -76,16 +72,12 @@ AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
 	 * until end of transaction.  (This is probably redundant in all present
 	 * uses...)
 	 */
-	if (is_part_child)
-		rel = heap_open(relOid, NoLock);
-	else
-		rel = heap_open(relOid, AccessExclusiveLock);
+	rel = heap_open(relOid, AccessExclusiveLock);
 	
 	
 	
 	/* create_toast_table does all the work */
-	(void) create_toast_table(rel, newOid, newIndexOid,
-							  comptypeOid, is_part_child);
+	(void) create_toast_table(rel, newOid, newIndexOid, comptypeOid);
 
 	heap_close(rel, NoLock);
 }
@@ -112,7 +104,7 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
 						relName)));
 
 	/* create_toast_table does all the work */
-	if (!create_toast_table(rel, toastOid, toastIndexOid, NULL, false))
+	if (!create_toast_table(rel, toastOid, toastIndexOid, NULL))
 		elog(ERROR, "\"%s\" does not require a toast table",
 			 relName);
 
@@ -128,8 +120,7 @@ BootstrapToastTable(char *relName, Oid toastOid, Oid toastIndexOid)
  * bootstrap they can be nonzero to specify hand-assigned OIDs
  */
 static bool
-create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
-				   Oid *comptypeOid, bool is_part_child)
+create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid, Oid * comptypeOid)
 {
 	Oid			relOid = RelationGetRelid(rel);
 	HeapTuple	reltup;
@@ -261,16 +252,6 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 							   rel->rd_rel->reltablespace,
 							   classObjectId, (Datum) 0,
 							   true, false, true, false, false);
-
-	/* 
-	 * If this is a partitioned child, we can unlock since the master is
-	 * already locked.
-	 */
-	if (is_part_child)
-	{
-		UnlockRelationOid(toast_relid, ShareLock);
-		UnlockRelationOid(toast_idxid, AccessExclusiveLock);
-	}
 
 	/*
 	 * Store the toast table's OID in the parent relation's pg_class row
