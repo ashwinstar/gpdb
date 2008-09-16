@@ -268,7 +268,7 @@ PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Obtained Primary hostname list ${PRIMARY_HOST_ARRAY[@]}" 
 	SEG_PER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	LOG_MSG "[INFO]:-Obtained number of segments per host as $SEG_PER_HOST"
-	DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`
+	DATA_DIRECTORY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`)
 	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	LOG_MSG "[INFO]:-Obtained Master hostname $MASTER_HOSTNAME"
 	MASTER_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=-1 and dbid=1;"|$SED -e s/\\\/${SEG_PREFIX}-1//g`
@@ -287,7 +287,7 @@ PARSE_SQL_FILE () {
 		#DDD MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$TR '\n' ' '`
 		MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"|$TR '\n' ' '`
 		LOG_MSG "[INFO]:-Obtained Mirror host list ${MIRROR_HOST_ARRAY[@]}"
-		MIRROR_DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`
+		MIRROR_DATA_DIRECTORY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`)
 		#Get the mirror port base	
 		MIRROR_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
 		LOG_MSG "[INFO]:-Obtained Mirror port base $MIRROR_PORT_BASE"
@@ -347,23 +347,34 @@ PARSE_SQL_FILE () {
 	    ARRAY_TXT="Multi-home"
 	fi
 
+
 	((NUM_DUPLICATE=$SEG_PER_HOST / ${#DATA_DIRECTORY[@]}))
 	HOME_COUNT=1
-	FAKE_DATA_DIRECTORY=$DATA_DIRECTORY
-	FAKE_MIRROR_DATA_DIRECTORY=$MIRROR_DATA_DIRECTORY
+	FAKE_DATA_DIRECTORY=(${DATA_DIRECTORY[@]})
+	FAKE_MIRROR_DATA_DIRECTORY=(${MIRROR_DATA_DIRECTORY[@]})
+
 	while [ $HOME_COUNT -lt $NUM_DUPLICATE ] 
 	do
-	    FAKE_DATA_DIRECTORY="${FAKE_DATA_DIRECTORY} ${DATA_DIRECTORY}"
+	    FAKE_DATA_DIRECTORY=(${FAKE_DATA_DIRECTORY[@]} ${DATA_DIRECTORY[@]})
 	    if [ $MIR_NUM -ne 0 ] ; then
-		FAKE_MIRROR_DATA_DIRECTORY="${FAKE_MIRROR_DATA_DIRECTORY} ${MIRROR_DATA_DIRECTORY}"
+		FAKE_MIRROR_DATA_DIRECTORY=(${FAKE_MIRROR_DATA_DIRECTORY[@]} ${MIRROR_DATA_DIRECTORY[@]})
 	    fi
 	    ((HOME_COUNT=$HOME_COUNT+1))
 	done
-	DATA_DIRECTORY=${FAKE_DATA_DIRECTORY}
-	LOG_MSG "[INFO]:-Obtained Primary data directory $DATA_DIRECTORY"
+	
+	DATA_DIRECTORY=""
+	MIRROR_DATA_DIRECTORY=""
+	for DIR in ${FAKE_DATA_DIRECTORY[@]}
+	do
+	    DATA_DIRECTORY="$DATA_DIRECTORY $DIR"
+	done
+	LOG_MSG "[INFO]:-Obtained Primary data directory ${DATA_DIRECTORY}"
 	if [ $MIR_NUM -ne 0 ] ; then
-	    MIRROR_DATA_DIRECTORY=${FAKE_MIRROR_DATA_DIRECTORY}
-	    LOG_MSG "[INFO]:-Obtained Mirror data directory $MIRROR_DATA_DIRECTORY"
+	    for DIR in ${FAKE_MIRROR_DATA_DIRECTORY[@]}
+	    do
+		MIRROR_DATA_DIRECTORY="$MIRROR_DATA_DIRECTORY $DIR"
+	    done
+	    LOG_MSG "[INFO]:-Obtained Mirror data directory ${MIRROR_DATA_DIRECTORY}"
 	fi
 
 	DELETE_TEMP_DB	
