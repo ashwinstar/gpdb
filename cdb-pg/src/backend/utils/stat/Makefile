@@ -9,30 +9,27 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
-OBJS = bayes.o pinv.o regress.o
-
-
-# Ugly gross hack.  Remove this
 BLD_TOP = ../../../../..
 include $(BLD_TOP)/Makefile.thirdparty
 CLAPACKDIR = $(BLD_TOP)/ext/$(BLD_ARCH)/lib
+CLAPACKLIBS = -llapack -lf2c -lblas
 
+ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
+LDOPTS = -Z
+endif
 
-CLAPACK = liblapack.a libblas.a libf2c.a 
+OBJS = bayes.o pinv.o regress.o
 
 all: SUBSYS.o
 
-SUBSYS.o: $(OBJS) $(CLAPACK)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS) $(CLAPACK)
-
-%.a:
-	cp $(CLAPACKDIR)/$@ $@
+SUBSYS.o: $(OBJS)
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS) $(CLAPACKLIBS) $(LDOPTS) -L$(CLAPACKDIR)
 
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
 
 clean: 
-	rm -f SUBSYS.o $(OBJS) $(CLAPACK)
+	rm -f SUBSYS.o $(OBJS)
 
 ifeq (depend,$(wildcard depend))
 include depend
