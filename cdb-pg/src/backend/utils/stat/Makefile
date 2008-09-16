@@ -24,7 +24,7 @@ SUBSYS.o: $(OBJS) $(CLAPACK)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS) $(CLAPACK)
 
 %.a:
-	cp $(CLAPACKDIR)/$@ $@
+	cp /Users/swm/greenplum/p4/cdb2/main/ext/osx104_x86/lib/$@ $@
 
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend

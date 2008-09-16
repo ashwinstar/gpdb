@@ -3490,7 +3490,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			Relation			target = NULL;
 
 			if (Gp_role == GP_ROLE_UTILITY)
-				elog(ERROR, "MERGE is not supported in utility mode");
+				elog(ERROR, "SPLIT is not supported in utility mode");
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
@@ -3520,6 +3520,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 					if (prule1->topRule->parisdefault)
 					{
+						/* 
+						 * Check that AT() value doesn't exist in any existing
+						 * definition.
+						 */
 
 					}
 					else
@@ -3589,7 +3593,13 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 								}
 							}
 							if (!found)
-								elog(ERROR, "param no exist");
+								ereport(ERROR,
+										(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+										errmsg("AT clause parameter is not "
+											   "a member of the target "
+											   "partition specification")));
+
+
 						}
 					}
 				}
@@ -3656,7 +3666,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	
 						if (!in_range)
 						{
-							elog(ERROR, "AT value not in range");
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									errmsg("AT clause parameter is not "
+										   "a member of the target "
+										   "partition specification")));
 						}
 					}
 				}
@@ -11700,7 +11714,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 	Relation 			 par_rel   = rel;
 	PartitionNode 		 pNodebuf; 
 	PartitionNode 		*pNode2 = &pNodebuf;
-	AlterPartitionCmd	*pc2 = (AlterPartitionCmd *)pc->arg2;
+	AlterPartitionCmd   *pc2 = (AlterPartitionCmd *)pc->arg2;
 	bool is_split = PointerIsValid(pc2->partid);
 
 	/* get the relation for the parent of the new partition */
@@ -11719,7 +11733,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
 
-	if (pelem && pelem->boundSpec && !is_split)
+	if (pelem && pelem->boundSpec)
 	{
 		if (PARTTYP_RANGE == part_type) 
 		{
@@ -11867,7 +11881,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   lrelname,
 									   &pNode2);
 
-				if (prule) /* found match for start value in rules */
+				/* found match for start value in rules */
+				if (prule && !(prule->topRule->parisdefault && is_split))
 				{
 					bool bstat;
 					PartitionRule *a_rule = prule->topRule;
@@ -12101,7 +12116,9 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   lrelname,
 									   &pNode2);
 
-				if (prule) /* found match for start value in rules */
+				/* found match for end value in rules */
+				if (prule && !(prule->topRule->parisdefault &&
+							   is_split))
 				{
 					bool bstat;
 					PartitionRule *a_rule = prule->topRule;
@@ -12501,7 +12518,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			spec = (PartitionValuesSpec *)pelem->boundSpec;
 
 			/* only check this if we aren't doing split */
-			if (!is_split)
+			if (1)
 			{
 				foreach(lc, spec->partValues)
 				{
@@ -14853,7 +14870,13 @@ ATPExecPartSplit(Relation rel,
 		RangeVar *rvb = NULL;
 		int into_exists = 0; /* which into partition exists? */
 		int i;
+		AlterPartitionId *intopid1 = NULL;
+		AlterPartitionId *intopid2 = NULL;
+		int default_pos = 0;
 	
+		/* Get target meta data */
+		prule = get_part_rule(rel, pid, true, true,
+							  CurrentMemoryContext, NULL, false);
 		/*
 		 * In order to implement SPLIT, we do the following:
 		 *
@@ -14867,20 +14890,42 @@ ATPExecPartSplit(Relation rel,
 		/* look up into info, if the user supplied it */
 		if (pc2)
 		{
-			prule = get_part_rule(rel, (AlterPartitionId *)pc2->partid, false, 
-								  false, CurrentMemoryContext, NULL, false);
+			PgPartRule *tmprule;
 
-			if (prule)
-				into_exists = 1;
+			tmprule = get_part_rule(rel, (AlterPartitionId *)pc2->partid, 
+									false, false, CurrentMemoryContext, 
+									NULL, false);
 
-			prule = get_part_rule(rel, (AlterPartitionId *)pc2->arg1, false, 
-								  false, CurrentMemoryContext, NULL, false);
-			if (prule)
+			if (tmprule && tmprule->topRule->parisdefault)
+			{
+				default_pos = 1;
+				intopid2 = (AlterPartitionId *)pc2->partid;
+				intopid1 = (AlterPartitionId *)pc2->arg1;
+				into_exists = 2;
+			}
+			else
+			{
+				if (tmprule)
+					into_exists = 1;
+
+				intopid1 = (AlterPartitionId *)pc2->partid;
+				intopid2 = (AlterPartitionId *)pc2->arg1;
+			}
+
+			tmprule = get_part_rule(rel, (AlterPartitionId *)pc2->arg1, false, 
+								    false, CurrentMemoryContext, NULL, false);
+			if (tmprule)
 			{
 				Insist(into_exists == 0);
 				into_exists = 2;
+				intopid1 = (AlterPartitionId *)pc2->partid;
+				intopid2 = (AlterPartitionId *)pc2->arg1;
+				if (tmprule->topRule->parisdefault)
+					default_pos = 2;
 			}
 		}
+		else if (prule->topRule->parisdefault)
+			into_exists = 2;
 
 		/* 1) Create temp table */
 		rv = makeRangeVar(nspname, relname);
@@ -14900,9 +14945,6 @@ ATPExecPartSplit(Relation rel,
 		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
 		CommandCounterIncrement();
 		
-		/* Get target meta data */
-		prule = get_part_rule(rel, pid, true, true,
-							  CurrentMemoryContext, NULL, false);
 		idpid->idtype = AT_AP_IDRule;
 		idpid->partiddef = (Node *)list_make2((Node *)prule, pid);
 		idpid->location  = -1;
@@ -14975,9 +15017,14 @@ ATPExecPartSplit(Relation rel,
 			if (pc2)
 			{
 				if (i == 1)
-					intopid = (AlterPartitionId *)pc2->partid;
+					intopid = intopid1;
 				else
-					intopid = (AlterPartitionId *)pc2->arg1;
+					intopid = intopid2;
+			}
+			else
+			{
+				if (into_exists == i && prule->topRule->parname)
+					parname = pstrdup(prule->topRule->parname);
 			}
 
 			mycs->relation = makeRangeVar(NULL, "fake_partition_name");
@@ -15003,37 +15050,18 @@ ATPExecPartSplit(Relation rel,
 	
 					if (prule->topRule->parisdefault)
 					{
-						PartitionRangeItem *ri;
-
-						ri = makeNode(PartitionRangeItem);
-						ri->location = -1;
-						ri->partRangeVal = copyObject(at);
-
-						/* 
-						 * if default named first, it's a start, otherwise
-						 * it's the end
-						 */
-						Assert(into_exists > 0);
-
-						if (into_exists == 2 && i == 1)
-						{
-							ri->partedge = PART_EDGE_EXCLUSIVE;
-							a->partEnd = (Node *)ri;
-						}
-						else
-						{
-							ri->partedge = PART_EDGE_INCLUSIVE;
-							a->partStart = (Node *)ri;
-						}
+						a->partStart = linitial((List *)pc->arg1);
+						a->partEnd = lsecond((List *)pc->arg1);
 					}
-					else
+					else if (i == 1)
 					{
 						PartitionRangeItem *ri;
 						ri = makeNode(PartitionRangeItem);
 						ri->location = -1;
 						ri->everycount = 0;
 						ri->partRangeVal = copyObject(prule->topRule->parrangestart);
-						ri->partedge = prule->topRule->parrangestartincl;
+						ri->partedge = 
+							prule->topRule->parrangestartincl ? PART_EDGE_INCLUSIVE : PART_EDGE_EXCLUSIVE;
 		
 						a->partStart = (Node *)ri;
 	
@@ -15045,12 +15073,33 @@ ATPExecPartSplit(Relation rel,
 	
 						a->partEnd = (Node *)ri;
 					}
+					else if (i == 2)
+					{
+						PartitionRangeItem *ri;
+						ri = makeNode(PartitionRangeItem);
+						ri->location = -1;
+						ri->everycount = 0;
+						ri->partRangeVal = copyObject(at);
+						ri->partedge = PART_EDGE_INCLUSIVE;
+		
+						a->partStart = (Node *)ri;
+	
+						ri = makeNode(PartitionRangeItem);
+						ri->location = -1;
+						ri->everycount = 0;
+						ri->partRangeVal = 
+							copyObject(prule->topRule->parrangeend);
+						ri->partedge = prule->topRule->parrangeendincl ? PART_EDGE_INCLUSIVE : PART_EDGE_EXCLUSIVE;
+	
+						a->partEnd = (Node *)ri;
+					}
 					pelem->boundSpec = (Node *)a;
 				}
 				else
 				{
-
-					if (into_exists == i || (into_exists == 0 && i == 2))
+					if ((into_exists && into_exists != i && 
+						 prule->topRule->parisdefault) || 
+						(i == 2 && !prule->topRule->parisdefault))
 					{
 						PartitionValuesSpec *valuesspec = 
 							makeNode(PartitionValuesSpec);

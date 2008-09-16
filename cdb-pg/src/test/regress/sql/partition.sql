@@ -2485,20 +2485,10 @@ delete from tmp_nation;
 create table k (i int) partition by range(i) (start(1) end(10) every(2), 
 default partition mydef);
 insert into k select i from generate_series(1, 100) i;
-alter table k split partition mydef at (20) into (partition foo, partition
-mydef);
-select * from k_1_prt_foo order by 1;
-select * from k_1_prt_mydef order by 1;
-drop table k;
-
-create table k (i int) partition by range(i) (start(1) end(10) every(2), 
-default partition mydef);
-insert into k select i from generate_series(1, 100) i;
 alter table k split partition mydef at (20) into (partition mydef, 
 partition foo);
-select * from k_1_prt_foo order by 1;
-select * from k_1_prt_mydef order by 1;
 drop table k;
+
 create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
 partition b values(5, 6, 7, 8));
 insert into j select i from generate_series(1, 8) i;
@@ -2508,12 +2498,40 @@ select * from j_1_prt_fa;
 select * from j_1_prt_fb;
 alter table j split partition for(5) at (6);
 select * from j;
+-- should fail
+alter table j split partition for (1) at (100);
 drop table j;
 create table k (i int) partition by range(i) (start(1) end(10) every(2), 
 default partition mydef);
 -- should fail
-alter table k split partition mydef at (20) into (partition mydef, partition mydef);
+alter table k split default partition start(30) end (300) into (partition mydef, partition mydef);
 alter table k split partition for(3) at (20);
+drop table k;
+-- should work
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+insert into k select i from generate_series(1, 30) i;
+alter table k split default partition start(15) end(20) into
+(partition mydef, partition foo);
+select * from k_1_prt_foo;
+alter table k split default partition start(22) exclusive end(25) inclusive
+into (partition bar, partition mydef);
+select * from k_1_prt_bar;
+alter table k split partition bar at (23) into (partition baz, partition foz);
+select partitiontablename,partitionposition,partitionrangestart,
+       partitionrangeend from pg_partitions where tablename = 'k'
+	   order by partitionposition;
+drop table k;
+-- Test errors for default handling
+create table k (i int) partition by range(i) (start(1) end(2), 
+default partition mydef);
+alter table k split partition mydef at (25) into (partition foo, partition
+mydef);
+drop table k;
+create table k (i int) partition by list(i) (values(1), values(2),
+default partition mydef);
+alter table k split default partition start(10) end(20);
+drop table k;
 
 -- Check that we support int2
 CREATE TABLE myINT2_TBL(q1 int2)

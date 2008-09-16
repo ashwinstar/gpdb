@@ -2306,6 +2306,11 @@ alter_table_partition_cmd:
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
                     pc->partid = (Node *)$2;
+
+					/* 
+					 * The first element of the list is only defined if
+					 * we're doing default splits for range partitioning.
+				 	 */
                     pc->arg1 = (Node *)list_make2(NULL, $5);
                     pc->arg2 = (Node *)$7;
                     pc->location = @5;
