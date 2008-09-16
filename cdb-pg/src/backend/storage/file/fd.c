@@ -1284,7 +1284,7 @@ FileTell(File file)
 #endif
 
 int
-FileTruncate(File file, long offset)
+FileTruncate(File file, int64 offset)
 {
 	int			returnCode;
 
@@ -1297,8 +1297,18 @@ FileTruncate(File file, long offset)
 	if (returnCode < 0)
 		return returnCode;
 
-	// UNDONE: Does ftruncate take an int64 value?
-	returnCode = ftruncate(VfdCache[file].fd, (size_t) offset);
+	/*
+	 * Call ftruncate with a int64 value.
+	 *
+	 * WARNING:DO NOT typecast this down to a 32-bit long or
+	 * append-only vacuum full adjustment of the eof will erroneously remove
+	 * table data.
+	 */
+	returnCode = ftruncate(VfdCache[file].fd, offset);
+	
+	/* Assume we don't know the file position anymore */
+	VfdCache[file].seekPos = FileUnknownPos;
+		
 	return returnCode;
 }
 

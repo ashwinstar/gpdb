@@ -328,6 +328,8 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *total
 			
 	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+
+	*totalsegs = 0;
 	
 	/*
 	 * Get number of segment files for this relation
@@ -339,7 +341,10 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *total
 		(*totalsegs)++;
 	}
 	
-	heap_endscan(aoscan);			
+	heap_endscan(aoscan);	
+
+	if (*totalsegs == 0)
+		return NULL;
 	
 	/*
 	 * Initialize the segment file information array according to the seg count

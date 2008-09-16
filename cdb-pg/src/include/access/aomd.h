@@ -23,6 +23,6 @@ extern void
 CloseAOSegmentFile(File file, Relation rel, BlockNumber segno);
 
 extern void
-TruncateAOSegmentFile(File aosegfile, Relation rel, long offset, int elevel);
+TruncateAOSegmentFile(File aosegfile, Relation rel, int64 offset, int elevel);
 
 #endif   /* AOMD_H */

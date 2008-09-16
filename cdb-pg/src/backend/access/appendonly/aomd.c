@@ -111,16 +111,18 @@ CloseAOSegmentFile(File aosegfile, Relation rel, BlockNumber segno)
  * Truncate all bytes from offset to end of file.
  */
 void
-TruncateAOSegmentFile(File aosegfile, Relation rel, long offset, int elevel)
+TruncateAOSegmentFile(File aosegfile, Relation rel, int64 offset, int elevel)
 {
 	char *relname = RelationGetRelationName(rel);
 	
 	Assert(aosegfile > 0);
 	Assert(offset >= 0);
 
-	// Must be converted to the the 'fd' module and 64-bit lengths...
-	Assert(false);
-	if (ftruncate(aosegfile, offset) < 0)
+	/*
+	 * Call the 'fd' module with a 64-bit length since AO segment files
+	 * can be multi-gigabyte to the terabytes...
+	 */
+	if (FileTruncate(aosegfile, offset) < 0)
 		ereport(elevel,
 				(errmsg("\"%s\": failed to truncate data after eof", relname)));
 	
