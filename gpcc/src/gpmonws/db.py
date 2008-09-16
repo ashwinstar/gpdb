@@ -22,7 +22,7 @@ except:
     sys.stderr.write('GPDB connection failure: %s\n' % sys.exc_info()[0])
     conn = None
 
-def getrole(username, password):
+def get_role(username, password):
     res = (False, False)
     try:
         auth_conn = pg8000.Connection(user=username, password=password, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)

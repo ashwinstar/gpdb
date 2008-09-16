@@ -36,7 +36,7 @@ session = web.session.Session(app,
 render = web.template.render('./templates/', cache=False)
 
 def authrole(username, password):
-    (valid, issuper) = db.getrole(username, password)
+    (valid, issuper) = db.get_role(username, password)
     if valid:
         session.user = username
         session.role['superuser'] = issuper
