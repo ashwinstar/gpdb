@@ -12,11 +12,11 @@ override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 OBJS = bayes.o pinv.o regress.o
 
 # Ugly gross hack.  Remove this
-CLAPACKDIR = $(foreach dir,$(LDFLAGS), \
+CLAPACKDIR = $(filter %lib,($(foreach dir,$(LDFLAGS), \
                 $(if $(findstring cdb2/main/ext, $(dir)), \
-                   $(subst -L,,$(dir))))
+                   $(subst -L,,$(dir))))))
 
-CLAPACK = libblas.a libf2c.a liblapack.a
+CLAPACK = libf2c.a libblas.a liblapack.a
 
 all: SUBSYS.o
 
