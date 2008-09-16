@@ -5948,8 +5948,6 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 			if (!pBSpec)
 				goto l_EveryLoopEnd;
 
-			Assert(IsA(pBSpec, PartitionBoundSpec));
-
 			if (pElem->partName)
 			{
 				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
@@ -5960,6 +5958,21 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				snprintf(namBuf, sizeof(namBuf), " number %d", 
 						 numElts);
 			}
+
+			/* MPP-3541: invalid use of LIST spec */
+			if (!IsA(pBSpec, PartitionBoundSpec))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("invalid use of LIST boundary "
+								"specification for RANGE partition%s%s",
+								namBuf,
+								at_depth),
+						 parser_errposition(pstate, pBSpec->location)));
+			}
+
+			Assert(IsA(pBSpec, PartitionBoundSpec));
+
 		}
 
 		/* have a valid range bound spec */
