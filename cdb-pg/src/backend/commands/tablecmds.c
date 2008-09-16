@@ -376,7 +376,7 @@ static Oid rel_partition_get_master(Oid relid);
 
 static List *
 atpxRenameList(Relation rel, PartitionNode *pNode, 
-			   char *old_parentname, const char *new_parentname);
+			   char *old_parentname, const char *new_parentname, int *skipped);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -2565,6 +2565,8 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 			RenameStmt 			   	*renStmt 	 = makeNode(RenameStmt);
 			DestReceiver 		   	*dest  		 = None_Receiver;
 			List 					*renList 	 = NIL;
+			int 					 skipped 	 = 0;
+			int 					 renamed 	 = 0;
 
 			renStmt->renameType = OBJECT_TABLE;
 			renStmt->subname = NULL;
@@ -2572,7 +2574,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 			/* rename the children as well */
 			renList = atpxRenameList(targetrelation, 
-									 pNode, oldrelname, newrelname);
+									 pNode, oldrelname, newrelname, &skipped);
 
 			/* process children if there are any */
 			if (renList)
@@ -2593,7 +2595,19 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 					ProcessUtility(
 							(Node *) renStmt,
 							NULL, dest, NULL);		
+					renamed++;
 				}
+
+				/* MPP-3542: warn when skip child partitions */
+				if (skipped)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("renamed %d partitions, skipped %d child partitions due to name truncation",
+									renamed, skipped)));
+
+				}
+
 			}
 			
 			
@@ -14379,9 +14393,38 @@ ATPExecPartModify(Relation rel,
 }
 
 /* ALTER TABLE ... RENAME PARTITION */
+static void atpxSkipper(PartitionNode *pNode, int *skipped)
+{
+	ListCell *lc;			
+
+	if (!pNode) return;
+
+	/* add entries for rules at current level */
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule 	*rule = lfirst(lc);
+
+		if (skipped) *skipped += 1;
+
+		if (rule->children)
+			atpxSkipper(rule->children, skipped);
+	} /* end foreach */
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule 	*rule = pNode->default_part;
+
+		if (skipped) *skipped += 1;
+
+		if (rule->children)
+			atpxSkipper(rule->children, skipped);
+	}
+} /* end atpxSkipper */
+
 static List *
 atpxRenameList(Relation rel, PartitionNode *pNode, 
-			   char *old_parentname, const char *new_parentname)
+			   char *old_parentname, const char *new_parentname, int *skipped)
 {
 	List *l1 = NIL;
 	ListCell *lc;			
@@ -14415,15 +14458,23 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 		 * after the old parent name prefix) as the suffix.
 		 */
 
-		Assert(strlen(old_parentname) <= strlen(relname));
+/*		Assert(strlen(old_parentname) <= strlen(relname)); */
 
 		if (strlen(old_parentname) > strlen(relname))
+		{
+			if (skipped) *skipped += 1;
+			atpxSkipper(rule->children, skipped);
 			goto l_loop_skip;
+		}
 
-		Assert(0 == strncmp(old_parentname, relname, strlen(old_parentname)));
+/*		Assert(0 == strncmp(old_parentname, relname, strlen(old_parentname))); */
 
 		if (0 != (strncmp(old_parentname, relname, strlen(old_parentname))))
+		{
+			if (skipped) *skipped += 1;
+			atpxSkipper(rule->children, skipped);
 			goto l_loop_skip;
+		}
 
 		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
 				 new_parentname, relname + strlen(old_parentname));
@@ -14447,7 +14498,7 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 
 			if (rule->children)
 				l2 = atpxRenameList(rel, rule->children, 
-									relname, newRelNameBuf);
+									relname, newRelNameBuf, skipped);
 			else
 				l2 = NIL;
 
@@ -14484,12 +14535,20 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 		heap_close(rel, NoLock);
 
 		if (strlen(old_parentname) < strlen(relname))
+		{
+			if (skipped) *skipped += 1;
+			atpxSkipper(rule->children, skipped);
 			goto l_fin_rename;
+		}
 
-		Assert(strncmp(old_parentname, relname, strlen(old_parentname)));
+/*		Assert(strncmp(old_parentname, relname, strlen(old_parentname))); */
 
 		if (0 != (strncmp(old_parentname, relname, strlen(old_parentname))))
+		{
+			if (skipped) *skipped += 1;
+			atpxSkipper(rule->children, skipped);
 			goto l_fin_rename;
+		}
 
 		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
 				 new_parentname, relname + strlen(old_parentname));
@@ -14504,7 +14563,7 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 
 			if (rule->children)
 				l2 = atpxRenameList(rel, rule->children, 
-									relname, newRelNameBuf);
+									relname, newRelNameBuf, skipped);
 			else
 				l2 = NIL;
 
@@ -14571,6 +14630,8 @@ ATPExecPartRename(Relation rel,
 		HeapTuple				 tuple;
 		Form_pg_partition_rule	 pgrule;
 		List 					*renList 	 = NIL;
+		int 					 skipped 	 = 0;
+		int 					 renamed 	 = 0;
 
 		newpid.idtype = AT_AP_IDName;
 		newpid.partiddef = pc->arg1;
@@ -14643,7 +14704,7 @@ ATPExecPartRename(Relation rel,
 				pNode = NULL;
 
 		/* rename the children as well */
-		renList = atpxRenameList(rel, pNode, targetrelname, relname);
+		renList = atpxRenameList(rel, pNode, targetrelname, relname, &skipped);
 
 		part_rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 
@@ -14693,6 +14754,7 @@ ATPExecPartRename(Relation rel,
 				ProcessUtility(
 						(Node *) renStmt,
 						NULL, dest, NULL);		
+				renamed++;
 			}
 		}
 		
@@ -14704,6 +14766,16 @@ ATPExecPartRename(Relation rel,
 							prule->partIdStr,
 							newpartname,
 							prule->relname)));
+
+		/* MPP-3542: warn when skip child partitions */
+		if (skipped)
+		{
+				ereport(WARNING,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("renamed %d partitions, skipped %d child partitions due to name truncation",
+								renamed, skipped)));
+		}
+
 	}
 
 } /* end ATPExecPartRename */
