@@ -471,7 +471,6 @@
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
-#gp_enable_functions = false
 #statement_timeout = 0			# 0 is disabled
 #vacuum_freeze_min_age = 100000000
 
