@@ -16,7 +16,7 @@ CLAPACKDIR = $(filter %lib,($(foreach dir,$(LDFLAGS), \
                 $(if $(findstring cdb2/main/ext, $(dir)), \
                    $(subst -L,,$(dir))))))
 
-CLAPACK = libf2c.a libblas.a liblapack.a
+CLAPACK = liblapack.a libblas.a libf2c.a 
 
 all: SUBSYS.o
 
