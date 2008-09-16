@@ -266,8 +266,9 @@ PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Obtained Primary port base $PORT_BASE"
 	PRIMARY_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"|tr '\n' ' '`
 	LOG_MSG "[INFO]:-Obtained Primary hostname list ${PRIMARY_HOST_ARRAY[@]}" 
+	SEG_PER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
+	LOG_MSG "[INFO]:-Obtained number of segments per host as $SEG_PER_HOST"
 	DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`
-	LOG_MSG "[INFO]:-Obtained Primary datadir list $DATA_DIRECTORY"
 	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	LOG_MSG "[INFO]:-Obtained Master hostname $MASTER_HOSTNAME"
 	MASTER_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=-1 and dbid=1;"|$SED -e s/\\\/${SEG_PREFIX}-1//g`
@@ -280,7 +281,6 @@ PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Obtained Max connections $MASTER_MAX_CONNECT"	
 	#Check to see if we have mirrors configured
 	MIR_NUM=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
-	SEG_PER_HOST=0
 	SEP_HOSTS=0
 	if [ $MIR_NUM -ne 0 ];then
 		#Have mirrors configured
@@ -288,12 +288,9 @@ PARSE_SQL_FILE () {
 		MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"|$TR '\n' ' '`
 		LOG_MSG "[INFO]:-Obtained Mirror host list ${MIRROR_HOST_ARRAY[@]}"
 		MIRROR_DATA_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`
-		LOG_MSG "[INFO]:-Obtained Mirror data directory $MIRROR_DATA_DIRECTORY"
 		#Get the mirror port base	
 		MIRROR_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
 		LOG_MSG "[INFO]:-Obtained Mirror port base $MIRROR_PORT_BASE"
-		SEG_PER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
-		LOG_MSG "[INFO]:-Obtained number of segments per host as $SEG_PER_HOST"
 		#See if we have mirroring on separate hosts
 		#Check to see if we have a primary hostname which appears in the mirror array
 		MATCH=0
@@ -327,20 +324,48 @@ PARSE_SQL_FILE () {
 		fi
 	fi
 	#Check if multi-home array
-	if [ $SEG_PER_HOST -eq 1 ];then
-		MULTI_HOME=0
-		ARRAY_TXT="Single-home"
+	T_SEG_ARRAY=()
+	for MHOST in ${PRIMARY_HOST_ARRAY[@]}
+	do
+	    PING_HOST $MHOST
+	    SEG_HOSTNAME=`$TRUSTED_SHELL $MHOST "$HOSTNAME"`
+	    if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Unable to get hostname output for $MHOST" 2
+	    fi	    
+	    if [ `$ECHO ${T_SEG_ARRAY[@]}|$TR ' ' '\n'|$GREP -c "^${SEG_HOSTNAME}$"` -eq 0 ];then
+		T_SEG_ARRAY=(${T_SEG_ARRAY[@]} $SEG_HOSTNAME)
+	    fi
+	done	    
+
+	NUM_HOSTNAME=${#T_SEG_ARRAY[@]}
+	((MULTIPLE=${#PRIMARY_HOST_ARRAY[@]} / $NUM_HOSTNAME))
+	if [ $MULTIPLE -eq 1 ] ; then
+	    MULTI_HOME=0
+	    ARRAY_TXT="Single-home"
 	else
-		PRI_HOST1=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1 and dbid in (select min(dbid) from $CONFIG_TABLE where content<>-1 and port in (select min(port) from $CONFIG_TABLE where content<>-1 and definedprimary='t'));"`
-		PRI_HOST2=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1 and dbid in (select min(dbid) from $CONFIG_TABLE where content<>-1 and port in (select max(port) from $CONFIG_TABLE where content<>-1 and definedprimary='t'));"`
-		if [ $PRI_HOST1 != $PRI_HOST2 ];then
-			MULTI_HOME=1
-			ARRAY_TXT="Multi-home"
-		else
-			MULTI_HOME=0	
-			ARRAY_TXT="Single-home"
-		fi
+	    MULTI_HOME=1
+	    ARRAY_TXT="Multi-home"
 	fi
+
+	((NUM_DUPLICATE=$SEG_PER_HOST / ${#DATA_DIRECTORY[@]}))
+	HOME_COUNT=1
+	FAKE_DATA_DIRECTORY=$DATA_DIRECTORY
+	FAKE_MIRROR_DATA_DIRECTORY=$MIRROR_DATA_DIRECTORY
+	while [ $HOME_COUNT -lt $NUM_DUPLICATE ] 
+	do
+	    FAKE_DATA_DIRECTORY="${FAKE_DATA_DIRECTORY} ${DATA_DIRECTORY}"
+	    if [ $MIR_NUM -ne 0 ] ; then
+		FAKE_MIRROR_DATA_DIRECTORY="${FAKE_MIRROR_DATA_DIRECTORY} ${MIRROR_DATA_DIRECTORY}"
+	    fi
+	    ((HOME_COUNT=$HOME_COUNT+1))
+	done
+	DATA_DIRECTORY=${FAKE_DATA_DIRECTORY}
+	LOG_MSG "[INFO]:-Obtained Primary data directory $DATA_DIRECTORY"
+	if [ $MIR_NUM -ne 0 ] ; then
+	    MIRROR_DATA_DIRECTORY=${FAKE_MIRROR_DATA_DIRECTORY}
+	    LOG_MSG "[INFO]:-Obtained Mirror data directory $MIRROR_DATA_DIRECTORY"
+	fi
+
 	DELETE_TEMP_DB	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
