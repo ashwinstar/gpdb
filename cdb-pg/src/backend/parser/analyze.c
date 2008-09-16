@@ -5964,8 +5964,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("invalid use of LIST boundary "
-								"specification for RANGE partition%s%s",
+						 errmsg("invalid use of LIST boundary specification "
+								"in partition%s of type RANGE%s",
 								namBuf,
 								at_depth),
 						 parser_errposition(pstate, pBSpec->location)));
