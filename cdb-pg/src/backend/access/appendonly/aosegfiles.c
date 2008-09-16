@@ -344,7 +344,10 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *total
 	heap_endscan(aoscan);	
 
 	if (*totalsegs == 0)
+	{
+		heap_close(pg_aoseg_rel, AccessShareLock);
 		return NULL;
+	}
 	
 	/*
 	 * Initialize the segment file information array according to the seg count
