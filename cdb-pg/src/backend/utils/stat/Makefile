@@ -24,7 +24,7 @@ SUBSYS.o: $(OBJS) $(CLAPACK)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS) $(CLAPACK)
 
 %.a:
-	$(CLAPACKDIR)/$@ $@
+	cp $(CLAPACKDIR)/$@ $@
 
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
