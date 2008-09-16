@@ -3360,13 +3360,13 @@ CopyFromDispatch(CopyState cstate)
 											resultRelInfo->ri_aosegno, 
 											ao->tupcount);
 				}
-				else
-				{
-					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
-					UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc, 
-											resultRelInfo->ri_aosegno, 
-											cstate->processed);
-				}
+			}
+			else
+			{
+				ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+				UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc, 
+										resultRelInfo->ri_aosegno, 
+										cstate->processed);
 			}
     	}
         /* Close indices and then the relation itself */

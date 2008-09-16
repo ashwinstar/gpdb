@@ -2550,3 +2550,48 @@ update v set j = 2;
 -- should fail
 update v set j = 3;
 drop table v;
+
+-- test ao seg totals
+create  or replace function aototal(relname text) returns float8 as $$
+declare
+  segoid oid;
+  tupcount float8 := 0;
+  rc int := 0;
+begin
+  segoid := relname::regclass::oid;
+
+  execute 'select 1  from pg_class where relname = ''pg_aoseg_' || segoid || '''' into rc;
+  if rc > 0 then
+	  execute 'select tupcount from pg_aoseg.pg_aoseg_' || segoid into tupcount;
+  end if;
+  return tupcount;
+end; $$ language plpgsql volatile;
+
+create table ao (i int) with (appendonly = true)
+ partition by range(i)
+ (start(1) end(10) every(1));
+
+insert into ao values(1), (2), (3);
+
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+truncate ao;
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+copy ao from stdin;
+4
+5
+6
+\.
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+-- try SREH
+copy ao from stdin log errors into ao_err segment reject limit 100;
+6
+7
+10000
+f
+\.
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+drop table ao;

@@ -5297,3 +5297,100 @@ update v set j = 2;
 update v set j = 3;
 ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported
 drop table v;
+-- test ao seg totals
+create  or replace function aototal(relname text) returns float8 as $$
+declare
+  segoid oid;
+  tupcount float8 := 0;
+  rc int := 0;
+begin
+  segoid := relname::regclass::oid;
+
+  execute 'select 1  from pg_class where relname = ''pg_aoseg_' || segoid || '''' into rc;
+  if rc > 0 then
+	  execute 'select tupcount from pg_aoseg.pg_aoseg_' || segoid into tupcount;
+  end if;
+  return tupcount;
+end; $$ language plpgsql volatile;
+create table ao (i int) with (appendonly = true)
+ partition by range(i)
+ (start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_1" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_2" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_3" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_4" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_5" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_6" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_7" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_8" for table "ao"
+NOTICE:  CREATE TABLE will create partition "ao_1_prt_9" for table "ao"
+insert into ao values(1), (2), (3);
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+ partitiontablename | aototal 
+--------------------+---------
+ ao_1_prt_1         |       1
+ ao_1_prt_2         |       1
+ ao_1_prt_3         |       1
+ ao_1_prt_4         |        
+ ao_1_prt_5         |        
+ ao_1_prt_6         |        
+ ao_1_prt_7         |        
+ ao_1_prt_8         |        
+ ao_1_prt_9         |        
+(9 rows)
+
+truncate ao;
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+ partitiontablename | aototal 
+--------------------+---------
+ ao_1_prt_1         |        
+ ao_1_prt_2         |        
+ ao_1_prt_3         |        
+ ao_1_prt_4         |        
+ ao_1_prt_5         |        
+ ao_1_prt_6         |        
+ ao_1_prt_7         |        
+ ao_1_prt_8         |        
+ ao_1_prt_9         |        
+(9 rows)
+
+copy ao from stdin;
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+ partitiontablename | aototal 
+--------------------+---------
+ ao_1_prt_1         |        
+ ao_1_prt_2         |        
+ ao_1_prt_3         |        
+ ao_1_prt_4         |       1
+ ao_1_prt_5         |       1
+ ao_1_prt_6         |       1
+ ao_1_prt_7         |        
+ ao_1_prt_8         |        
+ ao_1_prt_9         |        
+(9 rows)
+
+-- try SREH
+copy ao from stdin log errors into ao_err segment reject limit 100;
+NOTICE:  Error table "ao_err" does not exist. Auto generating an error table with the same name
+WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
+HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
+NOTICE:  Found 2 data formatting errors (2 or more input rows). Errors logged into error table "ao_err"
+select partitiontablename, aototal(partitiontablename)
+from pg_partitions where tablename = 'ao';
+ partitiontablename | aototal 
+--------------------+---------
+ ao_1_prt_1         |        
+ ao_1_prt_2         |        
+ ao_1_prt_3         |        
+ ao_1_prt_4         |       1
+ ao_1_prt_5         |       1
+ ao_1_prt_6         |       2
+ ao_1_prt_7         |       1
+ ao_1_prt_8         |        
+ ao_1_prt_9         |        
+(9 rows)
+
+drop table ao;
