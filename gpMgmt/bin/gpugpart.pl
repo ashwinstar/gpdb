@@ -182,6 +182,7 @@ sub infix_proc_fn
     return $outi;
 }
 
+# process infix expressions
 sub infix_proc
 {
     my $biga = shift;
@@ -269,6 +270,7 @@ sub paren_proc
     return $outi;
 }
 
+# parse words
 sub pw1
 {
     my $txt = shift;
@@ -303,7 +305,8 @@ sub makespec
         print STDERR "invalid partition type: $pps->{typ}\n";
         return undef;
     }
-    
+
+    # build the start and end for a RANGE
     if ($pps->{typ} =~ m/range/i)
     {
         $pspec->{start} = {};
@@ -327,6 +330,7 @@ sub makespec
 
             @foo = keys(%{$pps->{range_start}->{colh_oper}});
 
+            # is inclusive if comparison operator includes "="
             $pspec->{start}->{inclusive} = 0 +
                 ($pps->{range_start}->{colh_oper}->{$foo[0]}->[0] =~ m/\=/);
 
@@ -348,12 +352,15 @@ sub makespec
 
             @foo = keys(%{$pps->{range_end}->{colh_oper}});
 
+            # is inclusive if comparison operator includes "="
             $pspec->{end}->{inclusive} = 0 + 
                 ($pps->{range_end}->{colh_oper}->{$foo[0]}->[0] =~ m/\=/);
 
         }
 
     }
+
+    # build keys for LIST
     if ($pps->{typ} =~ m/list/i)
     {
         $pspec->{start} = {};
@@ -404,7 +411,8 @@ sub makespec
     return $pspec;
 } # end makespec
 
-# generate partition defintitions
+# genpartdefs: generate partition defintitions.  Pass 1 - generate the
+# specs and sort the range partitions.
 sub genpartdefs
 {
     my $reg_tabs = shift;
@@ -541,20 +549,26 @@ sub genpartdefs
 
                         if (defined($ps->{$tt}->{keys}))
                         {
-                            if (scalar($vv->{pby}->{keys})
-                                != scalar($ps->{$tt}->{keys}))
+                            if (scalar(@{$vv->{pby}->{keys}})
+                                != scalar(@{$ps->{$tt}->{keys}}))
                             {
+                                print STDERR scalar(@{$vv->{pby}->{keys}}), " ",
+                                scalar(@{$ps->{$tt}->{keys}}) , "\n";
+
                                 print STDERR "key count mismatch for ",
-                                Data::Dumper->Dump([$ps]), "\n";
+                                "\nps: $tt ", Data::Dumper->Dump([$ps->{$tt}]), "\npby:",
+                                Data::Dumper->Dump([$vv->{pby}]), "\n";
                                 next;
                             }
-                            for my $jjj (0..(scalar($vv->{pby}->{keys})-1))
+                            for my $jjj (0..(scalar(@{$vv->{pby}->{keys}})-1))
                             {
                                 if ($vv->{pby}->{keys}->[$jjj] ne
                                     $ps->{$tt}->{keys}->[$jjj])
                                 {
-                                    print STDERR "key name mismatch for ",
-                                    Data::Dumper->Dump([$ps]), "\n";
+                                print STDERR "key name mismatch for ",
+                                "\nps: $tt ", Data::Dumper->Dump([$ps->{$tt}]), "\npby:",
+                                Data::Dumper->Dump([$vv->{pby}]), "\n";
+
                                     next;
                                 }
 
@@ -586,6 +600,8 @@ sub genpartdefs
 
 } # end genpartdefs
 
+# genpartdefs2: Pass 2 - fixup invalid partition specs, ie both start
+# and end point to same value.
 sub genpartdefs2
 {
     my $reg_tabs = shift;
@@ -593,8 +609,6 @@ sub genpartdefs2
     my $do_fixup = 1;
 
     my $magic_interval_fixup;
-
-    my $magic_suffix = "XGPX";
 
     while (my ($kk, $vv) = each (%{$reg_tabs}))
     {
@@ -758,6 +772,7 @@ sub genpartdefs2
 
 } # end genpartdefs2
 
+# genpartdefs3: Pass 3 - add subpartitions to partition by clause
 sub genpartdefs3
 {
     my $reg_tabs = shift;
@@ -791,6 +806,11 @@ sub genpartdefs3
                         exists($reg_tabs->{$tname}->{pby}))
                     {
                         $pspec->{subpartition} = $tname;
+
+                        # mark as a subpartition so we don't create a
+                        # separate partition definition.
+                        $reg_tabs->{$tname}->{pby}->{is_subpartition} = 1;
+
                     }
 
                 }
@@ -847,13 +867,14 @@ sub genpartdefs3
 
 } # end genpartdefs3
 
+# genpartdefs4: Pass 4 - build text and comments for partition by clause
 sub genpartdefs4
 {
     my $reg_tabs = shift;
 
     my $do_fixup = 1;
 
-    my $magic_suffix = "XGPX";
+    my $magic_suffix = "XnewX";
 
     while (my ($kk, $vv) = each (%{$reg_tabs}))
     {
@@ -879,21 +900,23 @@ sub genpartdefs4
                 {
                     if (exists($vv->{pby}->{every}))
                     {
-                        $spec_txt .=  '  /* ' . "every $vv->{pby}->{every}" 
-                            . ' */ ' . "\n";
+                        $spec_txt .=  '  -- ' . "every $vv->{pby}->{every}" 
+                            . "   \n";
                     }
                 }
 
                 if (exists($pspec->{child}))
                 {
+                    # NOTE: these magic comments are used by
+                    # genpartdef_subtree_fixup
                     if (exists($pspec->{name}) && defined($pspec->{name}))
                     {
-                        $spec_txt .= '  /* ' . $pspec->{name} 
-                        . ' derived from: ' ;
+                        $spec_txt .= '  -- ' . $pspec->{name} 
+                        . ' derived from: (' ;
                     }
                     else
                     {
-                        $spec_txt .= '  /* derived from: ' ;
+                        $spec_txt .= '  -- derived from: (' ;
                     }
                     my $tname = $pspec->{child};
 
@@ -903,7 +926,7 @@ sub genpartdefs4
                         $tname = $vv->{Schema} . "." . $tname;
                     }
 
-                    $spec_txt .=  $tname . ' */ '. "\n";
+                    $spec_txt .=  $tname . ")   \n";
 
                     # find oll the tables that are children of this table
                     $vv->{pby}->{children} = []
@@ -1062,14 +1085,14 @@ sub genpartdef_subtree_fixup
     for my $linnum (0..(scalar(@foo)-1))
     {
         next
-            unless ($foo[$linnum] =~ m/^\s+\/\*.*\s+derived from\:/);
+            unless ($foo[$linnum] =~ m/^\s+\-\-.*\s+derived from\:/);
 
         my @baz = 
-            ($foo[$linnum] =~ m/^\s+\/\*.*\s+derived from\:\s+(.*)\s+\*\//);
+            ($foo[$linnum] =~ m/^\s+\-\-.*\s+derived from\:\s+\((.*)\)\s+/);
         
         my $tname = shift @baz;
 
-#        print "\n\ngot one!! $tname\n\n";
+#        print "\n\ngot one!! ($tname)\n\n";
 
         next unless(exists($reg_tabs->{$tname})
                     && exists($reg_tabs->{$tname}->{pby}));
@@ -1098,6 +1121,7 @@ sub genpartdef_subtree_fixup
     $pby->{did_subtree_fixup} = 1;
 }
 
+# genpartdefs5: Pass 5 - hang the subpartition specs in the right places
 sub genpartdefs5
 {
     my $reg_tabs = shift;
@@ -1114,22 +1138,33 @@ sub genpartdefs5
 
 } # end genpartdefs5
 
+# print the partition definitions
 sub printpartdefs
 {
     my $reg_tabs = shift;
 
-    while (my ($kk, $vv) = each (%{$reg_tabs}))
+
+    my @foo = sort(keys(%{$reg_tabs}));
+
+    for my $kk (@foo)
     {
-        if (exists($vv->{pby})
-            && !exists($vv->{pby}->{is_subpartition}))
+        my $vv = $reg_tabs->{$kk};
+
+        if (exists($vv->{pby}))
         {
-            my $ct_txt = $vv->{pby}->{ct_txt};
-            my $pby_txt = $vv->{pby}->{pby_txt};
-            my $spec_txt = $vv->{pby}->{spec_txt};
+            if (exists($vv->{pby}->{is_subpartition}))
+            {
+                print "\n-- table $kk is subpartition of $vv->{pby}->{parent}\n";
+            }
+            else
+            {
+                my $ct_txt = $vv->{pby}->{ct_txt};
+                my $pby_txt = $vv->{pby}->{pby_txt};
+                my $spec_txt = $vv->{pby}->{spec_txt};
 
-            print "\n";
-            print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
-
+                print "\n";
+                print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
+            }
         }
 
     }
@@ -1547,6 +1582,7 @@ sub classify_hash
     return $partSpec;
 } # end classify_hash
 
+# classify_fn: for LIST and RANGE partitions
 sub classify_fn
 {
     my ($node, $partSpec) = @_;
@@ -1636,6 +1672,9 @@ sub classify_fn
 
         $partSpec->{oper} = $oper;
 
+        # equality comparison indicates a LIST partition, while
+        # greater than/leass than comparison indicates a RANGE
+        # partition.
         if ($oper =~ m/^\=$/)
         {
             $partSpec->{typ} = "LIST";
@@ -1674,6 +1713,8 @@ sub classify_fn
     return $partSpec;
 }
 
+# classify: the top-level classifier.  Parse the rewrite rules and
+# determine if a RANGE or LIST partition.
 sub classify
 {
     my $node = shift;
@@ -2276,22 +2317,12 @@ if (1)
     $psql_str .= $glob_connect
         if (defined($glob_connect));
 
-    $psql_str .= " -c \'\\d  \'";
+    $psql_str .= " -c \'select * from pg_rules \' ";
 
 #    print $psql_str, "\n";
 
     my $tabdef = `$psql_str`;
 
-
-    if ($tabdef !~ m/List of relations/im)
-    {
-        exit(0);
-    }
-
-    # remove the \d header
-    $tabdef =~ s/\s+List of relations\s+//;
-
-#    print $tabdef;
 
     my $rowarr = tablelizer($tabdef);
 
@@ -2299,10 +2330,10 @@ if (1)
 
     for my $rr (@{$rowarr})
     {
-        if ($rr->{Type} =~ m/Table/i)
+        if ($rr->{definition} =~ m/AS ON INSERT TO/i)
         {
 #            $reg_tabs{$rr->{Name}} = $rr;
-            $reg_tabs{ $rr->{Schema} . "." . $rr->{Name} } = $rr;
+            $reg_tabs{ $rr->{schemaname} . "." . $rr->{tablename} } = $rr;
         }
 
     }
@@ -2447,10 +2478,12 @@ if (1)
                     $txt = $vv2->{where};
 #                    print "  where: ", $txt, "\n";
 
+                    # parse words
                     my $biga = pw1($txt);
 
                     $vv2->{parsetree} = $biga;
 
+                    # classify the tables
                     classify($vv2);
 #                    print Data::Dumper->Dump($biga);
                 }
@@ -2462,22 +2495,23 @@ if (1)
 
     if (0)
     {
-    while (my ($kk, $vv) = each (%reg_tabs))
-    {
-        if (exists($vv->{rules}))
+        while (my ($kk, $vv) = each (%reg_tabs))
         {
-            my $desc = $vv->{describe};
-            delete $vv->{describe};
-            print Data::Dumper->Dump([$vv]), "\n";
+            if (exists($vv->{rules}))
+            {
+                my $desc = $vv->{describe};
+                delete $vv->{describe};
+                print Data::Dumper->Dump([$vv]), "\n";
 
-            $vv->{describe} = $desc;
+                $vv->{describe} = $desc;
+            }
         }
-
-    }}
+    }
 
 
 #    print Data::Dumper->Dump([%reg_tabs]), "\n";
 
+    # generate partition definitions
 
     genpartdefs(\%reg_tabs);
     genpartdefs2(\%reg_tabs);
@@ -2485,13 +2519,14 @@ if (1)
     genpartdefs4(\%reg_tabs);
     genpartdefs5(\%reg_tabs);
     
-    print Data::Dumper->Dump([%reg_tabs]), "\n";
+#    print Data::Dumper->Dump([%reg_tabs]), "\n";
 
     print "\n\n\n";
 
     if ($glob_dosql)
     {
-        update_catalog(\%reg_tabs);
+#        update_catalog(\%reg_tabs);
+        printpartdefs(\%reg_tabs);
     }
     else
     {
@@ -2500,7 +2535,7 @@ if (1)
 
     print "\n\n\n";
 
-    printpartdefs(\%reg_tabs);
+
 
 }
 
