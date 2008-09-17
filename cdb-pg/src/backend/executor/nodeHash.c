@@ -955,11 +955,11 @@ ExecScanHashBucket(HashJoinState *hjstate,
 	 * the last tuple returned from the current bucket.
 	 */
 	if (hashTuple == NULL)
-    {
-	    /* if bloom filter fails, then no match - don't even bother to scan */
+	{
+		/* if bloom filter fails, then no match - don't even bother to scan */
 		if (gp_hashjoin_bloomfilter == 0 || 0 != (hashtable->bloom[hjstate->hj_CurBucketNo] & BLOOMVAL(hashvalue)))
-            hashTuple = hashtable->buckets[hjstate->hj_CurBucketNo];
-    }
+			hashTuple = hashtable->buckets[hjstate->hj_CurBucketNo];
+	}
 	else
 		hashTuple = hashTuple->next;
 

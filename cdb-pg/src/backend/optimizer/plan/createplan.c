@@ -466,6 +466,7 @@ disuse_physical_tlist(Plan *plan, Path *path)
 	switch (path->pathtype)
 	{
 		case T_SeqScan:
+		case T_AppendOnlyScan:
 		case T_IndexScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
