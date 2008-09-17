@@ -5,11 +5,10 @@
  *
  * Copyright (c) 2004-2008, Greenplum inc
  *
- * IDENTIFICATION
- *	  $Id$
- *
- * NOTES
- *
+ *	         $Id$
+ *       $Change$
+ *     $DateTime$
+ *       $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -82,10 +81,6 @@ static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 static bool
 doesUpdateAffectPartitionCols(Plan         *plan,
                               Query        *query);
-static void
-warn_ctid_without_segid(Query *query, Plan *plan);
-
-static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
 #if 0
 static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
@@ -613,19 +608,7 @@ apply_motion(Plan *plan, Query *query)
                                     "of the target table and all joined tables.")
 					));
 		}
-
-		if (has_ctid_outside_tlist_walker((Node *)result, NULL))
-		{
-			ereport(ERROR, (
-							errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-							errmsg("Cannot parallelize that %s yet",
-					 query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE"),
-							errdetail("Result depends on values of CTID system column.  Support for CTID system column may change in the future.")
-							));
-		}
 	}
-	else
-        warn_ctid_without_segid(query, result);
 
     /* 
 	 * Discard subtrees of Query node that aren't needed for execution. 
@@ -1311,164 +1294,128 @@ doesUpdateAffectPartitionCols(Plan         *plan,
 
 
 /* ----------------------------------------------------------------------- *
- * Functions hasCtid(), hasCtid_outside_tlist() and helper function
- * ctid_inventory_walker() search a plan tree for a use of the CTID
- * pseudo-attribute.
- *
- * warn_ctid_without_segid() warns the user if the plan refers to a
+ * cdbmutate_warn_ctid_without_segid() warns the user if the plan refers to a
  * partitioned table's ctid column without also referencing its
  * gp_segment_id column.
- *
- * hasCtid_outside_tlist() detects a CTID reference outside of simple
- * Var in the targetlist of the top-level plan node.  The use of this
- * function is pretty much restricted to the case of a UPDATE or DELETE
- * in Greenplum Database first release.
  * ----------------------------------------------------------------------- *
  */
-typedef struct ctid_inv_data
+typedef struct ctid_inventory_context
 {
-	Relids      ctid_relids;
-    Relids      segid_relids;
-}	ctid_inv_data;
+	bool        uses_ctid;
+    bool        uses_segid;
+    Index       relid;
+} ctid_inventory_context;
 
-static bool ctid_inventory_walker(Node *node, ctid_inv_data * inv);
-
-void
-warn_ctid_without_segid(Query *query, Plan *plan)
-{
-	ctid_inv_data   invdata;
-    Relids          warn_relids;
-    RangeTblEntry  *rte;
-    int             relid;
-	
-    invdata.ctid_relids = NULL;
-	invdata.segid_relids = NULL;
-
-	ctid_inventory_walker((Node *) plan, &invdata);
-
-    if (invdata.ctid_relids == NULL)
-        return;
-
-    warn_relids = bms_difference(invdata.ctid_relids, invdata.segid_relids);
-
-    bms_foreach(relid, warn_relids)
-    {
-	    rte = rt_fetch(relid, query->rtable);
-        if (rte->rtekind == RTE_RELATION)
-        {
-            Relation    relation;
-            bool        isPartitioned;
-
-            relation = relation_open(rte->relid, NoLock);
-            isPartitioned = (relation->rd_cdbpolicy &&
-                             relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED);
-            relation_close(relation, NoLock);
-
-            if (isPartitioned)
-            {
-                /* Get name from catalog, not relcache, in case it changed. */
-                char   *relname = get_rel_name(rte->relid);
-
-                ereport(NOTICE,
-                        (errmsg("Query uses system column \"%s.ctid\"",
-                                relname),
-                         errdetail("To uniquely identify a row within a "
-                                   "distributed table, use the "
-                                   "\"gp_segment_id\" system column "
-                                   "together with the \"ctid\" column.")
-                         ));
-                if (relname)
-                    pfree(relname);
-            }
-        }
-    }
-
-    bms_free(warn_relids);
-    bms_free(invdata.ctid_relids);
-    bms_free(invdata.segid_relids);
-}                               /* warn_ctid_without_segid */
-
-bool
-ctid_inventory_walker(Node *node, ctid_inv_data * inv)
+static bool
+ctid_inventory_walker(Node *node, ctid_inventory_context *inv)
 {
 	if (node == NULL)
 		return false;
 
-	switch (nodeTag(node))
+	if (IsA(node, Var))
 	{
-		case T_Var:
-        {
-            Var    *var = (Var *)node;
+        Var    *var = (Var *)node;
 
-			switch (var->varattno)
-            {
-                case SelfItemPointerAttributeNumber:    /* ctid */
-				    inv->ctid_relids = bms_add_member(inv->ctid_relids, var->varno);
-                    break;
-                case gpsegmentIdAttributeNumber:       /* gp_segment_id */
-				    inv->segid_relids = bms_add_member(inv->segid_relids, var->varno);
-                    break;
-                default:
-                    break;
-            }
-			/* Var is primitive, no need to recur, but keep walking. */
-			return false;
+        if (var->varattno < 0 &&
+            var->varno == inv->relid &&
+            var->varlevelsup == 0)
+        {
+		    if (var->varattno == SelfItemPointerAttributeNumber)
+                inv->uses_ctid = true;
+            else if (var->varattno == GpSegmentIdAttributeNumber)
+		        inv->uses_segid = true;
         }
-		default:
-			/* Let plan_tree_walker() deal with other node types. */
-			break;
+		return false;
 	}
 	return plan_tree_walker(node, ctid_inventory_walker, inv);
 }
 
-bool
-has_ctid_outside_tlist_walker(Node *node, void* unused)
+void 
+cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *rel)
 {
-    UnusedArg(unused);
+	ctid_inventory_context  inv;
+    Relids                  relids_to_ignore;
+    ListCell               *cell;
+    AttrNumber              attno;
+    int                     ndx;
+	
+    inv.uses_ctid = false;
+	inv.uses_segid = false;
+    inv.relid = rel->relid;
 
-	if (node == NULL)
-		return false;
+    /* Rel not distributed?  Then segment id doesn't matter. */
+    if (!rel->cdbpolicy ||
+        rel->cdbpolicy->ptype != POLICYTYPE_PARTITIONED)
+        return;
 
-	switch (nodeTag(node))
-	{
-		case T_TargetEntry:
+    /* Ignore references occurring in the Query's final output targetlist. */
+    relids_to_ignore = bms_make_singleton(0);
+
+    /* Is 'ctid' referenced in join quals? */
+    attno = SelfItemPointerAttributeNumber;
+    Assert(attno >= rel->min_attr && attno <= rel->max_attr);
+    ndx = attno - rel->min_attr;
+    if (bms_nonempty_difference(rel->attr_needed[ndx], relids_to_ignore))
+        inv.uses_ctid = true;
+
+    /* Is 'gp_segment_id' referenced in join quals? */
+    attno = GpSegmentIdAttributeNumber;
+    Assert(attno >= rel->min_attr && attno <= rel->max_attr);
+    ndx = attno - rel->min_attr;
+    if (bms_nonempty_difference(rel->attr_needed[ndx], relids_to_ignore))
+        inv.uses_segid = true;
+
+    /* Examine the single-table quals on this rel. */
+    foreach(cell, rel->baserestrictinfo)
+    {
+        RestrictInfo   *rinfo = (RestrictInfo *)lfirst(cell);
+
+        Assert(IsA(rinfo, RestrictInfo));
+
+        ctid_inventory_walker((Node *)rinfo->clause, &inv);
+    }
+
+    /* Notify client if found a reference to ctid only, without gp_segment_id */
+    if (inv.uses_ctid && 
+        !inv.uses_segid)
+    {
+        RangeTblEntry  *rte = rt_fetch(rel->relid, root->parse->rtable);
+        const char     *cmd;
+        int             elevel;
+
+        /* Reject if UPDATE or DELETE.  Otherwise just give info msg. */
+        switch (root->parse->commandType)
         {
-            TargetEntry    *tle = (TargetEntry *)node;
+            case CMD_UPDATE:
+                cmd = "UPDATE";
+                elevel = ERROR;
+                break;
 
-            /* Ignore Var nodes at top level of target list. */
-            if (IsA(tle->expr, Var))
-                return false;
+            case CMD_DELETE:
+                cmd = "DELETE";
+                elevel = ERROR;
+                break;
 
-            /* 
-             * MPP-2792:  Ignore Var with cast at top level of target list.
-             * In a command like DELETE FROM t WHERE key IN (SELECT...), 
-             * cdbpath_dedup_fixup_unique() might have inserted a reference 
-             * to the target's ctid with a conversion to 64-bit integer type.
-             */
-            if (IsA(tle->expr, FuncExpr))
-            {
-                FuncExpr   *fe = (FuncExpr *)tle->expr;
-
-                if (fe->funcformat == COERCE_EXPLICIT_CAST &&
-                    fe->args &&
-                    IsA(linitial(fe->args), Var))
-                    return false;
-            }
-            break;
+            default:
+                cmd = "SELECT";
+                elevel = NOTICE;
         }
 
-		case T_Var:
-			/* Return true if found CTID outside target list. */
-			if (((Var *) node)->varoattno == SelfItemPointerAttributeNumber)
-                return true;
-			return false;
+        ereport(elevel, (errmsg("%s uses system-defined column \"%s.ctid\" "
+                                "without the necessary companion column "
+                                "\"%s.gp_segment_id\"",
+                                cmd,
+                                rte->eref->aliasname,
+                                rte->eref->aliasname),
+                         errhint("To uniquely identify a row within a "
+                                 "distributed table, use the \"gp_segment_id\" "
+                                 "column together with the \"ctid\" column.")
+                         ));
+    }
+    bms_free(relids_to_ignore);
+}                               /* cdbmutate_warn_ctid_without_segid */
 
-		default:
-			/* Let plan_tree_walker() deal with other node types. */
-			break;
-	}
-	return plan_tree_walker(node, has_ctid_outside_tlist_walker, NULL);
-}                               /* has_ctid_outside_tlist_walker */
+
 
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"

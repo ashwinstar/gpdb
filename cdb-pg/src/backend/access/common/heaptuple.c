@@ -19,6 +19,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/access/common/heaptuple.c,v 1.112 2006/11/23 05:27:18 neilc Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -83,11 +87,12 @@ heap_compute_data_size(TupleDesc tupleDesc,
 
 static inline char * att_align_zero(char *data, char alignchar)
 {
-	char *ret = (char *) att_align(data, alignchar);
-	while(data != ret)
+    size_t  misalignment = (size_t)att_align(1, alignchar) - 1;
+
+    while ((size_t)data & misalignment)
 		*(data++) = 0;
 
-	return ret;
+	return data;
 }
 
 /*
@@ -251,7 +256,7 @@ heap_attisnull(HeapTuple tup, int attnum)
 		case MinCommandIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
-        case gpsegmentIdAttributeNumber:       /*CDB*/
+        case GpSegmentIdAttributeNumber:       /*CDB*/
 			/* these are never null */
 			break;
 
@@ -286,8 +291,7 @@ heap_attisnull(HeapTuple tup, int attnum)
 Datum
 nocachegetattr(HeapTuple tuple,
 			   int attnum,
-			   TupleDesc tupleDesc,
-			   bool *isnull)
+			   TupleDesc tupleDesc)
 {
 	HeapTupleHeader tup = tuple->t_data;
 	Form_pg_attribute *att = tupleDesc->attrs;
@@ -515,7 +519,7 @@ nocachegetattr(HeapTuple tuple,
  * ----------------
  */
 Datum
-heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
+heap_getsysattr(HeapTuple tup, int attnum, bool *isnull)
 {
 	Datum			result;
 
@@ -552,15 +556,17 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 			result = CommandIdGetDatum(HeapTupleHeaderGetRawCommandId(tup->t_data));
 			break;
 		case TableOidAttributeNumber:
-			result = ObjectIdGetDatum(tup->t_tableOid);
+            /* CDB: Must now use a TupleTableSlot to access the 'tableoid'. */
+			result = ObjectIdGetDatum(InvalidOid);
+			elog(ERROR, "Invalid reference to \"tableoid\" system attribute");
 			break;
-		case gpsegmentIdAttributeNumber:                       /*CDB*/
+		case GpSegmentIdAttributeNumber:                       /*CDB*/
 			result = Int32GetDatum(Gp_segment);
 			break;
 		default:
+			result = Int32GetDatum(Gp_segment);
 			Assert(!"Invalid attnum for getsysattr");
 			elog(ERROR, "invalid attnum: %d", attnum);
-			result = Int64GetDatum(0);			/* keep compiler quiet */
 			break;
 	}
 	return result;
@@ -603,7 +609,6 @@ heaptuple_copy_to(HeapTuple tuple, HeapTuple dest, uint32 *destlen)
 
 	newTuple->t_len = tuple->t_len;
 	newTuple->t_self = tuple->t_self;
-	newTuple->t_tableOid = tuple->t_tableOid;
 	newTuple->t_data = (HeapTupleHeader) ((char *) newTuple + HEAPTUPLESIZE);
 	memcpy((char *) newTuple->t_data, (char *) tuple->t_data, tuple->t_len);
 	return newTuple;
@@ -631,7 +636,6 @@ heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
 
 	dest->t_len = src->t_len;
 	dest->t_self = src->t_self;
-	dest->t_tableOid = src->t_tableOid;
 	dest->t_data = (HeapTupleHeader) palloc(src->t_len);
 	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
 }
@@ -730,7 +734,6 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 	 */
 	tuple->t_len = len;
 	ItemPointerSetInvalid(&(tuple->t_self));
-	tuple->t_tableOid = InvalidOid;
 
 	/* 
 	 * The following 3 calls will setup the first 12 bytes of td (tuple->t_data) 
@@ -868,7 +871,6 @@ heap_modify_tuple(HeapTuple tuple,
 	 */
 	newTuple->t_data->t_ctid = tuple->t_data->t_ctid;
 	newTuple->t_self = tuple->t_self;
-	newTuple->t_tableOid = tuple->t_tableOid;
 	if (tupleDesc->tdhasoid)
 		HeapTupleSetOid(newTuple, HeapTupleGetOid(tuple));
 
@@ -1275,7 +1277,6 @@ heap_addheader(int natts,		/* max domain index */
 
 	tuple->t_len = len;
 	ItemPointerSetInvalid(&(tuple->t_self));
-	tuple->t_tableOid = InvalidOid;
 
 	/* we don't bother to fill the Datum fields */
 

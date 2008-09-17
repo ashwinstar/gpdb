@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/catalog/heap.c,v 1.314 2006/11/05 22:42:08 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *
  * INTERFACE ROUTINES
  *		heap_create()			- Create an uncataloged heap relation
@@ -152,7 +156,7 @@ static FormData_pg_attribute a7 = {
 /*CDB*/
 static FormData_pg_attribute a8 = {
 	0, {"gp_segment_id"}, INT4OID, 0, sizeof(gpsegmentId),
-	gpsegmentIdAttributeNumber, 0, -1, -1,
+	GpSegmentIdAttributeNumber, 0, -1, -1,
 	true, 'p', 'i', true, false, false, true, 0
 };
 

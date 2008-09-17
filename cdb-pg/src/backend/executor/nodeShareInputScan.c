@@ -6,7 +6,11 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *-------------------------------------------------------------------------
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
+  *-------------------------------------------------------------------------
  */
 
 /*
@@ -206,7 +210,7 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 
 	/* tuple table init */
 	ExecInitResultTupleSlot(estate, &sisstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &sisstate->ss);
+	sisstate->ss.ss_ScanTupleSlot = ExecInitExtraTupleSlot(estate);
 
 	/* 
 	 * init tuple type.

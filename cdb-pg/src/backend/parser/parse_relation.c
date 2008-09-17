@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/parser/parse_relation.c,v 1.125 2006/10/04 00:29:56 momjian Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -26,6 +30,8 @@
 #include "catalog/indexing.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
+#include "nodes/relation.h"                 /* CdbRelColumnInfo */
+#include "optimizer/pathnode.h"             /* cdb_rte_find_pseudo_column() */
 #include "parser/parsetree.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
@@ -1578,7 +1584,20 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 		attnum > 0 && attnum <= list_length(rte->alias->colnames))
 		return strVal(list_nth(rte->alias->colnames, attnum - 1));
 
-	/*
+    /*
+     * CDB: Pseudo columns have negative attribute numbers below the
+     * lowest system attribute number.
+     */
+    if (attnum <= FirstLowInvalidHeapAttributeNumber)
+    {
+        CdbRelColumnInfo   *rci = cdb_rte_find_pseudo_column(rte, attnum);
+
+        if (!rci)
+            goto bogus;
+        return rci->colname;
+    }
+
+    /*
 	 * If the RTE is a relation, go to the system catalogs not the
 	 * eref->colnames list.  This is a little slower but it will give the
 	 * right answer if the column has been renamed since the eref list was
@@ -1604,13 +1623,14 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 		return NameStr(att_tup->attname);
     }
 
+bogus:
 	/* else caller gave us a bogus attnum */
     name = (rte->eref && rte->eref->aliasname) ? rte->eref->aliasname
                                                : "*BOGUS*";
     ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
                       errmsg_internal("invalid attnum %d for rangetable entry %s",
                                       attnum, name) ));
-	return name;
+	return "*BOGUS*";
 }
 
 /*

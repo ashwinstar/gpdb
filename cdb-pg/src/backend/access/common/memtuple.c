@@ -2,6 +2,11 @@
  * MemTuple
  * 
  * Copyright (c) 2006-2008, Greenplum inc
+ *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  */
 
 #include "postgres.h"
@@ -826,49 +831,6 @@ void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid)
 }
 
 
-Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull)
-{	
-	Assert(mtup && pbind);
-	Assert(isnull);
-
-	switch(attnum)
-	{
-		/* 
-		 * Memtuple knows nothing about these system attributes. see 
-		 * slot_getattr() for how some of these get pre-handled 
-		 */
-		case MinTransactionIdAttributeNumber:
-		case MaxTransactionIdAttributeNumber:
-		case MinCommandIdAttributeNumber:
-		case MaxCommandIdAttributeNumber:
-		case SelfItemPointerAttributeNumber:
-		case TableOidAttributeNumber:
-			Assert(!"Caller can't ask for these system attributes from memtuple"); 
-			elog(ERROR, "Unsupported attnum: %d", attnum);
-			
-		case gpsegmentIdAttributeNumber:
-		 	*isnull = false;
-			return Int32GetDatum(Gp_segment);
-
-		case ObjectIdAttributeNumber:
-			if(!mtbind_has_oid(pbind))
-			{
-				*isnull = true;
-				return InvalidOid;
-			}
-
-			*isnull = false;
-			return ObjectIdGetDatum(MemTupleGetOid(mtup, pbind));
-							   
-		default:
-			Assert(!"Invalid attnum for memtuple_getsysattr");
-			elog(ERROR, "Invalid attnum: %d", attnum);
-	}
-
-	Assert(!"Should Never reach");
-	return 0;
-}
-			
 bool MemTupleHasExternal(MemTuple mtup, MemTupleBinding *pbind)
 {
 	MemTupleBindingCols *colbind = memtuple_get_islarge(mtup, pbind) ? &pbind->large_bind : &pbind->bind;

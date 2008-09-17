@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/optimizer/pathnode.h,v 1.72 2006/10/04 00:30:09 momjian Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PATHNODE_H
@@ -124,6 +128,26 @@ extern RelOptInfo *build_join_rel(PlannerInfo *root,
 			   RelOptInfo *inner_rel,
 			   JoinType jointype,
 			   List **restrictlist_ptr);
-CdbRelDedupInfo *cdb_make_rel_dedup_info(PlannerInfo *root, RelOptInfo *rel);
+void
+build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel, List *input_tlist);
+
+void
+add_vars_to_targetlist(PlannerInfo *root, List *vars, Relids where_needed);
+
+Var *
+cdb_define_pseudo_column(PlannerInfo   *root,
+                         RelOptInfo    *rel,
+                         const char    *colname,
+                         Expr          *defexpr,
+                         int32          width);
+
+CdbRelColumnInfo *
+cdb_find_pseudo_column(PlannerInfo *root, Var *var);
+
+CdbRelColumnInfo *
+cdb_rte_find_pseudo_column(RangeTblEntry *rte, AttrNumber attno);
+
+CdbRelDedupInfo *
+cdb_make_rel_dedup_info(PlannerInfo *root, RelOptInfo *rel);
 
 #endif   /* PATHNODE_H */

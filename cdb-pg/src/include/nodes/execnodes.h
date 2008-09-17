@@ -10,7 +10,11 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.161.2.2 2007/04/26 23:24:57 tgl Exp $
  *
- *-------------------------------------------------------------------------
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
+  *-------------------------------------------------------------------------
  */
 #ifndef EXECNODES_H
 #define EXECNODES_H
@@ -615,6 +619,7 @@ static inline void *cxt_alloc(void *manager, Size len)
 
 static inline void cxt_free(void *manager, void *pointer)
 {
+    UnusedArg(manager);
 	if (pointer != NULL)
 		pfree(pointer);
 }
@@ -626,6 +631,8 @@ static inline void *chunkbuf_alloc(void *manager, Size len)
 
 static inline void chunkbuf_free(void *manager, void *pointer)
 {
+    UnusedArg(manager);
+    UnusedArg(pointer);
 	/* no op */
 }
 
@@ -1366,7 +1373,6 @@ typedef struct SubqueryScanState
 	EState	   *sss_SubEState;
     bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
     ItemPointerData cdb_fake_ctid;
-    Oid         cdb_fake_tableoid;
 } SubqueryScanState;
 
 /* ----------------
@@ -1389,7 +1395,6 @@ typedef struct FunctionScanState
     bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
     ItemPointerData cdb_fake_ctid;
     ItemPointerData cdb_mark_ctid;
-    Oid         cdb_fake_tableoid;
 } FunctionScanState;
 
 /* ----------------
@@ -1419,7 +1424,6 @@ typedef struct ValuesScanState
 	int			curr_idx;
 	int			marked_idx;
     bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
-    Oid         cdb_fake_tableoid;
 } ValuesScanState;
 
 /* ----------------

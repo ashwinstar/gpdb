@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeSort.c,v 1.58 2006/10/04 00:29:52 momjian Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -314,7 +318,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	 * sort nodes only return scan tuples from their sorted relation.
 	 */
 	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
-	ExecInitScanTupleSlot(estate, &sortstate->ss);
+	sortstate->ss.ss_ScanTupleSlot = ExecInitExtraTupleSlot(estate);
 
     /* 
      * CDB: Offer extra info for EXPLAIN ANALYZE.

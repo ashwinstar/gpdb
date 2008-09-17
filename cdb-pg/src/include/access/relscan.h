@@ -9,6 +9,10 @@
  *
  * $PostgreSQL: pgsql/src/include/access/relscan.h,v 1.50 2006/10/04 00:30:07 momjian Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef RELSCAN_H
@@ -185,7 +189,6 @@ typedef struct AppendOnlyScanDescData
 	
 	/* synthetic system attributes */
 	ItemPointerData cdb_fake_ctid;
-    Oid				cdb_fake_tableoid;
 	MemTupleBinding *mt_bind;
 
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */

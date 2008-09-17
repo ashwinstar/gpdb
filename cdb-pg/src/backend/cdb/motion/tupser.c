@@ -5,13 +5,11 @@
  * Copyright (c) 2005-2008, Greenplum inc
  *
  * IDENTIFICATION:
- *	   $Id$
- *
- * $File$
- * $Change$
- * $Author$
- * $DateTime$
- * Reviewers: jzhang, ftian, tkordas
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
+ *      Reviewers: jzhang, ftian, tkordas
  *
  *-------------------------------------------------------------------------
  */
@@ -1088,7 +1086,6 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			/* reconstruct the HeapTupleData fields */
 			htup->t_len = hoff + datalen;
 			ItemPointerSetInvalid(&(htup->t_self));
-			htup->t_tableOid = InvalidOid;
 			htup->t_data = t_data;
 
 			/* reconstruct the HeapTupleHeaderData fields */

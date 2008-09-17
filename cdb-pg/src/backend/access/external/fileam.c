@@ -20,11 +20,15 @@
 * as if it is data meant for COPY. Therefore, currently, with the lack of
 * single row error handling the first error will raise an error and the
 * query will terminate.
-*
-* Copyright (c) 2007-2008, Greenplum inc
-*
-*-------------------------------------------------------------------------
-*/
+ *
+ * Copyright (c) 2007-2008, Greenplum inc
+ *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
+ *-------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
@@ -219,9 +223,6 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		scan->fs_uri = NULL;
 	}
 			
-	/* we only need to set this up once */
-	scan->fs_ctup.t_tableOid = RelationGetRelid(relation);
-	
 	tupDesc = RelationGetDescr(relation);
 	scan->fs_tupDesc = tupDesc;
 	scan->attr = tupDesc->attrs;

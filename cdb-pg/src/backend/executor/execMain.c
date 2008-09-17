@@ -29,6 +29,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/execMain.c,v 1.280.2.2 2007/02/02 00:07:27 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -2220,6 +2224,7 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
+    Oid         sourceTableOid;
 	char		relstorage;
 
 	/*
@@ -2276,6 +2281,7 @@ ExecInsert(TupleTableSlot *slot,
 			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
 				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
 			ExecStoreGenericTuple(newtuple, newslot, false);
+            newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
 			slot = newslot;
 			tuple = newtuple;
 		}
@@ -2335,6 +2341,10 @@ ExecInsert(TupleTableSlot *slot,
 	(estate->es_processed)++;
 	(resultRelInfo->ri_aoprocessed)++;
 	estate->es_lastoid = newId;
+
+    /* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
+    sourceTableOid = slot->tts_tableOid;
+    slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 	
 	if (relstorage != RELSTORAGE_AO)
 	{
@@ -2355,6 +2365,9 @@ ExecInsert(TupleTableSlot *slot,
 	if (resultRelInfo->ri_projectReturning)
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
 							 slot, planSlot, dest);
+
+    /* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
+    slot->tts_tableOid = sourceTableOid;
 }
 
 /* ----------------------------------------------------------------
@@ -2480,6 +2493,7 @@ ldelete:;
 		if (slot->tts_tupleDescriptor != RelationGetDescr(resultRelationDesc))
 			ExecSetSlotDescriptor(slot, RelationGetDescr(resultRelationDesc));
 		ExecStoreGenericTuple(&deltuple, slot, false);
+        slot->tts_tableOid = RelationGetRelid(resultRelationDesc);  /*CDB*/
 
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
 							 slot, planSlot, dest);
@@ -2513,6 +2527,7 @@ ExecUpdate(TupleTableSlot *slot,
 	HTSU_Result result;
 	ItemPointerData update_ctid;
 	TransactionId update_xmax;
+    Oid             sourceTableOid;
 
 	/*
 	 * abort the operation if not running transactions
@@ -2593,6 +2608,7 @@ ExecUpdate(TupleTableSlot *slot,
 			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
 				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
 			ExecStoreGenericTuple(newtuple, newslot, false);
+            newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
 			slot = newslot;
 			tuple = newtuple;
 		}
@@ -2674,6 +2690,10 @@ lreplace:;
 	 * here is insert new index tuples.  -cim 9/27/89
 	 */
 
+    /* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
+    sourceTableOid = slot->tts_tableOid;
+    slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
+
 	/*
 	 * insert index entries for tuple
 	 *
@@ -2690,6 +2710,9 @@ lreplace:;
 	if (resultRelInfo->ri_projectReturning)
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
 							 slot, planSlot, dest);
+
+    /* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
+    slot->tts_tableOid = sourceTableOid;
 }
 
 /*
@@ -3690,6 +3713,10 @@ CreateIntoRelDestReceiver(void)
 static void
 intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 {
+    UnusedArg(self);
+    UnusedArg(operation);
+    UnusedArg(typeinfo);
+
 	/* no-op */
 }
 

@@ -29,6 +29,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * plr.h
+ *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  */
 #ifndef PLR_H
 #define PLR_H
@@ -318,7 +323,6 @@ extern void R_RunExitFinalizers(void);
 		tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod); \
 		tuple->t_len = HeapTupleHeaderGetDatumLength(tuple_hdr); \
 		ItemPointerSetInvalid(&(tuple->t_self)); \
-		tuple->t_tableOid = InvalidOid; \
 		tuple->t_data = tuple_hdr; \
 		PROTECT(el = pg_tuple_get_r_frame(1, &tuple, tupdesc)); \
 		ReleaseTupleDesc(tupdesc); \

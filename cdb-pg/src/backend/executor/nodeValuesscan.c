@@ -12,6 +12,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeValuesscan.c,v 1.3.2.1 2006/12/26 19:26:56 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 /*
@@ -161,7 +165,6 @@ ValuesNext(ValuesScanState *node)
 
             ItemPointerSet(&tuple->t_self, node->curr_idx >> 16,
                            (OffsetNumber)node->curr_idx);
-            tuple->t_tableOid = node->cdb_fake_tableoid;
         }
 	}
 
@@ -251,7 +254,6 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
                                                      node->scan.scanrelid,
                                                      SelfItemPointerAttributeNumber,
                                                      0);
-    scanstate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 	/*
 	 * get info about values list

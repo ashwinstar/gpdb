@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/optimizer/prep.h,v 1.57 2006/10/04 00:30:09 momjian Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PREP_H
@@ -50,7 +54,7 @@ extern void expand_inherited_tables(PlannerInfo *root);
 
 extern Node *adjust_appendrel_attrs(Node *node, AppendRelInfo *appinfo);
 
-extern Relids *adjust_appendrel_attr_needed(RelOptInfo *oldrel,
+extern Relids *adjust_appendrel_attr_needed(PlannerInfo *root, RelOptInfo *oldrel,
 							 AppendRelInfo *appinfo,
 							 AttrNumber new_min_attr,
 							 AttrNumber new_max_attr);

@@ -57,6 +57,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/path/costsize.c,v 1.169.2.2 2007/01/08 16:09:31 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -2477,6 +2481,15 @@ set_rel_width(PlannerInfo *root, RelOptInfo *rel)
 			tuple_width += 32;	/* arbitrary */
 			continue;
 		}
+
+        /* Virtual column? */
+        if (var->varattno <= FirstLowInvalidHeapAttributeNumber)
+        {
+            CdbRelColumnInfo   *rci = cdb_find_pseudo_column(root, var);
+
+            tuple_width += rci->attr_width;
+            continue;
+        }
 
 		ndx = var->varattno - rel->min_attr;
 

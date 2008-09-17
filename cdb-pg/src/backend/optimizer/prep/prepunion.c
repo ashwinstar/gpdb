@@ -25,6 +25,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepunion.c,v 1.134.2.1 2007/07/12 18:27:09 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -1320,7 +1324,8 @@ adjust_relid_set(Relids relids, Index oldrelid, Index newrelid)
  * Returns a palloc'd array with the specified bounds
  */
 Relids *
-adjust_appendrel_attr_needed(RelOptInfo *oldrel, AppendRelInfo *appinfo,
+adjust_appendrel_attr_needed(PlannerInfo *root,
+                             RelOptInfo *oldrel, AppendRelInfo *appinfo,
 							 AttrNumber new_min_attr, AttrNumber new_max_attr)
 {
 	Relids	   *new_attr_needed;
@@ -1328,6 +1333,10 @@ adjust_appendrel_attr_needed(RelOptInfo *oldrel, AppendRelInfo *appinfo,
 	Index		child_relid = appinfo->child_relid;
 	int			parent_attr;
 	ListCell   *lm;
+    RangeTblEntry  *parent_rte = rt_fetch(parent_relid, root->parse->rtable);
+    RangeTblEntry  *child_rte = rt_fetch(child_relid, root->parse->rtable);
+    ListCell       *parent_cell;
+    ListCell       *child_cell;
 
 	/* Create empty result array */
 	new_attr_needed = (Relids *)
@@ -1362,6 +1371,18 @@ adjust_appendrel_attr_needed(RelOptInfo *oldrel, AppendRelInfo *appinfo,
 									  parent_relid, child_relid);
 		new_attr_needed[parent_attr - new_min_attr] = attrneeded;
 	}
+
+    /* CDB: Process pseudo columns. */
+    Assert(list_length(parent_rte->pseudocols) == list_length(child_rte->pseudocols));
+    forboth(parent_cell, parent_rte->pseudocols,
+            child_cell, child_rte->pseudocols)
+    {
+        CdbRelColumnInfo   *parent_crci = (CdbRelColumnInfo *)parent_cell;
+        CdbRelColumnInfo   *child_crci = (CdbRelColumnInfo *)child_cell;
+
+        child_crci->where_needed = adjust_relid_set(parent_crci->where_needed,
+                                                    parent_relid, child_relid);
+    }
 
 	return new_attr_needed;
 }

@@ -10,6 +10,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.180.2.5 2007/04/19 16:33:32 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -249,7 +253,6 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 						/* Build a temporary HeapTuple control structure */
 						tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 						ItemPointerSetInvalid(&(tmptup.t_self));
-						tmptup.t_tableOid = InvalidOid;
 						tmptup.t_data = td;
 						exec_move_row(&estate, NULL, row, &tmptup, tupdesc);
 						ReleaseTupleDesc(tupdesc);
@@ -3311,7 +3314,6 @@ exec_assign_value(PLpgSQL_execstate *estate,
 					/* Build a temporary HeapTuple control structure */
 					tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 					ItemPointerSetInvalid(&(tmptup.t_self));
-					tmptup.t_tableOid = InvalidOid;
 					tmptup.t_data = td;
 					exec_move_row(estate, NULL, row, &tmptup, tupdesc);
 					ReleaseTupleDesc(tupdesc);
@@ -3354,7 +3356,6 @@ exec_assign_value(PLpgSQL_execstate *estate,
 					/* Build a temporary HeapTuple control structure */
 					tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 					ItemPointerSetInvalid(&(tmptup.t_self));
-					tmptup.t_tableOid = InvalidOid;
 					tmptup.t_data = td;
 					exec_move_row(estate, rec, NULL, &tmptup, tupdesc);
 					ReleaseTupleDesc(tupdesc);

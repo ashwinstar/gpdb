@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeFunctionscan.c,v 1.40.2.1 2006/12/26 19:26:56 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 /*
@@ -136,7 +140,6 @@ FunctionNext(FunctionScanState *node)
                                           1 + ItemPointerGetBlockNumber(&node->cdb_fake_ctid));
 
             tuple->t_self = node->cdb_fake_ctid;
-            tuple->t_tableOid = node->cdb_fake_tableoid;
         }
     }
 
@@ -223,7 +226,6 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
                                                      0);
     ItemPointerSet(&scanstate->cdb_fake_ctid, 0, 0);
     ItemPointerSet(&scanstate->cdb_mark_ctid, 0, 0);
-    scanstate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 	/*
 	 * get info about function

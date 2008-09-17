@@ -7,18 +7,20 @@
  *
  *
  * IDENTIFICATION
- *	  $Id$
- *
- * NOTES
- *
+ *	         $Id$
+ *       $Change$
+ *     $DateTime$
+ *       $Author$
  *-------------------------------------------------------------------------
  */
-
 #ifndef CDBMUTATE_H
 #define CDBMUTATE_H
 
 #include "nodes/plannodes.h"
 #include "nodes/params.h"
+
+struct PlannerInfo;                         /* #include "nodes/relation.h" */
+struct RelOptInfo;                          /* #include "nodes/relation.h" */
 
 extern Plan *apply_motion(Plan *plan, Query *query);
 
@@ -32,6 +34,9 @@ extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary,
                                      int numInputSegs);
+
+void 
+cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *rel);
 
 extern void add_slice_to_motion(Motion *m,
 		MotionType motionType, List *hashExpr, 

@@ -17,6 +17,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeGroup.c,v 1.65.2.1 2007/02/02 00:07:28 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -382,7 +386,7 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	/*
 	 * tuple table initialization
 	 */
-	ExecInitScanTupleSlot(estate, &grpstate->ss);
+	grpstate->ss.ss_ScanTupleSlot = ExecInitExtraTupleSlot(estate);
 	ExecInitResultTupleSlot(estate, &grpstate->ss.ps);
 
 	/*

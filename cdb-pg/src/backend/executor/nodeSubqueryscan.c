@@ -15,6 +15,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.32.2.2 2006/12/26 21:37:28 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 /*
@@ -70,6 +74,12 @@ SubqueryNext(SubqueryScanState *node)
 
 	slot = ExecProcNode(node->subplan);
 
+	/*
+	 * We just overwrite our ScanTupleSlot with the subplan's result slot,
+	 * rather than expending the cycles for ExecCopySlot().
+	 */
+	node->ss.ss_ScanTupleSlot = slot;
+
     /*
      * CDB: Label each row with a synthetic ctid if needed for subquery dedup.
      */
@@ -105,14 +115,7 @@ SubqueryNext(SubqueryScanState *node)
 		}
 
         tuple->t_self = node->cdb_fake_ctid;
-        tuple->t_tableOid = node->cdb_fake_tableoid;
     }
-
-	/*
-	 * We just overwrite our ScanTupleSlot with the subplan's result slot,
-	 * rather than expending the cycles for ExecCopySlot().
-	 */
-	node->ss.ss_ScanTupleSlot = slot;
 
 	return slot;
 }
@@ -188,7 +191,6 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
                                                          SelfItemPointerAttributeNumber,
                                                          0);
 	ItemPointerSetInvalid(&subquerystate->cdb_fake_ctid);
-    subquerystate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 #define SUBQUERYSCAN_NSLOTS 2
 

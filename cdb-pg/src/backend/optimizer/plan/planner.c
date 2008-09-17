@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planner.c,v 1.209 2006/10/04 00:29:54 momjian Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -109,7 +113,6 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	List	   *save_PlannerParamList;
 	ParamListInfo save_PlannerBoundParamList;
 	ApplyShareInputContext shareinput_context;
-	set_plan_ref_context setref_context;
 
 	/*
 	 * The planner can be called recursively (an example is when
@@ -181,12 +184,10 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 
 	result_plan = apply_shareinput_dag_to_tree(result_plan, &shareinput_context); 
 
-	setref_context.qry = parse;
-	setref_context.rtable = parse->rtable;
-	setref_context.sharedNodes = shareinput_context.sharedNodes;
-
 	/* final cleanup of the plan */
-	result_plan = set_plan_references_qry(result_plan, &setref_context);
+	result_plan = set_plan_references_qry(result_plan,
+                                          parse,
+                                          shareinput_context.sharedNodes);
 
 	/* executor wants to know total number of Params used overall */
 	result_plan->nParamExec = list_length(PlannerParamList);

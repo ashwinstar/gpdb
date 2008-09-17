@@ -13,6 +13,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.217.2.1 2007/07/31 19:53:49 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -58,7 +62,7 @@ typedef struct CreatePlanContext
 static Plan *create_subplan(CreatePlanContext *ctx, Path *best_path);   /*CDB*/
 static Plan *create_scan_plan(CreatePlanContext *ctx, Path *best_path);
 static List *build_relation_tlist(RelOptInfo *rel);
-static bool use_physical_tlist(RelOptInfo *rel);
+static bool use_physical_tlist(CreatePlanContext *ctx, RelOptInfo *rel);
 static void disuse_physical_tlist(Plan *plan, Path *path);
 static Plan *create_gating_plan(CreatePlanContext *ctx, Plan *plan, List *quals);
 static Plan *create_join_plan(CreatePlanContext *ctx, JoinPath *best_path);
@@ -274,7 +278,7 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 	 * planner.c may replace the tlist we generate here, forcing projection to
 	 * occur.)
 	 */
-	if (use_physical_tlist(rel))
+	if (use_physical_tlist(ctx, rel))
 	{
 		tlist = build_physical_tlist(ctx->root, rel);
 		/* if fail because of dropped cols, use regular method */
@@ -405,9 +409,10 @@ build_relation_tlist(RelOptInfo *rel)
  *		rather than only those Vars actually referenced.
  */
 static bool
-use_physical_tlist(RelOptInfo *rel)
+use_physical_tlist(CreatePlanContext *ctx, RelOptInfo *rel)
 {
-	int			i;
+    RangeTblEntry  *rte;
+	int			    i;
 
 	/*
 	 * We can do this for real relation scans, subquery scans, function scans,
@@ -436,6 +441,11 @@ use_physical_tlist(RelOptInfo *rel)
 		if (!bms_is_empty(rel->attr_needed[i - rel->min_attr]))
 			return false;
 	}
+
+    /* CDB: Don't use physical tlist if rel has pseudo columns. */
+    rte = rt_fetch(rel->relid, ctx->root->parse->rtable);
+    if (rte->pseudocols)
+        return false;
 
 	return true;
 }
@@ -3501,6 +3511,10 @@ add_sort_cost(PlannerInfo *root, Plan *input, int numCols, AttrNumber *sortColId
 {
 	Path		sort_path;		/* dummy for result of cost_sort */
 
+    UnusedArg(numCols);
+    UnusedArg(sortColIdx);
+    UnusedArg(sortOperators);
+
 	cost_sort(&sort_path, root, NIL,
 			  input->total_cost,
 			  input->plan_rows,
@@ -4028,6 +4042,9 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 	Path		agg_path;		/* dummy for result of cost_agg */
 	QualCost	qual_cost;
 	HashAggTableSizes   hash_info;
+
+    UnusedArg(grpColIdx);
+    UnusedArg(num_nullcols);
 
 	if (aggstrategy == AGG_HASHED)
 	{

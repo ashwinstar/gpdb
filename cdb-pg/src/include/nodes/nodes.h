@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.188 2006/09/28 20:51:42 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef NODES_H
@@ -232,6 +236,7 @@ typedef enum NodeTag
     /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,
     T_CdbRelDedupInfo,
+    T_CdbRelColumnInfo,
 
 	/*
 	 * TAGS FOR MEMORY NODES (memnodes.h)

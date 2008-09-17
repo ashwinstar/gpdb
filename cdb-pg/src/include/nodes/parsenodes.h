@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/parsenodes.h,v 1.334 2006/11/05 22:42:10 tgl Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PARSENODES_H
@@ -662,6 +666,14 @@ typedef struct RangeTblEntry
 	bool		inFromCl;		/* present in FROM clause? */
 	AclMode		requiredPerms;	/* bitmask of required access permissions */
 	Oid			checkAsUser;	/* if valid, check access as this role */
+
+    List       *pseudocols;     /* CDB: List of CdbRelColumnInfo nodes defining
+                                 *  pseudo columns for targetlist of scan node.
+                                 *  Referenced by Var nodes with varattno =
+                                 *  FirstLowInvalidHeapAttributeNumber minus
+                                 *  the 0-based position in the list.  Used
+                                 *  only in planner & EXPLAIN, not in executor.
+                                 */
 } RangeTblEntry;
 
 /*

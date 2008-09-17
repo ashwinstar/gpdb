@@ -10,6 +10,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/rowtypes.c,v 1.17 2006/07/14 14:52:24 momjian Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -312,7 +316,6 @@ record_out(PG_FUNCTION_ARGS)
 	/* Build a temporary HeapTuple control structure */
 	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
 	ItemPointerSetInvalid(&(tuple.t_self));
-	tuple.t_tableOid = InvalidOid;
 	tuple.t_data = rec;
 
 	/*
@@ -655,7 +658,6 @@ record_send(PG_FUNCTION_ARGS)
 	/* Build a temporary HeapTuple control structure */
 	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
 	ItemPointerSetInvalid(&(tuple.t_self));
-	tuple.t_tableOid = InvalidOid;
 	tuple.t_data = rec;
 
 	/*

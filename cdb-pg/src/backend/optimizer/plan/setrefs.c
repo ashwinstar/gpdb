@@ -12,12 +12,17 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/setrefs.c,v 1.126.2.1 2007/02/16 03:49:10 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/pathnode.h"             /* cdb_rte_find_pseudo_column() */
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_expr.h"
@@ -26,6 +31,16 @@
 
 #include "cdb/cdbpullup.h"      /* cdbpullup_make_var() */
 
+
+typedef struct set_plan_ref_context
+{
+	Query  *qry;
+	List   *rtable;
+	List   *sharedNodes;
+
+    /* CDB: Fields used only by fix_expr_references() and its callers */
+    Index   pseudocol_varno;    /* varno of pseudo column reference, or 0 */
+} set_plan_ref_context;
 
 typedef struct
 {
@@ -65,6 +80,9 @@ static void adjust_expr_varnos(Node *node, int rtoffset);
 static bool adjust_expr_varnos_walker(Node *node, int *context);
 static void fix_expr_references(Plan *plan, Node *node, set_plan_ref_context* ctxt); 
 static bool fix_expr_references_walker(Node *node, void *context);
+static void fix_scanexpr_references(Plan *plan, List **node_inout,
+                                    set_plan_ref_context* ctxt);
+static Node *fix_scanexpr_references_mutator(Node *node, void *context);
 static void set_join_references(Join *join);
 static void set_inner_join_references(Plan *inner_plan,
 						  indexed_tlist *outer_itlist);
@@ -91,17 +109,24 @@ static bool fix_opfuncids_walker(Node *node, void *context);
 static void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
 
 static List *cdb_build_identity_tlist(List *newtlist, Plan *subplan, Index subvarno);
-static Plan *cdb_insert_result_node(Plan *plan, set_plan_ref_context* ctxt); 
+static Plan *cdb_insert_result_node(Plan *plan, set_plan_ref_context* ctxt);
 
 
-/* 
+/*
  * set_plan_references_qry: set the references for a query.
  *
  * It is a simple driver over the set_plan_references.
  */
-Plan *set_plan_references_qry(Plan *plan, set_plan_ref_context *ctxt)
+Plan *
+set_plan_references_qry(Plan *plan, Query *qry, List *sharedNodes)
 {
-	Plan *result = NULL;
+	Plan                   *result;
+    set_plan_ref_context    context;
+    set_plan_ref_context   *ctxt = &context;
+
+    ctxt->qry = qry;
+    ctxt->rtable = qry->rtable;
+    ctxt->sharedNodes = sharedNodes;
 
 	result = set_plan_references(plan, ctxt);
 	ctxt->qry->rtable = ctxt->rtable;
@@ -147,7 +172,7 @@ Plan *set_plan_references_qry(Plan *plan, set_plan_ref_context *ctxt)
  * address won't change when we append a subquery rangetable.)
  */
 Plan *
-set_plan_references(Plan *plan, set_plan_ref_context *ctxt) 
+set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 {
 	ListCell   *l;
 
@@ -180,60 +205,57 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, ctxt); 
-			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
-			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
+                return cdb_insert_result_node(plan, ctxt);
+			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+			fix_scanexpr_references(plan, &plan->qual, ctxt);
 			break;
 		case T_IndexScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, ctxt); 
-			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
-			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
-			fix_expr_references(plan,
-								(Node *) ((IndexScan *) plan)->indexqual, ctxt); 
-			fix_expr_references(plan,
-								(Node *) ((IndexScan *) plan)->indexqualorig, ctxt); 
+                return cdb_insert_result_node(plan, ctxt);
+			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+			fix_scanexpr_references(plan, &plan->qual, ctxt);
+			fix_scanexpr_references(plan, &((IndexScan *)plan)->indexqual, ctxt);
+			fix_scanexpr_references(plan, &((IndexScan *)plan)->indexqualorig, ctxt);
 			break;
 		case T_BitmapIndexScan:
 			/* no need to fix targetlist and qual */
 			Assert(plan->targetlist == NIL);
 			Assert(plan->qual == NIL);
 			fix_expr_references(plan,
-							 (Node *) ((BitmapIndexScan *) plan)->indexqual, ctxt); 
+							 (Node *) ((BitmapIndexScan *) plan)->indexqual, ctxt);
 			fix_expr_references(plan,
 						 (Node *) ((BitmapIndexScan *) plan)->indexqualorig, ctxt);
 			break;
 		case T_BitmapHeapScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, ctxt); 
-			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
-			fix_expr_references(plan, (Node *) plan->qual, ctxt); 
-			fix_expr_references(plan,
-						 (Node *) ((BitmapHeapScan *) plan)->bitmapqualorig, ctxt); 
+                return cdb_insert_result_node(plan, ctxt);
+			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+			fix_scanexpr_references(plan, &plan->qual, ctxt);
+			fix_scanexpr_references(plan, &((BitmapHeapScan *) plan)->bitmapqualorig, ctxt);
 			break;
 		case T_TidScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, ctxt); 
-			fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
-			fix_expr_references(plan, (Node *) plan->qual, ctxt);
-			fix_expr_references(plan, (Node *) ((TidScan *) plan)->tidquals, ctxt);
+                return cdb_insert_result_node(plan, ctxt);
+			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+			fix_scanexpr_references(plan, &plan->qual, ctxt);
+			fix_scanexpr_references(plan, &((TidScan *) plan)->tidquals, ctxt);
 			break;
 		case T_SubqueryScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                return cdb_insert_result_node(plan, ctxt); 
+                return cdb_insert_result_node(plan, ctxt);
 			/* Needs special treatment, see comments below */
-			return set_subqueryscan_references((SubqueryScan *) plan, ctxt); 
+			return set_subqueryscan_references((SubqueryScan *) plan, ctxt);
 		case T_FunctionScan:
 			{
 				RangeTblEntry *rte;
 
                 if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
-                    return cdb_insert_result_node(plan, ctxt); 
-				fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
-				fix_expr_references(plan, (Node *) plan->qual, ctxt); 
+                    return cdb_insert_result_node(plan, ctxt);
+				fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+				fix_scanexpr_references(plan, &plan->qual, ctxt);
 				rte = rt_fetch(((FunctionScan *) plan)->scan.scanrelid, ctxt->rtable);
 				Assert(rte->rtekind == RTE_FUNCTION);
-				fix_expr_references(plan, rte->funcexpr, ctxt); 
+				fix_scanexpr_references(plan, (List **)&rte->funcexpr, ctxt);
 			}
 			break;
 		case T_ValuesScan:
@@ -242,11 +264,11 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 
                 if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                     return cdb_insert_result_node(plan, ctxt); 
-				fix_expr_references(plan, (Node *) plan->targetlist, ctxt); 
-				fix_expr_references(plan, (Node *) plan->qual, ctxt);
+				fix_scanexpr_references(plan, &plan->targetlist, ctxt);
+				fix_scanexpr_references(plan, &plan->qual, ctxt);
 				rte = rt_fetch(((ValuesScan *) plan)->scan.scanrelid, ctxt->rtable);
 				Assert(rte->rtekind == RTE_VALUES);
-				fix_expr_references(plan, (Node *) rte->values_lists, ctxt); 
+				fix_scanexpr_references(plan, &rte->values_lists, ctxt);
 			}
 			break;
 		case T_NestLoop:
@@ -454,7 +476,9 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 			 * targetlist or check quals, and we haven't bothered to give it
 			 * its own tlist copy. So, don't fix targetlist/qual. But do
 			 * recurse into child plans.
+             * CDB: Fix up to clean any pseudo column references from tlist.
 			 */
+			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
 			Assert(plan->qual == NIL);
 			foreach(l, ((Append *) plan)->appendplans)
 				lfirst(l) = set_plan_references((Plan *) lfirst(l), ctxt); 
@@ -660,6 +684,8 @@ set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context* ctxt)
 		ListCell   *lp,
 				   *lc;
 
+        Assert(!rte->pseudocols);
+
 		sub_rtable = copyObject(rte->subquery->rtable);
 		range_table_walker(sub_rtable,
 						   adjust_expr_varnos_walker,
@@ -708,8 +734,8 @@ set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context* ctxt)
 		result = (Plan *) plan;
 		ctxt->rtable = oldrtable;
 
-		fix_expr_references(result, (Node *) result->targetlist, ctxt); 
-		fix_expr_references(result, (Node *) result->qual, ctxt); 
+		fix_scanexpr_references(result, &result->targetlist, ctxt);
+		fix_scanexpr_references(result, &result->qual, ctxt);
 	}
 
 	return result;
@@ -1007,7 +1033,11 @@ adjust_expr_varnos_walker(Node *node, int *context)
 static void
 fix_expr_references(Plan *plan, Node *node, set_plan_ref_context* ctxt)
 {
-	/* This tree walk requires no special setup, so away we go... */
+    UnusedArg(plan);
+
+    if (ctxt)
+        ctxt->pseudocol_varno = 0;
+
 	fix_expr_references_walker(node, (void *) ctxt); 
 }
 
@@ -1038,8 +1068,105 @@ fix_expr_references_walker(Node *node, void *context)
 		sp->plan = set_plan_references(sp->plan, oldctxt);
 		oldctxt->rtable = oldrtable; 
 	}
+    else if (IsA(node, Var))
+    {
+        Var    *var = (Var *)node;
+
+        /*
+         * CDB: If Var node refers to a pseudo column, note its varno.
+         * By this point, no such Var nodes should be seen except for
+         * local references in Scan or Append exprs.
+         */
+        if (var->varattno <= FirstLowInvalidHeapAttributeNumber)
+        {
+            set_plan_ref_context   *ctxt = (set_plan_ref_context *)context;
+
+            Assert(ctxt &&
+                   var->varlevelsup == 0 &&
+                   var->varno > 0 &&
+                   var->varno <= list_length(ctxt->rtable));
+            ctxt->pseudocol_varno = var->varno;
+        }
+        return false;
+    }
 	return expression_tree_walker(node, fix_expr_references_walker, context);
 }
+
+/*
+ * fix_scanexpr_references
+ *	  Do final cleanup on targetlist or qual exprs in a Scan or Append node.
+ *
+ * Calls fix_expr_references; then finds any Var nodes referencing pseudo
+ * columns and substitutes the pseudo column's defining expression.
+ *
+ * On entry, *node_inout points to a List of expressions or a single expression.
+ * On return, it is either unchanged, or updated to point to the modified copy.
+ */
+static void
+fix_scanexpr_references(Plan *plan, List **node_inout, set_plan_ref_context* ctxt)
+{
+    Assert(ctxt);
+
+    /* First do the usual fixup. Also see if there are any special Var nodes. */
+    ctxt->pseudocol_varno = 0;
+	fix_expr_references_walker((Node *)*node_inout, ctxt);
+
+    /* Replace pseudo column references with their definitions. */
+    if (ctxt->pseudocol_varno)
+    {
+        Node   *newnode;
+
+        Insist(IsA(plan, Append) ||
+               ctxt->pseudocol_varno == ((Scan *)plan)->scanrelid);
+
+        newnode = fix_scanexpr_references_mutator((Node *)*node_inout, ctxt);
+        *node_inout = (List *)newnode;
+    }
+}                               /* fix_scanexpr_references */
+
+static Node *
+fix_scanexpr_references_mutator(Node *node, void *context)
+{
+	if (!node)
+		return NULL;
+
+    if (IsA(node, Var))
+    {
+        Var    *var = (Var *)node;
+
+        /* Pseudo column reference? */
+        if (var->varattno <= FirstLowInvalidHeapAttributeNumber)
+        {
+            set_plan_ref_context   *ctxt = (set_plan_ref_context *)context;
+            RangeTblEntry          *rte;
+            CdbRelColumnInfo       *rci;
+
+            /* All references should be to the current Scan or Append relid */
+            Insist(var->varno == ctxt->pseudocol_varno &&
+                   var->varlevelsup == 0);
+
+            /* Look up the pseudo column definition. */
+            rte = rt_fetch(var->varno, ctxt->rtable);
+            rci = cdb_rte_find_pseudo_column(rte, var->varattno);
+            Insist(rci && rci->defexpr);
+
+            /* Fill in OpExpr operator ids. */
+            fix_expr_references_walker((Node *)rci->defexpr, ctxt);
+
+            /* Replace the Var node with a copy of the defining expr. */
+            node = (Node *)copyObject(rci->defexpr);
+        }
+		return node;
+    }
+
+    /* some OLAP magic... is it needed? */
+	if (IsA(node, Grouping))
+		return node;
+	if(IsA(node, GroupId))
+		return node;
+
+    return expression_tree_mutator(node, fix_scanexpr_references_mutator, context);
+}                               /* fix_scanexpr_references_mutator */
 
 /*
  * set_join_references

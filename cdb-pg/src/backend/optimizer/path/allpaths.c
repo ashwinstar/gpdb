@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.154.2.1 2007/01/28 18:50:48 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -36,6 +40,7 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbmutate.h"                  /* cdbmutate_warn_ctid_without_segid */
 #include "cdb/cdbpath.h"                    /* cdbpath_rows() */
 
 /* These parameters are set by GUC */
@@ -193,6 +198,9 @@ set_base_rel_pathlists(PlannerInfo *root)
 		/* ignore RTEs that are "other rels" */
 		if (rel->reloptkind != RELOPT_BASEREL)
 			continue;
+
+        /* CDB: Warn if ctid column is referenced but gp_segment_id is not. */
+        cdbmutate_warn_ctid_without_segid(root, rel);
 
 		set_rel_pathlist(root, rel, rti);
 	}
@@ -453,7 +461,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 */
 		pfree(childrel->attr_needed);
 		childrel->attr_needed =
-			adjust_appendrel_attr_needed(rel, appinfo,
+			adjust_appendrel_attr_needed(root, rel, appinfo,
 										 childrel->min_attr,
 										 childrel->max_attr);
 

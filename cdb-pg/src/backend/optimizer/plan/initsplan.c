@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/initsplan.c,v 1.123.2.2 2007/01/08 16:47:35 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -176,37 +180,8 @@ add_IN_vars_to_tlists(PlannerInfo *root)
 
 /*
  * add_vars_to_targetlist
- *	  For each variable appearing in the list, add it to the owning
- *	  relation's targetlist if not already present, and mark the variable
- *	  as being needed for the indicated join (or for final output if
- *	  where_needed includes "relation 0").
+ *    CDB: This function has been moved to relnode.c
  */
-void
-add_vars_to_targetlist(PlannerInfo *root, List *vars, Relids where_needed)
-{
-	ListCell   *temp;
-
-	Assert(!bms_is_empty(where_needed));
-
-	foreach(temp, vars)
-	{
-		Var		   *var = (Var *) lfirst(temp);
-		RelOptInfo *rel = find_base_rel(root, var->varno);
-		int			attrno = var->varattno;
-
-		Assert(attrno >= rel->min_attr && attrno <= rel->max_attr);
-		attrno -= rel->min_attr;
-		if (bms_is_empty(rel->attr_needed[attrno]))
-		{
-			/* Variable not yet requested, so add to reltargetlist */
-			/* XXX is copyObject necessary here? */
-			rel->reltargetlist = lappend(rel->reltargetlist, copyObject(var));
-		}
-		rel->attr_needed[attrno] = bms_add_members(rel->attr_needed[attrno],
-												   where_needed);
-	}
-}
-
 
 /*****************************************************************************
  *

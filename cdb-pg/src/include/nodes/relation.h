@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/nodes/relation.h,v 1.128.2.4 2007/08/31 01:44:14 tgl Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef RELATION_H
@@ -376,6 +380,31 @@ typedef struct IndexOptInfo
                                  * to the IndexPath (q.v.), then reset. Kludge.
                                  */
 } IndexOptInfo;
+
+
+/*
+ * CdbRelColumnInfo
+ *
+ * Describes a synthetic column to be added to a baserel's targetlist.
+ * The pseudocols field of the RTE points to a List of CdbRelColumnInfo.
+ */
+typedef struct CdbRelColumnInfo
+{
+	NodeTag		type;                   /* T_CdbRelColumnInfo */
+
+    AttrNumber  pseudoattno;            /* FirstLowInvalidHeapAttributeNumber
+                                         *  minus the 0-based position of the
+                                         *  CdbRelColumnInfo node in the
+                                         *  rte->pseudocols list
+                                         */
+    AttrNumber  targetresno;            /* 1-based position of the pseudo
+                                         *  column in the rel's targetlist
+                                         */
+    Expr       *defexpr;                /* expr to be evaluated in targetlist */
+	Relids	    where_needed;           /* set of relids whose quals use col */
+	int32	    attr_width;             /* expected #bytes for column value */
+    char        colname[NAMEDATALEN+1]; /* name for EXPLAIN */
+} CdbRelColumnInfo;
 
 
 /*

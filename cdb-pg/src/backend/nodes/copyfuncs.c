@@ -18,6 +18,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/nodes/copyfuncs.c,v 1.353.2.2 2007/08/31 01:44:14 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -1516,6 +1520,24 @@ _copyFlow(Flow *from)
  */
 
 /*
+ * _copyCdbRelColumnInfo
+ */
+static CdbRelColumnInfo *
+_copyCdbRelColumnInfo(CdbRelColumnInfo *from)
+{
+	CdbRelColumnInfo *newnode = makeNode(CdbRelColumnInfo);
+
+	COPY_SCALAR_FIELD(pseudoattno);
+    COPY_SCALAR_FIELD(targetresno);
+	COPY_NODE_FIELD(defexpr);
+	COPY_BITMAPSET_FIELD(where_needed);
+	COPY_SCALAR_FIELD(attr_width);
+    COPY_BINARY_FIELD(colname, sizeof(from->colname));
+
+	return newnode;
+}
+
+/*
  * _copyPathKeyItem
  */
 static PathKeyItem *
@@ -1651,6 +1673,7 @@ _copyRangeTblEntry(RangeTblEntry *from)
 	COPY_SCALAR_FIELD(checkAsUser);
 
 	COPY_SCALAR_FIELD(forceDistRandom);
+    COPY_NODE_FIELD(pseudocols);                /*CDB*/
 
 	return newnode;
 }
@@ -3693,6 +3716,9 @@ copyObject(void *from)
 			/*
 			 * RELATION NODES
 			 */
+		case T_CdbRelColumnInfo:
+			retval = _copyCdbRelColumnInfo(from);
+			break;
 		case T_PathKeyItem:
 			retval = _copyPathKeyItem(from);
 			break;

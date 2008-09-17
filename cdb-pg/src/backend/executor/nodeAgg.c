@@ -70,6 +70,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/nodeAgg.c,v 1.146.2.2 2007/08/08 18:07:03 neilc Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -1679,7 +1683,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	/*
 	 * tuple table initialization
 	 */
-	ExecInitScanTupleSlot(estate, &aggstate->ss);
+	aggstate->ss.ss_ScanTupleSlot = ExecInitExtraTupleSlot(estate);
 	ExecInitResultTupleSlot(estate, &aggstate->ss.ps);
 	aggstate->hashslot = ExecInitExtraTupleSlot(estate);
 

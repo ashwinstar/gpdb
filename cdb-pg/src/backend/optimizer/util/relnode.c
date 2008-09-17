@@ -11,15 +11,22 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.83.2.1 2007/07/31 19:53:50 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include "nodes/makefuncs.h"                /* makeVar() */
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
 #include "optimizer/restrictinfo.h"
+#include "optimizer/var.h"                  /* contain_vars_of_level_or_above */
 #include "parser/parsetree.h"
+#include "parser/parse_expr.h"              /* exprType(), exprTypmod() */
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 
@@ -31,8 +38,6 @@ typedef struct JoinHashEntry
 	RelOptInfo *join_rel;
 } JoinHashEntry;
 
-static void build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
-					RelOptInfo *input_rel);
 static List *build_joinrel_restrictlist(PlannerInfo *root,
 						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
@@ -64,6 +69,9 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	Assert(relid < root->simple_rel_array_size);
 	if (root->simple_rel_array[relid] != NULL)
 		elog(ERROR, "rel %d already exists", relid);
+
+    /* CDB: Rel isn't expected to have any pseudo columns yet. */
+    Assert(!rte->pseudocols);
 
 	rel = makeNode(RelOptInfo);
 	rel->reloptkind = reloptkind;
@@ -382,8 +390,8 @@ build_join_rel(PlannerInfo *root,
 	 * and inner rels we first try to build it from.  But the contents should
 	 * be the same regardless.
 	 */
-	build_joinrel_tlist(root, joinrel, outer_rel);
-	build_joinrel_tlist(root, joinrel, inner_rel);
+	build_joinrel_tlist(root, joinrel, outer_rel->reltargetlist);
+	build_joinrel_tlist(root, joinrel, inner_rel->reltargetlist);
 
 	/* cap width of output row by sum of its inputs */
 	joinrel->width = Min(joinrel->width, outer_rel->width + inner_rel->width);
@@ -448,14 +456,13 @@ build_join_rel(PlannerInfo *root,
  * We also compute the expected width of the join's output, making use
  * of data that was cached at the baserel level by set_rel_width().
  */
-static void
-build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
-					RelOptInfo *input_rel)
+void
+build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel, List *input_tlist)
 {
 	Relids		relids = joinrel->relids;
 	ListCell   *vars;
 
-	foreach(vars, input_rel->reltargetlist)
+	foreach(vars, input_tlist)
 	{
 		Var		   *origvar = (Var *) lfirst(vars);
 		Var		   *var;
@@ -476,8 +483,25 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
 					 (int) nodeTag(var));
 		}
 
+        /* Pseudo column? */
+        if (var->varattno <= FirstLowInvalidHeapAttributeNumber)
+        {
+            CdbRelColumnInfo   *rci = cdb_find_pseudo_column(root, var);
+
+		    if (bms_nonempty_difference(rci->where_needed, relids))
+		    {
+			    joinrel->reltargetlist = lappend(joinrel->reltargetlist, origvar);
+			    joinrel->width += rci->attr_width;
+		    }
+            continue;
+        }
+
 		/* Get the Var's original base rel */
 		baserel = find_base_rel(root, var->varno);
+
+        /* System-defined attribute, whole row, or user-defined attribute */
+        Assert(var->varattno >= baserel->min_attr &&
+               var->varattno <= baserel->max_attr);
 
 		/* Is it still needed above this joinrel? */
 		ndx = var->varattno - baserel->min_attr;
@@ -644,6 +668,223 @@ subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 		}
 	}
 }
+
+
+/*
+ * add_vars_to_targetlist
+ *	  For each variable appearing in the list, add it to the owning
+ *	  relation's targetlist if not already present, and mark the variable
+ *	  as being needed for the indicated join (or for final output if
+ *	  where_needed includes "relation 0").
+ *
+ * CDB: This function was formerly defined in initsplan.c
+ */
+void
+add_vars_to_targetlist(PlannerInfo *root, List *vars, Relids where_needed)
+{
+	ListCell   *temp;
+
+	Assert(!bms_is_empty(where_needed));
+
+	foreach(temp, vars)
+	{
+		Var		   *var = (Var *) lfirst(temp);
+		RelOptInfo *rel = find_base_rel(root, var->varno);
+		int			attrno = var->varattno;
+
+        /* Pseudo column? */
+        if (attrno <= FirstLowInvalidHeapAttributeNumber)
+        {
+            CdbRelColumnInfo   *rci = cdb_find_pseudo_column(root, var);
+
+            /* Add to targetlist. */
+    		if (bms_is_empty(rci->where_needed))
+            {
+                Assert(rci->targetresno == 0);
+                rci->targetresno = list_length(rel->reltargetlist);
+    			rel->reltargetlist = lappend(rel->reltargetlist, copyObject(var));
+            }
+
+            /* Note relids which are consumers of the data from this column. */
+            rci->where_needed = bms_add_members(rci->where_needed, where_needed);
+            continue;
+        }
+
+        /* System-defined attribute, whole row, or user-defined attribute */
+		Assert(attrno >= rel->min_attr && attrno <= rel->max_attr);
+		attrno -= rel->min_attr;
+		if (bms_is_empty(rel->attr_needed[attrno]))
+		{
+			/* Variable not yet requested, so add to reltargetlist */
+			/* XXX is copyObject necessary here? */
+			rel->reltargetlist = lappend(rel->reltargetlist, copyObject(var));
+		}
+		rel->attr_needed[attrno] = bms_add_members(rel->attr_needed[attrno],
+												   where_needed);
+	}
+}                               /* add_vars_to_targetlist */
+
+
+/*
+ * cdb_define_pseudo_column
+ *
+ * Add a pseudo column definition to a baserel or appendrel.  Returns
+ * a Var node referencing the new column.
+ *
+ * This function does not add the new Var node to the targetlist.  The
+ * caller should do that, if needed, by calling add_vars_to_targetlist().
+ *
+ * A pseudo column is defined by an expression which is to be evaluated
+ * in targetlist and/or qual expressions of the baserel's scan operator in
+ * the Plan tree.
+ *
+ * A pseudo column is referenced by means of Var nodes in which varno = relid
+ * and varattno = FirstLowInvalidHeapAttributeNumber minus the 0-based position
+ * of the CdbRelColumnInfo node in the rte->pseudocols list.
+ *
+ * The special Var nodes will later be eliminated during set_plan_references().
+ * Those in the scan or append operator's targetlist and quals will be replaced
+ * by copies of the defining expression.  Those further downstream will be
+ * replaced by ordinary Var nodes referencing the appropriate targetlist item.
+ *
+ * A pseudo column defined in an appendrel is merely a placeholder for a
+ * column produced by the subpaths, allowing the column to be referenced
+ * by downstream nodes.  Its defining expression is never evaluated because
+ * the Append targetlist is not executed.  It is the caller's responsibility
+ * to make corresponding changes to the targetlists of the appendrel and its
+ * subpaths so that they all match.
+ *
+ * Note that a joinrel can't define a pseudo column because, lacking a
+ * relid, there's no way for a Var node to reference such a column.
+ */
+Var *
+cdb_define_pseudo_column(PlannerInfo   *root,
+                         RelOptInfo    *rel,
+                         const char    *colname,
+                         Expr          *defexpr,
+                         int32          width)
+{
+    CdbRelColumnInfo   *rci = makeNode(CdbRelColumnInfo);
+    RangeTblEntry      *rte = rt_fetch(rel->relid, root->parse->rtable);
+    ListCell           *cell;
+    Var                *var;
+    int                 i;
+
+    Assert(colname && strlen(colname) < sizeof(rci->colname)-10);
+    Assert(rel->reloptkind == RELOPT_BASEREL ||
+           rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+
+    rci->defexpr = defexpr;
+    rci->where_needed = NULL;
+
+    /* Assign attribute number. */
+    rci->pseudoattno = FirstLowInvalidHeapAttributeNumber - list_length(rte->pseudocols);
+
+    /* Make a Var node which upper nodes can copy to reference the column. */
+    var = makeVar(rel->relid, rci->pseudoattno,
+                  exprType((Node *)defexpr), exprTypmod((Node *)defexpr),
+                  0);
+
+    /* Note the estimated number of bytes for a value of this type. */
+    if (width < 0)
+		width = get_typavgwidth(var->vartype, var->vartypmod);
+    rci->attr_width = width;
+
+    /* If colname isn't unique, add suffix "_2", "_3", etc. */
+    StrNCpy(rci->colname, colname, sizeof(rci->colname));
+    for (i = 1;;)
+    {
+        CdbRelColumnInfo   *rci2;
+        Value              *val;
+
+        /* Same as the name of a regular column? */
+        foreach(cell, rte->eref ? rte->eref->colnames : NULL)
+        {
+            val = (Value *)lfirst(cell);
+            Assert(IsA(val, String));
+            if (0 == strcmp(strVal(val), rci->colname))
+                break;
+        }
+
+        /* Same as the name of an already defined pseudo column? */
+        if (!cell)
+        {
+            foreach(cell, rte->pseudocols)
+            {
+                rci2 = (CdbRelColumnInfo *)lfirst(cell);
+                Assert(IsA(rci2, CdbRelColumnInfo));
+                if (0 == strcmp(rci2->colname, rci->colname))
+                    break;
+            }
+        }
+
+        if (!cell)
+            break;
+        Insist(i <= list_length(rte->eref->colnames) + list_length(rte->pseudocols));
+        snprintf(rci->colname, sizeof(rci->colname), "%s_%d", colname, ++i);
+    }
+
+    /* Add to the RTE's pseudo column list. */
+    rte->pseudocols = lappend(rte->pseudocols, rci);
+
+    return var;
+}                               /* cdb_define_pseudo_column */
+
+
+/*
+ * cdb_find_pseudo_column
+ *
+ * Return the CdbRelColumnInfo node which defines a pseudo column.
+ */
+CdbRelColumnInfo *
+cdb_find_pseudo_column(PlannerInfo *root, Var *var)
+{
+    CdbRelColumnInfo   *rci;
+    RangeTblEntry      *rte;
+    const char         *rtename;
+
+    Assert(IsA(var, Var) &&
+           var->varno > 0 &&
+           var->varno <= list_length(root->parse->rtable));
+
+    rte = rt_fetch(var->varno, root->parse->rtable);
+    rci = cdb_rte_find_pseudo_column(rte, var->varattno);
+    if (!rci)
+    {
+        rtename = (rte->eref && rte->eref->aliasname) ? rte->eref->aliasname
+                                                      : "*BOGUS*";
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg_internal("invalid varattno %d for rangetable entry %s",
+                                        var->varattno, rtename) ));
+    }
+    return rci;
+}                               /* cdb_find_pseudo_column */
+
+
+/*
+ * cdb_rte_find_pseudo_column
+ *
+ * Return the CdbRelColumnInfo node which defines a pseudo column; or
+ * NULL if didn't find a pseudo column with the given attno.
+ */
+CdbRelColumnInfo *
+cdb_rte_find_pseudo_column(RangeTblEntry *rte, AttrNumber attno)
+{
+    int                 ndx = FirstLowInvalidHeapAttributeNumber - attno;
+    CdbRelColumnInfo   *rci;
+
+    Assert(IsA(rte, RangeTblEntry));
+
+    if (attno > FirstLowInvalidHeapAttributeNumber ||
+        ndx >= list_length(rte->pseudocols))
+        return NULL;
+
+    rci = (CdbRelColumnInfo *)list_nth(rte->pseudocols, ndx);
+
+    Assert(IsA(rci, CdbRelColumnInfo));
+    Insist(rci->pseudoattno == attno);
+    return rci;
+}                               /* cdb_rte_find_pseudo_column */
 
 
 /*

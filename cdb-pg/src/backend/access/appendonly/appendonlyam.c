@@ -21,6 +21,10 @@
  *	  This file contains the appendonly_ routines which implement
  *	  the access methods used for all append-only relations.
  *
+ *            $Id: $
+ *        $Change: $
+ *      $DateTime: $
+ *        $Author: $
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -109,7 +113,6 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	 * We may need to reference ctid and tableoid later. init them here.
 	 */
 	ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
-    scan->cdb_fake_tableoid = RelationGetRelid(scan->aos_rd);
 
 	scan->rowNumber = 0;
 	scan->rowNumberInSegmentFile = 0;
@@ -974,8 +977,6 @@ doProcessTuple(
 		ExecStoreMemTuple(tuple, slot, false);
 
 		slot->tts_synthetic_ctid = scan->cdb_fake_ctid;
-		
-		slot->tts_tableOid = scan->cdb_fake_tableoid;
 	}
 	
 	/* skip visibility test, all tuples are visible */

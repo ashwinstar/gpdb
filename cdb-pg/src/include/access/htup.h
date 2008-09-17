@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/access/htup.h,v 1.87 2006/11/05 22:42:10 tgl Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef HTUP_H
@@ -368,7 +372,7 @@ do { \
 #define MaxTransactionIdAttributeNumber			(-5)
 #define MaxCommandIdAttributeNumber				(-6)
 #define TableOidAttributeNumber					(-7)
-#define gpsegmentIdAttributeNumber			    (-8)    /*CDB*/
+#define GpSegmentIdAttributeNumber			    (-8)    /*CDB*/
 #define FirstLowInvalidHeapAttributeNumber		(-9)
 
 /*
@@ -402,12 +406,13 @@ do { \
  * t_self and t_tableOid should be valid if the HeapTupleData points to
  * a disk buffer, or if it represents a copy of a tuple on disk.  They
  * should be explicitly set invalid in manufactured tuples.
+ *
+ * CDB: t_tableOid deleted.  Instead, use tts_tableOid in TupleTableSlot.
  */
 typedef struct HeapTupleData
 {
 	uint32		t_len;			/* length of *t_data */
 	ItemPointerData t_self;		/* SelfItemPointer */
-	Oid		t_tableOid;		/* table the tuple came from */
 	HeapTupleHeader t_data;		/* -> tuple header and data */
 } HeapTupleData;
 

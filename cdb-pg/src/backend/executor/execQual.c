@@ -6,10 +6,13 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/execQual.c,v 1.199.2.3 2007/08/31 18:33:47 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 /*
@@ -1051,7 +1054,6 @@ GetAttributeByNum(HeapTupleHeader tuple,
 	 */
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(tuple);
 	ItemPointerSetInvalid(&(tmptup.t_self));
-	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = tuple;
 
 	result = heap_getattr(&tmptup,
@@ -1112,7 +1114,6 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 	 */
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(tuple);
 	ItemPointerSetInvalid(&(tmptup.t_self));
-	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = tuple;
 
 	result = heap_getattr(&tmptup,
@@ -3392,7 +3393,6 @@ ExecEvalFieldSelect(FieldSelectState *fstate,
 	 */
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(tuple);
 	ItemPointerSetInvalid(&(tmptup.t_self));
-	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = tuple;
 
 	result = heap_getattr(&tmptup,
@@ -3450,7 +3450,6 @@ ExecEvalFieldStore(FieldStoreState *fstate,
 		tuphdr = DatumGetHeapTupleHeader(tupDatum);
 		tmptup.t_len = HeapTupleHeaderGetDatumLength(tuphdr);
 		ItemPointerSetInvalid(&(tmptup.t_self));
-		tmptup.t_tableOid = InvalidOid;
 		tmptup.t_data = tuphdr;
 
 		heap_deform_tuple(&tmptup, tupDesc, values, isnull);

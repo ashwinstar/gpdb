@@ -7,10 +7,13 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.49 2006/10/04 00:29:51 momjian Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -1044,7 +1047,6 @@ AlterOpClassOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	AclResult	aclresult;
 	Form_pg_opclass opcForm;
 
-	Assert(tup->t_tableOid == OperatorClassRelationId);
 	Assert(RelationGetRelid(rel) == OperatorClassRelationId);
 
 	opcForm = (Form_pg_opclass) GETSTRUCT(tup);

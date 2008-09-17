@@ -9,6 +9,10 @@
  *
  * $PostgreSQL: pgsql/src/include/access/heapam.h,v 1.117 2006/11/05 22:42:10 tgl Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef HEAPAM_H
@@ -45,7 +49,7 @@
 #define fastgetattr(tup, attnum, tupleDesc, isnull)					\
 (																	\
 	AssertMacro((attnum) > 0),										\
-	(((isnull) != NULL) ? (*(isnull) = false) : (dummyret)NULL),				\
+	((isnull) ? (*(isnull) = false) : false),						\
 	HeapTupleNoNulls(tup) ?											\
 	(																\
 		(tupleDesc)->attrs[(attnum)-1]->attcacheoff >= 0 ?			\
@@ -55,18 +59,18 @@
 					(tupleDesc)->attrs[(attnum)-1]->attcacheoff)	\
 		)															\
 		:															\
-			nocachegetattr((tup), (attnum), (tupleDesc), (isnull))	\
+			nocachegetattr((tup), (attnum), (tupleDesc))			\
 	)																\
 	:																\
 	(																\
 		att_isnull((attnum)-1, (tup)->t_data->t_bits) ?				\
 		(															\
-			(((isnull) != NULL) ? (*(isnull) = true) : (dummyret)NULL),		\
-			0												\
+			((isnull) ? (*(isnull) = true) : true),					\
+			0														\
 		)															\
 		:															\
 		(															\
-			nocachegetattr((tup), (attnum), (tupleDesc), (isnull))	\
+			nocachegetattr((tup), (attnum), (tupleDesc))			\
 		)															\
 	)																\
 )
@@ -100,14 +104,14 @@ extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 		( \
 			((attnum) > (int) HeapTupleHeaderGetNatts((tup)->t_data)) ? \
 			( \
-				(((isnull) != NULL) ? (*(isnull) = true) : (dummyret)NULL), \
+				((isnull) ? (*(isnull) = true) : true), \
 				0 \
 			) \
 			: \
 				fastgetattr((tup), (attnum), (tupleDesc), (isnull)) \
 		) \
 		: \
-			heap_getsysattr((tup), (attnum), (tupleDesc), (isnull)) \
+			heap_getsysattr((tup), (attnum), (isnull)) \
 	) \
 )
 
@@ -227,10 +231,8 @@ extern Size heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, uint16 *infomask, bits8 *bit);
 extern bool heap_attisnull(HeapTuple tup, int attnum);
-extern Datum nocachegetattr(HeapTuple tup, int attnum,
-			   TupleDesc att, bool *isnull);
-extern Datum heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
-				bool *isnull);
+extern Datum nocachegetattr(HeapTuple tup, int attnum, TupleDesc att);
+extern Datum heap_getsysattr(HeapTuple tup, int attnum, bool *isnull);
 
 extern HeapTuple heaptuple_copy_to(HeapTuple tup, HeapTuple result, uint32 *len);
 

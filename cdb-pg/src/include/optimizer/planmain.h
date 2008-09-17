@@ -10,6 +10,10 @@
  *
  * $PostgreSQL: pgsql/src/include/optimizer/planmain.h,v 1.94 2006/07/26 00:34:48 momjian Exp $
  *
+ *         $Id$
+ *     $Change$
+ *   $DateTime$
+ *     $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef PLANMAIN_H
@@ -156,8 +160,6 @@ extern int	join_collapse_limit;
 extern void add_base_rels_to_query(PlannerInfo *root, Node *jtnode);
 extern void build_base_rel_tlists(PlannerInfo *root, List *final_tlist);
 extern void add_IN_vars_to_tlists(PlannerInfo *root);
-extern void add_vars_to_targetlist(PlannerInfo *root, List *vars,
-                                   Relids where_needed);
 extern List *deconstruct_jointree(PlannerInfo *root);
 extern void process_implied_equality(PlannerInfo *root,
 						 Node *item1, Node *item2,
@@ -168,14 +170,9 @@ extern void process_implied_equality(PlannerInfo *root,
 /*
  * prototypes for plan/setrefs.c
  */
-typedef struct set_plan_ref_context
-{
-	Query *qry;
-	List *rtable;
-	List *sharedNodes;
-} set_plan_ref_context;
+Plan *
+set_plan_references_qry(Plan *plan, Query *qry, List *sharedNodes);
 
-extern Plan *set_plan_references_qry(Plan *plan, set_plan_ref_context *ctxt); 
 extern List *set_returning_clause_references(List *rlist,
 								Plan *topplan,
 								Index resultRelation); 

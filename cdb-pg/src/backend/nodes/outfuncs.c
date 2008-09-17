@@ -11,6 +11,11 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.285.2.4 2007/08/31 01:44:14 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
+ *
  * NOTES
  *	  Every node type that can appear in stored rules' parsetrees *must*
  *	  have an output function defined here (as well as an input function
@@ -1621,6 +1626,19 @@ _outIndexOptInfo(StringInfo str, IndexOptInfo *node)
 }
 
 static void
+_outCdbRelColumnInfo(StringInfo str, CdbRelColumnInfo *node)
+{
+	WRITE_NODE_TYPE("CdbRelColumnInfo");
+
+    WRITE_INT_FIELD(pseudoattno);
+    WRITE_INT_FIELD(targetresno);
+	WRITE_INT_FIELD(attr_width);
+	WRITE_BITMAPSET_FIELD(where_needed);
+    WRITE_STRING_FIELD(colname);
+	WRITE_NODE_FIELD(defexpr);
+}
+
+static void
 _outCdbRelDedupInfo(StringInfo str, CdbRelDedupInfo *node)
 {
 	WRITE_NODE_TYPE("CdbRelDedupInfo");
@@ -2886,6 +2904,7 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 	WRITE_OID_FIELD(checkAsUser);
 
 	WRITE_BOOL_FIELD(forceDistRandom);
+    WRITE_NODE_FIELD(pseudocols);                                       /*CDB*/
 }
 
 static void
@@ -3521,6 +3540,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_IndexOptInfo:
 				_outIndexOptInfo(str, obj);
+				break;
+			case T_CdbRelColumnInfo:
+				_outCdbRelColumnInfo(str, obj);
 				break;
 			case T_CdbRelDedupInfo:
 				_outCdbRelDedupInfo(str, obj);

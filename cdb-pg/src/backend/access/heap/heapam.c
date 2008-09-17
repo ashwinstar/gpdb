@@ -10,6 +10,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.223 2007/01/05 22:19:22 momjian Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *
  * INTERFACE ROUTINES
  *		relation_open	- open any relation by relation OID
@@ -779,7 +783,7 @@ fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 						(tupleDesc)->attrs[(attnum) - 1]->attcacheoff)
 			   )
 			  :
-			  nocachegetattr((tup), (attnum), (tupleDesc), (isnull))
+			  nocachegetattr((tup), (attnum), (tupleDesc))
 			  )
 			 :
 			 (
@@ -790,7 +794,7 @@ fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 			   )
 			  :
 			  (
-			   nocachegetattr((tup), (attnum), (tupleDesc), (isnull))
+			   nocachegetattr((tup), (attnum), (tupleDesc))
 			   )
 			  )
 			 )
@@ -1079,9 +1083,6 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 	 * we can use page-at-a-time mode if it's an MVCC-safe snapshot
 	 */
 	scan->rs_pageatatime = IsMVCCSnapshot(snapshot);
-
-	/* we only need to set this up once */
-	scan->rs_ctup.t_tableOid = RelationGetRelid(relation);
 
 	/*
 	 * we do this here instead of in initscan() because heap_rescan also calls
@@ -1446,7 +1447,6 @@ heap_release_fetch(Relation relation,
 	 */
 	tuple->t_data = (HeapTupleHeader) PageGetItem((Page) dp, lp);
 	tuple->t_len = ItemIdGetLength(lp);
-	tuple->t_tableOid = RelationGetRelid(relation);
 
 	/*
 	 * check time qualification of tuple, then release lock
@@ -2026,7 +2026,6 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 	HeapTupleHeaderSetXmin(tup->t_data, ins->hi_xid);
 	HeapTupleHeaderSetCmin(tup->t_data, ins->hi_cid);
 	HeapTupleHeaderSetXmax(tup->t_data, 0);		/* for cleanliness */
-	tup->t_tableOid = RelationGetRelid(ins->hi_rel);
 
 	/*
 	 * If the new tuple is too big for storage or contains already toasted
@@ -2159,7 +2158,6 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	HeapTupleHeaderSetXmin(tup->t_data, xid);
 	HeapTupleHeaderSetCmin(tup->t_data, cid);
 	HeapTupleHeaderSetXmax(tup->t_data, 0);		/* for cleanliness */
-	tup->t_tableOid = RelationGetRelid(relation);
 
 	/*
 	 * If the new tuple is too big for storage or contains already toasted
@@ -3115,7 +3113,6 @@ heap_lock_tuple(Relation relation, HeapTuple tuple, Buffer *buffer,
 
 	tuple->t_data = (HeapTupleHeader) PageGetItem((Page) dp, lp);
 	tuple->t_len = ItemIdGetLength(lp);
-	tuple->t_tableOid = RelationGetRelid(relation);
 
 l3:
 	result = HeapTupleSatisfiesUpdate(tuple->t_data, cid, *buffer);

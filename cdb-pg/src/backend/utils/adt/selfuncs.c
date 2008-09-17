@@ -18,6 +18,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.214.2.6 2007/08/31 23:35:29 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -3738,7 +3742,7 @@ get_variable_numdistinct(VariableStatData *vardata)
 				case TableOidAttributeNumber:
 					stadistinct = 1.0;	/* only 1 value */
 					break;
-				case gpsegmentIdAttributeNumber:   /*CDB*/
+				case GpSegmentIdAttributeNumber:   /*CDB*/
 					stadistinct = getgpsegmentCount();
 					break;
 				default:

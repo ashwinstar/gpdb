@@ -10,6 +10,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/access/heap/tuptoaster.c,v 1.66.2.1 2007/02/04 20:00:49 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *
  * INTERFACE ROUTINES
  *		toast_insert_or_update -
@@ -862,7 +866,6 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 			result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_len);
 			result_tuple->t_len = new_len;
 			result_tuple->t_self = newtup->t_self;
-			result_tuple->t_tableOid = newtup->t_tableOid;
 			new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
 			result_tuple->t_data = new_data;
 
@@ -948,7 +951,6 @@ toast_flatten_tuple_attribute(Datum value,
 	/* Build a temporary HeapTuple control structure */
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(olddata);
 	ItemPointerSetInvalid(&(tmptup.t_self));
-	tmptup.t_tableOid = InvalidOid;
 	tmptup.t_data = olddata;
 
 	Assert(numAttrs <= MaxTupleAttributeNumber);
