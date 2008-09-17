@@ -51,19 +51,19 @@ NOTE: You will need root access to install R.
 
 
 6. Set the R_HOME environment variable on all hosts in your Greenplum 
-   array. This must be set for the 'gpadmin' user on all hosts. You can
-   either modify the .bashrc file of the 'gpadmin' user on all hosts or
-   add the following to /etc/profile on all hosts:
+   array. This must be set for the 'gpadmin' user on all hosts. For example,
+   modify the .bashrc file of the 'gpadmin' user on all hosts and add the
+   following line depending on your operating system.
 
-   For Linux 32-bit:
+   #For Linux 32-bit:
 
     EXPORT R_HOME=/usr/lib/R-2.6.1/lib/R 
    
-   For Linux 64-bit:
+   #For Linux 64-bit:
     
     EXPORT R_HOME=/usr/lib64/R-2.6.1/lib64/R
 
-   For Solaris 64-bit: 
+   #For Solaris 64-bit: 
 
     EXPORT R_HOME=/usr/lib64/R-2.6.1/lib/R
  
@@ -116,6 +116,20 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
     $ psql template1 -c "CREATE LANGUAGE plr;"
    
     $ psql <database_name> -c "CREATE LANGUAGE plr;" 
+
+NOTE: If the CREATE LANGUAGE command does not succeed because a
+      library (.so file) could not be found, you may need to update
+      your $LD_LIBRARY_PATH environment variable on all Greenplum
+      hosts so that the libraries for R are searched first. For example, 
+      add the following line to the 'gpadmin' .bashrc on all hosts
+      after your setting for R_HOME:
+      
+       export LD_LIBRARY_PATH=$R_HOME/lib:$LD_LIBRARY_PATH
+
+      Then restart your Greenplum Database system:
+
+       gpstop -r
+
 
 
 
