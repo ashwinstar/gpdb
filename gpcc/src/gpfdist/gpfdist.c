@@ -789,13 +789,13 @@ static void do_write(int fd, short event, void* arg)
 	    if (n > 0) {
 		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
 		if (n < 0) {
-/* EPIPE indicates remote socket intentionally shut down half of the pipe.
-If this was because of something like "select ... limit 10;", then it is fine
-that we couldn't transmit all the data--the segment didn't want it anyway.
-If it is because the segment crashed or something like that, hopefully we
-would find out about that in some other way anyway, so it is okay if we don't
-poison the session. */
-		    if (errno==EPIPE)
+/* EPIPE (or ECONNRESET some computers) indicates remote socket intentionally
+shut down half of the pipe.  If this was because of something like
+"select ... limit 10;", then it is fine that we couldn't transmit all the
+data--the segment didn't want it anyway.  If it is because the segment
+crashed or something like that, hopefully we would find out about that in
+some other way anyway, so it is okay if we don't poison the session. */
+		    if (errno==EPIPE || errno==ECONNRESET)
 			request_end(r,0,0);
 		    else{
 			perror("send");
@@ -822,7 +822,7 @@ poison the session. */
 
 	n = local_send(fd, b->byte + b->bot, n);
 	if (n < 0) {
-	    if (errno==EPIPE)
+	    if (errno==EPIPE || errno==ECONNRESET)
 		request_end(r, 0, 0);
 	    else{
 		perror("send");
