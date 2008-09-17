@@ -242,33 +242,6 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 	}
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		if (stmt->objectType == OBJECT_DATABASE ||
-			stmt->objectType == OBJECT_TABLESPACE || 
-		    stmt->objectType == OBJECT_SCHEMA )
-		{
-			/* 
-			 * The object name is hacked into a list without a node! So, you can't serialize it normally.
-			 */
-
-			StringInfoData buffer;
-	
-			initStringInfo(&buffer);
-	
-			appendStringInfo(&buffer, "ALTER ");
-			if (stmt->objectType == OBJECT_DATABASE)
-				appendStringInfo(&buffer, "DATABASE");
-			else if (stmt->objectType == OBJECT_TABLESPACE)
-				appendStringInfo(&buffer, "TABLESPACE");
-			else if (stmt->objectType == OBJECT_SCHEMA)
-				appendStringInfo(&buffer, "SCHEMA");
-				
-			appendStringInfo(&buffer, " \"%s\" OWNER TO \"%s\"", (char *) linitial(stmt->object), stmt->newowner);
-	
-			CdbDoCommand(buffer.data, false, /*start txn*/ true, 
-						 /* mirrors */ true, /* primaries */ true);
-
-		}
-		else
-			CdbDispatchUtilityStatement((Node *) stmt, "ExecAlterOwnerStmt");
+		CdbDispatchUtilityStatement((Node *) stmt, "ExecAlterOwnerStmt");
 	}
 }

@@ -24,8 +24,15 @@ INSERT INTO test_schema_1.abc DEFAULT VALUES;
 SELECT * FROM test_schema_1.abc;
 SELECT * FROM test_schema_1.abc_view;
 
-DROP SCHEMA test_schema_1 CASCADE;
+-- Test that alter owner works
+create role tmp_test_schema_role;
+alter schema test_schema_1 owner to tmp_test_schema_role;
+select rolname from pg_authid a, pg_namespace n where a.oid = n.nspowner
+  and nspname = 'test_schema_1';
 
+DROP SCHEMA test_schema_1 CASCADE;
+drop role tmp_test_schema_role;
 -- verify that the objects were dropped
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_schema_1');
+
