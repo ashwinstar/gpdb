@@ -64,6 +64,11 @@ class Session(utils.ThreadedDict):
         cookie_name = self._config.cookie_name
         cookie_domain = self._config.cookie_domain
         self.session_id = web.cookies().get(cookie_name)
+
+        if not self.session_id:
+            i = web.input()
+            if i.has_key('sid'):
+                self.session_id = i['sid']
         
         self._check_expiry()
         if self.session_id:
@@ -136,6 +141,9 @@ class Session(utils.ThreadedDict):
         """Kill the session, make it no longer available"""
         del self.store[self.session_id]
         self._killed = True
+
+    def getid(self):
+        return self.session_id
 
 class Store:
     """Base class for session stores"""
