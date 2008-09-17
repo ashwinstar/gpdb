@@ -2554,15 +2554,14 @@ drop table v;
 -- test ao seg totals
 create  or replace function aototal(relname text) returns float8 as $$
 declare
-  segoid oid;
+  aosegname text;
   tupcount float8 := 0;
   rc int := 0;
 begin
-  segoid := relname::regclass::oid;
 
-  execute 'select 1  from pg_class where relname = ''pg_aoseg_' || segoid || '''' into rc;
-  if rc > 0 then
-	  execute 'select tupcount from pg_aoseg.pg_aoseg_' || segoid into tupcount;
+  execute 'select relname from pg_class where oid=(select relaosegrelid from pg_class where relname=''' || relname || ''')' into aosegname;
+  if aosegname > 0 then
+	  execute 'select tupcount from pg_aoseg.' || aosegname into tupcount;
   end if;
   return tupcount;
 end; $$ language plpgsql volatile;

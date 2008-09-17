@@ -96,6 +96,7 @@ SELECT count(*) FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
 
 -- INSERT SELECT
 INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
@@ -106,6 +107,7 @@ INSERT INTO tenk_ao3 SELECT * FROM tenk_heap;
 INSERT INTO tenk_ao1 SELECT * FROM tenk_ao1;
 INSERT INTO tenk_ao2 SELECT * FROM tenk_ao3;
 INSERT INTO tenk_ao3 SELECT * FROM tenk_ao2;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
 
 -- SELECT
 SELECT count(*) FROM tenk_heap;
@@ -134,6 +136,7 @@ bad data row
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
 
 -------------------- 
 -- transactionality
@@ -145,6 +148,7 @@ INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1; -- should show new count
 ROLLBACK;
 SELECT count(*) FROM tenk_ao1; -- should show previous count
+SELECT aototal('tenk_ao1');
 
 -- commit
 BEGIN;
@@ -152,6 +156,7 @@ INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1; -- should show new count
 COMMIT;
 SELECT count(*) FROM tenk_ao1; -- should show new count
+SELECT aototal('tenk_ao1');
 
 -- same txn inserts
 BEGIN;
@@ -215,6 +220,7 @@ SELECT c.relname, c.relkind, a.blocksize, a.compresslevel, a.checksum FROM pg_cl
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
 
 -- VACUUM
 VACUUM tenk_ao1;
@@ -227,6 +233,7 @@ VACUUM ANALYZE tenk_ao3;
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
 
 -- JOIN
 SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
@@ -238,6 +245,7 @@ SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_ao3;
 
 -- TRUNCATE
 TRUNCATE tenk_ao2;
+SELECT aototal('tenk_ao2');
 
 -- OIDS
 CREATE TABLE aowithoids(a int, b int) WITH (appendonly=true,oids=true);
@@ -268,6 +276,7 @@ ALTER TABLE tenk_renamed ALTER COLUMN twothousand SET NOT NULL;
 ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
 SELECT count(*) FROM tenk_renamed;
 ALTER TABLE tenk_renamed RENAME TO tenk_ao1;
+SELECT aototal('tenk_ao1');
 
 --------------------
 -- system columns
