@@ -137,8 +137,8 @@ class gpload:
 	    if 'port' in source:
 		startPort = endPort = source['port']
 	    elif 'portrange' in source:
-		startPort = source['portrange']['start']
-		endPort = source['portrange']['end']
+		startPort = source['portrange'][0]
+		endPort = source['portrange'][1]
 	    else:
 		startPort = 8000
 		endPort = 9000
@@ -229,10 +229,9 @@ class gpload:
 	    sql += "escape as%s"%self.getconfig('gpload.from.format.escape',str)
 	sql += ")"
 	sql += "log errors into ext_%s_errors "%self.name
-	sql += "segment reject "
 	limit = self.getconfig('gpload.errors.segment_limit',str,None)
 	if limit!=None:
-	    sql += "limit %s "%limit
+	    sql += "segment reject limit %s "%limit
 	self.log(sql)
 	self.pg8000.execute(sql)
 	self.cleanupSql.append('drop table if exists ext_%s'%self.name)
@@ -254,18 +253,18 @@ class gpload:
 	    r = sorted(rows[0].keys())
 	    size = map(len,r)
 	    for i in xrange(len(size)):
-		size[i] = max(size[i],reduce(max,map(lambda a:len(str(a[r[i]])),rows)))
+		size[i] = max(size[i],*map(lambda a:len(str(a[r[i]])),rows))
 	    for i in xrange(len(size)):
 		if i:
 		    sb.append('|')
-		sb.append('%%%ds'%size[i]%r[i])
+		sb.append('%*s'%(size[i],r[i]))
 	    sb.append('\n')
 	    sb.append('%s\n'%'+'.join(map(lambda i:'-'*i,size)))
 	    for row in rows:
 		for i in xrange(len(size)):
 		    if i:
 			sb.append('|')
-		    sb.append('%%%ds'%size[i]%row[r[i]])
+		    sb.append('%*s'%(size[i],row[r[i]]))
 		sb.append('\n')
 	if len(rows)==1:
 	    sb.append('1 row\n')
@@ -284,6 +283,13 @@ class gpload:
 	self.pg8000.execute(sql)
 	self.read_errors()
 
+    def do_method_update(self):
+	pass
+
+    def do_method_merge(self):
+	pass
+
+    def show_result(self):
 	self.pg8000.execute('select * from %s'%self.table)
 	self.log(self.format_rows(list(self.pg8000.iterate_dict())))
 
@@ -291,6 +297,10 @@ class gpload:
 	method = self.getconfig('gpload.into.method.method',str,'insert').lower()
 	if method=='insert':
 	    self.do_method_insert()
+	elif method=='update':
+	    self.do_method_update()
+	elif method=='merge':
+	    self.do_method_merge()
 	else:
 	    self.log('We do not implement method %s yet.'%method)
 	    sys.exit(2)
@@ -303,6 +313,7 @@ class gpload:
 	self.read_mapping()
 	self.start_gpfdists()
 	self.do_method()
+	self.show_result()
 
     def run(self):
 	try:
