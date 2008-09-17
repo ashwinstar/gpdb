@@ -370,8 +370,7 @@ class GPUpgrade:
             sys.stderr.write(e.stderr)
             raise UpgradeError('Fatal Segment Error')
         
-        if self.debug: 
-            self.Log('DEBUG', '[GPSSH] %s' % result)
+        self.Log('GPSSH', result)
 
     #------------------------------------------------------------
     def CheckDirectories(self):
@@ -426,9 +425,12 @@ class GPUpgrade:
     #------------------------------------------------------------
     def Log(self, type, msg):
 
-        if type not in ['NONE', 'INFO', 'WARN', 'FATAL', 'DEBUG']:
+        if type not in ['NONE', 'INFO', 'WARN', 'FATAL', 'DEBUG', 'GPSSH']:
             print '[WARN] Odd log type: %s' % str(type)
         
+        if type in ['DEBUG', 'GPSSH'] and not self.debug:
+            return
+
         if type == 'NONE':
             prefix = ''
         else:
@@ -1166,7 +1168,8 @@ This issue must be resolved before upgrade can complete.
         if self.cmd == 'MASTER':
             prefix = self.config['SEG_PREFIX'] + '-'
             datadirs = [self.root]
-            if self.mappings == None:
+            [env, utility] = self.dbup
+            if env == self.env:
                 self.Log('INFO', 'Building original oid Mappings')
             else:
                 self.Log('INFO', 'Building upgraded oid Mappings')
@@ -1218,19 +1221,26 @@ This issue must be resolved before upgrade can complete.
                         oids = self.Select(
                         '''
                            SELECT
-                              c.relname || '_' || c.relkind as name,
+                              case when parent.oid is not null
+                                   then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
+                                   else n.nspname || '.' || c.relname || '_' || c.relkind
+                              end as name,
                               c.relfilenode as filenode,
                               c2.relfilenode as toast,
                               c3.relfilenode as toast_index
                            FROM 
                               pg_namespace n,
-                              pg_class c 
+                              (SELECT oid, *, substring(relname from '^(?:pg_bm_|pg_aoseg_)([0-9]+)') as parentoid
+                               from pg_class) c 
                               left outer join pg_class c2 on c.reltoastrelid=c2.oid
                               left outer join pg_class c3 on c2.reltoastidxid=c3.oid
-                           WHERE c.oid >= %s 
+                              left outer join pg_class parent on parent.oid = c.parentoid
+                              left outer join pg_namespace pn on parent.relnamespace = pn.oid
+                           WHERE c.oid >= %s
                              AND c.relkind in ('a', 'r', 't', 'i', 'S')
-                             AND c.relnamespace = n.oid AND n.nspname != 'pg_toast'
-                           ORDER BY c.relname, c.relkind;
+                             AND c.relnamespace = n.oid 
+                             AND n.nspname not in ('pg_toast')
+                           ORDER BY name;
                         ''' % db['max_sysoid'], 
                         db=db['dbname'],
                         port=port)
@@ -1242,7 +1252,8 @@ This issue must be resolved before upgrade can complete.
                                            db['oid'], 
                                            o['filenode'], 
                                            o['toast'], 
-                                           o['toast_index']))
+                                           o['toast_index']))                        
+
                     mapfile.close()
 
 
@@ -1278,6 +1289,7 @@ This issue must be resolved before upgrade can complete.
         Runs pgdump_all to dump the schema.
         Run on the master in utility mode.
         '''
+        self.Log('INFO', 'Exporting schema')
         self.oldenv['PGOPTIONS'] = '-c gp_session_role=utility'
         subprocess.call('pg_dumpall -p %d --schema-only --gp-syntax > %s/pgdump.sql' %
                         (self.masterport, self.tmpdir), env=self.oldenv, shell=True)
@@ -1341,7 +1353,6 @@ This issue must be resolved before upgrade can complete.
 
         self.Update('vacuum freeze', db='postgres', port=self.masterport)
         self.Update('vacuum freeze', db='template1', port=self.masterport)
-        self.Shutdown()
 
     #------------------------------------------------------------
     def ResetXLogs(self):
@@ -1375,6 +1386,17 @@ This issue must be resolved before upgrade can complete.
                     # we sync the pg_control info
                     oldsync = self.RunCmd('pg_resetxlog -n ' + olddir, 
                                           env=self.oldenv)
+                    newsync = self.RunCmd('pg_resetxlog -n ' + newdir, 
+                                          env=self.newenv)
+
+                    self.Log('DEBUG', '*****************************')
+                    self.Log('DEBUG', ' - old xlog -')
+                    self.Log('DEBUG', oldsync)
+                    self.Log('DEBUG', '*****************************')
+                    self.Log('DEBUG', ' - new xlog -')
+                    self.Log('DEBUG', newsync)
+                    self.Log('DEBUG', '*****************************')
+                    
 
                     # Nasty bit of code to turn the control data into a
                     # nice dict object
@@ -1406,14 +1428,27 @@ This issue must be resolved before upgrade can complete.
                                 (sync["Latest checkpoint's NextOID"],
                                  newdir), env=self.newenv)
 
-                    # Replace the new comit logs with the old ones
-                    #   + Just copy these... it's safer
-                    self.RunCmd('rm -rf %s/pg_clog' % newdir)
-                    self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' 
-                                % (olddir, newdir))
+                    # Replace the transaction logs with the old ones
+                    # since the old logs actually correspond to the data
+                    for f in ['pg_clog', 
+                              'pg_distributedlog', 
+                              'pg_subtrans',
+                              'pg_multixact']:
+                        oldlogs = os.path.join(olddir, f)
+                        newlogs = os.path.join(newdir, f)
+
+                        # the only one that wouldn't exist is pg_distributedlog
+                        # and only if we were upgrading/downgrading to/from a 
+                        # version < 3.1.1.5
+                        if (os.path.exists(newlogs)):
+                            self.RunCmd('rm -rf %s' % newlogs)
+                            if (os.path.exists(oldlogs)):
+                                self.RunCmd('cp -rf %s %s' % (oldlogs, newlogs))
+
 
                     # Do the same for the .conf files
                     for f in ['pg_hba', 'pg_ident', 'postgresql']:
+                        self.RunCmd('rm -f %s/%s.conf' % (newdir, f))
                         self.RunCmd('cp -f %s/%s.conf %s/.' 
                                     % (olddir, f, newdir))
 
@@ -1421,7 +1456,7 @@ This issue must be resolved before upgrade can complete.
     #------------------------------------------------------------
     def ImportSchema(self):
         self.CheckUp()
-        self.Log('INFO', 'Importing old schema')
+        self.Log('INFO', 'Importing schema')
         subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
                         env=self.newenv, shell=True,
                         stdout=self.logfile, stderr=self.logfile)
@@ -1482,7 +1517,6 @@ This issue must be resolved before upgrade can complete.
                     # Read the mapping files to produce oid->oid pairs
                     oldmapfile = open(newdir+'_source_mapping', 'r')
                     newmapfile = open(newdir+'_target_mapping', 'r')
-                    mapping = {}
                     for oldline in oldmapfile:
                         newline = newmapfile.next()
 
@@ -1505,6 +1539,7 @@ This issue must be resolved before upgrade can complete.
                                 raise UpgradeError("Mapping failure on %s %s" % (name, msg))
                             mapping[os.path.join(olddb,oldoid)] = os.path.join(newdb, newoid)
 
+                        mapping = {}
                         makemapping(oldname, olddb, oldoid, newdb, newoid, '')
                         makemapping(oldname, olddb, oldtoast, newdb, newtoast, 'toast')
                         makemapping(oldname, olddb, oldtidx, newdb, newtidx, 'toast index')
@@ -1521,8 +1556,7 @@ This issue must be resolved before upgrade can complete.
                                 raise UpgradeError(newfile + ' not found')
 
                             # Remove the new file, hard link to the old file
-                            if self.debug:
-                                self.Log('INFO', 'Linking %s => %s' % (oldfile, newfile))
+                            self.Log('DEBUG', 'Linking %s => %s' % (oldfile, newfile))
 
                             os.remove(newfile)
                             os.link(oldfile, newfile)
@@ -1591,8 +1625,7 @@ This issue must be resolved before upgrade can complete.
                             if style == 'BACKUP':
                                 self.Log('WARN', 'File exists ' + newfile)
                             os.remove(newfile)
-                        if self.debug:
-                            self.Log('INFO', 'Linking file ' + newfile)
+                        self.Log('DEBUG', 'Linking file ' + newfile)
                         os.link(oldfile, newfile)
 
                     for root, dirs, files in os.walk(content, topdown = True):
@@ -1610,8 +1643,7 @@ This issue must be resolved before upgrade can complete.
                             if os.path.exists(newfile):
                                 self.Log('WARN', 'File exists ' + newfile)
                                 os.remove(newfile)
-                            if self.debug:
-                                self.Log('INFO', 'Linking file ' + newfile)
+                            self.Log('DEBUG', 'Linking file ' + newfile)
                             os.link(oldfile, newfile)
 
     #------------------------------------------------------------
@@ -1700,23 +1732,20 @@ try:
         # Initalize the new database
         # + Requires working directories on all nodes
         # + Requires generated configuration file
-        u.InitNewDB()
-        u.Startup(u.newenv, False)
+        u.InitNewDB()      # leaves newdb up
         u.ImportSchema()
         u.BuildMappings()
         u.Shutdown()
-
-        u.Startup(u.newenv, True)  # debug
-        u.Shutdown()               #
         u.ResetXLogs()
-        u.Startup(u.newenv, True)  # debug
-        u.Shutdown()               #
-
 
         # Remap oids for the new database
         # + Requires working directories on all hosts
         # + Requires new db initialized
         u.RemapOID()
+
+        # Confirm that the resync/remapping was successful
+        u.Startup(u.newenv, True)
+        u.Shutdown()
         u.SetState('NEWDB VALID')
 
         # We haven't modified anything under the master directory yet.
@@ -1826,14 +1855,18 @@ except ConnectionError, e:
     try:   u.Cleanup()
     except Exception, e2: 
         u.Log('FATAL', str(e2))
+    u.Log('FATAL', '***************************************')
     u.Log('FATAL', str(e))
+    u.Log('FATAL', '***************************************')
     sys.exit(1)
 
 except UpgradeError, e:
     try:   u.Cleanup()
     except Exception, e2: 
         u.Log('FATAL', str(e2))
+    u.Log('FATAL', '***************************************')
     u.Log('FATAL', str(e))
+    u.Log('FATAL', '***************************************')
     sys.exit(1)
 
 # Shouldn't get any of these, if they occur it is probably a bug in
@@ -1842,6 +1875,8 @@ except Exception, e:
     try:   u.Cleanup()
     except Exception, e2: 
         u.Log('FATAL', str(e2))
+    u.Log('FATAL', '***************************************')
     u.Log('FATAL', str(e))
+    u.Log('FATAL', '***************************************')
     sys.stderr.write(traceback.format_exc())
     sys.exit(1)
