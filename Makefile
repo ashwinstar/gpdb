@@ -305,11 +305,9 @@ pkgplr:
 	@if [ -f $(INSTLOC)/lib/postgresql/plr.so ] ; then \
 	    echo "" ; \
 	    echo "`date` -- INFO: Found plr.so, creating PL/R package" ; \
-	    mkdir -p $(PLRDIR)/lib ; \
-	    mkdir -p $(PLRDIR)/contrib ; \
-	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/lib ; \
-	    cp -p $(INSTLOC)/share/postgresql/contrib/plr.sql $(PLRDIR)/contrib ; \
-	    cp -p $(BLD_TOP)/cdb-pg/src/pl/plr/README.plr $(PLRDIR)/ ; \
+	    mkdir $(PLRDIR) ; \
+	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/ ; \
+	    cp -p $(BLD_TOP)/languages/PLR/PLR_README $(PLRDIR)/ ; \
 	    echo "" ; \
 	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of plr components" ; \
 	    rm -f $(INSTLOC)/share/postgresql/contrib/plr.sql ; \
