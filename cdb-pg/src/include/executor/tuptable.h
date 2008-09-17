@@ -9,6 +9,10 @@
  *
  * $PostgreSQL: pgsql/src/include/executor/tuptable.h,v 1.36 2006/10/04 00:30:08 momjian Exp $
  *
+ * $Id$
+ * $Change$
+ * $DateTime$
+ * $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef TUPTABLE_H
@@ -103,17 +107,16 @@
  * be touched by any other code.
  *----------
  */
-typedef enum TupleTableSlotFlag
-{
-	TTS_ISEMPTY 	= 1,
-	TTS_SHOULDFREE 	= 1 << 1,
-	TTS_VIRTUAL 	= 1 << 2
-} TupleTableSlotFlag;
+
+/* tts_flags */
+#define         TTS_ISEMPTY     1
+#define         TTS_SHOULDFREE 	2
+#define         TTS_VIRTUAL     4
 
 typedef struct TupleTableSlot
 {
 	NodeTag		type;		/* vestigial ... allows IsA tests */
-	TupleTableSlotFlag PRIVATE_tts_flags;	/* flags */
+	int         PRIVATE_tts_flags;      /* TTS_xxx flags */
 
 	/* Heap tuple stuff */
 	HeapTuple PRIVATE_tts_heaptuple;
@@ -125,7 +128,6 @@ typedef struct TupleTableSlot
 	void 	*PRIVATE_tts_mtup_buf;
 	uint32  PRIVATE_tts_mtup_buf_len;
 	ItemPointerData tts_synthetic_ctid;	/* needed if memtuple is stored on disk */
-	Oid				tts_tableOid;		/* needed if memtuple is stored on disk */
 	
 	/* Virtual tuple stuff */
 	int 	PRIVATE_tts_nvalid;		/* number of valid virtual tup entries */
@@ -139,6 +141,8 @@ typedef struct TupleTableSlot
 	MemoryContext 	tts_mcxt;		/* slot itself is in this context */
 	Buffer		tts_buffer;		/* tuple's buffer, or InvalidBuffer */
 
+    /* System attributes */
+    Oid         tts_tableOid;
 } TupleTableSlot;
 
 static inline bool TupIsNull(TupleTableSlot *slot)
@@ -175,7 +179,7 @@ static inline bool TupHasMemTuple(TupleTableSlot *slot)
 static inline bool TupHasVirtualTuple(TupleTableSlot *slot)
 {
 	Assert(slot);
-	return (slot->PRIVATE_tts_flags & TTS_VIRTUAL);
+    return (slot->PRIVATE_tts_flags & TTS_VIRTUAL) ? true : false;
 }
 static inline HeapTuple TupGetHeapTuple(TupleTableSlot *slot)
 {
@@ -232,8 +236,6 @@ static inline void slot_getallattrs(TupleTableSlot *slot)
 {
 	slot_getsomeattrs(slot, slot->tts_tupleDescriptor->natts);
 }
-
-extern Datum heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull);
 
 extern Datum slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull);
 
