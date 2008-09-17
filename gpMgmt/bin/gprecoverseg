@@ -124,7 +124,7 @@ def parseCommandLine():
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
         elif (switch == '-S'):        opt[switch] = int(val)
-        elif (switch == '-c'):        gpmlib.log_info('Option -c was obsolete.  This option will be ignored')
+        elif (switch == '-c'):        gpmlib.log_info('Option -c is obsolete.  This option will be ignored')
 
     gpmlib.log_set_module(script_name)
     # set verbose
