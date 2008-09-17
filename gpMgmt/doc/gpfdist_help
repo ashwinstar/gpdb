@@ -7,7 +7,7 @@ SYNOPSIS
 *****************************************************
 
 
-gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v] [-V]
+gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v | -V]
 
 gpfdist -? | --version
 
