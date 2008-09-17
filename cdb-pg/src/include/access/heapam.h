@@ -29,6 +29,11 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
+/* in common/heaptuple.c */
+extern Datum nocachegetattr(HeapTuple tup, int attnum, TupleDesc att);
+extern Datum heap_getsysattr(HeapTuple tup, int attnum, bool *isnull);
+
+
 /* ----------------
  *		fastgetattr
  *
@@ -41,44 +46,41 @@
  *
  *		This gets called many times, so we macro the cacheable and NULL
  *		lookups, and call nocachegetattr() for the rest.
+ *
+ *      CDB:  Implemented as inline function instead of macro.
  * ----------------
  */
+static inline Datum
+fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
+{
+    Datum               result;
+    Form_pg_attribute   att = tupleDesc->attrs[attnum-1];
 
-#if !defined(DISABLE_COMPLEX_MACRO)
+    Assert(attnum > 0);
 
-#define fastgetattr(tup, attnum, tupleDesc, isnull)					\
-(																	\
-	AssertMacro((attnum) > 0),										\
-	((isnull) ? (*(isnull) = false) : false),						\
-	HeapTupleNoNulls(tup) ?											\
-	(																\
-		(tupleDesc)->attrs[(attnum)-1]->attcacheoff >= 0 ?			\
-		(															\
-			fetchatt((tupleDesc)->attrs[(attnum)-1],				\
-				(char *) (tup)->t_data + (tup)->t_data->t_hoff +	\
-					(tupleDesc)->attrs[(attnum)-1]->attcacheoff)	\
-		)															\
-		:															\
-			nocachegetattr((tup), (attnum), (tupleDesc))			\
-	)																\
-	:																\
-	(																\
-		att_isnull((attnum)-1, (tup)->t_data->t_bits) ?				\
-		(															\
-			((isnull) ? (*(isnull) = true) : true),					\
-			0														\
-		)															\
-		:															\
-		(															\
-			nocachegetattr((tup), (attnum), (tupleDesc))			\
-		)															\
-	)																\
-)
-#else							/* defined(DISABLE_COMPLEX_MACRO) */
+    if (isnull)
+        *isnull = false;
 
-extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
-			bool *isnull);
-#endif   /* defined(DISABLE_COMPLEX_MACRO) */
+    if (HeapTupleNoNulls(tup))
+    {
+        if (att->attcacheoff >= 0)
+			result = fetchatt(att,
+				              (char *)tup->t_data + tup->t_data->t_hoff +
+					            att->attcacheoff);
+        else
+            result = nocachegetattr(tup, attnum, tupleDesc);
+    }
+    else if (att_isnull(attnum-1, tup->t_data->t_bits))
+    {
+        result = Int32GetDatum(0);
+        if (isnull)
+            *isnull = true;
+    }
+    else
+        result = nocachegetattr(tup, attnum, tupleDesc);
+
+    return result;
+}                               /* fastgetattr */
 
 
 /* ----------------
@@ -94,26 +96,30 @@ extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
  *		<tup> is the pointer to the heap tuple.  <attnum> is the attribute
  *		number of the column (field) caller wants.	<tupleDesc> is a
  *		pointer to the structure describing the row and all its fields.
+ *
+ *      CDB:  Implemented as inline function instead of macro.
  * ----------------
  */
-#define heap_getattr(tup, attnum, tupleDesc, isnull) \
-( \
-	AssertMacro((tup) != NULL), \
-	( \
-		((attnum) > 0) ? \
-		( \
-			((attnum) > (int) HeapTupleHeaderGetNatts((tup)->t_data)) ? \
-			( \
-				((isnull) ? (*(isnull) = true) : true), \
-				0 \
-			) \
-			: \
-				fastgetattr((tup), (attnum), (tupleDesc), (isnull)) \
-		) \
-		: \
-			heap_getsysattr((tup), (attnum), (isnull)) \
-	) \
-)
+static inline Datum
+heap_getattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
+{
+    Datum       result;
+
+    Assert(tup != NULL);
+
+    if (attnum > (int)HeapTupleHeaderGetNatts(tup->t_data))
+    {
+        result = DatumGetInt32(0);
+        if (isnull)
+            *isnull = true;
+    }
+    else if (attnum > 0)
+        result = fastgetattr(tup, attnum, tupleDesc, isnull);
+    else
+        result = heap_getsysattr(tup, attnum, isnull);
+
+    return result;
+}                               /* heap_getattr */
 
 
 /* ----------------
@@ -231,8 +237,6 @@ extern Size heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, uint16 *infomask, bits8 *bit);
 extern bool heap_attisnull(HeapTuple tup, int attnum);
-extern Datum nocachegetattr(HeapTuple tup, int attnum, TupleDesc att);
-extern Datum heap_getsysattr(HeapTuple tup, int attnum, bool *isnull);
 
 extern HeapTuple heaptuple_copy_to(HeapTuple tup, HeapTuple result, uint32 *len);
 
