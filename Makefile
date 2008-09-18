@@ -45,7 +45,7 @@ GPMONDISTPATH=$(GPROOT)/$(GPMONDIR)
 DEVPATH=$(HOME)/$(GPDIR)
 GPMONDEVPATH=$(HOME)/$(GPMONDIR)
 
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred
 
 ifeq (true, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python
