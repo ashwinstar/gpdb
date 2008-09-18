@@ -793,6 +793,45 @@ alter table hhh add partition cc end ('2010-01-01');
 -- works - anonymous partition MPP-3350
 alter table hhh add partition end ('2010-02-01');
 
+-- MPP-3607 - ADD PARTITION with open intervals
+create table no_end1 (aa int, bb int) partition by range (bb)
+(partition foo start(3));
+
+-- fail overlap
+alter table no_end1 add partition baz end (4);
+
+-- fail overlap (because prior partition has no end)
+alter table no_end1 add partition baz start (5);
+
+-- ok (terminates on foo start)
+alter table no_end1 add partition baz start (2);
+
+-- ok (because ends before baz start)
+alter table no_end1 add partition baz2 end (1);
+
+create table no_start1 (aa int, bb int) partition by range (bb)
+(partition foo end(3));
+
+-- fail overlap (because next partition has no start)
+alter table no_start1 add partition baz start (2);
+
+-- fail overlap (because next partition has no start)
+alter table no_start1 add partition baz end (1);
+
+-- ok (starts on foo end)
+alter table no_start1 add partition baz end (4);
+
+-- ok (because starts after baz end)
+alter table no_start1 add partition baz2 start (5);
+
+select tablename, partitionlevel, parentpartitiontablename,
+partitionname, partitionrank, partitionboundary from pg_partitions
+where tablename = 'no_start1' or tablename = 'no_end1' 
+order by tablename, partitionrank;
+
+drop table no_end1;
+drop table no_start1;
+
 -- hash partitions cannot have default partitions
 create table jjj (aa int, bb int) 
 partition by hash(bb) 
