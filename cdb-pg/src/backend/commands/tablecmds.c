@@ -11720,9 +11720,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 	{
 		if (PARTTYP_RANGE == part_type) 
 		{
-			PartitionBoundSpec 	*pbs   = NULL;
-			PgPartRule   		*prule = NULL;
+			PartitionBoundSpec 	*pbs   	   = NULL;
+			PgPartRule   		*prule 	   = NULL;
 			AlterPartitionId 	 pid;
+			ParseState 			*pstate    = make_parsestate(NULL);
+			TupleDesc 		 	 tupledesc = RelationGetDescr(rel);
 
 			MemSet(&pid, 0, sizeof(AlterPartitionId));
 
@@ -11753,6 +11755,10 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 			if (!(pbs->partStart))
 			{
+				Datum 					*d_end 	   = NULL;
+				bool 					*isnull;
+				bool 					 bstat;
+
 				pid.partiddef = (Node *)makeInteger(-1);
 
 				prule = get_part_rule1(rel, &pid, false, false, 
@@ -11766,31 +11772,121 @@ atpxPartAddList(AlteredTableInfo *tab,
 				 * partition in the table...)
 				 */
 
-				if (prule && prule->topRule && prule->topRule->parrangeend)
+				if (!(prule && prule->topRule))
 				{
-					PartitionRangeItem *ri = makeNode(PartitionRangeItem);
-
-					ri->partEveryNum  = NULL;
-					ri->location = -1;
-
-					ri->partRangeVal = copyObject(prule->topRule->parrangeend);
-
-					/* invert the inclusive/exclusive */
-					ri->partedge = prule->topRule->parrangeendincl ? 
-							PART_EDGE_EXCLUSIVE :
-							PART_EDGE_INCLUSIVE; 
-
-					/* should be final partition */
-					maxpartno = prule->topRule->parruleord + 1;
-
-					pbs->partStart = (Node *)ri;
+					maxpartno = 1;
+					bOpenGap = true;
+					goto L_fin_no_start;
 				}
+
+				{
+					Node *n1;
+					PartitionRangeItem *ri = 
+							(PartitionRangeItem *)pbs->partEnd;
+
+					n1 = (Node *)copyObject(ri->partRangeVal);
+					n1 = (Node *)transformExpressionList(pstate, 
+														 (List *)n1);
+
+					d_end =
+							magic_expr_to_datum(rel, pNode, 
+												n1, &isnull);
+				}
+
+				if (prule && prule->topRule && prule->topRule->parrangeend
+					&& list_length((List *)prule->topRule->parrangeend))
+				{
+					bstat = 
+							compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   "<",
+										   (List *)prule->topRule->parrangeend,
+												   d_end, isnull, tupledesc);
+
+					/* if the current end is less than the new end
+					 * then use it as the start of the new
+					 * partition 
+					 */
+
+					if (bstat)
+					{
+						PartitionRangeItem *ri = makeNode(PartitionRangeItem);
+
+						ri->partEveryNum  = NULL;
+						ri->location = -1;
+
+						ri->partRangeVal = 
+								copyObject(prule->topRule->parrangeend);
+
+						/* invert the inclusive/exclusive */
+						ri->partedge = prule->topRule->parrangeendincl ? 
+								PART_EDGE_EXCLUSIVE :
+								PART_EDGE_INCLUSIVE; 
+
+						/* should be final partition */
+						maxpartno = prule->topRule->parruleord + 1;
+						
+						pbs->partStart = (Node *)ri;
+						goto L_fin_no_start;
+					}
+				}
+
+				/* if the last partition doesn't have an end, or the
+				 * end isn't less than the new end, check if new end
+				 * is less than current start 
+				 */
+
+				pid.partiddef = (Node *)makeInteger(1);
+
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, NULL,
+									   pNode,
+									   lrelname,
+									   &pNode2);
+
+				if (!(prule && prule->topRule && prule->topRule->parrangestart
+					  && list_length((List *)prule->topRule->parrangestart)))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("new partition overlaps existing "
+									"partition")));
+
+				bstat = 
+						compare_partn_opfuncid(pNode,
+											   "pg_catalog",
+											   ">",
+									   (List *)prule->topRule->parrangestart,
+											   d_end, isnull, tupledesc);
+				if (bstat)
+				{
+					/* should be first partition */
+					maxpartno = prule->topRule->parruleord - 1;
+					if (0 == maxpartno)
+					{
+						maxpartno = 1;
+						bOpenGap = true;
+					}
+
+				}
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("new partition overlaps existing "
+									"partition")));
+
+			L_fin_no_start:
+				bstat = false; /* fix warning */
 
 			}
 			else if (!(pbs->partEnd))
 			{ /* if no END, then END before first partition 
 			     **ONLY IF** 
 				 * START of this partition is before first partition ... */
+
+				Datum 					*d_start   = NULL;  
+				bool 					*isnull;
+				bool 					 bstat;
+
 				pid.partiddef = (Node *)makeInteger(1);
 
 				prule = get_part_rule1(rel, &pid, false, false, 
@@ -11806,41 +11902,118 @@ atpxPartAddList(AlteredTableInfo *tab,
 				 * partition in the table...)
 				 */
 
-				if (prule && prule->topRule && prule->topRule->parrangestart)
+				if (!(prule && prule->topRule))
 				{
-					PartitionRangeItem *ri = makeNode(PartitionRangeItem);
-
-					ri->partEveryNum  = NULL;
-					ri->location = -1;
-
-					ri->partRangeVal = 
-							copyObject(prule->topRule->parrangestart);
-
-					/* invert the inclusive/exclusive */
-					ri->partedge = prule->topRule->parrangestartincl ? 
-							PART_EDGE_EXCLUSIVE :
-							PART_EDGE_INCLUSIVE; 
-
-					/* should be first partition */
-					maxpartno = prule->topRule->parruleord - 1;
-					if (0 == maxpartno)
-					{
-						maxpartno = 1;
-						bOpenGap = true;
-					}
-
-					pbs->partEnd = (Node *)ri;
+					maxpartno = 1;
+					bOpenGap = true;
+					goto L_fin_no_end;
 				}
+
+				{
+					Node *n1;
+					PartitionRangeItem *ri = 
+							(PartitionRangeItem *)pbs->partStart;
+
+					n1 = (Node *)copyObject(ri->partRangeVal);
+					n1 = (Node *)transformExpressionList(pstate, 
+														 (List *)n1);
+
+					d_start =
+							magic_expr_to_datum(rel, pNode, 
+												n1, &isnull);
+				}
+
+
+				if (prule && prule->topRule && prule->topRule->parrangestart
+					&& list_length((List *)prule->topRule->parrangestart))
+				{
+					bstat = 
+							compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   ">",
+									   (List *)prule->topRule->parrangestart,
+												   d_start, isnull, tupledesc);
+
+					/* if the current start is greater than the new start
+					 * then use it as the end of the new
+					 * partition 
+					 */
+
+					if (bstat)
+					{
+						PartitionRangeItem *ri = makeNode(PartitionRangeItem);
+
+						ri->partEveryNum  = NULL;
+						ri->location = -1;
+
+						ri->partRangeVal = 
+								copyObject(prule->topRule->parrangestart);
+
+						/* invert the inclusive/exclusive */
+						ri->partedge = prule->topRule->parrangestartincl ? 
+								PART_EDGE_EXCLUSIVE :
+								PART_EDGE_INCLUSIVE; 
+
+						/* should be first partition */
+						maxpartno = prule->topRule->parruleord - 1;
+						if (0 == maxpartno)
+						{
+							maxpartno = 1;
+							bOpenGap = true;
+						}
+
+						pbs->partEnd = (Node *)ri;
+						goto L_fin_no_end;
+					}
+				}
+
+				/* if the first partition doesn't have an start, or the
+				 * start isn't greater than the new start, check if new start
+				 * is greater than current end
+				 */
+
+				pid.partiddef = (Node *)makeInteger(-1);
+
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, NULL,
+									   pNode,
+									   lrelname,
+									   &pNode2);
+
+				if (!(prule && prule->topRule && prule->topRule->parrangeend
+					  && list_length((List *)prule->topRule->parrangeend)))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("new partition overlaps existing "
+									"partition")));
+
+				bstat = 
+						compare_partn_opfuncid(pNode,
+											   "pg_catalog",
+											   "<",
+									   (List *)prule->topRule->parrangeend,
+											   d_start, isnull, tupledesc);
+				if (bstat)
+				{
+					/* should be final partition */
+					maxpartno = prule->topRule->parruleord + 1;
+				}
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("new partition overlaps existing "
+									"partition")));
+
+			L_fin_no_end:
+				bstat = false; /* fix warning */
 
 			}
 			else
 			{ 					/* both start and end are specified */
 				PartitionRangeItem 		*ri;
 				bool 					 bOverlap  = false;
-				ParseState 				*pstate    = make_parsestate(NULL);
 				int isMiddle  = 0;	/* -1 for new first, 1 for new last */
 				bool 					*isnull;
-				TupleDesc 		 		 tupledesc = RelationGetDescr(rel);
 				int 			 		 startSearchpoint;
 				int 			 		 endSearchpoint;
 				Datum 					*d_start   = NULL;
@@ -14770,10 +14943,10 @@ ATPExecPartRename(Relation rel,
 		/* MPP-3542: warn when skip child partitions */
 		if (skipped)
 		{
-				ereport(WARNING,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("renamed %d partitions, skipped %d child partitions due to name truncation",
-								renamed, skipped)));
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("renamed %d partitions, skipped %d child partitions due to name truncation",
+							renamed, skipped)));
 		}
 
 	}
