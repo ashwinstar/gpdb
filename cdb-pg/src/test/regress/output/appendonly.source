@@ -396,12 +396,6 @@ SELECT count(*) FROM tenk_ao3;
  10000
 (1 row)
 
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
- aototal | aototal | aototal 
----------+---------+---------
-         |         |        
-(1 row)
-
 -- VACUUM
 VACUUM tenk_ao1;
 VACUUM tenk_ao2;
@@ -427,12 +421,6 @@ SELECT count(*) FROM tenk_ao3;
  count 
 -------
  10000
-(1 row)
-
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
- aototal | aototal | aototal 
----------+---------+---------
-         |         |        
 (1 row)
 
 -- JOIN
@@ -461,12 +449,6 @@ SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_ao3;
 
 -- TRUNCATE
 TRUNCATE tenk_ao2;
-SELECT aototal('tenk_ao2');
- aototal 
----------
-        
-(1 row)
-
 -- OIDS
 CREATE TABLE aowithoids(a int, b int) WITH (appendonly=true,oids=true);
 COPY aowithoids FROM STDIN;
@@ -510,12 +492,6 @@ SELECT count(*) FROM tenk_renamed;
 (1 row)
 
 ALTER TABLE tenk_renamed RENAME TO tenk_ao1;
-SELECT aototal('tenk_ao1');
- aototal 
----------
-        
-(1 row)
-
 --------------------
 -- system columns
 --------------------
