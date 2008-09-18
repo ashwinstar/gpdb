@@ -242,6 +242,7 @@ static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type)
 				elsize = 8; 
 				break;
 			default:
+				elsize = 0;  /* Fixes complier warnings */
 				Assert(false);
 		}
 		nelem = ARR_DIMS(labels)[0];
