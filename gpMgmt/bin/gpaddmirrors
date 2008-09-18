@@ -22,7 +22,7 @@ Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-
           -s        : spread mirror mode
           -p        : mirror offset, if not supplied, script will calculate a suitable
                       port offset for the mirror segment instances, range 7000 - 61000
-                      current offset value is 10000
+                      current offset value is 1000
           -m        : mirror data directory config file
           -B        : number of parallel process to spawn to process mirror creation
 
@@ -65,7 +65,7 @@ opt['-a'] = False
 opt['-s'] = False
 opt['-i'] = None
 opt['-o'] = None
-opt['-p'] = 10000
+opt['-p'] = 1000
 opt['-l'] = None
 opt['-D'] = False
 
