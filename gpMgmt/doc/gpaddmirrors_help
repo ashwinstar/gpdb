@@ -81,9 +81,9 @@ Optional. The master data directory. If not specified, the value set for
 $MASTER_DATA_DIRECTORY will be used.
 
 
--p <port_base>
+-p <port_offset>
 
-This number is used to calculate the port base used for mirror segments. 
+This number is used to calculate the ports used for mirror segments. 
 This number is added to whatever number you have chosen for your primary 
 segment port base. The default offset is 1000. So for example, if your 
 primary segments use a port base of 50000, then mirrors will use a port 
