@@ -111,13 +111,24 @@ def findCmdInPath(cmd):
 
 #############
 def makeCommand(cmd):
+    GPHOME=os.environ.get('GPHOME')
+    LIB_PATH=os.environ.get(ENV.LIB_TYPE)
+    if not LIB_PATH:
+        LIB_PATH='%s/lib:%s/ext/python/lib:.' % (GPHOME, GPHOME)
+
+    PATH=os.environ.get('PATH')
+    if not PATH:
+        PATH='%s/bin:%s/ext/python/bin:.' % (GPHOME, GPHOME)
+
     return ('GPHOME=%s && export GPHOME '
             '&& PATH=%s && export PATH '
-            '&& LD_LIBRARY_PATH=%s && export LD_LIBRARY_PATH '
+            '&& %s=%s && export %s '
             '&& %s'
-            % (os.environ.get('GPHOME'), 
-               os.environ.get('PATH'),
-               os.environ.get('LD_LIBRARY_PATH'),
+            % (GPHOME, 
+               PATH,
+               ENV.LIB_TYPE,
+               LIB_PATH,
+               ENV.LIB_TYPE,
                cmd))
 
 #############
@@ -288,7 +299,8 @@ class Env:
             self.PING_TIME='-c 1'
             self.DF='%s -P' % findCmdInPath('df')
             self.DU_TXT='-c'
-
+        else:
+            fatal('platform not supported')
 
     def chk_environ(self):
         self.GPHOME=os.getenv('GPHOME')
@@ -298,8 +310,16 @@ class Env:
         if not self.USER:
             fatal('USER not found')
 
-        os.environ['LD_LIBRARY_PATH']='%s/lib:%s/ext/python/lib:%s' % (self.GPHOME, self.GPHOME, os.getenv('LD_LIBRARY_PATH'))
-        os.environ['PATH']='%s/bin:%s/ext/python/bin:%s' % (self.GPHOME, self.GPHOME, os.getenv('PATH'))
+        LIB_PATH=os.getenv(self.LIB_TYPE)
+        if not LIB_PATH:
+            LIB_PATH='.'
+
+        PATH=os.getenv('PATH')
+        if not PATH:
+            PATH='.'
+
+        os.environ[self.LIB_TYPE]='%s/lib:%s/ext/python/lib:%s' % (self.GPHOME, self.GPHOME, LIB_PATH)
+        os.environ['PATH']='%s/bin:%s/ext/python/bin:%s' % (self.GPHOME, self.GPHOME, PATH)
         
 
 
@@ -653,11 +673,13 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
 
     # start mirror segment in admin mode
     log_info('start segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
-    (ok, out) = run('%s "LD_LIBRARY_PATH=%s && export LD_LIBRARY_PATH && env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s.log -o \\"-i -p %d \\" start" >> %s 2>&1' %
+    cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s.log -o \\"-i -p %d \\" start' %
+                      (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
+                      dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port']))    
+    (ok, out) = run('%s "%s" >> %s 2>&1' % 
                     (gplib.ssh_prefix(host=dst_cfg['hostname']),
-                     os.environ.get('LD_LIBRARY_PATH'), 
-                     os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
-                     dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port'], logfile))
+                     cmd,
+                     logfile))
     if not ok:
         fatal('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
@@ -684,11 +706,13 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     if force_stop:
         # stop mirror segment
         log_info('stop segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname'])) 
-        (ok, out) = run('%s "LD_LIBRARY_PATH=%s && export LD_LIBRARY_PATH && env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w stop -D %s -m smart -l %s.log" >> %s 2>&1' % 
+        cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w stop -D %s -m smart -l %s.log' % 
+                          (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
+                           dst_cfg['datadir'], dst_cfg['datadir']))
+        (ok, out) = run('%s "%s" >> %s 2>&1' % 
                         (gplib.ssh_prefix(host=dst_cfg['hostname']),
-                         os.environ.get('LD_LIBRARY_PATH'), 
-                         os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
-                         dst_cfg['datadir'], dst_cfg['datadir'], logfile))
+                         cmd,
+                         logfile))        
         if not ok:
             fatal('failed to stop mirror segment %s:%s' % (dst_cfg['hostname'], dst_cfg['datadir']))
     

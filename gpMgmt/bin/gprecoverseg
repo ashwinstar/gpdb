@@ -258,24 +258,6 @@ def get_fail_count_type(db, failed_dbids):
     return (pri_fail_count, mir_fail_count)
 
 ################
-def calc_mirror_port_base(db):
-    global opt
-    max_mir_port = 61000
-    min_mir_port = 7000
-
-    mirror_offset = opt['-p']
-    (min_port, max_port) = get_minmax_port(db)
-    if max_port > 40000:
-        port_base = min_port - mirror_offset-1
-    else:
-        port_base = min_port + mirror_offset-1
-
-    if port_base >= max_mir_port or port_base <= min_mir_port:
-        gpmlib.log_fatal(' Value of MIRROR_OFFSET supplied via -a option is out of valid')
-        gpmlib.fatal('Mirror port base range must be between %d and %d' % (min_mir_port, max_mir_port))
-
-
-################
 def chk_mirror_config(qes, mirrors):
     if len(qes) != len(mirrors):
         gpmlib.error('Number of mirror segments must be equal to number of primary segments')
