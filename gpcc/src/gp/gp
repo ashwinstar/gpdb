@@ -524,10 +524,14 @@ class StatusCmd(Command):
 
 ####################
 class LoginCmd(Command):
-    '''Usage: gp login [username]'''
+    '''Usage: gp login [-f passwd_file] [username]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, '', self.__doc__)
+        Command.__init__(self, gopt, argv, 'f:', self.__doc__)
+        self.opt['-f'] = None
         self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-f': self.opt[switch] = val
+
         if len(self.args) == 1:
             self.opt['-u'] = self.args[0]
         if self.opt['-u'] is None:
@@ -542,7 +546,11 @@ class LoginCmd(Command):
                 sys.exit('please specify user.')
             self.opt['-u'] = user
         for i in xrange(3):
-            passwd = getpass('password:')
+            if self.opt['-f']:
+                f = open(self.opt['-f'])
+                passwd = f.read().strip()
+            else:
+                passwd = getpass('password:')
             param = {}
             content = {}
             if (self.gopt['-a']): param['a'] = self.gopt['-a']
@@ -567,6 +575,9 @@ class LoginCmd(Command):
                     sys.exit(2)
                 print '%s logged on' % self.opt['-u']
                 sys.exit(0)
+
+            if opt['-f']:
+                break
 
         print '[ERROR] login failed.'
         sys.exit(2)
