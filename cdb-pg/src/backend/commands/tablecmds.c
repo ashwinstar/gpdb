@@ -9943,11 +9943,6 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 				}
 			}
 
-			if (c1->constisnull)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg("illegal use of NULL type")));
-
 			/* XXX: cache */
 			values[attno - 1] = c1->constvalue;
 			isnull[attno - 1] = c1->constisnull; /* XXX: not handled yet */
