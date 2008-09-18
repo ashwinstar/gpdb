@@ -536,7 +536,8 @@ def getSysCat(dbid, table, catalog):
         outfile = "%s/gpcheckcat_s" % GV.tmpdir
 
     cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
-    cmd += ' psql -o %s -A -F , -h %s -p %s -c "%s"' % (outfile, host, port, qry)
+    cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" %s' % \
+        (outfile, host, port, GV.opt['-U'], qry, GV.dbname)
 
     subprocess.call(cmd, shell=True)
     
