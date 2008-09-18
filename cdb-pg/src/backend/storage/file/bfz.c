@@ -146,15 +146,20 @@ bfz_write_ex(bfz_t*thiz,const char*buffer,int size)
 	int s=fs->buffer_end-fs->buffer_pointer;
 	if (size < s)
 	    s = size;
-	memcpy(fs->buffer_pointer,buffer,s);
-	fs->buffer_pointer += s;
-	buffer += s;
 	size -= s;
-	if (fs->buffer_pointer == fs->buffer_end){
+	if (s == sizeof fs->buffer){
 	    fs->tot_bytes += sizeof fs->buffer;
-	    fs->write_ex(thiz,fs->buffer,sizeof fs->buffer);
-	    fs->buffer_pointer = fs->buffer;
+	    fs->write_ex(thiz,buffer,sizeof fs->buffer);
+	}else{
+	    memcpy(fs->buffer_pointer,buffer,s);
+	    fs->buffer_pointer += s;
+	    if (fs->buffer_pointer == fs->buffer_end){
+		fs->tot_bytes += sizeof fs->buffer;
+		fs->write_ex(thiz,fs->buffer,sizeof fs->buffer);
+		fs->buffer_pointer = fs->buffer;
+	    }
 	}
+	buffer += s;
     }
 }
 
@@ -173,6 +178,13 @@ bfz_read_ex(bfz_t*thiz,char*buffer,int size)
 	buffer += s;
 	size -= s;
 	if (fs->buffer_pointer == fs->buffer_end){
+	    while (size >= sizeof fs->buffer){
+		s = fs->read_ex(thiz,buffer,sizeof fs->buffer);
+		buffer += s;
+		size -= s;
+		if (s == 0)
+		    break;
+	    }
 	    s = fs->read_ex(thiz,fs->buffer,sizeof fs->buffer);
 	    fs->buffer_pointer = fs->buffer;
 	    fs->buffer_end = fs->buffer+s;

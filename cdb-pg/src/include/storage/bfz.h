@@ -17,7 +17,9 @@ struct bfz_freeable_stuff{
     off_t tot_bytes;
     char*buffer_pointer;
     char*buffer_end;
+// We always call read_ex with size==BFZ_BUFFER_SIZE.  So far, no code depends on this.  Some block compression algorithm might take advantage of this in the future.
     int(*read_ex)(struct bfz*thiz,char*buffer,int size);
+// We always call write_ex with size==BFZ_BUFFER_SIZE, except for the last write.  So far, no code depends on this.  Some block compression algorithm might take advantage of this in the future.
     void(*write_ex)(struct bfz*thiz,const char*buffer,int size);
     void(*close_ex)(struct bfz*thiz);
     char buffer[BFZ_BUFFER_SIZE];
