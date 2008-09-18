@@ -11,7 +11,7 @@ Usage: gpcheckcat <option> [dbname]
 	-v         : verbose
 
 '''
-import sys, os
+import sys, os, subprocess, tempfile
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -41,6 +41,7 @@ class Global():
     cfg       = None
     dbname    = None
     db        = {}
+    tmpdir    = None
 
 GV = Global()
 # array of SQL statements. Key is dbid
@@ -86,9 +87,9 @@ def parseCommandLine():
     setdef('-U', 'PGUSER')
     setdef('-U', 'USER')
     setdef('-p', 'PGPORT')
-    GV.opt['-p'] = parse_int(GV.opt['-p'])
     if not GV.opt['-p']:
         usage('Please specify -p port')
+    GV.opt['-p'] = parse_int(GV.opt['-p'])
 
     if not GV.opt['-h']:
         GV.opt['-h'] = 'localhost'
@@ -511,29 +512,34 @@ def addRemove(seg, line):
         Remove[seg] = []
     Remove[seg].append(line)
 
-def getSysCat(seg, table, cols, namespace, key):
-	db = connect2(GV.cfg[seg])
+def getSysCat(dbid, table, catalog):
+    host    = GV.cfg[dbid]['hostname']
+    port    = GV.cfg[dbid]['port']
+    datadir = GV.cfg[dbid]['datadir']
+    veryverbose('[INFO] fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
 
-	w = ''
-	if namespace:
-		w = 'WHERE %s ' % namespace
-		w += '''NOT IN (select oid from pg_namespace WHERE nspname 
-				LIKE 'pg_temp%' OR nspname LIKE 'pg_toast%')'''
-		 
-	s = ','.join(set(cols + key))
+    qry  = 'SELECT a.'
+    qry += ', a.'.join(set(catalog['cols'] + catalog['key']))
+    qry += ' FROM pg_catalog.%s a' % table
 
-	qry = 'SELECT %s FROM pg_catalog.%s %s' % (s, table, w)
+    if catalog['namespace']:
+        qry += ", pg_namespace n"
+        qry += " WHERE a.%s = n.oid" % catalog['namespace']
+        qry += " AND n.nspname !~ 'pg_temp.*'"
+        qry += " AND n.nspname !~ 'pg_toast.*'"
 
-	rows = {}
-	db.execute(qry)
-	for row in db.iterate_dict():
-		atts = [ str(row[o]) for o in key ]
+    qry += " ORDER BY a.%s " % ', a.'.join(catalog['key'])
 
-		k = ';'.join(atts)
+    if dbid == 1:
+        outfile = "%s/gpcheckcat_m" % GV.tmpdir
+    else:
+        outfile = "%s/gpcheckcat_s" % GV.tmpdir
 
-		rows[k] = row
+    cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
+    cmd += ' psql -o %s -A -F , -h %s -p %s -c "%s"' % (outfile, host, port, qry)
 
-	return rows
+    subprocess.call(cmd, shell=True)
+    
 
 def row2str(row):
 	keys = row.keys()
@@ -545,90 +551,77 @@ def row2str(row):
 
 def crossDbCheck():
 	print '-----------------------------------'
-	print 'Performing cross database object comparison'
+	print 'Performing cross database object comparison ...'
+
 	# 1: get catalog from every node
-	pg_classes = {}
-	pg_attributes = {}
-	pg_types = {}
-	pg_namespaces = {}
+        catalogs = {
+            'pg_class': {
+                'st':         {},
+                'cols':       ['oid', 'relname', 'relnamespace', 'reltype', 
+                             'relowner', 'relam', 'relfilenode', 
+                             'reltablespace', 'relnatts'],
+                'namespace':  'relnamespace',
+                'key':        ['oid']
+                },
+            'pg_attribute': {
+                'st':         {},
+                'cols':       ['attrelid', 'attname', 'atttypid', 'attstattarget', 
+                             'attlen', 'attnum', 'attndims'],
+                'namespace':  None,
+                'key':        ['attrelid', 'attname']
+                },
+            'pg_type': {
+                'st':         {},
+                'cols':       ['oid', 'typname', 'typnamespace', 'typowner', 
+                             'typlen', 'typbyval', 'typtype', 'typisdefined', 
+                             'typdelim', 'typrelid', 'typelem'],
+                'namespace': 'typnamespace',
+                'key':        ['oid']
+                },
+            'pg_namespace': {
+                'st':         {},
+                'cols':       ['oid', 'nspname', 'nspowner'],
+                'namespace':  'oid',
+                'key':        ['oid']
+                }
+            }
 
-	for dbid in GV.cfg:
-		pg_classes[dbid] = getSysCat(dbid, 'pg_class', ['oid', 'relname',
-									 'relnamespace', 'reltype', 'relowner',
-									 'relam', 'relfilenode', 'reltablespace',
-									 'relnatts'],
-									 'relnamespace', ['oid'])
-		pg_attributes[dbid] = getSysCat(dbid, 'pg_attribute',
-										['attrelid', 'attname', 'atttypid',
-										 'attstattarget', 'attlen',
-										 'attnum', 'attndims'],
-										 None,
-										['attrelid', 'attname'])
-		pg_types[dbid] = getSysCat(dbid, 'pg_type',
-								   ['oid', 'typname', 'typnamespace',
-								    'typowner', 'typlen', 'typbyval',
-									'typtype', 'typisdefined', 'typdelim',
-									'typrelid', 'typelem'],
-									'typnamespace', ['oid'])
-		pg_namespaces[dbid] = getSysCat(dbid, 'pg_namespace',
-										['oid', 'nspname', 'nspowner'],
-										'oid',
-										['oid']) 
-		
-	st = {'pg_class': pg_classes, 'pg_attribute': pg_attributes,
-		  'pg_type': pg_types, 'pg_namespace': pg_namespaces}
+        # Establish a connection to each node
+            
+        # check each catalog in turn
+        for cid in catalogs:
+            error = False
+            print '  - Comparing %s on master to all segments' % cid
 
-	# 2: compare size of pg_namespace, pg_class, pg_attribute, pg_type
-	for n in st:
-		error = False
-		print 'Comparing %s on master to all segments' % n
-		v = st[n]
-		for dbid in v:
-			# master = 1
-			slen = len(v[dbid])
-			mlen = len(v[1])
-			if slen != mlen:
-				print '[ERROR] %s has differences: %i rows on master, %i on seg %i' % (n, mlen, slen, dbid)
-				error = True
+            for dbid in GV.cfg:
+                getSysCat(dbid, cid, catalogs[cid])
+                if dbid == 1:
+                    continue    # master segment
 
-			for (key) in (v[1]):
-				row = v[1][key]
-				if not v[dbid].has_key(key):
-					error = True
-					print '[ERROR] row from master not on seg %i' % dbid
-					print row2str(row)
+                cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat_s' % \
+                    (GV.tmpdir, GV.tmpdir)
+                diff = subprocess.call(cmd, shell=True)
+                if diff:
+                    error = True
+                    print '[ERROR] diff from segment %d:' % dbid
+                    print diff
 
-				elif v[dbid][key] != row:
-					error = True
-					print '[ERROR] row difference'
-					print 'master'
-					print row2str(row)
-					print 'seg %i' % dbid
-					print row2str(v[dbid][key])
+        if error == False:
+            print '[OK]'
+        else:
+            GV.retcode = 1
 
-			for (key) in (v[dbid]):
-				if not v[1].has_key(key):
-					error = True
-					print '[ERROR] row from seg %i not on master' % dbid
-					print row2str(v[dbid][key])
-
-				elif v[dbid][key] != v[1][key]:
-					error = True
-					print '[ERROR] row difference'
-					print 'master'
-					print row2str(v[1][key])
-					print 'seg %i' % dbid
-					print row2str(v[dbid][key])
-
-		if error == False:
-				print '[OK]'
-                else:
-				GV.retcode = 1
 
 #############
 if __name__ == '__main__':
     parseCommandLine()
     GV.cfg = getGPConfiguration()
+    try:
+        GV.tmpdir = tempfile.mkdtemp()
+    except Exception, e:
+        print '[ERROR] ' + str(e)
+        print '[ERROR] Unable to create temporary directory'
+        sys.exit(1)
 
     checkPGClass()
     checkPGAttribute()
@@ -663,5 +656,7 @@ if __name__ == '__main__':
                 file.write(line + '\n')
 
             file.close()
+
+    subprocess.call('rm -rf ' + GV.tmpdir, shell=True)
     sys.exit(GV.retcode)
 
