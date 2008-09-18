@@ -1069,7 +1069,7 @@ elog_start(const char *filename, int lineno, const char *funcname)
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
-		write_log("elog called from thread\n");
+		write_log("elog called from thread (%s:%d)\n", filename, lineno);
 	}
 #endif
 }
