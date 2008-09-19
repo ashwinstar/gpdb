@@ -12596,7 +12596,16 @@ atpxPartAddList(AlteredTableInfo *tab,
 								(PartitionRule *)list_nth(pNode->rules, 
 														  startSearchpoint);
 
-						bstat = 
+						/* MPP-3621: fix ADD for open intervals */
+						
+						if (0 == 
+							list_length((List *)a_rule->parrangeend))
+						{
+							/* new end < infinite end */
+							bstat = false;
+						}
+						else
+							bstat = 
 							compare_partn_opfuncid(pNode,
 												   "pg_catalog",
 												   "<=",
@@ -12615,7 +12624,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 						   current, then this one should be larger.
 						   if not, then it overlaps...
 						*/
-						if (!compare_partn_opfuncid(pNode,
+						if (
+							(0 == 
+							 list_length((List *)a_rule->parrangestart))
+								||
+								!compare_partn_opfuncid(pNode,
 													"pg_catalog",
 													">=",
 												(List *)a_rule->parrangestart,
