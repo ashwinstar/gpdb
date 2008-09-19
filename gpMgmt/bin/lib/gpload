@@ -225,9 +225,13 @@ class gpload:
 	if self.getconfig('gpload.from.format.header',bool,False):
 	    sql += "header "
 	if format=='csv':
-	    sql += "quote as%s"%self.getconfig('gpload.from.format.quote',str)
-	    sql += "escape as%s"%self.getconfig('gpload.from.format.escape',str)
+	    sql += "quote as%s"%quote(self.getconfig('gpload.from.format.quote',str))
+	    sql += "escape as%s"%quote(self.getconfig('gpload.from.format.escape',str))
+	force_not_null_columns = self.getconfig('gpload.from.format.force_not_null_columns',list,[])
+	if force_not_null_columns:
+	    sql += "force not null %s "%','.join(force_not_null_columns)
 	sql += ")"
+	sql += "encoding%s"%quote(self.getconfig('gpload.from.format.encoding',str))
 	sql += "log errors into ext_%s_errors "%self.name
 	limit = self.getconfig('gpload.errors.segment_limit',str,None)
 	if limit!=None:
