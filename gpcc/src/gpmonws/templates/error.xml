@@ -3,5 +3,5 @@ $def with (req, code, msg)
 <error>
    <req>$req</req>
    <code>$code</code>
-   <msg>$msg</msg>
+   <message>$msg</message>
 </error>
