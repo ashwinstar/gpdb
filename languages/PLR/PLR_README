@@ -34,7 +34,7 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 
 4. Copy the plr.so file to $GPHOME/lib/postgresql on all hosts:
 
-    $ gpscp -f <all_hosts_file> plr.so =:/usr/local/greenplum-db-3.2.0.0/lib/postgresql
+    $ gpscp -f <all_hosts_file> ./greenplum-db-devel-plr/plr.so =:/usr/local/greenplum-db-3.2.0.0/lib/postgresql
 
 5. Make sure $R_HOME is set on all Greenplum hosts:
 
@@ -103,15 +103,15 @@ NOTE: You will need root access to install R.
 
    #For Linux 32-bit:
 
-    EXPORT R_HOME=/usr/lib/R-2.6.1/lib/R 
+    export R_HOME=/usr/lib/R-2.6.1/lib/R 
    
    #For Linux 64-bit:
     
-    EXPORT R_HOME=/usr/lib64/R-2.6.1/lib64/R
+    export R_HOME=/usr/lib64/R-2.6.1/lib64/R
 
    #For Solaris 64-bit: 
 
-    EXPORT R_HOME=/usr/lib64/R-2.6.1/lib/R
+    export R_HOME=/usr/lib64/R-2.6.1/lib/R
  
 
 7. The R libraries must be findable by your runtime linker. On Linux, 
