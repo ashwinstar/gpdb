@@ -4456,8 +4456,14 @@ preprocess_range_spec(partValidationState *vstate)
 				
 				/* start */
 				newri = makeNode(PartitionRangeItem);
-				newri->partedge = 
-					((PartitionRangeItem *)pbs->partStart)->partedge;
+
+				/* modifier only relevant on the first iteration */
+				if (everycount == 1)
+					newri->partedge = 
+						((PartitionRangeItem *)pbs->partStart)->partedge;
+				else
+					newri->partedge = PART_EDGE_INCLUSIVE;
+
 				newri->location =
 					((PartitionRangeItem *)pbs->partStart)->location;
 				newri->partRangeVal = curstart;
@@ -4465,8 +4471,7 @@ preprocess_range_spec(partValidationState *vstate)
 				
 				/* end */
 				newri = makeNode(PartitionRangeItem);
-				newri->partedge = 
-					((PartitionRangeItem *)pbs->partEnd)->partedge;
+				newri->partedge = PART_EDGE_EXCLUSIVE;
 				newri->location =
 					((PartitionRangeItem *)pbs->partEnd)->location;
 				newri->partRangeVal = newend;
@@ -4481,6 +4486,20 @@ preprocess_range_spec(partValidationState *vstate)
 
 				if (first)
 					first = false;
+			}
+
+			/* 
+			 * Update the final PartitionElem's partEnd modifier if it isn't
+			 * the default
+			 */
+			if (((PartitionRangeItem *)pbs->partEnd)->partedge !=
+				PART_EDGE_EXCLUSIVE)
+			{
+				PartitionElem *elem = lfirst(list_tail(everyelts));
+				PartitionBoundSpec *s = (PartitionBoundSpec *)elem->boundSpec;
+				PartitionRangeItem *ri = (PartitionRangeItem *)s->partEnd;
+
+				ri->partedge = ((PartitionRangeItem *)pbs->partEnd)->partedge;
 			}
 
 			/* add everycount to each EVERY clause */
