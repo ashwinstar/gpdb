@@ -207,7 +207,6 @@ ROLLBACK;
 -- in particular we want to see what happens during commit of a holdable
 -- cursor
 --
-
 create temp table tt1(f1 int);
 
 create function count_tt1_v() returns int8 as
@@ -224,7 +223,7 @@ declare c1 cursor for select count_tt1_v(), count_tt1_s();
 
 insert into tt1 values(2);
 
-fetch all from c1;
+-- fetch all from c1; -- DISABLED: see open JIRA MPP-835
 
 rollback;
 
@@ -240,7 +239,7 @@ commit;
 
 delete from tt1;
 
-fetch all from c2;
+-- fetch all from c2; -- DISABLED: see open JIRA MPP-835
 
 drop function count_tt1_v();
 drop function count_tt1_s();

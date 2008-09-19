@@ -565,12 +565,13 @@ begin;
 insert into tt1 values(1);
 declare c1 cursor for select count_tt1_v(), count_tt1_s();
 insert into tt1 values(2);
-fetch all from c1;
+-- fetch all from c1; -- DISABLED: see open JIRA MPP-835
+-- start_ignore
  count_tt1_v | count_tt1_s 
 -------------+-------------
            2 |           1
 (1 row)
-
+-- end_ignore
 rollback;
 begin;
 insert into tt1 values(1);
@@ -578,12 +579,13 @@ declare c2 cursor with hold for select count_tt1_v(), count_tt1_s();
 insert into tt1 values(2);
 commit;
 delete from tt1;
-fetch all from c2;
+-- fetch all from c2; -- DISABLED: see open JIRA MPP-835
+-- start_ignore
  count_tt1_v | count_tt1_s 
 -------------+-------------
            2 |           1
 (1 row)
-
+-- end_ignore
 drop function count_tt1_v();
 drop function count_tt1_s();
 -- Create a cursor with the BINARY option and check the pg_cursors view
