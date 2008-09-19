@@ -45,7 +45,7 @@ setup:
 	@psql -c "create language plperl" -d $(DB) 
 	@psql -c "create language plpythonu" -d $(DB) 
 	@printf "============== running mapreduce tests                ==============\n"
-	@rm -rf $(OUTDIR)/FAIL
+	@rm -rf $(OUTDIR)
 
 clean:
 	rm -rf $(YMLDIR)
@@ -86,3 +86,12 @@ $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
         perl -e "while (<>) {s/No relations found.\\n$$//; print}" >> $(OUTDIR)/$*.suc
 	@cd $(OUTDIR); if [ -s $*.suc ] ; then \
 	    mv $*.suc $*.fail; echo FAILED; echo $*.fail >> FAIL ; else echo ok; fi
+
+
+# If the master files don't exist this won't let the test pass, but it will
+# allow the test to run
+$(MASTERDIR)/%.out:
+	@echo "FILE MISSING" > $@
+
+$(MASTERDIR)/%.err:
+	@echo "FILE MISSING" > $@

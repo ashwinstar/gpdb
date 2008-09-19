@@ -791,7 +791,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					   "\n            ) x(i) \n"
 				       "   WHERE    a.attrelid = c.oid \n"
 				       "     AND    a.attnum > 0 \n"
-				       "     AND    c.relkind in ('r', 'v', 'a') \n"
+				       "     AND    c.relkind in ('r', 'v', 'a', 'x') \n"
 				       "     AND    c.relnamespace = n.oid \n"
 				       "     AND    c.relname = lower('");
 
@@ -1400,6 +1400,8 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 		{
 			if (olist->object->kind == MAPRED_EXECUTION)
 			{
+				boolean exists = false;
+
 				XASSERT(olist->object->name);
 
 				/* Reset the buffer from any previous executions */
@@ -1414,29 +1416,49 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 				 */
 				if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
 				{
-					switch (output->u.output.mode)
+					/* does the table already exist? */
+					bufcat(&buffer, 
+						   "SELECT n.nspname \n"
+						   "FROM   pg_catalog.pg_class c JOIN \n"
+						   "       pg_catalog.pg_namespace n on \n"
+						   "       (c.relnamespace = n.oid) \n"
+						   "WHERE  n.nspname = ANY(current_schemas(true)) \n"
+						   "  AND  c.relname = lower('");
+					bufcat(&buffer, output->u.output.desc);
+					bufcat(&buffer, "')");
+					result = PQexec(conn, buffer->buffer);
+					if (PQresultStatus(result) == PGRES_TUPLES_OK &&
+						PQntuples(result) > 0)
+						exists = true;
+					bufreset(buffer);
+
+					if (exists && output->u.output.mode == MAPRED_OUTPUT_REPLACE)
 					{
-						case MAPRED_OUTPUT_REPLACE:
-							bufcat(&buffer, "DROP TABLE IF EXISTS ");
-							bufcat(&buffer, output->u.output.desc);
-							result = PQexec(conn, buffer->buffer);
-							bufreset(buffer);
-							/* fallthrough */
+						bufcat(&buffer, "DROP TABLE ");
+						bufcat(&buffer, output->u.output.desc);
+						result = PQexec(conn, buffer->buffer);
+						bufreset(buffer);
+						exists = false;
+					}
 
-						case MAPRED_OUTPUT_NO_MODE:
-							bufcat(&buffer, "CREATE TABLE ");
-							bufcat(&buffer, output->u.output.desc);
-							bufcat(&buffer, " AS ");
-							break;
-
-						case MAPRED_OUTPUT_APPEND:
-							bufcat(&buffer, "INSERT INTO ");
-							bufcat(&buffer, output->u.output.desc);
-							bufcat(&buffer, " (");
-							break;
-
-						default:
-							XASSERT(false);
+					if (!exists)
+					{
+						bufcat(&buffer, "CREATE TABLE ");
+						bufcat(&buffer, output->u.output.desc);
+						bufcat(&buffer, " AS ");
+					}
+					else if (output->u.output.mode == MAPRED_OUTPUT_APPEND)
+					{
+						bufcat(&buffer, "INSERT INTO ");
+						bufcat(&buffer, output->u.output.desc);
+						bufcat(&buffer, " (");
+					}
+					else 
+					{
+						/* exists, mode is neither replace or append => error */
+						mapred_obj_error(output, "Table '%s' already exists",
+										 output->u.output.desc);
+						continue;
 					}
 				}
 				bufcat(&buffer, "SELECT * FROM ");
@@ -1448,35 +1470,34 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 				 */
 				if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
 				{
-					switch (output->u.output.mode)
-					{
-						case MAPRED_OUTPUT_NO_MODE:
-						case MAPRED_OUTPUT_REPLACE:
-							/* 
-							 * If there are no key columns then leave off the
-							 * distributed by clause and let the server choose.
-							 */
-							if (olist->object->u.task.grouping)
-							{						
-								bufcat(&buffer, " DISTRIBUTED BY (");
-								columns = olist->object->u.task.grouping;
-								while (columns)
-								{
-									bufcat(&buffer, columns->name);
-									if (columns->next || olist->object->u.task.returns)
-										bufcat(&buffer, ", ");
-									columns = columns->next;				   
-								}
-								bufcat(&buffer, ")");
-							}
-							break;
 
-						case MAPRED_OUTPUT_APPEND:
-							bufcat(&buffer, ")");
-							break;
-							
-						default:
-							XASSERT(false);
+					/* 
+					 * If there are no key columns then leave off the
+					 * distributed by clause and let the server choose.
+					 */
+					if (exists)
+						bufcat(&buffer, ")");
+
+					else if (olist->object->u.task.grouping)
+					{
+						bufcat(&buffer, " DISTRIBUTED BY (");
+						columns = olist->object->u.task.grouping;
+						while (columns)
+						{
+							bufcat(&buffer, columns->name);
+							if (columns->next)
+								bufcat(&buffer, ", ");
+							columns = columns->next;				   
+						}
+						bufcat(&buffer, ")");
+					}
+					else
+					{
+						/* 
+						 * don't have any hints for what the distribution keys
+						 * should be, so we do nothing and let the database 
+						 * decide
+						 */
 					}
 				}
 				else
@@ -1597,7 +1618,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						
 						/* OUTPUT is a table */
 						case PGRES_COMMAND_OK:
-							fprintf(stderr, "CREATED\n");
+							fprintf(stderr, "DONE\n");
 							break;
 
 						/* An error of some kind */
@@ -1704,8 +1725,12 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 							host = strtok_r(clist->value, ":", &tokenizer);
 							path = strtok_r(NULL, ":", &tokenizer);
 							if (!path)
+							{
+								mapred_obj_error(obj, "No file host specified (%s)",
+												 clist->value);
 								XRAISE(MAPRED_PARSE_ERROR,
 									   "Invalid INPUT source specification");
+							}
 
 							bufcat(&buffer, host);
 							bufcat(&buffer, path);

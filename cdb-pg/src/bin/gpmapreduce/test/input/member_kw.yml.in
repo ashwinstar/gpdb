@@ -168,11 +168,28 @@ DEFINE:
           AND tm.count > 0
 
   - OUTPUT:
-      NAME:      final_output
-      TABLE:     member_keywords
+      NAME:      final_output_replace
+      TABLE:     member_keywords_1
       MODE:      REPLACE
+
+  - OUTPUT:
+      NAME:      final_output_append
+      TABLE:     member_keywords_2
+      MODE:      APPEND
 
 EXECUTE:
   - RUN:
       SOURCE:    final_join
-      TARGET:    final_output
+      TARGET:    final_output_replace
+
+  - RUN:
+      SOURCE:    final_join
+      TARGET:    final_output_replace
+
+  - RUN:
+      SOURCE:    final_join
+      TARGET:    final_output_append
+
+  - RUN:
+      SOURCE:    final_join
+      TARGET:    final_output_append      
