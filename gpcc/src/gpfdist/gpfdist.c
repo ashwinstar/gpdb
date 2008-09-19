@@ -789,6 +789,8 @@ static void do_write(int fd, short event, void* arg)
 	    if (n > 0) {
 		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
 		if (n < 0) {
+		    if (errno==EPIPE || errno==ECONNRESET)
+			r->out.bot = r->out.top;
 		    perror("send");
 		    request_end(r, 1, 0);
 		    return;
@@ -1379,8 +1381,8 @@ gprint(const char* fmt, ...)
     va_list ap;
     if (opt.v){
 	va_start(ap, fmt);
-	fprintf(stdout, "[%s] ", datetime());
-	vfprintf(stdout, fmt, ap);
+	printf("[%s] ", datetime());
+	vprintf(fmt, ap);
 	va_end(ap);
     }
     return 0;
@@ -1392,10 +1394,10 @@ gfatal(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s] [INTERNAL ERROR %s] ", datetime(), fline);
-    vfprintf(stderr, fmt, ap);
+    printf("[%s] [INTERNAL ERROR %s] ", datetime(), fline);
+    vprintf(fmt, ap);
     va_end(ap);
-    fprintf(stderr, "\n          ... exiting\n"); 
+    printf("\n          ... exiting\n"); 
     exit(1);
 }
 
@@ -1405,10 +1407,10 @@ gwarning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s] [WRN %s] ", datetime(), fline); 
-    vfprintf(stderr, fmt, ap);
+    printf("[%s] [WRN %s] ", datetime(), fline); 
+    vprintf(fmt, ap);
     va_end(ap);
-    fprintf(stderr, "\n");
+    printf("\n");
     return 0;
 }
 
@@ -1417,9 +1419,9 @@ gfile_printf_then_putc_newline(const char*format,...)
 {
     va_list va;
     va_start(va,format);
-    vfprintf(stderr,format,va);
+    vprintf(format,va);
     va_end(va);
-    putc('\n',stderr);
+    putchar('\n');
 }
 void*
 fstream_malloc(size_t size)
