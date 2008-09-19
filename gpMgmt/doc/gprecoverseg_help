@@ -56,18 +56,15 @@ update the segment dbid and port on the failed segment’s local catalog after
 the copy, mark the failed segment as valid again in the global system catalog, 
 and restart the system.
 
-If the system is in readonly mode, the utility will recover the segment without
-shutting down the system. Since the data is read-only, the active segment and 
-failed segment would not get out-of-sync in the event of a failure.
+If the system is in readonly mode, the active segment and failed segment 
+would not get out-of-sync in the event of a failure. The utility will still 
+shutdown the system to recover in read-only mode, but the downtime is 
+relatively short.
 
 If you do not have mirroring enabled, you must take manual steps to recover a 
-failed segment instance. To manually mark a segment instance as valid again, 
-run the following function on the master:
+failed segment instance and then force restart the system as follows:
 
-gp_set_segdb_state(dbid, true|false)
-
-dbid is the unique ID for a segment instance. True marks the segment 
-as valid and false marks it as invalid.
+gpstop -r -z
 
 ******************************************************
 OPTIONS
