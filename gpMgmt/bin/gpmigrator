@@ -1169,7 +1169,7 @@ This issue must be resolved before upgrade can complete.
             prefix = self.config['SEG_PREFIX'] + '-'
             datadirs = [self.root]
             [env, utility] = self.dbup
-            if env == self.env:
+            if (env == self.oldenv):
                 self.Log('INFO', 'Building original oid Mappings')
             else:
                 self.Log('INFO', 'Building upgraded oid Mappings')
