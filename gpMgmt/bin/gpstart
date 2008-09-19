@@ -508,7 +508,8 @@ PROCESS_STARTUP () {
 	$RM -f $PARALLEL_STATUS_FILE
 	if [ x"" != x"$RESTRICTED_MODE" ]; then
 	    # configure all connections to be reserved to allow only super user access
-	    RESTRICTED_MODE_CONNS="--superuser_reserved_connections=$MAX_CONNECTIONS"
+		# NOTE: --variable=value syntax is not supported on Solaris
+	    RESTRICTED_MODE_CONNS="-c superuser_reserved_connections=$MAX_CONNECTIONS"
 	    RESTRICTED_MODE_INFO="in RESTRICTED mode"
 	fi
 	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY $RESTRICTED_MODE_INFO" 1
