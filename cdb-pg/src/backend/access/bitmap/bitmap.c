@@ -487,8 +487,19 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 		result = (IndexBulkDeleteResult *)
 			palloc0(sizeof(IndexBulkDeleteResult));	
 
-	reindex_index(RelationGetRelid(rel), InvalidOid);
-	CommandCounterIncrement();
+	/*
+	 * Reindex is not allowed inside Vacuum, since it updates
+	 * catalog entries (creates new relfilenodes). See MPP-3530.
+	 */
+	if (info->vacuum_full)
+	{
+		Oid new_relfilenode = reindex_index(RelationGetRelid(rel), InvalidOid);
+		CommandCounterIncrement();
+
+		Assert(OidIsValid(new_relfilenode));
+
+		rel->rd_node.relNode = new_relfilenode;
+	}
 
 	result = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
 	result->num_pages = RelationGetNumberOfBlocks(rel);
