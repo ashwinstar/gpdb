@@ -17,14 +17,13 @@
 #include <ctype.h>
 #include <pthread.h>
 #include "getopt_long.h"
-#include "pqexpbuffer.h"
-#include "libpq-fe.h"
+#include "dumputils.h"
 #include "fe-auth.h"
 #include "cdb_table.h"
 #include "cdb_dump_util.h"
 #include "cdb_backup_state.h"
 #include "cdb_dump.h"
-#include "dumputils.h"
+#include "cdb_dump_include.h"
 
 
 /* This is necessary on platforms where optreset variable is not available.
@@ -50,7 +49,7 @@ static void installSignalHandlers(void);
 static void myHandler(SIGNAL_ARGS);
 static bool parmValNeedsQuotes( const char* Value );
 static int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr );
-static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const SegmentDatabaseArray* psegDBAr, 
+static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const SegmentDatabaseArray* psegDBAr,
 							ThreadParmArray* pParmAr );
 static void* threadProc(void *arg);
 //static void getDatabaseConnections(PGconn *conn, PGconn ***conn_dbs, int *numberOfDbs, InputOptions *inputOpts);
@@ -62,7 +61,6 @@ static void* threadProc(void *arg);
 extern char* optarg;
 extern int	optind, opterr;
 /*static int	disable_triggers = 0;*/
-static bool	g_verbose;
 static bool	dumpInserts;			/* dump data using proper insert strings */
 static bool	attrNames;			/* put attr names into insert strings */
 static char *dumpencoding = NULL;
@@ -71,9 +69,9 @@ static bool	dataOnly;
 static bool	aclsSkip;
 static char* selectTableName = NULL;	/* name of a single table to dump */
 static char* selectSchemaName = NULL;	/* name of a single schema to dump */
-static char	g_opaque_type[10];	/* name for the opaque type */
-static char	g_comment_start[10];
-static char	g_comment_end[10];
+char	g_opaque_type[10];	/* name for the opaque type */
+char	g_comment_start[10];
+char	g_comment_end[10];
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
 
@@ -83,7 +81,16 @@ static const char* logError = "ERROR";
 static const char* logFatal = "FATAL";
 static char* pszProgName;
 
+/*
+ * Global variables needed by cdb_dump_include routines.
+ */
 
+PGconn	   *g_conn;				/* the database connection */
+const char *progname;			/* the program name (pszProgName alternate) */
+bool		g_verbose;			/* User wants verbose narration of our activities. */
+
+/* default, if no "inclusion" switches appear, is to dump everything */
+static bool include_everything = true;
 
 /*
  * Thread synchronization variables
@@ -98,30 +105,30 @@ int main( int argc, char** argv)
 {
     int failCount    = -1;
 	int rc = 0; /* return code */
-	
+
 	InputOptions			inputOpts; /* command line parameters */
 	SegmentDatabaseArray	segDBAr;   /* array of the segdbs from the master mpp tables */
 	ThreadParmArray			parmAr;    /* array of the thread parameters */
 	PGconn				   *master_db_conn = NULL;
-    
+
 	memset( &inputOpts, 0, sizeof(inputOpts) );
 	memset( &segDBAr, 0, sizeof(segDBAr) );
 	memset( &parmAr, 0, sizeof(parmAr) );
-	
+
 	/* Parse command line for options */
 	if ( !fillInputOptions( argc, argv, &inputOpts ) )
 		goto cleanup;
-	
+
 	mpp_msg( logInfo, pszProgName,"Command line options analyzed.\n");
-	
+
 	/* Connect to database on the master */
 	mpp_msg( logInfo, pszProgName, "Connecting to master database on host %s port %s database %s.\n",
-				   StringNotNull( inputOpts.pszPGHost, "localhost"), 
+				   StringNotNull( inputOpts.pszPGHost, "localhost"),
 				   StringNotNull( inputOpts.pszPGPort, "5432"),
 				   StringNotNull( inputOpts.pszDBName, "?" ) );
-						
-	master_db_conn = GetMasterConnection(pszProgName, inputOpts.pszDBName, inputOpts.pszPGHost, 
-										 inputOpts.pszPGPort, inputOpts.pszUserName, 
+
+	master_db_conn = GetMasterConnection(pszProgName, inputOpts.pszDBName, inputOpts.pszPGHost,
+										 inputOpts.pszPGPort, inputOpts.pszUserName,
 										 bForcePassword, bIgnoreVersion, false);
 	if ( master_db_conn == NULL )
 		goto cleanup;
@@ -131,52 +138,53 @@ int main( int argc, char** argv)
 	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
-	/* Start a transaction and lock all tables for this db */
+	/* Start a transaction and lock selected tables for this db */
 	if ( !doInitialActions(master_db_conn) )
 		goto cleanup;
-	
-	/* Install the SIGINT and SIGTERM handlers */  
+
+	/* Install the SIGINT and SIGTERM handlers */
 	installSignalHandlers();
-	
+
 	/* Create the threads to talk to each of the databases being backed up.
 	 * Wait for them to finish.  Inside this function, when all threads have started
-	 * the transaction that we began in doInitialActions is committed. 
-	 */ 
+	 * the transaction that we began in doInitialActions is committed unlocking
+	 * the tables locked in doInitialActions.
+	 */
 	spinOffThreads(master_db_conn, &inputOpts, &segDBAr, &parmAr);
-	
+
 	mpp_msg( logInfo, pszProgName, "All remote %s programs are finished.\n", pszAgent );
 
 	/* Clean-up memory allocated */
-cleanup:	
-			
+cleanup:
+
 	/* Produce results report */
 	failCount = reportBackupResults(inputOpts, &parmAr );
-	
+
 	freeThreadParmArray( &parmAr );
 	FreeSegmentDatabaseArray( &segDBAr );
 	FreeInputOptions( &inputOpts );
-	
+
 	/* Clean-up synchronization variables */
 	pthread_mutex_destroy( &MyMutex );
 	pthread_cond_destroy( &MyCondVar );
-	
+
 	if ( master_db_conn != NULL )
 		PQfinish(master_db_conn);
-        
+
 	rc = (failCount == 0 ? 0 : 1);
-	
+
 	exit(rc);
 }
 
 /*
- * addPassThroughParm: this function adds to the string of pass-through parameters.  
+ * addPassThroughParm: this function adds to the string of pass-through parameters.
  * These get sent to each backend and get passed to the gp_dump_agent program.
  */
 char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
 {
 	char*	pszRtn;
 	bool	bFirstTime = (pszPassThroughParmString == NULL);
-	
+
 	if ( pszValue != NULL )
 	{
 		if ( parmValNeedsQuotes( pszValue ) )
@@ -201,12 +209,12 @@ char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughP
 		else
 			pszRtn = MakeString( "%s -%c", pszPassThroughParmString, Parm );
 	}
-		
-	return pszRtn; 
+
+	return pszRtn;
 }
 
 /*
- * createThreadParmArray: This function initializes the count and pData elements of the ThreadParmArray. 
+ * createThreadParmArray: This function initializes the count and pData elements of the ThreadParmArray.
  */
 bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 {
@@ -215,11 +223,11 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 	pParmAr->pData = (ThreadParm *)calloc( nCount, sizeof(ThreadParm) );
 	if ( pParmAr->pData == NULL )
 		return false;
-	
+
 	for ( i=0; i<nCount; i++ )
 	{
 		ThreadParm* p = &pParmAr->pData[i];
-		
+
 		p->thread				= 0;
 		p->pSourceSegDBData		= NULL; /* not used for dump */
 		p->pTargetSegDBData		= NULL;
@@ -228,46 +236,46 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 		p->pszErrorMsg			= NULL;
 		p->pszRemoteBackupPath	= NULL;
 	}
-	
+
 	return true;
 }
 
 /*
- * decrementFinishedLaunchCount: This function handles the decrementing 
- * of the finished launch count. It uses a mutex to protect the int variable.  
- * If this is the last thread to get here, the variable will be 0, and the 
- * condition variable is signalled, so the main threrad wakes up. 
+ * decrementFinishedLaunchCount: This function handles the decrementing
+ * of the finished launch count. It uses a mutex to protect the int variable.
+ * If this is the last thread to get here, the variable will be 0, and the
+ * condition variable is signalled, so the main threrad wakes up.
  */
 void decrementFinishedLaunchCount(void)
 {
 	pthread_mutex_lock( &MyMutex );
-	
+
 	nThreadsFinishedLaunch--;
-	
+
 	if ( nThreadsFinishedLaunch == 0 )
 		pthread_cond_signal( &MyCondVar );
-	
+
 	pthread_mutex_unlock( &MyMutex );
 }
 
 /*
- * doInitialActions: This function uses the PGconn connection to begin 
- * a transaction. Then it reads an array of the mpp managed tables, 
- * along with their namespaces.  It then forms one LOCK TABLE 
- * statement using each of the tables in the array, and executes it.
+ * doInitialActions: This function uses the PGconn connection to begin
+ * a transaction. After opening the transaction, the tables to be
+ * dumped are locked.
+ *
+ * The locks obtained by this routine are released through COMMIT by
+ * spinOffThreads().
  */
 bool doInitialActions(PGconn* pMasterConn)
 {
+	TableInfo  *tblinfo;
 	bool		bRtn = false;
 	PQExpBuffer	pQry = NULL;
 	PGresult*	pRes = NULL;
-	CDBBaseTableArray TableAr;
-	int i;
-	
-	memset( &TableAr, 0, sizeof(TableAr) );
-	
+	int			numTables;
+
 	mpp_msg( logInfo, pszProgName, "Starting a transaction on master database %s.\n", pMasterConn->dbName);
-	
+
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry, "BEGIN;");
 	pRes = PQexec(pMasterConn, pQry->data);
@@ -276,7 +284,7 @@ bool doInitialActions(PGconn* pMasterConn)
 		mpp_err_msg_cache(logError, pszProgName, "no result from server: %s", PQerrorMessage(pMasterConn));
 		goto cleanup;
 	}
-	
+
 	if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
 	{
 		mpp_err_msg_cache(logError, pszProgName, "bad result from server: %s", PQerrorMessage(pMasterConn));
@@ -286,52 +294,26 @@ bool doInitialActions(PGconn* pMasterConn)
 	PQclear(pRes);
     pRes = NULL;
 	resetPQExpBuffer(pQry);
-	
+
 	mpp_msg( logInfo, pszProgName, "Getting a list of Greenplum Database managed tables for database %s.\n", pMasterConn->dbName);
-	
-	if ( !GetCDBBaseTableArray(pMasterConn, &TableAr) )
-	{
-		goto cleanup;	
-	}
-	
-	/* if any tables exist in this database get a lock on them */
-	if ( TableAr.count > 0 )
-	{
-		mpp_msg( logInfo, pszProgName, "Issuing \"LOCK IN EXCLUSIVE MODE\" for "
-					   "managed tables on database %s.\n", pMasterConn->dbName);
-		
-		/* Now issue lock table statements for each table in BaseTablesAr */
-		appendPQExpBuffer(pQry, "LOCK TABLE");
-		
-		for ( i = 0; i < TableAr.count; i++ )
-		{
-			if ( i > 0 )
-				appendPQExpBuffer(pQry, ",");
-			
-			appendPQExpBuffer(pQry, " ");
-			appendPQExpBuffer(pQry, (char *)fmtId(TableAr.pData[i].pszNspName));
-			appendPQExpBuffer(pQry, ".");
-			appendPQExpBuffer(pQry, (char *)fmtId(TableAr.pData[i].pszTableName));
-		}
-		
-		appendPQExpBuffer(pQry, " IN EXCLUSIVE MODE");
-		
-		pRes = PQexec(pMasterConn, pQry->data);
-		if ( pRes == NULL )
-		{
-			mpp_err_msg_cache(logError, pszProgName,"no result from server: %s", PQerrorMessage(pMasterConn));
-			goto cleanup;
-		}
-		
-		if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
-		{
-			mpp_err_msg_cache(logError, pszProgName,"bad result from server: %s", PQerrorMessage(pMasterConn));
-			goto cleanup;
-		}
-        if (g_verbose)
-            mpp_msg( logInfo, pszProgName,"Executing %s\n", pQry->data);
-	}
-	
+
+
+	/*
+	 * Process the schema and table include/exclude lists and determine the OIDs of the
+	 * tables to be dumped.
+	 */
+	progname = pszProgName;
+	g_conn = pMasterConn;
+	convert_patterns_to_oids();
+
+	/*
+	 * Now scan the database and create DumpableObject structs for all the
+	 * objects we intend to dump.  A function called by getSchemaData performs
+	 * the LOCK operations required.
+	 */
+	table_lock_mode = "EXCLUSIVE";
+	tblinfo = getSchemaData(&numTables);
+
 	bRtn = true;
 
 cleanup:
@@ -340,9 +322,7 @@ cleanup:
 		PQclear(pRes);
 	if ( pQry != NULL )
 		destroyPQExpBuffer(pQry);
-	
-	FreeCDBBaseTableArray( &TableAr );
-	
+
 	return bRtn;
 }
 
@@ -354,9 +334,9 @@ bool execCommit( PGconn* pConn )
 	bool		bRtn = false;
 	PQExpBuffer pQry = NULL;
 	PGresult*	pRes = NULL;
-	
+
 	pQry = createPQExpBuffer();
-	appendPQExpBuffer(pQry,	" COMMIT" ); 
+	appendPQExpBuffer(pQry,	" COMMIT" );
 
 	pRes = PQexec(pConn, pQry->data);
 	if ( pRes == NULL )
@@ -364,28 +344,28 @@ bool execCommit( PGconn* pConn )
 		mpp_err_msg_cache(logError, pszProgName, "no result from server: %s\n", PQerrorMessage(pConn));
 		goto cleanup;
 	}
-	
+
 	if (PQresultStatus(pRes) != PGRES_COMMAND_OK)
 	{
 		mpp_err_msg_cache(logError, pszProgName, "bad result from server: %s\n", PQerrorMessage(pConn));
 		goto cleanup;
 	}
-	
+
 	bRtn = true;
 
 cleanup:
 	if ( pRes != NULL )
 		PQclear(pRes);
-	
+
 	if ( pQry != NULL )
 		destroyPQExpBuffer(pQry);
-	
+
 	return bRtn;
 }
-		
+
 /*
- * fillInputOptions: This function gets the command line options, and 
- * stores the values in the InputOptions structure. Much of this code 
+ * fillInputOptions: This function gets the command line options, and
+ * stores the values in the InputOptions structure. Much of this code
  * was copied from pg_dump.
  */
 bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
@@ -404,8 +384,8 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	int lenCmdLineParms;
 	int i;
 
-	
-	static struct option long_options[] = 
+
+	static struct option long_options[] =
 	{
 		{"data-only", no_argument, NULL, 'a'},
 		/*{"blobs", no_argument, NULL, 'b'},*/
@@ -443,7 +423,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		 * letter, but are available as '-X long-name'
 		 */
 		{"use-set-session-authorization", no_argument, &auth, 1},
-		
+
 		/*
 		 * the following are Greenplum Database specific, and don't have an equivalent short option
 		 */
@@ -454,12 +434,12 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		{"gp-s", required_argument, NULL, 5},
 		{NULL, 0, NULL, 0}
 	};
-	
+
 	int			optindex;
 
 	/* Initialize option fields  */
 	memset( pInputOpts, 0, sizeof(InputOptions) );
-	
+
 	pInputOpts->actors	= SET_NO_MIRRORS; /* backup primaries only by default */
 	g_verbose = false;
 
@@ -470,7 +450,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	dataOnly = schemaOnly = dumpInserts = attrNames = false;
 
 	pszProgName = (char *)get_progname(argv[0]);
-	
+
 	bSawCDB_S_Option = false;
 
 	/*if (argc == 1)
@@ -478,7 +458,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		help(progname);
 		goto cleanup;
 	}*/
-	
+
 	if (argc > 1)
 	{
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
@@ -492,26 +472,26 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 			exit(0);
 		}
 	}
-	
+
 	/* Record the command line parms as a string for documentation in the ouput report */
 	lenCmdLineParms = 0;
 	for ( i=1; i<argc; i++ )
 	{
 		if ( i > 1 )
 			lenCmdLineParms += 1;
-		
+
 		lenCmdLineParms += strlen( argv[i] );
 		if ( parmValNeedsQuotes( argv[i] ) )
 			lenCmdLineParms += 2;
 	}
-	
+
 	pInputOpts->pszCmdLineParms = (char *)malloc( lenCmdLineParms + 1 );
 	if ( pInputOpts->pszCmdLineParms == NULL )
 	{
 		mpp_err_msg_cache(logError, pszProgName, "error allocating memory for pInputOpts->pszCmdLineParms\n");
 		goto cleanup;
 	}
-	
+
 	memset( pInputOpts->pszCmdLineParms, 0, lenCmdLineParms + 1 );
 	for ( i=1; i<argc; i++ )
 	{
@@ -526,7 +506,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		else
 			strcat( pInputOpts->pszCmdLineParms, argv[i] );
 	}
-	
+
 
 	while ((c = getopt_long(argc, argv, "acdDh:in:N:oOp:RsS:t:T:U:vWxX:",
 							long_options, &optindex)) != -1)
@@ -535,42 +515,42 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		{
 			case 'a':			/* Dump data only */
 				dataOnly = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 /*			case 'b':			// Dump blobs
 				bOutputBlobs = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 */
 			case 'c':			/* clean (i.e., drop) schema prior to
 								 * create */
 				outputClean = 1;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 /*			case 'C':			// Create DB
 				outputCreate = 1;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 */
 			case 'd':			/* dump data as proper insert strings */
 				dumpInserts = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 			case 'D':			/* dump data as proper insert strings with
 								 * attr names */
 				dumpInserts = true;
 				attrNames = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 			case 'E':			/* Dump encoding */
 				dumpencoding = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				break;
-				
+
 /* Invalid for gp_dump.
 			case 'f':
 				iopt->filename = optarg;
@@ -578,7 +558,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 			case 'F':
 				pszFormat = optarg;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				break;
 */
 			case 'h':			/* server host */
@@ -587,27 +567,30 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 			case 'i':			/* ignore database version mismatch */
 				bIgnoreVersion = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 			case 'n':			/* Dump data for this schema only */
 				selectSchemaName = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
+				simple_string_list_append(&schema_include_patterns, optarg);
+				include_everything = false;
 				break;
-				
+
 			case 'N':			/* exclude schema(s) */
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
+				simple_string_list_append(&schema_exclude_patterns, optarg);
 				break;
-				
+
 
 			case 'o':			/* Dump oids */
 				bOids = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 			case 'O':			/* Don't reconnect to match owner */
 				outputNoOwner = 1;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 			case 'p':			/* server port */
@@ -617,25 +600,29 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 			case 'R':
 				/* no-op, still accepted for backwards compatibility */
 				break;
-				
+
 			case 's':			/* dump schema only */
 				schemaOnly = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 /* Invalid for gp_dump.
-			case 'S':			
+			case 'S':
 				pInputOpts->pszOutputSuperuser = strdup(optarg);
 				break;
-*/				
+*/
 			case 't':			/* Dump data for this table only */
 				selectTableName = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
+				simple_string_list_append(&table_include_patterns, optarg);
+				include_everything = false;
 				break;
 
 			case 'T':			/* exclude table(s) */
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 				break;
-				
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
+				simple_string_list_append(&table_exclude_patterns, optarg);
+				break;
+
 			case 'u':
 				bForcePassword = true;
 				pInputOpts->pszUserName = simple_prompt("User name: ", 100, true);
@@ -647,7 +634,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 			case 'v':			/* verbose */
 				g_verbose = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 			case 'W':
@@ -656,7 +643,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 			case 'x':			/* skip ACL dump */
 				aclsSkip = true;
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
 				/*
@@ -669,11 +656,11 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 			case 'X':
 				if (strcmp(optarg, "use-set-session-authorization") == 0)
 					/* no-op, still allowed for compatibility */ ;
-				
+
 				//else if (strcmp(optarg, "disable-triggers") == 0)
 				//{
 				//	disable_triggers = 1;
-				//	pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				//	pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				//}
 				else
 				{
@@ -687,13 +674,13 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 /*			case 'Z':			// Compression Level
 				compressLevel = atoi(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				break;
 */				/* This covers the long options equivalent to -X xxx. */
 
 			case 0:
 				break;
-			
+
 			case 1:
 				/* gp-c remote compression program */
 				pInputOpts->pszCompressionProgram = "gzip";/*Safe_strdup(optarg);*/
@@ -707,10 +694,10 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 					// Ignore gp_s option
 					mpp_msg( logInfo, pszProgName, "ignoring the gp-s option, since the gp-cf option is set.\n");
 				}
-				
+
 				if ( !FillCDBSet( &pInputOpts->set, optarg ) )
 					goto cleanup;
-				
+
 				// Validate that none of the role's are hosts
 				if ( 0 < CountInstanceHosts( &pInputOpts->set ) )
 				{
@@ -721,19 +708,19 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
                  */
 
 				break;
-				
+
 			case 3:
 				/* gp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
 				break;
-				
+
 			case 4:
 				/* gp-r report directory */
 				pInputOpts->pszReportDirectory = Safe_strdup(optarg);
 				break;
 			case 5:
 				/* gp-s backup set specification */
-				if ( strcasecmp( optarg, "a") == 0 ) 
+				if ( strcasecmp( optarg, "a") == 0 )
 				{
 					pInputOpts->actors = SET_ALL;
 					pInputOpts->pszRawDumpSet = NULL;
@@ -753,9 +740,9 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 					mpp_err_msg_cache(logError, pszProgName, "invalid gp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
 					goto cleanup;
 				}
-              
+
 				break;
-				
+
 			default:
 				mpp_err_msg_cache(logError, pszProgName, "Try \"%s --help\" for more information.", pszProgName);
 				goto cleanup;
@@ -774,16 +761,16 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	/* Get database name from command line */
 	if (optind < argc)
 		pInputOpts->pszDBName = Safe_strdup(argv[optind]);
-	
-	/* 
-	 * get PG env variables, override only of no cmd-line value specified 
+
+	/*
+	 * get PG env variables, override only of no cmd-line value specified
 	 */
 	if (pInputOpts->pszDBName == NULL)
 	{
 		if (getenv("PGDATABASE") != NULL)
 			pInputOpts->pszDBName = Safe_strdup(getenv("PGDATABASE"));
 	}
-	
+
 	if (pInputOpts->pszPGPort == NULL)
     {
         if (getenv("PGPORT") != NULL)
@@ -795,7 +782,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
         if (getenv("PGHOST") != NULL)
             pInputOpts->pszPGHost = Safe_strdup(getenv("PGHOST"));
     }
-	
+
 	/*
 	 * Command line options error checking
 	 */
@@ -804,20 +791,20 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		mpp_err_msg_cache(logError, pszProgName, "No database name specified for dump, and PGDATABASE is not set either.\n");
 		goto cleanup;
 	}
-	
+
 	if (dataOnly && schemaOnly)
 	{
 		mpp_err_msg_cache(logError, pszProgName, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
 		goto cleanup;
 	}
-	
+
 	if ((dataOnly || schemaOnly) && pInputOpts->actors == SET_INDIVIDUAL)
 	{
 		mpp_err_msg_cache(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --gp-s=i\n"
 										   "If you want to use --gp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.");
 		goto cleanup;
 	}
-	
+
 
 	if (dataOnly && outputClean)
 	{
@@ -852,18 +839,18 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		mpp_err_msg_cache(logError, pszProgName, "(Use a different output format.)\n");
 		goto cleanup;
 	}
-    	
+
 	bRtn = true;
-	
+
 cleanup:
 
 	return bRtn;
 }
 
 /*
- * freeThreadParmArray: This function frees the memory allocated for the pData element of the 
- * ThreadParmArray, as well as the strings allocated within each element 
- * of the array.  It does not free the pParmAr itself.  
+ * freeThreadParmArray: This function frees the memory allocated for the pData element of the
+ * ThreadParmArray, as well as the strings allocated within each element
+ * of the array.  It does not free the pParmAr itself.
  */
 void freeThreadParmArray( ThreadParmArray* pParmAr )
 {
@@ -871,23 +858,23 @@ void freeThreadParmArray( ThreadParmArray* pParmAr )
 	for ( i=0; i<pParmAr->count; i++ )
 	{
 		ThreadParm* p = &pParmAr->pData[i];
-		
+
 		if ( p->pszRemoteBackupPath != NULL )
 			free( p->pszRemoteBackupPath );
-		
+
 		if ( p->pszErrorMsg != NULL )
 			free( p->pszErrorMsg );
 	}
-	
+
 	if ( pParmAr->pData != NULL )
 		free( pParmAr->pData );
-	
+
 	pParmAr->count = 0;
 	pParmAr->pData = NULL;
 }
 
 /*
- * help: This function prints the usage info to stdout. 
+ * help: This function prints the usage info to stdout.
  */
 void help(const char *pszProgName)
 {
@@ -927,13 +914,13 @@ void help(const char *pszProgName)
 	printf(_("  --use-set-session-authorization\n"
 			 "                              use SESSION AUTHORIZATION commands instead of\n"
 			 "                              ALTER OWNER commands to set ownership\n"));
-	
+
 	printf(("\nConnection options:\n"));
 	printf(("  -h, --host=HOSTNAME      database server host or socket directory\n"));
 	printf(("  -p, --port=PORT          database server port number\n"));
 	printf(("  -U, --username=NAME      connect as specified database user\n"));
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
-	
+
 	printf(("\nGreenplum Database specific options:\n"));
 	printf(("  --gp-c                  use gzip for in-line compression\n"));
 	printf(("  --gp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
@@ -947,20 +934,52 @@ void help(const char *pszProgName)
 	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
 }
 
+
+/*
+ * exit_nicely: This function was copied from pg_dump.
+ *
+ * This routine is called by functions in cdb_dump_include to exit.  When exiting
+ * through this routine, a normal backup report is not generated.
+ */
+void exit_nicely(void)
+{
+	char* lastMsg;
+	char* pszErrorMsg;
+
+	lastMsg = PQerrorMessage(g_conn);
+
+	pszErrorMsg = MakeString( "*** aborted because of error: %s\n", lastMsg );
+
+	mpp_err_msg( logError, progname, pszErrorMsg);
+
+	/* Clean-up synchronization variables */
+	pthread_mutex_destroy( &MyMutex );
+	pthread_cond_destroy( &MyCondVar );
+
+	if ( pszErrorMsg )
+		free( pszErrorMsg );
+
+	PQfinish(g_conn);
+	g_conn = NULL;
+
+	exit(1);
+}
+
+
 /*
  * installSignalHandlers: This function sets both the SIGINT and SIGTERM signal handlers
- * to the routine myHandler. 
+ * to the routine myHandler.
  */
 void installSignalHandlers(void)
 {
 	struct sigaction act, oact;
-	
+
 	act.sa_handler = myHandler;
 	sigemptyset(&act.sa_mask);
 	act.sa_flags = 0;
 	act.sa_flags |= SA_RESTART;
 
-	// Install SIGINT interrupt handler						
+	// Install SIGINT interrupt handler
 	if ( sigaction(SIGINT, &act, &oact) < 0 )
 	{
 		mpp_err_msg_cache(logError, pszProgName,"Error trying to set SIGINT interrupt handler\n");
@@ -971,7 +990,7 @@ void installSignalHandlers(void)
 	act.sa_flags = 0;
 	act.sa_flags |= SA_RESTART;
 
-	// Install SIGTERM interrupt handler						
+	// Install SIGTERM interrupt handler
 	if ( sigaction(SIGTERM, &act, &oact) < 0 )
 	{
 		mpp_err_msg_cache(logError, pszProgName,"Error trying to set SIGTERM interrupt handler\n");
@@ -979,26 +998,26 @@ void installSignalHandlers(void)
 }
 
 /*
- * myHandler: This function is the signal handler for both SIGINT and SIGTERM signals.  
+ * myHandler: This function is the signal handler for both SIGINT and SIGTERM signals.
  * It simply sets a global variable, which is checked by each thread to see whether it should cancel
  * the backup running on the remote database.
  */
 void myHandler(SIGNAL_ARGS)
 {
 	static bool bAlreadyHere = false;
-	
+
 	if ( bAlreadyHere )
 	{
 		return;
 	}
-	
+
 	bAlreadyHere = true;
 
 	g_b_SendCancelMessage = true;
 }
 
 /*
- * parmValNeedsQuotes: This function checks to see whether there is any whitespace in the parameter value.  
+ * parmValNeedsQuotes: This function checks to see whether there is any whitespace in the parameter value.
  * This is used for pass thru parameters, top know whether to enclose them in quotes or not.
  */
 bool parmValNeedsQuotes( const char* Value )
@@ -1007,12 +1026,12 @@ bool parmValNeedsQuotes( const char* Value )
 	static bool bCompiled			= false;
 	static bool bAlwaysPutQuotes	= false;
 	bool bPutQuotes = false;
-	
+
 	if ( !bCompiled )
 	{
 		if ( 0 != regcomp( &rFinder, "[[:space:]]", REG_EXTENDED|REG_NOSUB ) )
 			bAlwaysPutQuotes = true;
-		
+
 		bCompiled = true;
 	}
 
@@ -1023,7 +1042,7 @@ bool parmValNeedsQuotes( const char* Value )
 	}
 	else
 		bPutQuotes = true;
-	
+
 	return bPutQuotes;
 }
 
@@ -1044,20 +1063,20 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 	char* pszReportDirectory = inputopts.pszReportDirectory;
 	SegmentDatabase* pSegDB;
 	ThreadParm* p;
-	
+
 	if ( pParmAr == NULL || pParmAr->count == 0 )
 	{
 		pParmAr->count = 1; /* just use master in this case (early error) */
 		pParmAr->pData = (ThreadParm *)calloc( 1, sizeof(ThreadParm) );
-		
+
 		if ( pParmAr->pData == NULL )
 		{
 			mpp_err_msg(logError, pszProgName, "Cannot allocate memory for final report\n");
 			return 0;
 		}
-		
+
 		p = &pParmAr->pData[0];
-		
+
 		p->thread				= 0;
 		p->pOptionsData = &inputopts;
 		p->pOptionsData->pszKey = GenerateTimestampKey();
@@ -1066,7 +1085,7 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 		p->pszRemoteBackupPath	= NULL;
 
 		pSegDB = (SegmentDatabase *) calloc( 1,  sizeof(SegmentDatabase) );
-		pSegDB->dbid = 1; 
+		pSegDB->dbid = 1;
 		pSegDB->content	= -1;
 		pSegDB->role = ROLE_MASTER;
 		pSegDB->port = (inputopts.pszPGPort ? atoi(inputopts.pszPGPort) : 0);
@@ -1079,36 +1098,36 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 
 		p->pTargetSegDBData = pSegDB;
 
-		
+
 	}
-	
+
 	/*
 	 * Set the report directory if not set by user (with --gp-r)
 	 */
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 	{
-		
+
 		if (getenv("MASTER_DATA_DIRECTORY") != NULL)
 		{
 			/* report directory not set by user - default to $MASTER_DATA_DIRECTORY */
-            pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));			
+            pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));
 		}
 		else
 		{
 			/* $MASTER_DATA_DIRECTORY not set. Default to current directory */
-			pszReportDirectory = "./";			
+			pszReportDirectory = "./";
 		}
 	}
-	
-	
+
+
 	/* See whether we can create the file in the report directory */
 	if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
 		pszFormat = "%s/gp_dump_%s.rpt";
 	else
 		pszFormat = "%sgp_dump_%s.rpt";
-	
+
 	pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
-	
+
 	fRptFile = fopen( pszReportPathName, "w" );
 	if ( fRptFile == NULL )
 		mpp_err_msg(logWarn, pszProgName, "Cannot open report file %s for writing.  Will use stdout instead.\n",
@@ -1116,32 +1135,32 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 
 	/* buffer to store the complete dump report */
 	reportBuf = createPQExpBuffer();
-	
+
 	/* Write to buffer a report showing the timestamp key, what the command line options were,
 	 * which segment databases were backed up, to where, and any errors that occurred.
 	 */
 	pParm0 = &pParmAr->pData[0];
-	
+
 	appendPQExpBuffer(reportBuf, "\nGreenplum Database Backup Report\n" );
 	appendPQExpBuffer(reportBuf, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
 
-	appendPQExpBuffer(reportBuf, "gp_dump Command Line: %s\n",  
+	appendPQExpBuffer(reportBuf, "gp_dump Command Line: %s\n",
 			StringNotNull( pParm0->pOptionsData->pszCmdLineParms, "None" ) );
 
-	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",  
+	appendPQExpBuffer(reportBuf, "Pass through Command Line Options: %s\n",
 			StringNotNull( pParm0->pOptionsData->pszPassThroughParms, "None" ) );
-	
-	appendPQExpBuffer(reportBuf, "Compression Program: %s\n", 
+
+	appendPQExpBuffer(reportBuf, "Compression Program: %s\n",
 			StringNotNull( pParm0->pOptionsData->pszCompressionProgram, "None" ) );
-	
+
 	appendPQExpBuffer(reportBuf, "\n" );
 	appendPQExpBuffer(reportBuf, "Individual Results\n" );
-	
+
     failCount = 0;
 	for ( i = 0; i < pParmAr->count; i++ )
 	{
 		ThreadParm* pParm = &pParmAr->pData[i];
-		
+
         if ( !pParm->bSuccess )
             failCount++;
 		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
@@ -1153,16 +1172,16 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 			if ( pszMsg == NULL )
 				pszMsg = "";
 		}
-			
-		
+
+
 		if(pParm->pTargetSegDBData->role == ROLE_MASTER)
 			appendPQExpBuffer(reportBuf, "\tMaster ");
 		else
 			appendPQExpBuffer(reportBuf, "\t%s segment %d ", (pParm->pTargetSegDBData->isPrimary ? "Primary" : "Mirror"),
-					 pParm->pTargetSegDBData->content);  
-					 
-		appendPQExpBuffer(reportBuf, "(dbid %d) Host %s Port %d Database %s BackupFile %s: %s %s%s\n",  
-				pParm->pTargetSegDBData->dbid, 
+					 pParm->pTargetSegDBData->content);
+
+		appendPQExpBuffer(reportBuf, "(dbid %d) Host %s Port %d Database %s BackupFile %s: %s %s%s\n",
+				pParm->pTargetSegDBData->dbid,
 				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
 				pParm->pTargetSegDBData->port,
 				pParm->pTargetSegDBData->pszDBName,
@@ -1172,12 +1191,12 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
                  (strcmp(pszMsg,"")==0)?"":"}"
 				);
 	}
-    
+
     if ( failCount == 0 )
         appendPQExpBuffer(reportBuf, "\n%s utility finished successfully.\n", pszProgName );
     else
         appendPQExpBuffer(reportBuf, "\n%s utility finished unsuccessfully with  %d  failures.\n", pszProgName, failCount );
-    
+
     /* write report to report file */
 	if ( fRptFile != NULL )
 	{
@@ -1185,40 +1204,40 @@ int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr )
 		fprintf(fRptFile, reportBuf->data);
 		fclose( fRptFile );
 	}
-	
+
 	/* write report to stdout */
 	fprintf(stdout, reportBuf->data);
 
 	if ( pszReportPathName != NULL )
 		free( pszReportPathName );
-	
+
 	destroyPQExpBuffer(reportBuf);
-	
+
     return failCount;
 }
 
 /*
- * spinOffThreads: This function deals with all the threads that drive the 
- * backend backups. First, it creates the timestamp key, initializes the 
- * ThreadParmArray, and the thread synchronization objects.  Then it loops 
- * and creates each of the threads. It waits on a condition variable. This 
+ * spinOffThreads: This function deals with all the threads that drive the
+ * backend backups. First, it creates the timestamp key, initializes the
+ * ThreadParmArray, and the thread synchronization objects.  Then it loops
+ * and creates each of the threads. It waits on a condition variable. This
  * will release when all threads have attained the SET_SERIALIZABLE state
- * (or have failed to do so). It then commits the transaction, which releases 
- * the locks it holds on all the Greenplum Database managed tables. It then waits for all 
- * threads to finish. 
+ * (or have failed to do so). It then commits the transaction, which releases
+ * the locks it holds on all the Greenplum Database managed tables. It then waits for all
+ * threads to finish.
  */
-void spinOffThreads(PGconn* pConn, 
-					InputOptions* pInputOpts, 
-					const SegmentDatabaseArray* psegDBAr, 
+void spinOffThreads(PGconn* pConn,
+					InputOptions* pInputOpts,
+					const SegmentDatabaseArray* psegDBAr,
 					ThreadParmArray* pParmAr )
 {
 	int i;
 	ThreadParm* pParm;
 	pthread_cond_init( &MyCondVar, NULL );
 	pthread_mutex_init( &MyMutex, NULL );
-	
+
 	pInputOpts->pszKey = GenerateTimestampKey();
-	
+
 	/* Create a thread and have it work on executing the dump on the
 	* appropriate segment database.
 	*/
@@ -1227,36 +1246,36 @@ void spinOffThreads(PGconn* pConn,
 		mpp_err_msg(logError, pszProgName, "Cannot allocate memory for thread parameters\n");
 		exit(1);
 	}
-	
+
 	nThreadsFinishedLaunch = pParmAr->count;
 
 	mpp_msg( logInfo, pszProgName, "About to spin off %d threads with timestamp key %s\n",
 				nThreadsFinishedLaunch, pInputOpts->pszKey );
-	
+
 	for (i = 0 ; i < pParmAr->count ; i++)
 	{
 		pParm = &pParmAr->pData[i];
-		
+
 		pParm->pTargetSegDBData = &psegDBAr->pData[i];
 		pParm->pOptionsData = pInputOpts;
 		pParm->bSuccess		= false;
-        
+
         if (!pParm->pTargetSegDBData->isValid)
         {
             decrementFinishedLaunchCount();
             continue;
         }
-		
+
 		mpp_msg( logInfo, pszProgName, "Creating thread to backup dbid %d: host %s port %d database %s\n",
 					   pParm->pTargetSegDBData->dbid,
 					   StringNotNull(pParm->pTargetSegDBData->pszHost, "localhost"),
 					   pParm->pTargetSegDBData->port,
 					   pParm->pTargetSegDBData->pszDBName
 				);
-				
-		pthread_create(&pParm->thread, 
-						NULL, 
-						threadProc, 
+
+		pthread_create(&pParm->thread,
+						NULL,
+						threadProc,
 						pParm);
 	}
 
@@ -1271,17 +1290,17 @@ void spinOffThreads(PGconn* pConn,
 		pthread_cond_wait( &MyCondVar, &MyMutex );
 	}
 	pthread_mutex_unlock( &MyMutex );
-	
+
 	mpp_msg( logInfo, pszProgName, "All remote %s processes have "
 				"set transacactions in serializable isolation level\n",
 				pszAgent );
 
-	/* Now commit the transaction so locks will be released */	
+	/* Now commit the transaction so locks will be released */
 	mpp_msg( logInfo, pszProgName, "Committing transaction on the master database, thereby releasing locks.\n");
 	execCommit( pConn );
-	
+
 	mpp_msg( logInfo, pszProgName, "Waiting for all remote %s programs to finish.\n", pszAgent );
-				
+
 	/* Wait for all threads to complete */
 	for (i=0; i<pParmAr->count; i++)
 	{
@@ -1302,21 +1321,21 @@ void spinOffThreads(PGconn* pConn,
 void* threadProc(void *arg)
 {
 	bool bDidDecrement = false;
-	
-	/* The argument is a pointer to a ThreadParm structure 
+
+	/* The argument is a pointer to a ThreadParm structure
 	 * that stays around for the entire time the program is running.
 	 * so we need not worry about making a copy of it.
 	 */
 	ThreadParm* pParm = (ThreadParm *)arg;
-	
+
 	const SegmentDatabase* pSegDB	= pParm->pTargetSegDBData;
 	const InputOptions* pInputOpts	= pParm->pOptionsData;
 	const char* pszKey				= pInputOpts->pszKey;
 	PGconn* pConn;
-	
+
 	char*		pszPassThroughCredentials;
 	PQExpBuffer Qry;
-	PGresult*	pRes; 
+	PGresult*	pRes;
 	int			sock;
 	fd_set		input_mask;
 	bool		bSentCancelMessage;
@@ -1330,7 +1349,7 @@ void* threadProc(void *arg)
 	sigaddset( &newset, SIGINT );
 	sigaddset( &newset, SIGKILL );
 	pthread_sigmask( SIG_SETMASK, &newset, NULL );
-			
+
 	/* Create a connection for this thread */
 	pConn = MakeDBConnection(pSegDB, false);
 	if ( PQstatus(pConn) == CONNECTION_BAD )
@@ -1343,15 +1362,15 @@ void* threadProc(void *arg)
 		decrementFinishedLaunchCount();
 		return NULL;
 	}
-	
-	/* issue a LISTEN command for 4 different names*/ 
+
+	/* issue a LISTEN command for 4 different names*/
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_START );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_SET_SERIALIZABLE );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_SUCCEED );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegDB->role, pSegDB->dbid, -1, SUFFIX_FAIL );
-	
+
 	mpp_msg(logInfo, pszProgName, "Listening for messages from server on dbid %d connection\n", pSegDB->dbid);
-	
+
 	/*
 	 * If there is a password associated with this login, we pass it as a base64 encoded string
 	 * in the parameter pszPassThroughCredentials
@@ -1359,23 +1378,23 @@ void* threadProc(void *arg)
 	pszPassThroughCredentials = NULL;
 	if ( pSegDB->pszDBPswd != NULL && *pSegDB->pszDBPswd != '\0' )
 		pszPassThroughCredentials = DataToBase64( pSegDB->pszDBPswd, strlen(pSegDB->pszDBPswd) );
-	
+
 	/* form an gp_backup_launch statement */
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM gp_backup_launch('%s', '%s', '%s', '%s', '%s')", 
-					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
-					pszKey, 
-					StringNotNull( pInputOpts->pszCompressionProgram, ""), 
+	appendPQExpBuffer( Qry, "SELECT * FROM gp_backup_launch('%s', '%s', '%s', '%s', '%s')",
+					StringNotNull( pInputOpts->pszBackupDirectory, ""),
+					pszKey,
+					StringNotNull( pInputOpts->pszCompressionProgram, ""),
 					StringNotNull( pInputOpts->pszPassThroughParms, ""),
 					StringNotNull( pszPassThroughCredentials, "")
 					);
-					
+
 	if ( pszPassThroughCredentials != NULL )
 		free( pszPassThroughCredentials );
- 	
+
 	/* Execute gp_backup_launch. This will start an gp_dump agent */
-	pRes = PQexec(pConn, Qry->data ); 
-	
+	pRes = PQexec(pConn, Qry->data );
+
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
@@ -1386,21 +1405,21 @@ void* threadProc(void *arg)
 		bDidDecrement = true;
 		return NULL;
 	}
-	
+
 	mpp_msg(logInfo, pszProgName, "Successfully launched Greenplum Database backup on dbid %d server\n", pSegDB->dbid);
-	
+
 	pParm->pszRemoteBackupPath = strdup( PQgetvalue(pRes, 0, 0) );
-	
+
 	PQclear(pRes);
 	destroyPQExpBuffer(Qry);
-	
+
 	/* Now wait for notifications from the back end */
 	sock = PQsocket( pConn );
 	FD_ZERO( &input_mask );
 	FD_SET( sock, &input_mask );
-	
+
 	bSentCancelMessage = false;
-	
+
 	pState = CreateBackupStateMachine( pszKey, pSegDB->role, pSegDB->dbid );
 	if ( pState == NULL )
 	{
@@ -1412,10 +1431,10 @@ void* threadProc(void *arg)
 		bDidDecrement = true;
 		return NULL;
 	}
-	
-	/* This is a bit involved.  We are waiting for 3 messages: 
-	 * one that the backend process has started, 
-	 * one that the SET_SERIALIZABLE has happened, 
+
+	/* This is a bit involved.  We are waiting for 3 messages:
+	 * one that the backend process has started,
+	 * one that the SET_SERIALIZABLE has happened,
 	 * and the third that FINISH has happened.
 	 * To avoid polling, we use the NOTIFY/LISTEM approach.
 	 * But we only select for 2 secs at a time, so we can see whether or not we need to NOTIFY
@@ -1428,17 +1447,17 @@ void* threadProc(void *arg)
 		/* Check to see whether another thread has failed and therefore we should cancel */
 		if ( g_b_SendCancelMessage && !bSentCancelMessage && HasStarted( pState ) )
 		{
-			mpp_msg( logInfo, pszProgName, "noticed that a cancel order is in effect. Informing dbid %d on host %s by notifying on connection\n", 
+			mpp_msg( logInfo, pszProgName, "noticed that a cancel order is in effect. Informing dbid %d on host %s by notifying on connection\n",
 							pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost") );
 			// Either one of the other threads have failed, or a Ctrl C was received.  So post a cancel message
 //			InsertStatusRow(pConn, pszKey, pSegDB->role, pSegDB->dbid, TASK_CANCEL, TASK_RC_SUCCESS, "Cancel Requested");
 			DoCancelNotifyListen( pConn, false, pszKey, pSegDB->role, pSegDB->dbid, -1, NULL );
 			bSentCancelMessage = true;
 		}
-		
+
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
-		
+
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			g_b_SendCancelMessage = true;
@@ -1455,7 +1474,7 @@ void* threadProc(void *arg)
 
 			return NULL;
 		}
-		
+
 		/* See whether the connection went down */
 		if ( PQstatus( pConn ) == CONNECTION_BAD )
 		{
@@ -1464,7 +1483,7 @@ void* threadProc(void *arg)
 											pszKey, pSegDB->role, pSegDB->dbid);
 			mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg );
 			PQfinish(pConn);
-			DestroyBackupStateMachine(pState); 
+			DestroyBackupStateMachine(pState);
 			if ( !bDidDecrement )
 			{
 				decrementFinishedLaunchCount();
@@ -1472,7 +1491,7 @@ void* threadProc(void *arg)
 			}
 			return NULL;
 		}
-		
+
 		/* try to get any notification from the server */
 		PQconsumeInput( pConn );
 
@@ -1482,7 +1501,7 @@ void* threadProc(void *arg)
 		while ( NULL != (pNotify = PQnotifies(pConn)))
 		{
 			/* compare the LISTEN/NOTIFY (without suffix) name with the one we expect */
-			if ( strncasecmp( pState->pszNotifyRelName, pNotify->relname, 
+			if ( strncasecmp( pState->pszNotifyRelName, pNotify->relname,
 								strlen(pState->pszNotifyRelName) ) == 0 )
 			{
 				/* add this notification to our state notification array */
@@ -1510,7 +1529,7 @@ void* threadProc(void *arg)
 			bDidDecrement = true;
 		}
 	}
-	
+
 	if ( !bDidDecrement )
 	{
 		decrementFinishedLaunchCount();
@@ -1524,9 +1543,9 @@ void* threadProc(void *arg)
 	{
 		g_b_SendCancelMessage = true;
 		pParm->bSuccess = false;
-		mpp_err_msg(logError, pszProgName,"backup failed for dbid %d on host %s\n", 
+		mpp_err_msg(logError, pszProgName,"backup failed for dbid %d on host %s\n",
 					pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost") );
-		
+
 		switch( pState->currentState )
 		{
 			case STATE_TIMEOUT:
@@ -1535,16 +1554,16 @@ void* threadProc(void *arg)
 
 				pParm->pszErrorMsg = MakeString( "backup failed to set transaction level serializable "
 												 "for dbid %d on host %s in the required "
-												 "time interval\n. Detail from remote status file: %s ", 
+												 "time interval\n. Detail from remote status file: %s ",
 												 pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"),
-												 ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory, 
+												 ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory,
 																		pszKey, BFT_BACKUP_STATUS, pszProgName));
-				break;												
+				break;
 			case STATE_BACKUP_ERROR:
 				/* Make call to get error message from file on server */
 				pParm->pszErrorMsg = ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory, pszKey, BFT_BACKUP_STATUS, pszProgName );
-					
-				break;												
+
+				break;
 
 			case STATE_UNEXPECTED_INPUT:
 				DoCancelNotifyListen( pConn, false, pszKey, pSegDB->role, pSegDB->dbid, -1, NULL );
@@ -1563,12 +1582,12 @@ void* threadProc(void *arg)
 	else
 	{
 		pParm->bSuccess = true;
-		mpp_msg( logInfo, pszProgName,"backup succeeded for dbid %d on host %s\n", 
+		mpp_msg( logInfo, pszProgName,"backup succeeded for dbid %d on host %s\n",
 					pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost") );
 	}
 
 	PQfinish(pConn);
-	DestroyBackupStateMachine(pState); 
-	
+	DestroyBackupStateMachine(pState);
+
 	return(NULL);
 }
