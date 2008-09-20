@@ -2014,8 +2014,12 @@ AtEOXact_RelationCache(bool isCommit)
 	 * the current xact, or an index list is forced.)  For simplicity, the
 	 * flag remains set till end of top-level transaction, even though we
 	 * could clear it at subtransaction end in some cases.
+	 *
+	 * MPP-3333: READERS need to *always* scan, otherwise they will not be able
+	 * to maintain a coherent view of the storage layer.
 	 */
-	if (!need_eoxact_work
+	if (!need_eoxact_work &&
+		DistributedTransactionContext != DTX_CONTEXT_QE_READER
 #ifdef USE_ASSERT_CHECKING
 		&& !assert_enabled
 #endif
@@ -2113,7 +2117,8 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 	 * Skip the relcache scan if nothing to do --- see notes for
 	 * AtEOXact_RelationCache.
 	 */
-	if (!need_eoxact_work)
+	if (!need_eoxact_work &&
+		DistributedTransactionContext != DTX_CONTEXT_QE_READER)
 		return;
 
 	hash_seq_init(&status, RelationIdCache);
@@ -2121,6 +2126,18 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 	while ((idhentry = (RelIdCacheEnt *) hash_seq_search(&status)) != NULL)
 	{
 		Relation	relation = idhentry->reldesc;
+
+		/*
+		 * QE-readers aren't properly enrolled in transactions, they
+		 * just get the snapshot which corresponds -- so here, where
+		 * we are maintaining their relcache, we want to just clean
+		 * up (almost as if we had aborted). (MPP-3338)
+		 */
+		if (DistributedTransactionContext == DTX_CONTEXT_QE_READER)
+		{
+			RelationClearRelation(relation, false);
+			continue;
+		}
 
 		/*
 		 * Is it a relation created in the current subtransaction?
@@ -2134,7 +2151,6 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 				relation->rd_createSubid = parentSubid;
 			else
 			{
-				/* MPP-3338: Note that subtransaction does the right thing (clears cache for abort). */
 				Assert(RelationHasReferenceCountZero(relation));
 				RelationClearRelation(relation, false);
 				continue;
