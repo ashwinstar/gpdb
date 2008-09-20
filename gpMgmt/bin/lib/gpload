@@ -74,7 +74,7 @@ class gpload:
 	f.close()
 	self.logfile = None
 	self.subprocesses = []
-	logfile = self.getconfig('gpload.logfile',str)
+	logfile = self.getconfig('gpload:logfile',str)
 	if logfile!=None:
 	    self.logfile = open(logfile,'a')
 
@@ -85,7 +85,7 @@ class gpload:
 	sys.stdout.write(a)
 
     def getconfig(self,a,typ=None,default='error'):
-	s = a.split('.')
+	s = a.split(':')
 	b = []
 	c = self.config
 	for i in xrange(len(s)):
@@ -115,19 +115,19 @@ class gpload:
 	return c
 
     def read_config(self):
-	self.table = self.getconfig('gpload.into.connection.table',str)
+	self.table = self.getconfig('gpload:into:connection:table',str)
 	if self.options.h==None:
-	    self.options.h = self.getconfig('gpload.into.connection.hostname',str)
+	    self.options.h = self.getconfig('gpload:into:connection:hostname',str)
 	if self.options.p==None:
-	    self.options.p = self.getconfig('gpload.into.connection.port',int)
+	    self.options.p = self.getconfig('gpload:into:connection:port',int)
 	if self.options.U==None:
-	    self.options.U = self.getconfig('gpload.into.connection.username',str)
+	    self.options.U = self.getconfig('gpload:into:connection:username',str)
 	if self.options.d==None:
-	    self.options.d = self.getconfig('gpload.into.connection.database',str)
+	    self.options.d = self.getconfig('gpload:into:connection:database',str)
 
     def start_gpfdists(self):
 	self.locations = []
-	sources = self.getconfig('gpload.from.source')
+	sources = self.getconfig('gpload:from:source')
 	if type(sources)!=list:
 	    sources = [sources]
 	for source in sources:
@@ -167,11 +167,11 @@ class gpload:
 	self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
 
     def read_columns(self):
-	columns = self.getconfig('gpload.from.columns',list,None)
+	columns = self.getconfig('gpload:from:columns',list,None)
 	if columns!=None:
 	    self.from_columns = []
 	    for d in columns:
-		key = d.keys()[0]
+		key = d.keys()[0].lower()
 		self.from_columns.append([key,d[key],None])
 	else:
 	    self.from_columns = self.into_columns
@@ -185,30 +185,34 @@ class gpload:
 	self.pg8000.execute("select * from information_schema.columns where table_name=$1 order by ordinal_position",self.table)
 	count = 0
 	self.into_columns = []
+	self.into_columns_dict = dict()
 	for row in self.pg8000.iterate_dict():
 	    count += 1
 	    ct = str(row['data_type'])
 	    if row['character_maximum_length']!=None:
 		ct += '(%s)'%str(row['character_maximum_length'])
-	    self.into_columns.append([str(row['column_name']),ct,None])
+	    name = str(row['column_name']).lower()
+	    i = [name,ct,None]
+	    self.into_columns.append(i)
+	    self.into_columns_dict[name] = i
 	if count==0:
 	    self.log('Table %s does not exist.'%self.table)
 	    sys.exit(2)
 
     def read_mapping(self):
-	mapping = self.getconfig('gpload.into.mapping',dict,None)
+	mapping = self.getconfig('gpload:into:mapping',dict,None)
 	if mapping==None:
 	    for a in self.into_columns:
-		if a[0].lower() in map(lambda a:a[0].lower(),self.from_columns):
+		if a[0] in map(lambda a:a[0],self.from_columns):
 		    a[2] = a[0]
 	else:
 	    for key,value in mapping.iteritems():
 		try:
-		    i = map(lambda a:a[0],self.into_columns).index(key)
+		    i = map(lambda a:a[0],self.into_columns).index(key.lower())
 		except ValueError:
 		    self.log('%s in mapping is not in table %s:.'%(key,self.table))
 		    sys.exit(2)
-		self.into_columns[i][2] = value
+		self.into_columns[i][2] = value.lower()
 	self.log('table %s columns are--'%self.table)
 	self.log('')
 	for name,typ,mapto in self.into_columns:
@@ -216,40 +220,42 @@ class gpload:
 	self.log('')
 
     def create_external_table(self):
-	format = self.getconfig('gpload.from.format.format',str,'text').lower()
+	self.cleanupSql.append('drop table if exists ext_%s'%self.name)
+	self.cleanupSql.append('drop table if exists ext_%s_errors'%self.name)
+	format = self.getconfig('gpload:from:format:format',str,'text').lower()
 	sql = "create external table ext_%s"%self.name
 	sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]),self.from_columns))
 	sql += "location(%s)"%','.join(map(quote,self.locations))
 	sql += "format%s("%quote(format)
-	sql += "delimiter%s"%quote(self.getconfig('gpload.from.format.delimiter',str))
-	if self.getconfig('gpload.from.format.header',bool,False):
+	sql += "delimiter%s"%quote(self.getconfig('gpload:from:format:delimiter',str))
+	if self.getconfig('gpload:from:format:header',bool,False):
 	    sql += "header "
 	if format=='csv':
-	    sql += "quote as%s"%quote(self.getconfig('gpload.from.format.quote',str))
-	    sql += "escape as%s"%quote(self.getconfig('gpload.from.format.escape',str))
-	force_not_null_columns = self.getconfig('gpload.from.format.force_not_null_columns',list,[])
+	    sql += "quote as%s"%quote(self.getconfig('gpload:from:format:quote',str))
+	    sql += "escape as%s"%quote(self.getconfig('gpload:from:format:escape',str))
+	force_not_null_columns = self.getconfig('gpload:from:format:force_not_null_columns',list,[])
 	if force_not_null_columns:
 	    sql += "force not null %s "%','.join(force_not_null_columns)
 	sql += ")"
-	sql += "encoding%s"%quote(self.getconfig('gpload.from.format.encoding',str))
+	sql += "encoding%s"%quote(self.getconfig('gpload:from:format:encoding',str))
 	sql += "log errors into ext_%s_errors "%self.name
-	limit = self.getconfig('gpload.errors.segment_limit',str,None)
+	limit = self.getconfig('gpload:errors:segment_limit',str,None)
 	if limit!=None:
 	    sql += "segment reject limit %s "%limit
 	self.log(sql)
 	self.pg8000.execute(sql)
-	self.cleanupSql.append('drop table if exists ext_%s'%self.name)
-	self.cleanupSql.append('drop table if exists ext_%s_errors'%self.name)
 
     def read_errors(self):
 	self.pg8000.execute('select * from ext_%s_errors'%self.name)
 	rows = list(self.pg8000.iterate_dict())
-	self.log("%d bad rows"%len(rows))
 	if len(rows):
+	    self.log(len(rows)==1 and '1 bad row' or "%d bad rows"%len(rows))
 	    self.exitValue = 1
-	    f = open(self.getconfig('gpload.errors.errorfile',str),'w')
+	    f = open(self.getconfig('gpload:errors:errorfile',str),'w')
 	    f.write(self.format_rows(rows))
 	    f.close()
+	else:
+	    self.log("no bad rows")
 
     def format_rows(self,rows):
 	sb = []
@@ -270,16 +276,12 @@ class gpload:
 			sb.append('|')
 		    sb.append('%*s'%(size[i],row[r[i]]))
 		sb.append('\n')
-	if len(rows)==1:
-	    sb.append('1 row\n')
-	else:
-	    sb.append('%d rows\n'%len(rows))
+	sb.append(len(rows)==1 and '1 row' or '%d rows'%len(rows))
 	return ''.join(sb)
 
-    def do_method_insert(self):
-	self.create_external_table()
+    def do_insert(self,dest):
 	cols = filter(lambda a:a[2]!=None,self.into_columns)
-	sql = 'insert into %s'%self.table
+	sql = 'insert into %s'%dest
 	sql += '(%s)'%','.join(map(lambda a:a[0],cols))
 	sql += 'select %s '%','.join(map(lambda a:a[2],cols))
 	sql += 'from ext_%s'%self.name
@@ -287,18 +289,66 @@ class gpload:
 	self.pg8000.execute(sql)
 	self.read_errors()
 
+    def do_method_insert(self):
+	self.create_external_table()
+	self.do_insert(self.table)
+
+    def map_stuff(self,config,format,index):
+	lis = []
+	for i in self.getconfig(config,list):
+	    j = self.into_columns_dict.get(i.lower())
+	    if not j:
+		self.log('Column %s in %s does not exist.'%(i,config))
+		sys.exit(2)
+	    if not j[index]:
+		self.log('There is no mapping from the column %s in %s.'%(i,config))
+		sys.exit(2)
+	    lis.append(format(j[0],j[index]))
+	return lis
+
+    def do_update(self,fromname,index):
+	sql = 'update %s into_table '%self.table
+	sql += 'set %s '%','.join(self.map_stuff('gpload:into:method:update_cols',lambda x,y:'%s=from_table.%s'%(x,y),index))
+	sql += 'from %s from_table '%fromname
+	match = self.map_stuff('gpload:into:method:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),index)
+	update_condition = self.getconfig('gpload:into:method:update_condition',str,None)
+	if update_condition:
+	    match.append(update_condition)
+	sql += 'where %s '%' and '.join(match)
+	self.log(sql)
+	self.pg8000.execute(sql)
+
     def do_method_update(self):
-	pass
+	self.create_external_table()
+	self.do_update('ext_%s'%self.name,2)
+	self.read_errors()
 
     def do_method_merge(self):
-	pass
+	self.cleanupSql.append('drop temp table if exists temp_%s'%self.name)
+	sql = 'create temp table temp_%s(like %s)'%(self.name,self.table)
+	self.log(sql)
+	self.pg8000.execute(sql)
+	self.create_external_table()
+	self.do_insert('temp_%s'%self.name)
+	self.do_update('temp_%s'%self.name,0)
+	sql = 'insert into %s('%self.table
+	sql += 'select %s '%','.join(map(lambda a:'from_table.%s'%a[0],self.into_columns))
+	sql += 'from temp_%s from_table '%self.name
+	sql += 'left outer join %s into_table '%self.table
+	match = self.map_stuff('gpload:into:method:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
+	sql += 'on %s '%' and '.join(match)
+	where = self.map_stuff('gpload:into:method:match_columns',lambda x,y:'into_table.%s is null'%x,0)
+	sql += 'where %s '%' and '.join(where)
+	sql += ')'
+	self.log(sql)
+	self.pg8000.execute(sql)
 
     def show_result(self):
 	self.pg8000.execute('select * from %s'%self.table)
 	self.log(self.format_rows(list(self.pg8000.iterate_dict())))
 
     def do_method(self):
-	method = self.getconfig('gpload.into.method.method',str,'insert').lower()
+	method = self.getconfig('gpload:into:method:method',str,'insert').lower()
 	if method=='insert':
 	    self.do_method_insert()
 	elif method=='update':
@@ -310,6 +360,8 @@ class gpload:
 	    sys.exit(2)
 
     def run2(self):
+	self.log(str(self.config))
+	start = time.time()
 	self.read_config()
 	self.setup_connection()
 	self.read_table_metadata()
@@ -317,7 +369,7 @@ class gpload:
 	self.read_mapping()
 	self.start_gpfdists()
 	self.do_method()
-	self.show_result()
+	self.log('Running time is %s seconds'%(time.time()-start))
 
     def run(self):
 	try:
@@ -337,6 +389,12 @@ class gpload:
 		    os.kill(a.pid,signal.SIGTERM)
 		except OSError:
 		    pass
+	if self.exitValue==0:
+	    self.log('gpload succeeded.')
+	elif self.exitValue==1:
+	    self.log('gpload succeeded with warnings.')
+	else:
+	    self.log('gpload failed.')
 
 g = gpload(sys.argv[1:])
 g.run()
