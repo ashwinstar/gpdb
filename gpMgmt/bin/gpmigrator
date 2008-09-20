@@ -629,8 +629,8 @@ class GPUpgrade:
 
         try:
 
-            if utility:  cmd = 'gpstop -a -m'
-            else:        cmd = 'gpstop -a'
+            if utility:  cmd = 'gpstop -fzam'
+            else:        cmd = 'gpstop -fza'
             pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                    env=env, shell=True,
                                    stdout=self.logfile, 
@@ -1239,7 +1239,7 @@ This issue must be resolved before upgrade can complete.
                            WHERE c.oid >= %s
                              AND c.relkind in ('a', 'r', 't', 'i', 'S')
                              AND c.relnamespace = n.oid 
-                             AND n.nspname not in ('pg_toast')
+                             AND n.nspname !~ 'pg_(toast|temp.*)'
                            ORDER BY name;
                         ''' % db['max_sysoid'], 
                         db=db['dbname'],
@@ -1457,9 +1457,50 @@ This issue must be resolved before upgrade can complete.
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing schema')
-        subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
-                        env=self.newenv, shell=True,
-                        stdout=self.logfile, stderr=self.logfile)
+
+        error   = False
+        warning = False
+        pipe = subprocess.Popen('psql -q -f %s/pgdump.sql template1' % self.tmpdir,
+                                env=self.newenv, shell=True,
+                                stdout=subprocess.PIPE, 
+                                stderr=subprocess.PIPE)
+
+        msg_re  = re.compile('psql:%s/pgdump.sql:(\d+): *([^:]*): *(.*)' % self.tmpdir)
+        user_re = re.compile('role ".*" already exists')
+        for line in pipe.stderr:
+            match = msg_re.match(line)
+            if match:
+                line = '%s:  %s, at line %s' % (
+                    match.group(2), match.group(3), match.group(1))
+
+                # Check for expected safe errors
+                if user_re.match(match.group(3)):
+                    continue
+
+                # Handle unexpected errors
+                if match.group(2) == 'WARNING' or match.group(2) == 'DETAIL':
+                    warning = True
+                    level = 'WARN'
+                else:
+                    error = True
+                    level = 'FATAL'
+
+            else:
+                # should never happen
+                error = True
+                level = 'FATAL'
+
+            self.Log(level, line)
+
+        if error:
+            self.Log('FATAL', "Errors encountered loading '%s/pgdump.sql'" % self.tmpdir);
+            raise UpgradeError('Upgrade aborted due to Schema Import Failures')
+
+        if warning:
+            self.Log('WARN', '***************************************')
+            self.Log('WARN', "Warnings encountered loading '%s/pgdump.sql'" % self.tmpdir);
+            self.Log('WARN', '***************************************')
+
         databases = self.Select(
             '''
             SELECT datname FROM pg_database 
