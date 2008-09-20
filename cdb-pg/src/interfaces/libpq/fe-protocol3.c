@@ -38,10 +38,12 @@
 /*
  * This macro lists the backend message types that could be "long" (more
  * than a couple of kilobytes).
+ * 
+ * MPP-3628: explain-analyze of large subtrees can generate big messages.
  */
 #define VALID_LONG_MESSAGE_TYPE(id) \
 	((id) == 'T' || (id) == 'D' || (id) == 'd' || (id) == 'V' || \
-	 (id) == 'E' || (id) == 'N' || (id) == 'A')
+	 (id) == 'E' || (id) == 'N' || (id) == 'A' || (id) == 'Y')
 
 
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
