@@ -241,6 +241,17 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
+
+	/* We use INADDR_ANY if we don't have a valid address for
+	 * ourselves (e.g. QD local connections tend to be AF_UNIX */
+	if (MyProcPort->laddr.addr.ss_family != AF_INET)
+		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	else
+		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
+
+    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG4, (errmsg("bind listener %s", inet_ntoa(saddr.sin_addr))));
+
 	saddr.sin_port = 0;
 
     fun = "bind";
@@ -882,6 +893,17 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
+
+	/* We use INADDR_ANY if we don't have a valid address for
+	 * ourselves (e.g. QD local connections tend to be AF_UNIX */
+	if (MyProcPort->laddr.addr.ss_family != AF_INET)
+		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	else
+		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
+
+    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+        ereport(DEBUG4, (errmsg("bind outbound  %s", inet_ntoa(saddr.sin_addr))));
+
 	saddr.sin_port = 0;
 
 	fun = "bind";

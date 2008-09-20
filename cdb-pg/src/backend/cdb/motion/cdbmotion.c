@@ -32,73 +32,20 @@
 #include "utils/memutils.h"
 
 
-/*=========================================================================
+/*
  * MOTION NODE INFO DATA STRUCTURES
  */
 int			Gp_max_tuple_chunk_size;
 
-/*=========================================================================
- * CHUNK SORTER DATA STRUCTURES
- */
-
-
-/* This is the key for the chunk-sorter.  Incoming chunks are grouped by
- * sourceRoute-index and destination motion-node.
- */
-typedef int32 ChunkSorterKey;
-
-#define makeChunkSorterKey(key, route, id) (*(key) = ((route) << 16)|(id))
-#define ChunkSorterKey_route(key) (key >> 16)
-#define ChunkSorterKey_id(key) (key & 0x0ffff)
-
-/* This structure is used to keep track of partially completed tuples, and
- * tuples that have been completed but have not been consumed by the executor
- * yet.
- */
-typedef struct ChunkSorterEntry
-{
-	/* The key has to be the first part of the value for the hash table. */
-	ChunkSorterKey key;
-
-	/*
-	 * A tuple-chunk list containing the chunks for the currently incomplete
-	 * HeapTuple being received.
-	 */
-	TupleChunkListData chunk_list;
-
-	/*
-	 * A FIFO to hold the tuples that have been completed but not yet
-	 * retrieved.  This will not be initialized until it is actually needed.
-	 */
-	htup_fifo	ready_tuples;
-
-	/*
-	 * Flag recording whether end-of-stream has been reported from the source.
-	 */
-	bool		end_of_stream;
-
-	/*---------------------------------------*/
-	/* PER-(MOTION NODE & SENDER) STATISTICS */
-	/* */
-	/* These are utilized primarily in order */
-	/* preserving motion nodes.				 */
-	/*---------------------------------------*/
-
-	uint32		stat_tuples_available;	/* Total tuples awaiting receive. */
-	uint32		stat_tuples_available_hwm;		/* High-water-mark of this
-												 * value. */
-
-}	ChunkSorterEntry;
-
-/*=========================================================================
+/*
  * STATIC STATE VARS
  */
 static TupleChunkListItemData s_eos_chunk_data =
 {NULL, TUPLE_CHUNK_HEADER_SIZE, NULL, "                "};
 
-/*=========================================================================
-* HELPER FUNCTION DECLARATIONS
-*/
+/*
+ * HELPER FUNCTION DECLARATIONS
+ */
 static ChunkSorterEntry *getChunkSorterEntry(MotionLayerState *mlStates,
 											 MotionNodeEntry * motNodeEntry,
 											 int16 srcRoute);
@@ -150,7 +97,7 @@ reconstructTuple(MotionNodeEntry * pMNEntry, ChunkSorterEntry * pCSEntry)
 	statNewTupleArrived(pMNEntry, pCSEntry);
 }
 
-/*=========================================================================
+/*
  * FUNCTION DEFINITIONS
  */
 
@@ -185,18 +132,16 @@ RemoveMotionLayer(MotionLayerState *mlStates, bool flushCommLayer  __attribute__
 	 * free our some resources to be safe. The rest will get freed with
 	 * MemoryContextDelete()
 	 */
-	if(mlStates->mnEntries != NULL)
+	if (mlStates->mnEntries != NULL)
 		pfree(mlStates->mnEntries);
 	
 	mlStates->mnEntries = NULL;
 	mlStates->mneCount = 0;
 
-	hash_destroy(mlStates->chunksort_map);
-
 	/*
 	 * Free all memory used by the Motion Layer in the processing of this query.
 	 */
-	if(mlStates->motion_layer_mctx != NULL)
+	if (mlStates->motion_layer_mctx != NULL)
 		MemoryContextDelete(mlStates->motion_layer_mctx);
 }
 
@@ -206,8 +151,6 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 {
 	MemoryContext oldCtxt;
 	MemoryContext ml_mctx;
-	HASHCTL		hctl;
-	HTAB	   *htab;
 	uint8	   *pData;
 
 	if (Gp_role == GP_ROLE_UTILITY)
@@ -263,25 +206,6 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	(*mlStates)->mnEntries = palloc0(MNE_INITIAL_COUNT * sizeof(MotionNodeEntry));
 	(*mlStates)->mneCount = MNE_INITIAL_COUNT;
 
-	/*
-	 * Initialize tuple-data hashtable.  The initial number of bins is chosen
-	 * to be relatively small, since the max number of bins is just the number
-	 * of segment databases multiplied by the number of motion nodes in the
-	 * plan.
-	 */
-
-	hctl.keysize = sizeof(ChunkSorterKey);
-	hctl.entrysize = sizeof(ChunkSorterEntry);
-	hctl.hash = int32_hash;
-	htab = hash_create("ChunkSorter", 10, &hctl, HASH_ELEM | HASH_FUNCTION);
-	if (htab == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-		   errmsg("Could not allocate hash table for tuple chunk sorter.")));
-	}
-
-	(*mlStates)->chunksort_map = htab;
-
 	/* Allocation is done.	Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldCtxt);
 
@@ -321,7 +245,8 @@ AddMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID)
 	mlStates->mneCount = motNodeID;
 }
 
-/* Initialize a single motion node.  This is called by the executor
+/*
+ * Initialize a single motion node.  This is called by the executor
  * when a to set up a placeholder which will be filled in during plan
  * initialization.
  *
@@ -373,7 +298,8 @@ InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID)
 	MemoryContextSwitchTo(oldCtxt);
 }
 
-/* Initialize a single motion node.  This is called by the executor when a
+/*
+ * Initialize a single motion node.  This is called by the executor when a
  * motion node in the plan tree is being initialized.
  *
  * This function is called from:  ExecInitMotion()
@@ -473,7 +399,6 @@ SendStopMessage(MotionLayerState *mlStates,
 
 /*
  * Function:  SendTuple - Sends a portion or whole tuple to the AMS layer.
- *
  */
 SendReturnCode
 SendTuple(MotionLayerState *mlStates,
@@ -492,7 +417,7 @@ SendTuple(MotionLayerState *mlStates,
 	/* 
 	 * Analyze tools.  Do not send any thing if this slice is in the bit mask
 	 */
-	if(gp_motion_slice_noop != 0 && (gp_motion_slice_noop & (1 << currentSliceId)) != 0)
+	if (gp_motion_slice_noop != 0 && (gp_motion_slice_noop & (1 << currentSliceId)) != 0)
 		return SEND_COMPLETE;
 
 	/*
@@ -549,7 +474,8 @@ get_eos_tuplechunklist(void)
 	return &s_eos_chunk_data;
 }
 
-/* Sends a token to all peer Motion Nodes, indicating that this motion
+/*
+ * Sends a token to all peer Motion Nodes, indicating that this motion
  * node has no more tuples to send out.
  */
 void
@@ -688,13 +614,15 @@ RecvTupleFrom(MotionLayerState *mlStates,
 }
 
 
-/* This helper function is the receive-tuple workhorse.  It pulls tuple chunks
- * from the AMS, and pushes them to the chunk-sorter where they can be sorted
- * based on sender, and reconstituted into whole HeapTuples.  Functions like
- * RecvTuple() and RecvTupleFrom() should definitely call this before trying
- * to get a HeapTuple to return.  It can also be called during other
- * operations if that seems like a good idea.  For example, it can be called
- * sometime during send-tuple operations as well.
+/*
+ * This helper function is the receive-tuple workhorse.  It pulls
+ * tuple chunks from the AMS, and pushes them to the chunk-sorter
+ * where they can be sorted based on sender, and reconstituted into
+ * whole HeapTuples.  Functions like RecvTuple() and RecvTupleFrom()
+ * should definitely call this before trying to get a HeapTuple to
+ * return.  It can also be called during other operations if that
+ * seems like a good idea.  For example, it can be called sometime
+ * during send-tuple operations as well.
  */
 static void
 processIncomingChunks(MotionLayerState *mlStates,
@@ -767,9 +695,9 @@ processIncomingChunks(MotionLayerState *mlStates,
 void
 EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLayer)
 {
-	HASH_SEQ_STATUS seqStatus;
 	MotionNodeEntry *pMNEntry;
 	ChunkSorterEntry *pCSEntry;
+	int i;
 
 	pMNEntry = getMotionNodeEntry(mlStates, motNodeID, "EndMotionLayerNode");
 
@@ -782,84 +710,64 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 	 * Iterate through all entries in the motion layer's chunk-sort map, to
 	 * see if we have gotten end-of-stream from all senders.
 	 */
-	hash_seq_init(&seqStatus, mlStates->chunksort_map);
-
-	while ((pCSEntry = (ChunkSorterEntry *) hash_seq_search(&seqStatus)) != NULL)
+	if (pMNEntry->preserve_order && pMNEntry->ready_tuple_lists != NULL)
 	{
-		/* Skip entries for motion nodes we don't care about. */
-		if (ChunkSorterKey_id(pCSEntry->key) != motNodeID)
-			continue;
-
-		if (pMNEntry->preserve_order &&
-        	gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		for (i=0; i < GpIdentity.numsegments; i++)
 		{
-			/* Print chunk-sorter entry statistics. */
+			pCSEntry = &pMNEntry->ready_tuple_lists[i];
 
-			elog(DEBUG4, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
-				 "\tAvailable Tuples High-Watermark:  %u",
-				 ChunkSorterKey_route(pCSEntry->key),
-				 ChunkSorterKey_id(pCSEntry->key),
-				 pMNEntry->stat_tuples_available_hwm);
-		}
-
-#ifdef AMS_VERBOSE_LOGGING
-        elog(DEBUG5, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
-			 ChunkSorterKey_route(pCSEntry->key), ChunkSorterKey_id(pCSEntry->key));
-#endif
-
-		/*
-		 * If we weren't stopped and haven't gotten the end-of-stream yet,
-		 * handle it according to the caller's request.
-		 */
-		if (!pMNEntry->stopped && !pCSEntry->end_of_stream)
-		{
-			if (flushCommLayer)
+			if (pMNEntry->preserve_order &&
+				gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 			{
-				elog(FATAL, "Motion layer node %d cleanup - did not receive"
-					 " end-of-stream from sender %d.", motNodeID,
-					 ChunkSorterKey_route(pCSEntry->key));
+				/* Print chunk-sorter entry statistics. */
+				elog(DEBUG4, "Chunk-sorter entry [route=%d,node=%d] statistics:\n"
+					 "\tAvailable Tuples High-Watermark: %u",
+					 i, pMNEntry->motion_node_id,
+					 pMNEntry->stat_tuples_available_hwm);
+			}
 
-				/*** TODO - get chunks until end-of-stream comes in. ***/
+			if (!pMNEntry->stopped && !pCSEntry->end_of_stream)
+			{
+				if (flushCommLayer)
+				{
+					elog(FATAL, "Motion layer node %d cleanup - did not receive"
+						 " end-of-stream from sender %d.", motNodeID, i);
+
+					/*** TODO - get chunks until end-of-stream comes in. ***/
+				}
+				else
+				{
+					elog(LOG, "Motion layer node %d cleanup - did not receive"
+						 " end-of-stream from sender %d.", motNodeID, i);
+				}
 			}
 			else
 			{
-				elog(LOG, "Motion layer node %d cleanup - did not receive"
-					 " end-of-stream from sender %d.", motNodeID,
-					 ChunkSorterKey_route(pCSEntry->key));
-			}
-		}
-		else
-		{
-			/* End-of-stream is marked for this entry. */
+				/* End-of-stream is marked for this entry. */
 
-			/*** TODO - do more than just complain! ***/
+				/*** TODO - do more than just complain! ***/
 
-			if (pCSEntry->chunk_list.num_chunks > 0)
-			{
-				elog(LOG, "Motion layer node %d cleanup - there are still"
-					 " %d chunks enqueued from sender %d.", motNodeID,
-					 pCSEntry->chunk_list.num_chunks,
-					 ChunkSorterKey_route(pCSEntry->key));
-			}
+				if (pCSEntry->chunk_list.num_chunks > 0)
+				{
+					elog(LOG, "Motion layer node %d cleanup - there are still"
+						 " %d chunks enqueued from sender %d.", motNodeID,
+						 pCSEntry->chunk_list.num_chunks, i );
+				}
 
-			/***
-			 TODO - Make sure there are no outstanding tuples in the
+				/***
+					TODO - Make sure there are no outstanding tuples in the
 					tuple-store.
-			 ***/
+				***/
+			}
+
+			/*
+			 * Clean up the chunk-sorter entry, then remove it from the hash
+			 * table.
+			 */
+			clearTCList(&pMNEntry->ser_tup_info.chunkCache, &pCSEntry->chunk_list);
+			if (pMNEntry->preserve_order)	/* Clean up the tuple-store. */
+				htfifo_destroy(pCSEntry->ready_tuples);
 		}
-
-		/*
-		 * Clean up the chunk-sorter entry, then remove it from the hash
-		 * table.
-		 */
-		clearTCList(&pMNEntry->ser_tup_info.chunkCache, &pCSEntry->chunk_list);
-		if (pMNEntry->preserve_order)	/* Clean up the tuple-store. */
-			htfifo_destroy(pCSEntry->ready_tuples);
-
-		hash_search(mlStates->chunksort_map, &pCSEntry->key,
-					HASH_REMOVE, NULL);
-
-		pMNEntry->cleanedUp = true;
 	}
 	pMNEntry->cleanedUp = true;
 
@@ -905,8 +813,9 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 	pMNEntry->valid = false;
 }
 
-/* Helper function to get the motion node entry for a given ID.  NULL is
- * returned if the ID is unrecognized.
+/*
+ * Helper function to get the motion node entry for a given ID.  NULL
+ * is returned if the ID is unrecognized.
  */
 MotionNodeEntry *
 getMotionNodeEntry(MotionLayerState *mlStates, int16 motNodeID, char *errString __attribute__((unused)) )
@@ -930,7 +839,8 @@ getMotionNodeEntry(MotionLayerState *mlStates, int16 motNodeID, char *errString 
 	return pMNEntry;
 }
 
-/* Retrieve the chunk-sorter entry for the specified motion-node/source pair.
+/*
+ * Retrieve the chunk-sorter entry for the specified motion-node/source pair.
  * If one doesn't exist, it is created and initialized.
  *
  * It might not seem obvious why the MotionNodeEntry is required as an
@@ -945,90 +855,76 @@ getChunkSorterEntry(MotionLayerState *mlStates,
 {
 	int16		motNodeID;
 	MemoryContext oldCtxt;
-	ChunkSorterKey csKey;
-	ChunkSorterEntry *chunkSorterEntry;
-	bool		found;
+	ChunkSorterEntry *chunkSorterEntry=NULL;
 
 	AssertArg(motNodeEntry != NULL);
 
+	Assert(srcRoute >= 0);
+	Assert(srcRoute < GpIdentity.numsegments);
+
 	motNodeID = motNodeEntry->motion_node_id;
 
-	makeChunkSorterKey(&csKey, srcRoute, motNodeID);
-
-	chunkSorterEntry = (ChunkSorterEntry *) hash_search(
-			  mlStates->chunksort_map, &csKey, HASH_FIND, &found);
-
-	/* if we found an entry, return immediately */
-	if (chunkSorterEntry != NULL)
-		return chunkSorterEntry;
+	/* Do we have a sorter initialized ? */
+	if (motNodeEntry->ready_tuple_lists != NULL)
+	{
+		if (motNodeEntry->ready_tuple_lists[srcRoute].init)
+			return &motNodeEntry->ready_tuple_lists[srcRoute];
+	}
 
 	/* We have to create an entry */
 	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
 
-	chunkSorterEntry = (ChunkSorterEntry *) hash_search(
-			 mlStates->chunksort_map, &csKey, HASH_ENTER, &found);
+	if (motNodeEntry->ready_tuple_lists == NULL)
+		motNodeEntry->ready_tuple_lists = (ChunkSorterEntry *)palloc0(GpIdentity.numsegments * sizeof(ChunkSorterEntry));
+
+	chunkSorterEntry = &motNodeEntry->ready_tuple_lists[srcRoute];
 
 	if (chunkSorterEntry == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-		   errmsg("Could not allocate htab entry for tuple chunk sorter.")));
+						errmsg("Could not allocate entry for tuple chunk sorter.")));
 	}
 
-	if (!found)
+	chunkSorterEntry->chunk_list.serialized_data_length = 0;
+	chunkSorterEntry->chunk_list.max_chunk_length = Gp_max_tuple_chunk_size;
+	chunkSorterEntry->chunk_list.num_chunks = 0;
+	chunkSorterEntry->chunk_list.p_first = NULL;
+	chunkSorterEntry->chunk_list.p_last = NULL;
+	chunkSorterEntry->end_of_stream = false;
+	chunkSorterEntry->init = true;
+
+	/*
+	 * If motion node is not order-preserving, then all chunk-sorter
+	 * entries share one global tuple-store.  If motion node is order-
+	 * preserving then there is a tuple-store per sender per motion node.
+	 */
+	if (motNodeEntry->preserve_order)
 	{
-		/*
-		 * Complete the initialization of the new entry (hash_search
-		 * initializes the key).
-		 */
+		chunkSorterEntry->ready_tuples = htfifo_create(work_mem);
 
 #ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG5, "Tuple chunk sorter allocated new HTAB entry for"
-			 " [src=%d,mn=%d].", srcRoute, motNodeID);
+		elog(DEBUG5, "Motion node %d is order-preserving.  Creating"
+			 " tuple-store for entry [src=%d,mn=%d].", motNodeID,
+			 srcRoute, motNodeID);
 #endif
+	}
+	else
+	{
+		chunkSorterEntry->ready_tuples = motNodeEntry->ready_tuples;
 
-		chunkSorterEntry->chunk_list.serialized_data_length = 0;
-		chunkSorterEntry->chunk_list.max_chunk_length = Gp_max_tuple_chunk_size;
-		chunkSorterEntry->chunk_list.num_chunks = 0;
-		chunkSorterEntry->chunk_list.p_first = NULL;
-		chunkSorterEntry->chunk_list.p_last = NULL;
-		chunkSorterEntry->end_of_stream = false;
-
-		/*
-		 * If motion node is not order-preserving, then all chunk-sorter
-		 * entries share one global tuple-store.  If motion node is order-
-		 * preserving then there is a tuple-store per sender per motion node.
-		 */
-		if (motNodeEntry->preserve_order)
-		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG5, "Motion node %d is order-preserving.  Creating"
-				 " tuple-store for entry [src=%d,mn=%d].", motNodeID,
-				 srcRoute, motNodeID);
-#endif
-			chunkSorterEntry->ready_tuples = htfifo_create(work_mem);
-
-			/* Sanity-check: */
-			Assert(motNodeEntry->ready_tuples == NULL);
-		}
-		else
-		{
-#ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG5, "Motion node %d is not order-preserving.  Using"
-				 " shared tuple-store for entry [src=%d,mn=%d].", motNodeID,
-				 srcRoute, motNodeID);
+		elog(DEBUG5, "Motion node %d is not order-preserving.  Using"
+			 " shared tuple-store for entry [src=%d,mn=%d].", motNodeID,
+			 srcRoute, motNodeID);
 #endif
 
-			chunkSorterEntry->ready_tuples = motNodeEntry->ready_tuples;
-
-			/* Sanity-check: */
-			Assert(motNodeEntry->ready_tuples != NULL);
-		}
+		/* Sanity-check: */
+		Assert(motNodeEntry->ready_tuples != NULL);
 	}
 
 	MemoryContextSwitchTo(oldCtxt);
 
 	Assert(chunkSorterEntry != NULL);
-
 	return chunkSorterEntry;
 }
 
@@ -1060,10 +956,11 @@ materializeChunk(TupleChunkListItem * tcItem)
 	return;
 }
 
-/* Add another tuple-chunk to the chunk sorter.  If the new chunk completes
- * another HeapTuple, that tuple will be deserialized and stored into a
- * tuple-store.   If not, the chunk is added to the appropriate list of
- * chunks.
+/*
+ * Add another tuple-chunk to the chunk sorter.  If the new chunk
+ * completes another HeapTuple, that tuple will be deserialized and
+ * stored into a tuple-store.  If not, the chunk is added to the
+ * appropriate list of chunks.
  *
  * Return Values:
  *	 true  - if another HeapTuple is completed by this chunk.
@@ -1221,7 +1118,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 
 
 
-/*=========================================================================
+/*
  * STATISTICS HELPER-FUNCTIONS
  */
 static void
@@ -1262,7 +1159,6 @@ statSendEOS(MotionLayerState *mlStates, MotionNodeEntry * pMNEntry)
 	mlStates->stat_total_chunks_sent++;
 	mlStates->stat_total_bytes_sent += TUPLE_CHUNK_HEADER_SIZE;
 }
-
 
 static void
 statChunksProcessed(MotionLayerState *mlStates, MotionNodeEntry * pMNEntry, int chunksProcessed, int chunkBytes, int tupleBytes)

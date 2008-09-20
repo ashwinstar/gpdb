@@ -60,9 +60,10 @@ typedef enum MotionConnState
 	mcsEosSent
 } MotionConnState;
 
-/* Structure used for keeping track of a pt-to-pt connection between two
-* Cdb Entities (either QE or QD).
-*/
+/*
+ * Structure used for keeping track of a pt-to-pt connection between two
+ * Cdb Entities (either QE or QD).
+ */
 typedef struct MotionConn
 {
 	/* socket file descriptor. */
@@ -116,8 +117,8 @@ typedef struct MotionConn
 	uint8		**pkt_q;
 }	MotionConn;
 
-/* used to organize all of the information for a given motion node.
- *
+/*
+ * Used to organize all of the information for a given motion node.
  */
 typedef struct ChunkTransportStateEntry
 {
@@ -158,6 +159,45 @@ typedef struct ChunkTransportStateEntry
 /* ChunkTransportState array initial size */
 #define CTS_INITIAL_SIZE (10)
 
+/*
+ * This structure is used to keep track of partially completed tuples,
+ * and tuples that have been completed but have not been consumed by
+ * the executor yet.
+ */
+typedef struct ChunkSorterEntry
+{
+	bool		init;
+
+	/*
+	 * A tuple-chunk list containing the chunks for the currently incomplete
+	 * HeapTuple being received.
+	 */
+	TupleChunkListData chunk_list;
+
+	/*
+	 * A FIFO to hold the tuples that have been completed but not yet
+	 * retrieved.  This will not be initialized until it is actually needed.
+	 */
+	htup_fifo	ready_tuples;
+
+	/*
+	 * Flag recording whether end-of-stream has been reported from the source.
+	 */
+	bool		end_of_stream;
+
+	/*
+	 * PER-(MOTION NODE & SENDER) STATISTICS
+	 *
+	 * These are utilized primarily in order
+	 * preserving motion nodes.
+	 */
+	/* Total tuples awaiting receive. */
+	uint32		stat_tuples_available;
+
+	/* High-water-mark of this value. */
+	uint32		stat_tuples_available_hwm;
+}	ChunkSorterEntry;
+
 /* This is the entry data-structure for a motion node. */
 typedef struct MotionNodeEntry
 {
@@ -166,13 +206,18 @@ typedef struct MotionNodeEntry
 	 * node ID.
 	 */
 	int16           motion_node_id;
-	
+
 	/*
 	 * Flag specifying whether the order of tuples from each source should be
 	 * maintained or preserved.
 	 */
 	bool            preserve_order;
-	
+
+	/*
+	 * Our route-based array of htup_fifos, for the case where we are a merge receive.
+	 */
+	ChunkSorterEntry *ready_tuple_lists;
+
 	/* The description of tuples that this motion node will be exchanging. */
 	TupleDesc       tuple_desc;
 	
@@ -194,7 +239,6 @@ typedef struct MotionNodeEntry
 	 */
 	uint            num_senders;
 	
-	
 	/*
 	 * Variable that tracks number of senders that have reported end-of-stream
 	 * for this motion node.  When the local node sends end-of-stream, that is
@@ -207,9 +251,9 @@ typedef struct MotionNodeEntry
 	bool            moreNetWork;
 	bool            stopped;
 	
-	/*----------------------------*/
-	/* PER-MOTION-NODE STATISTICS */
-	/*----------------------------*/
+	/*
+	 * PER-MOTION-NODE STATISTICS
+	 */
 	
 	uint32          stat_total_chunks_sent; /* Tuple-chunks sent. */
 	uint32          stat_total_bytes_sent;  /* Bytes sent, including headers. */
@@ -238,10 +282,6 @@ typedef struct MotionNodeEntry
 
 typedef struct MotionLayerState
 {
-	/*--------------*/
-	/* GLOBAL STATE */
-	/*--------------*/
-	
 	/* The host ID that this segment-database is on. */
 	int			host_id;
 	
@@ -252,30 +292,23 @@ typedef struct MotionLayerState
 	 */
 	MemoryContext motion_layer_mctx;
 	
-	/*------------------------------------------------------------------*/
-	/* MOTION NODE STATE - Initialized and used on per-statement basis. */
-	/*------------------------------------------------------------------*/
+	/*
+	 * MOTION NODE STATE - Initialized and used on per-statement basis.
+	 */
 	
 #define MNE_INITIAL_COUNT (10)
 	int			mneCount;
 	MotionNodeEntry *mnEntries;
 	
 	/*
-	 * Map to store incomplete tuples (and completed ones, when
-									   * order_preserving == true), associated with the sender and intended
-	 * destination motion-node.
+	 * GLOBAL MOTION-LAYER STATISTICS
 	 */
-	HTAB	   *chunksort_map;
-	
-	/*--------------------------------*/
-	/* GLOBAL MOTION-LAYER STATISTICS */
-	/*--------------------------------*/
 	
 	uint32		stat_total_chunks_sent; /* Tuple-chunks sent. */
 	uint32		stat_total_bytes_sent;	/* Bytes sent, including headers. */
 	uint32		stat_tuple_bytes_sent;	/* Bytes of pure tuple-data sent. */
 	
-	uint32		stat_total_chunks_recvd;		/* Tuple-chunks received. */
+	uint32		stat_total_chunks_recvd;/* Tuple-chunks received. */
 	uint32		stat_total_bytes_recvd; /* Bytes received, including headers. */
 	uint32		stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
 	
