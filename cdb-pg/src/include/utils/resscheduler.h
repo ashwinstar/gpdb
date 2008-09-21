@@ -8,8 +8,13 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL$
+ * IDENTIFICATION
+ *	  $PostgreSQL: $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #ifndef RESSCHEDULER_H
@@ -78,7 +83,7 @@ typedef struct ResSchedulerData
 extern ResSchedulerData	*ResScheduler;
 
 /* Portal and increments  */
-#define INVALID_PORTALID 				(-1)
+#define INVALID_PORTALID 				(~(uint32)0)
 typedef struct ResPortalIncrement
 {
 	int			pid;					/* Process this increment is for. */

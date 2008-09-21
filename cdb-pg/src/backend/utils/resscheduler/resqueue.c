@@ -10,8 +10,12 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL$
+ *	  $PostgreSQL: $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -114,7 +118,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	int				status;
 
 	/* Setup the lock method bits. */
-	Assert(locktag->locktag_lockmethodid = RESOURCE_LOCKMETHOD);
+	Assert(locktag->locktag_lockmethodid == RESOURCE_LOCKMETHOD);
 	
 	/* Provide a resource owner. */
 	owner = CurrentResourceOwner;
@@ -1261,8 +1265,7 @@ bool
 ResPortalIncrementHashTableInit()
 {
 	HASHCTL		info;
-	Size		max_table_size = mul_size(add_size(MaxResourcePortalsPerXact,1),
-										  MaxBackends);
+	long		max_table_size = (MaxResourcePortalsPerXact + 1) * MaxBackends;
 	int			hash_flags;
 
 
