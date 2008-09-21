@@ -125,3 +125,4 @@ test: filter
 test: gpctas
 test: gpdist
 test: matrix
+test: gpdtm_plpgsql
