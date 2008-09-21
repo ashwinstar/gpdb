@@ -1695,9 +1695,9 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 		 */
 		if (*shmNumGxacts >= max_tm_gxacts)
 		{
-			ereport(ERROR,
+			ereport(FATAL,
 					(errmsg("the limit of %d distributed transactions has been reached.",
-					        max_tm_gxacts),
+							max_tm_gxacts),
 					 errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit.")));
 		}
 
@@ -2222,10 +2222,10 @@ createDtx(
 		dumpAllDtx();
 		releaseTmLock();
 		LWLockRelease(ProcArrayLock);
-		ereport(ERROR,
-				(errmsg("the limit of %d distributed transactions has been reached.",
-				        max_tm_gxacts),
-				 errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit.")));
+		ereport(FATAL,
+			(errmsg("the limit of %d distributed transactions has been reached.",
+				max_tm_gxacts),
+			 errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit.")));
 	}
 
 	gxact = shmGxactArray[(*shmNumGxacts)++];
@@ -2546,8 +2546,9 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 	/* tm lock acquired by caller */
 	if (*shmGIDSeq >= LastDistributedTransactionId)
 	{
-		ereport(ERROR,
-				(errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId)));
+		releaseTmLock();
+		ereport(FATAL,
+			(errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId)));
 	}
 	
 	*gxid = (*shmGIDSeq)++;
