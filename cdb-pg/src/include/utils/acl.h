@@ -201,6 +201,7 @@ typedef struct
 	List	   *grantees;
 	bool		grant_option;
 	DropBehavior behavior;
+	List	   *cooked_privs; /* precooked AclItems from partitioning code */
 } InternalGrant;
 
 /*

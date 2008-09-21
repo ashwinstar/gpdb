@@ -103,5 +103,6 @@ extern PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
 								 bool bExistError, bool bMustExist,
 								 MemoryContext mcxt, int *pSearch,
 								 bool inctemplate);
+extern bool rel_is_child_partition(Oid relid);
 
 #endif   /* TABLECMDS_H */

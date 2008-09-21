@@ -372,7 +372,6 @@ static List * exchange_part_constraints(Partition *part, Relation oldrel,
 										Relation newrel, bool validate);
 static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel);
 
-static bool rel_is_child_partition(Oid relid);
 static Oid  rel_partition_get_master(Oid relid);
 
 static List *
@@ -9689,6 +9688,12 @@ all_partition_relids(PartitionNode *pn)
 
 			out = list_concat(out, all_partition_relids(rule->children));
 		}
+		if (pn->default_part)
+		{
+			out = lappend_oid(out, pn->default_part->parchildrelid);
+			out = list_concat(out, 
+							  all_partition_relids(pn->default_part->children));
+		}
 		return out;
 	}
 }
@@ -9773,7 +9778,7 @@ rel_partition_get_master(Oid relid)
 
 }
 
-static bool
+bool
 rel_is_child_partition(Oid relid)
 {
 	Relation rel = heap_open(PartitionRuleRelationId, AccessShareLock);
@@ -12781,6 +12786,82 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 		l1 = parse_analyze((Node *)ct, NULL, NULL, 0);
 
+		/*
+		 * Look for the first CreateStmt and and generate a GrantStmt
+		 * based on the RangeVar in it.
+		 */
+		foreach(lc, l1)
+		{
+			Node *s = lfirst(lc);
+
+			/* skip the first one, it's the fake create table */
+			if (lc == list_head(l1))
+				continue;
+
+			if (IsA(s, Query) && IsA(((Query *)s)->utilityStmt, CreateStmt))
+			{
+				HeapTuple tuple;
+				Datum aclDatum;
+				bool isNull;
+				CreateStmt *t = (CreateStmt *)((Query *)s)->utilityStmt;
+
+
+				tuple = SearchSysCache(RELOID,
+									   ObjectIdGetDatum(RelationGetRelid(rel)),
+									   0, 0, 0);
+				if (!HeapTupleIsValid(tuple))
+					elog(ERROR, "cache lookup failed for relation %u",
+						 RelationGetRelid(rel));
+
+				aclDatum = SysCacheGetAttr(RELOID, tuple,
+										   Anum_pg_class_relacl,
+										   &isNull);
+				if (!isNull)
+				{
+					List *cp = NIL;
+					int i, num;
+					Acl *acl;
+					AclItem *aidat;
+		
+					acl = DatumGetAclP(aclDatum);
+		
+					num = ACL_NUM(acl);
+					aidat = ACL_DAT(acl);
+		
+					for (i = 0; i < num; i++)
+					{
+						AclItem	*aidata = &aidat[i];
+						Datum d;
+						char *str;
+		
+						d = DirectFunctionCall1(aclitemout,
+												PointerGetDatum(aidata));
+						str = DatumGetCString(d);
+		
+						cp = lappend(cp, makeString(str));
+				
+					}
+		
+					if (list_length(cp))
+					{
+						GrantStmt *gs = makeNode(GrantStmt);
+						List *pt;
+		
+						gs->is_grant = true;
+						gs->objtype = ACL_OBJECT_RELATION;
+						gs->cooked_privs = cp;
+		
+						gs->objects = list_make1(copyObject(t->relation));
+
+						pt = parse_analyze((Node *)gs, NULL, NULL, 0);
+						l1 = list_concat(l1, pt);
+					}
+				}
+				ReleaseSysCache(tuple);
+				break;
+			}
+		}
+
 		/* skip the first cell because the table already exists --
 		 * don't recreate it 
 		 */
@@ -12789,7 +12870,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 		for_each_cell(lc, lnext(lc))
 		{
 			Query *q = lfirst(lc);
-
 
 			/* XXX XXX: fix the first Alter Table Statement to have
 			 * the correct maxpartno.  Whoohoo!! 
@@ -12842,6 +12922,10 @@ atpxPartAddList(AlteredTableInfo *tab,
 		} /* end for each cell */
 
 	}
+
+	/* handle permissions */
+	{
+}
 
 	if (par_prule && par_prule->topRule)
 		heap_close(par_rel, NoLock);

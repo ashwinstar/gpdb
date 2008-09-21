@@ -2364,6 +2364,7 @@ _outGrantStmt(StringInfo str, GrantStmt *node)
 	WRITE_NODE_FIELD(grantees);		
 	WRITE_BOOL_FIELD(grant_option);	
 	WRITE_ENUM_FIELD(behavior, DropBehavior);		
+	WRITE_NODE_FIELD(cooked_privs);
 }
 
 static void

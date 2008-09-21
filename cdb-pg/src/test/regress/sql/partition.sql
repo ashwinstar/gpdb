@@ -2641,3 +2641,48 @@ select partitiontablename, partitionboundary from pg_partitions
 where tablename = 'k' order by 1;
 insert into k select i from generate_series(1, 100) i;
 drop table k;
+
+-- ADD and SPLIT must get inherit permissions of the partition they're
+-- modifying
+create role part_role;
+create table a (a int, b int, c int) partition by range(a) subpartition by
+range(b) subpartition template (subpartition h start(1) end(10)) 
+subpartition by range(c)
+subpartition template(subpartition i start(1) end(10)) 
+(partition g start(1) end(2));
+revoke all on a from public;
+grant insert on a to part_role;
+-- revoke it from one existing partition, to make sure we don't screw up
+-- existing permissions
+revoke all on a_1_prt_g_2_prt_h_3_prt_i from part_role;
+alter table a add partition b start(40) end(50);
+set session authorization part_role;
+select has_table_privilege('part_role', 'a'::regclass,'insert');
+select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h'::regclass,'insert');
+select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h_3_prt_i'::regclass,'insert');
+select has_table_privilege('part_role', 'a_1_prt_g_2_prt_h_3_prt_i'::regclass,
+'insert');
+-- didn't grant select
+select has_table_privilege('part_role', 'a'::regclass,'select');
+select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h'::regclass,'select');
+select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h_3_prt_i'::regclass,'select');
+\c -
+drop table a;
+create table a (i date) partition by range(i) 
+(partition f start(date '2005-01-01') end (date '2009-01-01')
+	every(interval '2 years'));
+revoke all on a from public;
+grant insert on a to part_role;
+alter table a split partition for(rank(1)) at (date '2006-01-01')
+  into (partition f, partition g);
+alter table a add default partition mydef;
+alter table a split default partition start(date '2010-01-01') end(date
+'2011-01-01') into(partition mydef, partition other);
+set session authorization part_role;
+select has_table_privilege('part_role', 'a'::regclass,'insert');
+select has_table_privilege('part_role', 'a_1_prt_f'::regclass,'insert');
+select has_table_privilege('part_role', 'a_1_prt_mydef'::regclass,'insert');
+select has_table_privilege('part_role', 'a_1_prt_other'::regclass,'insert');
+\c -
+drop table a;
+drop role part_role;

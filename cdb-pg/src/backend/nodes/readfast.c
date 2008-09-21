@@ -2234,6 +2234,7 @@ _readGrantStmt(const char ** str)
 	READ_NODE_FIELD(grantees);		
 	READ_BOOL_FIELD(grant_option);	
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);	
+	READ_NODE_FIELD(cooked_privs);
 	
 	READ_DONE();	
 }

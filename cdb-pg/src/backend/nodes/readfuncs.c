@@ -2305,6 +2305,7 @@ _readGrantStmt(void)
 	READ_NODE_FIELD(grantees);		
 	READ_BOOL_FIELD(grant_option);	
 	READ_ENUM_FIELD(behavior, DropBehavior);	
+	READ_NODE_FIELD(cooked_privs);
 	
 	READ_DONE();	
 }

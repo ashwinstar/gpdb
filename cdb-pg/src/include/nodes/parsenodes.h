@@ -1166,6 +1166,7 @@ typedef struct GrantStmt
 	List	   *grantees;		/* list of PrivGrantee nodes */
 	bool		grant_option;	/* grant or revoke grant option */
 	DropBehavior behavior;		/* drop behavior (for REVOKE) */
+	List	   *cooked_privs;	/* precooked acls (from ADD PARTITION) */
 } GrantStmt;
 
 typedef struct PrivGrantee
