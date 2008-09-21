@@ -10,8 +10,12 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL$
+ *	  $PostgreSQL: $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -70,7 +74,7 @@ ResSchedulerShmemSize(void)
 	Size		size;
 
 	/* The hash of queues.*/
-	size = hash_estimate_size((Size)MaxResourceQueues, sizeof(ResQueueData));
+	size = hash_estimate_size(MaxResourceQueues, sizeof(ResQueueData));
 
 	/* The scheduler structure. */
 	size = add_size(size, sizeof(ResSchedulerData));
@@ -95,14 +99,12 @@ ResPortalIncrementShmemSize(void)
 {
 
 	Size	size;
-	Size	max_table_size = mul_size(add_size(MaxResourcePortalsPerXact, 1), 
-									  MaxBackends);
+	long	max_table_size = (MaxResourcePortalsPerXact + 1) * MaxBackends;
 
 	size = hash_estimate_size(max_table_size, sizeof(ResPortalIncrement));
 
 	/* Add a safety margin */
 	size = add_size(size, size / 10);
-
 
 	return size;
 }
@@ -590,7 +592,7 @@ ResLockPortal(Portal portal, Plan *plan)
 				incData.pid = MyProc->pid;
 				incData.portalId = portal->portalId;
 				incData.increments[RES_COUNT_LIMIT] = 1;
-				incData.increments[RES_COST_LIMIT] = plan->total_cost;
+				incData.increments[RES_COST_LIMIT] = ceil(plan->total_cost);
 	
 				takeLock = true;
 				returnReleaseOk = true;
@@ -609,7 +611,7 @@ ResLockPortal(Portal portal, Plan *plan)
 				incData.pid = MyProc->pid;
 				incData.portalId = portal->portalId;
 				incData.increments[RES_COUNT_LIMIT] = 1;
-				incData.increments[RES_COST_LIMIT] = plan->total_cost;
+				incData.increments[RES_COST_LIMIT] = ceil(plan->total_cost);
 				incData.isHold = portal->cursorOptions & CURSOR_OPT_HOLD;
 
 	
