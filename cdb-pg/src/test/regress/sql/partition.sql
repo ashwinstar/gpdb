@@ -2662,6 +2662,7 @@ select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h'::regclass,'insert');
 select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h_3_prt_i'::regclass,'insert');
 select has_table_privilege('part_role', 'a_1_prt_g_2_prt_h_3_prt_i'::regclass,
 'insert');
+insert into a values(45, 5, 5);
 -- didn't grant select
 select has_table_privilege('part_role', 'a'::regclass,'select');
 select has_table_privilege('part_role', 'a_1_prt_b_2_prt_h'::regclass,'select');
@@ -2683,6 +2684,9 @@ select has_table_privilege('part_role', 'a'::regclass,'insert');
 select has_table_privilege('part_role', 'a_1_prt_f'::regclass,'insert');
 select has_table_privilege('part_role', 'a_1_prt_mydef'::regclass,'insert');
 select has_table_privilege('part_role', 'a_1_prt_other'::regclass,'insert');
+insert into a values('2005-05-05');
+insert into a values('2006-05-05');
+insert into a values('2010-10-10');
 \c -
 drop table a;
 drop role part_role;

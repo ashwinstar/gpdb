@@ -36,6 +36,7 @@
 #include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/prep.h"
 #include "parser/parse_func.h"
 #include "utils/acl.h"
@@ -250,6 +251,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	char	   *errormsg;
 	AclMode		all_privileges;
 	List	   *objs = NIL;
+	bool		added_objs = false;
 
 	/*
 	 * Turn the regular GrantStmt into the InternalGrant form.
@@ -267,18 +269,31 @@ ExecuteGrantStmt(GrantStmt *stmt)
 			Relation rel = heap_open(relid, AccessShareLock);
 			bool add_self = true;
 
-			if (rel_is_partitioned(relid))
+			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
-				objs = list_concat(objs, all_partition_relids(pn));
-			}
-			else if (rel_is_child_partition(relid))
-			{
-				/* get my children */
-				objs = list_concat(objs, find_all_inheritors(relid));
+				List *a;
+				if (rel_is_partitioned(relid))
+				{
+					PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
 
-				/* find_all_inheritors() adds me, don't do it twice */
-				add_self = false;
+					a = all_partition_relids(pn);
+					if (a)
+						added_objs = true;
+
+					objs = list_concat(objs, a);
+				}
+				else if (rel_is_child_partition(relid))
+				{
+					/* get my children */
+					a = find_all_inheritors(relid);
+					if (a)
+						added_objs = true;
+
+					objs = list_concat(objs, a);
+	
+					/* find_all_inheritors() adds me, don't do it twice */
+					add_self = false;
+				}
 			}
 
 			heap_close(rel, NoLock);
@@ -287,6 +302,25 @@ ExecuteGrantStmt(GrantStmt *stmt)
 				objs = lappend_oid(objs, relid);
 		}
 		istmt.objects = objs;
+	}
+
+	/* If we're dispatching, put the objects back in into the parse tree */
+	if (Gp_role == GP_ROLE_DISPATCH && added_objs)
+	{
+		List *n = NIL;
+
+		foreach(cell, istmt.objects)
+		{
+			Oid rid = lfirst_oid(cell);
+			RangeVar *rv;
+			char *nspname = get_namespace_name(get_rel_namespace(rid));
+			char *relname = get_rel_name(rid);
+
+			rv = makeRangeVar(nspname, relname);
+			n = lappend(n, rv);
+		}
+
+		stmt->objects = n;
 	}
 
 	if (stmt->cooked_privs)

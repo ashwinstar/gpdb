@@ -5640,6 +5640,7 @@ select has_table_privilege('part_role', 'a_1_prt_g_2_prt_h_3_prt_i'::regclass,
  f
 (1 row)
 
+insert into a values(45, 5, 5);
 -- didn't grant select
 select has_table_privilege('part_role', 'a'::regclass,'select');
  has_table_privilege 
@@ -5707,6 +5708,9 @@ select has_table_privilege('part_role', 'a_1_prt_other'::regclass,'insert');
  t
 (1 row)
 
+insert into a values('2005-05-05');
+insert into a values('2006-05-05');
+insert into a values('2010-10-10');
 \c -
 drop table a;
 drop role part_role;
