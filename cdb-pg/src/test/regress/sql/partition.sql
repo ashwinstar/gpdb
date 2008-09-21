@@ -2690,3 +2690,20 @@ insert into a values('2010-10-10');
 \c -
 drop table a;
 drop role part_role;
+-- Check that when we split a default, the INTO clause must named the default
+create table k (i date) partition by range(i) (start('2008-01-01')
+end('2009-01-01') every(interval '1 month'), default partition default_part);
+alter table k split default partition start ('2009-01-01') end ('2009-02-01')
+into (partition aa, partition nodate);
+alter table k split default partition start ('2009-01-01') end ('2009-02-01')
+into (partition aa, partition default_part);
+-- check that it works without INTO
+alter table k split default partition start ('2009-02-01') end ('2009-03-01');
+drop table k;
+-- List too
+create table k (i int) partition by list(i) (partition a values(1, 2),
+partition b values(3, 4), default partition mydef);
+alter table k split partition mydef at (5) into (partition foo, partition bar);
+alter table k split partition mydef at (5) into (partition foo, partition mydef);
+alter table k split partition mydef at (10);
+drop table k;

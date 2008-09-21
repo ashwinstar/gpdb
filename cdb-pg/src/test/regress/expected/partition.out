@@ -5299,7 +5299,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- should fail
 alter table k split default partition start(30) end (300) into (partition mydef, partition mydef);
-ERROR:  invalid into specification
+ERROR:  both INTO partitions already exist
 alter table k split partition for(3) at (20);
 ERROR:  AT clause parameter is not a member of the target partition specification
 drop table k;
@@ -5714,3 +5714,54 @@ insert into a values('2010-10-10');
 \c -
 drop table a;
 drop role part_role;
+-- Check that when we split a default, the INTO clause must named the default
+create table k (i date) partition by range(i) (start('2008-01-01')
+end('2009-01-01') every(interval '1 month'), default partition default_part);
+NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_2" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_3" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_4" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_5" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_6" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_7" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_8" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_9" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_10" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_11" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_12" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_13" for table "k"
+alter table k split default partition start ('2009-01-01') end ('2009-02-01')
+into (partition aa, partition nodate);
+ERROR:  default partition name missing from INTO clause
+alter table k split default partition start ('2009-01-01') end ('2009-02-01')
+into (partition aa, partition default_part);
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_310827"
+NOTICE:  dropped partition "default_part" for relation "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_aa" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
+-- check that it works without INTO
+alter table k split default partition start ('2009-02-01') end ('2009-03-01');
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_310827"
+NOTICE:  dropped partition "default_part" for relation "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r750897651" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
+drop table k;
+-- List too
+create table k (i int) partition by list(i) (partition a values(1, 2),
+partition b values(3, 4), default partition mydef);
+NOTICE:  CREATE TABLE will create partition "k_1_prt_a" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_b" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+alter table k split partition mydef at (5) into (partition foo, partition bar);
+ERROR:  default partition name missing from INTO clause
+alter table k split partition mydef at (5) into (partition foo, partition mydef);
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_311567"
+NOTICE:  dropped partition "mydef" for relation "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+alter table k split partition mydef at (10);
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_311567"
+NOTICE:  dropped partition "mydef" for relation "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r347076026" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+drop table k;

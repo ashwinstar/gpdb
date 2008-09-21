@@ -3710,7 +3710,15 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("invalid into specification")));
+								 errmsg("both INTO partitions already exist")));
+					}
+					else if (prule1->topRule->parisdefault && 
+							 !prule2 && !prule3)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("default partition name missing from INTO clause")));
+
 					}
 				}
 				ATSimplePermissions(target, false);
