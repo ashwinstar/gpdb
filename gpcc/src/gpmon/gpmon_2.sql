@@ -1,8 +1,8 @@
 
 \c template1;
-drop database if exists gpmon_2;
-create database gpmon_2;
-\c gpmon_2;
+drop database if exists gpperfmon;
+create database gpperfmon;
+\c gpperfmon;
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -34,17 +34,17 @@ partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVE
 
 create external web table metrics_now (
        like metrics_history
-) execute 'cat gpmon.2/metrics_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/metrics_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table metrics_tail (
        like metrics_history
-) execute 'cat gpmon.2/metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table _metrics_tail (
         like metrics_history
-) execute 'cat gpmon.2/_metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/_metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -102,16 +102,16 @@ create external web table queries_now_fast (
        skew_rows float
        -- excluded: query_text text
        -- excluded: query_plan text
-) execute 'cat gpmon.2/queries_now.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/queries_now.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 create external web table queries_tail (
         like queries_history
-) execute 'cat gpmon.2/queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 
 create external web table _queries_tail (
         like queries_history
-) execute 'cat gpmon.2/_queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/_queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -215,17 +215,17 @@ partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVE
 
 create external web table iterators_now (
         like iterators_history
-) execute 'cat gpmon.2/iterators_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/iterators_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table iterators_tail (
         like iterators_history
-) execute 'cat gpmon.2/iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table _iterators_tail (
         like iterators_history
-) execute 'cat gpmon.2/_iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpperfmon/data/_iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 
@@ -233,7 +233,7 @@ create external web table master_data_dir (hostname text, dir text)
 execute E'python -c "import socket, os; print socket.gethostname() + \\"|\\" + os.getcwd()"' on master
 format 'csv' (delimiter '|');
 
-revoke all on database gpmon_2 from public;
+revoke all on database gpperfmon from public;
 
 -- for web ui auth everyone needs connect permissions
-grant connect on database gpmon_2 to public;
+grant connect on database gpperfmon to public;

@@ -668,10 +668,32 @@ int main(int argc, const char* const argv[])
 	fclose(fp);
     }
 
-    /* start up gpmon.1 directory */
-    if (-1 == mkdir(GPMON_DIR, 0700) && EEXIST != errno) {
-	gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
-		     "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+    /* start up gpperfmon directory */
+    {
+        char work_dir[PATH_MAX] = {0};
+        char *pdir = work_dir;
+
+        strncpy(work_dir, GPMON_DIR, PATH_MAX - 1);
+        work_dir[PATH_MAX - 1] = 0;
+
+        printf ("Creating gpperfmon directory %s\n", work_dir);
+        
+        while (*pdir)
+        {
+            if (*pdir == '/')
+            {
+                *pdir = 0;
+                printf("Creating directory %s\n", work_dir);
+                if (-1 == mkdir(work_dir, 0700) && EEXIST != errno)
+                {
+                    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
+                                 "cannot create directory %s/%s", ax.master_data_directory, GPMON_DIR);
+                    
+                }
+                *pdir = '/';
+            }
+            pdir++;
+        }
     }
 
     gpmmon_main();

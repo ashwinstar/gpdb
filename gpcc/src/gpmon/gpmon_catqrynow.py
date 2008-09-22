@@ -1,6 +1,6 @@
 import os, sys, time
 
-GPMONDIR = 'gpmon.2'
+GPMONDIR = 'gpperfmon/data'
 
 
 # for each line in queries_now.dat 

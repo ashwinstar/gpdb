@@ -23,8 +23,8 @@ typedef struct gpmon_metrics_t gpmon_metrics_t;
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
  * suffix / 
  */
-#define GPMON_DIR   "./gpmon.2/"
-#define GPMON_DB    "gpmon_2"
+#define GPMON_DIR   "./gpperfmon/data/"
+#define GPMON_DB    "gpperfmon"
 
 /* ------------------------------------------------------------------
          INTERFACE
