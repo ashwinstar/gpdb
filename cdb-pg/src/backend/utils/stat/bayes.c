@@ -266,15 +266,17 @@ nb_classify_combine(PG_FUNCTION_ARGS)
 				 errmsg("nb_classify_final called with %d arguments", 
 						PG_NARGS())));
 	}
-	if (PG_ARGISNULL(1))
+	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
 		PG_RETURN_NULL();
+	if (PG_ARGISNULL(1))
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 	if (PG_ARGISNULL(0))
 		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
 
 	get_nb_state(PG_GETARG_HEAPTUPLEHEADER(0), &state[0], 0);
 	nclasses = ARR_DIMS(state[0].classes)[0];
 
-	get_nb_state(PG_GETARG_HEAPTUPLEHEADER(0), &state[1], nclasses);
+	get_nb_state(PG_GETARG_HEAPTUPLEHEADER(1), &state[1], nclasses);
 
 	/* The the prior with maximum likelyhood */
 	prior_data1 = (float8*) ARR_DATA_PTR(state[0].accum);
@@ -285,7 +287,7 @@ nb_classify_combine(PG_FUNCTION_ARGS)
 
 	/* Construct the return tuple */
 	funcClass = get_call_result_type(fcinfo, &resultType, &resultDesc);
-	BlessTupleDesc(resultDesc);  /* really? */
+	BlessTupleDesc(resultDesc);
 	
 	resultDatum[0] = PointerGetDatum(state[0].classes);
 	resultDatum[1] = PointerGetDatum(state[0].accum);
