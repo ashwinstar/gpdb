@@ -5760,8 +5760,22 @@ NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 alter table k split partition mydef at (10);
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_311567"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_624467"
 NOTICE:  dropped partition "mydef" for relation "k"
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r347076026" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r1162377334" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 drop table k;
+-- For LIST, make sure that we reject AT() clauses which match all parameters
+create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
+ partition b values(5, 6, 7, 8));
+NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
+alter table j split partition for(1) at (1,2) into (partition fa, partition fb);
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_624877"
+NOTICE:  dropped partition "a" for relation "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_fb" for table "j"
+alter table j split partition for(1) at (1,2) 
+into (partition f1a, partition f1b); -- This has partition rules that overlaps
+ERROR:  AT clause cannot contain all values in partition "fb"
+drop table j;

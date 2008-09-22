@@ -2707,3 +2707,11 @@ alter table k split partition mydef at (5) into (partition foo, partition bar);
 alter table k split partition mydef at (5) into (partition foo, partition mydef);
 alter table k split partition mydef at (10);
 drop table k;
+
+-- For LIST, make sure that we reject AT() clauses which match all parameters
+create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
+ partition b values(5, 6, 7, 8));
+alter table j split partition for(1) at (1,2) into (partition fa, partition fb);
+alter table j split partition for(1) at (1,2) 
+into (partition f1a, partition f1b); -- This has partition rules that overlaps
+drop table j;

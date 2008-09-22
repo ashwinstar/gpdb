@@ -3516,11 +3516,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					}
 					else
 					{
-						/* all elements in at must match */
+						/* all elements in AT() must match */
 						ListCell *lcat;
 						List *lv = (List *)prule1->topRule->parlistvalues;
 						int16 nkeys = prule1->pNode->part->parnatts;
 						List *atlist = (List *)at;
+						int nmatches = 0;
 
 						foreach(lcat, atlist)
 						{
@@ -3577,6 +3578,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 								else
 								{
 									found = true;
+									nmatches++;
 									break;
 								}
 							}
@@ -3589,6 +3591,14 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 
 						}
+
+						if (nmatches >= list_length(lv))
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("AT clause cannot contain all "
+											"values in partition%s",
+											prule1->partIdStr)));
+
 					}
 				}
 				else
