@@ -145,7 +145,7 @@ int gpmon_print(const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stdout, "[%s] ", datetime());
+    fprintf(stdout, "%s|:-LOG: ", datetime());
     vfprintf(stdout, fmt, ap);
     return 0;
 }
@@ -155,7 +155,7 @@ int gpmon_fatal(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s] [INTERNAL ERROR %s] ", datetime(), fline);
+    fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n          ... exiting\n");
     exit(1);
@@ -167,7 +167,7 @@ int gpmon_fatalx(const char* fline, int e, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s] [INTERNAL ERROR %s] ", datetime(), fline);
+    fprintf(stderr, "%s|:-FATAL: [INTERNAL ERROR %s] ", datetime(), fline);
     vfprintf(stderr, fmt, ap);
     if (e) {
 	char msg[512];
@@ -184,7 +184,7 @@ int gpmon_warning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s] [WRN %s] ", datetime(), fline);
+    fprintf(stderr, "%s|:-WARNING: [%s] ", datetime(), fline);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     return 0;
@@ -194,7 +194,7 @@ int gpmon_warningx(const char* fline, int e, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[%s] [WRN %s] ", datetime(), fline);
+    fprintf(stderr, "%s|:-WARNING: [%s] ", datetime(), fline);
     vfprintf(stderr, fmt, ap);
     if (e) {
 	char msg[512];
@@ -264,6 +264,3 @@ char* gpmon_datetime(apr_time_t t, char str[24])
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
     return str;
 }
-
-
-
