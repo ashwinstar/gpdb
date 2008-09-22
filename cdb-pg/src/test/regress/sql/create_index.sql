@@ -405,6 +405,18 @@ drop table bm_test;
 drop table bm_test2;
 drop table bm_test3;
 
+create table bm_test (i int, j int);
+insert into bm_test values (0, 0), (0, 0), (0, 1), (1,0), (1,0), (1,1);
+create index bm_test_j on bm_test using bitmap(j);
+delete from bm_test where j =1;
+vacuum bm_test;
+insert into bm_test values (0, 0), (1,0);
+
+set enable_seqscan=off;
+set enable_bitmapscan=off;
+explain select * from bm_test where j = 1;
+select * from bm_test where j = 1;
+drop table bm_test;
 -- MPP-3232
 create table bm_test (i int,j int);
 insert into bm_test values (1, 1), (1, 2);

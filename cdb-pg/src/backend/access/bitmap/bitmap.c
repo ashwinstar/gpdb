@@ -481,25 +481,19 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 	Relation	rel = info->index;
 	IndexBulkDeleteResult* volatile result =
 		(IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
+	Oid new_relfilenode;
 
 	/* allocate stats if first time through, else re-use existing struct */
 	if (result == NULL)
 		result = (IndexBulkDeleteResult *)
 			palloc0(sizeof(IndexBulkDeleteResult));	
 
-	/*
-	 * Reindex is not allowed inside Vacuum, since it updates
-	 * catalog entries (creates new relfilenodes). See MPP-3530.
-	 */
-	if (info->vacuum_full)
-	{
-		Oid new_relfilenode = reindex_index(RelationGetRelid(rel), InvalidOid);
-		CommandCounterIncrement();
+	new_relfilenode = reindex_index(RelationGetRelid(rel), InvalidOid);
+	CommandCounterIncrement();
 
-		Assert(OidIsValid(new_relfilenode));
+	Assert(OidIsValid(new_relfilenode));
 
-		rel->rd_node.relNode = new_relfilenode;
-	}
+	rel->rd_node.relNode = new_relfilenode;
 
 	result = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
 	result->num_pages = RelationGetNumberOfBlocks(rel);

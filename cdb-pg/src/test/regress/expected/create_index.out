@@ -823,6 +823,29 @@ select count(*) from bm_test3 where i = 18;
 drop table bm_test;
 drop table bm_test2;
 drop table bm_test3;
+create table bm_test (i int, j int);
+insert into bm_test values (0, 0), (0, 0), (0, 1), (1,0), (1,0), (1,1);
+create index bm_test_j on bm_test using bitmap(j);
+delete from bm_test where j =1;
+vacuum bm_test;
+insert into bm_test values (0, 0), (1,0);
+set enable_seqscan=off;
+set enable_bitmapscan=off;
+explain select * from bm_test where j = 1;
+                                                                                              QUERY PLAN                                                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1)  (cost=0.00..300.27 rows=1 width=8)
+   ->  Index Scan using bm_test_j on bm_test  (cost=0.00..300.27 rows=1 width=8)
+         Index Cond: j = 1
+ Settings:  enable_bitmapscan=off; enable_mergejoin=off; enable_nestloop=off; enable_seqscan=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=on
+(4 rows)
+
+select * from bm_test where j = 1;
+ i | j 
+---+---
+(0 rows)
+
+drop table bm_test;
 -- MPP-3232
 create table bm_test (i int,j int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
