@@ -4,7 +4,7 @@ sys.path.append(os.path.join(sys.path[0], 'lib'))
 import pg8000 
 
 pguser = 'gpmon'
-pgdatabase = os.environ.get('PGDATABASE', 'gpmon_2')
+pgdatabase = os.environ.get('PGDATABASE', 'gpperfmon')
 pgpass = os.environ.get('PGPASSWORD', '')
 pgport = os.environ.get('PGPORT', '5432')
 pgport = int(pgport)
