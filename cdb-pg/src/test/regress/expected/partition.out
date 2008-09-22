@@ -5779,3 +5779,27 @@ alter table j split partition for(1) at (1,2)
 into (partition f1a, partition f1b); -- This has partition rules that overlaps
 ERROR:  AT clause cannot contain all values in partition "fb"
 drop table j;
+-- Check that we can split LIST partitions that have a default partition
+create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
+partition b values(5, 6, 7, 8), default partition default_part);
+NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_default_part" for table "j"
+alter table j split partition for(1) at (1,2) into (partition f1a, partition
+f1b);
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_997976"
+NOTICE:  dropped partition "a" for relation "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_f1b" for table "j"
+drop table j;
+-- Make sure range can too
+create table j (i int) partition by range(i) (partition a start(1) end(10),
+default partition default_part);
+NOTICE:  CREATE TABLE will create partition "j_1_prt_default_part" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
+alter table j split partition for(1) at (5) into (partition f1a, partition f1b);
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_998237"
+NOTICE:  dropped partition "a" for relation "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_f1b" for table "j"
+drop table j;

@@ -2715,3 +2715,15 @@ alter table j split partition for(1) at (1,2) into (partition fa, partition fb);
 alter table j split partition for(1) at (1,2) 
 into (partition f1a, partition f1b); -- This has partition rules that overlaps
 drop table j;
+
+-- Check that we can split LIST partitions that have a default partition
+create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
+partition b values(5, 6, 7, 8), default partition default_part);
+alter table j split partition for(1) at (1,2) into (partition f1a, partition
+f1b);
+drop table j;
+-- Make sure range can too
+create table j (i int) partition by range(i) (partition a start(1) end(10),
+default partition default_part);
+alter table j split partition for(1) at (5) into (partition f1a, partition f1b);
+drop table j;

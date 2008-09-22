@@ -12727,7 +12727,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 										   lrelname,
 										   &pNode2);
 	
-					if (prule)
+					if (prule && !(prule->topRule->parisdefault && is_split))
 						ereport(ERROR,
 								(errcode(ERRCODE_UNDEFINED_OBJECT),
 								 errmsg("new partition definition overlaps "
