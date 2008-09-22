@@ -47,7 +47,7 @@ mkgpmon:
 	@cp -f src/gpmon/gpmmon gpmon/bin/
 	@cp -f src/gpmon/gpsmon gpmon/bin/
 	@cp -f src/gpmon/gpmon_catqrynow.py gpmon/lib
-	@cp -f src/gpmon/gpmon_2.sql gpmon/
+	@cp -f src/gpmon/gpperfmon.sql gpmon/
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
