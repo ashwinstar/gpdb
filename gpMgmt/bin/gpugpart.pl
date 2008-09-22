@@ -26,6 +26,7 @@ Options:
     -help            brief help message
     -man             full documentation
     -connect         psql connect parameters
+    -sql             generate sql to construct new partition definitions
 
 =head1 OPTIONS
 
@@ -44,6 +45,11 @@ Options:
     psql connect string, e.g:
 
     -connect '-p 11000 template1'
+
+=item B<-sql>
+    
+    generate sql to construct new partition definitions
+
 
 =back
 
@@ -875,12 +881,29 @@ sub genpartdefs4
     my $do_fixup = 1;
 
     my $magic_suffix = "XnewX";
+    my $old_suffix = "XoldX";
 
     while (my ($kk, $vv) = each (%{$reg_tabs}))
     {
         if (exists($vv->{pby}))
         {
             my $newname = $kk . "_" . $magic_suffix;
+            my $oldname = $kk . "_" . $old_suffix;
+
+            my $cln_txt = "";
+            my $xfr_txt = "";
+
+            $xfr_txt .= "insert into $newname select * from $kk;\n";
+
+            $cln_txt .= "alter table $kk rename to $oldname;\n";
+
+            if (0)
+            {
+            $cln_txt .= "-- NOTE: $oldname should contain no rows\n";
+            $cln_txt .= "-- if data remains you may need to add default partitions(s) to table $kk\n";
+            $cln_txt .= "select count(*) from $oldname; \n";
+        }
+            $cln_txt .= "alter table $newname rename to $kk;\n";
 
             my $ct_txt  = "create table $newname" . " (like " . $kk . ") ";
             my $pby_txt = "partition by $vv->{pby}->{typ} " .
@@ -1026,6 +1049,10 @@ sub genpartdefs4
             $spec_txt .= "\n)";
 
             $vv->{pby}->{ct_txt} =  $ct_txt ;
+
+            $vv->{pby}->{cleanup_txt}  =  $cln_txt ;
+            $vv->{pby}->{transfer_txt} =  $xfr_txt ;
+
             $vv->{pby}->{pby_txt} =  $pby_txt ;
             $vv->{pby}->{spec_txt} =  $spec_txt ;
 
@@ -1143,30 +1170,67 @@ sub printpartdefs
 {
     my $reg_tabs = shift;
 
-
     my @foo = sort(keys(%{$reg_tabs}));
 
-    for my $kk (@foo)
+    my @phases;
+
+    push @phases, "CREATE";
+    push @phases, "XFR";
+#    push @phases, "CLN";
+
+
+    for my $ph (@phases)
     {
-        my $vv = $reg_tabs->{$kk};
-
-        if (exists($vv->{pby}))
+        if ($ph =~ m/create/i)
         {
-            if (exists($vv->{pby}->{is_subpartition}))
-            {
-                print "\n-- table $kk is subpartition of $vv->{pby}->{parent}\n";
-            }
-            else
-            {
-                my $ct_txt = $vv->{pby}->{ct_txt};
-                my $pby_txt = $vv->{pby}->{pby_txt};
-                my $spec_txt = $vv->{pby}->{spec_txt};
+            print "\n-- CREATE PARTITIONED TABLES\n\n";
+        }
+        elsif ($ph =~ m/xfr/i)
+        {
+            print "\n-- TRANSFER DATA TO PARTITIONED TABLES\n\n";
 
-                print "\n";
-                print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
-            }
+        }
+        elsif ($ph =~ m/cln/i)
+        {
+
         }
 
+
+        for my $kk (@foo)
+        {
+            my $vv = $reg_tabs->{$kk};
+
+            if (exists($vv->{pby}))
+            {
+                
+                if ($ph =~ m/create/i)
+                {
+                    if (exists($vv->{pby}->{is_subpartition}))
+                    {
+                        print "\n-- table $kk is subpartition of $vv->{pby}->{parent}\n";
+                    }
+                    else
+                    {
+                        my $ct_txt = $vv->{pby}->{ct_txt};
+                        my $pby_txt = $vv->{pby}->{pby_txt};
+                        my $spec_txt = $vv->{pby}->{spec_txt};
+
+                        print "\n";
+                        print $ct_txt . "\n" . $pby_txt . "\n" . $spec_txt . ";\n";
+                    }
+                }
+                elsif ($ph =~ m/xfr/i)
+                {
+                    my $xfr_txt = $vv->{pby}->{transfer_txt};
+
+                    print "\n", $xfr_txt
+                        unless (exists($vv->{pby}->{is_subpartition}));
+
+                }
+
+            } # end if pby
+
+        }
     }
 
 } # end printpartdefs
@@ -2334,6 +2398,8 @@ if (1)
         {
 #            $reg_tabs{$rr->{Name}} = $rr;
             $reg_tabs{ $rr->{schemaname} . "." . $rr->{tablename} } = $rr;
+
+            $rr->{Schema} = $rr->{schemaname};
         }
 
     }

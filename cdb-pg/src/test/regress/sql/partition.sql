@@ -2727,3 +2727,24 @@ create table j (i int) partition by range(i) (partition a start(1) end(10),
 default partition default_part);
 alter table j split partition for(1) at (5) into (partition f1a, partition f1b);
 drop table j;
+
+-- MPP-3667 ADD PARTITION overlaps
+create table mpp3621 (aa date, bb date) partition by range (bb)
+(partition foo start('2008-01-01'));
+
+-- these are ok
+alter table mpp3621 add partition a1 start ('2007-01-01') end ('2007-02-01');
+alter table mpp3621 add partition a2 start ('2007-02-01') end ('2007-03-01');
+alter table mpp3621 add partition a3 start ('2007-03-01') end ('2007-04-01');
+alter table mpp3621 add partition a4 start ('2007-09-01') end ('2007-10-01');
+alter table mpp3621 add partition a5 start ('2007-08-01') end ('2007-09-01');
+alter table mpp3621 add partition a6 start ('2007-04-01') end ('2007-05-01');
+alter table mpp3621 add partition a7 start ('2007-05-01') end ('2007-06-01');
+
+ -- was error due to startSearchpoint != endSearchpoint
+alter table mpp3621 add partition a8 start ('2007-07-01') end ('2007-08-01');
+
+-- ok
+alter table mpp3621 add partition a9 start ('2007-06-01') end ('2007-07-01');
+
+drop table mpp3621;

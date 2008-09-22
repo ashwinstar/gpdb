@@ -12606,12 +12606,16 @@ atpxPartAddList(AlteredTableInfo *tab,
 				{
 					bOpenGap = true;
 
+/*
+  hmm, not always true.  see MPP-3667, MPP-3636, MPP-3593
+
 					if (startSearchpoint != endSearchpoint)
 					{
 						bOverlap = true;
 						goto L_end_overlap;
 					}
 					
+*/
 					while (1)
 					{
 						bool bstat;
