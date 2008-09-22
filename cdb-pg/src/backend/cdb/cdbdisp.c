@@ -101,7 +101,8 @@ handleSelectError(DispatchCommandParms *pParms,
 static void
 handleSelectTimeout(DispatchCommandParms   *pParms,
                     int                     db_count,
-                    int                    *timeoutCounter);
+                    int                    *timeoutCounter,
+                    bool                    useSampling);
 
 static void
 CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult * dispatchResult);
@@ -2099,12 +2100,12 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 				continue;
 
 			handleSelectError(pParms, db_count, sock_errno);
-			return;
+			continue;
 		}
 
 		if (n == 0)
 		{
-			handleSelectTimeout(pParms, db_count, &timeoutCounter);
+			handleSelectTimeout(pParms, db_count, &timeoutCounter, true);
 			continue;
 		}
 
@@ -2552,29 +2553,35 @@ dispatchCommandDtxProtocol(CdbDispatchResult  *dispatchResult,
  *
  * NOTE: since this is called via a thread, the same rules apply as to
  *		 thread_DispatchCommand absolutely no elog'ing.
+ *
+ * NOTE: The cleanup of the connections will be performed by handleSelectTimeout().
  */
 void
-handleSelectError(DispatchCommandParms * pParms,
+handleSelectError(DispatchCommandParms *pParms,
 				  int db_count,
 				  int sock_errno)
 {
 	int			i;
+	int			forceTimeoutCount;
 
 	if (LOG >= log_min_messages)
 	{
 		/* Don't use elog, it's not thread-safe */
-		write_log("thread_DispatchCommand select() failed; errno=%d\n",
-				     sock_errno);
+		write_log("handleSelectError select() failed; errno=%d\n", sock_errno);
 	}
 
 	/*
 	 * Based on the select man page, we could get here with
 	 * errno == EBADF (bad descriptor), EINVAL (highest descriptor negative or negative timeout)
 	 * or ENOMEM (out of memory).
-	 * Since this is most likely a programming error or a bad system
-	 * failure, we will just error out all remaining threads.
+	 * This is most likely a programming error or a bad system failure, but we'll try to 
+	 * clean up a bit anyhow.
+	 *
+	 * MPP-3551: We *can* get here as a result of some hardware issues. the timeout code
+	 * knows how to clean up if we've lost contact with one of our peers.
+	 *
+	 * We should check a connection's integrity before calling PQisBusy().
 	 */
-
 	for (i = 0; i < db_count; i++)
 	{
 		CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[i];
@@ -2583,21 +2590,16 @@ handleSelectError(DispatchCommandParms * pParms,
 		if (!dispatchResult->stillRunning)
 			continue;
 
-		/* Note the error. */
-		cdbdisp_appendMessage(dispatchResult, 0,
-							  ERRCODE_GP_INTERCONNECTION_ERROR,
-							  "System error... select() errno=%d\n",
-							  sock_errno);
-
 		/* We're done with this QE, sadly. */
-		dispatchResult->stillRunning = false;
-		if (PQisBusy(dispatchResult->segdbDesc->conn))
-			write_log("We thought we were done, because of an error, but we are still busy\n");
-		else if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
+		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
 		{
 			char *msg;
 
 			msg = PQerrorMessage(dispatchResult->segdbDesc->conn);
+			if (msg)
+				write_log("Dispatcher encountered connection error on %s: %s\n",
+						  dispatchResult->segdbDesc->whoami, msg);
+
 			write_log("Dispatcher noticed bad connection in handleSelectError()\n");
 
 			/* Save error info for later. */
@@ -2613,6 +2615,12 @@ handleSelectError(DispatchCommandParms * pParms,
 		}
 	}
 
+	forceTimeoutCount = 60; /* anything bigger than 30 */
+	handleSelectTimeout(pParms, db_count, &forceTimeoutCount, false);
+
+	return;
+
+
 	/* No point in trying to cancel the other QEs with select() broken. */
 }	/* handleSelectError */
 
@@ -2626,7 +2634,7 @@ handleSelectError(DispatchCommandParms * pParms,
 void
 handleSelectTimeout(DispatchCommandParms * pParms,
 					int db_count,
-					int *timeoutCounter)
+					int *timeoutCounter, bool useSampling)
 {
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResults *meleeResults;
@@ -2706,7 +2714,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 
 	if ((*timeoutCounter)++ > 30)
 	{
-		bool		sampling = true;
+		bool		sampling = useSampling;
 
 		*timeoutCounter = 0;
 
