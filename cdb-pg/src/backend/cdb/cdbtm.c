@@ -1206,14 +1206,6 @@ initTM(void)
 {
 	Assert(shmTmRecoverred!=NULL);
 
-	/*
-	 * max_prepared_xacts is a guc which is postmaster-startup setable
-	 * -- it can only be updated by restarting the system. Global
-	 * transactions will all use two-phase commit, so the number of
-	 * global transactions is bound to the number of prepared.
-	 */
-	max_tm_gxacts = max_prepared_xacts;
-
 	/* Need to recover ?*/
 	if (!*shmTmRecoverred)
 	{
@@ -1235,8 +1227,9 @@ tmShmemSize(void)
 {
 	if ((Gp_role != GP_ROLE_DISPATCH) && (Gp_role != GP_ROLE_UTILITY))
 		return 0;
-	return MAXALIGN(TMCONTROLBLOCK_BYTES(max_tm_gxacts) +
-                    max_tm_gxacts * sizeof(TMGXACT));
+
+	return
+		MAXALIGN(TMCONTROLBLOCK_BYTES(max_tm_gxacts) + max_tm_gxacts * sizeof(TMGXACT));
 }
 
 
@@ -1249,6 +1242,14 @@ tmShmemInit(void)
 {
 	bool		found;
 	TmControlBlock *shared;
+
+	/*
+	 * max_prepared_xacts is a guc which is postmaster-startup setable
+	 * -- it can only be updated by restarting the system. Global
+	 * transactions will all use two-phase commit, so the number of
+	 * global transactions is bound to the number of prepared.
+	 */
+	max_tm_gxacts = max_prepared_xacts;
 
 	if ((Gp_role != GP_ROLE_DISPATCH) && (Gp_role != GP_ROLE_UTILITY))
 		return;
