@@ -3751,7 +3751,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		MemTuple	tuple = ExecCopySlotMemTuple(slot);
 		
 		if (myState->ao_insertDesc == NULL)
-			myState->ao_insertDesc = appendonly_insert_init(into_rel, 0 /* for now */);
+			myState->ao_insertDesc = appendonly_insert_init(into_rel, 
+															RESERVED_SEGNO);
 
 		appendonly_insert(myState->ao_insertDesc, tuple);		
 		pfree(tuple);

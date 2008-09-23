@@ -29,9 +29,18 @@
 
 /*
  * This segfile number may only be used for special case write operations.
- * Currently these include:
- *   - UTILITY mode, for example, gp_restore.
+ * These include operations that bypass the qd -OR- that need not worry about
+ * concurrency. Currently these are:
+ * 
+ *   - UTILITY mode operations, for example, gp_restore.
  *   - Table rewrites that are sometimes done as a part of ALTER TABLE.
+ *   - CTAS, which runs on an exclusively locked destination table.
+ *   
+ * Note that in some cases (such as CTAS) the aoseg table on the QD will not
+ * be updated for segment entry 0 after the operation completes. This is ok
+ * as the concurrency module never cares about the RESERVED segno anyway. When
+ * wanting to sync the aoseg table on the master after such operations you need
+ * to call gp_update_ao_master_stats(), which gp_restore does automatically.
  */
 #define RESERVED_SEGNO 0
 
