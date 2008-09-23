@@ -31,6 +31,9 @@ struct {
     int argc;
     const char* const *argv;
     const char* pname;
+    char* conf_file;
+    char* log_dir;
+    /* TODO: add log file rotation values */
     int max_fd;			/* this is the max fd value we ever seen */
     int v;
     int V;
@@ -55,14 +58,9 @@ int gpmmon_quantum(void)
 
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nusage: %s [options]\n\n", opt.pname);
+    fprintf(stderr, "\nusage: %s -D <configuration file> [options]\n\n", opt.pname);
     fprintf(stderr, "\toptions:\n");
     fprintf(stderr, "\t-?         : print this help screen\n");
-    fprintf(stderr, "\t-v         : verbose\n");
-    fprintf(stderr, "\t-q quantum : # seconds between updates\n");
-    fprintf(stderr, "\t-m minruntime : # seconds minimum query runtime to log\n");
-    fprintf(stderr, "\t-d mindetail : # seconds minimum query runtime to log detailed\n"
-            "\t               query information\n");
     fprintf(stderr, "\t--version  : print version information\n\n");
     if (msg) 
 	fprintf(stderr, "%s\n\n", msg);
@@ -549,6 +547,133 @@ static void print_version(void)
 }
 
 
+int read_conf_file(char *conffile)
+{
+    char buffer[1024] = {0};
+    char *p = NULL;
+    FILE *fp = fopen(conffile, "r");
+    int section = 0, section_found = 0;
+
+    if (!fp)
+    {
+        usage("Error: Failed to open configuration file");
+    }
+
+    opt.q = quantum;
+    opt.m = min_query_time;
+    opt.d = min_detailed_query_time;
+
+    while (NULL != fgets(buffer, 1024, fp))
+    {
+        /* remove new line */
+        p = gpmon_trim(buffer);
+
+        if (p[0] == '[') /* Start of section */
+        {
+            if (apr_strnatcasecmp(p, "[gpmmon]") == 0)
+                section = section_found = 1;
+            else
+                section = 0;    
+        }
+        else /* config param */
+        {
+            char *pName = NULL, *pVal = NULL;
+            pName = strtok(buffer, "=");
+            pVal = strtok(NULL, "=");
+
+            if (section == 0 || buffer[0] == 0 || pName == NULL || pVal == NULL)
+                continue;
+
+            pName = gpmon_trim(pName);
+            pVal = gpmon_trim(pVal);
+
+            if (apr_strnatcasecmp(pName, "quantum") == 0)
+            {
+                opt.q = atoi(pVal);
+            }
+            else if (apr_strnatcasecmp(pName, "min_query_time") == 0)
+            {
+                opt.m = atoi(pVal);
+            }
+            else if (apr_strnatcasecmp(pName, "min_detailed_query_time") == 0)
+            {
+                opt.d = atoi(pVal);
+            }
+            else if (apr_strnatcasecmp(pName, "verbose") == 0)
+            {
+                int lvl = atoi(pVal);
+                if (lvl == 1)
+                    opt.v = 1;
+                else if (lvl == 2)
+                    opt.v = opt.V = 1;
+            }
+            else if (apr_strnatcasecmp(pName, "log_location") == 0)
+            {
+                /* can't use APR here as the pool is just temporary */
+                opt.log_dir = strdup(pVal);
+            }
+            /* TODO: Log rotation settings 
+            else if (apr_strnatcasecmp(pName, "log_rotation_age") == 0)
+            {
+
+            }
+            else if (apr_strnatcasecmp(pName, "log_rotation_size") == 0)
+            {
+
+            }
+            else if (apr_strnatcasecmp(pName, "log_truncate_on_rotation") == 0)
+            {
+                if (apr_strnatcasecmp(pVal, "on") == 0)
+                {
+
+                }
+            }
+            */
+            else
+            {
+                fprintf(stderr, "Unknown option %s\n", pName == NULL ? "(NULL)" : pName);
+            }
+        }
+    }
+
+    /* check for valid entries */
+    if (!section_found)
+        usage("Error: Failed to find [gpmmon] section in configuration file");
+
+    if (! (10 <= opt.q && opt.q <= 120)) 
+        usage("Error: quantum value must be between 10 and 120");
+
+    if (opt.m < 0)
+        opt.m = 0;
+
+    if (opt.d < 15)
+        usage("Error: min_detail_query_time value must be greater than 15");
+
+    /* See if opt.m changed, but opt.d did not */
+    if (opt.m != min_query_time &&
+        opt.d == min_detailed_query_time )
+    {
+        opt.d = opt.m;
+    }
+
+    if (opt.d < opt.m)
+    {
+        opt.d = opt.m;
+        printf("min_detail_query_time cannot be less than min_query_time\n");
+        printf("Setting min_detail_query_time equal to min_query_time\n");
+    }
+
+    verbose = opt.v;
+    very_verbose = opt.V;
+    min_query_time = opt.m;
+    min_detailed_query_time = opt.d;
+    quantum = opt.q;
+
+    fclose(fp);
+    return 0;
+}
+
+
 static void parse_command_line(int argc, const char* const argv[])
 {
     apr_getopt_t* os;
@@ -556,13 +681,9 @@ static void parse_command_line(int argc, const char* const argv[])
     const char* arg;
     int e;
     static apr_getopt_option_t option[] = {
-	{      NULL, '?', 0, "print help screen" },
-	{      NULL, 'V', 0, "very verbose" },
-	{      NULL, 'v', 0, "slightly verbose" },
-	{      NULL, 'q', 1, "# seconds between updates" },
-	{      NULL, 'm', 1, "minimum query time to log" },
-        {      NULL, 'd', 1, "minimum query time to log details" },
-	{ "version", 256, 0, "print version number" }
+	{      NULL, '?', 0, "Print help screen" },
+        {      NULL, 'D', 1, "Configuration file" },
+	{ "version", 256, 0, "Print version number" }
     };
     apr_pool_t* pool;
 
@@ -576,56 +697,21 @@ static void parse_command_line(int argc, const char* const argv[])
 	gpmon_fatalx(FLINE, e, "apr_getopt_init failed");
     }
 
-    opt.q = quantum;
-    opt.m = min_query_time;
-    opt.d = min_detailed_query_time;
-
     while (0 == (e = apr_getopt_long(os, option, &ch, &arg))) {
         switch (ch) {
         case '?': usage(0); break;
-        case 'v': opt.v = 1; break;
-        case 'V': opt.v = opt.V = 1; break;
-        case 'q': opt.q = atoi(arg); break;
-        case 'm': opt.m = atoi(arg); break;
-        case 'd': opt.d = atoi(arg); break;
+        case 'D': opt.conf_file = strdup(arg); break;
         case 256: print_version(); break;
         }
     }
     
     if (e != APR_EOF)
         usage("Error: illegal arguments");
-    
-    if (! (10 <= opt.q && opt.q <= 120)) 
-        usage("Error: -q quantum value must be between 10 and 120");
 
-    /* check for valid entries */
-    if (opt.m < 0)
-        opt.m = 0;
-
-    if (opt.d < 15)
-        usage("Error: -d mindetail value must be greater than 15");
-
-    /* See if opt.m changed, but opt.d did not */
-    if (opt.m != min_query_time &&
-        opt.d == min_detailed_query_time )
-    {
-        opt.d = opt.m;
-    }
-
-    if (opt.d < opt.m)
-    {
-        opt.d = opt.m;
-        printf("Minimum query detail cannot be less than minimum query time");
-        printf("Setting minimum query detail equal to minimum query time");
-    }
+    if (opt.conf_file == NULL)
+        usage("Error: Missing configuration file");
 
     apr_pool_destroy(pool);
-
-    verbose = opt.v;
-    very_verbose = opt.V;
-    min_query_time = opt.m;
-    min_detailed_query_time = opt.d;
-    quantum = opt.q;
 }
 
 
@@ -642,6 +728,7 @@ int main(int argc, const char* const argv[])
     }
 
     parse_command_line(argc, argv);
+    read_conf_file(opt.conf_file);
     getconfig();
     /* check port */
     if (! (0 < ax.port && ax.port < (1 << 16))) {
@@ -670,11 +757,11 @@ int main(int argc, const char* const argv[])
 
     /* start up gpperfmon directory */
     {
-        char work_dir[PATH_MAX] = {0};
+        char work_dir[MAXPATHLEN+1] = {0};
         char *pdir = work_dir;
 
-        strncpy(work_dir, GPMON_DIR, PATH_MAX - 1);
-        work_dir[PATH_MAX - 1] = 0;
+        strncpy(work_dir, GPMON_DIR, MAXPATHLEN);
+        work_dir[MAXPATHLEN] = 0;
 
         while (*pdir)
         {
