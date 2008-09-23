@@ -1727,7 +1727,8 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 
 	relation = heap_openrv(inhRelation->relation, AccessShareLock);
 
-	if (relation->rd_rel->relkind != RELKIND_RELATION)
+	if (relation->rd_rel->relkind != RELKIND_RELATION &&
+		relation->rd_rel->relkind != RELKIND_EXTERNAL)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("inherited relation \"%s\" is not a table",
