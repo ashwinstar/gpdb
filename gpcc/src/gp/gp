@@ -630,8 +630,13 @@ class AdminAddCmd(Command):
                 sys.exit('Please specify user.')
             self.opt['-u'] = user
         print 'Adding user %s' % self.opt['-u']
-        new_passwd = getpass('New password:')
-        confirm_password = getpass('Retype new password:')
+        if os.isatty(sys.stdin.fileno()):
+            new_passwd = getpass('New password:')
+            confirm_password = getpass('Retype new password:')
+        else:
+            new_passwd = sys.stdin.readline().rstrip()
+            confirm_password = sys.stdin.readline().rstrip()
+
         if new_passwd != confirm_password:
             print '[ERROR] unable to add user. Password not match.'
             sys.exit(2)
@@ -751,9 +756,15 @@ class AdminPasswordCmd(Command):
                 sys.exit('please specify user.')
             self.opt['-u'] = user
         print 'Changing password for %s' % self.opt['-u']
-        old_password = getpass('Old password:')
-        new_password = getpass('New password:')
-        confirm_password = getpass('Retype new password:')
+        if os.isatty(sys.stdin.fileno()):
+            old_password = getpass('Old password:')
+            new_password = getpass('New password:')
+            confirm_password = getpass('Retype new password:')
+        else:
+            old_password = sys.stdin.readline().rstrip()
+            new_password = sys.stdin.readline().rstrip()
+            confirm_password = sys.stdin.readline().rstrip()
+
         if new_password != confirm_password:
             print '[ERROR] unable to change password. Password not match.'
             sys.exit(2)
