@@ -524,14 +524,10 @@ class StatusCmd(Command):
 
 ####################
 class LoginCmd(Command):
-    '''Usage: gp login [-f passwd_file] [username]'''
+    '''Usage: gp login [username]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'f:', self.__doc__)
-        self.opt['-f'] = None
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-f': self.opt[switch] = val
-
         if len(self.args) == 1:
             self.opt['-u'] = self.args[0]
         if self.opt['-u'] is None:
@@ -545,39 +541,36 @@ class LoginCmd(Command):
             if user == '':
                 sys.exit('please specify user.')
             self.opt['-u'] = user
-        for i in xrange(3):
-            if self.opt['-f']:
-                f = open(self.opt['-f'])
-                passwd = f.read().strip()
-            else:
-                passwd = getpass('password:')
-            param = {}
-            content = {}
-            if (self.gopt['-a']): param['a'] = self.gopt['-a']
-            content['user'] = self.opt['-u']
-            content['password'] = passwd
-            data = urllib.urlencode(content)
-            packet = self._httpPost('/gpcc/login', param, data, 'application/x-www-form-urlencoded')
-            self.raw(packet)         
-            if 'ok' != packet.get('status'):
-                print '[ERROR] unable to login. details:'
-                printPacket(packet, '     ')
-                sys.exit(2)
-            else:
-                try:
-                    f = open('%s/.gpcc' % os.getenv('HOME'), 'w')
-                    rset = packet['rset']
-                    if len(rset) > 0:
-                        f.write(rset[0])
-                    f.close()
-                except IOError, e:
-                    print '[ERROR] unable to write file to %s/.gpcc. (%s)' % (os.getenv('HOME'), e)
-                    sys.exit(2)
-                print '%s logged on' % self.opt['-u']
-                sys.exit(0)
 
-            if opt['-f']:
-                break
+        if os.isatty(sys.stdin.fileno()):
+            passwd = getpass('password:')
+        else:
+            passwd = sys.stdin.readline().rstrip()
+
+        param = {}
+        content = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        content['user'] = self.opt['-u']
+        content['password'] = passwd
+        data = urllib.urlencode(content)
+        packet = self._httpPost('/gpcc/login', param, data, 'application/x-www-form-urlencoded')
+        self.raw(packet)         
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to login. details:'
+            printPacket(packet, '     ')
+            sys.exit(2)
+        else:
+            try:
+                f = open('%s/.gpcc' % os.getenv('HOME'), 'w')
+                rset = packet['rset']
+                if len(rset) > 0:
+                    f.write(rset[0])
+                f.close()
+            except IOError, e:
+                print '[ERROR] unable to write file to %s/.gpcc. (%s)' % (os.getenv('HOME'), e)
+                sys.exit(2)
+            print '%s logged on' % self.opt['-u']
+            sys.exit(0)
 
         print '[ERROR] login failed.'
         sys.exit(2)
