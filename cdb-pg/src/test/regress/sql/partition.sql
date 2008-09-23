@@ -2748,3 +2748,10 @@ alter table mpp3621 add partition a8 start ('2007-07-01') end ('2007-08-01');
 alter table mpp3621 add partition a9 start ('2007-06-01') end ('2007-07-01');
 
 drop table mpp3621;
+
+-- Check for MPP-3679
+create table list_test (a text, b text) partition by list (a) (partition foo
+values ('foo'), partition bar values ('bar'), default partition baz); 
+alter table list_test split default partition at ('baz') into (partition bing,
+default partition);
+drop table list_test;

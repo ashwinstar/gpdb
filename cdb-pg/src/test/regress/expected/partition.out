@@ -5982,3 +5982,16 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 NOTICE:  CREATE TABLE will create partition "mpp3621_1_prt_a9" for table "mpp3621"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 drop table mpp3621;
+-- Check for MPP-3679
+create table list_test (a text, b text) partition by list (a) (partition foo
+values ('foo'), partition bar values ('bar'), default partition baz); 
+NOTICE:  CREATE TABLE will create partition "list_test_1_prt_foo" for table "list_test"
+NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bar" for table "list_test"
+NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "list_test"
+alter table list_test split default partition at ('baz') into (partition bing,
+default partition);
+NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_1311646"
+NOTICE:  dropped partition "baz" for relation "list_test"
+NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bing" for table "list_test"
+NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "list_test"
+drop table list_test;

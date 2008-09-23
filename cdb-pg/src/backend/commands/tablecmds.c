@@ -15177,6 +15177,10 @@ ATPExecPartSplit(Relation rel,
 				intopid2 = (AlterPartitionId *)pc2->partid;
 				intopid1 = (AlterPartitionId *)pc2->arg1;
 				into_exists = 2;
+
+				if (intopid2->idtype == AT_AP_IDDefault)
+					 intopid2->partiddef = 
+						 (Node *)makeString(pstrdup(tmprule->topRule->parname));
 			}
 			else
 			{
@@ -15196,7 +15200,12 @@ ATPExecPartSplit(Relation rel,
 				intopid1 = (AlterPartitionId *)pc2->partid;
 				intopid2 = (AlterPartitionId *)pc2->arg1;
 				if (tmprule->topRule->parisdefault)
+				{
 					default_pos = 2;
+
+					if (intopid2->idtype == AT_AP_IDDefault)
+						 intopid2->partiddef = (Node *)makeString(pstrdup(tmprule->topRule->parname));
+				}
 			}
 		}
 		else if (prule->topRule->parisdefault)
