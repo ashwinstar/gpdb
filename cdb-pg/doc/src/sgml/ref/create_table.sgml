@@ -56,8 +56,8 @@ CREATE [ [GLOBAL | LOCAL] {TEMPORARY | TEMP}] TABLE <replaceable>table_name</rep
    [ PARTITION BY <replaceable>partition_type</replaceable> (<replaceable>column</replaceable>)
        [ SUBPARTITION BY <replaceable>partition_type</replaceable> (<replaceable>column</replaceable>) ] 
           [ SUBPARTITION TEMPLATE ( <replaceable>template_specification</replaceable> ) ] 
-    ( <replaceable>partition_specification</replaceable> )
-	      [ ( <replaceable>subpartition_specification</replaceable> ) ]
+           ( <replaceable>partition_specification</replaceable> [ ( <replaceable>subpartition_specification</replaceable> ) ] 
+             [, ... ] )
 
 where <replaceable>storage_parameter</replaceable> is:
 
