@@ -656,4 +656,32 @@ void PreprocessByteaData(char *src)
 	
 }
 
+/*
+ * IsRejectLimitValid
+ * 
+ * verify that the the reject limit specified by the user is within the
+ * allowed values for ROWS or PERCENT.
+ */
+void VerifyRejectLimit(char rejectlimittype, int rejectlimit)
+{
+	if(rejectlimittype == 'r')
+	{
+		/* ROWS */
+		if(rejectlimit < 2)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit in ROWS "
+							"must be 2 or larger (got %d)", rejectlimit)));
+	}
+	else
+	{
+		/* PERCENT */
+		Assert(rejectlimittype == 'p');
+		if (rejectlimit < 1 || rejectlimit > 100)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit in PERCENT "
+							"must be between 1 and 100 (got %d)", rejectlimit)));
+	}
 
+}

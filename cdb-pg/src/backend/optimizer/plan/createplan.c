@@ -52,6 +52,7 @@
 #include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
 #include "cdb/cdbsetop.h" /* mark_passthru_locus() */
 #include "cdb/cdbutil.h"        /* cdbComponentDatabase, makeRandomSegMap() */		
+#include "cdb/cdbsreh.h"
 
 typedef struct CreatePlanContext
 {
@@ -1099,20 +1100,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		 * NOTE: this should never happen unless somebody modified the 
 		 * catalog manually. We are just being pedantic here.
 		 */
-		if(rel->rejectlimittype == 'r' && rel->rejectlimit < 2)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Segment reject limit in ROWS "
-							"must be 2 or larger (got %d)", rel->rejectlimit)));
-		}
-		else if(rel->rejectlimittype == 'p' && (rel->rejectlimit < 1 || rel->rejectlimit > 100))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Segment reject limit in PERCENT "
-							"must be between 1 and 100 (got %d)", rel->rejectlimit)));
-		}
+		VerifyRejectLimit(rel->rejectlimittype, rel->rejectlimit);
 	}
 	
 	if(using_execute && !gp_external_enable_exec)

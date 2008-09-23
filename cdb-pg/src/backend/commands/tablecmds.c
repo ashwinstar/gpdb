@@ -16420,18 +16420,11 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 	{
 		issreh = true;
 		
-		/* get reject limit */
+		/* get reject limit, and reject limit type */
 		rejectlimit = singlerowerrorDesc->rejectlimit;
-		
-		if(rejectlimit < 2)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Segment reject limit for single row error handling "
-							"must be 2 or larger (got %d)", rejectlimit)));
-		
-		/* get reject limit type - (r)ows or (p)ercent */
 		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');
-				
+		VerifyRejectLimit(rejectlimittype, rejectlimit);		
+		
 		/* KEEP only allowed for COPY */
 		if(singlerowerrorDesc->is_keep)
 			ereport(ERROR,
