@@ -701,6 +701,8 @@ static void session_attach(request_t* r)
 	apr_pool_t* pool;
 	struct fstream_options fstream_options;
 	int64_t size;
+	int response_code;
+	const char*response_string;
 	/* remove any outdated sessions*/
 	sessions_cleanup();
 
@@ -720,10 +722,10 @@ static void session_attach(request_t* r)
 	    fstream_options.escape = escape;
 	}
 	/* try opening the fstream */
-	fstream = fstream_open(r->path,&fstream_options);
-	if (! fstream) {
+	fstream = fstream_open(r->path,&fstream_options,&response_code,&response_string);
+	if (!fstream) {
 	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
-	    http_error(r, 404, "not found");
+	    http_error(r,response_code,response_string);
 	    request_end(r, 1, 0);
 	    apr_pool_destroy(pool);
 	    return;

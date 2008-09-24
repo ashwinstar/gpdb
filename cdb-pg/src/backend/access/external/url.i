@@ -72,7 +72,7 @@ struct URL_FILE
 
 
 /* exported functions */
-URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate);
+URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate,int*response_code,const char**response_string);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 int url_ferror(URL_FILE *file);
@@ -156,16 +156,22 @@ write_callback(char *buffer,
 
 
 static int
-check_response(URL_FILE* file)
+check_response(URL_FILE* file,int*rc,const char**response_string)
 {
 	long response_code;
 	char* effective_url;
 	int e;
+	static char buffer[30];
 	CURL* curl = file->u.curl.handle;
 
-	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code))) 
+	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code))) {
+		*rc = 500;
+		*response_string = "curl_easy_getinfo failed";
 		return -1;
-
+	}
+	*rc = response_code;
+	snprintf(buffer,sizeof buffer,"Response Code=%d",(int)response_code);
+	*response_string = buffer;
 	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url)))
 		return -1;
 
@@ -467,7 +473,7 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 
 
 URL_FILE *
-url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
+url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate,int*response_code,const char**response_string)
 {
     /* this code checks for URLs or types in the 'url' and
      * basicly use the real fopen() for standard files, or
@@ -487,7 +493,9 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
     if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
 		elog(ERROR, "out of memory");
-        return NULL;
+		*response_code = 500;
+		*response_string = "Out of memory";
+		return NULL;
 	}
     memset(file, 0, sizeof(URL_FILE));
 
@@ -519,6 +527,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 		if (!path) 
 		{
 			elog(ERROR, "External Table error opening file: '%s'", url);
+			*response_code = 400;
+			*response_string = "Bad Request";
 			return NULL;
 		}
 
@@ -528,7 +538,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 		fo.escape = pstate->escape?*pstate->escape:0;
 		fo.header = pstate->header_line;
 		pstate->header_line = 0;
-		file->u.file.fp = fstream_open(path,&fo);
+		file->u.file.fp = fstream_open(path,&fo,response_code,response_string);
 		
 		/* couldn't open local file. return NULL to display proper error */
 		if (!file->u.file.fp)
@@ -546,6 +556,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 		{
 			elog(ERROR, "illegal URL: %s", file->url);
 			url_fclose(file);
+			*response_code = 400;
+			*response_string = "Bad Request";
 			return NULL;
 		}
 
@@ -563,6 +575,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 		{
 			elog(ERROR, "internal error: curl_easy_init failed");
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_init failed";
 			return NULL;
 		}
 
@@ -574,6 +588,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 				 file->u.curl.curl_url, 
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE))) 
@@ -581,6 +597,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
 		/* set callback for each header received from server */
@@ -589,6 +607,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
 		/* file gets passed to header_callback */
@@ -597,6 +617,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
 		/* set callback for each data block received from server */
@@ -605,6 +627,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
 		/* file gets passed to write_callback */
@@ -613,6 +637,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
@@ -620,6 +646,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
 	
@@ -641,6 +669,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 		{
 			elog(ERROR, "internal error: some variable value is too long");
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "Internal Server Error";
 			return NULL;
 		}
 
@@ -649,6 +679,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_easy_setopt failed";
 			return NULL;
         }
 
@@ -658,6 +690,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			{
 				elog(ERROR, "internal error: curl_multi_init failed");
 				url_fclose(file);
+				*response_code = 500;
+				*response_string = "curl_multi_init failed";
 				return NULL;
 			}
 		}
@@ -669,6 +703,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 				elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
 					 e, curl_easy_strerror(e));
 				url_fclose(file);
+				*response_code = 500;
+				*response_string = "curl_multi_init_add_handle failed";
 				return NULL;
 			}
 		}
@@ -682,6 +718,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
+			*response_code = 500;
+			*response_string = "curl_multi_perform failed";
 			return NULL;
 		}
 		
@@ -689,7 +727,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 		fill_buffer(file, 1);
 
 		/* check the connection */
-		if (check_response(file) == -1)
+		if (check_response(file,response_code,response_string))
 		{
 			url_fclose(file);
 			return NULL;
@@ -1058,7 +1096,7 @@ url_rewind(URL_FILE *file)
     	url_fclose(file);
 
     	/* most of these are null fo us. */
-    	url_fopen(url, NULL, NULL,NULL);
+    	url_fopen(url, NULL, NULL,NULL,NULL,0);
     	break; 
 
     case CFTYPE_CURL:

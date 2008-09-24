@@ -17,7 +17,7 @@ typedef struct gfile_t{
     }u;
 }gfile_t;
 
-int gfile_open(gfile_t*fd,const char*fpath);
+int gfile_open(gfile_t*fd,const char*fpath,int*response_code,const char**response_string);
 int gfile_close(gfile_t*fd);
 off_t gfile_get_size(gfile_t*fd); // -1 means size is not available.
 size_t gfile_read(gfile_t*fd,void*ptr,size_t len); /* gfile_read reads as much as it can--short read indicates error. */

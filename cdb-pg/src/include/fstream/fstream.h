@@ -30,7 +30,7 @@ int fstream_eof(fstream_t*fs);
 int64_t fstream_get_size(fstream_t*fs);
 int fstream_rewind(fstream_t*fs);
 const char*fstream_get_error(fstream_t*fs);
-fstream_t*fstream_open(const char*path,const struct fstream_options*options);
+fstream_t*fstream_open(const char*path,const struct fstream_options*options,int*response_code,const char**response_string);
 void fstream_close(fstream_t*fs);
 void*fstream_malloc(size_t size);
 void fstream_free(void*a);

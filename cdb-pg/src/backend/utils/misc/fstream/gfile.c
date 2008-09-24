@@ -15,7 +15,7 @@
 /* TEXT */
 
 static size_t
-txt_file_read(gfile_t*fd,void*ptr,size_t size) 
+txt_file_read(gfile_t*fd,void*ptr,size_t size)
 {
     size_t i;
     do
@@ -44,13 +44,15 @@ txt_file_get_size(gfile_t*fd)
 }
 
 static int
-txt_file_open(gfile_t*fd,const char*fpath) 
+txt_file_open(gfile_t*fd,const char*fpath,int*response_code,const char**response_string)
 {
     do
 	fd->u.txt = open(fpath,O_RDONLY|O_BINARY);
     while (fd->u.txt<0 && errno==EINTR);
     if (-1 == fd->u.txt) {
 	gfile_printf_then_putc_newline("gfile open failed %s",fpath);
+	*response_code = 404;
+	*response_string = "Not Found";
 	return 1;
     }
     fd->read = txt_file_read;
@@ -79,10 +81,12 @@ bz_file_close(gfile_t *fd)
 }
 
 static int
-bz_file_open(gfile_t*fd,const char*fpath)
+bz_file_open(gfile_t*fd,const char*fpath,int*response_code,const char**response_string)
 {
     if (!(fd->u.bz=BZ2_bzopen(fpath,"rb"))){
 	gfile_printf_then_putc_newline("gfile gzopen failed %s",fpath);
+	*response_code = 404;
+	*response_string = "Not Found";
 	return 1;
     }
     fd->read = bz_file_read;
@@ -106,10 +110,12 @@ gz_file_close(gfile_t *fd)
 }
 
 static int
-gz_file_open(gfile_t*fd,const char*fpath)
+gz_file_open(gfile_t*fd,const char*fpath,int*response_code,const char**response_string)
 {
     if (!(fd->u.gz=gzopen(fpath,"rb"))){
 	gfile_printf_then_putc_newline("gfile gzopen failed %s",fpath);
+	*response_code = 404;
+	*response_string = "Not Found";
 	return 1;
     }
     fd->read = gz_file_read;
@@ -119,29 +125,35 @@ gz_file_open(gfile_t*fd,const char*fpath)
 }
 
 int
-gfile_open(gfile_t*fd,const char*fpath)
+gfile_open(gfile_t*fd,const char*fpath,int*response_code,const char**response_string)
 {
     const char*s=strrchr(fpath,'.');
     struct stat sta;
     if (stat(fpath,&sta)){
 	gfile_printf_then_putc_newline("gfile stat %s failure",fpath);
+	*response_code = 404;
+	*response_string = "Not Found";
 	return 1;
     }
     if (S_ISDIR(sta.st_mode)){
 	gfile_printf_then_putc_newline("gfile %s is a directory",fpath);
+	*response_code = 403;
+	*response_string = "Reading a directory is forbidden.";
 	return 1;
     }
     memset(fd,0,sizeof*fd);
     if (s&&strcasecmp(s,".gz")==0)
-	return gz_file_open(fd,fpath);
+	return gz_file_open(fd,fpath,response_code,response_string);
     else if (s&&strcasecmp(s,".bz2")==0)
-	return bz_file_open(fd,fpath);
+	return bz_file_open(fd,fpath,response_code,response_string);
     else if (s&&strcasecmp(s,".z") == 0)
 	gfile_printf_then_putc_newline("gfile compression .z file is not supported");
     else if (s&&strcasecmp(s,".zip") == 0)
 	gfile_printf_then_putc_newline("gfile compression zip is not supported");
     else
-	return txt_file_open(fd,fpath);
+	return txt_file_open(fd,fpath,response_code,response_string);
+    *response_code = 415;
+    *response_string = "Unsupported File Type";
     return 1;
 }
 

@@ -190,10 +190,12 @@ glob_path(fstream_t*fs,const char*path)
 
 /* alloc a new file stream */
 fstream_t*
-fstream_open(const char*path,const struct fstream_options*options)
+fstream_open(const char*path,const struct fstream_options*options,int*response_code,const char**response_string)
 {
     int i;
     fstream_t*fs;
+    *response_code = 500;
+    *response_string = "Internal Server Error";
     if (0 == (fs=fstream_malloc(sizeof*fs))){
 	gfile_printf_then_putc_newline("fstream out of memory");
 	return 0;
@@ -212,12 +214,14 @@ fstream_open(const char*path,const struct fstream_options*options)
     if (fs->glob.gl_pathc == 0){
 	gfile_printf_then_putc_newline("fstream bad path: %s",path);
 	fstream_close(fs);
+	*response_code = 404;
+	*response_string = "Not Found";
 	return 0;
     }
     for (i=fs->glob.gl_pathc; --i>=0;){
 	gfile_close(&fs->fd);
 	/* check READ access right */
-	if (gfile_open(&fs->fd,fs->glob.gl_pathv[i])){
+	if (gfile_open(&fs->fd,fs->glob.gl_pathv[i],response_code,response_string)){
 	    gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[i]);
 	    fstream_close(fs);
 	    return 0;
@@ -250,13 +254,15 @@ fillFo(fstream_t*fs,struct fstream_filename_and_offset*fo)
 static int
 nextFile(fstream_t*fs)
 {
+    int response_code;
+    const char*response_string;
     gfile_close(&fs->fd);
     fs->foff = 0;
     fs->line_number = 1;
     fs->fidx++;
     if (fs->fidx < fs->glob.gl_pathc){
 	fs->fskip = fs->options.header;
-	if (gfile_open(&fs->fd,fs->glob.gl_pathv[fs->fidx])){
+	if (gfile_open(&fs->fd,fs->glob.gl_pathv[fs->fidx],&response_code,&response_string)){
 	    gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[fs->fidx]);
 	    fs->ferror = "unable to open file";
 	    return 1;
@@ -390,6 +396,8 @@ fstream_get_size(fstream_t*fs)
 int
 fstream_rewind(fstream_t*fs)
 {
+    int response_code;
+    const char*response_string;
     fs->fidx = 0;
     fs->foff = 0;
     fs->line_number = 1;
@@ -397,7 +405,7 @@ fstream_rewind(fstream_t*fs)
     fs->fskip = fs->options.header;
     fs->buffer_size = 0;
     gfile_close(&fs->fd);
-    if (gfile_open(&fs->fd,fs->glob.gl_pathv[0])){
+    if (gfile_open(&fs->fd,fs->glob.gl_pathv[0],&response_code,&response_string)){
 	gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[0]);
 	fs->ferror = "unable to open file";
 	return -1;

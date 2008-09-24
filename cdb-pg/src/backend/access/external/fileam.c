@@ -1117,6 +1117,8 @@ open_external_file(FileScanDesc scan)
 	time_t now = time(0);
 	struct tm* tm = localtime(&now);
 	char       *result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
+	int response_code;
+	const char*response_string;
 	
 	/* set up extvar */
 
@@ -1149,14 +1151,14 @@ open_external_file(FileScanDesc scan)
     /*
      * Open the url with url_open().
      */
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar,scan->fs_pstate);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar,scan->fs_pstate,&response_code,&response_string);
 
 	if (scan->fs_file == NULL)
 	{
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not open \"%s\" for reading: %m",
-						scan->fs_uri)));
+				 errmsg("could not open \"%s\" for reading: %d %s",
+						scan->fs_uri,response_code,response_string)));
 	}
 	else 
 	{
