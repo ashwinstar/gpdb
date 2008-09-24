@@ -22,6 +22,7 @@ struct fstream_t{
     struct fstream_options options;
     int buffer_size;
     char buffer[FSTREAM_BLOCKSIZE];
+    int64_t total_size;
 };
 
 static int
@@ -221,6 +222,13 @@ fstream_open(const char*path,const struct fstream_options*options)
 	    fstream_close(fs);
 	    return 0;
 	}
+	if (fs->total_size >= 0){
+	    off_t s=gfile_get_size(&fs->fd);
+	    if (s == -1)
+		fs->total_size = -1;
+	    else
+		fs->total_size += s;
+	}
 	/* leave the first file opened */
     }
     fs->line_number = 1;
@@ -371,6 +379,12 @@ int
 fstream_eof(fstream_t*fs)
 {
     return fs->fidx==fs->glob.gl_pathc;
+}
+
+int64_t
+fstream_get_size(fstream_t*fs)
+{
+    return fs->total_size;
 }
 
 int

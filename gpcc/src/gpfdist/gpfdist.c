@@ -166,6 +166,9 @@ static struct {
 	int gen;
 	apr_hash_t* tab;
     } session;
+    apr_int64_t read_bytes;
+    apr_int64_t total_bytes;
+    int total_sessions;
 }gcb;
 
 /*  A session */
@@ -424,6 +427,31 @@ static void http_empty(request_t* r)
     send(r->sock, buf, sizeof buf-1, 0);
 }
 
+static apr_status_t
+send_gpfdist_status(request_t*r)
+{
+    char buf[1024];
+    int m, n;
+    n = apr_snprintf(buf,sizeof(buf),
+	"HTTP/1.0 200 ok\r\n"
+	"Content-type: text/plain\r\n"
+	"Expires: 0\r\n"
+	"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
+	"Cache-Control: no-cache\r\n"
+	"Connection: close\r\n\r\n"
+	"read_bytes %"APR_INT64_T_FMT"\r\n"
+	"total_bytes %"APR_INT64_T_FMT"\r\n"
+	"total_sessions %d\r\n",
+	gcb.read_bytes,gcb.total_bytes,gcb.total_sessions);
+    if (n >= sizeof buf-1)
+	gfatal(FLINE, "internal error - buffer overflow");
+    m = send(r->sock, buf, n, 0);
+    if (m != n) {
+	gprint("%s - socket error\n", r->peer);
+	return APR_EGENERAL;
+    }
+    return 0;
+}
 
 /* send an OK response */
 static apr_status_t http_ok(request_t* r)
@@ -564,6 +592,7 @@ session_get_block(session_t* s, block_t* retblock)
 	session_end(s, 0);
 	return 0;
     }
+    gcb.read_bytes += size;
     retblock->top = size;
     block_fill_header(retblock,&fos);
     return 0;
@@ -671,7 +700,7 @@ static void session_attach(request_t* r)
 	fstream_t* fstream = 0;
 	apr_pool_t* pool;
 	struct fstream_options fstream_options;
-
+	int64_t size;
 	/* remove any outdated sessions*/
 	sessions_cleanup();
 
@@ -699,6 +728,12 @@ static void session_attach(request_t* r)
 	    apr_pool_destroy(pool);
 	    return;
 	}
+	gcb.total_sessions++;
+	size = fstream_get_size(fstream);
+	if (size == -1)
+	    gcb.total_bytes = -1;
+	else
+	    gcb.total_bytes += size;
 	/* allocate session */
 	if (0 == (s = apr_palloc(pool, sizeof(session_t))))
 	    gfatal(FLINE, "out of memory");
@@ -981,7 +1016,11 @@ static void do_read(int fd, short event, void* arg)
 
     /*   - remove / prefixes */
     for (;*r->path=='/';r->path++);
-
+    if (!strcmp(r->path,"gpfdist_status")){
+	send_gpfdist_status(r);
+	request_end(r,0,0);
+	return;
+    }
     /*   - forbid .. dot dot  */
     if (strstr(r->path,"..")){
 	gwarning(FLINE, "reject invalid request from %s [%s %s]",

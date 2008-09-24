@@ -34,6 +34,15 @@ txt_file_close(gfile_t*fd)
     return i;
 }
 
+static off_t
+txt_file_get_size(gfile_t*fd) 
+{
+    struct stat s;
+    if (fstat(fd->u.txt,&s))
+	return -1;
+    return s.st_size;
+}
+
 static int
 txt_file_open(gfile_t*fd,const char*fpath) 
 {
@@ -46,7 +55,14 @@ txt_file_open(gfile_t*fd,const char*fpath)
     }
     fd->read = txt_file_read;
     fd->close = txt_file_close;
+    fd->get_size = txt_file_get_size;
     return 0;
+}
+
+static off_t
+not_available_get_size(gfile_t*fd) 
+{
+    return -1;
 }
 
 static size_t
@@ -71,6 +87,7 @@ bz_file_open(gfile_t*fd,const char*fpath)
     }
     fd->read = bz_file_read;
     fd->close = bz_file_close;
+    fd->get_size = not_available_get_size;
     return 0;
 }
 
@@ -97,6 +114,7 @@ gz_file_open(gfile_t*fd,const char*fpath)
     }
     fd->read = gz_file_read;
     fd->close = gz_file_close;
+    fd->get_size = not_available_get_size;
     return 0;
 }
 
@@ -153,4 +171,10 @@ gfile_read(gfile_t*fd,void*ptr,size_t len)
 	len -= i;
     }
     return olen-len;
+}
+
+off_t
+gfile_get_size(gfile_t*fd)
+{
+    return fd->get_size(fd);
 }
