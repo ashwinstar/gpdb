@@ -5,7 +5,7 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-S failed_dbid] [-B number]
+Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-S failed_dbid] [-B number] [-t timeout]
            
           General options:
           -v        : print version information
@@ -21,6 +21,7 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
           -o        : <output_config> output configuration file
 
           Recovery options:
+          -t        : <timeout> in second [default: 1800 seconds]
           -l        : <log directory> alternative log file directory [optional]
           -p        : <hostname> recover to spare pool node
                           the pool host must have the following characteristics:
@@ -86,6 +87,7 @@ opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
 opt['-S'] = 0
+opt['-t'] = 1800
 
 arg = {}
 arg['exit'] = 0
@@ -104,7 +106,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafs:d:z:B:p:l:i:o:S:c:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafs:d:z:B:p:l:i:o:S:c:t:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -124,6 +126,7 @@ def parseCommandLine():
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
         elif (switch == '-S'):        opt[switch] = int(val)
+        elif (switch == '-t'):        opt[switch] = int(val)
         elif (switch == '-c'):        gpmlib.log_info('Option -c is obsolete.  This option will be ignored')
 
     gpmlib.log_set_module(script_name)
@@ -288,11 +291,11 @@ def chk_pool_host(db, failed_dbids):
 
     (ok, out) = gpmlib.run('%s "%s"' % (gplib.ssh_prefix(host=opt['-p']), gpmlib.makeCommand('%s -V' % initdb)))
     if not ok:
-        gpmlib.error('[FATAL]:- initdb failed to run in remote host or initdb not found in $GPHOME/bin')
+        gpmlib.fatal('initdb failed to run in remote host or initdb not found in $GPHOME/bin')
     pool_initdb_version = out[0]
     
     if qd_initdb_version != pool_initdb_version:
-        gpmlib.error('[FATAL]:- initdb version mismatch between master and %s' % opt['-p'])
+        gpmlib.fatal('initdb version mismatch between master and %s' % opt['-p'])
     else:
         gpmlib.log_info('initdb version check passed')
 
@@ -400,7 +403,7 @@ def pool_host_dir_validation(db, failed_instance_array, pri_pool_host_in_use, mi
             new_port = get_free_port(db, failed_qe, new_host, min_mir_port, max_mir_port, pool_port_in_use)
             pool_port_in_use.append(new_port)
 
-        # save the data for updating gp_configuration after recovery
+        # save the tuple and update gp_configuration after recovery (see pool_catalog_update)
         update_sql.append((new_host, new_dir, new_port, failed_qe['dbid']))
         
         a = {}
@@ -473,12 +476,12 @@ def get_free_dir(failed_qe, dir_used_list, dir_chk_list):
 #
 #  1. get the number of segment with port = failed_qe['port'] and host = new_host
 #  2. check the failed_qe['port'] is on the list of port_in_use
-#  3. if failed_qe['port'] is not in port_in_use and no segment found with port = failed_qe['port'] then 
+#  3. if failed_qe['port'] is not on the list of port_in_use and no segment found with port = failed_qe['port'] then 
 #         free_port = failed_qe['port']
 #  4. else
 #          get the free_port between the range (min_port, max_port) with two conditions
-#               1. no segment found with port = free_port
-#               2. check the free_port is on the list of port_in_use
+#               1. no segment found with port = free_port; AND
+#               2. check the free_port is not on the list of port_in_use
 #
 ################
 
@@ -575,7 +578,7 @@ class SyncDataThread(Thread):
 def recover_data(failed_instance_array, active_instance_array, pool_failed_instance_array):
     global opt
 
-    timeout = 1800
+    timeout = opt['-t']
     error = []
     kill = []
     thlist = []
@@ -707,6 +710,7 @@ def display_param(fault_action, failed_array, active_array, multi_home):
     gpmlib.log_info('Greenplum instance recovery parameters')
     gpmlib.log_info('---------------------------------------------------------')
     gpmlib.log_info('Fault tolerance setting       = %s' % fault_action)
+
     if opt['-i']:
         gpmlib.log_info('Recovery from configuration -i option supplied')
 
@@ -723,6 +727,8 @@ def display_param(fault_action, failed_array, active_array, multi_home):
         gpmlib.log_info('Primary pool directory    = %s' % dir[0])
         gpmlib.log_info('Mirror pool directory     = %s' % dir[1])
         type_text = 'Pool dir'
+
+    gpmlib.log_info('Timeout                       = %d seconds' % opt['-t'])
 
     if opt['-p'] is None and opt['-s'] is None:
         gpmlib.log_info('Recovery type             = Standard')
@@ -889,12 +895,12 @@ def chk_pool_dir_available(db, failed_dbids):
 
     dir = opt['-s'].split(',')
     if len(dir) != 2:
-        gpmlib.error('[FATAL]:- option -s %s format error' % opt['-s'])
+        gpmlib.fatal('option -s %s format error' % opt['-s'])
     pri_pool_dir = dir[0]
     mir_pool_dir = dir[1]
 
     gpmlib.log_info('Primary segment pool directory set as %s' % pri_pool_dir)
-    gpmlib.log_info('Mirror segmet pool directory set as %s' % mir_pool_dir)
+    gpmlib.log_info('Mirror segment pool directory set as %s' % mir_pool_dir)
     seg_prefix = gpmlib.get_gp_prefix(os.environ.get('MASTER_DATA_DIRECTORY'))
     gpmlib.log_info('Greenplum instance segment prefix is %s' % seg_prefix)
 
@@ -959,6 +965,17 @@ def chk_pool_dir_available(db, failed_dbids):
 
 
 ################
+# convert failed_instance_array to pool_failed_instance_array with the new pool directory
+#
+# foreach failed_qe in failed_instance_array
+# do
+#    new_host = get_host()
+#    new_port = get_free_port()
+#    new_dir  = os.path.join(new_dir_prefix, '%s%d' % (gp_prefix, failed_qe['content']))
+#    create a pool_failed_instance with new_host, new_port and new_dir
+# done
+# return pool_failed_instance_array
+################
 def pool_dir_validation(db, failed_instance_array):
     global opt
 
@@ -994,7 +1011,6 @@ def pool_dir_validation(db, failed_instance_array):
             gpmlib.log_warn('Failed to establish network contact with %s' % host)
 
     # process the failed instance list
-    # save the update sql for updating gp_configuration after recovery
     pri_used = []
     mir_used = []
     pool_failed_instance_array = []
@@ -1020,7 +1036,7 @@ def pool_dir_validation(db, failed_instance_array):
                 new_port = max_mir_port + 1
             mir_used.append(new_host)            
 
-        # save the update for updating gp_configuration after recovery
+        # save the tuple and update gp_configuration after recovery (see pool_catalog_update)
         update_sql.append((new_host, new_dir, new_port, failed_qe['dbid']))
 
         a = {}
@@ -1035,6 +1051,41 @@ def pool_dir_validation(db, failed_instance_array):
     return (update_sql, pool_failed_instance_array)
 
         
+################
+# get_host to get a new host for the failed_qe
+#
+# @param db db instance
+# @param failed_qe  failed qe segment
+# @param pri_pool_dir_host_chk_array is a list of hostname for primary segments
+# @param mir_pool_dir_host_chk_array is a list of hostname for mirror segments
+# @param pri_used  is a list of hostname used by primary segment recovery
+# @param mir_used  is a list of hostname used by mirror segment recovery
+#
+#  partner_host is the recovery segment located
+#  for host in pool_dir_host_chk_array
+#  do
+#     if host is not in used array then
+#        if host is equal to the partner host then
+#            continue
+#        else
+#            check the data directory already exists on host
+#            if data directory exists on host then
+#                 continue
+#            else
+#                 new_host = host
+#                 break
+#     fi
+#  
+#  if new_host == None then
+#      if datadir already exists on partner host then
+#            error and exit
+#      else
+#            use partner host as new_host
+#      fi
+#  else
+#       return new_host
+#  fi
+#  
 ################
 def get_host(db, failed_qe, pri_pool_dir_host_chk_array,
              mir_pool_dir_host_chk_array, pri_used, mir_used):
