@@ -193,6 +193,13 @@ class Env:
         self.GPHOME = None
         self.USER = None
 
+        # mirror type
+        self.MIRROR_NULL_TYPE = 0
+        self.MIRROR_SINGLE_HOME_GROUP_TYPE = 1
+        self.MIRROR_SINGLE_HOME_SPREAD_TYPE = 2
+        self.MIRROR_MULTI_HOME_GROUP_TYPE = 3
+        self.MIRROR_MULTI_HOME_SPREAD_TYPE = 4
+
         self.DBNAME = 'template1'
         self.GP_PG_VIEW = '''(SELECT l.dbid, l.isprimary, l.content, l."valid",
                               l.definedprimary FROM gp_pgdatabase() l(dbid smallint,
@@ -495,7 +502,7 @@ def chk_mirrors_configured(db):
 def get_mirror_type(db, multi_home):
     if not chk_mirrors_configured(db):
         mir_type = 'No Mirror'
-        mir_type_num = 0
+        mir_type_num = ENV.MIRROR_NULL_TYPE
     else:
         db.execute("select count(distinct hostname)/(select count(distinct hostname) from gp_configuration where definedprimary='t' and content<>-1) from gp_configuration where content<>-1")
         r = db.read_tuple()
@@ -519,10 +526,10 @@ def get_mirror_type(db, multi_home):
             hosts = [ x['hostname'] for x in first_pri_mir_array ]
             if len(unique(hosts)) == 2 or num_seg_hosts == 1:
                 mir_type = 'Group [Single-home] %s' % sep_text
-                mir_type_num = 1
+                mir_type_num = ENV.MIRROR_SINGLE_HOME_GROUP_TYPE
             else:
                 mir_type = 'Spread [Single-home] %s' % sep_text
-                mir_type_num = 2
+                mir_type_num = ENV.MIRROR_SINGLE_HOME_SPREAD_TYPE
         else:
             mir_array = []
             for i in range(seg_per_host):
@@ -538,10 +545,10 @@ def get_mirror_type(db, multi_home):
             uniq_cnt = len(unique(mir_array))
             if uniq_cnt == 1:
                 mir_type = 'Group [Multi-home] %s' % sep_text
-                mir_type_num = 3
+                mir_type_num = ENV.MIRROR_MULTI_HOME_GROUP_TYPE
             else:
                 mir_type = 'Spread [Mutli-home] %s' % sep_text
-                mir_type_num = 4
+                mir_type_num = ENV.MIRROR_MULTI_HOME_SPREAD_TYPE
                 
     return (mir_type_num, mir_type)
                 
