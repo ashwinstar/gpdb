@@ -178,22 +178,23 @@ class GPUpgrade:
             # Verify that (max_connections == superuser_reserved_connections)
             max_conn = getconf('max_connections')
             reserved = getconf('superuser_reserved_connections')
-            if max_conn == None or max_conn != reserved:
-                raise UpgradeError('''
-Database is not reserved for superuser
-In %s:
-  max_connection = %s
-  superuser_reserved_connections = %s
-''' % (conf, max_conn, reserved))
-            if max_conn < 4:
-                raise UpgradeError('''
-Maximum connections is too low
-max_connections >= 4 required for upgrade
-In %s:
-  max_connection = %s
-  superuser_reserved_connections = %s
 
-''' % (conf, max_conn, reserved))
+            # DISABLED: This method of guarding doesn't work in 3.1
+#            if max_conn == None or max_conn != reserved:
+#                raise UpgradeError('''
+#Database is not reserved for superuser
+#In %s:
+#  max_connection = %s
+#  superuser_reserved_connections = %s
+#''' % (conf, max_conn, reserved))
+#                if max_conn < 4:
+#                    raise UpgradeError('''
+#Maximum connections is too low
+#max_connections >= 4 required for upgrade
+#In %s:
+#  max_connection = %s
+#  superuser_reserved_connections = %s
+#''' % (conf, max_conn, reserved))
 
             masterpath, masterdir = os.path.split(self.masterdir)
             self.root   = masterpath
@@ -605,6 +606,8 @@ In %s:
                 newseg = os.path.join(d, 'upgrade', content)
 
                 for dir in [oldseg, newseg]:
+                    if dir == oldseg:  env = self.oldenv
+                    else:              env = self.newenv
 
                     # upgrade directory might not actually exist
                     if not os.path.isdir(dir):
@@ -614,13 +617,11 @@ In %s:
                     if os.path.exists(pid):
                         raise UpgradeError("Greenplum process running: " + pid)
 
-                    shutdown = self.RunCmd('pg_controldata ' + dir)
+                    shutdown = self.RunCmd('pg_controldata ' + dir, env=env)
                     for line in shutdown.split('\n'):
                         m = shutdown_re.match(line)
                         if m:
-                            if m.group(1) == 'shut down':
-                                self.Log('DEBUG', 'shut down')
-                                break
+                            if m.group(1) == 'shut down': break
                             raise UpgradeError('''
 pg_controldata: "Database cluster state: %s"
 Greenplum segment %s did not shutdown cleanly:
@@ -927,6 +928,23 @@ tool shipped with that release''')
         else:
             self.upgrade = False    # Downgrade
 
+        # Compare old version catalog number with the catalog in MASTER_DATA_DIRECTORY
+        catalog_re = re.compile('Catalog version number: *(.*)')
+        oldcat = self.RunCmd('postgres --catalog-version', env=self.oldenv)
+        self.Log('INFO', "Source %s" % oldcat)
+        newcat = self.RunCmd('postgres --catalog-version', env=self.newenv)
+        self.Log('INFO', "Target %s" % newcat)
+
+        control = self.RunCmd('pg_controldata ' + self.masterdir, env=self.oldenv)
+        for line in control.split('\n'):
+            m = catalog_re.match(line)
+            if m:
+                self.Log('INFO', "Data   %s " % line)    
+                if line != oldcat:
+                    raise UpgradeError('Catalog in %s does not match source binary' 
+                                       % self.masterdir)
+                break
+
         # For the moment everything goes:
         #   - Additional checks will be made once the old database is up
         self.Log('INFO', 'Versions are compatable')        
@@ -1164,10 +1182,12 @@ tool shipped with that release''')
            WHERE   usesuper
         ''')
 
-        if len(priv) > 1:
-            raise UpgradeError('Cannot upgrade a database with multiple super users')
-        if not priv[0]['current_user']:
-            raise UpgradeError('Current user is not a database super user')
+        # Disabled - need different method of locking down the system
+        
+        #if len(priv) > 1:
+        #    raise UpgradeError('Cannot upgrade a database with multiple super users')
+        #if not priv[0]['current_user']:
+        #    raise UpgradeError('Current user is not a database super user')
 
 
         # If this is a downgrade, verify that we have no objects that can not
@@ -1394,7 +1414,8 @@ This issue must be resolved before upgrade can complete.
                     #   - Assuming we have sucessfully locked out all other users this should 
                     #     never be true because startup will have rollbacked the transaction.
                     for db in databases:
-                        xact = self.Select("SELECT count(*) FROM pg_prepared_xacts");
+                        xact = self.Select("SELECT count(*) FROM pg_prepared_xacts",
+                                           db=db['dbname'], port=port);
                         if xact[0] > 0:
                             raise UpgradeError("Database contains prepared transactions");
 
@@ -1717,6 +1738,14 @@ This issue must be resolved before upgrade can complete.
                     # Set next oid
                     self.RunCmd('pg_resetxlog -o %s %s' % 
                                 (sync["Latest checkpoint's NextOID"],
+                                 newdir), env=self.newenv)
+
+                    # Set next multitransaction ID/offset
+                    self.RunCmd('pg_resetxlog -m %s %s' %
+                                (sync["Latest checkpoint's NextMultiXactId"],
+                                 newdir), env=self.newenv)
+                    self.RunCmd('pg_resetxlog -O %s %s' %
+                                (sync["Latest checkpoint's NextMultiOffset"],
                                  newdir), env=self.newenv)
 
                     # Replace the transaction logs with the old ones
