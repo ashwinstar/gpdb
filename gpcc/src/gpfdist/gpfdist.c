@@ -229,9 +229,9 @@ static void usage(const char* msg)
 	fclose(fp);
     }
     else {
-	fprintf(stderr, "gpfdist -- file distribution web server\n\n");
-	fprintf(stderr, "usage: gpfdist [-?] [--version] [-v] [-V] [-p port] [-d dir] [-l logfn]\n\n");
-	fprintf(stderr, 
+	fprintf(stderr,"gpfdist -- file distribution web server\n\n"
+		"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v | -V]\n\n"
+		"       gpfdist -? | --version\n\n"
 		"        -?        : print this screen\n"
 		"        -v        : verbose mode\n"
 		"        -V        : more verbose\n"
