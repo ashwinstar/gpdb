@@ -79,7 +79,7 @@ class GPUpgrade:
     #   REMAPOID  - Link newdb to old oids, run on every host
     #   DEEPLINK  - Recursive hardlink
     commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG', 'MAPPINGS',
-                'REMAPOID', 'DEEPLINK']
+                'REMAPOID', 'DEEPLINK', 'CHKDOWN']
 
     #------------------------------------------------------------
     def __init__(self):
@@ -110,6 +110,10 @@ class GPUpgrade:
     # Upgrade information and state
         self.debug      = False
         self.quiet      = False
+        self.revert     = False
+        self.nocheckcat = False
+        self.nocheckschema = False
+        self.warnings   = False
         self.oldversion = None
         self.newversion = None
         self.root       = None     # directory: masterdir/..
@@ -145,6 +149,7 @@ class GPUpgrade:
                 raise UpgradeError('MASTER_DATA_DIRECTORY is not defined')
             self.masterdir.rstrip('/')
             port_re = re.compile('^\s*port=(\d+)')
+
             # Find the port for this segment:
             port_str = self.RunCmd('grep port= %s/postgresql.conf' % self.masterdir)
             match = port_re.search(port_str)
@@ -161,6 +166,10 @@ class GPUpgrade:
             self.newmaster = os.path.join(masterpath, 'upgrade', masterdir)
             self.oldenv = self.SetupEnv(self.oldhome, self.masterdir)
             self.newenv = self.SetupEnv(self.newhome, self.newmaster)
+
+            # Find the SEG_PREFIX (everything except the trailing "-1" on the masterdir)
+            self.config['SEG_PREFIX'] = masterdir[:-2]
+
         else:
             self.oldenv = self.SetupEnv(self.oldhome, None)
             self.newenv = self.SetupEnv(self.newhome, None)
@@ -183,9 +192,15 @@ class GPUpgrade:
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('-q', dest='quiet', action='store_true',
                               help=optparse.SUPPRESS_HELP)
-            parser.add_option('-R', dest='revert',
+            parser.add_option('-R', dest='revert', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--debug', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-disable-checkcat',
+                              dest='nocheckcat', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-disable-checkschema',                              
+                              dest='nocheckschema', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-command', dest='command',
                               help=optparse.SUPPRESS_HELP)
@@ -216,9 +231,7 @@ class GPUpgrade:
             raise UpgradeError('Error parsing input: ' + str(e))
 
         if options.revert:
-            raise UpgradeError(
-                'Option -R to revert to pre-upgrade state ' +
-                'is not available in this version')
+            self.revert = True
 
         if options.directory:
             self.masterdir = options.directory
@@ -246,7 +259,10 @@ class GPUpgrade:
             self.logdir = options.logdir
         else:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
-
+        if options.nocheckcat:
+            self.nocheckcat = True
+        if options.nocheckschema:
+            self.nocheckschema = True
 
         if self.cmd == 'MASTER':
             today = date.today().strftime('%Y%m%d')
@@ -266,7 +282,9 @@ class GPUpgrade:
                 raise UpgradeError('Initialization failed')
             if not os.path.exists(self.newhome):
                 self.Log('FATAL', ' directory not found: ' + self.newhome)
-                raise UpgradeError('Initialization failed')            
+                raise UpgradeError('Initialization failed')
+
+
 
     #------------------------------------------------------------
     def Cleanup(self):
@@ -431,6 +449,9 @@ class GPUpgrade:
         if type in ['DEBUG', 'GPSSH'] and not self.debug:
             return
 
+        if type in ['WARN', 'ERROR']:
+            self.warnings = True
+
         if type == 'NONE':
             prefix = ''
         else:
@@ -452,13 +473,16 @@ class GPUpgrade:
             pass
 
     #------------------------------------------------------------
-    def Select(self, qry, db='template1', utility=True, port=5432):
+    def Select(self, qry, db='template1', utility=True, port=None):
         '''
         Execute a SQL query and return an array of result rows
            + Single columns will be returned as an array of values
            + Multiple columns will be returned as an array of tuples
         '''
         
+        if port == None:
+            port = self.masterport
+
         if utility:
             options = '-c gp_session_role=utility'
         else:
@@ -485,10 +509,13 @@ class GPUpgrade:
         return rows
 
     #------------------------------------------------------------
-    def Update(self, qry, db='template1', utility=True, port=5432):
+    def Update(self, qry, db='template1', utility=True, port=None):
         '''
         Execute a SQL query expecting no output
         '''
+
+        if port == None:
+            port = self.masterport
         
         if utility:  options = '-c gp_session_role=utility'
         else:        options = ''
@@ -508,18 +535,59 @@ class GPUpgrade:
     #------------------------------------------------------------
     def CheckDown(self):
         '''
-        Checks that neither postmaster is running
+        Checks that neither postmaster is running and that the database 
+        was cleanly shutdown.
         '''
-        olddir = self.oldenv['MASTER_DATA_DIRECTORY']
-        newdir = self.newenv['MASTER_DATA_DIRECTORY']
+        if self.cmd == 'MASTER':
+            dirs = [ self.root ]
+            prefix = self.config['SEG_PREFIX'] + '-'
+        else:
+            dirs   = self.datadirs
+            prefix = self.option
 
-        if olddir and os.path.exists('%s/postmaster.pid' % olddir):
-            raise UpgradeError("Old Master instance process running: " +
-                               "%s/postmaster.pid" % olddir)
+        self.Log('DEBUG', 'prefix = ' + prefix)            
+        segdir_re = re.compile(prefix+'\d+$')
+        shutdown_re = re.compile('Database cluster state: *(.*)')
+            
+        for d in dirs:
+            self.Log('DEBUG', 'dir = ' + d)            
 
-        if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-            raise UpgradeError("New Master instance process running: " +
-                               "%s/postmaster.pid" % newdir)
+            # look for segments in the directory
+            for content in os.listdir(d):
+
+                # ignore anything not matching the segment prefix
+                if not segdir_re.match(content):
+                    continue
+
+                # construct full path to segment and upgrade segment
+                oldseg = os.path.join(d, content)
+                newseg = os.path.join(d, 'upgrade', content)
+
+                for dir in [oldseg, newseg]:
+
+                    # upgrade directory might not actually exist
+                    if not os.path.isdir(dir):
+                        continue
+
+                    pid = os.path.join(dir, 'postmaster.pid')
+                    if os.path.exists(pid):
+                        raise UpgradeError("Greenplum process running: " + pid)
+
+                    shutdown = self.RunCmd('pg_controldata ' + dir)
+                    for line in shutdown.split('\n'):
+                        m = shutdown_re.match(line)
+                        if m:
+                            if m.group(1) == 'shut down':
+                                self.Log('DEBUG', 'shut down')
+                                break
+                            raise UpgradeError('''
+pg_controldata: "Database cluster state: %s"
+Greenplum segment %s did not shutdown cleanly:
+''' % (m.group(1), content))
+            
+        if self.cmd == 'MASTER' and self.datadirs:
+            self.CallSlaves('CHKDOWN', self.config['SEG_PREFIX'])
+            
         return True
 
     #------------------------------------------------------------
@@ -686,14 +754,67 @@ class GPUpgrade:
         Revert to backup
         '''
 
-        # -- FIXME -- add checks!
+        self.Shutdown()
         self.CheckDown()
         self.Log('INFO', 'Reverting to Backup')
-        self.DeepLink('REVERT')
-#        self.RemoveDirectories(True, True)
+
+        statefile = os.path.join(self.backup, 'state')
+        if not os.path.exists(statefile):
+            self.Log('WARN', "  '%s' not found" % statefile)
+            self.Log('INFO', 'Revert aborted')
+            sys.exit(0)
+        state = self.RunCmd('cat ' + statefile)
+
+        needrevert = False
+        for line in state.split('\n'):
+            if line == 'BACKUP VALID':
+                needrevert = True
+
+        if needrevert:
+
+            # grab configuration information from generated init file
+            initfile = os.path.join(self.tmpdir, 'gp_init_config')
+            if not os.path.exists(initfile):
+                self.Log('FATAL', "  '%s' not found" % initfile)
+                self.Log('INFO', 'Revert aborted')
+                sys.exit(1)
+
+            # Extract from gp_init_config
+            config = self.RunCmd('cat ' + initfile)
+            datadirs = set()
+            for line in config.split('\n'):
+                (field, value) = line.split('=')
+                if field == 'declare -a DATA_DIRECTORY':
+                    field = 'DATA_DIRECTORY'
+                    value = value[1:-1].split(' ')
+                    datadirs = datadirs | set(value)
+                if field == 'declare -a MIRROR_DATA_DIRECTORY':
+                    field = 'MIRROR_DATA_DIRECTORY'
+                    value = value[1:-1].split(' ')
+                    datadirs = datadirs | set(value)
+                self.config[field] = value
+
+            # remove final "/upgrade" from all the paths and convert to a 
+            # space delimited string
+            datadirs.discard('')
+            datadirs = map(lambda(x): os.path.split(x)[0], datadirs)
+            self.datadirs = ' '.join(datadirs)
+
+            # read the hosts file
+            hostfile = os.path.join(self.tmpdir, 'hosts')
+            if not os.path.exists(hostfile):
+                self.Log('FATAL', "  '%s' not found" % hostfile)
+                self.Log('INFO', 'Revert aborted')
+                sys.exit(1)
+            hosts = self.RunCmd('cat ' + hostfile)
+            self.hosts = hosts.split('\n')
+
+            # Attempt revert
+            self.DeepLink('REVERT')
+
         self.Cleanup()
         self.Log('INFO', 'Revert Successful')
-        sys.exit(0)
+        # self.RemoveDirectories(True)
 
     #------------------------------------------------------------
     def CheckVersions(self):
@@ -765,8 +886,8 @@ tool shipped with that release''')
         else:
             self.upgrade = False    # Downgrade
 
-        # For the moment everything goes!
-        # -- FIXME --
+        # For the moment everything goes:
+        #   - Additional checks will be made once the old database is up
         self.Log('INFO', 'Versions are compatabible')        
 
 
@@ -872,7 +993,6 @@ tool shipped with that release''')
                 if value == 'X':
                     raise UpgradeError('Upgrade Cancelled')
                 if value == 'R':
-                    self.Shutdown()
                     self.Revert()
                 self.RemoveDirectories(force=True)
                 self.CreateDirectories()
@@ -987,7 +1107,7 @@ tool shipped with that release''')
         '''
            SELECT hostname, datadir FROM gp_configuration
            WHERE not valid
-        ''', port=self.masterport)
+        ''')
         if len(invalid) > 0:
             for item in invalid:
                 self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % 
@@ -1005,10 +1125,10 @@ tool shipped with that release''')
                 '''
                    SELECT datname from pg_database
                    WHERE datname != 'template0'
-                ''', port=self.masterport)
+                ''')
             c = 0            
             for db in databases:
-                c = self.Select('SELECT COUNT(*) FROM pg_partition', db=db, port=self.masterport)
+                c = self.Select('SELECT COUNT(*) FROM pg_partition', db=db)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
@@ -1016,8 +1136,7 @@ tool shipped with that release''')
 Cannot downgrade a database with 3.2 style partitioning     <<<<<
 -------------------------------------------------------
 ''')
-                c = self.Select(
-                    "SELECT COUNT(*) FROM pg_appendonly", db=db, port=self.masterport)
+                c = self.Select("SELECT COUNT(*) FROM pg_appendonly", db=db)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
@@ -1032,7 +1151,7 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
            SELECT content, definedprimary, dbid, hostname, port, datadir 
            FROM gp_configuration 
-        ''', port=self.masterport);
+        ''')
 
         # check multi-home and get the hostname
         h = {}
@@ -1079,12 +1198,6 @@ Cannot downgrade a database with append only tables     <<<<<
         else:
             self.hosts = list(set(h.values()))
 
-        # Determine the SEG_PREFIX, use any old segment
-        datadir = str(segments[0]['datadir'])
-        content = str(segments[0]['content'])
-        seg_prefix = datadir[datadir.rindex('/')+1:datadir.rindex(content)]
-        self.config['SEG_PREFIX'] = seg_prefix
-
         # Determine PORT_BASE, use any old segment (??? this is wrong ???)
         self.config['PORT_BASE'] = segments[0]['port'] - segments[0]['content'] - 1
 
@@ -1115,11 +1228,11 @@ Cannot downgrade a database with append only tables     <<<<<
 
         # CHECK_POINT_SEGMENTS 
         self.config['CHECK_POINT_SEGMENTS'] = \
-            self.Select('show checkpoint_segments', port=self.masterport)[0]
+            self.Select('show checkpoint_segments')[0]
 
         # ENCODING
         self.config['ENCODING'] = \
-            self.Select('show client_encoding', port=self.masterport)[0]
+            self.Select('show client_encoding')[0]
 
         # Handle mirrors, if present
         mirror_dirs = set();
@@ -1216,6 +1329,20 @@ This issue must be resolved before upgrade can complete.
                        ORDER BY dbname
                     ''', port=port)
 
+                    # Check that there are no prepared transactions
+                    #   - This doesn't really belong in BuildMappings, but in a different
+                    #     check upgrade location.  However this the first handy location we have
+                    #     where we are executing on all the segments and it is still relatively
+                    #     early in the process.
+                    #   - It will be run on the new database as well, which is neither helpful
+                    #     nor harmful.
+                    #   - Assuming we have sucessfully locked out all other users this should 
+                    #     never be true because startup will have rollbacked the transaction.
+                    for db in databases:
+                        xact = self.Select("SELECT count(*) FROM pg_prepared_xacts");
+                        if xact[0] > 0:
+                            raise UpgradeError("Database contains prepared transactions");
+
                     # Build up the list of mapping objects
                     for db in databases:
                         oids = self.Select(
@@ -1258,10 +1385,120 @@ This issue must be resolved before upgrade can complete.
 
 
     #------------------------------------------------------------
+    def CollectValidation(self):
+        '''
+        Executes queries to construct a view of how the data should
+        look.  We validate that it still looks the same once the upgrade
+        is complete.
+        '''
+
+        self.Log('INFO', 'Collecting validation information')
+        self.CheckUp()
+        [env, utility] = self.dbup
+
+        # The upgrader already guarantees that there is a 1:1 mapping of
+        # database objects that have disk files, but for object types 
+        # that have no disk files (views, functions, etc) we have to 
+        # add additional checks.
+        sourcename = os.path.join(self.tmpdir, 'source_verify')
+        targetname = os.path.join(self.tmpdir, 'target_verify')
+        if env == self.oldenv:
+            filename = sourcename
+        else:
+            filename = targetname
+        file = open(filename, 'w')
+
+        databases = self.Select(
+            '''
+               SELECT datname FROM pg_database
+               WHERE datname != 'template0'
+               ORDER by oid
+            ''')
+
+        # Check 1: generate a list of types and views.  
+        file.write('-- Types and Views\n')
+        for db in databases:
+            qry = self.Select(
+                '''
+                   SELECT n.nspname || '.' || c.relname as name, 
+                          pg_get_userbyid(c.relowner) as owner,
+                          array_out(c.relacl) as acl,
+                          c.relkind as kind
+                   FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
+                   WHERE c.relkind in ('v', 'c')
+                     AND n.nspname not in ('information_schema', 'pg_catalog')
+                   ORDER BY n.nspname, c.relname
+                ''', db=db)
+        for row in qry:
+            file.write('%s.%s,%s,%s,%s\n' %
+                       (db, row['name'], row['owner'], row['acl'], row['kind']))
+        file.write('\n')
+
+        # Check 2: Validation for sequences
+        file.write('-- Sequences\n')
+        for db in databases:
+            objs = self.Select(
+                '''
+                   SELECT n.nspname || '.' || c.relname as name
+                   FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
+                   WHERE c.relkind in ('S')
+                   ORDER BY name
+                ''', db=db)
+
+            for name in objs:
+                qry = self.Select(
+                    'SELECT * FROM %s' % name, db=db)
+                for row in qry:
+                    file.write('%s.%s,%s,%s,%s,%s,%s,%s\n' %
+                               (db, name,
+                                row['last_value'],
+                                row['increment_by'],
+                                row['max_value'],
+                                row['min_value'],
+                                row['is_cycled'],
+                                row['is_called']))
+        file.write('\n')
+
+        # Check 3: Validation for tables
+        file.write('-- Tables\n')
+        for db in databases:
+            objs = self.Select(
+                '''
+                   SELECT n.nspname || '.' || c.relname as name
+                   FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
+                   WHERE c.relkind in ('a', 'r')
+                     AND n.nspname !~ '(information_schema|pg_.*)'
+                   ORDER BY name
+                ''', db=db)
+            for name in objs:
+                qry = self.Select("SELECT count(*) from " + name, db=db)
+                for row in qry:
+                    file.write('%s.%s,%s\n' % (db, name, row))
+        
+        # Compare validation information
+        file.close()
+        if env != self.oldenv:
+            self.Log('INFO', 'Confirming Validation')
+            cmd = 'diff %s %s' % (sourcename, targetname)
+            try:
+                self.RunCmd(cmd)
+            except CmdError, e:
+                self.Log('FATAL', 'Validation failed:')
+                self.Log('FATAL', '  ' + cmd)
+                raise UpgradeError('Data Validation Failed')
+            self.Log('INFO', 'Data Validation Confirmed')
+
+
+    #------------------------------------------------------------
     def CheckCatalog(self, env):
         '''
         Validate that the created catalog looks good
         '''
+
+        if self.nocheckcat:
+            self.Log('INFO', 'Checking Catalog - Skipped')
+            return
+
         self.Log('INFO', 'Checking Catalog')
         self.CheckUp()
         databases = self.Select(
@@ -1269,7 +1506,7 @@ This issue must be resolved before upgrade can complete.
                SELECT datname FROM pg_database
                WHERE datname != 'template0'
                ORDER by oid
-            ''', port=self.masterport)
+            ''')
 
         try:
             exec_cmd = libdir + '/gpcheckcat -p %d ' % \
@@ -1291,8 +1528,10 @@ This issue must be resolved before upgrade can complete.
         '''
         self.Log('INFO', 'Exporting schema')
         self.oldenv['PGOPTIONS'] = '-c gp_session_role=utility'
-        subprocess.call('pg_dumpall -p %d --schema-only --gp-syntax > %s/pgdump.sql' %
-                        (self.masterport, self.tmpdir), env=self.oldenv, shell=True)
+        r = subprocess.call('pg_dumpall -p %d --schema-only --gp-syntax > %s/pgdump.sql' %
+                            (self.masterport, self.tmpdir), env=self.oldenv, shell=True)
+        if r:
+            raise UpgradeError('pg_dumpall exited with status %d' % r)
 
 
     #------------------------------------------------------------
@@ -1350,9 +1589,6 @@ This issue must be resolved before upgrade can complete.
         except OSError, e:
             self.Log('FATAL', str(e))
             raise UpgradeError('gpinitsystem failed')
-
-        self.Update('vacuum freeze', db='postgres', port=self.masterport)
-        self.Update('vacuum freeze', db='template1', port=self.masterport)
 
     #------------------------------------------------------------
     def ResetXLogs(self):
@@ -1490,6 +1726,12 @@ This issue must be resolved before upgrade can complete.
                 error = True
                 level = 'FATAL'
 
+            # If we've disabled schema checking then all schema errors 
+            # are converted to warnings
+            if self.nocheckschema:
+                level = 'WARN'
+                error = False
+
             self.Log(level, line)
 
         if error:
@@ -1505,11 +1747,13 @@ This issue must be resolved before upgrade can complete.
             '''
             SELECT datname FROM pg_database 
             WHERE datname != 'template0'
-            ''', port=self.masterport)
+            ''')
         for db in databases:
-            subprocess.call('psql -c "vacuum freeze" %s' % db,
-                            env=self.newenv, shell=True,
-                            stdout=self.logfile, stderr=self.logfile)
+            r = subprocess.call('psql -c "vacuum freeze" %s' % db,
+                                env=self.newenv, shell=True,
+                                stdout=self.logfile, stderr=self.logfile)
+            if r:
+                raise UpgradeError('Vacuum exited with status %d' % r)
 
     #------------------------------------------------------------
     def RemapOID(self):
@@ -1703,7 +1947,7 @@ This issue must be resolved before upgrade can complete.
          '''
             UPDATE gp_configuration 
               SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\\\1')
-         ''', port=self.masterport)
+         ''')
         self.Shutdown()
         self.newenv['MASTER_DATA_DIRECTORY'] = \
             self.oldenv['MASTER_DATA_DIRECTORY']
@@ -1733,17 +1977,25 @@ try:
         # Check that we can do the upgrade between the versions
         u.CheckVersions()
 
+        # User requested a revert to previous version
+        if u.revert:
+            u.Revert()
+            sys.exit(0)
+
         # Startup the old database in utility mode
-        u.Startup(u.oldenv, False)
+        u.Startup(u.oldenv, True)
 
         # Get configuration and catalog information
         # + Requires running old db on master host
         u.ExtractInfo()
 
-        # Check the catalog
-        # + Requires running db on all hosts
-        # + Requires configuration info collected in ExtractInfo
-        u.CheckCatalog(u.oldenv)
+        # Shutdown the old database to check clean shutdown
+        # + now that we have information about the configuration
+        #   running shutdown validates that all the other segments
+        #   were shutdown cleanly.
+        # + CheckDown above only checked the master node because that
+        #   was all we knew about at the time.
+        u.Shutdown()
 
         # Create working directories on all hosts
         # + Requires configuration info collected in ExtractInfo
@@ -1751,11 +2003,27 @@ try:
         u.CreateDirectories()
         u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
 
+        # Start the database back up on all hosts so that we can 
+        # gather information from them.
+        u.Startup(u.oldenv, False)
+
+        # Check the catalog
+        # + Requires running db on all hosts
+        # + Requires configuration info collected in ExtractInfo
+        u.CheckCatalog(u.oldenv)
+
         # Build up Source database OID/relfile mappings
         # + Requires running old db on all hosts
         # + Requires created directories so we can store the mapping file
         # + Requires execution on all hosts
         u.BuildMappings()
+
+        # Collect validation info so that we can verify that at the end
+        # of the upgrade the data still has the right visibility
+        # + Requires running old db on all hosts
+        # + Requires created directories so we can store the validation file
+        # + Requires execution on all hosts
+        u.CollectValidation()
 
         # Write configuration files for new db
         # + Requires configuration info collected in ExtractInfo
@@ -1810,24 +2078,45 @@ try:
         u.DeepLink('BACKUP')
         u.SetState('BACKUP VALID')
 
-        # --------
-        # Stage 2:
-        # -------- 
-        # The current state of the world is as follows
-        #    DATA_DIR/         = untouched original db
-        #    DATA_DIR/upgrade  = fully upgraded new db
-        #    DATA_DIR/backup   = untouched original db
-        # => Make a deep hard link copy of DATA_DIR/upgrade -> DATA_DIR
-        # => Adjust new pg_configuration to point to DATA_DIR
-        u.DeepLink('INSTALL')
-        u.FixConfig()
+        try:
+            # --------
+            # Stage 2:
+            # -------- 
+            # The current state of the world is as follows
+            #    DATA_DIR/         = contents unreliable
+            #    DATA_DIR/upgrade  = fully upgraded new db
+            #    DATA_DIR/backup   = untouched original db
+            # => Make a deep hard link copy of DATA_DIR/upgrade -> DATA_DIR
+            # => Adjust new pg_configuration to point to DATA_DIR
+            u.DeepLink('INSTALL')
+            u.FixConfig()
 
-        # Validate upgraded instance
-        u.Log('INFO', 'Validating upgraded instance')
-        u.Startup(u.newenv, False)
-        u.CheckCatalog(u.newenv)
-        u.Shutdown()
-        u.SetState('INSTALL VALID')
+            # Validate upgraded instance
+            u.Log('INFO', 'Validating upgraded instance')
+            u.Startup(u.newenv, False)
+            u.CheckCatalog(u.newenv)
+            u.CollectValidation()
+            u.Shutdown()
+            u.SetState('INSTALL VALID')
+
+            if u.warnings:
+                u.Log('WARN', '***************************************')
+                u.Log('WARN', 'Warnings encountered during upgrade.')
+                value = ''
+                while value.upper() not in ['Y', 'N']:
+                    try:
+                        value = raw_input('Finish Upgrade (Y/N)> ').upper()
+                    except EOFError: 
+                        value = 'N'
+                    if value not in ['Y', 'N']:
+                        print 'Invalid input'
+                if value == 'N':
+                    raise UpgradeError('Upgrade Cancelled')
+                u.Log('WARN', '***************************************')
+
+        except Exception, e:
+            u.Revert()
+            raise e
 
         # --------
         # Stage 3:
@@ -1853,6 +2142,7 @@ Upgrade Successful
 To complete the environment configuration
 1. Update %s .bashrc to source the file:
    %s/greenplum_path.sh
+2. Re-initialize standby master 
 --------------------------------------------
 ''' 
               % (u.user, u.newhome))
@@ -1863,7 +2153,14 @@ To complete the environment configuration
     elif u.cmd == 'SETSTATE':
         u.SetState(u.option)
     elif u.cmd == 'CHKDIR':
-        u.CheckDirectories()
+        try:
+            u.CheckDirectories()
+        except UpgradeError, e:
+            if str(e) == 'Directories exist':
+                sys.exit(1)
+            raise e
+    elif u.cmd == 'CHKDOWN':
+        u.CheckDown()
     elif u.cmd == 'MKDIR':
         u.CreateDirectories()
     elif u.cmd == 'RMDIR':
