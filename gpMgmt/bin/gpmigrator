@@ -25,6 +25,9 @@ try:
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
+MIGRATIONUSER = 'gpmigrator'
+LOCKEXT       = '.gpmigrator_orig'
+
 
 #============================================================
 def pretty_version(v):
@@ -79,7 +82,7 @@ class GPUpgrade:
     #   REMAPOID  - Link newdb to old oids, run on every host
     #   DEEPLINK  - Recursive hardlink
     commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG', 'MAPPINGS',
-                'REMAPOID', 'DEEPLINK', 'CHKDOWN']
+                'REMAPOID', 'DEEPLINK', 'CHKDOWN', 'LOCKDOWN', 'UNLOCK']
 
     #------------------------------------------------------------
     def __init__(self):
@@ -137,10 +140,7 @@ class GPUpgrade:
         '''
 
         # Set defaults 
-        self.user      = \
-            os.environ.get('PGUSER') or \
-            os.environ.get('USER')   or \
-            os.environ.get('LOGNAME')
+        self.user      = os.environ.get('USER') or os.environ.get('LOGNAME')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
 
@@ -148,7 +148,7 @@ class GPUpgrade:
 
         # Extract path from input master directory
         if self.cmd == 'MASTER':
-            u.Log('INFO', 'Begining upgrade')
+            u.Log('INFO', 'Beginning upgrade')
             u.Log('INFO', 'Checking configuration')
 
             if not self.masterdir:
@@ -176,25 +176,8 @@ class GPUpgrade:
                 raise UpgradeError('Could not determine master port from ' + conf)
 
             # Verify that (max_connections == superuser_reserved_connections)
-            max_conn = getconf('max_connections')
-            reserved = getconf('superuser_reserved_connections')
-
-            # DISABLED: This method of guarding doesn't work in 3.1
-#            if max_conn == None or max_conn != reserved:
-#                raise UpgradeError('''
-#Database is not reserved for superuser
-#In %s:
-#  max_connection = %s
-#  superuser_reserved_connections = %s
-#''' % (conf, max_conn, reserved))
-#                if max_conn < 4:
-#                    raise UpgradeError('''
-#Maximum connections is too low
-#max_connections >= 4 required for upgrade
-#In %s:
-#  max_connection = %s
-#  superuser_reserved_connections = %s
-#''' % (conf, max_conn, reserved))
+            # max_conn = getconf('max_connections')
+            # reserved = getconf('superuser_reserved_connections')
 
             masterpath, masterdir = os.path.split(self.masterdir)
             self.root   = masterpath
@@ -330,11 +313,18 @@ class GPUpgrade:
         Separate from __del__ because that caused weird issues with exit() 
         behavior.
         '''
-        try:
-            if self.cmd == 'MASTER':
+        if self.cmd == 'MASTER':
+            try:
                 self.Shutdown()
-        except Exception, e:
-            self.Log('FATAL', 'Cleanup failure: ' + str(e))
+            except Exception, e:
+                self.Log('FATAL', 'Cleanup failure: ' + str(e))
+
+            try:
+                self.ReleaseLockdown(self.oldenv)
+            except Exception, e:
+                self.Log('FATAL', 'Cleanup failure: ' + str(e))
+
+
 
     #------------------------------------------------------------
     def SetState(self, newstate):
@@ -379,6 +369,9 @@ class GPUpgrade:
                                 stdout=subprocess.PIPE, 
                                 stderr=subprocess.PIPE)
         result  = pipe.communicate();
+
+        if self.debug and not supressDebug:
+            self.Log('DEBUG', result[1])
 
         if pipe.returncode:
             raise CmdError(cmd, result[0], result[1])
@@ -493,7 +486,8 @@ class GPUpgrade:
             prefix = ''
         else:
             prefix = ':'.join(
-                [strftime('%Y%m%d:%H:%M:%S', localtime()), EXECNAME, self.host, self.user, '[%s]' % type, '-'])
+                [strftime('%Y%m%d:%H:%M:%S', localtime()), EXECNAME, 
+                 self.host, self.user, '[%s]' % type, '-'])
 
         try:
             for m in msg.splitlines():
@@ -504,19 +498,49 @@ class GPUpgrade:
                     self.logfile.write('%s%s\n' % (prefix, m))
                     self.logfile.flush()
 
-                if type == 'FATAL' or not self.quiet:
+                if type == 'FATAL' or type == 'WARN' or not self.quiet:
                     sys.stderr.write('%s%s\n' % (prefix, m))
         except:
             pass
 
     #------------------------------------------------------------
-    def Select(self, qry, db='template1', utility=True, port=None):
+    def Select(self, qry, db='template1', port=None):
         '''
         Execute a SQL query and return an array of result rows
            + Single columns will be returned as an array of values
            + Multiple columns will be returned as an array of tuples
         '''
-        
+
+        #
+        # This is a little gross!
+        #
+        #   If we are executing from one of the segments then we don't
+        #   actually know where the data directory is for the segment
+        #   is so we can't check if we are in lockdown mode
+        #
+        #   Fortunately we never actually lock the segments, so we can
+        #   always run as current user.
+        #
+        if self.cmd == 'MASTER':
+            if not self.dbup:
+                raise UpgradeError('database is down')
+            [env, utility] = self.dbup
+
+            locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
+                                  'pg_hba.conf'+LOCKEXT)
+            if os.path.exists(locked):
+                user = MIGRATIONUSER
+            else:
+                user = env['USER']
+
+        else:
+
+            # If we lockdown on segments this needs to change, some method
+            # would need to be made to determine if the segment in question
+            # is locked
+            user = self.user
+            utility = True
+
         if port == None:
             port = self.masterport
 
@@ -527,9 +551,11 @@ class GPUpgrade:
 
         conn = None
         try:
-            conn = pg8000.Connection(user=self.user, host=self.host,
-                                   database=db, options=options,
-                                   port=port)
+            conn = pg8000.Connection(user=user,
+                                     host=self.host,
+                                     database=db, 
+                                     options=options,
+                                     port=port)
         except Exception, e:
             self.Log('FATAL', 'Could not establish connection to database')
             raise ConnectionError(str(e))
@@ -551,10 +577,43 @@ class GPUpgrade:
         return rows
 
     #------------------------------------------------------------
-    def Update(self, qry, db='template1', utility=True, port=None):
+    def Update(self, qry, db='template1', port=None):
         '''
         Execute a SQL query expecting no output
         '''
+
+        #
+        # This is a little gross!
+        #
+        #   If we are executing from one of the segments then we don't
+        #   have the current database state, so we have to know what to
+        #   do via other means.
+        #
+        #   The assumption is:
+        #      A) utility = true
+        #      B) pguser = MIGRATIONUSER
+        #
+        #   If we ever need to run as the non-upgrade user from a segment
+        #   this code will obviously need to change
+        #
+        if self.cmd == 'MASTER':
+            if not self.dbup:
+                raise UpgradeError('database is down')
+            [env, utility] = self.dbup
+
+            locked = os.path.join(env['MASTER_DATA_DIRECTORY'], 
+                                  'pg_hba.conf'+LOCKEXT)
+            if os.path.exists(locked):
+                user = MIGRATIONUSER
+            else:
+                user = env['USER']
+        else:
+
+            # If we lockdown on segments this needs to change, some method
+            # would need to be made to determine if the segment in question
+            # is locked
+            user = self.user
+            utility = True
 
         if port == None:
             port = self.masterport
@@ -564,15 +623,23 @@ class GPUpgrade:
 
         conn = None
         try:
-            conn = pg8000.Connection(user=self.user, host=self.host,
-                                   database=db, options=options,
-                                   port=port)
+            conn = pg8000.Connection(user=user, 
+                                     host=self.host,
+                                     database=db, 
+                                     options=options,
+                                     port=port)
+        except Exception, e:
+            self.Log('FATAL', 'Could not establish connection to database')
+            raise ConnectionError(str(e))
+
+        try:
             conn.execute(qry)
         except Exception, e:
-            raise ConnectionError("Error (%s) executing sql: %s" %
-                                  (str(e), qry))
+            self.Log('FATAL', 'Error executing SQL')
+            raise ConnectionError('%s\nsql> %s' % (str(e), qry))
+
         finally:
-            if conn: conn.close()
+            conn.close()
 
     #------------------------------------------------------------
     def CheckDown(self):
@@ -648,7 +715,7 @@ Greenplum segment %s did not shutdown cleanly:
         raise UpgradeError("Postmaster failed to start")
 
     #------------------------------------------------------------
-    def Startup(self, env, utility):
+    def Startup(self, env, utility=False):
         '''
         Starts up the specified database
         '''
@@ -661,14 +728,27 @@ Greenplum segment %s did not shutdown cleanly:
             self.Log('INFO', 'Starting old Greenplum postmaster')
         else:
             self.Log('INFO', 'Starting new Greenplum postmaster')
-        try:
 
+        try:
             if utility:  cmd = 'gpstart -a -m'
             else:        cmd = 'gpstart -a'
-            pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
-                                   env=env, shell=True,
-                                   stdout=self.logfile, 
-                                   stderr=self.logfile)
+
+            locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
+                                  'pg_hba.conf'+LOCKEXT)
+            try:
+                if os.path.exists(locked):
+                    env['PGUSER'] = MIGRATIONUSER
+                    self.Log('DEBUG', "lockfile: '%s' exists" % locked)
+                else:
+                    self.Log('DEBUG', "lockfile: '%s' does not exist" % locked)
+
+                pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
+                                       env=env, shell=True,
+                                       stdout=self.logfile, 
+                                       stderr=self.logfile)
+            finally:
+                if os.path.exists(locked):
+                    del env['PGUSER']
 
             # Ignore interupt requests until startup is done
             error = None
@@ -737,14 +817,26 @@ Greenplum segment %s did not shutdown cleanly:
         else:
             self.Log('INFO', 'Shutting down new Greenplum postmaster')
 
-        try:
+        locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
+                              'pg_hba.conf'+LOCKEXT)
 
+        try:
             if utility:  cmd = 'gpstop -fzam'
             else:        cmd = 'gpstop -fza'
-            pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
-                                   env=env, shell=True,
-                                   stdout=self.logfile, 
-                                   stderr=self.logfile)
+
+            locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
+                                  'pg_hba.conf'+LOCKEXT)
+            try:
+                if os.path.exists(locked):
+                    env['PGUSER'] = MIGRATIONUSER
+
+                pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
+                                       env=env, shell=True,
+                                       stdout=self.logfile, 
+                                       stderr=self.logfile)
+            finally:
+                if os.path.exists(locked):
+                    del env['PGUSER']
 
             # Ignore interupt requests until startup is done
             error = None
@@ -812,7 +904,14 @@ Greenplum segment %s did not shutdown cleanly:
             if line == 'BACKUP VALID':
                 needrevert = True
 
-        if needrevert:
+        hba   = os.path.join(self.masterdir, 'pg_hba.conf'+LOCKEXT)
+        ident = os.path.join(self.masterdir, 'pg_ident.conf'+LOCKEXT)
+        if os.path.exists(hba) or os.path.exists(ident):
+            needunlock = True
+        else:
+            needunlock = False
+
+        if (needrevert or needunlock) and len(self.hosts) < 1:
 
             # grab configuration information from generated init file
             initfile = os.path.join(self.tmpdir, 'gp_init_config')
@@ -851,10 +950,19 @@ Greenplum segment %s did not shutdown cleanly:
             hosts = self.RunCmd('cat ' + hostfile)
             self.hosts = hosts.split('\n')
 
-            # Attempt revert
+        # Attempt revert
+        if needrevert:
+            self.Log('INFO', 'Restoring directories')
             self.DeepLink('REVERT')
 
-        self.Cleanup()
+        if needunlock:
+            self.ReleaseLockdown(self.oldenv)
+
+        self.Startup(self.newenv)
+        self.Log('INFO', 'Removing upgrade user')
+        self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
+        self.Shutdown()
+
         self.Log('INFO', 'Revert Successful')
         # self.RemoveDirectories(True)
 
@@ -1053,6 +1161,7 @@ tool shipped with that release''')
                     raise UpgradeError('Upgrade Cancelled')
                 if value == 'R':
                     self.Revert()
+                    self.Startup(self.oldenv)
                 self.RemoveDirectories(force=True)
                 self.CreateDirectories()
                 return
@@ -1174,21 +1283,13 @@ tool shipped with that release''')
             raise UpgradeError('Cannot upgrade database with invalid segments')
         self.Log('INFO', 'All segments valid')
 
-        # Validate that the current user is the only user with superuser privledges
-        priv = self.Select(
-        '''
-           SELECT  usename, current_user = usename as current_user
-           FROM    pg_user
-           WHERE   usesuper
-        ''')
-
-        # Disabled - need different method of locking down the system
-        
-        #if len(priv) > 1:
-        #    raise UpgradeError('Cannot upgrade a database with multiple super users')
-        #if not priv[0]['current_user']:
-        #    raise UpgradeError('Current user is not a database super user')
-
+        # Look for an existing user named MIGRATIONUSER
+        upgradeuser = self.Select(
+            "SELECT count(*) FROM pg_user WHERE usename = '%s'" % MIGRATIONUSER)
+        if upgradeuser[0] > 0:
+            self.Log('WARN', "Database user '%s' already exists" % MIGRATIONUSER)
+            self.Update('DROP USER ' + MIGRATIONUSER)
+            #raise UpgradeError("Database user 'gpmigrator' already exists")
 
         # If this is a downgrade, verify that we have no objects that can not
         # be downgraded:
@@ -1344,6 +1445,143 @@ This issue must be resolved before upgrade can complete.
 
         self.Log('INFO', 'Configuration acquired')
 
+
+    #------------------------------------------------------------
+    def SetupLockdown(self):
+        '''
+        Change pg_hba.conf to disallow access to everyone except the
+        upgrade user.
+        
+        We assume that the MIGRATIONUSER user has already been created
+        '''
+
+        if self.cmd == 'MASTER':
+            self.Log('INFO', 'Locking database')
+            self.CheckUp()
+            [env, utility] = self.dbup;
+            if utility:
+                raise UpgradeError("Cannot lock database in utility mode")
+
+            self.Update('CREATE USER %s with superuser' % MIGRATIONUSER)
+            self.Shutdown()
+            
+            datadirs   = [self.root]
+            seg_prefix = self.config['SEG_PREFIX'] + '-'
+
+            if env == self.oldenv: suffix = ""
+            else: suffix = 'upgrade'
+
+            
+            # locking down the segments requires having gpstart
+            # pass the PGUSER to the segments otherwise the segments
+            # don't have the permissions to startup.
+            # 
+            # Disabling this leaves a "hole" in the lockdown that
+            # still allows utility connections to the segments.
+            #
+            # If this is re-enabled the corresponding call also needs
+            # to be uncommented from ReleaseLockdown
+            
+            # The one case where we still call this is for "lockdown" of
+            # the newly inited DB.  Lockdown in this case is just copying
+            # the pg_hba.conf, pg_ident.conf, and postgresql.conf from 
+            # the old database.
+            if suffix:
+                self.CallSlaves('LOCKDOWN', self.config['SEG_PREFIX'], suffix)
+
+        else:
+            datadirs   = self.datadirs
+            seg_prefix = self.option
+            suffix     = self.option2
+
+        seg_re = re.compile('^%s\d+$' % seg_prefix)
+        for d in datadirs:
+
+            # Find the segments for this directory
+            for seg in os.listdir(d):
+                if seg_re.match(seg):
+                    hba   = os.path.join(d, seg, 'pg_hba.conf')
+                    ident = os.path.join(d, seg, 'pg_ident.conf')
+
+                    if suffix:
+                        dir = os.path.join(d, suffix, seg)
+
+                        # upgrade database just copies all locking information 
+                        # from the pre-upgrade database which should already be
+                        # locked
+                        self.RunCmd('cp -f %s %s' % (hba, dir))
+                        self.RunCmd('cp -f %s %s' % (ident, dir))
+
+                        # Grab the original versions to (if any)
+                        if os.path.exists(hba + LOCKEXT):
+                            self.RunCmd('cp -f %s %s' % (hba+LOCKEXT, dir))
+                        if os.path.exists(ident + LOCKEXT):
+                            self.RunCmd('cp -f %s %s' % (ident+LOCKEXT, dir))
+
+                        # and we also copy postgresql.conf
+                        postconf = os.path.join(d, seg, 'postgresql.conf')
+                        self.RunCmd('cp -f %s %s' % (postconf, dir))
+
+                    else:
+                        # pre-upgrade database makes a backup of files and then
+                        # writes a new one
+                        self.RunCmd('mv -f %s %s' % (hba, hba+LOCKEXT))
+                        self.RunCmd('mv -f %s %s' % (ident, ident+LOCKEXT))
+                        file = open(hba, 'w')
+                        file.write('local all %s ident %s\n' 
+                                   % (MIGRATIONUSER, MIGRATIONUSER))
+                        file.write('host  all %s 127.0.0.1/32 trust\n'
+                                   % (MIGRATIONUSER))
+                        file.close()
+                        file = open(ident, 'w')
+                        file.write('%s %s %s\n' % 
+                                   (MIGRATIONUSER, self.user, MIGRATIONUSER))
+                        file.close()
+
+    #------------------------------------------------------------
+    def ReleaseLockdown(self, env):
+        '''
+        Revert pg_hba.conf to pre-lockdown state
+        '''
+
+        # Two main cases:
+        #   1) Release lockdown on old environment
+        #   2) Release lockdown on newly installed environment
+        # Both cases have the database installed under MASTER_DATA_DIRECTORY
+        # so we actually treat them exactly the same
+
+        if self.cmd == 'MASTER':
+            self.Log('INFO', 'Unlocking database')
+            self.CheckDown()
+
+            # See comment about disabling lockdown on segments in SetupLockdown()
+            # self.CallSlaves('UNLOCK', self.config['SEG_PREFIX'])
+
+            seg_prefix = self.config['SEG_PREFIX'] + '-'
+            datadirs   = [self.root]
+        else:
+            seg_prefix = self.option
+            datadirs   = self.datadirs
+
+        seg_re = re.compile('^%s\d+$' % seg_prefix)
+        for d in datadirs:
+
+            # Find the segments for this directory
+            for seg in os.listdir(d):
+                if seg_re.match(seg):
+                    hba   = os.path.join(d, seg, 'pg_hba.conf')
+                    ident = os.path.join(d, seg, 'pg_ident.conf')
+                    if os.path.exists(hba + LOCKEXT):
+                        self.RunCmd('mv -f %s %s' % (hba+LOCKEXT, hba))
+                    if os.path.exists(ident + LOCKEXT):
+                        self.RunCmd('mv -f %s %s' % (ident+LOCKEXT, ident))
+
+
+        # We would love to actually delete the user, but it's not actually
+        # safe to do so here because we unlock the source database before we
+        # are done with the upgrade.
+        return
+ 
 
     #------------------------------------------------------------
     def BuildMappings(self):
@@ -1522,8 +1760,7 @@ This issue must be resolved before upgrade can complete.
                 ''', db=db)
 
             for name in objs:
-                qry = self.Select(
-                    'SELECT * FROM %s' % name, db=db)
+                qry = self.Select('SELECT * FROM %s' % name, db=db)
                 for row in qry:
                     file.write('%s.%s,%s,%s,%s,%s,%s,%s\n' %
                                (db, name,
@@ -1585,8 +1822,16 @@ This issue must be resolved before upgrade can complete.
             ''')
 
         try:
-            exec_cmd = libdir + '/gpcheckcat -p %d ' % \
-                self.config['MASTER_PORT']
+            locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
+                                  'pg_hba.conf'+LOCKEXT)
+            if os.path.exists(locked):
+                user = MIGRATIONUSER
+            else:
+                user = env['USER']
+
+            exec_cmd = libdir + '/gpcheckcat -p %d -U %s ' % \
+                (self.config['MASTER_PORT'], user)
+
             for db in databases:
                 self.RunCmd(exec_cmd + db, env=env)
 
@@ -1604,8 +1849,18 @@ This issue must be resolved before upgrade can complete.
         '''
         self.Log('INFO', 'Exporting schema')
         self.oldenv['PGOPTIONS'] = '-c gp_session_role=utility'
-        r = subprocess.call('pg_dumpall -p %d --schema-only --gp-syntax > %s/pgdump.sql' %
-                            (self.masterport, self.tmpdir), env=self.oldenv, shell=True)
+
+
+        locked = os.path.join(self.oldenv['MASTER_DATA_DIRECTORY'], 
+                              'pg_hba.conf'+LOCKEXT)
+        if os.path.exists(locked):
+            user = MIGRATIONUSER
+        else:
+            user = self.oldenv['USER']
+
+        r = subprocess.call('pg_dumpall -U %s -p %d -s --gp-syntax > %s/pgdump.sql' %
+                            (user, self.masterport, self.tmpdir), 
+                            env=self.oldenv, shell=True)
         if r:
             raise UpgradeError('pg_dumpall exited with status %d' % r)
 
@@ -1641,7 +1896,7 @@ This issue must be resolved before upgrade can complete.
                         self.interupted = True
                         error = e
                     else:
-                        self.Log('INFO',  'SIGINT-: Still processing shutdown')                    
+                        self.Log('INFO',  'SIGINT-: Still processing shutdown')
 
             # If we recieved an interupt, resignal it now that the startup is done
             if error: 
@@ -1765,14 +2020,6 @@ This issue must be resolved before upgrade can complete.
                             if (os.path.exists(oldlogs)):
                                 self.RunCmd('cp -rf %s %s' % (oldlogs, newlogs))
 
-
-                    # Do the same for the .conf files
-                    for f in ['pg_hba', 'pg_ident', 'postgresql']:
-                        self.RunCmd('rm -f %s/%s.conf' % (newdir, f))
-                        self.RunCmd('cp -f %s/%s.conf %s/.' 
-                                    % (olddir, f, newdir))
-
-
     #------------------------------------------------------------
     def ImportSchema(self):
         self.CheckUp()
@@ -1780,7 +2027,17 @@ This issue must be resolved before upgrade can complete.
 
         error   = False
         warning = False
-        pipe = subprocess.Popen('psql -q -f %s/pgdump.sql template1' % self.tmpdir,
+
+
+        locked = os.path.join(self.newenv['MASTER_DATA_DIRECTORY'],
+                              'pg_hba.conf'+LOCKEXT)
+        if os.path.exists(locked):
+            user = MIGRATIONUSER
+        else:
+            user = self.newenv['USER']
+
+        pipe = subprocess.Popen('psql -q -U %s -f %s/pgdump.sql template1' % 
+                                (user, self.tmpdir),
                                 env=self.newenv, shell=True,
                                 stdout=subprocess.PIPE, 
                                 stderr=subprocess.PIPE)
@@ -1833,7 +2090,7 @@ This issue must be resolved before upgrade can complete.
             WHERE datname != 'template0'
             ''')
         for db in databases:
-            r = subprocess.call('psql -c "vacuum freeze" %s' % db,
+            r = subprocess.call('psql -U %s -c "vacuum freeze" %s' % (user, db),
                                 env=self.newenv, shell=True,
                                 stdout=self.logfile, stderr=self.logfile)
             if r:
@@ -2026,7 +2283,7 @@ This issue must be resolved before upgrade can complete.
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Log('INFO', 'Adjusting gp_configuration')
-        self.Startup(self.newenv, True)
+        self.Startup(self.newenv, utility=True)
         self.Update(
          '''
             UPDATE gp_configuration 
@@ -2066,20 +2323,12 @@ try:
             u.Revert()
             sys.exit(0)
 
-        # Startup the old database in utility mode
-        u.Startup(u.oldenv, True)
+        # Startup the old database
+        u.Startup(u.oldenv)
 
         # Get configuration and catalog information
         # + Requires running old db on master host
         u.ExtractInfo()
-
-        # Shutdown the old database to check clean shutdown
-        # + now that we have information about the configuration
-        #   running shutdown validates that all the other segments
-        #   were shutdown cleanly.
-        # + CheckDown above only checked the master node because that
-        #   was all we knew about at the time.
-        u.Shutdown()
 
         # Create working directories on all hosts
         # + Requires configuration info collected in ExtractInfo
@@ -2087,19 +2336,34 @@ try:
         u.CreateDirectories()
         u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
 
+        # Write configuration files for new db
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires working directory on master node
+        u.GenerateConfigFiles()
+
+        # SetupLockdown:
+        # + Requires the database to be up
+        # + Creates the upgrade user
+        # + Shuts the database down
+        # + Adjusts hba_conf to only allow upgrade user access
+        # + Database is left down
+        u.SetupLockdown()
+
         # Start the database back up on all hosts so that we can 
         # gather information from them.
-        u.Startup(u.oldenv, False)
+        u.Startup(u.oldenv)
 
         # Check the catalog
         # + Requires running db on all hosts
         # + Requires configuration info collected in ExtractInfo
+        # + Requires Lockdown
         u.CheckCatalog(u.oldenv)
 
         # Build up Source database OID/relfile mappings
         # + Requires running old db on all hosts
         # + Requires created directories so we can store the mapping file
         # + Requires execution on all hosts
+        # + Requires Lockdown
         u.BuildMappings()
 
         # Collect validation info so that we can verify that at the end
@@ -2107,16 +2371,13 @@ try:
         # + Requires running old db on all hosts
         # + Requires created directories so we can store the validation file
         # + Requires execution on all hosts
+        # + Requires Lockdown
         u.CollectValidation()
-
-        # Write configuration files for new db
-        # + Requires configuration info collected in ExtractInfo
-        # + Requires working directory on master node
-        u.GenerateConfigFiles()
 
         # Call pg_dumpall and put results in a file
         # + Requires running old db
         # + Requires working directory on master node
+        # + Requires Lockdown
         u.DumpSchema()
 
         # All information collected, shutdown old database
@@ -2125,9 +2386,19 @@ try:
         # Initalize the new database
         # + Requires working directories on all nodes
         # + Requires generated configuration file
-        u.InitNewDB()      # leaves newdb up
+        u.InitNewDB()
+
+        # Lockdown the newDB
+        # + Requires the database to be up
+        # + Shuts the database down
+        u.SetupLockdown()
+
+        # Import schema and build the mappings
+        u.Startup(u.newenv)
         u.ImportSchema()
         u.BuildMappings()
+
+        # Reset the Xlogs
         u.Shutdown()
         u.ResetXLogs()
 
@@ -2137,7 +2408,7 @@ try:
         u.RemapOID()
 
         # Confirm that the resync/remapping was successful
-        u.Startup(u.newenv, True)
+        u.Startup(u.newenv, utility=True)
         u.Shutdown()
         u.SetState('NEWDB VALID')
 
@@ -2159,6 +2430,7 @@ try:
         #    DATA_DIR/upgrade  = fully upgraded new db
         #    DATA_DIR/backup   = empty except for the state and flag files.
         # => Make a deep hardlink copy of DATA_DIR -> DATA_DIR/backup
+        u.ReleaseLockdown(u.oldenv)
         u.DeepLink('BACKUP')
         u.SetState('BACKUP VALID')
 
@@ -2177,10 +2449,23 @@ try:
 
             # Validate upgraded instance
             u.Log('INFO', 'Validating upgraded instance')
-            u.Startup(u.newenv, False)
+            u.Startup(u.newenv)
             u.CheckCatalog(u.newenv)
             u.CollectValidation()
             u.Shutdown()
+
+            # Everything upgraded and validated
+            # + Release the lockdown
+            # + Mark install valid
+            u.ReleaseLockdown(u.newenv)
+
+            # Finally, drop the upgrade user
+            u.Startup(u.newenv)
+            u.Log('INFO', "Removing user '%s'" % MIGRATIONUSER)
+            u.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
+            u.Shutdown()
+
+            # Done, validated, user dropped
             u.SetState('INSTALL VALID')
 
             if u.warnings:
@@ -2199,6 +2484,7 @@ try:
                 u.Log('WARN', '***************************************')
 
         except Exception, e:
+            u.Log('FATAL', str(e))
             u.Revert()
             raise e
 
@@ -2226,7 +2512,7 @@ Upgrade Successful
 To complete the environment configuration
 1. Update %s .bashrc to source the file:
    %s/greenplum_path.sh
-2. Re-initialize standby master 
+2. Re-initialize standby master
 --------------------------------------------
 ''' 
               % (u.user, u.newhome))
@@ -2245,6 +2531,10 @@ To complete the environment configuration
             raise e
     elif u.cmd == 'CHKDOWN':
         u.CheckDown()
+    elif u.cmd == 'LOCKDOWN':
+        u.SetupLockdown()
+    elif u.cmd == 'UNLOCK':
+        u.ReleaseLockdown(None)
     elif u.cmd == 'MKDIR':
         u.CreateDirectories()
     elif u.cmd == 'RMDIR':
