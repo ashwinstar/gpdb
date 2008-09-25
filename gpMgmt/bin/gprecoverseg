@@ -322,11 +322,9 @@ def chk_pool_host(db, failed_dbids):
 
     if pool_hostname in hostname:
         predicate = ' or '.join(["hostname='%s'" % h for h in hostname[pool_hostname] ])
+        gpmlib.log_info('List of hosts [%s] shares the same host as pool host %s' % (','.join(hostname[pool_hostname]), opt['-p']))
     else:
         predicate = "hostname='%s'" % opt['-p']
-
-    gpmlib.log_info('List of hostname [%s] shares the same host as pool_host %s' % (','.join(hostname), opt['-p']))
-    gpmlib.log_info('statement predicate = %s' % predicate)
 
     db.execute("select datadir from gp_configuration where definedprimary='t' and (%s)" %  (predicate))
     pri_pool_host_in_use = [ r[0] for r in db.iterate_tuple() ]
