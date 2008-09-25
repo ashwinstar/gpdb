@@ -102,6 +102,12 @@ int			gp_reject_percent_threshold; /* SREH reject % kicks off only after *
 bool          gp_select_invisible=false; /* debug mode to allow select to see "invisible" rows */
 
 /*
+ * Configurable timeout for snapshot add: exceptionally busy systems may take
+ * longer than our old hard-coded version -- so here is a tuneable version.
+ */
+int			gp_snapshotadd_timeout=10;
+
+/*
  * gp_enable_slow_writer_testmode
  *
  * In order facilitate testing of reader-gang/writer-gang synchronization,

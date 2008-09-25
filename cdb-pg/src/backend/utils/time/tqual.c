@@ -240,7 +240,7 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int nextSlot = -1;
 	int i;
-	int retryCount=0;
+	int retryCount = gp_snapshotadd_timeout * 10; /* .1 s per wait */
 
 retry:
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
@@ -267,11 +267,11 @@ retry:
 		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d", slotId, retryCount);
 		LWLockRelease(SharedSnapshotLock);
 
-		if (retryCount < 5)
+		if (retryCount > 0)
 		{
-			retryCount++;
+			retryCount--;
 
-			pg_usleep(100000); /* 100ms, wait .5s max. */
+			pg_usleep(100000); /* 100ms, wait gp_snapshotadd_timeout seconds max. */
 			goto retry;
 		}
 		else

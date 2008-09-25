@@ -347,6 +347,7 @@ extern const char *show_gp_set_read_only(void);
 extern const char *role_to_string(GpRoleValue role);
 
 extern int	gp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
+extern int	gp_snapshotadd_timeout; /* GUC var - timeout specifier for snapshot-creation wait */
 
 /*
  * Parameter Gp_max_packet_size

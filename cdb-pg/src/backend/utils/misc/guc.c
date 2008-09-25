@@ -2784,7 +2784,17 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S | GUC_GPDB_ADDOPT
 		},
 		&interconnect_setup_timeout,
-		20, 0, INT_MAX, NULL, NULL
+		20, 0, 3600, NULL, NULL
+	},
+
+	{
+		{"gp_snapshotadd_timeout", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Timeout (in seconds) on setup of new connection snapshot"),
+			gettext_noop("Used by the transaction manager."),
+			GUC_UNIT_S | GUC_GPDB_ADDOPT
+		},
+		&gp_snapshotadd_timeout,
+		10, 0, INT_MAX, NULL, NULL
 	},
 
 	{
