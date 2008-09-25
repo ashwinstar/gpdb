@@ -445,7 +445,7 @@ pygres: GPROOTDEP
 
 authlibs: GPROOTDEP
 	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
-	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openlssl-0.9.8g-co.log 2>&1
+	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openssl-0.9.8g-co.log 2>&1
 	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
 	cvs co -d curl-7.17.1 ThirdPartyTools/curl-7.17.1 > curl-7.17.1-co.log 2>&1
 
