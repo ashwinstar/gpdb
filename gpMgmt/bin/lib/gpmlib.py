@@ -400,7 +400,7 @@ def postgres_active(port, host=None):
         log_info('No socket connection or lock file in /tmp found for %s port=%d' % (host and host or '', port))
     else:
         if not pg_lock_tmp and pg_lock_netstat != 0:
-            print '[WARN]:-No lock file %s but process running on %s port %d' % (pg_lock_file, host and host or '', port)
+            log_warn('No lock file %s but process running on %s port %d' % (pg_lock_file, host and host or '', port))
             ret = 1
 
         if pg_lock_tmp and pg_lock_netstat == 0:
@@ -410,8 +410,8 @@ def postgres_active(port, host=None):
                     return (ok, pid)
                 pid = int(out[0])
             else:
-                print '[WARN]:-Unable to access %s' % pg_lock_file
-            print '[WARN]:-Have lock file %s but no process running on %s port %d' % (pg_lock_file, host and host or '', port)
+                log_warn('Unable to access %s' % pg_lock_file)
+            log_warn('Have lock file %s but no process running on %s port %d' % (pg_lock_file, host and host or '', port))
             ret = 1
         if pg_lock_tmp and pg_lock_netstat != 0:
             if file_exists(file=pg_lock_file, host=host):
@@ -420,7 +420,7 @@ def postgres_active(port, host=None):
                     return (ok, pid)
                 pid = int(out[0])
             else:
-                print '[WARN]:-Unable to access %s' % pg_lock_file
+                log_warn('Unable to access %s' % pg_lock_file)
                 ret = 1
             #log_info('Have lock file %s and a process running on %s port %d' % (pg_lock_file, host and host or '', port))
 
@@ -616,7 +616,7 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
                     else:
                         tmpf.write(line)
             except IOError, e:
-                print e
+                log_error(str(e))
                 return False
         finally:
             if f: f.close()
@@ -625,7 +625,7 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
         try:
             os.rename(tmpfile, file)
         except OSError, e:
-            print 'rename file from %s to %s failed' % (tmpfile, file)
+            log_error('rename file from %s to %s failed' % (tmpfile, file))
             return False
 
 
@@ -654,7 +654,8 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                      logfile))
 
     if not ok:
-        fatal('failed to synchronize data from primary segment to mirror segment')
+        fatal('failed to synchronize data from primary segment %s:%s to mirror segment %s:%s' % (src_host, src_dir, 
+                                                                                                 dst_cfg['hostname'], dst_cfg['datadir']))
 
     # delete postmaster.pid in case active segment is still running
     postmaster_pid = os.path.join(dst_cfg['datadir'], 'postmaster.pid')
