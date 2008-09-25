@@ -1882,9 +1882,10 @@ typedef struct UniqueState
  */
 typedef struct HashState
 {
-	PlanState	ps;				/* its first field is NodeTag */
+	PlanState	ps;		/* its first field is NodeTag */
 	HashJoinTable hashtable;	/* hash table for the hashjoin */
 	List	   *hashkeys;		/* list of ExprState nodes */
+	bool 	hs_keepnull;		/* Keep nulls */ 
 	/* hashkeys is same as parent's hj_InnerHashKeys */
 } HashState;
 

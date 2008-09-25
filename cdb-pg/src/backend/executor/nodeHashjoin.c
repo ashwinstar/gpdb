@@ -425,6 +425,8 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	 * set up correctly.
 	 */
 	innerPlanState(hjstate) = ExecInitNode((Plan *) hashNode, estate, eflags);
+	((HashState *) innerPlanState(hjstate))->hs_keepnull = hjstate->hj_nonequijoin;
+
 	outerPlanState(hjstate) = ExecInitNode(outerNode, estate, eflags);
 
 #define HASHJOIN_NSLOTS 3
