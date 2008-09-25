@@ -302,11 +302,37 @@ def chk_pool_host(db, failed_dbids):
     (pri_fail_count, mir_fail_count) = get_fail_count_type(db, failed_dbids)
     
     # Check for directores in use
-    db.execute("select datadir from gp_configuration where hostname='%s' and definedprimary='t'" %  (opt['-p']))
+    db.execute("select distinct hostname from gp_configuration where content<>-1")
+    hostlist = [ r[0] for r in db.iterate_tuple() ]
+    hostname = {}
+    for host in hostlist:
+        (ok, out) = gpmlib.run('%s hostname' % (gplib.ssh_prefix(host=host)))
+        if not ok:
+            gpmlib.fatal('ssh failed to connect host %s' % host)
+        hn = out[0].strip()
+        if hn not in hostname:
+            hostname[hn] = []
+        hostname[hn].append(host)
+            
+    (ok, out) = gpmlib.run('%s hostname' % (gplib.ssh_prefix(host=opt['-p'])))
+    if not ok:
+        gpmlib.fatal('ssh failed to connect pool host %s' % opt['-p'])
+        
+    pool_hostname = out[0].strip()
+
+    if pool_hostname in hostname:
+        predicate = ' or '.join(["hostname='%s'" % h for h in hostname[pool_hostname] ])
+    else:
+        predicate = "hostname='%s'" % opt['-p']
+
+    gpmlib.log_info('List of hostname [%s] shares the same host as pool_host %s' % (','.join(hostname), opt['-p']))
+    gpmlib.log_info('statement predicate = %s' % predicate)
+
+    db.execute("select datadir from gp_configuration where definedprimary='t' and (%s)" %  (predicate))
     pri_pool_host_in_use = [ r[0] for r in db.iterate_tuple() ]
     gpmlib.log_info('Pool host %s active primary segment count = %d' % (opt['-p'], len(pri_pool_host_in_use)))
 
-    db.execute("select datadir from gp_configuration where hostname='%s' and definedprimary='f'" %  (opt['-p']))    
+    db.execute("select datadir from gp_configuration where definedprimary='f' and (%s)" %  (predicate))    
     mir_pool_host_in_use = [ r[0] for r in db.iterate_tuple() ]
     gpmlib.log_info('Pool host %s active mirror segment count = %d' % (opt['-p'], len(mir_pool_host_in_use)))
     
@@ -1061,7 +1087,7 @@ def pool_dir_validation(db, failed_instance_array):
 # @param pri_used  is a list of hostname used by primary segment recovery
 # @param mir_used  is a list of hostname used by mirror segment recovery
 #
-#  partner_host is the recovery segment located
+#  partner_host is where the recovery segment located
 #  for host in pool_dir_host_chk_array
 #  do
 #     if host is not in used array then
@@ -1252,8 +1278,44 @@ def test_access(failed_instance_array, active_instance_array):
         if not ok:
             gpmlib.fatal('write file to remote host %s failed' % active_qe['hostname'])            
 
-        # TODO: check rsync instead of ssh
+        # check pysync.py
+        try:
+            src_dir = '/tmp/remote_dir1.%d' % os.getpid()
+            dst_dir = '/tmp/remote_dir2.%d' % os.getpid()
+            (ok, out) = gpmlib.run('%s "cd /tmp && mkdir %s && echo test > %s"' %
+                                   (gplib.ssh_prefix(host=active_qe['hostname']), src_dir, os.path.join(src_dir, 'sync.dat')))
+            if not ok:
+                gpmlib.log_fatal('failed to create directory %s on %s' % (src_dir, active_qe['hostname']))
+                raise Exception
+                
+            (ok, out) = gpmlib.run('%s "cd /tmp && mkdir %s"' %
+                                   (gplib.ssh_prefix(host=failed_qe['hostname']), dst_dir))
+            if not ok:
+                gpmlib.log_fatal('failed to create directory %s on %s' % (dst_dir, failed_qe['hostname']))
+                raise Exception
+
+            cmd = gpmlib.makeCommand('%s -v -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
+                                                                     src_dir,
+                                                                     failed_qe['hostname'],
+                                                                     dst_dir))
+            (ok, out) = gpmlib.run('%s "%s" >> %s 2>&1' %
+                                   (gplib.ssh_prefix(host=active_qe['hostname']),
+                                    cmd,
+                                    opt['-l']))
         
+            if not ok:
+                gpmlib.log_fatal('failed to synchronize data from active segment to failed segment')
+                raise Exception
+
+        except Exception, e:
+            gpmlib.fatal('Remote access checks failed.')
+        finally:
+            (ok, out) = gpmlib.run('%s "cd /tmp && rm -rf %s"' %
+                                   (gplib.ssh_prefix(host=active_qe['hostname']), src_dir))
+
+            (ok, out) = gpmlib.run('%s "cd /tmp && rm -rf %s"' %
+                                   (gplib.ssh_prefix(host=failed_qe['hostname']), dst_dir))
+
     gpmlib.log_info('Remote access checks completed')
 
 
