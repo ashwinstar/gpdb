@@ -5,7 +5,7 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-S failed_dbid] [-B number] [-t timeout]
+Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-S failed_dbid] [-B number] [-T timeout]
            
           General options:
           -v        : print version information
@@ -21,7 +21,7 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
           -o        : <output_config> output configuration file
 
           Recovery options:
-          -t        : <timeout> in second [default: 1800 seconds]
+          -T        : <timeout> in second [default: 1800 seconds]
           -l        : <log directory> alternative log file directory [optional]
           -p        : <hostname> recover to spare pool node
                           the pool host must have the following characteristics:
@@ -87,7 +87,7 @@ opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
 opt['-S'] = 0
-opt['-t'] = 1800
+opt['-T'] = 1800
 
 arg = {}
 arg['exit'] = 0
@@ -106,7 +106,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafs:d:z:B:p:l:i:o:S:c:t:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafs:d:z:B:p:l:i:o:S:c:T:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -126,7 +126,7 @@ def parseCommandLine():
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
         elif (switch == '-S'):        opt[switch] = int(val)
-        elif (switch == '-t'):        opt[switch] = int(val)
+        elif (switch == '-T'):        opt[switch] = int(val)
         elif (switch == '-c'):        gpmlib.log_info('Option -c is obsolete.  This option will be ignored')
 
     gpmlib.log_set_module(script_name)
@@ -136,7 +136,7 @@ def parseCommandLine():
 
     if opt['-l']:
         if not gpmlib.directory_exists(opt['-l']):
-            gpmlib.error('log directory %s not exist' % opt['-l'])
+            gpmlib.error('log directory %s does not exist' % opt['-l'])
 
         opt['-l'] = os.path.join(opt['-l'], '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
         gpmlib.log_set_file(opt['-l'])
@@ -602,7 +602,7 @@ class SyncDataThread(Thread):
 def recover_data(failed_instance_array, active_instance_array, pool_failed_instance_array):
     global opt
 
-    timeout = opt['-t']
+    timeout = opt['-T']
     error = []
     kill = []
     thlist = []
@@ -752,7 +752,7 @@ def display_param(fault_action, failed_array, active_array, multi_home):
         gpmlib.log_info('Mirror pool directory     = %s' % dir[1])
         type_text = 'Pool dir'
 
-    gpmlib.log_info('Timeout                       = %d seconds' % opt['-t'])
+    gpmlib.log_info('Timeout                       = %d seconds' % opt['-T'])
 
     if opt['-p'] is None and opt['-s'] is None:
         gpmlib.log_info('Recovery type             = Standard')
@@ -1302,7 +1302,8 @@ def test_access(failed_instance_array, active_instance_array):
                                     opt['-l']))
         
             if not ok:
-                gpmlib.log_fatal('failed to synchronize data from active segment to failed segment')
+                gpmlib.log_fatal('failed to synchronize data from active segment host %s to failed segment host %s' % 
+                                 (active_qe['hostname'], failed_qe['hostname']))
                 raise Exception
 
         except Exception, e:
@@ -1347,7 +1348,7 @@ def stop_database(failed_instance_array):
             (ok, pid) = gpmlib.postgres_active(failed_qe['port'], failed_qe['hostname'])
             if ok:
                 gpmlib.log_warn('Found postmaster process on %s port %d' % (failed_qe['hostname'], failed_qe['port']))
-                gpmlib.log_warn('Will kill process %d' % pid)
+                gpmlib.log_warn('kill process %d' % pid)
                 (ok, out) = gpmlib.run('%s %s -9 %d  2> /dev/null' % 
                                        (gplib.ssh_prefix(host=failed_qe['hostname']),
                                         ENV.KILL,
