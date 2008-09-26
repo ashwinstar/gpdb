@@ -2085,14 +2085,14 @@ StartTransaction(void)
 	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 	case DTX_CONTEXT_QE_READER:
 		{
-			/* the pg_usleep() call below is in units of us (microsseconds), interconnect
+			/* the pg_usleep() call below is in units of us (microseconds), interconnect
 			 * timeout is in seconds.  Start with 1 millisecond. */
-			uint32     sleep_per_check_us = 1 * 1000;
+			uint64     sleep_per_check_us = 1 * 1000;
 			
-			uint32		segmate_timeout_us = (3 * interconnect_setup_timeout * 1000* 1000) / 4;
+			uint64		segmate_timeout_us = (3 * (uint64)interconnect_setup_timeout * 1000 * 1000) / 4;
 
-			uint32	   	total_sleep_time_us = 0;
-			uint32		warning_sleep_time_us = 0;
+			uint64	   	total_sleep_time_us = 0;
+			uint64		warning_sleep_time_us = 0;
 			
 			/*
 			 * MPP: we're a QE Reader.

@@ -893,12 +893,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	{
 		/* the pg_usleep() call below is in units of us (microsseconds), interconnect
 		 * timeout is in seconds.  Start with 1 millisecond. */
-		uint32     sleep_per_check_us = 1 * 1000;
+		uint64     sleep_per_check_us = 1 * 1000;
 		
-		uint32		segmate_timeout_us = (3 * interconnect_setup_timeout * 1000* 1000) / 4;
+		uint64		segmate_timeout_us = (3 * (uint64)interconnect_setup_timeout * 1000* 1000) / 4;
 
-		uint32	   	total_sleep_time_us = 0;
-		uint32		warning_sleep_time_us = 0;
+		uint64	   	total_sleep_time_us = 0;
+		uint64		warning_sleep_time_us = 0;
 		
 		
 		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Start Reader Match* gxid = %u and currcid %d (%s)", 
