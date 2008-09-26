@@ -260,7 +260,7 @@ main(int argc, char **argv)
 		{"disable-dollar-quoting", no_argument, &disable_dollar_quoting, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
-		
+
 		/* START MPP ADDITION */
 		/* the following are mpp specific, and don't have an equivalent short option */
 		{"gp-syntax", no_argument, NULL, 1},
@@ -283,7 +283,7 @@ main(int argc, char **argv)
 	/* START MPP ADDITION */
 	dumpPolicy = false;
 	/* END MPP ADDITION */
-	
+
 	progname = get_progname(argv[0]);
 
 	/* Set default options based on progname */
@@ -443,14 +443,14 @@ main(int argc, char **argv)
 			case 0:
 				/* This covers the long options equivalent to -X xxx. */
 				break;
-				
+
 			/* START MPP ADDITION */
 			case 1:
 				/* gp-format */
 				dumpPolicy = true;
 				break;
 			/* END MPP ADDITION */
-				
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -469,7 +469,7 @@ main(int argc, char **argv)
 	/* Get database name from command line */
 	if (optind < argc)
 		dbname = argv[optind];
-	
+
 	if (dataOnly && schemaOnly)
 	{
 		write_msg(NULL, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
@@ -574,7 +574,7 @@ main(int argc, char **argv)
 
 	/* Select the appropriate subquery to convert user IDs to names */
 	username_subquery = "SELECT rolname FROM pg_catalog.pg_roles WHERE oid =";
-	
+
 	/*
 	 * If supported, set extra_float_digits so that we can dump float data
 	 * exactly (given correctly implemented float I/O code, anyway)
@@ -1311,7 +1311,7 @@ getTableData(TableInfo *tblinfo, int numTables, bool oids)
 		/* Skip EXTERNAL TABLESs */
 		if (tblinfo[i].relkind == RELKIND_EXTERNAL)
 			continue;
-		/* END MPP ADDITION */		
+		/* END MPP ADDITION */
 		/* Skip SEQUENCEs (handled elsewhere) */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE)
 			continue;
@@ -1385,7 +1385,7 @@ dumpDatabase(Archive *AH)
 					  "WHERE datname = ",
 					  username_subquery);
 	appendStringLiteralAH(dbQry, datname, AH);
-	
+
 	res = PQexec(g_conn, dbQry->data);
 	check_sql_result(res, g_conn, dbQry->data, PGRES_TUPLES_OK);
 
@@ -3165,7 +3165,7 @@ getTriggers(TableInfo tblinfo[], int numTables)
 		selectSourceSchema(tbinfo->dobj.namespace->dobj.name);
 
 		resetPQExpBuffer(query);
-		
+
 		/*
 		 * We ignore triggers that are tied to a foreign-key constraint
 		 */
@@ -5469,7 +5469,7 @@ convertRegProcReference(const char *proc)
 	char	   *name;
 	char	   *paren;
 	bool		inquote;
-	
+
 	/* In all cases "-" means a null reference */
 	if (strcmp(proc, "-") == 0)
 		return NULL;
@@ -5508,7 +5508,7 @@ convertOperatorReference(const char *opr)
 	char	   *ptr;
 	bool		inquote;
 	bool		sawdot;
-	
+
 	/* In all cases "0" means a null reference */
 	if (strcmp(opr, "0") == 0)
 		return NULL;
@@ -6219,7 +6219,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *rejlimtype;
 		char	   *errtblname;
 		char	   *extencoding;
-        
+
         reltypename = "TABLE";
         /*
          * DROP must be fully qualified in case same name appears in
@@ -6229,37 +6229,37 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           fmtId(tbinfo->dobj.namespace->dobj.name));
         appendPQExpBuffer(delq, "%s;\n",
                           fmtId(tbinfo->dobj.name));
-        
+
 		/* Now get required information from pg_exttable */
 		if (g_fout->remoteVersion >= 80205)
 		{
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
-							  "x.rejectlimit, x.rejectlimittype," 
+							  "x.rejectlimit, x.rejectlimittype,"
 							  "(SELECT relname "
 							  "FROM pg_class "
 							  "WHERE Oid=x.fmterrtbl) AS errtblname, "
 							  "pg_catalog.pg_encoding_to_char(x.encoding) "
 							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
-							  tbinfo->dobj.catId.oid);			
+							  tbinfo->dobj.catId.oid);
 		}
 		else
 		{
 			/* not SREH and encoding colums yet */
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
-							  "-1 as rejectlimit, null as rejectlimittype," 
+							  "-1 as rejectlimit, null as rejectlimittype,"
 							  "null as errtblname, "
 							  "null as encoding "
 							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
-							  tbinfo->dobj.catId.oid);			
+							  tbinfo->dobj.catId.oid);
 		}
-		
+
         res = PQexec(g_conn, query->data);
         check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-        
+
         if (PQntuples(res) != 1)
         {
             if (PQntuples(res) < 1)
@@ -6271,9 +6271,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           "\"%s\" returned more than one definition\n",
                           tbinfo->dobj.name);
             exit_nicely();
-            
+
         }
-        
+
         locations = PQgetvalue(res, 0, 0);
         fmttype = PQgetvalue(res, 0, 1);
         fmtopts = PQgetvalue(res, 0, 2);
@@ -6282,19 +6282,19 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		rejlimtype = PQgetvalue(res, 0, 5);
 		errtblname = PQgetvalue(res, 0, 6);
 		extencoding = PQgetvalue(res, 0, 7);
-                
+
 		if((command && strlen(command) > 0) ||
 		   (strncmp(locations + 1, "http", strlen("http")) == 0))
 		{
 			appendPQExpBuffer(q, "CREATE EXTERNAL WEB TABLE %s (",
-							  fmtId(tbinfo->dobj.name));			
+							  fmtId(tbinfo->dobj.name));
 		}
 		else
 		{
 			appendPQExpBuffer(q, "CREATE EXTERNAL TABLE %s (",
-							  fmtId(tbinfo->dobj.name));			
+							  fmtId(tbinfo->dobj.name));
 		}
-		
+
         actual_atts = 0;
         for (j = 0; j < tbinfo->numatts; j++)
         {
@@ -6305,32 +6305,32 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                 if (actual_atts > 0)
                     appendPQExpBuffer(q, ",");
                 appendPQExpBuffer(q, "\n    ");
-                
+
                 /* Attribute name */
                 appendPQExpBuffer(q, "%s ",
                                   fmtId(tbinfo->attnames[j]));
-                
+
                 /* Attribute type */
                 appendPQExpBuffer(q, "%s",
                                   tbinfo->atttypnames[j]);
-                
+
                 actual_atts++;
             }
         }
-        
+
         appendPQExpBuffer(q, "\n)");
-		
+
 		if(command && strlen(command) > 0)
 		{
 			char *on_clause = locations;
-			
+
 			/* remove curly braces */
 			on_clause[strlen(on_clause)-1] = '\0';
 			on_clause++;
-			
+
 			/* add EXECUTE clause */
 			appendPQExpBuffer(q, " EXECUTE E'%s' ", escape_backslashes(command, true));
-			
+
 			/* add ON clause */
 			if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
 				appendPQExpBuffer(q, "ON HOST '%s' ", on_clause + strlen("HOST:"));
@@ -6347,12 +6347,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			else
 				write_msg(NULL, "illigal ON clause catalog information \"%s\""
 							"for command '%s'\n", on_clause, command);
-			
+
 			appendPQExpBuffer(q, "\n ");
 		}
 		else
 		{
-			
+
 			/* add LOCATION clause */
 			locations[strlen(locations)-1] = '\0';
 			locations++;
@@ -6364,22 +6364,22 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			appendPQExpBuffer(q, "\n) ");
 		}
-		
+
         /* add FORMAT clause */
-        appendPQExpBuffer(q, "FORMAT '%s' (%s)\n", 
+        appendPQExpBuffer(q, "FORMAT '%s' (%s)\n",
                           fmttype[0] == 't' ? "text" : "csv",
                           escape_backslashes((const char*) fmtopts, false));
-        
+
 		if (g_fout->remoteVersion >= 80205)
 		{
 			/* add ENCODING clause */
-			appendPQExpBuffer(q, "ENCODING '%s'", extencoding);			
-			
+			appendPQExpBuffer(q, "ENCODING '%s'", extencoding);
+
 			/* add Single Row Error Handling clause (if any) */
 			if(rejlim && strlen(rejlim) > 0)
 			{
 				appendPQExpBuffer(q, "\n");
-				
+
 				/*
 				 * NOTE: error tables get automatically generated if don't exist.
 				 * therefore we must be sure that this statment will be dumped after
@@ -6390,10 +6390,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				 */
 				if(errtblname && strlen(errtblname) > 0)
 					appendPQExpBuffer(q, "LOG ERRORS INTO %s ", errtblname);
-				
+
 				/* reject limit */
 				appendPQExpBuffer(q, "SEGMENT REJECT LIMIT %s", rejlim);
-				
+
 				/* reject limit type */
 				if(rejlimtype[0] == 'r')
 					appendPQExpBuffer(q, " ROWS");
@@ -6401,15 +6401,17 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					appendPQExpBuffer(q, " PERCENT");
 			}
 		}
-		
+
 		appendPQExpBuffer(q, ";\n");
-		
+
         PQclear(res);
-        
+
     }
     /* END MPP ADDITION */
 	else
 	{
+		int			defined_atts;	/* number of attrs defined for this table (inherited or CREATE) */
+
 		/* START MPP ADDITION */
 		char *policydef = NULL;
         char *policycol = NULL;
@@ -6430,9 +6432,13 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(q, "CREATE TABLE %s (",
 						  fmtId(tbinfo->dobj.name));
+		defined_atts = 0;
 		actual_atts = 0;
 		for (j = 0; j < tbinfo->numatts; j++)
 		{
+			if ( !tbinfo->attisdropped )
+				defined_atts++;
+
 			/* Is this one of the table's own attrs, and not dropped ? */
 			if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
 			{
@@ -6508,28 +6514,28 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			appendPQExpBuffer(q, ")");
 		}
-		
+
 		if (tbinfo->reloptions && strlen(tbinfo->reloptions) > 0)
 			appendPQExpBuffer(q, "\nWITH (%s)", tbinfo->reloptions);
 
-		
+
 
 		/* START MPP ADDITION */
-		
+
 		/* dump distributed by clause */
-		if(dumpPolicy)
+		if ( dumpPolicy && defined_atts > 0 )
 		{
 			appendPQExpBuffer(query,
 							  "SELECT attrnums from pg_namespace as n, pg_class as c, gp_distribution_policy as p "
 							  "WHERE c.relname = '%s' "
 							  "AND n.nspname='%s' "
-							  "AND c.relnamespace=n.oid " 
+							  "AND c.relnamespace=n.oid "
 							  "AND c.oid = p.localoid",
 							  tbinfo->dobj.name, (tbinfo->dobj.namespace->dobj.name != NULL ? tbinfo->dobj.namespace->dobj.name : "public"));
-			
+
 			res = PQexec(g_conn, query->data);
 			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-			
+
 			if (PQntuples(res) != 1)
 			{
 				if (PQntuples(res) < 1)
@@ -6540,9 +6546,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 							  tbinfo->dobj.name);
 				exit_nicely();
 			}
-			
+
 			policydef = PQgetvalue(res, 0, 0);
-			
+
 			if(strlen(policydef) > 0)
 			{
 				/* policy indicates one or more columns to distribute on */
@@ -6563,7 +6569,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				/* policy has an empty policy - distribute randomly */
 				appendPQExpBuffer(q, " distributed randomly");
 			}
-			
+
 			PQclear(res);
 		}
 
@@ -6572,10 +6578,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		appendPQExpBuffer(query, "SELECT "
 						  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
 						  tbinfo->dobj.catId.oid);
-			
+
 		res = PQexec(g_conn, query->data);
 		check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-			
+
 		if (PQntuples(res) != 1)
 		{
 			if (PQntuples(res) < 1)
@@ -6592,13 +6598,13 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		PQclear(res);
 
 		/* END MPP ADDITION */
-		
+
 		appendPQExpBuffer(q, ";\n");
 
 		/* MPP-1890 */
 		if(numParents > 0)
 			DetectChildConstraintDropped(tbinfo, q);
-		
+
 		/* Loop dumping statistics and storage statements */
 		for (j = 0; j < tbinfo->numatts; j++)
 		{
@@ -7850,7 +7856,7 @@ nextToken(register char **stringp, register const char *delim)
     register const char *spanp;
     register int c, sc;
     char *tok;
-	
+
     if ((s = *stringp) == NULL)
         return (NULL);
     for (tok = s;;)
