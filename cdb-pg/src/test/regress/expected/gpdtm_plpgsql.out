@@ -249,3 +249,167 @@ select a.c1 from t1234 a, t3456 b where a.c1 = b.c1 order by b.c1;
   4
 (4 rows)
 
+create language plpgsql;
+ERROR:  language "plpgsql" already exists
+drop table if exists foo;
+drop table if exists bar;
+NOTICE:  table "bar" does not exist, skipping
+drop table if exists baz;
+NOTICE:  table "baz" does not exist, skipping
+CREATE OR REPLACE FUNCTION foo_func() RETURNS void AS '
+BEGIN
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+END;
+' LANGUAGE plpgsql;
+create table foo (a int) distributed randomly;
+create table bar (b int) distributed randomly;
+create table baz (c int) distributed randomly;
+insert into foo values (1), (2), (3), (4), (5), (6);
+insert into bar values (5), (6), (7), (8), (9), (10);
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+ c  
+----
+  6
+  7
+  8
+  9
+ 10
+(5 rows)
+
+truncate baz;
+begin;
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+ c  
+----
+  9
+ 10
+(2 rows)
+
+abort;
+truncate baz;
+begin;
+set transaction isolation level serializable;
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+ c  
+----
+  9
+ 10
+(2 rows)
+
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+ c  
+----
+  9
+ 10
+(2 rows)
+
+abort;
+truncate baz;
+begin;
+select * from foo order by 1;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+(6 rows)
+
+select * from bar order by 1;
+ b  
+----
+  5
+  6
+  7
+  8
+  9
+ 10
+(6 rows)
+
+select foo_func();
+ foo_func 
+----------
+ 
+(1 row)
+
+select * from foo order by 1;
+ a  
+----
+  7
+  8
+  9
+ 10
+ 11
+ 12
+(6 rows)
+
+select * from baz order by 1;
+ c  
+----
+  9
+ 10
+(2 rows)
+
+abort;
+truncate baz;
+begin;
+set transaction isolation level serializable;
+select * from foo order by 1;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+(6 rows)
+
+select * from bar order by 1;
+ b  
+----
+  5
+  6
+  7
+  8
+  9
+ 10
+(6 rows)
+
+select foo_func();
+ foo_func 
+----------
+ 
+(1 row)
+
+select * from foo order by 1;
+ a  
+----
+  7
+  8
+  9
+ 10
+ 11
+ 12
+(6 rows)
+
+select * from baz order by 1;
+ c  
+----
+  9
+ 10
+(2 rows)
+
+abort;

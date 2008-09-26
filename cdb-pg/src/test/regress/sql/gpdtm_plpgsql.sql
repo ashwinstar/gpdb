@@ -142,3 +142,65 @@ ABORT;
 
 select a.c1 from t1234 a, t3456 b where a.c1 = b.c1 order by b.c1;
 
+
+create language plpgsql;
+
+drop table if exists foo;
+drop table if exists bar;
+drop table if exists baz;
+
+CREATE OR REPLACE FUNCTION foo_func() RETURNS void AS '
+BEGIN
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+END;
+' LANGUAGE plpgsql;
+
+create table foo (a int) distributed randomly;
+create table bar (b int) distributed randomly;
+create table baz (c int) distributed randomly;
+
+insert into foo values (1), (2), (3), (4), (5), (6);
+insert into bar values (5), (6), (7), (8), (9), (10);
+
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+
+truncate baz;
+begin;
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+abort;
+
+truncate baz;
+begin;
+set transaction isolation level serializable;
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+update foo set a = a + 3;
+insert into baz select bar.b from bar where bar.b >= (select max(a) from foo);
+select * from baz order by 1;
+abort;
+
+truncate baz;
+begin;
+select * from foo order by 1;
+select * from bar order by 1;
+select foo_func();
+select * from foo order by 1;
+select * from baz order by 1;
+abort;
+
+truncate baz;
+begin;
+set transaction isolation level serializable;
+select * from foo order by 1;
+select * from bar order by 1;
+select foo_func();
+select * from foo order by 1;
+select * from baz order by 1;
+abort;
