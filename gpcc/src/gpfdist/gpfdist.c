@@ -828,7 +828,6 @@ static void do_write(int fd, short event, void* arg)
 		if (n < 0) {
 		    if (errno==EPIPE || errno==ECONNRESET)
 			r->out.bot = r->out.top;
-		    perror("send");
 		    request_end(r, 1, 0);
 		    return;
 		}
@@ -859,7 +858,6 @@ crashed or something like that, hopefully we would find out about that in
 some other way anyway, so it is okay if we don't poison the session. */
 	    if (errno==EPIPE || errno==ECONNRESET)
 		r->out.bot = r->out.top;
-	    perror("send");
 	    request_end(r, 1, 0);
 	    return;
 	}
