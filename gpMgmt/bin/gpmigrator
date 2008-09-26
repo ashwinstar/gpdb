@@ -37,7 +37,7 @@ def pretty_version(v):
     m = re.compile('Revision: #(\d+)').search(v)
     if m: return str(2 + (float(m.group(1))/100))
     else: return str(v)
-__version__ = pretty_version('$Revision: #4 $')
+__version__ = pretty_version('$Revision: #5 $')
 
 #============================================================
 def cli_help():
@@ -1018,10 +1018,10 @@ Greenplum segment %s did not shutdown cleanly:
         self.newversion = newversion
 
         # Versions supported by this version of the upgrader
-        #  [3.0.0.0 - 3.2.0.0] + (main) by default
+        #  [3.1.0.0 - 3.2.0.0] + (main) by default
         def checkversion(v):
             if v == 'main': return
-            if v < '3.0.0.0':
+            if v < '3.1.0.0':
                 raise UpgradeError(
 "Greenplum Version '%s' not supported for upgrade/downgrade" % v)
             if v > '3.2.0.0':
@@ -1734,7 +1734,7 @@ This issue must be resolved before upgrade can complete.
         for db in databases:
             qry = self.Select(
                 '''
-                   SELECT n.nspname || '.' || c.relname as name, 
+                   SELECT '"' || n.nspname || '"."' || c.relname || '"' as name, 
                           pg_get_userbyid(c.relowner) as owner,
                           array_out(c.relacl) as acl,
                           c.relkind as kind
@@ -1753,7 +1753,7 @@ This issue must be resolved before upgrade can complete.
         for db in databases:
             objs = self.Select(
                 '''
-                   SELECT n.nspname || '.' || c.relname as name
+                   SELECT '"' || n.nspname || '"."' || c.relname || '"' as name
                    FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
                    WHERE c.relkind in ('S')
                    ORDER BY name
@@ -1777,7 +1777,7 @@ This issue must be resolved before upgrade can complete.
         for db in databases:
             objs = self.Select(
                 '''
-                   SELECT n.nspname || '.' || c.relname as name
+                   SELECT '"' || n.nspname || '"."' || c.relname || '"' as name
                    FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
                    WHERE c.relkind in ('a', 'r')
                      AND n.nspname !~ '(information_schema|pg_.*)'
