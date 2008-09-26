@@ -136,7 +136,7 @@ def parseCommandLine():
 
     if opt['-l']:
         if not gpmlib.directory_exists(opt['-l']):
-            gpmlib.error('log directory %s does not exist' % opt['-l'])
+            gpmlib.error('Log directory %s does not exist' % opt['-l'])
 
         opt['-l'] = os.path.join(opt['-l'], '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
         gpmlib.log_set_file(opt['-l'])
@@ -146,7 +146,7 @@ def parseCommandLine():
             try:
                 os.mkdir(logdir)
             except OSError, e:
-                gpmlib.error('mkdir %s failed' % logdir)
+                gpmlib.error('Make directory %s error' % logdir)
 
         opt['-l'] = os.path.join(logdir, '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
         gpmlib.log_set_file(opt['-l'])
@@ -162,7 +162,7 @@ def parseCommandLine():
         gpmlib.error('MASTER_DATA_DIRECTORY %s does not exist or is not a directory' % opt['-d'])
 
     if opt['-z'] and opt['-S'] > 0:
-        gpmlib.error('option -z and -S cannot specify at the same time')
+        gpmlib.error('Option -z and -S cannot specify at the same time')
 
     
 ################
@@ -202,7 +202,7 @@ def parseMirrorConfig():
         file = open(opt['-m'], 'r')
         lines = file.readlines()
     except Exception, e:
-        gpmlib.error('read file %s error' % opt['-m'])
+        gpmlib.error('Read file %s error' % opt['-m'])
     finally:
         if file:
             file.close()
@@ -214,7 +214,7 @@ def parseMirrorConfig():
             continue
         mirror = l.split(':')
         if len(mirror) != 3:
-            gpmlib.error('mirror config format error')
+            gpmlib.error('Mirror config format error')
         m = {}
         m['hostname'] = mirror[0]
         m['port'] = int(mirror[1])
@@ -588,7 +588,7 @@ class SyncDataThread(Thread):
                                            self.pool_array,
                                            self.logfile,
                                            force_stop = opt['-f']):
-            gpmlib.log_error(' failed to copy data from (%s:%s) to (%s:%s)' % 
+            gpmlib.log_error('Copy data from (%s:%s) to (%s:%s) failed' % 
                              (self.active_qe['hostname'], self.active_qe['datadir'], 
                               self.pool_array['hostname'], self.pool_array['datadir']))
             return
@@ -608,7 +608,7 @@ def recover_data(failed_instance_array, active_instance_array, pool_failed_insta
     thlist = []
     n = 0
     gpmlib.log_info('Commencing parallel segment instance startup, please wait...')
-    gpmlib.log_info('Time out value = %d seconds' % timeout)
+    gpmlib.log_info('Timeout value = %d seconds' % timeout)
 
     for i in range(len(failed_instance_array)):
         failed_qe = failed_instance_array[i]
@@ -700,7 +700,7 @@ def update_gp_conf(mirrors):
     # start master in admin mode
     (ok, out) = gpmlib.run('gpstart -qam -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
-        gpmlib.error('start master in admin mode failed')
+        gpmlib.error('Start master in admin mode failed')
 
     try:
         db = pg8000.Connection(host='localhost', port=master_port, 
@@ -725,7 +725,7 @@ def update_gp_conf(mirrors):
     # stop master
     (ok, out) = gpmlib.run('gpstop -qma -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
-        gpmlib.error('stop master in admin mode failed')
+        gpmlib.error('Stop master in admin mode failed')
 
 ################
 def display_param(fault_action, failed_array, active_array, multi_home):
@@ -1267,14 +1267,14 @@ def test_access(failed_instance_array, active_instance_array):
                                 ENV.TOUCH, tmpfile1, tmpfile1))
 
         if not ok:
-            gpmlib.fatal('write file to remote host %s failed' % failed_qe['hostname'])
+            gpmlib.fatal('Write file to remote host %s failed' % failed_qe['hostname'])
 
         tmpfile2 = '/tmp/remote_test2.$$'
         (ok, out) = gpmlib.run('%s "%s %s && rm -f %s"' % 
                                (gplib.ssh_prefix(host=active_qe['hostname']),
                                 ENV.TOUCH, tmpfile2, tmpfile2))        
         if not ok:
-            gpmlib.fatal('write file to remote host %s failed' % active_qe['hostname'])            
+            gpmlib.fatal('Write file to remote host %s failed' % active_qe['hostname'])            
 
         # check pysync.py
         try:
@@ -1283,13 +1283,13 @@ def test_access(failed_instance_array, active_instance_array):
             (ok, out) = gpmlib.run('%s "cd /tmp && mkdir %s && echo test > %s"' %
                                    (gplib.ssh_prefix(host=active_qe['hostname']), src_dir, os.path.join(src_dir, 'sync.dat')))
             if not ok:
-                gpmlib.log_fatal('failed to create directory %s on %s' % (src_dir, active_qe['hostname']))
+                gpmlib.log_fatal('Failed to create directory %s on %s' % (src_dir, active_qe['hostname']))
                 raise Exception
                 
             (ok, out) = gpmlib.run('%s "cd /tmp && mkdir %s"' %
                                    (gplib.ssh_prefix(host=failed_qe['hostname']), dst_dir))
             if not ok:
-                gpmlib.log_fatal('failed to create directory %s on %s' % (dst_dir, failed_qe['hostname']))
+                gpmlib.log_fatal('Failed to create directory %s on %s' % (dst_dir, failed_qe['hostname']))
                 raise Exception
 
             cmd = gpmlib.makeCommand('%s -v -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
@@ -1302,7 +1302,7 @@ def test_access(failed_instance_array, active_instance_array):
                                     opt['-l']))
         
             if not ok:
-                gpmlib.log_fatal('failed to synchronize data from active segment host %s to failed segment host %s' % 
+                gpmlib.log_fatal('Failed to synchronize data from active segment host %s to failed segment host %s' % 
                                  (active_qe['hostname'], failed_qe['hostname']))
                 raise Exception
 
@@ -1462,15 +1462,15 @@ def parse_config(db):
                            cfg[0].strip(), int(cfg[1]), cfg[2].strip())
                 r = db.read_dict()
                 if r is None:
-                    gpmlib.fatal('segment %s not found' % line)                
+                    gpmlib.fatal('Segment %s not found' % line)                
                 failed_instance_array.append(r)
             else:
-                gpmlib.fatal('config file format error')
+                gpmlib.fatal('Config file format error')
                 
             if len(failed_qe) == 2:
                 cfg = failed_qe[1].split(':')
                 if len(cfg) != 3:
-                    gpmlib.fatal('config file format error. %s' % line)
+                    gpmlib.fatal('Config file format error. %s' % line)
                 a = failed_instance_array[-1].copy()
                 a['hostname'] = cfg[0].strip()
                 a['port'] = int(cfg[1])
@@ -1685,7 +1685,7 @@ try:
 
     # start master QD in admin mode if force restart
     if opt['-f']:
-        gpmlib.log_info('start master QD in admin mode', True)
+        gpmlib.log_info('Start master QD in admin mode', True)
         (ok, out) = gpmlib.run('gpstart -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
 
     try:
