@@ -568,8 +568,8 @@ class SyncDataThread(Thread):
         if True or self.failed_qe != self.pool_array:
             # remove database directory
             gpmlib.log_info('Delete data directory %s on %s' % (self.failed_qe['datadir'], self.failed_qe['hostname']))
-            (ok, out) = gpmlib.run('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
-                                                            self.failed_qe['datadir'], self.failed_qe['datadir']))
+            (ok, out) = gpmlib.run_warn('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
+                                                                 self.failed_qe['datadir'], self.failed_qe['datadir']))
             if not ok:
                 gpmlib.log_warn('Issue with forced delete %s or %s.log on %s' % 
                                 (self.failed_qe['datadir'],

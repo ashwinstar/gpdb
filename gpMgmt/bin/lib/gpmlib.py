@@ -132,7 +132,7 @@ def makeCommand(cmd):
                cmd))
 
 #############
-def run(cmd):
+def run2(cmd, on_error_warn=False):
     f = None
     ok = False
     out = []
@@ -141,10 +141,21 @@ def run(cmd):
         for line in f:
             out.append(line)
         ok = not f.close()
+        if not ok and on_error_warn:
+            log_warn('\terror CMD: %s', cmd)
+            log_warn('\terror output: %s', str(out))
     finally:
         if f: f.close()
 
+
     return (ok, out)
+
+
+def run(cmd):
+    run2(cmd, False)
+
+def run_warn(cmd):
+    run2(cmd, True)
 
 #############
 def file_exists(file, host=None):
