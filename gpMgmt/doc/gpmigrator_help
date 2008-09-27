@@ -21,13 +21,16 @@ The following are required prior to running this upgrade utility:
 * Check for and recover any failed segments in your current 
   Greenplum Database system.
 
+* Rebuild all indexes in your database.
+
 * Make sure both the old and new versions of the Greenplum Database 
   software are installed on all hosts (master and segments).
 
 * Shut down your current Greenplum Database system.
 
 * Make sure you are logged in to the master host as the 
-  Greenplum Database superuser (gpadmin).
+  Greenplum Database superuser (gpadmin).  You must be the only
+  user accessing the database during upgrade.
 
 * Set $GPHOME to point to the new Greenplum Database software 
   version before running this utility.
