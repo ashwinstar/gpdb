@@ -243,6 +243,7 @@ typedef struct _tableInfo
 	 * These fields are computed only if we decide the table is interesting
 	 * (it's either a table to dump, or a direct parent of a dumpable table).
 	 */
+	int			actualnumatts;  /* number of current attributes (not dropped, not constraints) */
 	int			numatts;		/* number of attributes */
 	char	  **attnames;		/* the attribute names */
 	char	  **atttypnames;	/* attribute type names */
