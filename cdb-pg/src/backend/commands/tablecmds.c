@@ -15583,14 +15583,14 @@ ATPExecPartSplit(Relation rel,
 	tts = MakeSingleTupleTableSlot(temprel->rd_att);
 
 	/* constr might not be defined if this is a default partition */
-	if (intoa->rd_att->constr)
+	if (intoa->rd_att->constr && intoa->rd_att->constr->num_check)
 	{
 		Node *bin = (Node *)make_ands_implicit(
 				(Expr *)stringToNode(intoa->rd_att->constr->check[0].ccbin));
 		achk = ExecPrepareExpr((Expr *)bin, estate);
 	}
 
-	if (intob->rd_att->constr)
+	if (intob->rd_att->constr && intob->rd_att->constr->num_check)
 	{
 		Node *bin = (Node *)make_ands_implicit(
 				(Expr *)stringToNode(intob->rd_att->constr->check[0].ccbin));
