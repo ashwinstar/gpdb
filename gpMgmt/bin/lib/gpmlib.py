@@ -43,7 +43,7 @@ def log_info(msg, tofile=False):
         print logs
     else:
         if log['file']:
-            run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))
+            os.system('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))
 
 ##################
 def log_error(msg, tofile=False):
@@ -53,7 +53,7 @@ def log_error(msg, tofile=False):
         print logs
     else:
         if log['file']:
-            run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
+            os.system('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
 
 ##################
 def log_warn(msg, tofile=False):
@@ -63,7 +63,7 @@ def log_warn(msg, tofile=False):
         print logs
     else:
         if log['file']:
-            run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
+            os.system('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
 
 ##################
 def log_fatal(msg, tofile=False):
@@ -73,7 +73,7 @@ def log_fatal(msg, tofile=False):
         print logs
     else:
         if log['file']:
-            run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
+            os.system('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
 
 ##################
 def error(msg):
@@ -81,7 +81,7 @@ def error(msg):
 
     logs = '%s:%s:%s:%s-[ERROR]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
     if log['file']:
-        run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
+        os.system('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
     print logs
     print '%s:%s:%s:%s-[ERROR]:- Program aborted.' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'])
     sys.exit(1)
@@ -92,7 +92,7 @@ def fatal(msg):
 
     logs = '%s:%s:%s:%s-[FATAL]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
     if log['file']:
-        run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
+        os.system('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
 
     print logs
     print '%s:%s:%s:%s-[FATAL]:- Program aborted.' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'])
@@ -140,22 +140,23 @@ def run2(cmd, on_error_warn=False):
         f = os.popen(cmd)
         for line in f:
             out.append(line)
-        ok = not f.close()
+        e = f.close()
+        ok = not e
         if not ok and on_error_warn:
             log_warn('\terror CMD: %s', cmd)
-            log_warn('\terror output: %s', str(out))
+            log_warn('\terror exit status: %d', e)
+            log_warn('\terror output: %s', '\t'.join(out))
     finally:
         if f: f.close()
-
 
     return (ok, out)
 
 
 def run(cmd):
-    run2(cmd, False)
+    return run2(cmd, False)
 
 def run_warn(cmd):
-    run2(cmd, True)
+    return run2(cmd, True)
 
 #############
 def file_exists(file, host=None):
@@ -645,24 +646,29 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
 
 #############
 def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
-    # make mirror data directory
-    log_info('make directory %s' % dst_cfg['datadir'])
-    (ok, out) = run('%s "%s %s && chmod 700 %s"' % 
-                    (gplib.ssh_prefix(host=dst_cfg['hostname']),
-                     ENV.MKDIR,
-                     dst_cfg['datadir'],
-                     dst_cfg['datadir']))
-    if not ok:
-        fatal('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
-    cmd = makeCommand('%s -v -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
-                                                      src_dir,
-                                                      dst_cfg['hostname'],
-                                                      dst_cfg['datadir']))
-    (ok, out) = run('%s "%s" >> %s 2>&1' % 
-                    (gplib.ssh_prefix(host=src_host),
-                     cmd,
-                     logfile))
+    if directory_exists(dst_cfg['datadir'], dst_cfg['hostname']):
+        log_info('Data Directory %s exists' % dst_cfg['datadir'])
+    else:
+        # make mirror data directory
+        log_info('Make directory %s' % dst_cfg['datadir'])
+        (ok, out) = run('%s "%s %s && chmod 700 %s"' % 
+                        (gplib.ssh_prefix(host=dst_cfg['hostname']),
+                         ENV.MKDIR,
+                         dst_cfg['datadir'],
+                         dst_cfg['datadir']))
+        if not ok:
+            fatal('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
+
+
+    cmd = makeCommand('%s -v --delete -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
+                                                               src_dir,
+                                                               dst_cfg['hostname'],
+                                                               dst_cfg['datadir']))
+    (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                         (gplib.ssh_prefix(host=src_host),
+                          cmd,
+                          logfile))
 
     if not ok:
         fatal('failed to synchronize data from primary segment %s:%s to mirror segment %s:%s' % (src_host, src_dir, 
@@ -695,10 +701,10 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s.log -o \\"-i -p %d \\" start' %
                       (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
                       dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port']))    
-    (ok, out) = run('%s "%s" >> %s 2>&1' % 
-                    (gplib.ssh_prefix(host=dst_cfg['hostname']),
-                     cmd,
-                     logfile))
+    (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                         (gplib.ssh_prefix(host=dst_cfg['hostname']),
+                          cmd,
+                          logfile))
     if not ok:
         fatal('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
@@ -728,10 +734,10 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
         cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w stop -D %s -m smart -l %s.log' % 
                           (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
                            dst_cfg['datadir'], dst_cfg['datadir']))
-        (ok, out) = run('%s "%s" >> %s 2>&1' % 
-                        (gplib.ssh_prefix(host=dst_cfg['hostname']),
-                         cmd,
-                         logfile))        
+        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                             (gplib.ssh_prefix(host=dst_cfg['hostname']),
+                              cmd,
+                              logfile))        
         if not ok:
             fatal('failed to stop mirror segment %s:%s' % (dst_cfg['hostname'], dst_cfg['datadir']))
     

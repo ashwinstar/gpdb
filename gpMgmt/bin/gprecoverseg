@@ -283,13 +283,13 @@ def chk_pool_host(db, failed_dbids):
         gpmlib.fatal('Issue with %s directory on %s' % (os.environ.get('GPHOME'), opt['-p']))
 
     initdb = os.path.join(os.environ.get('GPHOME'), 'bin/initdb')
-    (ok, out) = gpmlib.run('%s -V'  % initdb)
+    (ok, out) = gpmlib.run_warn('%s -V'  % initdb)
     if not ok:
         gpmlib.fatal('initdb not found in $GPHOME/bin')
     
     qd_initdb_version = out[0]
 
-    (ok, out) = gpmlib.run('%s "%s"' % (gplib.ssh_prefix(host=opt['-p']), gpmlib.makeCommand('%s -V' % initdb)))
+    (ok, out) = gpmlib.run_warn('%s "%s"' % (gplib.ssh_prefix(host=opt['-p']), gpmlib.makeCommand('%s -V' % initdb)))
     if not ok:
         gpmlib.fatal('initdb failed to run in remote host or initdb not found in $GPHOME/bin')
     pool_initdb_version = out[0]
@@ -306,7 +306,7 @@ def chk_pool_host(db, failed_dbids):
     hostlist = [ r[0] for r in db.iterate_tuple() ]
     hostname = {}
     for host in hostlist:
-        (ok, out) = gpmlib.run('%s hostname' % (gplib.ssh_prefix(host=host)))
+        (ok, out) = gpmlib.run_warn('%s hostname' % (gplib.ssh_prefix(host=host)))
         if not ok:
             gpmlib.fatal('ssh failed to connect host %s' % host)
         hn = out[0].strip()
@@ -314,7 +314,7 @@ def chk_pool_host(db, failed_dbids):
             hostname[hn] = []
         hostname[hn].append(host)
             
-    (ok, out) = gpmlib.run('%s hostname' % (gplib.ssh_prefix(host=opt['-p'])))
+    (ok, out) = gpmlib.run_warn('%s hostname' % (gplib.ssh_prefix(host=opt['-p'])))
     if not ok:
         gpmlib.fatal('ssh failed to connect pool host %s' % opt['-p'])
         
@@ -564,19 +564,41 @@ class SyncDataThread(Thread):
         global opt
 
         # kill failed_qe process
-
-        if True or self.failed_qe != self.pool_array:
-            # remove database directory
-            gpmlib.log_info('Delete data directory %s on %s' % (self.failed_qe['datadir'], self.failed_qe['hostname']))
-            (ok, out) = gpmlib.run_warn('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
-                                                                 self.failed_qe['datadir'], self.failed_qe['datadir']))
+        gpmlib.log_info('Try to kill postmaster process on %s port %d' % (self.failed_qe['hostname'], 
+                                                                          self.failed_qe['port']))
+        (ok, pid) = gpmlib.postgres_active(self.failed_qe['port'], self.failed_qe['hostname'])
+        if ok:
+            gpmlib.log_warn('Found postmaster process on %s port %d' % (self.failed_qe['hostname'], 
+                                                                        self.failed_qe['port']))
+            gpmlib.log_warn('kill process %d' % pid)
+            (ok, out) = gpmlib.run_warn('%s %s -9 %d' % 
+                                        (gplib.ssh_prefix(host=self.failed_qe['hostname']),
+                                         ENV.KILL,
+                                         pid))
             if not ok:
-                gpmlib.log_warn('Issue with forced delete %s or %s.log on %s' % 
-                                (self.failed_qe['datadir'],
-                                 self.failed_qe['datadir'],
-                                 self.failed_qe['hostname']))
-                for line in out:
-                    gpmlib.log_warn(line)
+                gpmlib.error('kill -9 %d on remote host %s failed' % (pid, self.failed_qe['hostname']))
+
+        else:
+            gpmlib.log_info('No postmaster proces on %s port %d' % (self.failed_qe['hostname'], self.failed_qe['port']))
+
+        gpmlib.log_info('Cleaning /tmp/lock files for %s for port %s' % (self.failed_qe['hostname'], self.failed_qe['port']))
+        (ok, out) = gpmlib.run('%s %s -f /tmp/.s.PGSQL.%d.lock /tmp/.s.PGSQL.%d' %
+                               (gplib.ssh_prefix(host=self.failed_qe['hostname']),
+                                ENV.RM, 
+                                self.failed_qe['port'],
+                                self.failed_qe['port']))
+
+#        # check data directory
+#        if self.failed_qe != self.pool_array:
+#            # remove database directory
+#            gpmlib.log_info('Delete data directory %s on %s' % (self.failed_qe['datadir'], self.failed_qe['hostname']))
+#            (ok, out) = gpmlib.run_warn('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
+#                                                                 self.failed_qe['datadir'], self.failed_qe['datadir']))
+#            if not ok:
+#                gpmlib.log_warn('Issue with forced delete %s or %s.log on %s' % 
+#                                (self.failed_qe['datadir'],
+#                                 self.failed_qe['datadir'],
+#                                 self.failed_qe['hostname']))
             
         # sychronize pool_array
         gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s)' % 
@@ -698,7 +720,7 @@ def update_gp_conf(mirrors):
     db = None
 
     # start master in admin mode
-    (ok, out) = gpmlib.run('gpstart -qam -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+    (ok, out) = gpmlib.run_warn('gpstart -qam -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
         gpmlib.error('Start master in admin mode failed')
 
@@ -723,7 +745,7 @@ def update_gp_conf(mirrors):
         db = None
 
     # stop master
-    (ok, out) = gpmlib.run('gpstop -qma -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+    (ok, out) = gpmlib.run_warn('gpstop -qma -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
         gpmlib.error('Stop master in admin mode failed')
 
@@ -1262,7 +1284,7 @@ def test_access(failed_instance_array, active_instance_array):
         gpmlib.log_info('Test 1, create temporary file on %s' % failed_qe['hostname'])
         
         tmpfile1 = '/tmp/remote_test1.$$'
-        (ok, out) = gpmlib.run('%s "%s %s && rm -f %s"' % 
+        (ok, out) = gpmlib.run_warn('%s "%s %s && rm -f %s"' % 
                                (gplib.ssh_prefix(host=failed_qe['hostname']),
                                 ENV.TOUCH, tmpfile1, tmpfile1))
 
@@ -1270,7 +1292,7 @@ def test_access(failed_instance_array, active_instance_array):
             gpmlib.fatal('Write file to remote host %s failed' % failed_qe['hostname'])
 
         tmpfile2 = '/tmp/remote_test2.$$'
-        (ok, out) = gpmlib.run('%s "%s %s && rm -f %s"' % 
+        (ok, out) = gpmlib.run_warn('%s "%s %s && rm -f %s"' % 
                                (gplib.ssh_prefix(host=active_qe['hostname']),
                                 ENV.TOUCH, tmpfile2, tmpfile2))        
         if not ok:
@@ -1280,23 +1302,23 @@ def test_access(failed_instance_array, active_instance_array):
         try:
             src_dir = '/tmp/remote_dir1.%d' % os.getpid()
             dst_dir = '/tmp/remote_dir2.%d' % os.getpid()
-            (ok, out) = gpmlib.run('%s "cd /tmp && mkdir %s && echo test > %s"' %
+            (ok, out) = gpmlib.run_warn('%s "cd /tmp && mkdir %s && echo test > %s"' %
                                    (gplib.ssh_prefix(host=active_qe['hostname']), src_dir, os.path.join(src_dir, 'sync.dat')))
             if not ok:
                 gpmlib.log_fatal('Failed to create directory %s on %s' % (src_dir, active_qe['hostname']))
                 raise Exception
                 
-            (ok, out) = gpmlib.run('%s "cd /tmp && mkdir %s"' %
+            (ok, out) = gpmlib.run_warn('%s "cd /tmp && mkdir %s"' %
                                    (gplib.ssh_prefix(host=failed_qe['hostname']), dst_dir))
             if not ok:
                 gpmlib.log_fatal('Failed to create directory %s on %s' % (dst_dir, failed_qe['hostname']))
                 raise Exception
 
-            cmd = gpmlib.makeCommand('%s -v -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
+            cmd = gpmlib.makeCommand('%s -v --delete -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
                                                                      src_dir,
                                                                      failed_qe['hostname'],
                                                                      dst_dir))
-            (ok, out) = gpmlib.run('%s "%s" >> %s 2>&1' %
+            (ok, out) = gpmlib.run_warn('%s "%s" >> %s 2>&1' %
                                    (gplib.ssh_prefix(host=active_qe['hostname']),
                                     cmd,
                                     opt['-l']))
@@ -1329,7 +1351,7 @@ def stop_database(failed_instance_array):
 
     if opt['-f']:
         gpmlib.log_info('Forcing shutdown the database')
-        (ok, out) = gpmlib.run('gpstop -zfa -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+        (ok, out) = gpmlib.run_warn('gpstop -zfa -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
         gpmlib.log_info('Successfully shutdown the Greenplum Database instance')
     else:
         # stop the failed segment
@@ -1349,7 +1371,7 @@ def stop_database(failed_instance_array):
             if ok:
                 gpmlib.log_warn('Found postmaster process on %s port %d' % (failed_qe['hostname'], failed_qe['port']))
                 gpmlib.log_warn('kill process %d' % pid)
-                (ok, out) = gpmlib.run('%s %s -9 %d  2> /dev/null' % 
+                (ok, out) = gpmlib.run_warn('%s %s -9 %d  2> /dev/null' % 
                                        (gplib.ssh_prefix(host=failed_qe['hostname']),
                                         ENV.KILL,
                                         pid))
@@ -1686,7 +1708,7 @@ try:
     # start master QD in admin mode if force restart
     if opt['-f']:
         gpmlib.log_info('Start master QD in admin mode', True)
-        (ok, out) = gpmlib.run('gpstart -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+        (ok, out) = gpmlib.run_warn('gpstart -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
 
     try:
         db = pg8000.Connection(host='localhost', port=master_port, 
@@ -1707,13 +1729,13 @@ try:
             # stop master QD
             gpmlib.log_info('Shutting down the master instance')
             gpmlib.log_info('Shutting down the master instance', True)
-            (ok, out) = gpmlib.run('gpstop -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+            (ok, out) = gpmlib.run_warn('gpstop -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
             gpmlib.log_info('Successfully shutdown the master instance', True)
             gpmlib.log_info('Successfully shutdown the master instance')
 
             # start database
             gpmlib.log_info('Start the array', True)
-            (ok, out) = gpmlib.run('gpstart -a -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+            (ok, out) = gpmlib.run_warn('gpstart -a -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
         else:
             reset_qe_connect(db)
             
