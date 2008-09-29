@@ -274,15 +274,15 @@ def chk_mirror_dir(qes, mirrors):
         # check write access of the parent datadir
         dir = os.path.dirname(mirror_datadir)
         tmpfile = os.path.join(dir, 'gptmpfile')
-        (ok, out) = gpmlib.run('%s "%s %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.TOUCH, tmpfile))
+        (ok, out) = gpmlib.run_warn('%s "%s %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.TOUCH, tmpfile))
         if ok:
             (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.RM, tmpfile))            
         else:
             gpmlib.error('Cannot create file under directory %s on segment host %s' % (dir, mirror_host))
 
         # check access from primary host to mirror host
-        (ok, out) = gpmlib.run('%s \'%s ls /tmp\'' % (gplib.ssh_prefix(host=pri_host),
-                                                       gplib.ssh_prefix(host=mirror_host)))
+        (ok, out) = gpmlib.run_warn('%s \'%s ls /tmp\'' % (gplib.ssh_prefix(host=pri_host),
+                                                           gplib.ssh_prefix(host=mirror_host)))
         if not ok:
             gpmlib.error('Check inter host ssh access from %s to %s failed' % (pri_host, mirror_host))
 
@@ -601,7 +601,7 @@ try:
 
     # stop Greenplum database
     gpmlib.log_info('Stop Greenplum database array')
-    (ok, out) = gpmlib.run('gpstop -qaf -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    (ok, out) = gpmlib.run_warn('gpstop -qaf -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('gpstop failed')
 
@@ -617,7 +617,7 @@ try:
         gpmlib.error('Copy data from primary segments to mirror segments failed')
 
     # start master in admin mode
-    (ok, out) = gpmlib.run('gpstart -qam -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    (ok, out) = gpmlib.run_warn('gpstart -qam -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('Start master in admin mode failed')
 
@@ -649,13 +649,13 @@ try:
         db = None
 
     # stop master
-    (ok, out) = gpmlib.run('gpstop -qma -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    (ok, out) = gpmlib.run_warn('gpstop -qma -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('Stop master in admin mode failed')
 
     # start Greenplum Database
     gpmlib.log_info('Start Greenplum database')
-    (ok, out) = gpmlib.run('gpstart -qa -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    (ok, out) = gpmlib.run_warn('gpstart -qa -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('Start Greenplum database failed')
 
@@ -665,7 +665,7 @@ try:
     if standby_count != 0:
         gpmlib.log_info('Standby master is configured for Greenplum Database, will sync standby master')
         if gpmlib.file_exists(gpinitstandby):
-            (ok, out) = gpmlib.run('%s -s %s -n -a' % (gpinitstandby, standby_qd['hostname']))
+            (ok, out) = gpmlib.run_warn('%s -s %s -n -a' % (gpinitstandby, standby_qd['hostname']))
         else:
             gpmlib.fatal('Could not locate %s' % gpinitstandby)
 
