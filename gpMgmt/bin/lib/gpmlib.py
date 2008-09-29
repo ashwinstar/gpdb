@@ -144,7 +144,7 @@ def run2(cmd, on_error_warn=False):
         ok = not e
         if not ok and on_error_warn:
             log_warn('\terror CMD: %s' % cmd)
-            log_warn('\terror exit status: %x' % e)
+            log_warn('\terror exit status: %d' % os.WEXITSTATUS(e))
             log_warn('\terror output:')
             for l in out:
                 log_warn('\t %s' % l.strip())
