@@ -143,9 +143,11 @@ def run2(cmd, on_error_warn=False):
         e = f.close()
         ok = not e
         if not ok and on_error_warn:
-            log_warn('\terror CMD: %s', cmd)
-            log_warn('\terror exit status: %d', e)
-            log_warn('\terror output: %s', '\t'.join(out))
+            log_warn('\terror CMD: %s' % cmd)
+            log_warn('\terror exit status: %x' % e)
+            log_warn('\terror output:')
+            for l in out:
+                log_warn('\t %s' % l.strip())
     finally:
         if f: f.close()
 
@@ -365,18 +367,18 @@ def chk_postgres_version(host):
     cmd = makeCommand('%s --gp-version' % os.path.join(os.environ.get('GPHOME'), 'bin/postgres'))
     (ok, out) = run(cmd)
     if not ok:
-        log_error('Unable to get postgres version')
+        log_error('Unable to get Greenplum database version')
         return False
     current = out[0].strip()
 
     (ok, out) = run('ssh %s "%s"' % (host, cmd))
     if not ok:
-        log_error('Unable to get postgres version on remote host %s' % host)
+        log_error('Unable to get Greenplum database version on remote host %s' % host)
         return False
     remote = out[0].strip()
     
     if current != remote:
-        log_error('postgres versions do not match. %s != %s' % (current, remote))
+        log_error('Greenplum database version does not match. %s != %s' % (current, remote))
         return False
     return True
     
