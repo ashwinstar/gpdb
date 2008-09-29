@@ -188,6 +188,7 @@ class RemotePysync:
 	fileNow = 0
 	byteNow = 0
 	bytesTotal = 0
+	unchanged = 0
 	for name,value in list.iteritems():
 	    if value[0]=='-':
 		f = None
@@ -202,6 +203,7 @@ class RemotePysync:
 		    localSize = f.tell()
 		offset = 0
 		bytesFile = 0
+		changed = False
 		while offset<value[2]:
 		    if self.options.verbose:
 			progress.update('',name,byteNow,fileNow)
@@ -216,6 +218,7 @@ class RemotePysync:
 			    offset += size
 			    byteNow += size
 			    continue
+		    changed = True
 		    if not self.options.minusn:
 			data = self.getData(name,offset,size)
 			if not self.options.insecure:
@@ -233,9 +236,15 @@ class RemotePysync:
 		    f.close()
 		if self.options.minusn and self.options.verbose:
 		    sys.stderr.write('%s %d\\n'%(name,bytesFile))
+		if not changed:
+		    sys.stderr.write('%s is the same\\n'%name)
+		    unchanged += 1
 		fileNow += 1
+	if self.options.verbose:
+	    progress.update('','',byteNow,fileNow)
+	sys.stderr.write('%d file%s did not change.\\n'%(unchanged,unchanged!=1 and 's' or ''))
 	if self.options.minusn:
-	    sys.stderr.write('Total--%d bytes\\n'%bytesTotal)
+	    sys.stderr.write('Total--%d byte%s\\n'%(bytesTotal,bytesTotal!=1 and 's' or ''))
 
     def fixPermissions(self,list):
 	for name,value in list.iteritems():
