@@ -108,7 +108,7 @@ DistributedLog_SetCommitted(
 	
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
 
-	if (isRedo && DistributedLogUpgrade)
+	if (isRedo || DistributedLogUpgrade)
 	{
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DistributedLog_SetCommitted check if page %d is present", 
