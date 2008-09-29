@@ -4347,11 +4347,50 @@ preprocess_range_spec(partValidationState *vstate)
 					}
 
 					curstart = copyObject(start);
-					foreach(lcevery, every)
+					forboth(lccol, coltypes, lcevery, every)
 					{
-						everytypes = lappend_oid(everytypes,
-												 exprType(lfirst(lcevery)));
+						TypeName *typ = lfirst(lccol);
+						HeapTuple optup;
+						List *opname = list_make2(makeString("pg_catalog"), 
+												  makeString("+"));
+						Node *e = lfirst(lcevery);
+						Oid rtypeId = exprType(e);
+						Oid newrtypeId;
 
+						/* first, make sure we can build up an operator */
+						optup = oper(pstate, opname, typ->typid, rtypeId, 
+									 true, -1);
+						if (!HeapTupleIsValid(optup))
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("could not identify operator for partitioning operation between type \"%s\" and type \"%s\"",
+											format_type_be(typ->typid),
+											format_type_be(rtypeId)),
+  									 errhint("Add an explicit cast to the partitioning parameters")));
+
+
+						newrtypeId = ((Form_pg_operator)GETSTRUCT(optup))->oprright;
+						ReleaseSysCache(optup);
+
+						if (rtypeId != newrtypeId)
+						{
+							Type newetyp = typeidType(newrtypeId);
+							int4 typmod = 
+								((Form_pg_type)GETSTRUCT(newetyp))->typtypmod;
+
+							ReleaseSysCache(newetyp);
+
+							/* we need to coerce */
+							e  = coerce_partition_value(e,
+													   newrtypeId,
+													   typmod,
+													   PARTTYP_RANGE);
+					
+							lfirst(lcevery) = e;
+							rtypeId = newrtypeId;
+						}
+
+						everytypes = lappend_oid(everytypes, rtypeId);
 					}
 				}
 				else
