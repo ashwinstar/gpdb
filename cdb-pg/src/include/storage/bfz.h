@@ -57,8 +57,8 @@ extern bfz_t*bfz_create(const char*filePrefix,int compress);
 extern void bfz_append_end(bfz_t*thiz);
 extern void bfz_scan_begin(bfz_t*thiz);
 extern void bfz_close(bfz_t*thiz, bool unreg); 
-extern size_t readAndRetry(int fd,void*buffer,size_t size);
-extern size_t writeAndRetry(int fd,const void*buffer,size_t size);
+extern ssize_t readAndRetry(int fd,void*buffer,size_t size);
+extern ssize_t writeAndRetry(int fd,const void*buffer,size_t size);
 
 static inline off_t
 bfz_totalbytes(bfz_t *bfz)

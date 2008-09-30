@@ -195,20 +195,20 @@ bfz_read_ex(bfz_t*thiz,char*buffer,int size)
     return orig_size-size;
 }
 
-size_t
+ssize_t
 readAndRetry(int fd,void*buffer,size_t size)
 {
-    size_t i;
+    ssize_t i;
     do
 	i = read(fd,buffer,size);
     while (i==-1 && errno==EINTR);
     return i;
 }
 
-size_t
+ssize_t
 writeAndRetry(int fd,const void*buffer,size_t size)
 {
-    size_t i;
+    ssize_t i;
     do
 	i = write(fd,buffer,size);
     while (i==-1 && errno==EINTR);
