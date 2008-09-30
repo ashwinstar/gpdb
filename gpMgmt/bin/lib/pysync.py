@@ -242,7 +242,8 @@ class RemotePysync:
 		fileNow += 1
 	if self.options.verbose:
 	    progress.update('','',byteNow,fileNow)
-	sys.stderr.write('%d file%s did not change.\\n'%(unchanged,unchanged!=1 and 's' or ''))
+        updated = fileMax - unchanged
+	sys.stderr.write('%d out of %d file(s) updated.\\n'%(updated, fileMax))
 	if self.options.minusn:
 	    sys.stderr.write('Total--%d byte%s\\n'%(bytesTotal,bytesTotal!=1 and 's' or ''))
 
