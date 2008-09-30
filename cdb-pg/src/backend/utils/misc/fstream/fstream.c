@@ -17,12 +17,13 @@ struct fstream_t{
     int fidx;		/* current index in ffd[] */
     int64_t foff;		/* current offset in ffd[fidx] */
     int64_t line_number;
+    int64_t compressed_size;
+    int64_t compressed_position;
     int fskip;		/* skip first line */
     const char*ferror;	/* error string */
     struct fstream_options options;
     int buffer_size;
     char buffer[FSTREAM_BLOCKSIZE];
-    int64_t total_size;
 };
 
 static int
@@ -31,19 +32,19 @@ glob_and_copy(const char*pattern,int flags,int(*errfunc)(const char*epath,int ee
     glob_t g;
     int i=glob(pattern,flags,errfunc,&g),j;
     if (!i){
-	char**a=fstream_malloc(sizeof*a*(pglob->gl_pathc+g.gl_pathc));
+	char**a=gfile_malloc(sizeof*a*(pglob->gl_pathc+g.gl_pathc));
 	if (!a)
 	    i = GLOB_NOSPACE;
 	else{
 	    for (j=0; j<pglob->gl_pathc; j++)
 		a[j] = pglob->gl_pathv[j];
 	    if (pglob->gl_pathv)
-		fstream_free(pglob->gl_pathv);
+		gfile_free(pglob->gl_pathv);
 	    pglob->gl_pathv = a;
 	    a += pglob->gl_pathc;
 	    for (j=0; j<g.gl_pathc; j++){
 		char*b=g.gl_pathv[j];
-		if (!(*a=fstream_malloc(strlen(b)+1))){
+		if (!(*a=gfile_malloc(strlen(b)+1))){
 		    i = GLOB_NOSPACE;
 		    break;
 		}
@@ -62,8 +63,8 @@ glob_and_copyfree(glob_and_copy_t*pglob)
     if (pglob->gl_pathv){
 	int i;
 	for (i=0; i<pglob->gl_pathc; i++)
-	    fstream_free(pglob->gl_pathv[i]);
-	fstream_free(pglob->gl_pathv);
+	    gfile_free(pglob->gl_pathv[i]);
+	gfile_free(pglob->gl_pathv);
 	pglob->gl_pathc = 0;
 	pglob->gl_pathv = 0;
     }
@@ -114,7 +115,7 @@ fstream_close(fstream_t* fs)
 {
     glob_and_copyfree(&fs->glob);
     gfile_close(&fs->fd);
-    fstream_free(fs);
+    gfile_free(fs);
 }
 
 static int
@@ -137,7 +138,7 @@ expand_directories(fstream_t*fs)
     memset(&g,0,sizeof g);
     for (i=0; i<fs->glob.gl_pathc; i++){
 	const char*a=fs->glob.gl_pathv[i];
-	char*b=fstream_malloc(2*strlen(a)+2),*c;
+	char*b=gfile_malloc(2*strlen(a)+2),*c;
 	if (!b){
 	    gfile_printf_then_putc_newline("fstream out of memory");
 	    glob_and_copyfree(&g);
@@ -151,7 +152,7 @@ expand_directories(fstream_t*fs)
 	*c++ = '*';
 	*c++ = 0;
 	j = glob_and_copy(b,0,0,&g);
-	fstream_free(b);
+	gfile_free(b);
 	if (j == GLOB_NOMATCH)
 	    gfile_printf_then_putc_newline("fstream %s is empty directory",fs->glob.gl_pathv[i]);
 	else if (j){
@@ -168,7 +169,7 @@ expand_directories(fstream_t*fs)
 static int
 glob_path(fstream_t*fs,const char*path)
 {
-    char*path2=fstream_malloc(strlen(path)+1);
+    char*path2=gfile_malloc(strlen(path)+1);
     if (!path2){
 	gfile_printf_then_putc_newline("fstream out of memory");
 	return 1;
@@ -184,7 +185,7 @@ glob_path(fstream_t*fs,const char*path)
 	}
 	path = p;
     }while (path);
-    fstream_free(path2);
+    gfile_free(path2);
     return 0;
 }
 
@@ -196,7 +197,7 @@ fstream_open(const char*path,const struct fstream_options*options,int*response_c
     fstream_t*fs;
     *response_code = 500;
     *response_string = "Internal Server Error";
-    if (0 == (fs=fstream_malloc(sizeof*fs))){
+    if (0 == (fs=gfile_malloc(sizeof*fs))){
 	gfile_printf_then_putc_newline("fstream out of memory");
 	return 0;
     }
@@ -226,13 +227,7 @@ fstream_open(const char*path,const struct fstream_options*options,int*response_c
 	    fstream_close(fs);
 	    return 0;
 	}
-	if (fs->total_size >= 0){
-	    off_t s=gfile_get_size(&fs->fd);
-	    if (s == -1)
-		fs->total_size = -1;
-	    else
-		fs->total_size += s;
-	}
+	fs->compressed_size += gfile_get_compressed_size(&fs->fd);
 	/* leave the first file opened */
     }
     fs->line_number = 1;
@@ -256,6 +251,7 @@ nextFile(fstream_t*fs)
 {
     int response_code;
     const char*response_string;
+    fs->compressed_position += gfile_get_compressed_size(&fs->fd);
     gfile_close(&fs->fd);
     fs->foff = 0;
     fs->line_number = 1;
@@ -277,7 +273,7 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
     if (fs->ferror)
 	return -1;
     for (;;){
-	size_t s,t;
+	ssize_t s,t;
 	if (!size || fs->fidx==fs->glob.gl_pathc)
 	    return 0;
 	if (fs->fskip){
@@ -388,9 +384,18 @@ fstream_eof(fstream_t*fs)
 }
 
 int64_t
-fstream_get_size(fstream_t*fs)
+fstream_get_compressed_size(fstream_t*fs)
 {
-    return fs->total_size;
+    return fs->compressed_size;
+}
+
+int64_t
+fstream_get_compressed_position(fstream_t*fs)
+{
+    int64_t p=fs->compressed_position;
+    if (fs->fidx != fs->glob.gl_pathc)
+	p += gfile_get_compressed_position(&fs->fd);
+    return p;
 }
 
 int
@@ -404,6 +409,7 @@ fstream_rewind(fstream_t*fs)
     fs->ferror = 0;
     fs->fskip = fs->options.header;
     fs->buffer_size = 0;
+    fs->compressed_position = 0;
     gfile_close(&fs->fd);
     if (gfile_open(&fs->fd,fs->glob.gl_pathv[0],&response_code,&response_string)){
 	gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[0]);

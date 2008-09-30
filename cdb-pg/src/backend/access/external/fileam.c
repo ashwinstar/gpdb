@@ -1330,12 +1330,12 @@ gfile_printf_then_putc_newline(const char*format,...)
 	}
 }
 void*
-fstream_malloc(size_t size)
+gfile_malloc(size_t size)
 {
 	return palloc(size);
 }
 void
-fstream_free(void*a)
+gfile_free(void*a)
 {
 	pfree(a);
 }

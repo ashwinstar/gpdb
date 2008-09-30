@@ -1047,8 +1047,9 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file,CopyState pstate)
     {
 		struct fstream_filename_and_offset fo;
 		assert(size==1);
-		want = fstream_read(file->u.file.fp,ptr,nmemb,&fo,0);
-		if (want>0 && fo.line_number)
+		n = fstream_read(file->u.file.fp,ptr,nmemb,&fo,0);
+		want = n>0?n:0;
+		if (n>0 && fo.line_number)
 		{
 			pstate->cur_lineno = fo.line_number-1;
 			if (pstate->cdbsreh)

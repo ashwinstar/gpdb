@@ -582,17 +582,19 @@ session_get_block(session_t* s, block_t* retblock)
 	session_end(s, 0);
 	return 0;
     }
+    gcb.read_bytes -= fstream_get_compressed_position(s->fstream);
     size = fstream_read(s->fstream,retblock->byte,sizeof retblock->byte,&fos,1);
+    if (size == 0){
+	gcb.read_bytes += fstream_get_compressed_size(s->fstream);
+	session_end(s, 0);
+	return 0;
+    }
+    gcb.read_bytes += fstream_get_compressed_position(s->fstream);
     if (size < 0){
 	const char*ferror=fstream_get_error(s->fstream);
 	session_end(s, 1);
 	return ferror;
     }
-    if (size == 0){
-	session_end(s, 0);
-	return 0;
-    }
-    gcb.read_bytes += size;
     retblock->top = size;
     block_fill_header(retblock,&fos);
     return 0;
@@ -700,7 +702,6 @@ static void session_attach(request_t* r)
 	fstream_t* fstream = 0;
 	apr_pool_t* pool;
 	struct fstream_options fstream_options;
-	int64_t size;
 	int response_code;
 	const char*response_string;
 	/* remove any outdated sessions*/
@@ -731,11 +732,7 @@ static void session_attach(request_t* r)
 	    return;
 	}
 	gcb.total_sessions++;
-	size = fstream_get_size(fstream);
-	if (size == -1)
-	    gcb.total_bytes = -1;
-	else
-	    gcb.total_bytes += size;
+	gcb.total_bytes += fstream_get_compressed_size(fstream);
 	/* allocate session */
 	if (0 == (s = apr_palloc(pool, sizeof(session_t))))
 	    gfatal(FLINE, "out of memory");
@@ -1463,12 +1460,12 @@ gfile_printf_then_putc_newline(const char*format,...)
     putchar('\n');
 }
 void*
-fstream_malloc(size_t size)
+gfile_malloc(size_t size)
 {
     return malloc(size);
 }
 void
-fstream_free(void*a)
+gfile_free(void*a)
 {
     free(a);
 }
