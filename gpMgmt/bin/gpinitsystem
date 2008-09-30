@@ -435,7 +435,7 @@ CHK_MULTI_HOME () {
 		MULTI_HOME=1
 		#Now make sure that we have same number of unique hostnames as there are data directories declared
 		HOST1=`$ECHO ${M_HOST_ARRAY[0]}|$AWK -F":" '{print $2}'`
-		NUM_MHOST_NODE=`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP ":${HOST1}"|$WC -l`
+		NUM_MHOST_NODE=`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP ":${HOST1}$"|$WC -l`
 
                 ((REMAINDER=$NUM_DATADIR % $NUM_MHOST_NODE))                
                 ((MULTIPLE=$NUM_DATADIR / $NUM_MHOST_NODE))
