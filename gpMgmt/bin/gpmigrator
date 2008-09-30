@@ -654,12 +654,10 @@ class GPUpgrade:
             dirs   = self.datadirs
             prefix = self.option
 
-        self.Log('DEBUG', 'prefix = ' + prefix)            
         segdir_re = re.compile(prefix+'\d+$')
         shutdown_re = re.compile('Database cluster state: *(.*)')
             
         for d in dirs:
-            self.Log('DEBUG', 'dir = ' + d)            
 
             # look for segments in the directory
             for content in os.listdir(d):
@@ -958,7 +956,7 @@ Greenplum segment %s did not shutdown cleanly:
         if needunlock:
             self.ReleaseLockdown(self.oldenv)
 
-        self.Startup(self.newenv)
+        self.Startup(self.oldenv)
         self.Log('INFO', 'Removing upgrade user')
         self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
         self.Shutdown()
@@ -1597,19 +1595,36 @@ This issue must be resolved before upgrade can complete.
             [env, utility] = self.dbup
             if (env == self.oldenv):
                 self.Log('INFO', 'Building original oid Mappings')
+                type = 'source'
             else:
                 self.Log('INFO', 'Building upgraded oid Mappings')
-            self.CallSlaves('MAPPINGS', self.config['SEG_PREFIX'])
+                type = 'target'
+
+            self.CallSlaves('MAPPINGS', self.config['SEG_PREFIX'], type)
+
         else:
             prefix = self.option
+            type   = self.option2
             datadirs = self.datadirs
 
+        errors = 0
         port_re = re.compile('^\s*port=(\d+)')
         for d in datadirs:
-            for file in os.listdir(d):
-                if re.compile('^%s\d+$' % prefix).match(file):
+            for seg in os.listdir(d):
+                if re.compile('^%s\d+$' % prefix).match(seg):
+                    
+                    # The directory for this segment
+                    if type == 'source':
+                        dir = os.path.join(d, seg)
+                    else:
+                        dir = os.path.join(d, 'upgrade', seg)
 
-                    dir = os.path.join(d, file)
+                    # We keep both mapping files in the upgrade directory
+                    logdir = os.path.join(d, 'upgrade')
+                
+                    # Open the mapping file
+                    mapfilename = os.path.join(logdir, '%s_%s_mapping' % (seg, type))
+                    mapfile = open(mapfilename, 'w')
 
                     # Find the port for this segment:
                     port_str = self.RunCmd('grep port= %s/postgresql.conf' % dir)
@@ -1619,16 +1634,6 @@ This issue must be resolved before upgrade can complete.
                     else:
                         raise UpgradeError(
                             'Could not determine port from %s/postgresql.conf' % dir)
-
-                    # Move over to the upgrade directory
-                    dir = os.path.join(d, 'upgrade', file)
-                    if not os.path.exists('%s_source_mapping' % dir):
-                        type = 'source'
-                    else:
-                        type = 'target'
-                
-                    mapfilename = '%s_%s_mapping' % (dir, type)
-                    mapfile = open(mapfilename, 'w')
 
                     # Get a list of databases
                     databases = self.Select(
@@ -1687,16 +1692,51 @@ This issue must be resolved before upgrade can complete.
                         port=port)
                         
                         for o in oids:
+
+                            # Check that the relfilenode actually exists! 
+                            #   There is a bug that can cause diskfiles to go missing from
+                            #   bitmap indices.  We want to generate a comprehensable error
+                            #   message for these.
+                            file = os.path.join(dir, 'base', str(db['oid']), str(o['filenode']))
+                            if not os.path.exists(file):
+                                # name is either "schema"."parentschema"."parent_name"_"kind"
+                                #      or        "schema"."name"."kind"
+                                # where the first form is used for objects that embed oids
+                                # in their names (append only segments, bitmap indexes)
+
+                                kind = o['name'][-1:]
+                                name = o['name'][:-2]
+
+                                if name[:14] == 'pg_bitmapindex':
+                                    msg = "Bitmap index '%s'" % name[15:]
+                                elif name[:8] == 'pg_aoseg':
+                                    msg = "Append only segment for '%s'" % name[9:]
+                                elif kind == 'a' or kind == 'r':
+                                    msg = "Table '%s'" % name
+                                elif kind == 'i':
+                                    msg = "Index '%s'" % name
+                                elif kind == 'S':
+                                    msg = "Sequence '%s'" % name
+                                else:
+                                    msg = "Object '%s'" % name
+                                msg += " missing relfile on segment '%s'\n" % seg
+                                self.Log('FATAL', msg)
+                                self.Log('FATAL', 'missing relfile: ' + file)
+                                errors += 1
+
                             # Prefix each name with the database it's in
                             mapfile.write('%s.%s,%s,%s,%s,%s\n' %
                                           (db['dbname'], o['name'],
                                            db['oid'], 
                                            o['filenode'], 
                                            o['toast'], 
-                                           o['toast_index']))                        
+                                           o['toast_index']))       
+
 
                     mapfile.close()
-
+        
+        if errors > 0:
+            raise UpgradeError('You must drop or reindex malformed objects prior to upgrade')
 
     #------------------------------------------------------------
     def CollectValidation(self):
@@ -1848,8 +1888,6 @@ This issue must be resolved before upgrade can complete.
         Run on the master in utility mode.
         '''
         self.Log('INFO', 'Exporting schema')
-        self.oldenv['PGOPTIONS'] = '-c gp_session_role=utility'
-
 
         locked = os.path.join(self.oldenv['MASTER_DATA_DIRECTORY'], 
                               'pg_hba.conf'+LOCKEXT)
@@ -1858,9 +1896,20 @@ This issue must be resolved before upgrade can complete.
         else:
             user = self.oldenv['USER']
 
-        r = subprocess.call('pg_dumpall -U %s -p %d -s --gp-syntax > %s/pgdump.sql' %
-                            (user, self.masterport, self.tmpdir), 
-                            env=self.oldenv, shell=True)
+        # We use the environment of the most recent instance so that
+        # we always use the most recent version of pg_dumpall.
+        if self.upgrade:
+            env = self.newenv
+        else:
+            env = self.oldenv
+
+        cmd  = 'pg_dumpall'
+        cmd += ' -U %s' % user
+        cmd += ' -p %d' % self.masterport
+        cmd += ' -s --gp-syntax > %s/pgdump.sql' % self.tmpdir
+        self.Log('DEBUG', 'CMD: ' + cmd)
+        r = subprocess.call(cmd, env=env, shell=True)
+
         if r:
             raise UpgradeError('pg_dumpall exited with status %d' % r)
 
@@ -2459,11 +2508,11 @@ try:
             # + Mark install valid
             u.ReleaseLockdown(u.newenv)
 
-            # Finally, drop the upgrade user
-            u.Startup(u.newenv)
-            u.Log('INFO', "Removing user '%s'" % MIGRATIONUSER)
-            u.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
-            u.Shutdown()
+            # Finally, drop the upgrade user (temporarily disabled)
+            #u.Startup(u.newenv)
+            #u.Log('INFO', "Removing user '%s'" % MIGRATIONUSER)
+            #u.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
+            #u.Shutdown()
 
             # Done, validated, user dropped
             u.SetState('INSTALL VALID')
