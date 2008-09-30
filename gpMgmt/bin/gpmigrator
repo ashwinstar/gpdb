@@ -106,6 +106,7 @@ class GPUpgrade:
         self.newenv    = None     # enviornment: new gp env
         self.user      = None     # db admin user
         self.host      = None     # master hostname
+        self.path      = None     # Default path
         self.upgrade   = None     # True for upgrade, False for downgrade
         self.logdir    = None
         self.logfile   = None
@@ -116,6 +117,7 @@ class GPUpgrade:
         self.revert     = False
         self.nocheckcat = False
         self.nocheckschema = False
+        self.novalidate = False
         self.warnings   = False
         self.oldversion = None
         self.newversion = None
@@ -138,6 +140,11 @@ class GPUpgrade:
         Basic initialization, separate from __init__ for exception
         handling purposes.
         '''
+
+        # This is the same path used by gpinitsystem
+        self.path = '/usr/kerberos/bin:/usr/sfw/bin:/opt/sfw/bin'
+        self.path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
+        self.path += ':/sw/bin'
 
         # Set defaults 
         self.user      = os.environ.get('USER') or os.environ.get('LOGNAME')
@@ -222,6 +229,9 @@ class GPUpgrade:
             parser.add_option('--internal-disable-checkschema',                              
                               dest='nocheckschema', action='store_true',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-disable-validation',                              
+                              dest='novalidate', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-command', dest='command',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-pid', dest='pid',
@@ -283,6 +293,8 @@ class GPUpgrade:
             self.nocheckcat = True
         if options.nocheckschema:
             self.nocheckschema = True
+        if options.novalidate:
+            self.novalidate = True
 
         if self.cmd == 'MASTER':
             today = date.today().strftime('%Y%m%d')
@@ -358,23 +370,26 @@ class GPUpgrade:
             self.Log('DEBUG', "CMD: " + cmd)
 
         # If utility mode has been specified add role to env
+        if env == None:
+            env = {'PATH': self.path}
+
         if utility:
-            if env:
-                env['PGOPTIONS'] = '-c gp_session_role=utility'
-            else:
-                env = {'PGOPTIONS': '-c gp_session_role=utility'}
+            env['PGOPTIONS'] = '-c gp_session_role=utility'
 
         cmd = cmd.split(' ')
-        pipe = subprocess.Popen(cmd, env=env, 
-                                stdout=subprocess.PIPE, 
-                                stderr=subprocess.PIPE)
-        result  = pipe.communicate();
+        try:
+            pipe = subprocess.Popen(cmd, env=env, 
+                                    stdout=subprocess.PIPE, 
+                                    stderr=subprocess.PIPE)
+            result  = pipe.communicate();
+        except OSError, e:
+            raise CmdError(' '.join(cmd), '', str(e))
 
         if self.debug and not supressDebug:
             self.Log('DEBUG', result[1])
 
         if pipe.returncode:
-            raise CmdError(cmd, result[0], result[1])
+            raise CmdError(' '.join(cmd), result[0], result[1])
         else:
             return result[0].strip();
 
@@ -397,8 +412,10 @@ class GPUpgrade:
             exec_cmd += ' -h %s' % h
 
         if self.upgrade:
+            env = self.newenv
             exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.newhome, EXECNAME)
         else:
+            env = self.oldenv
             exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.oldhome, EXECNAME)
 
         exec_cmd += self.oldhome + ' ' + self.newhome
@@ -409,7 +426,7 @@ class GPUpgrade:
         exec_cmd += ' --internal-option2=%s' % urllib.quote(str(option2))
 
         try:
-            result = self.RunCmd(exec_cmd)
+            result = self.RunCmd(exec_cmd, env=env)
             sys.stdout.write(result)
         except CmdError, e:
             if self.debug:
@@ -441,13 +458,12 @@ class GPUpgrade:
         Sets up environment variables for Greenplum Administration
         '''
         home  = os.environ.get('HOME')
-        path  = os.environ.get('PATH')
         lpath = os.environ.get('LD_LIBRARY_PATH')
         dypath = os.environ.get('DYLD_LIBRARY_PATH')
-        if path:
-            path = '%s/bin:%s' % (gphome, path)
-        else:
-            path = '%s/bin' % gphome
+
+        # Add $GPHOME/bin to the path for this environment
+        path = '%s/bin:%s/ext/python/bin:%s' % (gphome, gphome, self.path)
+
         if lpath:
             lpath = '%s/lib:%s/ext/python/lib:%s' % (gphome, gphome, lpath)
         else:
@@ -1545,7 +1561,7 @@ This issue must be resolved before upgrade can complete.
                         # writes a new one
 
                         # Solaris doesn't support ident authentication
-                        if os_type != 'solaris':
+                        if os_type != 'sunos':
                             self.RunCmd('mv -f %s %s' % (ident, ident+LOCKEXT))
                             file = open(ident, 'w')
                             file.write('%s %s %s\n' % 
@@ -1554,7 +1570,7 @@ This issue must be resolved before upgrade can complete.
 
                         self.RunCmd('mv -f %s %s' % (hba, hba+LOCKEXT))
                         file = open(hba, 'w')
-                        if os_type == 'solaris':
+                        if os_type == 'sunos':
                             file.write('local all %s trust\n' % MIGRATIONUSER)
                         else:
                             file.write('local all %s ident %s\n' 
@@ -1774,6 +1790,10 @@ This issue must be resolved before upgrade can complete.
         look.  We validate that it still looks the same once the upgrade
         is complete.
         '''
+
+        if self.novalidate:
+            self.Log('WARN', 'Upgrading running with validation disabled')
+            return
 
         self.Log('INFO', 'Collecting validation information')
         self.CheckUp()
@@ -2656,6 +2676,17 @@ except UpgradeError, e:
         u.Log('FATAL', str(e2))
     u.Log('FATAL', '***************************************')
     u.Log('FATAL', str(e))
+    u.Log('FATAL', '***************************************')
+    sys.exit(1)
+
+except CmdError, e:
+    try:   u.Cleanup()
+    except Exception, e2:
+        u.Log('FATAL', str(e2))
+    u.Log('FATAL', '***************************************')
+    u.Log('FATAL', 'Error executing command:')
+    u.Log('FATAL', '  ' + str(e.cmd))
+    u.Log('FATAL', '  ' + str(e.stderr))
     u.Log('FATAL', '***************************************')
     sys.exit(1)
 
