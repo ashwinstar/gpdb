@@ -612,6 +612,9 @@ def crossDbCheck():
         else:
             GV.retcode = 1
 
+def closeDbs():
+    for key, db in GV.db.iteritems():
+        db.close()
 
 #############
 if __name__ == '__main__':
@@ -630,6 +633,9 @@ if __name__ == '__main__':
     checkPGExtTable()
     checkPGClassToast()
     checkPGNamespace()
+
+    closeDbs()
+
     crossDbCheck()
     
     if GV.opt['-g'] != None:
