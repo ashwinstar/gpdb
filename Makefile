@@ -465,7 +465,7 @@ authlibs: GPROOTDEP
 	(cd ${CURDIR}/krb5-1.6.2/src && ./configure --prefix=$(CURDIR)/krb5 --without-tcl && make && make install)
 
 	@echo "Building curl"
-	(cd $(CURDIR)/curl-7.17.1 && ./configure --prefix=$(CURDIR)/curl --disable-ldap --disable-ipv6 --without-ssl && make && make install)
+	(cd $(CURDIR)/curl-7.17.1 && CFLAGS="-I$(BLD_THIRDPARTY_INCLUDE_DIR)" LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LD_LIBRARY_PATH=$(BLD_THIRDPARTY_LIB_DIR):$${LD_LIBRARY_PATH} ./configure --prefix=$(CURDIR)/curl --disable-ldap --disable-ipv6 --without-ssl && make && make install)
 
 	@echo ""
 	@echo "openssl installed at $(CURDIR)/openssl"
