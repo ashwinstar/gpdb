@@ -82,7 +82,7 @@ bz_file_read(gfile_t*fd,void*ptr,size_t len)
 	else if (e)
 	    return -1;
 	if (z->s.avail_out==sizeof z->out && z->s.avail_in==s)
-	    z->eof = 1;
+	    return -1;
 	if (z->s.next_in == z->in+z->in_size){
 	    z->s.next_in = z->in;
 	    z->in_size = 0;
