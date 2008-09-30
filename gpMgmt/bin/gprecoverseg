@@ -592,7 +592,7 @@ class SyncDataThread(Thread):
         # remove failed segment directory if destination directory is not same as failed segment directory
         # It doesn't matter it fails or not since failed segment directory is not used anymore
         if self.failed_qe != self.pool_array:
-            gpmlib.log_info('Pool host or directory specified.  Failed segment directory will be removed')
+            gpmlib.log_info('Pool host or directory specified.  Data directory %s is no longer in use.' % self.failed_qe['datadir'])
             gpmlib.log_info('Delete data directory %s on %s' % (self.failed_qe['datadir'], self.failed_qe['hostname']))
             (ok, out) = gpmlib.run_warn('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
                                                                  self.failed_qe['datadir'], self.failed_qe['datadir']))
@@ -1301,44 +1301,12 @@ def test_access(failed_instance_array, active_instance_array):
         if not ok:
             gpmlib.fatal('Write file to remote host %s failed' % active_qe['hostname'])            
 
-        # check pysync.py
-        try:
-            src_dir = '/tmp/remote_dir1.%d' % os.getpid()
-            dst_dir = '/tmp/remote_dir2.%d' % os.getpid()
-            (ok, out) = gpmlib.run_warn('%s "cd /tmp && mkdir %s && echo test > %s"' %
-                                   (gplib.ssh_prefix(host=active_qe['hostname']), src_dir, os.path.join(src_dir, 'sync.dat')))
-            if not ok:
-                gpmlib.log_fatal('Failed to create directory %s on %s' % (src_dir, active_qe['hostname']))
-                raise Exception
-                
-            (ok, out) = gpmlib.run_warn('%s "cd /tmp && mkdir %s"' %
-                                   (gplib.ssh_prefix(host=failed_qe['hostname']), dst_dir))
-            if not ok:
-                gpmlib.log_fatal('Failed to create directory %s on %s' % (dst_dir, failed_qe['hostname']))
-                raise Exception
 
-            cmd = gpmlib.makeCommand('%s -v --delete -x db_dumps %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
-                                                                     src_dir,
-                                                                     failed_qe['hostname'],
-                                                                     dst_dir))
-            (ok, out) = gpmlib.run_warn('%s "%s" >> %s 2>&1' %
-                                   (gplib.ssh_prefix(host=active_qe['hostname']),
-                                    cmd,
-                                    opt['-l']))
-        
-            if not ok:
-                gpmlib.log_fatal('Failed to synchronize data from active segment host %s to failed segment host %s' % 
-                                 (active_qe['hostname'], failed_qe['hostname']))
-                raise Exception
-
-        except Exception, e:
-            gpmlib.fatal('Remote access checks failed.')
-        finally:
-            (ok, out) = gpmlib.run('%s "cd /tmp && rm -rf %s"' %
-                                   (gplib.ssh_prefix(host=active_qe['hostname']), src_dir))
-
-            (ok, out) = gpmlib.run('%s "cd /tmp && rm -rf %s"' %
-                                   (gplib.ssh_prefix(host=failed_qe['hostname']), dst_dir))
+        # check access from active segment host to failed segment host
+        (ok, out) = gpmlib.run_warn('%s \'%s ls /tmp\'' % (gplib.ssh_prefix(host=active_qe['hostname']),
+                                                           gplib.ssh_prefix(host=failed_qe['hostname'])))
+        if not ok:
+            gpmlib.error('Check inter host ssh access from %s to %s failed' % (active_qe['hostname'], failed_qe['hostname']))
 
     gpmlib.log_info('Remote access checks completed')
 
@@ -1737,7 +1705,7 @@ try:
             gpmlib.log_info('Successfully shutdown the master instance')
 
             # start database
-            gpmlib.log_info('Start the array', True)
+            gpmlib.log_info('Start Greenplum database', True)
             (ok, out) = gpmlib.run_warn('gpstart -a -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
         else:
             reset_qe_connect(db)
