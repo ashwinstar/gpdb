@@ -119,6 +119,8 @@ static int	g_numNamespaces;
 /* flag to turn on/off dollar quoting */
 static int	disable_dollar_quoting = 0;
 
+/* flag indicating whether or not this GP database supports partitioning */
+static bool gp_partitioning_available = false;
 
 static void help(const char *progname);
 static void expand_schema_name_patterns(SimpleStringList *patterns,
@@ -173,6 +175,7 @@ static char *format_function_signature(FuncInfo *finfo, bool honor_quotes);
 static const char *convertRegProcReference(const char *proc);
 static const char *convertOperatorReference(const char *opr);
 static void selectSourceSchema(const char *schemaName);
+static bool testPartitioningSupport(void);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
@@ -580,6 +583,11 @@ main(int argc, char **argv)
 	 * exactly (given correctly implemented float I/O code, anyway)
 	 */
 	do_sql_command(g_conn, "SET extra_float_digits TO 2");
+
+	/*
+	 * Remember whether or not this GP database supports partitioning.
+	 */
+	gp_partitioning_available = testPartitioningSupport();
 
 	/* Expand schema selection patterns into OID lists */
 	if (schema_include_patterns.head != NULL)
@@ -6573,29 +6581,35 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			PQclear(res);
 		}
 
-		/* lets see about partitioning */
-		resetPQExpBuffer(query);
-		appendPQExpBuffer(query, "SELECT "
-						  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
-						  tbinfo->dobj.catId.oid);
-
-		res = PQexec(g_conn, query->data);
-		check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-		if (PQntuples(res) != 1)
+		/*
+		 * If GP partitioning is supported add the partitioning constraints to the table definition.
+		 */
+		if ( gp_partitioning_available )
 		{
-			if (PQntuples(res) < 1)
-				write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
-						  tbinfo->dobj.name);
-			else
-				write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
-						  tbinfo->dobj.name);
-			exit_nicely();
-		}
-		if (!PQgetisnull(res, 0, 0))
-			appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+			//does support GP partitioning. */
+			resetPQExpBuffer(query);
+			appendPQExpBuffer(query, "SELECT "
+							  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+							  tbinfo->dobj.catId.oid);
 
-		PQclear(res);
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			if (PQntuples(res) != 1)
+			{
+				if (PQntuples(res) < 1)
+					write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
+							  tbinfo->dobj.name);
+				else
+					write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
+							  tbinfo->dobj.name);
+				exit_nicely();
+			}
+			if (!PQgetisnull(res, 0, 0))
+				appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+
+			PQclear(res);
+		}
 
 		/* END MPP ADDITION */
 
@@ -7678,6 +7692,31 @@ selectSourceSchema(const char *schemaName)
 	if (curSchemaName)
 		free(curSchemaName);
 	curSchemaName = strdup(schemaName);
+}
+
+/*
+ * testPartitioningSupport - tests whether or not the current GP database includes
+ * support for partitioning.
+ */
+static bool
+testPartitioningSupport(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isSupported;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT 1 FROM pg_class WHERE relname = 'pg_partition' and relnamespace = 11;");
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	isSupported = ( PQntuples(res) == 1 );
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isSupported;
 }
 
 /*
