@@ -1453,6 +1453,9 @@ This issue must be resolved before upgrade can complete.
         We assume that the MIGRATIONUSER user has already been created
         '''
 
+
+        os_type = self.RunCmd('uname -s').lower()
+
         if self.cmd == 'MASTER':
             self.Log('INFO', 'Locking database')
             self.CheckUp()
@@ -1465,6 +1468,23 @@ This issue must be resolved before upgrade can complete.
             
             datadirs   = [self.root]
             seg_prefix = self.config['SEG_PREFIX'] + '-'
+
+            # To write out a new pg_hba.conf we need to know all the ip 
+            # addresses that the master identifies with.
+            #
+            # If we re-enable segment locking then this will need to be
+            # passed to the segments as well.
+            if os_type == 'sunos':
+                cmd = 'ifconfig -a inet'
+            else:
+                cmd = 'ifconfig'        
+            ifconf = self.RunCmd(cmd)
+            ip_re = re.compile('inet (\d+\.\d+\.\d+\.\d+)')
+            ip = []
+            for line in ifconf.split('\n'):
+                m = ip_re.search(line)
+                if m:
+                    ip.append(m.group(1))
 
             if env == self.oldenv: suffix = ""
             else: suffix = 'upgrade'
@@ -1523,18 +1543,27 @@ This issue must be resolved before upgrade can complete.
                     else:
                         # pre-upgrade database makes a backup of files and then
                         # writes a new one
+
+                        # Solaris doesn't support ident authentication
+                        if os_type != 'solaris':
+                            self.RunCmd('mv -f %s %s' % (ident, ident+LOCKEXT))
+                            file = open(ident, 'w')
+                            file.write('%s %s %s\n' % 
+                                       (MIGRATIONUSER, self.user, MIGRATIONUSER))
+                            file.close()
+
                         self.RunCmd('mv -f %s %s' % (hba, hba+LOCKEXT))
-                        self.RunCmd('mv -f %s %s' % (ident, ident+LOCKEXT))
                         file = open(hba, 'w')
-                        file.write('local all %s ident %s\n' 
-                                   % (MIGRATIONUSER, MIGRATIONUSER))
-                        file.write('host  all %s 127.0.0.1/32 trust\n'
-                                   % (MIGRATIONUSER))
+                        if os_type == 'solaris':
+                            file.write('local all %s trust\n' % MIGRATIONUSER)
+                        else:
+                            file.write('local all %s ident %s\n' 
+                                       % (MIGRATIONUSER, MIGRATIONUSER))
+                        for addr in ip:
+                            file.write('host all %s %s/32 trust\n'
+                                       % (MIGRATIONUSER, addr))
                         file.close()
-                        file = open(ident, 'w')
-                        file.write('%s %s %s\n' % 
-                                   (MIGRATIONUSER, self.user, MIGRATIONUSER))
-                        file.close()
+
 
     #------------------------------------------------------------
     def ReleaseLockdown(self, env):
