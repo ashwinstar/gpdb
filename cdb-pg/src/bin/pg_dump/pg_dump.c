@@ -1262,12 +1262,6 @@ dumpTableData(Archive *fout, TableDataInfo *tdinfo)
 	DataDumperPtr dumpFn;
 	char	   *copyStmt;
 
-	/* handle the case of getting a zero-column table.  COPY doesn't
-	 * have a way of dumping these so we don't try and dump data.
-	 */
-	if( tbinfo->actualnumatts == 0 )
-		return;
-	
 	if (!dumpInserts)
 	{
 		/* Dump/restore using COPY */
@@ -2554,7 +2548,7 @@ getTables(int *numTables)
 		}
 		tblinfo[i].reltablespace = strdup(PQgetvalue(res, i, i_reltablespace));
 		tblinfo[i].reloptions = strdup(PQgetvalue(res, i, i_reloptions));
-		tblinfo[i].actualnumatts = 0;
+
 		/* other fields were zeroed above */
 
 		/*
@@ -6481,8 +6475,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 		}
 
-		tbinfo->actualnumatts = actual_atts;
-		
 		/*
 		 * Add non-inherited CHECK constraints, if any.
 		 */
@@ -6581,37 +6573,28 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			PQclear(res);
 		}
 
-		/* lets see about GP partitioning */
+		/* lets see about partitioning */
 		resetPQExpBuffer(query);
-		appendPQExpBuffer(query,"SELECT 1 FROM pg_class WHERE relname = 'pg_partition' and relnamespace = 11;");
+		appendPQExpBuffer(query, "SELECT "
+						  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+						  tbinfo->dobj.catId.oid);
+
 		res = PQexec(g_conn, query->data);
 		check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-		resetPQExpBuffer(query);						
-		if (PQntuples(res) == 1)
+
+		if (PQntuples(res) != 1)
 		{
-			//does support GP partitioning. */		
-			PQclear(res);
-		
-			appendPQExpBuffer(query, "SELECT "
-							  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
-							  tbinfo->dobj.catId.oid);
-
-			res = PQexec(g_conn, query->data);
-			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-			if (PQntuples(res) != 1)
-			{
-				if (PQntuples(res) < 1)
-					write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
-							  tbinfo->dobj.name);
-				else
-					write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
-							  tbinfo->dobj.name);
-				exit_nicely();
-			}
-			if (!PQgetisnull(res, 0, 0))
-				appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+			if (PQntuples(res) < 1)
+				write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
+						  tbinfo->dobj.name);
+			else
+				write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
+						  tbinfo->dobj.name);
+			exit_nicely();
 		}
+		if (!PQgetisnull(res, 0, 0))
+			appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+
 		PQclear(res);
 
 		/* END MPP ADDITION */
