@@ -146,7 +146,8 @@ gz_file_read(gfile_t*fd,void*ptr,size_t len)
 	while (z->in_size < sizeof z->in){
 	    s = read_and_retry(fd,z->in+z->in_size,sizeof z->in-z->in_size);
 	    if (s == 0){
-		f = Z_FINISH;
+		if (z->in+z->in_size == z->s.next_in)
+		    f = Z_FINISH;
 		break;
 	    }
 	    if (s < 0)
