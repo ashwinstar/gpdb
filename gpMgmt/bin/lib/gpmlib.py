@@ -392,7 +392,9 @@ def postgres_active(port, host=None):
 
     # ping host if present
     if host:
-        ping_host(host, True)
+        ok = ping_host(host)
+        if not ok:
+            return (ok, pid)
 
     # netstat to check the port number
     (ok, out) = run('%s %s -an 2> /dev/null | %s ".s.PGSQL.%d" | %s \'{print $NF}\'| %s -F"." \'{print $NF}\' | %s -u' % 

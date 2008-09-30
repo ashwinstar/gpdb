@@ -563,7 +563,8 @@ class SyncDataThread(Thread):
     def run(self):
         global opt
 
-        # kill failed_qe process
+        # try to kill failed_qe process again to make sure process is killed.
+        # It may not be able to ping the host in case of machine failure.
         gpmlib.log_info('Try to kill postmaster process on %s port %d' % (self.failed_qe['hostname'], 
                                                                           self.failed_qe['port']))
         (ok, pid) = gpmlib.postgres_active(self.failed_qe['port'], self.failed_qe['hostname'])
@@ -579,7 +580,7 @@ class SyncDataThread(Thread):
                 gpmlib.error('kill -9 %d on remote host %s failed' % (pid, self.failed_qe['hostname']))
 
         else:
-            gpmlib.log_info('No postmaster proces on %s port %d' % (self.failed_qe['hostname'], self.failed_qe['port']))
+            gpmlib.log_info('No postmaster process on %s port %d' % (self.failed_qe['hostname'], self.failed_qe['port']))
 
         gpmlib.log_info('Cleaning /tmp/lock files for %s for port %s' % (self.failed_qe['hostname'], self.failed_qe['port']))
         (ok, out) = gpmlib.run('%s %s -f /tmp/.s.PGSQL.%d.lock /tmp/.s.PGSQL.%d' %
@@ -588,18 +589,20 @@ class SyncDataThread(Thread):
                                 self.failed_qe['port'],
                                 self.failed_qe['port']))
 
-#        # check data directory
-#        if self.failed_qe != self.pool_array:
-#            # remove database directory
-#            gpmlib.log_info('Delete data directory %s on %s' % (self.failed_qe['datadir'], self.failed_qe['hostname']))
-#            (ok, out) = gpmlib.run_warn('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
-#                                                                 self.failed_qe['datadir'], self.failed_qe['datadir']))
-#            if not ok:
-#                gpmlib.log_warn('Issue with forced delete %s or %s.log on %s' % 
-#                                (self.failed_qe['datadir'],
-#                                 self.failed_qe['datadir'],
-#                                 self.failed_qe['hostname']))
-            
+        # remove failed segment directory if destination directory is not same as failed segment directory
+        # It doesn't matter it fails or not since failed segment directory is not used anymore
+        if self.failed_qe != self.pool_array:
+            gpmlib.log_info('Pool host or directory specified.  Failed segment directory will be removed')
+            gpmlib.log_info('Delete data directory %s on %s' % (self.failed_qe['datadir'], self.failed_qe['hostname']))
+            (ok, out) = gpmlib.run_warn('%s rm -rf %s %s.log' % (gplib.ssh_prefix(host=self.failed_qe['hostname']),
+                                                                 self.failed_qe['datadir'], self.failed_qe['datadir']))
+            if not ok:
+                # remove directory failure may be caused by harddisk or machine failure and it is okay to fail in this case.
+                gpmlib.log_warn('Issue with forced delete %s or %s.log on %s' % 
+                                (self.failed_qe['datadir'],
+                                 self.failed_qe['datadir'],
+                                 self.failed_qe['hostname']))
+                
         # sychronize pool_array
         gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s)' % 
                         (self.active_qe['hostname'], self.active_qe['datadir'], 
@@ -722,7 +725,7 @@ def update_gp_conf(mirrors):
     # start master in admin mode
     (ok, out) = gpmlib.run_warn('gpstart -qam -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
-        gpmlib.error('Start master in admin mode failed')
+        gpmlib.error('Failed to start master in admin mode')
 
     try:
         db = pg8000.Connection(host='localhost', port=master_port, 
@@ -747,7 +750,7 @@ def update_gp_conf(mirrors):
     # stop master
     (ok, out) = gpmlib.run_warn('gpstop -qma -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
     if not ok:
-        gpmlib.error('Stop master in admin mode failed')
+        gpmlib.error('Failed to stop master in admin mode')
 
 ################
 def display_param(fault_action, failed_array, active_array, multi_home):
