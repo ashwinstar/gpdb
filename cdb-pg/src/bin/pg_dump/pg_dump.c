@@ -144,6 +144,7 @@ static void dumpCompositeType(Archive *fout, TypeInfo *tinfo);
 static void dumpShellType(Archive *fout, ShellTypeInfo *stinfo);
 static void dumpProcLang(Archive *fout, ProcLangInfo *plang);
 static void dumpFunc(Archive *fout, FuncInfo *finfo);
+static void dumpPlTemplateFunc(Oid funcOid, const char *templateField, PQExpBuffer buffer);
 static void dumpCast(Archive *fout, CastInfo *cast);
 static void dumpOpr(Archive *fout, OprInfo *oprinfo);
 static void dumpOpclass(Archive *fout, OpclassInfo *opcinfo);
@@ -4745,6 +4746,33 @@ dumpProcLang(Archive *fout, ProcLangInfo *plang)
 	}
 	appendPQExpBuffer(defqry, ";\n");
 
+	/*
+	 * If the language is one of those for which the call handler and validator
+	 * functions are defined in pg_pltemplate, we must add ALTER FUNCTION ... OWNER
+	 * statements to switch the functions to the user to whom the functions are
+	 * assigned.
+	 *
+	 * Functions specified in pg_pltemplate are entered into pg_proc under
+	 * pg_catalog.  Functions in pg_catalog are omitted from the function list
+	 * structure resulting in the references to them in this procedure to be
+	 * NULL.
+	 *
+	 * If the call handler or validator is defined, check to see if it's one of the
+	 * pre-defined ones.  If so, it won't have been dumped as a function
+	 * so won't have the proper owner -- we need to emit an ALTER FUNCTION ... OWNER
+	 * statement for it.
+	 *
+	 * TODO: Adjust for ALTER LANGUAGE ... OWNER support.
+	 */
+	if ( funcInfo == NULL )
+	{
+		dumpPlTemplateFunc(plang->lanplcallfoid, "tmplhandler", defqry);
+	}
+	if ( validatorInfo == NULL )
+	{
+		dumpPlTemplateFunc(plang->lanvalidator, "tmplvalidator", defqry);
+	}
+
 	ArchiveEntry(fout, plang->dobj.catId, plang->dobj.dumpId,
 				 plang->dobj.name,
 				 lanschema, NULL, plang->lanowner,
@@ -4771,6 +4799,62 @@ dumpProcLang(Archive *fout, ProcLangInfo *plang)
 	destroyPQExpBuffer(defqry);
 	destroyPQExpBuffer(delqry);
 }
+
+
+/*
+ * dumpPlTemplateFunc - appends an "ALTER FUNCTION ... OWNER" statement for the
+ * pg_pltemplate-defined language function specified to the PQExpBuffer provided.
+ *
+ * The ALTER FUNCTION statement is added if, and only if, the function is defined
+ * in the pg_catalog schema AND is identified in the pg_pltemplate table.
+ */
+static void
+dumpPlTemplateFunc(Oid funcOid, const char *templateField, PQExpBuffer buffer)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i_signature;
+	int			i_owner;
+	char	   *functionSignature = NULL;
+	char	   *ownerName = NULL;
+	PQExpBuffer fquery = createPQExpBuffer();
+
+	/* Make sure we are in proper schema */
+	selectSourceSchema("pg_catalog");
+
+	appendPQExpBuffer(fquery,
+			"SELECT p.oid::pg_catalog.regprocedure AS signature, "
+				"( %s proowner ) AS owner "
+				"FROM pg_pltemplate t, pg_proc p "
+				"WHERE p.oid = %d "
+				"AND proname = %s "
+				"AND pronamespace = ( SELECT oid FROM pg_namespace WHERE nspname = 'pg_catalog' )",
+			username_subquery, funcOid, templateField);
+
+	res = PQexec(g_conn, fquery->data);
+	check_sql_result(res, g_conn, fquery->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+	if ( ntups != 0 )
+	{
+		i_signature = PQfnumber(res, "signature");
+		i_owner = PQfnumber(res, "owner");
+		functionSignature = strdup(PQgetvalue(res, 0, i_signature));
+		ownerName = strdup(PQgetvalue(res, 0, i_owner));
+
+		if ( functionSignature != NULL && ownerName != NULL )
+		{
+			appendPQExpBuffer(buffer, "ALTER FUNCTION %s OWNER TO %s;\n", functionSignature, ownerName);
+		}
+
+		free(functionSignature);
+		free(ownerName);
+	}
+
+	PQclear(res);
+	destroyPQExpBuffer(fquery);
+}
+
 
 /*
  * format_function_arguments: generate function name and argument list
