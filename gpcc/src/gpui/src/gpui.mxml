@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" xmlns="*" layout="absolute" backgroundColor="#FFFFFF" creationPolicy="all" creationComplete="onInit()">
+
+	<mx:HTTPService id="getHosts" url="{mx.core.Application.application.urlPrefix + 'hosts'}" useProxy="false" method="GET" showBusyCursor="true" fault="faultHandler(event,'getHosts')" result="getHostsResultHandler(event)">
+		<mx:request xmlns="">
+			<sid>{mx.core.Application.application.sid}</sid>
+		</mx:request>
+	</mx:HTTPService>
+
+	<mx:HTTPService id="getConfig" url="{mx.core.Application.application.urlPrefix + 'config'}" useProxy="false" method="GET" showBusyCursor="true" fault="faultHandler(event,'getConfig')" result="getConfigResultHandler(event)">
+		<mx:request xmlns="">
+			<sid>{mx.core.Application.application.sid}</sid>
+		</mx:request>
+	</mx:HTTPService>
+
+	<mx:Image x="20" y="10" source="@Embed(source='images/greenplum_logo.gif')" width="171" height="50"/>
+	<mx:HBox y="26" right="20">
+		<mx:Label text="Performance Monitor" fontSize="18" styleName="defaultLabel" fontFamily="Arial"/>
+	</mx:HBox>
+	<mx:Canvas top="62" left="20" right="20" bottom="20">
+		<mx:Panel top="0" bottom="10" right="0" left="0" styleName="panel" borderColor="#A3B5AA">
+		<mx:HBox width="100%">
+			<mx:LinkBar dataProvider="mainViewStack"/>
+			<mx:HBox width="100%" horizontalAlign="right">
+				<mx:CheckBox id="checkboxRealTime" label="Realtime" change="selectRealtime()"/>
+				<mx:ComboBox id="hostname" dataProvider="{hostnamesArray}" change="mx.core.Application.application.systemMetricsView.selectSystemMetricHost(hostname.selectedItem)" width="180" textAlign="left"/>				
+			</mx:HBox>
+		</mx:HBox>
+		<mx:ViewStack id="mainViewStack" width="100%" height="100%" top="100">
+			<system_metrics id="systemMetricsView" label="System Metrics"/>
+			<query_metrics id="queryMetricsView" label="Query Metrics"/>
+			<query_plan id="queryPlanView" label="Query Plan"/>
+		</mx:ViewStack>
+		</mx:Panel>
+	</mx:Canvas>
+	<mx:Label bottom="3" text="© 2008 Greenplum, Inc." right="20"/>
+
+	<mx:Style source="styles.css" />	
+	<mx:Script>
+	<![CDATA[
+		include "include/defines.as";
+		include "include/common.as";
+		import mx.core.Application
+		import flash.events.*;
+        import mx.events.*;
+        import mx.controls.*;
+		import mx.controls.Alert;
+        import mx.managers.PopUpManager;
+        import mx.collections.ArrayCollection;
+        
+        [Bindable] public var urlPrefix:String = null;
+        [Bindable] public var sid:String = null;
+        public var login_popup:login;
+        
+        [Bindable] private var hostnamesArray:Array = null;
+        
+		private function onInit():void
+		{
+			urlPrefix = getURL();
+
+			showLogin();
+		}
+
+		private function selectRealtime():void
+		{
+			mx.core.Application.application.queryMetricsView.selectRealtime();
+			mx.core.Application.application.systemMetricsView.selectRealtime();
+		}
+
+        private function showLogin():void
+        {
+            login_popup = login(PopUpManager.createPopUp(this,login,true));
+            PopUpManager.centerPopUp(login_popup); 
+         }
+
+        public function hideLogin():void
+        {
+            PopUpManager.removePopUp(login_popup);         
+        }
+        
+        private function getHostsResultHandler(event:ResultEvent):void
+		{
+			// Error checking
+			if(checkHttpServiceResultsForFailure("getHostsResultHandler()", event, (event.result.hosts == null)))
+				return;
+			
+			hostnamesArray = new Array();
+
+			if(typeof event.result.hosts.host == "string")
+			{
+				hostnamesArray.push(event.result.hosts.host);
+			}
+			else
+			{
+				hostnamesArray.push("All");
+				for(var i:int=0; i<event.result.hosts.host.length; i++)
+				{
+					hostnamesArray.push(event.result.hosts.host[i]);
+				}
+			}
+			
+			hostname.selectedIndex = 0;
+			mx.core.Application.application.systemMetricsView.selectSystemMetricHost(hostname.selectedItem);
+			
+			getConfig.send();
+		}	
+
+        private function getConfigResultHandler(event:ResultEvent):void
+		{
+			// Error checking
+			if(checkHttpServiceResultsForFailure("getConfigResultHandler()", event, (event.result.config == null)))
+				return;
+		
+			if(event.result.config.quantum != null)
+			{
+				if(parseInt(event.result.config.quantum))
+					resubmitDelay = parseInt(event.result.config.quantum);
+			}
+
+			var start:Date = parseDate(event.result.config.time);
+			var minimum:Number;
+
+			minimum = systemMetricsView.dateRangeSlider.values[1] - (2 * 24 * 60 * 60 * 1000);
+			if(minimum < start.getTime())
+				minimum = start.getTime();
+			
+			systemMetricsView.dateRangeSlider.minimum = start.getTime();
+			//systemMetricsView.dateRangeSlider.values[0] = start.getTime();
+			systemMetricsView.dateRangeSlider.values[0] = minimum;	
+			systemMetricsView.getMetrics.request.start = formatDateFromEpoch(systemMetricsView.dateRangeSlider.values[0]);
+			systemMetricsView.getMetrics.request.end = formatDateFromEpoch(systemMetricsView.dateRangeSlider.values[1]);
+			systemMetricsView.getMetrics.send();
+
+			minimum = queryMetricsView.dateRangeSlider.values[1] - (2 * 24 * 60 * 60 * 1000);
+			if(minimum < start.getTime())
+				minimum = start.getTime();
+			
+			queryMetricsView.dateRangeSlider.minimum = start.getTime();
+			//queryMetricsView.dateRangeSlider.values[0] = start.getTime();
+			queryMetricsView.dateRangeSlider.values[0] = minimum;
+			queryMetricsView.getQueries.request.start = formatDateFromEpoch(queryMetricsView.dateRangeSlider.values[0]);
+			queryMetricsView.getQueries.request.end = formatDateFromEpoch(queryMetricsView.dateRangeSlider.values[1]);
+			queryMetricsView.getQueries.send();
+		}	
+
+ 	 ]]>
+	 </mx:Script>
+</mx:Application>

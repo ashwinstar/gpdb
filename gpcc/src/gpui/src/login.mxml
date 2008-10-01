@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<mx:Panel xmlns:mx="http://www.adobe.com/2006/mxml" autoLayout="true" layout="absolute" width="486" height="220" borderColor="#d1d1d1" defaultButton="{okButton}" creationComplete="onCreate()" title="Log In" opaqueBackground="#d1d1d1" color="#333333" fontFamily="Arial" fontSize="11">
+	<mx:HTTPService id="getLogin" url="{mx.core.Application.application.urlPrefix + 'logon'}" useProxy="false" method="GET"  showBusyCursor="true" fault="loginFaultHandler(event)" result="loginResultHandler(event)">
+		<mx:request xmlns="">
+			<username>{username.text}</username>
+			<password>{password.text}</password>
+		</mx:request>
+	</mx:HTTPService>
+	
+	<mx:Style source="styles.css"/>
+	
+	<mx:Canvas x="27.5" y="21" height="114" width="411" borderStyle="inset">
+		<mx:Label text="User ID" width="67" textAlign="right" styleName="defaultLabel" fontSize="12" x="29" y="26"/>
+		<mx:TextInput id="username" width="275" text="gpmon" styleName="defaultLabel" fontSize="12" x="104" y="23"/>
+
+	    <mx:Label text="Password" x="35" y="67" textAlign="right" styleName="defaultLabel" fontSize="12"/>
+   		<mx:TextInput id="password" displayAsPassword="true" x="104" y="66" width="150" text="" styleName="defaultLabel" fontSize="12"/>
+	</mx:Canvas>
+	<mx:Button label="Log In" id="okButton" click="getLogin.send()"  x="380" y="148" styleName="button" fontSize="11"/>	   
+
+	<mx:Script source="include/defines.as" />
+	<mx:Script source="include/common.as" />
+	<mx:Script><![CDATA[
+		import mx.rpc.events.FaultEvent;
+		import mx.core.Application;
+		import mx.rpc.events.ResultEvent;
+		import mx.collections.ArrayCollection;
+	
+		private function onCreate():void
+		{
+			username.setFocus();
+			username.focusEnabled = true;
+		}
+	
+		private function loginResultHandler(event:ResultEvent):void
+		{			
+			if(checkHttpServiceResultsForFailure("loginResultHandler()", event, (event.result.logon == null), true))
+				return;
+	
+			if(event.result.logon.status == null || event.result.logon.status != "SUCCESS")
+			{
+				Alert.show("Login Failed");
+				return;
+			}
+			
+			mx.core.Application.application.sid = event.result.logon.sid;
+	        mx.core.Application.application.hideLogin();
+
+	        mx.core.Application.application.getHosts.send();
+	        // getConfig.send() needs to be cascaded from the getHosts resulthandler.
+			//mx.core.Application.application.getConfig.send();
+		}
+		
+		public function loginFaultHandler(event:FaultEvent):void
+		{
+			if(event.fault.faultCode == "Server.Error.Request")
+			{
+				Alert.show("There was an error connecting to the Server at " + mx.core.Application.application.urlPrefix);
+				return;
+			}
+			else if(event.fault.faultCode == "Channel.Security.Error")
+			{
+				Alert.show("There was a channel security error connecting to the Server at " + mx.core.Application.application.urlPrefix);
+				return;
+			}
+
+			Alert.show("Login Failed");
+		}
+		
+	]]></mx:Script>
+
+</mx:Panel>
