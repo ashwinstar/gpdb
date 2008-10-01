@@ -1,0 +1,6 @@
+$def with (stime, quantum)
+<?xml version="1.0"?>
+<config>
+    <time>$stime</time>
+    <quantum>$quantum</quantum>
+</config>
