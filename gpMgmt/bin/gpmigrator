@@ -1341,6 +1341,7 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
            SELECT content, definedprimary, dbid, hostname, port, datadir 
            FROM gp_configuration 
+           ORDER BY content
         ''')
 
         # check multi-home and get the hostname
@@ -1388,8 +1389,9 @@ Cannot downgrade a database with append only tables     <<<<<
         else:
             self.hosts = list(set(h.values()))
 
-        # Determine PORT_BASE, use any old segment (??? this is wrong ???)
-        self.config['PORT_BASE'] = segments[0]['port'] - segments[0]['content'] - 1
+        # Determine PORT_BASE, (min of segments - 1)
+        port_base = min(map(lambda(x): x['port'], segments))-1
+        self.config['PORT_BASE'] = port_base
 
         # Determine DATA_DIRECTORY, use any host
         # We also keep track of a SET() of data and mirror dirs without
@@ -1428,8 +1430,9 @@ Cannot downgrade a database with append only tables     <<<<<
         mirror_dirs = set();
         if self.mirrors:
 
-            # MIRROR_PORT_BASE (??? this is wrong ???)
-            self.config['MIRROR_PORT_BASE'] = mirrors[0]['port']-mirrors[0]['content']-1
+            # Determine PORT_BASE, (min of segments - 1)
+            port_base = min(map(lambda(x): x['port'], mirrors))-1
+            self.config['MIRROR_PORT_BASE'] = port_base
 
             # MIRROR_DATA_DIRECTORY, use any mirror
             mirror_data_dir = ''
@@ -1448,7 +1451,8 @@ This issue must be resolved before upgrade can complete.
                 mirror_data_dir = mirror_data_dir + os.path.join(str(newdir), 'upgrade') + ' '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
-        # standby masters (???)
+        # standby masters
+        #  - currently not upgraded - reinit them once upgrade is complete
 
         # We collected a set of data and mirror directories, convert it back
         # to a string.
@@ -1495,7 +1499,7 @@ This issue must be resolved before upgrade can complete.
             else:
                 cmd = 'ifconfig'        
             ifconf = self.RunCmd(cmd)
-            ip_re = re.compile('inet (\d+\.\d+\.\d+\.\d+)')
+            ip_re = re.compile('inet (?:addr:)(\d+\.\d+\.\d+\.\d+)')
             ip = []
             for line in ifconf.split('\n'):
                 m = ip_re.search(line)
@@ -1955,7 +1959,7 @@ This issue must be resolved before upgrade can complete.
         cmd  = 'pg_dumpall'
         cmd += ' -U %s' % user
         cmd += ' -p %d' % self.masterport
-        cmd += ' -s --gp-syntax > %s/pgdump.sql' % self.tmpdir
+        cmd += ' -r -s --gp-syntax > %s/pgdump.sql' % self.tmpdir
         self.Log('DEBUG', 'CMD: ' + cmd)
         r = subprocess.call(cmd, env=env, shell=True)
 
