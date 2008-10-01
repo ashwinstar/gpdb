@@ -707,6 +707,19 @@ checkExprHasWindFuncs_walker(Node *node, checkHasWindFuncs_context *context)
 		/* could be seen inside an untransformed window clause */
 		return false;
 	}
+
+	else if (IsA(node, A_Const))
+	{
+		/* could be seen inside an untransformed window clause */
+		return false;
+	}
+
+	else if (IsA(node, TypeCast))
+	{
+		/* could be seen inside an untransformed window clause */
+		return false;
+	}
+	
 	return expression_tree_walker(node, checkExprHasWindFuncs_walker,
 								  (void *) context);
 }
