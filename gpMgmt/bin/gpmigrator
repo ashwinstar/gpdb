@@ -1499,7 +1499,7 @@ This issue must be resolved before upgrade can complete.
             else:
                 cmd = 'ifconfig'        
             ifconf = self.RunCmd(cmd)
-            ip_re = re.compile('inet (?:addr:)(\d+\.\d+\.\d+\.\d+)')
+            ip_re = re.compile('inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)')
             ip = []
             for line in ifconf.split('\n'):
                 m = ip_re.search(line)
