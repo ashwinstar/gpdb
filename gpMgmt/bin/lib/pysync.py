@@ -85,14 +85,20 @@ def statToTuple(s,name):
 
 class RemotePysync:
 
-    def doCommand(self,*args):
+    def sendCommand(self,*args):
 	a = cPickle.dumps(args)
 	sys.stdout.write('%d\\n%s'%(len(a),a))
 	sys.stdout.flush()
+
+    def getAnswer(self):
 	size = int(sys.stdin.readline())
 	data = sys.stdin.read(size)
 	assert size==len(data)
 	return cPickle.loads(data)
+
+    def doCommand(self,*args):
+	self.sendCommand(*args)
+	return self.getAnswer()
 
     def removeJunk(self,list):
 	for root,dirs,files in os.walk('.',False):
@@ -211,11 +217,13 @@ class RemotePysync:
 		    size = min(value[2]-offset,CHUNK_SIZE)
 		    digest = None
 		    if offset+size<=localSize:
-			digest = self.doCommand('getDigest',name,offset,size)
+			self.sendCommand('getDigest',name,offset,size)
 			f.seek(offset)
 			b = f.read(size)
 			assert len(b)==size
-			if md5.new(b).digest()==digest:
+			a = md5.new(b).digest()
+			digest = self.getAnswer()
+			if a==digest:
 			    offset += size
 			    byteNow += size
 			    continue
