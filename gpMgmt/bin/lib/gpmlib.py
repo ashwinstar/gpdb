@@ -164,8 +164,11 @@ def run2(cmd, on_error_warn=False):
                 log_warn('Standard error:   None')
             log_warn('-----------------------------------------------------')
     finally:
-        if p.fromchild:  p.fromchild.close()
-        if p.childerr:   p.childerr.close()
+        if p:
+            if p.fromchild:  
+                p.fromchild.close()
+            if p.childerr:   
+                p.childerr.close()
 
     return (ok, out)
 
