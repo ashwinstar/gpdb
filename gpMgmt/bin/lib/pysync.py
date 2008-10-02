@@ -68,7 +68,7 @@ class Options:
 
 def statToTuple(s,name):
     if stat.S_ISREG(s.st_mode):
-	return ('-',s.st_mode,s.st_size)
+	return ['-',s.st_mode,s.st_size,None]
     if stat.S_ISLNK(s.st_mode):
 	return ('l',0,os.readlink(name))
     if stat.S_ISDIR(s.st_mode):
@@ -122,6 +122,7 @@ class RemotePysync:
 		    if value[0]!='l':
 			os.chmod(name,0700)
 		    if value[0]=='-':
+			value[3] = t[2]
 			if t[2]>value[2]:
 			    f = open(name,'r+b')
 			    f.truncate(value[2])
@@ -203,7 +204,7 @@ class RemotePysync:
 		    localSize = f.tell()
 		offset = 0
 		bytesFile = 0
-		changed = False
+		changed = value[2]!=value[3]
 		while offset<value[2]:
 		    if self.options.verbose:
 			progress.update('',name,byteNow,fileNow)
