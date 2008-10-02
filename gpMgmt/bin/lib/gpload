@@ -248,8 +248,15 @@ class gpload:
 	for row in self.pg8000.iterate_dict():
 	    count += 1
 	    ct = str(row['data_type'])
-	    if row['character_maximum_length']!=None:
-		ct += '(%s)'%str(row['character_maximum_length'])
+	    if ct=='numeric':
+		stuff = ('numeric_precision','numeric_scale')
+	    elif ct=='character' or ct=='character varying':
+		stuff = ('character_maximum_length',)
+	    else:
+		stuff = ()
+	    stuff = map(lambda x:str(row[x]),stuff)
+	    if stuff:
+		ct += '('+','.join(stuff)+')'
 	    name = str(row['column_name']).lower()
 	    i = [name,ct,None]
 	    self.into_columns.append(i)
