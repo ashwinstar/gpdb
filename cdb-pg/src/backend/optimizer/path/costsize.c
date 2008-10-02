@@ -1275,11 +1275,22 @@ cost_shareinputscan(Path *path, Cost sharecost, double tuples, int width)
 {
 	double nbytes = relation_byte_size(tuples, width);
 	double npages = ceil(nbytes/BLCKSZ);
+	long work_mem_bytes = work_mem * 1024L;
+
 	path->startup_cost = sharecost;
 	path->total_cost = sharecost;
 	
-	/* charge a small amount I/O cost */
-	path->total_cost += seq_page_cost * npages * 0.2;
+	/* I/O cost */
+	if (nbytes > work_mem_bytes)
+	{
+		path->total_cost += seq_page_cost * npages;
+	}
+	else
+	{
+		/* Charge a small amount of I/O cost */
+		path->total_cost += seq_page_cost * npages * 0.2;
+	}
+	
 	/* charge a small CPU cost.  */
 	path->total_cost += cpu_tuple_cost * tuples * 0.1;
 }
