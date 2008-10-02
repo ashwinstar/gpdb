@@ -868,7 +868,7 @@ static double get_row_skew(qdnode_t* qdnode)
 }
 
 
-static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr)
+static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done)
 {
     char tmstr[24];
     char* p = line;
@@ -890,9 +890,13 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr)
     sprintf(p += strlen(p), "|%s", 
             gpmon_datetime(apr_time_from_sec(qdnode->qlog.tstart), 
                              tmstr));
-    sprintf(p += strlen(p), "|%s", 
-            gpmon_datetime(apr_time_from_sec(qdnode->qlog.tfin), 
-                             tmstr));
+    if (done)
+        sprintf(p += strlen(p), "|%s", 
+                gpmon_datetime(apr_time_from_sec(qdnode->qlog.tfin), 
+                               tmstr));
+    else
+        sprintf(p += strlen(p), "|%s", "null");
+        
     sprintf(p += strlen(p), "|%s", 
             gpmon_qlog_status_string(qdnode->qlog.status));
     sprintf(p += strlen(p), "|%" FMT64, qdnode->qlog.rows_out);
@@ -913,7 +917,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr)
 static void write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr)
 {
     char line[1024];
-    char* p = fmt_qlog(line, qdnode, nowstr);
+    char* p = fmt_qlog(line, qdnode, nowstr, 0);
     /* Query text "joined" by python script */
     fprintf(fp, "%s||\n", p);
 }
@@ -926,7 +930,7 @@ static void write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr)
     FILE* qfptr = 0;
     int qtextlen = 0;
     
-    fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr));
+    fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr, 1));
     fprintf(fp, "|");
     sprintf(qfname, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid, 
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
