@@ -6,7 +6,7 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5.0 or greater
 Please upgrade python installed on this machine.''' % progname)
 
-import platform, pg8000, gplib, socket, random
+import platform, pg8000, gplib, socket, random, popen2
 from time import localtime, strftime
 
 
@@ -133,23 +133,39 @@ def makeCommand(cmd):
 
 #############
 def run2(cmd, on_error_warn=False):
-    f = None
+    p = None
     ok = False
     out = []
     try:
-        f = os.popen(cmd)
-        for line in f:
+        p = popen2.Popen3(cmd, capturestderr=True)
+        e = p.wait()
+        for line in p.fromchild:
             out.append(line)
-        e = f.close()
         ok = not e
         if not ok and on_error_warn:
-            log_warn('\terror CMD: %s' % cmd)
-            log_warn('\terror exit status: %d' % os.WEXITSTATUS(e))
-            log_warn('\terror output:')
-            for l in out:
-                log_warn('\t %s' % l.strip())
+            log_warn('-----------------------------------------------------')
+            log_warn('Command Failed: %s' % cmd)
+            log_warn('Exit status: %d' % os.WEXITSTATUS(e))
+            if len(out) > 0:
+                log_warn('Standard output:')
+                for l in out:
+                    log_warn('\t %s' % l.strip())
+            else:
+                log_warn('Standard output:  None')
+
+            err = []
+            for line in p.childerr:
+                err.append(line)
+            if len(err) > 0:
+                log_warn('Standard error:')
+                for l in err:
+                    log_warn('\t %s' % l.strip())
+            else:
+                log_warn('Standard error:   None')
+            log_warn('-----------------------------------------------------')
     finally:
-        if f: f.close()
+        if p.fromchild:  p.fromchild.close()
+        if p.childerr:   p.childerr.close()
 
     return (ok, out)
 
@@ -705,10 +721,9 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s.log -o \\"-i -p %d \\" start' %
                       (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
                       dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port']))    
-    (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+    (ok, out) = run_warn('%s "%s"' % 
                          (gplib.ssh_prefix(host=dst_cfg['hostname']),
-                          cmd,
-                          logfile))
+                          cmd))
     if not ok:
         fatal('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
