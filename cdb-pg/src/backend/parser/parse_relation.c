@@ -36,6 +36,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
+#include "parser/parse_coerce.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -1059,6 +1060,11 @@ addRangeTableEntryForJoin(ParseState *pstate,
 	rte->jointype = jointype;
 	rte->joinaliasvars = aliasvars;
 	rte->alias = alias;
+
+	/* 
+	 * CDB: Bug fix JIRA MPP-3797  
+	 */
+	fixup_unknown_vars_in_exprlist(pstate, rte->joinaliasvars);
 
 	eref = alias ? (Alias *) copyObject(alias) : makeAlias("unnamed_join", NIL);
 	numaliases = list_length(eref->colnames);
