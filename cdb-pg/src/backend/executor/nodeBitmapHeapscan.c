@@ -102,7 +102,9 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
 
-		Gpmon_M_Incr(GpmonPktFromBitmapHeapScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+         	if (!TupIsNull(slot))
+          		Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
+
 		return slot;
 	}
 
@@ -239,7 +241,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		}
 
 		/* OK to return this tuple */
-		Gpmon_M_Incr(GpmonPktFromBitmapHeapScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+          	if (!TupIsNull(slot))
+       		Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
 		return slot;
 	}
 
@@ -433,6 +436,8 @@ ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt)
 	 * Always rescan the input immediately, to ensure we can pass down any
 	 * outer tuple that might be used in index quals.
 	 */
+     	Gpmon_M_Incr(GpmonPktFromBitmapHeapScanState(node), GPMON_BITMAPHEAPSCAN_RESCAN);
+    	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	ExecReScan(outerPlanState(node), exprCtxt);
 }
 
@@ -606,13 +611,15 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPHEAPSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) scanstate->ss.ps.plan->plan_rows),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "BitmapHeapScan Pages", "Pages", 0 },
+               	{ "BitmapHeapScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_BITMAPHEAPSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "BitmapHeapScan", m);
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "BitmapHeapScan", 
+                                      (int64) scanstate->ss.ps.plan->plan_rows, m);
 	}
 	/*
 	 * all done.

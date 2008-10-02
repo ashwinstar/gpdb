@@ -163,8 +163,6 @@ ExecMaterial(MaterialState *node)
 		{
 			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
 
-			Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_QEXEC_M_ROWSIN); 
-
 			if (TupIsNull(outerslot))
 			{
 				node->eof_underlying = true;
@@ -176,6 +174,7 @@ ExecMaterial(MaterialState *node)
 
 				break;
 			}
+			Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_QEXEC_M_ROWSIN); 
 #ifdef USE_OLD_TUPLESTORE
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
 #else
@@ -264,7 +263,8 @@ ExecMaterial(MaterialState *node)
 	if(tsa!=NULL && ntuplestore_acc_tell(tsa, NULL))
 	{
 		ntuplestore_acc_current_tupleslot(tsa, slot);
-		Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_QEXEC_M_ROWSOUT); 
+          	if (!TupIsNull(slot))
+          		Gpmon_M_Incr_Rows_Out(GpmonPktFromMaterialState(node)); 
 		return slot;
 	}
 #endif
@@ -312,7 +312,7 @@ ExecMaterial(MaterialState *node)
 		 * And return a copy of the tuple.	(XXX couldn't we just return the
 		 * outerslot?)
 		 */
-		Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_QEXEC_M_ROWSOUT); 
+          	Gpmon_M_Incr_Rows_Out(GpmonPktFromMaterialState(node)); 
 		return ExecCopySlot(slot, outerslot); 
 	}
 
@@ -404,11 +404,13 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_MATERIAL_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT,
+                { "GPMON_MATERIAL_RESCAN", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&matstate->ss.ps, "Material", m);
+		InitPlanStateGpmonPkt(&matstate->ss.ps, "Material", 
+                                      (int64)matstate->ss.ps.plan->plan_rows, m);
 	}
 
 	return matstate;
@@ -633,7 +635,11 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 		 * first ExecProcNode.
 		 */
 		if (((PlanState *) node)->lefttree->chgParam == NULL)
-			ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+           {
+           	Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_RESCAN);
+           	CheckSendPlanStateGpmonPkt(&node->ss.ps);
+           	ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
+          	}
 		node->eof_underlying = false;
 	}
 }

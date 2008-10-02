@@ -33,10 +33,10 @@
 TupleTableSlot *
 ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 {
+    	TupleTableSlot *slot = NULL;
 	if (node->nl_strategy == NL_STRATEGY_UNDECIDED)
 	{
 		int i = 0;
-		TupleTableSlot *slot;
 
 		if (node->outer_q != NULL)
 		{
@@ -75,20 +75,26 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 			ExecSquelchNode(innerPlanState(node->main));
 		}
 
+          	if (node->nl_strategy == NL_STRATEGY_HASH)
+          		Gpmon_M_Incr(GpmonPktFromANLState(node), GPMON_ADAPTIVENL_STRATEGY);
+
 		elog(DEBUG2, "nested join picked strategy: %s read %d thresh %d",
 			 (node->nl_strategy == NL_STRATEGY_LOOP ? "nested loop" : "hash join"),
 			 i, node->nl_strategy_threshold);
 	}
-
 	if (node->nl_strategy == NL_STRATEGY_LOOP)
-		return ExecProcNode((PlanState *)node->main);
+		slot = ExecProcNode((PlanState *)node->main);
 	else if (node->nl_strategy == NL_STRATEGY_HASH)
-		return ExecProcNode((PlanState *)node->alternate);
+		slot = ExecProcNode((PlanState *)node->alternate);
 	else
 	{
 		elog(ERROR, "ExecAdaptiveNestLoop(): unknown join strategy");
 		return NULL;
 	}
+    	if (!TupIsNull(slot))
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromANLState(node));
+
+        return slot;
 }
 
 /* ----------------------------------------------------------------
@@ -149,10 +155,12 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_ADAPTIVENL_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT, 
+              	{ "AdaptiveNestloop Strategy", "Strategy", 0 },
 			{ NULL, NULL, 0 }
 		};
 
-		InitPlanStateGpmonPkt(&anlstate->ps, "AdaptiveNestLoop Join", m);
+		InitPlanStateGpmonPkt(&anlstate->ps, "AdaptiveNestLoop Join", 
+                                      (int64)anlstate->ps.plan->plan_rows, m);
 	}
 
     return anlstate;

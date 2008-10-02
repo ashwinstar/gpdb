@@ -29,7 +29,8 @@ enum {
 };
  
 enum {
-	GPMON_ADAPTIVENL_TOTAL = GPMON_QEXEC_M_NODE_START,
+    GPMON_ADAPTIVENL_STRATEGY = GPMON_QEXEC_M_NODE_START,
+    GPMON_ADAPTIVENL_TOTAL,
 };
 
 static inline gpmon_packet_t * GpmonPktFromANLState(AdaptiveNestLoopState *node)

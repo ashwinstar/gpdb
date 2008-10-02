@@ -175,6 +175,8 @@ ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprCtxt)
 		/* XXX: put in own memory context? */
 		node->bitmap = NULL;
 	}
+     	Gpmon_M_Incr(GpmonPktFromBitmapIndexScanState(node), GPMON_BITMAPINDEXSCAN_RESCAN);
+    	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -349,11 +351,13 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPINDEXSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT,
+               	{ "BitmapIndexScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0 }
 		};
 
 		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&indexstate->ss.ps, "BitmapIndexScan", m);
+		InitPlanStateGpmonPkt(&indexstate->ss.ps, "BitmapIndexScan", 
+                                      (int64)indexstate->ss.ps.plan->plan_rows, m);
 	}
 
 	return indexstate;

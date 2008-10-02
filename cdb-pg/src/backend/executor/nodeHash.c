@@ -196,7 +196,7 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_HASH_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) hashstate->ps.plan->plan_rows), 
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			/* GPMON_HASH_SPILLBATCH */
 			{ "Hash Spill Batches", "Batches", 0},
 			/* GPMON_HASH_SPILLTUPLE */
@@ -208,7 +208,8 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_HASH_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&hashstate->ps, "Hash", m); 
+		InitPlanStateGpmonPkt(&hashstate->ps, "Hash", 
+                                      (int64) hashstate->ps.plan->plan_rows, m); 
 	}
 
 	return hashstate;

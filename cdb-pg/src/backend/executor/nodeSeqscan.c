@@ -153,7 +153,8 @@ ExecSeqScan(SeqScanState *node)
 	 * use SeqNext as access method
 	 */
 	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
-	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+     	if (!TupIsNull(slot))
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromSeqScanState(node)); 
 
 	return slot;
 }
@@ -256,7 +257,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) scanstate->ps.plan->plan_rows), 
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			{ "SeqScan Page Stats", "Pages", 0 }, 
 			{ "SeqScan Restore Pos", "Restores", 0},
 			{ "SeqScan Rescan", "Rescans", 0},
@@ -264,7 +265,8 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ps, "Sequential Scan", m); 
+		InitPlanStateGpmonPkt(&scanstate->ps, "Sequential Scan", 
+                                      (int64) scanstate->ps.plan->plan_rows, m); 
 	}
 
 	return scanstate;
@@ -411,7 +413,8 @@ ExecSeqRestrPos(SeqScanState *node)
 }
 
 /* Gpmon helpers. */
-void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, Gpmon_NameUnit_MaxVal *m) 
+void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, 
+                           int64 rowsout_est, Gpmon_NameUnit_MaxVal *m) 
 {
 
 	if(!ps)
@@ -436,6 +439,9 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, Gpmon_NameUnit_M
 
 
 	snprintf(ps->gpmon_pkt.u.qexec.ntype, sizeof(ps->gpmon_pkt.u.qexec.ntype), nodename);
+
+        ps->gpmon_pkt.u.qexec.rowsout = 0;
+        ps->gpmon_pkt.u.qexec.rowsout_est = rowsout_est;
 
 	if(m)
 	{

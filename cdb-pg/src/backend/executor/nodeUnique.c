@@ -66,7 +66,6 @@ ExecUnique(UniqueState *node)
 		 * fetch a tuple from the outer subplan
 		 */
 		slot = ExecProcNode(outerPlan);
-		Gpmon_M_Incr(GpmonPktFromUniqueState(node), GPMON_QEXEC_M_ROWSIN); 
 
 		if (TupIsNull(slot))
 		{
@@ -74,6 +73,8 @@ ExecUnique(UniqueState *node)
 			ExecClearTuple(resultTupleSlot);
 			return NULL;
 		}
+
+		Gpmon_M_Incr(GpmonPktFromUniqueState(node), GPMON_QEXEC_M_ROWSIN); 
 
 		/*
 		 * Always return the first/last tuple from the subplan.
@@ -99,8 +100,11 @@ ExecUnique(UniqueState *node)
 	 * won't guarantee that this source tuple is still accessible after
 	 * fetching the next source tuple.
 	 */
-	Gpmon_M_Incr(GpmonPktFromUniqueState(node), GPMON_QEXEC_M_ROWSOUT); 
-	CheckSendPlanStateGpmonPkt(&node->ps);
+   	if (!TupIsNull(slot))
+    	{
+  		Gpmon_M_Incr_Rows_Out(GpmonPktFromUniqueState(node)); 
+   		CheckSendPlanStateGpmonPkt(&node->ps);
+    	}
 
 	return ExecCopySlot(resultTupleSlot, slot);
 }
@@ -170,12 +174,13 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_UNIQUE_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, uniquestate->ps.plan->plan_rows),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_UNIQUE_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&uniquestate->ps, "Unique", m);
+		InitPlanStateGpmonPkt(&uniquestate->ps, "Unique", 
+                                      (int64)uniquestate->ps.plan->plan_rows, m);
 	}
 
 	return uniquestate;

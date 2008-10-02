@@ -116,7 +116,8 @@ SubqueryNext(SubqueryScanState *node)
 
         tuple->t_self = node->cdb_fake_ctid;
     }
-
+    if (!TupIsNull(slot))
+        Gpmon_M_Incr_Rows_Out(GpmonPktFromSubqueryScanState(node));
 	return slot;
 }
 
@@ -279,12 +280,13 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
 		{
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) subquerystate->ss.ps.plan->plan_rows ),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "SubqueryScan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0},
 		};
 
-		InitPlanStateGpmonPkt(&subquerystate->ss.ps, "Subquery Scan", m); 
+		InitPlanStateGpmonPkt(&subquerystate->ss.ps, "Subquery Scan", 
+                                      (int64) subquerystate->ss.ps.plan->plan_rows, m); 
 	}
 
 	return subquerystate;

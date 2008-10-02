@@ -99,7 +99,7 @@ IndexNext(IndexScanState *node)
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
 
-		Gpmon_M_Incr(GpmonPktFromIndexScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromIndexScanState(node)); 
 		return slot;
 	}
 
@@ -118,7 +118,7 @@ IndexNext(IndexScanState *node)
 					   scandesc->xs_cbuf,		/* buffer containing tuple */
 					   false);	/* don't pfree */
 
-		Gpmon_M_Incr(GpmonPktFromIndexScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromIndexScanState(node)); 
 		return slot;
 	}
 
@@ -595,14 +595,15 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_INDEXSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, indexstate->ss.ps.plan->plan_rows ),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "IndexScan Restore Pos", "Restores", 0 },
 			{ "IndexScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_INDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&indexstate->ss.ps, "IndexScan", m);
+		InitPlanStateGpmonPkt(&indexstate->ss.ps, "IndexScan", 
+                                      (int64)indexstate->ss.ps.plan->plan_rows, m);
 	}
 	/*
 	 * all done.

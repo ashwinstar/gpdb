@@ -143,7 +143,8 @@ FunctionNext(FunctionScanState *node)
         }
     }
 
-	Gpmon_M_Incr(GpmonPktFromFuncScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+   	if (!TupIsNull(slot))
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromFuncScanState(node));
 	return slot;
 }
 
@@ -298,12 +299,13 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_FUNCSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, scanstate->ss.ps.plan->plan_rows),
+           	GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_FUNCSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "FunctionScan", m);
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "FunctionScan", 
+                                      (int64)scanstate->ss.ps.plan->plan_rows, m);
 	}
 
 	return scanstate;

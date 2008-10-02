@@ -348,6 +348,7 @@ static void write_qenode_row(FILE* fp, const qenode_t* qenode, const char* nowst
 	    qenode->cpu_elapsed,
 	    qexec->_p_metrics.cpu_pct);   
     sprintf(p += strlen(p), "|%s", qexec->phase);
+    sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64, qexec->rowsout, qexec->rowsout_est);
     for (i = 0; i < sizeof(qexec->m) / sizeof(qexec->m[0]); i++) {
 	sprintf(p += strlen(p), "|%s|%s", qexec->m[i].name, 
 		qexec->m[i].unit);

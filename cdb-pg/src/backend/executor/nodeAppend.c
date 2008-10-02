@@ -232,13 +232,14 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_APPEND_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, appendstate->ps.plan->plan_rows),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "Append Current Input Source", "Inputs", appendstate->as_lastplan},
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_APPEND_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&appendstate->ps, "Append", m);
+		InitPlanStateGpmonPkt(&appendstate->ps, "Append", 
+                                      (int64)appendstate->ps.plan->plan_rows, m);
 	}
 
 		
@@ -289,7 +290,7 @@ ExecAppend(AppendState *node)
 			 * because it may have the wrong tuple descriptor in
 			 * inherited-UPDATE cases.
 			 */
-			Gpmon_M_Incr(GpmonPktFromAppendState(node), GPMON_QEXEC_M_ROWSOUT); 
+               	Gpmon_M_Incr_Rows_Out(GpmonPktFromAppendState(node));
 			return result;
 		}
 

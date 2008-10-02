@@ -1105,13 +1105,21 @@ typedef struct Gpmon_NameUnit_MaxVal
 	int64 maxval;
 } Gpmon_NameUnit_MaxVal;
 
-extern void InitPlanStateGpmonPkt(PlanState *ps, const char *name, Gpmon_NameUnit_MaxVal *m); 
+extern void InitPlanStateGpmonPkt(PlanState *ps, const char *name, int64 rowsout_est, Gpmon_NameUnit_MaxVal *m); 
 extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
 extern void EndPlanStateGpmonPkt(PlanState *ps);
 
 static inline void Gpmon_M_Incr(gpmon_packet_t *pkt, int nth) 
 {
 	++pkt->u.qexec.m[nth].value;
+}
+static inline void Gpmon_M_Incr_Rows_Out(gpmon_packet_t *pkt)
+{
+    ++pkt->u.qexec.rowsout;
+}
+static inline void Gpmon_M_Add_Rows_Out(gpmon_packet_t *pkt, int val)
+{
+    pkt->u.qexec.rowsout += val;
 }
 static inline void Gpmon_M_Add(gpmon_packet_t *pkt, int nth, int val)
 {

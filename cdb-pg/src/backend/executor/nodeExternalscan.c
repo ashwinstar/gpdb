@@ -61,7 +61,6 @@ ExternalNext(ExternalScanState *node)
 	 * get the next tuple from the file access methods
 	 */
 	tuple = file_getnext(scandesc, direction);
-	Gpmon_M_Incr(GpmonPktFromExtScanState(node), GPMON_QEXEC_M_ROWSOUT);
 	
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
@@ -72,7 +71,10 @@ ExternalNext(ExternalScanState *node)
 	 * refcount will not be dropped until the tuple table slot is cleared.
 	 */
 	if (tuple)
-		ExecStoreGenericTuple(tuple, slot, true);	
+     	{
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
+      	ExecStoreGenericTuple(tuple, slot, true);	
+    	}
 	else
 		ExecClearTuple(slot);
 	
@@ -177,12 +179,14 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, externalstate->ss.ps.plan->plan_rows),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
+               	{ "ExternalScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&externalstate->ss.ps, "ExternalScan", m);
+		InitPlanStateGpmonPkt(&externalstate->ss.ps, "ExternalScan", 
+                                      (int64)externalstate->ss.ps.plan->plan_rows, m);
 	}
 
 	return externalstate;
@@ -267,7 +271,8 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
 		estate->es_evTupleNull[scanrelid - 1] = false;
 		return;
 	}
-	
+	Gpmon_M_Incr(GpmonPktFromExtScanState(node), GPMON_EXTSCAN_RESCAN);
+     	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	fileScan = node->ess_ScanDesc;
 	
 	file_rescan(fileScan);

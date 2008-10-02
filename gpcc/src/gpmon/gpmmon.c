@@ -86,6 +86,7 @@ static struct {
     int         pgpid;		/* postgres pid */
     apr_pool_t* pool;		/* pool */
     char*       gphome;		/* GPHOME env variable */
+    char*       gpperfmonhome;  /* GPPERFMONHOME env variable */
     apr_int64_t signature;	/* a large random number */
 
     host_t*     hosttab;	/* multi-home filtered machines */
@@ -370,7 +371,7 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 		    host_t* h = &tab[broken[i]];
 		    sprintf(line, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
 			    " %s %s/bin/gpsmon %s %d ",
-			    h->hostname, ax.gphome, 
+			    h->hostname, ax.gpperfmonhome, 
 			    (opt.V ? "-V" : (opt.v ? "-v" : "")),
 			    ax.port);
 		    TR1(("%s\n", line));
@@ -432,6 +433,10 @@ static void gpmmon_main(void)
 
     if (0 != (e = apr_env_get(&ax.gphome, "GPHOME", ax.pool))) {
 	gpmon_fatalx(FLINE, e, "GPHOME environment variable not set");
+    }
+
+    if (0 != (e = apr_env_get(&ax.gpperfmonhome, "GPPERFMONHOME", ax.pool))) {
+	gpmon_fatalx(FLINE, e, "GPPERFMONHOME environment variable not set");
     }
 
     if (0 != (e = apr_threadattr_create(&ta, ax.pool))) {
@@ -646,9 +651,6 @@ int read_conf_file(char *conffile)
     if (opt.m < 0)
         opt.m = 0;
 
-    if (opt.d < 15)
-        usage("Error: min_detail_query_time value must be greater than 15");
-
     /* See if opt.m changed, but opt.d did not */
     if (opt.m != min_query_time &&
         opt.d == min_detailed_query_time )
@@ -661,6 +663,16 @@ int read_conf_file(char *conffile)
         opt.d = opt.m;
         printf("min_detail_query_time cannot be less than min_query_time\n");
         printf("Setting min_detail_query_time equal to min_query_time\n");
+    }
+
+    if (opt.d < 15 && opt.d != opt.m)
+        usage("Error: min_detailed_query_time value must be greater than 15 or equal to min_query_time");
+
+    if (opt.log_dir == NULL)
+    {
+        char log_dir[MAXPATHLEN + 1] = {0};
+        snprintf(log_dir, MAXPATHLEN, "%s/%s", ax.master_data_directory, "gpperfmon/logs/");
+        opt.log_dir = strdup(log_dir);
     }
 
     verbose = opt.v;
@@ -727,9 +739,15 @@ int main(int argc, const char* const argv[])
 	exit(1);
     }
 
+    getconfig();
     parse_command_line(argc, argv);
     read_conf_file(opt.conf_file);
-    getconfig();
+    {
+        char log_file[MAXPATHLEN + 1];
+        snprintf(log_file, MAXPATHLEN, "%s/%s", opt.log_dir, "gpmmon.log"); 
+        freopen(log_file, "w", stderr);
+        freopen(log_file, "w", stdout);
+    }
     /* check port */
     if (! (0 < ax.port && ax.port < (1 << 16))) {
 	usage("Error: invalid port number");
@@ -753,6 +771,13 @@ int main(int argc, const char* const argv[])
 	}
 	SET_MAXFD(fileno(fp));
 	fclose(fp);
+
+        fp = fopen("gpperfmon/gpmmon.pid", "w");
+        if (!fp)
+            gpmon_fatal(FLINE, "Failed to create pid file\n");
+
+        fprintf(fp, "%d", getpid());
+        fclose(fp);
     }
 
     /* start up gpperfmon directory */

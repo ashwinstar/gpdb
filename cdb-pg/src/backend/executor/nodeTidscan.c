@@ -257,6 +257,8 @@ TidNext(TidScanState *node)
 
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
+          	if (!TupIsNull(slot))
+          		Gpmon_M_Incr_Rows_Out(GpmonPktFromTidScanState(node));
 		return slot;
 	}
 
@@ -542,7 +544,8 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tidscan", m);
+		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tidscan", 
+                                      (int64)tidstate->ss.ps.plan->plan_rows, m);
 	}
 
 	/*

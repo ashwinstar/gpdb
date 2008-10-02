@@ -199,7 +199,8 @@ ExecMotion(MotionState * node)
 
 		if (tuple == NULL)
 			node->ps.state->active_recv_id = -1;
-
+          	else
+           	Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_QEXEC_M_ROWSIN);
 #ifdef MEASURE_MOTION_TIME
 		gettimeofday(&stopTime, NULL);
 
@@ -218,8 +219,6 @@ ExecMotion(MotionState * node)
 			node->motionTime.tv_sec++;
 		}
 #endif
-
-		Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_QEXEC_M_ROWSOUT); 
 		CheckSendPlanStateGpmonPkt(&node->ps);
 		return tuple;
 	}
@@ -296,7 +295,7 @@ execMotionSender(MotionState * node)
 			doSendTuple(motion, node, outerTupleSlot);
 			/* doSendTuple() may have set node->stopRequested as a side-effect */
 
-			Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_QEXEC_M_ROWSOUT); 
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromMotionState(node)); 
 			CheckSendPlanStateGpmonPkt(&node->ps);
 
 			if (node->stopRequested)
@@ -891,11 +890,14 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_MOTION_TOTAL+1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) motionstate->ps.plan->plan_rows), 
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			{ NULL, NULL, 0 } 
 		};
 
-		InitPlanStateGpmonPkt(&motionstate->ps, "Motion", m); 
+		InitPlanStateGpmonPkt(&motionstate->ps, 
+                                      node->motionType == MOTIONTYPE_HASH ? "Redistribute Motion" :
+                                      (node->numOutputSegs == 0 ? "Broadcast Motion" : "Gather Motion"), 
+                                      (int64) motionstate->ps.plan->plan_rows, m); 
 	}
 
 

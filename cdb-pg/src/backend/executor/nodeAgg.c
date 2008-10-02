@@ -1436,7 +1436,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
-				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSOUT); 
+                     	Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
 				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 
 				return ExecProject(projInfo, NULL);
@@ -1593,8 +1593,8 @@ agg_retrieve_hash_table(AggState *aggstate)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
-				 Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSOUT); 
-				 CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+                    	Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
+				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 				return ExecProject(projInfo, NULL);
 			}
 		} while (econtext->group_id > 0);
@@ -2075,7 +2075,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_AGG_TOTAL+1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) aggstate->ss.ps.plan->plan_rows), 
+			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			/* GPMON_AGG_SPILLTUPLE */
 			{ "Agg Total Spill Tuples", "Tuples", 0 },
 			/* GPMON_AGG_SPILLBYTE */
@@ -2107,7 +2107,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		Assert(GPMON_AGG_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&aggstate->ss.ps, 
 			node->aggstrategy == AGG_HASHED ? "Hash Agg" : "Agg", 
-			m);
+                                      (int64) aggstate->ss.ps.plan->plan_rows, m);
 	}
 	
 	return aggstate;

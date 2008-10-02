@@ -720,8 +720,11 @@ ExecMergeJoin(MergeJoinState *node)
 	if (node->prefetch_inner)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
-		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+           if (!TupIsNull(innerTupleSlot))
+          	{
+          		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+           	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+          	}
 		node->mj_InnerTupleSlot = innerTupleSlot;
 
 		ExecReScan(innerPlan, econtext);
@@ -753,10 +756,8 @@ ExecMergeJoin(MergeJoinState *node)
 				 */
 			case EXEC_MJ_INITIALIZE_OUTER:
 				MJ_printf("ExecMergeJoin: EXEC_MJ_INITIALIZE_OUTER\n");
-
-				outerTupleSlot = ExecProcNode(outerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				
+                     	outerTupleSlot = ExecProcNode(outerPlan);
 				node->mj_OuterTupleSlot = outerTupleSlot;
 				if (TupIsNull(outerTupleSlot))
 				{
@@ -785,6 +786,11 @@ ExecMergeJoin(MergeJoinState *node)
 					/* Otherwise we're done. */
 					return NULL;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                     	}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
@@ -807,7 +813,7 @@ ExecMergeJoin(MergeJoinState *node)
 						result = MJFillOuter(node);
 						if (result)
 						{
-							Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
+							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
 							return result;
 						}
 					}
@@ -818,8 +824,6 @@ ExecMergeJoin(MergeJoinState *node)
 				MJ_printf("ExecMergeJoin: EXEC_MJ_INITIALIZE_INNER\n");
 
 				innerTupleSlot = ExecProcNode(innerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				if (TupIsNull(innerTupleSlot))
 				{
@@ -848,6 +852,11 @@ ExecMergeJoin(MergeJoinState *node)
 					/* Otherwise we're done. */
 					return NULL;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+                         	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                    	}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalInnerValues(node, innerTupleSlot))
@@ -873,7 +882,7 @@ ExecMergeJoin(MergeJoinState *node)
 						result = MJFillInner(node);
 						if (result)
 						{
-							Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
+							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
 							return result;
 						}
 					}
@@ -941,7 +950,7 @@ ExecMergeJoin(MergeJoinState *node)
 						 */
 						MJ_printf("ExecMergeJoin: returning tuple\n");
 
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
 						return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 					}
 				}
@@ -971,7 +980,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillInner(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
 						return result;
 					}
 				}
@@ -982,8 +991,6 @@ ExecMergeJoin(MergeJoinState *node)
 				 * previously marked tuples).
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				MJ_DEBUG_PROC_NODE(innerTupleSlot);
 				node->mj_MatchedInner = false;
@@ -998,6 +1005,11 @@ ExecMergeJoin(MergeJoinState *node)
 					
 					break;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+                          	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                    	}
 
 				/*
 				 * Load up the new inner tuple's comparison values.  If we see
@@ -1073,8 +1085,6 @@ ExecMergeJoin(MergeJoinState *node)
 				 * now we get the next outer tuple, if any
 				 */
 				outerTupleSlot = ExecProcNode(outerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_OuterTupleSlot = outerTupleSlot;
 				MJ_DEBUG_PROC_NODE(outerTupleSlot);
 				node->mj_MatchedOuter = false;
@@ -1109,6 +1119,11 @@ ExecMergeJoin(MergeJoinState *node)
 					/* Otherwise we're done. */
 					return NULL;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+                         	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                    	}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
@@ -1347,7 +1362,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillOuter(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
 						return result;
 					}
 				}
@@ -1356,8 +1371,6 @@ ExecMergeJoin(MergeJoinState *node)
 				 * now we get the next outer tuple, if any
 				 */
 				outerTupleSlot = ExecProcNode(outerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_OuterTupleSlot = outerTupleSlot;
 				MJ_DEBUG_PROC_NODE(outerTupleSlot);
 				node->mj_MatchedOuter = false;
@@ -1392,6 +1405,11 @@ ExecMergeJoin(MergeJoinState *node)
 					/* Otherwise we're done. */
 					return NULL;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                    	}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
@@ -1426,7 +1444,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillInner(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT);
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
 						return result;
 					}
 				}
@@ -1435,8 +1453,6 @@ ExecMergeJoin(MergeJoinState *node)
 				 * now we get the next inner tuple, if any
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				MJ_DEBUG_PROC_NODE(innerTupleSlot);
 				node->mj_MatchedInner = false;
@@ -1471,6 +1487,11 @@ ExecMergeJoin(MergeJoinState *node)
 					/* Otherwise we're done. */
 					return NULL;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+                        	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                    	}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalInnerValues(node, innerTupleSlot))
@@ -1511,7 +1532,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillInner(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT);
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
 						return result;
 					}
 				}
@@ -1520,8 +1541,6 @@ ExecMergeJoin(MergeJoinState *node)
 				 * now we get the next inner tuple, if any
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				MJ_DEBUG_PROC_NODE(innerTupleSlot);
 				node->mj_MatchedInner = false;
@@ -1531,6 +1550,11 @@ ExecMergeJoin(MergeJoinState *node)
 					MJ_printf("ExecMergeJoin: end of inner subplan\n");
 					return NULL;
 				}
+                     	else
+                     	{
+                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+                          	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                     	}
 
 				/* Else remain in ENDOUTER state and process next tuple. */
 				break;
@@ -1558,7 +1582,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillOuter(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT);
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
 						return result;
 					}
 				}
@@ -1576,6 +1600,11 @@ ExecMergeJoin(MergeJoinState *node)
 					MJ_printf("ExecMergeJoin: end of outer subplan\n");
 					return NULL;
 				}
+                     	else
+                     	{
+                    		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+                         	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                    	}
 
 				/* Else remain in ENDINNER state and process next tuple. */
 				break;
@@ -1759,7 +1788,8 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&mergestate->js.ps, "MergeJoin", m);
+		InitPlanStateGpmonPkt(&mergestate->js.ps, "MergeJoin", 
+                                      (int64)mergestate->js.ps.plan->plan_rows, m);
 	}
 
 	return mergestate;

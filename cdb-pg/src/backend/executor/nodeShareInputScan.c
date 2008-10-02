@@ -155,7 +155,7 @@ ShareInputNext(ShareInputScanState *node)
 		if(!gotOK)
 			return NULL;
 
-		Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_QEXEC_M_ROWSOUT); 
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromShareInputState(node)); 
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
 		return slot;
@@ -231,14 +231,15 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, sisstate->ss.ps.plan->plan_rows),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "ShareInputScan restore pos", "Restores", 0},
 			{ "ShareInputScan rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }
 		};
 
 		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&sisstate->ss.ps, "ShareInputScan", m);
+		InitPlanStateGpmonPkt(&sisstate->ss.ps, "ShareInputScan",
+                                      (int64)sisstate->ss.ps.plan->plan_rows, m);
 	}
 
 	return sisstate;

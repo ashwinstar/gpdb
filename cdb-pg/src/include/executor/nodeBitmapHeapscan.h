@@ -25,6 +25,7 @@ extern void ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtx
 enum
 {
 	GPMON_BITMAPHEAPSCAN_PAGE = GPMON_QEXEC_M_NODE_START, 
+    	GPMON_BITMAPHEAPSCAN_RESCAN,
 	GPMON_BITMAPHEAPSCAN_TOTAL
 };
 

@@ -362,7 +362,7 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_LIMIT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&limitstate->ps, "Limit", m);
+		InitPlanStateGpmonPkt(&limitstate->ps, "Limit", (int64)0, m);
 	}
 	return limitstate;
 }

@@ -252,7 +252,7 @@ ExecNestLoop(NestLoopState *node)
 					 */
 					ENL1_printf("qualification succeeded, projecting tuple");
 
-					Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSOUT); 
+					Gpmon_M_Incr_Rows_Out(GpmonPktFromNLJState(node)); 
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 			}
@@ -294,7 +294,7 @@ ExecNestLoop(NestLoopState *node)
 				 */
 				ENL1_printf("qualification succeeded, projecting tuple");
 
-				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSOUT);
+				Gpmon_M_Incr_Rows_Out(GpmonPktFromNLJState(node));
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 
@@ -452,14 +452,15 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, nlstate->js.ps.plan->plan_rows ),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "NestloopJoin inner tuples", "Tuples", 0},
 			{ "NestloopJoin outer tuples", "Tuples", 0},
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&nlstate->js.ps, "NestloopJoin", m);
+		InitPlanStateGpmonPkt(&nlstate->js.ps, "NestloopJoin", 
+                                      (int64)nlstate->js.ps.plan->plan_rows, m);
 	}
 
 	return nlstate;

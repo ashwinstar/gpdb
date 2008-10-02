@@ -128,7 +128,6 @@ struct gpmon_proc_metrics_t {
 
 enum {
 	GPMON_QEXEC_M_ROWSIN = 0,
-	GPMON_QEXEC_M_ROWSOUT,
 #if 0
 	GPMON_QEXEC_M_BYTESIN,
 	GPMON_QEXEC_M_BYTESOUT,
@@ -138,12 +137,10 @@ enum {
 };
 
 #define GPMON_QEXEC_M_INIT \
- 	{ "Rows in", "Rows", 0 }, \
-    { "Rows out", "Rows", 0 }  
+ 	{ "Rows in", "Rows", 0 }
 
-#define GPMON_QEXEC_M_INIT_ROWS(rowsin_max, rowsout_max) \
- 	{ "Rows in", "Rows", (rowsin_max) }, \
-    { "Rows out", "Rows", (rowsout_max) } 
+#define GPMON_QEXEC_M_INIT_ROWS_IN(rowsin_max) \
+ 	{ "Rows in", "Rows", (rowsin_max) }
 
 struct gpmon_qexec_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
@@ -157,7 +154,8 @@ struct gpmon_qexec_t {
     apr_int64_t _cpu_elapsed; /* CPU elapsed for iter */
 
     gpmon_proc_metrics_t _p_metrics;
-    char  phase[NAMEDATALEN];		/* Spill, ReSpill, etc */ 
+    char  phase[NAMEDATALEN];		/* Spill, ReSpill, etc */
+    apr_int64_t rowsout, rowsout_est;
     struct {
 		char name[NAMEDATALEN];	/* measure name */
 		char unit[15+1];	/* measure unit */

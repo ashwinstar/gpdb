@@ -79,7 +79,8 @@ ExecAppendOnlyScan(AppendOnlyScanState *node)
 	 * use AppendOnlyNext as access method
 	 */
 	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) AppendOnlyNext);
-	Gpmon_M_Incr(GpmonPktFromAppOnlyScanState(node), GPMON_QEXEC_M_ROWSOUT);
+     	if (!TupIsNull(slot))
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromAppOnlyScanState(node));
 	return slot;
 }
 
@@ -157,7 +158,8 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_APPONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "AppendOnly Scan", m);
+		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "AppendOnly Scan", 
+                                      (int64)appendonlystate->ss.ps.plan->plan_rows, m);
 	}
 
 	return appendonlystate;

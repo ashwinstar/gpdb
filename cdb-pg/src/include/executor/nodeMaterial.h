@@ -25,7 +25,8 @@ extern void ExecMaterialRestrPos(MaterialState *node);
 extern void ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_MATERIAL_TOTAL = GPMON_QEXEC_M_NODE_START,
+    GPMON_MATERIAL_RESCAN = GPMON_QEXEC_M_NODE_START,
+    GPMON_MATERIAL_TOTAL,
 };
 
 static inline gpmon_packet_t * GpmonPktFromMaterialState(MaterialState *node)

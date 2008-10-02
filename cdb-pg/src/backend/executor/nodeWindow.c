@@ -4415,10 +4415,11 @@ fetchCurrentRow(WindowState *wstate)
 	{
 		/* Fetch the first tuple from the outer plan */
 		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));
-		Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSIN); 
 
 		if (TupIsNull(slot))
 			return NULL;
+
+		Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSIN); 
 
 		if (buffer == NULL)
 		{
@@ -4643,10 +4644,11 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 	if (!found)
 	{
 		TupleTableSlot *slot = ExecProcNode(outerPlanState(wstate));
-		Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSIN); 
 
 		if (TupIsNull(slot))
 			return NULL;
+
+		Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSIN); 
 
 		/* Put the new tuple into the input buffer */
 		ntuplestore_acc_put_tupleslot(buffer->writer, slot);
@@ -4791,8 +4793,11 @@ ExecWindow(WindowState *wstate)
 	 */
 	resultSlot = ExecProject(wstate->ps.ps_ProjInfo, &isDone);
 
-	Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSOUT); 
-	CheckSendPlanStateGpmonPkt(&wstate->ps);
+     	if (!TupIsNull(resultSlot))
+    	{
+     		Gpmon_M_Incr_Rows_Out(GpmonPktFromWindowState(wstate)); 
+     		CheckSendPlanStateGpmonPkt(&wstate->ps);
+     	}
 
 	return resultSlot;
 }
@@ -5672,12 +5677,13 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_WINDOW_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, wstate->ps.plan->plan_rows ),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_WINDOW_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&wstate->ps, "Window", m);
+		InitPlanStateGpmonPkt(&wstate->ps, "Window", 
+                                      (int64)wstate->ps.plan->plan_rows, m);
 	}
 	wstate->mem_manager.alloc = cxt_alloc;
 	wstate->mem_manager.free = cxt_free;

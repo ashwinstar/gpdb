@@ -163,7 +163,6 @@ ExecGroup(GroupState *node)
 			
 			
 			outerslot = ExecProcNode(outerPlanState(node));
-			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_QEXEC_M_ROWSIN);
 
 			if (TupIsNull(outerslot))
 			{
@@ -176,7 +175,7 @@ ExecGroup(GroupState *node)
 				/* This is the last tuple. */
 				break;
 			}
-
+			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_QEXEC_M_ROWSIN);
 
 #if 0
 			elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, INPUT tuple: %s",
@@ -242,7 +241,7 @@ ExecGroup(GroupState *node)
 				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
 #endif
 
-			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_QEXEC_M_ROWSOUT); 
+                Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node));
 			return outerslot;
 		}
 
@@ -334,7 +333,7 @@ ExecGroup(GroupState *node)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
-				Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_QEXEC_M_ROWSOUT); 
+				Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node)); 
 				CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
 				return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
@@ -434,12 +433,13 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_GROUP_TOTAL + 1] = 
 		{
-			GPMON_QEXEC_M_INIT_ROWS(0, grpstate->ss.ps.plan->plan_rows),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_GROUP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&grpstate->ss.ps, "Group", m);
+		InitPlanStateGpmonPkt(&grpstate->ss.ps, "Group",
+                                      (int64)grpstate->ss.ps.plan->plan_rows, m);
 	}
 	
 	return grpstate;

@@ -204,7 +204,7 @@ ExecSetOp(SetOpState *node)
 	Assert(node->numOutput > 0);
 	node->numOutput--;
 
-	Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_QEXEC_M_ROWSOUT); 
+	Gpmon_M_Incr_Rows_Out(GpmonPktFromSetOpState(node)); 
 	CheckSendPlanStateGpmonPkt(&node->ps);
 
 	return resultTupleSlot;
@@ -277,12 +277,13 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SETOP_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, setopstate->ps.plan->plan_rows ),
+			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_SETOP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&setopstate->ps, "SetOpNode", m);
+		InitPlanStateGpmonPkt(&setopstate->ps, "SetOpNode", 
+                                      (int64)setopstate->ps.plan->plan_rows, m);
 	}
 
 	return setopstate;
