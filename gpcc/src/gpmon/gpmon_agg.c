@@ -901,7 +901,8 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done
             gpmon_qlog_status_string(qdnode->qlog.status));
     sprintf(p += strlen(p), "|%" FMT64, qdnode->qlog.rows_out);
     cpu_elapsed = get_total_cpu_elapsed(qdnode);
-    cpu_current = get_cpu_current_perc(qdnode);
+    if (!done)
+        cpu_current = get_cpu_current_perc(qdnode);
     sprintf(p += strlen(p), "|%" FMT64 "|%.4f", 
             cpu_elapsed, cpu_current);
 
