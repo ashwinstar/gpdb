@@ -439,7 +439,7 @@ CHK_MULTI_HOME () {
 
                 ((REMAINDER=$NUM_DATADIR % $NUM_MHOST_NODE))                
                 ((MULTIPLE=$NUM_DATADIR / $NUM_MHOST_NODE))
-                if [ $REMAINDER != 0 ] || [ $MULTIPLE == 0 ] ;then                        
+                if [ $REMAINDER -ne 0 ] || [ $MULTIPLE -eq 0 ] ;then                        
 		    LOG_MSG "[FATAL]:-Inconsistency between number of multi-home hostnames and number of segments per host" 1
 		    LOG_MSG "[INFO]:-Have $NUM_DATADIR data directories and $NUM_MHOST_NODE multi-home hostnames for each host" 1
 		    LOG_MSG "[INFO]:-For multi-home configuration, number of segment instance data directories per host must be multiple of" 1
@@ -447,7 +447,7 @@ CHK_MULTI_HOME () {
                     ERROR_EXIT "[FATAL]:-Unable to continue" 2
                 fi
 
-		if [ $MULTIPLE > 1 ] ; then
+		if [ $MULTIPLE -gt 1 ] ; then
                     #Now need to increase the size of M_HOME_ARRAY to fake a multi-home array
                     HOME_COUNT=1
                     FAKE_M_HOST_ARRAY=(${M_HOST_ARRAY[@]})                
@@ -456,7 +456,11 @@ CHK_MULTI_HOME () {
                         FAKE_M_HOST_ARRAY=(${FAKE_M_HOST_ARRAY[@]} ${M_HOST_ARRAY[@]})
                         ((HOME_COUNT=$HOME_COUNT+1))
                     done
-                    M_HOST_ARRAY=(`$ECHO ${FAKE_M_HOST_ARRAY[@]}|$TR ' ' '\n'|$SORT |$TR '\n' ' '`)
+                    M_HOST_ARRAY=()
+                    for S_HOST in ${T_SEG_ARRAY[@]}
+                    do
+                       M_HOST_ARRAY=(${M_HOST_ARRAY[@]} `$ECHO ${FAKE_M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP ":${S_HOST}$"| $SORT | $TR '\n' ' '`)
+                    done
 		fi
 	else
 		LOG_MSG "[INFO]:-Configuring build for standard array" 1
@@ -469,7 +473,11 @@ CHK_MULTI_HOME () {
 			FAKE_M_HOST_ARRAY=(${FAKE_M_HOST_ARRAY[@]} ${M_HOST_ARRAY[@]})
 			((HOME_COUNT=$HOME_COUNT+1))
 		done
-		M_HOST_ARRAY=(`$ECHO ${FAKE_M_HOST_ARRAY[@]}|$TR ' ' '\n'|$SORT |$TR '\n' ' '`)
+                M_HOST_ARRAY=()
+                for S_HOST in ${T_SEG_ARRAY[@]}
+                do
+                    M_HOST_ARRAY=(${M_HOST_ARRAY[@]} `$ECHO ${FAKE_M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP ":${S_HOST}$"| $SORT | $TR '\n' ' '`)
+                done
 	fi
 	NUM_SEP_HOSTS=`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$AWK -F":" '{print $2}'|$SORT -u|$WC -l`
 	if [ $MIRRORING -eq 1 ] && [ $MIRROR_TYPE -eq 1 ];then
