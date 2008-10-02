@@ -601,7 +601,8 @@ try:
 
     # stop Greenplum database
     gpmlib.log_info('Stop Greenplum database array')
-    (ok, out) = gpmlib.run_warn('gpstop -qaf -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    e = os.system('gpstop -af %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
     if not ok:
         gpmlib.error('gpstop failed')
 
@@ -617,7 +618,8 @@ try:
         gpmlib.error('Copy data from primary segments to mirror segments failed')
 
     # start master in admin mode
-    (ok, out) = gpmlib.run_warn('gpstart -qam -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    e = os.system('gpstart -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
     if not ok:
         gpmlib.error('Start master in admin mode failed')
 
@@ -649,13 +651,15 @@ try:
         db = None
 
     # stop master
-    (ok, out) = gpmlib.run_warn('gpstop -qma -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    e = os.system('gpstop -ma %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
     if not ok:
         gpmlib.error('Stop master in admin mode failed')
 
     # start Greenplum Database
     gpmlib.log_info('Start Greenplum database')
-    (ok, out) = gpmlib.run_warn('gpstart -qa -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
+    e = os.system('gpstart -a %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
     if not ok:
         gpmlib.error('Start Greenplum database failed')
 

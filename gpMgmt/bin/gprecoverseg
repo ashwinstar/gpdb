@@ -720,10 +720,12 @@ def recover_data(failed_instance_array, active_instance_array, pool_failed_insta
 
 ################
 def update_gp_conf(mirrors):
+    global opt
     db = None
 
     # start master in admin mode
-    (ok, out) = gpmlib.run_warn('gpstart -qam -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+    e = os.system('gpstart -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
     if not ok:
         gpmlib.error('Failed to start master in admin mode')
 
@@ -748,7 +750,8 @@ def update_gp_conf(mirrors):
         db = None
 
     # stop master
-    (ok, out) = gpmlib.run_warn('gpstop -qma -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+    e = os.system('gpstop -ma %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
     if not ok:
         gpmlib.error('Failed to stop master in admin mode')
 
@@ -1322,7 +1325,7 @@ def stop_database(failed_instance_array):
 
     if opt['-f']:
         gpmlib.log_info('Forcing shutdown the database')
-        (ok, out) = gpmlib.run_warn('gpstop -zfa -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+        e = os.system('gpstop -zfa %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
         gpmlib.log_info('Successfully shutdown the Greenplum Database instance')
     else:
         # stop the failed segment
@@ -1679,7 +1682,7 @@ try:
     # start master QD in admin mode if force restart
     if opt['-f']:
         gpmlib.log_info('Start master QD in admin mode', True)
-        (ok, out) = gpmlib.run_warn('gpstart -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+        e = os.system('gpstart -ma %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
 
     try:
         db = pg8000.Connection(host='localhost', port=master_port, 
@@ -1700,13 +1703,13 @@ try:
             # stop master QD
             gpmlib.log_info('Shutting down the master instance')
             gpmlib.log_info('Shutting down the master instance', True)
-            (ok, out) = gpmlib.run_warn('gpstop -maq -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+            e = os.system('gpstop -ma %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
             gpmlib.log_info('Successfully shutdown the master instance', True)
             gpmlib.log_info('Successfully shutdown the master instance')
 
             # start database
             gpmlib.log_info('Start Greenplum database', True)
-            (ok, out) = gpmlib.run_warn('gpstart -a -d %s >> %s 2>&1' % (os.environ.get('MASTER_DATA_DIRECTORY'), opt['-l']))
+            e = os.system('gpstart -a %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
         else:
             reset_qe_connect(db)
             
