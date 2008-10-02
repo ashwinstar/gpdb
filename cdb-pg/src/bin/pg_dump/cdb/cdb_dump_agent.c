@@ -4780,28 +4780,31 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		PQclear(res);
 
 		/* lets see about partitioning */
-		resetPQExpBuffer(query);
-		appendPQExpBuffer(query, "SELECT "
-						  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
-						  tbinfo->dobj.catId.oid);
-
-		res = PQexec(g_conn, query->data);
-		check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
-
-		if (PQntuples(res) != 1)
+		if ( g_gp_supportsPartitioning )
 		{
-			if (PQntuples(res) < 1)
-				write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
-						  tbinfo->dobj.name);
-			else
-				write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
-						  tbinfo->dobj.name);
-			exit_nicely();
-		}
-		if (!PQgetisnull(res, 0, 0))
-			appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+			resetPQExpBuffer(query);
+			appendPQExpBuffer(query, "SELECT "
+							  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+							  tbinfo->dobj.catId.oid);
 
-		PQclear(res);
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+			if (PQntuples(res) != 1)
+			{
+				if (PQntuples(res) < 1)
+					write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
+							  tbinfo->dobj.name);
+				else
+					write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
+							  tbinfo->dobj.name);
+				exit_nicely();
+			}
+			if (!PQgetisnull(res, 0, 0))
+				appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+
+			PQclear(res);
+		}
 		appendPQExpBuffer(q, ";\n");
 
 		/* MPP-1890 */

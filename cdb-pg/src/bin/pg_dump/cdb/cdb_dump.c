@@ -52,6 +52,7 @@ static int reportBackupResults( InputOptions inputopts, ThreadParmArray* pParmAr
 static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const SegmentDatabaseArray* psegDBAr,
 							ThreadParmArray* pParmAr );
 static void* threadProc(void *arg);
+static bool testPartitioningSupport(void);
 //static void getDatabaseConnections(PGconn *conn, PGconn ***conn_dbs, int *numberOfDbs, InputOptions *inputOpts);
 //static PGresult *executeQuery(PGconn *conn, const char *query);
 
@@ -297,13 +298,13 @@ bool doInitialActions(PGconn* pMasterConn)
 
 	mpp_msg( logInfo, pszProgName, "Getting a list of Greenplum Database managed tables for database %s.\n", pMasterConn->dbName);
 
-
 	/*
 	 * Process the schema and table include/exclude lists and determine the OIDs of the
 	 * tables to be dumped.
 	 */
 	progname = pszProgName;
 	g_conn = pMasterConn;
+	g_gp_supportsPartitioning = testPartitioningSupport();
 	convert_patterns_to_oids();
 
 	/*
@@ -325,6 +326,33 @@ cleanup:
 
 	return bRtn;
 }
+
+
+/*
+ * testPartitioningSupport - tests whether or not the current GP database includes
+ * support for partitioning.
+ */
+static bool
+testPartitioningSupport(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isSupported;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT 1 FROM pg_class WHERE relname = 'pg_partition' and relnamespace = 11;");
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	isSupported = ( PQntuples(res) == 1 );
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isSupported;
+}
+
 
 /*
  * execCommit: This function simply issues a commit command using the pConn PGconn* parameter.
