@@ -108,9 +108,8 @@ DtxContextInfo_CreateOnMaster(
 
 		dtxContextInfo->distributedTimeStamp = getDtxStartTime();
 
-		getDistributedTransactionIdentifier(dtxContextInfo->distributedId),
-
-			dtxContextInfo->curcid = curcid;
+		getDistributedTransactionIdentifier(dtxContextInfo->distributedId);
+		dtxContextInfo->curcid = curcid;
 	}
 	else
 	{
