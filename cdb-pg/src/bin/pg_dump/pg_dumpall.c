@@ -117,7 +117,7 @@ main(int argc, char *argv[])
 		/* START MPP ADDITION */
 		{"gp-syntax", no_argument, NULL, 1},
 		/* END MPP ADDITION */
-		
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -282,14 +282,15 @@ main(int argc, char *argv[])
 
 			case 0:
 				break;
-				
+
 			/* START MPP ADDITION */
 			case 1:
 				/* gp-format */
 				appendPQExpBuffer(pgdumpopts, " --gp-syntax");
+				resource_queues = true;			/* -r is implied by --gp-syntax */
 				break;
 			/* END MPP ADDITION */
-				
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -414,7 +415,7 @@ help(void)
 	/* START MPP ADDITION */
 	printf(_("  --gp-syntax             dump with Greenplum Database syntax\n"));
 	/* END MPP ADDITION */
-	
+
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT          database server port number\n"));
@@ -437,20 +438,23 @@ dumpResQueues(PGconn *conn)
 	int			i_rsqname,
 				i_rsqcountlimit,
 				i_rsqcostlimit,
-				i_rsqovercommit;
+				i_rsqovercommit,
+				i_rsqignorecostlimit;
 	int			i;
 
 	printfPQExpBuffer(buf,
 					  "SELECT rsqname, rsqcountlimit, rsqcostlimit, "
-					  "rsqovercommit "
+					  "rsqovercommit, %s rsqignorecostlimit "
 					  "FROM pg_resqueue "
-					  "ORDER BY 1");
+					  "ORDER BY 1",
+					  ( server_version >= 80205 ? "" : "0 AS") );
 	res = executeQuery(conn, buf->data);
 
 	i_rsqname = PQfnumber(res, "rsqname");
 	i_rsqcountlimit = PQfnumber(res, "rsqcountlimit");
 	i_rsqcostlimit = PQfnumber(res, "rsqcostlimit");
 	i_rsqovercommit = PQfnumber(res, "rsqovercommit");
+	i_rsqignorecostlimit = PQfnumber(res, "rsqignorecostlimit");
 
 	if (PQntuples(res) > 0)
 		printf("--\n-- Resource Queues\n--\n\n");
@@ -473,6 +477,10 @@ dumpResQueues(PGconn *conn)
 		if (strcmp(PQgetvalue(res, i, i_rsqcostlimit), "-1") != 0)
 			appendPQExpBuffer(buf, " COST THRESHOLD %.2f",
 							  atof(PQgetvalue(res, i, i_rsqcostlimit)));
+
+		if (strcmp(PQgetvalue(res, i, i_rsqignorecostlimit), "0") != 0)
+			appendPQExpBuffer(buf, " IGNORE THRESHOLD %.2f",
+							  atof(PQgetvalue(res, i, i_rsqignorecostlimit)));
 
 		if (strcmp(PQgetvalue(res, i, i_rsqovercommit), "t") == 0)
 			appendPQExpBuffer(buf, " OVERCOMMIT");
@@ -551,7 +559,7 @@ dumpRoles(PGconn *conn)
 	i_rolpassword = PQfnumber(res, "rolpassword");
 	i_rolvaliduntil = PQfnumber(res, "rolvaliduntil");
 	i_rolcomment = PQfnumber(res, "rolcomment");
-	
+
 	if (resource_queues)
 		i_rolqueuename = PQfnumber(res, "rolqueuename");
 
@@ -721,7 +729,7 @@ dumpTablespaces(PGconn *conn)
 						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");		
+						   "ORDER BY 1");
 	}
 	else if(server_version >= 80204)
 	{
@@ -732,7 +740,7 @@ dumpTablespaces(PGconn *conn)
 						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");			
+						   "ORDER BY 1");
 	}
 	else
 	{
@@ -743,9 +751,9 @@ dumpTablespaces(PGconn *conn)
 						   "null "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
-						   "ORDER BY 1");		
+						   "ORDER BY 1");
 	}
-	
+
 	if (PQntuples(res) > 0)
 		printf("--\n-- Tablespaces\n--\n\n");
 
@@ -760,11 +768,11 @@ dumpTablespaces(PGconn *conn)
 		char	   *spcacl = PQgetvalue(res, i, 5);
 		char	   *spccomment = PQgetvalue(res, i, 6);
 		char	   *fspcname;
-		char	  **prilocitems = NULL;	
-		char	  **mirlocitems = NULL;			
+		char	  **prilocitems = NULL;
+		char	  **mirlocitems = NULL;
 		int			nitems = 0;
 		int			i = 0;
-		
+
 		/* needed for buildACLCommands() */
 		fspcname = strdup(fmtId(spcname));
 
@@ -774,7 +782,7 @@ dumpTablespaces(PGconn *conn)
 		appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
 		appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
 		appendPQExpBuffer(buf, " LOCATION ");
-		
+
 		/* parse and construct the primary location strings */
 		if (!parsePGArray(spcprilocation, &prilocitems, &nitems))
 		{
@@ -783,12 +791,12 @@ dumpTablespaces(PGconn *conn)
 			PQfinish(conn);
 			exit(1);
 		}
-		
+
 		for(i = 0; i < nitems ; i++)
 		{
 			if(i > 0)
 				appendPQExpBuffer(buf, ",");
-			
+
 			appendStringLiteralConn(buf, prilocitems[i], conn);
 		}
 
@@ -802,21 +810,21 @@ dumpTablespaces(PGconn *conn)
 				PQfinish(conn);
 				exit(1);
 			}
-			
+
 			for(i = 0; i < nitems ; i++)
 			{
 				if(i > 0)
 					appendPQExpBuffer(buf, ",");
-				
+
 				appendStringLiteralConn(buf, prilocitems[i], conn);
 			}
-			
+
 			/* parse and construct the mirror location strings (if exists) */
 			if(spcmirlocation && strlen(spcmirlocation) > 0)
 			{
 				nitems = 0;
 				appendPQExpBuffer(buf, " MIRROR LOCATION ");
-				
+
 				if (!parsePGArray(spcmirlocation, &mirlocitems, &nitems))
 				{
 					fprintf(stderr, _("%s: could not parse MIRROR LOCATION array (%s) for tablespace \"%s\"\n"),
@@ -824,18 +832,18 @@ dumpTablespaces(PGconn *conn)
 					PQfinish(conn);
 					exit(1);
 				}
-				
+
 				for(i = 0; i < nitems ; i++)
 				{
 					if(i > 0)
 						appendPQExpBuffer(buf, ",");
-					
+
 					appendStringLiteralConn(buf, mirlocitems[i], conn);
 				}
-				
+
 				free(mirlocitems);
 			}
-			
+
 			/* Add MASTER LOCATION clause if differs from first primary entry */
 			/* (we could add it anyway, but it won't reflect the original command) */
 			if(strcmp(spclocation, prilocitems[0]) != 0)
@@ -844,12 +852,12 @@ dumpTablespaces(PGconn *conn)
 				appendPQExpBuffer(buf, " MASTER LOCATION ");
 				appendStringLiteralConn(buf, spclocation, conn);
 			}
-		} 
+		}
 		else
 		{
 			appendStringLiteralConn(buf, spclocation, conn);
 		}
-		
+
 		appendPQExpBuffer(buf, ";\n");
 
 		if (!skip_acls &&
@@ -875,7 +883,7 @@ dumpTablespaces(PGconn *conn)
 		free(prilocitems);
 		destroyPQExpBuffer(buf);
 	}
-	
+
 	PQclear(res);
 	printf("\n\n");
 }
