@@ -663,12 +663,20 @@ ProcessUtility(Node *parsetree,
 			{
 				DropStmt   *stmt = (DropStmt *) parsetree;
 				ListCell   *arg;
+				bool		dispatchDrop = true;
 
 				foreach(arg, stmt->objects)
 				{
 					List	   *names = (List *) lfirst(arg);
 					RangeVar   *rel;
 
+					/*
+					 * MPP-2879: We don't yet have locks, if we
+					 * noticed that we don't have permission to drop
+					 * on the QD, we *must* not dispatch -- we may be
+					 * racing other DDL. Multiple creates/drops racing
+					 * each other will produce very bad problems.
+					 */
 					switch (stmt->removeType)
 					{
 						case OBJECT_TABLE:
@@ -676,6 +684,8 @@ ProcessUtility(Node *parsetree,
 							if (CheckDropPermissions(rel, RELKIND_RELATION,
 													 stmt->missing_ok))
 								RemoveRelation(rel, stmt->behavior, stmt);
+							else
+								dispatchDrop = false;
 							break;
 
 						case OBJECT_EXTTABLE:
@@ -683,6 +693,8 @@ ProcessUtility(Node *parsetree,
 							if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
 													 stmt->missing_ok))
 								RemoveRelation(rel, stmt->behavior, stmt);
+							else
+								dispatchDrop = false;
 							break;
 							
 
@@ -691,6 +703,8 @@ ProcessUtility(Node *parsetree,
 							if (CheckDropPermissions(rel, RELKIND_SEQUENCE,
 													 stmt->missing_ok))
 								RemoveRelation(rel, stmt->behavior, stmt);
+							else
+								dispatchDrop = false;
 							break;
 
 						case OBJECT_VIEW:
@@ -698,6 +712,8 @@ ProcessUtility(Node *parsetree,
 							if (CheckDropPermissions(rel, RELKIND_VIEW,
 													 stmt->missing_ok))
 								RemoveView(rel, stmt->behavior);
+							else
+								dispatchDrop = false;
 							break;
 
 						case OBJECT_INDEX:
@@ -705,6 +721,8 @@ ProcessUtility(Node *parsetree,
 							if (CheckDropPermissions(rel, RELKIND_INDEX,
 													 stmt->missing_ok))
 								RemoveIndex(rel, stmt->behavior);
+							else
+								dispatchDrop = false;
 							break;
 
 						case OBJECT_TYPE:
@@ -751,7 +769,7 @@ ProcessUtility(Node *parsetree,
 				/*
 				 * If we are the QD, dispatch this DROP command to all the QEs
 				 */
-				if (Gp_role == GP_ROLE_DISPATCH)
+				if (Gp_role == GP_ROLE_DISPATCH && dispatchDrop)
 				{
 					stmt->missing_ok=true;
 					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
