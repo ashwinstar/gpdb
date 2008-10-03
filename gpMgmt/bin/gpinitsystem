@@ -1050,7 +1050,11 @@ CREATE_QES_PRIMARY () {
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				$GPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
+				FLAG=""
+				if [ x"" != x"$PG_CONF_ADD_FILE" ] ; then
+				    FLAG="-p $PG_CONF_ADD_FILE"
+				fi
+				$GPCREATESEG $FLAG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
@@ -1094,7 +1098,11 @@ CREATE_QES_MIRROR () {
 				export QE_SHARED_BUFFERS
 				export CHECK_POINT_SEGMENTS
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-				$GPCREATESEG $$ 1 $I $INST_COUNT  $LOG_FILE \
+				FLAG=""
+				if [ x"" != x"$PG_CONF_ADD_FILE" ] ; then
+				    FLAG="-p $PG_CONF_ADD_FILE"
+				fi
+				$GPCREATESEG $FLAG $$ 1 $I $INST_COUNT  $LOG_FILE \
 `$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 				PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT

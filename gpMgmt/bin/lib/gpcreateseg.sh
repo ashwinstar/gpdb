@@ -40,12 +40,12 @@ TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
 # Level of script feedback 0=small 1=verbose
 unset VERBOSE
+unset PG_CONF_ADD_FILE
 # MPP database specific parameters
 GP_USER=$USER_NAME
 # System table names
 GP_TBL=gp_id
 GP_CONFIGURATION_TBL=gp_configuration
-unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 # ED_FILE search text values
 PORT_TXT="#port"
@@ -69,7 +69,7 @@ USAGE () {
 CHK_CALL () {
 	FILE_PREFIX=`$ECHO $PARALLEL_STATUS_FILE|$CUT -d"." -f1`
 	if [ ! -f ${FILE_PREFIX}.$PARENT_PID ];then
-		$ECHO "[FATAL]:-Not called from from correct parent program" 
+		$ECHO "[FATAL]:-Not called from correct parent program" 
 		exit 2
 	fi
 }
@@ -193,6 +193,9 @@ while getopts ":v'?'aiqe:c:l:p:m:h:on:s:" opt
 		v ) VERSION_INFO ;;
 		'?' ) USAGE ;;
 		q ) unset VERBOSE ;;
+	        p ) PG_CONF_ADD_FILE=$OPTARG
+		    shift
+		    shift ;;
 		* ) USAGE 
 	esac
 done
