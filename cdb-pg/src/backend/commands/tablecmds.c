@@ -609,6 +609,7 @@ DefineRelation_int(CreateStmt *stmt,
 		 */
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+
 		LockRelationOid(DependRelationId, RowExclusiveLock);
 		
 		cdb_sync_oid_to_segments();
@@ -1022,26 +1023,12 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 {
 	Oid			relOid;
 	ObjectAddress object;
+	HeapTuple tuple;
+
+	AcceptInvalidationMessages();
 
 	relOid = RangeVarGetRelid(relation, false);
 
-	/* MPP-3260: disallow direct DROP TABLE of a partition */
-	if (stmt && rel_is_child_partition(relOid) && !stmt->bAllowPartn)
-	{
-		Oid master = rel_partition_get_master(relOid);
-		ereport(ERROR,
-				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				errmsg("cannot drop child partition \"%s\" directly",
-					   get_rel_name(relOid)),
-				errhint("Table \"%s\" is a child partition of table "
-						"\"%s\".  To drop it, use ALTER TABLE.",
-						get_rel_name(relOid), get_rel_name(master))));
-	}
-
-	object.classId = RelationRelationId;
-	object.objectId = relOid;
-	object.objectSubId = 0;
-	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		LockRelationOid(RelationRelationId, RowExclusiveLock);
@@ -1051,6 +1038,35 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 
 	/* Lock the relation to be dropped */
 	LockRelationOid(relOid, AccessExclusiveLock);
+
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "relation \"%s\" does not exist", relation->relname);
+
+	/* MPP-3260: disallow direct DROP TABLE of a partition */
+	if (stmt && rel_is_child_partition(relOid) && !stmt->bAllowPartn)
+	{
+		Oid master = rel_partition_get_master(relOid);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				 errmsg("cannot drop child partition \"%s\" directly",
+						get_rel_name(relOid)),
+				 errhint("Table \"%s\" is a child partition of table "
+						 "\"%s\".  To drop it, use ALTER TABLE.",
+						 get_rel_name(relOid), get_rel_name(master))));
+	}   
+
+	object.classId = RelationRelationId;
+	object.objectId = relOid;
+	object.objectSubId = 0;
+
+	ReleaseSysCache(tuple);
+
+	/* if we got here then we should proceed. */
 
 	performDeletion(&object, behavior);
 }
@@ -1063,6 +1079,7 @@ bool
 RelationToRemoveIsTemp(const RangeVar *relation, DropBehavior behavior)
 {
 	Oid			relOid;
+	Oid			recheckoid;
 	ObjectAddress object;
 	HeapTuple	relTup;
 	Form_pg_class relForm;
@@ -1096,6 +1113,14 @@ RelationToRemoveIsTemp(const RangeVar *relation, DropBehavior behavior)
 
 	/* Lock the relation to be dropped */
 	LockRelationOid(relOid, AccessExclusiveLock);
+
+	/*
+	 * When we got the relOid lock, it is possible that the relation has gone away.
+	 * this will throw Error if the relation is already deleted.
+	 */
+	recheckoid = RangeVarGetRelid(relation, false);
+
+	/* if we got here then we should proceed. */
 
 	relTup = SearchSysCache(RELOID,
 							ObjectIdGetDatum(relOid),

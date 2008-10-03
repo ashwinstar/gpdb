@@ -724,7 +724,18 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
      * CDB: Acquire ExclusiveLock if it is a distributed relation and we are
      * doing UPDATE or DELETE activity
 	 */
-	pstate->p_target_relation = heap_openrv(relation, NoLock);
+	PG_TRY();
+	{
+		pstate->p_target_relation = heap_openrv(relation, AccessShareLock);
+	}
+	PG_CATCH();
+	{
+		/* Throw a friendlier error than:
+		 * "could not open relation with relid 1234" */
+		elog(ERROR, "relation \"%s\" does not exist", relation->relname);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/* External relations are read-only */
 	if (pstate->p_target_relation->rd_rel->relkind == RELKIND_EXTERNAL &&
