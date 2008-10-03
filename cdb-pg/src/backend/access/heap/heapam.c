@@ -1633,6 +1633,9 @@ heap_logpage(Relation rel, Buffer buf)
 	END_CRIT_SECTION();
 }
 
+/*
+ * MUST BE CALLED IN CRITICAL SECTION!
+ */
 static void
 heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
 {
@@ -1643,7 +1646,7 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
 	Page		page = BufferGetPage(buffer);
 	uint8		info = XLOG_HEAP_INSERT;
 
-	START_CRIT_SECTION();
+	ASSERT_IN_CRIT_SECTION();
 
 	xlrec.target.node = rel->rd_node;
 	xlrec.target.tid = tup->t_self;
@@ -1690,7 +1693,6 @@ heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
 
 	PageSetLSN(page, recptr);
 	PageSetTLI(page, ThisTimeLineID);
-	END_CRIT_SECTION();
 }
 
 void
@@ -2004,11 +2006,16 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 
 	if (buffer != InvalidBuffer)
 	{
+		START_CRIT_SECTION();
+
 		/* the buffer is Locked and Pinned by heap_insertgetpage */
 		RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
 		MarkBufferDirty(buffer);
 		if (ins->hi_use_wal)
 			heap_log_tuple_insert(ins->hi_rel, buffer, heaptup);
+
+		END_CRIT_SECTION();
+
 		UnlockReleaseBuffer(buffer);
 	}
 	else 
@@ -2129,6 +2136,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	/* Find buffer to insert this tuple into */
 	buffer = RelationGetBufferForTuple(relation, heaptup->t_len,
 									   InvalidBuffer, use_fsm);
+	START_CRIT_SECTION();
 
 	RelationPutHeapTuple(relation, buffer, heaptup);
 
@@ -2145,6 +2153,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 		heap_log_tuple_insert(relation, buffer, heaptup);
 	}
 
+	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buffer);
 

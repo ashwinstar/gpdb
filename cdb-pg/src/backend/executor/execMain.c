@@ -1166,7 +1166,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		List	   *resultRelations = parseTree->resultRelations;
 		int			numResultRelations;
 		ResultRelInfo *resultRelInfos;
-		
+
 		if (resultRelations != NIL)
 		{
 			/*
@@ -1577,14 +1577,14 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelationOid = getrelid(resultRelationIndex, rangeTable);
 	
 	/* CDB: QD must acquire X lock on whole relation if distributed. */
-    resultRelationDesc = heap_open(resultRelationOid, NoLock);
-    
-    /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
-    if (needLock)
-   	{
+	resultRelationDesc = heap_open(resultRelationOid, NoLock);
+
+	/* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
+	if (needLock)
+	{
    		if (operation == CMD_UPDATE || operation == CMD_DELETE)
     		LockRelation(resultRelationDesc, RowExclusiveLock);
-   	}
+	}
 	
 	switch (resultRelationDesc->rd_rel->relkind)
 	{
@@ -1653,9 +1653,9 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	 * DELETE, however, since deletion doesn't affect indexes.
 	 */
 	if (needLock) /* only needed by the root slice who will do the actual updating */
-	if (resultRelationDesc->rd_rel->relhasindex &&
-		operation != CMD_DELETE)
-		ExecOpenIndices(resultRelInfo);
+		if (resultRelationDesc->rd_rel->relhasindex &&
+			operation != CMD_DELETE)
+			ExecOpenIndices(resultRelInfo);
 }
 
 /*
@@ -2345,7 +2345,7 @@ ExecInsert(TupleTableSlot *slot,
     /* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
     sourceTableOid = slot->tts_tableOid;
     slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
-	
+
 	if (relstorage != RELSTORAGE_AO)
 	{
 		setLastTid(&(((HeapTuple)tuple)->t_self));

@@ -113,6 +113,11 @@ do { \
 	CritSectionCount--; \
 } while(0)
 
+/* check CritSectionCount without modification */
+#define ASSERT_IN_CRIT_SECTION() \
+do { \
+	Assert(CritSectionCount > 0); \
+} while(0)
 
 /*****************************************************************************
  *	  globals.h --															 *
