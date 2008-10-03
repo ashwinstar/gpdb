@@ -481,7 +481,11 @@ def get_datadirs(ndatadir):
                 gpmlib.error('Null value entered for mirror data directory')
             datadirs.append(line)
 
-    return datadirs
+    dirs = []
+    for d in datadirs:
+        (ok, out) = gpmlib.run('echo %s' % d)
+        dirs.append(out[0].strip())
+    return dirs
 
 
 ################                                      
