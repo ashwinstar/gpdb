@@ -1575,15 +1575,33 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	Relation	resultRelationDesc;
 	
 	resultRelationOid = getrelid(resultRelationIndex, rangeTable);
-	
-	/* CDB: QD must acquire X lock on whole relation if distributed. */
-	resultRelationDesc = heap_open(resultRelationOid, NoLock);
 
-	/* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
-	if (needLock)
+	/*
+	 * MPP-2879: The QEs don't pass their MPPEXEC statements through
+	 * the parse (where locks would ordinarily get acquired). So we
+	 * need to take some care to pick them up here (otherwise we get
+	 * some very strange interactions with QE-local operations (vacuum?
+	 * utility-mode ?)).
+	 *
+	 * NOTE: There is a comment in lmgr.c which reads forbids use of
+	 * heap_open/relation_open with "NoLock" followed by use of
+	 * RelationOidLock/RelationLock with a stronger lock-mode:
+	 * RelationOidLock/RelationLock expect a relation to already be
+	 * locked.
+	 */
+	/* CDB: QD must acquire X lock on whole relation if distributed. */
+	if (!needLock)
+		resultRelationDesc = heap_open(resultRelationOid, NoLock);
+	else
 	{
-   		if (operation == CMD_UPDATE || operation == CMD_DELETE)
-    		LockRelation(resultRelationDesc, RowExclusiveLock);
+		/* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
+   		if (operation == CMD_UPDATE || operation == CMD_DELETE || CMD_INSERT)
+			resultRelationDesc = heap_open(resultRelationOid, RowExclusiveLock);
+		else
+		{
+			/* A result rel has to be one of the three above: insert, update, or delete. */
+			elog(ERROR, "Command-lockmode mismatch cmd %d", operation);
+		}
 	}
 	
 	switch (resultRelationDesc->rd_rel->relkind)
