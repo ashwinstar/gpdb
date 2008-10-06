@@ -578,7 +578,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	}
 
 
-	while ((c = getopt_long(argc, argv, "acdDh:in:N:oOp:RsS:t:T:U:vWxX:",
+	while ((c = getopt_long(argc, argv, "acdDE:h:in:N:oOp:RsS:t:T:U:vWxX:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -815,7 +815,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 
 			default:
-				mpp_err_msg_cache(logError, pszProgName, "Try \"%s --help\" for more information.", pszProgName);
+				mpp_err_msg_cache(logError, pszProgName, "Try \"%s --help\" for more information.\n", pszProgName);
 				goto cleanup;
 		}
 	}
