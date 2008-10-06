@@ -1,0 +1,5 @@
+$def with (stime)
+<?xml version="1.0"?>
+<start>
+    <time>$stime</time>
+</start>

@@ -1,0 +1,734 @@
+#!/usr/bin/env python
+
+'''
+Start, stops, interogates or configures the GPPerfMon system.
+
+Usage: gpperfmon -D <MASTER DATA DIRECTORY> --start|--stop|--restart|--status|--setup [--noweb]
+
+\t-D <MASTER_DATA_DIRECTORY>  - master data directory of instance to monitor
+
+\t--start    - start the gpperfmon system
+\t--stop     - stop the gpperfmon system
+\t--restart  - restart the gpperfmon system
+\t--status   - check the status of the gpperfmon system
+\t--setup    - configure the gpperfmon system
+\t--version  - display gpperfmon version
+
+\t--noweb    do not control the gpperfmon web server (valid for start, stop and restart actions)
+
+'''
+
+import os, sys, getopt, signal, time, socket
+
+script_name = os.path.split(__file__)[-1]
+# TODO: what's the real version number?
+script_version = '1.0.0'
+
+# valid options
+valid_opts = "?D:"
+valid_lopts = ["restart", "start", "stop", "status", "setup", "noweb", "version"]
+
+# consts
+STOPPED = 0
+RUNNING = 1
+
+# options
+opt = {}
+
+avail_cmds = {}
+
+GPPERFMON_CONF_FILE = ''
+LIGHTY_CONF_FILE = ''
+GPMMON_PID_FILE = ''
+LIGHTY_PID_FILE = ''
+WEBAPI_DOCROOT = ''
+GPPERFMONHOME = ''
+GPHOME = ''
+
+#################
+def usage(exitarg, errmsg=''):
+    if not errmsg == '':
+        print "Error: %s" % errmsg
+    print __doc__
+    sys.exit(exitarg)
+
+
+#################
+def version():
+    print '%s version %s' % (script_name, script_version)
+    print 'lighttpd version: %s' % lighty_version()
+    print 'gpmmon version: %s' % gpmmon_version()
+    print 'gpsmon version: %s' % gpsmon_version()
+
+
+#################
+def parse_command_line():
+    global opt
+    try:
+        (options, args) = getopt.getopt(sys.argv[1:], valid_opts, valid_lopts)
+    except getopt.GetoptError, err:
+        print str(err)
+        usage(0)
+
+    for (switch, val) in options:
+        if switch == '-?':               
+            usage(0)
+        elif switch == '--version':
+            version()
+            sys.exit(0)
+        elif switch == '-D':             
+            opt['MASTER_DATA_DIRECTORY'] = val
+        elif switch == '--noweb':
+            opt['noweb'] = True
+        elif switch == '--start' or '--stop' or '--restart' or '--status' or '--setup':
+            if not opt.has_key('ACTION'):
+                    opt['ACTION'] = switch[2:]
+            else:
+                    usage(1, 'The action \'%s\' was already specified' % opt['ACTION'])
+
+
+#################
+def validate_options():
+    global opt, GPPERFMON_CONF_FILE, GPMMON_PID_FILE, LIGHTY_CONF_FILE, LIGHTY_PID_FILE, WEBAPI_DOCROOT
+
+    if not opt.has_key('MASTER_DATA_DIRECTORY'):
+        opt['MASTER_DATA_DIRECTORY'] = os.getenv('MASTER_DATA_DIRECTORY')
+        if opt['MASTER_DATA_DIRECTORY'] == None:
+            print "Error: MASTER_DATA_DIRECTORY not defined and -D option not specified"
+            usage(1)
+
+    # check that we have an action
+    if not opt.has_key('ACTION'):
+        usage(1, 'Missing action.')
+
+    GPPERFMON_CONF_FILE = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/gpperfmon.conf'
+    GPMMON_PID_FILE = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/gpmmon.pid'
+    LIGHTY_CONF_FILE = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/lighttpd.conf'
+    LIGHTY_PID_FILE = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/lighttpd.pid'
+    WEBAPI_DOCROOT = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/'
+
+
+#################
+def check_env():
+    global GPPERFMONHOME, GPHOME
+    GPPERFMONHOME = os.getenv('GPPERFMONHOME')
+    GPHOME = os.getenv('GPHOME')
+    if GPPERFMONHOME == None:
+        usage(1, 'GPPERFMONHOME environment variable not set')
+    if GPHOME == None:
+        usage(1, 'GPHOME environment variable not set')
+
+
+#################
+def check_commands():
+    avail_cmds['gpmmon'] = command_in_path('gpmmon')
+    avail_cmds['openssl'] = command_in_path('openssl') 
+    avail_cmds['lighttpd-angel'] = command_in_path('lighttpd-angel')
+    avail_cmds['psql'] = command_in_path('psql')
+
+
+#################
+def gpperfmon_start():
+    if not opt.has_key('noweb'):
+        print 'Starting web server...'
+        ret = lighty_start()
+        if ret == STOPPED:
+            print 'Failed to start web server.'
+        else:
+            print 'Web server started.'
+
+    print 'Starting gpmmon...'
+    ret = gpmmon_start()
+    if ret == STOPPED:
+        print 'Failed to start gpmmon.'
+    else:
+        print 'gpmmon server started.'
+
+
+#################
+def gpperfmon_stop():
+    if not opt.has_key('noweb'):
+        print 'Stopping web server...'
+        ret = lighty_stop()
+        if ret == RUNNING:
+            print 'Failed to stop web server.'
+        else:
+            print 'Web server stopped.'
+
+    print 'Stopping gpmmon...'
+    ret = gpmmon_stop()
+    if ret == RUNNING:
+        print 'Failed to stop gpmmon.'
+    else:
+        print 'gpmmon stopped.'
+
+
+#################
+def gpperfmon_restart():
+    if not opt.has_key('noweb'):
+        print 'Restarting web server...'
+        lighty_restart()
+        print 'Done.'
+
+    print 'Restarting gpmmon...'
+    gpmmon_restart()
+    print 'Done'
+
+
+#################
+def gpperfmon_status():
+    if lighty_status() == 1:
+        print 'gpperfmon Web API [Running]'
+    else:
+        print 'gpperfmon Web API [Stopped]'
+
+    if gpmmon_status() == 1:
+        print 'gpmmon [Running]'
+    else:
+        print 'gpmmon [Stopped]'
+
+
+#################
+def get_int(msg, default, min, max = 0):
+    val = None
+    while val == None:
+        val = raw_input('%s:' % msg)
+        if not val: 
+            val = default
+        else:
+            try:
+                val = int(val)
+            except:
+                print "Invalid value"
+                val = None
+                continue
+        if val < min:
+            print 'Value must be greater than or equal to %d' % min
+            val = None
+            continue
+        elif max != 0 and val > max:
+            print 'Value must be less than or equal to %d' % max
+            val = None
+            continue
+
+    return val
+
+
+#################
+def get_string(msg, default):
+    val = None
+    val = raw_input('%s:' % msg)
+    if not val:
+        val = default
+    return val
+
+
+#################
+def get_yesno(msg, default):
+    val = None
+    while val == None:
+        val = raw_input('%s:' % msg)
+        if not val:
+            val = default
+        else:
+            if val.upper().rstrip() in ('Y', 'YES'):
+                val = 'Y'
+            elif val.upper().rstrip() in ('N', 'YES'):
+                val = 'N'
+            else:
+                print 'Invalid input'
+                val = None
+
+    return val
+
+
+#################
+def gpperfmon_setup():
+    if os.path.isfile(GPPERFMON_CONF_FILE):
+        yn = get_yesno('gpperfmon.conf already exists for this database instance.\nDo you want to reconfigure gpperfmon? [N]', 'N')
+        if yn == 'N':
+            sys.exit(0)
+
+    # check that master data directory is correct...
+    if not os.path.isfile(opt['MASTER_DATA_DIRECTORY'] + '/pg_hba.conf'):
+        usage('Failed to find pg_hba.conf file in ' + opt['MASTER_DATA_DIRECTORY'])
+
+    try:
+        os.mkdir(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/')
+    except OSError:
+        pass #dir exists
+    try:
+        os.mkdir(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf')
+    except OSError:
+        pass #dir exists
+
+    try:
+        os.mkdir(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web')
+    except OSError:
+        pass #dir exists
+
+    try:
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
+        os.symlink(GPPERFMONHOME + '/web/lib', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
+    except OSError, detail:
+        print 'Error: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
+        os.symlink(GPPERFMONHOME + '/web/templates', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
+    except OSError, detail:
+        print 'Error: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum')
+        os.symlink(GPPERFMONHOME + '/web/greenplum', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum')
+    except OSError, detail:
+        print 'Error: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(GPHOME + '/bin/lib/gpmon_catqrynow.py'):
+            os.unlink(GPHOME + '/bin/lib/gpmon_catqrynow.py')
+        os.symlink(GPPERFMONHOME + '/lib/gpmon_catqrynow.py', GPHOME + '/bin/lib/gpmon_catqrynow.py')
+    except OSError, detail:
+        print 'Error: %s' % detail
+        sys.exit(1)
+
+    # gpmmon configuration
+    print '-----------------------'
+    print 'gpperfmon Configuration'
+    print '-----------------------'
+    print '\ngpperfmon requires a database within the Greenplum instance it is monitoring.'
+    print 'This configuration can create this database for you now.  If you choose to'
+    print 'create this database now, it will replace any previous gpperfmon database, causing'
+    print 'loss of any monitoring data previously collected and stored in that database.'
+    create_db = get_yesno('Do you want to create the gpperfmon database [N]', 'N')
+    if create_db == 'Y':
+        create_db = get_yesno('Are you sure?  All previous monitoring data for this instance will be lost. [Y]', 'Y')
+        if create_db == 'Y':
+            if os.system('psql -d template1 -f %s' % (GPPERFMONHOME + '/gpperfmon.sql')) != 0:
+                print 'There was an error creating the database.  Configuration cannot continue at this time.'
+                sys.exit(1)
+            print 'The gpperfmon database was created successfully.' 
+
+
+    print '\nThe quantum value specifies the time in seconds between updates from performance'
+    print 'monitor agents on all segments.'
+    quantum = get_int('Quantum (between 10 and 120 seconds). [15]', 15, 10, 120)
+
+    print '\nThe minimum query run time specifies the cutoff time for queries to log.  Only'
+    print 'queries with a run time greater than this value will be logged in the'
+    print 'queries_history table.'
+    minqt = get_int('Minimum query run time (seconds) [60]', 60, 0) 
+
+    print '\nThe minimum detailed query run time specifies the cutoff time for queries to log detailed'
+    print 'iterator metrics.  Only queries with a run time greater than this value will have their'
+    print 'detailed metrics logged in the iterators_history table.'    
+    mindqt = get_int('Minimum detailed query run time (seconds) [%d]' % minqt, minqt, minqt)
+
+    logloc = get_string('\nLog file location [%s]' % (opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs'), 
+                        opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs')
+
+    try:
+        os.mkdir(logloc)
+    except OSError:
+        pass #dir exists
+
+    # Web API configuration
+    print '----------------------------'
+    print 'UI and Web API Configuration'
+    print '----------------------------'
+    maxdp = get_int('Maximum number of data points the Web UI can return in one call [600]', 600, 10)
+
+
+    print '\nThe monitoring GUI can highlight specific query or system metrics that exceed a certain'
+    print 'threshold.'
+
+    # TODO need get_float
+    loadt = get_int('Load2 threshold [2.00]', 2, 0)
+
+    cput = get_int('CPU usage threshold (percent) [80]', 80, 0)
+    memt = get_int('Memory usage threshold (percent) [80]', 80, 0)
+    diskt = get_int('Disk usage threshold (bytes) [0]', 0, 0)
+    nett = get_int('Network usage threshold (bytes) [10000]', 10000, 0)
+    cpuet = get_int('CPU elapsed threshold [70]', 70, 0)
+    cpuskewt = get_int('CPU skew threshold [100]', 100, 0)
+
+
+    gpperfmon_conf = generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, maxdp, loadt, cput, memt, diskt, nett, cpuet, cpuskewt)
+    
+    #lighty conf
+    lighty_access_log = logloc + '/lighttpd-access.log'
+    lighty_error_log = logloc + '/lighttpd-error.log'
+
+    print '\ngpperfmon runs a small web server for the UI and web API.  This web server'
+    print 'by default runs on port 8080, but you may specify any available port.'
+    lighty_port = get_int('Web server port [8080]', 8080, 1, 65534)
+    
+    enable_ssl = 'disable'
+    ssl_cert = ''
+
+    if avail_cmds['openssl']:
+        yn = get_yesno('\nDo you want to enable SSL for the Web API (Y/N) [Y]', 'Y')
+        if yn == 'Y':
+            ret = generate_cert(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem')
+            if ret:
+                enable_ssl = 'enable'
+                ssl_cert = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem'
+            else:
+                print 'Failed to generate SSL cert.  SSL will be disabled.'
+    else:
+        print 'openssl not found.  If you want to enable SSL, make sure openssl is in your\npath and rerun gpperfmon.py --setup'
+
+    lighty_conf = generate_lighty_conf(WEBAPI_DOCROOT, lighty_error_log, 
+                                       lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/greenplum/gpmonws.py', 
+                                       enable_ssl, ssl_cert)
+
+    # TODO: should we clean up everything on error?
+    try:
+        FILE = open(LIGHTY_CONF_FILE, 'w')
+        FILE.writelines(lighty_conf)
+        FILE.close()
+        print '\nDone writing lighttpd configuration to %s' % LIGHTY_CONF_FILE
+    except:
+        print 'Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
+
+    try:
+        FILE = open(GPPERFMON_CONF_FILE, 'w')
+        FILE.writelines(gpperfmon_conf)
+        FILE.close()
+        print 'Done writing gpperfmon configuration to %s' % GPPERFMON_CONF_FILE
+    except:
+        print 'Failed to write gpperfmon configuration to %s' % GPPERFMON_CONF_FILE
+
+    webui_url = ''
+    if enable_ssl == 'enable':
+        webui_url = 'https://'
+    else:
+        webui_url = 'http://'
+    webui_url = webui_url + socket.gethostname() + ':' + str(lighty_port) + '/'
+    print '\ngpperfmon configuration is now complete.  If at a later date you want to change certain parameters,'
+    print 'you can either re-run \'gpperfmon --setup\' or edit the configuration file located at'
+    print GPPERFMON_CONF_FILE + '.'
+    print '\nYou can start monitoring this Greenplum Database instance by running \'gpperfmon --start\'.'
+    print 'The web based UI is available at %s' % webui_url
+
+#################
+def lighty_version():
+    ver_string = 'Unknown'
+    FILE = os.popen('lighttpd -v')
+    if FILE:
+        ver_string = FILE.readline().split(' ')[0]
+        FILE.close()
+    return ver_string
+
+
+#################
+def lighty_start():
+    res = 0
+    if lighty_status() == 0:
+        if avail_cmds['lighttpd-angel']:
+            start_application('lighttpd-angel -f ' + LIGHTY_CONF_FILE)
+        else:
+            print 'lighttd-angel not found in PATH.  Please configure your PATH correctly and try again.'
+            return STOPPED
+        time.sleep(1)
+    return lighty_status()
+
+
+#################
+def lighty_stop():
+    if lighty_status() == 1:
+        if avail_cmds['lighttpd-angel']:
+            try:
+                FILE = open(LIGHTY_PID_FILE, 'r')
+                pid = FILE.readline()
+                FILE.close()
+                os.kill(int(pid), signal.SIGTERM)
+                time.sleep(1)
+            except:
+                return lighty_status()
+        else:
+            print 'lighttd-angel not found in PATH.  Please configure your PATH correctly and try again.'
+    return lighty_status()
+
+#################
+def lighty_restart():
+    lighty_stop()
+    lighty_start()
+
+
+#################
+def lighty_status():
+    running = STOPPED
+    try:
+        FILE = open(LIGHTY_PID_FILE, 'r')
+        pid = FILE.readline()
+        FILE.close()
+        FILE = os.popen('ps -p %s 2>/dev/null' % pid)
+        FILE.readline()
+        status = FILE.readline()
+        FILE.close()
+        if status.find('lighttpd') != -1:
+            running = RUNNING
+    except:
+        pass
+
+    return running
+
+
+#################
+def generate_lighty_conf(docroot, errlog, accesslog, port, webpybin, usessl, certpath):
+    return '''server.modules = (
+    "mod_rewrite",
+    "mod_fastcgi",
+    "mod_compress",
+    "mod_accesslog" )
+
+server.document-root = "%s"
+server.pid-file = "%s"
+server.errorlog = "%s"
+
+mimetype.assign = (
+  ".pdf"          =>      "application/pdf",
+  ".sig"          =>      "application/pgp-signature",
+  ".spl"          =>      "application/futuresplash",
+  ".class"        =>      "application/octet-stream",
+  ".ps"           =>      "application/postscript",
+  ".torrent"      =>      "application/x-bittorrent",
+  ".dvi"          =>      "application/x-dvi",
+  ".gz"           =>      "application/x-gzip",
+  ".pac"          =>      "application/x-ns-proxy-autoconfig",
+  ".swf"          =>      "application/x-shockwave-flash",
+  ".tar.gz"       =>      "application/x-tgz",
+  ".tgz"          =>      "application/x-tgz",
+  ".tar"          =>      "application/x-tar",
+  ".zip"          =>      "application/zip",
+  ".mp3"          =>      "audio/mpeg",
+  ".m3u"          =>      "audio/x-mpegurl",
+  ".wma"          =>      "audio/x-ms-wma",
+  ".wax"          =>      "audio/x-ms-wax",
+  ".ogg"          =>      "application/ogg",
+  ".wav"          =>      "audio/x-wav",
+  ".gif"          =>      "image/gif",
+  ".jpg"          =>      "image/jpeg",
+  ".jpeg"         =>      "image/jpeg",
+  ".png"          =>      "image/png",
+  ".xbm"          =>      "image/x-xbitmap",
+  ".xpm"          =>      "image/x-xpixmap",
+  ".xwd"          =>      "image/x-xwindowdump",
+  ".css"          =>      "text/css",
+  ".html"         =>      "text/html",
+  ".htm"          =>      "text/html",
+  ".js"           =>      "text/javascript",
+  ".asc"          =>      "text/plain",
+  ".c"            =>      "text/plain",
+  ".cpp"          =>      "text/plain",
+  ".log"          =>      "text/plain",
+  ".conf"         =>      "text/plain",
+  ".text"         =>      "text/plain",
+  ".txt"          =>      "text/plain",
+  ".dtd"          =>      "text/xml",
+  ".xml"          =>      "text/xml",
+  ".mpeg"         =>      "video/mpeg",
+  ".mpg"          =>      "video/mpeg",
+  ".mov"          =>      "video/quicktime",
+  ".qt"           =>      "video/quicktime",
+  ".avi"          =>      "video/x-msvideo",
+  ".asf"          =>      "video/x-ms-asf",
+  ".asx"          =>      "video/x-ms-asf",
+  ".wmv"          =>      "video/x-ms-wmv",
+  ".bz2"          =>      "application/x-bzip",
+  ".tbz"          =>      "application/x-bzip-compressed-tar",
+  ".tar.bz2"      =>      "application/x-bzip-compressed-tar"
+ )
+
+accesslog.filename = "%s"
+
+$HTTP["url"] =~ "\.pdf$" {
+  server.range-requests = "disable"
+}
+
+static-file.exclude-extensions = ( ".php", ".pl", ".fcgi", ".py" )
+
+server.port = %d
+
+compress.cache-dir = "/tmp/lighttpd/cache/compress/"
+compress.filetype = ("text/plain", "text/html", "text/xml")
+
+fastcgi.server = ( "/gpmonws.py" =>
+((
+   "socket" => "/tmp/fastcgi.socket",
+   "bin-path" => "%s",
+   "max-procs" => 2,
+   "bin-environment" => (
+     "REAL_SCRIPT_NAME" => ""
+   ),
+   "check-local" => "disable"
+))
+)
+
+ url.rewrite-once = (
+   "^/favicon.ico$" => "/static/favicon.ico",
+   "^/static/(.*)$" => "/static/$1",
+   "^/(.*)$" => "/gpmonws.py/$1",
+ )
+
+#### SSL engine
+ssl.engine = "%s"
+ssl.pemfile = "%s"
+''' % (docroot, opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/lighttpd.pid', errlog, accesslog, port, webpybin, usessl, certpath)
+
+
+#################
+def generate_cert(destfile):
+    # TODO: configurable cert params
+    cert_gen_cmd = 'openssl req -new -x509 -keyout %s -out %s -days 365 -nodes' % (destfile, destfile)
+    res = os.system(cert_gen_cmd)
+    return (res == 0)
+
+
+#################
+def gpsmon_version():
+    ver_string = 'Unknown'
+    FILE = os.popen('gpsmon --version')
+    if FILE:
+        ver_string = FILE.readline().split('"')[1]
+        FILE.close()
+    return ver_string
+
+
+#################
+def gpmmon_version():
+    ver_string = 'Unknown'
+    FILE = os.popen('gpmmon --version')
+    if FILE:
+        ver_string = FILE.readline().split('"')[1]
+        FILE.close()
+    return ver_string
+
+
+#################
+def gpmmon_start():
+    res = 0
+    if gpmmon_status() == STOPPED:
+        if avail_cmds['gpmmon'] == True:
+            start_application('gpmmon -D ' + opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/gpperfmon.conf')
+        else:
+            print 'gpmmon not found in PATH.  Please configure your PATH correctly and try again.'
+            return gpmmon_status()
+        time.sleep(1)
+    return gpmmon_status()
+
+#################
+def gpmmon_stop():
+    if gpmmon_status() == RUNNING:
+        if avail_cmds['gpmmon']:
+            try:
+                FILE = open(GPMMON_PID_FILE, 'r')
+                pid = FILE.readline()
+                FILE.close()
+                os.kill(int(pid), signal.SIGTERM)
+                time.sleep(1)
+            except:
+                return gpmmon_status()
+        else:
+            print 'gpmmon not found in PATH.  Please configure your PATH correctly and try again.'
+    return gpmmon_status()
+
+#################
+def gpmmon_restart():
+    gpmmon_stop()
+    gpmmon_start()
+
+
+#################
+def gpmmon_status():
+    running = STOPPED
+    try:
+        FILE = open(GPMMON_PID_FILE, 'r')
+        pid = FILE.readline()
+        FILE.close()
+        FILE = os.popen('ps -p %s 2>/dev/null' % pid)
+        FILE.readline()
+        status = FILE.readline()
+        FILE.close()
+        if status.find('gpmmon') != -1:
+            running = RUNNING
+    except:
+        pass
+    return running
+
+
+#################
+def generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, max_dp, loadt,
+                            cput, memt, diskt, nett, cpuet, cpuskewt):
+    return '''[GPMMON]
+quantum=%d
+min_query_time=%d
+min_detailed_query_time=%d
+verbose=0
+log_location=%s
+
+[WS]
+max_data_points=%d
+
+[SYSTEM METRICS]
+load2_threshold=%d
+cpu_threshold=%d
+memory_threshold=%d
+disk_threshold=%d
+network_threshold=%d
+
+[QUERY METRICS]
+cpu_elapsed_threshold=%d
+skew_cpu_threshold=%d
+''' % (quantum, minqt, mindqt, logloc, max_dp, loadt, cput, memt, diskt, nett, cpuet, cpuskewt)
+
+
+#################
+def start_application(cmd):
+    pid = os.fork()
+    if not pid:
+        os.execve('/bin/sh', ['sh', '-c', cmd], os.environ)
+
+
+#################
+def command_in_path(cmd):
+    f = os.popen("which " + cmd, "r")
+    found = False
+    if f:
+        cmd_path = f.readline()
+        if not cmd_path == '':
+            found = True
+    f.close()
+    return found
+
+
+#################
+# script begin
+
+parse_command_line()
+validate_options()
+check_env()
+check_commands()
+
+try:
+    action = opt['ACTION']
+    if action == 'start':
+        gpperfmon_start()
+    elif action == 'stop':
+        gpperfmon_stop()
+    elif action == 'restart':
+        gpperfmon_restart()
+    elif action == 'status':
+        gpperfmon_status()
+    elif action == 'setup':
+        gpperfmon_setup()
+except KeyboardInterrupt:
+    print '\nConfiguration of gpperfmon canceled.'
