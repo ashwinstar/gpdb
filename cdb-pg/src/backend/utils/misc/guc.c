@@ -1873,6 +1873,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_GPDB_ADDOPT
 		},
 		&gp_enable_gpmon,
+		false, NULL, NULL
 	},
 
 	{
