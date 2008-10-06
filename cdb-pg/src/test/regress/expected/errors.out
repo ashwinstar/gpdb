@@ -67,7 +67,7 @@ LINE 1: delete from;
                    ^
 -- no such relation 
 delete from nonesuch;
-ERROR:  relation "nonesuch" does not exist
+ERROR:  relation "nonesuch" does not exist (parse_clause.c:735)
 --
 -- DROP
  
@@ -462,7 +462,7 @@ create function infinite_recurse() returns int as
 -- s/\s+at\s+character.*//
 -- end_matchsubs
 select infinite_recurse();
-ERROR:  stack depth limit exceeded at character 23
+ERROR:  stack depth limit exceeded at character 8
 select 1; -- test that this works
  ?column? 
 ----------

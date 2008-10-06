@@ -1000,7 +1000,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3811)  (seg1 localhost:11003 pid=25747)
+ERROR:  no partition for partitioning key (execMain.c:3814)  (seg1 localhost:60002 pid=6158)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1308,7 +1308,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3811)
+ERROR:  no partition for partitioning key (execMain.c:3814)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- Same test with append only
@@ -1347,7 +1347,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3811)
+ERROR:  no partition for partitioning key (execMain.c:3814)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- complain if create table as select (CTAS)
@@ -1427,7 +1427,7 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 -- works - anonymous partition MPP-3350
 alter table hhh add partition end ('2010-02-01');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r2007813002" for table "hhh"
+NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r1253427410" for table "hhh"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 -- MPP-3607 - ADD PARTITION with open intervals
 create table no_end1 (aa int, bb int) partition by range (bb)
@@ -1742,11 +1742,11 @@ NOTICE:  dropped partition "boys" for relation "rank" and its children
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
 (5 rows)
 
 alter table rank DROP partition if exists neuter;
@@ -2114,7 +2114,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3811)  (seg0 localhost:11002 pid=25746)
+ERROR:  no partition for partitioning key (execMain.c:3814)  (seg0 localhost:60001 pid=6157)
 select * from d;
  i | j  
 ---+----
@@ -2213,7 +2213,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3811)  (seg0 localhost:11002 pid=25746)
+ERROR:  no partition for partitioning key (execMain.c:3814)  (seg0 localhost:60001 pid=6157)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2253,10 +2253,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3811)  (seg0 localhost:11002 pid=25746)
+ERROR:  no partition for partitioning key (execMain.c:3814)  (seg0 localhost:60001 pid=6157)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3811)  (seg0 localhost:11002 pid=25746)
+ERROR:  no partition for partitioning key (execMain.c:3814)  (seg0 localhost:60001 pid=6157)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2292,18 +2292,18 @@ LINE 2: partition by range (i, j)
                      ^
 -- should work
 insert into b values(1, '2008-06-11');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(11, '2009-08-24');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(25, '2010-01-22');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(90, '2011-05-04');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 -- shouldn't work
 insert into b values(1, '2019-01-01');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(91, '2008-05-05');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
  
 select * from b_1_prt_1;
 ERROR:  relation "b_1_prt_1" does not exist
@@ -2340,38 +2340,38 @@ LINE 3: partition by range(n, t, s)
                      ^
 -- should work
 insert into b values(1, 2000.99, '2007-01-01 00:00:00', 'AAA');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(2, 2000.99, '2007-01-01 00:00:00', 'BBB');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(3, 4000.95, '2007-01-01 00:00:00', 'AAA');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2007-02-02 15:30:00', 'BBC');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2007-02-02 15:30:00', 'CC');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2007-02-02 16:00:00'::timestamp - 
 					'1 second'::interval, 'BBZZZZZZZZZZ');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 -- should fail
 insert into b values(6, 3000, '2007-02-02 15:30:00', 'CCCCCCC');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(4, 5000, '2007-01-01 12:00:00', 'BCC');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(5, 8000, '2007-01-01 12:00:00', 'ZZZ');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 1000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2006-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2007-02-02 00:00:00', 'A');
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 -- NULL tests
 insert into b default values;
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
-ERROR:  relation "b" does not exist
+ERROR:  relation "b" does not exist (parse_clause.c:735)
 drop table b;
 ERROR:  table "b" does not exist
 -- check that we detect subpartitions partitioning a column that is already
@@ -2472,7 +2472,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=25746)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:60001 pid=6157)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2853,7 +2853,7 @@ insert into bar values(6);
 insert into bar values(100);
 -- should fail
 alter table foo exchange partition for(rank(6)) with table bar;
-ERROR:  exchange table contains a row which violates the partitioning specification of "foo"  (seg1 localhost:11003 pid=25755)
+ERROR:  exchange table contains a row which violates the partitioning specification of "foo"  (seg1 localhost:60002 pid=6166)
 alter table foo exchange partition for(rank(6)) with table bar without
 validation;
 select * from foo;
@@ -3340,7 +3340,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key (execMain.c:3811)  (seg1 localhost:11003 pid=25755)
+ERROR:  no partition for partitioning key (execMain.c:3814)  (seg1 localhost:60002 pid=6166)
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 
@@ -3434,9 +3434,9 @@ select * from foo;
 select * from foo_1_prt_p1;
  i 
 ---
+ 2
  1
  3
- 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -3473,9 +3473,9 @@ select * from foo;
 select * from foo_1_prt_p1;
  i 
 ---
+ 2
  1
  3
- 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -3802,8 +3802,8 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 select tablename, partitiontablename,
 partitionboundary from pg_partitions where
 tablename = 'partsupp';
- tablename |           partitiontablename            |                       partitionboundary                       
------------+-----------------------------------------+---------------------------------------------------------------
+ tablename |           partitiontablename            |                      partitionboundary                       
+-----------+-----------------------------------------+--------------------------------------------------------------
  partsupp  | partsupp_1_prt_p1_1                     | PARTITION p1_1 START (1) END (5001) EVERY (5000)
  partsupp  | partsupp_1_prt_p1_2                     | PARTITION p1_2 START (5001) END (10001) EVERY (5000)
  partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1         | SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666)
@@ -3814,27 +3814,27 @@ tablename = 'partsupp';
  partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2         | SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666)
  partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3         | SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666)
  partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4         | SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500::numeric)
- partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
 (26 rows)
 
 select pg_get_partition_def('partsupp'::regclass, true);
-                                  pg_get_partition_def                                   
------------------------------------------------------------------------------------------
+                              pg_get_partition_def                               
+---------------------------------------------------------------------------------
  PARTITION BY RANGE(ps_suppkey)
            SUBPARTITION BY RANGE(ps_partkey)
                    SUBPARTITION BY RANGE(ps_supplycost) 
@@ -3843,46 +3843,46 @@ select pg_get_partition_def('partsupp'::regclass, true);
                    (
                    SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            ), 
                    SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            ), 
                    SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            ), 
                    SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            )
                    ), 
            PARTITION p1_2 START (5001) END (10001) EVERY (5000) 
                    (
                    SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            ), 
                    SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            ), 
                    SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            ), 
                    SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666) 
                            (
-                           START (1::numeric) END (501::numeric) EVERY (500::numeric), 
-                           START (501::numeric) END (1001::numeric) EVERY (500::numeric)
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
                            )
                    )
            )
@@ -4534,7 +4534,7 @@ create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
 end('f'::bool));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  cannot coerce partition parameter to column type (analyze.c:5230)
+ERROR:  cannot coerce partition parameter to column type (analyze.c:5231)
 -- see that grant and revoke cascade to children
 create role part_role;
 create table granttest (i int, j int) partition by range(i) 
@@ -5226,7 +5226,7 @@ insert into j select i from generate_series(1, 8) i;
 alter table j split partition for(1) at (2, 3) into (partition fa, partition
 fb);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_758454"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_753656"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
@@ -5244,31 +5244,31 @@ select * from j_1_prt_fa;
 select * from j_1_prt_fb;
  i 
 ---
- 3
  2
+ 3
 (2 rows)
 
 alter table j split partition for(5) at (6);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_758454"
+NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_753656"
 NOTICE:  dropped partition "b" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "j_1_prt_r736780738" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r1483339687" for table "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "j_1_prt_r2041139149" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r1220811422" for table "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 select * from j;
  i 
 ---
- 1
- 3
- 5
- 7
  4
  2
  8
  6
+ 1
+ 3
+ 5
+ 7
 (8 rows)
 
 -- should fail
@@ -5330,7 +5330,7 @@ insert into k select i from generate_series(1, 30) i;
 alter table k split default partition start(15) end(20) into
 (partition mydef, partition foo);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_759076"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_754278"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
@@ -5351,7 +5351,7 @@ select * from k_1_prt_foo;
 alter table k split default partition start(22) exclusive end(25) inclusive
 into (partition bar, partition mydef);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_759076"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_754278"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_bar" for table "k"
@@ -5362,14 +5362,14 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 select * from k_1_prt_bar;
  i  
 ----
+ 24
  23
  25
- 24
 (3 rows)
 
 alter table k split partition bar at (23) into (partition baz, partition foz);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "bar" of relation "k" with relation "pg_temp_759076"
+NOTICE:  exchanged partition "bar" of relation "k" with relation "pg_temp_754278"
 NOTICE:  dropped partition "bar" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_baz" for table "k"
@@ -5457,7 +5457,7 @@ insert into v values(1, 1) ;
 update v set j = 2;
 -- should fail
 update v set j = 3;
-ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported  (seg0 localhost:11002 pid=25754)
+ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported  (seg0 localhost:60001 pid=6165)
 drop table v;
 -- test ao seg totals
 create  or replace function aototal(relname text) returns float8 as $$
@@ -5700,7 +5700,7 @@ grant insert on a to part_role;
 alter table a split partition for(rank(1)) at (date '2006-01-01')
   into (partition f, partition g);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "f_1" of relation "a" with relation "pg_temp_760894"
+NOTICE:  exchanged partition "f_1" of relation "a" with relation "pg_temp_756096"
 NOTICE:  dropped partition "f_1" for relation "a"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "a_1_prt_f" for table "a"
@@ -5715,7 +5715,7 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 alter table a split default partition start(date '2010-01-01') end(date
 '2011-01-01') into(partition mydef, partition other);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "a" with relation "pg_temp_760894"
+NOTICE:  exchanged partition "mydef" of relation "a" with relation "pg_temp_756096"
 NOTICE:  dropped partition "mydef" for relation "a"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "a_1_prt_other" for table "a"
@@ -5804,7 +5804,7 @@ ERROR:  default partition name missing from INTO clause
 alter table k split default partition start ('2009-01-01') end ('2009-02-01')
 into (partition aa, partition default_part);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_761306"
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_756508"
 NOTICE:  dropped partition "default_part" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_aa" for table "k"
@@ -5815,10 +5815,10 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 -- check that it works without INTO
 alter table k split default partition start ('2009-02-01') end ('2009-03-01');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_761306"
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_756508"
 NOTICE:  dropped partition "default_part" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r1628360566" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r1038284886" for table "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
@@ -5842,7 +5842,7 @@ alter table k split partition mydef at (5) into (partition foo, partition bar);
 ERROR:  default partition name missing from INTO clause
 alter table k split partition mydef at (5) into (partition foo, partition mydef);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_762046"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_757248"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
@@ -5852,10 +5852,10 @@ NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 alter table k split partition mydef at (10);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_762046"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_757248"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r1314583319" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r1429624386" for table "k"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
@@ -5874,7 +5874,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table j split partition for(1) at (1,2) into (partition fa, partition fb);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_762456"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_757658"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
@@ -5903,7 +5903,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 alter table j split partition for(1) at (1,2) into (partition f1a, partition
 f1b);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_762696"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_757898"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
@@ -5925,7 +5925,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table j split partition for(1) at (5) into (partition f1a, partition f1b);
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_762957"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_758159"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
@@ -5985,13 +5985,26 @@ drop table mpp3621;
 -- Check for MPP-3679
 create table list_test (a text, b text) partition by list (a) (partition foo
 values ('foo'), partition bar values ('bar'), default partition baz); 
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_foo" for table "list_test"
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bar" for table "list_test"
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "list_test"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table list_test split default partition at ('baz') into (partition bing,
 default partition);
-NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_1311646"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_758837"
 NOTICE:  dropped partition "baz" for relation "list_test"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bing" for table "list_test"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "list_test"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 drop table list_test;
