@@ -38,6 +38,7 @@ int                     optreset;
  * static helper functions.  See each function body for a description.
  */
 static char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString );
+static char* addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThroughParmString );
 static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static void decrementFinishedLaunchCount(void);
 static bool doInitialActions(PGconn* pConn /*, const char* pszDBName*/);
@@ -181,7 +182,8 @@ cleanup:
  * addPassThroughParm: this function adds to the string of pass-through parameters.
  * These get sent to each backend and get passed to the gp_dump_agent program.
  */
-char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
+static char*
+addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
 {
 	char*	pszRtn;
 	bool	bFirstTime = (pszPassThroughParmString == NULL);
@@ -213,6 +215,46 @@ char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughP
 
 	return pszRtn;
 }
+
+
+/*
+ * addPassThroughLongParm: this function adds a long option to the string of pass-through parameters.
+ * These get sent to each backend and get passed to the gp_dump_agent program.
+ */
+static char*
+addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThroughParmString )
+{
+	char*	pszRtn;
+	bool	bFirstTime = (pszPassThroughParmString == NULL);
+
+	if ( pszValue != NULL )
+	{
+		if ( parmValNeedsQuotes( pszValue ) )
+		{
+			if ( bFirstTime )
+				pszRtn = MakeString( "--%s \"%s\"", Parm, pszValue );
+			else
+				pszRtn = MakeString( "%s --%s \"%s\"", pszPassThroughParmString, Parm, pszValue );
+		}
+		else
+		{
+			if ( bFirstTime )
+				pszRtn = MakeString( "--%s %s", Parm, pszValue );
+			else
+				pszRtn = MakeString( "%s --%s %s", pszPassThroughParmString, Parm, pszValue );
+		}
+	}
+	else
+	{
+		if ( bFirstTime )
+			pszRtn = MakeString( "--%s", Parm );
+		else
+			pszRtn = MakeString( "%s --%s", pszPassThroughParmString, Parm );
+	}
+
+	return pszRtn;
+}
+
 
 /*
  * createThreadParmArray: This function initializes the count and pData elements of the ThreadParmArray.
@@ -683,7 +725,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				 */
 			case 'X':
 				if (strcmp(optarg, "use-set-session-authorization") == 0)
-					/* no-op, still allowed for compatibility */ ;
+					auth = 1;
 
 				//else if (strcmp(optarg, "disable-triggers") == 0)
 				//{
@@ -707,6 +749,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 */				/* This covers the long options equivalent to -X xxx. */
 
 			case 0:
+				/* This covers the long options equivalent to -X xxx. */
 				break;
 
 			case 1:
@@ -785,6 +828,10 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pszProgName);
 		goto cleanup;
 	}
+
+	/* Add interesting long options to the passthrough arguments */
+	if ( auth )
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm( "use-set-session-authorization", NULL, pInputOpts->pszPassThroughParms );
 
 	/* Get database name from command line */
 	if (optind < argc)
