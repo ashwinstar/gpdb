@@ -547,7 +547,7 @@ static void gpmmon_main(void)
 
 static void print_version(void)
 {
-    printf("%s version '%s'\n", opt.pname, GP_VERSIONX);
+    printf("%s version '%s'\n", opt.pname, GPPERFMON_VERSIONX);
     exit(0);
 }
 
@@ -739,8 +739,8 @@ int main(int argc, const char* const argv[])
 	exit(1);
     }
 
-    getconfig();
     parse_command_line(argc, argv);
+    getconfig();
     read_conf_file(opt.conf_file);
     {
         char log_file[MAXPATHLEN + 1];

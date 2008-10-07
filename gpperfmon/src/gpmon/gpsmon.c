@@ -852,7 +852,7 @@ static void usage(const char* msg)
 
 static void print_version(void)
 {
-    printf("%s version '%s'\n", opt.pname, GP_VERSIONX);
+    printf("%s version '%s'\n", opt.pname, GPPERFMON_VERSIONX);
     exit(0);
 }
 
