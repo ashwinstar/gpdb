@@ -283,7 +283,8 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	{      NULL, 'h', 0, "gone" },
 	{      NULL, 'l', 1, "log filename" },
 	{      NULL, 'g', 1, "internal - gp_proto number" },
-	{ "version", 256, 0, "print version number" }
+	{ "version", 256, 0, "print version number" },
+	{0}
     };
     
     
