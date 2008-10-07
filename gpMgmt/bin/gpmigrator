@@ -12,7 +12,7 @@ Options:
 '''
 
 #============================================================
-import sys, os, signal, subprocess, types
+import sys, os, signal, subprocess, types, csv
 import optparse, tempfile, re, traceback
 from datetime import date
 from time import localtime, strftime
@@ -327,6 +327,7 @@ class GPUpgrade:
         behavior.
         '''
         if self.cmd == 'MASTER':
+            self.Log('FATAL', 'Fatal error occured - Recovering')
             try:
                 self.Shutdown()
             except Exception, e:
@@ -425,6 +426,8 @@ class GPUpgrade:
         exec_cmd += ' --internal-dirs=%s' % urllib.quote(str(self.datadirs))
         exec_cmd += ' --internal-option=%s' % urllib.quote(str(option))
         exec_cmd += ' --internal-option2=%s' % urllib.quote(str(option2))
+        if self.revert:
+            exec_cmd += ' -R'
 
         try:
             result = self.RunCmd(exec_cmd, env=env)
@@ -687,9 +690,17 @@ class GPUpgrade:
                 oldseg = os.path.join(d, content)
                 newseg = os.path.join(d, 'upgrade', content)
 
-                for dir in [oldseg, newseg]:
+                # Only check the upgrade directory if its not legacy
+                if self.datadirs:
+                    dirs = [oldseg, newseg]
+                else:
+                    dirs = [oldseg]
+
+                for dir in dirs:
                     if dir == oldseg:  env = self.oldenv
                     else:              env = self.newenv
+
+
 
                     # upgrade directory might not actually exist
                     if not os.path.isdir(dir):
@@ -703,11 +714,14 @@ class GPUpgrade:
                     for line in shutdown.split('\n'):
                         m = shutdown_re.match(line)
                         if m:
-                            if m.group(1) == 'shut down': break
-                            raise UpgradeError('''
-pg_controldata: "Database cluster state: %s"
-Greenplum segment %s did not shutdown cleanly:
-''' % (m.group(1), content))
+                            if m.group(1) == 'shut down': 
+                                break
+                            msg  = 'pg_controldata: "Database cluster state: %s"\n' % m.group(1)
+                            msg += 'Greenplum segment %s did not shutdown cleanly' % dir
+                            if self.revert:
+                                self.Log('WARN', msg)
+                            else:
+                                raise UpgradeError(msg)
             
         if self.cmd == 'MASTER' and self.datadirs:
             self.CallSlaves('CHKDOWN', self.config['SEG_PREFIX'])
@@ -1062,10 +1076,11 @@ tool shipped with that release''')
         for line in control.split('\n'):
             m = catalog_re.match(line)
             if m:
-                self.Log('INFO', "Data   %s " % line)    
-                if line != oldcat:
-                    raise UpgradeError('Catalog in %s does not match source binary' 
-                                       % self.masterdir)
+                self.Log('INFO', "Data   %s " % line)
+                if ((not self.revert and line != oldcat) or
+                    (self.revert and line != oldcat and line != newcat)):
+                    msg = 'Catalog in %s does not match source binary' % self.masterdir
+                    raise UpgradeError(msg)
                 break
 
         # For the moment everything goes:
@@ -1789,6 +1804,44 @@ This issue must be resolved before upgrade can complete.
             raise UpgradeError('You must drop or reindex malformed objects prior to upgrade')
 
     #------------------------------------------------------------
+    def DumpStatistics(self):
+        '''
+        Executes queries and creates files in the upgrade directory 'pg_stat_*.csv'
+        '''
+
+        self.Log('INFO', 'Exporting Statistics')
+
+        databases = self.Select('''
+        SELECT datname from pg_database
+        WHERE datname != 'template0' 
+        ORDER BY datname''')
+
+        # Since COPY doesn't have an append option we write out N files
+        count = 1
+        for db in databases:
+            self.Update('''
+            COPY (
+              SELECT current_database(),        n.nspname,      c.relname,     
+                 t.typname,      c.relpages,    c.reltuples, 
+                 s.staattnum,    s.stanullfrac, s.stawidth,     s.stadistinct,
+                 s.stakind1,     s.stakind2,    s.stakind3,     s.stakind4,
+                 s.staop1::regoperator,         s.staop2::regoperator,
+                 s.staop3::regoperator,         s.staop4::regoperator,		 
+                 s.stanumbers1,  s.stanumbers2, s.stanumbers3,  s.stanumbers4,
+                 s.stavalues1,   s.stavalues2,  s.stavalues3,   s.stavalues4
+              FROM   pg_class c, pg_statistic s, pg_namespace n, pg_attribute a, pg_type t
+              WHERE  c.relnamespace = n.oid
+                and  n.nspname !~ '(pg_.*|information_schema)'
+                and  c.oid = s.starelid
+                and  a.attrelid = c.oid
+                and  a.attnum = s.staattnum
+                and  a.atttypid = t.oid
+              ORDER BY c.relname, s.staattnum
+              ) to '%s/pg_stat_%d.csv' with CSV ESCAPE E'\\\\' ''' % \
+                            (self.tmpdir, count), db=db)
+            count += 1
+
+    #------------------------------------------------------------
     def CollectValidation(self):
         '''
         Executes queries to construct a view of how the data should
@@ -2195,6 +2248,71 @@ This issue must be resolved before upgrade can complete.
             if r:
                 raise UpgradeError('Vacuum exited with status %d' % r)
 
+    def RestoreStatistics(self):
+        '''
+        Executes queries to rebuild the database statistics stored in 'pg_stat_*.csv'
+        '''
+
+        
+        # Datatypes of the columns in pg_statistics, the last 4 columns,
+        # not included here, are anyarray and will be cast based on the
+        # datatype of the statisics column.
+        types = [ 'smallint',    'real',        'integer',     'real',
+                  'smallint',    'smallint',    'smallint',    'smallint',
+                  'regoperator', 'regoperator', 'regoperator', 'regoperator',
+                  'real[]',      'real[]',      'real[]',      'real[]' ]
+
+        def escape(str):
+            str = str.replace("\\", "\\\\")   # escape the escapes
+            str = str.replace("'",  "\\'")    # escape single quotes
+            return str
+
+        def cast(str, typ):
+            if len(str) == 0:
+                return "NULL::%s" % typ
+            else:
+                return "E'%s'::%s" % (escape(str), typ)
+
+        lastdb   = None
+        lastname = None
+        for file in os.listdir(self.tmpdir):
+            if file[0:8] == 'pg_stat_':
+                file = os.path.join(self.tmpdir, file)
+                reader = csv.reader(open(file), delimiter=',', escapechar='\\')
+
+                for row in reader:
+                    if len(row) < 1:
+                        continue
+
+                    db       = row[0]
+                    schema   = row[1]
+                    table    = row[2]
+                    kind     = row[3]
+                    relpages = row[4]
+                    reltups  = row[5]
+                    name     = '"%s"."%s"' % (escape(schema), escape(table))
+
+                    if db != lastdb:
+                        lastdb = db
+                        lastname = None
+
+                    if name != lastname:
+                        lastname = name
+                        sql  = "UPDATE pg_class\n"
+                        sql += "SET relpages = '%s'::int,\n" % relpages
+                        sql += "    reltuples = '%s'::real\n" % reltups
+                        sql += "WHERE oid = E'%s'::regclass;" % name
+                        self.Update(sql, db=db)
+
+                    sql  = "INSERT INTO pg_statistic VALUES (\n"
+                    sql += "  E'%s'::regclass, \n" % name
+                    for i in range(16):
+                        sql += "  %s, \n" % cast(row[i+6], types[i])
+                    for i in range(3):
+                        sql += "  %s[], \n" % cast(row[i+22], kind)
+                    sql += "  %s[]);" % cast(row[25], kind)
+                    self.Update(sql, db=db)
+
     #------------------------------------------------------------
     def RemapOID(self):
         '''
@@ -2464,6 +2582,7 @@ try:
         # + Requires execution on all hosts
         # + Requires Lockdown
         u.BuildMappings()
+        u.DumpStatistics()
 
         # Collect validation info so that we can verify that at the end
         # of the upgrade the data still has the right visibility
@@ -2508,6 +2627,7 @@ try:
 
         # Confirm that the resync/remapping was successful
         u.Startup(u.newenv, utility=True)
+        u.RestoreStatistics()
         u.Shutdown()
         u.SetState('NEWDB VALID')
 
