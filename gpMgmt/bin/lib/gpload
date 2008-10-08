@@ -39,7 +39,7 @@ class Progress(threading.Thread):
     def get(self,port):
 	s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
 	s.connect(('127.0.0.1',port))
-	s.sendall('GET gpfdist_status HTTP/1.0\r\n\r\n')
+	s.sendall('GET gpfdist/status HTTP/1.0\r\n\r\n')
 	f = s.makefile()
 	s.close()
 	read_bytes = -1
@@ -198,7 +198,7 @@ class gpload:
 	    infile = source.get('infile')
 	    if type(infile)!=list:
 		infile = [infile]
-	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort),'-f',' '.join(infile)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 	    self.subprocesses.append(a)
 	    t = CatThread(self,a.stderr)
 	    t.start()

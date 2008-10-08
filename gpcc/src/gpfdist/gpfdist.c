@@ -99,8 +99,9 @@ static struct {
     int V;			/* very verbose */
     const char* d;		/* directory */
     const char* l;              /* log filename */
+    const char*f;              /* forced filename */
     int g;			/* gp_proto (0 or 1) (internal, not documented) */
-} opt = { 8080,8080, 0, 0, ".", 0, -1 };
+} opt = { 8080,8080, 0, 0, ".", 0,0, -1 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -192,7 +193,7 @@ struct request_t {
     struct timeval tm;		/* timeout for struct event */
     struct event   ev;		/* event we are watching for this request */
     const char*    peer;	/* peer IP:port string */
-    char*          path;	/* path to file */
+    const char*          path;	/* path to file */
     const char*    tid;		/* transaction id */
     const char*    csvopt;	/* options for csv file */
     session_t*     session;     /* the session this request is attached to */
@@ -278,6 +279,7 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	{      NULL, 'p', 1, "which port to serve HTTP" },
 	{      NULL, 'P', 1, "last port of range of ports to serve HTTP" },
 	{      NULL, 'd', 1, "serve files under this directory" },
+	{      NULL, 'f', 1, "internal - force file to be given file name" },
 	{      NULL, 'q', 0, "gone" },
 	{      NULL, 'x', 0, "gone" },
 	{      NULL, 'h', 0, "gone" },
@@ -298,6 +300,7 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	case 'V': opt.v = opt.V = 1; break;
 	case 'h': print_q_x_h_are_gone(); break;
 	case 'd': opt.d = arg; break;
+	case 'f': opt.f = arg; break;
 	case 'q': print_q_x_h_are_gone(); break;
 	case 'x': print_q_x_h_are_gone(); break;
 	case 'p': opt.last_port = opt.p = atoi(arg); break;
@@ -882,8 +885,7 @@ static void do_read(int fd, short event, void* arg)
 {
     request_t* r = (request_t*) arg;
     int n, i;
-    char* p;
-    char* pp;
+    char*p,*pp,*path;
 
     /* If we timeout, close the request. */
     if (event & EV_TIMEOUT) {
@@ -979,10 +981,10 @@ static void do_read(int fd, short event, void* arg)
     }
 
     /* make a copy of the path */
-    r->path = apr_pstrdup(r->pool, r->in.req->argv[1]);
+    path = apr_pstrdup(r->pool, r->in.req->argv[1]);
 
     /*   - decode %xx to char */
-    for (p = pp = r->path; *pp; p++, pp++) {
+    for (p = pp = path; *pp; p++, pp++) {
 	if ('%' == (*p = *pp)) {
 	    if (pp[1] && pp[2]) {
 		int x = pp[1], y = pp[2];
@@ -1011,26 +1013,45 @@ static void do_read(int fd, short event, void* arg)
 	}
     }
     *p = 0;
-
-    /*   - remove / prefixes */
-    for (;*r->path=='/';r->path++);
-    if (!strcmp(r->path,"gpfdist_status")){
+    if (!strcmp(path,"gpfdist/status")){
 	send_gpfdist_status(r);
 	request_end(r,0,0);
 	return;
     }
-    /*   - forbid .. dot dot  */
-    if (strstr(r->path,"..")){
-	gwarning(FLINE, "reject invalid request from %s [%s %s]",
-		     r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	http_error(r, 400, "invalid request");
-	request_end(r, 1, 0);
-	return;
+    if (opt.f)
+	r->path = opt.f;
+    else{
+	if (strstr(path,"..")){
+	    gwarning(FLINE, "reject invalid request from %s [%s %s]",
+			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	    http_error(r, 400, "invalid request");
+	    request_end(r, 1, 0);
+	    return;
+	}
+	r->path = 0;
+	do{
+	    while (*path==' ')
+		path++;
+	    p = strchr(path,' ');
+	    if (p)
+		*p++ = 0;
+	    while (*path=='/')
+		path++;
+	/*   - make the new path relative to opt.d */
+	    if (*path){
+		if (r->path)
+		    r->path = apr_psprintf(r->pool,"%s %s/%s",r->path,opt.d,path);
+		else
+		    r->path = apr_psprintf(r->pool,"%s/%s",opt.d,path);
+	    }
+	    path = p;
+	}while (path);
+	if (!r->path){
+	    http_error(r, 400, "invalid request");
+	    request_end(r, 1, 0);
+	    return;
+	}
     }
-    
-    /*   - make the new path relative to opt.d */
-    r->path = apr_psprintf(r->pool, "%s/%s", opt.d, r->path);
-
     /* Extract X-GP-TID value from HTTP headers */
     {
 	const char* xid = 0;

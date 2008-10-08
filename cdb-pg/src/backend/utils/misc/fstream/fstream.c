@@ -176,10 +176,13 @@ glob_path(fstream_t*fs,const char*path)
     }
     path = strcpy(path2,path);
     do{
-	char*p=strchr(path,' ');
+	char*p;
+	while (*path==' ')
+	    path++;
+	p = strchr(path,' ');
 	if (p)
 	    *p++ = 0;
-	if (glob_and_copy(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
+	if (*path && glob_and_copy(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
 	    gfile_printf_then_putc_newline("fstream glob failed");
 	    return 1;
 	}
