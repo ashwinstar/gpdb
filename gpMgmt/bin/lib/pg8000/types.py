@@ -335,10 +335,12 @@ py_types = {
 pg_types = {
     16: {"bin_in": boolrecv},
     17: {"bin_in": bytearecv},
+    18: {"txt_in": varcharin}, # char type (Greenplum)
     19: {"txt_in": varcharin}, # name type
     20: {"bin_in": int8recv},
     21: {"bin_in": int2recv},
     23: {"bin_in": int4recv},
+    24: {"txt_in": varcharin}, # regproc    (Greenplum)
     25: {"txt_in": varcharin}, # TEXT type
     26: {"txt_in": numeric_in}, # oid type
     28: {"txt_in": numeric_in}, # xid type  (Greenplum)
