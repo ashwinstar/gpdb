@@ -374,6 +374,7 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 			    h->hostname, ax.gpperfmonhome, 
 			    (opt.V ? "-V" : (opt.v ? "-v" : "")),
 			    ax.port);
+                    TR0(("Connection to %s lost.  Restarting gpsmon", h->hostname));
 		    TR1(("%s\n", line));
 		    fp[j] = popen(line, "w");
 		    if (fp[j]) {
