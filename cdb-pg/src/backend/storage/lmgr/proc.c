@@ -626,17 +626,11 @@ ProcKill(int code, Datum arg)
 		AtExitCleanup_ResPortals();
 
 	/*
-	 * Release any LW locks I am holding.  There really shouldn't be any, but
-	 * it's cheap to check again before we cut the knees off the LWLock
-	 * facility by releasing our PGPROC ...
-	 */
-	LWLockReleaseAll();
-
-	/* Remove the shared snapshot slot.
+	 * Remove the shared snapshot slot.
 	 */
 	if (SharedLocalSnapshotSlot != NULL)
 	{
-		if(Gp_role == GP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			SharedSnapshotRemove(SharedLocalSnapshotSlot,
 								 "Query Dispatcher");
@@ -654,6 +648,13 @@ ProcKill(int code, Datum arg)
 		}
 		SharedLocalSnapshotSlot = NULL;
 	}
+
+	/*
+	 * Release any LW locks I am holding.  There really shouldn't be any, but
+	 * it's cheap to check again before we cut the knees off the LWLock
+	 * facility by releasing our PGPROC ...
+	 */
+	LWLockReleaseAll();
 
 	SpinLockAcquire(ProcStructLock);
 

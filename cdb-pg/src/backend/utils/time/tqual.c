@@ -214,8 +214,8 @@ char *SharedSnapshotDump(void)
 		
 		if (testSlot->slotid != -1)
 		{
-			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u)", 
-				testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid);
+			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u pid: %u)", 
+							 testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid, testSlot->pid);
 		}
 		
 	}
@@ -236,7 +236,7 @@ char *SharedSnapshotDump(void)
  */
 SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 {
-	SharedSnapshotSlot *slot = NULL;
+	SharedSnapshotSlot *slot;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int nextSlot = -1;
 	int i;
@@ -245,12 +245,13 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 retry:
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 
+	slot = NULL;
 	for (i=0; i < arrayP->maxSlots; i++)
 	{
 		SharedSnapshotSlot *testSlot;
 		
 		/* need to do byte addressing to find the right slot */
-		testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (i*slotSize));
+		testSlot = (SharedSnapshotSlot *)((char *)&arrayP->slots + (i*slotSize));
 		
 		if (testSlot->slotindex > arrayP->maxSlots)
 			elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
@@ -264,7 +265,7 @@ retry:
 
 	if (slot != NULL)
 	{
-		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d", slotId, retryCount);
+		elog(LOG, "SharedSnapshotAdd: found existing entry for our session-id. id %d retry %d pid %u", slotId, retryCount, slot->pid);
 		LWLockRelease(SharedSnapshotLock);
 
 		if (retryCount > 0)
