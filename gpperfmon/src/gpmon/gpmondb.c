@@ -229,7 +229,7 @@ static void harvest(const char* tbl)
 
 void gpdb_harvest(void)
 {
-    harvest("metrics");
+    harvest("system");
     harvest("queries");
     harvest("iterators");
 }

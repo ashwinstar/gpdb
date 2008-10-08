@@ -307,7 +307,7 @@ static int  bloom_isset(bloom_t* bloom, const char* name);
 
 static void delete_old_files(bloom_t* bloom);
 
-static apr_status_t write_metrics(agg_t* agg, const char* nowstr);
+static apr_status_t write_system(agg_t* agg, const char* nowstr);
 static void write_qenode_row(FILE* fp, const qenode_t* qenode, const char* nowstr);
 
 static void write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr);
@@ -377,12 +377,12 @@ apr_status_t agg_dump(agg_t* agg)
 
     bloom_init(&bloom);
 
-    /* we never delete metrics_tail/ metrics_now/ 
+    /* we never delete system_tail/ system_now/ 
        queries_tail/ queries_now/ 
        iterators_tail/ iterators_now/ files */
-    bloom_set(&bloom, GPMON_DIR "metrics_now.dat");
-    bloom_set(&bloom, GPMON_DIR "metrics_tail.dat");
-    bloom_set(&bloom, GPMON_DIR "_metrics_tail.dat");
+    bloom_set(&bloom, GPMON_DIR "system_now.dat");
+    bloom_set(&bloom, GPMON_DIR "system_tail.dat");
+    bloom_set(&bloom, GPMON_DIR "_system_tail.dat");
     bloom_set(&bloom, GPMON_DIR "queries_now.dat");
     bloom_set(&bloom, GPMON_DIR "queries_tail.dat");
     bloom_set(&bloom, GPMON_DIR "_queries_tail.dat");
@@ -391,7 +391,7 @@ apr_status_t agg_dump(agg_t* agg)
     bloom_set(&bloom, GPMON_DIR "_iterators_tail.dat");
 
     /* dump metrics */
-    if (0 != (e = write_metrics(agg, nowstr))) {
+    if (0 != (e = write_system(agg, nowstr))) {
 	goto bail;
     }
 
@@ -486,7 +486,7 @@ apr_status_t agg_dump(agg_t* agg)
     if (fp_iters_now) fclose(fp_iters_now);
     if (fp_iters_tail) fclose(fp_iters_tail);
     if (fp_queries_tail) fclose(fp_queries_tail);
-    rename(GPMON_DIR "_metrics_now.dat", GPMON_DIR "metrics_now.dat");
+    rename(GPMON_DIR "_system_now.dat", GPMON_DIR "system_now.dat");
     rename(GPMON_DIR "_iterators_now.dat", GPMON_DIR "iterators_now.dat");
     rename(GPMON_DIR "_queries_now.dat", GPMON_DIR "queries_now.dat");
 
@@ -544,10 +544,10 @@ static void delete_old_files(bloom_t* bloom)
 }
 
 
-static apr_status_t write_metrics(agg_t* agg, const char* nowstr)
+static apr_status_t write_system(agg_t* agg, const char* nowstr)
 {
-    FILE* fp = fopen(GPMON_DIR "metrics_tail.dat", "a");
-    FILE* fp2 = fopen(GPMON_DIR "_metrics_now.dat", "w");
+    FILE* fp = fopen(GPMON_DIR "system_tail.dat", "a");
+    FILE* fp2 = fopen(GPMON_DIR "_system_now.dat", "w");
     int e;
     apr_hash_index_t* hi;
     char line[1000];

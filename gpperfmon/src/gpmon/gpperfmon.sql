@@ -9,7 +9,7 @@ create database gpperfmon;
 --  metrics 
 --
 
-create table metrics_history (
+create table system_history (
        ctime timestamp(0) not null, -- record creation time
        hostname varchar(64) not null, -- hostname of system this metric belongs to
        mem_total bigint not null, mem_used bigint not null, -- total system memory
@@ -32,19 +32,19 @@ with (fillfactor=100)
 distributed by (ctime)
 partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
 
-create external web table metrics_now (
-       like metrics_history
-) execute 'cat gpperfmon/data/metrics_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+create external web table system_now (
+       like system_history
+) execute 'cat gpperfmon/data/system_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table metrics_tail (
-       like metrics_history
-) execute 'cat gpperfmon/data/metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+create external web table system_tail (
+       like system_history
+) execute 'cat gpperfmon/data/system_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table _metrics_tail (
-        like metrics_history
-) execute 'cat gpperfmon/data/_metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+create external web table _system_tail (
+        like system_history
+) execute 'cat gpperfmon/data/_system_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
