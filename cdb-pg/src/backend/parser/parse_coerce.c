@@ -151,6 +151,30 @@ coerce_type(ParseState *pstate, Node *node,
 		 *
 		 * NB: we do NOT want a RelabelType here.
 		 */
+
+		/*
+		 * BUG BUG 
+		 * JIRA MPP-3786
+		 *
+		 * Special handling for ANYARRAY type.  
+		 */
+		if(targetTypeId == ANYARRAYOID && IsA(node, Const))
+		{
+			Const	   *con = (Const *) node;
+			Const	   *newcon = makeNode(Const);
+			Oid elemoid = get_element_type(inputTypeId);
+
+			if(elemoid == InvalidOid)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH), 
+					 errmsg("Cannot convert non-Array type to ANYARRAY")));
+
+			memcpy(newcon, con, sizeof(Const));
+			newcon->consttype = ANYARRAYOID;
+
+			return (Node *) newcon;
+		}
+
 		return node;
 	}
 	if (inputTypeId == UNKNOWNOID && IsA(node, Const))
