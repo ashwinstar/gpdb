@@ -30,7 +30,7 @@ create table metrics_history (
 ) 
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
 
 create external web table metrics_now (
        like metrics_history
@@ -74,7 +74,7 @@ create table queries_history (
 )
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
 
 
 
@@ -211,7 +211,7 @@ create table iterators_history (
 )
 with (fillfactor=100)
 distributed by (ctime)
-partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVERY (interval '1 month'));
+partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
 
 
 
