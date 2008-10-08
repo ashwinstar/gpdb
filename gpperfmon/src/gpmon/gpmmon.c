@@ -40,6 +40,7 @@ struct {
     int q;
     int m;
     int d;
+    int harvest_interval;
 } opt = {0};
 
 int verbose = 0;		  /* == opt.v */
@@ -531,7 +532,7 @@ static void gpmmon_main(void)
 	}
 
 	/* every N quantums, run the harvest queries */
-	if (1 == (ax.gpmon_tick % (opt.q * 3))) {
+	if (0 == (ax.gpmon_tick % opt.harvest_interval)) {
 	    gpdb_harvest();
 	}
 
@@ -568,6 +569,7 @@ int read_conf_file(char *conffile)
     opt.q = quantum;
     opt.m = min_query_time;
     opt.d = min_detailed_query_time;
+    opt.harvest_interval = 120;
 
     while (NULL != fgets(buffer, 1024, fp))
     {
@@ -596,6 +598,10 @@ int read_conf_file(char *conffile)
             if (apr_strnatcasecmp(pName, "quantum") == 0)
             {
                 opt.q = atoi(pVal);
+            }
+            else if (apr_strnatcasecmp(pName, "harvest_interval") == 0)
+            {
+                opt.harvest_interval = atoi(pVal);
             }
             else if (apr_strnatcasecmp(pName, "min_query_time") == 0)
             {
@@ -674,6 +680,11 @@ int read_conf_file(char *conffile)
         char log_dir[MAXPATHLEN + 1] = {0};
         snprintf(log_dir, MAXPATHLEN, "%s/%s", ax.master_data_directory, "gpperfmon/logs/");
         opt.log_dir = strdup(log_dir);
+    }
+
+    if (opt.harvest_interval < 30)
+    {
+        usage("Error: harvest_interval value must be greater than or equal to 30");
     }
 
     verbose = opt.v;
