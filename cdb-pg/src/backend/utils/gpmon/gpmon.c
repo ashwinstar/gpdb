@@ -12,6 +12,7 @@
 #include "utils/memutils.h"
 
 #include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
 #include "miscadmin.h"
 
 struct  {
@@ -109,6 +110,9 @@ void gpmon_gettmid(apr_int32_t* tmid)
 
 void gpmon_send(gpmon_packet_t* p)
 {
+	if (!Gp_is_primary)
+		return;
+
 	if (p->magic != GPMON_MAGIC)  {
 		elog(WARNING, "gpmon - bad magic %x", p->magic);
 		return;
