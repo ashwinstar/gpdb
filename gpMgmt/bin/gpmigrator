@@ -2196,6 +2196,7 @@ This issue must be resolved before upgrade can complete.
 
         msg_re  = re.compile('psql:%s/pgdump.sql:(\d+): *([^:]*): *(.*)' % self.tmpdir)
         user_re = re.compile('role ".*" already exists')
+        schema_re = re.compile('schema ".*" does not exist')
         for line in pipe.stderr:
             match = msg_re.match(line)
             if match:
@@ -2203,11 +2204,14 @@ This issue must be resolved before upgrade can complete.
                     match.group(2), match.group(3), match.group(1))
 
                 # Check for expected safe errors
-                if user_re.match(match.group(3)):
+                if (user_re.match(match.group(3)) or
+                    schema_re.match(match.group(3))):
                     continue
 
                 # Handle unexpected errors
-                if match.group(2) == 'WARNING' or match.group(2) == 'DETAIL':
+                if (match.group(2) == 'WARNING' or 
+                    match.group(2) == 'DETAIL'  or
+                    match.group(2) == 'NOTICE'):
                     warning = True
                     level = 'WARN'
                 else:
@@ -2292,6 +2296,15 @@ This issue must be resolved before upgrade can complete.
                     reltups  = row[5]
                     name     = '"%s"."%s"' % (escape(schema), escape(table))
 
+                    # If the base datatype is an array then the array form is
+                    # the same datatype, otherwise we need to use the array form
+                    # (ie, add a leading underscore)
+                    if kind[0] == "_":
+                        kind = kind[1:] + "[]"
+                    else:
+                        kind = kind + "[]"
+
+
                     if db != lastdb:
                         lastdb = db
                         lastname = None
@@ -2302,16 +2315,22 @@ This issue must be resolved before upgrade can complete.
                         sql += "SET relpages = '%s'::int,\n" % relpages
                         sql += "    reltuples = '%s'::real\n" % reltups
                         sql += "WHERE oid = E'%s'::regclass;" % name
-                        self.Update(sql, db=db)
+                        try:
+                            self.Update(sql, db=db)
+                        except Exception, e:
+                            self.Log('WARN', str(e))
 
                     sql  = "INSERT INTO pg_statistic VALUES (\n"
                     sql += "  E'%s'::regclass, \n" % name
                     for i in range(16):
                         sql += "  %s, \n" % cast(row[i+6], types[i])
                     for i in range(3):
-                        sql += "  %s[], \n" % cast(row[i+22], kind)
-                    sql += "  %s[]);" % cast(row[25], kind)
-                    self.Update(sql, db=db)
+                        sql += "  %s, \n" % cast(row[i+22], kind)
+                    sql += "  %s);" % cast(row[25], kind)
+                    try:
+                        self.Update(sql, db=db)
+                    except Exception, e:
+                        self.Log('WARN', str(e))
 
     #------------------------------------------------------------
     def RemapOID(self):
