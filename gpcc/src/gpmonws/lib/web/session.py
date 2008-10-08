@@ -3,7 +3,7 @@ Session Management
 (from web.py)
 """
 
-import os
+import os, sys
 import time
 import datetime
 import random
@@ -69,15 +69,18 @@ class Session(utils.ThreadedDict):
             i = web.input()
             if i.has_key('sid'):
                 self.session_id = i['sid']
+                sys.stderr.write("\n\nSESSION (check): %s\n\n" % self.session_id)
         
         self._check_expiry()
         if self.session_id:
             d = self.store[self.session_id]
             self.update(d)
             self._validate_ip()
+            sys.stderr.write("\n\nSESSION (after update): %s\n\n" % self.session_id)
         
         if not self.session_id:
             self.session_id = self._generate_session_id()
+            sys.stderr.write("\n\nSESSION (generating): %s\n\n" % self.session_id)
 
             if self._initializer:
                 if isinstance(self._initializer, dict):
@@ -91,8 +94,11 @@ class Session(utils.ThreadedDict):
         # check for expiry
         if self.session_id and self.session_id not in self.store:
             if self._config.ignore_expiry:
-                self.session_id = None
+                sys.stderr.write("\n\nSESSION (ignore expiry): %s\n\n" % self.session_id)
+                #self.session_id = None
+                self.store[self.session_id] = dict(self)
             else:
+                sys.stderr.write("\n\nSESSION (expired): %s\n\n" % self.session_id)
                 return self.expired()
 
     def _validate_ip(self):
@@ -109,7 +115,9 @@ class Session(utils.ThreadedDict):
         if not self.get('_killed'):
             web.setcookie(cookie_name, self.session_id, domain=cookie_domain)
             self.store[self.session_id] = dict(self)
+            sys.stderr.write("\n\nSESSION (save not kill): %s\n\n" % self.session_id)
         else:
+            sys.stderr.write("\n\nSESSION (save kill): %s\n\n" % self.session_id)
             web.setcookie(cookie_name, self.session_id, expires=-1, domain=cookie_domain)
     
     def _generate_session_id(self):
@@ -140,6 +148,8 @@ class Session(utils.ThreadedDict):
     def kill(self):
         """Kill the session, make it no longer available"""
         del self.store[self.session_id]
+        sys.stderr.write("\n\nSESSION (kill): %s\n\n" % self.session_id)
+        self.session_id = 0
         self._killed = True
 
     def getid(self):

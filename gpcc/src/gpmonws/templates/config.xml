@@ -1,6 +1,18 @@
-$def with (stime, quantum)
+$def with (stime, quantum, max_data_points, s_load2, s_cpu, s_mem, s_disk, s_net, q_cpu_elapsed, q_cpu_skew)
 <?xml version="1.0"?>
 <config>
     <time>$stime</time>
     <quantum>$quantum</quantum>
+    <max>$max_data_points</max>
+    <sytem_metrics>
+        <load_threshold>$s_load2</load_threshold>
+        <cpu_threshold>$s_cpu</cpu_threshold>
+        <memory_threshold>$s_mem</memory_threshold>
+        <disk_threshold>$s_disk</disk_threshold>
+        <network_threshold>$s_net</network_threshold>
+    </sytem_metrics>
+    <query_metrics>
+        <cpu_elapsed_threshold>$q_cpu_elapsed</cpu_elapsed_threshold>
+        <cpu_skew_threshold>$q_cpu_skew</cpu_skew_threshold>
+    </query_metrics>
 </config>
