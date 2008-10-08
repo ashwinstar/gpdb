@@ -1,6 +1,6 @@
 # vim: sw=4:expandtab:foldmethod=marker
 #
-# Copyright (c) 2007, Mathieu Fenniak
+# Copyright (c) 2007-2008, Mathieu Fenniak
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -62,7 +62,7 @@ class SSLRequest(object):
 # <p>
 # Stability: This is an internal class.  No stability guarantee is made.
 class StartupMessage(object):
-    # ERIC options for connection in utility mode
+    # Greenplum utility mode
     def __init__(self, user, database=None, options=None):
         self.user = user
         self.database = database
@@ -808,6 +808,8 @@ class MessageReader(object):
         # messages that won't be understood in another context.
         self.delay_raising_exception = False
 
+        self.ignore_unhandled_messages = False
+
     def add_message(self, msg_class, handler, *args, **kwargs):
         self._msgs.append((msg_class, handler, args, kwargs))
 
@@ -850,9 +852,17 @@ class MessageReader(object):
                 self._conn.handleParameterStatus(msg)
             elif isinstance(msg, NotificationResponse):
                 self._conn.handleNotificationResponse(msg)
-            else:
+            elif not self.ignore_unhandled_messages:
                 raise InternalError("Unexpected response msg %r" % (msg))
 
+def sync_on_error(fn):
+    def _fn(self, *args, **kwargs):
+        try:
+            return fn(self, *args, **kwargs)
+        except:
+            self._sync()
+            raise
+    return _fn
 
 class Connection(object):
     def __init__(self, unix_sock=None, host=None, port=5432, socket_timeout=60, ssl=False):
@@ -897,30 +907,26 @@ class Connection(object):
     def _send(self, msg):
         #print "_send(%r)" % msg
         data = msg.serialize()
-        self._sock.send(data)
+        self._sock.sendall(data)
+
+    def _read_bytes(self, byte_count):
+        retval = ""
+        while len(retval) < byte_count:
+            tmp = self._sock.recv(byte_count - len(retval))
+            retval += tmp
+        return retval
 
     def _read_message(self):
-        bytes = ""
-        while len(bytes) < 5:
-            tmp = self._sock.recv(5 - len(bytes))
-            bytes += tmp
-        if len(bytes) != 5:
-            raise InternalError("unable to read 5 bytes from socket %r" % bytes)
+        bytes = self._read_bytes(5)
         message_code = bytes[0]
         data_len = struct.unpack("!i", bytes[1:])[0] - 4
-        if data_len == 0:
-            bytes = ""
-        else:
-            bytes = ""
-            while len(bytes) < data_len:
-                tmp = self._sock.recv(data_len - len(bytes))
-                bytes += tmp
+        bytes = self._read_bytes(data_len)
         assert len(bytes) == data_len
         msg = message_types[message_code].createFromData(bytes)
         #print "_read_message() -> %r" % msg
         return msg
 
-    # ERIC options for connection in utility mode
+    # Greenplum utility mode
     def authenticate(self, user, **kwargs):
         self.verifyState("noauth")
         self._sock_lock.acquire()
@@ -948,6 +954,7 @@ class Connection(object):
     def _receive_backend_key_data(self, msg):
         self._backend_key_data = msg
 
+    @sync_on_error
     def parse(self, statement, qs, param_types):
         self.verifyState("ready")
         self._sock_lock.acquire()
@@ -974,19 +981,12 @@ class Connection(object):
             # Common row description response
             reader.add_message(RowDescription, lambda msg: (msg, param_fc))
 
-            try:
-                return reader.handle_messages()
-            except:
-                # If an error occurs, resync connection and get RFQ msg.
-                self._send(Sync())
-                reader = MessageReader(self)
-                reader.add_message(ReadyForQuery, lambda msg: True)
-                reader.handle_messages()
-                raise
+            return reader.handle_messages()
 
         finally:
             self._sock_lock.release()
 
+    @sync_on_error
     def bind(self, portal, statement, params, parse_data):
         self.verifyState("ready")
         self._sock_lock.acquire()
@@ -1041,6 +1041,7 @@ class Connection(object):
 
         old_reader.return_value((None, output['msg']))
 
+    @sync_on_error
     def fetch_rows(self, portal, row_count, row_desc):
         self.verifyState("ready")
         self._sock_lock.acquire()
@@ -1063,9 +1064,16 @@ class Connection(object):
 
     def _fetch_datarow(self, msg, rows, row_desc):
         rows.append(
-                [types.py_value(msg.fields[i], row_desc.fields[i], client_encoding=self._client_encoding, integer_datetimes=self._integer_datetimes)
-                    for i in range(len(msg.fields))]
+            [
+                types.py_value(
+                    msg.fields[i],
+                    row_desc.fields[i],
+                    client_encoding=self._client_encoding,
+                    integer_datetimes=self._integer_datetimes
                 )
+                for i in range(len(msg.fields))
+            ]
+        )
 
     def _fetch_commandcomplete(self, msg, portal):
         self._send(ClosePortal(portal))
@@ -1082,6 +1090,16 @@ class Connection(object):
         self._state = "ready"
         return True
 
+    # Send a Sync message, then read and discard all messages until we
+    # receive a ReadyForQuery message.
+    def _sync(self):
+        self._send(Sync())
+        reader = MessageReader(self)
+        reader.ignore_unhandled_messages = True
+        reader.add_message(ReadyForQuery, lambda msg: True)
+        reader.handle_messages()
+
+    @sync_on_error
     def close_statement(self, statement):
         if self._state == "closed":
             return
@@ -1098,6 +1116,7 @@ class Connection(object):
         finally:
             self._sock_lock.release()
 
+    @sync_on_error
     def close_portal(self, portal):
         if self._state == "closed":
             return

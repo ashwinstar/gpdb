@@ -1,6 +1,6 @@
 # vim: sw=4:expandtab:foldmethod=marker
 #
-# Copyright (c) 2007, Mathieu Fenniak
+# Copyright (c) 2007-2008, Mathieu Fenniak
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -37,6 +37,10 @@ class Error(StandardError):
 
 class InterfaceError(Error):
     pass
+
+class ConnectionClosedError(InterfaceError):
+    def __init__(self):
+        InterfaceError.__init__(self, "connection is closed")
 
 class DatabaseError(Error):
     pass
