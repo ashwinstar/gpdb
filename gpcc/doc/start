@@ -1,3 +1,6 @@
+GP START
+========
+
 HA
 ===
 
@@ -12,8 +15,8 @@ else:
 waitflag = (wait ? "-w" : "")
 
 
-"GPHOME/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s >> %s.log 2>&1" % 
-(datadir, datadir, option, waitflag, datadir)
+"PGPORT=%d GPHOME/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s >> %s.log 2>&1" % 
+(port, datadir, datadir, option, waitflag, datadir)
 
 
 
@@ -42,8 +45,8 @@ else:
 fi
 
 
-"GPHOME/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s >> %s.log 2>&1" % 
-(datadir, datadir, option, waitflag, datadir)
+"PGPORT=%d GPHOME/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s >> %s.log 2>&1" % 
+(port, datadir, datadir, option, waitflag, datadir)
 
 
 
@@ -59,7 +62,7 @@ MA
 
 1. Start QD in utility mode
 2. select * from gp_configuration by dbid
-3. show max_connection (for -R option)
+3. show max_connection (for -R option,   num_restricted_conn = "show max_connection")
 3. Stop QD
 4. Start valid Segment
 5. Start QD
