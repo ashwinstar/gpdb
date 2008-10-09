@@ -113,10 +113,6 @@ class logoff:
         sys.stderr.write("\nLOGOFF:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
 
@@ -450,9 +446,9 @@ class iterator:
         sys.stderr.write("\nITERATOR:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
+        if session.has_key('superuser'):
             sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
+        if session.has_key('user'):
             sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
@@ -488,9 +484,18 @@ class iterator:
         except:
             return mkerr(error.BADREQ, 'invalid query ID')
 
-        res = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
+        (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
 
-        return render.iterator(i.tmid, i.ssid, i.ccnt, i.nid)
+        # DEBUGGING 
+        sys.stderr.write('RESULTS:\n=======\n\n')
+        sys.stderr.write('iterator:\n')
+        for id in skeys:
+            sys.stderr.write('\tsegment id: %s\n' %  id)
+            for c in ckeys:
+                sys.stderr.write('\t\t%s: %s\n' % (c, tab[id][c]))
+        # DEBUGGING 
+
+        return render.iterator(i.tmid, i.ssid, i.ccnt, i.nid, skeys, ckeys, tab)
 
 
 

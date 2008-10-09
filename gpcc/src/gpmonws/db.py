@@ -4,7 +4,7 @@ sys.path.append(os.path.join(sys.path[0], 'lib'))
 import pg8000
 
 pguser = 'gpmon'
-pgdatabase = os.environ.get('PGDATABASE', 'gpperfmon')
+pgdatabase = os.environ.get('PGDATABASE', 'gpmon_2')
 pgpass = os.environ.get('PGPASSWORD', '')
 pgport = os.environ.get('PGPORT', '5432')
 pgport = int(pgport)
@@ -22,7 +22,7 @@ except pg8000.errors.InternalError:
     sys.stderr.write('GPDB connection failure: invalid user or password\n\n')
     sys.exit()
 except:
-    sys.stderr.write('GPDB connection failure: %s\n\n' % sys.exc_info()[0])
+    sys.stderr.write('GPDB connection failure: %s\n\n' % sys.exc_info()[1])
     conn = None
 
 def get_role(username, password):
@@ -155,6 +155,32 @@ def _queryplan_consolidate(rows):
     return (ckeys, tab, tree, root)
 
 
+def _iterator_consolidate(rows):
+    # verify the result set from the SQL query is not empty
+    if not rows:
+        return ([], [], {})
+
+    segd = {} #time dimension
+    tab = {}  #table where the key is composed of segment id
+
+    x = None
+    for r in rows:
+        s = r['segid']
+        segd[s] = 1
+        tab[s] = r
+        x = r
+
+    # retrieve the column names into ckeys
+    ckeys = None
+    if x:
+        # filter out segment id
+        ckeys = filter(lambda i: i != 'segid', x.keys())
+	ckeys.sort()
+
+    skeys = segd.keys(); skeys.sort()
+    return (skeys, ckeys, tab)
+
+
 
 def metrics_sql(table, filter, interval):
     columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
@@ -247,7 +273,7 @@ def metrics_upto_now(host, stime, interval):
     for r in rt_metrics(host):
         rows.append(r)
 
-    return _metrics_consolidate(rows)
+    return (SUCCESS, _metrics_consolidate(rows))
 
 
 def metrics_history(host, stime, etime, interval):
@@ -362,11 +388,11 @@ def queries_history(stime, etime, username):
 
 
 def queryplan_now(tmid, ssid, ccnt, host, segid):
-    rows = rt_queryplan(tmid, ssid, ccnt, host, segid)
+    rows = rt_queryiterators(tmid, ssid, ccnt, host, segid)
     return _queryplan_consolidate(rows)
 
 
-def rt_queryplan(tmid, ssid, ccnt, host, segid):
+def rt_queryiterators(tmid, ssid, ccnt, host, segid='', nid=''):
     filename = "%s/iterators_now.dat" % path
 
     # ordering is important to match the order in the file
@@ -426,8 +452,13 @@ def rt_queryplan(tmid, ssid, ccnt, host, segid):
                 continue
             # positional matching. if cnames is modified, the index
             # might be affected.
-            elif entry[4] != str(segid):
+            elif segid != '' and entry[4] != str(segid):
                 sys.stderr.write("no segid match: %s != %s\n\n" % (entry[4], str(segid)))
+                continue
+            # positional matching. if cnames is modified, the index
+            # might be affected.
+            elif nid != '' and entry[6] != str(nid):
+                sys.stderr.write("no segid match: %s != %s\n\n" % (entry[6], str(nid)))
                 continue
             # positional matching. if cnames is modified, the index
             # might be affected.
@@ -438,6 +469,9 @@ def rt_queryplan(tmid, ssid, ccnt, host, segid):
             # convert tstart date string into datetime object
             entry[11] = datetime.datetime.strptime(entry[11], "%Y-%m-%d %H:%M:%S")
             for i in range(len(cnames)):
+                # do not include the pid if searching based on node id (nid)
+                if nid != '' and cnames[i] == 'pid':
+                    continue
                 columns[cnames[i]] = entry[i]
             rows.append(columns)
     finally:
@@ -501,7 +535,7 @@ def queryplan_history(tmid, ssid, ccnt, host, segid):
 
 
 def iterator_sql():
-    columns = [ 'pid', 'ntype', 'nstatus', 'tstart', 'tduration',
+    columns = [ 'segid', 'ntype', 'nstatus', 'tstart', 'tduration',
                 'pmemsize', 'pmemmax', 'memsize', 'memresid', 'memshare',
                 'pagefaults', 'pagefaults_elapsed',
                 'cpu_elapsed', 'cpu_currpct', 'phase',
@@ -529,6 +563,7 @@ def iterator_sql():
     return query_fragment
 
 
+# returns iterator data across all segments.
 def queryiterator(tmid, ssid, ccnt, nid):
     query_fragment = iterator_sql()
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s' and nid='%s'" % (tmid, ssid, ccnt, nid)
@@ -547,7 +582,8 @@ def queryiterator(tmid, ssid, ccnt, nid):
     sys.stderr.write("ITERATOR RESULT:\n%s\n\n\n" % rows)
 
     # query real-time information.
-    for r in rt_queryplan(tmid, ssid, ccnt, nid):
+    segid = ''
+    for r in rt_queryiterators(tmid, ssid, ccnt, segid, nid):
         rows.append(r)
 
     return _iterator_consolidate(rows)
