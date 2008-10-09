@@ -232,4 +232,5 @@ void gpdb_harvest(void)
     harvest("system");
     harvest("queries");
     harvest("iterators");
+    harvest("database");
 }

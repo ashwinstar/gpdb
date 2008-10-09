@@ -6,7 +6,7 @@ create database gpperfmon;
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
---  metrics 
+--  system 
 --
 
 create table system_history (
@@ -228,6 +228,37 @@ create external web table iterators_tail (
 create external web table _iterators_tail (
         like iterators_history
 ) execute 'cat gpperfmon/data/_iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+--  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--  database
+--
+
+create table database_history (
+       ctime timestamp(0) not null, -- record creation time
+       queries_total int not null, -- total number of queries
+       queries_running int not null, -- number of running queries
+       queries_queued int not null -- number of queued queries
+) 
+with (fillfactor=100)
+distributed by (ctime)
+partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVERY (interval '1 month'));
+
+create external web table database_now (
+       like database_history
+) execute 'cat gpperfmon/data/database_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table database_tail (
+       like database_history
+) execute 'cat gpperfmon/data/database_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table _database_tail (
+        like database_history
+) execute 'cat gpperfmon/data/_database_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+
+
 
 
 

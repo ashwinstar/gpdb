@@ -41,6 +41,13 @@ struct agg_t {
     apr_hash_t* htab;		/* key = hostname, value = gpmon_metrics_t ptr */
 };
 
+typedef struct dbmetrics_t dbmetrics_t;
+struct dbmetrics_t {
+    apr_int32_t queries_total;
+    apr_int32_t queries_running;
+    apr_int32_t queries_queued;
+};
+
 extern int min_query_time;
 extern int min_detailed_query_time;
 
@@ -221,8 +228,9 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	apr_hash_this(hi, 0, 0, &vptr);
 	dp = vptr;
 
-	/* skip all entries that weren't updated recently */
-	if (dp->last_updated_generation < newagg->generation - 1) {
+	/* skip all entries that weren't updated recently and aren't waiting in a queue */
+	if (dp->last_updated_generation < newagg->generation - 1
+            && dp->qlog.status != GPMON_QLOG_STATUS_SUBMIT) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
 		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
@@ -308,6 +316,8 @@ static int  bloom_isset(bloom_t* bloom, const char* name);
 static void delete_old_files(bloom_t* bloom);
 
 static apr_status_t write_system(agg_t* agg, const char* nowstr);
+static apr_status_t write_dbmetrics(dbmetrics_t* dbmetrics, char* nowstr);
+
 static void write_qenode_row(FILE* fp, const qenode_t* qenode, const char* nowstr);
 
 static void write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr);
@@ -373,6 +383,8 @@ apr_status_t agg_dump(agg_t* agg)
     FILE* fp_queries_now = 0;
     FILE* fp_queries_tail = 0;
 
+    dbmetrics_t dbmetrics = {0};
+
     gpmon_datetime(apr_time_now(), nowstr);
 
     bloom_init(&bloom);
@@ -389,6 +401,11 @@ apr_status_t agg_dump(agg_t* agg)
     bloom_set(&bloom, GPMON_DIR "iterators_now.dat");
     bloom_set(&bloom, GPMON_DIR "iterators_tail.dat");
     bloom_set(&bloom, GPMON_DIR "_iterators_tail.dat");
+    bloom_set(&bloom, GPMON_DIR "database_now.dat");
+    bloom_set(&bloom, GPMON_DIR "database_tail.dat");
+    bloom_set(&bloom, GPMON_DIR "_database_tail.dat");
+    
+
 
     /* dump metrics */
     if (0 != (e = write_system(agg, nowstr))) {
@@ -418,9 +435,29 @@ apr_status_t agg_dump(agg_t* agg)
 		qdnode->recorded = 1;
 	    }
 	}
+        else
+        {
+            switch (qdnode->qlog.status)
+            {
+            case GPMON_QLOG_STATUS_START:
+                dbmetrics.queries_running++;
+                break;
+            case GPMON_QLOG_STATUS_SUBMIT:
+                dbmetrics.queries_queued++;
+                break;
+            default:
+                /* Not interested */
+                break;
+            }
+        }
     }
+    dbmetrics.queries_total = dbmetrics.queries_running + dbmetrics.queries_queued;
+
     fclose(fp_queries_tail);
     fp_queries_tail = 0;
+
+    /* dump dbmetrics */
+    write_dbmetrics(&dbmetrics, nowstr);
     
     /* dump query list data */
     if (! (fp_queries_now = fopen(GPMON_DIR "_queries_now.dat", "w"))) {
@@ -489,6 +526,7 @@ apr_status_t agg_dump(agg_t* agg)
     rename(GPMON_DIR "_system_now.dat", GPMON_DIR "system_now.dat");
     rename(GPMON_DIR "_iterators_now.dat", GPMON_DIR "iterators_now.dat");
     rename(GPMON_DIR "_queries_now.dat", GPMON_DIR "queries_now.dat");
+    rename(GPMON_DIR "_database_now.dat", GPMON_DIR "database_now.dat");
 
     /* clean up ... delete all old files by checking our bloom filter */
     delete_old_files(&bloom);
@@ -543,6 +581,33 @@ static void delete_old_files(bloom_t* bloom)
     }
 }
 
+static apr_status_t write_dbmetrics(dbmetrics_t* dbmetrics, char* nowstr)
+{
+    FILE* fp = fopen(GPMON_DIR "database_tail.dat", "a");
+    FILE* fp2 = fopen(GPMON_DIR "_database_now.dat", "w");
+    int e;
+    char line[256] = {0};
+
+    if (!fp || !fp2)
+    {
+        e = APR_FROM_OS_ERROR(errno);
+        if (fp) fclose(fp);
+        if (fp2) fclose(fp2);
+        return e;
+    }
+
+    snprintf(line, 265, "%s|%d|%d|%d", nowstr,
+             dbmetrics->queries_total,
+             dbmetrics->queries_running,
+             dbmetrics->queries_queued);
+    fprintf(fp, "%s\n", line);
+    fprintf(fp2, "%s\n", line);
+
+    fclose(fp);
+    fclose(fp2);
+
+    return 0;
+}
 
 static apr_status_t write_system(agg_t* agg, const char* nowstr)
 {
