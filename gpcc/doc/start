@@ -62,4 +62,5 @@ MA
 3. show max_connection (for -R option)
 3. Stop QD
 4. Start valid Segment
-5. Start Standby QD
+5. Start QD
+6. Start Standby QD
