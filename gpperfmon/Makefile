@@ -1,3 +1,5 @@
+.PHONY: installer
+
 all: gpsmon gpmmon
 
 gpsmon:
@@ -12,5 +14,9 @@ webapi:
 flexGUI:
 	@echo flexGUI
 
+installer: all
+	$(MAKE) -C installer all
+
 clean:
 	$(MAKE) -C src/gpmon clean
+	$(MAKE) -C installer clean

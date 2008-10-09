@@ -521,6 +521,9 @@ EOF
     exit 1
 fi
 
+sed "s,^GPPERFMONHOME.*,GPPERFMONHOME=\${installPath}," \${installPath}/gpperfmon_path.sh > \${installPath}/gpperfmon_path.sh.tmp
+mv \${installPath}/gpperfmon_path.sh.tmp \${installPath}/gpperfmon_path.sh
+
 cat <<EOF
 
 ********************************************************************************
