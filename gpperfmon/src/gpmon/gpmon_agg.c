@@ -596,7 +596,7 @@ static apr_status_t write_dbmetrics(dbmetrics_t* dbmetrics, char* nowstr)
         return e;
     }
 
-    snprintf(line, 265, "%s|%d|%d|%d", nowstr,
+    snprintf(line, 256, "%s|%d|%d|%d", nowstr,
              dbmetrics->queries_total,
              dbmetrics->queries_running,
              dbmetrics->queries_queued);
