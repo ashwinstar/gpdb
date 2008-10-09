@@ -349,7 +349,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, const 
     char option[128];
     *option = 0;
     if (restricted_conn > 0) {
-	sprintf(option, "--superuser_reserved_connections=%d ", restricted_conn);
+	sprintf(option, "-c superuser_reserved_connections=%d ", restricted_conn);
     }
     if (nostandbyqd) {
 	strcat(option, "-y ");
