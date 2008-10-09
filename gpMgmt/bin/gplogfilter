@@ -2,10 +2,10 @@
 #
 # gplogfilter [options] [inputfile]...
 #
-# $Id: $
-# $Change: $
-# $DateTime: $
-# $Author: $
+#          $Id$
+#      $Change$
+#    $DateTime$
+#      $Author$
 
 # import Python standard library modules
 import gzip
@@ -63,8 +63,8 @@ you specify.  For example, if you specify two occurrences of the
 If the destination specified by --out is a directory, the output file is
 given the same name as the input file (excluding '.gz' suffix if any).
 When writing compressed output, '.gz' is suffixed to the output file name.
-If you specify an output file name ending in '.gz', the output is com
-pressed (-z9) by default.
+If you specify an output file name ending in '.gz', the output is
+compressed (-z9) by default.
 ""","""
 Example:
 gplogfilter -t -d2
@@ -400,6 +400,16 @@ try:
             args.append(s)
         else:
             raise IOError('specify input file or "-" for standard input')
+
+    # In MS Windows, apply shell wildcard expansion to input filename list
+    if sys.platform == 'win32':
+        import glob
+        newargs = []
+        for a in args:
+            names = glob.glob(a)
+            names.sort()
+            newargs.extend(names)
+        args = newargs
 
     inputFilesToClose = outputFilesToClose = []
     fileOut = None
