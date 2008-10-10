@@ -1,13 +1,60 @@
-# 
+#---------------------------------------------------------------------
 # Makefile for Greenplum Database
 #
+#             $Id$
+#         $Change$
+#       $DateTime$
+#         $Author$
+#---------------------------------------------------------------------
 
 # keep the default target above any targets from included makefiles
 all : devel
 
+#---------------------------------------------------------------------
+# Declare the targets
+#---------------------------------------------------------------------
+
+# Targets for building GPDB with various options
+# (development builds)
+.PHONY : devel devel_faultinj forceplan
+
+# (release builds)
+.PHONY : dist dist_prof dist_faultinj
+
+# Targets which refresh files via rsync before building
+.PHONY : dbg opt both
+
+# Targets recognized by the PostgreSQL makefile (cdb-pg/GNUmakefile)
+.PHONY : all install installdirs uninstall distprep
+.PHONY : clean distclean maintainer-clean
+.PHONY : check installcheck installcheck-parallel
+
+# Targets for running regression tests
+.PHONY : installcheck-good installcheck-olaptest
+
+# The pvk target builds a subset of the GPDB package that includes just the
+# tools used to verify the configuration of a set of GPDB servers.
+.PHONY : pvk
+
+# Miscellaneous special purpose targets
+.PHONY : test2 test3
+
+# Internal functions which are invoked by other rules within this makefile
+.PHONY : groupSession mkgpcc copydocs mgmtcopy gpmoncopy pkgplr copylibs
+.PHONY : greenplum_path RECONFIG HOMEDEP GPROOTDEP GPROOTDEP GPROOTFAIL
+.PHONY : version gccVersionCheck pygres authlibs
+
+#---------------------------------------------------------------------
+# Make 3rd-party libraries and tools
+#---------------------------------------------------------------------
+
 # tell included makefiles where to find build-top-level resources
 BLD_TOP:=$(shell sh -c pwd)
 include Makefile.thirdparty
+
+#---------------------------------------------------------------------
+# Directory paths and file names
+#---------------------------------------------------------------------
 
 GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
@@ -20,7 +67,15 @@ GPMONDIR=greenplum-db$(RELEASE)-gpmon
 PLRDIR=greenplum-db$(RELEASE)-plr
 GPDOCDIR=$(CURDIR)/docs/release
 
-DEFPORT=5432
+DISTPATH=$(GPROOT)/$(GPDIR)
+GPMONDISTPATH=$(GPROOT)/$(GPMONDIR)
+DEVPATH=$(HOME)/$(GPDIR)
+GPMONDEVPATH=$(HOME)/$(GPMONDIR)
+
+#---------------------------------------------------------------------
+# Compiler options
+#---------------------------------------------------------------------
+
 INLINE_FLAGS=-finline-limit=1800
 
 OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)" 
@@ -40,11 +95,11 @@ endif
 
 DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 
-DISTPATH=$(GPROOT)/$(GPDIR)
-GPMONDISTPATH=$(GPROOT)/$(GPMONDIR)
-DEVPATH=$(HOME)/$(GPDIR)
-GPMONDEVPATH=$(HOME)/$(GPMONDIR)
+#---------------------------------------------------------------------
+# configure
+#---------------------------------------------------------------------
 
+DEFPORT=5432
 CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred
 
 ifeq (true, ${PG_LANG})
@@ -68,8 +123,15 @@ endif
 
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
-.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version greenplum_path
+RECONFIG :
+	rm -f $(ISCONFIG)
 
+$(ISCONFIG) :
+	cd $(GPPGDIR) && CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
+
+#---------------------------------------------------------------------
+# Miscellaneous special purpose targets
+#---------------------------------------------------------------------
 test2 :
 	echo "CWD ="$(CURDIR)
 	echo "RELEASE="$(RELEASE)
@@ -78,6 +140,10 @@ test3: INSTLOC=$(DEVPATH)
 test3: HOMEDEP
 	@rm -rf $(INSTLOC)/lib/*
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+
+#---------------------------------------------------------------------
+# rsync + build
+#---------------------------------------------------------------------
 
 both : dbg opt ;
 
@@ -88,6 +154,10 @@ dbg:
 opt:
 	rsync -rlvt --exclude=devel/ --exclude=dist/ ./ dist/
 	cd dist && $(MAKE) GPROOT=`pwd` AUTH=true PG_LANG=true dist
+
+#---------------------------------------------------------------------
+# Development builds
+#---------------------------------------------------------------------
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
@@ -119,7 +189,6 @@ devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
-
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
 forceplan : INSTLOC=$(DEVPATH)
 forceplan : GPMONINSTLOC=$(GPMONDEVPATH)
@@ -134,6 +203,10 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@$(MAKE) gpmoncopy GPMONINSTLOC=$(GPMONINSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
+
+#---------------------------------------------------------------------
+# Release builds
+#---------------------------------------------------------------------
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
@@ -181,14 +254,14 @@ dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
-
-#
+#---------------------------------------------------------------------
 # Platform Verification Kit (PVK)
 #   formerly checkTools
 #
 # The pvk target builds a subset of the GPDB package that includes
 # just the tools used to verify the configuration of a set of GPDB servers.
-#
+#---------------------------------------------------------------------
+
 PVK_SCRIPTS = \
 	bin/diskqual.ksh	\
 	bin/generate_load_tpch.pl	\
@@ -222,12 +295,15 @@ pvk : gccVersionCheck version GPROOTDEP
 	done
 	perl putversion $(foreach script,$(PVK_SCRIPTS),$(INSTLOC)/$(script))
 
+#---------------------------------------------------------------------
+# Internal functions
+#---------------------------------------------------------------------
+
 groupSession:
 	@cd $(GPMGMT)/bin && $(MAKE)
 
 mkgpcc:
 	@cd $(GPCC) && $(MAKE)
-
 
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
@@ -248,7 +324,6 @@ copydocs :
 	    echo "Removing $(INSTLOC)/doc" ; \
 	    rm -rf $(INSTLOC)/doc ; \
 	fi
-
 
 mgmtcopy :
 	@#Copy the management utilities
@@ -304,8 +379,7 @@ gpmoncopy :
 	chmod 755 $(GPMONINSTLOC)/lib
 	chmod 555 $(GPMONINSTLOC)/lib/*
 
-
-pkgplr: 
+pkgplr:
 	@if [ -f $(INSTLOC)/lib/postgresql/plr.so ] ; then \
 	    echo "" ; \
 	    echo "`date` -- INFO: Found plr.so, creating PL/R package" ; \
@@ -359,12 +433,6 @@ copylibs : thirdparty-dist
 greenplum_path:
 	releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
 
-RECONFIG :
-	rm -f $(ISCONFIG)
-
-$(ISCONFIG) :
-	cd $(GPPGDIR) && CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
-
 HOMEDEP :
 	@#If the HOME variable isn't set, then execute the usage() path
 	@if [ x"$(HOME)" = x ]; then $(MAKE) HOMEFAIL; fi
@@ -388,6 +456,10 @@ HOMEFAIL :
 	@echo
 	@exit 1
 
+#---------------------------------------------------------------------
+# Cleanup
+#---------------------------------------------------------------------
+
 clean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@if [ -d $(GPPGDIR) ]; then cd $(GPPGDIR); $(MAKE) clean; fi
@@ -403,6 +475,10 @@ distclean :
 distprep : $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) distprep
 	
+#---------------------------------------------------------------------
+# Regression tests
+#---------------------------------------------------------------------
+
 installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-good
@@ -414,6 +490,10 @@ installcheck-parallel :
 installcheck-olaptest :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-olaptest
+
+#---------------------------------------------------------------------
+# More internal functions
+#---------------------------------------------------------------------
 
 version :
 	@if [ ! -f getversion ] ; then echo "getversion is not present, cannot create VERSION file"; exit 1; fi
