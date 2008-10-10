@@ -581,7 +581,8 @@ CHK_QES () {
 		fi
 		LOG_MSG "[INFO]:-Checking new segment hosts, please wait..." 1
 		if [ x"" == x"$QD_ONLY" ];then
-			for QE_ID in ${MACHINE_LIST[@]}
+		        CHECK_LIST=(`$ECHO ${MACHINE_LIST[@]} | $TR ' ' '\n' | $GREP -v "${HOSTNAME}\$" | $SORT | $TR '\n' ' '`)
+			for QE_ID in ${CHECK_LIST[@]}
 			do
 				GET_IP_ADDRESS 
 				CHK_LOCALE_KNOWN $QE_ID
@@ -613,7 +614,7 @@ CHK_QES () {
 			#Clean the IP address array to make sure all are unique
 			QE_IP_ARRAY=(`$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`) 
 			#Check to ensure that instance directories do not exist on hosts
-			LOG_MSG "[INFO]:-Primary segment instance directory check" 1
+			LOG_MSG "[INFO]:-Primary segment instance directory check"
 			for I in "${QE_PRIMARY_ARRAY[@]}"
 			do
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
