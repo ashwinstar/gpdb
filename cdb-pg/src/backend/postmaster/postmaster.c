@@ -40,6 +40,11 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505.2.3 2007/02/11 15:12:21 mha Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
+ *
  * NOTES
  *
  * Initialization:
@@ -82,11 +87,16 @@
 #include <limits.h>
 
 /* headers required for process affinity bindings */
+#ifdef ENABLE_AFFINITY
 #if defined(pg_on_solaris)
 #include <sys/types.h>
 #include <sys/processor.h>
 #include <sys/procset.h>
 #endif
+#ifdef __linux__
+#include <numa.h>
+#endif
+#endif /*ENABLE_AFFINITY*/
 
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -4908,7 +4918,7 @@ win32_sigchld_waiter(LPVOID param)
 
 #endif   /* WIN32 */
 
-#if defined(pg_on_solaris)
+#if defined(ENABLE_AFFINITY) && defined(pg_on_solaris)
 /* SOLARIS */
 static void
 setProcAffinity(int id)
@@ -4949,10 +4959,8 @@ setProcAffinity(int id)
 
 	return;
 }
-#elif defined(__linux__)
+#elif defined(ENABLE_AFFINITY) && defined(__linux__)
 /* LINUX */
-#include <numa.h>
-
 static void
 setProcAffinity(int id)
 {

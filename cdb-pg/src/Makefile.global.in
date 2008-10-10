@@ -1,5 +1,9 @@
 # -*-makefile-*-
 # $PostgreSQL: pgsql/src/Makefile.global.in,v 1.232 2006/10/08 17:15:33 tgl Exp $
+#         $Id$
+#     $Change$
+#   $DateTime$
+#     $Author$
 
 #------------------------------------------------------------------------------
 # All PostgreSQL makefiles include this file and use the variables it sets,
@@ -429,10 +433,6 @@ ifdef PGXS
 override LDFLAGS := -L$(libdir) $(LDFLAGS)
 else
 override LDFLAGS := -L$(top_builddir)/src/port $(LDFLAGS)
-endif
-
-ifeq ($(PORTNAME),linux)
-LIBS += -lnuma
 endif
 
 # to make ws2_32.lib the last library, and always link with shfolder,

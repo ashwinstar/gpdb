@@ -874,6 +874,7 @@ Optional Features:
   --enable-faultinjection        enable fault injection for testing
   --enable-thread-safety  make client libraries thread-safe
   --enable-thread-safety-force  force thread-safety in spite of thread test failure
+  --disable-affinity      omit processor affinity support
   --disable-largefile     omit support for large files
 
 Optional Packages:
@@ -3911,6 +3912,48 @@ echo "${ECHO_T}$enable_thread_safety" >&6
 
 
 #
+# Processor affinity
+#
+echo "$as_me:$LINENO: checking whether to build with processor affinity support" >&5
+echo $ECHO_N "checking whether to build with processor affinity support... $ECHO_C" >&6
+
+pgac_args="$pgac_args enable_affinity"
+
+# Check whether --enable-affinity or --disable-affinity was given.
+if test "${enable_affinity+set}" = set; then
+  enableval="$enable_affinity"
+
+  case $enableval in
+    yes)
+
+cat >>confdefs.h <<\_ACEOF
+#define ENABLE_AFFINITY 1
+_ACEOF
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      { { echo "$as_me:$LINENO: error: no argument expected for --enable-affinity option" >&5
+echo "$as_me: error: no argument expected for --enable-affinity option" >&2;}
+   { (exit 1); exit 1; }; }
+      ;;
+  esac
+
+else
+  enable_affinity=yes
+
+cat >>confdefs.h <<\_ACEOF
+#define ENABLE_AFFINITY 1
+_ACEOF
+
+fi;
+
+echo "$as_me:$LINENO: result: $enable_affinity" >&5
+echo "${ECHO_T}$enable_affinity" >&6
+
+#
 # Optionally build Tcl modules (PL/Tcl)
 #
 echo "$as_me:$LINENO: checking whether to build with Tcl" >&5
@@ -6568,6 +6611,97 @@ if test "$ac_cv_search_shmget" != no; then
 
 fi
 
+
+if test "$enable_affinity" = yes; then
+  case $template in
+    linux*)
+
+echo "$as_me:$LINENO: checking for numa_available in -lnuma" >&5
+echo $ECHO_N "checking for numa_available in -lnuma... $ECHO_C" >&6
+if test "${ac_cv_lib_numa_numa_available+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lnuma  $LIBS"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char numa_available ();
+int
+main ()
+{
+numa_available ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"
+			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_lib_numa_numa_available=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+ac_cv_lib_numa_numa_available=no
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+echo "$as_me:$LINENO: result: $ac_cv_lib_numa_numa_available" >&5
+echo "${ECHO_T}$ac_cv_lib_numa_numa_available" >&6
+if test $ac_cv_lib_numa_numa_available = yes; then
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBNUMA 1
+_ACEOF
+
+  LIBS="-lnuma $LIBS"
+
+else
+  { { echo "$as_me:$LINENO: error: library 'numa' not found
+If you have the libnuma package installed, see config.log for details on the
+failure.  It is possible the compiler isn't looking in the proper directory.
+Use --disable-affinity to disable processor affinity support." >&5
+echo "$as_me: error: library 'numa' not found
+If you have the libnuma package installed, see config.log for details on the
+failure.  It is possible the compiler isn't looking in the proper directory.
+Use --disable-affinity to disable processor affinity support." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+
+      ;;
+  esac
+fi
 
 if test "$with_readline" = yes; then
 
@@ -9862,6 +9996,165 @@ fi
 
 done
 
+fi
+
+if test "$enable_affinity" = yes; then
+  case $template in
+    linux*)
+      if test "${ac_cv_header_numa_h+set}" = set; then
+  echo "$as_me:$LINENO: checking for numa.h" >&5
+echo $ECHO_N "checking for numa.h... $ECHO_C" >&6
+if test "${ac_cv_header_numa_h+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+fi
+echo "$as_me:$LINENO: result: $ac_cv_header_numa_h" >&5
+echo "${ECHO_T}$ac_cv_header_numa_h" >&6
+else
+  # Is the header compilable?
+echo "$as_me:$LINENO: checking numa.h usability" >&5
+echo $ECHO_N "checking numa.h usability... $ECHO_C" >&6
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+$ac_includes_default
+#include <numa.h>
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"
+			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_header_compiler=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+ac_header_compiler=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+echo "$as_me:$LINENO: result: $ac_header_compiler" >&5
+echo "${ECHO_T}$ac_header_compiler" >&6
+
+# Is the header present?
+echo "$as_me:$LINENO: checking numa.h presence" >&5
+echo $ECHO_N "checking numa.h presence... $ECHO_C" >&6
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+#include <numa.h>
+_ACEOF
+if { (eval echo "$as_me:$LINENO: \"$ac_cpp conftest.$ac_ext\"") >&5
+  (eval $ac_cpp conftest.$ac_ext) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } >/dev/null; then
+  if test -s conftest.err; then
+    ac_cpp_err=$ac_c_preproc_warn_flag
+    ac_cpp_err=$ac_cpp_err$ac_c_werror_flag
+  else
+    ac_cpp_err=
+  fi
+else
+  ac_cpp_err=yes
+fi
+if test -z "$ac_cpp_err"; then
+  ac_header_preproc=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+  ac_header_preproc=no
+fi
+rm -f conftest.err conftest.$ac_ext
+echo "$as_me:$LINENO: result: $ac_header_preproc" >&5
+echo "${ECHO_T}$ac_header_preproc" >&6
+
+# So?  What about this header?
+case $ac_header_compiler:$ac_header_preproc:$ac_c_preproc_warn_flag in
+  yes:no: )
+    { echo "$as_me:$LINENO: WARNING: numa.h: accepted by the compiler, rejected by the preprocessor!" >&5
+echo "$as_me: WARNING: numa.h: accepted by the compiler, rejected by the preprocessor!" >&2;}
+    { echo "$as_me:$LINENO: WARNING: numa.h: proceeding with the compiler's result" >&5
+echo "$as_me: WARNING: numa.h: proceeding with the compiler's result" >&2;}
+    ac_header_preproc=yes
+    ;;
+  no:yes:* )
+    { echo "$as_me:$LINENO: WARNING: numa.h: present but cannot be compiled" >&5
+echo "$as_me: WARNING: numa.h: present but cannot be compiled" >&2;}
+    { echo "$as_me:$LINENO: WARNING: numa.h:     check for missing prerequisite headers?" >&5
+echo "$as_me: WARNING: numa.h:     check for missing prerequisite headers?" >&2;}
+    { echo "$as_me:$LINENO: WARNING: numa.h: see the Autoconf documentation" >&5
+echo "$as_me: WARNING: numa.h: see the Autoconf documentation" >&2;}
+    { echo "$as_me:$LINENO: WARNING: numa.h:     section \"Present But Cannot Be Compiled\"" >&5
+echo "$as_me: WARNING: numa.h:     section \"Present But Cannot Be Compiled\"" >&2;}
+    { echo "$as_me:$LINENO: WARNING: numa.h: proceeding with the preprocessor's result" >&5
+echo "$as_me: WARNING: numa.h: proceeding with the preprocessor's result" >&2;}
+    { echo "$as_me:$LINENO: WARNING: numa.h: in the future, the compiler will take precedence" >&5
+echo "$as_me: WARNING: numa.h: in the future, the compiler will take precedence" >&2;}
+    (
+      cat <<\_ASBOX
+## ------------------------------------ ##
+## Report this to support@greenplum.com ##
+## ------------------------------------ ##
+_ASBOX
+    ) |
+      sed "s/^/$as_me: WARNING:     /" >&2
+    ;;
+esac
+echo "$as_me:$LINENO: checking for numa.h" >&5
+echo $ECHO_N "checking for numa.h... $ECHO_C" >&6
+if test "${ac_cv_header_numa_h+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_cv_header_numa_h=$ac_header_preproc
+fi
+echo "$as_me:$LINENO: result: $ac_cv_header_numa_h" >&5
+echo "${ECHO_T}$ac_cv_header_numa_h" >&6
+
+fi
+if test $ac_cv_header_numa_h = yes; then
+  :
+else
+  { { echo "$as_me:$LINENO: error: header file <numa.h> not found
+If you have the libnuma package installed, see config.log for details on the
+failure.  It is possible the compiler isn't looking in the proper directory.
+Use --disable-affinity to disable processor affinity support." >&5
+echo "$as_me: error: header file <numa.h> not found
+If you have the libnuma package installed, see config.log for details on the
+failure.  It is possible the compiler isn't looking in the proper directory.
+Use --disable-affinity to disable processor affinity support." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+
+
+      ;;
+  esac
 fi
 
 if test "$with_zlib" = yes; then
