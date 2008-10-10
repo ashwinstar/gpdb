@@ -1,3 +1,8 @@
+#         $Id: $
+#     $Change: $
+#   $DateTime: $
+#     $Author: $
+
 SHELL=bash
 CC=gcc
 GPCC=$(shell echo `pwd`/..)
@@ -10,12 +15,12 @@ LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8h
 LIBSIGAR=libsigar
 
-all: mkdir mklibjson mklibevent mklibssl mklibapr mklibapu mklibsigar mkdbgen 
+all: mkdir mklibjson mklibevent mklibssl mklibapr mklibapu mklibsigar mkdbgen
 
 mkdir:
 	@echo --- ext ------------------------------------------------------
 	@echo $(GPCC)
-	@mkdir -p lib include
+	mkdir -p lib include
 
 mklibjson: mkdir lib/libjson.a
 mklibevent: mkdir lib/libevent.a
@@ -26,77 +31,77 @@ mklibsigar: mkdir lib/libsigar.a
 
 lib/libjson.a:
 	@echo     -- json
-	@if ! [ -a $(JSON)/Makefile ]; then \
+	if ! [ -a $(JSON)/Makefile ]; then \
 		gzip -d -c $(JSON).tar.gz | tar xvf - ;\
-		(cd $(JSON); ./configure --enable-shared=no \
+		(cd $(JSON) && ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd $(JSON); $(MAKE) all; $(MAKE) install >> make.out)	
+	(cd $(JSON) && $(MAKE) all && $(MAKE) install >> make.out)	
 
 
 lib/libevent.a:
 	@echo     -- libevent
-	@if ! [ -a $(LIBEVENT)/Makefile ]; then \
+	if ! [ -a $(LIBEVENT)/Makefile ]; then \
 		gzip -d -c $(LIBEVENT).tar.gz | tar xvf - ;\
-		(cd $(LIBEVENT); ./configure --enable-shared=no \
+		(cd $(LIBEVENT) && ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd $(LIBEVENT); $(MAKE) install >> make.out)
+	(cd $(LIBEVENT) && $(MAKE) install >> make.out)
 
 lib/libssl.a:
 	@echo     -- openssl
-	@if ! [ -a $(OPENSSL)/Makefile ]; then \
+	if ! [ -a $(OPENSSL)/Makefile ]; then \
 		gzip -d -c $(OPENSSL).tar.gz | tar xvf - ;\
-		(cd $(OPENSSL); ./config no-shared threads --prefix=$(GPCC)/ext) ;\
+		(cd $(OPENSSL) && ./config no-shared threads --prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd $(OPENSSL); $(MAKE)  all install >> make.out 2>&1)
+	(cd $(OPENSSL) && $(MAKE)  all install >> make.out 2>&1)
 
 lib/libaprutil-1.a: lib/libapr-1.a
 	@echo     -- apu
-	@if ! [ -a $(APU)/Makefile ]; then \
+	if ! [ -a $(APU)/Makefile ]; then \
 		gzip -d -c $(APU).tar.gz | tar xvf - ;\
-		(cd $(APU); ./configure --enable-shared=no \
+		(cd $(APU) && ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--with-apr=../$(APR) \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd $(APU); $(MAKE) all install >> make.out)
+	(cd $(APU) && $(MAKE) all install >> make.out)
 
 
 lib/libapr-1.a:
 	@echo     -- apr
-	@if ! [ -a $(APR)/Makefile ]; then \
+	if ! [ -a $(APR)/Makefile ]; then \
 		gzip -d -c $(APR).tar.gz | tar xvf - ;\
-		(cd $(APR); ./configure --enable-shared=no \
+		(cd $(APR) && ./configure --enable-shared=no \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd $(APR); $(MAKE) all install >> make.out)
+	(cd $(APR) && $(MAKE) all install >> make.out)
 
 mkdbgen:
 	@echo     -- dbgen
-	@(cd tpch; $(MAKE) >> make.out)
-	@(cd tpch; cp -f dbgen ../../build/bin/)
-	@(cd tpch; cp -f dists.dss ../../build/bin/)
+	(cd tpch && $(MAKE) >> make.out)
+	(cd tpch && cp -f dbgen ../../build/bin/)
+	(cd tpch && cp -f dists.dss ../../build/bin/)
 
 lib/libsigar.a:
 	@echo     -- sigar
-	(cd $(LIBSIGAR); cp -rf include/* ../include)
-	(cd $(LIBSIGAR); $(MAKE); cp -f src/libsigar.a ../lib)
+	(cd $(LIBSIGAR) && cp -rf include/* ../include)
+	(cd $(LIBSIGAR) && $(MAKE) && cp -f src/libsigar.a ../lib)
 
 veryclean:
 	rm -rf lib bin include build1 share ssl build-1
 	rm -rf $(APR) $(APU) $(JSON) $(LIBEVENT) $(OPENSSL)
-	(cd $(LIBSIGAR); $(MAKE) veryclean)
+	(cd $(LIBSIGAR) && $(MAKE) veryclean)
 
 clean:
 	rm -rf lib bin include build1 share ssl build-1
-	@(cd $(APR); $(MAKE) clean; rm -f make.out)
-	@(cd $(APU); $(MAKE) clean; rm -f make.out)
-	@(cd $(JSON); $(MAKE) clean; rm -f make.out)
-	@(cd $(LIBEVENT); $(MAKE) clean; rm -f make.out)
-	@(cd $(OPENSSL); $(MAKE) clean; rm -f make.out)
-	@(cd $(LIBSIGAR); $(MAKE) clean)
+	(cd $(APR) && $(MAKE) clean; rm -f make.out)
+	(cd $(APU) && $(MAKE) clean; rm -f make.out)
+	(cd $(JSON) && $(MAKE) clean; rm -f make.out)
+	(cd $(LIBEVENT) && $(MAKE) clean; rm -f make.out)
+	(cd $(OPENSSL) && $(MAKE) clean; rm -f make.out)
+	(cd $(LIBSIGAR) && $(MAKE) clean)
 
