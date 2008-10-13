@@ -131,7 +131,7 @@ class GPUpgrade:
         self.mappings   = None     # Mappings of old oid to new oids
         self.hosts      = []       # list of hosts
         self.segments   = []       # list of segments
-        self.mirrors    = None     # list of mirrors
+        self.mirrors    = []       # list of mirrors
         self.dbup       = None
         self.interupted = False    # SIGINT recieved
 
@@ -563,6 +563,8 @@ class GPUpgrade:
 
         if port == None:
             port = self.masterport
+        elif port != self.masterport:
+            utility = True
 
         if utility:
             options = '-c gp_session_role=utility'
@@ -575,7 +577,8 @@ class GPUpgrade:
                                      host=self.host,
                                      database=db, 
                                      options=options,
-                                     port=port)
+                                     port=port,
+                                     socket_timeout=5000)
         except Exception, e:
             self.Log('FATAL', 'Could not establish connection to database')
             raise ConnectionError(str(e))
@@ -647,7 +650,8 @@ class GPUpgrade:
                                      host=self.host,
                                      database=db, 
                                      options=options,
-                                     port=port)
+                                     port=port,
+                                     socket_timeout=5000)
         except Exception, e:
             self.Log('FATAL', 'Could not establish connection to database')
             raise ConnectionError(str(e))
@@ -1276,20 +1280,33 @@ tool shipped with that release''')
         gp_init_config = '%s/gp_init_config' % self.tmpdir
         o = open(gp_init_config, 'w')
         o.write('ARRAY_NAME="%s"\n'          % self.config['ARRAY_NAME'])
-        o.write('MACHINE_LIST_FILE=%s\n'     % host_file)
         o.write('SEG_PREFIX=%s\n'            % self.config['SEG_PREFIX'])
-        o.write('PORT_BASE=%s\n'             % self.config['PORT_BASE'])
-        o.write('declare -a DATA_DIRECTORY=(%s)\n' % self.config['DATA_DIRECTORY'])
-        o.write('MASTER_HOSTNAME=%s\n'       % self.config['MASTER_HOSTNAME'])
-        o.write('MASTER_DIRECTORY=%s\n'      % self.config['MASTER_DIRECTORY'])
-        o.write('MASTER_PORT=%s\n'           % self.config['MASTER_PORT'])
         o.write('TRUSTED_SHELL=%s\n'         % self.config['TRUSTED_SHELL'])
         o.write('CHECK_POINT_SEGMENTS=%s\n'  % self.config['CHECK_POINT_SEGMENTS'])
         o.write('ENCODING=%s\n'              % self.config['ENCODING'])
-        if (self.mirrors):
-            o.write('MIRROR_PORT_BASE=%s\n'  % self.config['MIRROR_PORT_BASE'])
-            o.write('declare -a MIRROR_DATA_DIRECTORY=(%s)\n' % 
-                    self.config['MIRROR_DATA_DIRECTORY'])
+
+        o.write('QD_PRIMARY_ARRAY=%s:%d:%s:1:-1\n' %
+                (self.config['MASTER_HOSTNAME'],
+                 self.config['MASTER_PORT'],
+                 self.newmaster))
+
+        o.write('declare -a PRIMARY_ARRAY=(\n')
+        for s in self.segments:
+            (a,b) = os.path.split(s['datadir'])
+            dir = os.path.join(a, 'upgrade', b)
+            o.write('%s:%d:%s:%d:%d\n' % 
+                    (s['hostname'], s['port'], dir, s['dbid'], s['content']))
+        o.write(')\n')
+
+        if len(self.mirrors) > 0:
+            o.write('declare -a MIRROR_ARRAY=(\n')
+            for s in self.mirrors:
+                (a,b) = os.path.split(s['datadir'])
+                dir = os.path.join(a, 'upgrade', b)
+                o.write('%s:%d:%s:%d:%d\n' % 
+                        (s['hostname'], s['port'], dir, s['dbid'], s['content']))
+            o.write(')\n')
+
         o.close()
         self.Log('INFO', 'Configuration files generated')
 
@@ -1381,8 +1398,7 @@ Cannot downgrade a database with append only tables     <<<<<
         mirrors = filter(lambda(x): x['content'] >= 0 and 
                                  not x['definedprimary'], gp_config);
         self.segments = segments
-        if (len(mirrors) > 0): 
-            self.mirrors = mirrors
+        self.mirrors = mirrors
         
         # Internal sanity checking
         if len(master) != 1:
@@ -1392,8 +1408,9 @@ Cannot downgrade a database with append only tables     <<<<<
 
         master = master[0]
 
-        # ARRAY_NAME  (???)
-        self.config['ARRAY_NAME'] = 'Greenplum Upgrade'
+        # ARRAY_NAME
+        arrayname = self.Select('SELECT gpname FROM gp_id')
+        self.config['ARRAY_NAME'] = arrayname[0]
 
         # HOSTS can be used to build a MACHINE_LIST_FILE
         # In 3.2 and later gpinitsystem can gracefully handle multiple
@@ -1444,7 +1461,7 @@ Cannot downgrade a database with append only tables     <<<<<
 
         # Handle mirrors, if present
         mirror_dirs = set();
-        if self.mirrors:
+        if len(self.mirrors) > 0:
 
             # Determine PORT_BASE, (min of segments - 1)
             port_base = min(map(lambda(x): x['port'], mirrors))-1
@@ -2026,7 +2043,7 @@ This issue must be resolved before upgrade can complete.
         self.CheckDown()
         try:
             self.dbup = [self.newenv, False]
-            cmd = 'gpinitsystem -a -c %s/gp_init_config' % self.tmpdir
+            cmd = 'gpinitsystem -a -I %s/gp_init_config' % self.tmpdir
             pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                    env=self.newenv, shell=True,
                                    stdout=self.logfile, 
@@ -2252,6 +2269,7 @@ This issue must be resolved before upgrade can complete.
             if r:
                 raise UpgradeError('Vacuum exited with status %d' % r)
 
+    #------------------------------------------------------------
     def RestoreStatistics(self):
         '''
         Executes queries to rebuild the database statistics stored in 'pg_stat_*.csv'
@@ -2418,7 +2436,7 @@ This issue must be resolved before upgrade can complete.
                                 raise UpgradeError(newfile + ' not found')
 
                             # Remove the new file, hard link to the old file
-                            self.Log('DEBUG', 'Linking %s => %s' % (oldfile, newfile))
+                            #self.Log('DEBUG', 'Linking %s => %s' % (oldfile, newfile))
 
                             os.remove(newfile)
                             os.link(oldfile, newfile)
@@ -2487,7 +2505,7 @@ This issue must be resolved before upgrade can complete.
                             if style == 'BACKUP':
                                 self.Log('WARN', 'File exists ' + newfile)
                             os.remove(newfile)
-                        self.Log('DEBUG', 'Linking file ' + newfile)
+                        #self.Log('DEBUG', 'Linking file ' + newfile)
                         os.link(oldfile, newfile)
 
                     for root, dirs, files in os.walk(content, topdown = True):
@@ -2505,7 +2523,7 @@ This issue must be resolved before upgrade can complete.
                             if os.path.exists(newfile):
                                 self.Log('WARN', 'File exists ' + newfile)
                                 os.remove(newfile)
-                            self.Log('DEBUG', 'Linking file ' + newfile)
+                            #self.Log('DEBUG', 'Linking file ' + newfile)
                             os.link(oldfile, newfile)
 
     #------------------------------------------------------------
@@ -2566,6 +2584,14 @@ try:
         # + Requires running old db on master host
         u.ExtractInfo()
 
+        # SetupLockdown:
+        # + Requires the database to be up
+        # + Creates the upgrade user
+        # + Shuts the database down
+        # + Adjusts hba_conf to only allow upgrade user access
+        # + Database is left down
+        u.SetupLockdown()
+
         # Create working directories on all hosts
         # + Requires configuration info collected in ExtractInfo
         # + Requires Execution on all hosts
@@ -2576,14 +2602,6 @@ try:
         # + Requires configuration info collected in ExtractInfo
         # + Requires working directory on master node
         u.GenerateConfigFiles()
-
-        # SetupLockdown:
-        # + Requires the database to be up
-        # + Creates the upgrade user
-        # + Shuts the database down
-        # + Adjusts hba_conf to only allow upgrade user access
-        # + Database is left down
-        u.SetupLockdown()
 
         # Start the database back up on all hosts so that we can 
         # gather information from them.
@@ -2645,6 +2663,8 @@ try:
         u.RemapOID()
 
         # Confirm that the resync/remapping was successful
+        # + Restore statistics must either be after resetXlogs or
+        #   requires an additional vacuum step.
         u.Startup(u.newenv, utility=True)
         u.RestoreStatistics()
         u.Shutdown()
@@ -2686,12 +2706,12 @@ try:
             u.FixConfig()
 
             # Validate upgraded instance
+            u.Startup(u.newenv)
             if u.validate:
                 u.Log('INFO', 'Validating upgraded instance')
-                u.Startup(u.newenv)
                 u.CheckCatalog(u.newenv)
                 u.CollectValidation()
-                u.Shutdown()
+            u.Shutdown()
 
             # Everything upgraded and validated
             # + Release the lockdown
