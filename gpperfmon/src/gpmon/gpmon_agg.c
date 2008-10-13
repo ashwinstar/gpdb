@@ -658,7 +658,9 @@ static apr_uint32_t write_system(agg_t* agg, const char* nowstr, apr_uint32_t wr
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
 		mp->mem.total, mp->mem.used, mp->mem.actual_used, mp->mem.actual_free);
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
-		mp->swap.total, mp->swap.used, mp->swap.page_in, mp->swap.page_out);
+		mp->swap.total, mp->swap.used,
+                (apr_int64_t)ceil((double)mp->swap.page_in / (double)quantum), 
+                (apr_int64_t)ceil((double)mp->swap.page_out / (double)quantum));
 	sprintf(p += strlen(p), "|%.2f|%.2f|%.2f", 
 		mp->cpu.user_pct, mp->cpu.sys_pct, mp->cpu.idle_pct);
 	sprintf(p += strlen(p), "|%.4f|%.4f|%.4f",
