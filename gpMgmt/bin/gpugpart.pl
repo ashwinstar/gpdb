@@ -48,8 +48,35 @@ Options:
 
 =item B<-sql>
     
-    generate sql to construct new partition definitions
+If no arguments are specified, generate sql to create new partition definitions and transfer the contents (via INSERT...SELECT) of the old partitions. Valid arguments are a comma-separated list of the following:
 
+=over 12
+
+=item B<CREATE> 
+
+create new partition definitions.  The new definitions have a suffix to distinguish them from the original tables.
+
+
+=item B<TRANSFER> 
+
+transfer data from old partitions to new partitions using INSERT...SELECT
+
+
+=item B<EXCHANGE> 
+
+transfer data from old partitions using EXCHANGE (note that TRANSFER and EXCHANGE are mutually-exclusive)
+
+
+=item B<CLEANUP> 
+
+rename the original tables with a "old" suffix and replace them with the new partitioned tables.
+
+
+=back
+
+    An example argument is: --sql create,exchange,cleanup
+
+which generates a script to create the new partition definitions, exchanges the contents, and renames the new partition tables to replace the originals.
 
 =back
 
@@ -81,7 +108,7 @@ BEGIN {
     GetOptions(
                'help|?' => \$help, man => \$man, 
                "connect=s" => \$conn,
-               "sql" => \$dosql
+               "sql:s" => \$dosql
                )
         or pod2usage(2);
 
@@ -94,7 +121,68 @@ BEGIN {
     $glob_connect = '-p 11000 template1'
         unless (defined($glob_connect));
 
-    $glob_dosql = $dosql;
+    if (defined($dosql))
+    {
+        if (!length($dosql))
+        {
+            $glob_dosql = ["CREATE", "XFR"];
+        }
+        else
+        {
+            my $crt = 0;
+            my $xfr = 0;
+            my $xch = 0;
+            my $cln = 0;
+
+            $dosql =~ s/\s//gm;
+
+            my @foo = split(/\,/, $dosql);
+
+            for my $opt (@foo)
+            {
+                unless ($opt =~ m/^(no)?(create|crt|xch|exchange|xfr|transfer|cln|clean)/i)
+                {
+                    $glob_id = "invalid sql option: $opt\n";
+                    pod2usage(-msg => $glob_id, -exitstatus => 1);
+                    exit();
+                }
+
+                if ($opt =~ m/^(no)?(create|crt)/i)
+                {
+                    $crt = !($opt =~ m/^no/i);
+                }
+                if ($opt =~ m/^(no)?(xch|exchange)/i)
+                {
+                    $xch = !($opt =~ m/^no/i);
+                }
+                if ($opt =~ m/^(no)?(xfr|transfer)/i)
+                {
+                    $xfr = !($opt =~ m/^no/i);
+                }
+                if ($opt =~ m/^(no)?(cln|clean)/i)
+                {
+                    $cln = !($opt =~ m/^no/i);
+                }
+
+            } # end for
+
+            if ($xfr && $xch)
+            {
+                $glob_id = "invalid sql option: cannot combine EXCHANGE and TRANSFER\n";
+                pod2usage(-msg => $glob_id, -exitstatus => 1);
+                exit();
+
+            }
+
+            $glob_dosql = [];
+
+            push @{$glob_dosql}, "CREATE" if ($crt);
+            push @{$glob_dosql}, "XFR" if ($xfr);
+            push @{$glob_dosql}, "XCH" if ($xch);
+            push @{$glob_dosql}, "CLN" if ($cln);
+
+        }
+    }
 
 }
 
@@ -797,6 +885,8 @@ sub genpartdefs3
 
 
                 # check for subpartitions
+                # NOTE: {child} might be a plain tablename but 
+                #       {subpartition} is always schema.tablename
                 if (exists($pspec->{child}))
                 {
                     my $tname = $pspec->{child};
@@ -892,6 +982,7 @@ sub genpartdefs4
 
             my $cln_txt = "";
             my $xfr_txt = "";
+            my $xch_txt = "";
 
             $xfr_txt .= "insert into $newname select * from $kk;\n";
 
@@ -950,6 +1041,13 @@ sub genpartdefs4
                     }
 
                     $spec_txt .=  $tname . ")   \n";
+
+                    if (exists($pspec->{name}) && defined($pspec->{name}))
+                    {
+                        $xch_txt .= "alter table $newname " . 
+                            "exchange partition " . $pspec->{name} .
+                            " with table " . $tname . "; \n";
+                    }
 
                     # find oll the tables that are children of this table
                     $vv->{pby}->{children} = []
@@ -1052,6 +1150,7 @@ sub genpartdefs4
 
             $vv->{pby}->{cleanup_txt}  =  $cln_txt ;
             $vv->{pby}->{transfer_txt} =  $xfr_txt ;
+            $vv->{pby}->{exchange_txt} =  $xch_txt ;
 
             $vv->{pby}->{pby_txt} =  $pby_txt ;
             $vv->{pby}->{spec_txt} =  $spec_txt ;
@@ -1065,6 +1164,8 @@ sub genpartdefs4
 sub genpartdef_subtree_fixup
 {
     my ($reg_tabs, $pby) = @_;
+
+    my $magic_suffix = "XnewX";
 
     return
         unless (exists($pby->{children})
@@ -1141,6 +1242,52 @@ sub genpartdef_subtree_fixup
         $foo[$linnum+1] .= "\n" . $child_spec_txt;
 
         $foo[$linnum+1] .= "," if ($has_comma);
+
+        if (1)
+        {
+            # handle exchange in subpartitions
+
+            my $child_xch_txt = $reg_tabs->{$tname}->{pby}->{exchange_txt};
+
+            my $parent = $reg_tabs->{$tname}->{pby}->{parent};
+            my $pname;
+
+            # find the partition name for the tablename by scanning
+            # all the pspecs of the parent.
+            for my $psc (@{$reg_tabs->{$parent}->{pby}->{pspec}})
+            {
+                if ($psc->{subpartition} eq $tname)
+                {
+                    $pname = $psc->{name};
+                    last;
+                }
+            }
+
+            print STDERR "no partition for $tname\n "
+                unless (defined($pname));
+
+            my $t1 = "table $tname"  . "_" . $magic_suffix;
+            my $t2 = "table $parent" . "_" . $magic_suffix .
+                " alter partition $pname";
+         
+            $child_xch_txt =~ s/$t1/$t2/gm;
+
+            $reg_tabs->{$tname}->{pby}->{exchange_txt} =
+                "-- table $tname is partition $pname of $parent\n" . 
+                $child_xch_txt;
+
+            unless ($pby->{exchange_txt} =~ m/^\-\-/)
+            {
+                # comment out exchange for parent if has children
+                $pby->{exchange_txt} =~ s/^/\-\- /gm;
+                $pby->{exchange_txt} = 
+                    "-- exchange occurs in children\n" . $pby->{exchange_txt};
+
+            }
+
+        }
+        
+        
     }    
 
     $pby->{spec_txt} = join("\n", @foo);    
@@ -1169,17 +1316,29 @@ sub genpartdefs5
 sub printpartdefs
 {
     my $reg_tabs = shift;
+    my $phases = shift;
+
+    my $verzion = "unknown";
+    my $now = localtime;
+
+    if (q$Revision$ =~ /\d+/)
+    {
+        $verzion = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+    }
+        my $format_fix = << "EOF_formatfix";
+                                ))}
+EOF_formatfix
+    # NOTE: define $format_fix with HERE document just to fix emacs
+    # indenting due to comment char in Q expression...
+
+    $verzion = $0 . " version " . $verzion . ", " . $now;
+    print "-- upgrade script generated by $verzion\n";
+
 
     my @foo = sort(keys(%{$reg_tabs}));
 
-    my @phases;
 
-    push @phases, "CREATE";
-    push @phases, "XFR";
-#    push @phases, "CLN";
-
-
-    for my $ph (@phases)
+    for my $ph (@{$phases})
     {
         if ($ph =~ m/create/i)
         {
@@ -1190,9 +1349,14 @@ sub printpartdefs
             print "\n-- TRANSFER DATA TO PARTITIONED TABLES\n\n";
 
         }
+        elsif ($ph =~ m/xch/i)
+        {
+            print "\n-- EXCHANGE DATA TO PARTITIONED TABLES\n\n";
+
+        }
         elsif ($ph =~ m/cln/i)
         {
-
+            print "\n-- CLEANUP ORIGINAL TABLES\n\n";
         }
 
 
@@ -1227,6 +1391,20 @@ sub printpartdefs
                         unless (exists($vv->{pby}->{is_subpartition}));
 
                 }
+                elsif ($ph =~ m/xch/i)
+                {
+                    my $xch_txt = $vv->{pby}->{exchange_txt};
+
+                    print "\n", $xch_txt;
+
+                }
+                elsif ($ph =~ m/cln/i)
+                {
+                    my $cln_txt = $vv->{pby}->{cleanup_txt};
+
+                    print "\n", $cln_txt;
+                }
+
 
             } # end if pby
 
@@ -2592,7 +2770,7 @@ if (1)
     if ($glob_dosql)
     {
 #        update_catalog(\%reg_tabs);
-        printpartdefs(\%reg_tabs);
+        printpartdefs(\%reg_tabs, $glob_dosql);
     }
     else
     {
