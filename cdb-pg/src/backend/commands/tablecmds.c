@@ -16374,6 +16374,11 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 			locationExec = transformExecOnClause(exttypeDesc->on_clause);
 			commandString = exttypeDesc->command_string;
 			
+			if(strlen(commandString) == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Invalid EXECUTE clause. Found an empty command string")));
+
 			break;
 			
 		default:
