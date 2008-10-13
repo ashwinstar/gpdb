@@ -33,7 +33,7 @@ APR_DECLARE(void) gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_
 /**
  *
  */
-APR_DECLARE(void) gpdb_harvest(void);
+APR_DECLARE(apr_status_t) gpdb_harvest(void);
 
 
 #endif /* GPMONDB_H */

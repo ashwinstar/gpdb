@@ -41,6 +41,7 @@ struct {
     int m;
     int d;
     int harvest_interval;
+    apr_uint64_t tail_buffer_max;
 } opt = {0};
 
 int verbose = 0;		  /* == opt.v */
@@ -48,6 +49,7 @@ int very_verbose = 0;		  /* == opt.V */
 int quantum = 15;		  /* == opt.q */
 int min_query_time = 60;	  /* == opt.m */
 int min_detailed_query_time = 60; /* == opt.d */ 
+apr_status_t harvest_failure = 0;
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
 
@@ -56,6 +58,15 @@ int gpmmon_quantum(void)
     return opt.q;
 }
 
+apr_uint64_t gpmmon_tail_buffer_max()
+{
+    return opt.tail_buffer_max;
+}
+
+apr_status_t gpmmon_harvest_status()
+{
+    return harvest_failure;
+}
 
 static void usage(const char* msg)
 {
@@ -533,7 +544,7 @@ static void gpmmon_main(void)
 
 	/* every N quantums, run the harvest queries */
 	if (0 == (ax.gpmon_tick % opt.harvest_interval)) {
-	    gpdb_harvest();
+	    harvest_failure = gpdb_harvest();
 	}
 
 	if (31 == (ax.gpmon_tick % 32)) {
@@ -624,6 +635,10 @@ int read_conf_file(char *conffile)
                 /* can't use APR here as the pool is just temporary */
                 opt.log_dir = strdup(pVal);
             }
+            else if (apr_strnatcasecmp(pName, "tail_buffer_max") == 0)
+            {
+                opt.tail_buffer_max = apr_atoi64(pVal);
+            }
             /* TODO: Log rotation settings 
             else if (apr_strnatcasecmp(pName, "log_rotation_age") == 0)
             {
@@ -685,6 +700,11 @@ int read_conf_file(char *conffile)
     if (opt.harvest_interval < 30)
     {
         usage("Error: harvest_interval value must be greater than or equal to 30");
+    }
+
+    if (opt.tail_buffer_max == 0)
+    {
+        opt.tail_buffer_max = (1LL << 31); /* 2GB */
     }
 
     verbose = opt.v;

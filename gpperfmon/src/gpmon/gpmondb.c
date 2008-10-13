@@ -198,13 +198,14 @@ static apr_status_t do_rename(const char* tbl)
     return 0;
 }
 
-static void harvest(const char* tbl)
+static apr_status_t harvest(const char* tbl)
 {
     PGconn* conn = 0;
     PGresult* result = 0;
     char qrybuf[1024];
     const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
     const char* errmsg;
+    apr_status_t res = APR_SUCCESS;
 
     TR1(("---- HARVEST %s STARTED ---- \n", tbl));
     
@@ -212,25 +213,41 @@ static void harvest(const char* tbl)
     /* rename the file, e.g. queries_tail.dat -> _queries_tail.dat */
     if (0 != do_rename(tbl))  {
 	TR1(("---- HARVEST %s FAILED to rename ---- \n", tbl));
-	return;
+	return 1;
     }
 
     sprintf(qrybuf, QRYFMT, tbl, tbl);
     errmsg = gpdb_exec(&conn, &result, qrybuf);
     if (errmsg)
+    {
+        char src[200];
+        char dst[200];
+        sprintf(dst, "%s%s_tail.dat", GPMON_DIR, tbl);
+        sprintf(src, "%s_%s_tail.dat", GPMON_DIR, tbl);
+        /* import failed so put the file back.
+           We don't need to syncronize this as the writing
+           is done by the same thread that does the harvest */
+        rename(src, dst);
+        res = 1;
 	TR1(("---- HARVEST %s FAILED ---- \n", tbl));
+    }
     else
         TR1(("---- HARVEST %s OK ---- \n", tbl));
 
     PQclear(result);
     PQfinish(conn);
+    return res;
 }
 
 
-void gpdb_harvest(void)
+apr_status_t gpdb_harvest(void)
 {
-    harvest("system");
-    harvest("queries");
-    harvest("iterators");
-    harvest("database");
+    if ( harvest("system") != APR_SUCCESS
+         || harvest("queries") != APR_SUCCESS
+         || harvest("iterators") != APR_SUCCESS
+         || harvest("database") != APR_SUCCESS )
+    {
+        return 1;
+    }
+    return APR_SUCCESS;
 }
