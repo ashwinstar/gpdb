@@ -467,7 +467,7 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 
 	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Initalize");
 
-	if(gp_enable_gpmon)
+	if(gp_enable_gpperfmon)
 	{
 		if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
 			gpmon_send(&ps->gpmon_pkt);
@@ -481,7 +481,7 @@ void CheckSendPlanStateGpmonPkt(PlanState *ps)
 	if(!ps)
 		return;
 
-	if(gp_enable_gpmon)
+	if(gp_enable_gpperfmon)
 	{
 		if(ps->gpmon_plan_tick != gpmon_tick)
 		{
@@ -500,7 +500,7 @@ void EndPlanStateGpmonPkt(PlanState *ps)
 
 	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Finished");
 
-	if(gp_enable_gpmon)
+	if(gp_enable_gpperfmon)
 	{
 		if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
 			gpmon_send(&ps->gpmon_pkt);

@@ -272,7 +272,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
     	portal->gpmon_pkt.u.qlog.key.ssid = gp_session_id;
 
 	/* Command id is not setup yet */
-	if(gp_enable_gpmon)
+	if(gp_enable_gpperfmon)
 	{
 		const char *username;
 		char *dbname;
@@ -1152,7 +1152,7 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
 		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
-                if (gp_enable_gpmon)
+                if (gp_enable_gpperfmon)
                     gpmon_send(&p->gpmon_pkt);
 	}
 

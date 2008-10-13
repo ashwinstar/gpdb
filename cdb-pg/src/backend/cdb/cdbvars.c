@@ -226,7 +226,9 @@ bool		gp_disable_tuple_hints = false;
 int		gp_hashagg_compress_spill_files = 0;
 
 /* Gpmon */
-bool gp_enable_gpmon = false;
+bool gp_enable_gpperfmon = false;
+int gp_gpperfmon_send_interval = 1;
+
 /* Enable single-slice single-row inserts ?*/
 bool		gp_enable_fast_sri=true;
 

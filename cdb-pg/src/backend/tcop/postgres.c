@@ -902,7 +902,7 @@ exec_mpp_query(const char *query_string,
     querytree_list = list_make1(query);
     
     /* Log immediately if dictated by log_statement */
-	if(gp_enable_gpmon && !gp_mapreduce_define)
+	if(gp_enable_gpperfmon && !gp_mapreduce_define)
 	{
 		gpmon_gettmid(&tmid);
 		gpmon_record(tmid, gp_session_id, gp_command_count, 
@@ -1438,7 +1438,7 @@ exec_simple_query(const char *query_string)
 	/* Disable statement logging during mapreduce */
 	if (!gp_mapreduce_define)
 	{
-		if(gp_enable_gpmon)
+		if(gp_enable_gpperfmon)
 		{
 			gpmon_gettmid(&tmid);
 			gpmon_record(tmid, gp_session_id, gp_command_count, 

@@ -1867,12 +1867,12 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_gpmon", PGC_SUSET, LOGGING_WHAT,
-			gettext_noop("Enable gpmon logging."),
+		{"gp_enable_gpperfmon", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Enable gpperfmon logging."),
 			NULL,
 			GUC_GPDB_ADDOPT
 		},
-		&gp_enable_gpmon,
+		&gp_enable_gpperfmon,
 		false, NULL, NULL
 	},
 
@@ -2916,6 +2916,15 @@ static struct config_int ConfigureNamesInt[] =
 		300, 0, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"gp_gpperfmon_send_interval", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Interval in seconds between sending messages to gpperfmon."),
+			NULL
+		},
+		&gp_gpperfmon_send_interval,
+		1, 1, 3600, NULL, NULL
+	},
+		
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),

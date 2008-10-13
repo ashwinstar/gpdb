@@ -53,7 +53,7 @@ void gpmon_init(void)
 		Assert(sfunc == 0);
 	}
 
-	tv.it_interval.tv_sec = 1;
+	tv.it_interval.tv_sec = gp_gpperfmon_send_interval;
 	tv.it_interval.tv_usec = 0;
 	tv.it_value = tv.it_interval;
 	if (-1 == setitimer(ITIMER_VIRTUAL, &tv, 0)) {

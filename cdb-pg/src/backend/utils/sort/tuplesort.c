@@ -3366,7 +3366,7 @@ static void checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick)
 	if(!pkt)
 		return;
 
-	if(gp_enable_gpmon)
+	if(gp_enable_gpperfmon)
 	{
 		if(*tick != gpmon_tick)
 			gpmon_send(pkt);

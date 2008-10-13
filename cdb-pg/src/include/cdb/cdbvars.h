@@ -778,7 +778,9 @@ extern int gp_motion_slice_noop;
 extern bool gp_disable_tuple_hints;
 
 /* Enable gpmon */
-extern bool gp_enable_gpmon;
+extern bool gp_enable_gpperfmon;
+extern int gp_gpperfmon_send_interval;
+
 extern int gp_hashagg_compress_spill_files;
 
 /* Disable logging while creating mapreduce views */
