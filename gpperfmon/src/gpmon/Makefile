@@ -1,3 +1,5 @@
+CC=gcc
+
 BLD_TOP=$(shell echo `pwd`/../../../)
 include $(BLD_TOP)/Makefile.thirdparty
 
@@ -12,10 +14,10 @@ GPMMON_OBJS=gpmmon.o gpmondb.o gpmonlib.o gpmon_agg.o
 GPSMON_OBJS=gpsmon.o gpmonlib.o
 
 INCS=-I$(EXT_DIR)/include -I$(EXT_DIR)/include/apr-1 -I$(BLD_TOP)/cdb-pg/src/include -I$(LIBPQ_DIR)
-LIBS=-L$(EXT_DIR)/lib -lapr-1 -laprutil-1 -levent
+LIBS=-L$(EXT_DIR)/lib -lapr-1 -laprutil-1 -levent $$($(EXT_DIR)/bin/apr-1-config --libs) $$($(EXT_DIR)/bin/apu-1-config --libs)
 GPSMON_LIBS=
-GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq
-CFLAGS=$(OPT)
+GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm
+CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags)
 CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -DGPPERFMON_VERSION="$(GPPERFMON_VERSION)"
 
 ifeq (osx104_x86, $(BLD_ARCH))
@@ -28,6 +30,7 @@ gpsmon: $(GPSMON_OBJS)
 	$(CC) -o gpsmon $(GPSMON_OBJS) $(LIBS) $(GPSMON_LIBS)
 
 gpmmon: $(GPMMON_OBJS)
+	echo $(LIBS)
 	$(CC) -o gpmmon $(GPMMON_OBJS) $(LIBS) $(GPMMON_LIBS)
 
 %.o: %.c
