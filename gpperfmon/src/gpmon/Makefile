@@ -1,3 +1,4 @@
+SHELL=/bin/bash
 CC=gcc
 
 BLD_TOP=$(shell echo `pwd`/../../../)
