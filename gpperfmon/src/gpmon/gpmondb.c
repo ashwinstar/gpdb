@@ -42,7 +42,7 @@ int gpdb_get_gpmon_port(void)
     PGresult* result = 0;
     char* curport = 0;
     int rowcount;
-    const char* QUERY = "SELECT setting FROM pg_settings WHERE name = 'gpmon_port'";
+    const char* QUERY = "SELECT setting FROM pg_settings WHERE name = 'gpperfmon_port'";
     int port = 0;
     const char* errmsg = gpdb_exec(&conn, &result, QUERY);
     if (errmsg) {

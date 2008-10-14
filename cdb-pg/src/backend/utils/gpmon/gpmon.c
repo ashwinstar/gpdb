@@ -74,7 +74,7 @@ void gpmon_init(void)
 	memset(&gpmon.gxaddr, 0, sizeof(gpmon.gxaddr));
 	gpmon.gxaddr.sin_family = AF_INET;
 	gpmon.gxaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	gpmon.gxaddr.sin_port = htons(gpmon_port);
+	gpmon.gxaddr.sin_port = htons(gpperfmon_port);
 	gpmon.pid = pid;
 }
 

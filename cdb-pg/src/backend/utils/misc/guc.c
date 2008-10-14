@@ -2969,11 +2969,11 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gpmon_port", PGC_POSTMASTER, LOGGING,
-			gettext_noop("Sets the port number of pgmon."),
+		{"gpperfmon_port", PGC_POSTMASTER, LOGGING,
+			gettext_noop("Sets the port number of gpperfmon."),
 			NULL,
 		},
-		&gpmon_port,
+		&gpperfmon_port,
 		8888, 1024, 65535, NULL, NULL
 	},
 

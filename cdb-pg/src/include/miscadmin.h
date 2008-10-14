@@ -151,7 +151,7 @@ extern char pkglib_path[];
 extern char postgres_exec_path[];
 #endif
 
-extern DLLIMPORT int gpmon_port; 
+extern DLLIMPORT int gpperfmon_port; 
 
 /*
  * done in storage/backendid.h for now.

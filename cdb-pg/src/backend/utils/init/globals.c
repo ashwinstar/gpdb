@@ -111,8 +111,8 @@ bool		VacuumCostActive = false;
 
 int			GinFuzzySearchLimit = 0;
 
-/* Gpmon port number */
-int 	gpmon_port = 8888;
+/* gpperfmon port number */
+int 	gpperfmon_port = 8888;
 /* Memory protection GUCs*/
 int gp_vmem_protect_limit = 0;
 
