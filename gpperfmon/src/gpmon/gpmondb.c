@@ -60,7 +60,7 @@ int gpdb_get_gpmon_port(void)
     PQfinish(conn);
 
     if (!port) {
-	gpmon_fatal(FLINE, "Unable to retrieve gpmon_port GUC from GPDB\n");
+	gpmon_fatal(FLINE, "Unable to retrieve gpperfmon_port GUC from GPDB\n");
     }
     return port;
 }
