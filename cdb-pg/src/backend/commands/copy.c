@@ -2145,7 +2145,7 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 			))); \
 }
 
-static bool
+static void
 attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 			 unsigned int target_seg,
 			 AttrNumber p_nattrs, AttrNumber *attrs,
@@ -2153,7 +2153,6 @@ attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 			 FmgrInfo *in_functions, Oid *typioparams, Datum *values)
 {
 	AttrNumber p_index;
-	bool cur_row_rejected = false;
 
 	/*
 	 * Since we only need the internal format of values that
@@ -2196,19 +2195,10 @@ attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 				{
 					cstate->cur_attname = NameStr(attr_descs[m]->attname);
 
-					PG_TRY();
-					{
-						values[m] = InputFunctionCall(&in_functions[m],
-										  string,
-										  typioparams[m],
-										  attr_descs[m]->atttypmod);
-					}
-					PG_CATCH();
-					{
-						/* Got here? datum conversion error */
-						COPY_HANDLE_ERROR;
-					}
-					PG_END_TRY();
+					values[m] = InputFunctionCall(&in_functions[m],
+												  string,
+												  typioparams[m],
+												  attr_descs[m]->atttypmod);
 
 					cstate->cur_attname = NULL;
 				}		/* end if (!isnull) */
@@ -2218,7 +2208,6 @@ attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 			}
 		}		/* end foreach */
 	}			/* end for partitioning indexes */
-	return cur_row_rejected;
 }
 
 /*
@@ -2962,7 +2951,7 @@ CopyFromDispatch(CopyState cstate)
 				
 
 				/*
-				 * try to parse the data line attributes.
+				 * try to parse and convert the data line attributes.
 				 */
 				PG_TRY();
 				{
@@ -2970,10 +2959,19 @@ CopyFromDispatch(CopyState cstate)
 						CopyReadAttributesCSV(cstate, nulls, attr_offsets, num_phys_attrs, attr);
 					else
 						CopyReadAttributesText(cstate, nulls, attr_offsets, num_phys_attrs, attr);
+				
+					attr_get_key(cstate, cdbCopy,
+								 original_lineno_for_qe,
+								 target_seg,
+								 p_nattrs, policy->attrs,
+								 attr, attr_offsets, nulls,
+							   	 in_functions, typioparams,
+								 values);
+
 				}
 				PG_CATCH();
 				{
-					/* Got here? missing or extra column error occured */
+					/* Got here? missing or extra column error occurred */
 					COPY_HANDLE_ERROR;
 				}
 				PG_END_TRY();
@@ -2983,21 +2981,6 @@ CopyFromDispatch(CopyState cstate)
 					IF_REJECT_LIMIT_REACHED_ABORT;
 					QD_GOTO_NEXT_ROW;						
 				}
-
-				cur_row_rejected = attr_get_key(cstate, cdbCopy,
-												original_lineno_for_qe,
-												target_seg,
-												p_nattrs, policy->attrs,
-												attr, attr_offsets, nulls,
-											   	in_functions, typioparams,
-												values);
-
-				if(cur_row_rejected)
-				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
-					QD_GOTO_NEXT_ROW;						
-				}
-
 
 				/*
 				 * Now compute defaults for only:
@@ -3127,21 +3110,30 @@ CopyFromDispatch(CopyState cstate)
 						}
 					}
 					MemSet(part_values, 0, num_phys_attrs * sizeof(Datum));
-					cur_row_rejected = attr_get_key(cstate, cdbCopy,
-													original_lineno_for_qe,
-													target_seg,
-													part_attnums,
-													part_attnum,
-													attr, attr_offsets, nulls,
-												   	part_infuncs, part_typio,
-													part_values);
+					
+					PG_TRY();
+					{
+						attr_get_key(cstate, cdbCopy,
+									 original_lineno_for_qe,
+									 target_seg,
+									 part_attnums,
+									 part_attnum,
+									 attr, attr_offsets, nulls,
+									 part_infuncs, part_typio,
+									 part_values);
+					}
+					PG_CATCH();
+					{
+						/* Got here? datum conversion error */
+						COPY_HANDLE_ERROR;
+					}
+					PG_END_TRY();
 
 					if(cur_row_rejected)
 					{
 						IF_REJECT_LIMIT_REACHED_ABORT;
 						QD_GOTO_NEXT_ROW;	
 					}
-
 
 					/* values_get_partition() calls palloc() */
 					cxt_save = MemoryContextSwitchTo(oldcontext);

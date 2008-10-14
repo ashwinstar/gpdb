@@ -139,6 +139,13 @@ set gp_reject_percent_threshold = 10;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --fail
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
 
+-- MPP-2933 (multiple dist-key attr conversion errors)
+create table t2933 (col1 varchar(3) NULL , col2 char(1) NULL, col3 varchar(4) NULL, col4 char(1) NULL, col5 varchar(20) NULL) 
+Distributed By (col1, col2, col3, col4);
+COPY t2933 FROM STDIN DELIMITER '|' SEGMENT REJECT LIMIT 10;
+MANDT|SPRAS|BSART|BSTYP|BATXT
+\.
+
 -- cleanup
 DROP TABLE sreh_copy;
 DROP TABLE sreh_constr;

@@ -342,6 +342,11 @@ ERROR:  Segment reject limit reached. Aborting operation. Last error was: invali
 CONTEXT:  COPY sreh_copy, line 15: "BAD|1|1"
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
 NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
+-- MPP-2933 (multiple dist-key attr conversion errors)
+create table t2933 (col1 varchar(3) NULL , col2 char(1) NULL, col3 varchar(4) NULL, col4 char(1) NULL, col5 varchar(20) NULL) 
+Distributed By (col1, col2, col3, col4);
+COPY t2933 FROM STDIN DELIMITER '|' SEGMENT REJECT LIMIT 10;
+NOTICE:  Found 1 data formatting errors (1 or more input rows). Rejected related input data.
 -- cleanup
 DROP TABLE sreh_copy;
 DROP TABLE sreh_constr;
