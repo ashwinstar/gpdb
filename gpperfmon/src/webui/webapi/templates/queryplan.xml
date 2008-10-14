@@ -1,0 +1,27 @@
+$def with (tmid, ssid, ccnt, hostname, tab, ckeys, tree, node)
+<?xml version="1.0"?>
+<queryplan tmid="$tmid" ssid="$ssid" ccnt="$ccnt" hostname="$hostname">
+$ stack = [node]
+$ parent = stack[0]
+$ child = 0
+$while stack:
+    $while child < len(tree[parent]):
+        <iterator label="$tab[tree[parent][child]]['ntype']" nid="$tree[parent][child]">
+        <data>
+        $for c in ckeys:
+            <$c>$tab[tree[parent][child]][c]</$c>
+        </data>
+        $if tree[parent][child] in tree.keys():
+            $ parent = tree[parent][child]
+            $ child = 0
+            $ stack.append(parent)
+            $break
+        </iterator>
+        $ child = child + 1
+    $else:
+        $ child = parent
+        $ parent = stack.pop()
+        $if not stack:
+            $break
+        </iterator>
+</queryplan>
