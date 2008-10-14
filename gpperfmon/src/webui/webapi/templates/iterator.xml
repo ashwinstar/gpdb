@@ -1,0 +1,14 @@
+$def with (tmid, ssid, ccnt, nid, skeys, ckeys, tab)
+<?xml version="1.0"?>
+<iterator tmid="$tmid" ssid="$ssid" ccn="$ccnt" nid="$nid">
+$for s in skeys:
+    <segment id="$s">
+    $for c in ckeys:
+        <$c>
+        $ v = tab[s]
+        $ if not v: v = {}
+        $ v = v.get(c, '#')
+        $v
+        </$c>
+    </segment>
+</iterator>
