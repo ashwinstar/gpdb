@@ -830,7 +830,7 @@ exec_mpp_query(const char *query_string,
 	SliceTable *sliceTable = NULL;
     Slice      *slice = NULL;
 	ParamListInfo paramLI = NULL;
-	apr_int32_t tmid = 0;
+	
 
 	Assert(Gp_role == GP_ROLE_EXECUTE);
 
@@ -901,13 +901,7 @@ exec_mpp_query(const char *query_string,
         
     querytree_list = list_make1(query);
     
-    /* Log immediately if dictated by log_statement */
-	if(gp_enable_gpperfmon && !gp_mapreduce_define)
-	{
-		gpmon_gettmid(&tmid);
-		gpmon_record(tmid, gp_session_id, gp_command_count, 
-				"qtext", query_string);
-	}
+    
 
 	if (log_statement != LOGSTMT_NONE && !gp_mapreduce_define)
 	{
@@ -1438,7 +1432,7 @@ exec_simple_query(const char *query_string)
 	/* Disable statement logging during mapreduce */
 	if (!gp_mapreduce_define)
 	{
-		if(gp_enable_gpperfmon)
+		if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 		{
 			gpmon_gettmid(&tmid);
 			gpmon_record(tmid, gp_session_id, gp_command_count, 
@@ -1702,6 +1696,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
 	NodeTag		sourceTag = T_Query;
+	apr_int32_t tmid = 0;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1774,6 +1769,13 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
+	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+	{
+		gpmon_gettmid(&tmid);
+		gpmon_record(tmid, gp_session_id, gp_command_count, 
+					 "qtext", query_string);
+	}
+	
 	/*
 	 * We only allow a single user statement in a prepared statement. This is
 	 * mainly to keep the protocol simple --- otherwise we'd need to worry
