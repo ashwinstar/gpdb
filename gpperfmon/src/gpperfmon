@@ -21,8 +21,7 @@ Usage: gpperfmon -D <MASTER DATA DIRECTORY> --start|--stop|--restart|--status|--
 import os, sys, getopt, signal, time, socket
 
 script_name = os.path.split(__file__)[-1]
-# TODO: what's the real version number?
-script_version = '1.0.0'
+script_version = '2.0.0'
 
 # valid options
 valid_opts = "?D:"
@@ -339,28 +338,22 @@ def gpperfmon_setup():
     except OSError:
         pass #dir exists
 
-    # Web API configuration
-    print '----------------------------'
-    print 'UI and Web API Configuration'
-    print '----------------------------'
-    maxdp = get_int('Maximum number of data points the Web UI can return in one call [600]', 600, 10)
+    max_datapoints = 600
+    load_threshold = 2.00
+    cpu_threshold = 80
+    mem_threshold = 80
+    disk_threshold = 0
+    net_threshold = 0
+    cpu_skew_threshold = 100
 
+    gpperfmon_conf = generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, max_datapoints, 
+                                             load_threshold, cpu_threshold, mem_threshold, 
+                                             disk_threshold, net_threshold, cpu_skew_threshold)
 
-    print '\nThe monitoring GUI can highlight specific query or system metrics that exceed a certain'
-    print 'threshold.'
-
-    # TODO need get_float
-    loadt = get_int('Load2 threshold [2.00]', 2, 0)
-
-    cput = get_int('CPU usage threshold (percent) [80]', 80, 0)
-    memt = get_int('Memory usage threshold (percent) [80]', 80, 0)
-    diskt = get_int('Disk usage threshold (bytes) [0]', 0, 0)
-    nett = get_int('Network usage threshold (bytes) [10000]', 10000, 0)
-    cpuet = get_int('CPU elapsed threshold [70]', 70, 0)
-    cpuskewt = get_int('CPU skew threshold [100]', 100, 0)
-
-
-    gpperfmon_conf = generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, maxdp, loadt, cput, memt, diskt, nett, cpuet, cpuskewt)
+    # Web Server configuration
+    print '------------------------'
+    print 'Web Server Configuration'
+    print '------------------------'
     
     #lighty conf
     lighty_access_log = logloc + '/lighttpd-access.log'
@@ -421,10 +414,13 @@ def gpperfmon_setup():
 #################
 def lighty_version():
     ver_string = 'Unknown'
-    FILE = os.popen('lighttpd -v')
-    if FILE:
-        ver_string = FILE.readline().split(' ')[0]
-        FILE.close()
+    try:
+        FILE = os.popen('lighttpd -v')
+        if FILE:
+            ver_string = FILE.readline().split(' ')[0]
+            FILE.close()
+    except:
+        pass
     return ver_string
 
 
@@ -596,20 +592,26 @@ def generate_cert(destfile):
 #################
 def gpsmon_version():
     ver_string = 'Unknown'
-    FILE = os.popen('gpsmon --version')
-    if FILE:
-        ver_string = FILE.readline().split('"')[1]
-        FILE.close()
+    try:
+        FILE = os.popen('gpsmon --version')
+        if FILE:
+            ver_string = FILE.readline().split('\'')[1]
+            FILE.close()
+    except:
+        pass
     return ver_string
 
 
 #################
 def gpmmon_version():
     ver_string = 'Unknown'
-    FILE = os.popen('gpmmon --version')
-    if FILE:
-        ver_string = FILE.readline().split('"')[1]
-        FILE.close()
+    try:
+        FILE = os.popen('gpmmon --version')
+        if FILE:
+            ver_string = FILE.readline().split('\'')[1]
+            FILE.close()
+    except:
+        pass
     return ver_string
 
 
@@ -667,7 +669,7 @@ def gpmmon_status():
 
 #################
 def generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, max_dp, loadt,
-                            cput, memt, diskt, nett, cpuet, cpuskewt):
+                            cput, memt, diskt, nett, cpuskewt):
     return '''[GPMMON]
 quantum=%d
 min_query_time=%d
@@ -686,9 +688,8 @@ disk_threshold=%d
 network_threshold=%d
 
 [QUERY METRICS]
-cpu_elapsed_threshold=%d
 skew_cpu_threshold=%d
-''' % (quantum, minqt, mindqt, logloc, max_dp, loadt, cput, memt, diskt, nett, cpuet, cpuskewt)
+''' % (quantum, minqt, mindqt, logloc, max_dp, loadt, cput, memt, diskt, nett, cpuskewt)
 
 
 #################
