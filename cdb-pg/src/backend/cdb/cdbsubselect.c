@@ -468,6 +468,443 @@ convert_sublink_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublin
     return result;
 }                               /* convert_sublink_to_join */
 
+/* NOTIN subquery transformation -start */
+
+/* check if NOT IN conversion to antijoin is possible */
+static bool
+safe_to_convert_NOTIN(SubLink * sublink)
+{
+	Query	   *subselect = (Query *) sublink->subselect;
+	Relids		left_varnos;
+
+	/* cases we don't currently handle are listed below. */
+
+	/* ARRAY sublinks have empty test expressions */
+	if (sublink->testexpr == NULL)
+		return false;
+
+	/* OR expressions are not handled */
+	if (!IsA(sublink->testexpr, OpExpr) &&
+		!and_clause(sublink->testexpr))
+		return false;
+
+	/* No volatile functions in the subquery */
+	if (contain_volatile_functions(sublink->testexpr))
+		return false;
+
+	/* Left-hand expressions must contain some Vars of the current */
+	left_varnos = pull_varnos(sublink->testexpr);
+	if (bms_is_empty(left_varnos))
+		return false;
+
+	/* Correlation - subquery referencing Vars of parent not handled */
+	if (contain_vars_of_level((Node *) subselect, 1))
+		return false;
+
+	/* No set operations in the subquery */
+	if (subselect->setOperations)
+		return false;
+
+	/* No more than one outer relation reference in the test expression */
+	if (bms_num_members(left_varnos) != 1)
+		return false;
+
+	return true;
+}
+
+/*
+ * Given fromlist of a jointree, locate and return a jointree node with the
+ * given rtindex. We assume this has got to be either a RangeTblRef or a
+ * JoinExpr. In the JoinExpr case, we may have to recurse to find the reference.
+ */
+static Node *
+get_fromlist_item(Node *jtnode, int rtindx)
+{
+	Node	   *match = NULL;
+
+	if (IsA(jtnode, FromExpr))
+	{
+		List	   *fromlist = ((FromExpr *) jtnode)->fromlist;
+		ListCell   *curr;
+
+		foreach(curr, fromlist)
+		{
+			Node	   *flnode = (Node *) lfirst(curr);
+
+			match = get_fromlist_item(flnode, rtindx);
+			if (match)
+				break;
+		}
+	}
+	else if (IsA(jtnode, JoinExpr))
+	{
+		JoinExpr   *jexpr = (JoinExpr *) jtnode;
+
+		if (jexpr->rtindex == rtindx)
+			match = (Node *) jexpr;
+		else
+		{
+			Node	   *l_match = get_fromlist_item(jexpr->larg, rtindx);
+			Node	   *r_match = get_fromlist_item(jexpr->rarg, rtindx);
+			if (l_match || r_match)
+				match = jtnode;
+		}
+	}
+	else if (IsA(jtnode, RangeTblRef))
+	{
+		RangeTblRef *rtr = (RangeTblRef *) jtnode;
+
+		if (rtr->rtindex == rtindx)
+			match = (Node *) rtr;
+	}
+	return match;
+}
+
+
+/*
+ * Find if the supplied targetlist has any resjunk
+ * entries. We only have to check the tail since
+ * resjunks (if any) can only appear in the end.
+ */
+static bool inline
+has_resjunk(List *tlist)
+{
+	bool		resjunk = false;
+	Node	   *tlnode = (Node *) (lfirst(tlist->tail));
+
+	if (IsA(tlnode, TargetEntry))
+	{
+		TargetEntry *te = (TargetEntry *) tlnode;
+
+		if (te->resjunk)
+			resjunk = true;
+	}
+	return resjunk;
+}
+
+/* add a dummy constant var to the end of the supplied list */
+static List *
+add_dummy_const(List *tlist)
+{
+	TargetEntry *dummy;
+	Const	   *zconst;
+	int			resno;
+
+	zconst = makeConst(INT4OID, sizeof(int32), (Datum) 0,
+					   false, true);	/* isnull, byval */
+	resno = list_length(tlist) + 1;
+	dummy = makeTargetEntry((Expr *) zconst,
+							resno,
+							"zero",
+							false /* resjunk */);
+
+	if (tlist == NIL)
+		tlist = list_make1(dummy);
+	else
+		tlist = lappend(tlist, dummy);
+
+	return tlist;
+}
+
+/* Add a dummy variable to the supplied target list. The
+ * variable is added to end of targetlist but before all
+ * resjunk vars (if any). The caller should make use of
+ * the returned targetlist since this code might modify
+ * the list in-place.
+ */
+static List *
+mutate_targetlist(List *tlist)
+{
+	List	   *new_list = NIL;
+
+	if (has_resjunk(tlist))
+	{
+		ListCell   *prev = NULL;
+		ListCell   *curr = NULL;
+		bool		junk = false;
+
+		foreach(curr, tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(curr);
+
+			if (tle->resjunk)
+			{
+				tle->resno = tle->resno + 1;
+				if (!junk)
+				{
+					junk = true;
+					new_list = add_dummy_const(new_list);
+				}
+			}
+			new_list = lappend(new_list, tle);
+			prev = curr;
+		}
+	}
+	else
+	{
+		new_list = tlist;
+		new_list = add_dummy_const(new_list);
+	}
+	return new_list;
+}
+
+/* Pulls up the subquery into the top-level range table.
+ * Before that add a dummy column zero to the target list
+ * of the subquery.
+ */
+static int
+add_notin_subquery_rte(Query * parse, Query * subselect)
+{
+	RangeTblEntry *subq_rte;
+	int			subq_indx;
+
+	subselect->targetList = mutate_targetlist(subselect->targetList);
+	subq_rte = addRangeTableEntryForSubquery(NULL, /* pstate */
+											 subselect,
+											 makeAlias("NotIn_SUBQUERY", NIL),
+											 false /* inFromClause */);
+	parse->rtable = lappend(parse->rtable, subq_rte);
+
+	/* assume new rte is at end */
+	subq_indx = list_length(parse->rtable);
+	Assert(subq_rte = rt_fetch(subq_indx, parse->rtable));
+
+	return subq_indx;
+}
+
+/*
+ * Add a JOIN_LEFT join RTE entry to the top level range table
+ * for NOT IN subquery flattening.
+ */
+static int
+add_join_rte(Query * parse, int l_rtindex, int r_rtindex, int join_type)
+{
+	int			join_indx;
+	List	   *l_colnames,
+			   *r_colnames,
+			   *j_colnames,
+			   *l_colvars,
+			   *r_colvars,
+			   *j_colvars;
+	RangeTblEntry *l_rte,
+			   *r_rte,
+			   *join_rte;
+
+	l_rte = rt_fetch(l_rtindex, parse->rtable);
+	r_rte = rt_fetch(r_rtindex, parse->rtable);
+
+	expandRTE(l_rte, l_rtindex, 0, false,
+			  &l_colnames, &l_colvars);
+	expandRTE(r_rte, r_rtindex, 0, false,
+			  &r_colnames, &r_colvars);
+
+	/* make list of column names and vars to be output by the join */
+	j_colnames = list_concat(l_colnames, r_colnames);
+	j_colvars = list_concat(l_colvars, r_colvars);
+
+	join_rte = addRangeTableEntryForJoin(NULL, /* pstate */
+										 j_colnames,
+										 join_type,
+										 j_colvars,
+										 NULL,	/* alias */
+										 false /* inFromClause */ );
+
+	parse->rtable = lappend(parse->rtable, join_rte);
+
+	/* assume new rte is at end */
+	join_indx = list_length(parse->rtable);
+	Assert(join_rte = rt_fetch(join_indx, parse->rtable));
+
+	return join_indx;
+}
+
+/* Create a join expression linking the supplied larg node
+ * with the pulled up NOT IN subquery located at r_rtindex
+ * in the range table. The appropriate JOIN_RTE has already
+ * been created by the caller and can be located at j_rtindex
+ */
+static JoinExpr *
+make_join_expr(Node *larg, int r_rtindex, int j_rtindex, int join_type)
+{
+	JoinExpr   *jexpr;
+	RangeTblRef *rhs;
+
+	rhs = makeNode(RangeTblRef);
+	rhs->rtindex = r_rtindex;
+
+	jexpr = makeNode(JoinExpr);
+	jexpr->jointype = join_type;
+	jexpr->isNatural = false;
+	jexpr->larg = larg;
+	jexpr->rarg = (Node *) rhs;
+	jexpr->rtindex = j_rtindex;
+
+	return jexpr;
+}
+
+/* Convert subquery's test expr to a suitable predicate.*/
+static Node *
+make_join_on_quals(SubLink * sublink, int subquery_indx)
+{
+	BooleanTest *btest;
+	Expr	   *join_pred;
+	Query	   *subselect = (Query *) sublink->subselect;
+	List	   *subtlist = NIL;
+
+	join_pred = (Expr *) convert_testexpr(sublink->testexpr,
+										  subquery_indx,
+										  &subtlist,
+										  subselect->targetList);
+	Assert(join_pred != NULL);
+	btest = makeNode(BooleanTest);
+	btest->arg = join_pred;
+	btest->booltesttype = IS_NOT_FALSE;
+	return (Node *) btest;
+}
+
+
+/* Go through a jointree's fromlist entries and delete an entry
+ * that matches the supplied delnode. This can only be a
+ * RangeTblRef or a JoinExpr. See also resolvenew_in_jointree()
+ */
+static List *
+remove_fromlist_item(List *fromlist, Node *delnode)
+{
+	ListCell   *prev = NULL;
+	ListCell   *curr = NULL;
+
+	foreach(curr, fromlist)
+	{
+		Node	   *jtnode = (Node *) lfirst(curr);
+
+		if (equal(jtnode, delnode))
+		{
+			fromlist = list_delete_cell(fromlist, curr, prev);
+			break;
+		}
+		prev = curr;
+	}
+	return fromlist;
+}
+
+/* Create a null test. */
+static Expr *
+make_notin_quals(List *rtable, int j_rtindex)
+{
+	RangeTblEntry *j_rte;
+	Var		   *dummy;
+	NullTest   *null_test;
+	List	   *j_colnames,
+			   *j_colvars;
+
+	j_rte = rt_fetch(j_rtindex, rtable);
+	expandRTE(j_rte, j_rtindex, 0, false,
+			  &j_colnames, &j_colvars);
+
+	null_test = makeNode(NullTest);
+	null_test->nulltesttype = IS_NULL;
+	dummy = (Var *) list_nth(j_colvars, list_length(j_colvars) - 1);
+	null_test->arg = (Expr *) dummy;
+
+	return (Expr *) null_test;
+}
+
+/*
+ * convert_NOIN_to_join: can we convert an NOT IN SubLink to join style?
+ * If not appropriate to process this SubLink in join style, return NULL.
+ * Side effects of a successful conversion include adding the SubLink's
+ * subselect to the top-level rangetable, adding a JOIN RTE linking the outer
+ * query with the subselect and setting up the qualifiers correctly.
+ *
+ * The transformation is to rewrite a query of the form:
+ *		select c1 from t1 where c1 NOT IN (select c2 from t2);
+ *						(to)
+ *		select c1 from t1 left join (select 0 as zero, c2 from t2) foo
+ *						  ON (c1 = c2) IS NOT FALSE where zero is NULL;
+ *
+ * The pseudoconstant column zero is needed to correctly pipe in the NULLs
+ * from the subselect upstream.
+ */
+static Node *
+convert_IN_to_antijoin(PlannerInfo * root, SubLink * sublink)
+{
+	Expr	   *quals = make_notclause((Expr *) sublink);
+	Query	   *parse = root->parse;
+	Query	   *subselect = (Query *) sublink->subselect;
+	int			join_type = JOIN_LEFT;
+
+	if (safe_to_convert_NOTIN(sublink))
+	{
+		Relids		left_varnos = pull_varnos(sublink->testexpr);
+		int			larg_indx = bms_singleton_member(left_varnos);
+		Node	   *larg = get_fromlist_item((Node *) parse->jointree, larg_indx);
+
+		Assert(larg != NULL);
+
+		if (larg != NULL)
+		{
+			int			subq_indx = add_notin_subquery_rte(parse, subselect);
+			int			join_indx = add_join_rte(parse, larg_indx, subq_indx, join_type);
+
+			JoinExpr   *join_expr = make_join_expr(larg, subq_indx, join_indx, join_type);
+
+			join_expr->quals = make_join_on_quals(sublink, subq_indx);
+
+			parse->jointree->fromlist = lappend(parse->jointree->fromlist, join_expr);
+			parse->jointree->fromlist = remove_fromlist_item(parse->jointree->fromlist, larg);
+
+			quals = make_notin_quals(parse->rtable, join_indx);
+		}
+	}
+
+	return (Node *) quals;
+}
+
+/*
+ * convert_sublink_to_antijoin
+ * The caller is passing us a sublink that appeared under a NOT operator.
+ * See if the sublink can be flattened to an antijoin. If not, return
+ * the negated version of the sublink (Note: This is keeping in line with
+ * how NOTs are handled in other parts of the code base see push_nots for
+ * instance)
+ */
+static Node *
+convert_sublink_to_antijoin(PlannerInfo * root, SubLink * sublink)
+{
+	Node	   *result = (Node *) make_notclause((Expr *) sublink);
+	Query	   *subselect = (Query *) sublink->subselect;
+
+	Assert(IsA(sublink, SubLink) &&
+		   IsA(subselect, Query));
+
+	switch (sublink->subLinkType)
+	{
+		case EXISTS_SUBLINK:
+			break;
+
+		case ALL_SUBLINK:
+			break;
+
+		case ANY_SUBLINK:
+			cdbsubselect_drop_orderby(subselect);
+			result = convert_IN_to_antijoin(root, sublink);
+			break;
+
+		case ROWCOMPARE_SUBLINK:
+		case EXPR_SUBLINK:
+			break;
+
+		case ARRAY_SUBLINK:
+			break;
+
+		default:
+			Insist(0);
+	}
+	return result;
+}
+
+/* NOTIN -end */
+
 
 /*
  * pull_up_IN_clauses
@@ -519,6 +956,20 @@ pull_up_IN_clauses(PlannerInfo *root, List** rtrlist_inout, Node *node)
                 newclauses = lappend(newclauses, newclause);
 		}
 		return (Node *)make_ands_explicit(newclauses);
+	}
+	if (not_clause(node))
+	{
+		Node	   *notin = (Node *) get_notclausearg((Expr *) node);
+
+		if (IsA(notin, SubLink))
+		{
+			SubLink    *sublink = (SubLink *) notin;
+			Node	   *subst;
+
+			/* Is it a convertible NOT IN clause?  If not, return the negated sublink.*/
+			subst = convert_sublink_to_antijoin(root, sublink);
+			return subst;
+		}
 	}
 	/* Stop if not an AND */
 	return node;

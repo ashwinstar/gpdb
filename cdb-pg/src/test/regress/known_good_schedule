@@ -126,3 +126,4 @@ test: gpctas
 test: gpdist
 test: matrix
 test: gpdtm_plpgsql
+test: notin
