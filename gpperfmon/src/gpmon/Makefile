@@ -25,6 +25,10 @@ ifeq (osx104_x86, $(BLD_ARCH))
 	GPSMON_LIBS=-framework CoreServices -framework IOKit
 endif
 
+ifeq (sol,$(findstring sol,$(BLD_ARCH)))
+	GPSMON_LIBS+=-lkstat
+endif
+
 GPSMON_LIBS+= -lm -lsigar
 
 gpsmon: $(GPSMON_OBJS)

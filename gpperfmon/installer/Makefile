@@ -1,3 +1,4 @@
+SHELL=/bin/bash
 GPMON_DIR=../src/gpmon
 
 all:
