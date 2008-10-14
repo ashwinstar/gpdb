@@ -1,16 +1,23 @@
 import os, sys, datetime, time
+import gpmonws
 
 SECONDS_PER_MINUTE=60
 SECONDS_PER_HOUR=3600
 SECONDS_PER_DAY=86400
-max_data_points = 600
+
+# default maximum data points
+max_data_points = 465
+
 
 def check(start, end, interval):
-    # convert time into datetime 
-    (y, m, d, hr, min, sec) = time.strptime(start, '%Y-%m-%d %H:%M:%S')[:6]
-    start_date = datetime.datetime(y, m, d, hr, min, sec)
-    (y, m, d, hr, min, sec) = time.strptime(end, '%Y-%m-%d %H:%M:%S')[:6]
-    end_date = datetime.datetime(y, m, d, hr, min, sec)
+    try:
+        # convert time into datetime 
+        (y, m, d, hr, min, sec) = time.strptime(start, '%Y-%m-%d %H:%M:%S')[:6]
+        start_date = datetime.datetime(y, m, d, hr, min, sec)
+        (y, m, d, hr, min, sec) = time.strptime(end, '%Y-%m-%d %H:%M:%S')[:6]
+        end_date = datetime.datetime(y, m, d, hr, min, sec)
+    except ValueError:
+        return None
 
     # convert to seconds
     start_seconds = time.mktime(start_date.timetuple())
