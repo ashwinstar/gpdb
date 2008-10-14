@@ -251,10 +251,6 @@ class system:
         sys.stderr.write("\nSYSTEM:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
@@ -293,6 +289,7 @@ class system:
         (tkeys, hkeys, ckeys, tab) = res
 
         # check if the result set is empty
+        stime = ''
         if ckeys:
             if tkeys:
                 stime = tkeys[0]; etime = tkeys[-1]
