@@ -11,6 +11,8 @@ except ImportError:
     sys.stderr.write("gpload needs pyyaml.  You can get it from http://pyyaml.org.\n")
     sys.exit(2)
 
+sys.path.append(sys.path[0]+'/lib')
+
 try:
     import pg8000
 except ImportError:
@@ -105,28 +107,44 @@ class gpload:
 	self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
 	self.cleanupSql = []
 	while argv:
-	    if argv[0]=='-h':
-		self.options.h = argv[1]
-		argv = argv[2:]
-	    elif argv[0]=='-p':
-		self.options.p = int(argv[1])
-		argv = argv[2:]
-	    elif argv[0]=='-U':
-		self.options.U = argv[1]
-		argv = argv[2:]
-	    elif argv[0]=='-d':
-		self.options.d = argv[1]
-		argv = argv[2:]
-	    else:
-		break
+	    try:
+		try:
+		    if argv[0]=='-h':
+			self.options.h = argv[1]
+			argv = argv[2:]
+		    elif argv[0]=='-p':
+			self.options.p = int(argv[1])
+			argv = argv[2:]
+		    elif argv[0]=='-U':
+			self.options.U = argv[1]
+			argv = argv[2:]
+		    elif argv[0]=='-d':
+			self.options.d = argv[1]
+			argv = argv[2:]
+		    else:
+			break
+		except IndexError:
+		    sys.stderr.write("Option %s needs a parameter.\n"%argv[0])
+		    sys.exit(2)
+	    except ValueError:
+		sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
+		sys.exit(2)
 	if len(argv)!=1:
 	    usage()
-	f = open(argv[0],'r')
-	self.config = yaml.load(f.read())
+	try:
+	    f = open(argv[0],'r')
+	except IOError,e:
+	    sys.stderr.write("Could not open the config file.\n%s\n"%e)
+	    sys.exit(2)
+	try:
+	    self.config = yaml.load(f.read())
+	except yaml.scanner.ScannerError,e:
+	    sys.stderr.write("YAML error in config file.\n%s\n"%e)
+	    sys.exit(2)
 	f.close()
 	self.logfile = None
 	self.subprocesses = []
-	logfile = self.getconfig('gpload:logfile',str)
+	logfile = self.getconfig('gpload:logfile',str,None)
 	if logfile!=None:
 	    self.logfile = open(logfile,'a')
 
@@ -136,35 +154,31 @@ class gpload:
 	    self.logfile.write(a)
 	sys.stdout.write(a)
 
-    def getconfig(self,a,typ=None,default='error'):
+    def getconfig(self,a,typ=None,default='error',config=None,prefix=''):
 	s = a.split(':')
 	b = []
-	c = self.config
+	config = config or self.config
 	for i in xrange(len(s)):
-	    if type(c)!=dict or s[i] not in c:
+	    if type(config)!=dict or s[i] not in config:
 		if default=='error':
-		    self.log("Configuration must contain--")
-		    for j in xrange(i+1):
-			self.log('    '*j+s[j]+':')
+		    self.log("Configuration must contain %s."%(prefix+a))
 		    sys.exit(2)
 		return default
-	    c = c[s[i]]
-	if typ!=None and type(c)!=typ:
+	    config = config[s[i]]
+	if typ!=None and type(config)!=typ:
 	    if typ==list:
-		self.log("This configuration must be a sequence--")
+		self.log("This configuration must be a sequence--%s."%(prefix+a))
 	    elif typ==dict:
-		self.log("This configuration must be a mapping--")
+		self.log("This configuration must be a mapping--%s."%(prefix+a))
 	    elif typ==str:
-		self.log("This configuration must be a scalar string--")
+		self.log("This configuration must be a string--%s."%(prefix+a))
 	    elif typ==int:
-		self.log("This configuration must be a scalar integer--")
+		self.log("This configuration must be an integer--%s."%(prefix+a))
 	    else:
 		assert 0
-	    for j in xrange(i+1):
-		self.log('    '*j+s[j]+':')
-	    self.log("It is %s"%type(c))
+	    self.log("It is %s"%type(config))
 	    sys.exit(2)
-	return c
+	return config
 
     def read_config(self):
 	self.table = self.getconfig('gpload:into:connection:table',str)
@@ -184,20 +198,29 @@ class gpload:
 	    sources = [sources]
 	ports = []
 	for source in sources:
-	    ipaddr = source.get('ipaddr',socket.gethostname())
+	    ipaddr = self.getconfig('ipaddr',str,socket.gethostname(),source,'gpload:from:source:')
 	    if type(ipaddr)!=list:
 		ipaddr = [ipaddr]
 	    if 'port' in source:
-		startPort = endPort = source['port']
+		startPort = endPort = self.getconfig('port',int,'error',source,'gpload:from:source:')
 	    elif 'portrange' in source:
-		startPort = source['portrange'][0]
-		endPort = source['portrange'][1]
+		portrange = self.getconfig('portrange',list,'error',source,'gpload:from:source:')
+		try:
+		    startPort = int(portrange[0])
+		    endPort = int(portrange[1])
+		except (IndexError,ValueError):
+		    self.log("gpload:from:source:portrange must be a sequence of two integers.")
+		    sys.exit(2)
 	    else:
 		startPort = 8000
 		endPort = 9000
-	    infile = source.get('infile')
+	    infile = self.getconfig('infile',None,'error',source,'gpload:from:source:')
 	    if type(infile)!=list:
 		infile = [infile]
+	    for i in infile:
+		if type(i)!=str:
+		    self.log("gpload:from:source:infile must be a string or a sequence of strings.")
+		    sys.exit(2)
 	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort),'-f',' '.join(infile)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 	    self.subprocesses.append(a)
 	    t = CatThread(self,a.stderr)
@@ -223,13 +246,20 @@ class gpload:
 	self.threads.append(t)
 
     def setup_connection(self):
-	self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
+	try:
+	    self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
+	except pg8000.errors.InterfaceError,e:
+	    self.log("Could not connect to database.\n%s"%e)
+	    sys.exit(2)
 
     def read_columns(self):
 	columns = self.getconfig('gpload:from:columns',list,None)
 	if columns!=None:
 	    self.from_columns = []
 	    for d in columns:
+		if type(d)!=dict:
+		    self.log("gpload:from:columns must be a sequence of mappings.")
+		    sys.exit(2)
 		key = d.keys()[0].lower()
 		self.from_columns.append([key,d[key],None])
 	else:
@@ -273,6 +303,9 @@ class gpload:
 		    a[2] = a[0]
 	else:
 	    for key,value in mapping.iteritems():
+		if type(key)!=str or type(value)!=str:
+		    self.log('gpload:into:mapping must be a mapping from strings to strings.')
+		    sys.exit(2)
 		try:
 		    i = map(lambda a:a[0],self.into_columns).index(key.lower())
 		except ValueError:
@@ -301,6 +334,10 @@ class gpload:
 	    sql += "escape as%s"%quote(self.getconfig('gpload:from:format:escape',str))
 	force_not_null_columns = self.getconfig('gpload:from:format:force_not_null_columns',list,[])
 	if force_not_null_columns:
+	    for i in force_not_null_columns:
+		if type(i)!=str:
+		    self.log('gpload:from:format:force_not_null_columns must be a sequence of strings.')
+		    sys.exit(2)
 	    sql += "force not null %s "%','.join(force_not_null_columns)
 	sql += ")"
 	sql += "encoding%s"%quote(self.getconfig('gpload:from:format:encoding',str))
@@ -317,7 +354,11 @@ class gpload:
 	if len(rows):
 	    self.log(len(rows)==1 and '1 bad row' or "%d bad rows"%len(rows))
 	    self.exitValue = 1
-	    f = open(self.getconfig('gpload:errors:errorfile',str),'w')
+	    try:
+		f = open(self.getconfig('gpload:errors:errorfile',str),'w')
+	    except IOError,e:
+		sys.stderr.write("Could not open the error file.\n%s\n"%e)
+		sys.exit(2)
 	    f.write(self.format_rows(rows))
 	    f.close()
 	else:
@@ -362,6 +403,9 @@ class gpload:
     def map_stuff(self,config,format,index):
 	lis = []
 	for i in self.getconfig(config,list):
+	    if type(i)!=str:
+		self.log('%s must be a sequence of strings.'%config)
+		sys.exit(2)
 	    j = self.into_columns_dict.get(i.lower())
 	    if not j:
 		self.log('Column %s in %s does not exist.'%(i,config))
@@ -456,11 +500,13 @@ class gpload:
 		    traceback.print_exc(file=self.logfile)
 		raise
 	finally:
+	    self.log('Removing temporary stuff.')
 	    for a in self.cleanupSql:
 		try:
 		    self.pg8000.execute(a)
 		except pg8000.errors.ProgrammingError:
 		    pass
+	    self.log('Killing gpfdist.')
 	    for a in self.subprocesses:
 		try:
 		    os.kill(a.pid,signal.SIGTERM)
