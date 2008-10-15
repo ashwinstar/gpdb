@@ -6,6 +6,7 @@ include $(BLD_TOP)/Makefile.thirdparty
 GPMON_DIR=../src/gpmon
 GPMONWS_DIR=../src/webui/webapi
 GPMONUI_DIR=../src/webui/flexGUI
+GPMONDOCS_DIR=../docs/release
 LIGHTY_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/lighttpd-1.4.19/
 GPPERFMON_VERSION=$$(< $(BLD_TOP)/gpperfmon/VERSION)
 PACKAGE_ARCH=
@@ -54,6 +55,7 @@ all:
 	cp -R $(GPMONWS_DIR)/* .tmp/www
 	cp -R $(GPMONUI_DIR)/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
+	cp $(GPMONDOCS_DIR)/GPMonGuide.pdf .tmp/docs
 	./generate-gpperfmon-path.sh > .tmp/gpperfmon_path.sh
 	cd .tmp && tar cvf ../greenplum-perfmon.tar *
 	gzip greenplum-perfmon.tar
