@@ -9,8 +9,8 @@ pgpass = os.environ.get('PGPASSWORD', '')
 pgport = os.environ.get('PGPORT', '5432')
 pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
+path = os.environ.get('MASTER_DATA_DIRECTORY') + '/gpperfmon/data'
 
-path = '/Users/rmaximo/gproot/greenplum-db-devel/data/qd/gp-1/gpperfmon/data'
 agg_func = 'avg'
 
 try:
