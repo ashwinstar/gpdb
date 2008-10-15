@@ -574,7 +574,7 @@ class GPUpgrade:
         conn = None
         try:
             conn = pg8000.Connection(user=user,
-                                     host=self.host,
+                                     host='localhost',
                                      database=db, 
                                      options=options,
                                      port=port,
@@ -647,7 +647,7 @@ class GPUpgrade:
         conn = None
         try:
             conn = pg8000.Connection(user=user, 
-                                     host=self.host,
+                                     host='localhost',
                                      database=db, 
                                      options=options,
                                      port=port,
@@ -954,18 +954,40 @@ class GPUpgrade:
                 sys.exit(1)
 
             # Extract from gp_init_config
+            declare_re = '^declare\s+-a\s+([^= \t]*)\s*=\s*\(\s*(.*)'
             config = self.RunCmd('cat ' + initfile)
             datadirs = set()
+            gathering = False
             for line in config.split('\n'):
-                (field, value) = line.split('=')
-                if field == 'declare -a DATA_DIRECTORY':
-                    field = 'DATA_DIRECTORY'
-                    value = value[1:-1].split(' ')
+                line = line.strip()
+
+                if not gathering:
+                    m = declare_re.match(line)
+                    if m:
+                        field = m.group(1)
+                        stuff = m.group(2).strip()
+                        if stuff[-1] == ')':
+                            value = stuff[:-1]
+                        else:
+                            value = stuff + ' '
+                            gathering = True
+                    else:
+                        (field, value) = line.split('=')
+                elif line[-1] == ')':
+                    value = value.split()
+                    gathering = False
+                else:
+                    value += line + ' '
+
+                if field in ['DATA_DIRECTORY', 'MIRROR_DATA_DIRECTORY']:
+                    value = value.split()
                     datadirs = datadirs | set(value)
-                if field == 'declare -a MIRROR_DATA_DIRECTORY':
-                    field = 'MIRROR_DATA_DIRECTORY'
-                    value = value[1:-1].split(' ')
-                    datadirs = datadirs | set(value)
+                if field in ['PRIMARY_ARRAY', 'MIRROR_ARRAY']:
+                    x_re = '[^:]+:\d+:([^:]+):\d+:\d+'
+                    value = value.split()
+                    dir = map(lambda x: x_re.match(x).group(1), value)
+                    datadirs = datadirs | set(dir)
+
                 self.config[field] = value
 
             # remove final "/upgrade" from all the paths and convert to a 
@@ -1332,7 +1354,7 @@ tool shipped with that release''')
 
         # Look for an existing user named MIGRATIONUSER
         upgradeuser = self.Select(
-            "SELECT count(*) FROM pg_user WHERE usename = '%s'" % MIGRATIONUSER)
+            "SELECT count(*)::numeric FROM pg_user WHERE usename = '%s'" % MIGRATIONUSER)
         if upgradeuser[0] > 0:
             self.Log('WARN', "Database user '%s' already exists" % MIGRATIONUSER)
             self.Update('DROP USER ' + MIGRATIONUSER)
@@ -1351,7 +1373,7 @@ tool shipped with that release''')
                 ''')
             c = 0            
             for db in databases:
-                c = self.Select('SELECT COUNT(*) FROM pg_partition', db=db)
+                c = self.Select('SELECT COUNT(*)::numeric FROM pg_partition', db=db)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
@@ -1359,7 +1381,7 @@ tool shipped with that release''')
 Cannot downgrade a database with 3.2 style partitioning     <<<<<
 -------------------------------------------------------
 ''')
-                c = self.Select("SELECT COUNT(*) FROM pg_appendonly", db=db)
+                c = self.Select("SELECT COUNT(*)::numeric FROM pg_appendonly", db=db)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
@@ -1372,7 +1394,7 @@ Cannot downgrade a database with append only tables     <<<<<
         # Extract the information needed to construct a gp_init_config file
         gp_config = self.Select(
         '''
-           SELECT content, definedprimary, dbid, hostname, port, datadir 
+           SELECT content::numeric, definedprimary, dbid::numeric, hostname, port::numeric, datadir 
            FROM gp_configuration 
            ORDER BY content
         ''')
@@ -1739,7 +1761,7 @@ This issue must be resolved before upgrade can complete.
                     #   - Assuming we have sucessfully locked out all other users this should 
                     #     never be true because startup will have rollbacked the transaction.
                     for db in databases:
-                        xact = self.Select("SELECT count(*) FROM pg_prepared_xacts",
+                        xact = self.Select("SELECT count(*)::numeric FROM pg_prepared_xacts",
                                            db=db['dbname'], port=port);
                         if xact[0] > 0:
                             raise UpgradeError("Database contains prepared transactions");
@@ -1922,7 +1944,12 @@ This issue must be resolved before upgrade can complete.
                 ''', db=db)
 
             for name in objs:
-                qry = self.Select('SELECT * FROM %s' % name, db=db)
+                qry = self.Select(
+                    '''SELECT
+                          last_value::numeric, increment_by::numeric, max_value::numeric, 
+                          min_value::numeric, is_cycled, is_called
+                       FROM %s
+                    ''' % name, db=db)
                 for row in qry:
                     file.write('%s.%s,%s,%s,%s,%s,%s,%s\n' %
                                (db, name,
@@ -1946,7 +1973,7 @@ This issue must be resolved before upgrade can complete.
                    ORDER BY name
                 ''', db=db)
             for name in objs:
-                qry = self.Select("SELECT count(*) from " + name, db=db)
+                qry = self.Select("SELECT count(*)::numeric from " + name, db=db)
                 for row in qry:
                     file.write('%s.%s,%s\n' % (db, name, row))
         
@@ -2561,6 +2588,8 @@ try:
 
     # MASTER - the main case, run on master only
     if u.cmd == 'MASTER':
+
+        u.Log('INFO', 'Python version %d.%d.%d %s %d' % sys.version_info)
 
         # Make sure that the database isn't running
         try:
