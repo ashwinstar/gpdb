@@ -867,7 +867,8 @@ static void parse_command_line(int argc, const char* const argv[])
 	{      NULL, 'v', 0, "verbose" },
 	{      NULL, 'V', 0, "very verbose" },
 	{      NULL, 'D', 0, "debug mode" },
-	{ "version", 256, 0, "print version number" }
+	{ "version", 256, 0, "print version number" },
+	{ NULL, 0, 0, NULL}
     };
     apr_pool_t* pool;
 

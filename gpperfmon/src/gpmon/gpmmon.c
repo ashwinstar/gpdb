@@ -727,7 +727,8 @@ static void parse_command_line(int argc, const char* const argv[])
     static apr_getopt_option_t option[] = {
 	{      NULL, '?', 0, "Print help screen" },
         {      NULL, 'D', 1, "Configuration file" },
-	{ "version", 256, 0, "Print version number" }
+	{ "version", 256, 0, "Print version number" },
+	{ NULL, 0, 0, NULL }
     };
     apr_pool_t* pool;
 
