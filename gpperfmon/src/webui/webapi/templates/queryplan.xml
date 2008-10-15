@@ -1,6 +1,6 @@
-$def with (tmid, ssid, ccnt, hostname, tab, ckeys, tree, node)
+$def with (tmid, ssid, ccnt, tab, ckeys, tree, node)
 <?xml version="1.0"?>
-<queryplan tmid="$tmid" ssid="$ssid" ccnt="$ccnt" hostname="$hostname">
+<queryplan tmid="$tmid" ssid="$ssid" ccnt="$ccnt">
 $ stack = [node]
 $ parent = stack[0]
 $ child = 0

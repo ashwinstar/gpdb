@@ -531,7 +531,7 @@ def queryplan_sql():
     return query_fragment
 
 
-def queryplan_history(tmid, ssid, ccnt, host, segid):
+def queryplan_history(tmid, ssid, ccnt, segid):
     query_fragment = queryplan_sql()
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     if segid != '':
@@ -551,7 +551,7 @@ def queryplan_history(tmid, ssid, ccnt, host, segid):
     sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
 
     # query real-time information.
-    for r in rt_queryiterators(tmid, ssid, ccnt, host, segid):
+    for r in rt_queryiterators(tmid, ssid, ccnt, segid):
         rows.append(r)
 
     return _queryplan_consolidate(rows)
