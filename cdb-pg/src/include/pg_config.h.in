@@ -56,6 +56,9 @@
 # define gettimeofday(a,b) gettimeofday(a)
 #endif
 
+/* A string containing the Greenplum version number */
+#undef GP_VERSION
+
 /* Define to 1 if you have the `atexit' function. */
 #undef HAVE_ATEXIT
 
@@ -245,6 +248,9 @@
 /* Define to 1 if you have the `nsl' library (-lnsl). */
 #undef HAVE_LIBNSL
 
+/* Define to 1 if you have the `numa' library (-lnuma). */
+#undef HAVE_LIBNUMA
+
 /* Define to 1 if you have the `pam' library (-lpam). */
 #undef HAVE_LIBPAM
 
@@ -284,6 +290,9 @@
 
 /* Define to 1 if you have the <netinet/tcp.h> header file. */
 #undef HAVE_NETINET_TCP_H
+
+/* Define to 1 if you have the <numa.h> header file. */
+#undef HAVE_NUMA_H
 
 /* Define to 1 if you have the `on_exit' function. */
 #undef HAVE_ON_EXIT
@@ -591,9 +600,6 @@
    (--with-krb-srvnam=NAME) */
 #undef PG_KRB_SRVNAM
 
-/* Greenplum Database version */
-#undef GP_VERSION
-
 /* Postgres version Greenplum Database is based on */
 #undef PG_VERSION
 
@@ -632,21 +638,20 @@
 /* Define to 1 to build with Bonjour support. (--with-bonjour) */
 #undef USE_BONJOUR
 
-/* Define to 1 to build with plan forcing capabilities. (--enable-forceplan)
-   */
-#undef USE_FORCE_PLAN
-
-/* Define to 1 to build with debug break capabilities. (--eanble-debugbreak)
+/* Define to 1 to build with debug_break capabilities. (--enable-debugbreak)
    */
 #undef USE_DEBUG_BREAK
 
-/* Define to 1 to build with debug ntuplestore capabilities. (--enable-debugntuplestore)
-   */
+/* Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore) */
 #undef USE_DEBUG_NTUPLESTORE
 
-/* Define to 1 to build with fault injection. (--enable-faultinjection) 
-   */
+/* Define to 1 to build with fault injection capabilities.
+   (--enable-faultinjection) */
 #undef USE_FAULT_INJECTION
+
+/* Define to 1 to build with plan forcing capabilities. (--enable-forceplan)
+   */
+#undef USE_FORCE_PLAN
 
 /* Define to 1 if you want 64-bit integer timestamp and interval support.
    (--enable-integer-datetimes) */
@@ -654,9 +659,6 @@
 
 /* Define to 1 to build with LDAP support. (--with-ldap) */
 #undef USE_LDAP
-
-/* Define to select named POSIX semaphores. */
-#undef USE_NAMED_POSIX_SEMAPHORES
 
 /* Define to 1 to build with PAM support. (--with-pam) */
 #undef USE_PAM
@@ -672,9 +674,6 @@
 
 /* Define to select SysV-style shared memory. */
 #undef USE_SYSV_SHARED_MEMORY
-
-/* Define to select unnamed POSIX semaphores. */
-#undef USE_UNNAMED_POSIX_SEMAPHORES
 
 /* Define to select Win32-style semaphores. */
 #undef USE_WIN32_SEMAPHORES

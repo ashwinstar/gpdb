@@ -87,16 +87,14 @@
 #include <limits.h>
 
 /* headers required for process affinity bindings */
-#ifdef ENABLE_AFFINITY
 #if defined(pg_on_solaris)
 #include <sys/types.h>
 #include <sys/processor.h>
 #include <sys/procset.h>
 #endif
-#ifdef __linux__
+#ifdef HAVE_NUMA_H
 #include <numa.h>
 #endif
-#endif /*ENABLE_AFFINITY*/
 
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -4918,7 +4916,7 @@ win32_sigchld_waiter(LPVOID param)
 
 #endif   /* WIN32 */
 
-#if defined(ENABLE_AFFINITY) && defined(pg_on_solaris)
+#if defined(pg_on_solaris)
 /* SOLARIS */
 static void
 setProcAffinity(int id)
@@ -4959,7 +4957,7 @@ setProcAffinity(int id)
 
 	return;
 }
-#elif defined(ENABLE_AFFINITY) && defined(__linux__)
+#elif defined(HAVE_NUMA_H) && defined(HAVE_LIBNUMA)
 /* LINUX */
 static void
 setProcAffinity(int id)
@@ -4990,6 +4988,6 @@ setProcAffinity(int id)
 static void
 setProcAffinity(int id)
 {
-	return;
+	elog(LOG, "gp_proc_affinity setting ignored; feature not configured");
 }
 #endif
