@@ -436,7 +436,7 @@ if [ x"" != x"$TARGETTBL" ];then
 	fi
 	CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
+		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist in database $QD_DBNAME." 2
 	else
 		if [ $EXTERNAL -eq 1 ];then
 			 ERROR_EXIT "[FATAL]:-Table $TARGETTBL is an external table" 2
