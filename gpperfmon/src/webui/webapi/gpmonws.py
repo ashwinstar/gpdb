@@ -97,10 +97,6 @@ class logon:
         sys.stderr.write("\nLOGON:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         return render.logon(username, 'SUCCESS', role, session.getid())
@@ -132,10 +128,6 @@ class config:
         sys.stderr.write("\nCONFIG:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
@@ -226,10 +218,6 @@ class hosts:
         sys.stderr.write("\nHOSTS:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
 
@@ -290,6 +278,7 @@ class system:
 
         # check if the result set is empty
         stime = ''
+        etime = ''
         if ckeys:
             if tkeys:
                 stime = tkeys[0]; etime = tkeys[-1]
@@ -304,10 +293,6 @@ class query:
         sys.stderr.write("\nQUERY:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
@@ -350,6 +335,8 @@ class query:
         (tkeys, ckeys, tab) = res
 
         # check if the result set is empty
+        stime = ''
+        etime = ''
         if ckeys:
             if tkeys:
                 stime = tkeys[0]; etime = tkeys[-1]
@@ -374,10 +361,6 @@ class queryplan:
         sys.stderr.write("\nQUERYPLAN:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.role['superuser']:
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.role['user']:
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
@@ -385,11 +368,11 @@ class queryplan:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='', tmid='', ssid='', ccnt='', segid='')
+        i = web.input(start='', tmid='', ssid='', ccnt='', segid='0')
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<query plan>\n")
-        sys.stderr.write("\tsegid = %s\n\tmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.segid, i.tmid, i.ssid, i.ccnt))
+        sys.stderr.write("\tsegid = %s\n\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.segid, i.tmid, i.ssid, i.ccnt))
         sys.stderr.write("</query plan>\n\n\n")
         # DEBUGGING 
 
@@ -409,10 +392,12 @@ class queryplan:
             return mkerr(error.BADREQ, 'invalid query ID')
 
         if i.start == 'last':
-            (ckeys, tab, tree, root) = db.queryplan_now(i.tmid, i.ssid, i.ccnt, i.segid)
+            res = db.queryplan_now(i.tmid, i.ssid, i.ccnt, i.segid)
 
         else:
-            (ckeys, tab, tree, root) = db.queryplan_history(i.tmid, i.ssid, i.ccnt, i.segid)
+            res = db.queryplan_history(i.tmid, i.ssid, i.ccnt, i.segid)
+
+        (tab, tree, root) = res
 
         # DEBUGGING 
         sys.stderr.write('RESULTS:\n=======\n\n')
@@ -422,7 +407,7 @@ class queryplan:
             sys.stderr.write('\t%s => %s\n\n' % (tab[row]['pnid'], tab[row]['nid']))
         # DEBUGGING 
 
-        return render.queryplan(i.tmid, i.ssid, i.ccnt, tab, ckeys, tree, root)
+        return render.queryplan(i.tmid, i.ssid, i.ccnt, tab, tree, root)
 
 
 class iterator:
@@ -431,10 +416,6 @@ class iterator:
         sys.stderr.write("\nITERATOR:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.has_key('superuser'):
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.has_key('user'):
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
 

@@ -139,20 +139,13 @@ def _queryplan_consolidate(rows):
             tree[p].append(c)
         else:
             tree[p] = [c]
-        x = r
 
     # determine the root of the tree
     nkeys = tree.keys()
     nkeys.sort()
     root = nkeys[0]
 
-    # retrieve the column names into ckeys
-    ckeys = None
-    if x:
-        ckeys = filter(lambda i: i != 'pnid' and i != 'nid', x.keys())
-    ckeys.sort()
-
-    return (ckeys, tab, tree, root)
+    return (tab, tree, root)
 
 
 def _iterator_consolidate(rows):
@@ -375,7 +368,8 @@ def rt_queries(username):
 
 
 def queries_upto_now(stime, username):
-    filter = "where ctime >= '%s'" % stime
+    #filter = "where ctime >= '%s'" % stime
+    filter = ''
     if username != '':
         filter = "%s and uname='%s'" % (filter, username)
     query1 = 'select * from queries_history %s' % filter
@@ -396,7 +390,8 @@ def queries_upto_now(stime, username):
     return _queries_consolidate(rows)
 
 def queries_history(stime, etime, username):
-    filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+    #filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+    filter = ''
     if username != '':
         filter = "%s and uname='%s'" % (filter, username)
     query1 = 'select * from queries_history %s' % filter
@@ -414,7 +409,113 @@ def queries_history(stime, etime, username):
 
 
 def queryplan_now(tmid, ssid, ccnt, segid):
-    rows = rt_queryiterators(tmid, ssid, ccnt, segid)
+    rows = rt_queryplan(tmid, ssid, ccnt, segid)
+    return _queryplan_consolidate(rows)
+
+def qp():
+    res = queryplan_history('1223590674', '221', '1', '0')
+    (tab, tree, root) = res
+
+    stack = [{root : 0}]
+    parent = stack[0].keys()[0]
+    child = stack[0].values()[0]
+    while stack:
+        while child < len(tree[parent]):
+            indent = ''
+            for i in range(parent): indent += '\t'
+            print("%s<iterator label=%s nid=%s>" % (indent, tab[tree[parent][child]]['ntype'], tree[parent][child]))
+            if tree[parent][child] in tree.keys():
+                parent = tree[parent][child]
+                stack.append({parent : child})
+                child = 0
+                break
+            indent = ''
+            for i in range(parent): indent += '\t'
+            print("%s</iterator nid=%s>" % (indent, tree[parent][child]))
+            child = child + 1
+        else:
+            element = stack.pop()
+            parent = element.keys()[0]
+            child = element.values()[0] + 1
+            if not stack:
+                break
+            if child == len(tree[parent]):
+                indent = ''
+                for i in range(parent): indent += '\t'
+                print("%s</iterator nid=%s>" % (indent, tree[parent][child]))
+
+
+def rt_queryplan(tmid, ssid, ccnt, segid=''):
+    filename = "%s/iterators_now.dat" % path
+
+    rows = []
+    try:
+        f = open(filename, 'r')
+    except:
+        sys.stderr.write("file not found: %s\n" % filename)
+        return rows
+
+    try:
+        for line in f:
+            # DEBUGGING 
+            print line
+            # DEBUGGING 
+
+            columns = {} # dict to contain the values of each column
+            entry = line.split('|')
+            # positional matching. if cnames is modified, the index
+            # might be affected.
+            if entry[1] != tmid:
+                sys.stderr.write("no tmid match: %s != %s\n\n" % (entry[1], str(tmid)))
+                continue
+            # positional matching. if cnames is modified, the index
+            # might be affected.
+            elif entry[2] != ssid:
+                sys.stderr.write("no ssid match: %s != %s\n\n" % (entry[2], str(ssid)))
+                continue
+            # positional matching. if cnames is modified, the index
+            # might be affected.
+            elif entry[3] != ccnt:
+                sys.stderr.write("no ccnt match: %s != %s\n\n" % (entry[3], str(ccnt)))
+                continue
+            # positional matching. if cnames is modified, the index
+            # might be affected.
+            elif segid != '' and entry[4] != segid:
+                sys.stderr.write("no segid match: %s != %s\n\n" % (entry[4], str(segid)))
+                continue
+            columns['nid'] = entry[6]
+            columns['pnid'] = entry[7]
+            columns['ntype'] = entry[9]
+            rows.append(columns)
+    finally:
+        f.close()
+
+    return rows
+
+
+def queryplan_history(tmid, ssid, ccnt, segid):
+    query_fragment = "select pnid, nid, ntype"
+    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    if segid != '':
+        filter += " and segid='%s'" % segid
+
+    query1 = "%s from iterators_history %s" % (query_fragment, filter)
+    query2 = "%s from iterators_tail %s" % (query_fragment, filter)
+    query = "%s\nunion all\n%s order by pnid, nid" % (query1, query2)
+
+    rows = []
+    try:
+        conn.execute(query)
+        rows = [r for r in conn.iterate_dict()]
+    except:
+        sys.stderr.write('Exception querying database: %s\n\n' % query)
+
+    sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
+
+    # query real-time information.
+    for r in rt_queryplan(tmid, ssid, ccnt, segid):
+        rows.append(r)
+
     return _queryplan_consolidate(rows)
 
 
@@ -499,62 +600,6 @@ def rt_queryiterators(tmid, ssid, ccnt, segid='', nid=''):
         f.close()
 
     return rows
-
-
-def queryplan_sql():
-    columns = [ 'pnid', 'nid', 'pid', 'ntype', 'nstatus', 'tstart', 'tduration',
-                'pmemsize', 'pmemmax', 'memsize', 'memresid', 'memshare',
-                'pagefaults', 'pagefaults_elapsed',
-                'cpu_elapsed', 'cpu_currpct', 
-                'phase', 'rowsout', 'rowsout_est',
-                'm0_name', 'm0_unit', 'm0_val', 'm0_est',
-                'm1_name', 'm1_unit', 'm1_val', 'm1_est',
-                'm2_name', 'm2_unit', 'm2_val', 'm2_est',
-                'm3_name', 'm3_unit', 'm3_val', 'm3_est',
-                'm4_name', 'm4_unit', 'm4_val', 'm4_est',
-                'm5_name', 'm5_unit', 'm5_val', 'm5_est',
-                'm6_name', 'm6_unit', 'm6_val', 'm6_est',
-                'm7_name', 'm7_unit', 'm7_val', 'm7_est',
-                'm8_name', 'm8_unit', 'm8_val', 'm8_est',
-                'm9_name', 'm9_unit', 'm9_val', 'm9_est',
-                'm10_name', 'm10_unit', 'm10_val', 'm10_est',
-                'm11_name', 'm11_unit', 'm11_val', 'm11_est',
-                'm12_name', 'm12_unit', 'm12_val', 'm12_est',
-                'm13_name', 'm13_unit', 'm13_val', 'm13_est',
-                'm14_name', 'm14_unit', 'm14_val', 'm14_est',
-                'm15_name', 'm15_unit', 'm15_val', 'm15_est' ]
-
-    query_fragment = "select ctime"
-    for column in columns:
-        query_fragment += ", %s" % column
-
-    return query_fragment
-
-
-def queryplan_history(tmid, ssid, ccnt, segid):
-    query_fragment = queryplan_sql()
-    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-    if segid != '':
-        filter += " and segid='%s'" % segid
-
-    query1 = "%s from iterators_history %s" % (query_fragment, filter)
-    query2 = "%s from iterators_tail %s" % (query_fragment, filter)
-    query = "%s\nunion all\n%s order by pnid, nid" % (query1, query2)
-
-    rows = []
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
-
-    sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
-
-    # query real-time information.
-    for r in rt_queryiterators(tmid, ssid, ccnt, segid):
-        rows.append(r)
-
-    return _queryplan_consolidate(rows)
 
 
 

@@ -1,26 +1,23 @@
-$def with (tmid, ssid, ccnt, tab, ckeys, tree, node)
+$def with (tmid, ssid, ccnt, tab, tree, node)
 <?xml version="1.0"?>
 <queryplan tmid="$tmid" ssid="$ssid" ccnt="$ccnt">
-$ stack = [node]
-$ parent = stack[0]
-$ child = 0
+$ stack = [{node : 0}]
+$ parent = stack[0].keys()[0]
+$ child = stack[0].values()[0]
 $while stack:
     $while child < len(tree[parent]):
         <iterator label="$tab[tree[parent][child]]['ntype']" nid="$tree[parent][child]">
-        <data>
-        $for c in ckeys:
-            <$c>$tab[tree[parent][child]][c]</$c>
-        </data>
         $if tree[parent][child] in tree.keys():
             $ parent = tree[parent][child]
+            $ stack.append({parent : child})
             $ child = 0
-            $ stack.append(parent)
             $break
         </iterator>
         $ child = child + 1
     $else:
-        $ child = parent
-        $ parent = stack.pop()
+        $ element = stack.pop()
+        $ parent = element.keys()[0]
+        $ child = element.values()[0] + 1
         $if not stack:
             $break
         </iterator>
