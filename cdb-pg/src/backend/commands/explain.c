@@ -1018,10 +1018,6 @@ explain_outNode(StringInfo str,
 						senderIsEntryDb ? " on entry db" : "");
 				pname = "";
 
-#ifdef DEBUG_EXPLAIN
-				appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(plan->targetlist));
-#endif
-
 			}
 			break;
 		default:
@@ -1138,6 +1134,10 @@ explain_outNode(StringInfo str,
 					 plan->startup_cost, plan->total_cost,
 					 plan->plan_rows, plan->plan_width);
     appendStringInfoChar(str, '\n');
+
+#ifdef DEBUG_EXPLAIN
+				appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(plan->targetlist));
+#endif
 
     /* quals, sort keys, etc */
 	switch (nodeTag(plan))
@@ -1741,13 +1741,6 @@ show_grouping_keys(Plan        *plan,
     if (numCols <= 0)
         return;
 
-#ifdef DEBUG_EXPLAIN
-	if (plan)
-		appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(plan->targetlist));
-	if (subplan)
-		appendStringInfo(str, "subplan->targetlist=%s\n", nodeToString(subplan->targetlist));
-#endif
-
     for (i = 0; i < indent; i++)
         appendStringInfoString(str, "  ");
     appendStringInfo(str, "  %s: ", qlabel);
@@ -1855,11 +1848,6 @@ show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
 	if (nkeys <= 0)
 		return;
 
-#ifdef DEBUG_EXPLAIN
-	appendStringInfo(str, "plan->targetlist=%s\n", nodeToString(sortplan->targetlist));
-	appendStringInfo(str, "subplan->targetlist=%s\n", nodeToString(sortplan->lefttree->targetlist));
-#endif
-
 	for (i = 0; i < indent; i++)
 		appendStringInfo(str, "  ");
 	appendStringInfo(str, "  %s: ", qlabel);
@@ -1924,10 +1912,6 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
     if (!nkeys &&
         !hashExpr)
         return;
-
-#ifdef DEBUG_EXPLAIN
-	appendStringInfo(str, "plan->targetlist=%s\b", nodeToString(plan->targetlist));
-#endif
 
     /* Generate deparse context */
 	if (cdbpullup_exprHasSubplanRef((Expr *)plan->targetlist) ||

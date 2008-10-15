@@ -285,6 +285,9 @@ prepare p1 as select $1::u_d || foo from (select 'foo' as foo) a;
 prepare p2 as select 'foo' || foo 
 from (select $1::u_d || bar as foo from (select 'bar' as bar) a ) b;
 
+select 'a' as a, 'b' as b, 'c' as c, 1 as d union select * from (select 'a' as a, 'b' as b, 'c' as c, 1 as d)d;
+select * from (select 'a' as a, 'b' as b, 'c' as c, 1 as d)d union select 'a' as a, 'b' as b, 'c' as c, 1 as d;
+
 --
 -- test substr with toasted text values
 --

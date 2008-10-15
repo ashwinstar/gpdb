@@ -8712,6 +8712,11 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	}
 
 	/*
+	 * Coerce the UNKNOWN type for target entries to its right type here.
+	 */
+	fixup_unknown_vars_in_setop(pstate, sostmt);
+
+	/*
 	 * As a first step towards supporting sort clauses that are expressions
 	 * using the output columns, generate a varnamespace entry that makes the
 	 * output columns visible.	A Join RTE node is handy for this, since we

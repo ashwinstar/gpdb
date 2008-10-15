@@ -297,7 +297,7 @@ coerce_type(ParseState *pstate, Node *node,
 
 		return (Node *) param;
 	}
-	if (inputTypeId == UNKNOWNOID && IsA(node, Var))
+	if (pstate != NULL && inputTypeId == UNKNOWNOID && IsA(node, Var))
 	{
         /*
          * CDB:  Var of type UNKNOWN probably comes from an untyped Const
@@ -582,6 +582,93 @@ fixup_unknown_vars_in_targetlist(ParseState *pstate, List *targetlist)
     }
 }                               /* fixup_unknown_vars_in_targetlist */
 
+/*
+ * Fix up the unknown Vars in the subquery specified by rtr. The new
+ * types and typemods are given.
+ */
+static void
+fixup_unknown_vars_in_RangeTblRef(ParseState *pstate, RangeTblRef *rtr,
+								  List *colTypes, List *colTypmods)
+{
+	ListCell *tle_lc, *type_lc, *typemod_lc;
+	int rti;
+	RangeTblEntry *rte;
+	Query *query;
+	List *old_rtable = pstate->p_rtable;
+	
+	rti = rtr->rtindex;
+	rte = rt_fetch(rti, pstate->p_rtable);
+	query = rte->subquery;
+	pstate->p_rtable = query->rtable;
+	
+	tle_lc = list_head(query->targetList);
+		
+	forboth (type_lc, colTypes, typemod_lc, colTypmods)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(tle_lc);
+		Oid colType = lfirst_oid(type_lc);
+		int32 colTypmod = lfirst_int(typemod_lc);
+			
+		Assert(IsA(tle, TargetEntry) && tle->expr != NULL);
+		if (IsA(tle->expr, Var) &&
+			((Var *)tle->expr)->vartype == UNKNOWNOID)
+		{
+			tle->expr = (Expr *)coerce_unknown_var(pstate, (Var *)tle->expr,
+												   colType, colTypmod,
+												   COERCION_IMPLICIT, COERCE_DONTCARE,
+												   0);
+		}
+
+		tle_lc = lnext(tle_lc);
+	}
+
+	pstate->p_rtable = old_rtable;
+}
+
+/*
+ * Fix up the unknown Vars in all subqueries in a SetOperationStmt.
+ */
+void
+fixup_unknown_vars_in_setop(ParseState *pstate, SetOperationStmt *stmt)
+{
+	if (stmt->rarg != NULL)
+	{
+		if (IsA(stmt->rarg, SetOperationStmt))
+		{
+			SetOperationStmt *new_stmt = (SetOperationStmt *)stmt->rarg;
+			new_stmt->colTypes = copyObject(stmt->colTypes);
+			new_stmt->colTypmods = copyObject(stmt->colTypmods);
+		
+			fixup_unknown_vars_in_setop(pstate, new_stmt);
+		}
+		else if (IsA(stmt->rarg, RangeTblRef))
+		{
+			fixup_unknown_vars_in_RangeTblRef(pstate, (RangeTblRef *) (stmt->rarg),
+											  stmt->colTypes, stmt->colTypmods);
+		}
+		else
+			Assert(0);
+	}
+
+	if (stmt->larg != NULL)
+	{
+		if (IsA(stmt->larg, SetOperationStmt))
+		{
+			SetOperationStmt *new_stmt = (SetOperationStmt *)stmt->larg;
+			new_stmt->colTypes = copyObject(stmt->colTypes);
+			new_stmt->colTypmods = copyObject(stmt->colTypmods);
+			
+			fixup_unknown_vars_in_setop(pstate, new_stmt);
+		}
+		else if (IsA(stmt->larg, RangeTblRef))
+		{
+			fixup_unknown_vars_in_RangeTblRef(pstate, (RangeTblRef *) (stmt->larg),
+											  stmt->colTypes, stmt->colTypmods);
+		}
+		else
+			Assert(0);
+	}
+}
 
 /*
  * can_coerce_type()
