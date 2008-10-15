@@ -14,7 +14,7 @@ Usage: gpperfmon -D <MASTER DATA DIRECTORY> --start|--stop|--restart|--status|--
 \t--setup    - configure the gpperfmon system
 \t--version  - display gpperfmon version
 
-\t--noweb    do not control the gpperfmon web server (valid for start, stop and restart actions)
+\t--noweb    do not control or setup the gpperfmon web server 
 
 '''
 
@@ -299,13 +299,14 @@ def gpperfmon_setup():
         sys.exit(1)
 
     # gpmmon configuration
-    print '-----------------------'
-    print 'gpperfmon Configuration'
-    print '-----------------------'
-    print '\ngpperfmon requires a database within the Greenplum instance it is monitoring.'
-    print 'This configuration can create this database for you now.  If you choose to'
-    print 'create this database now, it will replace any previous gpperfmon database, causing'
-    print 'loss of any monitoring data previously collected and stored in that database.'
+    print '---------------------'
+    print 'Monitor Configuration'
+    print '---------------------'
+    print '\nThe Greenplum Performance Monitor requires a database within the Greenplum'
+    print 'instance it is monitoring.  This configuration can create this database for'
+    print 'you now.  If you choose to create this database now, it will replace any'
+    print 'existing gpperfmon database, causing loss of any monitoring data previously' 
+    print 'collected and stored in that database.'
     create_db = get_yesno('Do you want to create the gpperfmon database [N]', 'N')
     if create_db == 'Y':
         create_db = get_yesno('Are you sure?  All previous monitoring data for this instance will be lost. [Y]', 'Y')
@@ -316,18 +317,19 @@ def gpperfmon_setup():
             print 'The gpperfmon database was created successfully.' 
 
 
-    print '\nThe quantum value specifies the time in seconds between updates from performance'
-    print 'monitor agents on all segments.'
+    print '\nThe quantum value specifies the time in seconds between updates from'
+    print 'performance monitor agents on all segments.'
     quantum = get_int('Quantum (between 10 and 120 seconds). [15]', 15, 10, 120)
 
-    print '\nThe minimum query run time specifies the cutoff time for queries to log.  Only'
-    print 'queries with a run time greater than this value will be logged in the'
-    print 'queries_history table.'
+    print '\nThe minimum query run time specifies the cutoff time for queries to log.'
+    print 'Only queries with a run time greater than this value will be logged in '
+    print 'the queries_history table.'
     minqt = get_int('Minimum query run time (seconds) [60]', 60, 0) 
 
-    print '\nThe minimum detailed query run time specifies the cutoff time for queries to log detailed'
-    print 'iterator metrics.  Only queries with a run time greater than this value will have their'
-    print 'detailed metrics logged in the iterators_history table.'    
+    print '\nThe minimum detailed query run time specifies the cutoff time for queries'
+    print 'to log detailed iterator metrics.  Only queries with a run time greater'
+    print 'than this value will have their detailed metrics logged in the'
+    print 'iterators_history table.'    
     mindqt = get_int('Minimum detailed query run time (seconds) [%d]' % minqt, minqt, minqt)
 
     logloc = get_string('\nLog file location [%s]' % (opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs'), 
@@ -351,45 +353,48 @@ def gpperfmon_setup():
                                              disk_threshold, net_threshold, cpu_skew_threshold)
 
     # Web Server configuration
-    print '------------------------'
-    print 'Web Server Configuration'
-    print '------------------------'
+    enable_ssl = 'disable'
+    lighty_port = 8080
+    if not opt.has_key('noweb'):
+        print '------------------------'
+        print 'Web Server Configuration'
+        print '------------------------'
     
     #lighty conf
-    lighty_access_log = logloc + '/lighttpd-access.log'
-    lighty_error_log = logloc + '/lighttpd-error.log'
+        lighty_access_log = logloc + '/lighttpd-access.log'
+        lighty_error_log = logloc + '/lighttpd-error.log'
 
-    print '\ngpperfmon runs a small web server for the UI and web API.  This web server'
-    print 'by default runs on port 8080, but you may specify any available port.'
-    lighty_port = get_int('Web server port [8080]', 8080, 1, 65534)
+        print '\ngpperfmon runs a small web server for the UI and web API.  This web'
+        print 'server by default runs on port 8080, but you may specify any available port.'
+        lighty_port = get_int('Web server port [8080]', 8080, 1, 65534)
     
-    enable_ssl = 'disable'
-    ssl_cert = ''
+        ssl_cert = ''
 
-    if avail_cmds['openssl']:
-        yn = get_yesno('\nDo you want to enable SSL for the Web API (Y/N) [Y]', 'Y')
-        if yn == 'Y':
-            ret = generate_cert(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem')
-            if ret:
-                enable_ssl = 'enable'
-                ssl_cert = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem'
+        if avail_cmds['openssl']:
+            yn = get_yesno('\nDo you want to enable SSL for the Web API (Y/N) [Y]', 'Y')
+            if yn == 'Y':
+                ret = generate_cert(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem')
+                if ret:
+                    enable_ssl = 'enable'
+                    ssl_cert = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem'
+                else:
+                    print 'Failed to generate SSL cert.  SSL will be disabled.'
             else:
-                print 'Failed to generate SSL cert.  SSL will be disabled.'
-    else:
-        print 'openssl not found.  If you want to enable SSL, make sure openssl is in your\npath and rerun gpperfmon.py --setup'
+                print 'openssl not found.  If you want to enable SSL, make sure openssl is in your'
+                print 'path and rerun gpperfmon.py --setup'
 
-    lighty_conf = generate_lighty_conf(WEBAPI_DOCROOT, lighty_error_log, 
-                                       lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/greenplum/gpmonws.py', 
-                                       enable_ssl, ssl_cert)
+                lighty_conf = generate_lighty_conf(WEBAPI_DOCROOT, lighty_error_log, 
+                                                   lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/greenplum/gpmonws.py', 
+                                                   enable_ssl, ssl_cert)
 
     # TODO: should we clean up everything on error?
-    try:
-        FILE = open(LIGHTY_CONF_FILE, 'w')
-        FILE.writelines(lighty_conf)
-        FILE.close()
-        print '\nDone writing lighttpd configuration to %s' % LIGHTY_CONF_FILE
-    except:
-        print 'Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
+                try:
+                    FILE = open(LIGHTY_CONF_FILE, 'w')
+                    FILE.writelines(lighty_conf)
+                    FILE.close()
+                    print '\nDone writing lighttpd configuration to %s' % LIGHTY_CONF_FILE
+                except:
+                    print 'Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
 
     try:
         FILE = open(GPPERFMON_CONF_FILE, 'w')
@@ -405,11 +410,14 @@ def gpperfmon_setup():
     else:
         webui_url = 'http://'
     webui_url = webui_url + socket.gethostname() + ':' + str(lighty_port) + '/'
-    print '\ngpperfmon configuration is now complete.  If at a later date you want to change certain parameters,'
-    print 'you can either re-run \'gpperfmon --setup\' or edit the configuration file located at'
-    print GPPERFMON_CONF_FILE + '.'
-    print '\nYou can start monitoring this Greenplum Database instance by running \'gpperfmon --start\'.'
-    print 'The web based UI is available at %s' % webui_url
+    print '\nGreenplum Performance Monitor configuration is now complete.  If'
+    print 'at a later date you want to change certain parameters, you can '
+    print 'either re-run \'gpperfmon --setup\' or edit the configuration file'
+    print 'located at ' + GPPERFMON_CONF_FILE + '.'
+    print '\nYou can start monitoring this Greenplum Database instance by running'
+    print '\'gpperfmon --start\'.'
+    if not opt.has_key('noweb'):
+        print 'The web based UI is available at %s' % webui_url
 
 #################
 def lighty_version():
@@ -732,4 +740,4 @@ try:
     elif action == 'setup':
         gpperfmon_setup()
 except KeyboardInterrupt:
-    print '\nConfiguration of gpperfmon canceled.'
+    print '\nConfiguration of Greenplum Performance Monitor canceled.'

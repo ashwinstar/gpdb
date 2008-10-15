@@ -1,6 +1,6 @@
 .PHONY: installer
 
-all: gpsmon gpmmon
+all: gpsmon gpmmon installer
 
 gpsmon:
 	$(MAKE) -C src/gpmon gpsmon
