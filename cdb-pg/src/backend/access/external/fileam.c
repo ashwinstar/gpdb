@@ -40,6 +40,8 @@
 #include "access/valid.h"
 #include "commands/dbcommands.h"
 #include "catalog/namespace.h"
+#include "cdb/cdbutil.h"
+#include "libpq/libpq-be.h"
 #include "pgstat.h"
 #include "miscadmin.h"
 #include "utils/relcache.h"
@@ -63,6 +65,7 @@ struct extvar_t
 	char* GP_MASTER_HOST;
 	char* GP_MASTER_PORT;
 	char* GP_DATABASE;
+	char* GP_USER;
 	char* GP_SEG_PG_CONF;   /*location of the segments pg_conf file*/
 	char* GP_SEG_DATADIR;   /*location of the segments datadirectory*/
 	char GP_DATE[9];		/* YYYYMMDD */
@@ -1113,21 +1116,43 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 static void
 open_external_file(FileScanDesc scan)
 {
-	extvar_t extvar;
-	time_t now = time(0);
-	struct tm* tm = localtime(&now);
-	char       *result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
-	int response_code;
-	const char*response_string;
+	extvar_t 	extvar;
+	time_t 		now = time(0);
+	struct 		tm* tm = localtime(&now);
+	char        *result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
+	int 		response_code;
+	const char	*response_string;
 	
 	/* set up extvar */
 
 	memset(&extvar, 0, sizeof(extvar));
 	sprintf(extvar.GP_CSVOPT,"m%dx%dq%dh%d",scan->fs_pstate->csv_mode?1:0,scan->fs_pstate->escape?255&*scan->fs_pstate->escape:0,scan->fs_pstate->quote?255&*scan->fs_pstate->quote:0,scan->fs_pstate->header_line?1:0);
-	extvar.GP_MASTER_HOST = qdHostname;
 	
-	pg_itoa(qdPostmasterPort, result);
-	extvar.GP_MASTER_PORT = result;
+	if(Gp_role != GP_ROLE_DISPATCH)
+	{
+		pg_itoa(qdPostmasterPort, result);
+		extvar.GP_MASTER_PORT = result;
+		extvar.GP_MASTER_HOST = qdHostname;
+	}
+	else
+	{
+		CdbComponentDatabases *cdb_component_dbs = getCdbComponentDatabases();
+		CdbComponentDatabaseInfo *qdinfo = &cdb_component_dbs->entry_db_info[0];
+		
+		pg_itoa(qdinfo->port, result);
+		extvar.GP_MASTER_PORT = result;
+		
+		if (qdinfo->hostip != NULL)
+			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostip);
+		else
+			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
+	}
+	
+	if(MyProcPort)
+		extvar.GP_USER = MyProcPort->user_name;
+	else
+		extvar.GP_USER = "";
+	
 	extvar.GP_DATABASE = get_database_name(MyDatabaseId);
 	extvar.GP_SEG_PG_CONF = ConfigFileName;   /*location of the segments pg_conf file*/
 	extvar.GP_SEG_DATADIR = data_directory;   /*location of the segments datadirectory*/

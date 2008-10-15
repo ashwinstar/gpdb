@@ -334,6 +334,7 @@ static int make_command(const char* cmd, extvar_t* ev, char* buf)
 	sz += make_export("GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF, buf ? buf + sz : 0);
 	sz += make_export("GP_SEG_DATADIR", ev->GP_SEG_DATADIR, buf ? buf + sz : 0);
 	sz += make_export("GP_DATABASE", ev->GP_DATABASE, buf ? buf + sz : 0);
+	sz += make_export("GP_USER", ev->GP_USER, buf ? buf + sz : 0);
 	sz += make_export("GP_DATE", ev->GP_DATE, buf ? buf + sz : 0);
 	sz += make_export("GP_TIME", ev->GP_TIME, buf ? buf + sz : 0);
 	sz += make_export("GP_XID", ev->GP_XID, buf ? buf + sz : 0);
@@ -658,6 +659,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate,int*re
 			|| set_httpheader(file, "X-GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF)
 			|| set_httpheader(file, "X-GP_SEG_DATADIR", ev->GP_SEG_DATADIR)
 			|| set_httpheader(file, "X-GP-DATABASE", ev->GP_DATABASE)
+			|| set_httpheader(file, "X-GP-USER", ev->GP_USER)
 			|| set_httpheader(file, "X-GP-XID", ev->GP_XID)
 			|| set_httpheader(file, "X-GP-CID", ev->GP_CID)
 			|| set_httpheader(file, "X-GP-SN", ev->GP_SN)
