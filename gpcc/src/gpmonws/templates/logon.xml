@@ -1,8 +1,0 @@
-$def with (user, status, role, sid)
-<?xml version="1.0"?>
-<logon>
-   <username>$user</username>
-   <status>$status</status>
-   <role>$role</role>
-   <sid>$sid</sid>
-</logon>

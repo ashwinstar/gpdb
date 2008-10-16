@@ -17,37 +17,11 @@ APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs)
 APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
-OSNAME=$(shell uname -s)
-PLATFORM=$(shell uname -i)
-LIBPQLIBS=-L$(GPCC)/../cdb-pg/src/interfaces/libpq/
-LIBPQINCL=-I$(GPCC)/../cdb-pg/src/interfaces/libpq/
-
-ifeq (Darwin, $(OSNAME))
-	GPSMON_LDFLAGS=-framework CoreServices -framework IOKit
-else
-	ifeq (SunOS, $(OSNAME))
-		GPSMON_LDFLAGS=-lkstat
-	endif	
-endif
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpmon mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
+all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
 
 #mkgpma mkgp 
-mkgpmon: 
-	@echo --- gpmon --------------------------------------------------
-	(cd src/gpmon; $(CC) $(INCLUDES) $(CDBINCL) $(LIBPQINCL) $(CPPFLAGS) \
-	  $(CFLAGS) -o gpmmon gpmmon.c gpmondb.c gpmonlib.c gpmon_agg.c $(APULIBS) $(APRLIBS) \
-    $(LIBPQLIBS) -lpq -levent -lm)
-	(cd src/gpmon; $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS) $(CFLAGS) \
-		-o gpsmon gpsmon.c gpmonlib.c $(APULIBS) $(APRLIBS) -levent \
-		$(GPSMON_LDFLAGS) -lsigar -lm )
-	@mkdir -p gpmon/bin
-	@mkdir -p gpmon/lib
-	@cp -f src/gpmon/gpmmon gpmon/bin/
-	@cp -f src/gpmon/gpsmon gpmon/bin/
-	@cp -f src/gpmon/gpmon_catqrynow.py gpmon/lib
-	@cp -f src/gpmon/gpperfmon.sql gpmon/
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
