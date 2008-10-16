@@ -366,7 +366,7 @@ def gpperfmon_setup():
 
         print '\ngpperfmon runs a small web server for the UI and web API.  This web'
         print 'server by default runs on port 8080, but you may specify any available port.'
-        lighty_port = get_int('Web server port [8080]', 8080, 1, 65534)
+        lighty_port = get_int('Web server port [28080]', 28080, 1, 65534)
     
         ssl_cert = ''
 
