@@ -23,16 +23,22 @@
 
 #define HTF_FREELIST_MAX_LEN (10)
 
-/* Create and initialize a HeapTuple FIFO.	The FIFO state is allocated by
- * this function, then initialized and returned.
+static void htfifo_cleanup(htup_fifo htf);
+
+/*
+ * Create and initialize a HeapTuple FIFO. The FIFO state is allocated
+ * by this function, then initialized and returned.
  *
- * The HeapTuple FIFO must be given at least MIN_HTUPFIFO_KB bytes of space
- * to work with.  Anything less will be trapped as an assert-failure.
+ * The HeapTuple FIFO must be given at least MIN_HTUPFIFO_KB bytes of
+ * space to work with.  Anything less will be trapped as an
+ * assert-failure.
  *
  * Parameters:
+ *		max_mem_kb - The maximum memory size the FIFO can grow to, in
+ *		kilobytes.  If the FIFO grows larger than this, an error is
+ *		logged.
  *
- *	   max_mem_kb - The maximum memory size the FIFO can grow to, in
- *		   kilobytes.  If the FIFO grows larger than this, an error is logged.
+ * XXX: THIS MEMORY PARAMETER IS COMPLETELY IGNORED!
  */
 htup_fifo
 htfifo_create(int max_mem_kb)
@@ -46,7 +52,8 @@ htfifo_create(int max_mem_kb)
 }
 
 
-/* Initialize a HeapTuple FIFO.  The FIFO state is already allocated before
+/*
+ * Initialize a HeapTuple FIFO.  The FIFO state is already allocated before
  * this function is called, but it is assumed that its contents are
  * uninitialized.
  *
@@ -79,10 +86,11 @@ htfifo_init(htup_fifo htf, int max_mem_kb)
 }
 
 
-/* Clean up a HeapTuple FIFO.  This frees all dynamically-allocated contents
- * of the FIFO, but not the FIFO state itself.
+/*
+ * Clean up a HeapTuple FIFO.  This frees all dynamically-allocated
+ * contents of the FIFO, but not the FIFO state itself.
  */
-void
+static void
 htfifo_cleanup(htup_fifo htf)
 {
 	HeapTuple	htup;
@@ -110,21 +118,27 @@ htfifo_cleanup(htup_fifo htf)
 	htf->max_mem_size = 0;
 }
 
-
-/* Clean up and free a HeapTuple FIFO.	This frees both the dynamically-
- * allocated contents of the FIFO, and the FIFO's state.
+/*
+ * Clean up and free a HeapTuple FIFO. This frees both the
+ * dynamically- allocated contents of the FIFO, and the FIFO's state.
  */
 void
 htfifo_destroy(htup_fifo htf)
 {
-	AssertArg(htf != NULL);
+	/*
+	 * MPP-3910: race with cancel -- if we haven't been initialized,
+	 * there is nothing to do.
+	 */
+	if (htf == NULL)
+		return;
 
 	htfifo_cleanup(htf);
 	pfree(htf);
 }
 
 
-/* Append the specified HeapTuple to the end of a HeapTuple FIFO.
+/*
+ * Append the specified HeapTuple to the end of a HeapTuple FIFO.
  *
  * The HeapTuple must NOT be NULL.
  *
@@ -170,25 +184,12 @@ htfifo_addtuple(htup_fifo htf, HeapTuple htup)
 
 	htf->tup_count++;
 	htf->curr_mem_size += GetMemoryChunkSpace(p_ent) + GetMemoryChunkSpace(htup);
-
-/* TODO:  This code is commented out because WE HAVE NO FLOW-CONTROL.
-		  Once we have flow-control, a FIFO shouldn't ever pop.  But now,
-		  FIFOs can easily pop if we enforce this limit.  So, without the
-		  limit, we just pop when we run out of memory.
-
-	if (htf->curr_mem_size > htf->max_mem_size)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-			errmsg("HeapTuple FIFO limit of %d bytes was exceeded.",
-				htf->max_mem_size)
-			));
-	}
-*/
 }
 
 
-/* Retrieve the next HeapTuple from the start of the FIFO.	If the FIFO is
- * empty then NULL is returned.
+/*
+ * Retrieve the next HeapTuple from the start of the FIFO. If the FIFO
+ * is empty then NULL is returned.
  */
 HeapTuple
 htfifo_gettuple(htup_fifo htf)

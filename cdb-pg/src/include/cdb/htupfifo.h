@@ -69,7 +69,6 @@ typedef struct htup_fifo_state
 
 extern htup_fifo htfifo_create(int max_mem_kb);
 extern void htfifo_init(htup_fifo htf, int max_mem_kb);
-extern void htfifo_cleanup(htup_fifo htf);
 extern void htfifo_destroy(htup_fifo htf);
 
 extern void htfifo_addtuple(htup_fifo htf, HeapTuple htup);
