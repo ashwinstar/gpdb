@@ -266,7 +266,7 @@ def system_upto_now(host, stime, interval):
     for r in rt_system(host):
         rows.append(r)
 
-    return (SUCCESS, _system_consolidate(rows))
+    return _system_consolidate(rows)
 
 
 def system_history(host, stime, etime, interval):
@@ -439,10 +439,12 @@ def qp():
             child = element.values()[0] + 1
             if not stack:
                 break
-            if child == len(tree[parent]):
-                indent = ''
-                for i in range(parent): indent += '\t'
-                print("%s</iterator nid=%s>" % (indent, tree[parent][child]))
+            if child < len(tree[parent]):
+                continue
+            indent = ''
+            for i in range(parent): indent += '\t'
+            print("%s</iterator parent=%s child=%s>" % (indent, parent, child))
+
 
 
 def rt_queryplan(tmid, ssid, ccnt, segid=''):
@@ -657,4 +659,119 @@ def queryiterator(tmid, ssid, ccnt, nid):
         rows.append(r)
 
     return _iterator_consolidate(rows)
+
+
+
+def _database_consolidate(rows):
+    td = {}   #time dimension
+    tab = {}  #table where the key is composed time
+
+    x = None
+    for r in rows:
+        t = r['ctime']
+        td[t] = 1
+        tab[t] = r
+        x = r
+
+    # retrieve the column names into ckeys
+    ckeys = None
+    if x:
+        ckeys = filter(lambda i: i != 'ctime', x.keys())
+	ckeys.sort()
+
+    tkeys = td.keys(); tkeys.sort()
+    return (tkeys, ckeys, tab)
+
+
+
+def database_now():
+    rows = rt_database()
+    return _database_consolidate(rows)
+
+def rt_database():
+    filename = "%s/database_now.dat" % path
+
+    # ordering is important to match the order in the file
+    cnames = [  'ctime', 'queries_total', 
+                'queries_running', 'queries_queued']
+
+    rows = []
+
+    try:
+        f = open(filename, 'r')
+    except:
+        sys.stderr.write("file not found: %s\n" % filename)
+        return rows
+
+    try:
+        for line in f:
+            columns = {} # dict to contain the values of each column
+            entry = line.split('|')
+            # convert date string into datetime object
+            entry[0] = datetime.datetime.strptime(entry[0], "%Y-%m-%d %H:%M:%S")
+            # append realtime data to the end of the array
+            for i in range(len(cnames)):
+                columns[cnames[i]] = entry[i]
+            rows.append(columns)
+    finally:
+        f.close()
+
+    # DEBUGGING 
+    print rows
+    # DEBUGGING 
+    return rows
+
+
+def database_sql(table, filter, interval):
+    columns = [ 'ctime', 'queries_total', 
+                'queries_running', 'queries_queued']
+
+    query_fragment = "select date_trunc('%s', ctime) as ctime" % interval
+    for column in columns:
+        query_fragment += ", %s(%s) as %s" % (agg_func, column, column)
+
+    query_fragment += " from %s %s" % (table, filter)
+    query_fragment += " group by date_trunc('%s', ctime) " % interval
+    return query_fragment
+
+
+def database_upto_now(stime, interval):
+    filter = "where ctime >= '%s'" % stime
+
+    query1 = database_sql('database_history', filter, interval)
+    query2 = database_sql('database_tail', filter, interval)
+    query = "%s\nunion all\n%s" % (query1, query2)
+
+    rows = []
+    # query history information.
+    try:
+        conn.execute(query)
+        rows = [r for r in conn.iterate_dict()]
+    except:
+        sys.stderr.write('Exception querying database: %s\n\n' % query)
+
+    # query real-time information.
+    for r in rt_database():
+        rows.append(r)
+
+    return _database_consolidate(rows)
+
+
+def database_history(stime, etime, interval):
+    filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+
+    query1 = database_sql('database_history', filter, interval)
+    query2 = database_sql('database_tail', filter, interval)
+    query = "%s\nunion all\n%s" % (query1, query2)
+
+    rows = []
+    try:
+        conn.execute(query)
+        rows = [r for r in conn.iterate_dict()]
+    except:
+        sys.stderr.write('Exception querying database: %s\n\n' % query)
+
+    return _database_consolidate(rows)
+
+
 

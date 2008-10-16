@@ -25,6 +25,7 @@ web.config.session_parameters.timeout = 1800
 
 urls = ('/config', 'config', 
         '/hosts', 'hosts',
+        '/database', 'database',
         '/system', 'system',
         '/query', 'query',
         '/queryplan', 'queryplan',
@@ -410,10 +411,10 @@ class queryplan:
         return render.queryplan(i.tmid, i.ssid, i.ccnt, tab, tree, root)
 
 
-class iterator:
+class database:
     def GET(self):
         # DEBUGGING 
-        sys.stderr.write("\nITERATOR:\n")
+        sys.stderr.write("\nDATABASE:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
@@ -424,44 +425,55 @@ class iterator:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(tmid='', ssid='', ccnt='', nid='')
+        i = web.input(start='last', end='', interval='minute')
 
         # DEBUGGING 
-        sys.stderr.write("\n\n\n<iterator>\n")
-        sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n\tnid = %s\n" % (i.tmid, i.ssid, i.ccnt, i.nid))
-        sys.stderr.write("</iterator>\n\n\n")
+        sys.stderr.write("\n\n<database>\n")
+        sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n" % (i.start, i.end, i.interval))
+        sys.stderr.write("</database>\n\n")
         # DEBUGGING 
 
-        if i.tmid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "tmid"')
-        if i.ssid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "ssid"')
-        if i.ccnt == '':
-            return mkerr(error.BADREQ, 'missing parameter: "ccnt"')
-        if i.nid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "nid"')
+        i.start = i.start.lower()
+        i.end = i.end.lower()
 
-        # verify the query ID is composed of numbers only
-        try:
-            i.tmid = int(i.tmid)
-            i.ssid = int(i.ssid)
-            i.ccnt = int(i.ccnt)
-            i.nid = int(i.nid)
-        except:
-            return mkerr(error.BADREQ, 'invalid query ID')
+        res = None
 
-        (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
+        if i.start == 'last':
+            res = db.database_now()
+
+        elif i.start != '':
+            if i.end == 'last':
+                i.interval = interval.check(i.start, timenow(), i.interval)
+                res = db.database_upto_now(i.host, i.start, i.interval)
+
+            elif i.end != '':
+                i.interval = interval.check(i.start, i.end, i.interval)
+                res = db.database_history(i.host, i.start, i.end, i.interval)
+
+        else:
+            return mkerr(error.BADREQ, 'missing parameter: "end date"')
+
+        (tkeys, ckeys, tab) = res
+
+        # check if the result set is empty
+        stime = ''
+        etime = ''
+        if ckeys:
+            if tkeys:
+                stime = tkeys[0]; etime = tkeys[-1]
+            else:
+                stime = timenow(); etime = stime
 
         # DEBUGGING 
         sys.stderr.write('RESULTS:\n=======\n\n')
-        sys.stderr.write('iterator:\n')
-        for id in skeys:
-            sys.stderr.write('\tsegment id: %s\n' %  id)
-            for c in ckeys:
-                sys.stderr.write('\t\t%s: %s\n' % (c, tab[id][c]))
+        for t in tkeys:
+            sys.stderr.write('\ntime: %s\n' % t)
+            sys.stderr.write('\t%s\n' % tab[t])
+        sys.stderr.write('start time: %s\n' % stime)
+        sys.stderr.write('end time: %s\n' % etime)
         # DEBUGGING 
 
-        return render.iterator(i.tmid, i.ssid, i.ccnt, i.nid, skeys, ckeys, tab)
+        return render.database(stime, etime, tkeys, ckeys, tab)
 
 
 

@@ -1,0 +1,12 @@
+$def with (stime, etime, tkeys, ckeys, tab)
+<?xml version="1.0"?>
+<database start="$stime" end="$etime">
+$for c in ckeys:
+    <$c> \
+    $for t in tkeys:
+        $ v = tab[t]
+        $if not v: v = {}
+        $ v = v.get(c, '#')
+        ${loop.index != 1 and '|' or ''} ${v} \
+    </$c>
+</database>
