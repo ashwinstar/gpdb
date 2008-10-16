@@ -529,6 +529,10 @@ cat <<EOF
 ********************************************************************************
 Installation complete.
 Greenplum Database Performance Monitor is installed in \${installPath}
+
+To complete the environment configuration, please ensure that the
+gpperfmon_path.sh file is sourced.
+
 Please read \${installPath}/docs/README to get started.
 ********************************************************************************
 EOF
