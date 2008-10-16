@@ -450,6 +450,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	int				outputClean = 0;
 	//int				outputCreate = 0;
 	int				outputNoOwner = 0;
+	static int		disable_triggers = 0;
 	bool bSawCDB_S_Option;
 	int lenCmdLineParms;
 	int i;
@@ -493,6 +494,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		 * letter, but are available as '-X long-name'
 		 */
 		{"use-set-session-authorization", no_argument, &auth, 1},
+		{"disable-triggers", no_argument, &disable_triggers, 1},
 
 		/*
 		 * the following are Greenplum Database specific, and don't have an equivalent short option
@@ -676,11 +678,11 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms );
 				break;
 
-/* Invalid for gp_dump.
-			case 'S':
-				pInputOpts->pszOutputSuperuser = strdup(optarg);
+			case 'S':			/* Superuser username */
+				if (strlen(optarg) != 0)
+					pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				break;
-*/
+
 			case 't':			/* Dump data for this table only */
 				selectTableName = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
@@ -726,12 +728,8 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 			case 'X':
 				if (strcmp(optarg, "use-set-session-authorization") == 0)
 					auth = 1;
-
-				//else if (strcmp(optarg, "disable-triggers") == 0)
-				//{
-				//	disable_triggers = 1;
-				//	pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
-				//}
+				else if (strcmp(optarg, "disable-triggers") == 0)
+					disable_triggers = 1;
 				else
 				{
 					fprintf(stderr,
@@ -832,6 +830,8 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	/* Add interesting long options to the passthrough arguments */
 	if ( auth )
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm( "use-set-session-authorization", NULL, pInputOpts->pszPassThroughParms );
+	if ( disable_triggers )
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm( "disable-triggers", NULL, pInputOpts->pszPassThroughParms );
 
 	/* Get database name from command line */
 	if (optind < argc)
@@ -986,6 +986,7 @@ void help(const char *pszProgName)
 	printf(("  -t, --table=TABLE        dump the named table only\n"));
 	printf(_("  -T, --exclude-table=TABLE   do NOT dump the named table(s)\n"));
 	printf(("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
+	printf(_("  --disable-triggers          disable triggers during data-only restore\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                              use SESSION AUTHORIZATION commands instead of\n"
 			 "                              ALTER OWNER commands to set ownership\n"));
