@@ -79,6 +79,7 @@ bool		schemaOnly;
 bool		dataOnly;
 bool		aclsSkip;
 /* START MPP ADDITION */
+bool        isGBbackend;		/* true if interacting with a GB backend */
 bool		dumpPolicy;
 /* END MPP ADDITION */
 
@@ -184,6 +185,7 @@ static char *format_function_signature(FuncInfo *finfo, bool honor_quotes);
 static const char *convertRegProcReference(const char *proc);
 static const char *convertOperatorReference(const char *opr);
 static void selectSourceSchema(const char *schemaName);
+static bool testGPbackend(void);
 static bool testPartitioningSupport(void);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static const char *fmtQualifiedId(const char *schema, const char *id);
@@ -228,8 +230,14 @@ main(int argc, char **argv)
 	int			outputCreate = 0;
 	bool		outputBlobs = false;
 	int			outputNoOwner = 0;
+	bool		isGPbackend;
 	static int	disable_triggers = 0;
 	char	   *outputSuperuser = NULL;
+	/*
+	 * The default value for gp_syntax_option depends upon whether or not the backend
+	 * is a GP or non-GP backend -- a GP backend defaults to ENABLED.
+	 */
+	static enum { GPS_NOT_SPECIFIED, GPS_DISABLED, GPS_ENABLED } gp_syntax_option = GPS_NOT_SPECIFIED;
 
 	RestoreOptions *ropt;
 
@@ -275,6 +283,7 @@ main(int argc, char **argv)
 		/* START MPP ADDITION */
 		/* the following are mpp specific, and don't have an equivalent short option */
 		{"gp-syntax", no_argument, NULL, 1},
+		{"no-gp-syntax", no_argument, NULL, 2},
 		/* END MPP ADDITION */
 
 		{NULL, 0, NULL, 0}
@@ -290,10 +299,6 @@ main(int argc, char **argv)
 	strcpy(g_opaque_type, "opaque");
 
 	dataOnly = schemaOnly = dumpInserts = attrNames = false;
-
-	/* START MPP ADDITION */
-	dumpPolicy = false;
-	/* END MPP ADDITION */
 
 	progname = get_progname(argv[0]);
 
@@ -455,12 +460,13 @@ main(int argc, char **argv)
 				/* This covers the long options equivalent to -X xxx. */
 				break;
 
-			/* START MPP ADDITION */
-			case 1:
-				/* gp-format */
-				dumpPolicy = true;
+			case 1:				/* gp-syntax */
+				gp_syntax_option = GPS_ENABLED;
 				break;
-			/* END MPP ADDITION */
+
+			case 2:				/* no-gp-syntax */
+				gp_syntax_option = GPS_DISABLED;
+				break;
 
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
@@ -575,6 +581,32 @@ main(int argc, char **argv)
 
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	do_sql_command(g_conn, "SET DATESTYLE = ISO");
+
+	/*
+	 * Determine whether or not we're interacting with a GP backend.
+	 */
+	isGPbackend = testGPbackend();
+
+	/*
+	 * Now that the type of backend is known, determine the gp-syntax option
+	 * value and set processing accordingly.
+	 */
+	switch ( gp_syntax_option )
+	{
+	case GPS_NOT_SPECIFIED:
+		dumpPolicy = isGPbackend;
+		break;
+	case GPS_DISABLED:
+		dumpPolicy = false;
+		break;
+	case GPS_ENABLED:
+		dumpPolicy = isGPbackend;
+		if ( !isGPbackend )
+		{
+			write_msg(NULL, "Server is not a Greenplum Database instance; --gp_syntax option ignored.\n");
+		}
+		break;
+	}
 
 	/*
 	 * Start serializable transaction to dump consistent data.
@@ -6605,7 +6637,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		actual_atts = 0;
 		for (j = 0; j < tbinfo->numatts; j++)
 		{
-			if ( !tbinfo->attisdropped )
+			if ( !tbinfo->attisdropped[j] )
 				defined_atts++;
 
 			/* Is this one of the table's own attrs, and not dropped ? */
@@ -7853,6 +7885,29 @@ selectSourceSchema(const char *schemaName)
 	if (curSchemaName)
 		free(curSchemaName);
 	curSchemaName = strdup(schemaName);
+}
+
+/*
+ * isGPbackend - returns true if the connected backend is a GreenPlum DB backend.
+ */
+static bool
+testGPbackend(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isGPbackend;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT current_setting('gp_is_primary');");
+	res = PQexec(g_conn, query->data);
+
+	isGPbackend = ( PQresultStatus(res) == PGRES_TUPLES_OK );
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isGPbackend;
 }
 
 /*
