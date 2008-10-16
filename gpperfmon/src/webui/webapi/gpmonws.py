@@ -411,6 +411,65 @@ class queryplan:
         return render.queryplan(i.tmid, i.ssid, i.ccnt, tab, tree, root)
 
 
+class iterator:
+    def GET(self):
+        # DEBUGGING 
+        sys.stderr.write("\nITERATOR:\n")
+        sys.stderr.write("session: %s\n" % session.getid())
+        sys.stderr.write("user: %s\n" % session.user)
+        if session.has_key('superuser'):
+            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
+        if session.has_key('user'):
+            sys.stderr.write("role: %s\n" % str(session.role['user']))
+        sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
+        # DEBUGGING 
+
+        if not session.loggedin:
+            return web.webapi.accessdenied()
+
+        web.header('Content-Type', 'text/xml')
+
+        i = web.input(tmid='', ssid='', ccnt='', nid='')
+
+        # DEBUGGING 
+        sys.stderr.write("\n\n\n<iterator>\n")
+        sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n\tnid = %s\n" % (i.tmid, i.ssid, i.ccnt, i.nid))
+        sys.stderr.write("</iterator>\n\n\n")
+        # DEBUGGING 
+
+        if i.tmid == '':
+            return mkerr(error.BADREQ, 'missing parameter: "tmid"')
+        if i.ssid == '':
+            return mkerr(error.BADREQ, 'missing parameter: "ssid"')
+        if i.ccnt == '':
+            return mkerr(error.BADREQ, 'missing parameter: "ccnt"')
+        if i.nid == '':
+            return mkerr(error.BADREQ, 'missing parameter: "nid"')
+
+        # verify the query ID is composed of numbers only
+        try:
+            i.tmid = int(i.tmid)
+            i.ssid = int(i.ssid)
+            i.ccnt = int(i.ccnt)
+            i.nid = int(i.nid)
+        except:
+            return mkerr(error.BADREQ, 'invalid query ID')
+
+        (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
+
+        # DEBUGGING 
+        sys.stderr.write('RESULTS:\n=======\n\n')
+        sys.stderr.write('iterator:\n')
+        for id in skeys:
+            sys.stderr.write('\tsegment id: %s\n' %  id)
+            for c in ckeys:
+                sys.stderr.write('\t\t%s: %s\n' % (c, tab[id][c]))
+        # DEBUGGING 
+
+        return render.iterator(i.tmid, i.ssid, i.ccnt, i.nid, skeys, ckeys, tab)
+
+
+
 class database:
     def GET(self):
         # DEBUGGING 
@@ -444,11 +503,11 @@ class database:
         elif i.start != '':
             if i.end == 'last':
                 i.interval = interval.check(i.start, timenow(), i.interval)
-                res = db.database_upto_now(i.host, i.start, i.interval)
+                res = db.database_upto_now(i.start, i.interval)
 
             elif i.end != '':
                 i.interval = interval.check(i.start, i.end, i.interval)
-                res = db.database_history(i.host, i.start, i.end, i.interval)
+                res = db.database_history(i.start, i.end, i.interval)
 
         else:
             return mkerr(error.BADREQ, 'missing parameter: "end date"')

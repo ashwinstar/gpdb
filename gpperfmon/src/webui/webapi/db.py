@@ -85,7 +85,7 @@ def _system_consolidate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        ckeys = filter(lambda i: i != 'hostname', x.keys())
+        ckeys = filter(lambda i: i != 'hostname' and i != 'ctime', x.keys())
 	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
@@ -111,7 +111,7 @@ def _queries_consolidate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        ckeys = x.keys()
+        ckeys = filter(lambda i: i != 'ctime', x.keys())
 	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
@@ -172,6 +172,28 @@ def _iterator_consolidate(rows):
 
     skeys = segd.keys(); skeys.sort()
     return (skeys, ckeys, tab)
+
+
+def _database_consolidate(rows):
+    td = {}   #time dimension
+    tab = {}  #table where the key is composed time
+
+    x = None
+    for r in rows:
+        t = r['ctime']
+        td[t] = 1
+        tab[t] = r
+        x = r
+
+    # retrieve the column names into ckeys
+    ckeys = None
+    if x:
+        ckeys = filter(lambda i: i != 'ctime', x.keys())
+	ckeys.sort()
+
+    tkeys = td.keys(); tkeys.sort()
+    return (tkeys, ckeys, tab)
+
 
 
 
@@ -662,28 +684,6 @@ def queryiterator(tmid, ssid, ccnt, nid):
 
 
 
-def _database_consolidate(rows):
-    td = {}   #time dimension
-    tab = {}  #table where the key is composed time
-
-    x = None
-    for r in rows:
-        t = r['ctime']
-        td[t] = 1
-        tab[t] = r
-        x = r
-
-    # retrieve the column names into ckeys
-    ckeys = None
-    if x:
-        ckeys = filter(lambda i: i != 'ctime', x.keys())
-	ckeys.sort()
-
-    tkeys = td.keys(); tkeys.sort()
-    return (tkeys, ckeys, tab)
-
-
-
 def database_now():
     rows = rt_database()
     return _database_consolidate(rows)
@@ -723,8 +723,7 @@ def rt_database():
 
 
 def database_sql(table, filter, interval):
-    columns = [ 'ctime', 'queries_total', 
-                'queries_running', 'queries_queued']
+    columns = ['queries_total', 'queries_running', 'queries_queued']
 
     query_fragment = "select date_trunc('%s', ctime) as ctime" % interval
     for column in columns:
