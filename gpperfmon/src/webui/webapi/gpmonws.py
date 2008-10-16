@@ -23,16 +23,16 @@ import db
 web.webapi.internalerror = web.debugerror
 web.config.session_parameters.timeout = 1800
 
-urls = ('/config', 'config', 
+urls = ('/gpperfmon', 'gpperfmon',
+        '/logon', 'logon',
+        '/logoff', 'logoff',
+        '/config', 'config', 
         '/hosts', 'hosts',
         '/database', 'database',
         '/system', 'system',
         '/query', 'query',
         '/queryplan', 'queryplan',
-        '/iterator', 'iterator',
-        '/logon', 'logon',
-        '/logoff', 'logoff',
-        '/crossdomain.xml', 'crossdomain'
+        '/iterator', 'iterator'
 )
 
 
@@ -42,6 +42,8 @@ session = web.session.Session(app,
                               initializer={'user': '', 'role': {}, 
                                            'loggedin': 0})
 render = web.template.render('./templates/', cache=False)
+
+xml = '<?xml version="1.0"?>'
 
 def authrole(username, password):
     (valid, issuper) = db.get_role(username, password)
@@ -65,11 +67,15 @@ def mkerr(code, msg):
 def timenow():
     return datetime.datetime.now().replace(microsecond=0).isoformat(' ')
 
-class crossdomain:
+
+class gpperfmon:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        return render.crossdomain()
-
+        tab = []
+        for i in range(len(urls)/2-1):
+            j = (i+1) * 2 + 1
+            tab.append(urls[j])
+        return render.gpperfmon(tab)
 
 
 
@@ -80,17 +86,21 @@ class logon:
         password = ''
         if i.has_key('username'):
             username = i['username']
+        else:
+            return web.webapi.accessdenied("%s\n<logon>missing username</logon>" % xml)
         if i.has_key('password'):
             password = i['password']
+        else:
+            return web.webapi.accessdenied("%s\n<logon>missing password</logon>" % xml)
 
         # authenticate user
         authrole(username, password)
         if not session.loggedin:
-            return web.webapi.accessdenied('<br><center><h1>logon failed</h1></center>')
+            return web.webapi.accessdenied("%s\n<logon>access denied</logon>" % xml)
         
         role = ''
         if session.role['superuser']:
-            role = 'superuser, user'
+            role = 'superuser'
         else:
             role = 'user'
 
@@ -100,7 +110,7 @@ class logon:
         sys.stderr.write("user: %s\n" % session.user)
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
-        return render.logon(username, 'SUCCESS', role, session.getid())
+        return render.logon(username, 'SUCCESS', session.getid())
 
 class logoff:
     def GET(self):
@@ -132,7 +142,7 @@ class config:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<config>access denied</config>" % xml)
 
         web.header('Content-Type', 'text/xml')
         if config.stime == None:
@@ -223,7 +233,7 @@ class hosts:
         # DEBUGGING 
 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<hosts>access denied</hosts>" % xml)
 
         web.header('Content-Type', 'text/xml')
         if hosts.nodes == None:
@@ -243,7 +253,7 @@ class system:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<system>access denied</system>" % xml)
 
         web.header('Content-Type', 'text/xml')
 
@@ -297,7 +307,7 @@ class query:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<query>access denied</query>" % xml)
 
         web.header('Content-Type', 'text/xml')
 
@@ -365,7 +375,7 @@ class queryplan:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<queryplan>access denied</queryplan>" % xml)
 
         web.header('Content-Type', 'text/xml')
 
@@ -425,7 +435,7 @@ class iterator:
         # DEBUGGING 
 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<iterator>access denied</iterato>" % xml)
 
         web.header('Content-Type', 'text/xml')
 
@@ -480,7 +490,7 @@ class database:
         # DEBUGGING 
 
         if not session.loggedin:
-            return web.webapi.accessdenied()
+            return web.webapi.accessdenied("%s<database>access denied</database>" % xml)
 
         web.header('Content-Type', 'text/xml')
 
