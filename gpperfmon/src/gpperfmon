@@ -18,7 +18,7 @@ Usage: gpperfmon -D <MASTER DATA DIRECTORY> --start|--stop|--restart|--status|--
 
 '''
 
-import os, sys, getopt, signal, time, socket
+import os, sys, getopt, signal, time, socket, ConfigParser
 
 script_name = os.path.split(__file__)[-1]
 script_version = '2.0.0'
@@ -243,10 +243,50 @@ def get_yesno(msg, default):
 
 #################
 def gpperfmon_setup():
+    #gpmmon defaults
+    quantum_default=15
+    minqt_default=60
+    mindqt_default=60
+    verbose_default=0
+    logloc_default=opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs'
+
+    # defaults for webapi
+    max_datapoints_default = 600
+    load2_threshold_default = 2.00
+    cpu_threshold_default = 80
+    memory_threshold_default = 80
+    cpu_skew_threshold_default = 100
+
+    config = ConfigParser.ConfigParser()
+    config.add_section('GPMMON')
+    config.add_section('WS')
+    config.add_section('SYSTEM METRICS')
+    config.add_section('QUERY METRICS')
+    config.set('GPMMON', 'quantum', quantum_default)
+    config.set('GPMMON', 'min_query_time', minqt_default)
+    config.set('GPMMON', 'min_detailed_query_time', mindqt_default)
+    config.set('GPMMON', 'verbose', verbose_default)
+    config.set('GPMMON', 'log_location', logloc_default)
+    config.set('WS', 'max_data_points', max_datapoints_default)
+    config.set('SYSTEM METRICS', 'load2_threshold', load2_threshold_default)
+    config.set('SYSTEM METRICS', 'cpu_threshold', cpu_threshold_default)
+    config.set('SYSTEM METRICS', 'memory_threshold', memory_threshold_default)
+    config.set('QUERY METRICS', 'cpu_skew_threshold', cpu_skew_threshold_default) 
+
     if os.path.isfile(GPPERFMON_CONF_FILE):
         yn = get_yesno('gpperfmon.conf already exists for this database instance.\nDo you want to reconfigure gpperfmon? [N]', 'N')
         if yn == 'N':
             sys.exit(0)
+        # Read in the existing file
+        try:
+            config.read(GPPERFMON_CONF_FILE)
+            quantum_default = config.getint('GPMMON', 'quantum')
+            minqt_default = config.getint('GPMMON', 'min_query_time')
+            mindqt_default = config.getint('GPMMON', 'min_detailed_query_time')
+            logloc_default = config.get('GPMMON', 'log_location')
+        except:
+            # invalid conf file
+            pass
 
     # check that master data directory is correct...
     if not os.path.isfile(opt['MASTER_DATA_DIRECTORY'] + '/pg_hba.conf'):
@@ -319,38 +359,29 @@ def gpperfmon_setup():
 
     print '\nThe quantum value specifies the time in seconds between updates from'
     print 'performance monitor agents on all segments.'
-    quantum = get_int('Quantum (between 10 and 120 seconds). [15]', 15, 10, 120)
+    quantum = get_int('Quantum (between 10 and 120 seconds). [%d]' % (quantum_default), quantum_default, 10, 120)
+    config.set('GPMMON', 'quantum', quantum)
 
     print '\nThe minimum query run time specifies the cutoff time for queries to log.'
     print 'Only queries with a run time greater than this value will be logged in '
     print 'the queries_history table.'
-    minqt = get_int('Minimum query run time (seconds) [60]', 60, 0) 
+    minqt = get_int('Minimum query run time (seconds) [%d]' % (minqt_default), minqt_default, 0) 
+    config.set('GPMMON', 'min_query_time', minqt)
 
     print '\nThe minimum detailed query run time specifies the cutoff time for queries'
     print 'to log detailed iterator metrics.  Only queries with a run time greater'
     print 'than this value will have their detailed metrics logged in the'
     print 'iterators_history table.'    
-    mindqt = get_int('Minimum detailed query run time (seconds) [%d]' % minqt, minqt, minqt)
+    mindqt = get_int('Minimum detailed query run time (seconds) [%d]' % (minqt), minqt, minqt)
+    config.set('GPMMON', 'min_detailed_query_time', mindqt)
 
-    logloc = get_string('\nLog file location [%s]' % (opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs'), 
-                        opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs')
+    logloc = get_string('\nLog file location [%s]' % (logloc_default), logloc_default)
+    config.set('GPMMON', 'log_location', logloc)
 
     try:
         os.mkdir(logloc)
     except OSError:
         pass #dir exists
-
-    max_datapoints = 600
-    load_threshold = 2.00
-    cpu_threshold = 80
-    mem_threshold = 80
-    disk_threshold = 0
-    net_threshold = 0
-    cpu_skew_threshold = 100
-
-    gpperfmon_conf = generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, max_datapoints, 
-                                             load_threshold, cpu_threshold, mem_threshold, 
-                                             disk_threshold, net_threshold, cpu_skew_threshold)
 
     # Web Server configuration
     enable_ssl = 'disable'
@@ -360,7 +391,7 @@ def gpperfmon_setup():
         print 'Web Server Configuration'
         print '------------------------'
     
-    #lighty conf
+        #lighty conf
         lighty_access_log = logloc + '/lighttpd-access.log'
         lighty_error_log = logloc + '/lighttpd-error.log'
 
@@ -379,26 +410,25 @@ def gpperfmon_setup():
                     ssl_cert = opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/conf/cert.pem'
                 else:
                     print 'Failed to generate SSL cert.  SSL will be disabled.'
-            else:
-                print 'openssl not found.  If you want to enable SSL, make sure openssl is in your'
-                print 'path and rerun gpperfmon.py --setup'
+        else:
+            print 'openssl not found.  If you want to enable SSL, make sure openssl is in your'
+            print 'path and rerun gpperfmon.py --setup'
 
-                lighty_conf = generate_lighty_conf(WEBAPI_DOCROOT, lighty_error_log, 
-                                                   lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/greenplum/gpmonws.py', 
-                                                   enable_ssl, ssl_cert)
+        lighty_conf = generate_lighty_conf(WEBAPI_DOCROOT, lighty_error_log, 
+                                           lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/greenplum/gpmonws.py', 
+                                           enable_ssl, ssl_cert)
 
-    # TODO: should we clean up everything on error?
-                try:
-                    FILE = open(LIGHTY_CONF_FILE, 'w')
-                    FILE.writelines(lighty_conf)
-                    FILE.close()
-                    print '\nDone writing lighttpd configuration to %s' % LIGHTY_CONF_FILE
-                except:
-                    print 'Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
+        try:
+            FILE = open(LIGHTY_CONF_FILE, 'w')
+            FILE.writelines(lighty_conf)
+            FILE.close()
+            print '\nDone writing lighttpd configuration to %s' % LIGHTY_CONF_FILE
+        except:
+            print 'Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
 
     try:
         FILE = open(GPPERFMON_CONF_FILE, 'w')
-        FILE.writelines(gpperfmon_conf)
+        config.write(FILE)
         FILE.close()
         print 'Done writing gpperfmon configuration to %s' % GPPERFMON_CONF_FILE
     except:
@@ -673,31 +703,6 @@ def gpmmon_status():
     except:
         pass
     return running
-
-
-#################
-def generate_gpperfmon_conf(quantum, minqt, mindqt, logloc, max_dp, loadt,
-                            cput, memt, diskt, nett, cpuskewt):
-    return '''[GPMMON]
-quantum=%d
-min_query_time=%d
-min_detailed_query_time=%d
-verbose=0
-log_location=%s
-
-[WS]
-max_data_points=%d
-
-[SYSTEM METRICS]
-load2_threshold=%d
-cpu_threshold=%d
-memory_threshold=%d
-disk_threshold=%d
-network_threshold=%d
-
-[QUERY METRICS]
-skew_cpu_threshold=%d
-''' % (quantum, minqt, mindqt, logloc, max_dp, loadt, cput, memt, diskt, nett, cpuskewt)
 
 
 #################
