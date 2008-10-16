@@ -360,10 +360,18 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
     sprintf(p += strlen(p), "|%s", qexec->phase);
     sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64, qexec->rowsout, qexec->rowsout_est);
     for (i = 0; i < sizeof(qexec->m) / sizeof(qexec->m[0]); i++) {
-	sprintf(p += strlen(p), "|%s|%s", qexec->m[i].name, 
-		qexec->m[i].unit);
-	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64,
-		qexec->m[i].value, qexec->m[i].valuemax);
+        if (qexec->m[i].name[0] == '\0')
+        {
+            sprintf(p += strlen(p), "|null|null");
+            sprintf(p += strlen(p), "|null|null");
+        }
+        else
+        {
+            sprintf(p += strlen(p), "|%s|%s", qexec->m[i].name, 
+                    qexec->m[i].unit);
+            sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64,
+                    qexec->m[i].value, qexec->m[i].valuemax);
+        }
     }
 
     fprintf(fp, "%s\n", line);
