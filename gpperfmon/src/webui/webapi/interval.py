@@ -1,12 +1,14 @@
 import os, sys, datetime, time
 import gpmonws
 
+SECONDS_15=15
 SECONDS_PER_MINUTE=60
 SECONDS_PER_HOUR=3600
 SECONDS_PER_DAY=86400
+SECONDS_PER_MONTH=2592000
 
 # default maximum data points
-max_data_points = 465
+max_data_points = 300
 
 
 def check(start, end, interval):
@@ -26,22 +28,32 @@ def check(start, end, interval):
     data_points = max_data_points + 1
 
     while data_points > max_data_points:
-        if interval == 'day':
+        if interval == 'month':
+            data_points = int(((end_seconds - start_seconds) / SECONDS_PER_MONTH)+1)
+        elif interval == 'day':
             data_points = int(((end_seconds - start_seconds) / SECONDS_PER_DAY)+1)
         elif interval == 'hour':
             data_points = int(((end_seconds - start_seconds) / SECONDS_PER_HOUR)+1)
         elif interval == 'minute':
             data_points = int(((end_seconds - start_seconds) / SECONDS_PER_MINUTE)+1)
+        elif interval == 'second':
+            data_points = int(((end_seconds - start_seconds) / SECONDS_15)+1)
         else:
-            raise Exception('Unknown interval')
+            # unknown interval: default to smallest interval
+            sys.stderr.write('\nUnknown interval\n')
+            interval = 'minute'
 
         if data_points > max_data_points:
+            if interval == 'month':
+                sys.stderr.write('\nInterval too large\n')
             if interval == 'day':
-                raise Exception('Interval too large')
+                interval = 'month'
             if interval == 'hour':
                 interval = 'day'
             if interval == 'minute':
                 interval = 'hour'
+            if interval == 'second':
+                interval = 'minute'
 
     return interval
 
