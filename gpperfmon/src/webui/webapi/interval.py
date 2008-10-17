@@ -8,7 +8,7 @@ SECONDS_PER_DAY=86400
 SECONDS_PER_MONTH=2592000
 
 # default maximum data points
-max_data_points = 300
+max_data_points = 2000
 
 
 def check(start, end, interval):
