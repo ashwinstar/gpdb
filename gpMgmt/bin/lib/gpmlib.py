@@ -9,8 +9,6 @@ Please upgrade python installed on this machine.''' % progname)
 import platform, pg8000, gplib, socket, random, popen2
 from time import localtime, strftime
 
-
-
 ##################
 log = {}
 
@@ -900,3 +898,67 @@ def chk_on_passive_standby(master_port):
         return True
 
     return False
+
+
+
+def get_copy_filter(host, port):
+    # pg8000 connects to master in utility mode
+    db = None
+    databases = None
+    filters = []
+
+    try:
+        db = pg8000.Connection(host=host, user=ENV.USER, database='template1', port=port, options='-c gp_session_role=utility')
+        
+        # get list of user databases
+        # select oid, datname from pg_database where oid >= 16384;
+        db.execute('select oid, datname from pg_database where oid >= 16384')
+#        db.execute('select oid, datname from pg_database')
+        databases = [ r for r in db.iterate_tuple() ]
+
+    except Exception, e:
+        print str(e)
+        return None
+    finally:
+        if db:
+            db.close()
+            db = None
+
+    # foreach database
+    for d in databases:
+        try:
+            oid = d[0]
+            datname = d[1]
+            db = pg8000.Connection(host=host, user=ENV.USER, database=datname, port=port,  options='-c gp_session_role=utility')
+
+            # get user table filter (user table, TOAST table, sequences)
+            # select oid from pg_class where old >= 16384 and relkind='r';
+            db.execute("select oid from pg_class where oid >= 16384 and relkind='r'")
+            table_filter = [ r[0] for r in db.iterate_tuple() ] 
+            
+            # get user TOAST table filter
+            # select oid from pg_class where old >= 16384 and relkind='t';    
+            db.execute("select oid from pg_class where oid >= 16384 and relkind='t'")
+            toast_filter = [ r[0] for r in db.iterate_tuple() ] 
+
+            # get sequences filter
+            # select oid from pg_class where old >= 16384 and relkind='S';
+            db.execute("select oid from pg_class where oid >= 16384 and relkind='S'")
+            sequence_filter = [ r[0] for r in db.iterate_tuple() ] 
+
+            # get index filter
+            # select oid from pg_class where old >= 16384 and relkind='i';    
+            db.execute("select oid from pg_class where oid >= 16384 and relkind='i'")
+            index_filter = [ r[0] for r in db.iterate_tuple() ] 
+
+            filters.append((oid, table_filter, toast_filter, sequence_filter, index_filter))
+        except Exception, e:
+            print str(e)
+            continue
+        finally:
+            if db:
+                db.close()
+                db = None
+
+    return filters
+
