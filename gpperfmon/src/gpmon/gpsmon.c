@@ -159,7 +159,6 @@ static void get_pid_metrics(apr_int32_t pid)
     newrec.p_metrics.mem.size = mem.size;
     newrec.p_metrics.mem.resident = mem.resident;
     newrec.p_metrics.mem.share = mem.share;
-    newrec.p_metrics.mem.page_faults = mem.page_faults;
     newrec.cpu_elapsed = cpu.total;
 
     if (rec)

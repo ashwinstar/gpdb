@@ -96,7 +96,6 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		GPMON_NTOHLL(p->_p_metrics.mem.size);
 		GPMON_NTOHLL(p->_p_metrics.mem.resident);
 		GPMON_NTOHLL(p->_p_metrics.mem.share);
-		GPMON_NTOHLL(p->_p_metrics.mem.page_faults);
           	GPMON_NTOHLL(p->rowsout);
           	GPMON_NTOHLL(p->rowsout_est);
 		for (i = 0; i < sizeof(p->m) / sizeof(p->m[0]); i++) {

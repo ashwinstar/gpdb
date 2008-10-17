@@ -122,7 +122,7 @@ struct gpmon_proc_metrics_t {
     apr_int32_t fd_cnt;		/* # opened files / sockets etc */
     float       cpu_pct;	/* cpu usage % */
     struct {
-		apr_int64_t size, resident, share, page_faults;
+		apr_int64_t size, resident, share;
     } mem;
 };
 

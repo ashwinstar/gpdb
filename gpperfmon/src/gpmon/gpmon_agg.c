@@ -20,7 +20,6 @@ typedef struct qenode_t qenode_t;
 struct qenode_t {
     gpmon_qexec_t qexec;
     apr_int64_t cpu_elapsed;
-    apr_int64_t pfaults_elapsed;
     qenode_t* next;
 };
 
@@ -145,7 +144,6 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
     if (ep && diff == 0) {
 	ep->qexec = *qexec;
 	ep->cpu_elapsed += qexec->_cpu_elapsed;
-	ep->pfaults_elapsed += qexec->_p_metrics.mem.page_faults;
     }
     else {
 	qenode_t* x;
@@ -155,7 +153,6 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 
 	x->qexec = *qexec;
 	x->cpu_elapsed = 0;
-	x->pfaults_elapsed = 0;
 	x->next = ep;
 	*epp = x;
     }
@@ -269,7 +266,6 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	    }
 	    x->qexec = ep->qexec;
 	    x->cpu_elapsed = ep->cpu_elapsed;
-	    x->pfaults_elapsed = ep->pfaults_elapsed;
 	    x->next = 0;
 	    *tail = x;
 	    tail = &x->next;
@@ -348,12 +344,10 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
 	    qexec->tduration);
     sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64, 
 	    qexec->p_mem, qexec->p_memmax);
-    sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
+    sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64,
 	    qexec->_p_metrics.mem.size, 
 	    qexec->_p_metrics.mem.resident, 
-	    qexec->_p_metrics.mem.share, 
-	    qexec->_p_metrics.mem.page_faults,
-	    qenode->pfaults_elapsed);
+	    qexec->_p_metrics.mem.share);
     sprintf(p += strlen(p), "|%" FMT64 "|%.2f", 
 	    qenode->cpu_elapsed,
 	    qexec->_p_metrics.cpu_pct);   

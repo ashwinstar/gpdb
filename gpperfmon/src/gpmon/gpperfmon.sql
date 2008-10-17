@@ -137,8 +137,6 @@ create table iterators_history (
        memsize bigint not null, 
        memresid bigint not null,
        memshare bigint not null,
-       pagefaults bigint not null, -- process page faults 
-       pagefaults_elapsed bigint not null, -- total process page faults
        cpu_elapsed bigint not null, -- process cpu usage total
        cpu_currpct float not null, -- process current cpu percentage
        phase varchar(64) not null, -- iterator phase
