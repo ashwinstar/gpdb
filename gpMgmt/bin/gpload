@@ -19,7 +19,7 @@ except ImportError:
     sys.stderr.write("gpload needs pg8000.\n")
     sys.exit(2)
  
-import os,signal,socket,subprocess,threading,time,traceback
+import getpass,os,signal,socket,subprocess,threading,time,traceback
 
 class CatThread(threading.Thread):
     def __init__(self,gpload,fd):
@@ -85,7 +85,7 @@ class Progress(threading.Thread):
 	    time.sleep(1)
 
 def usage():
-    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] configfile\n"%sys.argv[0])
+    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] [-W] configfile\n"%sys.argv[0])
     sys.exit(2)
 
 def quote(a):
@@ -103,6 +103,7 @@ class gpload:
 	self.options.h = None
 	self.options.p = None
 	self.options.U = None
+	self.options.W = False
 	self.options.d = None
 	self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
 	self.cleanupSql = []
@@ -115,6 +116,9 @@ class gpload:
 		    elif argv[0]=='-p':
 			self.options.p = int(argv[1])
 			argv = argv[2:]
+		    elif argv[0]=='-W':
+			self.options.W = True
+			argv = argv[1:]
 		    elif argv[0]=='-U':
 			self.options.U = argv[1]
 			argv = argv[2:]
@@ -152,6 +156,7 @@ class gpload:
 	a += '\n'
 	if self.logfile:
 	    self.logfile.write(a)
+	    self.logfile.flush()
 	sys.stdout.write(a)
 
     def getconfig(self,a,typ=None,default='error',config=None,prefix=''):
@@ -221,7 +226,7 @@ class gpload:
 		if type(i)!=str:
 		    self.log("gpload:from:source:infile must be a string or a sequence of strings.")
 		    sys.exit(2)
-	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort),'-f',' '.join(infile)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort),'-f',' '.join(infile)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)
 	    self.subprocesses.append(a)
 	    t = CatThread(self,a.stderr)
 	    t.start()
@@ -246,8 +251,11 @@ class gpload:
 	self.threads.append(t)
 
     def setup_connection(self):
+	password = self.getconfig('gpload:into:connection:password',str,None)
+	if self.options.W:
+	    password = getpass.getpass()
 	try:
-	    self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d)
+	    self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d,password=password)
 	except pg8000.errors.InterfaceError,e:
 	    self.log("Could not connect to database.\n%s"%e)
 	    sys.exit(2)
@@ -495,17 +503,25 @@ class gpload:
 	try:
 	    try:
 		self.run2()
-	    except Exception,a:
+	    except Exception:
 		if self.logfile:
 		    traceback.print_exc(file=self.logfile)
-		raise
+		    self.logfile.flush()
+		traceback.print_exc()
+		self.exitValue = 2
 	finally:
 	    self.log('Removing temporary stuff.')
 	    for a in self.cleanupSql:
 		try:
-		    self.pg8000.execute(a)
-		except pg8000.errors.ProgrammingError:
-		    pass
+		    try:
+			self.pg8000.execute(a)
+		    except pg8000.errors.ProgrammingError:
+			pass
+		except pg8000.errors.InternalError:
+		    if self.logfile:
+			traceback.print_exc(file=self.logfile)
+			self.logfile.flush()
+		    traceback.print_exc()
 	    self.log('Killing gpfdist.')
 	    for a in self.subprocesses:
 		try:
