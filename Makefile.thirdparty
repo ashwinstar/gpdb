@@ -99,6 +99,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
         apr-util/1.2.12
         sigar/1.5.0.1
         lighttpd/1.4.19
+        pcre/7.8
 endef
 BLD_THIRDPARTY_LIBS_BASE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE))
 
