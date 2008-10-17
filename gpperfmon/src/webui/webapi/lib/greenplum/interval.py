@@ -10,6 +10,7 @@ SECONDS_PER_MONTH=2592000
 # default maximum data points
 max_data_points = 2000
 
+granularity = ['second', 'minute', 'hour', 'day', 'month']
 
 def check(start, end, interval):
     try:
@@ -19,7 +20,7 @@ def check(start, end, interval):
         (y, m, d, hr, min, sec) = time.strptime(end, '%Y-%m-%d %H:%M:%S')[:6]
         end_date = datetime.datetime(y, m, d, hr, min, sec)
     except ValueError:
-        return None
+        return (False, None)
 
     # convert to seconds
     start_seconds = time.mktime(start_date.timetuple())
@@ -41,7 +42,7 @@ def check(start, end, interval):
         else:
             # unknown interval: default to smallest interval
             sys.stderr.write('\nUnknown interval\n')
-            interval = 'minute'
+            return (False, None)
 
         if data_points > max_data_points:
             if interval == 'month':
@@ -55,7 +56,7 @@ def check(start, end, interval):
             if interval == 'second':
                 interval = 'minute'
 
-    return interval
+    return (True, interval)
 
 if __name__ == '__main__':
     # example: checkInterval('2008-10-11 10:24:08', '2008-10-11 10:59:08', 'minute')

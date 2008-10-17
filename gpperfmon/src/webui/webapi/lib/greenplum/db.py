@@ -556,8 +556,8 @@ def rt_queryiterators(tmid, ssid, ccnt, segid='', nid=''):
                 'pid', 'nid', 'pnid', 'hostname', 'ntype',
                 'nstatus', 'tstart', 'tduration', 'pmemsize',
                 'pmemmax', 'memsize', 'memresid', 'memshare',
-                'pagefaults', 'pagefaults_elapsed', 'cpu_elapsed',
-                'cpu_currpct', 'phase', 'rowsout', 'rowsout_est',
+                'cpu_elapsed', 'cpu_currpct', 'phase', 
+                'rowsout', 'rowsout_est',
                 'm0_name', 'm0_unit', 'm0_val', 'm0_est',
                 'm1_name', 'm1_unit', 'm1_val', 'm1_est',
                 'm2_name', 'm2_unit', 'm2_val', 'm2_est',
@@ -635,7 +635,6 @@ def rt_queryiterators(tmid, ssid, ccnt, segid='', nid=''):
 def iterator_sql():
     columns = [ 'segid', 'ntype', 'nstatus', 'tstart', 'tduration',
                 'pmemsize', 'pmemmax', 'memsize', 'memresid', 'memshare',
-                'pagefaults', 'pagefaults_elapsed',
                 'cpu_elapsed', 'cpu_currpct', 'phase',
                 'rowsout', 'rowsout_est',
                 'm0_name', 'm0_unit', 'm0_val', 'm0_est',

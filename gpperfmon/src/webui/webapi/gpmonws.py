@@ -43,6 +43,7 @@ session = web.session.Session(app,
                                            'loggedin': 0})
 render = web.template.render('./templates/', cache=False)
 
+# global static variables
 xml = '<?xml version="1.0"?>'
 
 def authrole(username, password):
@@ -259,29 +260,40 @@ class system:
 
         i = web.input(start='last', end='', host='', interval='minute')
 
+        try:
+            # TODO: sanitize host name
+            i.start = i.start.lower()
+            i.end = i.end.lower()
+            i.interval = i.interval.lower()
+        except:
+            return mkerr(error.BADREQ, 'invalid parameter(s)')
+
         # DEBUGGING 
         sys.stderr.write("\n\n\n<system metrics>\n")
         sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\thost = %s\n" % (i.start, i.end, i.interval, i.host))
         sys.stderr.write("</system metrics>\n\n\n")
         # DEBUGGING 
 
-        i.start = i.start.lower()
-        i.end = i.end.lower()
-
         res = None
 
         if i.start == 'last':
             res = db.system_now(i.host)
-
         elif i.start != '':
             if i.end == 'last':
-                i.interval = interval.check(i.start, timenow(), i.interval)
-                res = db.system_upto_now(i.host, i.start, i.interval)
+                # check() sanitizes input against SQL injection attacks 
+                (status, i.interval) = interval.check(i.start, timenow(), i.interval)
+                if status:
+                    res = db.system_upto_now(i.host, i.start, i.interval)
+                else:
+                    return mkerr(error.BADREQ, 'invalid parameter(s)')
 
             elif i.end != '':
-                i.interval = interval.check(i.start, i.end, i.interval)
-                res = db.system_history(i.host, i.start, i.end, i.interval)
-
+                # check() sanitizes input against SQL injection attacks 
+                (status, i.interval) = interval.check(i.start, i.end, i.interval)
+                if status:
+                    res = db.system_history(i.host, i.start, i.end, i.interval)
+                else:
+                    return mkerr(error.BADREQ, 'invalid parameter(s)')
         else:
             return mkerr(error.BADREQ, 'missing parameter: "end date"')
 
@@ -313,20 +325,25 @@ class query:
 
         i = web.input(start='last', end='', interval='minute', status='')
 
+        try:
+            i.start = i.start.lower()
+            i.end = i.end.lower()
+            i.interval = i.interval.lower()
+        except:
+            return mkerr(error.BADREQ, 'invalid parameter(s)')
+
+        # sanitize status input
+        valid_status = ['done', 'start', 'submit', 'abort']
+        if not i.status in valid_status:
+            message = "invalid parameter: status must be %s" % valid_status
+            return mkerr(error.BADREQ, message)
+
+
         # DEBUGGING 
         sys.stderr.write("\n\n\n<queries metrics>\n")
         sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\tstatus = %s\n" % (i.start, i.end, i.interval, i.status))
         sys.stderr.write("</queries metrics>\n\n\n")
         # DEBUGGING 
-
-        i.start = i.start.lower()
-        i.end = i.end.lower()
-        i.status = i.status.lower()
-
-        # sanitize status input
-        valid_status = ['done', 'start', 'submit', 'abort']
-        if not i.status in valid_status:
-            return mkerr(error.BADREQ, 'invalid parameter: "status"')
 
         # check permissions
         username = ''
@@ -339,10 +356,12 @@ class query:
             res = db.queries_now(i.status, username)
 
         elif i.end == 'last':
+            # check() sanitizes input against SQL injection attacks 
             i.interval = interval.check(i.start, timenow(), i.interval)
             res = db.queries_upto_now(i.status, i.start, username)
 
         elif i.end != '':
+            # check() sanitizes input against SQL injection attacks 
             i.interval = interval.check(i.start, i.end, i.interval)
             res = db.queries_history(i.status, i.start, i.end, username)
 
@@ -387,12 +406,6 @@ class queryplan:
 
         i = web.input(start='', tmid='', ssid='', ccnt='', segid='0')
 
-        # DEBUGGING 
-        sys.stderr.write("\n\n\n<query plan>\n")
-        sys.stderr.write("\tsegid = %s\n\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.segid, i.tmid, i.ssid, i.ccnt))
-        sys.stderr.write("</query plan>\n\n\n")
-        # DEBUGGING 
-
         if i.tmid == '':
             return mkerr(error.BADREQ, 'missing parameter: "tmid"')
         if i.ssid == '':
@@ -400,13 +413,19 @@ class queryplan:
         if i.ccnt == '':
             return mkerr(error.BADREQ, 'missing parameter: "ccnt"')
 
-        # verify the query ID is composed of numbers only
+        # sanitize input against SQL injection attacks 
         try:
             int(i.tmid)
             int(i.ssid)
             int(i.ccnt)
         except:
             return mkerr(error.BADREQ, 'invalid query ID')
+
+        # DEBUGGING 
+        sys.stderr.write("\n\n\n<query plan>\n")
+        sys.stderr.write("\tsegid = %s\n\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.segid, i.tmid, i.ssid, i.ccnt))
+        sys.stderr.write("</query plan>\n\n\n")
+        # DEBUGGING 
 
         if i.start == 'last':
             res = db.queryplan_now(i.tmid, i.ssid, i.ccnt, i.segid)
@@ -462,7 +481,7 @@ class iterator:
         if i.nid == '':
             return mkerr(error.BADREQ, 'missing parameter: "nid"')
 
-        # verify the query ID is composed of numbers only
+        # sanitize input against SQL injection attacks 
         try:
             i.tmid = int(i.tmid)
             i.ssid = int(i.ssid)
@@ -501,15 +520,19 @@ class database:
         web.header('Content-Type', 'text/xml')
 
         i = web.input(start='last', end='', interval='minute')
+        
+        try:
+            i.start = i.start.lower()
+            i.end = i.end.lower()
+            i.interval = i.interval.lower()
+        except:
+            return mkerr(error.BADREQ, 'invalid parameter(s)')
 
         # DEBUGGING 
         sys.stderr.write("\n\n<database>\n")
         sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n" % (i.start, i.end, i.interval))
         sys.stderr.write("</database>\n\n")
         # DEBUGGING 
-
-        i.start = i.start.lower()
-        i.end = i.end.lower()
 
         res = None
 
@@ -518,13 +541,19 @@ class database:
 
         elif i.start != '':
             if i.end == 'last':
-                i.interval = interval.check(i.start, timenow(), i.interval)
-                res = db.database_upto_now(i.start, i.interval)
-
+                # check() sanitizes input against SQL injection attacks 
+                (status, i.interval) = interval.check(i.start, timenow(), i.interval)
+                if status:
+                    res = db.database_upto_now(i.start, i.interval)
+                else:
+                    return mkerr(error.BADREQ, 'invalid parameter(s)')
             elif i.end != '':
-                i.interval = interval.check(i.start, i.end, i.interval)
-                res = db.database_history(i.start, i.end, i.interval)
-
+                # check() sanitizes input against SQL injection attacks 
+                (status, i.interval) = interval.check(i.start, i.end, i.interval)
+                if status:
+                    res = db.database_history(i.start, i.end, i.interval)
+                else:
+                    return mkerr(error.BADREQ, 'invalid parameter(s)')
         else:
             return mkerr(error.BADREQ, 'missing parameter: "end date"')
 
