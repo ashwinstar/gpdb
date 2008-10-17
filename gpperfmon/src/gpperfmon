@@ -122,7 +122,7 @@ def check_env():
 def check_commands():
     avail_cmds['gpmmon'] = command_in_path('gpmmon')
     avail_cmds['openssl'] = command_in_path('openssl') 
-    avail_cmds['lighttpd-angel'] = command_in_path('lighttpd-angel')
+    avail_cmds['lighttpd'] = command_in_path('lighttpd')
     avail_cmds['psql'] = command_in_path('psql')
 
 
@@ -423,7 +423,7 @@ def gpperfmon_setup():
             print 'path and rerun gpperfmon.py --setup'
 
         lighty_conf = generate_lighty_conf(WEBAPI_DOCROOT, lighty_error_log, 
-                                           lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/greenplum/gpmonws.py', 
+                                           lighty_access_log, lighty_port, WEBAPI_DOCROOT + '/gpmonws.py', 
                                            enable_ssl, ssl_cert)
 
         try:
@@ -478,10 +478,10 @@ def lighty_version():
 def lighty_start():
     res = 0
     if lighty_status() == 0:
-        if avail_cmds['lighttpd-angel']:
-            start_application('lighttpd-angel -f ' + LIGHTY_CONF_FILE)
+        if avail_cmds['lighttpd']:
+            start_application('lighttpd -f ' + LIGHTY_CONF_FILE)
         else:
-            print 'lighttd-angel not found in PATH.  Please configure your PATH correctly and try again.'
+            print 'lighttpd not found in PATH.  Please configure your PATH correctly and try again.'
             return STOPPED
         time.sleep(1)
     return lighty_status()
@@ -490,7 +490,7 @@ def lighty_start():
 #################
 def lighty_stop():
     if lighty_status() == 1:
-        if avail_cmds['lighttpd-angel']:
+        if avail_cmds['lighttpd']:
             try:
                 FILE = open(LIGHTY_PID_FILE, 'r')
                 pid = FILE.readline()

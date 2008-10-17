@@ -2,8 +2,6 @@
 
 import os, sys, socket, ConfigParser
 import time, datetime, tempfile
-import error
-import interval
 
 gphome = os.environ.get('GPHOME')
 if not gphome:
@@ -18,7 +16,9 @@ sys.path.append(os.path.join(sys.path[0], 'lib'))
 sys.path.append(os.path.join(gphome, 'bin', 'lib'))
 import pg8000
 import web
-import db
+from greenplum import db
+from greenplum import error
+from greenplum import interval
 
 web.webapi.internalerror = web.debugerror
 web.config.session_parameters.timeout = 1800
