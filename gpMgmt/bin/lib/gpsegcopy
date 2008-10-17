@@ -5,7 +5,7 @@ gpsegcopy
 
 copy segment 0 data directory and filter out the data so that the target data directory contains the schema and empty tables
 
-Usage: gpsegcopy [-v] [-?q] [-d master_data_directory] [-l log_dir] dst_host:dst_dir
+Usage: gpsegcopy [-v] [-?q] [-d master_data_directory] [-l log_dir] dst_host:dst_dir:dst_port
 
           General options:
           -v        : print version information
@@ -30,11 +30,13 @@ try:
 except ImportError, e:
     gpmlib.error('Unable to import module: ' + str(e))
 
+# bootstrap python Source
 bootstrapSource='''
 import os,sys
 exec(sys.stdin.read(int(sys.stdin.readline())))
 '''
 
+# copy segment data directory to destination
 gpcopySource="""
 from __future__ import with_statement
 import os, sys, getopt, cPickle, subprocess
@@ -47,6 +49,32 @@ try:
     from gpmlib import ENV
 except ImportError, e:
     gpmlib.error('Unable to import module: ' + str(e))
+
+bootstrapSource='''
+import os,sys
+exec(sys.stdin.read(int(sys.stdin.readline())))
+'''
+
+gpcopyIndexSource='''
+from __future__ import with_statement
+import os, sys, cPickle
+
+try:
+    param = cPickle.loads(sys.stdin.read(int(sys.stdin.readline())))
+    empty_index = sys.stdin.read(int(sys.stdin.readline()))
+
+    dst_dir = param['dst_dir']
+    index_oids = param['indexes']
+    
+    for oid in index_oids:
+        file = os.path.join(dst_dir, str(oid))
+        print "copy index file %s" % file
+        with open(file, 'wb') as f:
+            f.write(empty_index)
+except Exception, e:
+    print str(e)
+    sys.exit(1)
+'''
 
 logdir = os.path.join(os.environ.get('HOME'), 'gpAdminLogs')
 if not gpmlib.directory_exists(logdir):
@@ -61,13 +89,14 @@ gpmlib.log_set_file(logfile)
 
 # CopyFilter class
 class CopyFilter:
-    def __init__(self, param):
+    def __init__(self, param, empty_index):
         self.param = param
         self.src_host = self.param['src_host']
         self.src_dir = self.param['src_dir']
         self.dst_host = self.param['dst_host']
         self.dst_dir = self.param['dst_dir']
         self.filter = self.param['filter']
+        self.empty_index = empty_index
 
     def touch_filter(self, oid, files):
         if len(files) == 0:
@@ -84,8 +113,43 @@ class CopyFilter:
         self.touch_filter(oid, files)
 
     def index_filter(self, oid, files):
-        for f in files:
-            print 'index_filter %s' %  os.path.join(self.src_dir, 'base', str(oid), str(f))
+        if len(files) == 0:
+            return
+
+        param = {}
+        param['dst_dir'] = os.path.join(self.dst_dir, 'base', str(oid))
+        param['indexes'] = files
+        paramSource = cPickle.dumps(param)
+        cmd = gpmlib.makeCommand('''python -u -c '%s' >> %s 2>&1'''% (bootstrapSource, logfile))
+        cmd = '''bash -c "%s"''' % cmd
+
+        args = []
+        args.append('ssh')
+        args.append(self.dst_host)
+        args.append(cmd)
+        p = None
+        try:
+            p = subprocess.Popen(args, stdin=subprocess.PIPE)
+            p.stdin.write('%s\\n%s' % (len(gpcopyIndexSource), gpcopyIndexSource))
+            p.stdin.write('%s\\n%s' % (len(paramSource), paramSource))
+            p.stdin.write('%s\\n%s' % (len(self.empty_index), empty_index))
+
+            e = p.wait()
+            if e != 0:
+                gpmlib.log_fatal('Copy Index Failed')
+                gpmlib.log_fatal('Exit status: %s' % e)
+                sys.exit(e)
+
+        except OSError, e:
+            gpmlib.log_fatal(str(e))
+        finally:
+            try:
+                if p: 
+                    os.kill(p.pid, 9)
+            except:
+                pass
+
+
 
     def sequence_filter(self, oid, files):
         self.touch_filter(oid, files)
@@ -147,13 +211,16 @@ class CopyFilter:
                 gpmlib.fatal('failed to copy segment')
 
             self.table_filter(oid, table_oids)
-            self.index_filter(oid, index_oids)
             self.toast_filter(oid, toast_oids)
             self.sequence_filter(oid, sequence_oids)
+            self.index_filter(oid, index_oids)
 
 
+##############
 try:
     param = cPickle.loads(sys.stdin.read(int(sys.stdin.readline())))
+    empty_index = sys.stdin.read(int(sys.stdin.readline()))
+    gpmlib.log_info("index size = %d bytes" % len(empty_index))
 
     # check segment is still running
     cmd = gpmlib.makeCommand('%s %s' % (os.path.join(os.environ['GPHOME'], 'bin/pg_controldata'),
@@ -183,7 +250,7 @@ try:
         gpmlib.fatal('failed to copy segment')
 
     # filtering
-    f = CopyFilter(param)
+    f = CopyFilter(param, empty_index)
     f.run()
 except Exception, e:
     gpmlib.fatal(str(e))
@@ -229,14 +296,15 @@ def parseCommandLine():
         elif (switch == '-d'):        opt[switch] = val
 
     if len(args) != 1:
-        usage('please specify dst_host:dst_dir')
+        usage('please specify dst_host:dst_dir:dst_port')
 
     dst = args[0].split(':')
-    if len(dst) != 2:
-        usage('please specify dst_host:dst_dir')
+    if len(dst) != 3:
+        usage('please specify dst_host:dst_dir:dst_port')
 
     arg['dst_host'] = dst[0]
     arg['dst_dir'] = dst[1]
+    arg['dst_port'] = dst[2]
 
     gpmlib.log_set_module(script_name)
 
@@ -287,6 +355,7 @@ try:
     src_host = None
     src_port = None
     src_dir  = None
+    indexfile = None
 
     # connect to master QD in admin mode
     try:
@@ -302,30 +371,45 @@ try:
             db.close()
             db = None
     
+
+    # start master in admin mode
+    e = os.system('gpstart -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+    ok = not e
+    if not ok:
+        gpmlib.error('Start master in admin mode failed')
+
     try:
-        # start master in admin mode
-        e = os.system('gpstart -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
-        ok = not e
-        if not ok:
-            gpmlib.error('Start master in admin mode failed')
-
-
         db = pg8000.Connection(host='localhost', port=master_port, 
-        user=ENV.USER, database=ENV.DBNAME, 
-        options='-c gp_session_role=utility')
+                               user=ENV.USER, database=ENV.DBNAME, 
+                               options='-c gp_session_role=utility')
+
+        # get segment content=0
         db.execute('select hostname, datadir, port from gp_configuration where definedprimary=True and content=0')
         (src_host, src_dir, src_port) = db.read_tuple()
+        
+        # get empty index
+        db.execute("select oid from pg_class where relkind='i' limit 1")
+        r = db.read_tuple()
+        oid = str(r[0])
+
+        db.execute("select oid from pg_database")
+        dboids = [ r[0] for r in db.iterate_tuple() ]
+
+        for dboid in dboids:
+            file = os.path.join(os.environ.get('MASTER_DATA_DIRECTORY'), 'base', str(dboid), oid)
+            print file
+            if os.path.isfile(file):
+                indexfile = file
+                break
+
+        if not indexfile:
+            gpmlib.fatal('Failed to get index file from MASTER_DATA_DIRECTORY')
+
         db.close()
         db = None
 
         # get copy filters
         filters = gpmlib.get_copy_filter('localhost', master_port)
-
-        # stop master in admin mode
-        e = os.system('gpstop -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
-        ok = not e
-        if not ok:
-            gpmlib.error('Stop master in admin mode failed')
 
     except pg8000.errors.InterfaceError, e:
         gpmlib.error(e)
@@ -336,16 +420,30 @@ try:
             db.close()
             db = None
 
+        # stop master in admin mode
+        e = os.system('gpstop -am %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
+        ok = not e
+        if not ok:
+            gpmlib.error('Stop master in admin mode failed')
+
+
+    # read index file
+    gpmlib.log_info('Reading Empty Index file %s' % indexfile)
+    index_content = None
+    with open(indexfile, 'rb') as f:
+        index_content = f.read()
+
     # copy segment with filters
     param = {}
     param['src_host'] = src_host
     param['src_dir'] = src_dir
     param['src_port'] = src_port
     param['dst_host'] = arg['dst_host']
+    param['dst_port'] = arg['dst_port']
     param['dst_dir'] = arg['dst_dir']
     param['filter'] = filters
     paramSource = cPickle.dumps(param)
-    cmd = gpmlib.makeCommand('''python -u -c '%s' >> %s 2>&1'''% (bootstrapSource, opt['-l']))
+    cmd = gpmlib.makeCommand('''python -u -c '%s' '''% (bootstrapSource))
     cmd = '''bash -c "%s"''' % cmd
 
     args = []
@@ -354,18 +452,39 @@ try:
     args.append(cmd)
     p = None
     try:
-        p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        gpmlib.log_info('Start copying segment data directory from %s:%s to %s:%s' % (src_host, src_dir, 
+                                                                                      arg['dst_host'], arg['dst_dir']))
+        p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p.stdin.write('%s\n%s' % (len(gpcopySource), gpcopySource))
         p.stdin.write('%s\n%s' % (len(paramSource), paramSource))
+        p.stdin.write('%s\n%s' % (len(index_content), index_content))
 
         e = p.wait()
         if e != 0:
-            gpmlib.log_fatal('Copy Segment Failed')
-            gpmlib.log_fatal('Exit status: %s' % os.WEXITSTATUS(e))
-            sys.exit(os.WEXITSTATUS(e))
+            gpmlib.log_fatal('--------------------------------')
+            gpmlib.log_fatal('Failed to copy segment')
+            gpmlib.log_fatal('Exit status: %s' % e)
+            gpmlib.log_fatal('Standard output:')
+            lines = p.stdout.readlines()
+            if lines and len(lines) > 0:
+                for line in lines:
+                    gpmlib.log_fatal(line.strip())
+            else:
+                gpmlib.log_fatal('None')
+            gpmlib.log_fatal('Standard error:')
+            lines = p.stderr.readlines()
+            if lines and len(lines) > 0:
+                for line in lines:
+                    gpmlib.log_fatal(line.strip())
+            else:
+                gpmlib.log_fatal('None')
+            gpmlib.log_fatal('--------------------------------')
+            sys.exit(e)
 
+            
+        gpmlib.log_info('Successfully copy segment data directory')
     except OSError, e:
-        print str(e)
+        gpmlib.log_fatal(str(e))
     finally:
         try:
             if p: 
