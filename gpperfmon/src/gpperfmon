@@ -243,7 +243,7 @@ def get_yesno(msg, default):
 
 #################
 def gpperfmon_setup():
-    #gpmmon defaults
+    # gpmmon defaults
     quantum_default=15
     minqt_default=60
     mindqt_default=60
@@ -423,16 +423,20 @@ def gpperfmon_setup():
             FILE.writelines(lighty_conf)
             FILE.close()
             print '\nDone writing lighttpd configuration to %s' % LIGHTY_CONF_FILE
-        except:
-            print 'Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
+        except (errno, errstr):
+            print 'Error: Failed to write lighttpd configuration file to %s' % LIGHTY_CONF_FILE
+            print errstr
+            sys.exit(1)
 
     try:
         FILE = open(GPPERFMON_CONF_FILE, 'w')
         config.write(FILE)
         FILE.close()
         print 'Done writing gpperfmon configuration to %s' % GPPERFMON_CONF_FILE
-    except:
-        print 'Failed to write gpperfmon configuration to %s' % GPPERFMON_CONF_FILE
+    except (errno, errstr):
+        print 'Error: Failed to write gpperfmon configuration to %s' % GPPERFMON_CONF_FILE
+        print errstr
+        sys.exit(1)
 
     webui_url = ''
     if enable_ssl == 'enable':
