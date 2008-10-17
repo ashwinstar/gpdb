@@ -279,11 +279,13 @@ def gpperfmon_setup():
             sys.exit(0)
         # Read in the existing file
         try:
+            print 'Reading in existing configuration file'
             config.read(GPPERFMON_CONF_FILE)
             quantum_default = config.getint('GPMMON', 'quantum')
             minqt_default = config.getint('GPMMON', 'min_query_time')
             mindqt_default = config.getint('GPMMON', 'min_detailed_query_time')
             logloc_default = config.get('GPMMON', 'log_location')
+            print 'Done'
         except:
             # invalid conf file
             pass
@@ -311,7 +313,7 @@ def gpperfmon_setup():
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
         os.symlink(GPPERFMONHOME + '/www/lib', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
     except OSError, detail:
-        print 'Error: %s' % detail
+        print 'Error linking www/lib directory: %s' % detail
         sys.exit(1)
 
     try:
@@ -319,7 +321,7 @@ def gpperfmon_setup():
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/static')
         os.symlink(GPPERFMONHOME + '/www/static', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/static')
     except OSError, detail:
-        print 'Error: %s' % detail
+        print 'Error linking www/static directory: %s' % detail
         sys.exit(1)
 
     try:
@@ -327,15 +329,15 @@ def gpperfmon_setup():
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
         os.symlink(GPPERFMONHOME + '/www/templates', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
     except OSError, detail:
-        print 'Error: %s' % detail
+        print 'Error linking www/templates directory: %s' % detail
         sys.exit(1)
 
     try:
-        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum'):
-            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum')
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/gpmonws.py'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/gpmonws.py')
         os.symlink(GPPERFMONHOME + '/www/gpmonws.py', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/gpmonws.py')
     except OSError, detail:
-        print 'Error: %s' % detail
+        print 'Error linking www/gpmonws.py: %s' % detail
         sys.exit(1)
 
     try:
@@ -343,7 +345,7 @@ def gpperfmon_setup():
             os.unlink(GPHOME + '/bin/lib/gpmon_catqrynow.py')
         os.symlink(GPPERFMONHOME + '/lib/gpmon_catqrynow.py', GPHOME + '/bin/lib/gpmon_catqrynow.py')
     except OSError, detail:
-        print 'Error: %s' % detail
+        print 'Error linking gpmon_catqrynow.py: %s' % detail
         sys.exit(1)
 
     # gpmmon configuration
