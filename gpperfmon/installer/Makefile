@@ -32,14 +32,14 @@ ifeq (sol10_x86_64, $(BLD_ARCH))
 endif
 
 all:
-	if [ "$(PACKAGE_ARCH)" -eq "" ]; then \
+	@if [ "$(PACKAGE_ARCH)" = "" ]; then \
 		echo Unknown platform; \
 		exit 1; \
 	fi;
-	if [ -d .tmp ]; then \
+	@if [ -d .tmp ]; then \
 		rm -rf .tmp; \
 	fi;
-	if [ -a greenplum-perfmon.tar.gz ]; then \
+	@if [ -a greenplum-perfmon.tar.gz ]; then \
 		rm -f greenplum-perfmon.tar.gz; \
 	fi;
 	mkdir .tmp
@@ -53,9 +53,22 @@ all:
 	cp $(GPMON_DIR)/gpmon_catqrynow.py .tmp/lib
 	cp $(GPMON_DIR)/gpperfmon.sql .tmp
 	cp -R $(GPMONWS_DIR)/* .tmp/www
-	cp -R $(GPMONUI_DIR)/* .tmp/www/static
+# TODO: Web UI files need to be copied.
+#	cp -R $(GPMONUI_DIR)/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
 	cp $(GPMONDOCS_DIR)/GPMonGuide.pdf .tmp/docs
+	@if [ "$(PACKAGE_ARCH)" = "OSX-i386" ] ; then \
+		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.0.0.1.dylib .tmp/lib; \
+		cd .tmp/lib; \
+		ln -s libpcre.0.0.1.dylib libpcre.0.dylib; \
+		cd ../..; \
+	else \
+		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.so.0.0.1 .tmp/lib; \
+		cd .tmp/lib; \
+		ln -s libpcre.so.0.0.1 libpcre.so.0; \
+		ln -s libpcre.so.0.0.1 libpcre.so; \
+		cd ../..; \
+	fi ;
 	./generate-gpperfmon-path.sh > .tmp/gpperfmon_path.sh
 	cd .tmp && tar cvf ../greenplum-perfmon.tar *
 	gzip greenplum-perfmon.tar

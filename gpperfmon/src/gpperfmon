@@ -309,7 +309,15 @@ def gpperfmon_setup():
     try:
         if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib'):
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
-        os.symlink(GPPERFMONHOME + '/web/lib', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
+        os.symlink(GPPERFMONHOME + '/www/lib', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
+    except OSError, detail:
+        print 'Error: %s' % detail
+        sys.exit(1)
+
+    try:
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/static'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/static')
+        os.symlink(GPPERFMONHOME + '/www/static', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/static')
     except OSError, detail:
         print 'Error: %s' % detail
         sys.exit(1)
@@ -317,7 +325,7 @@ def gpperfmon_setup():
     try:
         if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates'):
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
-        os.symlink(GPPERFMONHOME + '/web/templates', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
+        os.symlink(GPPERFMONHOME + '/www/templates', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/templates')
     except OSError, detail:
         print 'Error: %s' % detail
         sys.exit(1)
@@ -325,7 +333,7 @@ def gpperfmon_setup():
     try:
         if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum'):
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum')
-        os.symlink(GPPERFMONHOME + '/web/greenplum', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/greenplum')
+        os.symlink(GPPERFMONHOME + '/www/gpmonws.py', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/gpmonws.py')
     except OSError, detail:
         print 'Error: %s' % detail
         sys.exit(1)
