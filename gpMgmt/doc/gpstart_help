@@ -6,46 +6,105 @@ Starts a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpstart [-d <master_data_directory>] [-B <parallel_processes>] [-m] 
-[-y] [-s] [-e] [-a] [-q] [-l <logfile_directory>] [-D]
+gpstart [-d <master_data_directory>] [-B <parallel_processes>] 
+        [-R] [-m] [-y] [-s] [-e] [-a] [-q] [-l <logfile_directory>] 
+        [-D]
 
 gpstart [-t | -? | -v]
+
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpstart utility is used to start the Greenplum Database server 
-processes. When you start a Greenplum Database system, you are actually 
-starting several postgres database server processes at once (the master 
-and all of the segment instances). The gpstart utility handles the 
-startup of the individual instances. Each instance is started in parallel.
+The gpstart utility is used to start the Greenplum Database 
+server processes. When you start a Greenplum Database system, you 
+are actually starting several postgres database server processes 
+at once (the master and all of the segment instances). The gpstart 
+utility handles the startup of the individual instances. Each instance 
+is started in parallel.
+
 Before you can start a Greenplum Database system, you must have 
 initialized the system using gpinitsystem first.
+
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--d <master_data_directory>
+-a (do not prompt)
 
-Optional. The master host data directory. If not specified, the value 
-set for $MASTER_DATA_DIRECTORY will be used.
+Do not prompt the user for confirmation.
 
 
 -B <parallel_processes>
 
-The number of segments to start in parallel. If not specified, the 
-utility will start up to 60 parallel processes depending on how many 
-segment instances it needs to start.
+The number of segments to start in parallel. If not specified, 
+the utility will start up to 60 parallel processes depending 
+on how many segment instances it needs to start.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, the 
+value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-e (rollover segment log files)
+
+Rollover the log files for the segment instances. Moves the current 
+segment logfile to <log_file>.YYYYMMDD and starts a new log file 
+per segment. Not applicable in a master only startup.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 -m (master only)
 
-Optional. Starts the master instance only, which may be useful for 
-maintenance tasks. This mode only allows connections to the master 
-in utility mode. For example:
+Optional. Starts the master instance only, which may be useful 
+for maintenance tasks. This mode only allows connections to the 
+master in utility mode. For example:
 PGOPTIONS='-c gp_session_role=utility' psql
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
+
+
+-R (restricted mode)
+
+Starts Greenplum Database in restricted mode (only database 
+superusers are allowed to connect).
+
+
+-s (rollover master log file)
+
+Rollover the log file for the master instance. Moves the current 
+logfile to <log_file>.YYYYMMDD and starts a new log file.
+
+
+-t (show default utility settings)
+
+Displays the settings that will be used to start the system, such 
+as the master data directory and port, and the name, data directory, 
+port, valid status, and primary or mirror status of all the segment 
+instances.
+
+
+-v (show utility version)
+
+Displays the version, status, last updated date, and check sum of 
+this utility.
 
 
 -y (do not start standby master)
@@ -54,57 +113,9 @@ Optional. Do not start the standby master host. The default is to
 start the standby master host and synchronization process.
 
 
--s (rollover master log file)
-
-Rollover the log file for the master instance. Moves the current logfile 
-to <log_file>.YYYYMMDD and starts a new log file.
-
-
--e (rollover segment log files)
-
-Rollover the log files for the segment instances. Moves the current 
-segment logfile to <log_file>.YYYYMMDD and starts a new log file per 
-segment. Not applicable in a master only startup.
-
-
--a (do not prompt)
-
-Do not prompt the user for confirmation.
-
-
--q (no screen output)
-
-Run in quiet mode. Command output is not displayed on the screen, but 
-is still written to the log file.
-
-
--l <logfile_directory>
-
-The directory to write the log file. Defaults to ~/gpAdminLogs.
-
-
--D (debug)
-
-Sets logging level to debug.
-
-
--t (show default utility settings)
-
-Displays the settings that will be used to start the system, such 
-as the master data directory and port, and the name, data directory, 
-port, valid status, and primary or mirror status of all the 
-segment instances.
-
-
 -? (help)
 
 Displays the online help.
-
-
--v (show utility version)
-
-Displays the version, status, last updated date, and check sum 
-of this utility.
 
 
 *****************************************************
@@ -116,6 +127,12 @@ Start a Greenplum Database system:
 gpstart
 
 
+Start a Greenplum Database system in restricted mode (only allow 
+superuser connections):
+
+gpstart -R
+
+
 Start a Greenplum Database system and roll over the log files:
 
 gpstart -s -e
@@ -124,15 +141,17 @@ gpstart -s -e
 Start the Greenplum master instance only and connect in utility mode:
 
 gpstart -m
+
 PGOPTIONS='-c gp_session_role=utility' psql
 
 
 Display the online help for the gpstart utility:
+
 gpstart -?
+
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
 gpinitsystem, gpstop
-
