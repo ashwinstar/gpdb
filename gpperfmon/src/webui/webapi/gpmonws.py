@@ -110,7 +110,7 @@ class logon:
         sys.stderr.write("user: %s\n" % session.user)
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
-        return render.logon(username, 'SUCCESS', session.getid())
+        return render.logon(username, 'SUCCESS', role, session.getid())
 
 class logoff:
     def GET(self):
@@ -311,16 +311,22 @@ class query:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='last', end='', interval='minute')
+        i = web.input(start='last', end='', interval='minute', status='')
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<queries metrics>\n")
-        sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n" % (i.start, i.end, i.interval))
+        sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\tstatus = %s\n" % (i.start, i.end, i.interval, i.status))
         sys.stderr.write("</queries metrics>\n\n\n")
         # DEBUGGING 
 
         i.start = i.start.lower()
         i.end = i.end.lower()
+        i.status = i.status.lower()
+
+        # sanitize status input
+        valid_status = ['done', 'start', 'submit', 'abort']
+        if not i.status in valid_status:
+            return mkerr(error.BADREQ, 'invalid parameter: "status"')
 
         # check permissions
         username = ''
@@ -330,15 +336,15 @@ class query:
         res = None
 
         if i.start == 'last':
-            res = db.queries_now(username)
+            res = db.queries_now(i.status, username)
 
         elif i.end == 'last':
             i.interval = interval.check(i.start, timenow(), i.interval)
-            res = db.queries_upto_now(i.start, username)
+            res = db.queries_upto_now(i.status, i.start, username)
 
         elif i.end != '':
             i.interval = interval.check(i.start, i.end, i.interval)
-            res = db.queries_history(i.start, i.end, username)
+            res = db.queries_history(i.status, i.start, i.end, username)
 
         else:
             return mkerr(error.BADREQ, 'missing parameter: "end date"')

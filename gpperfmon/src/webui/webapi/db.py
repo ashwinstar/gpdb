@@ -311,8 +311,8 @@ def system_history(host, stime, etime, interval):
 
 
 
-def queries_now(username):
-    rows = rt_queries(username)
+def queries_now(status, username):
+    rows = rt_queries(status, username)
     return _queries_consolidate(rows)
 
 def queryText(tmid, ssid, ccnt):
@@ -335,7 +335,7 @@ def queryText(tmid, ssid, ccnt):
 
     return qtext
 
-def rt_queries(username):
+def rt_queries(status, username):
     filename = "%s/queries_now.dat" % path
 
     # ordering is important to match the order in the file
@@ -375,6 +375,9 @@ def rt_queries(username):
             if entry[9] != 'null':
                 # convert tfin date string into datetime object
                 entry[9] = datetime.datetime.strptime(entry[9], "%Y-%m-%d %H:%M:%S")
+            # skip rows that do have the status desired
+            if status != '' and status != entry[10]:
+                continue
             for i in range(len(cnames)):
                 if cnames[i] == 'query_text':
                     tmid = entry[1]
@@ -389,9 +392,10 @@ def rt_queries(username):
     return rows
 
 
-def queries_upto_now(stime, username):
-    #filter = "where ctime >= '%s'" % stime
-    filter = ''
+def queries_upto_now(status, stime, username):
+    filter = "where ctime >= '%s'" % stime
+    if status != '':
+        filter = "%s and status='%s'" % (filter, status)
     if username != '':
         filter = "%s and uname='%s'" % (filter, username)
     query1 = 'select * from queries_history %s' % filter
@@ -411,9 +415,10 @@ def queries_upto_now(stime, username):
 
     return _queries_consolidate(rows)
 
-def queries_history(stime, etime, username):
-    #filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
-    filter = ''
+def queries_history(status, stime, etime, username):
+    filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+    if status != '':
+        filter = "%s and status='%s'" % (filter, status)
     if username != '':
         filter = "%s and uname='%s'" % (filter, username)
     query1 = 'select * from queries_history %s' % filter

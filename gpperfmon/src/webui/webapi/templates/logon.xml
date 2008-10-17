@@ -1,7 +1,8 @@
-$def with (user, status, sid)
+$def with (user, status, role, sid)
 <?xml version="1.0"?>
 <logon>
    <username>$user</username>
+   <role>$role</role>
    <status>$status</status>
    <sid>$sid</sid>
 </logon>
