@@ -13,9 +13,8 @@ APU=apr-util-1.2.12
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8h
-LIBSIGAR=libsigar
 
-all: mkdir mklibjson mklibevent mklibssl mklibapr mklibapu mklibsigar mkdbgen
+all: mkdir mklibjson mklibevent mklibssl mklibapr mklibapu mkdbgen
 
 mkdir:
 	@echo --- ext ------------------------------------------------------
@@ -27,7 +26,6 @@ mklibevent: mkdir lib/libevent.a
 mklibssl: mkdir lib/libssl.a
 mklibapr: mkdir lib/libapr-1.a
 mklibapu: mkdir lib/libaprutil-1.a
-mklibsigar: mkdir lib/libsigar.a
 
 lib/libjson.a:
 	@echo     -- json
@@ -86,15 +84,9 @@ mkdbgen:
 	(cd tpch && cp -f dbgen ../../build/bin/)
 	(cd tpch && cp -f dists.dss ../../build/bin/)
 
-lib/libsigar.a:
-	@echo     -- sigar
-	(cd $(LIBSIGAR) && cp -rf include/* ../include)
-	(cd $(LIBSIGAR) && $(MAKE) && cp -f src/libsigar.a ../lib)
-
 veryclean:
 	rm -rf lib bin include build1 share ssl build-1
 	rm -rf $(APR) $(APU) $(JSON) $(LIBEVENT) $(OPENSSL)
-	(cd $(LIBSIGAR) && $(MAKE) veryclean)
 
 clean:
 	rm -rf lib bin include build1 share ssl build-1
@@ -103,5 +95,4 @@ clean:
 	(cd $(JSON) && $(MAKE) clean; rm -f make.out)
 	(cd $(LIBEVENT) && $(MAKE) clean; rm -f make.out)
 	(cd $(OPENSSL) && $(MAKE) clean; rm -f make.out)
-	(cd $(LIBSIGAR) && $(MAKE) clean)
 
