@@ -153,3 +153,76 @@ ENCODING=UNICODE
 #declare -a MIRROR_DATA_DIRECTORY=(/gp_mirror /gp_mirror)
 
 
+################################################
+# DETAILED ARRAY CONFIGURATION PARAMETERS
+###############################################
+
+# In some cases, you may need to precisely control how your segment 
+# instances are mapped out across the hosts in your array. For example, 
+# the way gpinitsystem maps segments to segment hosts can change 
+# between releases. If you are upgrading using a dump from a prior 
+# release to restore into a newer system, use this option to make 
+# sure the array layout stays the same as your previous instance. 
+# All of the configuration information for an array can be found by 
+# looking in the gp_configuration system catalog table.
+
+# Using the -I option with gpinitsystem allows you to supply a 
+# detailed array configuration file using the parameters ARRAY_NAME, 
+# MACHINE_LIST_FILE, SEG_PREFIX, TRUSTED_SHELL, CHECK_POINT_SEGMENTS, 
+# ENCODING plus the following additional detailed array configuration 
+# parameters: QD_PRIMARY_ARRAY, PRIMARY_ARRAY and MIRROR_ARRAY.
+
+# You can generate a sample detailed array configuration file as follows:
+# gpinitsystem -c gp_init_config -O detailed_config_sample
+
+
+# The specification of the master instance in the format:
+# <master_hostname>:<master_port>:<data_directory>:<dbid>:<content>
+# The dbid is the unique ID for a segment instance as specified in 
+# the gp_configuration system catalog table. The content ID specifies 
+# the content of a segment instance. The master always has a content 
+# ID of -1. Note that the content ID is also part of the data directory name.
+
+# QD_PRIMARY_ARRAY=dw1:54320:/gpdata/s1/gp-1:1:-1
+
+
+
+# The specification of the primary segment instances in the format:
+# <hostname>:<port>:<data_directory>:<dbid>:<content>
+# The dbid is the unique ID for a segment instance as specified in 
+# the gp_configuration system catalog table. The content ID specifies 
+# the content of a segment instance. A primary and its corresponding 
+# mirror segment will always have the same content ID. Note that the 
+# content ID is also part of the data directory name.
+
+# declare -a PRIMARY_ARRAY=(
+# dw2-1:50001:/gpdata/s1/gp0:2:0
+# dw2-2:50002:/gpdata/s2/gp1:3:1
+# dw2-3:50003:/gpdata/s3/gp2:4:2
+# dw2-4:50004:/gpdata/s4/gp3:5:3
+# dw3-1:50001:/gpdata/s1/gp4:6:4
+# dw3-2:50002:/gpdata/s2/gp5:7:5
+# dw3-3:50003:/gpdata/s3/gp6:8:6
+# dw3-4:50004:/gpdata/s4/gp7:9:7 )
+
+
+
+# The specification of the mirror segment instances in the format:
+# <hostname>:<port>:<data_directory>:<dbid>:<content>
+# The dbid is the unique ID for a segment instance as specified in 
+# the gp_configuration system catalog table. The content ID specifies 
+# the content of a segment instance. A primary and its corresponding 
+# mirror segment will always have the same content ID. Note that 
+# the content ID is also part of the data directory name.
+
+# declare -a MIRROR_ARRAY=(
+# dw2-1:50101:/gpdata/s1/gp8:8:4
+# dw2-2:50102:/gpdata/s2/gp9:9:5
+# dw2-3:50103:/gpdata/s3/gp10:10:6
+# dw2-4:50104:/gpdata/s4/gp11:11:7
+# dw3-1:50101:/gpdata/s1/gp12:12:0
+# dw3-2:50102:/gpdata/s2/gp13:13:1
+# dw3-3:50103:/gpdata/s3/gp14:14:2
+# dw3-4:50104:/gpdata/s4/gp15:15:3 )
+
+
