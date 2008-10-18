@@ -8,14 +8,17 @@
  * And both modules depend on utils/mmgr/portalmem.c, which controls
  * storage management for portals (but doesn't run any queries in them).
  *
- *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- *
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/portalcmds.c,v 1.57.2.1 2007/02/06 22:49:30 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -32,9 +35,12 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
+
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
+
+static void PortalCleanupHelper(Portal portal, int *cleanupstate);
 
 
 /*
@@ -280,56 +286,121 @@ PerformPortalClose(const char *name)
  *
  * Clean up a portal when it's dropped.  This is the standard cleanup hook
  * for portals.
+ *
+ * CDB: If anything goes wrong in here, try to just log it and keep going.
+ * Likely we're cleaning up after some earlier error.  Don't confuse the
+ * user with additional fallout secondary to the original error.  Caller
+ * isn't interested in any further chatter from this portal, so pipe down.
  */
 void
 PortalCleanup(Portal portal)
 {
-	QueryDesc  *queryDesc;
+	ResourceOwner   saveResourceOwner = CurrentResourceOwner;   /* save */
+    MemoryContext   saveContext = CurrentMemoryContext;         /* save */
+    volatile int    retrycount = 0;
+    volatile bool   done = false;
+    int             cleanupstate = 0;
 
-	/*
-	 * sanity checks
-	 */
-	AssertArg(PortalIsValid(portal));
-	AssertArg(portal->cleanup == PortalCleanup);
+    Assert(portal);
 
-	/*
+    while (!done)
+    {
+        /* We must make the portal's resource owner current */
+        CurrentResourceOwner = portal->resowner;
+
+	    PG_TRY();
+	    {
+            /* My helper does all the work. */
+            PortalCleanupHelper(portal, &cleanupstate);
+            done = true;
+	    }
+
+        /* Log and dismiss an error, then loop to do next step of cleanup. */
+	    PG_CATCH();
+	    {
+	        CurrentResourceOwner = saveResourceOwner;           /* restore */
+            MemoryContextSwitchTo(saveContext);                 /* restore */
+
+            if (retrycount++ < 5 && 
+                elog_dismiss(LOG))
+                done = false;
+            else
+            {
+                /* Sorry, can't dismiss this error. */
+	            PortalSetStatus(portal, PORTAL_FAILED);
+                PG_RE_THROW();
+            }
+	    }
+	    PG_END_TRY();
+    }
+
+	CurrentResourceOwner = saveResourceOwner;                   /* restore */
+    MemoryContextSwitchTo(saveContext);                         /* restore */
+}                               /* PortalCleanup */
+
+/*
+ * PortalCleanupHelper
+ *
+ * This could be called more than once.  Each step should guard itself
+ * so that it will be executed only once even if called more than once.
+ * The *cleanupstate arg can be used to remember what has been done.
+ */
+void
+PortalCleanupHelper(Portal portal, int *cleanupstate)
+{
+    QueryDesc      *queryDesc = PortalGetQueryDesc(portal);
+
+    /*
 	 * Shut down executor, if still running.  We skip this during error abort,
 	 * since other mechanisms will take care of releasing executor resources,
 	 * and we can't be sure that ExecutorEnd itself wouldn't fail.
 	 */
-	queryDesc = PortalGetQueryDesc(portal);
-	if (queryDesc)
-	{
-		portal->queryDesc = NULL;
-		if (PortalGetStatus(portal) != PORTAL_FAILED)
-		{
-			ResourceOwner saveResourceOwner;
+    portal->queryDesc = NULL;
+    if (queryDesc &&
+        queryDesc->estate)
+    {
+        /* If an error occurred, stop any QEs that haven't already finished. */
+        if (PortalGetStatus(portal) == PORTAL_FAILED)
+            queryDesc->estate->cancelUnfinished = true;
 
-			/* We must make the portal's resource owner current */
-			saveResourceOwner = CurrentResourceOwner;
-			PG_TRY();
-			{
-				CurrentResourceOwner = portal->resowner;
-				/* we do not need AfterTriggerEndQuery() here */
-				ExecutorEnd(queryDesc);
-			}
-			PG_CATCH();
-			{
-				/* Ensure CurrentResourceOwner is restored on error */
-				CurrentResourceOwner = saveResourceOwner;
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
-			CurrentResourceOwner = saveResourceOwner;
-		}
-	}
-	
-	if (portal->dispatchagents)
-		if (portal->name && strcmp(portal->name,"")!=0)
-		{
-			disconnectAndDestroyDispatchAgents(portal->dispatchagents);
-		}
-}
+        /* we do not need AfterTriggerEndQuery() here */
+        ExecutorEnd(queryDesc);
+    }
+    
+    /*
+     * Terminate unneeded QE processes.
+     */
+    if (*cleanupstate < 1 && 
+        Gp_role == GP_ROLE_DISPATCH)
+    {
+        *cleanupstate = 1;
+        cleanupPortalGangs(portal);
+    }
+
+    /* 
+     * Terminate dispatch agent processes.  
+     * DAs for unnamed portal can be kept and reused for next query. 
+     */
+    if (portal->dispatchagents &&
+        portal->name && 
+        strcmp(portal->name,"") != 0)
+    {
+        struct DispatchAgentSet    *agents = portal->dispatchagents;
+
+        portal->dispatchagents = NULL;
+        disconnectAndDestroyDispatchAgents(agents);
+    }
+
+    /* 
+     * If resource scheduling is enabled, release the resource lock. 
+     */
+    if (portal->releaseResLock)
+    {
+        portal->releaseResLock = false;
+        ResUnLockPortal(portal);
+    }
+}                               /* PortalCleanupHelper */
+
 
 /*
  * PersistHoldablePortal

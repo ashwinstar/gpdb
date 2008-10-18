@@ -167,7 +167,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 												hashcode,
 												HASH_ENTER_NULL,
 												&found);
-
+	locallock->lock = lock;
 	 if (!lock)
 	 {
 	 	LWLockRelease(partitionLock);
@@ -176,7 +176,6 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 				 errmsg("out of shared memory"),
 				 errhint("You may need to increase max_resource_qeueues.")));
 	}
-	locallock->lock = lock;
 
 	/*
 	 * if it's a new lock object, initialize it.
@@ -216,6 +215,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 														proclock_hashcode,
 														HASH_ENTER_NULL,
 														&found);
+	locallock->proclock = proclock;
     if (!proclock)
 	{
 		/* Not enough shmem for the proclock. */
@@ -241,7 +241,6 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 				 errmsg("out of shared memory"),
 			errhint("You may need to increase max_resource_qeueues.")));
 	}
-	locallock->proclock = proclock;
 
 	/*
 	 * If new, initialize the new entry.
@@ -287,7 +286,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 
 		/* Clean up this lock. */
-		RemoveLocalLock(locallock);
+        if (proclock->nLocks == 0)
+		    RemoveLocalLock(locallock);
 		ResCleanUpLock(lock, proclock, hashcode, false);
 
 		LWLockRelease(ResQueueLock);
@@ -339,7 +339,8 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
 
 		/* Clean up this lock. */
-		RemoveLocalLock(locallock);
+        if (proclock->nLocks == 0)
+    		RemoveLocalLock(locallock);
 		ResCleanUpLock(lock, proclock, hashcode, false);
 
 		/* Kill off the increment. */
@@ -360,7 +361,6 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 * The requested lock will *not* exhaust the limit for this resource
 		 * queue, so record this in the local lock hash, and grant it.
 		 */
-
 		ResGrantLock(lock, proclock);
 		ResLockUpdateLimit(lock, proclock, incrementSet, true);
 
@@ -473,12 +473,15 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 										  HASH_FIND, NULL);
 
 	/*
-	 * let the caller print its own error message, too. Do not ereport(ERROR).
+     * If the lock request did not get very far, cleanup is easy.
 	 */
-	if (!locallock)
+	if (!locallock ||
+        !locallock->lock ||
+        !locallock->proclock)
 	{
-		elog(WARNING, "you don't own a lock on queue %d",
-		locktag->locktag_field1);
+        elog(DEBUG1, "Resource queue %d: no lock to release", locktag->locktag_field1);
+        if (locallock)
+            RemoveLocalLock(locallock);
 		return FALSE;
 	}
 
@@ -489,28 +492,39 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 
 	LWLockAcquire(partitionLock, LW_EXCLUSIVE);
 
-	/*
-	 * We don't need to re-find the lock or proclock, since we kept their
-	 * addresses in the locallock table, and they couldn't have been removed
-	 * while we were holding a lock on them.
-	 */
+    /*
+     * Verify that our LOCALLOCK still matches the shared tables.
+     *
+     * While waiting for the lock, our request could have been canceled 
+     * to resolve a deadlock.  It could already have been removed from
+     * the shared LOCK and PROCLOCK tables, and those entries could 
+     * have been reallocated for some other request.  Then all we need
+     * to do is clean up the LOCALLOCK entry.
+     */
 	lock = locallock->lock;
 	proclock = locallock->proclock;
-	
-	Assert((lock != NULL) && (proclock != NULL));
+    if (proclock->tag.myLock != lock ||
+        proclock->tag.myProc != MyProc ||
+        0 != memcmp(&locallock->tag.lock, &lock->tag, sizeof(lock->tag)))
+    {
+		LWLockRelease(partitionLock);
+        elog(DEBUG1, "Resource queue %d: lock already gone", locktag->locktag_field1);
+        RemoveLocalLock(locallock);
+		return FALSE;
+    }
 
 	/*
 	 * Double-check that we are actually holding a lock of the type we want to
 	 * Release.
 	 */
-	if (!(proclock->holdMask & LOCKBIT_ON(lockmode)))
+	if (!(proclock->holdMask & LOCKBIT_ON(lockmode)) ||
+        proclock->nLocks <= 0)
 	{
 		LWLockRelease(partitionLock);
-		elog(ERROR, "you don't hold a lock of type %d on queue %d", 
-					lockmode, locktag->locktag_field1);
-		RemoveLocalLock(locallock);
-		return FALSE;
-			
+        elog(DEBUG1, "Resource queue %d: proclock not held", locktag->locktag_field1);
+        RemoveLocalLock(locallock);
+    	ResCleanUpLock(lock, proclock, hashcode, true);
+		return FALSE;			
 	}
 
 	/*
@@ -527,10 +541,12 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	{
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
-		elog(ERROR, "no increment data for portal id %u and pid %d",
-			 resPortalId, MyProc->pid);
+        elog(DEBUG1, "Resource queue %d: increment not found on unlock", locktag->locktag_field1);
+        if (proclock->nLocks == 0)
+            RemoveLocalLock(locallock);
+    	ResCleanUpLock(lock, proclock, hashcode, true);
+		return FALSE;			
 	}
-
 
 	/*
 	 * Un-grant the lock.
@@ -538,13 +554,11 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	ResUnGrantLock(lock, proclock);
 	ResLockUpdateLimit(lock, proclock, incrementSet, false);
 
-	/* Remove the locallock if we are going to remove the shared one. */
-	if(lock->nRequested == 0)
-		RemoveLocalLock(locallock);
-
 	/*
 	 * Perform clean-up, waking up any waiters!
 	 */
+    if (proclock->nLocks == 0)
+		RemoveLocalLock(locallock);
 	ResCleanUpLock(lock, proclock, hashcode, true);
 
 	/* 

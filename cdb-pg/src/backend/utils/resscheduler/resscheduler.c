@@ -644,7 +644,19 @@ ResLockPortal(Portal portal, Plan *plan)
 				 queueid, portal->portalId);
 #endif
 			SET_LOCKTAG_RESOURCE_QUEUE(tag, queueid);
-			lockResult = ResLockAcquire(&tag, &incData);
+
+            PG_TRY();
+            {
+    			lockResult = ResLockAcquire(&tag, &incData);
+            }
+            PG_CATCH();
+            {
+                ResLockRelease(&tag, portal->portalId);
+				portal->queueId = InvalidOid;
+				portal->portalId = INVALID_PORTALID;
+                PG_RE_THROW();
+            }
+            PG_END_TRY();
 
 			/* 
 			 * See if query was too small to bother locking at all, i.e had

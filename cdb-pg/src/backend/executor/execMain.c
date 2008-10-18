@@ -816,7 +816,13 @@ ExecutorEnd(QueryDesc *queryDesc)
 	}
 	PG_END_TRY();
 
-	ExecEndPlan(queryDesc->planstate, estate);
+    /*
+     * If normal termination, let each operator clean itself up.
+     * Otherwise don't risk it... an error might have left some
+     * structures in an inconsistent state.
+     */
+    if (!estate->cancelUnfinished)  
+	    ExecEndPlan(queryDesc->planstate, estate);
 
 	/*
 	 * Release any gangs we may have assigned.
@@ -845,9 +851,10 @@ ExecutorEnd(QueryDesc *queryDesc)
 
 	/*
 	 * Release EState and per-query memory context.  This should release
-	 * everything the executor has allocated.
+	 * everything the executor has allocated.  
 	 */
-	FreeExecutorState(estate);
+    if (!estate->cancelUnfinished)  
+    	FreeExecutorState(estate);
 
 	/* Reset queryDesc fields that no longer point to anything */
 	queryDesc->tupDesc = NULL;

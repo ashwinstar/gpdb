@@ -11,6 +11,10 @@
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111.2.1 2007/02/18 19:49:30 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 
@@ -384,7 +388,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	Snapshot	saveActiveSnapshot;
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
-	MemoryContext oldContext;
+	MemoryContext oldContext = CurrentMemoryContext;
 	QueryDesc  *queryDesc;
 	int			eflags;
 
@@ -408,7 +412,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 		CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
 
-		oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
+		MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
 		/* Must remember portal param list, if any */
 		portal->portalParams = params;
@@ -651,7 +655,7 @@ PortalRun(Portal portal, int64 count,
 		  DestReceiver *dest, DestReceiver *altdest,
 		  char *completionTag)
 {
-	bool		result;
+	bool		result = false;
 	ResourceOwner saveTopTransactionResourceOwner;
 	MemoryContext saveTopTransactionContext;
 	Portal		saveActivePortal;
@@ -775,7 +779,6 @@ PortalRun(Portal portal, int64 count,
 			default:
 				elog(ERROR, "unrecognized portal strategy: %d",
 					 (int) portal->strategy);
-				result = false; /* keep compiler quiet */
 				break;
 		}
 	}
@@ -1281,13 +1284,13 @@ PortalRunFetch(Portal portal,
 			   int64 count,
 			   DestReceiver *dest)
 {
-	int64		result;
+	int64		result = 0;
 	Portal		saveActivePortal;
 	Snapshot	saveActiveSnapshot;
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
 	MemoryContext saveQueryContext;
-	MemoryContext oldContext;
+	MemoryContext oldContext = CurrentMemoryContext;
 
 	AssertArg(PortalIsValid(portal));
 
@@ -1317,7 +1320,7 @@ PortalRunFetch(Portal portal,
 		PortalContext = PortalGetHeapMemory(portal);
 		QueryContext = portal->queryContext;
 
-		oldContext = MemoryContextSwitchTo(PortalContext);
+		MemoryContextSwitchTo(PortalContext);
 
 		switch (portal->strategy)
 		{
@@ -1345,7 +1348,6 @@ PortalRunFetch(Portal portal,
 
 			default:
 				elog(ERROR, "unsupported portal strategy");
-				result = 0;		/* keep compiler quiet */
 				break;
 		}
 	}
@@ -1354,22 +1356,7 @@ PortalRunFetch(Portal portal,
 		/* Uncaught error while executing portal: mark it dead */
 		PortalSetStatus(portal, PORTAL_FAILED);
 
-		/* MPP: shutdown interconnect and cleanup executor state. We
-		 * must do this while our executor context is still alive. Otherwise
-		 * we'll SIGSEGV. */
-		{
-			MemoryContext oldcontext;
-			QueryDesc *qd = PortalGetQueryDesc(portal);
-
-			if (qd != NULL && qd->estate != NULL)
-			{
-				oldcontext = MemoryContextSwitchTo(qd->estate->es_query_cxt);
-				mppExecutorCleanup(qd);
-				MemoryContextSwitchTo(oldcontext);
-			}
-		}
-
-		/* Restore global vars and propagate error */
+        /* Restore global vars and propagate error */
 		ActivePortal = saveActivePortal;
 		ActiveSnapshot = saveActiveSnapshot;
 		CurrentResourceOwner = saveResourceOwner;

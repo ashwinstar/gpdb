@@ -29,6 +29,7 @@ SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHE
 ALTER USER reg_u1 RESOURCE QUEUE reg_activeq;
 SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and rolname='reg_u1';
 CREATE USER reg_u2 RESOURCE QUEUE reg_activeq;
+GRANT SELECT ON tenk1 TO reg_u2;
 SELECT u.rolname, u.rolsuper, r.rsqname FROM pg_roles as u, pg_resqueue as r WHERE u.rolresqueue=r.oid and r.rsqname='reg_activeq';
 
 -- negative
@@ -59,6 +60,38 @@ DECLARE c4 CURSOR FOR SELECT 4 FROM tenk1;
 FETCH c4;
 END;
 
+-- switch to a cost-limited queue
+RESET SESSION AUTHORIZATION;
+ALTER USER reg_u2 RESOURCE QUEUE reg_costq;
+SET SESSION AUTHORIZATION reg_u2;
+BEGIN;
+DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
+SELECT rsqname, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
+DECLARE c2 CURSOR FOR SELECT * FROM tenk1 a NATURAL JOIN tenk1 b;
+SELECT rsqname, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
+CLOSE c1;
+CLOSE c2;
+END;
+
+-- rsqcostvalue should go back to 0 when queue is empty (MPP-3578)
+SELECT * FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 0 rows expected
+
+-- MPP-3796.  When a cursor exceeds the cost limit and the transaction is
+-- aborted, resources which had already been granted to other cursors should
+-- be released.  Here there are no other concurrent transactions sharing the
+-- queue, so rsqcostvalue should go back to 0.
+BEGIN;
+DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
+SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
+DECLARE c2 CURSOR FOR SELECT * FROM tenk1;
+SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
+DECLARE c3 CURSOR FOR SELECT * FROM tenk1 a, tenk1 b;
+SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
+DECLARE c4 CURSOR FOR SELECT * FROM tenk1 a, tenk1 b, tenk1 c;
+SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
+END;
+SELECT * FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 0 rows expected
+
 -- return to the super user
 RESET SESSION AUTHORIZATION;
 
@@ -71,7 +104,7 @@ END;
 
 -- cleanup
 
-REVOKE SELECT ON tenk1 FROM reg_u1;
+DROP OWNED BY reg_u1, reg_u2 CASCADE;
 DROP USER reg_u1;
 DROP USER reg_u2;
 DROP RESOURCE QUEUE reg_activeq;

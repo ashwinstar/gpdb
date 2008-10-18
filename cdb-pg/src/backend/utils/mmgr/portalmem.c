@@ -7,13 +7,17 @@
  * This module provides memory management services for portals, but it
  * doesn't actually run the executor for them.
  *
- *
+ * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.97.2.1 2007/04/26 23:24:57 tgl Exp $
  *
+ *            $Id$
+ *        $Change$
+ *      $DateTime$
+ *        $Author$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -405,15 +409,6 @@ PortalDrop(Portal portal, bool isTopCommit)
 		elog(ERROR, "cannot drop active or queued portal");
 
 	/*
-	 * If resource scheduling is enabled, release the resource lock here.
-	 */
-	if (portal->releaseResLock)
-    {
-        portal->releaseResLock = false;
-        ResUnLockPortal(portal);
-    }
-
-	/*
 	 * Remove portal from hash table.  Because we do this first, we will not
 	 * come back to try to remove the portal again if there's any error in the
 	 * subsequent steps.  Better to leak a little memory than to get into an
@@ -422,7 +417,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 	PortalHashTableDelete(portal);
 
 	/* let portalcmds.c clean up the state it knows about */
-	if (PointerIsValid(portal->cleanup))
+	if (portal->cleanup)
 		(*portal->cleanup) (portal);
 
 	/*
@@ -481,9 +476,6 @@ PortalDrop(Portal portal, bool isTopCommit)
 		portal->holdStore = NULL;
 	}
 	
-	if (Gp_role == GP_ROLE_DISPATCH)
-		cleanupPortalGangs(portal);
-
 	/* delete tuplestore storage, if any */
 	if (portal->holdContext)
 		MemoryContextDelete(portal->holdContext);
@@ -698,15 +690,8 @@ AtAbort_Portals(void)
 			continue;
 
 		/* let portalcmds.c clean up the state it knows about */
-		if (PointerIsValid(portal->cleanup))
+		if (portal->cleanup)
 		{
-			QueryDesc  *queryDesc;
-			/* we need to make sure that the executor knows to
-			 * shutdown without waiting for work to finish properly */
-			queryDesc = PortalGetQueryDesc(portal);
-			if (queryDesc && queryDesc->estate)
-				queryDesc->estate->cancelUnfinished = true;
-
 			(*portal->cleanup) (portal);
 			portal->cleanup = NULL;
 		}
@@ -803,6 +788,9 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
+    UnusedArg(parentSubid);
+    UnusedArg(parentXactOwner);
+
 	hash_seq_init(&status, PortalHashTable);
 
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
@@ -844,7 +832,7 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 #endif
 		{
 			/* let portalcmds.c clean up the state it knows about */
-			if (PointerIsValid(portal->cleanup))
+			if (portal->cleanup)
 			{
 				(*portal->cleanup) (portal);
 				portal->cleanup = NULL;
