@@ -200,7 +200,10 @@ ExecMotion(MotionState * node)
 		if (tuple == NULL)
 			node->ps.state->active_recv_id = -1;
           	else
-           	Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_QEXEC_M_ROWSIN);
+                {
+                    Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_QEXEC_M_ROWSIN);
+                    Gpmon_M_Incr_Rows_Out(GpmonPktFromMotionState(node));
+                }
 #ifdef MEASURE_MOTION_TIME
 		gettimeofday(&stopTime, NULL);
 

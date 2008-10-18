@@ -699,6 +699,21 @@ static apr_int64_t get_total_cpu_elapsed(qdnode_t* qdnode)
     return total_cpu_elapsed;
 }
 
+static apr_int64_t get_rowsout(qdnode_t* qdnode)
+{
+    qenode_t* pqe = NULL;
+    apr_int64_t rowsout = 0;
+    
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+        if (pqe->qexec.key.segid == -1 && pqe->qexec.key.nid == 1)
+        {
+            rowsout = pqe->qexec.rowsout;
+            break;
+        }
+
+    return rowsout;
+}
+
 static float get_cpu_current_perc(qdnode_t* qdnode)
 {
     apr_pool_t* tmp_pool;
@@ -969,6 +984,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done
     double cpu_skew = 0.0f;
     double row_skew = 0.0f;
     apr_int64_t cpu_elapsed = 0;
+    apr_int64_t rowsout = 0;
     float cpu_current = 0.0f;
 
     *p = 0;
@@ -993,7 +1009,9 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done
         
     sprintf(p += strlen(p), "|%s", 
             gpmon_qlog_status_string(qdnode->qlog.status));
-    sprintf(p += strlen(p), "|%" FMT64, qdnode->qlog.rows_out);
+    if (done)
+        rowsout = get_rowsout(qdnode);
+    sprintf(p += strlen(p), "|%" FMT64, rowsout);
     cpu_elapsed = get_total_cpu_elapsed(qdnode);
     if (!done)
         cpu_current = get_cpu_current_perc(qdnode);

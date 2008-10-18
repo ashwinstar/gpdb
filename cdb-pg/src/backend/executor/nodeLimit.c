@@ -225,6 +225,9 @@ ExecLimit(LimitState *node)
 	/* Return the current tuple */
 	Assert(!TupIsNull(slot));
 
+        if (!TupIsNull(slot))
+            Gpmon_M_Incr_Rows_Out(GpmonPktFromLimitState(node));
+
 	return slot;
 }
 
