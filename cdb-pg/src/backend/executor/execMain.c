@@ -1595,21 +1595,23 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	 * RelationOidLock/RelationLock with a stronger lock-mode:
 	 * RelationOidLock/RelationLock expect a relation to already be
 	 * locked.
+	 *
+	 * But we also need to serialize CMD_UPDATE && CMD_DELETE to preserve
+	 * order on mirrors.
+	 *
+	 * So we're going to ignore the "NoLock" issue above.
 	 */
 	/* CDB: QD must acquire X lock on whole relation if distributed. */
-	if (!needLock)
-		resultRelationDesc = heap_open(resultRelationOid, NoLock);
-	else
-	{
-		/* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
-   		if (operation == CMD_UPDATE || operation == CMD_DELETE || CMD_INSERT)
-			resultRelationDesc = heap_open(resultRelationOid, RowExclusiveLock);
-		else
-		{
-			/* A result rel has to be one of the three above: insert, update, or delete. */
-			elog(ERROR, "Command-lockmode mismatch cmd %d", operation);
-		}
-	}
+    resultRelationDesc = heap_open(resultRelationOid, NoLock);
+    
+    /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
+    if (needLock)
+   	{
+   		if (operation == CMD_UPDATE || operation == CMD_DELETE)
+    		CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
+    	else
+    		LockRelation(resultRelationDesc, RowExclusiveLock);
+   	}
 	
 	switch (resultRelationDesc->rd_rel->relkind)
 	{
