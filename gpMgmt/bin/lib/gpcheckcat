@@ -8,10 +8,12 @@ Usage: gpcheckcat <option> [dbname]
 	-p port    : DB port number
 	-P passwd  : DB password
 	-U uname   : DB User Name
+	-B parallel: Number of worker threads
 	-v         : verbose
 
 '''
 import sys, os, subprocess, tempfile
+from threading import Thread
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -19,6 +21,8 @@ try:
     import pg8000
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
+
+parallelism = 2
 
 ################
 def parse_int(val):
@@ -38,6 +42,7 @@ class Global():
     opt['-v'] = False
     opt['-V'] = False
     opt['-g'] = None
+    opt['-B'] = parallelism
     cfg       = None
     dbname    = None
     db        = {}
@@ -106,6 +111,13 @@ def parseCommandLine():
     
     print ('[INFO] master at host %s, port %s, user %s, database %s' % 
            (GV.opt['-h'], GV.opt['-p'], GV.opt['-U'], GV.dbname))
+
+    try:
+        GV.opt['-B'] = int(GV.opt['-B'])
+    except Exception, e:
+        usage('Error: ' + str(e))
+
+    veryverbose('[INFO] degree of parallelism: %s' % GV.opt['-B'])
     
 
 #############
@@ -148,18 +160,44 @@ def connect2(cfgrec, user=None, password=None, database=None):
     
     return conn
 
+class execThread(Thread):
+    def __init__(self, db, qry):
+       self.db = db
+       self.qry = qry
+       Thread.__init__(self)
 
+    def run(self):
+        self.db.execute(self.qry)
+    
 
 #############
 def connect2run(qry, col):
     verbose('[INFO] %s' % qry)
         
     batch = []
+    threads = []
+    i = 1
+
+    # parallelise queries
     for dbid in GV.cfg:
         c = GV.cfg[dbid]
         db = connect2(c)
-        db.execute(qry)
-        batch.append( db )
+        batch.append(db)
+
+        thread = execThread(db, qry)
+        thread.start()
+        threads.append(thread)
+
+        # we don't want too much going on at once
+        if (i % GV.opt['-B']) == 0:
+          for th in threads:
+              th.join()
+
+          threads = []
+        i += 1
+
+    for th in threads:
+        th.join()
 
     err = []
     for db in batch:
@@ -184,8 +222,8 @@ def getGPConfiguration():
     db = connect()
     db.execute("select * from gp_configuration")
     for row in db.iterate_dict():
-	if row['content'] == -1 and not row['isprimary']:
-	    continue	# skip standby master
+        if row['content'] == -1 and not row['isprimary']:
+            continue    # skip standby master
         cfg[row['dbid']] = row
     db.close()
     return cfg
@@ -249,7 +287,7 @@ def checkPGAttribute():
             
             relids[seg].append(e[2]['attrelid'])    
         for seg in relids:
-        	# unique
+            # unique
             rels = set(relids[seg])
             for relid in rels:
                 c = GV.cfg[seg]
@@ -512,34 +550,46 @@ def addRemove(seg, line):
         Remove[seg] = []
     Remove[seg].append(line)
 
-def getSysCat(dbid, table, catalog):
-    host    = GV.cfg[dbid]['hostname']
-    port    = GV.cfg[dbid]['port']
-    datadir = GV.cfg[dbid]['datadir']
-    veryverbose('[INFO] fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
+class sysCatThread(Thread):
+    # Override Thread.__init__ to supply extra info
 
-    qry  = 'SELECT a.'
-    qry += ', a.'.join(set(catalog['cols'] + catalog['key']))
-    qry += ' FROM pg_catalog.%s a' % table
+    def __init__(self, dbid, table, catalog):
+        self.dbid = dbid
+        self.table = table
+        self.catalog = catalog
+        Thread.__init__(self)
 
-    if catalog['namespace']:
-        qry += ", pg_namespace n"
-        qry += " WHERE a.%s = n.oid" % catalog['namespace']
-        qry += " AND n.nspname !~ 'pg_temp.*'"
-        qry += " AND n.nspname !~ 'pg_toast.*'"
-
-    qry += " ORDER BY a.%s " % ', a.'.join(catalog['key'])
-
-    if dbid == 1:
-        outfile = "%s/gpcheckcat_m" % GV.tmpdir
-    else:
-        outfile = "%s/gpcheckcat_s" % GV.tmpdir
-
-    cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
-    cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" %s' % \
-        (outfile, host, port, GV.opt['-U'], qry, GV.dbname)
-
-    subprocess.call(cmd, shell=True)
+    def run(self):
+        dbid     = self.dbid
+        table    = self.table
+        catalog    = self.catalog
+        host    = GV.cfg[dbid]['hostname']
+        port    = GV.cfg[dbid]['port']
+        datadir = GV.cfg[dbid]['datadir']
+        veryverbose('[INFO] fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
+    
+        qry  = 'SELECT a.'
+        qry += ', a.'.join(set(catalog['cols'] + catalog['key']))
+        qry += ' FROM pg_catalog.%s a' % table
+    
+        if catalog['namespace']:
+            qry += ", pg_namespace n"
+            qry += " WHERE a.%s = n.oid" % catalog['namespace']
+            qry += " AND n.nspname !~ 'pg_temp.*'"
+            qry += " AND n.nspname !~ 'pg_toast.*'"
+    
+        qry += " ORDER BY a.%s " % ', a.'.join(catalog['key'])
+    
+        if dbid == 1:
+            outfile = "%s/gpcheckcat_m" % GV.tmpdir
+        else:
+            outfile = "%s/gpcheckcat.%s.%s_s" % (GV.tmpdir, dbid, table)
+    
+        cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
+        cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" %s' % \
+            (outfile, host, port, GV.opt['-U'], qry, GV.dbname)
+    
+        subprocess.call(cmd, shell=True)
     
 
 def row2str(row):
@@ -594,18 +644,39 @@ def crossDbCheck():
             error = False
             print '  - Comparing %s on master to all segments' % cid
 
+            threads = []
+            i = 1
             for dbid in GV.cfg:
-                getSysCat(dbid, cid, catalogs[cid])
+                thread = sysCatThread(dbid, cid, catalogs[cid])
+                thread.start()
+#                getSysCat(dbid, cid, catalogs[cid])
+                threads.append(thread)
+
+                # we don't want too much going on at once
+                if (i % GV.opt['-B']) == 0:
+                    for th in threads:
+                        th.join()
+                    threads = []
+                i += 1
+
+            # process leftovers
+            for th in threads:
+                th.join()
+
+            for dbid in GV.cfg:
                 if dbid == 1:
                     continue    # master segment
 
-                cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat_s' % \
-                    (GV.tmpdir, GV.tmpdir)
+                cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat.%s.%s_s' % \
+                    (GV.tmpdir, GV.tmpdir, dbid, cid)
                 diff = subprocess.call(cmd, shell=True)
                 if diff:
                     error = True
                     print '[ERROR] diff from segment %d:' % dbid
                     print diff
+                os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
+
+            os.unlink('%s/gpcheckcat_m' % GV.tmpdir)
 
         if error == False:
             print '[OK]'
@@ -622,6 +693,7 @@ if __name__ == '__main__':
     GV.cfg = getGPConfiguration()
     try:
         GV.tmpdir = tempfile.mkdtemp()
+        veryverbose('[INFO] Created temporary working directory %s' % GV.tmpdir)
     except Exception, e:
         print '[ERROR] ' + str(e)
         print '[ERROR] Unable to create temporary directory'
