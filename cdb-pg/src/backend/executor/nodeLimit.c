@@ -226,8 +226,10 @@ ExecLimit(LimitState *node)
 	Assert(!TupIsNull(slot));
 
         if (!TupIsNull(slot))
+        {
             Gpmon_M_Incr_Rows_Out(GpmonPktFromLimitState(node));
-
+            CheckSendPlanStateGpmonPkt(&node->ps); 
+        }
 	return slot;
 }
 
