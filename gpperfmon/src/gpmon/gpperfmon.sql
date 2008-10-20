@@ -140,8 +140,8 @@ create table iterators_history (
        cpu_elapsed bigint not null, -- process cpu usage total
        cpu_currpct float not null, -- process current cpu percentage
        phase varchar(64) not null, -- iterator phase
-       rowsout bigint not null default 0, -- rows out
-       rowsout_est bigint not null default 0, -- planner estimate of rows out
+       rows_out bigint not null default 0, -- rows out
+       rows_out_est bigint not null default 0, -- planner estimate of rows out
        m0_name varchar(64) not null default '', -- iterator metric name
        m0_unit varchar(64) not null default '', -- iterator metric unit (rows, bytes, etc.)
        m0_val bigint not null default 0,         -- current metric value
