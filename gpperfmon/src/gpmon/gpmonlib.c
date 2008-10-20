@@ -148,6 +148,7 @@ int gpmon_print(const char* fmt, ...)
     va_start(ap, fmt);
     fprintf(stdout, "%s|:-LOG: ", datetime());
     vfprintf(stdout, fmt, ap);
+    fflush(stdout);
     return 0;
 }
 
