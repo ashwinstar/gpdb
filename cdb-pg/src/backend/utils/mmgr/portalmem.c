@@ -1120,7 +1120,9 @@ void PortalSetStatus(Portal p, PortalStatus s)
 				||
 				gpmon_qlog_status == GPMON_QLOG_STATUS_START
 				|| 
-				gpmon_qlog_status == GPMON_QLOG_STATUS_DONE)
+				gpmon_qlog_status == GPMON_QLOG_STATUS_DONE
+                                ||
+                                gpmon_qlog_status == GPMON_QLOG_STATUS_ERROR)
 		{
 			struct timeval tv;
 			gettimeofday(&tv, 0);
