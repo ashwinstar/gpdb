@@ -72,8 +72,9 @@ ExternalNext(ExternalScanState *node)
 	 */
 	if (tuple)
      	{
-     		Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
-      	ExecStoreGenericTuple(tuple, slot, true);	
+            Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
+            CheckSendPlanStateGpmonPkt(&node->ss.ps);
+            ExecStoreGenericTuple(tuple, slot, true);	
     	}
 	else
 		ExecClearTuple(slot);
