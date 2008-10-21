@@ -117,7 +117,6 @@ def check_env():
     if GPHOME == None:
         usage(1, 'GPHOME environment variable not set')
 
-
 #################
 def check_commands():
     avail_cmds['gpmmon'] = command_in_path('gpmmon')
@@ -738,6 +737,33 @@ def command_in_path(cmd):
     return found
 
 
+
+
+def check_gp_enable_gpperfmon():
+    enabled = False
+    sys.path.append(os.path.join(GPHOME, 'bin/lib'))
+    import pg8000
+    pguser = 'gpmon'
+    pgdatabase = os.environ.get('PGDATABASE', 'gpperfmon')
+    pgpass = os.environ.get('PGPASSWORD', '')
+    pgport = os.environ.get('PGPORT', '5432')
+    pgport = int(pgport)
+    pghost = os.environ.get('PGHOST', 'localhost')
+    try:
+        conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60) 
+        conn.execute('select setting from pg_settings where name = \'gp_enable_gpperfmon\'')
+        for gp_enable_gpperfmon in conn.iterate_dict():
+            enabled = str(gp_enable_gpperfmon['setting']) == 'on'
+            break
+        conn.close()
+    except:
+        print 'Error checking if gpperfmon is enabled: %s' % sys.exc_info()[1]
+        sys.exit(1)
+
+    if not enabled:
+        print 'gp_enable_gpperfmon GUC is set to off.  Greenplum Performance Monitor will only record system metrics.'
+        print 'If you wish to monitor query data, please set gp_enable_gpperfmon to \'on\'.'
+
 #################
 # script begin
 
@@ -749,6 +775,7 @@ check_commands()
 try:
     action = opt['ACTION']
     if action == 'start':
+        check_gp_enable_gpperfmon()
         gpperfmon_start()
     elif action == 'stop':
         gpperfmon_stop()
