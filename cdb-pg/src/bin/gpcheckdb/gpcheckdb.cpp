@@ -103,9 +103,9 @@ public:
 	int relpages;
 	double reltuples;
 	Oid reltoastrelid;
-	Oid reltoastidxid;
+	long long  reltoastidxid;
 	Oid relaosegrelid;
-	Oid relaosegidxid;
+	long long  relaosegidxid;
 	bool relhasindex;
 	bool relisshared;
 	char relkind;
@@ -659,7 +659,10 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 
 		dbresult
 				pgclassresult =
-						config[seg].conn.exec("select oid,* from pg_catalog.pg_class order by oid");
+						config[seg].conn.exec("select oid,relname,relnamespace,reltype,relowner,relam,relfilenode,"
+								"reltablespace,relpages,reltuples,reltoastrelid,reltoastidxid,relaosegrelid,relaosegidxid,relhasindex,relisshared"
+								",relkind,relstorage,relnatts"
+								" from pg_catalog.pg_class order by oid");
 
 		for (dbresult::const_iterator rp = pgclassresult.begin(); rp !=pgclassresult.end(); ++rp)
 		{
@@ -676,9 +679,9 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 			pgc.relpages = rp[8].as_int();
 			pgc.reltuples = rp[9].as_double();
 			pgc.reltoastrelid = rp[10].as_oid();
-			pgc.reltoastidxid = rp[11].as_oid();
+			pgc.reltoastidxid = rp[11].as_int();
 			pgc.relaosegrelid = rp[12].as_oid();
-			pgc.relaosegidxid = rp[13].as_oid();
+			pgc.relaosegidxid = rp[13].as_int();
 			pgc.relhasindex = rp[14].as_bool();
 			pgc.relisshared = rp[15].as_bool();
 			pgc.relkind = rp[16].c_str()[0];
@@ -693,7 +696,7 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 
 		dbresult
 				pgattributeresult =
-						config[seg].conn.exec("select * from pg_catalog.pg_attribute order by attrelid,attnum,attname");
+						config[seg].conn.exec("select attrelid,attname,atttypid,attstattarget,attlen,attnum,attndims from pg_catalog.pg_attribute order by attrelid,attnum,attname");
 
 		for (dbresult::const_iterator rp = pgattributeresult.begin(); rp	!=pgattributeresult.end(); ++rp)
 		{
@@ -717,7 +720,7 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 
 		dbresult
 				pgtyperesult =
-						config[seg].conn.exec("select oid,* from pg_catalog.pg_type order by oid");
+						config[seg].conn.exec("select oid,typname,typnamespace,typowner,typlen,typbyval,typtype,typisdefined,typdelim,typrelid,typelem from pg_catalog.pg_type order by oid");
 
 		for (dbresult::const_iterator rp = pgtyperesult.begin(); rp !=pgtyperesult.end(); ++rp)
 		{

@@ -9,7 +9,7 @@ subdir = src/bin/gpcheckdb
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) $(CPPFLAGS)
+override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -g $(CPPFLAGS) 
 
 CC=g++
 
