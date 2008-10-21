@@ -186,17 +186,22 @@ def connect2run(qry, col):
 
         thread = execThread(db, qry)
         thread.start()
+        veryverbose('[INFO] launching query thread %s for dbid %i' % 
+                (thread.getName(), dbid))
         threads.append(thread)
 
         # we don't want too much going on at once
         if (i % GV.opt['-B']) == 0:
-          for th in threads:
-              th.join()
+            for th in threads:
+                veryverbose('[INFO] waiting on thread %s' % th.getName())
+                th.join()
 
-          threads = []
+            threads = []
+
         i += 1
 
     for th in threads:
+        veryverbose('[INFO] waiting on thread %s' % th.getName())
         th.join()
 
     err = []
@@ -649,18 +654,23 @@ def crossDbCheck():
             for dbid in GV.cfg:
                 thread = sysCatThread(dbid, cid, catalogs[cid])
                 thread.start()
-#                getSysCat(dbid, cid, catalogs[cid])
+                veryverbose('[INFO] launching query thread %s for dbid %i' %
+                            (thread.getName(), dbid))
                 threads.append(thread)
 
                 # we don't want too much going on at once
                 if (i % GV.opt['-B']) == 0:
                     for th in threads:
+                        veryverbose('[INFO] waiting on thread %s' % 
+                                th.getName())
                         th.join()
                     threads = []
                 i += 1
 
             # process leftovers
             for th in threads:
+                veryverbose('[INFO] waiting on thread %s' % 
+                                th.getName())
                 th.join()
 
             for dbid in GV.cfg:
