@@ -11,6 +11,7 @@ pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
 path = os.environ.get('MASTER_DATA_DIRECTORY') + '/gpperfmon/data'
 
+max_query_limit = 250
 agg_func = 'avg'
 
 try:
@@ -311,8 +312,8 @@ def system_history(host, stime, etime, interval):
 
 
 
-def queries_now(status, username):
-    rows = rt_queries(status, username)
+def queries_now(status, username, database, textlength):
+    rows = rt_queries(status, username, database, textlength)
     return _queries_consolidate(rows)
 
 def queryText(tmid, ssid, ccnt):
@@ -335,7 +336,7 @@ def queryText(tmid, ssid, ccnt):
 
     return qtext
 
-def rt_queries(status, username):
+def rt_queries(status, username, database, textlength):
     filename = "%s/queries_now.dat" % path
 
     # ordering is important to match the order in the file
@@ -365,6 +366,12 @@ def rt_queries(status, username):
             # skip rows that do not belong to the owner if supplied
             if username != '' and username != entry[4]:
                 continue
+            # skip rows that do not match the database desired
+            if database != '' and database != entry[5]:
+                continue
+            # skip rows that do have the status desired
+            if status != '' and status != entry[10]:
+                continue
             # convert ctime date string into datetime object
             entry[0] = datetime.datetime.strptime(entry[0], "%Y-%m-%d %H:%M:%S")
             # convert tsubmit date string into datetime object
@@ -375,15 +382,18 @@ def rt_queries(status, username):
             if entry[9] != 'null':
                 # convert tfin date string into datetime object
                 entry[9] = datetime.datetime.strptime(entry[9], "%Y-%m-%d %H:%M:%S")
-            # skip rows that do have the status desired
-            if status != '' and status != entry[10]:
-                continue
             for i in range(len(cnames)):
                 if cnames[i] == 'query_text':
                     tmid = entry[1]
                     ssid = entry[2]
                     ccnt = entry[3]
                     entry[i] = queryText(tmid, ssid, ccnt)
+                    if textlength != '':
+                        # truncate the query text
+                        if len(entry[i]) > textlength:
+                            entry[i] = entry[i][:textlength-3] + '...'
+                        else:
+                            entry[i] = entry[i][:textlength]
                 columns[cnames[i]] = entry[i]
             rows.append(columns)
     finally:
@@ -392,14 +402,35 @@ def rt_queries(status, username):
     return rows
 
 
-def queries_upto_now(status, stime, username):
+def queries_sql(textlength):
+    columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
+                'swap_total', 'swap_used', 'swap_page_in', 'swap_page_out',
+                'cpu_user', 'cpu_sys', 'cpu_idle', 'load0', 'load1', 'load2',
+                'quantum', 'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
+                'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
+                'net_wb_rate']
+
+    query_fragment = "select substr(query_text, 0, %s)" % textlength
+    for column in columns:
+        query_fragment += ", %s" % column
+
+    return query_fragment
+
+
+def queries_upto_now(status, stime, username, runtime, database, textlength):
     filter = "where ctime >= '%s'" % stime
     if status != '':
         filter = "%s and status='%s'" % (filter, status)
     if username != '':
         filter = "%s and uname='%s'" % (filter, username)
-    query1 = 'select * from queries_history %s' % filter
-    query2 = 'select * from queries_tail %s' % filter
+    if database != '':
+        filter = "%s and db='%s'" % (filter, database)
+    if runtime != '':
+        filter = "%s and (tfin - tstart) <='%s'" % (filter, runtime)
+
+    columns = queries_sql(textlength)
+    query1 = '%s from queries_history %s limit %s' % (columns, filter, max_query_limit)
+    query2 = '%s from queries_tail %s limit %s' % (columns, filter, max_query_limit)
     query = "%s\nunion all\n%s" % (query1, query2)
 
     rows = []
@@ -410,19 +441,25 @@ def queries_upto_now(status, stime, username):
         sys.stderr.write('Exception querying database: %s\n\n' % query)
 
     # query real-time information.
-    for r in rt_queries(username):
+    for r in rt_queries(status, username, database, textlength):
         rows.append(r)
 
     return _queries_consolidate(rows)
 
-def queries_history(status, stime, etime, username):
+def queries_history(status, stime, etime, username, runtime, database, textlength):
     filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
     if status != '':
         filter = "%s and status='%s'" % (filter, status)
     if username != '':
         filter = "%s and uname='%s'" % (filter, username)
-    query1 = 'select * from queries_history %s' % filter
-    query2 = 'select * from queries_tail %s' % filter
+    if database != '':
+        filter = "%s and db='%s'" % (filter, database)
+    if runtime != '':
+        filter = "%s and (tfin - tstart) <='%s'" % (filter, runtime)
+
+    columns = queries_sql(textlength)
+    query1 = '%s from queries_history %s limit %s' % (columns, filter, max_query_limit)
+    query2 = '%s from queries_tail %s limit %s' % (columns, filter, max_query_limit)
     query = "%s\nunion all\n%s" % (query1, query2)
 
     rows = []
@@ -439,6 +476,7 @@ def queryplan_now(tmid, ssid, ccnt, segid):
     rows = rt_queryplan(tmid, ssid, ccnt, segid)
     return _queryplan_consolidate(rows)
 
+# TODO: remove this function as testing is done
 def qp():
     res = queryplan_history('1223590674', '221', '1', '0')
     (tab, tree, root) = res

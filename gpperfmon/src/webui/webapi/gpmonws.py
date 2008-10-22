@@ -128,7 +128,7 @@ class logoff:
 
 class config:
     stime = None
-    filename = "/usr/local/lighttpd/www/pages/gpperfcon.conf"
+    filename = "%s/gpperfmon.conf" % db.path
     # configuration section names
     gpmmon = "GPMMON"
     ws = "WS"
@@ -177,6 +177,11 @@ class config:
             except:
                 # seting not defined in configuration file
                 pass
+            try:
+                db.max_query_limit = configuration.getint(config.ws, "max_query_limit")
+            except:
+                # seting not defined in configuration file
+                pass
         # read SYSTEM METRICS settings
         if configuration.has_section(config.system):
             try:
@@ -217,7 +222,7 @@ class config:
                 # seting not defined in configuration file
                 pass
 
-        return render.config(config.stime, quantum, interval.max_data_points, \
+        return render.config(config.stime, quantum, interval.max_data_points, db.max_query_limit, \
                         s_load2, s_cpu, s_mem, s_disk, s_net, q_cpu_elapsed, q_cpu_skew)
 
 
@@ -261,7 +266,8 @@ class system:
         i = web.input(start='last', end='', host='', interval='minute')
 
         try:
-            # TODO: sanitize host name
+            # start, end, and interval are sanitized against SQL injection attacks 
+            # in the function interval.check()
             i.start = i.start.lower()
             i.end = i.end.lower()
             i.interval = i.interval.lower()
@@ -323,21 +329,30 @@ class query:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='last', end='', interval='minute', status='')
+        i = web.input(start='last', end='', interval='minute', status='', \
+                        textlength='', runtime='', username='', db='')
 
         try:
             i.start = i.start.lower()
             i.end = i.end.lower()
             i.interval = i.interval.lower()
+            if i.textlength != '':
+                i.textlength = int(i.textlength)
+            # this value is in seconds
+            if i.runtime != '':
+                i.runtime = int(i.runtime)
+            # WARNING: need to sanitize username and db values
+            i.username = i.username.lower()
+            i.db = i.db.lower()
         except:
             return mkerr(error.BADREQ, 'invalid parameter(s)')
 
         # sanitize status input
-        valid_status = ['done', 'start', 'submit', 'abort']
-        if not i.status in valid_status:
-            message = "invalid parameter: status must be %s" % valid_status
-            return mkerr(error.BADREQ, message)
-
+        if i.status != '':
+            valid_status = ['done', 'start', 'submit', 'abort']
+            if not i.status in valid_status:
+                message = "invalid parameter: status must be %s" % valid_status
+                return mkerr(error.BADREQ, message)
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<queries metrics>\n")
@@ -346,24 +361,23 @@ class query:
         # DEBUGGING 
 
         # check permissions
-        username = ''
         if not session.role['superuser']:
-            username = sessions.user
+            i.username = sessions.user
 
         res = None
 
         if i.start == 'last':
-            res = db.queries_now(i.status, username)
+            res = db.queries_now(i.status, i.username, i.db, i.textlength)
 
         elif i.end == 'last':
             # check() sanitizes input against SQL injection attacks 
             i.interval = interval.check(i.start, timenow(), i.interval)
-            res = db.queries_upto_now(i.status, i.start, username)
+            res = db.queries_upto_now(i.status, i.start, i.username, i.runtime, i.db, i.textlength)
 
         elif i.end != '':
             # check() sanitizes input against SQL injection attacks 
             i.interval = interval.check(i.start, i.end, i.interval)
-            res = db.queries_history(i.status, i.start, i.end, username)
+            res = db.queries_history(i.status, i.start, i.end, i.username, i.runtime, i.db, i.textlength)
 
         else:
             return mkerr(error.BADREQ, 'missing parameter: "end date"')
