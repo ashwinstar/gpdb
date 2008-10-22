@@ -112,7 +112,7 @@ def _queries_consolidate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        ckeys = filter(lambda i: i != 'ctime', x.keys())
+        ckeys = filter(lambda i: i != 'ctime' and i != 'length', x.keys())
 	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
@@ -390,7 +390,7 @@ def rt_queries(status, username, database, textlength):
                     entry[i] = queryText(tmid, ssid, ccnt)
                     if textlength != '':
                         # truncate the query text
-                        if len(entry[i]) > textlength:
+                        if textlength > 3 and len(entry[i]) > textlength:
                             entry[i] = entry[i][:textlength-3] + '...'
                         else:
                             entry[i] = entry[i][:textlength]
@@ -403,14 +403,14 @@ def rt_queries(status, username, database, textlength):
 
 
 def queries_sql(textlength):
-    columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
-                'swap_total', 'swap_used', 'swap_page_in', 'swap_page_out',
-                'cpu_user', 'cpu_sys', 'cpu_idle', 'load0', 'load1', 'load2',
-                'quantum', 'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
-                'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
-                'net_wb_rate']
+    columns = [ 'ctime', 'tmid', 'ssid', 'ccnt',
+                'uname', 'db', 'cost', 'tsubmit', 
+                'tstart', 'tfin', 'status', 'rows_out', 
+                'cpu_elapsed', 'cpu_currpct', 
+                'skew_cpu', 'skew_rows', 
+                'query_hash', 'query_plan' ]
 
-    query_fragment = "select substr(query_text, 0, %s)" % textlength
+    query_fragment = "select length(query_text), substr(query_text, 0, %s) as query_text" % textlength
     for column in columns:
         query_fragment += ", %s" % column
 
@@ -428,15 +428,25 @@ def queries_upto_now(status, stime, username, runtime, database, textlength):
     if runtime != '':
         filter = "%s and (tfin - tstart) <='%s'" % (filter, runtime)
 
-    columns = queries_sql(textlength)
-    query1 = '%s from queries_history %s limit %s' % (columns, filter, max_query_limit)
-    query2 = '%s from queries_tail %s limit %s' % (columns, filter, max_query_limit)
-    query = "%s\nunion all\n%s" % (query1, query2)
+    if textlength != '':
+        columns = queries_sql(textlength)
+    else:
+        columns = 'select *'
+    query1 = '%s from queries_history %s' % (columns, filter)
+    query2 = '%s from queries_tail %s' % (columns, filter)
+    query = "%s\nunion all\n%s limit %s" % (query1, query2, max_query_limit)
 
     rows = []
     try:
         conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
+        for r in conn.iterate_dict():
+            if textlength != '':
+                if r['length'] > textlength:
+                    if textlength > 3:
+                        r['query_text'] = r['query_text'][:textlength-3] + '...'
+                    else:
+                        r['query_text'] = r['query_text'][:textlength]
+            rows.append(r)
     except:
         sys.stderr.write('Exception querying database: %s\n\n' % query)
 
@@ -457,15 +467,25 @@ def queries_history(status, stime, etime, username, runtime, database, textlengt
     if runtime != '':
         filter = "%s and (tfin - tstart) <='%s'" % (filter, runtime)
 
-    columns = queries_sql(textlength)
-    query1 = '%s from queries_history %s limit %s' % (columns, filter, max_query_limit)
-    query2 = '%s from queries_tail %s limit %s' % (columns, filter, max_query_limit)
-    query = "%s\nunion all\n%s" % (query1, query2)
+    if textlength != '':
+        columns = queries_sql(textlength)
+    else:
+        columns = 'select *'
+    query1 = '%s from queries_history %s' % (columns, filter)
+    query2 = '%s from queries_tail %s' % (columns, filter)
+    query = "%s\nunion all\n%s limit %s" % (query1, query2, max_query_limit)
 
     rows = []
     try:
         conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
+        for r in conn.iterate_dict():
+            if textlength != '':
+                if r['length'] > textlength:
+                    if textlength > 3:
+                        r['query_text'] = r['query_text'][:textlength-3] + '...'
+                    else:
+                        r['query_text'] = r['query_text'][:textlength]
+            rows.append(r)
     except:
         sys.stderr.write('Exception querying database: %s\n\n' % query)
 

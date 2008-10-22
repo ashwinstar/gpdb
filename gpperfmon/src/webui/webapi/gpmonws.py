@@ -329,13 +329,11 @@ class query:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='last', end='', interval='minute', status='', \
-                        textlength='', runtime='', username='', db='')
+        i = web.input(start='last', end='', status='', textlength='', runtime='', username='', db='')
 
         try:
             i.start = i.start.lower()
             i.end = i.end.lower()
-            i.interval = i.interval.lower()
             if i.textlength != '':
                 i.textlength = int(i.textlength)
             # this value is in seconds
@@ -343,7 +341,6 @@ class query:
                 i.runtime = int(i.runtime)
             # WARNING: need to sanitize username and db values
             i.username = i.username.lower()
-            i.db = i.db.lower()
         except:
             return mkerr(error.BADREQ, 'invalid parameter(s)')
 
@@ -355,8 +352,10 @@ class query:
                 return mkerr(error.BADREQ, message)
 
         # DEBUGGING 
-        sys.stderr.write("\n\n\n<queries metrics>\n")
-        sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\tstatus = %s\n" % (i.start, i.end, i.interval, i.status))
+        sys.stderr.write("\n<queries metrics>\n")
+        sys.stderr.write("\tusername = %s\n" % (i.username))
+        sys.stderr.write("\tstart = %s\n\tend = %s\n\tstatus = %s\n" % (i.start, i.end, i.status))
+        sys.stderr.write("\tdatabase = %s\n\ttextlength = %s\n\truntime = %s\n" % (i.db, i.textlength, i.runtime))
         sys.stderr.write("</queries metrics>\n\n\n")
         # DEBUGGING 
 
@@ -371,12 +370,12 @@ class query:
 
         elif i.end == 'last':
             # check() sanitizes input against SQL injection attacks 
-            i.interval = interval.check(i.start, timenow(), i.interval)
+            interval.check(i.start, timenow(), 'hour')
             res = db.queries_upto_now(i.status, i.start, i.username, i.runtime, i.db, i.textlength)
 
         elif i.end != '':
             # check() sanitizes input against SQL injection attacks 
-            i.interval = interval.check(i.start, i.end, i.interval)
+            interval.check(i.start, i.end, 'hour')
             res = db.queries_history(i.status, i.start, i.end, i.username, i.runtime, i.db, i.textlength)
 
         else:
