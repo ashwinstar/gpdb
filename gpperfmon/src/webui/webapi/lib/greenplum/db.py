@@ -418,7 +418,7 @@ def queries_sql(textlength):
 
 
 def queries_upto_now(status, stime, username, runtime, database, textlength):
-    filter = "where ctime >= '%s'" % stime
+    filter = "where tfin >= '%s'" % stime
     if status != '':
         filter = "%s and status='%s'" % (filter, status)
     if username != '':
@@ -457,7 +457,7 @@ def queries_upto_now(status, stime, username, runtime, database, textlength):
     return _queries_consolidate(rows)
 
 def queries_history(status, stime, etime, username, runtime, database, textlength):
-    filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+    filter = "where '%s' <= tfin and tstart <= '%s'" % (stime, etime)
     if status != '':
         filter = "%s and status='%s'" % (filter, status)
     if username != '':
@@ -490,6 +490,23 @@ def queries_history(status, stime, etime, username, runtime, database, textlengt
         sys.stderr.write('Exception querying database: %s\n\n' % query)
 
     return _queries_consolidate(rows)
+
+
+def querydetails_history(tmid, ssid, ccnt):
+    q_id = "tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    query1 = 'select * from queries_history where %s' % q_id
+    query2 = 'select * from queries_tail where %s' % q_id
+    query = "%s\nunion all\n%s" % (query1, query2)
+
+    rows = []
+    try:
+        conn.execute(query)
+        rows = [r for r in conn.iterate_dict()]
+    except:
+        sys.stderr.write('Exception querying database: %s\n\n' % query)
+
+    return _queries_consolidate(rows)
+
 
 
 def queryplan_now(tmid, ssid, ccnt, segid):

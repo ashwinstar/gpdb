@@ -1,0 +1,8 @@
+$def with (tab)
+<?xml version="1.0"?>
+<PerformanceMonitor>
+$for api in tab:
+    <API>
+    ${api} \
+    </API>
+</PerformanceMonitor>

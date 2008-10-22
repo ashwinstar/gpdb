@@ -23,7 +23,8 @@ from greenplum import interval
 web.webapi.internalerror = web.debugerror
 web.config.session_parameters.timeout = 1800
 
-urls = ('/gpperfmon', 'gpperfmon',
+urls = ('/', 'index',
+        '/apis', 'apis',
         '/logon', 'logon',
         '/logoff', 'logoff',
         '/config', 'config', 
@@ -31,6 +32,7 @@ urls = ('/gpperfmon', 'gpperfmon',
         '/database', 'database',
         '/system', 'system',
         '/query', 'query',
+        '/querydetails', 'querydetails',
         '/queryplan', 'queryplan',
         '/iterator', 'iterator'
 )
@@ -68,16 +70,19 @@ def mkerr(code, msg):
 def timenow():
     return datetime.datetime.now().replace(microsecond=0).isoformat(' ')
 
+class index:
+    def GET(self):
+        web.header('Content-Type', 'text/xml')
+        return render.index(host, port)
 
-class gpperfmon:
+class apis:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         tab = []
         for i in range(len(urls)/2-1):
             j = (i+1) * 2 + 1
             tab.append(urls[j])
-        return render.gpperfmon(tab)
-
+        return render.apis(tab)
 
 
 class logon:
@@ -402,6 +407,60 @@ class query:
         # DEBUGGING 
 
         return render.query(stime, etime, tkeys, ckeys, tab)
+
+class querydetails:
+    def GET(self):
+        # DEBUGGING 
+        sys.stderr.write("\nQUERYDETAILS:\n")
+        sys.stderr.write("session: %s\n" % session.getid())
+        sys.stderr.write("user: %s\n" % session.user)
+        sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
+        # DEBUGGING 
+        if not session.loggedin:
+            return web.webapi.accessdenied("%s<query>access denied</query>" % xml)
+
+        web.header('Content-Type', 'text/xml')
+
+        i = web.input(tmid='', ssid='', ccnt='')
+
+        if i.tmid == '':
+            return mkerr(error.BADREQ, 'missing parameter: "tmid"')
+        if i.ssid == '':
+            return mkerr(error.BADREQ, 'missing parameter: "ssid"')
+        if i.ccnt == '':
+            return mkerr(error.BADREQ, 'missing parameter: "ccnt"')
+
+        # sanitize input against SQL injection attacks 
+        try:
+            int(i.tmid)
+            int(i.ssid)
+            int(i.ccnt)
+        except:
+            return mkerr(error.BADREQ, 'invalid query ID')
+
+        # DEBUGGING 
+        sys.stderr.write("\n\n\n<query details>\n")
+        sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.tmid, i.ssid, i.ccnt))
+        sys.stderr.write("</query details>\n\n\n")
+        # DEBUGGING 
+
+        # check permissions
+        if not session.role['superuser']:
+            i.username = sessions.user
+
+        res = db.querydetails_history(i.tmid, i.ssid, i.ccnt)
+
+        (tkeys, ckeys, tab) = res
+
+        # DEBUGGING 
+        sys.stderr.write('RESULTS:\n=======\n\n')
+        for t in tkeys:
+            sys.stderr.write('\ntime: %s\n' % t)
+            sys.stderr.write('\t%s\n' % tab[t])
+        # DEBUGGING 
+
+        return render.querydetails(i.tmid, i.ssid, i.ccnt, tkeys, ckeys, tab)
+
 
 
 class queryplan:
