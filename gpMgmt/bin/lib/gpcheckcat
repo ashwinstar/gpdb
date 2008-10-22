@@ -8,11 +8,12 @@ Usage: gpcheckcat <option> [dbname]
 	-p port    : DB port number
 	-P passwd  : DB password
 	-U uname   : DB User Name
-	-B parallel: Number of worker threads
+	-B parallel: number of worker threads
 	-v         : verbose
+	-V         : very verbose
 
 '''
-import sys, os, subprocess, tempfile
+import sys, os, subprocess, tempfile, stat
 from threading import Thread
 
 sys.path.append(sys.path[0] + '/lib')
@@ -22,7 +23,10 @@ try:
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
-parallelism = 2
+parallelism = 8
+
+# cache OID -> object name cache
+oidmap = {}
 
 ################
 def parse_int(val):
@@ -359,7 +363,7 @@ def checkPGExtTable():
             rels = set(relids[seg])
             for relid in rels:
                 c = GV.cfg[seg]
-                removeExtTable(seg, connect2(c), relid)
+                removeExtTable(seg, connect2(c), relid, str(relid))
 
 
 
@@ -456,15 +460,24 @@ def removeSchema(seg, db, schemaid):
     for row in db.iterate_dict():
         removeTable(seg, db, row['oid'])
 
+    # get schema name
+    db.execute('select nspname from pg_namespace where oid = %i' % schemaid)
+    row = db.read_tuple()
+
+    if row:
+        schemaname = row[0]
+        oidmap[schemaid] = schemaname
+    else:
+        schemaname = str(schemaid)
 
     buildRemove(seg, 'schema operators', 'pg_operator',
-                dict([('oprnamespace', schemaid)]))
+                dict([('oprnamespace', schemaid)]), schemaname)
 
     buildRemove(seg, 'schema types', 'pg_type',
-                dict([('typnamespace', schemaid)]))
+                dict([('typnamespace', schemaid)]), schemaname)
 
     buildRemove(seg, 'schema procedures', 'pg_proc',
-                dict([('pronamespace', schemaid)]))
+                dict([('pronamespace', schemaid)]), schemaname)
 
     removeDepend(seg, db, schemaid)
     
@@ -475,75 +488,95 @@ def removeTable(seg, db, reloid):
     db.execute('select oid, reltoastrelid, reltoastidxid from pg_class ' + 
 			   'where oid = %i' % reloid)
     for row in db.iterate_dict():
-        addRemove(seg, '-- Checking for toast relation for %i' % reloid) 
         if row['reltoastrelid'] != 0:
             removeTable(seg, db, row['reltoastrelid'])
-        addRemove(seg, '-- Checking for toast relation index for %i' % reloid) 
     
-    removeInheritance(seg, db, reloid)
-    removeStats(seg, db, reloid)
-    removeAttributes(seg, db, reloid)
-    removeRelTuple(seg, db, reloid)
-    removeIndexes(seg, db, reloid)
-    removeRelType(seg, db, reloid)
-    removeExtTable(seg, db, reloid)
+    if reloid in oidmap:
+        rel = oidmap[relid]
+    else:
+        # get relname
+        db.execute('select nspname, relname, relnamespace from pg_namespace n' +
+                    ' right outer join pg_class c on ' +
+                    '(c.relnamespace = n.oid) where c.oid = %i' % reloid)
+        row = db.read_tuple()
+    
+        if row:
+            nspname = row[0]
+            relname = row[1]
+            if len(nspname) == 0:
+                nspname = row[2]
+            rel = nspname + '.' + relname
+            oidmap[reloid] = rel
+        else:
+            rel = str(reloid)
+
+    removeInheritance(seg, db, reloid, rel)
+    removeStats(seg, db, reloid, rel)
+    removeAttributes(seg, db, reloid, rel)
+    removeRelTuple(seg, db, reloid, rel)
+    removeIndexes(seg, db, reloid, rel)
+    removeRelType(seg, db, reloid, rel)
+    removeExtTable(seg, db, reloid, rel)
+    removeDepend(seg, db, reloid, rel)
+
     if seg == -1:
-        removePolicy(seg, db, reloid)
+        removePolicy(seg, db, reloid, rel)
 
-def removeInheritance(seg, db, reloid):
+def removeInheritance(seg, db, reloid, rel):
     buildRemove(seg, 'inheritance', 'pg_inherits',
-                dict([('inhrelid', reloid),('inhparent', reloid)]))
+                dict([('inhrelid', reloid),('inhparent', reloid)]), rel)
 
-def removeStats(seg, db, reloid):
+def removeStats(seg, db, reloid, rel):
     buildRemove(seg, 'statistics', 'pg_statistic',
-                dict([('starelid', reloid)]))
+                dict([('starelid', reloid)]), rel)
 
-def removeRelTuple(seg, db, reloid):
+def removeRelTuple(seg, db, reloid, rel):
     buildRemove(seg, 'relation tuple', 'pg_class',
-                dict([('oid', reloid)]))
+                dict([('oid', reloid)]), rel)
 
-def removeExtTable(seg, db, reloid):
+def removeExtTable(seg, db, reloid, rel):
     buildRemove(seg, 'external table definition', 'pg_exttable',
-                dict([('reloid', reloid)]))
+                dict([('reloid', reloid)]), rel)
 
-def removePolicy(seg, db, reloid):
+def removePolicy(seg, db, reloid, rel):
     buildRemove(seg, 'Distribution policy', 'gp_distribution_policy',
-                dict([('localoid', reloid)]))
+                dict([('localoid', reloid)]), rel)
 
-def removeAttributes(seg, db, reloid):
+def removeAttributes(seg, db, reloid, rel):
     buildRemove(seg, 'attributes', 'pg_attribute',
-                dict([('attrelid', reloid)]))
-    removeAttrDefs(seg, db, reloid)
-    removeConstraints(seg, db, reloid)
+                dict([('attrelid', reloid)]), rel)
+    removeAttrDefs(seg, db, reloid, rel)
+    removeConstraints(seg, db, reloid, rel)
 
-def removeAttrDefs(seg, db, reloid):
+def removeAttrDefs(seg, db, reloid, rel):
     buildRemove(seg, 'attribute defaults', 'pg_attrdef',
-                dict([('adrelid', reloid)]))
+                dict([('adrelid', reloid)]), rel)
 
-def removeConstraints(seg, db, reloid):
+def removeConstraints(seg, db, reloid, rel):
     buildRemove(seg, 'constraints', 'pg_constraint',
-                dict([('conrelid', reloid)]))
+                dict([('conrelid', reloid)]), rel)
 
-def removeRelType(seg, db, reloid):
+def removeRelType(seg, db, reloid, rel):
     buildRemove(seg, 'relation type tuple', 'pg_type',
-                dict([('typrelid', reloid)]))
+                dict([('typrelid', reloid)]), rel)
 
-def removeIndexes(seg, db, reloid):
-    buildRemove(seg, 'indexes', 'pg_index', dict([('indrelid', reloid)]))
+def removeIndexes(seg, db, reloid, rel):
+    buildRemove(seg, 'indexes', 'pg_index', dict([('indrelid', reloid)]), rel)
 
-def removeDepend(seg, db, reloid):
+def removeDepend(seg, db, reloid, rel):
     buildRemove(seg, 'dependencies', 'pg_depend',
-                dict([('objid', reloid), ('refobjid', reloid)]))
+                dict([('objid', reloid), ('refobjid', reloid)]), rel)
     buildRemove(seg, 'shared dependencies', 'pg_shdepend',
-                dict([('objid', reloid), ('refobjid', reloid)]))
+                dict([('objid', reloid), ('refobjid', reloid)]), rel)
 
-def buildRemove(seg, name, table, cols):
+def buildRemove(seg, name, table, cols, objname):
     first = False
     fullstr = ''
     str = ''
     for col in cols:
         if not first:
-            fullstr = '--Remove %s for %i\n' % (name, cols[col])
+            fullstr = '--Object Name: %s\n--Remove %s for %i\n' %  \
+                (objname, name, cols[col])
         if len(str) > 0:
             str += ' or '
         str += '%s = \'%s\'' % (col, cols[col])
@@ -720,7 +753,7 @@ if __name__ == '__main__':
 
     crossDbCheck()
     
-    if GV.opt['-g'] != None:
+    if GV.opt['-g'] != None and len(Remove) > 0:
         try:
             if not os.path.exists(GV.opt['-g']):
                 os.mkdir(GV.opt['-g'])
@@ -728,23 +761,49 @@ if __name__ == '__main__':
             print '[FATAL] unable to create directory "%s": %s' % (GV.opt['-g'],
                   str(e))
             sys.exit(1)
-                        
+                   
+        # build a script to run these files     
+        script = '#!/bin/sh\n'
+
         for seg in Remove:
             # dbid.host.port.dbname.sql
             c = GV.cfg[seg]
-            filename = '%s/%i.%s.%i.%s.sql' % (GV.opt['-g'], seg, c['hostname'],
+            filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'],
                         c['port'], GV.dbname)
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
             try:
-                file = open(filename, 'w')
+                file = open(fullpath, 'w')
             except Exception, e:
-                print '[FATAL] unable to create file "%s": %s' % (filename, str(e))
+                print '[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e))
                 sys.exit(1)
 
+            #unique
             lines = set(Remove[seg])
-            for line in lines:
+
+            # make sure it is sorted
+            li = list(lines)
+            li.sort()
+            file.write('BEGIN;\n');
+            for line in li:
                 file.write(line + '\n')
+            file.write('COMMIT;\n');
 
             file.close()
+
+            script += 'env PGOPTIONS="-c gp_session_role=utility" ' + \
+                    'psql -X -a -h %s -p %i -f %s %s > %s.out\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        try:
+            path = '%s/runsql.sh' % GV.opt['-g']
+            file = open(path, 'w')
+            file.write(script)
+            file.close()
+            os.chmod(path, stat.S_IXUSR | stat.S_IRUSR)
+        except Exception, e:
+            print '[FATAL] could not write script: %s' % str(e)
+            sys.exit(1)
 
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True)
     sys.exit(GV.retcode)
