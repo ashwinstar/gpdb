@@ -667,28 +667,21 @@ int read_conf_file(char *conffile)
     if (!section_found)
         usage("Error: Failed to find [gpmmon] section in configuration file");
 
-    if (! (10 <= opt.q && opt.q <= 120)) 
-        usage("Error: quantum value must be between 10 and 120");
+    if (! (10 <= opt.q && opt.q <= 60)) 
+        usage("Error: quantum value must be between 10 and 60");
 
     if (opt.m < 0)
         opt.m = 0;
 
-    /* See if opt.m changed, but opt.d did not */
-    if (opt.m != min_query_time &&
-        opt.d == min_detailed_query_time )
-    {
-        opt.d = opt.m;
-    }
-
-    if (opt.d < opt.m)
+    if (opt.d < opt.m && opt.m >= 10)
     {
         opt.d = opt.m;
         printf("min_detail_query_time cannot be less than min_query_time\n");
         printf("Setting min_detail_query_time equal to min_query_time\n");
     }
 
-    if (opt.d < 15 && opt.d != opt.m)
-        usage("Error: min_detailed_query_time value must be greater than 15 or equal to min_query_time");
+    if (opt.d < 10)
+        usage("Error: min_detailed_query_time value must be greater than 10");
 
     if (opt.log_dir == NULL)
     {

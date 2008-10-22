@@ -368,7 +368,7 @@ def gpperfmon_setup():
 
     print '\nThe quantum value specifies the time in seconds between updates from'
     print 'performance monitor agents on all segments.'
-    quantum = get_int('Quantum (between 10 and 120 seconds). [%d]' % (quantum_default), quantum_default, 10, 120)
+    quantum = get_int('Quantum (between 10 and 60 seconds). [%d]' % (quantum_default), quantum_default, 10, 60)
     config.set('GPMMON', 'quantum', quantum)
 
     print '\nThe minimum query run time specifies the cutoff time for queries to log.'
@@ -381,7 +381,12 @@ def gpperfmon_setup():
     print 'to log detailed iterator metrics.  Only queries with a run time greater'
     print 'than this value will have their detailed metrics logged in the'
     print 'iterators_history table.'    
-    mindqt = get_int('Minimum detailed query run time (seconds) [%d]' % (minqt), minqt, minqt)
+
+    if minqt < 10:
+        mindqt_default = 10
+    else:
+        mindqt_default = minqt
+    mindqt = get_int('Minimum detailed query run time (seconds) [%d]' % (mindqt_default), mindqt_default, 10)
     config.set('GPMMON', 'min_detailed_query_time', mindqt)
 
     logloc = get_string('\nLog file location [%s]' % (logloc_default), logloc_default)
@@ -744,11 +749,11 @@ def check_gp_enable_gpperfmon():
     sys.path.append(os.path.join(GPHOME, 'bin/lib'))
     import pg8000
     pguser = 'gpmon'
-    pgdatabase = os.environ.get('PGDATABASE', 'gpperfmon')
+    pgdatabase = 'gpperfmon'
     pgpass = os.environ.get('PGPASSWORD', '')
     pgport = os.environ.get('PGPORT', '5432')
     pgport = int(pgport)
-    pghost = os.environ.get('PGHOST', 'localhost')
+    pghost = '127.0.0.1'
     try:
         conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60) 
         conn.execute('select setting from pg_settings where name = \'gp_enable_gpperfmon\'')
