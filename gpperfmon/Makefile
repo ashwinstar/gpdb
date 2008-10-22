@@ -14,7 +14,7 @@ webapi:
 flexGUI:
 	@echo flexGUI
 
-installer: all
+installer: gpsmon gpmmon
 	$(MAKE) -C installer all
 
 clean:
