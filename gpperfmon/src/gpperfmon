@@ -480,7 +480,7 @@ def lighty_start():
     res = 0
     if lighty_status() == 0:
         if avail_cmds['lighttpd']:
-            start_application('lighttpd -f ' + LIGHTY_CONF_FILE)
+            start_application('lighttpd -f %s -m %s' % (LIGHTY_CONF_FILE, GPPERFMONHOME + '/lib'))
         else:
             print 'lighttpd not found in PATH.  Please configure your PATH correctly and try again.'
             return STOPPED
