@@ -73,7 +73,11 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	int			segid;
 	int			len;
 	int			instid;			/* dispatch node */
-	bool		is_compress;		
+	bool		is_compress;
+
+	getGpId();
+	instid = (GpIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
+	segid = GpIdentity.dbid;
 
 	if (!PG_ARGISNULL(0))
 	{
@@ -106,13 +110,13 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	 * If so, make sure it's a directory
 	 */
 	validateBackupDirectory(pszBackupDirectory);
-	
+
 	/*
 	 * Validate existence of gp_dump_agent and compression program, if
 	 * possible
 	 */
-	testCmdsExist(pszCompressionProgram, "gp_dump_agent");	
-	
+	testCmdsExist(pszCompressionProgram, "gp_dump_agent");
+
 	/* are we going to use a compression program? */
 	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
 
@@ -176,18 +180,14 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 					 errmsg("out of memory")));
 		}
 
-		getGpId();
-		instid = (GpIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
-		segid = GpIdentity.dbid;
-		
-		/* 
+		/*
 		 * dump schema and data for entry db, and data only for segment db.
 		 * why dump data for entry db? because that will include statements
 		 * to update the sequence tables (last values). As for actual data -
 		 * there isn't any, so we will just dump empty COPY statements...
 		 */
 		pszDataOption = (instid == 1) ? "  " : "-a";
-		
+
 		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
 
 		/*
@@ -233,7 +233,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 			 * stdout to backup file and stderr to status file */
 			//sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
 			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, 
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
 					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 		}
 		else
@@ -327,10 +327,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 	if (!PG_ARGISNULL(5))
 		pszPassThroughTargetInfo = GET_STR(PG_GETARG_TEXT_P(5));
-	
+
 	if (!PG_ARGISNULL(6))
 		target_dbid = PG_GETARG_INT32(6);
-	
+
 	if (!PG_ARGISNULL(7))
 		bOnErrorStop = PG_GETARG_BOOL(7);
 
@@ -361,7 +361,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found in directory %s with backup key %s and source dbid key %d", target_dbid, pszBackupDirectory, pszBackupKey, segid)));
 
-		/* 
+		/*
 		 * If --gp-c is on make sure our file name has a .gz suffix.
 		 * If no decompression requested make sure the file *doesn't* have
 		 * a .gz suffix. This fixes the problem with forgetting to use
@@ -370,7 +370,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		 */
 		len_name = strlen(pszBackupFileName);
 		is_file_compressed = (strcmp(pszBackupFileName + (len_name - 3), ".gz") == 0 ? true : false);
-		
+
 		if(is_file_compressed && !is_decompress)
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -383,9 +383,9 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 					errmsg("a decompression cmd line option is used but the dump "
 						   "file does not appear to be compressed.")));
 	}
-	
-	len_name = strlen(pszBackupFileName); 
-	
+
+	len_name = strlen(pszBackupFileName);
+
 	pszDBName = NULL;
 	pszUserName = NULL;
 	if (MyProcPort != NULL)
@@ -455,16 +455,16 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			+ 4 + 1				/* 2>&1 */
 			+ 1;
 
-		/* 
+		/*
 		 * if compression was requested with --gp-c
 		 */
 		if (is_decompress)
 		{
 			len += 4 + strlen(compPg) +
 				+strlen(pszBackupFileName);
-			
+
 			len += 8; /* pass along "--gp-c" to tell restore file is compressed */
-			
+
 			pszCmdLine = (char *) palloc(len);
 			if (pszCmdLine == NULL)
 			{
@@ -473,14 +473,14 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			/* 
+			/*
 			 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
 			 * options. Redirect both stdout and stderr into the status file.
 			 */
 			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
 					bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
 					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
-			
+
 		}
 		else
 		{
@@ -496,7 +496,7 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 			/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
 			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
-					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, 
+					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
 					pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
 		}
 
@@ -567,7 +567,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 			  suffix or not */
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					 errmsg("Only status files are currently supported in gp_read_backup_file")));			
+					 errmsg("Only status files are currently supported in gp_read_backup_file")));
 			break;
 		case BFT_BACKUP_STATUS:
 		case BFT_RESTORE_STATUS:
@@ -634,12 +634,12 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
  */
 
 /* NOT IN USE ANYMORE! */
- 
+
 /*
  * gp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
  *
  */
-/* 
+/*
  * Greenplum TODO: This function assumes the file is not compressed.
  * This is not always the case. Therefore it should be used carefully
  * by the caller, until we decide to make the change and pass in an
@@ -657,36 +657,36 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 	char	   *pszFileName;
 	FILE	   *f;
 	int			nBytes;
-	
+
 	if (!PG_ARGISNULL(0))
 	{
 		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
 		if (*pszBackupDirectory == '\0')
 			pszBackupDirectory = "./";
 	}
-	
+
 	if (!PG_ARGISNULL(1))
 		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
-	
+
 	if (!PG_ARGISNULL(2))
 		pszBackup = GET_STR(PG_GETARG_TEXT_P(2));
-	
+
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
 	 */
 	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
-	
+
 	/*
 	 * See whether the directory exists.
 	 * If not, try to create it.
 	 * If so, make sure it's a directory
 	 */
 	validateBackupDirectory(pszBackupDirectory);
-	
+
 	/* Form backup file path name */
 	pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, false);
-	
+
 	/* Write file */
 	f = fopen(pszFileName, "w");
 	if (f == NULL)
@@ -695,7 +695,7 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("Backup File %s cannot be opened", pszFileName)));
 	}
-	
+
 	nBytes = strlen(pszBackup);
 	if (nBytes != fwrite(pszBackup, 1, nBytes, f))
 	{
@@ -704,12 +704,12 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("Error writing Backup File %s", pszFileName)));
 	}
-	
+
 	fclose(f);
 	f = NULL;
-	
+
 	assert(pszFileName != NULL && pszFileName[0] != '\0');
-	
+
 	return DirectFunctionCall1(textin, CStringGetDatum(pszFileName));
 }
 
@@ -816,7 +816,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 
 		/* dump file can start with gp_ and also mpp_ for 2.3 backward compatibility */
 		sprintf(pszRegex, "^(gp|mpp)_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
-		
+
 		masklen = strlen(pszRegex);
 		mask = (pg_wchar *) palloc((masklen + 1) * sizeof(pg_wchar));
 		wmasklen = pg_mb2wchar_with_len(pszRegex, mask, masklen);
@@ -919,11 +919,11 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 
 	len += strlen(szFileNamePrefix);
 	len += strlen(pszBackupKey);
-	
+
 	/* if gzip/gunzip is used, the suffix is gz */
 	if(is_compress)
 		len += strlen(".gz");
-	
+
 	if (len > PATH_MAX)
 	{
 		ereport(ERROR,
@@ -949,7 +949,7 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	/* if gzip/gunzip is used, the suffix is gz */
 	if(is_compress)
 		strcat(pszBackupFileName, ".gz");
-	
+
 	return pszBackupFileName;
 }
 
@@ -1067,7 +1067,7 @@ testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram)
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("%s (compression utility) not found in in PGPATH or "
-						"PATH (PGPATH: %s | PATH:  %s)", 
+						"PATH (PGPATH: %s | PATH:  %s)",
 						pszCompressionProgram, getenv("PGPATH"), getenv("PATH"))));
 	}
 }
