@@ -1454,10 +1454,10 @@ Cannot downgrade a database with append only tables     <<<<<
         dirs = set();
         data_dir = ''
         for seg in segments:
-            if (seg['host'] != segments[0]['host']): 
-                continue
             newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
             dirs.add(newdir)
+            if (seg['host'] != segments[0]['host']): 
+                continue
             data_dir = data_dir + os.path.join(str(newdir), 'upgrade') + ' '
         self.config['DATA_DIRECTORY'] = data_dir
 
@@ -1492,9 +1492,8 @@ Cannot downgrade a database with append only tables     <<<<<
             # MIRROR_DATA_DIRECTORY, use any mirror
             mirror_data_dir = ''
             for seg in mirrors:
-                if (seg['host'] != mirrors[0]['host']): 
-                    continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
+
                 if newdir in dirs:
                     raise UpgradeError(
 '''
@@ -1503,6 +1502,9 @@ Conflict between data directory and mirror data directory.
 This issue must be resolved before upgrade can complete.
 ''' % newdir)
                 mirror_dirs.add(newdir)
+
+                if (seg['host'] != mirrors[0]['host']): 
+                    continue
                 mirror_data_dir = mirror_data_dir + os.path.join(str(newdir), 'upgrade') + ' '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
