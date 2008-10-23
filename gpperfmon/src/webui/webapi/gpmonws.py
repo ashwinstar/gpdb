@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, socket, ConfigParser
+import os, sys, socket, ConfigParser, re
 import time, datetime, tempfile
 
 gphome = os.environ.get('GPHOME')
@@ -73,7 +73,8 @@ def timenow():
 class index:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        return render.index(host, port)
+        i = web.input(host='localhost', port='8080')
+        return render.index(i.host, i.port)
 
 class apis:
     def GET(self):
@@ -98,6 +99,19 @@ class logon:
             password = i['password']
         else:
             return web.webapi.accessdenied("%s\n<logon>missing password</logon>" % xml)
+
+        try:
+            sanitize = re.compile('^\w+$')
+            sys.stderr.write("\nno output\n")
+            s = sanitize.search(username)
+            if s != None:
+                # valid string
+                username = s.group()
+            else:
+                # string contains invalid characters
+                return mkerr(error.BADREQ, 'username: bad input')
+        except:
+            return mkerr(error.BADREQ, 'invalid parameter(s)')
 
         # authenticate user
         authrole(username, password)
@@ -270,15 +284,6 @@ class system:
 
         i = web.input(start='last', end='', host='', interval='minute')
 
-        try:
-            # start, end, and interval are sanitized against SQL injection attacks 
-            # in the function interval.check()
-            i.start = i.start.lower()
-            i.end = i.end.lower()
-            i.interval = i.interval.lower()
-        except:
-            return mkerr(error.BADREQ, 'invalid parameter(s)')
-
         # DEBUGGING 
         sys.stderr.write("\n\n\n<system metrics>\n")
         sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\thost = %s\n" % (i.start, i.end, i.interval, i.host))
@@ -337,15 +342,31 @@ class query:
         i = web.input(start='last', end='', status='', textlength='', runtime='', username='', db='')
 
         try:
-            i.start = i.start.lower()
-            i.end = i.end.lower()
             if i.textlength != '':
                 i.textlength = int(i.textlength)
+
             # this value is in seconds
             if i.runtime != '':
                 i.runtime = int(i.runtime)
-            # WARNING: need to sanitize username and db values
-            i.username = i.username.lower()
+
+            sanitize = re.compile('^\w+$')
+
+            if i.username != '':
+                s = sanitize.search(i.username)
+                if s != None:
+                    # valid string
+                    i.username = s.group()
+                else:
+                    # string contains invalid characters
+                    return mkerr(error.BADREQ, 'username: bad input')
+            if i.db != '':
+                s = sanitize.search(i.db)
+                if s != None:
+                    # valid string
+                    i.db = s.group()
+                else:
+                    # string contains invalid characters
+                    return mkerr(error.BADREQ, 'database: bad input')
         except:
             return mkerr(error.BADREQ, 'invalid parameter(s)')
 
@@ -476,7 +497,7 @@ class queryplan:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='', tmid='', ssid='', ccnt='', segid='0')
+        i = web.input(tmid='', ssid='', ccnt='', segid='0')
 
         if i.tmid == '':
             return mkerr(error.BADREQ, 'missing parameter: "tmid"')
@@ -499,13 +520,7 @@ class queryplan:
         sys.stderr.write("</query plan>\n\n\n")
         # DEBUGGING 
 
-        if i.start == 'last':
-            res = db.queryplan_now(i.tmid, i.ssid, i.ccnt, i.segid)
-
-        else:
-            res = db.queryplan_history(i.tmid, i.ssid, i.ccnt, i.segid)
-
-        (tab, tree, root) = res
+        (tab, tree, root) = db.queryplan_history(i.tmid, i.ssid, i.ccnt, i.segid)
 
         # DEBUGGING 
         sys.stderr.write('RESULTS:\n=======\n\n')
@@ -524,10 +539,6 @@ class iterator:
         sys.stderr.write("\nITERATOR:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
-        if session.has_key('superuser'):
-            sys.stderr.write("super user: %s\n" % str(session.role['superuser']))
-        if session.has_key('user'):
-            sys.stderr.write("role: %s\n" % str(session.role['user']))
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
 
@@ -593,13 +604,6 @@ class database:
 
         i = web.input(start='last', end='', interval='minute')
         
-        try:
-            i.start = i.start.lower()
-            i.end = i.end.lower()
-            i.interval = i.interval.lower()
-        except:
-            return mkerr(error.BADREQ, 'invalid parameter(s)')
-
         # DEBUGGING 
         sys.stderr.write("\n\n<database>\n")
         sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n" % (i.start, i.end, i.interval))

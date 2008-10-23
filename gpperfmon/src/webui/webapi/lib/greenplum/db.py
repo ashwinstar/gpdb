@@ -123,7 +123,7 @@ def _queryplan_consolidate(rows):
 
     # verify the result set from the SQL query is not empty
     if not rows:
-        return (None, {}, {}, None)
+        return ({}, {}, None)
 
     tree = {} # tree containing the query plan hierarchy
     tab = {} 
@@ -197,24 +197,6 @@ def _database_consolidate(rows):
 
 
 
-
-def system_sql(table, filter, interval):
-    columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
-                'swap_total', 'swap_used', 'swap_page_in', 'swap_page_out',
-                'cpu_user', 'cpu_sys', 'cpu_idle', 'load0', 'load1', 'load2',
-                'quantum', 'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
-                'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
-                'net_wb_rate']
-
-    query_fragment = "select date_trunc('%s', ctime) as ctime, hostname" % interval
-    for column in columns:
-        query_fragment += ", %s(%s) as %s" % (agg_func, column, column)
-
-    query_fragment += " from %s %s" % (table, filter)
-    query_fragment += " group by date_trunc('%s', ctime), hostname " % interval
-    return query_fragment
-
-
 def system_now(host):
     rows = rt_system(host)
     return _system_consolidate(rows)
@@ -265,6 +247,23 @@ def rt_system(host):
     print rows
     # DEBUGGING 
     return rows
+
+
+def system_sql(table, filter, interval):
+    columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
+                'swap_total', 'swap_used', 'swap_page_in', 'swap_page_out',
+                'cpu_user', 'cpu_sys', 'cpu_idle', 'load0', 'load1', 'load2',
+                'quantum', 'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
+                'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
+                'net_wb_rate']
+
+    query_fragment = "select date_trunc('%s', ctime) as ctime, hostname" % interval
+    for column in columns:
+        query_fragment += ", %s(%s) as %s" % (agg_func, column, column)
+
+    query_fragment += " from %s %s" % (table, filter)
+    query_fragment += " group by date_trunc('%s', ctime), hostname " % interval
+    return query_fragment
 
 
 
@@ -508,10 +507,6 @@ def querydetails_history(tmid, ssid, ccnt):
     return _queries_consolidate(rows)
 
 
-
-def queryplan_now(tmid, ssid, ccnt, segid):
-    rows = rt_queryplan(tmid, ssid, ccnt, segid)
-    return _queryplan_consolidate(rows)
 
 # TODO: remove this function as testing is done
 def qp():
