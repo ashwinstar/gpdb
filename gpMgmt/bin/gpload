@@ -85,7 +85,7 @@ class Progress(threading.Thread):
 	    time.sleep(1)
 
 def usage():
-    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] [-W] configfile\n"%sys.argv[0])
+    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] [-W] [-?] [-c configfile|-f configfile|configfile]\n"%sys.argv[0])
     sys.exit(2)
 
 def quote(a):
@@ -138,6 +138,7 @@ class gpload:
 	self.options.d = None
 	self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
 	self.cleanupSql = []
+	configFilename = None
 	while argv:
 	    try:
 		try:
@@ -156,6 +157,11 @@ class gpload:
 		    elif argv[0]=='-d':
 			self.options.d = argv[1]
 			argv = argv[2:]
+		    elif argv[0] in ('-f','-c'):
+			configFilename = argv[1]
+			argv = argv[2:]
+		    elif argv[0]=='-?':
+			usage()
 		    else:
 			break
 		except IndexError:
@@ -164,10 +170,12 @@ class gpload:
 	    except ValueError:
 		sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
 		sys.exit(2)
-	if len(argv)!=1:
+	if configFilename==None and len(argv)==1:
+	    configFilename = argv[0]
+	elif len(argv)!=0:
 	    usage()
 	try:
-	    f = open(argv[0],'r')
+	    f = open(configFilename,'r')
 	except IOError,e:
 	    sys.stderr.write("Could not open the config file.\n%s\n"%e)
 	    sys.exit(2)
