@@ -228,13 +228,36 @@ class gpload:
     def read_config(self):
 	self.table = self.getconfig('gpload:into:connection:table',str)
 	if self.options.h==None:
-	    self.options.h = self.getconfig('gpload:into:connection:hostname',str)
+	    self.options.h = self.getconfig('gpload:into:connection:hostname',str,None)
+	if self.options.h==None:
+	    self.options.h = os.environ.get('PGHOST')
+	if self.options.h==None:
+	    self.log("You need to specify your host name with the -h option or in your configuration file as gpload:into:connection:hostname or in your environment as PGHOST.")
+	    sys.exit(2)
 	if self.options.p==None:
-	    self.options.p = self.getconfig('gpload:into:connection:port',int)
+	    self.options.p = self.getconfig('gpload:into:connection:port',int,None)
+	if self.options.p==None:
+	    try:
+		self.options.p = int(os.environ.get('PGPORT'))
+	    except ValueError:
+		pass
+	if self.options.p==None:
+	    self.log("You need to specify your port number with the -p option or in your configuration as gpload:into:connection:port or in your environment as PGPORT.")
+	    sys.exit(2)
 	if self.options.U==None:
-	    self.options.U = self.getconfig('gpload:into:connection:username',str)
+	    self.options.U = self.getconfig('gpload:into:connection:username',str,None)
+	if self.options.U==None:
+	    self.options.U = os.environ.get('PGUSER')
+	if self.options.U==None:
+	    self.log("You need to specify your username with the -U option or in your configuration as gpload:into:connection:username or in your environment as PGUSER.")
+	    sys.exit(2)
 	if self.options.d==None:
-	    self.options.d = self.getconfig('gpload:into:connection:database',str)
+	    self.options.d = self.getconfig('gpload:into:connection:database',str,None)
+	if self.options.d==None:
+	    self.options.d = os.environ.get('PGDATABASE')
+	if self.options.d==None:
+	    self.log("You need to specify your database with the -d option or in your configuration as gpload:into:connection:database or in your environment as PGDATABASE.")
+	    sys.exit(2)
 
     def start_gpfdists(self):
 	self.locations = []
@@ -290,8 +313,8 @@ class gpload:
 	t.start()
 	self.threads.append(t)
 
-    def readPgpass(self):
-	f = open(os.environ['HOME']+'/.pgpass','r')
+    def readPgpass(self,pgpassname):
+	f = open(pgpassname,'r')
 	for line in map(splitPgpassLine,f):
 	    try:
 		if line[0]!='*' and line[0].lower()!=self.options.h.lower():
@@ -311,13 +334,14 @@ class gpload:
     def setup_connection(self):
 	if self.pg8000!=None:
 	    self.pg8000.close()
+	if self.options.password==None and self.options.W:
+	    self.options.password = getpass.getpass()
 	if self.options.password==None:
-	    if self.options.W:
-		self.options.password = getpass.getpass()
-	    else:
-		self.options.password = self.getconfig('gpload:into:connection:password',str,None)
-		if self.options.password==None:
-		    self.readPgpass()
+	    self.options.password = self.getconfig('gpload:into:connection:password',str,None)
+	if self.options.password==None:
+	    self.options.password = os.environ.get('PGPASSWORD')
+	if self.options.password==None:
+	    self.readPgpass(os.environ.get('PGPASSFILE',os.environ.get('HOME','.')+'/.pgpass'))
 	try:
 	    self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d,password=self.options.password)
 	except pg8000.errors.InterfaceError,e:
