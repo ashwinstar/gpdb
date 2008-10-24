@@ -5,13 +5,13 @@ if sys.hexversion<0x2040400:
     sys.stderr.write("gpload needs python version at least 2.4.4\n")
     sys.exit(2)
 
+sys.path.append(sys.path[0]+'/lib')
+
 try:
     import yaml
 except ImportError:
     sys.stderr.write("gpload needs pyyaml.  You can get it from http://pyyaml.org.\n")
     sys.exit(2)
-
-sys.path.append(sys.path[0]+'/lib')
 
 try:
     import pg8000
@@ -162,6 +162,9 @@ class gpload:
 			argv = argv[2:]
 		    elif argv[0]=='-?':
 			usage()
+		    elif configFilename==None:
+			configFilename = argv[0]
+			argv = argv[1:]
 		    else:
 			break
 		except IndexError:
@@ -170,9 +173,7 @@ class gpload:
 	    except ValueError:
 		sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
 		sys.exit(2)
-	if configFilename==None and len(argv)==1:
-	    configFilename = argv[0]
-	elif len(argv)!=0:
+	if configFilename==None or argv:
 	    usage()
 	try:
 	    f = open(configFilename,'r')
