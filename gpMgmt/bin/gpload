@@ -228,35 +228,35 @@ class gpload:
     def read_config(self):
 	self.table = self.getconfig('gpload:into:connection:table',str)
 	if self.options.h==None:
-	    self.options.h = self.getconfig('gpload:into:connection:hostname',str,None)
+	    self.options.h = self.getconfig('hostname',str,None)
 	if self.options.h==None:
 	    self.options.h = os.environ.get('PGHOST')
 	if self.options.h==None:
-	    self.log("You need to specify your host name with the -h option or in your configuration file as gpload:into:connection:hostname or in your environment as PGHOST.")
+	    self.log("You need to specify your host name with the -h option or in your configuration file or in your environment as PGHOST.")
 	    sys.exit(2)
 	if self.options.p==None:
-	    self.options.p = self.getconfig('gpload:into:connection:port',int,None)
+	    self.options.p = self.getconfig('port',int,None)
 	if self.options.p==None:
 	    try:
 		self.options.p = int(os.environ.get('PGPORT'))
 	    except ValueError:
 		pass
 	if self.options.p==None:
-	    self.log("You need to specify your port number with the -p option or in your configuration as gpload:into:connection:port or in your environment as PGPORT.")
+	    self.log("You need to specify your port number with the -p option or in your configuration or in your environment as PGPORT.")
 	    sys.exit(2)
 	if self.options.U==None:
-	    self.options.U = self.getconfig('gpload:into:connection:username',str,None)
+	    self.options.U = self.getconfig('username',str,None)
 	if self.options.U==None:
 	    self.options.U = os.environ.get('PGUSER')
 	if self.options.U==None:
-	    self.log("You need to specify your username with the -U option or in your configuration as gpload:into:connection:username or in your environment as PGUSER.")
+	    self.log("You need to specify your username with the -U option or in your configuration or in your environment as PGUSER.")
 	    sys.exit(2)
 	if self.options.d==None:
-	    self.options.d = self.getconfig('gpload:into:connection:database',str,None)
+	    self.options.d = self.getconfig('database',str,None)
 	if self.options.d==None:
 	    self.options.d = os.environ.get('PGDATABASE')
 	if self.options.d==None:
-	    self.log("You need to specify your database with the -d option or in your configuration as gpload:into:connection:database or in your environment as PGDATABASE.")
+	    self.log("You need to specify your database with the -d option or in your configuration or in your environment as PGDATABASE.")
 	    sys.exit(2)
 
     def start_gpfdists(self):
@@ -337,7 +337,7 @@ class gpload:
 	if self.options.password==None and self.options.W:
 	    self.options.password = getpass.getpass()
 	if self.options.password==None:
-	    self.options.password = self.getconfig('gpload:into:connection:password',str,None)
+	    self.options.password = self.getconfig('password',str,None)
 	if self.options.password==None:
 	    self.options.password = os.environ.get('PGPASSWORD')
 	if self.options.password==None:
