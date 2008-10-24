@@ -376,8 +376,10 @@ CHK_PARAMS () {
 		if [ $MIRROR_PORT_BASE ]; then
 				MIRRORING=1
 				((NUM_MIRROR_DIRECTORY=${#MIRROR_DATA_DIRECTORY[@]}))
-				if [ $NUM_MIRROR_DIRECTORY -ne $QE_PRIMARY_COUNT ]; then
+				if [ x"" == x"$INPUT_CONFIG" ] ; then
+				    if [ $NUM_MIRROR_DIRECTORY -ne $QE_PRIMARY_COUNT ]; then
 						ERROR_EXIT "[FATAL]:-Number of primary directories does not match number of mirror directories" 2
+				    fi
 				fi
 
 				for dir in "${DATA_DIRECTORY[@]}"
