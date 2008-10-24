@@ -258,7 +258,10 @@ TidNext(TidScanState *node)
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
           	if (!TupIsNull(slot))
+                {
           		Gpmon_M_Incr_Rows_Out(GpmonPktFromTidScanState(node));
+                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
+                }
 		return slot;
 	}
 

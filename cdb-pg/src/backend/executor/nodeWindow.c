@@ -4420,7 +4420,7 @@ fetchCurrentRow(WindowState *wstate)
 			return NULL;
 
 		Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSIN); 
-
+                CheckSendPlanStateGpmonPkt(&wstate->ps);
 		if (buffer == NULL)
 		{
 			initializePartition(wstate);
@@ -4649,7 +4649,7 @@ fetchTupleSlotThroughBuf(WindowState *wstate)
 			return NULL;
 
 		Gpmon_M_Incr(GpmonPktFromWindowState(wstate), GPMON_QEXEC_M_ROWSIN); 
-
+                CheckSendPlanStateGpmonPkt(&wstate->ps);
 		/* Put the new tuple into the input buffer */
 		ntuplestore_acc_put_tupleslot(buffer->writer, slot);
 		buffer->num_tuples++;

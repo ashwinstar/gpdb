@@ -105,9 +105,10 @@ SeqNext(SeqScanState *node)
 
 		/* Gpmon */
 		if(scandesc->rs_pageatatime)
+                {
 			Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_PAGE);
-
-		CheckSendPlanStateGpmonPkt(&node->ps);
+                        CheckSendPlanStateGpmonPkt(&node->ps);
+                }
 	}
 
 	node->ss_heapTupleData.last = 
@@ -154,8 +155,10 @@ ExecSeqScan(SeqScanState *node)
 	 */
 	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
      	if (!TupIsNull(slot))
+        {
      		Gpmon_M_Incr_Rows_Out(GpmonPktFromSeqScanState(node)); 
-
+                CheckSendPlanStateGpmonPkt(&node->ps);
+        }
 	return slot;
 }
 

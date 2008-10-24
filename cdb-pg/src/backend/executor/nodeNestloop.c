@@ -220,6 +220,7 @@ ExecNestLoop(NestLoopState *node)
 
 		innerTupleSlot = ExecProcNode(innerPlan);
 		Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_INNERTUPLE);
+                CheckSendPlanStateGpmonPkt(&node->js.ps);
 
 		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
@@ -253,6 +254,7 @@ ExecNestLoop(NestLoopState *node)
 					ENL1_printf("qualification succeeded, projecting tuple");
 
 					Gpmon_M_Incr_Rows_Out(GpmonPktFromNLJState(node)); 
+                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 			}
@@ -295,6 +297,7 @@ ExecNestLoop(NestLoopState *node)
 				ENL1_printf("qualification succeeded, projecting tuple");
 
 				Gpmon_M_Incr_Rows_Out(GpmonPktFromNLJState(node));
+                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 

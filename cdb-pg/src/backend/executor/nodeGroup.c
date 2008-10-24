@@ -176,7 +176,7 @@ ExecGroup(GroupState *node)
 				break;
 			}
 			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_QEXEC_M_ROWSIN);
-
+                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
 #if 0
 			elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, INPUT tuple: %s",
 				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
@@ -241,7 +241,8 @@ ExecGroup(GroupState *node)
 				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
 #endif
 
-                Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node));
+                        Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node));
+                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
 			return outerslot;
 		}
 

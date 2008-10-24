@@ -76,7 +76,10 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 		}
 
           	if (node->nl_strategy == NL_STRATEGY_HASH)
+                {
           		Gpmon_M_Incr(GpmonPktFromANLState(node), GPMON_ADAPTIVENL_STRATEGY);
+                        CheckSendPlanStateGpmonPkt(&node->ps);
+                }
 
 		elog(DEBUG2, "nested join picked strategy: %s read %d thresh %d",
 			 (node->nl_strategy == NL_STRATEGY_LOOP ? "nested loop" : "hash join"),
@@ -92,8 +95,10 @@ ExecAdaptiveNestLoop(AdaptiveNestLoopState *node)
 		return NULL;
 	}
     	if (!TupIsNull(slot))
+        {
      		Gpmon_M_Incr_Rows_Out(GpmonPktFromANLState(node));
-
+                CheckSendPlanStateGpmonPkt(&node->ps);
+        }
         return slot;
 }
 

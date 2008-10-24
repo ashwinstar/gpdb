@@ -80,7 +80,10 @@ ExecAppendOnlyScan(AppendOnlyScanState *node)
 	 */
 	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) AppendOnlyNext);
      	if (!TupIsNull(slot))
+        {
      		Gpmon_M_Incr_Rows_Out(GpmonPktFromAppOnlyScanState(node));
+                CheckSendPlanStateGpmonPkt(&node->ss.ps);
+        }
 	return slot;
 }
 

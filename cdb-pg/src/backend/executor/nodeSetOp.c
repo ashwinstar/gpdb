@@ -89,10 +89,12 @@ ExecSetOp(SetOpState *node)
 			!node->subplan_done)
 		{
 			node->ps.ps_OuterTupleSlot = ExecProcNode(outerPlan);
-			Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_QEXEC_M_ROWSIN); 
 
 			if (TupIsNull(node->ps.ps_OuterTupleSlot))
 				node->subplan_done = true;
+                        else
+                            Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_QEXEC_M_ROWSIN); 
+
 		}
 		inputTupleSlot = node->ps.ps_OuterTupleSlot;
 

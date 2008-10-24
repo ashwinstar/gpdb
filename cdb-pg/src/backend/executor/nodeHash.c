@@ -107,7 +107,7 @@ MultiExecHash(HashState *node)
 			break;
 
 		Gpmon_M_Incr(GpmonPktFromHashState(node), GPMON_QEXEC_M_ROWSIN); 
-
+                CheckSendPlanStateGpmonPkt(&node->ps);
 		/* We have to compute the hash value */
 		econtext->ecxt_innertuple = slot;
 		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, node->hs_keepnull, &hashvalue))

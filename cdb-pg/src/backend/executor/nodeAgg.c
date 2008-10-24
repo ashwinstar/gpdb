@@ -1077,7 +1077,8 @@ agg_retrieve_direct(AggState *aggstate)
 				 * comparison (in group mode) and for projection.
 				 */
 
-				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN); 
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN);
+                                CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 #if 0
 				/*
 				 * XXX BUG BUG:
@@ -1205,7 +1206,7 @@ agg_retrieve_direct(AggState *aggstate)
 					}
 
 					Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN); 
-
+                                        CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 					/* set up for next advance aggregates call */
 					tmpcontext->ecxt_scantuple = outerslot;
 
@@ -1431,15 +1432,15 @@ agg_retrieve_direct(AggState *aggstate)
 			 */
 			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
 			{
-				/*
-				 * Form and return a projection tuple using the aggregate results
-				 * and the representative input tuple.	Note we do not support
-				 * aggregates returning sets ...
-				 */
-                     	Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
-				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+                            /*
+                             * Form and return a projection tuple using the aggregate results
+                             * and the representative input tuple.	Note we do not support
+                             * aggregates returning sets ...
+                             */
+                            Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
+                            CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 
-				return ExecProject(projInfo, NULL);
+                            return ExecProject(projInfo, NULL);
 			}
 		} while (econtext->group_id > 0);
 	}
@@ -1588,14 +1589,14 @@ agg_retrieve_hash_table(AggState *aggstate)
 			 */
 			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
 			{
-				/*
-				 * Form and return a projection tuple using the aggregate results
-				 * and the representative input tuple.	Note we do not support
-				 * aggregates returning sets ...
-				 */
-                    	Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
-				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
-				return ExecProject(projInfo, NULL);
+                            /*
+                             * Form and return a projection tuple using the aggregate results
+                             * and the representative input tuple.	Note we do not support
+                             * aggregates returning sets ...
+                             */
+                            Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
+                            CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+                            return ExecProject(projInfo, NULL);
 			}
 		} while (econtext->group_id > 0);
 	}

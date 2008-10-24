@@ -720,10 +720,10 @@ ExecMergeJoin(MergeJoinState *node)
 	if (node->prefetch_inner)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
-           if (!TupIsNull(innerTupleSlot))
+                if (!TupIsNull(innerTupleSlot))
           	{
           		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-           	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+                        Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
           	}
 		node->mj_InnerTupleSlot = innerTupleSlot;
 
@@ -813,7 +813,8 @@ ExecMergeJoin(MergeJoinState *node)
 						result = MJFillOuter(node);
 						if (result)
 						{
-							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
+							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
+                                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
 							return result;
 						}
 					}
@@ -882,7 +883,8 @@ ExecMergeJoin(MergeJoinState *node)
 						result = MJFillInner(node);
 						if (result)
 						{
-							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
+							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
+                                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
 							return result;
 						}
 					}
@@ -950,7 +952,8 @@ ExecMergeJoin(MergeJoinState *node)
 						 */
 						MJ_printf("ExecMergeJoin: returning tuple\n");
 
-						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
+						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
+                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 					}
 				}
@@ -981,6 +984,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
+                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1363,6 +1367,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
+                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1445,6 +1450,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
+                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1533,6 +1539,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
+                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1583,6 +1590,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
+                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}

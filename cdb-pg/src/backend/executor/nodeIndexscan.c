@@ -99,7 +99,8 @@ IndexNext(IndexScanState *node)
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
 
-		Gpmon_M_Incr_Rows_Out(GpmonPktFromIndexScanState(node)); 
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromIndexScanState(node));
+                CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		return slot;
 	}
 
@@ -118,7 +119,8 @@ IndexNext(IndexScanState *node)
 					   scandesc->xs_cbuf,		/* buffer containing tuple */
 					   false);	/* don't pfree */
 
-		Gpmon_M_Incr_Rows_Out(GpmonPktFromIndexScanState(node)); 
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromIndexScanState(node));
+                CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		return slot;
 	}
 

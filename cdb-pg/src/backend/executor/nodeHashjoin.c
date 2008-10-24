@@ -236,7 +236,7 @@ ExecHashJoin(HashJoinState *node)
 			}
 
 			Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-
+                        CheckSendPlanStateGpmonPkt(&node->js.ps);
 			node->js.ps.ps_OuterTupleSlot = outerTupleSlot;
 			econtext->ecxt_outertuple = outerTupleSlot;
 			node->hj_NeedNewOuter = false;
@@ -305,7 +305,8 @@ ExecHashJoin(HashJoinState *node)
 
 				if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 				{
-					Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node)); 
+					Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node));
+                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 
@@ -340,7 +341,7 @@ ExecHashJoin(HashJoinState *node)
 			if (ExecQual(otherqual, econtext, false))
 			{
 				Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node));
-
+                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 		}

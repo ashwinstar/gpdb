@@ -192,6 +192,7 @@ ExecSort(SortState *node)
 			if (TupIsNull(slot))
 				break;
 
+                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
 			tuplesort_puttupleslot(tuplesortstate, slot);
 		}
 
@@ -199,7 +200,7 @@ ExecSort(SortState *node)
 		 * Complete the sort.
 		 */
 		tuplesort_performsort(tuplesortstate);
-
+                CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		/*
 		 * restore to user specified direction
 		 */

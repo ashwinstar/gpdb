@@ -264,7 +264,10 @@ ExecMaterial(MaterialState *node)
 	{
 		ntuplestore_acc_current_tupleslot(tsa, slot);
           	if (!TupIsNull(slot))
+                {
           		Gpmon_M_Incr_Rows_Out(GpmonPktFromMaterialState(node)); 
+                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
+                }
 		return slot;
 	}
 #endif
@@ -313,6 +316,7 @@ ExecMaterial(MaterialState *node)
 		 * outerslot?)
 		 */
           	Gpmon_M_Incr_Rows_Out(GpmonPktFromMaterialState(node)); 
+                CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		return ExecCopySlot(slot, outerslot); 
 	}
 

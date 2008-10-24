@@ -103,8 +103,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		estate->es_evTupleNull[scanrelid - 1] = true;
 
          	if (!TupIsNull(slot))
+                {
           		Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
-
+                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
+                }
 		return slot;
 	}
 
@@ -242,7 +244,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		/* OK to return this tuple */
           	if (!TupIsNull(slot))
-       		Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
+                {
+                    Gpmon_M_Incr_Rows_Out(GpmonPktFromBitmapHeapScanState(node));
+                    CheckSendPlanStateGpmonPkt(&node->ss.ps);
+                }
 		return slot;
 	}
 

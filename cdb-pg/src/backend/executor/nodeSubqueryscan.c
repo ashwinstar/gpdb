@@ -117,8 +117,11 @@ SubqueryNext(SubqueryScanState *node)
         tuple->t_self = node->cdb_fake_ctid;
     }
     if (!TupIsNull(slot))
+    {
         Gpmon_M_Incr_Rows_Out(GpmonPktFromSubqueryScanState(node));
-	return slot;
+        CheckSendPlanStateGpmonPkt(&node->ss.ps);
+    }
+    return slot;
 }
 
 /* ----------------------------------------------------------------

@@ -290,7 +290,8 @@ ExecAppend(AppendState *node)
 			 * because it may have the wrong tuple descriptor in
 			 * inherited-UPDATE cases.
 			 */
-               	Gpmon_M_Incr_Rows_Out(GpmonPktFromAppendState(node));
+                    Gpmon_M_Incr_Rows_Out(GpmonPktFromAppendState(node));
+                    CheckSendPlanStateGpmonPkt(&node->ps);
 			return result;
 		}
 
