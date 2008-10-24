@@ -91,6 +91,36 @@ def usage():
 def quote(a):
     return "'"+a.replace("'","''").replace('\\','\\\\')+"'"
 
+def splitPgpassLine(a):
+    b = []
+    escape = False
+    d = ''
+    for c in a:
+	if not escape and c=='\\':
+	    escape = True
+	elif not escape and c==':':
+	    b.append(d)
+	    d = ''
+	else:
+	    d += c
+	    escape = False
+    if escape:
+	d += '\\'
+    b.append(d)
+    return b
+
+def dictKeyToLower(a):
+    if type(a)==list:
+	return map(dictKeyToLower,a)
+    if type(a)==dict:
+	b = dict()
+	for key,value in a.iteritems():
+	    if type(key)==str:
+		key = key.lower()
+	    b[key] = dictKeyToLower(value)
+	return b
+    return a
+
 class options:
     pass
 
@@ -104,6 +134,7 @@ class gpload:
 	self.options.p = None
 	self.options.U = None
 	self.options.W = False
+	self.options.password = None
 	self.options.d = None
 	self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
 	self.cleanupSql = []
@@ -146,6 +177,7 @@ class gpload:
 	    sys.stderr.write("YAML error in config file.\n%s\n"%e)
 	    sys.exit(2)
 	f.close()
+	self.config = dictKeyToLower(self.config)
 	self.logfile = None
 	self.subprocesses = []
 	logfile = self.getconfig('gpload:logfile',str,None)
@@ -250,12 +282,36 @@ class gpload:
 	t.start()
 	self.threads.append(t)
 
+    def readPgpass(self):
+	f = open(os.environ['HOME']+'/.pgpass','r')
+	for line in map(splitPgpassLine,f):
+	    try:
+		if line[0]!='*' and line[0].lower()!=self.options.h.lower():
+		    continue
+		if line[1]!='*' and int(line[1])!=self.options.p:
+		    continue
+		if line[2]!='*' and line[2]!=self.options.d:
+		    continue
+		if line[3]!='*' and line[3]!=self.options.U:
+		    continue
+		self.options.password = line[4]
+		break
+	    except (ValueError,IndexError):
+		pass
+	f.close()
+
     def setup_connection(self):
-	password = self.getconfig('gpload:into:connection:password',str,None)
-	if self.options.W:
-	    password = getpass.getpass()
+	if self.pg8000!=None:
+	    self.pg8000.close()
+	if self.options.password==None:
+	    if self.options.W:
+		self.options.password = getpass.getpass()
+	    else:
+		self.options.password = self.getconfig('gpload:into:connection:password',str,None)
+		if self.options.password==None:
+		    self.readPgpass()
 	try:
-	    self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d,password=password)
+	    self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d,password=self.options.password)
 	except pg8000.errors.InterfaceError,e:
 	    self.log("Could not connect to database.\n%s"%e)
 	    sys.exit(2)
@@ -268,7 +324,7 @@ class gpload:
 		if type(d)!=dict:
 		    self.log("gpload:from:columns must be a sequence of mappings.")
 		    sys.exit(2)
-		key = d.keys()[0].lower()
+		key = d.keys()[0]
 		self.from_columns.append([key,d[key],None])
 	else:
 	    self.from_columns = self.into_columns
@@ -292,9 +348,12 @@ class gpload:
 		stuff = ('character_maximum_length',)
 	    else:
 		stuff = ()
-	    stuff = map(lambda x:str(row[x]),stuff)
-	    if stuff:
-		ct += '('+','.join(stuff)+')'
+	    stuff2 = []
+	    for a in stuff:
+		if row[a]!=None:
+		    stuff2.append(str(row[a]))
+	    if stuff2:
+		ct += '('+','.join(stuff2)+')'
 	    name = str(row['column_name']).lower()
 	    i = [name,ct,None]
 	    self.into_columns.append(i)
@@ -315,7 +374,7 @@ class gpload:
 		    self.log('gpload:into:mapping must be a mapping from strings to strings.')
 		    sys.exit(2)
 		try:
-		    i = map(lambda a:a[0],self.into_columns).index(key.lower())
+		    i = map(lambda a:a[0],self.into_columns).index(key)
 		except ValueError:
 		    self.log('%s in mapping is not in table %s:.'%(key,self.table))
 		    sys.exit(2)
@@ -327,7 +386,7 @@ class gpload:
 	self.log('')
 
     def create_external_table(self):
-	self.cleanupSql.append('drop table if exists ext_%s'%self.name)
+	self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
 	self.cleanupSql.append('drop table if exists ext_%s_errors'%self.name)
 	format = self.getconfig('gpload:from:format:format',str,'text').lower()
 	sql = "create external table ext_%s"%self.name
@@ -438,7 +497,7 @@ class gpload:
 
     def do_method_update(self):
 # Direct update doesn't work, so we copy data into temp table first.
-	self.cleanupSql.append('drop temp table if exists temp_%s'%self.name)
+	self.cleanupSql.append('drop table if exists temp_%s'%self.name)
 	sql = 'create temp table temp_%s(like %s)'%(self.name,self.table)
 	self.log(sql)
 	self.pg8000.execute(sql)
@@ -451,7 +510,7 @@ class gpload:
 #	self.read_errors()
 
     def do_method_merge(self):
-	self.cleanupSql.append('drop temp table if exists temp_%s'%self.name)
+	self.cleanupSql.append('drop table if exists temp_%s'%self.name)
 	sql = 'create temp table temp_%s(like %s)'%(self.name,self.table)
 	self.log(sql)
 	self.pg8000.execute(sql)
@@ -510,24 +569,25 @@ class gpload:
 		traceback.print_exc()
 		self.exitValue = 2
 	finally:
-	    self.log('Removing temporary stuff.')
-	    for a in self.cleanupSql:
-		try:
+	    if self.cleanupSql:
+		self.log('Removing temporary data.')
+		self.setup_connection()
+		for a in self.cleanupSql:
 		    try:
+			self.log(a)
 			self.pg8000.execute(a)
-		    except pg8000.errors.ProgrammingError:
+		    except (pg8000.errors.InternalError,pg8000.errors.ProgrammingError):
+			if self.logfile:
+			    traceback.print_exc(file=self.logfile)
+			    self.logfile.flush()
+			traceback.print_exc()
+	    if self.subprocesses:
+		self.log('Killing gpfdist.')
+		for a in self.subprocesses:
+		    try:
+			os.kill(a.pid,signal.SIGTERM)
+		    except OSError:
 			pass
-		except pg8000.errors.InternalError:
-		    if self.logfile:
-			traceback.print_exc(file=self.logfile)
-			self.logfile.flush()
-		    traceback.print_exc()
-	    self.log('Killing gpfdist.')
-	    for a in self.subprocesses:
-		try:
-		    os.kill(a.pid,signal.SIGTERM)
-		except OSError:
-		    pass
 	    for t in self.threads:
 		t.join()
 	if self.exitValue==0:
