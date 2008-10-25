@@ -101,7 +101,8 @@ static struct {
     const char* l;              /* log filename */
     const char*f;              /* forced filename */
     int g;			/* gp_proto (0 or 1) (internal, not documented) */
-} opt = { 8080,8080, 0, 0, ".", 0,0, -1 };
+    int b;
+} opt = { 8080,8080, 0, 0, ".", 0,0, -1,0 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -280,6 +281,7 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	{      NULL, 'P', 1, "last port of range of ports to serve HTTP" },
 	{      NULL, 'd', 1, "serve files under this directory" },
 	{      NULL, 'f', 1, "internal - force file to be given file name" },
+	{      NULL, 'b', 1, "internal - bind to ip4 address" },
 	{      NULL, 'q', 0, "gone" },
 	{      NULL, 'x', 0, "gone" },
 	{      NULL, 'h', 0, "gone" },
@@ -307,6 +309,7 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	case 'P': opt.last_port = atoi(arg); break;
 	case 'l': opt.l = arg; break;
 	case 'g': opt.g = atoi(arg); break;
+	case 'b': opt.b = atoi(arg); break;
 	case 256: print_version(); break;
 	}
     }
@@ -1205,22 +1208,19 @@ static int setup_read(request_t* r)
 /* Create HTTP port and start to receive request */
 static void http_setup(void)
 {
-    struct sockaddr_in a;
     SOCKET f;
     int on = 1;
     struct linger linger;
 
     /* create socket */
-    a.sin_addr.s_addr = htonl(INADDR_ANY);
-    a.sin_family = AF_INET;
 
     f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (f < 0) 
-	gfatal(FLINE, "cannot create socket on port %d", opt.p);
+	gfatal(FLINE, "cannot create socket");
 
 #ifndef WIN32
     if (fcntl(f, F_SETFD, 1) == -1) 
-	gfatal(FLINE, "cannot create socket on port %d - fcntl(F_SETFD) failed", opt.p);
+	gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
 
 	/* For the Windows case, we could use SetHandleInformation to remove
        the HANDLE_INHERIT property from fd.  
@@ -1236,7 +1236,11 @@ static void http_setup(void)
     setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
     for (;;){
+	struct sockaddr_in a;
+	memset(&a,0,sizeof a);
+	a.sin_family = AF_INET;
 	a.sin_port = htons(opt.p);
+        a.sin_addr.s_addr = htonl(opt.b);
     /* bind */
 	if (!bind(f, (void*) &a, sizeof(a))) 
 	    break;
@@ -1247,7 +1251,7 @@ static void http_setup(void)
 
     /* listen with a big queue */
     if (listen(f, 256)) 
-	gfatal(FLINE, "cannot listen on port %d", opt.p);
+	gfatal(FLINE, "cannot listen");
 
     gcb.listen_sock = f;
 
@@ -1307,7 +1311,6 @@ int main(int argc, const char* const argv[])
     setenv("EVENT_NOKQUEUE", "1",1);
     
     event_init();
-
     http_setup();
 
     printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);

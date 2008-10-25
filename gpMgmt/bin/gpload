@@ -34,13 +34,13 @@ class CatThread(threading.Thread):
 	    self.gpload.log(line.strip('\n'))
 
 class Progress(threading.Thread):
-    def __init__(self,gpload,ports):
+    def __init__(self,gpload,sockaddrs):
 	threading.Thread.__init__(self)
 	self.gpload = gpload
-	self.ports = ports
-    def get(self,port):
+	self.sockaddrs = sockaddrs
+    def get(self,sockaddr):
 	s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-	s.connect(('127.0.0.1',port))
+	s.connect(sockaddr)
 	s.sendall('GET gpfdist/status HTTP/1.0\r\n\r\n')
 	f = s.makefile()
 	s.close()
@@ -62,8 +62,8 @@ class Progress(threading.Thread):
     def get1(self):
 	read_bytes = 0
 	total_bytes = 0
-	for port in self.ports:
-	    a = self.get(port)
+	for sockaddr in self.sockaddrs:
+	    a = self.get(sockaddr)
 	    if a[2]<1:
 		return
 	    read_bytes += a[0]
@@ -200,26 +200,26 @@ class gpload:
 	    self.logfile.flush()
 	sys.stdout.write(a)
 
-    def getconfig(self,a,typ=None,default='error',config=None,prefix=''):
+    def getconfig(self,a,typ=None,default='error'):
 	s = a.split(':')
 	b = []
-	config = config or self.config
+	config = self.config
 	for i in xrange(len(s)):
 	    if type(config)!=dict or s[i] not in config:
 		if default=='error':
-		    self.log("Configuration must contain %s."%(prefix+a))
+		    self.log("Configuration must contain %s."%a)
 		    sys.exit(2)
 		return default
 	    config = config[s[i]]
 	if typ!=None and type(config)!=typ:
 	    if typ==list:
-		self.log("This configuration must be a sequence--%s."%(prefix+a))
+		self.log("This configuration must be a sequence--%s."%a)
 	    elif typ==dict:
-		self.log("This configuration must be a mapping--%s."%(prefix+a))
+		self.log("This configuration must be a mapping--%s."%a)
 	    elif typ==str:
-		self.log("This configuration must be a string--%s."%(prefix+a))
+		self.log("This configuration must be a string--%s."%a)
 	    elif typ==int:
-		self.log("This configuration must be an integer--%s."%(prefix+a))
+		self.log("This configuration must be an integer--%s."%a)
 	    else:
 		assert 0
 	    self.log("It is %s"%type(config))
@@ -262,35 +262,39 @@ class gpload:
 
     def start_gpfdists(self):
 	self.locations = []
-	sources = self.getconfig('gpload:from:source')
-	if type(sources)!=list:
-	    sources = [sources]
-	ports = []
-	for source in sources:
-	    ipaddr = self.getconfig('ipaddr',str,socket.gethostname(),source,'gpload:from:source:')
-	    if type(ipaddr)!=list:
-		ipaddr = [ipaddr]
-	    if 'port' in source:
-		startPort = endPort = self.getconfig('port',int,'error',source,'gpload:from:source:')
-	    elif 'portrange' in source:
-		portrange = self.getconfig('portrange',list,'error',source,'gpload:from:source:')
-		try:
-		    startPort = int(portrange[0])
-		    endPort = int(portrange[1])
-		except (IndexError,ValueError):
-		    self.log("gpload:from:source:portrange must be a sequence of two integers.")
-		    sys.exit(2)
-	    else:
-		startPort = 8000
-		endPort = 9000
-	    infile = self.getconfig('infile',None,'error',source,'gpload:from:source:')
-	    if type(infile)!=list:
-		infile = [infile]
-	    for i in infile:
-		if type(i)!=str:
-		    self.log("gpload:from:source:infile must be a string or a sequence of strings.")
-		    sys.exit(2)
-	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort),'-f',' '.join(infile)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)
+	local_hostname = self.getconfig('gpload:input:source:local_hostname',list)
+	file = self.getconfig('gpload:input:source:file',list)
+	if len(local_hostname)!=len(file):
+	    self.log("gpload:input:source:local_hostname and gpload:input:source:file must have the same length.")
+	    sys.exit(2)
+	port_range = self.getconfig('gpload:input:source:port_range',list,None)
+	if port_range:
+	    try:
+		startPort = int(port_range[0])
+		endPort = int(port_range[1])
+	    except (IndexError,ValueError):
+		self.log("gpload:input:source:port_range must be a sequence of two integers.")
+		sys.exit(2)
+	else:
+	    startPort = self.getconfig('gpload:input:source:port',int,8000)
+	    endPort = self.getconfig('gpload:input:source:port',int,9000)
+	sockaddrs = []
+	for l,f in zip(local_hostname,file):
+	    if type(l)!=str:
+		self.log("gpload:input:source:local_hostname must be a sequence of strings.")
+		sys.exit(2)
+	    if type(f)!=str:
+		self.log("gpload:input:source:file must be a sequence of strings.")
+		sys.exit(2)
+	    try:
+		l = socket.gethostbyname(l)
+	    except:
+		self.log("Can not resolve hostname "+l)
+		sys.exit(2)
+	    ip4addr = reduce(lambda x,y:int(x)*256+int(y),l.split('.'))
+	    if ip4addr>=1<<31:
+		ip4addr -= 1<<32
+	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort),'-b',str(ip4addr),'-f',f],stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)
 	    self.subprocesses.append(a)
 	    t = CatThread(self,a.stderr)
 	    t.start()
@@ -306,11 +310,10 @@ class gpload:
 		    port = int(line[21:line.index(',')])
 		    break
 	    self.log('gpfdist is running on port %d'%port)
-	    ports.append(port)
+	    sockaddrs.append((l,port))
 	    CatThread(self,a.stdout).start()
-	    for a in ipaddr:
-		self.locations.append('gpfdist://%s:%d/%s'%(a,port,'%20'.join(infile)))
-	t = Progress(self,ports)
+	    self.locations.append('gpfdist://%s:%d/%s'%(l,port,f))
+	t = Progress(self,sockaddrs)
 	t.start()
 	self.threads.append(t)
 
@@ -350,12 +353,12 @@ class gpload:
 	    sys.exit(2)
 
     def read_columns(self):
-	columns = self.getconfig('gpload:from:columns',list,None)
+	columns = self.getconfig('gpload:input:columns',list,None)
 	if columns!=None:
 	    self.from_columns = []
 	    for d in columns:
 		if type(d)!=dict:
-		    self.log("gpload:from:columns must be a sequence of mappings.")
+		    self.log("gpload:input:columns must be a sequence of mappings.")
 		    sys.exit(2)
 		key = d.keys()[0]
 		self.from_columns.append([key,d[key],None])
@@ -425,72 +428,47 @@ class gpload:
 	self.log('')
 
     def create_external_table(self):
+	self.error_table = self.getconfig('gpload:input:error_table',str)
 	self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
-	self.cleanupSql.append('drop table if exists ext_%s_errors'%self.name)
-	format = self.getconfig('gpload:from:format:format',str,'text').lower()
+	format = self.getconfig('gpload:input:format',str,'text').lower()
 	sql = "create external table ext_%s"%self.name
 	sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]),self.from_columns))
 	sql += "location(%s)"%','.join(map(quote,self.locations))
 	sql += "format%s("%quote(format)
-	sql += "delimiter%s"%quote(self.getconfig('gpload:from:format:delimiter',str))
-	if self.getconfig('gpload:from:format:header',bool,False):
+	sql += "delimiter%s"%quote(self.getconfig('gpload:input:delimiter',str))
+	if self.getconfig('gpload:input:header',bool,False):
 	    sql += "header "
 	if format=='csv':
-	    sql += "quote as%s"%quote(self.getconfig('gpload:from:format:quote',str))
-	    sql += "escape as%s"%quote(self.getconfig('gpload:from:format:escape',str))
-	force_not_null_columns = self.getconfig('gpload:from:format:force_not_null_columns',list,[])
+	    sql += "quote as%s"%quote(self.getconfig('gpload:input:quote',str))
+	    sql += "escape as%s"%quote(self.getconfig('gpload:input:escape',str))
+	force_not_null_columns = self.getconfig('gpload:input:force_not_null_columns',list,[])
 	if force_not_null_columns:
 	    for i in force_not_null_columns:
 		if type(i)!=str:
-		    self.log('gpload:from:format:force_not_null_columns must be a sequence of strings.')
+		    self.log('gpload:input:force_not_null_columns must be a sequence of strings.')
 		    sys.exit(2)
 	    sql += "force not null %s "%','.join(force_not_null_columns)
 	sql += ")"
-	sql += "encoding%s"%quote(self.getconfig('gpload:from:format:encoding',str))
-	sql += "log errors into ext_%s_errors "%self.name
-	limit = self.getconfig('gpload:errors:segment_limit',str,None)
-	if limit!=None:
-	    sql += "segment reject limit %s "%limit
+	sql += "encoding%s"%quote(self.getconfig('gpload:input:encoding',str))
+	sql += "log errors into %s "%self.error_table
+	limit = self.getconfig('gpload:input:error_limit',int,0)
+	sql += "segment reject limit %s "%limit
 	self.log(sql)
 	self.pg8000.execute(sql)
+	self.initial_errors = self.count_errors()
 
-    def read_errors(self):
-	self.pg8000.execute('select * from ext_%s_errors'%self.name)
-	rows = list(self.pg8000.iterate_dict())
-	if len(rows):
-	    self.log(len(rows)==1 and '1 bad row' or "%d bad rows"%len(rows))
+    def count_errors(self):
+	self.pg8000.execute('select count(*) from %s'%self.error_table)
+	return self.pg8000.iterate_dict().next()['count']
+
+    def report_errors(self):
+	errors = self.count_errors()-self.initial_errors
+	if errors==1:
+	    self.log('one bad row')
 	    self.exitValue = 1
-	    try:
-		f = open(self.getconfig('gpload:errors:errorfile',str),'w')
-	    except IOError,e:
-		sys.stderr.write("Could not open the error file.\n%s\n"%e)
-		sys.exit(2)
-	    f.write(self.format_rows(rows))
-	    f.close()
-	else:
-	    self.log("no bad rows")
-
-    def format_rows(self,rows):
-	sb = []
-	if len(rows)!=0:
-	    r = sorted(rows[0].keys())
-	    size = map(len,r)
-	    for i in xrange(len(size)):
-		size[i] = max(size[i],*map(lambda a:len(str(a[r[i]])),rows))
-	    for i in xrange(len(size)):
-		if i:
-		    sb.append('|')
-		sb.append('%*s'%(size[i],r[i]))
-	    sb.append('\n')
-	    sb.append('%s\n'%'+'.join(map(lambda i:'-'*i,size)))
-	    for row in rows:
-		for i in xrange(len(size)):
-		    if i:
-			sb.append('|')
-		    sb.append('%*s'%(size[i],row[r[i]]))
-		sb.append('\n')
-	sb.append(len(rows)==1 and '1 row' or '%d rows'%len(rows))
-	return ''.join(sb)
+	elif errors:
+	    self.log('%d bad rows'%errors)
+	    self.exitValue = 1
 
     def do_insert(self,dest):
 	cols = filter(lambda a:a[2]!=None,self.into_columns)
@@ -500,7 +478,7 @@ class gpload:
 	sql += 'from ext_%s'%self.name
 	self.log(sql)
 	self.pg8000.execute(sql)
-	self.read_errors()
+	self.report_errors()
 
     def do_method_insert(self):
 	self.create_external_table()
@@ -546,7 +524,7 @@ class gpload:
 # This doesn't work.
 #	self.create_external_table()
 #	self.do_update('ext_%s'%self.name,2)
-#	self.read_errors()
+#	self.report_errors()
 
     def do_method_merge(self):
 	self.cleanupSql.append('drop table if exists temp_%s'%self.name)
@@ -567,10 +545,6 @@ class gpload:
 	sql += ')'
 	self.log(sql)
 	self.pg8000.execute(sql)
-
-    def show_result(self):
-	self.pg8000.execute('select * from %s'%self.table)
-	self.log(self.format_rows(list(self.pg8000.iterate_dict())))
 
     def do_method(self):
 	method = self.getconfig('gpload:into:method:method',str,'insert').lower()
