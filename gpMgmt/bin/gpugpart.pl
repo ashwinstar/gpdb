@@ -531,8 +531,18 @@ sub genpartdefs
 
 #            print Data::Dumper->Dump([$vv2]), "\n";
 
-            next unless (exists($vv2->{parsetree}) &&
-                         exists($vv2->{parsetree}->{partSpec}));
+			next
+				unless (exists($vv2->{parsetree}));
+
+			unless (ref($vv2->{parsetree}) eq "HASH")
+			{
+				print "weirdo: $kk\n";
+				print Data::Dumper->Dump([$vv2]),"\n";
+				print "skipping: $kk\n";
+				next;
+			}
+
+			next unless (exists($vv2->{parsetree}->{partSpec}));
 
             my $pps = $vv2->{parsetree}->{partSpec};
 
@@ -604,6 +614,15 @@ sub genpartdefs
                     $vv->{pby}->{pspec} = \@foo;
                 }
                 elsif ($val1 =~ m/\:\:date$/)
+                {
+                    my @foo = 
+                        sort { $a->{start}->{values}->[0] cmp
+                                   $b->{start}->{values}->[0] } 
+                    @{$vv->{pby}->{pspec}};
+
+                    $vv->{pby}->{pspec} = \@foo;
+                }
+                elsif ($val1 =~ m/\:\:timestamp/)
                 {
                     my @foo = 
                         sort { $a->{start}->{values}->[0] cmp
@@ -2068,9 +2087,24 @@ sub prettydump
             {
                 my $vv2 = $vv->{rules}->{$kk2};
 
+#				print "kk2: $kk2\n";
+#				if ($kk2 eq "rule_user_prof_mwrk_c_d_2_md_9_2504734_daily")
+#				{
+#					print Data::Dumper->Dump([$vv2]),"\n";
+#				}
+
                 next
-                    unless (exists($vv2->{parsetree})
-                            && exists($vv2->{parsetree}->{partSpec}));
+                    unless (exists($vv2->{parsetree}));
+
+				unless (ref($vv2->{parsetree}) eq "HASH")
+				{
+					print "weirdo: $kk\n";
+					print Data::Dumper->Dump([$vv2]),"\n";
+					print "skipping: $kk\n";
+					next;
+				}
+
+				next unless (exists($vv2->{parsetree}->{partSpec}));
 
                 print "  Child: ", $vv2->{child}, "\n";
 
@@ -2723,6 +2757,12 @@ if (1)
 #                    print "  where: ", $txt, "\n";
 
                     # parse words
+
+					# XXX XXX: with/without time zone fixup
+
+					$txt =~ s/timestamp without time zone/timestamp\_without\_time\_zone/gm;
+					$txt =~ s/timestamp with time zone/timestamp\_with\_time\_zone/gm;
+
                     my $biga = pw1($txt);
 
                     $vv2->{parsetree} = $biga;
