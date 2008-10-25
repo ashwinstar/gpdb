@@ -6842,7 +6842,10 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	/* see if there are any duplicate column references */
 	pcolcxt.cols = NIL;
 	pcolcxt.pstate = pstate;
-	partition_col_walker((Node *)pBy, &pcolcxt);
+
+	if (0) /* MPP-3988: allow same column in multiple partitioning
+			* keys at different levels */
+		partition_col_walker((Node *)pBy, &pcolcxt);
 	
 	if (pBy->partType == PARTTYP_HASH)
 	{

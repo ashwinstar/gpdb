@@ -1360,6 +1360,9 @@ subpartition by hash(b) subpartitions 2
 (start(1) end(100),
  start(100) end(1000)
 );
+-- MPP-3988: allow same column in multiple partitioning keys at
+-- different levels -- so this is legal again...
+drop table if exists a;
 
 -- Check multi level partition COPY
 CREATE TABLE REGION (
