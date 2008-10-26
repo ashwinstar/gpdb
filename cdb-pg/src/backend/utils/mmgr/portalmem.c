@@ -416,6 +416,12 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 */
 	PortalHashTableDelete(portal);
 
+    if (portal->releaseResLock)
+    {
+        portal->releaseResLock = false;
+        ResUnLockPortal(portal);
+    }
+
 	/* let portalcmds.c clean up the state it knows about */
 	if (portal->cleanup)
 		(*portal->cleanup) (portal);
@@ -830,7 +836,7 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		}
 		else
 #endif
-		{
+
 			/* let portalcmds.c clean up the state it knows about */
 			if (portal->cleanup)
 			{
@@ -838,21 +844,20 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 				portal->cleanup = NULL;
 			}
 
-			/*
-			 * Any resources belonging to the portal will be released in the
-			 * upcoming transaction-wide cleanup; they will be gone before we
-			 * run PortalDrop.
-			 */
-			portal->resowner = NULL;
+		/*
+		 * Any resources belonging to the portal will be released in the
+		 * upcoming transaction-wide cleanup; they will be gone before we
+		 * run PortalDrop.
+		 */
+		portal->resowner = NULL;
 
-			/*
-			 * Although we can't delete the portal data structure proper, we
-			 * can release any memory in subsidiary contexts, such as executor
-			 * state.  The cleanup hook was the last thing that might have
-			 * needed data there.
-			 */
-			MemoryContextDeleteChildren(PortalGetHeapMemory(portal));
-		}
+		/*
+		 * Although we can't delete the portal data structure proper, we
+		 * can release any memory in subsidiary contexts, such as executor
+		 * state.  The cleanup hook was the last thing that might have
+		 * needed data there.
+		 */
+		MemoryContextDeleteChildren(PortalGetHeapMemory(portal));
 	}
 }
 
@@ -1114,15 +1119,12 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 	Assert(gpmon_qlog_status >= GPMON_QLOG_STATUS_SILENT && gpmon_qlog_status <= GPMON_QLOG_STATUS_ERROR);
 
-	if(Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
+	if (Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
 	{
-		if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT
-				||
-				gpmon_qlog_status == GPMON_QLOG_STATUS_START
-				|| 
-				gpmon_qlog_status == GPMON_QLOG_STATUS_DONE
-                                ||
-                                gpmon_qlog_status == GPMON_QLOG_STATUS_ERROR)
+		if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT ||
+		   gpmon_qlog_status == GPMON_QLOG_STATUS_START ||
+		   gpmon_qlog_status == GPMON_QLOG_STATUS_DONE ||
+		   gpmon_qlog_status == GPMON_QLOG_STATUS_ERROR)
 		{
 			struct timeval tv;
 			gettimeofday(&tv, 0);
@@ -1142,15 +1144,38 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
 		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
-                if (gp_enable_gpperfmon)
-                    gpmon_send(&p->gpmon_pkt);
+		if (gp_enable_gpperfmon)
+			gpmon_send(&p->gpmon_pkt);
 	}
 
 	p->portal_status = s;
 }
 
-PortalStatus PortalGetStatus(Portal p)
+PortalStatus
+PortalGetStatus(Portal p)
 {
 	return p->portal_status;
 }
 
+const char *
+PortalGetStatusString(Portal p)
+{
+	switch (p->portal_status)
+	{
+		case PORTAL_NEW:
+			return "PORTAL_NEW";
+		case PORTAL_READY:
+			return "PORTAL_READY";
+		case PORTAL_QUEUE:
+			return "PORTAL_QUEUE";
+		case PORTAL_ACTIVE:
+			return "PORTAL_ACTIVE";
+		case PORTAL_DONE:
+			return "PORTAL_DONE";
+		case PORTAL_FAILED:
+			return "PORTAL_FAILED";
+		case PORTAL_STATUSMAX:
+		default:
+			return "Unknown portal status";
+	}
+}

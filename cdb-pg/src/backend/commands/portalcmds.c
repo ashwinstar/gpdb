@@ -297,42 +297,32 @@ PortalCleanup(Portal portal)
 {
 	ResourceOwner   saveResourceOwner = CurrentResourceOwner;   /* save */
     MemoryContext   saveContext = CurrentMemoryContext;         /* save */
-    volatile int    retrycount = 0;
-    volatile bool   done = false;
     int             cleanupstate = 0;
 
     Assert(portal);
 
-    while (!done)
-    {
-        /* We must make the portal's resource owner current */
-        CurrentResourceOwner = portal->resowner;
+	/* We must make the portal's resource owner current */
+	CurrentResourceOwner = portal->resowner;
 
-	    PG_TRY();
-	    {
-            /* My helper does all the work. */
-            PortalCleanupHelper(portal, &cleanupstate);
-            done = true;
-	    }
+	PG_TRY();
+	{
+		/* My helper does all the work. */
+		PortalCleanupHelper(portal, &cleanupstate);
+		done = true;
+	}
 
-        /* Log and dismiss an error, then loop to do next step of cleanup. */
-	    PG_CATCH();
-	    {
-	        CurrentResourceOwner = saveResourceOwner;           /* restore */
-            MemoryContextSwitchTo(saveContext);                 /* restore */
+	/* Log and dismiss an error, then loop to do next step of cleanup. */
+	PG_CATCH();
+	{
+		CurrentResourceOwner = saveResourceOwner;           /* restore */
+		MemoryContextSwitchTo(saveContext);                 /* restore */
 
-            if (retrycount++ < 5 && 
-                elog_dismiss(LOG))
-                done = false;
-            else
-            {
-                /* Sorry, can't dismiss this error. */
-	            PortalSetStatus(portal, PORTAL_FAILED);
-                PG_RE_THROW();
-            }
-	    }
-	    PG_END_TRY();
-    }
+		/* Sorry, can't dismiss this error. */
+		PortalSetStatus(portal, PORTAL_FAILED);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	CurrentResourceOwner = saveResourceOwner;                   /* restore */
     MemoryContextSwitchTo(saveContext);                         /* restore */
@@ -345,7 +335,7 @@ PortalCleanup(Portal portal)
  * so that it will be executed only once even if called more than once.
  * The *cleanupstate arg can be used to remember what has been done.
  */
-void
+static void
 PortalCleanupHelper(Portal portal, int *cleanupstate)
 {
     QueryDesc      *queryDesc = PortalGetQueryDesc(portal);

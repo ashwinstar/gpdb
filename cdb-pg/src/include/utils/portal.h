@@ -206,6 +206,7 @@ typedef struct PortalData
 } PortalData;
 
 extern PortalStatus PortalGetStatus(PortalData *p);
+extern const char *PortalGetStatusString(PortalData *p);
 extern void PortalSetStatus(PortalData *p, PortalStatus s);
 
 /*
