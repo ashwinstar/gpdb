@@ -53,6 +53,8 @@ extern int min_detailed_query_time;
 extern apr_uint64_t gpmmon_tail_buffer_max(void);
 extern apr_status_t gpmmon_harvest_status(void);
 
+static apr_uint32_t is_qd_be_running(qdnode_t* qdnode);
+
 static apr_status_t agg_put_metrics(agg_t* agg, const gpmon_metrics_t* met)
 {
     gpmon_metrics_t* rec;
@@ -230,7 +232,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 
 	/* skip all entries that weren't updated recently and aren't waiting in a queue */
 	if (dp->last_updated_generation < newagg->generation - 1
-            && dp->qlog.status != GPMON_QLOG_STATUS_SUBMIT) {
+            && dp->qlog.status != GPMON_QLOG_STATUS_SUBMIT
+            && (!is_qd_be_running(dp) || dp->qlog.status == GPMON_QLOG_STATUS_DONE)) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
 		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
@@ -519,10 +522,6 @@ apr_status_t agg_dump(agg_t* agg)
 	*/
 
         /* write to _query_now.dat */
-/*
-        if (qdnode->qlog.status != GPMON_QLOG_STATUS_DONE       
-            && qdnode->qlog.status != GPMON_QLOG_STATUS_ERROR)
-*/
         if (qdnode->qlog.status != GPMON_QLOG_STATUS_DONE && qdnode->qlog.status != GPMON_QLOG_STATUS_ERROR)
         {
             write_qlog(fp_queries_now, qdnode, nowstr, 0);
@@ -891,6 +890,24 @@ static double get_cpu_skew(qdnode_t* qdnode)
     TR2(("(SKEW) CPU Skew: %f\n", cpu_avg ? var/(double)cpu_avg : 0.0f));
 
     return (cpu_avg ? (var/(double)cpu_avg) * 100.0f : 0.0f);
+}
+
+static apr_uint32_t is_qd_be_running(qdnode_t* qdnode)
+{
+    apr_uint32_t running = 0;
+    qenode_t* pqe = NULL;
+
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+    {
+        /* find qd be process in list */
+        if (pqe->qexec.key.segid == -1 && pqe->qexec.pnid == -1)
+        {
+            running = kill(pqe->qexec.key.pid, 0) != -1;
+            break;
+        }
+    }
+
+    return running;
 }
 
 static double get_row_skew(qdnode_t* qdnode)
