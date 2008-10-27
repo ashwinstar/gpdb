@@ -308,7 +308,6 @@ PortalCleanup(Portal portal)
 	{
 		/* My helper does all the work. */
 		PortalCleanupHelper(portal, &cleanupstate);
-		done = true;
 	}
 
 	/* Log and dismiss an error, then loop to do next step of cleanup. */
