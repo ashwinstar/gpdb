@@ -316,7 +316,7 @@ static void delete_old_files(bloom_t* bloom);
 
 static apr_uint32_t write_system(agg_t* agg, const char* nowstr, apr_uint32_t write_tail_files);
 static apr_uint32_t write_dbmetrics(dbmetrics_t* dbmetrics, char* nowstr, apr_uint32_t write_tail_files);
-static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr);
+static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, apr_uint32_t done);
 static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr);
 
 static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const char* nowstr)
@@ -519,9 +519,18 @@ apr_status_t agg_dump(agg_t* agg)
 	*/
 
         /* write to _query_now.dat */
+/*
         if (qdnode->qlog.status != GPMON_QLOG_STATUS_DONE       
             && qdnode->qlog.status != GPMON_QLOG_STATUS_ERROR)
-            write_qlog(fp_queries_now, qdnode, nowstr);
+*/
+        if (qdnode->qlog.status != GPMON_QLOG_STATUS_DONE && qdnode->qlog.status != GPMON_QLOG_STATUS_ERROR)
+        {
+            write_qlog(fp_queries_now, qdnode, nowstr, 0);
+        }
+        else if (qdnode->qlog.tfin - qdnode->qlog.tstart >= min_query_time)
+        {
+            write_qlog(fp_queries_now, qdnode, nowstr, 1);
+        }
 
         /* dump query iterator data to iterators_tail */
         for (ep = qdnode->qenode_list; ep; ep = ep->next) {
@@ -977,7 +986,7 @@ static double get_row_skew(qdnode_t* qdnode)
 }
 
 
-static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done)
+static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, apr_uint32_t done)
 {
     char tmstr[24];
     char* p = line;
@@ -1009,8 +1018,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done
         
     sprintf(p += strlen(p), "|%s", 
             gpmon_qlog_status_string(qdnode->qlog.status));
-    if (done)
-        rowsout = get_rowsout(qdnode);
+    rowsout = get_rowsout(qdnode);
     sprintf(p += strlen(p), "|%" FMT64, rowsout);
     cpu_elapsed = get_total_cpu_elapsed(qdnode);
     if (!done)
@@ -1027,10 +1035,10 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, int done
 }
 
 
-static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr)
+static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, apr_uint32_t done)
 {
     char line[1024];
-    char* p = fmt_qlog(line, qdnode, nowstr, 0);
+    char* p = fmt_qlog(line, qdnode, nowstr, done);
     /* Query text "joined" by python script */
     fprintf(fp, "%s||\n", p);
     if (p)
