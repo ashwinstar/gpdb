@@ -113,6 +113,7 @@ def parseCommandLine():
     for (switch, val) in options:
         if (switch == '-?'):          usage(0)
         elif (switch == '-v'):        print_version()
+        elif (switch == '--version'): print_version()
         elif (switch == '-d'):        opt[switch] = val
         elif (switch == '-B'):        opt[switch] = int(val)
         elif (switch == '-z'):        opt[switch] = val

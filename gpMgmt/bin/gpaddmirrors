@@ -95,6 +95,7 @@ def parseCommandLine():
     for (switch, val) in options:
         if (switch == '-?'):          usage(0)
         elif (switch == '-v'):        print_version()
+        elif (switch == '--version'): print_version()
         elif (switch == '-q'):        opt[switch] = True
         elif (switch == '-m'):        opt[switch] = val
         elif (switch == '-B'):        opt[switch] = int(val)
