@@ -26,7 +26,7 @@ Please upgrade python installed on this machine.''' % progname)
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import gplib, getopt, atexit, signal, pexpect
+    import gplib, getopt, atexit, signal, pexpect, time
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -130,6 +130,12 @@ def interactive():
 	except pexpect.EOF:
 	    print '\n[Unexpected EOF from some hosts...]'
 	    pass
+	except gplib.Session.SessionCmdExit:
+		print ''
+		break
+	except gplib.Session.SessionError, e:
+		print 'Error: %s' % e
+		pass
 	except KeyboardInterrupt:
 	    print '\n[Interrupt...]'
 	    pass
@@ -156,13 +162,16 @@ try:
 
     #If a single command was passed to us, implement a single command session
     if GV.argcmd:
-	GV.session = gplib.Session()
-	GV.session.verbose=GV.opt['-v']
-	GV.session.login(GV.opt['-h'], GV.USER)
-	output=GV.session.executeCommand(GV.argcmd)
-	GV.session.writeCommandOutput(output)
-
-	if GV.session.verbose: print '[INFO] completed successfully'
+    	try:
+		GV.session = gplib.Session()
+		GV.session.verbose=GV.opt['-v']
+		GV.session.login(GV.opt['-h'], GV.USER)
+		output=GV.session.executeCommand(GV.argcmd)
+		GV.session.writeCommandOutput(output)
+		if GV.session.verbose: print '[INFO] completed successfully'
+	except gplib.Session.SessionError, e:
+		print 'Error: %s' % e
+		pass
 
     else: #Otherwise, implement an interactive session
 	interactive()

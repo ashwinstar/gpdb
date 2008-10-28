@@ -3,15 +3,15 @@ import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import cmd, signal, time, atexit, threading, subprocess
+    import cmd, signal, atexit, threading
     import pxssh, pexpect
 except ImportError, e:
-    sys.exit('Error: unable to import module: ' + str(e))
+    raise Session.SessionError('Error: unable to import module: ' + str(e))
 
 progname = os.path.split(sys.argv[0])[-1]
 
 if sys.version_info < (2, 5, 0):
-    sys.exit(
+    raise Session.SessionError(
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
@@ -171,11 +171,20 @@ class HostList():
 class Session(cmd.Cmd):
     '''Implements a list of open ssh sessions ready to execute commands'''
     verbose=False
-    def __init__(self):
+    hostList=[]
+    userName=None
+    class SessionError(StandardError): pass
+    class SessionCmdExit(StandardError): pass
+
+    def __init__(self, hostList=None, userName=None):
 	cmd.Cmd.__init__(self)
 	self.pxssh = []
 	self.prompt = '=> '
 	self.peerStringFormatRaw = None
+        if hostList:
+            for host in hostList:
+                self.hostList.append(host)
+        if userName: self.userName=userName
 
     def peerStringFormat(self):
 	if self.peerStringFormatRaw: return self.peerStringFormatRaw
@@ -185,13 +194,27 @@ class Session(cmd.Cmd):
 	self.peerStringFormatRaw = "[%%%ds]" % cnt
 	return self.peerStringFormatRaw
 
-    def login(self, hostList, username):
+    def login(self, hostList=None, userName=None):
 	'''This is the normal entry point used to add host names to the object and log in to each of them'''
 	if self.verbose: print '\n[Reset ...]'
+        if not (self.hostList or hostList):
+            raise self.SessionError('No host list available to Login method')
+        if not (self.userName or userName):
+            raise self.SessionError('No user name available to Login method')
+        
+        #Cleanup    
 	self.clean()
+    
+        if hostList: #We have a new hostlist to use, initialize it
+            self.hostList=[]
+            for host in hostList:
+                self.hostList.append(host)
+        if userName: self.userName=userName  #We have a new userName to use
+            
 	for host in hostList:
+            self.hostList.append(host)
 	    p = pxssh.pxssh()
-	    p.loginAsync(host, username)
+	    p.loginAsync(host, self.userName)
 	    p.x_peer = host
 	    p.x_pid = p.pid
 	    self.pxssh.append(p)
@@ -203,7 +226,7 @@ class Session(cmd.Cmd):
 		print
 		print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
 		print
-		sys.exit(1)
+		raise self.SessionError('Error logging into host %s' % p.x_peer)
 
     def close(self):
 	self.clean()
@@ -219,7 +242,7 @@ class Session(cmd.Cmd):
 	'''Escape occurrences of \ and $ as needed and package the line as an "eval" shell command'''
 	line = line.strip()
 	if line == 'EOF' or line == 'exit' or line == 'quit':
-	    sys.exit(0)
+	    raise self.SessionCmdExit()
 	line = line.split('\\')
 	line = '\\\\'.join(line)
 	line = line.split('"')
