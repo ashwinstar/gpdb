@@ -439,6 +439,8 @@ static void gpmmon_main(void)
     setenv("EVENT_NOKQUEUE", "1", 1);
     setenv("EVENT_NOEVPORT", "1", 1);
     setenv("EVENT_SHOW_METHOD", "1",1);
+    /* MPP-3974.  Hawks systems don't like devpoll */
+    setenv("EVENT_NODEVPOLL", "1", 1);
 
     if (0 != (e = apr_pool_create(&ax.pool, 0))) {
 	gpmon_fatalx(FLINE, e, "apr_pool_create failed");
