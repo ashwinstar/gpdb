@@ -1,6 +1,6 @@
-$def with (stime, etime, tkeys, ckeys, tab)
+$def with (stime, etime, interval, tkeys, ckeys, tab)
 <?xml version="1.0"?>
-<database start="$stime" end="$etime">
+<database start="$stime" end="$etime" interval="$interval">
 $for c in ckeys:
     <$c> \
     $for t in tkeys:

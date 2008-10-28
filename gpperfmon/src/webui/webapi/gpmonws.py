@@ -12,6 +12,8 @@ if not datadir:
 if not os.path.isdir(datadir):
     sys.exit('MASTER_DATA_DIRECTORY "%s" is not valid' % datadir)
 
+configpath = datadir + '/gpperfmon/conf'
+
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 sys.path.append(os.path.join(gphome, 'bin', 'lib'))
 import pg8000
@@ -20,21 +22,24 @@ from greenplum import db
 from greenplum import error
 from greenplum import interval
 
-web.webapi.internalerror = web.debugerror
 web.config.session_parameters.timeout = 1800
+MAX_AGGREGATED_SAMPLES = 2000
+MAX_NONAGGREGATED_SAMPLES = 16
+MAX_QUERIES_PER_SEARCH = 250
+
 
 urls = ('/', 'index',
-        '/apis', 'apis',
+        '/api', 'api',
         '/logon', 'logon',
         '/logoff', 'logoff',
         '/config', 'config', 
         '/hosts', 'hosts',
         '/database', 'database',
         '/system', 'system',
-        '/query', 'query',
+        '/queries', 'queries',
         '/querydetails', 'querydetails',
-        '/queryplan', 'queryplan',
-        '/iterator', 'iterator'
+        '/queryplan', 'queryplan' #,
+#        '/iterator', 'iterator'  # Needs overhaul -- not functional
 )
 
 
@@ -43,10 +48,18 @@ session = web.session.Session(app,
                               web.session.DiskStore(tempfile.mkdtemp()), 
                               initializer={'user': '', 'role': {}, 
                                            'loggedin': 0})
+
 render = web.template.render('./templates/', cache=False)
 
-# global static variables
-xml = '<?xml version="1.0"?>'
+# Flex doesn't expose the body of non-200 errors so returning 200 with
+# structured error in contents
+def page_not_found():
+    web.ctx.headers = [('Content-Type', 'text/xml')]
+    web.ctx.status = '200 OK';
+    return mkerr(error.BADREQ, 'Invalid command')
+app.notfound = page_not_found
+app.internalerror = web.debugerror
+
 
 def authrole(username, password):
     (valid, issuper) = db.get_role(username, password)
@@ -72,51 +85,65 @@ def timenow():
 
 class index:
     def GET(self):
-        web.header('Content-Type', 'text/xml')
-        i = web.input(host='localhost', port='8080')
-        return render.index(i.host, i.port)
+        web.header('Content-Type', 'text/html')
+        host_and_port = web.ctx.host.split(':',1)
+        return render.index(host_and_port[0], host_and_port[1])
 
-class apis:
+class api:
     def GET(self):
         web.header('Content-Type', 'text/xml')
         tab = []
         for i in range(len(urls)/2-1):
             j = (i+1) * 2 + 1
             tab.append(urls[j])
-        return render.apis(tab)
+        return render.api(tab)
 
 
 class logon:
+    # We don't want username/password details saved in the web logs,
+    # so do the logon via POST. We've added a simple form for GET that
+    # allows testing the logon via a web browser.
     def GET(self):
+        web.header('Content-Type', 'text/html')
+        return render.logon_form();
+
+    def POST(self):
+        web.header('Content-Type', 'text/xml')
         i = web.input()
+        session.user = ''
+        session.role = {}
+        session.loggedin = 0
         username = ''
         password = ''
         if i.has_key('username'):
             username = i['username']
         else:
-            return web.webapi.accessdenied("%s\n<logon>missing username</logon>" % xml)
+            return render.logon_failure()
         if i.has_key('password'):
             password = i['password']
         else:
-            return web.webapi.accessdenied("%s\n<logon>missing password</logon>" % xml)
+            return render.logon_failure()
 
         try:
             sanitize = re.compile('^\w+$')
-            sys.stderr.write("\nno output\n")
             s = sanitize.search(username)
             if s != None:
                 # valid string
                 username = s.group()
             else:
                 # string contains invalid characters
-                return mkerr(error.BADREQ, 'username: bad input')
+                return render.logon_failure()
         except:
-            return mkerr(error.BADREQ, 'invalid parameter(s)')
+           return render.logon_failure()
 
         # authenticate user
-        authrole(username, password)
+        try:
+            authrole(username, password)
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
+
         if not session.loggedin:
-            return web.webapi.accessdenied("%s\n<logon>access denied</logon>" % xml)
+            return render.logon_failure()
         
         role = ''
         if session.role['superuser']:
@@ -146,13 +173,7 @@ class logoff:
         return logoffdata
 
 class config:
-    stime = None
-    filename = "%s/gpperfmon.conf" % db.path
-    # configuration section names
-    gpmmon = "GPMMON"
-    ws = "WS"
-    system = "SYSTEM METRICS"
-    query = "QUERY METRICS"
+    filename = "%s/gpperfmon.conf" % configpath
 
     def GET(self):
         # DEBUGGING 
@@ -162,87 +183,15 @@ class config:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<config>access denied</config>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
-        if config.stime == None:
-            # retrieve the first date that monitoring was turned on.
-            config.stime = db.start_date()
-
-        # declare configuration settings
-        quantum = 0
-        s_load2 = 0
-        s_cpu = 0
-        s_mem = 0
-        s_disk = 0
-        s_net = 0
-        q_cpu_elapsed = 0
-        q_cpu_skew = 0
 
         # parse configuration file
         configuration = ConfigParser.SafeConfigParser()
         configuration.read(config.filename)
-        # read GPMMON settings
-        if configuration.has_section(config.gpmmon):
-            try:
-                quantum = configuration.get(config.gpmmon, "quantum")
-            except:
-                # seting not defined in configuration file
-                pass
-        # read WS settings
-        if configuration.has_section(config.ws):
-            try:
-                interval.max_data_points = configuration.getint(config.ws, "max_data_points")
-            except:
-                # seting not defined in configuration file
-                pass
-            try:
-                db.max_query_limit = configuration.getint(config.ws, "max_query_limit")
-            except:
-                # seting not defined in configuration file
-                pass
-        # read SYSTEM METRICS settings
-        if configuration.has_section(config.system):
-            try:
-                s_load2 = configuration.getint(config.system, "load2_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
-            try:
-                s_cpu = configuration.getint(config.system, "cpu_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
-            try:
-                s_mem = configuration.getint(config.system, "memory_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
-            try:
-                s_disk = configuration.getint(config.system, "disk_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
-            try:
-                s_net = configuration.getint(config.system, "network_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
-        # read QUERY METRICS settings
-        if configuration.has_section(config.query):
-            try:
-                q_cpu_elapsed = configuration.getint(config.query, "cpu_elapsed_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
-            try:
-                q_cpu_skew = configuration.getint(config.query, "skew_cpu_threshold")
-            except:
-                # seting not defined in configuration file
-                pass
 
-        return render.config(config.stime, quantum, interval.max_data_points, db.max_query_limit, \
-                        s_load2, s_cpu, s_mem, s_disk, s_net, q_cpu_elapsed, q_cpu_skew)
+        return render.config(configuration)
 
 
 
@@ -258,12 +207,15 @@ class hosts:
         # DEBUGGING 
 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<hosts>access denied</hosts>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
         if hosts.nodes == None:
             # retrieve the list of nodes in the GP DB system
-            hosts.nodes = db.hosts()
+            try:
+                hosts.nodes = db.hosts()
+            except db.GPDBError, errorinfo:
+                return mkerr(error.DATA_ACCESS, errorinfo)
 
         # return start time
         return render.hosts(hosts.nodes)
@@ -278,76 +230,96 @@ class system:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<system>access denied</system>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='last', end='', host='', interval='minute')
+        i = web.input(start='', end='', interval='', aggregated='')
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<system metrics>\n")
-        sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\thost = %s\n" % (i.start, i.end, i.interval, i.host))
+        sys.stderr.write("\tstart = %s\n\tend = %s\n\tinterval = %s\n\taggregated = %s\n" % (i.start, i.end, i.interval, i.aggregated))
         sys.stderr.write("</system metrics>\n\n\n")
         # DEBUGGING 
 
         res = None
+        aggregate = 0
+        endtime = i.end
 
-        if i.start == 'last':
-            res = db.system_now(i.host)
-        elif i.start != '':
-            if i.end == 'last':
-                # check() sanitizes input against SQL injection attacks 
-                (status, i.interval) = interval.check(i.start, timenow(), i.interval)
-                if status:
-                    res = db.system_upto_now(i.host, i.start, i.interval)
-                else:
-                    return mkerr(error.BADREQ, 'invalid parameter(s)')
+        try:
+            if (i.start == '') and (i.end == '') and (i.interval == '') and (i.aggregated == ''):
+                res = db.system_now()
+                i.interval = 'NOW'
+            elif i.start != '':
+                # Only allow superuser to look up historical information
+                if not session.role['superuser']:
+                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to see historical information')
 
-            elif i.end != '':
-                # check() sanitizes input against SQL injection attacks 
-                (status, i.interval) = interval.check(i.start, i.end, i.interval)
-                if status:
-                    res = db.system_history(i.host, i.start, i.end, i.interval)
+                if endtime == '':
+                    endtime = timenow()
+                if i.interval == '':
+                    i.interval = '1min'
+                if i.aggregated == '':
+                    i.aggregated = 'Y'
+
+                # validate the time strings, and check the number of samples
+                (status, interval_code, samples) = interval.calc_samples(i.start, endtime, i.interval)
+                if not status:
+                    return mkerr(error.BADREQ, 'Invalid date parameters')
+
+                if (i.aggregated.upper() == 'Y'):
+                    aggregate = 1;
+                    if (samples > MAX_AGGREGATED_SAMPLES):
+                        return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
+                elif (i.aggregated.upper() == 'N'):
+                    aggregate = 0;
+                    if (samples > MAX_NONAGGREGATED_SAMPLES):
+                        return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
                 else:
-                    return mkerr(error.BADREQ, 'invalid parameter(s)')
-        else:
-            return mkerr(error.BADREQ, 'missing parameter: "end date"')
+                    return mkerr(error.BADREQ, 'Invalid parameters to system metrics request')
+
+                res = db.system_history(i.start, i.end, interval_code, aggregate)
+
+            else:
+                return mkerr(error.BADREQ, 'Invalid parameters to system metrics request')
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
 
         (tkeys, hkeys, ckeys, tab) = res
 
         # check if the result set is empty
-        stime = ''
-        etime = ''
         if ckeys:
-            if tkeys:
-                stime = tkeys[0]; etime = tkeys[-1]
+            stime = i.start; etime = i.end
+
+            if aggregate:
+                return render.system_aggregated(stime, etime, i.interval, tkeys, ckeys, tab)
             else:
-                stime = timenow(); etime = stime
+                return render.system_nonaggregated(stime, etime, i.interval, tkeys, hkeys, ckeys, tab)
+        else:
+            return render.system_noresult(stime, etime, i.interval)
 
-        return render.system(stime, etime, tkeys, hkeys, ckeys, tab)
-
-class query:
+class queries:
     def GET(self):
         # DEBUGGING 
-        sys.stderr.write("\nQUERY:\n")
+        sys.stderr.write("\nQUERIES:\n")
         sys.stderr.write("session: %s\n" % session.getid())
         sys.stderr.write("user: %s\n" % session.user)
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<query>access denied</query>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='last', end='', status='', textlength='', runtime='', username='', db='')
+        i = web.input(start='', end='', status='', textlength='', mintime='', username='', db='')
 
         try:
             if i.textlength != '':
                 i.textlength = int(i.textlength)
 
             # this value is in seconds
-            if i.runtime != '':
-                i.runtime = int(i.runtime)
+            if i.mintime != '':
+                i.mintime = int(i.mintime)
 
             sanitize = re.compile('^\w+$')
 
@@ -358,7 +330,14 @@ class query:
                     i.username = s.group()
                 else:
                     # string contains invalid characters
-                    return mkerr(error.BADREQ, 'username: bad input')
+                    return mkerr(error.BADREQ, 'Invalid username')
+                # If not superuser, return error if specified search for other user
+                if (not session.role['superuser']) and (i.username != session.user):
+                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to do search of other users')
+            elif not session.role['superuser']:
+                # If not superuser, only see my queries
+                i.username = session.user
+
             if i.db != '':
                 s = sanitize.search(i.db)
                 if s != None:
@@ -366,68 +345,61 @@ class query:
                     i.db = s.group()
                 else:
                     # string contains invalid characters
-                    return mkerr(error.BADREQ, 'database: bad input')
+                    return mkerr(error.BADREQ, 'Invalid database name')
         except:
-            return mkerr(error.BADREQ, 'invalid parameter(s)')
+            return mkerr(error.BADREQ, 'Invalid request parameter(s)')
 
         # sanitize status input
+        # status can be a '|' separated list of multiple values
         if i.status != '':
             valid_status = ['done', 'start', 'submit', 'abort']
-            if not i.status in valid_status:
-                message = "invalid parameter: status must be %s" % valid_status
-                return mkerr(error.BADREQ, message)
+            i.status = re.split('[\|]', i.status)
+            
+            for status in i.status:
+                if not status in valid_status:
+                    return mkerr(error.BADREQ, 'Invalid status value')
 
         # DEBUGGING 
         sys.stderr.write("\n<queries metrics>\n")
         sys.stderr.write("\tusername = %s\n" % (i.username))
         sys.stderr.write("\tstart = %s\n\tend = %s\n\tstatus = %s\n" % (i.start, i.end, i.status))
-        sys.stderr.write("\tdatabase = %s\n\ttextlength = %s\n\truntime = %s\n" % (i.db, i.textlength, i.runtime))
+        sys.stderr.write("\tdatabase = %s\n\ttextlength = %s\n\tmintime = %s\n" % (i.db, i.textlength, i.mintime))
         sys.stderr.write("</queries metrics>\n\n\n")
         # DEBUGGING 
 
-        # check permissions
-        if not session.role['superuser']:
-            i.username = sessions.user
-
         res = None
 
-        if i.start == 'last':
-            res = db.queries_now(i.status, i.username, i.db, i.textlength)
+        try:
+            if (i.start == '') and (i.end == ''):
+                res = db.queries_now(i.status, i.username, i.db, i.textlength)
 
-        elif i.end == 'last':
-            # check() sanitizes input against SQL injection attacks 
-            interval.check(i.start, timenow(), 'hour')
-            res = db.queries_upto_now(i.status, i.start, i.username, i.runtime, i.db, i.textlength)
+            elif i.start != '':
+                # check_valid() sanitizes input against SQL injection attacks 
+                try:
+                    interval.check_valid(i.start)
+                    if i.end != '':
+                        interval.check_valid(i.end)
+                except ValueError:
+                    return mkerr(error.BADREQ, 'Invalid date parameters')
 
-        elif i.end != '':
-            # check() sanitizes input against SQL injection attacks 
-            interval.check(i.start, i.end, 'hour')
-            res = db.queries_history(i.status, i.start, i.end, i.username, i.runtime, i.db, i.textlength)
+                res = db.queries_history(i.status, i.start, i.end, i.username, i.mintime, i.db, i.textlength, MAX_QUERIES_PER_SEARCH)
 
-        else:
-            return mkerr(error.BADREQ, 'missing parameter: "end date"')
-
-        (tkeys, ckeys, tab) = res
-
-        # check if the result set is empty
-        stime = ''
-        etime = ''
-        if ckeys:
-            if tkeys:
-                stime = tkeys[0]; etime = tkeys[-1]
             else:
-                stime = timenow(); etime = stime
+                return mkerr(error.BADREQ, 'Invalid parameters to query list request')
 
-        # DEBUGGING 
-        sys.stderr.write('RESULTS:\n=======\n\n')
-        for t in tkeys:
-            sys.stderr.write('\ntime: %s\n' % t)
-            sys.stderr.write('\t%s\n' % tab[t])
-        sys.stderr.write('start time: %s\n' % stime)
-        sys.stderr.write('end time: %s\n' % etime)
-        # DEBUGGING 
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
 
-        return render.query(stime, etime, tkeys, ckeys, tab)
+        (tkeys, ckeys, tab, row_count) = res
+
+        stime = i.start; etime = i.end
+
+        # Did we hit the maximum number of rows for a search?
+        hit_row_max = 'false'
+        if row_count >= MAX_QUERIES_PER_SEARCH:
+          hit_row_max = 'true'
+
+        return render.queries(stime, etime, tkeys, ckeys, tab, row_count, hit_row_max)
 
 class querydetails:
     def GET(self):
@@ -438,40 +410,47 @@ class querydetails:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<query>access denied</query>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(tmid='', ssid='', ccnt='')
+        i = web.input(id='', historic='')
 
-        if i.tmid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "tmid"')
-        if i.ssid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "ssid"')
-        if i.ccnt == '':
-            return mkerr(error.BADREQ, 'missing parameter: "ccnt"')
+        if i.id == '':
+            return mkerr(error.BADREQ, 'Must specify query ID parameter')
+
+        id_split = i.id.split('-')
+
+        if len(id_split) != 3:
+            return mkerr(error.BADREQ, 'Invalid query ID')
 
         # sanitize input against SQL injection attacks 
         try:
-            int(i.tmid)
-            int(i.ssid)
-            int(i.ccnt)
+            for item in id_split:
+                int(item)
         except:
-            return mkerr(error.BADREQ, 'invalid query ID')
+            return mkerr(error.BADREQ, 'Invalid query ID')
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<query details>\n")
-        sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.tmid, i.ssid, i.ccnt))
+        sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
         sys.stderr.write("</query details>\n\n\n")
         # DEBUGGING 
 
-        # check permissions
+        # Ensure that only superusers can find other's queries
+        username = ''
         if not session.role['superuser']:
-            i.username = sessions.user
+            username = session.user
+            
+        try:
+            if i.historic.upper() == 'Y':
+                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username)
+            else:
+                res = db.querydetails_now(id_split[0], id_split[1], id_split[2], username)
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
 
-        res = db.querydetails_history(i.tmid, i.ssid, i.ccnt)
-
-        (tkeys, ckeys, tab) = res
+        (tkeys, ckeys, tab, row_count) = res
 
         # DEBUGGING 
         sys.stderr.write('RESULTS:\n=======\n\n')
@@ -480,7 +459,7 @@ class querydetails:
             sys.stderr.write('\t%s\n' % tab[t])
         # DEBUGGING 
 
-        return render.querydetails(i.tmid, i.ssid, i.ccnt, tkeys, ckeys, tab)
+        return render.querydetails(tkeys, ckeys, tab, row_count)
 
 
 
@@ -493,34 +472,47 @@ class queryplan:
         sys.stderr.write("loggedin: %s\n\n" % str(session.loggedin))
         # DEBUGGING 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<queryplan>access denied</queryplan>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(tmid='', ssid='', ccnt='', segid='0')
+        i = web.input(id='', historic='')
 
-        if i.tmid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "tmid"')
-        if i.ssid == '':
-            return mkerr(error.BADREQ, 'missing parameter: "ssid"')
-        if i.ccnt == '':
-            return mkerr(error.BADREQ, 'missing parameter: "ccnt"')
+        if i.id == '':
+            return mkerr(error.BADREQ, 'Must specify query ID parameter')
 
-        # sanitize input against SQL injection attacks 
+        id_split = i.id.split('-')
+
+        if len(id_split) != 3:
+            return mkerr(error.BADREQ, 'Invalid query ID')
+
+        # sanitize input against SQL injection attacks
         try:
-            int(i.tmid)
-            int(i.ssid)
-            int(i.ccnt)
+            for item in id_split:
+                int(item)
         except:
-            return mkerr(error.BADREQ, 'invalid query ID')
+            return mkerr(error.BADREQ, 'Invalid query ID')
 
-        # DEBUGGING 
+        # DEBUGGING
         sys.stderr.write("\n\n\n<query plan>\n")
-        sys.stderr.write("\tsegid = %s\n\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (i.segid, i.tmid, i.ssid, i.ccnt))
+        sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
         sys.stderr.write("</query plan>\n\n\n")
-        # DEBUGGING 
+        # DEBUGGING
 
-        (tab, tree, root) = db.queryplan_history(i.tmid, i.ssid, i.ccnt, i.segid)
+        # Ensure that only superusers can find other's queries
+        username = ''
+        if not session.role['superuser']:
+            username = session.user
+
+        try:
+            if i.historic.upper() == 'Y':
+                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username)
+            else:
+                res = db.queryplan_now(id_split[0], id_split[1], id_split[2], username)
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
+
+        (ckeys, tab, tree, root) = res
 
         # DEBUGGING 
         sys.stderr.write('RESULTS:\n=======\n\n')
@@ -530,7 +522,7 @@ class queryplan:
             sys.stderr.write('\t%s => %s\n\n' % (tab[row]['pnid'], tab[row]['nid']))
         # DEBUGGING 
 
-        return render.queryplan(i.tmid, i.ssid, i.ccnt, tab, tree, root)
+        return render.queryplan(i.id, ckeys, tab, tree, root)
 
 
 class iterator:
@@ -543,7 +535,7 @@ class iterator:
         # DEBUGGING 
 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<iterator>access denied</iterato>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
 
@@ -573,7 +565,10 @@ class iterator:
         except:
             return mkerr(error.BADREQ, 'invalid query ID')
 
-        (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
+        try:
+            (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
 
         # DEBUGGING 
         sys.stderr.write('RESULTS:\n=======\n\n')
@@ -598,11 +593,11 @@ class database:
         # DEBUGGING 
 
         if not session.loggedin:
-            return web.webapi.accessdenied("%s<database>access denied</database>" % xml)
+            return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='last', end='', interval='minute')
+        i = web.input(start='', end='', interval='')
         
         # DEBUGGING 
         sys.stderr.write("\n\n<database>\n")
@@ -611,49 +606,47 @@ class database:
         # DEBUGGING 
 
         res = None
+        endtime = i.end
 
-        if i.start == 'last':
-            res = db.database_now()
+        try:
+            if (i.start == '') and (i.end == '') and (i.interval == ''):
+                res = db.database_now()
+                i.interval = 'NOW'
+            elif i.start != '':
+                # Only allow superuser to look up historical information
+                if not session.role['superuser']:
+                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to see historical information')
 
-        elif i.start != '':
-            if i.end == 'last':
-                # check() sanitizes input against SQL injection attacks 
-                (status, i.interval) = interval.check(i.start, timenow(), i.interval)
-                if status:
-                    res = db.database_upto_now(i.start, i.interval)
-                else:
-                    return mkerr(error.BADREQ, 'invalid parameter(s)')
-            elif i.end != '':
-                # check() sanitizes input against SQL injection attacks 
-                (status, i.interval) = interval.check(i.start, i.end, i.interval)
-                if status:
-                    res = db.database_history(i.start, i.end, i.interval)
-                else:
-                    return mkerr(error.BADREQ, 'invalid parameter(s)')
-        else:
-            return mkerr(error.BADREQ, 'missing parameter: "end date"')
+                if endtime == '':
+                    endtime = timenow()
+                if i.interval == '':
+                    i.interval = '1min'
+
+                # validate the time strings, and check the number of samples
+                (status, interval_code, samples) = interval.calc_samples(i.start, endtime, i.interval)
+                if not status:
+                    return mkerr(error.BADREQ, 'Invalid date parameters')
+
+                if (samples > MAX_AGGREGATED_SAMPLES):
+                    return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
+
+                res = db.database_history(i.start, i.end, interval_code)
+
+            else:
+                return mkerr(error.BADREQ, 'Invalid parameters to database metrics request')
+        except db.GPDBError, errorinfo:
+            return mkerr(error.DATA_ACCESS, errorinfo)
 
         (tkeys, ckeys, tab) = res
 
         # check if the result set is empty
-        stime = ''
-        etime = ''
         if ckeys:
-            if tkeys:
-                stime = tkeys[0]; etime = tkeys[-1]
-            else:
-                stime = timenow(); etime = stime
+            stime = i.start; etime = i.end
+            return render.database(stime, etime, i.interval, tkeys, ckeys, tab)
+        else:
+            return render.database_noresult(stime, etime, i.interval)
+           
 
-        # DEBUGGING 
-        sys.stderr.write('RESULTS:\n=======\n\n')
-        for t in tkeys:
-            sys.stderr.write('\ntime: %s\n' % t)
-            sys.stderr.write('\t%s\n' % tab[t])
-        sys.stderr.write('start time: %s\n' % stime)
-        sys.stderr.write('end time: %s\n' % etime)
-        # DEBUGGING 
-
-        return render.database(stime, etime, tkeys, ckeys, tab)
 
 
 

@@ -1,62 +1,44 @@
-import os, sys, datetime, time
-#import gpmonws
+import os, sys, datetime, time, math
 
-SECONDS_15=15
-SECONDS_PER_MINUTE=60
-SECONDS_PER_HOUR=3600
-SECONDS_PER_DAY=86400
-SECONDS_PER_MONTH=2592000
+granularity = ['1min', '5min', '1hr', '6hr', '1day', '1wk', '6mth']
+seconds_per_interval_array = [60, 300, 3600, 21600, 86400, 604800, 7776000]
 
-# default maximum data points
-max_data_points = 2000
+def check_valid(date):
+    # convert time into datetime 
+    (y, m, d, hr, min, sec) = time.strptime(date, '%Y-%m-%d %H:%M:%S')[:6]
+    result = datetime.datetime(y, m, d, hr, min, sec)
 
-granularity = ['second', 'minute', 'hour', 'day', 'month']
+    return result
 
-def check(start, end, interval):
+
+def calc_samples(start, end, interval):
     try:
-        # convert time into datetime 
-        (y, m, d, hr, min, sec) = time.strptime(start, '%Y-%m-%d %H:%M:%S')[:6]
-        start_date = datetime.datetime(y, m, d, hr, min, sec)
-        (y, m, d, hr, min, sec) = time.strptime(end, '%Y-%m-%d %H:%M:%S')[:6]
-        end_date = datetime.datetime(y, m, d, hr, min, sec)
+        start_date = check_valid(start)
+        end_date = check_valid(end)
     except ValueError:
-        return (False, None)
+        return (False, 0, 0)
 
     # convert to seconds
     start_seconds = time.mktime(start_date.timetuple())
     end_seconds = time.mktime(end_date.timetuple())
 
-    data_points = max_data_points + 1
+    # Figure out how many seconds in the specified interval
+    seconds_per_interval = 0;
+    interval_code = 0;
+    for index, item in enumerate(granularity):
+        if interval==item:
+            seconds_per_interval = seconds_per_interval_array[index]
+            interval_code = index
+    if seconds_per_interval == 0:
+      return (False, 0, 0)         
 
-    while data_points > max_data_points:
-        if interval == 'month':
-            data_points = int(((end_seconds - start_seconds) / SECONDS_PER_MONTH)+1)
-        elif interval == 'day':
-            data_points = int(((end_seconds - start_seconds) / SECONDS_PER_DAY)+1)
-        elif interval == 'hour':
-            data_points = int(((end_seconds - start_seconds) / SECONDS_PER_HOUR)+1)
-        elif interval == 'minute':
-            data_points = int(((end_seconds - start_seconds) / SECONDS_PER_MINUTE)+1)
-        elif interval == 'second':
-            data_points = int(((end_seconds - start_seconds) / SECONDS_15)+1)
-        else:
-            # unknown interval: default to smallest interval
-            sys.stderr.write('\nUnknown interval\n')
-            return (False, None)
+    duration = end_seconds-start_seconds;
+    samples = math.ceil(duration / seconds_per_interval);
 
-        if data_points > max_data_points:
-            if interval == 'month':
-                sys.stderr.write('\nInterval too large\n')
-            if interval == 'day':
-                interval = 'month'
-            if interval == 'hour':
-                interval = 'day'
-            if interval == 'minute':
-                interval = 'hour'
-            if interval == 'second':
-                interval = 'minute'
+    sys.stderr.write("Interval: seconds_per_interval = %s\n" % seconds_per_interval)
+    sys.stderr.write("          samples = %s\n\n" % samples)
 
-    return (True, interval)
+    return (True, interval_code, samples)
 
 if __name__ == '__main__':
     # example: checkInterval('2008-10-11 10:24:08', '2008-10-11 10:59:08', 'minute')

@@ -1,0 +1,12 @@
+$def with (stime, etime, tkeys, ckeys, tab, row_count, hit_row_max)
+<?xml version="1.0"?>
+<queries start="$stime" end="$etime" row_count="$row_count" hit_row_max="$hit_row_max">
+$for t in tkeys:
+    $ v = tab[t]
+    $if not v: v = {}
+    <query id='$t'> 
+    $for c in ckeys:
+        <$c>${v.get(c)}</$c>
+    </query>
+</queries>
+

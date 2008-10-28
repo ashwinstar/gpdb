@@ -11,74 +11,113 @@ pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
 path = os.environ.get('MASTER_DATA_DIRECTORY') + '/gpperfmon/data'
 
-max_query_limit = 250
-agg_func = 'avg'
+# Use this to throw exceptions related to unavailability of the DB
+class GPDBError(Exception):
+    def __init__(self, value):
+        self.value = value 
+    def __str__(self):
+        return repr(self.value)
 
-try:
-    conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
-except pg8000.errors.InterfaceError:
-    sys.stderr.write('GPDB connection failure: database unavailable\n\n')
-    sys.exit()
-except pg8000.errors.InternalError:
-    sys.stderr.write('GPDB connection failure: invalid user or password\n\n')
-    sys.exit()
-except:
-    sys.stderr.write('GPDB connection failure: %s\n\n' % sys.exc_info()[1])
-    conn = None
+def create_db_conn():
+  global conn
+  try:
+      conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase)
+  except pg8000.errors.InterfaceError:
+      sys.stderr.write('GPDB connection failure: database unavailable\n\n')
+      conn = None
+  except pg8000.errors.InternalError:
+      sys.stderr.write('GPDB connection failure: invalid user or password\n\n')
+      conn = None
+  except:
+      sys.stderr.write('GPDB connection failure: %s\n\n' % sys.exc_info()[1])
+      conn = None
+
+def raise_db_error(text):
+    sys.stderr.write(text+'\n\n')
+    raise GPDBError, text
+
+def validate_db_conn(): 
+  global conn
+  if conn == None:
+     sys.stderr.write('Lost database connection - attempting to re-establish\n\n')
+     create_db_conn()
+  if conn == None:
+     raise_db_error('Unable to connect to the database')
+
+
+# Connect to the database
+create_db_conn()
 
 def get_role(username, password):
+    validate_db_conn()
+
     res = (False, False)
     try:
-        auth_conn = pg8000.Connection(user=username, password=password, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
-
-        auth_conn.execute('select rolsuper from pg_roles where rolname = current_user')
-        for r in auth_conn.iterate_dict():
-            res = (True, r['rolsuper'])
-
+        # First make sure the login credentials are valid
+        auth_conn = pg8000.Connection(user=username, password=password, host=pghost, port=pgport, database=pgdatabase)
+        sys.stderr.write('Logon: validated that the login credentials are valid\n\n')
         auth_conn.close()
     except:
-        sys.stderr.write('Exception verifying user credentials with database\n\n')
+        sys.stderr.write('Logon: attempt to connect with user credentials failed\n\n')
+        return res
+
+    try:
+        # Then use our superuser connection to check the user's authorization level
+        check_auth = 'select rolsuper from pg_roles where rolname = \'%s\'' % username
+        conn.execute(check_auth)
+   
+        for r in conn.iterate_dict():
+            res = (True, r['rolsuper'])
+        sys.stderr.write('Logon: checked if the user is superuser or not\n\n')
+    except:
+        raise_db_error('Exception during query: %s ' % check_auth)
 
     return res
 
-def start_date():
-    # check  connection to database
-    if conn == None:
-        return None
-
-    try:
-        conn.execute('select min(ctime) from system_history')
-        for r in conn.iterate_dict():
-            return r['min']
-    except:
-        sys.stderr.write('Exception querying start date\n\n')
-
-    return '2008-01-01 00:00:00'
-
 def hosts():
-    # check  connection to database
-    if conn == None:
-        return None
+    validate_db_conn()
 
     rows = []
     try:
-        conn.execute('select distinct(hostname) from system_now')
+        query = 'select distinct(hostname) from system_now'
+        conn.execute(query)
         for r in conn.iterate_dict():
             rows.append(r['hostname'])
     except:
-        sys.stderr.write('Exception querying hostnames\n\n')
+        raise_db_error('Exception during query: %s' % query)
 
     return rows
 
+def _system_consolidate_aggregate(rows):
+    td = {}   #time dimension
+    tab = {}  #table where the key is composed of host and time
 
-def _system_consolidate(rows):
+    x = None
+    for r in rows:
+        t = r['sample_time']
+        td[t] = 1;
+        tab[t] = r
+        x = r
+
+    # retrieve the column names into ckeys
+    ckeys = None
+    if x:
+        #ckeys = filter(lambda i: i != 'sample_time', x.keys())
+        ckeys = x.keys();
+	ckeys.sort()
+
+    tkeys = td.keys(); tkeys.sort()
+    return (tkeys, None, ckeys, tab)
+
+
+def _system_consolidate_nonaggregate(rows):
     td = {}   #time dimension
     hd = {}   #host dimension
     tab = {}  #table where the key is composed of host and time
 
     x = None
     for r in rows:
-        (h, t) = (r['hostname'], r['ctime'])
+        (h, t) = (r['hostname'], r['sample_time'])
         td[t] = 1; hd[h] = 1
         tab[(h,t)] = r
         x = r
@@ -86,7 +125,8 @@ def _system_consolidate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        ckeys = filter(lambda i: i != 'hostname' and i != 'ctime', x.keys())
+        #ckeys = filter(lambda i: i != 'hostname' and i != 'sample_time', x.keys())
+        ckeys = filter(lambda i: i != 'hostname', x.keys())
 	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
@@ -97,33 +137,35 @@ def _system_consolidate(rows):
 def _queries_consolidate(rows):
     # verify the result set from the SQL query is not empty
     if not rows:
-        return ([], [], {})
+        return ([], [], {}, 0)
 
     td = {}   #time dimension
     tab = {}  #table where the key is composed of time
 
     x = None
+    row_count = 0
     for r in rows:
-        t = r['ctime']
+        t = '%s-%s-%s' % (r['tmid'], r['ssid'], r['ccnt'])
         td[t] = 1
         tab[t] = r
         x = r
+        row_count += 1
 
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        ckeys = filter(lambda i: i != 'ctime' and i != 'length', x.keys())
+        ckeys = filter(lambda i: i != 'query_hash' and i != 'length' and i != 'query_plan' and i != 'tmid' and i != 'ssid' and i != 'ccnt', x.keys())
 	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
-    return (tkeys, ckeys, tab)
+    return (tkeys, ckeys, tab, row_count)
 
 
 def _queryplan_consolidate(rows):
 
     # verify the result set from the SQL query is not empty
     if not rows:
-        return ({}, {}, None)
+        return ([], {}, {}, None)
 
     tree = {} # tree containing the query plan hierarchy
     tab = {} 
@@ -134,19 +176,25 @@ def _queryplan_consolidate(rows):
         (p, c) = (r['pnid'], r['nid'])
         # create a hash table indexed by parent and child node ID
         tab[c] = r
-
+        x = r
         # insert new child node into hash table
         if p in tree:
             tree[p].append(c)
         else:
             tree[p] = [c]
 
+    # retrieve the column names into ckeys
+    ckeys = None
+    if x:
+        ckeys = filter(lambda i: i != 'tmid' and i != 'ssid' and i != 'ccnt' and i != 'nid' and i != 'pnid', x.keys())
+	ckeys.sort()
+
     # determine the root of the tree
     nkeys = tree.keys()
     nkeys.sort()
     root = nkeys[0]
 
-    return (tab, tree, root)
+    return (ckeys, tab, tree, root)
 
 
 def _iterator_consolidate(rows):
@@ -181,7 +229,7 @@ def _database_consolidate(rows):
 
     x = None
     for r in rows:
-        t = r['ctime']
+        t = r['sample_time']
         td[t] = 1
         tab[t] = r
         x = r
@@ -189,7 +237,8 @@ def _database_consolidate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        ckeys = filter(lambda i: i != 'ctime', x.keys())
+        #ckeys = filter(lambda i: i != 'sample_time', x.keys())
+        ckeys = x.keys();
 	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
@@ -197,15 +246,15 @@ def _database_consolidate(rows):
 
 
 
-def system_now(host):
-    rows = rt_system(host)
-    return _system_consolidate(rows)
+def system_now():
+    rows = rt_system()
+    return _system_consolidate_nonaggregate(rows)
 
-def rt_system(host):
+def rt_system():
     filename = "%s/system_now.dat" % path
 
     # ordering is important to match the order in the file
-    cnames = [  'ctime', 'hostname', 'mem_total', 'mem_used',
+    cnames = [  'sample_time', 'hostname', 'mem_total', 'mem_used',
                 'mem_actual_used', 'mem_actual_free', 
                 'swap_total', 'swap_used', 
                 'swap_page_in', 'swap_page_out',
@@ -222,6 +271,7 @@ def rt_system(host):
         f = open(filename, 'r')
     except:
         sys.stderr.write("file not found: %s\n" % filename)
+        raise GPDBError, 'Real-time system_now file unavailable'
         return rows
 
     try:
@@ -230,10 +280,7 @@ def rt_system(host):
             entry = line.split('|')
             # positional matching. if cnames is modified, the index
             # might be affected.
-            if host != '' and entry[1] != host:
-                # weed out the entries that do not match the specific
-                # hostname
-                continue
+
             # convert date string into datetime object
             entry[0] = datetime.datetime.strptime(entry[0], "%Y-%m-%d %H:%M:%S")
             # append realtime data to the end of the array
@@ -249,70 +296,71 @@ def rt_system(host):
     return rows
 
 
-def system_sql(table, filter, interval):
+def system_sql(table, filter, interval_code, aggregate):
     columns = [ 'mem_total', 'mem_used', 'mem_actual_used', 'mem_actual_free',
                 'swap_total', 'swap_used', 'swap_page_in', 'swap_page_out',
                 'cpu_user', 'cpu_sys', 'cpu_idle', 'load0', 'load1', 'load2',
-                'quantum', 'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
+                'disk_ro_rate', 'disk_wo_rate', 'disk_rb_rate',
                 'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
                 'net_wb_rate']
 
-    query_fragment = "select date_trunc('%s', ctime) as ctime, hostname" % interval
-    for column in columns:
-        query_fragment += ", %s(%s) as %s" % (agg_func, column, column)
+    # Time aggregation expressions for each level of aggregration
+    #  1min, 5min, 1hr, 6hr, 1day, 1wk, 6mth
+    itvl_sql = ["date_trunc('minute', ctime)",   
+                "date_trunc('hour', ctime)+(((trunc(date_part('minute', ctime)/5)*5)::text||' minutes')::interval)",
+                "date_trunc('hour', ctime)",   
+                "date_trunc('day', ctime)+(((trunc(date_part('hour', ctime)/6)*6)::text||' hours')::interval)",
+                "date_trunc('day', ctime)",   
+                "date_trunc('week', ctime)",   
+                "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)"]
 
-    query_fragment += " from %s %s" % (table, filter)
-    query_fragment += " group by date_trunc('%s', ctime), hostname " % interval
+    if aggregate:
+        query_fragment = "select %s as sample_time" % itvl_sql[interval_code]
+        for column in columns:
+            query_fragment += ", avg(%s) as %s" % (column, column)
+
+        query_fragment += " from %s %s" % (table, filter)
+        query_fragment += " group by sample_time"
+
+    else:
+        query_fragment = "select %s as sample_time, hostname" % itvl_sql[interval_code]
+        for column in columns:
+            query_fragment += ", avg(%s) as %s" % (column, column)
+
+        query_fragment += " from %s %s" % (table, filter)
+        query_fragment += " group by hostname, sample_time"
+
     return query_fragment
 
 
+def system_history(stime, etime, interval_code, aggregate):
+    validate_db_conn()
 
-def system_upto_now(host, stime, interval):
-    filter = "where ctime >= '%s'" % stime
-    if host:
-        filter = filter + " and hostname='%s'" % host
+    if etime == '':
+        filter = "where ctime >= '%s'" % stime
+    else:
+        filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
 
-    query1 = system_sql('system_history', filter, interval)
-    query2 = system_sql('system_tail', filter, interval)
-    query = "%s\nunion all\n%s" % (query1, query2)
+    query = system_sql('system_history', filter, interval_code, aggregate)
 
-    rows = []
-    # query history information.
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
-
-    # query real-time information.
-    for r in rt_system(host):
-        rows.append(r)
-
-    return _system_consolidate(rows)
-
-
-def system_history(host, stime, etime, interval):
-    filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
-    if host:
-        filter = filter + " and hostname='%s'" % host
-
-    query1 = system_sql('system_history', filter, interval)
-    query2 = system_sql('system_tail', filter, interval)
-    query = "%s\nunion all\n%s" % (query1, query2)
+    sys.stderr.write("system_history query: %s\n" % query)
 
     rows = []
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
+        raise_db_error('Exception during query: %s' % query)
 
-    return _system_consolidate(rows)
+    if aggregate:
+        return _system_consolidate_aggregate(rows)
+    else:
+        return _system_consolidate_nonaggregate(rows)
 
 
 
 def queries_now(status, username, database, textlength):
-    rows = rt_queries(status, username, database, textlength)
+    rows = rt_queries(status, username, database, textlength, '', '', '')
     return _queries_consolidate(rows)
 
 def queryText(tmid, ssid, ccnt):
@@ -322,6 +370,7 @@ def queryText(tmid, ssid, ccnt):
         q = open(filename, 'r')
     except:
         sys.stderr.write("query file not found: %s\n" % filename)
+        raise GPDBError, 'Real-time query_text file unavailable'
         return ''
 
     try:
@@ -335,13 +384,13 @@ def queryText(tmid, ssid, ccnt):
 
     return qtext
 
-def rt_queries(status, username, database, textlength):
+def rt_queries(status, username, database, textlength, tmid, ssid, ccnt):
     filename = "%s/queries_now.dat" % path
 
     # ordering is important to match the order in the file
-    cnames = [  'ctime', 'tmid', 'ssid', 'ccnt',
-                'uname', 'db', 'cost', 'tsubmit', 
-                'tstart', 'tfin', 'status', 'rows_out', 
+    cnames = [  'sample_time', 'tmid', 'ssid', 'ccnt',
+                'username', 'db', 'cost', 'tsubmit', 
+                'tstart', 'tfinish', 'status', 'rows_out', 
                 'cpu_elapsed', 'cpu_currpct', 
                 'skew_cpu', 'skew_rows', 
                 'query_hash', 'query_text', 'query_plan' ]
@@ -352,7 +401,8 @@ def rt_queries(status, username, database, textlength):
         f = open(filename, 'r')
     except:
         sys.stderr.write("file not found: %s\n" % filename)
-        return rows
+        raise GPDBError, 'Real-time queries_now file unavailable'
+        return ''
 
     try:
         for line in f:
@@ -369,7 +419,14 @@ def rt_queries(status, username, database, textlength):
             if database != '' and database != entry[5]:
                 continue
             # skip rows that do have the status desired
-            if status != '' and status != entry[10]:
+            if status != '' and (entry[10] not in status):
+                continue
+            # check for tmid, ssid, ccnt
+            if tmid != '' and tmid != entry[1]:
+                continue
+            if ssid != '' and ssid != entry[2]:
+                continue
+            if ccnt != '' and ccnt != entry[3]:
                 continue
             # convert ctime date string into datetime object
             entry[0] = datetime.datetime.strptime(entry[0], "%Y-%m-%d %H:%M:%S")
@@ -391,8 +448,6 @@ def rt_queries(status, username, database, textlength):
                         # truncate the query text
                         if textlength > 3 and len(entry[i]) > textlength:
                             entry[i] = entry[i][:textlength-3] + '...'
-                        else:
-                            entry[i] = entry[i][:textlength]
                 columns[cnames[i]] = entry[i]
             rows.append(columns)
     finally:
@@ -402,38 +457,49 @@ def rt_queries(status, username, database, textlength):
 
 
 def queries_sql(textlength):
-    columns = [ 'ctime', 'tmid', 'ssid', 'ccnt',
-                'uname', 'db', 'cost', 'tsubmit', 
-                'tstart', 'tfin', 'status', 'rows_out', 
+    columns = [ 'ctime as sample_time', 'tmid', 'ssid', 'ccnt',
+                'username', 'db', 'cost', 'tsubmit', 
+                'tstart', 'tfinish', 'status', 'rows_out', 
                 'cpu_elapsed', 'cpu_currpct', 
                 'skew_cpu', 'skew_rows', 
                 'query_hash', 'query_plan' ]
 
-    query_fragment = "select length(query_text), substr(query_text, 0, %s) as query_text" % textlength
+    if textlength != '':
+        query_fragment = "select length(query_text), substr(query_text, 0, %s) as query_text" % textlength
+    else:
+        query_fragment = "select query_text"
+
     for column in columns:
         query_fragment += ", %s" % column
 
     return query_fragment
 
 
-def queries_upto_now(status, stime, username, runtime, database, textlength):
-    filter = "where tfin >= '%s'" % stime
-    if status != '':
-        filter = "%s and status='%s'" % (filter, status)
-    if username != '':
-        filter = "%s and uname='%s'" % (filter, username)
-    if database != '':
-        filter = "%s and db='%s'" % (filter, database)
-    if runtime != '':
-        filter = "%s and (tfin - tstart) <='%s'" % (filter, runtime)
+def queries_history(status, stime, etime, username, runtime, database, textlength, max_query_limit):
+    validate_db_conn()
 
-    if textlength != '':
-        columns = queries_sql(textlength)
+    if etime == '':
+        filter = "where '%s' <= tfinish" % stime
     else:
-        columns = 'select *'
+        filter = "where '%s' <= tfinish and tstart <= '%s'" % (stime, etime)
+
+    if status != '':
+        status_list = (', '.join("'" + i + "'" for i in status))
+        filter += " and status in (%s)" % status_list
+    if username != '':
+        filter += " and username='%s'" % username
+    if database != '':
+        filter += " and db='%s'" % database
+    if runtime != '':
+        filter += " and (tfinish - tstart) >='%s'" % runtime
+
+    columns = queries_sql(textlength)
+
     query1 = '%s from queries_history %s' % (columns, filter)
     query2 = '%s from queries_tail %s' % (columns, filter)
-    query = "%s\nunion all\n%s limit %s" % (query1, query2, max_query_limit)
+    query = "(%s) union all (%s) limit %s" % (query1, query2, max_query_limit)
+
+    sys.stderr.write("queries_history query: %s\n" % query)
 
     rows = []
     try:
@@ -443,66 +509,38 @@ def queries_upto_now(status, stime, username, runtime, database, textlength):
                 if r['length'] > textlength:
                     if textlength > 3:
                         r['query_text'] = r['query_text'][:textlength-3] + '...'
-                    else:
-                        r['query_text'] = r['query_text'][:textlength]
             rows.append(r)
     except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
-
-    # query real-time information.
-    for r in rt_queries(status, username, database, textlength):
-        rows.append(r)
+        raise_db_error('Exception during query: %s' % query)
 
     return _queries_consolidate(rows)
 
-def queries_history(status, stime, etime, username, runtime, database, textlength):
-    filter = "where '%s' <= tfin and tstart <= '%s'" % (stime, etime)
-    if status != '':
-        filter = "%s and status='%s'" % (filter, status)
-    if username != '':
-        filter = "%s and uname='%s'" % (filter, username)
-    if database != '':
-        filter = "%s and db='%s'" % (filter, database)
-    if runtime != '':
-        filter = "%s and (tfin - tstart) <='%s'" % (filter, runtime)
 
-    if textlength != '':
-        columns = queries_sql(textlength)
-    else:
-        columns = 'select *'
+def querydetails_now(tmid, ssid, ccnt, username):
+    rows = rt_queries('', username, '', '', tmid, ssid, ccnt)
+    return _queries_consolidate(rows)
+
+
+def querydetails_history(tmid, ssid, ccnt, username):
+    validate_db_conn()
+
+    columns = queries_sql('')
+
+    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    if username != '':
+        filter += " and username='%s'" % username
     query1 = '%s from queries_history %s' % (columns, filter)
     query2 = '%s from queries_tail %s' % (columns, filter)
-    query = "%s\nunion all\n%s limit %s" % (query1, query2, max_query_limit)
+    query = "(%s) union all (%s) limit 1" % (query1, query2)
 
-    rows = []
-    try:
-        conn.execute(query)
-        for r in conn.iterate_dict():
-            if textlength != '':
-                if r['length'] > textlength:
-                    if textlength > 3:
-                        r['query_text'] = r['query_text'][:textlength-3] + '...'
-                    else:
-                        r['query_text'] = r['query_text'][:textlength]
-            rows.append(r)
-    except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
-
-    return _queries_consolidate(rows)
-
-
-def querydetails_history(tmid, ssid, ccnt):
-    q_id = "tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-    query1 = 'select * from queries_history where %s' % q_id
-    query2 = 'select * from queries_tail where %s' % q_id
-    query = "%s\nunion all\n%s" % (query1, query2)
+    sys.stderr.write("querydetails_history query: %s\n" % query)
 
     rows = []
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
+        raise_db_error('Exception during query: %s' % query)
 
     return _queries_consolidate(rows)
 
@@ -544,76 +582,60 @@ def qp():
 
 
 
-def rt_queryplan(tmid, ssid, ccnt, segid=''):
-    filename = "%s/iterators_now.dat" % path
+def queryplan_now(tmid, ssid, ccnt, username):
+    validate_db_conn()
 
-    rows = []
-    try:
-        f = open(filename, 'r')
-    except:
-        sys.stderr.write("file not found: %s\n" % filename)
-        return rows
-
-    try:
-        for line in f:
-            # DEBUGGING 
-            print line
-            # DEBUGGING 
-
-            columns = {} # dict to contain the values of each column
-            entry = line.split('|')
-            # positional matching. if cnames is modified, the index
-            # might be affected.
-            if entry[1] != tmid:
-                sys.stderr.write("no tmid match: %s != %s\n\n" % (entry[1], str(tmid)))
-                continue
-            # positional matching. if cnames is modified, the index
-            # might be affected.
-            elif entry[2] != ssid:
-                sys.stderr.write("no ssid match: %s != %s\n\n" % (entry[2], str(ssid)))
-                continue
-            # positional matching. if cnames is modified, the index
-            # might be affected.
-            elif entry[3] != ccnt:
-                sys.stderr.write("no ccnt match: %s != %s\n\n" % (entry[3], str(ccnt)))
-                continue
-            # positional matching. if cnames is modified, the index
-            # might be affected.
-            elif segid != '' and entry[4] != segid:
-                sys.stderr.write("no segid match: %s != %s\n\n" % (entry[4], str(segid)))
-                continue
-            columns['nid'] = entry[6]
-            columns['pnid'] = entry[7]
-            columns['ntype'] = entry[9]
-            rows.append(columns)
-    finally:
-        f.close()
-
-    return rows
-
-
-def queryplan_history(tmid, ssid, ccnt, segid):
-    query_fragment = "select pnid, nid, ntype"
+    query_fragment = "select *"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-    if segid != '':
-        filter += " and segid='%s'" % segid
 
-    query1 = "%s from iterators_history %s" % (query_fragment, filter)
-    query2 = "%s from iterators_tail %s" % (query_fragment, filter)
-    query = "%s\nunion all\n%s order by pnid, nid" % (query1, query2)
+    # Reminder -- need to insert a filter on username here
+    #             for non-superuser queries
+    if username != '':
+        sys.stderr.write("WARNING: Currently ignoring username filter\n\n")
+
+    query1 = "%s from iterators_now_rollup %s" % (query_fragment, filter)
+    query = "%s order by pnid, nid" % query1
+
+    sys.stderr.write("queryplan_now query: %s\n" % query)
 
     rows = []
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
+        raise_db_error('Exception during query: %s' % query)
 
     sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
 
-    # query real-time information.
-    for r in rt_queryplan(tmid, ssid, ccnt, segid):
-        rows.append(r)
+    return _queryplan_consolidate(rows)
+
+
+
+def queryplan_history(tmid, ssid, ccnt, username):
+    validate_db_conn()
+
+    query_fragment = "select *"
+    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+
+    # Reminder -- need to insert a filter on username here
+    #             for non-superuser queries
+    if username != '':
+        sys.stderr.write("WARNING: Currently ignoring username filter\n\n")
+
+    query1 = "%s from iterators_history_rollup %s" % (query_fragment, filter)
+    query2 = "%s from iterators_tail_rollup %s" % (query_fragment, filter)
+    query = "(%s) union all (%s) order by pnid, nid" % (query1, query2)
+
+    sys.stderr.write("queryplan_now query: %s\n" % query)
+
+    rows = []
+    try:
+        conn.execute(query)
+        rows = [r for r in conn.iterate_dict()]
+    except:
+        raise_db_error('Exception during query: %s' % query)
+
+    sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
 
     return _queryplan_consolidate(rows)
 
@@ -650,7 +672,8 @@ def rt_queryiterators(tmid, ssid, ccnt, segid='', nid=''):
         f = open(filename, 'r')
     except:
         sys.stderr.write("file not found: %s\n" % filename)
-        return rows
+        raise GPDBError, 'Real-time iterators_now file unavailable'
+        return ''
 
     try:
         for line in f:
@@ -733,6 +756,8 @@ def iterator_sql():
 
 # returns iterator data across all segments.
 def queryiterator(tmid, ssid, ccnt, nid):
+    validate_db_conn()
+
     query_fragment = iterator_sql()
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s' and nid='%s'" % (tmid, ssid, ccnt, nid)
 
@@ -745,7 +770,7 @@ def queryiterator(tmid, ssid, ccnt, nid):
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
+        raise_db_error('Exception during query: %s' % query)
 
     sys.stderr.write("ITERATOR RESULT:\n%s\n\n\n" % rows)
 
@@ -766,7 +791,7 @@ def rt_database():
     filename = "%s/database_now.dat" % path
 
     # ordering is important to match the order in the file
-    cnames = [  'ctime', 'queries_total', 
+    cnames = [  'sample_time', 'queries_total', 
                 'queries_running', 'queries_queued']
 
     rows = []
@@ -775,7 +800,8 @@ def rt_database():
         f = open(filename, 'r')
     except:
         sys.stderr.write("file not found: %s\n" % filename)
-        return rows
+        raise GPDBError, 'Real-time database_now file unavailable'
+        return ''
 
     try:
         for line in f:
@@ -796,53 +822,49 @@ def rt_database():
     return rows
 
 
-def database_sql(table, filter, interval):
+def database_sql(table, filter, interval_code):
     columns = ['queries_total', 'queries_running', 'queries_queued']
 
-    query_fragment = "select date_trunc('%s', ctime) as ctime" % interval
+    # Time aggregation expressions for each level of aggregration
+    #  1min, 5min, 1hr, 6hr, 1day, 1wk, 6mth
+    itvl_sql = ["date_trunc('minute', ctime)",
+                "date_trunc('hour', ctime)+(((trunc(date_part('minute', ctime)/5)*5)::text||' minutes')::interval)",
+                "date_trunc('hour', ctime)",
+                "date_trunc('day', ctime)+(((trunc(date_part('hour', ctime)/6)*6)::text||' hours')::interval)",
+                "date_trunc('day', ctime)",
+                "date_trunc('week', ctime)",
+                "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)"]
+
+
+    query_fragment = "select %s as sample_time" % itvl_sql[interval_code]
     for column in columns:
-        query_fragment += ", %s(%s) as %s" % (agg_func, column, column)
+        query_fragment += ", avg(%s) as %s" % (column, column)
+        query_fragment += ", min(%s) as %s_min" % (column, column)
+        query_fragment += ", max(%s) as %s_max" % (column, column)
 
     query_fragment += " from %s %s" % (table, filter)
-    query_fragment += " group by date_trunc('%s', ctime) " % interval
+    query_fragment += " group by sample_time"
     return query_fragment
 
 
-def database_upto_now(stime, interval):
-    filter = "where ctime >= '%s'" % stime
+def database_history(stime, etime, interval_code):
+    validate_db_conn()
 
-    query1 = database_sql('database_history', filter, interval)
-    query2 = database_sql('database_tail', filter, interval)
-    query = "%s\nunion all\n%s" % (query1, query2)
+    if etime == '':
+        filter = "where ctime >= '%s'" % stime
+    else:
+        filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
 
-    rows = []
-    # query history information.
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
+    query = database_sql('database_history', filter, interval_code)
 
-    # query real-time information.
-    for r in rt_database():
-        rows.append(r)
-
-    return _database_consolidate(rows)
-
-
-def database_history(stime, etime, interval):
-    filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
-
-    query1 = database_sql('database_history', filter, interval)
-    query2 = database_sql('database_tail', filter, interval)
-    query = "%s\nunion all\n%s" % (query1, query2)
+    sys.stderr.write("database_history query: %s\n" % query)
 
     rows = []
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
-        sys.stderr.write('Exception querying database: %s\n\n' % query)
+        raise_db_error('Exception during query: %s' % query)
 
     return _database_consolidate(rows)
 
