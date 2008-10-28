@@ -26,9 +26,7 @@ Please upgrade python installed on this machine.''' % progname)
 
 sys.path.append(sys.path[0] + '/lib')
 try:
-    import gplib
-    import getopt, cmd, signal, time, atexit, threading, subprocess
-    import pxssh, pexpect
+    import gplib, getopt, atexit, signal, pexpect
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -82,190 +80,17 @@ def parseCommandLine():
 
     if (len(args) >= 1):
 	GV.argcmd = " ".join(args)
-
-
-###############################
-def strcmd(cmd):
-    return reduce(lambda x, y: x + ' ' + y, map(lambda x: x.find(' ') > 0 and "'" + x + "'" or x, cmd))
-
-#############
-def createOneTimeSession(command):
-    '''Runs the input command once using subprocesses, one per host in the global hostlist'''
-    session = []
-    
-    for peer in GV.opt['-h']:
-	c = ['ssh', '-o', 'BatchMode yes', 
-	     '-o', 'StrictHostKeyChecking no', 
-	     peer, command]
-	
-	if GV.opt['-v']: print '[INFO]', strcmd(c)
-	p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-	p.x_cmd = command
-	p.x_peer = peer
-	session.append(p)
-    
-    return session
-
-def waitOneTimeSession(session):
-    errmsg = None
-    permissionDenied = False
-    for p in session:
-	for out in p.stdout:
-	    if len(out) > 1: 
-		print '[%s] %s' % (p.x_peer, out[:-1])
-		if not permissionDenied:
-		    permissionDenied = (out.find('Permission denied') >= 0)
-	status = p.wait()
-	p.pid = 0
-	if status:
-	    errmsg = '[ERROR %s] Command failed. Exit status = %s' % (p.x_peer, status)
-	    print errmsg
-
-    if permissionDenied:
-	print
-	print 'hint: check if the host is alive'
-	print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
-	print
-    if errmsg: sys.exit(1)
-
-def killOneTimeSession(session):
-    if session:
-	for p in session:
-	    if p.pid > 0: os.kill(p.pid, signal.SIGTERM)
-
-def closePxsshOne(p):
-    p.close(force = True)
-
-def closePxsshList(list):
-    th = []
-    for p in list:
-	t = threading.Thread(target=closePxsshOne, args=(p,))
-	t.start()
-	th.append(t)
-    for t in th:
-	t.join()
-
-
-#############
-# Session is a command session, derived from a base class cmd.Cmd
-class Session(cmd.Cmd):
-    '''Implements a list of open ssh sessions ready to execute commands'''
-    def __init__(self):
-    	cmd.Cmd.__init__(self)
-    	self.pxssh = []
-    	self.prompt = '=> '
-    	self.peerStringFormatRaw = None
-
-    def peerStringFormat(self):
-    	if self.peerStringFormatRaw: return self.peerStringFormatRaw
-    	cnt = 0
-    	for p in self.pxssh:
-    	    if cnt < len(p.x_peer): cnt = len(p.x_peer)
-    	self.peerStringFormatRaw = "[%%%ds]" % cnt
-    	return self.peerStringFormatRaw
-	
-
-    def login(self, hostList):
-    	print '\n[Reset ...]'
-    	self.clean()
-    	for host in hostList:
-    	    p = pxssh.pxssh()
-    	    p.loginAsync(host, GV.USER)
-    	    p.x_peer = host
-    	    p.x_pid = p.pid
-    	    self.pxssh.append(p)
-
-    	for p in self.pxssh:
-    	    print '[INFO] login %s' % p.x_peer
-    	    if not p.loginWait():
-    		print '[ERROR] unable to login to %s' % p.x_peer
-    		print
-    		print 'hint: use gpssh-exkeys to setup public-key authentication between hosts'
-    		print
-    		sys.exit(1)
-
-
-    def clean(self):
-	closePxsshList(self.pxssh)
-	self.pxssh = []
-
-    def emptyline(self):
-    	pass
- 
-    def escapeline(self,line):
-	'''Escape occurrences of \ and $ as needed and package the line as an "eval" shell command'''
-
-	line = line.strip()
-	if line == 'EOF' or line == 'exit' or line == 'quit':
-	    sys.exit(0)
-	line = line.split('\\')
-	line = '\\\\'.join(line)
-	line = line.split('"')
-	line = '\\"'.join(line)
-	line = line.split('$')
-	line = '\\$'.join(line)
-	line = 'eval "' + line + '" < /dev/null'
-	
-	return line
-
-    def executeCommand(self,command):
-	commandoutput=[]
-
-	#Execute the command in all of the ssh sessions
-	for s in self.pxssh:
-	    s.sendline(command)
-	    s.flush()
-	    
-	#Wait for each command and retrieve the output
-	for s in self.pxssh:
-	    #Wait for each command to finish
-	    #!! TODO verify that this is a tight wait loop and find another way to do this
-	    while not s.prompt(120) and s.isalive() and not s.eof(): pass
-	    
-	for s in self.pxssh:
-	    #Split the output into an array of lines so that we can add text to the beginning of
-	    #    each line
-	    output = s.before.split('\n')
-	    output = output[1:-1]
-	    
-	    commandoutput.append(output)
-	    
-	return commandoutput.__iter__()
-
-# Interactive command line handler
-#    Override of base class, handles commands that aren't recognized as part of a predefined set
-#    The "line" argument is a command line to be executed on all available command sessions
-#    The output of the command execution is printed to the standard output, prepended with
-#	the hostname of each machine from which the output came
-    def default(self, command):
-	
-	line = self.escapeline(command)
-	
-    	if GV.opt['-e']: print command
-		
-	#Execute the command on our ssh sessions
-	commandoutput=self.executeCommand(command)
-
-	for s in self.pxssh:
-	    output = commandoutput.next()
-	    #Write the output
-    	    if len(output) == 0:
-    		print (self.peerStringFormat() % s.x_peer)
-    	    else:
-    		for line in output:
-    		    print (self.peerStringFormat() % s.x_peer), line
-    
-def cleanup():
+	   
+def sessionCleanup():
     while True:
 	try:
 	    if GV.session: 
-		print '\n[Cleanup...]'; 
-		GV.session.clean()
+		if GV.session.verbose: print '\n[Cleanup...]'; 
+		GV.session.close()
 	    GV.session = None
 	    break
 	except KeyboardInterrupt:
 	    pass
-
 
 sigint_time = 0
 def sigint_handle(signum, frame):
@@ -277,7 +102,6 @@ def sigint_handle(signum, frame):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     print '\n[Exiting...]'
     sys.exit(1)
-
 
 def interactive():
     try:
@@ -294,13 +118,14 @@ def interactive():
     except Exception, e:
 	print "Note: command history unsupported on this machine ..."
 
-    atexit.register(cleanup)
+    atexit.register(sessionCleanup)
     signal.signal(signal.SIGINT, sigint_handle)
     while True:
 	try:
-	    cleanup()
-	    GV.session = Session()
-	    GV.session.login(GV.opt['-h'])
+	    if not GV.session:
+		GV.session = gplib.Session()
+		GV.session.verbose=GV.opt['-v']
+		GV.session.login(GV.opt['-h'], GV.USER)
 	    GV.session.cmdloop()
 	except pexpect.EOF:
 	    print '\n[Unexpected EOF from some hosts...]'
@@ -320,12 +145,6 @@ try:
     if GV.opt['-f']:
 	hostlist.parseFile(GV.opt['-f'])
 
-    #Check each host to verify it can be issued an "ssh" successfully
-    try:
-	hostlist.checkSSH()
-    except gplib.SSHError, e:
-	sys.exit('[ERROR] ' + str(e))
-
     #Filter out non-unique hostnames unless the -D option is provided
     if not GV.opt['-D']:
 	GV.opt['-h'] = hostlist.filterMultiHomedHosts()
@@ -337,14 +156,20 @@ try:
 
     #If a single command was passed to us, implement a single command session
     if GV.argcmd:
-	GV.session = createOneTimeSession(GV.argcmd)
-	waitOneTimeSession(GV.session)
-	if GV.opt['-v']: print '[INFO] completed successfully'
-	sys.exit(0)
+	GV.session = gplib.Session()
+	GV.session.verbose=GV.opt['-v']
+	GV.session.login(GV.opt['-h'], GV.USER)
+	output=GV.session.executeCommand(GV.argcmd)
+	GV.session.writeCommandOutput(output)
+
+	if GV.session.verbose: print '[INFO] completed successfully'
+
     else: #Otherwise, implement an interactive session
 	interactive()
+    
+    sessionCleanup()
+    sys.exit(0)
 
 except KeyboardInterrupt:
-    if GV.argcmd:
-	killOneTimeSession(session)
+    sessionCleanup()
     sys.exit('\nInterrupted...')
