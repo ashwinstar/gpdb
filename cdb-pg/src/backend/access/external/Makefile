@@ -9,14 +9,16 @@ subdir = src/backend/access/external
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = fileam.o
+OBJS = fileam.o url.o
 
 all: SUBSYS.o
 
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
 
-fileam.o: fileam.c url.i
+url.o: url.c
+
+fileam.o: fileam.c
 
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend

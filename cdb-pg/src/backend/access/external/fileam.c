@@ -58,29 +58,7 @@
 #include <arpa/inet.h>
 #include <fstream/gfile.h>
 
-
-typedef struct extvar_t extvar_t;
-struct extvar_t
-{
-	char* GP_MASTER_HOST;
-	char* GP_MASTER_PORT;
-	char* GP_DATABASE;
-	char* GP_USER;
-	char* GP_SEG_PG_CONF;   /*location of the segments pg_conf file*/
-	char* GP_SEG_DATADIR;   /*location of the segments datadirectory*/
-	char GP_DATE[9];		/* YYYYMMDD */
-	char GP_TIME[7];		/* HHMMSS */
-	char GP_XID[TMGIDSIZE];		/* global transaction id */
-	char GP_CID[10];		/* command id */
-	char GP_SN[10];		/* scan number */
-	char GP_SEGMENT_ID[6];  /*segments content id*/
-	char GP_SEG_PORT[10];
-	char GP_SESSION_ID[10];  /* session id */
- 	char GP_SEGMENT_COUNT[6]; /* total number of (primary) segs in the system */
- 	char GP_CSVOPT[13]; /* "m.x...q...h." former -q, -h and -x options for gpfdist.*/
-};
-
-#include "url.i"
+#include "cdb/url.h"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, 
