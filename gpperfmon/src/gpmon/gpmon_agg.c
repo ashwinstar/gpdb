@@ -233,7 +233,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	/* skip all entries that weren't updated recently and aren't waiting in a queue */
 	if (dp->last_updated_generation < newagg->generation - 1
             && dp->qlog.status != GPMON_QLOG_STATUS_SUBMIT
-            && (!is_qd_be_running(dp) || dp->qlog.status == GPMON_QLOG_STATUS_DONE)) {
+            && (!is_qd_be_running(dp) || (dp->qlog.status == GPMON_QLOG_STATUS_DONE || 
+                                          dp->qlog.status == GPMON_QLOG_STATUS_ERROR))) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
 		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
