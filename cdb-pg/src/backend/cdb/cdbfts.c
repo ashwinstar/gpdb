@@ -31,11 +31,12 @@
 
 #include "postmaster/service.h"
 
-bool	   *ftsEnabled;
-static LWLockId ftsControlLock;
-static int *ftsSyncCount;
-int		   *ftsAction;
-static bool *ftsReadOnlyFlag;
+volatile bool	*ftsEnabled;
+static LWLockId	ftsControlLock;
+
+static volatile int		*ftsSyncCount;
+volatile int			*ftsAction;
+static volatile bool	*ftsReadOnlyFlag;
 
 static struct FtsSegDBState *ftsSegDBTransientState;
 static int *ftsSegDBTransientCount;
@@ -67,7 +68,6 @@ FtsShmemSize(void)
 {
 	return MAXALIGN(sizeof(FtsControlBlock));
 }
-
 
 void
 FtsShmemInit(void)
@@ -322,12 +322,12 @@ QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax,
 
 static void
 QDMirroringUpdate(
-				QDMIRRORUpdateMask 		updateMask,
-				bool					validFlag,
-				QDMIRRORState 			state,
-				QDMIRRORDisabledReason	disabledReason,
-				struct timeval          *lastLogTimeVal,
-				char                    *errorMessage)
+	QDMIRRORUpdateMask 		updateMask,
+	bool					validFlag,
+	QDMIRRORState 			state,
+	QDMIRRORDisabledReason	disabledReason,
+	struct timeval          *lastLogTimeVal,
+	char                    *errorMessage)
 {
 #define UPDATE_VALIDFLAG_CMD "update gp_configuration set valid='%c' where dbid = CAST(%d AS SMALLINT)"
 #define UPDATE_MASTER_MIRRORING_CMD "update gp_master_mirroring set (summary_state, detail_state, log_time, error_message) = ('%s', %s, '%s'::timestamptz, %s);"
@@ -369,37 +369,37 @@ QDMirroringUpdate(
 		{
 			switch (state)
 			{
-			case QDMIRROR_STATE_NONE:
-				summaryStateString = "None";
-				break;
+				case QDMIRROR_STATE_NONE:
+					summaryStateString = "None";
+					break;
 
-			case QDMIRROR_STATE_NOTCONFIGURED:
-				summaryStateString = "Not Configured";
-				break;
+				case QDMIRROR_STATE_NOTCONFIGURED:
+					summaryStateString = "Not Configured";
+					break;
 
-			case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
-			case QDMIRROR_STATE_POSITIONINGTOEND:
-			case QDMIRROR_STATE_CATCHUPPENDING:
-			case QDMIRROR_STATE_CATCHINGUP:
-				summaryStateString = "Synchronizing";
-				break;
+				case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
+				case QDMIRROR_STATE_POSITIONINGTOEND:
+				case QDMIRROR_STATE_CATCHUPPENDING:
+				case QDMIRROR_STATE_CATCHINGUP:
+					summaryStateString = "Synchronizing";
+					break;
 
-			case QDMIRROR_STATE_SYNCHRONIZED:
-				summaryStateString = "Synchronized";
-				break;
+				case QDMIRROR_STATE_SYNCHRONIZED:
+					summaryStateString = "Synchronized";
+					break;
 
-			case QDMIRROR_STATE_DISABLED:
-				summaryStateString = "Not Synchronized";
-				break;
+				case QDMIRROR_STATE_DISABLED:
+					summaryStateString = "Not Synchronized";
+					break;
 
-			default:
-				summaryStateString = "Unknown";
-				break;
+				default:
+					summaryStateString = "Unknown";
+					break;
 			}
 
 			if (state == QDMIRROR_STATE_DISABLED)
 				detailStateString = 
-						QDMirroringDisabledReasonToString(disabledReason);
+					QDMirroringDisabledReasonToString(disabledReason);
 			else
 				detailStateString = NULL;
 
@@ -436,9 +436,9 @@ QDMirroringUpdate(
 					
 					errorMessageQuoted[0] = '\'';
 					escapedLen = PQescapeString(
-									&errorMessageQuoted[1], 
-									errorMessage, 
-									errorMessageLen);
+						&errorMessageQuoted[1], 
+						errorMessage, 
+						errorMessageLen);
 					errorMessageQuoted[escapedLen + 1] = '\'';
 					errorMessageQuoted[escapedLen + 2] = '\0';
 
@@ -619,52 +619,52 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 
 		switch (disabledReason)
 		{
-		case QDMIRROR_DISABLEDREASON_TOOFARBEHIND:
-		case QDMIRROR_DISABLEDREASON_CONNECTIONERROR:
-		case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
-		case QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED:
-		case QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR:
-			if (disabledReason == QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED)
-				ereport(NOTICE,
-						(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						 errmsg("Master mirroring not synchronized because the standby master was not started by the administrator")));
-			else
-				ereport(WARNING,
-						(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						 errmsg("Master mirroring synchronization lost"),
-						        errdetail(detail)));
-			GetLastLogTimeVal(&lastLogTimeVal);		// Get the log message time
-													// from the WARNING we just issued.
+			case QDMIRROR_DISABLEDREASON_TOOFARBEHIND:
+			case QDMIRROR_DISABLEDREASON_CONNECTIONERROR:
+			case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
+			case QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED:
+			case QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR:
+				if (disabledReason == QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED)
+					ereport(NOTICE,
+							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("Master mirroring not synchronized because the standby master was not started by the administrator")));
+				else
+					ereport(WARNING,
+							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("Master mirroring synchronization lost"),
+							 errdetail(detail)));
+				GetLastLogTimeVal(&lastLogTimeVal);		// Get the log message time
+				// from the WARNING we just issued.
 
-			QDMirroringNotSynchronizedWarningGiven = true;
+				QDMirroringNotSynchronizedWarningGiven = true;
 													
-			if (ftsQDMirrorInfo->valid)
-			{
+				if (ftsQDMirrorInfo->valid)
+				{
+					/*
+					 * Only do the update if we need to.
+					 */
+					ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_VALIDFLAG;
+				}
+				ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
+
+				ftsQDMirrorInfo->lastLogTimeVal = lastLogTimeVal;
+
 				/*
-				 * Only do the update if we need to.
+				 * Not specified or too long error message string will end up NULL
+				 * in gp_master_mirroring table.
 				 */
-				ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_VALIDFLAG;
-			}
-			ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
+				if (errorMessage == NULL || 
+					strlen(errorMessage) + 1 >= sizeof(ftsQDMirrorInfo->errorMessage))
+					strcpy(ftsQDMirrorInfo->errorMessage, "");
+				else
+					strcpy(ftsQDMirrorInfo->errorMessage, errorMessage);
+				break;
 
-			ftsQDMirrorInfo->lastLogTimeVal = lastLogTimeVal;
-
-			/*
-			 * Not specified or too long error message string will end up NULL
-			 * in gp_master_mirroring table.
-			 */
-			if (errorMessage == NULL || 
-				strlen(errorMessage) + 1 >= sizeof(ftsQDMirrorInfo->errorMessage))
-				strcpy(ftsQDMirrorInfo->errorMessage, "");
-			else
-				strcpy(ftsQDMirrorInfo->errorMessage, errorMessage);
-			break;
-
-		case QDMIRROR_DISABLEDREASON_SHUTDOWN:
-			break;
+			case QDMIRROR_DISABLEDREASON_SHUTDOWN:
+				break;
 			
-		default:
-			elog(ERROR, "Unknown disabled reason %d", (int)disabledReason);
+			default:
+				elog(ERROR, "Unknown disabled reason %d", (int)disabledReason);
 		}
 	}
 	
@@ -751,10 +751,10 @@ enableQDMirroring(char *message, char *detail)
 	ereport(NOTICE,
 			(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			 errmsg(message),
-			        errdetail(detail)));
+			 errdetail(detail)));
 	GetLastLogTimeVal(&ftsQDMirrorInfo->lastLogTimeVal);		
-											// Get the log message time
-											// from the NOTICE we just issued.
+	// Get the log message time
+	// from the NOTICE we just issued.
 	
 	if (!ftsQDMirrorInfo->valid)
 	{
@@ -845,32 +845,32 @@ QDMirroringStateToString(QDMIRRORState state)
 {
 	switch (state)
 	{
-	case QDMIRROR_STATE_NONE:
-		return "None";
+		case QDMIRROR_STATE_NONE:
+			return "None";
 
-	case QDMIRROR_STATE_NOTCONFIGURED:
-		return "Not Configured";
+		case QDMIRROR_STATE_NOTCONFIGURED:
+			return "Not Configured";
 
-	case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
-		return "Connecting to WAL Send server";
+		case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
+			return "Connecting to WAL Send server";
 
-	case QDMIRROR_STATE_POSITIONINGTOEND:
-		return "Positioning to End";
+		case QDMIRROR_STATE_POSITIONINGTOEND:
+			return "Positioning to End";
 
-	case QDMIRROR_STATE_CATCHUPPENDING:
-		return "Catchup Pending";
+		case QDMIRROR_STATE_CATCHUPPENDING:
+			return "Catchup Pending";
 
-	case QDMIRROR_STATE_CATCHINGUP:
-		return "Catching Up";
+		case QDMIRROR_STATE_CATCHINGUP:
+			return "Catching Up";
 
-	case QDMIRROR_STATE_SYNCHRONIZED:
-		return "Synchronized";
+		case QDMIRROR_STATE_SYNCHRONIZED:
+			return "Synchronized";
 
-	case QDMIRROR_STATE_DISABLED:
-		return "Disabled";
+		case QDMIRROR_STATE_DISABLED:
+			return "Disabled";
 
-	default:
-		return "unknown";
+		default:
+			return "unknown";
 	}
 }
 
@@ -894,29 +894,29 @@ QDMirroringDisabledReasonToString(QDMIRRORDisabledReason disabledReason)
 {
 	switch (disabledReason)
 	{
-	case QDMIRROR_DISABLEDREASON_NONE:
-		return "None";
+		case QDMIRROR_DISABLEDREASON_NONE:
+			return "None";
 
-	case QDMIRROR_DISABLEDREASON_CONNECTIONERROR:
-		return "Connection error";
+		case QDMIRROR_DISABLEDREASON_CONNECTIONERROR:
+			return "Connection error";
 
-	case QDMIRROR_DISABLEDREASON_TOOFARBEHIND:
-		return "Standby master too far behind";
+		case QDMIRROR_DISABLEDREASON_TOOFARBEHIND:
+			return "Standby master too far behind";
 
-	case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
-		return "WAL Send server error";
+		case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
+			return "WAL Send server error";
 
-	case QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR:
-		return "Unexpected error";
+		case QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR:
+			return "Unexpected error";
 
-	case QDMIRROR_DISABLEDREASON_SHUTDOWN:
-		return "Shutdown";
+		case QDMIRROR_DISABLEDREASON_SHUTDOWN:
+			return "Shutdown";
 
-	case QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED:
-		return "Standby master was not started by the administrator";
+		case QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED:
+			return "Standby master was not started by the administrator";
 
-	default:
-		return "unknown";
+		default:
+			return "unknown";
 	}
 }
 
@@ -1217,8 +1217,8 @@ markSegDBPersistentState(int dbid, bool state)
 	TupleDesc tupdesc;
 	char *tmp, cmd[200];
 	int contentid, hasmirror=0;
-	int partnerid = 0, partnervalid = 0, partnerdefinedprimary, 
-			partnerisprimary;
+	int partnerid = 0, partnervalid = 0;
+	int partnerdefinedprimary, partnerisprimary;
 
 	int			count;
 	PGresult   *rs;
@@ -1360,7 +1360,7 @@ markSegDBPersistentState(int dbid, bool state)
 	user = strdup(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
 	if(!user)
 		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("FTS: out of memory")));
+						errmsg("FTS: out of memory")));
 
 	SPI_finish();
 
@@ -1411,7 +1411,7 @@ markSegDBPersistentState(int dbid, bool state)
 		char	   *error_message = strdup(PQerrorMessage(entryConn));
 		if(!error_message)
 			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-					errmsg("FTS: out of memory")));
+							errmsg("FTS: out of memory")));
 
 		free(entryBuffer->data);
 		PQfinish(entryConn);
@@ -1523,23 +1523,20 @@ assign_gp_set_read_only(bool newval, bool doit, GucSource source __attribute__((
 
 	if (doit)
 	{
+		/* Transitioning to read-write from read-only ? */
+		if (!newval && *ftsReadOnlyFlag)
+		{
+			cdbtm_performDeferredRecovery();
+		}
+			
+		/*
+		 * Before we are allowed to update the readonly flag, we *must* make sure
+		 * that the DTM is happy.
+		 */
 		*ftsReadOnlyFlag = newval;
 
 		/* set current transaction read only */
 		XactReadOnly = newval;
-
-
-		/*
-		if (Gp_role == GP_ROLE_DISPATCH)
-		{
-			char cmdbuf[30];
-			strcpy( cmdbuf, "set gp_set_read_only=" );
-			strcat( cmdbuf, newval?"true":"false");
-
-			if ( !CdbDoCommandNoTxn(cmdbuf, false, NULL) )
-				elog(PANIC, "gp_set_read_only failed on QE");
-		}
-		*/
 	}
 
 	return true;
@@ -1626,9 +1623,7 @@ applyTransientState(CdbComponentDatabases *cdb_component_dbs)
 void
 FtsEvaluateTransientState(void)
 {
-	int			i,
-				j,
-				dbid;
+	int	i, j, dbid;
 	CdbComponentDatabases *cdb_component_dbs;
 	CdbComponentDatabaseInfo *segDbInfo;
 

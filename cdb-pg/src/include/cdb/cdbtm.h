@@ -166,6 +166,7 @@ typedef struct TmControlBlock
 	DistributedTransactionTimeStamp	distribTimeStamp;
 	DistributedTransactionId	seqno;
 	bool						DtmStarted;
+	bool						DtmDeferRecovery;
 	int							SegmentCount;
 	int							SegmentsStatesByteLen;
 	uint32						NextSnapshotId;
@@ -184,12 +185,10 @@ typedef struct TmControlBlock
 #define TMCONTROLBLOCK_BYTES(num_gxacts) \
             (SIZEOF_VARSTRUCT(num_gxacts, TmControlBlock, gxact_array))
 
-
-
 /* state variables for how much of the log file has been flushed */
-extern bool *shmDtmStarted;
-extern int *shmSegmentCount;
-extern int *shmSegmentsStatesByteLen;
+extern volatile bool *shmDtmStarted;
+extern volatile int *shmSegmentCount;
+extern volatile int *shmSegmentsStatesByteLen;
 
 extern char* DtxStateToString(DtxState state);
 extern char* DtxParticipationSummaryToString(DtxParticipationSummary summary);
@@ -270,5 +269,6 @@ extern void UtilityModeFindOrCreateDtmRedoFile(void);
 extern void UtilityModeCloseDtmRedoFile(void);
 extern void PleaseDebugMe(char *caller);
 
+extern void cdbtm_performDeferredRecovery(void);
 
 #endif   /* CDBTM_H */

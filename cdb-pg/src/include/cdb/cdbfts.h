@@ -110,8 +110,8 @@ typedef enum
 	FTS_SHUTDOWN				/* shutdown */
 }	FtsAction;
 
-extern bool *ftsEnabled;
-extern int *ftsAction;
+extern volatile bool *ftsEnabled;
+extern volatile int *ftsAction;
 
 #define isFTSEnabled() (ftsEnabled != NULL && *ftsEnabled)
 /* #define enableMirroring() (*ftsEnabled = (*ftsAction!=FTS_NONE)?true:false) */
