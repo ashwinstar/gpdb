@@ -647,7 +647,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			return NULL;
 		}
 	
-		file->u.curl.x_httpheader = 0;
+		file->u.curl.x_httpheader = NULL;
 		if (set_httpheader(file, "X-GP-MASTER_HOST", ev->GP_MASTER_HOST) ||
 			set_httpheader(file, "X-GP-MASTER_PORT", ev->GP_MASTER_PORT) ||
 			set_httpheader(file, "X-GP-CSVOPT", ev->GP_CSVOPT) ||
@@ -750,7 +750,10 @@ url_fclose(URL_FILE *file)
 
 		case CFTYPE_CURL:
 			if (file->u.curl.x_httpheader)
+			{
 				curl_slist_free_all(file->u.curl.x_httpheader);
+				file->u.curl.x_httpheader = NULL;
+			}
 
 			/* make sure the easy handle is not in the multi handle anymore */
 			if (file->u.curl.handle)
@@ -758,11 +761,15 @@ url_fclose(URL_FILE *file)
 				curl_multi_remove_handle(multi_handle, file->u.curl.handle);
 				/* cleanup */
 				curl_easy_cleanup(file->u.curl.handle);
+				file->u.curl.handle = NULL;
 			}
 
 			/* free any allocated buffer space */
 			if (file->u.curl.buf.ptr)
+			{
 				free(file->u.curl.buf.ptr);
+				file->u.curl.buf.ptr = NULL;
+			}
 			file->u.curl.gp_proto = 0;
 			file->u.curl.error = file->u.curl.eof = 0;
 			memset(&file->u.curl.buf, 0, sizeof(file->u.curl.buf));
