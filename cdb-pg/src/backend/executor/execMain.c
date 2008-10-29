@@ -760,18 +760,18 @@ ExecutorEnd(QueryDesc *queryDesc)
 	estate = queryDesc->estate;
 
 	Assert(estate != NULL);
-	
+
 	if (DEBUG1 >= log_min_messages)
-				{
-					char		msec_str[32];
-					switch (check_log_duration(msec_str, false))
-					{
-						case 1:
-						case 2:
-							ereport(LOG, (errmsg("duration to ExecutorEnd starting: %s ms", msec_str)));
-							break;
-					}
-				}
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG, (errmsg("duration to ExecutorEnd starting: %s ms", msec_str)));
+				break;
+		}
+	}
 
 	/*
 	 * Switch into per-query memory context to run ExecEndPlan
@@ -821,8 +821,7 @@ ExecutorEnd(QueryDesc *queryDesc)
      * Otherwise don't risk it... an error might have left some
      * structures in an inconsistent state.
      */
-    if (!estate->cancelUnfinished)  
-	    ExecEndPlan(queryDesc->planstate, estate);
+	ExecEndPlan(queryDesc->planstate, estate);
 
 	/*
 	 * Release any gangs we may have assigned.
@@ -853,24 +852,23 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 * Release EState and per-query memory context.  This should release
 	 * everything the executor has allocated.  
 	 */
-    if (!estate->cancelUnfinished)  
-    	FreeExecutorState(estate);
+	FreeExecutorState(estate);
 
 	/* Reset queryDesc fields that no longer point to anything */
 	queryDesc->tupDesc = NULL;
 	queryDesc->estate = NULL;
 	queryDesc->planstate = NULL;
 	if (DEBUG1 >= log_min_messages)
-					{
-						char		msec_str[32];
-						switch (check_log_duration(msec_str, false))
-						{
-							case 1:
-							case 2:
-								ereport(LOG, (errmsg("duration to ExecutorEnd end: %s ms", msec_str)));
-								break;
-						}
-					}
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG, (errmsg("duration to ExecutorEnd end: %s ms", msec_str)));
+				break;
+		}
+	}
 }
 
 /* ----------------------------------------------------------------

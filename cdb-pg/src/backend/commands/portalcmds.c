@@ -309,7 +309,6 @@ PortalCleanup(Portal portal)
 		/* My helper does all the work. */
 		PortalCleanupHelper(portal, &cleanupstate);
 	}
-
 	/* Log and dismiss an error, then loop to do next step of cleanup. */
 	PG_CATCH();
 	{
@@ -348,9 +347,11 @@ PortalCleanupHelper(Portal portal, int *cleanupstate)
     if (queryDesc &&
         queryDesc->estate)
     {
-        /* If an error occurred, stop any QEs that haven't already finished. */
-        if (PortalGetStatus(portal) == PORTAL_FAILED)
-            queryDesc->estate->cancelUnfinished = true;
+		/*
+		 * If we still have an estate -- then we need to cancel any
+		 * unfinished work.
+		 */
+		queryDesc->estate->cancelUnfinished = true;
 
         /* we do not need AfterTriggerEndQuery() here */
         ExecutorEnd(queryDesc);

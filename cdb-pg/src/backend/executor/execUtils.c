@@ -2019,14 +2019,14 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	}
 
 	/* Teardown the Sequence Server */
-	if(estate->es_seqserver_is_setup)
+	if (estate->es_seqserver_is_setup)
 	{
 		TeardownSequenceServer();
 		estate->es_seqserver_is_setup = false;
 	}
 
 	/* Teardown the Interconnect */
-	if(estate->es_interconnect_is_setup)
+	if (estate->es_interconnect_is_setup)
 	{
 		/* 
 		 * MPP-3413: If we got here during cancellation of a cursor,
@@ -2088,4 +2088,3 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		estate->es_interconnect_is_setup = false;
 	}
 }
-
