@@ -80,6 +80,7 @@ main(int argc, char *argv[])
 	bool		data_only = false;
 	bool		globals_only = false;
 	bool		schema_only = false;
+	static int  gp_migrator = 0;
 	PGconn	   *conn;
 	int			encoding;
 	const char *std_strings;
@@ -116,6 +117,7 @@ main(int argc, char *argv[])
 
 		/* START MPP ADDITION */
 		{"gp-syntax", no_argument, NULL, 1},
+		{"gp-migrator", no_argument, &gp_migrator, 1},
 		/* END MPP ADDITION */
 
 		{NULL, 0, NULL, 0}
@@ -314,6 +316,20 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+	if ( gp_migrator )
+	{
+		if ( !schema_only )
+		{
+			fprintf(stderr, _("%s: option \"--gp-migrator\" is valid only with \"schema only\" (-s)\n"),
+					progname);
+			exit(1);
+		}
+		else
+		{
+			appendPQExpBuffer(pgdumpopts, " --gp-migrator");
+		}
+	}
+
 	/*
 	 * First try to connect to database "postgres", and failing that
 	 * "template1".  "postgres" is the preferred choice for 8.1 and later
@@ -413,7 +429,9 @@ help(void)
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
 	/* START MPP ADDITION */
-	printf(_("  --gp-syntax             dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-syntax              dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-migrator            dump using internal gp_migrator mode;\n"
+			 "                           Valid only with --schema-only\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));

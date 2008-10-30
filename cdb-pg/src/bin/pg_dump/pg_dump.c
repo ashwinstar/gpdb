@@ -815,7 +815,9 @@ help(const char *progname)
 			 "                              use SESSION AUTHORIZATION commands instead of\n"
 			 "                              ALTER OWNER commands to set ownership\n"));
 	/* START MPP ADDITION */
-	printf(_("  --gp-syntax             dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-syntax                 dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-migrator               dump using internal gp_migrator mode;\n"
+			 "                              Valid only with --schema-only\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));
