@@ -257,12 +257,119 @@ create external web table _database_tail (
 ) execute 'cat gpperfmon/data/_database_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-
-
-
 create external web table master_data_dir (hostname text, dir text)
 execute E'python -c "import socket, os; print socket.gethostname() + \\"|\\" + os.getcwd()"' on master
 format 'csv' (delimiter '|');
+
+
+--  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--  Web API views
+--
+
+DROP AGGREGATE IF EXISTS iterators_array_accum(anyelement) CASCADE; 
+CREATE AGGREGATE iterators_array_accum(anyelement) (
+  SFUNC=array_append,
+  STYPE=anyarray,
+  INITCOND='{}'
+);
+
+DROP VIEW IF EXISTS iterators_history_rollup;
+CREATE VIEW iterators_history_rollup as select 
+       min(ctime) as sample_time, tmid, ssid, ccnt, nid, min(pnid) as pnid, 
+       min(ntype) as ntype, array_to_string(iterators_array_accum(distinct nstatus), ',') as nstatus, 
+       min(tstart) as tstart, avg(tduration) as tduration, 
+       avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax, 
+       avg(memsize) as memsize, avg(memresid) as memresid, 
+       avg(memshare) as memshare, sum(cpu_elapsed) as cpu_elapsed, 
+       avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase, 
+       sum(rows_out) as rows_out, sum(rows_out_est) as rows_out_est, 
+       case when avg(cpu_elapsed) <= 0.001 THEN 0 else 
+          (stddev(cpu_elapsed)/avg(cpu_elapsed))*100 end as skew_cpu,
+       case when avg(rows_out) <= 0.001 THEN 0 else 
+          (stddev(rows_out)/avg(rows_out))*100 end as skew_rows,
+       min(m0_name)||'/'||min(m0_unit)||'/'||avg(m0_val)||'/'||avg(m0_est) as m0,
+       min(m1_name)||'/'||min(m1_unit)||'/'||avg(m1_val)||'/'||avg(m1_est) as m1,
+       min(m2_name)||'/'||min(m2_unit)||'/'||avg(m2_val)||'/'||avg(m2_est) as m2,
+       min(m3_name)||'/'||min(m3_unit)||'/'||avg(m3_val)||'/'||avg(m3_est) as m3,
+       min(m4_name)||'/'||min(m4_unit)||'/'||avg(m4_val)||'/'||avg(m4_est) as m4,
+       min(m5_name)||'/'||min(m5_unit)||'/'||avg(m5_val)||'/'||avg(m5_est) as m5,
+       min(m6_name)||'/'||min(m6_unit)||'/'||avg(m6_val)||'/'||avg(m6_est) as m6,
+       min(m7_name)||'/'||min(m7_unit)||'/'||avg(m7_val)||'/'||avg(m7_est) as m7,
+       min(m8_name)||'/'||min(m8_unit)||'/'||avg(m8_val)||'/'||avg(m8_est) as m8,
+       min(m9_name)||'/'||min(m9_unit)||'/'||avg(m9_val)||'/'||avg(m9_est) as m9,
+       min(m10_name)||'/'||min(m10_unit)||'/'||avg(m10_val)||'/'||avg(m10_est) as m10,
+       min(m11_name)||'/'||min(m11_unit)||'/'||avg(m11_val)||'/'||avg(m11_est) as m11,
+       min(m12_name)||'/'||min(m12_unit)||'/'||avg(m12_val)||'/'||avg(m12_est) as m12,
+       min(m13_name)||'/'||min(m13_unit)||'/'||avg(m13_val)||'/'||avg(m13_est) as m13,
+       min(m14_name)||'/'||min(m14_unit)||'/'||avg(m14_val)||'/'||avg(m14_est) as m14,
+       min(m15_name)||'/'||min(m15_unit)||'/'||avg(m15_val)||'/'||avg(m15_est) as m15
+       from iterators_history group by tmid, ssid, ccnt, nid;
+
+DROP VIEW IF EXISTS iterators_tail_rollup;
+CREATE VIEW iterators_tail_rollup as select 
+       min(ctime) as sample_time, tmid, ssid, ccnt, nid, min(pnid) as pnid, 
+       min(ntype) as ntype, array_to_string(iterators_array_accum(distinct nstatus), ',') as nstatus, 
+       min(tstart) as tstart, avg(tduration) as tduration, 
+       avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax, 
+       avg(memsize) as memsize, avg(memresid) as memresid, 
+       avg(memshare) as memshare, sum(cpu_elapsed) as cpu_elapsed, 
+       avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase, 
+       sum(rows_out) as rows_out, sum(rows_out_est) as rows_out_est, 
+       case when avg(cpu_elapsed) <= 0.001 THEN 0 else 
+          (stddev(cpu_elapsed)/avg(cpu_elapsed))*100 end as skew_cpu,
+       case when avg(rows_out) <= 0.001 THEN 0 else 
+          (stddev(rows_out)/avg(rows_out))*100 end as skew_rows,
+       min(m0_name)||'/'||min(m0_unit)||'/'||avg(m0_val)||'/'||avg(m0_est) as m0,
+       min(m1_name)||'/'||min(m1_unit)||'/'||avg(m1_val)||'/'||avg(m1_est) as m1,
+       min(m2_name)||'/'||min(m2_unit)||'/'||avg(m2_val)||'/'||avg(m2_est) as m2,
+       min(m3_name)||'/'||min(m3_unit)||'/'||avg(m3_val)||'/'||avg(m3_est) as m3,
+       min(m4_name)||'/'||min(m4_unit)||'/'||avg(m4_val)||'/'||avg(m4_est) as m4,
+       min(m5_name)||'/'||min(m5_unit)||'/'||avg(m5_val)||'/'||avg(m5_est) as m5,
+       min(m6_name)||'/'||min(m6_unit)||'/'||avg(m6_val)||'/'||avg(m6_est) as m6,
+       min(m7_name)||'/'||min(m7_unit)||'/'||avg(m7_val)||'/'||avg(m7_est) as m7,
+       min(m8_name)||'/'||min(m8_unit)||'/'||avg(m8_val)||'/'||avg(m8_est) as m8,
+       min(m9_name)||'/'||min(m9_unit)||'/'||avg(m9_val)||'/'||avg(m9_est) as m9,
+       min(m10_name)||'/'||min(m10_unit)||'/'||avg(m10_val)||'/'||avg(m10_est) as m10,
+       min(m11_name)||'/'||min(m11_unit)||'/'||avg(m11_val)||'/'||avg(m11_est) as m11,
+       min(m12_name)||'/'||min(m12_unit)||'/'||avg(m12_val)||'/'||avg(m12_est) as m12,
+       min(m13_name)||'/'||min(m13_unit)||'/'||avg(m13_val)||'/'||avg(m13_est) as m13,
+       min(m14_name)||'/'||min(m14_unit)||'/'||avg(m14_val)||'/'||avg(m14_est) as m14,
+       min(m15_name)||'/'||min(m15_unit)||'/'||avg(m15_val)||'/'||avg(m15_est) as m15
+       from iterators_tail group by tmid, ssid, ccnt, nid;
+
+DROP VIEW IF EXISTS iterators_now_rollup;
+CREATE VIEW iterators_now_rollup as select 
+       min(ctime) as sample_time, tmid, ssid, ccnt, nid, min(pnid) as pnid, 
+       min(ntype) as ntype, array_to_string(iterators_array_accum(distinct nstatus), ',') as nstatus, 
+       min(tstart) as tstart, avg(tduration) as tduration, 
+       avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax, 
+       avg(memsize) as memsize, avg(memresid) as memresid, 
+       avg(memshare) as memshare, sum(cpu_elapsed) as cpu_elapsed, 
+       avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase, 
+       sum(rows_out) as rows_out, sum(rows_out_est) as rows_out_est, 
+       case when avg(cpu_elapsed) <= 0.001 THEN 0 else 
+          (stddev(cpu_elapsed)/avg(cpu_elapsed))*100 end as skew_cpu,
+       case when avg(rows_out) <= 0.001 THEN 0 else 
+          (stddev(rows_out)/avg(rows_out))*100 end as skew_rows,
+       min(m0_name)||'/'||min(m0_unit)||'/'||avg(m0_val)||'/'||avg(m0_est) as m0,
+       min(m1_name)||'/'||min(m1_unit)||'/'||avg(m1_val)||'/'||avg(m1_est) as m1,
+       min(m2_name)||'/'||min(m2_unit)||'/'||avg(m2_val)||'/'||avg(m2_est) as m2,
+       min(m3_name)||'/'||min(m3_unit)||'/'||avg(m3_val)||'/'||avg(m3_est) as m3,
+       min(m4_name)||'/'||min(m4_unit)||'/'||avg(m4_val)||'/'||avg(m4_est) as m4,
+       min(m5_name)||'/'||min(m5_unit)||'/'||avg(m5_val)||'/'||avg(m5_est) as m5,
+       min(m6_name)||'/'||min(m6_unit)||'/'||avg(m6_val)||'/'||avg(m6_est) as m6,
+       min(m7_name)||'/'||min(m7_unit)||'/'||avg(m7_val)||'/'||avg(m7_est) as m7,
+       min(m8_name)||'/'||min(m8_unit)||'/'||avg(m8_val)||'/'||avg(m8_est) as m8,
+       min(m9_name)||'/'||min(m9_unit)||'/'||avg(m9_val)||'/'||avg(m9_est) as m9,
+       min(m10_name)||'/'||min(m10_unit)||'/'||avg(m10_val)||'/'||avg(m10_est) as m10,
+       min(m11_name)||'/'||min(m11_unit)||'/'||avg(m11_val)||'/'||avg(m11_est) as m11,
+       min(m12_name)||'/'||min(m12_unit)||'/'||avg(m12_val)||'/'||avg(m12_est) as m12,
+       min(m13_name)||'/'||min(m13_unit)||'/'||avg(m13_val)||'/'||avg(m13_est) as m13,
+       min(m14_name)||'/'||min(m14_unit)||'/'||avg(m14_val)||'/'||avg(m14_est) as m14,
+       min(m15_name)||'/'||min(m15_unit)||'/'||avg(m15_val)||'/'||avg(m15_est) as m15
+       from iterators_now group by tmid, ssid, ccnt, nid;
+
+
 
 revoke all on database gpperfmon from public;
 
