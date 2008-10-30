@@ -6,7 +6,7 @@ Web application
 import webapi as web
 import webapi, wsgi, utils
 import debugerror
-from utils import lstrips
+from utils import lstrips, safeunicode
 import sys
 
 import urllib
@@ -25,7 +25,8 @@ __all__ = [
     "application", "auto_application",
     "subdir_application", "subdomain_application", 
     "combine_applications",
-    "loadhook", "unloadhook"
+    "loadhook", "unloadhook",
+    "autodelegate"
 ]
 
 class NotFound(Exception): 
@@ -95,7 +96,7 @@ class application:
         self.processors.append(processor)
 
     def request(self, localpart='/', method='GET', data=None,
-                host="0.0.0.0:8080", headers=None, https=False):
+                host="0.0.0.0:8080", headers=None, https=False, **kw):
         """Makes request to this application for the specified path and method.
         Response will be a storage object with data, status and headers.
 
@@ -145,7 +146,12 @@ class application:
         """
         path, maybe_query = urllib.splitquery(localpart)
         query = maybe_query or ""
-        env = dict(HTTP_HOST=host, REQUEST_METHOD=method, PATH_INFO=path, QUERY_STRING=query, HTTPS=https)
+        
+        if 'env' in kw:
+            env = kw['env']
+        else:
+            env = {}
+        env = dict(env, HTTP_HOST=host, REQUEST_METHOD=method, PATH_INFO=path, QUERY_STRING=query, HTTPS=str(https))
         headers = headers or {}
         for k, v in headers.items():
             env['HTTP_' + k.upper().replace('-', '_')] = v
@@ -211,8 +217,8 @@ class application:
             except:
                 print >> web.debug, traceback.format_exc()
                 web.ctx.status = '500 Internal Server Error'
-                web.header('Content-Type', 'text/html')
                 result = self.internalerror()
+                web.ctx.headers = [('Content-Type', 'text/html')]
 
             if is_generator(result):
                 result = peep(result)
@@ -273,8 +279,8 @@ class application:
         wsgiapp = self.wsgifunc(*middleware)
 
         try:
-            import google.appengine.ext.utils
-            return google.appengine.ext.utils.run_wsgi_app(wsgiapp)
+            from google.appengine.ext.webapp.util import run_wsgi_app
+            return run_wsgi_app(wsgiapp)
         except ImportError:
             # we're not running from within Google App Engine
             return wsgiref.handlers.CGIHandler().run(wsgiapp)
@@ -282,16 +288,22 @@ class application:
     def load(self, env):
         """Initializes ctx using env."""
         ctx = web.ctx
-        
         ctx.status = '200 OK'
         ctx.headers = []
         ctx.output = ''
         ctx.environ = ctx.env = env
         ctx.host = env.get('HTTP_HOST')
-        ctx.protocol = env.get('HTTPS') and 'https' or 'http'
+
+        if env.get('HTTPS', '').lower() in ['on', 'true']:
+            ctx.protocol = 'https'
+        else:
+            ctx.protocol = 'http'
         ctx.homedomain = ctx.protocol + '://' + env.get('HTTP_HOST', '[unknown]')
         ctx.homepath = os.environ.get('REAL_SCRIPT_NAME', env.get('SCRIPT_NAME', ''))
         ctx.home = ctx.homedomain + ctx.homepath
+        #@@ home is changed when the request is handled to a sub-application.
+        #@@ but the real home is required for doing absolute redirects.
+        ctx.realhome = ctx.home
         ctx.ip = env.get('REMOTE_ADDR')
         ctx.method = env.get('REQUEST_METHOD')
         ctx.path = env.get('PATH_INFO')
@@ -305,6 +317,13 @@ class application:
             ctx.query = ''
 
         ctx.fullpath = ctx.path + ctx.query
+        
+        for k, v in ctx.iteritems():
+            if isinstance(v, str):
+                ctx[k] = safeunicode(v)
+
+        # status must always be str
+        ctx.status = '200 OK'
 
     def _delegate(self, f, fvars, args=[]):
         def handle_class(cls):
@@ -321,10 +340,10 @@ class application:
         if f is None:
             raise NotFound
         elif isinstance(f, application):
-            return f.handle()
+            return f.handle_with_processors()
         elif is_class(f):
             return handle_class(f)
-        elif isinstance(f, str):
+        elif isinstance(f, basestring):
             if f.startswith('redirect '):
                 url = f.split(' ', 1)[1]
                 if web.ctx.method == "GET":
@@ -357,7 +376,7 @@ class application:
                 what, result = utils.re_subm('^' + pat + '$', what, value)
             else:
                 result = utils.re_compile('^' + pat + '$').match(value)
-            
+                
             if result: # it's a match
                 return what, [x and urllib.unquote(x) for x in result.groups()]
         return None, None
@@ -375,7 +394,7 @@ class application:
             web.ctx.homepath += dir
             web.ctx.path = web.ctx.path[len(dir):]
             web.ctx.fullpath = web.ctx.fullpath[len(dir):]
-            return app.handle()
+            return app.handle_with_processors()
         finally:
             web.ctx.home = oldctx.home
             web.ctx.homepath = oldctx.homepath

@@ -27,7 +27,13 @@ __all__ = [
   "sendmail"
 ]
 
-import re, sys, time, threading, os
+import re, sys, time, threading
+
+try:
+    import subprocess
+except ImportError: 
+    subprocess = None
+
 try: import datetime
 except ImportError: pass
 
@@ -102,13 +108,22 @@ def storify(mapping, *requireds, **defaults):
         <Storage {'value': 1}>
         >>> storify({}, a={}).a
         {}
+        
+    Optionally, keyword parameter `_unicode` can be passed to convert all values to unicode.
     
+        >>> storify({'x': 'a'}, _unicode=True)
+        <Storage {'x': u'a'}>
     """
+    _unicode = defaults.pop('_unicode', False)
+    def unicodify(s):
+        if _unicode and isinstance(s, str): return safeunicode(s)
+        else: return s
+        
     def getvalue(x):
         if hasattr(x, 'value'):
-            return x.value
+            return unicodify(x.value)
         else:
-            return x
+            return unicodify(x)
     
     stor = Storage()
     for key in requireds + tuple(mapping.keys()):
@@ -138,11 +153,14 @@ iters = [list, tuple]
 import __builtin__
 if hasattr(__builtin__, 'set'):
     iters.append(set)
-try: 
-    from sets import Set
-    iters.append(Set)
-except ImportError: 
-    pass
+if hasattr(__builtin__, 'frozenset'):
+    iters.append(set)
+if sys.version_info < (2,6): # sets module deprecated in 2.6
+    try:
+        from sets import Set
+        iters.append(Set)
+    except ImportError: 
+        pass
     
 class _hack(tuple): pass
 iters = _hack(iters)
@@ -221,7 +239,12 @@ def safestr(obj, encoding='utf-8'):
         >>> safestr(2)
         '2'
     """
-    return safeunicode(obj).encode(encoding)
+    if isinstance(obj, unicode):
+        return obj.encode('utf-8')
+    elif isinstance(obj, str):
+        return obj
+    else:
+        return str(obj)
 
 # for backward-compatibility
 utf8 = safestr
@@ -643,6 +666,20 @@ def nthstr(n):
     if n % 100 in [11, 12, 13]: return '%sth' % n
     return {1: '%sst', 2: '%snd', 3: '%srd'}.get(n % 10, '%sth') % n
 
+def cond(predicate, consequence, alternative=None):
+    """Function replacement for if-else to use in expressions.
+        
+        >>> x = 2
+        >>> cond(x % 2 == 0, "even", "odd")
+        'even'
+        >>> cond(x % 2 == 0, "even", "odd") + '_row'
+        'even_row'
+    """
+    if predicate:
+        return consequence
+    else:
+        return alternative
+
 class CaptureStdout:
     """
     Captures everything `func` prints to stdout and returns it instead.
@@ -948,12 +985,19 @@ def sendmail(from_address, to_address, subject, message, headers=None, **kw):
         assert not from_address.startswith('-'), 'security'
         for r in recipients:
             assert not r.startswith('-'), 'security'
+                
 
-        i, o = os.popen2([sendmail, '-f', from_address] + recipients)
-        i.write(message)
-        i.close()
-        o.close()
-        del i, o
+        if subprocess:
+            p = subprocess.Popen(['/usr/sbin/sendmail', '-f', from_address] + recipients, stdin=subprocess.PIPE)
+            p.stdin.write(message)
+            p.stdin.close()
+            p.wait()
+        else:
+            i, o = os.popen2(["/usr/lib/sendmail", '-f', from_address] + recipients)
+            i.write(message)
+            i.close()
+            o.close()
+            del i, o
 
 if __name__ == "__main__":
     import doctest

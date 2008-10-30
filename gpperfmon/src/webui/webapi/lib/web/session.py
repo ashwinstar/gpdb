@@ -3,16 +3,17 @@ Session Management
 (from web.py)
 """
 
-import os
-import time
-import datetime
-import random
-import md5
-import base64
+import sys, os, time, datetime, random, base64
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
+try:
+    import hashlib
+    sha1 = hashlib.sha1
+except ImportError:
+    import sha
+    sha1 = sha.new
 
 import utils
 import webapi as web
@@ -64,11 +65,13 @@ class Session(utils.ThreadedDict):
         cookie_name = self._config.cookie_name
         cookie_domain = self._config.cookie_domain
         self.session_id = web.cookies().get(cookie_name)
-
-        if not self.session_id:
-            i = web.input()
-            if i.has_key('sid'):
-                self.session_id = i['sid']
+        
+        # additional greenplum code
+        i = web.input()
+        if i.has_key('sessionid'):
+            sys.stderr.write("\nsessionid: %s\n" % i.sessionid)
+            self.session_id = i.sessionid
+        # additional greenplum code
         
         self._check_expiry()
         if self.session_id:
@@ -98,9 +101,7 @@ class Session(utils.ThreadedDict):
     def _validate_ip(self):
         # check for change of IP
         if self.session_id and self.get('ip', None) != web.ctx.ip:
-            if self._config.ignore_change_ip:
-                self.session_id = None
-            else:
+            if not self._config.ignore_change_ip:
                return self.expired() 
     
     def _save(self):
@@ -116,10 +117,10 @@ class Session(utils.ThreadedDict):
         """Generate a random id for session"""
 
         while True:
-            rand = random.random()
+            rand = os.urandom(16)
             now = time.time()
             secret_key = self._config.secret_key
-            session_id = md5.new("%s%s%s%s" %(rand, now, web.ctx.ip, secret_key))
+            session_id = sha1("%s%s%s%s" %(rand, now, utils.safestr(web.ctx.ip), secret_key))
             session_id = session_id.hexdigest()
             if session_id not in self.store:
                 break
@@ -129,9 +130,9 @@ class Session(utils.ThreadedDict):
         """Cleanup the stored sessions"""
         current_time = time.time()
         timeout = self._config.timeout
-        if self._last_cleanup_time + timeout > current_time:
+        if current_time - self._last_cleanup_time > timeout:
             self.store.cleanup(timeout)
-            self._last_cleanup_time = current_time
+            self.__dict__['_last_cleanup_time'] = current_time
 
     def expired(self):
         """Called when an expired session is atime"""
@@ -144,6 +145,7 @@ class Session(utils.ThreadedDict):
 
     def getid(self):
         return self.session_id
+
 
 class Store:
     """Base class for session stores"""

@@ -17,7 +17,7 @@ __all__ = [
     "NoMethod", "nomethod",
 ]
 
-import sys, cgi, Cookie, pprint, urlparse
+import sys, cgi, Cookie, pprint, urlparse, urllib
 from utils import storage, storify, threadeddict, dictadd, intget, utf8
 
 config = storage()
@@ -42,10 +42,7 @@ class HTTPError(Exception):
         for k, v in headers.items():
             header(k, v)
         self.data = data
-        if data == "":
-            Exception.__init__(self, status)
-        else:
-            Exception.__init__(self, data)
+        Exception.__init__(self, status)
 
 class BadRequest(HTTPError):
     """`400 Bad Request` error."""
@@ -67,17 +64,6 @@ class NotFound(HTTPError):
 
 notfound = NotFound
 
-class AccessDenied(HTTPError):
-    """`403 Access Denied` error."""
-
-    def __init__(self, errordata="access denied", contenttype="text/html"):
-        status = '403 Access Denied'
-        headers = {'Content-Type': contenttype}
-        data = errordata
-        HTTPError.__init__(self, status, headers, data)
-
-accessdenied = AccessDenied
-
 class Gone(HTTPError):
     """`410 Gone` error."""
     def __init__(self):
@@ -90,7 +76,7 @@ gone = Gone
 
 class Redirect(HTTPError):
     """A `301 Moved Permanently` redirect."""
-    def __init__(self, url, status='301 Moved Permanently'):
+    def __init__(self, url, status='301 Moved Permanently', absolute=False):
         """
         Returns a `status` redirect to the new URL. 
         `url` is joined with the base URL so that things like 
@@ -99,7 +85,11 @@ class Redirect(HTTPError):
         newloc = urlparse.urljoin(ctx.path, url)
 
         if newloc.startswith('/'):
-            newloc = ctx.home + newloc
+            if absolute:
+                home = ctx.realhome
+            else:
+                home = ctx.home
+            newloc = home + newloc
 
         headers = {
             'Content-Type': 'text/html',
@@ -111,22 +101,22 @@ redirect = Redirect
 
 class Found(Redirect):
     """A `302 Found` redirect."""
-    def __init__(self, url):
-        Redirect.__init__(self, url, '302 Found')
+    def __init__(self, url, absolute=False):
+        Redirect.__init__(self, url, '302 Found', absolute=absolute)
 
 found = Found
 
 class SeeOther(Redirect):
     """A `303 See Other` redirect."""
-    def __init__(self, url):
-        Redirect.__init__(self, url, '303 See Other')
+    def __init__(self, url, absolute=False):
+        Redirect.__init__(self, url, '303 See Other', absolute=absolute)
     
 seeother = SeeOther
 
 class TempRedirect(Redirect):
     """A `307 Temporary Redirect` redirect."""
-    def __init__(self, url):
-        Redirect.__init__(self, url, '307 Temporary Redirect')
+    def __init__(self, url, absolute=False):
+        Redirect.__init__(self, url, '307 Temporary Redirect', absolute=absolute)
 
 tempredirect = TempRedirect
 
@@ -184,8 +174,8 @@ def input(*requireds, **defaults):
     e = ctx.env.copy()
     a = b = {}
     
-    if _method.lower() in ['both', 'post']:
-        if e['REQUEST_METHOD'] == 'POST':
+    if _method.lower() in ['both', 'post', 'put']:
+        if e['REQUEST_METHOD'] in ['POST', 'PUT']:
             if e.get('CONTENT_TYPE', '').lower().startswith('multipart/'):
                 # since wsgi.input is directly passed to cgi.FieldStorage, 
                 # it can not be called multiple times. Saving the FieldStorage
@@ -206,10 +196,11 @@ def input(*requireds, **defaults):
 
     out = dictadd(b, a)
     try:
+        #@@ disabled because this is causing failure on file uploads
+        #defaults.setdefault('_unicode', True) # force unicode conversion by default.
         return storify(out, *requireds, **defaults)
     except KeyError:
-        badrequest()
-        raise StopIteration
+        raise badrequest()
 
 def data():
     """Returns the data sent with the request."""
@@ -229,7 +220,7 @@ def setcookie(name, value, expires="", domain=None, secure=False):
         kargs['secure'] = secure
     # @@ should we limit cookies to a different path?
     cookie = Cookie.SimpleCookie()
-    cookie[name] = value
+    cookie[name] = urllib.quote(value)
     for key, val in kargs.iteritems(): 
         cookie[name][key] = val
     header('Set-Cookie', cookie.items()[0][1].OutputString())
@@ -242,7 +233,10 @@ def cookies(*requireds, **defaults):
     cookie = Cookie.SimpleCookie()
     cookie.load(ctx.env.get('HTTP_COOKIE', ''))
     try:
-        return storify(cookie, *requireds, **defaults)
+        d = storify(cookie, *requireds, **defaults)
+        for k, v in d.items():
+            d[k] = urllib.unquote(utf8(v))
+        return d
     except KeyError:
         badrequest()
         raise StopIteration
