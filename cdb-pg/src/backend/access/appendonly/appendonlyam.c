@@ -510,8 +510,14 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 					  aoInsertDesc->insertCount,
 					  aoInsertDesc->varblockCount);
 	
-
+	/*
+	 * We must take care of fsynching to disk ourselves since
+	 * the fd API won't do it for us.
+	 */
+	FileSync(aoInsertDesc->appendFile);
+	
 	FileClose(aoInsertDesc->appendFile);
+	
 	aoInsertDesc->appendFile = -1;
 	aoInsertDesc->appendFilePathName[0] = '\0';
 
