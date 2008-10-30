@@ -1,6 +1,6 @@
 COMMAND NAME: gprecoverseg
 
-Recovers a primary or mirror segment instance that has been marked as
+Recovers a primary or mirror segment instance that has been marked as 
 invalid (if mirroring is enabled).
 
 ******************************************************
@@ -8,153 +8,178 @@ SYNOPSIS
 ******************************************************
 
 gprecoverseg [-d <master_data_directory>] 
-[-p <new_recover_host> | -s <pri_datadir>,<mir_datadir> |
- -i <recover_config_file>] 
-[-B <parallel_processes>] [-f] 
-[-z <seg_data_dir:seg_hostname>] [-a] [-q] 
-[-l <logfile_directory>] [-D] 
+             [-p <new_recover_host> 
+              | -s <pri_datadir>,<mir_datadir> 
+              | -i <recover_config_file>] 
+             [-B <parallel_processes>] [-T <timeout_in_seconds>] [-f] 
+             [-z <seg_data_dir>:<seg_hostname> | -S <seg_dbid>] 
+             [-a] [-q] [-l <logfile_directory>] [-D] 
 
 gprecoverseg -o <output_sample_recover_config>
 
 gprecoverseg -? | --version
 
+
 ******************************************************
 DESCRIPTION
 ******************************************************
 
-The gprecoverseg utility recovers a failed segment instance if you have 
-mirroring enabled. A segment instance can fail for several reasons, such 
-as a host failure, network failure, or file system corruption. When a 
-segment instance goes down it is marked as invalid in the Greenplum Database
-system catalog. In order to bring the segment instance back into operation
-again, you must first correct the problem that made it fail in the first place,
-and then recover the segment instance in the Greenplum Database system.
+The gprecoverseg utility recovers a failed segment instance if you 
+have mirroring enabled. A segment instance can fail for several reasons, 
+such as a host failure, network failure, or file system corruption. 
+When a segment instance goes down it is marked as invalid in the 
+Greenplum Database system catalog. In order to bring the segment instance 
+back into operation again, you must first correct the problem that made 
+it fail in the first place, and then recover the segment instance in 
+the Greenplum Database system.
 
-By default, a failed segment is recovered in place, meaning that the system 
-brings the segment back online on the same host and data directory location 
-on which it was originally configured. In some cases, this may not be possible
-(for example, if a host was physically damaged and cannot be recovered). In 
-this situation, gprecoverseg allows you to recover failed segments to a 
-completely new host (using -p), on an alternative data directory location 
-on your remaining live segment hosts (using -s), or by supplying a recovery 
-configuration file (using -c) in the format of:
+By default, a failed segment is recovered in place, meaning that the 
+system brings the segment back online on the same host and data directory 
+location on which it was originally configured. In some cases, this may not 
+be possible (for example, if a host was physically damaged and cannot be 
+recovered). In this situation, gprecoverseg allows you to recover failed 
+segments to a completely new host (using -p), on an alternative data directory 
+location on your remaining live segment hosts (using -s), or by supplying 
+a recovery configuration file (using -c) in the format of:
 
-<failed_host>:<port>:<datadir> [<recovery_host>:<port>:<datadir>]
+failed_host:port:datadir [recovery_host:port:datadir]
 
 The new recovery segment host must be pre-installed with the Greenplum 
 Database software and configured exactly the same as the existing segment 
-hosts. A spare data directory location must exist on all currently configured 
-segment hosts and have enough disk space to accommodate the failed segments.
+hosts. A spare data directory location must exist on all currently 
+configured segment hosts and have enough disk space to accommodate the 
+failed segments.
 
-The Greenplum Database can run in two modes with regards to mirroring and fault
-tolerance — continue (read-write) mode and readonly mode. This mode is set with
-the gp_fault_action parameter in postgresql.conf.
+The Greenplum Database can run in two modes with regards to mirroring and 
+fault tolerance — continue (read-write) mode and readonly mode. This mode 
+is set with the gp_fault_action parameter in postgresql.conf.
 
-If the system is in continue (read-write) mode, this utility will shutdown the 
-system, copy the data directory of the active segment to the failed segment, 
-update the segment dbid and port on the failed segment’s local catalog after 
-the copy, mark the failed segment as valid again in the global system catalog, 
-and restart the system.
+If the system is in continue (read-write) mode, this utility will shutdown 
+the system, copy the data directory of the active segment to the failed 
+segment, update the segment dbid and port on the failed segment’s local 
+catalog after the copy, mark the failed segment as valid again in the 
+global system catalog, and restart the system.
 
 If the system is in readonly mode, the active segment and failed segment 
-would not get out-of-sync in the event of a failure. The utility will still 
-shutdown the system to recover in read-only mode, but the downtime is 
-relatively short.
+would not get out-of-sync in the event of a failure. The utility will 
+still shutdown the system to recover in read-only mode, but the downtime 
+is relatively short.
 
-If you do not have mirroring enabled, you must take manual steps to recover a 
-failed segment instance and then force restart the system as follows:
+If you do not have mirroring enabled, you must take manual steps to 
+recover a failed segment instance and then force restart the system 
+as follows:
 
 gpstop -r -z
+
 
 ******************************************************
 OPTIONS
 ******************************************************
 
--d <master_data_directory>
+-a (do not prompt)
 
-Optional. The master host data directory. If not specified, the value set for 
-$MASTER_DATA_DIRECTORY will be used.
+Do not prompt the user for confirmation.
 
--p <new_recover_host>
-
-Specifies a spare hostname outside of the currently configured Greenplum 
-Database array on which to recover invalid segments. This spare host must 
-have the Greenplum Database software installed and configured, and have the
-same hardware and OS configuration as the current segment hosts (same OS 
-version, locales, gpadmin user account, data directory locations created, 
-ssh keys exchanged, etc.).
-
--s <pri_datadir>,<mir_datadir>
-
-Specifies a spare data directory location on the currently configured segment
-hosts where you can recover failed segment instances. This file system location
-must exist on all segment hosts in the array and have sufficient disk space to 
-accommodate recovered segments.
-
--i <recover_config_file>
-
-Specifies the name of a configuration file that has information about which 
-failed segments to recover, and where to recover them. Each line in the file 
-is in the following format:
-
-<failed_host>:<port>:<datadir> [<recovery_host>:<port>:<datadir>]
-
-You can use the -o option to output a sample recovery configuration file to 
-use as a starting point.
-
--o <output_sample_recover_config>
-
-Specifies a file name and location to output a sample recovery configuration 
-file. The output file lists the currently invalid segments and their default 
-recovery location in the format that is required by the -c option. This file 
-can be edited to supply alternate recovery locations if needed.
 
 -B <parallel_processes>
 
-The number of segments to recover in parallel. If not specified, the utility 
-will start up to four parallel processes depending on how many segment 
-instances it needs to recover.
+The number of segments to recover in parallel. If not specified, the 
+utility will start up to four parallel processes depending on how many 
+segment instances it needs to recover.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, the value 
+set for $MASTER_DATA_DIRECTORY will be used.
+
 
 -f (force shutdown)
 
 Optional. Force shutdown and startup of segment instances marked as invalid.
 
--z <seg_data_dir>:<seg_hostname> (force recovery of a valid primary)
 
-Forces a recovery of a primary segment instance from its mirror even though
-the segment has not been marked invalid in the gp_configuration catalog. For 
-example, when running in readonly mode, segments are not marked invalid in 
-the catalog but you can still detect a down segment using gpstate. 
-Use this option with care!
+-i <recover_config_file>
 
--S <seg_dbid> (force recovery of a valid primary)
+Specifies the name of a configuration file that has information about which 
+failed segments to recover, and where to recover them. Each line in the 
+file is in the following format:
+failed_host:port:datadir [recovery_host:port:datadir]
+You can use the -o option to output a sample recovery configuration file 
+to use as a starting point.
 
-Forces a recovery of a primary segment instance from its mirror even though 
-the segment has not been marked invalid in the gp_configuration catalog. For 
-example, when running in readonly mode, segments are not marked invalid in the 
-catalog but you can still detect a down segment using gpstate. Use this option 
-with care!
-
--a (do not prompt)
-
-Do not prompt the user for confirmation.
-
--q (no screen output)
-
-Run in quiet mode. Command output is not displayed on the screen, but is still 
-written to the log file.
 
 -l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
--? (help)
 
-Displays the online help.
+-o <output_sample_recover_config>
+
+Specifies a file name and location to output a sample recovery 
+configuration file. The output file lists the currently invalid segments 
+and their default recovery location in the format that is required by 
+the -c option. This file can be edited to supply alternate recovery 
+locations if needed.
+
+
+-p <new_recover_host>
+
+Specifies a spare hostname outside of the currently configured 
+Greenplum Database array on which to recover invalid segments. This spare 
+host must have the Greenplum Database software installed and configured, 
+and have the same hardware and OS configuration as the current segment 
+hosts (same OS version, locales, gpadmin user account, data directory 
+locations created, ssh keys exchanged, etc.).
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, but is 
+still written to the log file.
+
+
+-s <pri_datadir>,<mir_datadir>
+
+Specifies a spare data directory location on the currently configured 
+segment hosts where you can recover failed segment instances. This file 
+system location must exist on all segment hosts in the array and have 
+sufficient disk space to accommodate recovered segments.
+
+
+-S <seg_dbid> (force recovery of a valid primary)
+
+Forces a recovery of a primary segment instance from its mirror even 
+though the segment has not been marked invalid in the gp_configuration 
+catalog. For example, when running in readonly mode, segments are not 
+marked invalid in the catalog but you can still detect a down segment 
+using gpstate. Use this option with care!
+
+
+-T <timeout_in_seconds>
+
+Increases the allowed time to complete a segment recovery operation. 
+The default value is 1800 seconds.
+
+
+-z <seg_data_dir>:<seg_hostname> (force recovery of a valid primary)
+
+Forces a recovery of a primary segment instance from its mirror even 
+though the segment has not been marked invalid in the gp_configuration 
+catalog. For example, when running in readonly mode, segments are not 
+marked invalid in the catalog but you can still detect a down segment 
+using gpstate. Use this option with care!
+
 
 --version (version)
 
 Displays the version of this utility.
+
+
+-? (help)
+
+Displays the online help.
+
 
 ******************************************************
 EXAMPLES
@@ -164,13 +189,16 @@ Recover any failed segment instances in place:
 
 gprecoverseg
 
+
 Recover any failed segment instances to a newly configured spare segment host:
 
-gprecoverseg -p <newhostname>
+gprecoverseg -p newhostname
+
 
 Output the default recovery configuration file:
 
 gprecoverseg -o /home/gpadmin/recover_config
+
 
 ******************************************************
 SEE ALSO
