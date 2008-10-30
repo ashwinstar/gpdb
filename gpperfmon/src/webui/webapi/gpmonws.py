@@ -406,7 +406,7 @@ class querydetails:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(id='', realtime='yes')
+        i = web.input(id='', realtime='')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -422,6 +422,9 @@ class querydetails:
                 int(item)
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
+
+        if i.realtime == '':
+            return mkerr(error.BADREQ, 'Missing realtime parameter')
 
         i.realtime = i.realtime.lower()
         if not i.realtime in ['yes', 'no']:
@@ -472,7 +475,7 @@ class queryplan:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(id='', realtime='yes')
+        i = web.input(id='', realtime='')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -488,6 +491,9 @@ class queryplan:
                 int(item)
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
+
+        if i.realtime == '':
+            return mkerr(error.BADREQ, 'Missing realtime parameter')
 
         i.realtime = i.realtime.lower()
         if not i.realtime in ['yes', 'no']:
