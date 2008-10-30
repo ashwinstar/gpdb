@@ -9656,7 +9656,7 @@ get_partition_attrs(PartitionNode *pn)
 	{
 		PartitionRule *rule = linitial(pn->rules);
 
-		return list_concat(attrs, get_partition_attrs(rule->children));
+		return list_concat_unique_int(attrs, get_partition_attrs(rule->children));
 	}
 	else
 		return attrs;
