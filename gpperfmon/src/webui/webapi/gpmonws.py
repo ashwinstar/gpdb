@@ -92,13 +92,16 @@ class index:
         return render.index(host_and_port[0], host_and_port[1])
 
 class api:
+    def __init__(self):
+        self.version = '2.0.0.0'
+
     def GET(self):
         web.header('Content-Type', 'text/xml')
         tab = []
         for i in range(len(urls)/2-1):
             j = (i+1) * 2 + 1
             tab.append(urls[j])
-        return render.api(tab)
+        return render.api(tab, self.version)
 
 
 class logon:
@@ -403,7 +406,7 @@ class querydetails:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(id='', historic='yes')
+        i = web.input(id='', realtime='yes')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -420,9 +423,9 @@ class querydetails:
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
 
-        i.historic = i.historic.lower()
-        if not i.historic in ['yes', 'no']:
-            return mkerr(error.BADREQ, 'Invalid historic parameter')
+        i.realtime = i.realtime.lower()
+        if not i.realtime in ['yes', 'no']:
+            return mkerr(error.BADREQ, 'Invalid realtime parameter')
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<query details>\n")
@@ -436,10 +439,10 @@ class querydetails:
             username = session.user
             
         try:
-            if i.historic == 'yes':
-                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username)
-            else:
+            if i.realtime == 'yes':
                 res = db.querydetails_now(id_split[0], id_split[1], id_split[2], username)
+            else:
+                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -469,7 +472,7 @@ class queryplan:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(id='', historic='yes')
+        i = web.input(id='', realtime='yes')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -486,9 +489,9 @@ class queryplan:
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
 
-        i.historic = i.historic.lower()
-        if not i.historic in ['yes', 'no']:
-            return mkerr(error.BADREQ, 'Invalid historic parameter')
+        i.realtime = i.realtime.lower()
+        if not i.realtime in ['yes', 'no']:
+            return mkerr(error.BADREQ, 'Invalid realtime parameter')
 
         # DEBUGGING
         sys.stderr.write("\n\n\n<query plan>\n")
@@ -502,10 +505,10 @@ class queryplan:
             username = session.user
 
         try:
-            if i.historic == 'yes':
-                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username)
-            else:
+            if i.realtime == 'yes':
                 res = db.queryplan_now(id_split[0], id_split[1], id_split[2], username)
+            else:
+                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 

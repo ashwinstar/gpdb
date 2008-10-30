@@ -1,6 +1,6 @@
-$def with (tab)
+$def with (tab, version)
 <?xml version="1.0"?>
-<API>
+<API version="$version">
 $for command in tab:
     <command>
     ${command} \
