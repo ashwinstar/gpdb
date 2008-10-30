@@ -479,7 +479,7 @@ def removeSchema(seg, db, schemaid):
     buildRemove(seg, 'schema procedures', 'pg_proc',
                 dict([('pronamespace', schemaid)]), schemaname)
 
-    removeDepend(seg, db, schemaid)
+    removeDepend(seg, db, schemaid, schemaname)
     
 
 #############
@@ -492,7 +492,7 @@ def removeTable(seg, db, reloid):
             removeTable(seg, db, row['reltoastrelid'])
     
     if reloid in oidmap:
-        rel = oidmap[relid]
+        rel = oidmap[reloid]
     else:
         # get relname
         db.execute('select nspname, relname, relnamespace from pg_namespace n' +
@@ -503,8 +503,8 @@ def removeTable(seg, db, reloid):
         if row:
             nspname = row[0]
             relname = row[1]
-            if len(nspname) == 0:
-                nspname = row[2]
+            if nspname == None:
+                nspname = str(row[2])
             rel = nspname + '.' + relname
             oidmap[reloid] = rel
         else:
@@ -639,8 +639,6 @@ def row2str(row):
 	return strout
 
 def crossDbCheck():
-	print '-----------------------------------'
-	print 'Performing cross database object comparison ...'
 
 	# 1: get catalog from every node
         catalogs = {
@@ -712,11 +710,20 @@ def crossDbCheck():
 
                 cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat.%s.%s_s' % \
                     (GV.tmpdir, GV.tmpdir, dbid, cid)
-                diff = subprocess.call(cmd, shell=True)
-                if diff:
-                    error = True
-                    print '[ERROR] diff from segment %d:' % dbid
-                    print diff
+                pipe = subprocess.Popen(cmd, shell=True,
+                                        stdout=subprocess.PIPE)
+
+                lines = ''
+                for line in pipe.stdout:
+                    lines += line
+
+                if len(lines) > 0:
+                    print '\n'
+                    print '[ERROR] inconsistency between master and seg %i' % \
+                            dbid
+                    #print "return code %i\n" % pipe.returncode
+                    print lines
+
                 os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
 
             os.unlink('%s/gpcheckcat_m' % GV.tmpdir)
@@ -742,6 +749,11 @@ if __name__ == '__main__':
         print '[ERROR] Unable to create temporary directory'
         sys.exit(1)
 
+    print """
+----------------------------------------------
+Performing segment specific consistency checks
+----------------------------------------------
+"""
     checkPGClass()
     checkPGAttribute()
     checkPGType()
@@ -751,6 +763,11 @@ if __name__ == '__main__':
 
     closeDbs()
 
+    print """
+-------------------------------------------
+Performing cross database consistency tests
+-------------------------------------------
+"""
     crossDbCheck()
     
     if GV.opt['-g'] != None and len(Remove) > 0:
@@ -791,6 +808,7 @@ if __name__ == '__main__':
 
             file.close()
 
+            script += 'echo "Repairing segment %i"\n' % seg
             script += 'env PGOPTIONS="-c gp_session_role=utility" ' + \
                     'psql -X -a -h %s -p %i -f %s %s > %s.out\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
