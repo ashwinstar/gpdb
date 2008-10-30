@@ -79,8 +79,8 @@ bool		schemaOnly;
 bool		dataOnly;
 bool		aclsSkip;
 /* START MPP ADDITION */
-bool        isGBbackend;		/* true if interacting with a GB backend */
 bool		dumpPolicy;
+static bool	forGpMigrator;		/* Perform special processing for gpmigrator */
 /* END MPP ADDITION */
 
 /* subquery used to convert user ID (eg, datdba) to user name */
@@ -202,6 +202,7 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 				 ExecStatusType expected);
 /* START MPP ADDITION */
 static char *nextToken(register char **stringp, register const char *delim);
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod);
 /* END MPP ADDITION */
 
 int
@@ -232,6 +233,7 @@ main(int argc, char **argv)
 	int			outputNoOwner = 0;
 	bool		isGPbackend;
 	static int	disable_triggers = 0;
+	static int	gp_migrator = 0;
 	char	   *outputSuperuser = NULL;
 	/*
 	 * The default value for gp_syntax_option depends upon whether or not the backend
@@ -284,6 +286,7 @@ main(int argc, char **argv)
 		/* the following are mpp specific, and don't have an equivalent short option */
 		{"gp-syntax", no_argument, NULL, 1},
 		{"no-gp-syntax", no_argument, NULL, 2},
+		{"gp-migrator", no_argument, &gp_migrator, 1},
 		/* END MPP ADDITION */
 
 		{NULL, 0, NULL, 0}
@@ -486,6 +489,13 @@ main(int argc, char **argv)
 	/* Get database name from command line */
 	if (optind < argc)
 		dbname = argv[optind];
+
+	if (gp_migrator && !schemaOnly)
+	{
+		write_msg(NULL, "option \"--gp-migrator\" is valid only with \"schema only\" (-s)\n");
+		exit(1);
+	}
+	forGpMigrator = ( gp_migrator ? true : false );
 
 	if (dataOnly && schemaOnly)
 	{
@@ -3527,6 +3537,10 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 	int			i_atthasdef;
 	int			i_attisdropped;
 	int			i_attislocal;
+	int			i_attlen;
+	int			i_attndims;
+	int			i_attbyval;
+	int			i_attalign;
 	PGresult   *res;
 	int			ntups;
 	bool		hasdefaults;
@@ -3566,6 +3580,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 
 		/* need left join here to not fail on dropped columns ... */
 		appendPQExpBuffer(q, "SELECT a.attnum, a.attname, a.atttypmod, a.attstattarget, a.attstorage, t.typstorage, "
+			  "a.attlen, a.attndims, a.attbyval, a.attalign, "		/* Added for dropped column reconstruction */
 			  "a.attnotnull, a.atthasdef, a.attisdropped, a.attislocal, "
 			   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname "
 		 "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
@@ -3591,6 +3606,10 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		i_atthasdef = PQfnumber(res, "atthasdef");
 		i_attisdropped = PQfnumber(res, "attisdropped");
 		i_attislocal = PQfnumber(res, "attislocal");
+		i_attlen = PQfnumber(res, "attlen");
+		i_attndims = PQfnumber(res, "attndims");
+		i_attbyval = PQfnumber(res, "attbyval");
+		i_attalign = PQfnumber(res, "attalign");
 
 		tbinfo->numatts = ntups;
 		tbinfo->attnames = (char **) malloc(ntups * sizeof(char *));
@@ -3628,6 +3647,42 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			tbinfo->attrdefs[j] = NULL; /* fix below */
 			if (PQgetvalue(res, j, i_atthasdef)[0] == 't')
 				hasdefaults = true;
+
+			/*
+			 * If the column is dropped and we're in gp_migrator mode,
+			 * attempt to reconstruct the dropped column definition.
+			 *
+			 * When a column is dropped, the atttypid is zeroed causing the
+			 * atttypename column to be NULL.  The original attname value is
+			 * lost replaced with a value of the form "........pg.dropped.N........".
+			 * Using residual values, this code attempts to reconstruct a type having
+			 * the same basic relfile representation of the original type with the
+			 * column name begin set to "gp_colNNNNNN".
+			 */
+			if ( tbinfo->attisdropped[j] && forGpMigrator )
+			{
+				char attname[15];
+				int attlen = atoi(PQgetvalue(res, j, i_attlen));
+				int attndims = atoi(PQgetvalue(res, j, i_attndims));
+				char attbyval = PQgetvalue(res, j, i_attbyval)[0];
+				char attalign = PQgetvalue(res, j, i_attalign)[0];
+
+				tbinfo->atttypnames[j] = strdup(gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j]));
+
+				if (tbinfo->atttypnames[j] == NULL)
+				{
+					/* If we can't reconstruct the type, the dump must be abandoned! */
+					write_msg(NULL, "Unable to reconstruct definition for table \"%s\" column %d:\n",
+							tbinfo->dobj.name, j);
+					write_msg(NULL, "    attlen=%d, attbyval=%c, attalign=%c, attndims=%d, atttypmod=%d\n",
+							attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j]);
+					exit_nicely();
+				}
+
+				sprintf(attname, "gp_col%06d", j);
+				tbinfo->attnames[j] = strdup(attname);
+			}
+
 			/* these flags will be set in flagInhAttrs() */
 			tbinfo->inhAttrs[j] = false;
 			tbinfo->inhAttrDef[j] = false;
@@ -4561,7 +4616,7 @@ dumpCompositeType(Archive *fout, TypeInfo *tinfo)
 	selectSourceSchema(tinfo->dobj.namespace->dobj.name);
 
 	/* Fetch type specific details */
-
+	// TODO: Resolve impact of MPP-4003 dropped column handling on composite types
 	appendPQExpBuffer(query, "SELECT a.attname, "
 			 "pg_catalog.format_type(a.atttypid, a.atttypmod) as atttypdefn "
 					  "FROM pg_catalog.pg_type t, pg_catalog.pg_attribute a "
@@ -6637,11 +6692,15 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		actual_atts = 0;
 		for (j = 0; j < tbinfo->numatts; j++)
 		{
-			if ( !tbinfo->attisdropped[j] )
+			if ( !tbinfo->attisdropped[j] || forGpMigrator )
 				defined_atts++;
 
-			/* Is this one of the table's own attrs, and not dropped ? */
-			if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
+			/*
+			 * Is this one of the table's own attrs, and not dropped ?
+			 * (Dropped columns are recovered [and later DROPed] when the --gp-migrator
+			 * option is specified.)
+			 */
+			if (!tbinfo->inhAttrs[j] && ( !tbinfo->attisdropped[j] || forGpMigrator ))
 			{
 				/* Format properly if not first attr */
 				if (actual_atts > 0)
@@ -6819,6 +6878,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			 * Dump per-column statistics information. We only issue an ALTER
 			 * TABLE statement if the attstattarget entry for this column is
 			 * non-negative (i.e. it's not the default value)
+			 * (The --gp-migrator option does not attempt to restore
+			 * statistics for dropped columns.)
 			 */
 			if (tbinfo->attstattarget[j] >= 0 &&
 				!tbinfo->attisdropped[j])
@@ -6834,8 +6895,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			/*
 			 * Dump per-column storage information.  The statement is only
 			 * dumped if the storage has been changed from the type's default.
+			 * (When the --gp-migrator option is specified, dropped column
+			 * storage information is restored.)
 			 */
-			if (!tbinfo->attisdropped[j] && tbinfo->attstorage[j] != tbinfo->typstorage[j])
+			if (( !tbinfo->attisdropped[j] || forGpMigrator )
+					&& tbinfo->attstorage[j] != tbinfo->typstorage[j])
 			{
 				switch (tbinfo->attstorage[j])
 				{
@@ -6867,6 +6931,16 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					appendPQExpBuffer(q, "SET STORAGE %s;\n",
 									  storage);
 				}
+			}
+
+			/*
+			 * If running in gp_migrator mode, previously dropped columns have
+			 * been reconstituted.  We need to re-drop the columns.
+			 */
+			if ( forGpMigrator && tbinfo->attisdropped[j] )
+			{
+				appendPQExpBuffer(q, "ALTER TABLE ONLY %s ", fmtId(tbinfo->dobj.name));
+				appendPQExpBuffer(q, "DROP COLUMN %s;\n", fmtId(tbinfo->attnames[j]));
 			}
 		}
 	}
@@ -8132,6 +8206,70 @@ nextToken(register char **stringp, register const char *delim)
         } while (sc != 0);
     }
     /* NOTREACHED */
+}
+
+
+/*
+ * gettype - Return a type matching the size description of an unknown type.
+ *
+ * When a column is dropped, the type identifier is zeroed making precise
+ * recovery of the type identifier impossible.  However, the type size
+ * attributes are undesturbed.  This function attempts to match a set of
+ * type attributes against a set of "proxy" or representative types.
+ *
+ * What we need is matching typbyval, attalign, attlen, so if we can choose a
+ * representative datatype we should be okay.  Because there are elements in
+ * the catalog that are not actually directly usable we can't simply lookup
+ * a value from pg_type.  Instead we do a very gross roll your own type.
+ *
+ * It doesn't need to be the exact type it was before... it just needs to
+ * have the same size and alignment characteristics.
+ *
+ * *** THIS FUNCTION SHOULD ONLY BE USED WHEN ATTEMPTING TO RECOVER A TYPE
+ * *** FOR gp_migrator relfile COMPATIBILITY.  WHEN USED, THE RESULT *MUST*
+ * *** BE EXAMINED TO ENSURE A TYPE IS ACTUALLY RETURNED!
+ */
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod)
+{
+	int i;
+
+	typedef struct
+	{
+		char *name;
+		int   typlen;
+		char  typbyval;
+		char  typalign;
+	} typinfo;
+
+	static typinfo typrecords[] =
+		{
+			{"text",      -1, 'f', 'i'},
+			{"path",      -1, 'f', 'd'},
+			{"bool",       1, 't', 'c'},
+			{"int2",       2, 't', 's'},
+			{"int4",       4, 't', 'i'},
+			{"int8",       8, 't', 'd'},
+			{"money",      4, 'f', 'i'},
+			{"tid",        6, 'f', 's'},
+			{"macaddr",    6, 'f', 's'},
+			{"tinterval", 12, 'f', 'i'},
+			{"timetz",    12, 'f', 'd'},
+			{"interval",  16, 'f', 'd'},
+			{"circle",    24, 'f', 'd'},
+			{"box",       32, 'f', 'd'},
+			{"name",      64, 'f', 'd'},
+			{0, 0, 0, 0}
+		};
+
+	for (i = 0; typrecords[i].name; i++)
+	{
+		if (typrecords[i].typlen == typlen &&
+			typrecords[i].typbyval == typbyval &&
+			typrecords[i].typalign == typalign)
+			return typrecords[i].name;
+	}
+
+	return NULL;	/* unable to determine type */
 }
 
 /* END MPP ADDITION */
