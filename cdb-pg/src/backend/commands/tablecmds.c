@@ -7585,6 +7585,9 @@ ATPostAlterTypeParse(char *cmd, List **wqueue)
  * be changed separately from the parent table.  Also, we can skip permission
  * checks (this is necessary not just an optimization, else we'd fail to
  * handle toast tables properly).
+ *
+ * recursing is also true if ALTER TYPE OWNER is calling us to fix up a
+ * free-standing composite type.
  */
 void
 ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
@@ -7658,6 +7661,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			break;
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
+		case RELKIND_COMPOSITE_TYPE:
 			if (recursing)
 				break;
 			/* FALL THRU */
@@ -7736,14 +7740,22 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 
 		heap_freetuple(newtuple);
 
-		/* Update owner dependency reference */
-		changeDependencyOnOwner(RelationRelationId, relationOid, newOwnerId);
+		/*
+		 * Update owner dependency reference, if any.  A composite type has
+		 * none, because it's tracked for the pg_type entry instead of here;
+		 * indexes don't have their own entries either.
+		 */
+		if (tuple_class->relkind != RELKIND_COMPOSITE_TYPE &&
+			tuple_class->relkind != RELKIND_INDEX)
+			changeDependencyOnOwner(RelationRelationId, relationOid,
+									newOwnerId);
 
 		/*
 		 * Also change the ownership of the table's rowtype, if it has one
 		 */
 		if (tuple_class->relkind != RELKIND_INDEX)
-			AlterTypeOwnerInternal(tuple_class->reltype, newOwnerId);
+			AlterTypeOwnerInternal(tuple_class->reltype, newOwnerId,
+							tuple_class->relkind == RELKIND_COMPOSITE_TYPE);
 
 		/*
 		 * If we are operating on a table, also change the ownership of any

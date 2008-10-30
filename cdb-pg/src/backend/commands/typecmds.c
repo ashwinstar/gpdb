@@ -2184,16 +2184,28 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 		}
 
 		/*
-		 * Modify the owner --- okay to scribble on typTup because it's a copy
+		 * If it's a composite type, invoke ATExecChangeOwner so that we
+		 * fix up the pg_class entry properly.  That will call back to
+		 * AlterTypeOwnerInternal to take care of the pg_type entry(s).
 		 */
-		typTup->typowner = newOwnerId;
+		if (typTup->typtype == 'c')
+			ATExecChangeOwner(typTup->typrelid, newOwnerId, true);
+		else
+		{
+			/*
+			 * We can just apply the modification directly.
+			 *
+			 * okay to scribble on typTup because it's a copy
+			 */
+			typTup->typowner = newOwnerId;
 
-		simple_heap_update(rel, &tup->t_self, tup);
+			simple_heap_update(rel, &tup->t_self, tup);
 
-		CatalogUpdateIndexes(rel, tup);
+			CatalogUpdateIndexes(rel, tup);
 
-		/* Update owner dependency reference */
-		changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
+			/* Update owner dependency reference */
+			changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
+		}
 	}
 
 	/* Clean up */
@@ -2203,12 +2215,17 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 /*
  * AlterTypeOwnerInternal - change type owner unconditionally
  *
- * This is currently only used to propagate ALTER TABLE OWNER to the
- * table's rowtype, and to implement REASSIGN OWNED BY.  It assumes the
- * caller has done all needed checks.
+ * This is currently only used to propagate ALTER TABLE/TYPE OWNER to a 
+ * table's rowtype or an array type, and to implement REASSIGN OWNED BY.
+ * It assumes the caller has done all needed checks.  The function will
+ * automatically recurse to an array type if the type has one.
+ *
+ * hasDependEntry should be TRUE if type is expected to have a pg_shdepend
+ * entry (ie, it's not a table rowtype nor an array type).
  */
 void
-AlterTypeOwnerInternal(Oid typeOid, Oid newOwnerId)
+AlterTypeOwnerInternal(Oid typeOid, Oid newOwnerId,
+					   bool hasDependEntry)
 {
 	Relation	rel;
 	HeapTuple	tup;
@@ -2232,8 +2249,9 @@ AlterTypeOwnerInternal(Oid typeOid, Oid newOwnerId)
 
 	CatalogUpdateIndexes(rel, tup);
 
-	/* Update owner dependency reference */
-	changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
+	/* Update owner dependency reference, if it has one */
+	if (hasDependEntry)
+		changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
 
 	/* Clean up */
 	heap_close(rel, RowExclusiveLock);
@@ -2364,13 +2382,9 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 
 		classRel = heap_open(RelationRelationId, RowExclusiveLock);
 
-		/*
-		 * The dependency on the schema is listed under the pg_class entry, so
-		 * tell AlterRelationNamespaceInternal to fix it.
-		 */
 		AlterRelationNamespaceInternal(classRel, typform->typrelid,
 									   oldNspOid, nspOid,
-									   true);
+									   false);
 
 		heap_close(classRel, RowExclusiveLock);
 
