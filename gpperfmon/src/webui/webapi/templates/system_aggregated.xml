@@ -1,6 +1,6 @@
 $def with (stime, etime, interval, tkeys, ckeys, tab)
 <?xml version="1.0"?>
-<system start="$stime" end="$etime" interval="$interval" aggregated="Y">
+<system start="$stime" end="$etime" interval="$interval" aggregated="yes">
   $for c in ckeys:
      <$c> \
         $for t in tkeys:

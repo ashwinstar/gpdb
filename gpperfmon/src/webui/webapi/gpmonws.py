@@ -16,6 +16,7 @@ configpath = datadir + '/gpperfmon/conf'
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 sys.path.append(os.path.join(gphome, 'bin', 'lib'))
+
 import pg8000
 import web
 from greenplum import db
@@ -57,6 +58,7 @@ def page_not_found():
     web.ctx.headers = [('Content-Type', 'text/xml')]
     web.ctx.status = '200 OK';
     return mkerr(error.BADREQ, 'Invalid command')
+
 app.notfound = page_not_found
 app.internalerror = web.debugerror
 
@@ -100,6 +102,9 @@ class api:
 
 
 class logon:
+    def __init__(self):
+        self.sanitize = re.compile('^\w+$')
+
     # We don't want username/password details saved in the web logs,
     # so do the logon via POST. We've added a simple form for GET that
     # allows testing the logon via a web browser.
@@ -125,8 +130,7 @@ class logon:
             return render.logon_failure()
 
         try:
-            sanitize = re.compile('^\w+$')
-            s = sanitize.search(username)
+            s = self.sanitize.search(username)
             if s != None:
                 # valid string
                 username = s.group()
@@ -134,7 +138,7 @@ class logon:
                 # string contains invalid characters
                 return render.logon_failure()
         except:
-           return render.logon_failure()
+            return render.logon_failure()
 
         # authenticate user
         try:
@@ -234,7 +238,7 @@ class system:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='', end='', interval='', aggregated='')
+        i = web.input(start='NOW', end='NOW', interval='1min', aggregated='yes')
 
         # DEBUGGING 
         sys.stderr.write("\n\n\n<system metrics>\n")
@@ -243,45 +247,35 @@ class system:
         # DEBUGGING 
 
         res = None
-        aggregate = 0
-        endtime = i.end
 
         try:
-            if (i.start == '') and (i.end == '') and (i.interval == '') and (i.aggregated == ''):
+            if i.start == 'NOW':
                 res = db.system_now()
-                i.interval = 'NOW'
-            elif i.start != '':
+                i.aggregated = 'no'
+            else:
                 # Only allow superuser to look up historical information
                 if not session.role['superuser']:
-                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to see historical information')
+                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to view historical information')
 
-                if endtime == '':
-                    endtime = timenow()
-                if i.interval == '':
-                    i.interval = '1min'
-                if i.aggregated == '':
-                    i.aggregated = 'Y'
+                i.aggregated = i.aggregated.lower()
+                if not i.aggregated in ['yes', 'no']:
+                    return mkerr(error.BADREQ, 'Invalid aggregated parameter')
+
+                if i.end == 'NOW':
+                    i.end = timenow()
 
                 # validate the time strings, and check the number of samples
-                (status, interval_code, samples) = interval.calc_samples(i.start, endtime, i.interval)
+                (status, interval_code, samples) = interval.calc_samples(i.start, i.end, i.interval)
                 if not status:
                     return mkerr(error.BADREQ, 'Invalid date parameters')
 
-                if (i.aggregated.upper() == 'Y'):
-                    aggregate = 1;
-                    if (samples > MAX_AGGREGATED_SAMPLES):
-                        return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
-                elif (i.aggregated.upper() == 'N'):
-                    aggregate = 0;
-                    if (samples > MAX_NONAGGREGATED_SAMPLES):
-                        return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
-                else:
-                    return mkerr(error.BADREQ, 'Invalid parameters to system metrics request')
+                if i.aggregated == 'yes' and samples > MAX_AGGREGATED_SAMPLES:
+                    return mkerr(error.BADREQ, 'Exceeded maximum number of samples for specified interval')
+                elif i.aggregated == 'no' and samples > MAX_NONAGGREGATED_SAMPLES:
+                    return mkerr(error.BADREQ, 'Exceeded maximum number of samples for specified interval')
 
-                res = db.system_history(i.start, i.end, interval_code, aggregate)
+                res = db.system_history(i.start, i.end, interval_code, i.aggregated)
 
-            else:
-                return mkerr(error.BADREQ, 'Invalid parameters to system metrics request')
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -289,16 +283,19 @@ class system:
 
         # check if the result set is empty
         if ckeys:
-            stime = i.start; etime = i.end
-
-            if aggregate:
-                return render.system_aggregated(stime, etime, i.interval, tkeys, ckeys, tab)
+            if i.aggregated == 'yes':
+                return render.system_aggregated(i.start, i.end, i.interval, tkeys, ckeys, tab)
             else:
-                return render.system_nonaggregated(stime, etime, i.interval, tkeys, hkeys, ckeys, tab)
+                return render.system_nonaggregated(i.start, i.end, i.interval, tkeys, hkeys, ckeys, tab)
         else:
-            return render.system_noresult(stime, etime, i.interval)
+            return render.system_noresult(i.start, i.end, i.interval)
 
 class queries:
+    def __init__(self):
+        self.sanitize = re.compile('^\w+$')
+        self.valid_status = ['done', 'start', 'submit', 'abort']
+
+
     def GET(self):
         # DEBUGGING 
         sys.stderr.write("\nQUERIES:\n")
@@ -311,7 +308,7 @@ class queries:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='', end='', status='', textlength='', mintime='', username='', db='')
+        i = web.input(start='NOW', end='NOW', status='', textlength='', mintime='', username='', db='')
 
         try:
             if i.textlength != '':
@@ -321,10 +318,8 @@ class queries:
             if i.mintime != '':
                 i.mintime = int(i.mintime)
 
-            sanitize = re.compile('^\w+$')
-
             if i.username != '':
-                s = sanitize.search(i.username)
+                s = self.sanitize.search(i.username)
                 if s != None:
                     # valid string
                     i.username = s.group()
@@ -339,7 +334,7 @@ class queries:
                 i.username = session.user
 
             if i.db != '':
-                s = sanitize.search(i.db)
+                s = self.sanitize.search(i.db)
                 if s != None:
                     # valid string
                     i.db = s.group()
@@ -352,11 +347,10 @@ class queries:
         # sanitize status input
         # status can be a '|' separated list of multiple values
         if i.status != '':
-            valid_status = ['done', 'start', 'submit', 'abort']
             i.status = re.split('[\|]', i.status)
             
             for status in i.status:
-                if not status in valid_status:
+                if not status in self.valid_status:
                     return mkerr(error.BADREQ, 'Invalid status value')
 
         # DEBUGGING 
@@ -370,36 +364,31 @@ class queries:
         res = None
 
         try:
-            if (i.start == '') and (i.end == ''):
+            if i.start == 'NOW':
                 res = db.queries_now(i.status, i.username, i.db, i.textlength)
-
-            elif i.start != '':
+            else:
                 # check_valid() sanitizes input against SQL injection attacks 
                 try:
                     interval.check_valid(i.start)
-                    if i.end != '':
+                    if i.end != 'NOW':
                         interval.check_valid(i.end)
                 except ValueError:
                     return mkerr(error.BADREQ, 'Invalid date parameters')
 
                 res = db.queries_history(i.status, i.start, i.end, i.username, i.mintime, i.db, i.textlength, MAX_QUERIES_PER_SEARCH)
 
-            else:
-                return mkerr(error.BADREQ, 'Invalid parameters to query list request')
-
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
         (tkeys, ckeys, tab, row_count) = res
 
-        stime = i.start; etime = i.end
-
         # Did we hit the maximum number of rows for a search?
-        hit_row_max = 'false'
         if row_count >= MAX_QUERIES_PER_SEARCH:
-          hit_row_max = 'true'
+            hit_row_max = 'true'
+        else:
+            hit_row_max = 'false'
 
-        return render.queries(stime, etime, tkeys, ckeys, tab, row_count, hit_row_max)
+        return render.queries(i.start, i.end, tkeys, ckeys, tab, row_count, hit_row_max)
 
 class querydetails:
     def GET(self):
@@ -414,7 +403,7 @@ class querydetails:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(id='', historic='')
+        i = web.input(id='', historic='yes')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -431,6 +420,10 @@ class querydetails:
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
 
+        i.historic = i.historic.lower()
+        if not i.historic in ['yes', 'no']:
+            return mkerr(error.BADREQ, 'Invalid historic parameter')
+
         # DEBUGGING 
         sys.stderr.write("\n\n\n<query details>\n")
         sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
@@ -443,7 +436,7 @@ class querydetails:
             username = session.user
             
         try:
-            if i.historic.upper() == 'Y':
+            if i.historic == 'yes':
                 res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username)
             else:
                 res = db.querydetails_now(id_split[0], id_split[1], id_split[2], username)
@@ -476,7 +469,7 @@ class queryplan:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(id='', historic='')
+        i = web.input(id='', historic='yes')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -493,6 +486,10 @@ class queryplan:
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
 
+        i.historic = i.historic.lower()
+        if not i.historic in ['yes', 'no']:
+            return mkerr(error.BADREQ, 'Invalid historic parameter')
+
         # DEBUGGING
         sys.stderr.write("\n\n\n<query plan>\n")
         sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
@@ -505,7 +502,7 @@ class queryplan:
             username = session.user
 
         try:
-            if i.historic.upper() == 'Y':
+            if i.historic == 'yes':
                 res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username)
             else:
                 res = db.queryplan_now(id_split[0], id_split[1], id_split[2], username)
@@ -597,7 +594,7 @@ class database:
 
         web.header('Content-Type', 'text/xml')
 
-        i = web.input(start='', end='', interval='')
+        i = web.input(start='NOW', end='NOW', interval='1min')
         
         # DEBUGGING 
         sys.stderr.write("\n\n<database>\n")
@@ -606,34 +603,28 @@ class database:
         # DEBUGGING 
 
         res = None
-        endtime = i.end
 
         try:
-            if (i.start == '') and (i.end == '') and (i.interval == ''):
+            if i.start == 'NOW':
                 res = db.database_now()
-                i.interval = 'NOW'
-            elif i.start != '':
+            else:
                 # Only allow superuser to look up historical information
                 if not session.role['superuser']:
                     return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to see historical information')
 
-                if endtime == '':
-                    endtime = timenow()
-                if i.interval == '':
-                    i.interval = '1min'
+                if i.end == 'NOW':
+                    i.end = timenow()
 
                 # validate the time strings, and check the number of samples
-                (status, interval_code, samples) = interval.calc_samples(i.start, endtime, i.interval)
+                (status, interval_code, samples) = interval.calc_samples(i.start, i.end, i.interval)
                 if not status:
                     return mkerr(error.BADREQ, 'Invalid date parameters')
 
-                if (samples > MAX_AGGREGATED_SAMPLES):
+                if samples > MAX_AGGREGATED_SAMPLES:
                     return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
 
                 res = db.database_history(i.start, i.end, interval_code)
 
-            else:
-                return mkerr(error.BADREQ, 'Invalid parameters to database metrics request')
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -641,10 +632,9 @@ class database:
 
         # check if the result set is empty
         if ckeys:
-            stime = i.start; etime = i.end
-            return render.database(stime, etime, i.interval, tkeys, ckeys, tab)
+            return render.database(i.start, i.end, i.interval, tkeys, ckeys, tab)
         else:
-            return render.database_noresult(stime, etime, i.interval)
+            return render.database_noresult(i.start, i.end, i.interval)
            
 
 

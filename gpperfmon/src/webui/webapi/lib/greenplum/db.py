@@ -92,6 +92,7 @@ def _system_consolidate_aggregate(rows):
     td = {}   #time dimension
     tab = {}  #table where the key is composed of host and time
 
+    sys.stderr.write("_SYSTEM_CONSOLIDATE_AGGREGATE")
     x = None
     for r in rows:
         t = r['sample_time']
@@ -102,7 +103,6 @@ def _system_consolidate_aggregate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        #ckeys = filter(lambda i: i != 'sample_time', x.keys())
         ckeys = x.keys();
 	ckeys.sort()
 
@@ -125,7 +125,6 @@ def _system_consolidate_nonaggregate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        #ckeys = filter(lambda i: i != 'hostname' and i != 'sample_time', x.keys())
         ckeys = filter(lambda i: i != 'hostname', x.keys())
 	ckeys.sort()
 
@@ -237,7 +236,6 @@ def _database_consolidate(rows):
     # retrieve the column names into ckeys
     ckeys = None
     if x:
-        #ckeys = filter(lambda i: i != 'sample_time', x.keys())
         ckeys = x.keys();
 	ckeys.sort()
 
@@ -314,7 +312,7 @@ def system_sql(table, filter, interval_code, aggregate):
                 "date_trunc('week', ctime)",   
                 "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)"]
 
-    if aggregate:
+    if aggregate == 'yes':
         query_fragment = "select %s as sample_time" % itvl_sql[interval_code]
         for column in columns:
             query_fragment += ", avg(%s) as %s" % (column, column)
@@ -336,7 +334,7 @@ def system_sql(table, filter, interval_code, aggregate):
 def system_history(stime, etime, interval_code, aggregate):
     validate_db_conn()
 
-    if etime == '':
+    if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
         filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
@@ -352,7 +350,7 @@ def system_history(stime, etime, interval_code, aggregate):
     except:
         raise_db_error('Exception during query: %s' % query)
 
-    if aggregate:
+    if aggregate == 'yes':
         return _system_consolidate_aggregate(rows)
     else:
         return _system_consolidate_nonaggregate(rows)
@@ -383,6 +381,7 @@ def queryText(tmid, ssid, ccnt):
         q.close()
 
     return qtext
+
 
 def rt_queries(status, username, database, textlength, tmid, ssid, ccnt):
     filename = "%s/queries_now.dat" % path
@@ -478,7 +477,7 @@ def queries_sql(textlength):
 def queries_history(status, stime, etime, username, runtime, database, textlength, max_query_limit):
     validate_db_conn()
 
-    if etime == '':
+    if etime == 'NOW':
         filter = "where '%s' <= tfinish" % stime
     else:
         filter = "where '%s' <= tfinish and tstart <= '%s'" % (stime, etime)
@@ -850,7 +849,7 @@ def database_sql(table, filter, interval_code):
 def database_history(stime, etime, interval_code):
     validate_db_conn()
 
-    if etime == '':
+    if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
         filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
