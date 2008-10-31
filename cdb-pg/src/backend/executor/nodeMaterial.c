@@ -465,7 +465,7 @@ ExecEndMaterial(MaterialState *node)
 	 */
 	if (node->ts_state != NULL)
 	{
-		if(ma->share_type == SHARE_MATERIAL_XSLICE)
+		if (ma->share_type == SHARE_MATERIAL_XSLICE && node->share_lk_ctxt)
 			shareinput_writer_waitdone(node->share_lk_ctxt, ma->share_id, ma->nsharer_xslice);
 
 #ifdef USE_OLD_TUPLESTORE
@@ -476,13 +476,12 @@ ExecEndMaterial(MaterialState *node)
 		ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);
 		ntuplestore_destroy((NTupleStore *) node->ts_state);
 
-		node->ts_pos = NULL;
-		node->ts_state = NULL;
-
 		if(node->ts_markpos)
 			pfree(node->ts_markpos);
 		node->ts_markpos = NULL;
 #endif
+		node->ts_pos = NULL;
+		node->ts_state = NULL;
 	}
 
 	/*
