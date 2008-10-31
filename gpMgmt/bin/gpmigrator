@@ -471,8 +471,8 @@ class GPUpgrade:
 
         try:
             result = self.RunCmd(exec_cmd, env=env)
-            sys.stdout.write(result)
-            sys.stdout.flush()
+            #sys.stdout.write(result)
+            #sys.stdout.flush()
         except CmdError, e:
             if self.debug:
                 print e.cmd
@@ -579,8 +579,6 @@ class GPUpgrade:
         '''
 
         #
-        # This is a little gross!
-        #
         #   If we are executing from one of the segments then we don't
         #   actually know where the data directory is for the segment
         #   is so we can't check if we are in lockdown mode
@@ -652,9 +650,6 @@ class GPUpgrade:
         Execute a SQL query expecting no output
         '''
 
-        #
-        # This is a little gross!
-        #
         #   If we are executing from one of the segments then we don't
         #   have the current database state, so we have to know what to
         #   do via other means.
@@ -2159,7 +2154,7 @@ This issue must be resolved before upgrade can complete.
         cmd  = 'pg_dumpall'
         cmd += ' -U %s' % user
         cmd += ' -p %d' % self.masterport
-        cmd += ' -r -s --gp-syntax > %s/pgdump.sql' % self.workdir
+        cmd += ' -r -s --gp-syntax --gp-migrator > %s/pgdump.sql' % self.workdir
         self.Log('DEBUG', 'CMD: ' + cmd)
         r = subprocess.call(cmd, env=env, shell=True)
 
@@ -2431,6 +2426,18 @@ This issue must be resolved before upgrade can complete.
             else:
                 return "E'%s'::%s" % (escape(str), typ)
 
+        # The "vacuum freeze" we did after importing the schema did an analyze
+        # on all the empty tables resulting in statisics being generated.  
+        #
+        # We'll overwrite this for all tables that we previously had statistics
+        # on, but to preserve NOT having statistics on some tables we first have
+        # to clear statistics.
+        databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
+        for db in databases:
+            self.Update('update pg_class set relpages=0, reltuples=0', db=db);
+        
+        # Now read the stat files and update statistics based on what was in previous
+        # catalog.
         lastdb   = None
         lastname = None
         for file in os.listdir(self.workdir):
