@@ -656,13 +656,26 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 
 	for (seg = 0; seg < segdbcount; seg++)
 	{
-
 		dbresult
+						pgclassresult;
+		
+		try {
+
 				pgclassresult =
 						config[seg].conn.exec("select oid,relname,relnamespace,reltype,relowner,relam,relfilenode,"
 								"reltablespace,relpages,reltuples,reltoastrelid,reltoastidxid,relaosegrelid,relaosegidxid,relhasindex,relisshared"
 								",relkind,relstorage,relnatts"
 								" from pg_catalog.pg_class order by oid");
+		} catch(...)
+		{
+			pgclassresult =
+									config[seg].conn.exec("select oid,relname,relnamespace,reltype,relowner,relam,relfilenode,"
+											"reltablespace,relpages,reltuples,reltoastrelid,reltoastidxid,NULL,NULL,relhasindex,relisshared"
+											",relkind,NULL,relnatts"
+											" from pg_catalog.pg_class order by oid");
+			
+		}
+ 
 
 		for (dbresult::const_iterator rp = pgclassresult.begin(); rp !=pgclassresult.end(); ++rp)
 		{
