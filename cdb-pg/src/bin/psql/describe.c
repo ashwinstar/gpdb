@@ -756,9 +756,10 @@ describeOneTableDetails(const char *schemaname,
 
 	/* Get general table info */
 	printfPQExpBuffer(&buf,
-	   "SELECT relhasindex, relkind, relstorage, relchecks, reltriggers, \n"
-					  "relhasrules, relhasoids %s \n"
+	   "SELECT relhasindex, relkind, relchecks, reltriggers, \n"
+					  "relhasrules, relhasoids %s%s\n"
 					  "FROM pg_catalog.pg_class WHERE oid = '%s'",
+					  pset.sversion > 80206 ? ", relstorage" : "",
 					  pset.sversion >= 80000 ? ", reltablespace" : "",
 					  oid);
 	res = PSQLexec(buf.data, false);
@@ -775,15 +776,16 @@ describeOneTableDetails(const char *schemaname,
 	}
 
 	/* FIXME: check for null pointers here? */
-	tableinfo.checks = atoi(PQgetvalue(res, 0, 3));
-	tableinfo.triggers = atoi(PQgetvalue(res, 0, 4));
+	tableinfo.checks = atoi(PQgetvalue(res, 0, 2));
+	tableinfo.triggers = atoi(PQgetvalue(res, 0, 3));
 	tableinfo.relkind = *(PQgetvalue(res, 0, 1));
-	tableinfo.relstorage = *(PQgetvalue(res, 0, 2));	
 	tableinfo.hasindex = strcmp(PQgetvalue(res, 0, 0), "t") == 0;
-	tableinfo.hasrules = strcmp(PQgetvalue(res, 0, 5), "t") == 0;
-	tableinfo.hasoids = strcmp(PQgetvalue(res, 0, 6), "t") == 0;
+	tableinfo.hasrules = strcmp(PQgetvalue(res, 0, 4), "t") == 0;
+	tableinfo.hasoids = strcmp(PQgetvalue(res, 0, 5), "t") == 0;
 	tableinfo.tablespace = (pset.sversion >= 80000) ?
-		atooid(PQgetvalue(res, 0, 7)) : 0;
+		atooid(PQgetvalue(res, 0, 6)) : 0;
+	tableinfo.relstorage = (pset.sversion > 80206) ? 
+		*(PQgetvalue(res, 0, 7)) : 'h';
 	PQclear(res);
 
 	headers[0] = _("Column");
@@ -1784,11 +1786,17 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
 					  "  CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
-					  "  CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'a' THEN '%s' WHEN 'v' THEN '%s' END as \"%s\",\n"
+	
 					  "  r.rolname as \"%s\"\n",
 					  _("Schema"), _("Name"),
-					  _("external table"), _("table"), _("view"), _("index"), _("sequence"), _("special"), _("Type"), 
-					  _("heap"), _("append only"), _("none"), _("Storage"), _("Owner"));
+				  	  _("external table"), _("table"), _("view"), _("index"), 
+				  	  _("sequence"), _("special"), _("Type"), _("Owner"));
+
+	if (pset.sversion > 80206)
+		appendPQExpBuffer(&buf,
+				  ", CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'a' "
+				  "THEN '%s' WHEN 'v' THEN '%s' END as \"%s\"\n",
+				  _("heap"), _("append only"), _("none"), _("Storage"));
 
 	if (showIndexes)
 		appendPQExpBuffer(&buf,
