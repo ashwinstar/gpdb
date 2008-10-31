@@ -989,15 +989,18 @@ ExecCheckXactReadOnly(Query *parsetree)
 {
 	ListCell   *l;
     int         rti;
-    int			changesTempTables = 0;
+    bool		changesTempTables = false;
 
 	/*
 	 * CREATE TABLE AS or SELECT INTO?
-	 *
-	 * XXX should we allow this if the destination is temp?
 	 */
 	if (parsetree->into != NULL)
-		goto fail;
+	{
+		if (parsetree->into->istemp)
+			changesTempTables = true;
+		else
+			goto fail;
+	}
 
 	/* Fail if write permissions are requested on any non-temp table */
     rti = 0;
@@ -1021,7 +1024,7 @@ ExecCheckXactReadOnly(Query *parsetree)
 
 		if (isTempNamespace(get_rel_namespace(rte->relid)))
 		{
-			changesTempTables = 1;
+			changesTempTables = true;
 			continue;
 		}
 
