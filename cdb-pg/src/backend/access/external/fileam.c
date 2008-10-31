@@ -1326,7 +1326,7 @@ void readHeaderLine(CopyState pstate)
 void AtAbort_ExtTables(void)
 {
 	close_external_file(g_dataSource, g_dataSourceName);
-	g_dataSource = dataSource = NULL;
+	g_dataSource = NULL;
 }
 void
 gfile_printf_then_putc_newline(const char*format,...)
