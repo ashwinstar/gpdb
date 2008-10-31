@@ -346,9 +346,10 @@ class GPUpgrade:
                 self.prepare = True
             if options.execute:
                 self.execute = True
+
             if not self.prepare and not self.execute:
-                self.Log('FATAL', 'Must specify --prepare or --execute')
-                raise UpgradeError('Initialization failed')
+                self.prepare = True
+                self.execute = True
 
             self.new_master_port      = options.master_port
             self.new_port_base        = options.port_base
@@ -1344,10 +1345,19 @@ tool shipped with that release''')
         Creates 'hosts' and 'gp_init_config' files
         '''
 
-        if not self.prepare:
+        self.Log('INFO', 'Generating config files')        
+        resetports = None
+        try: 
+            self.CheckDown()
+            resetports = False
+        except:
+            resetports = True
+
+        if not resetports:
             self.new_master_port      = self.config['MASTER_PORT']
             self.new_port_base        = self.config['PORT_BASE']
-            self.new_mirror_port_base = self.config['MIRROR_PORT_BASE']
+            if len(self.mirrors) > 0:
+                self.new_mirror_port_base = self.config['MIRROR_PORT_BASE']
         else:
 
             if not (self.new_master_port and
@@ -2776,21 +2786,33 @@ try:
         # Check that we can do the upgrade between the versions
         u.CheckVersions()
 
+        if u.execute:
+            try:   
+                u.CheckDown()
+            except Exception, e:
+                u.Log('FATAL', str(e))
+                sys.exit(1)
+
         if u.prepare:
             try:
+                shutdown = True
 
                 try:
                     env = u.CheckUp()
+                    shutdown = False
                     u.dbup = [env, False]
                     if env == u.newenv:
                         u.Log('FATAL', 'Can not prepare with running new db')
                         sys.exit(1)
                 except:
-                    u.Startup(u.oldenv)
+                    u.Startup(u.oldenv, True)
 
                 # The way things are structured we will only issue selects against the
                 # database that's "up" so mark the oldenv as running.
                 u.ExtractInfo()
+
+                if shutdown:
+                    u.Shutdown()
 
                 # Create working directories on all hosts
                 # + Requires configuration info collected in ExtractInfo
@@ -2807,6 +2829,9 @@ try:
                 # + Requires working directories on all nodes
                 # + Requires generated configuration file
                 u.InitNewDB()
+
+                if shutdown:
+                    u.Shutdown()
 
                 # Prepare done, anything done after this point may allow modifying
                 # the olddb
