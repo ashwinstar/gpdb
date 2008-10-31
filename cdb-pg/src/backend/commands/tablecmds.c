@@ -5643,6 +5643,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 	List	   *children;
 	ObjectAddress object;
 	GpPolicy  *policy;
+	PartitionNode *pn;
 
 	/* At top level, permission check was done in ATPrepCmd, else do it */
 	if (recursing)
@@ -5674,6 +5675,19 @@ ATExecDropColumn(Relation rel, const char *colName,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot drop inherited column \"%s\"",
 						colName)));
+
+	/* better not be a column we partition on */
+	pn = RelationBuildPartitionDesc(rel, false);
+	if (pn)
+	{
+		List *patts = get_partition_attrs(pn);
+
+		if (list_member_int(patts, attnum))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot drop partitioning column \"%s\"",
+							colName)));
+	}
 
 	ReleaseSysCache(tuple);
 	

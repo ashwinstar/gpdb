@@ -2758,3 +2758,13 @@ values ('foo'), partition bar values ('bar'), default partition baz);
 alter table list_test split default partition at ('baz') into (partition bing,
 default partition);
 drop table list_test;
+
+-- MPP-3816: cannot drop column  which is the subject of partition config
+create table list_test(a int, b int, c int) distributed by (a)
+  partition by list(b) 
+  subpartition by list(c) subpartition template(subpartition c values(2))
+  (partition b values(1));
+-- should fail
+alter table list_test drop column b;
+alter table list_test drop column c;
+drop table list_test;
