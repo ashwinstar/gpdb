@@ -41,7 +41,7 @@ def pretty_version(v):
     m = re.compile('Revision: #(\d+)').search(v)
     if m: return str(2 + (float(m.group(1))/100))
     else: return str(v)
-__version__ = pretty_version('$Revision: #7 $')
+__version__ = pretty_version('$Revision: #8 $')
 
 #============================================================
 def cli_help():
@@ -1979,14 +1979,13 @@ This issue must be resolved before upgrade can complete.
                  s.staop3::regoperator,         s.staop4::regoperator,		 
                  s.stanumbers1,  s.stanumbers2, s.stanumbers3,  s.stanumbers4,
                  s.stavalues1,   s.stavalues2,  s.stavalues3,   s.stavalues4
-              FROM   pg_class c, pg_statistic s, pg_namespace n, pg_attribute a, pg_type t
-              WHERE  c.relnamespace = n.oid
-                and  n.nspname !~ '(pg_.*|information_schema)'
-                and  c.oid = s.starelid
-                and  a.attrelid = c.oid
-                and  a.attnum = s.staattnum
-                and  a.atttypid = t.oid
-              ORDER BY c.relname, s.staattnum
+              FROM   pg_class c
+                     join pg_namespace n on (c.relnamespace = n.oid) 
+                     left outer join pg_attribute a on (c.oid = a.attrelid) 
+                     left outer join pg_type t on (a.atttypid = t.oid)
+                     left outer join pg_statistic s on (s.starelid = c.oid and s.staattnum = a .attnum)
+              WHERE  n.nspname !~ '(pg_.*|information_schema)'
+              ORDER BY n.nspname, c.relname, s.staattnum
               ) to '%s/pg_stat_%d.csv' with CSV ESCAPE E'\\\\' ''' % \
                             (self.workdir, count), db=db)
             count += 1
@@ -2475,7 +2474,6 @@ This issue must be resolved before upgrade can complete.
                     else:
                         kind = kind + "[]"
 
-
                     if db != lastdb:
                         lastdb = db
                         lastname = None
@@ -2490,6 +2488,14 @@ This issue must be resolved before upgrade can complete.
                             self.Update(sql, db=db)
                         except Exception, e:
                             self.Log('WARN', str(e))
+
+                    # Statistics where dumped with an outer join, if there are
+                    # records in pg_statistics then columns 6-17 will all be
+                    # non-null.  Row[6] is the column index (staattnum) if it
+                    # is null the rest will be null too and we can skip the 
+                    # insertion into pg_statistic
+                    if row[6] == None or row[6] == '':
+                        continue
 
                     sql  = "INSERT INTO pg_statistic VALUES (\n"
                     sql += "  E'%s'::regclass, \n" % name
@@ -2769,6 +2775,7 @@ u = GPUpgrade()
 # parses and validates input
 try:
     u.Setup()
+    u.Log('INFO', 'gpmigrator version ' + __version__)
 except Exception, e:
     u.Log('FATAL', str(e))
     sys.exit(1)
