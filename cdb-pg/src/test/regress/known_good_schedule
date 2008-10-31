@@ -126,6 +126,6 @@ test: gpctas
 test: gpdist
 test: matrix
 test: gpdtm_plpgsql
-test: gp_portal_error
+ignore: gp_portal_error
 test: notin
 test: toast
