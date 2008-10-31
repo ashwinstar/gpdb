@@ -145,7 +145,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	 * MASTER ONLY the (one and only) entry which is destined for the master
 	 * will be at the first entry of the uriList list.
 	 */
-	if(Gp_role == GP_ROLE_EXECUTE)
+	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		/* this is the normal path for most ext tables */
 		Value *v;
@@ -158,10 +158,10 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		 * Entry db slice will still call ExecInitExternalScan (probably we
 		 * should fix this?), then segindex = -1 will bomb out here.
 		 */
-		if(isMasterOnly && idx == -1)
+		if (isMasterOnly && idx == -1)
 			idx = 0;
 
-		if(idx >= 0) 
+		if (idx >= 0) 
 		{
 			v = (Value *)list_nth(uriList, idx); 
 
@@ -171,7 +171,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 				uri = (char *) strVal(v);	
 		}
 	}
-	else if(Gp_role == GP_ROLE_DISPATCH && isMasterOnly)
+	else if (Gp_role == GP_ROLE_DISPATCH && isMasterOnly)
 	{
 		/* this is a ON MASTER table. Only get uri if we are the master */
 		if (segindex == -1)
@@ -190,7 +190,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	 * in which case uri will be NULL. If that's the case for this 
 	 * segdb set to no-op.
 	 */
-	if(uri)
+	if (uri)
 	{
 		/* set external source (uri) */
 		scan->fs_uri = uri;
@@ -284,13 +284,25 @@ file_endscan(FileScanDesc scan)
 	RelationDecrementReferenceCount(scan->fs_rd);
 
 	if (scan->values)
+	{
 		pfree(scan->values);
+		scan->values = NULL;
+	}
 	if (scan->nulls)
+	{
 		pfree(scan->nulls);
+		scan->nulls = NULL;
+	}
 	if (scan->in_functions)
+	{
 		pfree(scan->in_functions);
+		scan->in_functions = NULL;
+	}
 	if (scan->typioparams)
+	{
 		pfree(scan->typioparams);
+		scan->typioparams = NULL;
+	}
 
     /*
      * delete the row context
@@ -302,9 +314,9 @@ file_endscan(FileScanDesc scan)
 	 * 1) QEs: send a libpq message to QD with num of rows rejected in this segment
 	 * 2) Free SREH resources (includes closeing the error table if used).
 	 */
-	if(scan->fs_pstate->errMode != ALL_OR_NOTHING)
+	if (scan->fs_pstate->errMode != ALL_OR_NOTHING)
 	{
-		if(Gp_role == GP_ROLE_EXECUTE)
+		if (Gp_role == GP_ROLE_EXECUTE)
 			SendNumRowsRejected(scan->fs_pstate->cdbsreh->rejectcount);
 		
 		destroyCdbSreh(scan->fs_pstate->cdbsreh);
@@ -326,8 +338,11 @@ file_endscan(FileScanDesc scan)
 	/*
 	 * Close the external file
 	 */
-	if(!scan->fs_noop)
+	if (!scan->fs_noop && scan->fs_file)
+	{
 		close_external_file(scan->fs_file, scan->fs_uri);
+		scan->fs_file = NULL;
+	}
 
 	pfree(scan);
 }
@@ -408,7 +423,7 @@ pstate->line_buf.cursor = 0;
  * access local error state variables.
  */
 #define FILEAM_HANDLE_ERROR \
-if(pstate->errMode == ALL_OR_NOTHING) \
+if (pstate->errMode == ALL_OR_NOTHING) \
 { \
 	/* re-throw error and abort */ \
 	PG_RE_THROW(); \
@@ -428,7 +443,7 @@ else \
 	edata = CopyErrorData();\
  	MemoryContextSwitchTo(oldcontext);\
 \
-	if(!elog_dismiss(DEBUG5)) \
+	if (!elog_dismiss(DEBUG5)) \
 		PG_RE_THROW(); /* <-- hope to never get here! */ \
 \
 	truncateEol(&pstate->line_buf, pstate->eol_type); \
@@ -456,7 +471,7 @@ else \
 \
 	HandleSingleRowError(pstate->cdbsreh); \
 \
-	if(errmsg_is_a_copy && !IsRejectLimitReached(pstate->cdbsreh)) \
+	if (errmsg_is_a_copy && !IsRejectLimitReached(pstate->cdbsreh)) \
 		pfree(pstate->cdbsreh->errmsg); \
 }
 
@@ -471,14 +486,14 @@ cur_row_rejected = false; /* reset for next run */ \
 continue; /* move on to the next data line */
 
 #define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
-if(IsRejectLimitReached(pstate->cdbsreh)) \
+if (IsRejectLimitReached(pstate->cdbsreh)) \
 { \
 	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
 	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
  	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
 	char *finalmsg;\
 \
- 	if(FIRST_1000_BAD(pstate->cdbsreh))\
+ 	if (FIRST_1000_BAD(pstate->cdbsreh))\
  	{\
  		/* the special "first 1000 are bad" case */\
  		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
@@ -486,7 +501,7 @@ if(IsRejectLimitReached(pstate->cdbsreh)) \
  								   * sizeof(char)); \
  		sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
  	}\
- 	else if(CSV_IS_UNPARSABLE(pstate->cdbsreh))\
+ 	else if (CSV_IS_UNPARSABLE(pstate->cdbsreh))\
   	{\
  		/* the special "csv un-parsable" case */\
   		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
@@ -558,7 +573,7 @@ filegettup(FileScanDesc scan,
 			pstate->raw_buf_index = 0;
 			
 			/* on first time around just throw the header line away */
-			if(pstate->header_line && pstate->bytesread > 0)
+			if (pstate->header_line && pstate->bytesread > 0)
 			{
 				PG_TRY();
 				{
@@ -570,14 +585,14 @@ filegettup(FileScanDesc scan,
 					 * got here? encoding conversion error occured on the 
 					 * header line (first row).
 					 */
-					if(pstate->errMode == ALL_OR_NOTHING)
+					if (pstate->errMode == ALL_OR_NOTHING)
 					{
 						PG_RE_THROW();											
 					}
 					else
 					{
 						/* SREH - release error state */
-						if(!elog_dismiss(DEBUG5))
+						if (!elog_dismiss(DEBUG5))
 							PG_RE_THROW(); /* hope to never get here! */
 						
 						/* 
@@ -622,14 +637,14 @@ filegettup(FileScanDesc scan,
 				}
 				PG_END_TRY();					
 
-				if(cur_row_rejected)
+				if (cur_row_rejected)
 				{
 					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
 					FILEAM_GOTO_NEXT_ROW;
 				}
 				
 				
-				if(!pstate->line_done)
+				if (!pstate->line_done)
 				{
 					/*
 					 * We did not finish reading a complete data line.
@@ -659,7 +674,7 @@ filegettup(FileScanDesc scan,
 				}
 				PG_END_TRY();					
 				
-				if(cur_row_rejected)
+				if (cur_row_rejected)
 				{
 					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
 					FILEAM_GOTO_NEXT_ROW;
@@ -692,8 +707,8 @@ filegettup(FileScanDesc scan,
 						{
 							scan->values[m] = InputFunctionCall(&scan->in_functions[m],
 																string,
-															scan->typioparams[m],
-													   scan->attr[m]->atttypmod);
+																scan->typioparams[m],
+																scan->attr[m]->atttypmod);
 						}
 						PG_CATCH();
 						{
@@ -702,7 +717,7 @@ filegettup(FileScanDesc scan,
 						}
 						PG_END_TRY();					
 								
-						if(cur_row_rejected)
+						if (cur_row_rejected)
 							break; /* get out of loop, then go to next row */
 
 						scan->nulls[m] = false;
@@ -712,7 +727,7 @@ filegettup(FileScanDesc scan,
 
                 MemoryContextSwitchTo(oldcontext);
 
-				if(cur_row_rejected)
+				if (cur_row_rejected)
 				{
 					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
 					FILEAM_GOTO_NEXT_ROW;
@@ -754,13 +769,13 @@ filegettup(FileScanDesc scan,
  * However, leave the ereport initially for debugging purposes.
  */
 #define FILEAM_VERIFY_CLAUSE(actual, desired) \
-if(!actual)\
+if (!actual)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error. expected %s", desired)));\
 }\
-if(pg_strcasecmp(actual, desired) != 0)\
+if (pg_strcasecmp(actual, desired) != 0)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
@@ -768,34 +783,34 @@ if(pg_strcasecmp(actual, desired) != 0)\
 }
 
 #define FILEAM_GET_CHAR(val, clause) \
-if(!val)\
+if (!val)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error for %s clause value", clause)));\
 }\
-if(strlen(val) == 3)\
+if (strlen(val) == 3)\
 {\
 	val[2] = '\0';\
 	val++;\
 }\
-else if(strlen(val) > 3)\
+else if (strlen(val) > 3)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error. %s value %s too long", clause, val)));\
 }\
-else if(strlen(val) == 2)\
+else if (strlen(val) == 2)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error. %s value %s is not a single character", clause, val)));\
 }\
-else if(strlen(val) == 1)\
+else if (strlen(val) == 1)\
 {\
 	/* we must have a ' '. consume the second quote and set value to 'space' */\
 	val = strtok(NULL, " ");\
-	if(strcmp(val,"\'") != 0)\
+	if (strcmp(val,"\'") != 0)\
 		ereport(ERROR,\
 				(errcode(ERRCODE_SYNTAX_ERROR),\
 				 errmsg("internal parse error in %s value - expected single quote", clause)));\
@@ -804,19 +819,19 @@ else if(strlen(val) == 1)\
 
 #define FILEAM_GET_STRING(val, clause) \
 len = strlen(val);\
-if(!val)\
+if (!val)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error for %s clause value", clause)));\
 }\
-if(len < 2)\
+if (len < 2)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error. invalid length for %s value", clause)));\
 }\
-else if(len == 2)\
+else if (len == 2)\
 {\
 	val = "";\
 }\
@@ -864,7 +879,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	/*
 	 * Error handling setup
 	 */
-	if(rejectlimit == -1) 
+	if (rejectlimit == -1) 
 	{
 		/* Default error handling - "all-or-nothing" */
 		pstate->cdbsreh = NULL; /* no SREH */
@@ -876,7 +891,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		bool	  curTxnCreatedErrtbl = false; /* errtbl created in current txn? */
 
 		/* select the SREH mode */
-		if(fmterrtbl == InvalidOid)
+		if (fmterrtbl == InvalidOid)
 		{
 			/* no error table */
 			pstate->errMode = SREH_IGNORE; 
@@ -897,14 +912,13 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 			LockRelationOid(fmterrtbl, AccessShareLock);
 			rel = RelationIdGetRelation(fmterrtbl);
 			
-			if(rel == NULL)
+			if (rel == NULL)
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE),
 								errmsg("The specified error table for this "
 									   "external table doesn't appear to "
 									   "exist in the database. It may have "
 									   "been dropped."),
-								errhint("Refresh your external table definition.")
-									   ));
+								errhint("Refresh your external table definition.")));
 			
 			RelationDecrementReferenceCount(rel); /* must do this after RelationIdGetRelation() */
 			
@@ -915,19 +929,18 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 			if (rel->rd_createSubid != InvalidSubTransactionId)
 				curTxnCreatedErrtbl = true;
 				
- #ifdef nothing			
+#ifdef nothing			
 			/* bummer... a non writer gang can't write to an error table! */
-			if(!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
+			if (!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
 				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
 								errmsg("Error tables can not yet be used in queries "
 									   "with more than one table in the FROM clause. "
 									   "You can use the same query with single row "
 									   "error handling by redefining the external " 
-									   "table without an error table "
-									   )));
+									   "table without an error table ")));
 #endif
 		}
-		
+
 		/* Single row error handling */
 		pstate->cdbsreh = makeCdbSreh(true, /* don't DROP errtable at end of execution */
 									  !curTxnCreatedErrtbl, /* really only relevant to COPY though */
@@ -938,12 +951,12 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 									  (char *)pstate->cur_relname);
 
 		/* if necessary warn the user of the risk of table getting dropped */
-		if(Gp_role == GP_ROLE_DISPATCH && curTxnCreatedErrtbl)
+		if (Gp_role == GP_ROLE_DISPATCH && curTxnCreatedErrtbl)
 			emitSameTxnWarning();
- 
+
  		pstate->num_consec_csv_err = 0;
 	}
-			
+
 	initStringInfo(&pstate->attribute_buf);
 	initStringInfo(&pstate->line_buf);
 
@@ -951,8 +964,6 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	MemSet(pstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
 	pstate->raw_buf[RAW_BUF_SIZE] = '\0';
 
-	
-	
 	/*
 	 * Set up encoding conversion info.  Even if the client and server
 	 * encodings are the same, we must apply pg_client_to_server() to validate
@@ -1010,7 +1021,6 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 
 	pstate->null_print = value;
 	pstate->null_print_len = strlen(pstate->null_print);
-
 
 	/*
 	 * ESCAPE
@@ -1081,8 +1091,6 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 											   ALLOCSET_DEFAULT_MINSIZE,
 											   ALLOCSET_DEFAULT_INITSIZE,
 											   ALLOCSET_DEFAULT_MAXSIZE);
-    
-
 }
 
 
@@ -1104,9 +1112,14 @@ open_external_file(FileScanDesc scan)
 	/* set up extvar */
 
 	memset(&extvar, 0, sizeof(extvar));
-	sprintf(extvar.GP_CSVOPT,"m%dx%dq%dh%d",scan->fs_pstate->csv_mode?1:0,scan->fs_pstate->escape?255&*scan->fs_pstate->escape:0,scan->fs_pstate->quote?255&*scan->fs_pstate->quote:0,scan->fs_pstate->header_line?1:0);
+	sprintf(extvar.GP_CSVOPT,
+			"m%dx%dq%dh%d",
+			scan->fs_pstate->csv_mode ? 1 : 0,
+			scan->fs_pstate->escape ? 255&*scan->fs_pstate->escape : 0,
+			scan->fs_pstate->quote ? 255&*scan->fs_pstate->quote : 0,
+			scan->fs_pstate->header_line ? 1 : 0);
 	
-	if(Gp_role != GP_ROLE_DISPATCH)
+	if (Gp_role != GP_ROLE_DISPATCH)
 	{
 		pg_itoa(qdPostmasterPort, result);
 		extvar.GP_MASTER_PORT = result;
@@ -1126,7 +1139,7 @@ open_external_file(FileScanDesc scan)
 			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
 	}
 	
-	if(MyProcPort)
+	if (MyProcPort)
 		extvar.GP_USER = MyProcPort->user_name;
 	else
 		extvar.GP_USER = "";
@@ -1181,8 +1194,8 @@ open_external_file(FileScanDesc scan)
 static void
 close_external_file(FILE *dataSource, char *dataSourceName)
 {
-	
-	if(dataSource)
+	if (dataSource)
+	{
 		if (url_fclose((URL_FILE*) dataSource))
  		{
  			g_dataSource = dataSource = NULL;
@@ -1190,7 +1203,8 @@ close_external_file(FILE *dataSource, char *dataSourceName)
 					(errcode_for_file_access(),
  					 errmsg("error closing file or executing program \"%s\": %m",
 							dataSourceName)));
- 		}
+		}
+	}
 	
 	g_dataSource = dataSource = NULL;
 }
@@ -1269,7 +1283,9 @@ file_scan_error_callback(void *arg)
 			truncateEol(&copy_of_line_buf, cstate->eol_type);
 			limit_printout_length(&copy_of_line_buf);
 
-			errcontext("External table %s, line %s of %s: \"%s\"", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename, copy_of_line_buf.data);
+			errcontext("External table %s, line %s of %s: \"%s\"",
+					   cstate->cur_relname, linenumber_atoi(buffer,cstate->cur_lineno),
+					   cstate->filename, copy_of_line_buf.data);
 		}
 		else
 		{
@@ -1281,7 +1297,8 @@ file_scan_error_callback(void *arg)
 			 * to regurgitate it without conversion.  So we have to punt
 			 * and just report the line number.
 			 */
-			errcontext("External table %s, line %s of file %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename);
+			errcontext("External table %s, line %s of file %s",
+					   cstate->cur_relname, linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename);
 		}
 	}
 
@@ -1298,7 +1315,6 @@ file_scan_error_callback(void *arg)
  */
 void readHeaderLine(CopyState pstate)
 {
-
 	pstate->line_done = pstate->csv_mode ?
 		CopyReadLineCSV(pstate, pstate->bytesread) :
 		CopyReadLineText(pstate, pstate->bytesread);		
@@ -1310,6 +1326,7 @@ void readHeaderLine(CopyState pstate)
 void AtAbort_ExtTables(void)
 {
 	close_external_file(g_dataSource, g_dataSourceName);
+	g_dataSource = dataSource = NULL;
 }
 void
 gfile_printf_then_putc_newline(const char*format,...)
@@ -1317,14 +1334,17 @@ gfile_printf_then_putc_newline(const char*format,...)
 	char*a;
 	va_list va;
 	int i;
+
 	va_start(va,format);
 	i = vsnprintf(0,0,format,va);
 	va_end(va);
+
 	if (i < 0)
 		elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed.");
 	else if (!(a=palloc(i+1)))
 		elog(NOTICE,"gfile_printf_then_putc_newline palloc failed.");
-	else{
+	else
+	{
 		va_start(va,format);
 		vsnprintf(a,i+1,format,va);
 		va_end(va);
@@ -1347,6 +1367,8 @@ linenumber_atoi(char buffer[20],int64_t linenumber)
 {
 	if (linenumber < 0)
 		return "N/A";
+
 	snprintf(buffer,20,INT64_FORMAT,linenumber);
+
 	return buffer;
 }

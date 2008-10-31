@@ -2889,8 +2889,8 @@ AbortTransaction(void)
 	 * do abort processing
 	 */
 	AfterTriggerEndXact(false);
-	AtAbort_ExtTables();
 	AtAbort_Portals();
+	AtAbort_ExtTables();
 
 	/* Perform any Resource Scheduler abort procesing. */
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)

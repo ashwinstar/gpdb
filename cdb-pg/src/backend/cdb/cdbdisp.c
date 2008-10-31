@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbdisp.c
- *	  Functions to dispatch commands to QExecutors
+ *	  Functions to dispatch commands to QExecutors.
  *
  *
  * Copyright (c) 2005-2008, Greenplum inc
