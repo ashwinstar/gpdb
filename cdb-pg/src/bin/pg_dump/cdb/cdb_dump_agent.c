@@ -4511,9 +4511,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "x.rejectlimit, x.rejectlimittype,"
-							  "(SELECT relname "
-							  "FROM pg_class "
-							  "WHERE Oid=x.fmterrtbl) AS errtblname, "
+							  "(SELECT nspname || '.' || relname "
+							  "FROM pg_class c, pg_catalog.pg_namespace n "
+							  "WHERE c.Oid=x.fmterrtbl AND n.oid = c.relnamespace) AS errtblname, "
 							  "pg_catalog.pg_encoding_to_char(x.encoding) "
 							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
@@ -4527,7 +4527,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 							  "-1 as rejectlimit, null as rejectlimittype,"
 							  "null as errtblname, "
 							  "null as encoding "
-							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c"
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
 							  tbinfo->dobj.catId.oid);
 		}
