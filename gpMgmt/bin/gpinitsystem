@@ -696,6 +696,100 @@ CHK_QES () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_SEG () {
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+    GP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
+    GP_PORT=`$ECHO $I|$CUT -d: -f2`
+    GP_DIR=`$ECHO $I|$CUT -d: -f3`
+    GP_DBID=`$ECHO $I|$CUT -d: -f4`
+    GP_CONTENT=`$ECHO $I|$CUT -d: -f5`
+    
+    # we need QE_ID to be able to re-use some functions.
+    QE_ID=$GP_HOSTNAME
+    GET_IP_ADDRESS
+    CHK_LOCALE_KNOWN $QE_ID
+	CHK_OPEN_FILES $GP_HOSTNAME
+	POSTGRES_VERSION_CHK $GP_HOSTNAME
+	if [ $VERSION_MATCH -ne 1 ] ; then
+	   ERROR_EXIT "Postgres version does not match" 2
+	fi
+	
+	# since this is from the input config file we only check our one datadir
+	#CHK_DIR $GP_DIR $QE_ID
+	#if [ $EXISTS -ne 0 ]; then
+	#	ERROR_EXIT "[FATAL]:-No $GP_DIR on segment instance $QE_ID" 2
+	#else
+	#	LOG_MSG "[INFO]:-$QE_ID $GP_DIR checked"
+	#fi
+	
+	#make sure we can write to it.
+	# Check that we can write to the QE directory
+    W_DIR=`$DIRNAME $GP_DIR`
+    LOG_MSG "[INFO]:-Checking write access to $W_DIR on $GP_HOSTNAME"
+    $TRUSTED_SHELL $GP_HOSTNAME "$TOUCH ${W_DIR}/tmp_file_test"
+    RETVAL=$?
+    if [ $RETVAL -ne 0 ];then
+         ERROR_EXIT "[FATAL]:-Cannot write to $W_DIR on $GP_HOSTNAME " 2
+    else
+             $TRUSTED_SHELL $GP_HOSTNAME "$RM -f ${W_DIR}/tmp_file_test"
+             LOG_MSG "[INFO]:-Write test passed on $GP_HOSTNAME $W_DIR directory"
+    fi
+    
+	
+	#Check that we have a GP_LIBRARY_PATH directory on the QE
+	CHK_DIR $GP_LIBRARY_PATH $GP_HOSTNAME
+	if [ $EXISTS -ne 0 ]; then
+		ERROR_EXIT "[FATAL]:-No $GP_LIBRARY_PATH on segment $GP_HOSTNAME:$GP_DIR" 2
+	else
+		LOG_MSG "[INFO]:-Segment instance $GP_HOSTNAME:$GP_DIR $GP_LIBRARY_PATH checked"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+
+}
+
+CHK_QES_FROM_INPUTFILE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Checking Master host" 1
+		SET_VAR $QD_PRIMARY_ARRAY
+                CHK_DIR $GP_DIR
+                if [ $EXISTS -eq 0 ]; then
+                                ERROR_EXIT "[FATAL]:-Master directory $GP_DIR already exists" 2
+                fi
+		GET_PG_PID_ACTIVE $GP_PORT
+		if [ $PID -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Found indication of postmaster process on port $GP_PORT on Master host" 2
+		fi
+		LOG_MSG "[INFO]:-Checking new segment hosts, please wait..." 1
+		if [ x"" == x"$QD_ONLY" ];then
+		    for QE in ${QE_PRIMARY_ARRAY[@]}
+		    do
+		        CHK_SEG $QE            
+	        done
+		    
+		    for QE in ${QE_MIRROR_ARRAY[@]}
+		    do
+		        CHK_SEG $QE            
+	        done
+		    		
+			if [ x"" != x"$STANDBY_HOSTNAME" ];then
+				PING_HOST $STANDBY_HOSTNAME 
+				CHK_LOCALE_KNOWN $STANDBY_HOSTNAME
+				CHK_OPEN_FILES $GP_HOSTNAME
+				#Check standby host directory
+				CHK_DIR $MASTER_DIRECTORY $STANDBY_HOSTNAME
+				if [ $EXISTS -ne 0 ];then
+					ERROR_EXIT "[FATAL]:-Standby host directory $MASTER_DIRECTORY, does not exist" 2
+				fi
+			fi
+		else
+			LOG_MSG "[INFO]:-Master segment instance build only selected via -o option"
+			LOG_MSG "[INFO]:-Skipping segment instance checks"
+		fi	
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		LOG_MSG "[INFO]:-Checking new segment hosts, Completed" 1
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_IP_ADDRESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	IP_ADDRESSES=(`$TRUSTED_SHELL $QE_ID "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2|$TR '\n' ' '"`)
@@ -1337,7 +1431,7 @@ READ_INPUT_CONFIG () {
     if [ $EXISTS -ne 0 ]; then
 	ERROR_EXIT "[FATAL]:-Problem with $INPUT_CONFIG file" 2
     fi
-	
+    
     #Make sure old CLUSTER_CONFIG settings are not hanging around.
     unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
 
@@ -1370,7 +1464,7 @@ READ_INPUT_CONFIG () {
 		MACHINE_LIST=(${MACHINE_LIST[@]} $GP_HOSTNAME)
     done
     DATA_DIRECTORY=(`$ECHO ${DATA_DIRECTORY[@]} | $TR ' ' '\n' | $SORT | $TR '\n' ' '`)
-
+    
     if [ x"" != x"${MIRROR_ARRAY}" ] ; then
 	MIRRORING=1
 	MIRROR_DATA_DIRECTORY=()
@@ -1461,7 +1555,7 @@ LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ x"$INPUT_CONFIG" != x"" ] ; then
     CHK_GPDB_ID
     CHK_PARAMS
-    CHK_QES
+    CHK_QES_FROM_INPUTFILE
 
     if [ x"" != x"$OUTPUT_CONFIG" ] ; then
 	DUMP_OUTPUT_CONFIG
