@@ -6418,10 +6418,11 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	/* set the "Post Create" rule if it exists */
 	child_tab_stmt->postCreate = pPostCreate;
 
-	/* shallow copy the parent list because we need to add
-	 * constraints 
+	/* 
+	 * Deep copy the parent's table elements. We must deep copy to handle
+	 * issues with constraints and foreign keys.
 	 */
-	child_tab_stmt->tableElts = list_copy(stmt->tableElts);
+	child_tab_stmt->tableElts = copyObject(stmt->tableElts);
 
 	if (pConstraint && ((enable_partition_rules &&
 						 curPby->partType == PARTTYP_HASH) ||
@@ -6439,7 +6440,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	/*child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
 	child_tab_stmt->inhRelations = list_copy(stmt->inhRelations); 
 
-	child_tab_stmt->constraints = list_copy(stmt->constraints);
+	child_tab_stmt->constraints = copyObject(stmt->constraints);
 	child_tab_stmt->options = stmt->options;
 
 	/* allow WITH clause for appendonly tables */
