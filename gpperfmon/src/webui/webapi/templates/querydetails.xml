@@ -1,0 +1,12 @@
+$def with (tkeys, ckeys, tab, row_count)
+<?xml version="1.0"?>
+<queries row_count="$row_count">
+$for t in tkeys:
+    $ v = tab[t]
+    $if not v: v = {}
+    <query id='$t'> 
+    $for c in ckeys:
+        <$c>${v.get(c)}</$c>
+    </query>
+</queries>
+

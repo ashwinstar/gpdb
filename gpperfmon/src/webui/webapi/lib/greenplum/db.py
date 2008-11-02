@@ -580,46 +580,86 @@ def qp():
             print("%s</iterator parent=%s child=%s>" % (indent, parent, child))
 
 
+def queryplan_get_username_now(tmid, ssid, ccnt):
+    query_fragment = "select username"
+    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    query = "%s from queries_now %s limit 1" % (query_fragment, filter)
+    
+    sys.stderr.write("queryplan_get_username_now query: %s\n" % query)
+
+    result = ''
+    try:
+        conn.execute(query)
+        r = conn.read_tuple()
+        result = '%s' % r
+    except:
+        raise_db_error('Exception during query: %s' % query)
+    return result
+
 
 def queryplan_now(tmid, ssid, ccnt, username):
     validate_db_conn()
 
+    rows = []
+
+    # If not superuser, check that username matches
+    if username != '':
+        q_username = queryplan_get_username_now(tmid, ssid, ccnt)
+        if q_username != username:
+            sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
+            return _queryplan_consolidate(rows)
+            
     query_fragment = "select *"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-
-    # Reminder -- need to insert a filter on username here
-    #             for non-superuser queries
-    if username != '':
-        sys.stderr.write("WARNING: Currently ignoring username filter\n\n")
 
     query1 = "%s from iterators_now_rollup %s" % (query_fragment, filter)
     query = "%s order by pnid, nid" % query1
 
     sys.stderr.write("queryplan_now query: %s\n" % query)
 
-    rows = []
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
         raise_db_error('Exception during query: %s' % query)
 
-    sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
-
     return _queryplan_consolidate(rows)
 
+
+
+def queryplan_get_username_history(tmid, ssid, ccnt):
+    query_fragment = "select username"
+    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    query1 = "%s from queries_history %s" % (query_fragment, filter)
+    query2 = "%s from queries_tail %s" % (query_fragment, filter)
+    query = "(%s) union all (%s) limit 1" % (query1, query2)
+    
+    sys.stderr.write("queryplan_get_username_history query: %s\n" % query)
+
+    result = ''
+    try:
+        conn.execute(query)
+        r = conn.read_tuple()
+        result = '%s' % r
+    except:
+        raise_db_error('Exception during query: %s' % query)
+    return result
 
 
 def queryplan_history(tmid, ssid, ccnt, username):
     validate_db_conn()
 
+    rows = []
+
+    # If not superuser, check that username matches
+    if username != '':
+        q_username = queryplan_get_username_history(tmid, ssid, ccnt)
+        if q_username != username:
+            sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
+            return _queryplan_consolidate(rows)
+            
     query_fragment = "select *"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-
-    # Reminder -- need to insert a filter on username here
-    #             for non-superuser queries
-    if username != '':
-        sys.stderr.write("WARNING: Currently ignoring username filter\n\n")
 
     query1 = "%s from iterators_history_rollup %s" % (query_fragment, filter)
     query2 = "%s from iterators_tail_rollup %s" % (query_fragment, filter)
@@ -627,14 +667,11 @@ def queryplan_history(tmid, ssid, ccnt, username):
 
     sys.stderr.write("queryplan_now query: %s\n" % query)
 
-    rows = []
     try:
         conn.execute(query)
         rows = [r for r in conn.iterate_dict()]
     except:
         raise_db_error('Exception during query: %s' % query)
-
-    sys.stderr.write("QUERY RESULTS:\n%s\n\n\n" % rows)
 
     return _queryplan_consolidate(rows)
 

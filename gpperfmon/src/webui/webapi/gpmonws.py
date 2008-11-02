@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, socket, ConfigParser, re
+import os, sys, socket, re
 import time, datetime, tempfile
 
 gphome = os.environ.get('GPHOME')
@@ -12,8 +12,6 @@ if not datadir:
 if not os.path.isdir(datadir):
     sys.exit('MASTER_DATA_DIRECTORY "%s" is not valid' % datadir)
 
-configpath = datadir + '/gpperfmon/conf'
-
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 sys.path.append(os.path.join(gphome, 'bin', 'lib'))
 
@@ -22,6 +20,12 @@ import web
 from greenplum import db
 from greenplum import error
 from greenplum import interval
+from greenplum import configuration
+
+# Load the configuration file
+if not configuration.loadconfig(datadir):
+    sys.exit('FATAL: Unable to load configuration file')
+
 
 web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
@@ -52,6 +56,7 @@ session = web.session.Session(app,
 
 render = web.template.render('./templates/', cache=False)
 
+
 # Flex doesn't expose the body of non-200 errors so returning 200 with
 # structured error in contents
 def page_not_found():
@@ -59,8 +64,15 @@ def page_not_found():
     web.ctx.status = '200 OK';
     return mkerr(error.BADREQ, 'Invalid command')
 
+def internal_error():
+    web.ctx.headers = [('Content-Type', 'text/xml')]
+    web.ctx.status = '200 OK';
+    (type, value) = sys.exc_info()[:2]
+    return mkerr(error.INTERNAL, '%s: %s' % (type, value))
+
 app.notfound = page_not_found
-app.internalerror = web.debugerror
+#app.internalerror = web.debugerror
+app.internalerror = internal_error
 
 
 def authrole(username, password):
@@ -180,8 +192,6 @@ class logoff:
         return logoffdata
 
 class config:
-    filename = "%s/gpperfmon.conf" % configpath
-
     def GET(self):
         # DEBUGGING 
         sys.stderr.write("\nCONFIG:\n")
@@ -194,13 +204,8 @@ class config:
 
         web.header('Content-Type', 'text/xml')
 
-        # parse configuration file
-        configuration = ConfigParser.SafeConfigParser()
-        configuration.read(config.filename)
-
-        return render.config(configuration)
-
-
+        return render.config(configuration.gpperfmon_config)
+    
 
 class hosts:
     nodes = None
@@ -450,13 +455,6 @@ class querydetails:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
         (tkeys, ckeys, tab, row_count) = res
-
-        # DEBUGGING 
-        sys.stderr.write('RESULTS:\n=======\n\n')
-        for t in tkeys:
-            sys.stderr.write('\ntime: %s\n' % t)
-            sys.stderr.write('\t%s\n' % tab[t])
-        # DEBUGGING 
 
         return render.querydetails(tkeys, ckeys, tab, row_count)
 
