@@ -1,0 +1,22 @@
+%YAML 1.1
+---
+VERSION:         1.0.0.1
+
+DEFINE:
+  - INPUT:
+      NAME:      access_logs
+      TABLE:     a1_grep
+         
+  - MAP:
+      NAME:      grep_map
+      LANGUAGE:  perl
+      FUNCTION:  |
+        return [{"key" => "aa", "value" => "bb"}];
+      
+EXECUTE:
+  - RUN:
+      SOURCE:    access_logs
+      MAP:       grep_map
+      REDUCE:    IDENTITY
+
+
