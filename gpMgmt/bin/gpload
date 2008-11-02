@@ -584,13 +584,16 @@ class gpload:
 	self.do_insert('temp_%s'%self.name)
 	self.do_update('temp_%s'%self.name,0)
 	sql = 'insert into %s('%self.table
-	sql += 'select %s '%','.join(map(lambda a:'from_table.%s'%a[0],self.into_columns))
-	sql += 'from temp_%s from_table '%self.name
-	sql += 'left outer join %s into_table '%self.table
 	match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
+	matchColumns = self.getconfig('gpload:output:match_columns',list)
+	sql += 'select %s '%','.join(map(lambda a:'from_table.%s'%a[0],self.into_columns))
+	sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
+	sql += 'from temp_%s)as from_table '%self.name
+	sql += 'left outer join %s into_table '%self.table
 	sql += 'on %s '%' and '.join(match)
 	where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s is null'%x,0)
 	sql += 'where %s '%' and '.join(where)
+	sql += 'and gpload_row_number=1 '
 	sql += ')'
 	self.log(1,sql)
 	self.pg8000.execute(sql)
