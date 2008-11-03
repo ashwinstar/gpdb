@@ -503,6 +503,12 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		}
 	}
 
+	/*
+	 * Reset groupColIdx to point to the one for the newly-generated
+	 * Agg node.
+	 */
+	groupColIdx = prelimGroupColIdx;
+
 	/* Construct the rest Agg nodes. */
 	for (; group_no <= last_group_no; group_no++)
 	{
@@ -516,7 +522,6 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		if (context->current_rollup->grpset_counts[group_no] <= 0)
 			continue;
 
-		groupColIdx = prelimGroupColIdx;
 		current_tlist = tlist2;
 		current_qual = qual2;
 
