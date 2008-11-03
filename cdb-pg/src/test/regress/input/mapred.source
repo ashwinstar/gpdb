@@ -14,6 +14,10 @@ select * from check_mapred;
 
 create language plperl;
 
+drop external web table if exists grep1_mapred;
+drop external web table if exists check_ps;
+drop table if exists a1_grep;
+
 -- end_ignore
 
 create table a1_grep (aa text);
@@ -23,6 +27,7 @@ insert into a1_grep values ('GET http://joebob.com/joe2.html HTTP');
 insert into a1_grep values ('GET http://jimbob.com/joe3.html HTTP');
 insert into a1_grep values ('GET http://jimbob.com/joe4.html HTTP');
 
+-- start_ignore
 -- complain about missing file
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
@@ -32,6 +37,8 @@ on SEGMENT 0
 format 'text';
 
 select * from grep1_mapred;
+
+-- end_ignore
 
 -- complain about bad database
 drop external web table if exists grep1_mapred;
@@ -247,49 +254,8 @@ format 'csv' ( quote as '"' header);
 
 select count(*) from ext_whois;
 
--- --------------------------------------
--- some negative tests
--- --------------------------------------
-
---
--- bad csv (quote must be a single char)
---
-create external table bad_whois (
-source_lineno			int,
-domain_name			varchar(350)
-)
-location ('gpfdist://@hostname@:7070/whois.csv' )
-format 'csv' ( header quote as 'ggg');
-select count(*) from bad_whois;
-drop external table bad_whois;
 
 -- start_ignore
-select * from gpfdist_status;
-select * from gpfdist_stop;
-select * from gpfdist_status;
--- end_ignore
-
---
--- try a bad location
---
-create external table badt1 (x text) 
-location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
-format 'text' (delimiter '|');
-select * from badt1;
-drop external table badt1;
-
---
--- try a bad protocol
---
-create external table badt2 (x text) 
-location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
-format 'text' (delimiter '|');
-
---
--- get an error for missing gpfdist
---
-select count(*) from ext_whois;
-
 drop external table ext_whois;
 
 drop external table gpfdist_status;
@@ -298,21 +264,8 @@ drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
 drop external table check_ps;
 drop external table check_env;
-drop table reg_region;
 
--- Tests for MPP-2513: dropping an external table must result in the deletion
--- of the relation pg_exttable row. This was done when using drop external
--- table but not drop schema cascade;
-
-create schema exttabletest;
-CREATE EXTERNAL TABLE exttabletest.EXT_NATION  ( N_NATIONKEY  INTEGER ,
-                            N_NAME       CHAR(25) ,
-                            N_REGIONKEY  INTEGER ,
-                            N_COMMENT    VARCHAR(152))
-location ('file://@hostname@@abs_srcdir@/data/nation.tbl' )
-FORMAT 'text' (delimiter '|');
--- Don't just return the row, as we'll get skew from OID differences between
--- runs.
-select count(*) from pg_catalog.pg_exttable;
-drop schema exttabletest cascade;
-select count(*) from pg_catalog.pg_exttable;
+drop external web table if exists grep1_mapred;
+drop external web table if exists check_ps;
+drop table if exists a1_grep;
+-- end_ignore

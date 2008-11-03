@@ -129,3 +129,4 @@ test: gpdtm_plpgsql
 ignore: gp_portal_error
 test: notin
 test: toast
+test: mapred
