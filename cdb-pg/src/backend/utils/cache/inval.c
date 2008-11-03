@@ -89,6 +89,7 @@
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
+#include "catalog/gp_policy.h"
 #include "miscadmin.h"
 #include "storage/sinval.h"
 #include "storage/smgr.h"
@@ -594,6 +595,13 @@ PrepareForTupleInvalidation(Relation relation, HeapTuple tuple)
 		 * appropriate, since only those backends could see our pg_attribute
 		 * change anyway.  It looks a bit ugly though.
 		 */
+		databaseId = MyDatabaseId;
+	}
+	else if (tupleRelId == GpPolicyRelationId)
+	{
+		FormData_gp_policy *gptup = (FormData_gp_policy *) GETSTRUCT(tuple);
+
+		relationId = gptup->localoid;
 		databaseId = MyDatabaseId;
 	}
 	else
