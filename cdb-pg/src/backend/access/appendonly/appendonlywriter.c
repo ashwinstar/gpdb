@@ -95,7 +95,7 @@ InitAppendOnlyWriter(void)
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("not enough shared memory for append only writer")));
 
-	ereport(LOG, (errmsg("initialized append only writer")));
+	ereport(DEBUG1, (errmsg("initialized append only writer")));
 
 	return;
 }
