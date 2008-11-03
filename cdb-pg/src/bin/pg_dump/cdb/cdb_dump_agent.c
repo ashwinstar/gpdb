@@ -4492,6 +4492,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *command = NULL;
 		char	   *rejlim;
 		char	   *rejlimtype;
+		char	   *errnspname;
 		char	   *errtblname;
 		char	   *extencoding;
 
@@ -4511,12 +4512,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "x.rejectlimit, x.rejectlimittype,"
-							  "(SELECT nspname || '.' || relname "
-							  "FROM pg_class c, pg_catalog.pg_namespace n "
-							  "WHERE c.Oid=x.fmterrtbl AND n.oid = c.relnamespace) AS errtblname, "
+					          "n.nspname AS errnspname, d.relname AS errtblname, "
 							  "pg_catalog.pg_encoding_to_char(x.encoding) "
-							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
-							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
+							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c, "
+							  "pg_catalog.pg_class d, pg_catalog.pg_namespace n "
+							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid "
+					          "AND d.oid = x.fmterrtbl AND n.oid = d.relnamespace",
 							  tbinfo->dobj.catId.oid);
 		}
 		else
@@ -4525,9 +4526,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBuffer(query,
 							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
 							  "-1 as rejectlimit, null as rejectlimittype,"
-							  "null as errtblname, "
+							  "null as errnspname, null as errtblname, "
 							  "null as encoding "
-							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c"
+							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
 							  tbinfo->dobj.catId.oid);
 		}
@@ -4555,8 +4556,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		command = PQgetvalue(res, 0, 3);
 		rejlim = PQgetvalue(res, 0, 4);
 		rejlimtype = PQgetvalue(res, 0, 5);
-		errtblname = PQgetvalue(res, 0, 6);
-		extencoding = PQgetvalue(res, 0, 7);
+		errnspname = PQgetvalue(res, 0, 6);
+		errtblname = PQgetvalue(res, 0, 7);
+		extencoding = PQgetvalue(res, 0, 8);
 
 		if((command && strlen(command) > 0) ||
 		   (strncmp(locations + 1, "http", strlen("http")) == 0))
@@ -4620,7 +4622,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			else if(strncmp(on_clause, "ALL_SEGMENTS", strlen("ALL_SEGMENTS")) == 0)
 				appendPQExpBuffer(q, "ON ALL ");
 			else
-				mpp_err_msg(logError, progname, "illigal ON clause catalog information \"%s\""
+				mpp_err_msg(logError, progname, "illegal ON clause catalog information \"%s\""
 							"for command '%s'\n", on_clause, command);
 
 			appendPQExpBuffer(q, "\n ");
@@ -4663,7 +4665,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				 * than its external table oid (could that not be true sometimes?)
 				 */
 				if(errtblname && strlen(errtblname) > 0)
-					appendPQExpBuffer(q, "LOG ERRORS INTO %s ", errtblname);
+				{
+					appendPQExpBuffer(q, "LOG ERRORS INTO %s.", fmtId(errnspname));
+					appendPQExpBuffer(q, "%s ", fmtId(errtblname));
+				}
 
 				/* reject limit */
 				appendPQExpBuffer(q, "SEGMENT REJECT LIMIT %s", rejlim);
