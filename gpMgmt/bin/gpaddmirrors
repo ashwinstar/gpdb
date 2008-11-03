@@ -554,7 +554,8 @@ try:
     mirrors = []
 
     try:
-        db = pg8000.Connection(host='localhost', port=master_port, 
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        db = pg8000.Connection(host=pghost, port=master_port, 
         user=ENV.USER, database=ENV.DBNAME, 
         options='-c gp_session_role=utility')
     except pg8000.errors.InterfaceError, e:
@@ -631,7 +632,8 @@ try:
 
     standby_qd = None
     try:
-        db = pg8000.Connection(host='localhost', port=master_port, 
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        db = pg8000.Connection(host=pghost, port=master_port, 
         user=ENV.USER, database=ENV.DBNAME, 
         options='-c gp_session_role=utility')
 

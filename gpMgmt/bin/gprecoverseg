@@ -731,7 +731,8 @@ def update_gp_conf(mirrors):
         gpmlib.error('Failed to start master in admin mode')
 
     try:
-        db = pg8000.Connection(host='localhost', port=master_port, 
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        db = pg8000.Connection(host=pghost, port=master_port, 
                                user=ENV.USER, database=ENV.DBNAME, 
                                options='-c gp_session_role=utility')
 
@@ -1542,7 +1543,8 @@ try:
 
     # connect to master QD in admin mode
     try:
-        db = pg8000.Connection(host='localhost', port=master_port, 
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        db = pg8000.Connection(host=pghost, port=master_port, 
         user=ENV.USER, database=ENV.DBNAME, 
         options='-c gp_session_role=utility')
     except pg8000.errors.InterfaceError, e:
@@ -1686,7 +1688,8 @@ try:
         e = os.system('gpstart -ma %s -d %s' % (opt['-q'] and '-q' or '', os.environ.get('MASTER_DATA_DIRECTORY')))
 
     try:
-        db = pg8000.Connection(host='localhost', port=master_port, 
+        pghost = os.getenv('PGHOST', '127.0.0.1')
+        db = pg8000.Connection(host=pghost, port=master_port, 
                                user=ENV.USER, database=ENV.DBNAME, 
                                options='-c gp_session_role=utility')
 
