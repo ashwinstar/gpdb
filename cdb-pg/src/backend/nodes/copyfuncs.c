@@ -2959,6 +2959,7 @@ _copyVacuumStmt(VacuumStmt *from)
 	COPY_SCALAR_FIELD(freeze_min_age);
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(va_cols);
+	COPY_NODE_FIELD(expanded_relids);
 
 	return newnode;
 }

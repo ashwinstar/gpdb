@@ -2159,6 +2159,9 @@ typedef struct VacuumStmt
 	int			freeze_min_age;	/* min freeze age, or -1 to use default */
 	RangeVar   *relation;		/* single table to process, or NULL */
 	List	   *va_cols;		/* list of column names, or NIL for all */
+
+	/* Object IDs for relations which expand from partition definitions */
+	List	   *expanded_relids;
 } VacuumStmt;
 
 /* ----------------------

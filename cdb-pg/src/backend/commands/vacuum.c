@@ -33,6 +33,7 @@
 #include "catalog/pg_index.h"
 #include "catalog/indexing.h"
 #include "commands/dbcommands.h"
+#include "commands/tablecmds.h"
 #include "commands/vacuum.h"
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdbdisp.h"
@@ -42,6 +43,7 @@
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "optimizer/prep.h"
 #include "postmaster/autovacuum.h"
 #include "storage/freespace.h"
 #include "storage/proc.h"
@@ -174,7 +176,7 @@ static TransactionId FreezeLimit;
 
 /* non-export function prototypes */
 static List *get_rel_oids(List *relids, const RangeVar *vacrel,
-			 const char *stmttype);
+			 const char *stmttype, bool *expanded);
 static void vac_truncate_clog(TransactionId frozenXID);
 static void vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind);
 static void full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt);
@@ -244,6 +246,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				in_outer_xact,
 				use_own_xacts;
 	List	   *relations;
+	bool		expanded = false;
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -323,7 +326,12 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 	 * Build list of relations to process, unless caller gave us one. (If we
 	 * build one, we put it in vac_context for safekeeping.)
 	 */
-	relations = get_rel_oids(relids, vacstmt->relation, stmttype);
+	relations = get_rel_oids(relids, vacstmt->relation, stmttype, &expanded);
+
+	if (Gp_role == GP_ROLE_EXECUTE)
+		relations = list_concat_unique_oid(relations, vacstmt->expanded_relids);
+	else
+		vacstmt->expanded_relids = relations;
 
 	/*
 	 * Decide whether we need to start/commit our own transactions.
@@ -639,7 +647,8 @@ vacuum(VacuumStmt *vacstmt, List *relids)
  * per-relation transactions.
  */
 static List *
-get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype)
+get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
+			 bool *expanded)
 {
 	List	   *oid_list = NIL;
 	MemoryContext oldcontext;
@@ -652,12 +661,31 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype)
 	{
 		/* Process a specific relation */
 		Oid			relid;
+		List	   *prels = NIL;
 
 		relid = RangeVarGetRelid(vacrel, false);
+
+		if (rel_is_partitioned(relid))
+		{
+			PartitionNode *pn;
+
+	   		pn = get_parts(relid, 0, 0, false, CurrentMemoryContext);
+
+			prels = all_partition_relids(pn);
+		}
+		else if (rel_is_child_partition(relid))
+		{
+			/* get my children */
+			prels = find_all_inheritors(relid);
+		}
+
+		if (list_length(prels))
+			*expanded = true;
 
 		/* Make a relation list entry for this guy */
 		oldcontext = MemoryContextSwitchTo(vac_context);
 		oid_list = lappend_oid(oid_list, relid);
+		oid_list = list_concat_unique_oid(oid_list, prels);
 		MemoryContextSwitchTo(oldcontext);
 	}
 	else

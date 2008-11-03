@@ -2925,6 +2925,7 @@ _readVacuumStmt(const char ** str)
 	READ_INT_FIELD(freeze_min_age);
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(va_cols);
+	READ_NODE_FIELD(expanded_relids);
 
 	READ_DONE();
 }

@@ -1366,6 +1366,7 @@ _equalVacuumStmt(VacuumStmt *a, VacuumStmt *b)
 	COMPARE_SCALAR_FIELD(freeze_min_age);
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(va_cols);
+	COMPARE_NODE_FIELD(expanded_relids);
 
 	return true;
 }
