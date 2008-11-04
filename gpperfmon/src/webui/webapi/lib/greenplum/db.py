@@ -243,12 +243,34 @@ def _database_consolidate(rows):
     return (tkeys, ckeys, tab)
 
 
+def execute_query(query):
+    validate_db_conn()
 
-def system_now():
-    rows = rt_system()
+    rows = []
+    try:
+        conn.execute(query)
+        rows = [r for r in conn.iterate_dict()]
+    except:
+        raise_db_error('Exception during query: %s' % query)
+
+    return rows
+
+
+
+def system_now(remote):
+    if remote:
+        nonaggregate = 'no'
+        interval_code = 7 # magic number
+        query = system_sql('system_now', '', interval_code, nonaggregate)
+        sys.stderr.write("system_now query: %s\n" % query)
+        rows = execute_query(query)
+    else:
+        rows = system_file()
+
     return _system_consolidate_nonaggregate(rows)
 
-def rt_system():
+
+def system_file():
     filename = "%s/system_now.dat" % path
 
     # ordering is important to match the order in the file
@@ -310,7 +332,8 @@ def system_sql(table, filter, interval_code, aggregate):
                 "date_trunc('day', ctime)+(((trunc(date_part('hour', ctime)/6)*6)::text||' hours')::interval)",
                 "date_trunc('day', ctime)",   
                 "date_trunc('week', ctime)",   
-                "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)"]
+                "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)",
+                "ctime"]
 
     if aggregate == 'yes':
         query_fragment = "select %s as sample_time" % itvl_sql[interval_code]
@@ -332,8 +355,6 @@ def system_sql(table, filter, interval_code, aggregate):
 
 
 def system_history(stime, etime, interval_code, aggregate):
-    validate_db_conn()
-
     if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
@@ -342,13 +363,7 @@ def system_history(stime, etime, interval_code, aggregate):
     query = system_sql('system_history', filter, interval_code, aggregate)
 
     sys.stderr.write("system_history query: %s\n" % query)
-
-    rows = []
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        raise_db_error('Exception during query: %s' % query)
+    execute_query(query)
 
     if aggregate == 'yes':
         return _system_consolidate_aggregate(rows)
@@ -356,10 +371,37 @@ def system_history(stime, etime, interval_code, aggregate):
         return _system_consolidate_nonaggregate(rows)
 
 
+def queries_now(remote, status, username, database, textlength):
+    if remote:
+        filter = ''
+        if status != '':
+            status_list = (', '.join("'" + i + "'" for i in status))
+            filter += " where status in (%s)" % status_list
 
-def queries_now(status, username, database, textlength):
-    rows = rt_queries(status, username, database, textlength, '', '', '')
+        if username != '':
+            if filter == '':
+                filter = " where"
+            else:
+                filter += " and"
+            filter += " username='%s'" % username
+
+        if database != '':
+            if filter == '':
+                filter = " where"
+            else:
+                filter += " and"
+            filter += " db='%s'" % database
+
+        columns = queries_sql(textlength)
+
+        query = '%s from queries_now %s' % (columns, filter)
+        sys.stderr.write("queries_now query: %s\n" % query)
+        rows = queries_db(query, textlength)
+    else:
+        rows = queries_file(status, username, database, textlength, '', '', '')
+
     return _queries_consolidate(rows)
+
 
 def queryText(tmid, ssid, ccnt):
     filename = "%s/q%s-%s-%s.txt" % (path, tmid, ssid, ccnt)
@@ -383,7 +425,7 @@ def queryText(tmid, ssid, ccnt):
     return qtext
 
 
-def rt_queries(status, username, database, textlength, tmid, ssid, ccnt):
+def queries_file(status, username, database, textlength, tmid, ssid, ccnt):
     filename = "%s/queries_now.dat" % path
 
     # ordering is important to match the order in the file
@@ -475,30 +517,37 @@ def queries_sql(textlength):
 
 
 def queries_history(status, stime, etime, username, runtime, database, textlength, max_query_limit):
-    validate_db_conn()
-
     if etime == 'NOW':
         filter = "where '%s' <= tfinish" % stime
     else:
         filter = "where '%s' <= tfinish and tstart <= '%s'" % (stime, etime)
 
+    if runtime != '':
+        filter += " and (tfinish - tstart) >='%s'" % runtime
+
     if status != '':
         status_list = (', '.join("'" + i + "'" for i in status))
         filter += " and status in (%s)" % status_list
+
     if username != '':
         filter += " and username='%s'" % username
+
     if database != '':
         filter += " and db='%s'" % database
-    if runtime != '':
-        filter += " and (tfinish - tstart) >='%s'" % runtime
 
     columns = queries_sql(textlength)
 
     query1 = '%s from queries_history %s' % (columns, filter)
     query2 = '%s from queries_tail %s' % (columns, filter)
     query = "(%s) union all (%s) limit %s" % (query1, query2, max_query_limit)
-
     sys.stderr.write("queries_history query: %s\n" % query)
+
+    rows = queries_db(query, textlength)
+    return _queries_consolidate(rows)
+
+
+def queries_db(query, textlength):
+    validate_db_conn()
 
     rows = []
     try:
@@ -512,11 +561,23 @@ def queries_history(status, stime, etime, username, runtime, database, textlengt
     except:
         raise_db_error('Exception during query: %s' % query)
 
-    return _queries_consolidate(rows)
+    return rows
 
 
-def querydetails_now(tmid, ssid, ccnt, username):
-    rows = rt_queries('', username, '', '', tmid, ssid, ccnt)
+def querydetails_now(remote, tmid, ssid, ccnt, username):
+    if remote:
+        columns = queries_sql('')
+
+        filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+        if username != '':
+            filter += " and username='%s'" % username
+        query = '%s from queries_now %s' % (columns, filter)
+
+        sys.stderr.write("querydetails_now query: %s\n" % query)
+        rows = execute_query(query)
+    else:
+        rows = queries_file('', username, '', '', tmid, ssid, ccnt)
+
     return _queries_consolidate(rows)
 
 
@@ -528,18 +589,14 @@ def querydetails_history(tmid, ssid, ccnt, username):
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     if username != '':
         filter += " and username='%s'" % username
+
     query1 = '%s from queries_history %s' % (columns, filter)
     query2 = '%s from queries_tail %s' % (columns, filter)
     query = "(%s) union all (%s) limit 1" % (query1, query2)
 
     sys.stderr.write("querydetails_history query: %s\n" % query)
 
-    rows = []
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        raise_db_error('Exception during query: %s' % query)
+    rows = execute_query(query)
 
     return _queries_consolidate(rows)
 
@@ -819,11 +876,19 @@ def queryiterator(tmid, ssid, ccnt, nid):
 
 
 
-def database_now():
-    rows = rt_database()
+def database_now(remote):
+    if remote:
+        interval_code = 7
+        query = database_sql('database_now', '', interval_code)
+        sys.stderr.write("database_now query: %s\n" % query)
+        rows = execute_query(query)
+    else:
+        rows = database_file()
+
     return _database_consolidate(rows)
 
-def rt_database():
+
+def database_file():
     filename = "%s/database_now.dat" % path
 
     # ordering is important to match the order in the file
@@ -869,14 +934,16 @@ def database_sql(table, filter, interval_code):
                 "date_trunc('day', ctime)+(((trunc(date_part('hour', ctime)/6)*6)::text||' hours')::interval)",
                 "date_trunc('day', ctime)",
                 "date_trunc('week', ctime)",
-                "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)"]
+                "date_trunc('year', ctime)+(((trunc(date_part('month', ctime)/6)*6)::text||' months')::interval)",
+                "ctime"]
 
 
     query_fragment = "select %s as sample_time" % itvl_sql[interval_code]
     for column in columns:
         query_fragment += ", avg(%s) as %s" % (column, column)
-        query_fragment += ", min(%s) as %s_min" % (column, column)
-        query_fragment += ", max(%s) as %s_max" % (column, column)
+        if interval_code != 7:
+            query_fragment += ", min(%s) as %s_min" % (column, column)
+            query_fragment += ", max(%s) as %s_max" % (column, column)
 
     query_fragment += " from %s %s" % (table, filter)
     query_fragment += " group by sample_time"
@@ -894,15 +961,8 @@ def database_history(stime, etime, interval_code):
     query = database_sql('database_history', filter, interval_code)
 
     sys.stderr.write("database_history query: %s\n" % query)
-
-    rows = []
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        raise_db_error('Exception during query: %s' % query)
+    rows = execute_query(query)
 
     return _database_consolidate(rows)
-
 
 

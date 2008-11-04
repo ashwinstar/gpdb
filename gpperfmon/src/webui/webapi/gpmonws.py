@@ -31,7 +31,7 @@ web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
 MAX_NONAGGREGATED_SAMPLES = 16
 MAX_QUERIES_PER_SEARCH = 250
-
+remote = True
 
 urls = ('/', 'index',
         '/api', 'api',
@@ -258,7 +258,7 @@ class system:
 
         try:
             if i.start == 'NOW':
-                res = db.system_now()
+                res = db.system_now(remote)
                 i.aggregated = 'no'
             else:
                 # Only allow superuser to look up historical information
@@ -373,7 +373,7 @@ class queries:
 
         try:
             if i.start == 'NOW':
-                res = db.queries_now(i.status, i.username, i.db, i.textlength)
+                res = db.queries_now(remote, i.status, i.username, i.db, i.textlength)
             else:
                 # check_valid() sanitizes input against SQL injection attacks 
                 try:
@@ -448,7 +448,7 @@ class querydetails:
             
         try:
             if i.realtime == 'yes':
-                res = db.querydetails_now(id_split[0], id_split[1], id_split[2], username)
+                res = db.querydetails_now(remote, id_split[0], id_split[1], id_split[2], username)
             else:
                 res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username)
         except db.GPDBError, errorinfo:
@@ -613,7 +613,7 @@ class database:
 
         try:
             if i.start == 'NOW':
-                res = db.database_now()
+                res = db.database_now(remote)
             else:
                 # Only allow superuser to look up historical information
                 if not session.role['superuser']:
