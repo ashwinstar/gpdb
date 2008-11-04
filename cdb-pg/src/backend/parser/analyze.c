@@ -9692,7 +9692,9 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				else if (IsA(cmd->def, FkConstraint))
 				{
 					cxt.fkconstraints = lappend(cxt.fkconstraints, cmd->def);
-					skipValidation = false;
+
+					/* GPDB: always skip validation of foreign keys */
+					skipValidation = true;
 				}
 				else
 					elog(ERROR, "unrecognized node type: %d",
