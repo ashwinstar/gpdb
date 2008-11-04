@@ -6497,10 +6497,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 							  "x.rejectlimit, x.rejectlimittype, "
 					          "n.nspname AS errnspname, d.relname AS errtblname, "
 							  "pg_catalog.pg_encoding_to_char(x.encoding) "
-							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c, "
-							  "pg_catalog.pg_class d, pg_catalog.pg_namespace n "
-							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid "
-					          "AND d.oid = x.fmterrtbl AND n.oid = d.relnamespace",
+					          "FROM pg_catalog.pg_class c "
+					          "JOIN pg_catalog.pg_exttable x ON ( c.oid = x.reloid ) "
+					          "LEFT JOIN pg_catalog.pg_class d ON ( d.oid = x.fmterrtbl ) "
+					          "LEFT JOIN pg_catalog.pg_namespace n ON ( n.oid = d.relnamespace ) "
+					          "WHERE c.oid = '%u'::oid ",
 							  tbinfo->dobj.catId.oid);
 		}
 		else
