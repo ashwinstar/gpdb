@@ -6,16 +6,16 @@
 drop external web table if exists check_mapred;
 NOTICE:  external table "check_mapred" does not exist, skipping
 CREATE EXTERNAL WEB TABLE check_mapred (x text)
-execute E'( /Users/jcohen/greenplum-db-devel/bin/gpmapreduce --help regression)'
+execute E'( @gpwhich_gpmapreduce@ --help regression)'
 on SEGMENT 0
 format 'text';
 select * from check_mapred;
                                               x                                               
 ----------------------------------------------------------------------------------------------
- /Users/jcohen/greenplum-db-devel/bin/gpmapreduce - Greenplum Map/Reduce Driver 1.00b2
+ @gpwhich_gpmapreduce@ - Greenplum Map/Reduce Driver 1.00b2
  
  Usage:
-   /Users/jcohen/greenplum-db-devel/bin/gpmapreduce [options] -f file.yml [dbname [username]]
+   @gpwhich_gpmapreduce@ [options] -f file.yml [dbname [username]]
  
  General options:
    -? | --help                   show this help, then exit
@@ -50,8 +50,8 @@ insert into a1_grep values ('GET http://jimbob.com/joe4.html HTTP');
 drop external web table if exists grep1_mapred;
 NOTICE:  external table "grep1_mapred" does not exist, skipping
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
---execute E'( /Users/jcohen/greenplum-db-devel/bin/gpmapreduce --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT )'
-execute E'( /Users/jcohen/greenplum-db-devel/bin/gpmapreduce --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )'
+--execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT )'
+execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )'
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
@@ -66,7 +66,7 @@ WARNING:  TupleDesc reference leak: TupleDesc 0xc5b410 (37983,-1) still referenc
 -- complain about bad database
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( /Users/jcohen/greenplum-db-devel/bin/gpmapreduce --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1  )'
+execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1  )'
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
@@ -78,7 +78,7 @@ select * from grep1_mapred;
 -- complain about missing user
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( /Users/jcohen/greenplum-db-devel/bin/gpmapreduce --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1  )'
+execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1  )'
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
@@ -89,7 +89,7 @@ select * from grep1_mapred;
 
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (kkey text, vval text)
-execute E'( (/Users/jcohen/greenplum-db-devel/bin/gpmapreduce --f @abs_srcdir@/data/1_grep.yml regression $USER -p $GP_MASTER_PORT 2>&1 ) | grep aa  )'
+execute E'( (@gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression $USER -p $GP_MASTER_PORT 2>&1 ) | grep aa  )'
 on SEGMENT 0
 format 'text' (delimiter '|');
 select * from grep1_mapred;
