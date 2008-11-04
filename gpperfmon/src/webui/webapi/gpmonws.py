@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, socket, re
+import os, sys, socket, re, ConfigParser
 import time, datetime, tempfile
 
 gphome = os.environ.get('GPHOME')
@@ -20,18 +20,13 @@ import web
 from greenplum import db
 from greenplum import error
 from greenplum import interval
-from greenplum import configuration
-
-# Load the configuration file
-if not configuration.loadconfig(datadir):
-    sys.exit('FATAL: Unable to load configuration file')
 
 
 web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
 MAX_NONAGGREGATED_SAMPLES = 16
 MAX_QUERIES_PER_SEARCH = 250
-remote = True
+remote = False
 
 urls = ('/', 'index',
         '/api', 'api',
@@ -192,6 +187,42 @@ class logoff:
         return logoffdata
 
 class config:
+    def __init__(self):
+        # Holds the complete configuration
+        self.gpperfmon_config = {}
+        # Holds the values of specific configuration settings we care about
+        requires_pw = ''
+
+        filename = datadir + '/gpperfmon/conf/gpperfmon.conf'
+        try:
+            # parse configuration file
+            cfg = ConfigParser.SafeConfigParser()
+            cfg.readfp(open(filename))
+        except:
+            sys.exit("FATAL: Unable to load configuration file: %s\n" % filename)
+
+        for section in cfg.sections():
+            section_elements = {}
+            for item in cfg.items(section):
+                section_elements[item[0].replace(" ","_")] = item[1]
+            self.gpperfmon_config[section.replace(" ","_")] = section_elements
+
+        sys.stderr.write("Configuration file: %s\n\n" % self.gpperfmon_config)
+
+        # look for specific values
+        if cfg.has_option("WEB SERVICE", "requires_pw"):
+            requires_pw = cfg.getboolean("WEB SERVICE","requires_pw")
+        else:
+            requires_pw = False
+        sys.stderr.write("requires_pw = %s\n" % requires_pw)
+
+        if cfg.has_option("WEB SERVICE", "remote"):
+            remote = cfg.getboolean("WEB SERVICE", "remote")
+        else: 
+            remote = False
+        sys.stderr.write("remote = %s\n" % remote)
+
+
     def GET(self):
         # DEBUGGING 
         sys.stderr.write("\nCONFIG:\n")
@@ -204,7 +235,7 @@ class config:
 
         web.header('Content-Type', 'text/xml')
 
-        return render.config(configuration.gpperfmon_config)
+        return render.config(self.gpperfmon_config)
     
 
 class hosts:
@@ -648,5 +679,6 @@ class database:
 
 
 if __name__ == '__main__':
+    config()
     app.run()
 
