@@ -31,7 +31,7 @@ class CatThread(threading.Thread):
 	    line = self.fd.readline()
 	    if line=='':
 		break
-	    self.gpload.log(1,line.strip('\n'))
+	    self.gpload.log(2,line.strip('\n'))
 
 class Progress(threading.Thread):
     def __init__(self,gpload,ports):
@@ -90,7 +90,7 @@ class Progress(threading.Thread):
 	    time.sleep(1)
 
 def usage():
-    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] [-W] [-q] [-v] [-l logfile] -f configfile\n"%sys.argv[0])
+    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] [-W] [-q] [-D] [-v] [-l logfile] -f configfile\n"%sys.argv[0])
     sys.stderr.write("%s -?\n"%sys.argv[0])
     sys.stderr.write("%s --version\n"%sys.argv[0])
     sys.exit(2)
@@ -141,6 +141,7 @@ class gpload:
 	self.options.p = None
 	self.options.U = None
 	self.options.W = False
+	self.options.D = False
 	self.options.password = None
 	self.options.d = None
 	self.options.qv = 1
@@ -172,6 +173,9 @@ class gpload:
 		    elif argv[0]=='-W':
 			self.options.W = True
 			argv = argv[1:]
+		    elif argv[0]=='-D':
+			self.options.D = True
+			argv = argv[1:]
 		    elif argv[0]=='-U':
 			self.options.U = argv[1]
 			argv = argv[2:]
@@ -196,6 +200,8 @@ class gpload:
 	self.logfile = open(self.options.l,'a')
 	self.log(0,'*'*10)
 	self.log(0,'gpload session started '+datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+	if self.options.D:
+	    self.log(0,'Gpload has the -D option, so it does not actually load any data.')
 	self.log(0,'*'*10)
 	try:
 	    f = open(configFilename,'r')
@@ -334,11 +340,11 @@ class gpload:
 		    self.log(0,'Failed to start gpfdist.')
 		    sys.exit(2)
 		line = line.strip('\n')
-		self.log(1,line)
+		self.log(2,line)
 		if line.startswith('Serving HTTP on port '):
 		    port = int(line[21:line.index(',')])
 		    break
-	    self.log(1,'gpfdist is running on port %d'%port)
+	    self.log(2,'gpfdist is running on port %d'%port)
 	    if port in availablePorts:
 		availablePorts.remove(port)
 	    self.ports.append(port)
@@ -401,11 +407,11 @@ class gpload:
 		self.from_columns.append([key,d[key],None])
 	else:
 	    self.from_columns = self.into_columns
-	self.log(1,'from columns are--')
-	self.log(1,'')
+	self.log(2,'from columns are--')
+	self.log(2,'')
 	for name,typ,mapto in self.from_columns:
-	    self.log(1,'%s: %s'%(name,typ))
-	self.log(1,'')
+	    self.log(2,'%s: %s'%(name,typ))
+	self.log(2,'')
 
     def read_table_metadata(self):
 	tableSchema = 'public'
@@ -458,15 +464,14 @@ class gpload:
 		    self.log(0,'%s in mapping is not in table %s:.'%(key,self.table))
 		    sys.exit(2)
 		self.into_columns[i][2] = value.lower()
-	self.log(1,'table %s columns are--'%self.table)
-	self.log(1,'')
+	self.log(2,'table %s columns are--'%self.table)
+	self.log(2,'')
 	for name,typ,mapto in self.into_columns:
-	    self.log(1,'%s: %s = %s'%(name,typ,mapto))
-	self.log(1,'')
+	    self.log(2,'%s: %s = %s'%(name,typ,mapto))
+	self.log(2,'')
 
     def create_external_table(self):
 	self.error_table = self.getconfig('gpload:input:error_table',str,None)
-	self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
 	format = self.getconfig('gpload:input:format',str,'text').lower()
 	sql = "create external table ext_%s"%self.name
 	sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]),self.from_columns))
@@ -493,12 +498,14 @@ class gpload:
 	    sql += "log errors into %s "%self.error_table
 	    limit = self.getconfig('gpload:input:error_limit',int,0)
 	    sql += "segment reject limit %s "%limit
-	self.log(1,sql)
-	self.pg8000.execute(sql)
+	self.log(2,sql)
+	if not self.options.D:
+	    self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
+	    self.pg8000.execute(sql)
 	self.initial_errors = self.count_errors()
 
     def count_errors(self):
-	if self.error_table:
+	if self.error_table and not self.options.D:
 	    self.pg8000.execute('select count(*) from %s'%self.error_table)
 	    return self.pg8000.iterate_dict().next()['count']
 	return 0
@@ -518,11 +525,12 @@ class gpload:
 	sql += '(%s)'%','.join(map(lambda a:a[0],cols))
 	sql += 'select %s '%','.join(map(lambda a:a[2],cols))
 	sql += 'from ext_%s'%self.name
-	self.log(1,sql)
 	p = Progress(self,self.ports)
 	p.start()
 	self.threads.append(p)
-	self.pg8000.execute(sql)
+	self.log(2,sql)
+	if not self.options.D:
+	    self.pg8000.execute(sql)
 	p.condition.acquire()
 	p.number = 1
 	p.condition.wait()
@@ -558,15 +566,17 @@ class gpload:
 	if update_condition:
 	    match.append(update_condition)
 	sql += 'where %s '%' and '.join(match)
-	self.log(1,sql)
-	self.pg8000.execute(sql)
+	self.log(2,sql)
+	if not self.options.D:
+	    self.pg8000.execute(sql)
 
     def do_method_update(self):
 # Direct update doesn't work, so we copy data into temp table first.
-	self.cleanupSql.append('drop table if exists temp_%s'%self.name)
 	sql = 'create temp table temp_%s(like %s)'%(self.name,self.table)
-	self.log(1,sql)
-	self.pg8000.execute(sql)
+	self.log(2,sql)
+	if not self.options.D:
+	    self.cleanupSql.append('drop table if exists temp_%s'%self.name)
+	    self.pg8000.execute(sql)
 	self.create_external_table()
 	self.do_insert('temp_%s'%self.name)
 	self.do_update('temp_%s'%self.name,0)
@@ -576,10 +586,11 @@ class gpload:
 #	self.report_errors()
 
     def do_method_merge(self):
-	self.cleanupSql.append('drop table if exists temp_%s'%self.name)
 	sql = 'create temp table temp_%s(like %s)'%(self.name,self.table)
-	self.log(1,sql)
-	self.pg8000.execute(sql)
+	self.log(2,sql)
+	if not self.options.D:
+	    self.cleanupSql.append('drop table if exists temp_%s'%self.name)
+	    self.pg8000.execute(sql)
 	self.create_external_table()
 	self.do_insert('temp_%s'%self.name)
 	self.do_update('temp_%s'%self.name,0)
@@ -595,8 +606,9 @@ class gpload:
 	sql += 'where %s '%' and '.join(where)
 	sql += 'and gpload_row_number=1 '
 	sql += ')'
-	self.log(1,sql)
-	self.pg8000.execute(sql)
+	self.log(2,sql)
+	if not self.options.D:
+	    self.pg8000.execute(sql)
 
     def do_method(self):
 	method = self.getconfig('gpload:output:mode',str,'insert').lower()
@@ -611,7 +623,7 @@ class gpload:
 	    sys.exit(2)
 
     def run2(self):
-	self.log(1,str(self.config))
+	self.log(2,str(self.config))
 	start = time.time()
 	self.read_config()
 	self.setup_connection()
@@ -634,18 +646,18 @@ class gpload:
 		self.exitValue = 2
 	finally:
 	    if self.cleanupSql:
-		self.log(1,'Removing temporary data.')
+		self.log(2,'Removing temporary data.')
 		self.setup_connection()
 		for a in self.cleanupSql:
 		    try:
-			self.log(1,a)
+			self.log(2,a)
 			self.pg8000.execute(a)
 		    except (pg8000.errors.InternalError,pg8000.errors.ProgrammingError):
 			traceback.print_exc(file=self.logfile)
 			self.logfile.flush()
 			traceback.print_exc()
 	    if self.subprocesses:
-		self.log(1,'Killing gpfdist.')
+		self.log(2,'Killing gpfdist.')
 		for a in self.subprocesses:
 		    try:
 			os.kill(a.pid,signal.SIGTERM)
