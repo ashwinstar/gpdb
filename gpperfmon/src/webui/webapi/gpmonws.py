@@ -210,12 +210,6 @@ class config:
         sys.stderr.write("Configuration file: %s\n\n" % self.gpperfmon_config)
 
         # look for specific values
-        if cfg.has_option("WEB SERVICE", "requires_pw"):
-            requires_pw = cfg.getboolean("WEB SERVICE","requires_pw")
-        else:
-            requires_pw = False
-        sys.stderr.write("requires_pw = %s\n" % requires_pw)
-
         if cfg.has_option("WEB SERVICE", "remote"):
             remote = cfg.getboolean("WEB SERVICE", "remote")
         else: 
