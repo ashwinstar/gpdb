@@ -241,6 +241,10 @@ typedef CopyStateData *CopyState;
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
 
+extern void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim, 
+								 char *null_print, char *quote, char *escape,
+								 List *force_quote, List *force_notnull,
+								 bool header_line);
 extern uint64 DoCopy(const CopyStmt *stmt);
 
 extern DestReceiver *CreateCopyDestReceiver(void);

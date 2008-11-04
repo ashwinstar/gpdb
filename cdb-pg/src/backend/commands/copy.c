@@ -443,6 +443,162 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 }
 
 /*
+ * ValidateControlChars
+ * 
+ * These routine is common for COPY and external tables. It validates the
+ * control characters (delimiter, quote, etc..) and enforces the given rules.
+ * 
+ * bool copy
+ *  - pass true if you're COPY
+ *  - pass false if you're an exttab
+ *  
+ * bool load
+ *  - pass true for inbound data (COPY FROM, SELECT FROM exttab)
+ *  - pass false for outbound data (COPY TO, INSERT INTO exttab)
+ */
+void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim, 
+						  char *null_print, char *quote, char *escape,
+						  List *force_quote, List *force_notnull, 
+						  bool header_line)
+{
+	/*
+	 * DELIMITER
+	 * 
+	 * Only single-byte delimiter strings are supported. In addition, if the
+	 * server encoding is a multibyte character encoding we only allow the 
+	 * delimiter to be an ASCII character (like postgresql. For more info
+	 * on this see discussion and comments in MPP-3756).
+	 */
+	if(pg_database_encoding_max_length() == 1)
+	{
+		/* single byte encoding such as ascii, latinx and other */
+		if (strlen(delim) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("delimiter must be a single byte character")));
+	}
+	else
+	{
+		/* multi byte encoding such as utf8 */
+		if(strlen(delim) != 1 || IS_HIGHBIT_SET(delim[0]))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("delimiter must be a single ASCII character")));			
+	}
+	
+	if (strchr(delim, '\r') != NULL ||
+	    strchr(delim, '\n') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("delimiter cannot be newline or carriage return")));
+	
+	if (strchr(null_print, '\r') != NULL ||
+		strchr(null_print, '\n') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("null representation cannot use newline or carriage return")));
+	
+	if (!csv_mode && strchr(delim, '\\') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("delimiter cannot be backslash")));
+	
+	if (strchr(null_print, delim[0]) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		errmsg("delimiter must not appear in the NULL specification")));
+
+	
+	/* 
+	 * HEADER
+	 */
+	if(header_line)
+	{
+		if(copy && !csv_mode)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("HEADER available only in CSV mode")));			
+		}
+		else if(Gp_role == GP_ROLE_DISPATCH)
+		{
+			/* (exttab) */
+			ereport(NOTICE,
+					(errmsg("HEADER means that each one of the data files "
+					        "has a header row.")));
+		}
+	}
+
+	
+	/*
+	 * QUOTE
+	 */
+	if (!csv_mode && quote != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("quote available only in CSV mode")));
+
+	if (csv_mode && strlen(quote) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("quote must be a single character")));
+	
+	if (csv_mode && strchr(null_print, quote[0]) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("CSV quote character must not appear in the NULL specification")));
+
+
+	/*
+	 * ESCAPE
+	 */
+	if (csv_mode && strlen(escape) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("escape in CSV format must be a single character")));
+
+	if (!csv_mode &&
+		(strchr(escape, '\r') != NULL ||
+		strchr(escape, '\n') != NULL))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("escape representation in text format cannot use newline or carriage return")));	
+		
+	if (!csv_mode && strlen(escape) != 1)
+	{
+		if (pg_strcasecmp(escape, "off"))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("escape must be a single character, or [OFF/off] to disable escapes")));
+	}
+
+	/*
+	 * FORCE QUOTE
+	 */
+	if (!csv_mode && force_quote != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("force quote available only in CSV mode")));
+	if (force_quote != NIL && load)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("force quote only available for data unloading, not loading")));
+
+	/*
+	 * FORCE NOT NULL
+	 */
+	if (!csv_mode && force_notnull != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("force not null available only in CSV mode")));
+	if (force_notnull != NIL && !load)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			  errmsg("force not null only available for data loading, not unloading")));
+
+}
+
+/*
  *	 DoCopy executes the SQL COPY statement.
  *
  * Either unload or reload contents of table <relation>, depending on <from>.
@@ -668,130 +824,21 @@ DoCopy(const CopyStmt *stmt)
 	}
 
 	/*
-	 * Only single-byte delimiter strings are supported. In addition, if the
-	 * server encoding is a multibyte character encoding we only allow the 
-	 * delimiter to be an ASCII character (like postgresql. For more info
-	 * on this see discussion and comments in MPP-3756).
+	 * Validate our control characters and their combination
 	 */
-	if(pg_database_encoding_max_length() == 1)
-	{
-		/* single byte encoding such as ascii, latinx and other */
-		if (strlen(cstate->delim) != 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY delimiter must be a single byte character")));
-	}
-	else
-	{
-		/* multi byte encoding such as utf8 */
-		if(strlen(cstate->delim) != 1 || IS_HIGHBIT_SET(cstate->delim[0]))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY delimiter must be a single ASCII character")));			
-	}
+	ValidateControlChars(true,
+						 is_from,
+						 cstate->csv_mode, 
+						 cstate->delim, 
+						 cstate->null_print, 
+						 cstate->quote, 
+						 cstate->escape,
+						 force_quote, 
+						 force_notnull,
+						 cstate->header_line);
 	
-	/* Disallow end-of-line characters */
-	if (strchr(cstate->delim, '\r') != NULL ||
-	    strchr(cstate->delim, '\n') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPY delimiter cannot be newline or carriage return")));
-	
-	if (strchr(cstate->null_print, '\r') != NULL ||
-		strchr(cstate->null_print, '\n') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPY null representation cannot use newline or carriage return")));
-	
-	/* Disallow backslash in non-CSV mode */
-	if (!cstate->csv_mode && strchr(cstate->delim, '\\') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPY delimiter cannot be backslash")));
-	
-	/* Check header */
-	if (!cstate->csv_mode && cstate->header_line)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY HEADER available only in CSV mode")));
-	
-	/*
-	 * Check quote
-	 */
-	if (!cstate->csv_mode && cstate->quote != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY quote available only in CSV mode")));
-
-	if (cstate->csv_mode && strlen(cstate->quote) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY quote must be a single character")));
-
-	/*
-	 * Check escape
-	 */
-	if (cstate->csv_mode && strlen(cstate->escape) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("COPY escape in CSV format must be a single character")));
-
-	if (!cstate->csv_mode &&
-		(strchr(cstate->escape, '\r') != NULL ||
-		strchr(cstate->escape, '\n') != NULL))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPY escape representation in text format cannot use newline or carriage return")));	
-		
-	if (!cstate->csv_mode && strlen(cstate->escape) != 1)
-	{
-		if (!pg_strcasecmp(cstate->escape, "off"))
-			cstate->escape_off = true;
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY escape must be a single character, or [OFF/off] to disable escapes")));
-	}
-
-	/*
-	 * Check force_quote
-	 */
-	if (!cstate->csv_mode && force_quote != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY force quote available only in CSV mode")));
-	if (force_quote != NIL && is_from)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY force quote only available using COPY TO")));
-
-	/*
-	 * Check force_notnull
-	 */
-	if (!cstate->csv_mode && force_notnull != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY force not null available only in CSV mode")));
-	if (force_notnull != NIL && !is_from)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("COPY force not null only available using COPY FROM")));
-
-	/*
-	 * Don't allow the delimiter to appear in the null string.
-	 */
-	if (strchr(cstate->null_print, cstate->delim[0]) != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		errmsg("COPY delimiter must not appear in the NULL specification")));
-
-	/*
-	 * Don't allow the csv quote char to appear in the null string.
-	 */
-	if (cstate->csv_mode && strchr(cstate->null_print, cstate->quote[0]) != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("CSV quote character must not appear in the NULL specification")));
+	if (!pg_strcasecmp(cstate->escape, "off"))
+		cstate->escape_off = true;
 
 	/* Disallow file COPY except to superusers. */
 	if (!pipe && !superuser())

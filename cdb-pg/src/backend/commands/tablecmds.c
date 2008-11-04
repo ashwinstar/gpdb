@@ -45,6 +45,7 @@
 #include "catalog/toasting.h"
 #include "catalog/pg_exttable.h"
 #include "commands/cluster.h"
+#include "commands/copy.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -16998,107 +16999,19 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	
 	if (!csv_mode && !escape)
 		escape = "\\";			/* default escape for text mode */
-	
-	/*
-	 * Only single-byte delimiter strings are supported. In addition, if the
-	 * server encoding is a multibyte character encoding we only allow the 
-	 * delimiter to be an ASCII character (like postgresql. For more info
-	 * on this see discussion and comments in MPP-3756).
-	 */
-	if(pg_database_encoding_max_length() == 1)
-	{
-		/* single byte encoding such as ascii, latinx and other */
-		if (strlen(delim) != 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY delimiter must be a single byte character")));
-	}
-	else
-	{
-		/* multi byte encoding such as utf8 */
-		if(strlen(delim) != 1 || IS_HIGHBIT_SET(delim[0]))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY delimiter must be a single ASCII character")));			
-	}
-	
-	/* Disallow end-of-line characters */
-	if (strchr(delim, '\r') != NULL ||
-	    strchr(delim, '\n') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("delimiter cannot be newline or carriage return")));
-	
-	if (strchr(null_print, '\r') != NULL ||
-		strchr(null_print, '\n') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("null representation cannot use newline or carriage return")));
-	
-	/* Disallow backslash in non-CSV mode */
-	if (!csv_mode && strchr(delim, '\\') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("delimiter cannot be backslash")));
-	
-	if(header_line && Gp_role == GP_ROLE_DISPATCH)
-		ereport(NOTICE,
-				(errmsg("HEADER means that each one of the data files "
-				        "has a header row.")));
-	
-	/*
-	 * Check quote
-	 */
-	if (!csv_mode && quote != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("quote available only in CSV mode")));
-	
-	if (csv_mode && strlen(quote) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("quote must be a single character")));
-	
-	/*
-	 * Check escape
-	 */	
-	if (csv_mode && strlen(escape) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("escape in CSV format must be a single character")));
-	
-	if (!csv_mode && strlen(escape) != 1)
-	{
-		if (pg_strcasecmp(escape, "off") != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("escape must be a single character, or [OFF/off] to disable escapes")));
-	}
-	
-	if (!csv_mode &&
-		(strchr(escape, '\r') != NULL ||
-		 strchr(escape, '\n') != NULL))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPY escape representation in text format cannot use newline or carriage return")));	
-	
-	/*
-	 * Don't allow the delimiter to appear in the null string.
-	 */
-	if (strchr(null_print, delim[0]) != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("delimiter must not appear in the NULL specification")));
-	
-	/*
-	 * Don't allow the csv quote char to appear in the null string.
-	 */
-	if (csv_mode && strchr(null_print, quote[0]) != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("CSV quote character must not appear in the NULL specification")));
-	
-	
+		
+	/* verify all user supplied control char combinations are legal */
+	ValidateControlChars(false,
+						 true, 
+						 csv_mode, 
+						 delim, 
+						 null_print, 
+						 quote, 
+						 escape,
+						 NIL, 
+						 NIL,
+						 header_line);	
+
 	/*
 	 * build the format option string that will get stored in the catalog.
 	 */
