@@ -173,12 +173,12 @@ select sum(tfloat8[1])::boolean   from dtype;  -- float8
 select sum(tnumeric[1])::boolean  from dtype;  -- numeric
 
 -- Matrix inversion 
-select pinv(array[[1,-1,3],[2,1,2],[-2,-2,1]]);
+select pinv(array[[1,-1,3],[2,1,2],[-2,-2,1]])::numeric(10,8)[] as pinv;
 
 -- Ensure that  AA' = A'A
 select matrix_multiply(array[[1,-1,3],[2,1,2],[-2,-2,1]], 
-                       pinv(array[[1,-1,3],[2,1,2],[-2,-2,1]]))::int[];
+                       pinv(array[[1,-1,3],[2,1,2],[-2,-2,1]]))::numeric(10,8)[] as "AA'";
 select matrix_multiply(pinv(array[[1,-1,3],[2,1,2],[-2,-2,1]]),
-                       array[[1,-1,3],[2,1,2],[-2,-2,1]])::int[];
+                       array[[1,-1,3],[2,1,2],[-2,-2,1]])::numeric(10,8)[] as "A'A";
 
 drop table dtype;
