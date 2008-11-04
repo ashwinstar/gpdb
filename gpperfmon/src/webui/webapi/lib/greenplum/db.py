@@ -582,8 +582,6 @@ def querydetails_now(remote, tmid, ssid, ccnt, username):
 
 
 def querydetails_history(tmid, ssid, ccnt, username):
-    validate_db_conn()
-
     columns = queries_sql('')
 
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
@@ -655,10 +653,6 @@ def queryplan_get_username_now(tmid, ssid, ccnt):
 
 
 def queryplan_now(tmid, ssid, ccnt, username):
-    validate_db_conn()
-
-    rows = []
-
     # If not superuser, check that username matches
     if username != '':
         q_username = queryplan_get_username_now(tmid, ssid, ccnt)
@@ -674,11 +668,7 @@ def queryplan_now(tmid, ssid, ccnt, username):
 
     sys.stderr.write("queryplan_now query: %s\n" % query)
 
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        raise_db_error('Exception during query: %s' % query)
+    rows = execute_query(query)
 
     return _queryplan_consolidate(rows)
 
@@ -704,10 +694,6 @@ def queryplan_get_username_history(tmid, ssid, ccnt):
 
 
 def queryplan_history(tmid, ssid, ccnt, username):
-    validate_db_conn()
-
-    rows = []
-
     # If not superuser, check that username matches
     if username != '':
         q_username = queryplan_get_username_history(tmid, ssid, ccnt)
@@ -724,11 +710,7 @@ def queryplan_history(tmid, ssid, ccnt, username):
 
     sys.stderr.write("queryplan_now query: %s\n" % query)
 
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        raise_db_error('Exception during query: %s' % query)
+    rows = execute_query(query)
 
     return _queryplan_consolidate(rows)
 
@@ -849,8 +831,6 @@ def iterator_sql():
 
 # returns iterator data across all segments.
 def queryiterator(tmid, ssid, ccnt, nid):
-    validate_db_conn()
-
     query_fragment = iterator_sql()
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s' and nid='%s'" % (tmid, ssid, ccnt, nid)
 
@@ -858,12 +838,7 @@ def queryiterator(tmid, ssid, ccnt, nid):
     query2 = "%s from iterators_tail %s" % (query_fragment, filter)
     query = "%s\nunion all\n%s" % (query1, query2)
 
-    rows = []
-    try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except:
-        raise_db_error('Exception during query: %s' % query)
+    rows = execute_query(query)
 
     sys.stderr.write("ITERATOR RESULT:\n%s\n\n\n" % rows)
 
@@ -951,8 +926,6 @@ def database_sql(table, filter, interval_code):
 
 
 def database_history(stime, etime, interval_code):
-    validate_db_conn()
-
     if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
