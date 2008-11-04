@@ -87,7 +87,7 @@ opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
 opt['-S'] = 0
-opt['-T'] = 1800
+opt['-T'] = 86400
 
 arg = {}
 arg['exit'] = 0
