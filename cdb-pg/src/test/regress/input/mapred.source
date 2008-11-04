@@ -2,6 +2,11 @@
 -- map/reduce tests, derived from external tables 1.  Short and simple
 -- functional tests. The full set of tests exists in cdbunit.
 --
+-- Some notes: the PATH variable doesn't necessarily work correctly in
+-- the regression context, so use the "gpwhich" token to get the full
+-- path from your environment (see gpstringsubs for more details).  And
+-- to make this work correctly with gpsourcify, you need to add your
+-- gpwhich token to gptokencheck.
 
 -- start_ignore
 drop external web table if exists check_mapred;
@@ -49,6 +54,7 @@ format 'text';
 
 select * from grep1_mapred;
 
+-- start_ignore
 -- complain about missing user
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
@@ -57,6 +63,7 @@ on SEGMENT 0
 format 'text';
 
 select * from grep1_mapred;
+-- end_ignore
 
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (kkey text, vval text)

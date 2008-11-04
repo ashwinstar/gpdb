@@ -2,6 +2,11 @@
 -- map/reduce tests, derived from external tables 1.  Short and simple
 -- functional tests. The full set of tests exists in cdbunit.
 --
+-- Some notes: the PATH variable doesn't necessarily work correctly in
+-- the regression context, so use the "gpwhich" token to get the full
+-- path from your environment (see gpstringsubs for more details).  And
+-- to make this work correctly with gpsourcify, you need to add your
+-- gpwhich token to gptokencheck.
 -- start_ignore
 drop external web table if exists check_mapred;
 NOTICE:  external table "check_mapred" does not exist, skipping
@@ -55,13 +60,7 @@ execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT  
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
-WARNING:  relcache reference leak: relation "grep1_mapred" not closed  (seg0 slice1 @hostname@:11002 pid=43500)
-WARNING:  TupleDesc reference leak: TupleDesc 0xc5b410 (37983,-1) still referenced  (seg0 slice1 @hostname@:11002 pid=43500)
-                    x                    
------------------------------------------
- Error: Could not open file 'nosuchfile'
-(1 row)
-
+ERROR:  error closing file or executing program "execute:( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )": Resource temporarily unavailable (fileam.c:1205)  (seg0 slice1 @hostname@:11002 pid=38224)
 -- end_ignore
 -- complain about bad database
 drop external web table if exists grep1_mapred;
@@ -75,6 +74,7 @@ select * from grep1_mapred;
  FATAL:  database "nosuchdatabase" does not exist
 (1 row)
 
+-- start_ignore
 -- complain about missing user
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
@@ -87,6 +87,7 @@ select * from grep1_mapred;
  FATAL:  no PostgreSQL user name specified in startup packet
 (1 row)
 
+-- end_ignore
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (kkey text, vval text)
 execute E'( (@gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression $USER -p $GP_MASTER_PORT 2>&1 ) | grep aa  )'
@@ -118,11 +119,7 @@ execute E'( env | sort)'
 on SEGMENT 0
 format 'text';
 select * from check_ps;
-                                                                                  x                                                                                  
----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   502 43102     1   0   0:00.00 ??         0:00.00 @gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data
-(1 row)
-
+ERROR:  error closing file or executing program "execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)": Resource temporarily unavailable (fileam.c:1205)  (seg0 slice1 @hostname@:11002 pid=38224)
 select * from check_env;
                                                     x                                                    
 ---------------------------------------------------------------------------------------------------------
@@ -130,19 +127,19 @@ select * from check_env;
  GPHOME=/Users/jcohen/greenplum-db-devel
  GP_CID=0
  GP_DATABASE=regression
- GP_DATE=20081103
- GP_MASTER_HOST=172.16.173.1
+ GP_DATE=20081104
+ GP_MASTER_HOST=10.254.0.239
  GP_MASTER_PORT=11000
  GP_SEGMENT_COUNT=2
  GP_SEGMENT_ID=0
  GP_SEG_DATADIR=/Users/jcohen/cdb-data/testdb0
  GP_SEG_PG_CONF=/Users/jcohen/cdb-data/testdb0/postgresql.conf
  GP_SEG_PORT=11002
- GP_SESSION_ID=1867
+ GP_SESSION_ID=185
  GP_SN=6
- GP_TIME=125817
+ GP_TIME=113220
  GP_USER=jcohen
- GP_XID=1225568155-0000003914
+ GP_XID=1225826660-0000007904
  HOME=/Users/jcohen
  LC_COLLATE=en_US.utf-8
  LC_CTYPE=en_US.utf-8
@@ -160,8 +157,8 @@ select * from check_env;
  PWD=/Users/jcohen/cdb-data/testdb0
  SHELL=/bin/bash
  SHLVL=3
- SSH_CLIENT=::1 52537 22
- SSH_CONNECTION=::1 52537 ::1 22
+ SSH_CLIENT=::1 65146 22
+ SSH_CONNECTION=::1 65146 ::1 22
  USER=jcohen
  _=/usr/bin/env
  __CF_USER_TEXT_ENCODING=0x1F6:0:0
