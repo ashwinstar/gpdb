@@ -17000,12 +17000,27 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 		escape = "\\";			/* default escape for text mode */
 	
 	/*
-	 * Only single-character delimiter strings are supported.
+	 * Only single-byte delimiter strings are supported. In addition, if the
+	 * server encoding is a multibyte character encoding we only allow the 
+	 * delimiter to be an ASCII character (like postgresql. For more info
+	 * on this see discussion and comments in MPP-3756).
 	 */
-	if (strlen(delim) != 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("delimiter must be a single character")));
+	if(pg_database_encoding_max_length() == 1)
+	{
+		/* single byte encoding such as ascii, latinx and other */
+		if (strlen(delim) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY delimiter must be a single byte character")));
+	}
+	else
+	{
+		/* multi byte encoding such as utf8 */
+		if(strlen(delim) != 1 || IS_HIGHBIT_SET(delim[0]))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY delimiter must be a single ASCII character")));			
+	}
 	
 	/* Disallow end-of-line characters */
 	if (strchr(delim, '\r') != NULL ||
