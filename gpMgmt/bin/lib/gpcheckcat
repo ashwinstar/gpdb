@@ -3,18 +3,20 @@
 Usage: gpcheckcat <option> [dbname]
 
 	-? 
+	-B parallel: number of worker threads
 	-g dir     : generate SQL to rectify catalog corruption, put it in dir
 	-h host	   : DB host name
 	-p port    : DB port number
 	-P passwd  : DB password
+    -t         : check TOAST table consistency
 	-U uname   : DB User Name
-	-B parallel: number of worker threads
 	-v         : verbose
 	-V         : very verbose
 
 '''
 import sys, os, subprocess, tempfile, stat
 from threading import Thread
+from datetime import datetime
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -45,7 +47,10 @@ class Global():
     opt['-U'] = None
     opt['-v'] = False
     opt['-V'] = False
-    opt['-g'] = None
+    opt['-t'] = False
+
+    dt = datetime.now()
+    opt['-g'] = 'gpcheckcat.repair.' + dt.strftime('%Y-%m-%d.%H.%M.%S')
     opt['-B'] = parallelism
     cfg       = None
     dbname    = None
@@ -56,6 +61,12 @@ GV = Global()
 # array of SQL statements. Key is dbid
 Remove = {}
 
+# Indexes to rebuild
+Reindex = []
+
+# constraints which are actually uninforcable
+Constraints = []
+
 ###############################
 def usage(exitarg = None):
     print __doc__
@@ -64,17 +75,33 @@ def usage(exitarg = None):
 
 ###############################
 def verbose(x):
-    if GV.opt['-v']: print x
+    if GV.opt['-v'] or GV.opt['-V']: print x
 
 
 ###############################
 def veryverbose(x):
     if GV.opt['-V']: print x
 
+def getversion():
+    db = connect2(GV.cfg[1])
+    db.execute('''
+    select regexp_replace(version(), E'.*PostgreSQL \([^ ]*\).*Greenplum.*',
+    E'\\\\1') as ver;''')
+
+    row = db.read_tuple()
+    version = row[0]
+
+    verbose('got version %s' % version)
+    if not (version == "8.2.6" or version == "8.2.9"):
+        usage('Error: only Greenplum database 3.1 and 3.2 are supported')
+
+    return version
+
+
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVg:')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVtg:')
     except Exception, e:
         usage('Error: ' + str(e))
 
@@ -121,9 +148,11 @@ def parseCommandLine():
     except Exception, e:
         usage('Error: ' + str(e))
 
+    if GV.opt['-B'] < 1:
+        usage('Error: parallelism must be 1 or greater')
+
     veryverbose('[INFO] degree of parallelism: %s' % GV.opt['-B'])
     
-
 #############
 def connect(user=None, password=None, host=None, port=None, 
             database=None, utilityMode=False):
@@ -236,6 +265,65 @@ def getGPConfiguration():
         cfg[row['dbid']] = row
     db.close()
     return cfg
+
+def checkDistribPolicy():
+    print '-----------------------------------'
+    print 'Checking constraints on randomly distributed tables'
+    qry = '''select n.nspname, rel.relname,
+          pk.conname as constraint
+          from pg_constraint pk
+              join pg_class rel on (pk.conrelid = rel.oid)
+                  join pg_namespace n on (rel.relnamespace = n.oid)
+                      join gp_distribution_policy d on (rel.oid = d.localoid)
+                      where pk.contype in('p', 'u') and d.attrnums is null;'''
+
+    db = connect2(GV.cfg[1])
+    db.execute(qry)
+
+    err = []
+    for row in db.iterate_dict():
+        err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
+
+    if not err:
+        print '[OK] randomly distributed tables'
+    else:
+        GV.retcode = 1
+        print '[ERROR] pg_constraint has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        for e in err:
+            cons = e[2]
+            removeIndexConstraint(cons['nspname'], cons['relname'],
+                                      cons['constraint'])
+
+    print '-----------------------------------'
+    print 'Checking that unique constraints are only on distribution columns'
+    qry = '''Select  n.nspname, rel.relname,
+          pk.conname as constraint
+          from pg_constraint pk
+              join pg_class rel on (pk.conrelid = rel.oid)
+                  join pg_namespace n on (rel.relnamespace = n.oid)
+                      join gp_distribution_policy d on (rel.oid = d.localoid)
+                      where pk.contype in ('p', 'u') and
+                       (d.attrnums is null or not d.attrnums @> pk.conkey);'''
+
+    db.execute(qry)
+
+    err = []
+    for row in db.iterate_dict():
+        err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
+
+    if not err:
+        print '[OK] randomly distributed tables'
+    else:
+        GV.retcode = 1
+        print '[ERROR] pg_constraint has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        for e in err:
+            cons = e[2]
+            removeIndexConstraint(cons['nspname'], cons['relname'],
+                                  cons['constraint'])
 
 
 
@@ -526,6 +614,11 @@ def removeInheritance(seg, db, reloid, rel):
     buildRemove(seg, 'inheritance', 'pg_inherits',
                 dict([('inhrelid', reloid),('inhparent', reloid)]), rel)
 
+
+def removeIndexConstraint(nspname, relname, constraint):
+    Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s";' % \
+            (nspname, relname, constraint))
+
 def removeStats(seg, db, reloid, rel):
     buildRemove(seg, 'statistics', 'pg_statistic',
                 dict([('starelid', reloid)]), rel)
@@ -610,12 +703,15 @@ class sysCatThread(Thread):
         qry += ', a.'.join(set(catalog['cols'] + catalog['key']))
         qry += ' FROM pg_catalog.%s a' % table
     
+        havewhere = False
         if catalog['namespace']:
             qry += ", pg_namespace n"
             qry += " WHERE a.%s = n.oid" % catalog['namespace']
             qry += " AND n.nspname !~ 'pg_temp.*'"
-            qry += " AND n.nspname !~ 'pg_toast.*'"
-    
+            if GV.opt['-t'] == True:
+                qry += " AND n.nspname !~ 'pg_toast.*'"
+            havewhere = True
+
         qry += " ORDER BY a.%s " % ', a.'.join(catalog['key'])
     
         if dbid == 1:
@@ -733,6 +829,109 @@ def crossDbCheck():
         else:
             GV.retcode = 1
 
+class fileCheckThread(Thread):
+    def __init__(self, index, host, file, env):
+       self.host = host
+       self.file = file
+       self.index = index
+       self.exists = False
+       self.env = env
+       Thread.__init__(self)
+
+    def run(self):
+        verbose('Checking bitmap index %s on host %s' % \
+                (self.file, self.host))
+
+        try:
+            cmd = "ssh %s ls -l %s" % (self.host, self.file)
+            veryverbose('running command %s' % cmd)
+            cmd = cmd.split(' ')
+            pipe = subprocess.Popen(cmd, env=self.env,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+            result  = pipe.communicate();
+        except OSError, e:
+            print '%s, %s' % (' '.join(cmd),  str(e))
+            raise
+    
+        if pipe.returncode == 0:
+            self.exists = True
+
+def checkBitmapIndexes():
+    print '-----------------------------------'
+    print 'Checking bitmap indexes'
+
+    c = GV.cfg[1] # master
+    db = connect2(c)
+
+    db.execute('''
+    select d.oid as dboid, nspname, relname, relfilenode from 
+    pg_class c, pg_index i, pg_namespace n, pg_am a,
+    pg_database d where c.relam = a.oid and 
+    a.amname = 'bitmap' and i.indexrelid = c.oid and c.relnamespace = n.oid
+    and d.datname = current_database();
+    ''')
+    rows = []
+    for row in db.iterate_dict():
+        rows.append(row)
+
+    # same path as gpinitsystem
+    path = '/usr/kerberos/bin:/usr/sfw/bin:/opt/sfw/bin'
+    path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
+    path += ':/sw/bin'
+    env = {'PATH': path}
+    env['SSH_AUTH_SOCK'] = os.environ.get('SSH_AUTH_SOCK')
+
+    reindex = []
+    threads = []
+    for row in rows:
+        index = '"%s"."%s"' % (row['nspname'], row['relname'])
+        exists = True
+        for dbid in GV.cfg:
+            seg = GV.cfg[dbid]
+            file = '%s/base/%s/%s' % (seg['datadir'], row['dboid'],
+                        row['relfilenode'])
+    
+            thread = fileCheckThread(index, seg['hostname'], file, env)
+            thread.start()
+            threads.append(thread)
+
+            if (len(threads) % GV.opt['-B']) == 0:
+                for th in threads:
+                    veryverbose('[INFO] waiting on thread %s' % 
+                            th.getName())
+                    th.join()
+                    if th.exists == False:
+                        exists = False
+                        verbose('Could not find %s:%s' % \
+                                (seg['hostname'], file))
+                        reindex.append('"%s"."%s"' % (row['nspname'], 
+                                                      row['relname']))
+                threads = []
+
+            if exists == False:
+                break
+        # stragglers 
+        for th in threads:
+            veryverbose('[INFO] waiting on thread %s' % 
+                           th.getName())
+            th.join()
+            if th.exists == False:
+                exists = False
+                verbose('Could not find %s:%s' % \
+                            (seg['hostname'], file))
+                reindex.append('"%s"."%s"' % (row['nspname'], 
+                                                  row['relname']))
+            threads = []
+
+    if reindex:
+        # unique
+        a = list(set(reindex))
+        for b in a:
+            Reindex.append(b)
+    else:
+        print '[OK] bitmap indexes'
+
 def closeDbs():
     for key, db in GV.db.iteritems():
         db.close()
@@ -741,6 +940,12 @@ def closeDbs():
 if __name__ == '__main__':
     parseCommandLine()
     GV.cfg = getGPConfiguration()
+    GV.version = getversion()
+    
+    # turn on toast table check for 3.2
+    if GV.opt['-t'] == False and not GV.version == "8.2.6":
+        GV.opt['-t'] = True
+
     try:
         GV.tmpdir = tempfile.mkdtemp()
         veryverbose('[INFO] Created temporary working directory %s' % GV.tmpdir)
@@ -760,6 +965,8 @@ Performing segment specific consistency checks
     checkPGExtTable()
     checkPGClassToast()
     checkPGNamespace()
+    checkDistribPolicy()
+    checkBitmapIndexes()
 
     closeDbs()
 
@@ -770,7 +977,8 @@ Performing cross database consistency tests
 """
     crossDbCheck()
     
-    if GV.opt['-g'] != None and len(Remove) > 0:
+    fixes = (len(Remove) > 0 or len(Reindex) > 0 or len(Constraints))
+    if GV.opt['-g'] != None and fixes:
         try:
             if not os.path.exists(GV.opt['-g']):
                 os.mkdir(GV.opt['-g'])
@@ -779,6 +987,7 @@ Performing cross database consistency tests
                   str(e))
             sys.exit(1)
                    
+        verbose('Building catalog repair scripts')
         # build a script to run these files     
         script = '#!/bin/sh\n'
 
@@ -813,16 +1022,56 @@ Performing cross database consistency tests
                     'psql -X -a -h %s -p %i -f %s %s > %s.out\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
+        if len(Reindex) > 0:
+            filename = 'reindex.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                print '[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e))
+                sys.exit(1)
+
+            for r in Reindex:
+                file.write('REINDEX INDEX %s;\n' % r)
+            file.close()
+
+            script += 'echo "Reindexing potentially damaged bitmap indexes"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s %s > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        if len(Constraints) > 0:
+            Constraints = list(set(Constraints))
+            filename = 'removeconstraints.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                print '[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e))
+                sys.exit(1)
+
+            for r in Constraints:
+                file.write('%s\n' % r)
+            file.close()
+
+            script += 'echo "Dropping invalid unique constraints"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s %s > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+
         try:
             path = '%s/runsql.sh' % GV.opt['-g']
             file = open(path, 'w')
             file.write(script)
             file.close()
-            os.chmod(path, stat.S_IXUSR | stat.S_IRUSR)
+            os.chmod(path, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)
         except Exception, e:
             print '[FATAL] could not write script: %s' % str(e)
             sys.exit(1)
 
+        print '[INFO] repair scripts write to %s' % GV.opt['-g']
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True)
     sys.exit(GV.retcode)
-
