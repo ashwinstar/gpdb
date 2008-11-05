@@ -131,7 +131,6 @@ static Plan *make_list_aggs_for_rollup(PlannerInfo *root,
 static Plan*make_append_aggs_for_rollup(PlannerInfo *root,
 										GroupExtContext *context,
 										Plan *lefttree);
-static List *generate_append_tlist(List *tlist, int varno);
 static List *plan_list_aggs(PlannerInfo *root,
 							GroupExtContext *context,
 							Plan *lefttree);
@@ -728,7 +727,6 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 {
 	Plan *result_plan;
 	List *agg_plans = NIL;
-	List *targetlist = NIL;
 	GpSetOpType optype = PSETOP_NONE;
 	Plan *common_source_plan;
 	double      motion_cost_per_row;
@@ -805,11 +803,8 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 		optype = choose_setop_type(agg_plans);
 		adjust_setop_arguments(agg_plans, optype);
 
-		/* Generate the targetlist for Append node */
-		targetlist = generate_append_tlist(context->tlist, 1);
-
 		/* Append all agg_plans together */
-		result_plan = (Plan *)make_append(agg_plans, false, targetlist);
+		result_plan = (Plan *)make_append(agg_plans, false, context->tlist);
 		mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
 
 		/* set the final pathkey to NIL */
@@ -822,45 +817,6 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	}
 
 	return result_plan;
-}
-
-/*
- * Generate the targetlist for an Append node based on the children targetlist.
- *
- * The entries in the Append's targetlist should always be simple Vars;
- * we just have to make sure they have the right datatypes and typmods.
- * The Vars are always generated with the given varno.
- */
-static List *
-generate_append_tlist(List *tlist, int varno)
-{
-	List *targetlist = NIL;
-	ListCell *lc;
-	int resno = 1;
-
-	foreach (lc, tlist)
-	{
-		TargetEntry *tle = (TargetEntry *)lfirst(lc);
-		Expr *new_expr;
-		TargetEntry *new_tle;
-
-		new_expr = (Expr *)makeVar(varno,
-								   resno,
-								   exprType((Node *) tle->expr),
-								   exprTypmod((Node *) tle->expr),
-								   0);
-		new_tle = makeTargetEntry(new_expr,
-								  (AttrNumber)resno,
-								  tle->resname ? pstrdup(tle->resname) : NULL,
-								  tle->resjunk);
-		/* Keep the ressortgroupref */
-		new_tle->ressortgroupref = tle->ressortgroupref;
-
-		resno++;
-		targetlist = lappend(targetlist, new_tle);
-	}
-
-	return targetlist;
 }
 
 /*
@@ -1361,7 +1317,6 @@ plan_list_rollup_plans(PlannerInfo *root,
 {
 	Plan *result_plan;
 	GpSetOpType optype = PSETOP_NONE;
-	List *targetlist = NIL;
 	List *rollup_plans = NIL;
 	int rollup_no;
 	List *subplans = NIL;
@@ -1475,15 +1430,9 @@ plan_list_rollup_plans(PlannerInfo *root,
 			adjust_setop_arguments(rollup_plans, optype);
 		}
 
-		/* Generate the targetlist for Append node */
-		targetlist = generate_append_tlist(context->tlist, rollup_no + 1);
-
 		/* Append all rollup_plans together */
-		result_plan = (Plan *)make_append(rollup_plans, false, targetlist);
+		result_plan = (Plan *)make_append(rollup_plans, false, context->tlist);
 		mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
-
-		/* Set the final targetlist to Append's targetlist */
-		context->tlist = targetlist;
 
 		/* set the final pathkey to NIL */
 		context->current_pathkeys = NIL;
