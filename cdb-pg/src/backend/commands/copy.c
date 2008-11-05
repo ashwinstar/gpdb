@@ -508,6 +508,22 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		errmsg("delimiter must not appear in the NULL specification")));
 
+    /*
+     * Disallow unsafe delimiter characters in non-CSV mode.  We can't allow
+     * backslash because it would be ambiguous.  We can't allow the other
+     * cases because data characters matching the delimiter must be
+     * backslashed, and certain backslash combinations are interpreted
+     * non-literally by COPY IN.  Disallowing all lower case ASCII letters
+     * is more than strictly necessary, but seems best for consistency and
+     * future-proofing.  Likewise we disallow all digits though only octal
+     * digits are actually dangerous.
+     */
+     if (!csv_mode &&
+         strchr("\\.abcdefghijklmnopqrstuvwxyz0123456789", delim[0]) != NULL)
+         ereport(ERROR,
+                 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                  errmsg("delimiter cannot be \"%s\"", delim)));
+
 	
 	/* 
 	 * HEADER
@@ -548,6 +564,10 @@ void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("CSV quote character must not appear in the NULL specification")));
 
+	if (csv_mode && delim[0] == quote[0])
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("delimiter and quote must be different")));
 
 	/*
 	 * ESCAPE
