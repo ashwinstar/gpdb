@@ -38,9 +38,6 @@ The following tasks should be performed prior to executing an upgrade:
 * Check for and recover any failed segments in your current Greenplum 
   Database system (gpstate, gprecoverseg).
 
-* Remove the standby master from your system configuration 
-  (gpinitstandby -r).
-
 * Verify the integrity of your 3.1.x.x system catalogs using the 
   --prepare step of gpmigrator. This will check your system catalogs 
   and indexes. By default, it will also initialize a temporary 3.2 system 
@@ -49,6 +46,9 @@ The following tasks should be performed prior to executing an upgrade:
   contact Greenplum customer support.
 
 * Backup your 3.1.x.x databases (gpcrondump or ZFS snapshots).
+
+* Remove the standby master from your system configuration 
+  (gpinitstandby -r).
 
 * Do a clean shutdown of your 3.1.x.x system (gpstop).
 
@@ -158,42 +158,13 @@ Displays the version of this utility.
 EXAMPLES
 *****************************************************
 
-Perform pre-upgrade validation, but do not execute the upgrade:
+Perform pre-upgrade validation (skipping the initialization step), 
+but do not execute the upgrade:
 
-/usr/local/greenplum-db-3.2.0.4/bin/gpmigrator --prepare \
+/usr/local/greenplum-db-3.2.0.4/bin/gpmigrator --prepare --noinit \
 /usr/local/greenplum-db-3.1.1.9 \
 /usr/local/greenplum-db-3.2.0.4
 
-When prompted, enter a temporary master port, primary segment 
-port base, and mirror segment port base for your new 3.2 system. 
-These must be different that what your current 3.1.x.x system 
-is using. For example:
-
-MASTER_PORT> 54322
-PORT_BASE> 50100
-MIRROR_PORT_BASE> 60100
-
-Validate that the segment host configuration is correct by 
-comparing the gp_configuration catalog tables from both your 
-3.1.x.x and temporary 3.2.x.x systems. For example, to get the 
-output of this table from both systems:
-
-To get output from your 3.1.1.x system:
-
-psql -c 'SELECT dbid, content, definedprimary, hostname FROM 
-gp_configuration ORDER BY dbid;' > 31_gpconfig.out
-
-To get output from your temporary 3.2.0.x system:
-
-psql -p 54322 -d template1 -c 'SELECT dbid, content, 
-definedprimary, hostname FROM gp_configuration ORDER BY 
-dbid;' > 32_gpconfig.out
-
-To compare the output:
-
-diff 31_gpconfig.out 32_gpconfig.out
-
-**********
 
 Upgrade to version 3.2 from version 3.1.1.9 (first make sure you 
 are using the 3.2 version of the Greenplum utilities):
