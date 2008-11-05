@@ -698,6 +698,7 @@ CHK_QES () {
 
 CHK_SEG () {
     LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+    I=$1
     GP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
     GP_PORT=`$ECHO $I|$CUT -d: -f2`
     GP_DIR=`$ECHO $I|$CUT -d: -f3`
