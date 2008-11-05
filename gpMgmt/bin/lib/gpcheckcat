@@ -927,8 +927,11 @@ def checkBitmapIndexes():
     if reindex:
         # unique
         a = list(set(reindex))
+        print '[ERROR] %d bitmap issue(s)' % len(a)
         for b in a:
+            print '[ERROR] %s' % b
             Reindex.append(b)
+
     else:
         print '[OK] bitmap indexes'
 
