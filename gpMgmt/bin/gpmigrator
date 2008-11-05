@@ -2517,14 +2517,6 @@ This issue must be resolved before upgrade can complete.
                     reltups  = row[5]
                     name     = '"%s"."%s"' % (escape(schema), escape(table))
 
-                    # If the base datatype is an array then the array form is
-                    # the same datatype, otherwise we need to use the array form
-                    # (ie, add a leading underscore)
-                    if kind[0] == "_":
-                        kind = kind[1:] + "[]"
-                    else:
-                        kind = kind + "[]"
-
                     if db != lastdb:
                         lastdb = db
                         lastname = None
@@ -2547,6 +2539,14 @@ This issue must be resolved before upgrade can complete.
                     # insertion into pg_statistic
                     if row[6] == None or row[6] == '':
                         continue
+
+                    # If the base datatype is an array then the array form is
+                    # the same datatype, otherwise we need to use the array form
+                    # (ie, add a leading underscore)
+                    if kind[0] == "_":
+                        kind = kind[1:] + "[]"
+                    else:
+                        kind = kind + "[]"
 
                     sql  = "INSERT INTO pg_statistic VALUES (\n"
                     sql += "  E'%s'::regclass, \n" % name
