@@ -7,7 +7,11 @@ SYNOPSIS
 *****************************************************
 
 gpmigrator <old_GPHOME_path> <new_GPHOME_path> 
-[-d <master_data_directory>] [-l <logfile_directory>] [-q]
+           [-d <master_data_directory>] [-l <logfile_directory>] [-q]
+
+gpmigrator --prepare [--master_port <port>] [--port_base <port>] [--mirror_port_base <port>] 
+             <old_GPHOME_path> <new_GPHOME_path> 
+             [-d <master_data_directory>] [-l <logfile_directory>] [-q]
 
 gpmigrator --version | --help
 
@@ -16,37 +20,40 @@ gpmigrator --version | --help
 PREREQUISITES
 *****************************************************
 
-The following are required prior to running this upgrade utility:
+The following tasks should be performed prior to running this 
+upgrade utility:
 
-* Make sure you are logged in to the master host as the Greenplum 
-  Database superuser (gpadmin).
+* Make sure you are logged in to the master host as the 
+  Greenplum Database superuser (gpadmin).
 
 * Install the Greenplum Database 3.2.0.x binaries on all Greenplum hosts.
 
-* Verify the integrity of your 3.1.x.x system catalogs using the 3.2 
-  gpcheckcat utility (located in your 3.2 installation $GPHOME/bin/lib). 
-  If problems are found, contact Greenplum customer support.
+* Copy any custom modules from your 3.1 installation to your 3.2 
+  installation on all Greenplum hosts. For example, shared library 
+  files for user-defined functions in $GPHOME/lib or PostgreSQL add-on 
+  modules (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
 
-* Check for and recover any failed segments in your current Greenplum 
-  Database system (gpstate, gprecoverseg).
-
-* Rebuild all bitmap indexes in your database (REINDEX).
+* Check for and recover any failed segments in your current 
+  Greenplum Database system (gpstate, gprecoverseg).
 
 * Remove the standby master from your system configuration 
   (gpinitstandby -r).
 
-* Run the 3.2 gpdetective utility (located in your 3.2 installation 
-  $GPHOME/bin) on your running 3.1.x.x system.
+* Verify the integrity of your 3.1.x.x system catalogs using the 
+  --prepare step of gpmigrator. This will check your system catalogs 
+  and initialize a temporary 3.2 system that you can use to verify 
+  your segment configuration prior to executing the upgrade. If 
+  problems are found, contact Greenplum customer support.
 
 * Backup your 3.1.x.x databases (gpcrondump or ZFS snapshots).
 
 * Do a clean shutdown of your 3.1.x.x system (gpstop).
 
-* Set $GPHOME to point to the new 3.2 installation location.
+* Update your environment to point to the new 3.2 installation.
 
-* Inform all database users of the upgrade and lockout time frame. 
-  Once gpmigrator is running, users will not be allowed on the system 
-  until the upgrade is complete.
+* Inform all database users of the upgrade and lockout time 
+  frame. Once the upgrade is in preocess, users will not be 
+  allowed on the system until the upgrade is complete.
 
 
 *****************************************************
@@ -60,12 +67,19 @@ not the actual software binaries.
 
 During the migration process, all client connections to the master will 
 be locked out. The migration utility locks all client access to the master, 
-however it does not block direct utility mode access to the segments. To 
-ensure a safe upgrade, make sure users are aware that any connections to 
-a Greenplum segment are not safe during the upgrade timeframe.
+however it does not block direct utility mode access to the segments. 
+To ensure a safe upgrade, make sure users are aware that any connections 
+to a Greenplum segment are not safe during the upgrade timeframe.
 
-gpmigrator is an interactive utility. It should not be run in the background.
+Prior to executing the upgrade, you can optionally run gpmigrator in 
+prepare mode to perform some pre-upgrade validation without actually 
+executing the upgrade. The prepare phase does two things; it runs a 
+utility called gpcheckcat to verify your system catalogs, and it 
+initializes a temporary 3.2 system from which you can validate 
+your segment configuration.
 
+gpmigrator is an interactive utility. It should not be run in 
+the background.
 
 *****************************************************
 OPTIONS
@@ -73,14 +87,29 @@ OPTIONS
 
 <old_GPHOME_path>
 
-Required. The absolute path to the current version of Greenplum Database 
-software you want to migrate away from.
+Required. The absolute path to the current version of Greenplum 
+Database software you want to migrate away from.
 
 
 <new_GPHOME_path>
 
 Required. The absolute path to the new version of Greenplum Database 
 software you want to migrate to.
+
+
+--prepare
+
+Optional. Running gpmigrator with the --prepare option will perform 
+some pre-upgrade validation, but not execute the upgrade. The prepare 
+phase does three things; it runs a utility called gpcheckcat to verify 
+your system catalogs, it checks for invalid indexes that need rebuilding, 
+and it initializes a temporary 3.2 system from which you can validate 
+your segment configuration. You must supply a temporary master port, 
+primary segment port base, and mirror segment port base for the temporary 
+3.2 system to be initialized. These must be different that what your 
+current 3.1.x.x system is using. If not supplied on the command-line 
+using --master_port, --port_base and --mirror_port_base, then 
+gpmigrator will prompt you for them.
 
 
 -d <master_data_directory>
@@ -114,14 +143,50 @@ Displays the version of this utility.
 EXAMPLES
 *****************************************************
 
-First make sure you are using the 3.2 version of the Greenplum utilities:
+Perform pre-upgrade validation, but do not execute the upgrade:
+
+/usr/local/greenplum-db-3.2.0.4/bin/gpmigrator --prepare \
+/usr/local/greenplum-db-3.1.1.9 \
+/usr/local/greenplum-db-3.2.0.4
+
+When prompted, enter a temporary master port, primary segment port 
+base, and mirror segment port base for your new 3.2 system. These 
+must be different that what your current 3.1.x.x system is using. 
+For example:
+
+MASTER_PORT> 54322
+PORT_BASE> 50100
+MIRROR_PORT_BASE> 60100
+
+Validate that the segment host configuration is correct by comparing the 
+gp_configuration catalog tables from both your 3.1.x.x and temporary 3.2.x.x 
+systems. For example, to get the output of this table from both systems:
+
+To get output from your 3.1.1.x system:
+
+  psql -c 'SELECT content, definedprimary, dbid, hostname FROM 
+  gp_configuration;' > 31_gpconfig.out
+
+To get output from your temporary 3.2.0.x system:
+
+  psql -p 54322 -d template1 -c 'SELECT content, 
+  definedprimary, dbid, hostname FROM gp_configuration;' > 
+  32_gpconfig.out
+
+To compare the output:
+
+  diff 31_gpconfig.out 32_gpconfig.out
+
+
+*************
+
+Upgrade to version 3.2 from version 3.1.1.9 (first make sure you are 
+using the 3.2 version of the Greenplum utilities):
 
 export GPHOME=/usr/local/greenplum-db-3.2.0.0
 
-
-Upgrade to version 3.2 from version 3.1.1.9:
-
-gpmigrator /usr/local/greenplum-db-3.1.1.9 /usr/local/greenplum-db-3.2.0.0
+gpmigrator /usr/local/greenplum-db-3.1.1.9 
+/usr/local/greenplum-db-3.2.0.0
 
 
 *****************************************************
