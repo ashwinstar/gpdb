@@ -1075,6 +1075,6 @@ Performing cross database consistency tests
             print '[FATAL] could not write script: %s' % str(e)
             sys.exit(1)
 
-        print '[INFO] repair scripts write to %s' % GV.opt['-g']
+        print '[INFO] repair scripts generated in directory %s' % GV.opt['-g']
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True)
     sys.exit(GV.retcode)
