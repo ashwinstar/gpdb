@@ -26,6 +26,14 @@ try:
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
+if sys.version_info < (2, 5, 0):
+    sys.stderr.write(
+'''Error: %s is supported on Python versions 2.5 or greater
+       Please upgrade python installed on this machine.
+''' % EXECNAME)
+    sys.exit(1)
+
+
 MIGRATIONUSER = 'gpmigrator'
 LOCKEXT       = '.gpmigrator_orig'
 WORKDIR       = 'gpmigrator'
@@ -41,7 +49,7 @@ def pretty_version(v):
     m = re.compile('Revision: #(\d+)').search(v)
     if m: return str(2 + (float(m.group(1))/100))
     else: return str(v)
-__version__ = pretty_version('$Revision: #8 $')
+__version__ = pretty_version('$Revision: #9 $')
 
 #============================================================
 def cli_help():
@@ -97,6 +105,7 @@ class GPUpgrade:
 
         self.prepare   = False
         self.execute   = False
+        self.noinit    = False
 
         self.pid       = os.getpid()   # Process ID of the master
 
@@ -128,7 +137,6 @@ class GPUpgrade:
         self.debug      = False
         self.quiet      = False
         self.revert     = False
-        self.checkcat   = False
         self.checkschema = True
         self.validate   = False
         self.warnings   = False
@@ -158,7 +166,7 @@ class GPUpgrade:
         self.path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
         self.path += ':/sw/bin'
 
-        # Set defaults 
+        # Set defaults
         self.user      = os.environ.get('USER') or os.environ.get('LOGNAME')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
@@ -232,10 +240,10 @@ class GPUpgrade:
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('-R', dest='revert', action='store_true',
                               help=optparse.SUPPRESS_HELP)
-
             
             parser.add_option('--prepare', action='store_true',
                               help=optparse.SUPPRESS_HELP)
+
             parser.add_option('--master_port', type="int",
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--port_base',   type="int",
@@ -243,14 +251,13 @@ class GPUpgrade:
             parser.add_option('--mirror_port_base', type="int",
                               help=optparse.SUPPRESS_HELP)
 
+            parser.add_option('--noinit', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--execute', action='store_true',
                               help=optparse.SUPPRESS_HELP)
 
 
             parser.add_option('--debug', action='store_true',
-                              help=optparse.SUPPRESS_HELP)
-            parser.add_option('--internal-enable-checkcat',
-                              dest='checkcat', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-disable-checkschema',                              
                               dest='nocheckschema', action='store_true',
@@ -315,8 +322,6 @@ class GPUpgrade:
             self.logdir = options.logdir
         else:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
-        if options.checkcat:
-            self.checkcat = True
         if options.nocheckschema:
             self.checkschema = False
         if options.validate:
@@ -346,6 +351,8 @@ class GPUpgrade:
                 self.prepare = True
             if options.execute:
                 self.execute = True
+            if options.noinit:
+                self.noinit  = True
 
             if not self.prepare and not self.execute:
                 self.prepare = True
@@ -954,13 +961,19 @@ class GPUpgrade:
             self.Log('FATAL', str(e))
             raise UpgradeError('Shutdown failed')
 
-        self.CheckDown();
+        # If we are only doing --prepare then we may shutdown the newdb with the olddb
+        # still running, so the CheckDown() shouldn't be run
+        if u.execute:
+            self.CheckDown();
 
     #------------------------------------------------------------
     def Revert(self):
         '''
         Revert to backup
         '''
+
+        if not self.execute:
+            raise UpgradeError('gpmigrator [-R] is not compatable with --prepare')
 
         self.Shutdown()
         self.CheckDown()
@@ -972,6 +985,9 @@ class GPUpgrade:
             self.Log('INFO', 'Revert aborted')
             sys.exit(0)
         state = self.RunCmd('cat ' + statefile)
+
+        # Truncate the statefile
+        open(statefile, 'w').truncate()
 
         needrevert = False
         for line in state.split('\n'):
@@ -1059,9 +1075,10 @@ class GPUpgrade:
         self.Log('INFO', 'Removing upgrade user')
         self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
         self.Shutdown()
-
+        
+        # done
         self.Log('INFO', 'Revert Successful')
-        self.RemoveDirectories(True)
+
 
     #------------------------------------------------------------
     def CheckVersions(self):
@@ -1233,43 +1250,18 @@ tool shipped with that release''')
 
         if self.cmd == 'MASTER':
 
-            self.Log('INFO', 'Creating temporary directories')
-            backup_exist = False
             dirs_exist = False
-
-            # Before calling slaves check to see if self.workdir exists
-            if os.path.exists(self.workdir):
-                dirs_exist = True
-                self.Log('WARN', ' %s: File exists' % self.workdir)
-                if os.path.exists(os.path.join(self.workdir, BACKUPDIR)):
-                    backup_exist = True
-    
-            try:
+            try: 
                 self.CallSlaves('CHKDIR', self.config['SEG_PREFIX'])
             except UpgradeError, e:
                 dirs_exist = True
-
+            if os.path.exists(self.workdir):
+                dirs_exist = True
             if dirs_exist:
-                if backup_exist:
-                    print '  [R] Revert to Backup'
-                print '  [D] Delete old files and continue'
-                print '  [X] Cancel upgrade'
-                value = ''
-                while value.upper() not in ['R', 'D', 'X']:
-                    try: value = raw_input('> ')
-                    except EOFError: raise UpgradeError('Upgrade Cancelled')
-                    value = value.upper()
-                    if value == 'R' and not backup_exist:
-                        value = ''
-                    if value not in ['R', 'D', 'X']:
-                        print 'Invalid input'
-                if value == 'X':
-                    raise UpgradeError('Upgrade Cancelled')
-                if value == 'R':
-                    self.Revert()
                 self.RemoveDirectories(force=True)
-                self.CreateDirectories()
-                return
+            
+
+            self.Log('INFO', 'Creating temporary directories')                
 
             # Have the slaves create their directories
             self.CallSlaves('MKDIR', self.config['SEG_PREFIX'])
@@ -1294,8 +1286,10 @@ tool shipped with that release''')
                     self.RunCmd('chmod 700 %s' % d)
 
 
-                except:
+                except Exception, e:
+                    self.Log('FATAL', str(e))
                     raise UpgradeError('Failed to create upgrade directories')
+                
             else:
                 # if it does exist then chances are very good that one of
                 # the slaves just created it since we checked for it before
@@ -1372,6 +1366,10 @@ This may be specified on the commandline with:
      --master_port, --port_base, and --mirror_port_base
 ------------------------------------------------------------------------
 '''
+                
+                # If running nohup then we can't ask for input
+                if not sys.stdin.isatty():
+                    raise UpgradeError('Unable to determine new ports')
 
                 def getint(prompt):
                     while True:
@@ -1439,6 +1437,7 @@ This may be specified on the commandline with:
         '''
 
         # Determine if there are any invalid segments
+        self.Log('INFO', 'Checking that all segments are valid')
         invalid = self.Select(
         '''
            SELECT hostname, datadir FROM gp_configuration
@@ -1449,9 +1448,59 @@ This may be specified on the commandline with:
                 self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % 
                          (item['hostname'], item['datadir']));
             raise UpgradeError('Cannot upgrade database with invalid segments')
-        self.Log('INFO', 'All segments valid')
+
+
+        self.Log('INFO', 'Creating list of databases')
+        databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
+
+        # Look for dropped columns that we do not know how to deal with
+        # We base this on the typlen, typbyval, and typalign - if we can't recognise the
+        # type from this then we can't handle it.
+        self.Log('INFO', 'Checking for dropped columns')
+        types = {
+            'text':      [-1, False, 'i'],
+            'path':      [-1, False, 'd'],
+            'bool':      [ 1,  True, 'c'],
+            'int2':      [ 2,  True, 's'],
+            'int4':      [ 4,  True, 'i'],
+            'int8':      [ 8,  True, 'd'],
+            'money':     [ 4, False, 'i'],
+            'tid':       [ 6, False, 's'],
+            'macaddr':   [ 6, False, 's'],
+            'tinterval': [12, False, 'i'],
+            'timetz':    [12, False, 'd'],
+            'interval':  [16, False, 'd'],
+            'circle':    [24, False, 'd'],
+            'box':       [32, False, 'd'],
+            'name':      [64, False, 'd']
+            }
+        errors = 0
+        for db in databases:
+            dropped = self.Select(
+                '''
+                   select current_database() as database, '"' || nspname || '"."' || relname || '"' as table, 
+                          attlen, attbyval, attalign
+                   from pg_attribute a 
+                        join pg_class c on (a.attrelid = c.oid) 
+                        join pg_namespace n on (c.relnamespace = n.oid)
+                   where attisdropped
+                ''', db=db);
+            for row in dropped:
+                found = False
+                for t in types:
+                    if (types[t][0] == row['attlen'] and
+                        types[t][1] == row['attbyval'] and
+                        types[t][2] == row['attalign']):
+                        found = True
+                if not found:
+                    self.Log('FATAL', 'In database "%s" - table %s has unrecognised dropped columns'
+                             % (row['database'], row['table']))
+                    errors = errors + 1
+        if errors > 0:
+            raise UpgradeError("non-upgradable dropped columns detected")
 
         # Look for an existing user named MIGRATIONUSER
+        self.Log('INFO', 'Checking gpmigrator user')
         upgradeuser = self.Select(
             "SELECT count(*)::numeric FROM pg_user WHERE usename = '%s'" % MIGRATIONUSER)
         if upgradeuser[0] > 0:
@@ -1465,12 +1514,8 @@ This may be specified on the commandline with:
         #    - new style partitions
         if (not self.upgrade and self.newversion < '3.2.0.0' and 
             (self.oldversion >= '3.2.0.0' or self.oldversion == 'main')):
-            databases = self.Select(
-                '''
-                   SELECT datname from pg_database
-                   WHERE datname != 'template0'
-                ''')
-            c = 0            
+            self.Log('INFO', 'Checking for partitioning and append only tables')
+            c = 0
             for db in databases:
                 c = self.Select('SELECT COUNT(*)::numeric FROM pg_partition', db=db)
                 if c[0] > 0:
@@ -1491,6 +1536,7 @@ Cannot downgrade a database with append only tables     <<<<<
 
 
         # Extract the information needed to construct a gp_init_config file
+        self.Log('INFO', 'Extracting configuration information')
         gp_config = self.Select(
         '''
            SELECT content::numeric, definedprimary, dbid::numeric, hostname, port::numeric, datadir 
@@ -1639,10 +1685,12 @@ This issue must be resolved before upgrade can complete.
             if utility:
                 raise UpgradeError("Cannot lock database in utility mode")
 
+            self.Log('INFO', 'Creating upgrade user')
             self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
             self.Update('CREATE USER %s with superuser' % MIGRATIONUSER)
             self.Shutdown()
-            
+
+            self.Log('INFO', 'Creating pg_hba.conf ')
             datadirs   = [self.root]
             seg_prefix = self.config['SEG_PREFIX'] + '-'
 
@@ -1761,7 +1809,7 @@ This issue must be resolved before upgrade can complete.
                 return
 
             # If we are doing "prepare" then we won't have locked anything
-            if self.prepare:
+            if not self.execute:
                 return
 
             self.Log('INFO', 'Unlocking database')
@@ -2102,15 +2150,13 @@ This issue must be resolved before upgrade can complete.
 
 
     #------------------------------------------------------------
-    def CheckCatalog(self, env):
+    def CheckCatalog(self):
         '''
         Validate that the created catalog looks good
         '''
-        if not self.checkcat:
-            return
-
         self.Log('INFO', 'Checking Catalog')
         self.CheckUp()
+        [env, utility] = self.dbup
         databases = self.Select(
             '''
                SELECT datname FROM pg_database
@@ -2127,7 +2173,7 @@ This issue must be resolved before upgrade can complete.
                 user = env['USER']
 
             exec_cmd = libdir + '/gpcheckcat -p %d -U %s ' % \
-                (self.config['MASTER_PORT'], user)
+                (self.masterport, user)
 
             for db in databases:
                 self.RunCmd(exec_cmd + db, env=env)
@@ -2177,6 +2223,7 @@ This issue must be resolved before upgrade can complete.
         Create and configure the upgrade instance
         '''
         self.Log('INFO', 'Initializing upgraded cluster')
+        self.Log('INFO', '... This may take a while')
 
         # with --prepare the down check is invalid
         # self.CheckDown()
@@ -2333,6 +2380,7 @@ This issue must be resolved before upgrade can complete.
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing schema')
+        self.Log('INFO', '... This may take a while')
 
         error   = False
         warning = False
@@ -2397,6 +2445,8 @@ This issue must be resolved before upgrade can complete.
             self.Log('WARN', "Warnings encountered loading '%s/pgdump.sql'" % self.workdir);
             self.Log('WARN', '***************************************')
 
+
+        self.Log('INFO', 'Vacuuming catalog tables')
         databases = self.Select(
             '''
             SELECT datname FROM pg_database 
@@ -2415,6 +2465,7 @@ This issue must be resolved before upgrade can complete.
         Executes queries to rebuild the database statistics stored in 'pg_stat_*.csv'
         '''
 
+        self.Log('INFO', 'Restoring statistics')
         
         # Datatypes of the columns in pg_statistics, the last 4 columns,
         # not included here, are anyarray and will be cast based on the
@@ -2616,7 +2667,7 @@ This issue must be resolved before upgrade can complete.
         Makes a deep hard link copy of one directory into another
         '''
 
-        if style == 'CLEANUP':   # Is this really a DeepLink?
+        if style == 'CLEANUP':
             return
 
         if style not in ['BACKUP', 'INSTALL', 'REVERT']:
@@ -2629,6 +2680,7 @@ This issue must be resolved before upgrade can complete.
                 self.Log('INFO', 'Linking backup')
             elif style == 'INSTALL':
                 self.Log('INFO', 'Linking upgrade')
+                self.Log('INFO', '... This may take a while')
 
             # Have all hosts perform the link first
             self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
@@ -2705,8 +2757,8 @@ This issue must be resolved before upgrade can complete.
 
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
-        self.Log('INFO', 'Adjusting gp_configuration')
         self.Startup(self.newenv, utility=True)
+        self.Log('INFO', 'Adjusting gp_configuration')
         self.Update(
          '''
             UPDATE gp_configuration 
@@ -2721,8 +2773,6 @@ This issue must be resolved before upgrade can complete.
         '''
         '''
         
-        self.Log('INFO', 'Adjusting upgrade ports')
-
         # All the parameters we are interested in are integer values
         conf = os.path.join(self.newmaster, 'postgresql.conf')
         def getconf(x):
@@ -2739,6 +2789,7 @@ This issue must be resolved before upgrade can complete.
         port = getconf('port')
 
         self.Startup(self.newenv, utility=True)
+        self.Log('INFO', 'Adjusting upgrade ports')
         self.Update('update gp_configuration set port=%s where content < 0'
                     % self.masterport, port=port)
         for s in self.segments:
@@ -2790,104 +2841,85 @@ try:
 
         u.Log('INFO', 'Python version %d.%d.%d %s %d' % sys.version_info)
 
-        # Check that we can do the upgrade between the versions
-        u.CheckVersions()
-
-        if u.execute:
-            try:   
-                u.CheckDown()
-            except Exception, e:
-                u.Log('FATAL', str(e))
-                sys.exit(1)
-
-        if u.prepare:
-            try:
-                shutdown = True
-
-                try:
-                    env = u.CheckUp()
-                    shutdown = False
-                    u.dbup = [env, False]
-                    if env == u.newenv:
-                        u.Log('FATAL', 'Can not prepare with running new db')
-                        sys.exit(1)
-                except:
-                    u.Startup(u.oldenv, True)
-
-                # The way things are structured we will only issue selects against the
-                # database that's "up" so mark the oldenv as running.
-                u.ExtractInfo()
-
-                if shutdown:
-                    u.Shutdown()
-
-                # Create working directories on all hosts
-                # + Requires configuration info collected in ExtractInfo
-                # + Requires Execution on all hosts
-                u.CreateDirectories()
-                u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
-
-                # Write configuration files for new db
-                # + Requires configuration info collected in ExtractInfo
-                # + Requires working directory on master node
-                u.GenerateConfigFiles()
-                
-                # Initalize the new database
-                # + Requires working directories on all nodes
-                # + Requires generated configuration file
-                u.InitNewDB()
-
-                if shutdown:
-                    u.Shutdown()
-
-                # Prepare done, anything done after this point may allow modifying
-                # the olddb
-                if not u.execute:
-                    u.Log('INFO', 'Preparation Done')
-                    sys.exit(0)
-                u.prepare = False
-
-            except KeyboardInterrupt:
-                print
-                sys.stdout.flush()
-                u.Log('FATAL', '***************************************')
-                u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
-                u.Log('FATAL', '***************************************')
-                sys.exit(1)
-
-            except Exception, e:
-                u.Log('FATAL', str(e))
-                sys.exit(1)
-
-        # Make sure that the database isn't running
-        try:
-            u.CheckDown()
-        except Exception, e:
-            u.Log('FATAL', str(e))
-            sys.exit(1)
-
         # User requested a revert to previous version
         if u.revert:
             u.Revert()
             sys.exit(0)
 
-        # Check that we have run prepare
-        if not os.path.exists(u.newmaster):
-            raise UpgradeError('gpmigrator --prepare must be run first')
-
-        # Read the statefile
-        u.state = open('%s/state' % u.workdir, 'r')
+        # Read the statefile if we are trying to restart (--execute)
         current_state = {}
-        for line in u.state:
-            current_state[line.strip()] = True
-        u.state = open('%s/state' % u.workdir, 'a')
+        statefile = os.path.join(u.workdir, 'state')
+        if os.path.exists(statefile):
+            u.state = open(statefile, 'r')
+            for line in u.state:
+                current_state[line.strip()] = True
+            u.state = open(statefile, 'a')
 
-        # Startup the old database
-        u.Startup(u.oldenv)
+        # Be careful if the last upgrade died in an unstable state
+        if 'BACKUP_VALID' in current_state and u.prepare:
+            u.Revert()
 
-        # Get configuration and catalog information
-        # + Requires running old db on master host
-        u.ExtractInfo()
+        # Check that we can do the upgrade between the versions
+        u.CheckVersions()
+
+        # if we aren't trying to restart an upgrade or if the previous
+        # run was just from --prepare then ignore the contents of the
+        # statefile.
+        if u.prepare:
+            current_state = {}
+        
+        # We always pull the current configuration from the old instance.
+        # (It may be nice to rewrite to allow caching state information)
+        shutdown = None
+        try:
+            try:
+                env = u.CheckUp()
+                shutdown = False
+                u.dbup = [env, False]
+                if env == u.newenv:
+                    u.Log('FATAL', 'Can not prepare with running new db')
+            except:
+                shutdown = True
+                u.Startup(u.oldenv)
+
+            # The way things are structured we will only issue selects against the
+            # database that's "up" so mark the oldenv as running.
+            u.ExtractInfo()
+
+            # Check the catalog
+            if 'CHECKCAT' not in current_state:
+                u.CheckCatalog()
+                # SetState is delayed until statefile exists
+
+        # Whe have an extra layer of interupt handling around the --prepare
+        # logic because we don't want to errors to cause an automatic Shutdown
+        # which would occur going through the regular Cleanup logic
+        except KeyboardInterrupt:
+            if shutdown:
+                u.Shutdown()
+            u.Log('FATAL', '***************************************')
+            u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
+            u.Log('FATAL', '***************************************')
+            sys.exit(1)
+
+        except Exception, e:
+            if shutdown:
+                u.Shutdown()
+            u.Log('FATAL', str(e))
+            u.Log('FATAL', '***************************************')
+            u.Log('FATAL', '==  Upgrade Failed ==                    <<<<< ')
+            u.Log('FATAL', '***************************************')
+
+            sys.exit(1)
+
+        # Prepare done, anything done after this point may allow modifying
+        # the olddb
+        if u.noinit and not u.execute:
+            u.Log('INFO', 'Preparation Done')
+            sys.exit(0)
+        if u.noinit:
+            u.Log('INFO', '--noinit is only supported with --prepare')
+            sys.exit(1)
 
         # SetupLockdown:
         # + Requires the database to be up
@@ -2895,23 +2927,60 @@ try:
         # + Shuts the database down
         # + Adjusts hba_conf to only allow upgrade user access
         # + Database is left down
-        u.SetupLockdown()
+        if u.execute:
+            u.SetupLockdown()
+        elif shutdown:
+            u.Shutdown()
+
+        # Make sure error handling doesn't shutdown the database if anything
+        # should fail.
+        u.dbup = None
+
+        # Create working directories on all hosts
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires Execution on all hosts
+        if 'CREATE_DIRS' not in current_state:
+            u.CreateDirectories()
+            u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+            u.SetState('CREATE_DIRS')
+
+        # Directories now exist update statefile for previous steps if we
+        # are actually running the upgrade (otherwise we want to repeat them
+        # when we're ready to finally run the upgrade).
+        if not u.execute:
+            u.SetState('PREPARE')         # won't reuse for execution
+        
+        if 'CHECKCAT' not in current_state:
+            u.SetState('CHECKCAT')
+        
+        # Write configuration files for new db
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires working directory on master node
+        if 'CONFIG_FILES' not in current_state:
+            u.GenerateConfigFiles()
+            u.SetState('CONFIG_FILES')
+
+        # Initalize the new database
+        # + Requires working directories on all nodes
+        # + Requires generated configuration file
+        if ('INITDB' not in current_state):
+            u.InitNewDB()
+            u.SetState('INITDB')
+            u.Shutdown()
+
+        # Prepare done, anything done after this point may allow modifying
+        # the olddb
+        if not u.execute:
+            u.Log('INFO', 'Preparation Done')
+            sys.exit(0)
+
+        # Make sure that the database isn't running
+        u.CheckDown()
 
         # Set the ports for the upgrade server to the correct values
         if 'REMAP_PORTS' not in current_state:
             u.RemapPorts()
             u.SetState('REMAP_PORTS')
-
-        # Create working directories on all hosts
-        # + Requires configuration info collected in ExtractInfo
-        # + Requires Execution on all hosts
-        #u.CreateDirectories()
-        #u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
-
-        # Write configuration files for new db
-        # + Requires configuration info collected in ExtractInfo
-        # + Requires working directory on master node
-        #u.GenerateConfigFiles()
 
         # Start the database back up on all hosts so that we can 
         # gather information from them.
@@ -2921,12 +2990,6 @@ try:
             'DUMP_SCHEMA' not in current_state):
 
             u.Startup(u.oldenv)
-
-            # Check the catalog
-            # + Requires running db on all hosts
-            # + Requires configuration info collected in ExtractInfo
-            # + Requires Lockdown
-            u.CheckCatalog(u.oldenv)
 
             # Build up Source database OID/relfile mappings
             # + Requires running old db on all hosts
@@ -3054,7 +3117,7 @@ try:
             u.Startup(u.newenv)
             if u.validate:
                 u.Log('INFO', 'Validating upgraded instance')
-                u.CheckCatalog(u.newenv)
+                u.CheckCatalog()
                 u.CollectValidation()
             u.Shutdown()
 
@@ -3072,16 +3135,6 @@ try:
             if u.warnings:
                 u.Log('WARN', '***************************************')
                 u.Log('WARN', 'Warnings encountered during upgrade.')
-                value = ''
-                while value.upper() not in ['Y', 'N']:
-                    try:
-                        value = raw_input('Finish Upgrade (Y/N)> ').upper()
-                    except EOFError: 
-                        value = 'N'
-                    if value not in ['Y', 'N']:
-                        print 'Invalid input'
-                if value == 'N':
-                    raise UpgradeError('Upgrade Cancelled')
                 u.Log('WARN', '***************************************')
 
         except Exception, e:
@@ -3097,7 +3150,7 @@ try:
         #    DATA_DIR/upgrade  = fully upgraded new db
         #    DATA_DIR/backup   = untouched original db
         # => Remove redundant DATA_DIR/upgrade
-        # => Remove historical DATA_DIR/backup      (???)
+        # => Remove historical DATA_DIR/backup
         u.RemoveDirectories(force=True)
 
         # -----------------
