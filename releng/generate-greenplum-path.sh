@@ -45,10 +45,10 @@ fi
 
 # OS X does not have LD_LIBRARY_PATH
 if [ "${PLAT}" != "Darwin" ] ; then
-    #Solaris needs /usr/sfw/lib in order for groupsession to work 
+    #Solaris needs /usr/sfw/lib in order for groupsession to work and /usr/local/lib for readline for Python 
     if [ "${PLAT}" = "SunOS" ] ; then
     cat <<EOF
-LD_LIBRARY_PATH=\$GPHOME/lib:\$GPHOME/ext/python/lib:/usr/sfw/lib:\$LD_LIBRARY_PATH
+LD_LIBRARY_PATH=\$GPHOME/lib:\$GPHOME/ext/python/lib:/usr/sfw/lib:/usr/local/python/lib:\$LD_LIBRARY_PATH
 EOF
     else
     cat <<EOF
