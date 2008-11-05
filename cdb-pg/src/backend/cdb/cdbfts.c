@@ -1335,7 +1335,7 @@ markSegDBPersistentState(int dbid, bool state)
 	/* As a final step: we need to re-connect with privileges which
 	 * allow catalog updates */
 	if (snprintf(cmd, sizeof(cmd),
-				 "select rolname from pg_catalog.pg_roles where rolcatupdate ='t' and rolsuper = 't' limit 1;") >= sizeof(cmd))
+				 "select rolname from pg_catalog.pg_roles where rolcatupdate ='t' and rolsuper = 't' order by oid limit 1;") >= sizeof(cmd))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
