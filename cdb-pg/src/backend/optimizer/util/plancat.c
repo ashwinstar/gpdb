@@ -47,6 +47,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbrelsize.h"
 #include "mb/pg_wchar.h"
+#include "commands/vacuum.h"
 
 
 /* GUC parameter */
@@ -556,9 +557,40 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * cdbRelSize as we can't calculate ext table size.
 		 */
 		if(rel->rd_rel->relkind != RELKIND_EXTERNAL)
-		{
-			size = cdbRelSize(rel->rd_id);			
-		}
+		  {
+
+		    /* If statistics are not available for the table at hand, we may need to run ANALYZE on the table. */
+		    /* This code was copied from the autovacuum code in the postmaster. There is the danger that multiple queries may hit this point at the same time and all of them will result in analyze. There is no good solution for this problem right now.		   */
+
+		    VacuumStmt *analyzeStmt;
+
+		    elog(NOTICE,"Querying a table without statistics!");
+
+		    if (gp_enable_autostats) {
+
+		      elog(NOTICE, "Auto stats enabled. Calling analyze on table before executing query.");
+
+		      analyzeStmt = makeNode(VacuumStmt);
+
+		      /* Set up command parameters */
+		      analyzeStmt->vacuum = false;
+		      analyzeStmt->full = false;
+		      analyzeStmt->analyze = true;
+		      analyzeStmt->freeze_min_age = -1;
+		      analyzeStmt->verbose = false;
+		      analyzeStmt->relation = NULL;	/* not used since we pass relids list */
+		      analyzeStmt->va_cols = NIL;
+
+		      vacuum(analyzeStmt, list_make1_oid(rel->rd_id));
+
+		      pfree(analyzeStmt);
+
+		    }
+
+		    /* also call relation size - old code */
+
+		    size = cdbRelSize(rel->rd_id);			
+		  }
 		else
 		{
 			/* 
