@@ -468,7 +468,7 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 		}
 	}
 
-	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Initalize");
+	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Initialize");
 
 	if(gp_enable_gpperfmon)
 	{
