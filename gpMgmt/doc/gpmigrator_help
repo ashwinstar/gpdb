@@ -73,13 +73,12 @@ to a Greenplum segment are not safe during the upgrade timeframe.
 
 Prior to executing the upgrade, you can optionally run gpmigrator in 
 prepare mode to perform some pre-upgrade validation without actually 
-executing the upgrade. The prepare phase does two things; it runs a 
-utility called gpcheckcat to verify your system catalogs, and it 
-initializes a temporary 3.2 system from which you can validate 
-your segment configuration.
+executing the upgrade. The prepare phase does three things; it runs a 
+utility called gpcheckcat to verify your system catalogs, it checks 
+for invalid indexes that need rebuilding, and it initializes a 
+temporary 3.2 system from which you can validate your segment 
+configuration.
 
-gpmigrator is an interactive utility. It should not be run in 
-the background.
 
 *****************************************************
 OPTIONS
@@ -165,12 +164,12 @@ systems. For example, to get the output of this table from both systems:
 To get output from your 3.1.1.x system:
 
   psql -c 'SELECT content, definedprimary, dbid, hostname FROM 
-  gp_configuration;' > 31_gpconfig.out
+  gp_configuration ORDER BY dbid;' > 31_gpconfig.out
 
 To get output from your temporary 3.2.0.x system:
 
-  psql -p 54322 -d template1 -c 'SELECT content, 
-  definedprimary, dbid, hostname FROM gp_configuration;' > 
+  psql -p 54322 -d template1 -c 'SELECT content, definedprimary, 
+  dbid, hostname FROM gp_configuration ORDER BY dbid;' > 
   32_gpconfig.out
 
 To compare the output:
