@@ -308,6 +308,11 @@ def gpperfmon_setup():
         pass #dir exists
 
     try:
+        os.mkdir(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin')
+    except OSError:
+        pass #dir exists
+
+    try:
         if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib'):
             os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
         os.symlink(GPPERFMONHOME + '/www/lib', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/web/lib')
@@ -340,9 +345,9 @@ def gpperfmon_setup():
         sys.exit(1)
 
     try:
-        if os.path.islink(GPHOME + '/bin/lib/gpmon_catqrynow.py'):
-            os.unlink(GPHOME + '/bin/lib/gpmon_catqrynow.py')
-        os.symlink(GPPERFMONHOME + '/lib/gpmon_catqrynow.py', GPHOME + '/bin/lib/gpmon_catqrynow.py')
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/lib/gpmon_catqrynow.py'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/lib/gpmon_catqrynow.py')
+        os.symlink(GPPERFMONHOME + '/lib/gpmon_catqrynow.py', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/gpmon_catqrynow.py')
     except OSError, detail:
         print 'Error linking gpmon_catqrynow.py: %s' % detail
         sys.exit(1)

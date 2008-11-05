@@ -81,7 +81,7 @@ partition by range (ctime)(start (date '2008-10-01') end (date '2010-03-01') EVE
 
 create external web table queries_now (
         like queries_history
-) execute 'python $GPHOME/bin/lib/gpmon_catqrynow.py 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'python $MASTER_DATA_DIRECTORY/gpperfmon/bin/gpmon_catqrynow.py 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 create external web table queries_now_fast (
        ctime timestamp(0),
