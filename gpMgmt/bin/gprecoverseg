@@ -35,13 +35,12 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
                           example -s /data_p4/pri,/data_m4/mir, this assumes that the Greenplum array was
                           configured with spare pool segment instance directories on each segment instance host
           -f        : force Greenplum Database instance shutdown and restart
+          -F        : force recovery of all failed segments
           -z        : <failed_segment_instance_directory_name:failed_hostname> 
                           force a recovery, even though no instance segments are marked as invalid on the master
-                          CAUTION:-USE THIS OPTION WITH CARE!
                           example gprecoverseg -z /dbfast1/segment1:localhost
           -S        : <failed_segment_instance_dbid>
                           force a recovery, even though no instance segments are marked as invalid on the master
-                          CAUTION:-USE THIS OPTION WITH CARE!
                           example gprecoverseg -S 4
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
@@ -88,6 +87,7 @@ opt['-o'] = None
 opt['-D'] = False
 opt['-S'] = 0
 opt['-T'] = 86400
+opt['-F'] = False
 
 arg = {}
 arg['exit'] = 0
@@ -106,7 +106,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafs:d:z:B:p:l:i:o:S:c:T:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafFs:d:z:B:p:l:i:o:S:c:T:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -121,6 +121,7 @@ def parseCommandLine():
         elif (switch == '-s'):        opt[switch] = val
         elif (switch == '-p'):        opt[switch] = val
         elif (switch == '-f'):        opt[switch] = True
+        elif (switch == '-F'):        opt[switch] = True
         elif (switch == '-q'):        opt[switch] = True
         elif (switch == '-l'):        opt[switch] = val
         elif (switch == '-i'):        opt[switch] = val
@@ -1619,6 +1620,15 @@ try:
                 # get details of failed and its segment
                 (failed_instance_array, active_instance_array) = get_mirror_details(db, failed_dbids)
 
+                if fault_action == 'readonly' and opt['-F'] == False:
+                    gpmlib.log_info('The following segments are marking as invalid:')
+                    for invalid_segment in failed_instance_array:
+                        gpmlib.log_info('    %s:%s' % (invalid_segment['hostname'], invalid_segment['datadir']))
+                    gpmlib.log_info('gp_fault_action is readonly.  Generally segments marked as invalid when in readonly')
+                    gpmlib.log_info('can be recovered by restarting the Greenplum Database instance.')
+                    gpmlib.log_info('If you want to force recovery of these segments, please run:')
+                    gpmlib.log_info('    gprecoverseg -F')
+                    sys.exit(0)
 
 
             # pool host opt['-p']
@@ -1656,6 +1666,13 @@ try:
 
         # yes or no
         if not opt['-a']:
+            if opt['-F'] and fault_action == 'readonly':
+                failed_instances_info = ''
+                for invalid_segment in failed_instance_array:
+                    failed_instances_info = failed_instances_info + ('    %s:%s\n' % (invalid_segment['hostname'], invalid_segment['datadir']))
+                if not yesorno('gp_fault_action is readonly.  The following segments can most likely be recovered by\nrestarting the Greenplum Database instance:\n%s\nContinue with forced recovery of these segments? [yY|nN]' % failed_instances_info, 'User aborted'):
+                    sys.exit(1)
+
             # display parameter setting
             display_param(fault_action, failed_array, active_array, multi_home)
             if not yesorno('Continue with segment recovery procedure? [yY|nN]', 'User aborted'):
