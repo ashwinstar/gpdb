@@ -2164,25 +2164,32 @@ This issue must be resolved before upgrade can complete.
                ORDER by datname
             ''')
 
-        try:
-            locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
-                                  'pg_hba.conf'+LOCKEXT)
-            if os.path.exists(locked):
-                user = MIGRATIONUSER
-            else:
-                user = env['USER']
+        locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
+                              'pg_hba.conf'+LOCKEXT)
+        if os.path.exists(locked):
+            user = MIGRATIONUSER
+        else:
+            user = env['USER']
 
-            exec_cmd = libdir + '/gpcheckcat -p %d -U %s ' % \
-                (self.masterport, user)
+        exec_cmd = libdir + '/gpcheckcat -p %d -U %s ' % \
+            (self.masterport, user)
 
-            for db in databases:
-                self.RunCmd(exec_cmd + db, env=env)
+        for db in databases:
+            cmd = exec_cmd + db
+            self.Log('INFO', '...Checking ' + db)
 
-        except CmdError, e:
-            self.Log('FATAL', '***************************************')
-            self.Log('FATAL', e.stdout);
-            self.Log('FATAL', '***************************************')
-            raise UpgradeError('Catalog Check Failed');
+            self.Log('DEBUG', "CMD: " + cmd)
+
+            outfilename = os.path.join(self.workdir, 'gpcheckcat_%s.log' % db)
+            outfile = open(outfilename, 'w')
+
+            pipe = subprocess.Popen(cmd, shell=True, stdout=outfile, stderr=outfile)
+            retcode = pipe.wait()
+
+            if retcode < 0:
+                raise UpgradeError('Catalog Check terminated by signal')
+            if retcode > 0:
+                raise UpgradeError('Catalog Check Failed - see %s for details' % outfilename)
 
     #------------------------------------------------------------
     def DumpSchema(self):
@@ -2223,7 +2230,7 @@ This issue must be resolved before upgrade can complete.
         Create and configure the upgrade instance
         '''
         self.Log('INFO', 'Initializing upgraded cluster')
-        self.Log('INFO', '... This may take a while')
+        self.Log('INFO', '...This may take a while')
 
         # with --prepare the down check is invalid
         # self.CheckDown()
@@ -2380,7 +2387,7 @@ This issue must be resolved before upgrade can complete.
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing schema')
-        self.Log('INFO', '... This may take a while')
+        self.Log('INFO', '...This may take a while')
 
         error   = False
         warning = False
@@ -2447,6 +2454,7 @@ This issue must be resolved before upgrade can complete.
 
 
         self.Log('INFO', 'Vacuuming catalog tables')
+        self.Log('INFO', '...This may take a while')
         databases = self.Select(
             '''
             SELECT datname FROM pg_database 
@@ -2466,6 +2474,7 @@ This issue must be resolved before upgrade can complete.
         '''
 
         self.Log('INFO', 'Restoring statistics')
+        self.Log('INFO', '...This may take a while')
         
         # Datatypes of the columns in pg_statistics, the last 4 columns,
         # not included here, are anyarray and will be cast based on the
@@ -2680,7 +2689,7 @@ This issue must be resolved before upgrade can complete.
                 self.Log('INFO', 'Linking backup')
             elif style == 'INSTALL':
                 self.Log('INFO', 'Linking upgrade')
-                self.Log('INFO', '... This may take a while')
+                self.Log('INFO', '...This may take a while')
 
             # Have all hosts perform the link first
             self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
@@ -2886,10 +2895,18 @@ try:
             # database that's "up" so mark the oldenv as running.
             u.ExtractInfo()
 
+            # Create working directories on all hosts
+            # + Requires configuration info collected in ExtractInfo
+            # + Requires Execution on all hosts
+            if 'CREATE_DIRS' not in current_state and not u.noinit:
+                u.CreateDirectories()
+                u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+                u.SetState('CREATE_DIRS')
+
             # Check the catalog
             if 'CHECKCAT' not in current_state:
                 u.CheckCatalog()
-                # SetState is delayed until statefile exists
+                u.SetState('CHECKCAT')
 
         # Whe have an extra layer of interupt handling around the --prepare
         # logic because we don't want to errors to cause an automatic Shutdown
@@ -2935,23 +2952,6 @@ try:
         # Make sure error handling doesn't shutdown the database if anything
         # should fail.
         u.dbup = None
-
-        # Create working directories on all hosts
-        # + Requires configuration info collected in ExtractInfo
-        # + Requires Execution on all hosts
-        if 'CREATE_DIRS' not in current_state:
-            u.CreateDirectories()
-            u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
-            u.SetState('CREATE_DIRS')
-
-        # Directories now exist update statefile for previous steps if we
-        # are actually running the upgrade (otherwise we want to repeat them
-        # when we're ready to finally run the upgrade).
-        if not u.execute:
-            u.SetState('PREPARE')         # won't reuse for execution
-        
-        if 'CHECKCAT' not in current_state:
-            u.SetState('CHECKCAT')
         
         # Write configuration files for new db
         # + Requires configuration info collected in ExtractInfo
