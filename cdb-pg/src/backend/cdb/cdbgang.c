@@ -1512,9 +1512,9 @@ static bool guc_val_is_default(struct config_generic *guc)
 
 				if(sguc->reset_val==NULL && *(sguc->variable) == NULL)
 					return true;
-				if(sguc->reset_val!=NULL || *(sguc->variable) != NULL)
-					return false;
-				return strcmp(sguc->reset_val, *(sguc->variable)) == 0;
+				if(sguc->reset_val!=NULL && *(sguc->variable) != NULL)
+					return strcmp(sguc->reset_val, *(sguc->variable)) == 0;
+				return false;
 			}
 		default:
 			Assert(!"Unknown vartype");
