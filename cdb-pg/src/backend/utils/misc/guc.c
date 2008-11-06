@@ -1886,22 +1886,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-	{
-	       {"gp_enable_autostats", PGC_USERSET, QUERY_TUNING_METHOD,
-	         gettext_noop("Auto stats: enables GP's automatic statistics collection.  When a "
-                 "select query is issued against a table without statistics, the system "
-                 "will execute ANALYZE on the table to obtain statistics. This may "
-                 "result in generation of better plans. However, it may add to the "
-                 "execution time of short queries. Furthermore, if multiple queries are "
-                 "issued at the same time, it may trigger many ANALYZE tasks.  Use this "
-                 "option in scenarios when extremely bad plans are generated for queries "
-			      "on tables without statistics."),
-	         gettext_noop("If false, analyze would not be executed automatically."),
-	         GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-	         },
-	         &gp_enable_autostats,
-	         false, NULL, NULL
-	},
 
 	/* End-of-list marker */
 	{

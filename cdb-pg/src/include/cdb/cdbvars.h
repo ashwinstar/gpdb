@@ -786,17 +786,6 @@ extern int gp_hashagg_compress_spill_files;
 /* Disable logging while creating mapreduce views */
 extern bool gp_mapreduce_define;
 
-/* Auto stats: enables GP's automatic statistics collection.  When a */
-/* select query is issued against a table without statistics, the system */
-/* will execute ANALYZE on the table to obtain statistics. This may */
-/* result in generation of better plans. However, it may add to the */
-/* execution time of short queries. Furthermore, if multiple queries are */
-/* issued at the same time, it may trigger many ANALYZE tasks.  Use this */
-/* option in scenarios when extremely bad plans are generated for queries */
-/* on tables without statistics. */
-  
-extern bool gp_enable_autostats;
-
 /* --------------------------------------------------------------------------------------------------
  * Miscellaneous developer use
  */
