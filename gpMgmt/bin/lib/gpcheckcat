@@ -8,7 +8,7 @@ Usage: gpcheckcat <option> [dbname]
 	-h host	   : DB host name
 	-p port    : DB port number
 	-P passwd  : DB password
-    -t         : check TOAST table consistency
+	-o         : check OID consistency
 	-U uname   : DB User Name
 	-v         : verbose
 	-V         : very verbose
@@ -47,7 +47,7 @@ class Global():
     opt['-U'] = None
     opt['-v'] = False
     opt['-V'] = False
-    opt['-t'] = False
+    opt['-o'] = False
 
     dt = datetime.now()
     opt['-g'] = 'gpcheckcat.repair.' + dt.strftime('%Y-%m-%d.%H.%M.%S')
@@ -101,14 +101,14 @@ def getversion():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVtg:')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVog:')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':	  usage(0)
         elif switch[1] in 'hpBPUg': GV.opt[switch] = val
-        elif switch[1] in 'vV':    GV.opt[switch] = True
+        elif switch[1] in 'vVo':   GV.opt[switch] = True
 
     def setdef(x, v):
         if not GV.opt[x]:
@@ -693,26 +693,11 @@ class sysCatThread(Thread):
     def run(self):
         dbid     = self.dbid
         table    = self.table
-        catalog    = self.catalog
+        catalog  = self.catalog
         host    = GV.cfg[dbid]['hostname']
         port    = GV.cfg[dbid]['port']
         datadir = GV.cfg[dbid]['datadir']
         veryverbose('[INFO] fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
-    
-        qry  = 'SELECT a.'
-        qry += ', a.'.join(set(catalog['cols'] + catalog['key']))
-        qry += ' FROM pg_catalog.%s a' % table
-    
-        havewhere = False
-        if catalog['namespace']:
-            qry += ", pg_namespace n"
-            qry += " WHERE a.%s = n.oid" % catalog['namespace']
-            qry += " AND n.nspname !~ 'pg_temp.*'"
-            if GV.opt['-t'] == True:
-                qry += " AND n.nspname !~ 'pg_toast.*'"
-            havewhere = True
-
-        qry += " ORDER BY a.%s " % ', a.'.join(catalog['key'])
     
         if dbid == 1:
             outfile = "%s/gpcheckcat_m" % GV.tmpdir
@@ -721,7 +706,7 @@ class sysCatThread(Thread):
     
         cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
         cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" %s' % \
-            (outfile, host, port, GV.opt['-U'], qry, GV.dbname)
+            (outfile, host, port, GV.opt['-U'], catalog, GV.dbname)
     
         subprocess.call(cmd, shell=True)
     
@@ -735,39 +720,64 @@ def row2str(row):
 	return strout
 
 def crossDbCheck():
+        print """
+-------------------------------------------
+Performing cross database consistency tests
+-------------------------------------------
+"""
+
+        # If we have specified "-o" then we want all the OIDs to be idenitical between
+        # segments, otherwise the queries should all be oid/relfile neutral
+        if GV.opt['-o'] == True:
+            oids       = ', x.oid'
+            nspexclude = 'pg_(temp.*|pg_toast)'
+        else:
+            oids       = ''
+            nspexclude = 'pg_temp.*'
 
 	# 1: get catalog from every node
         catalogs = {
-            'pg_class': {
-                'st':         {},
-                'cols':       ['oid', 'relname', 'relnamespace', 'reltype', 
-                             'relowner', 'relam', 'relfilenode', 
-                             'reltablespace', 'relnatts'],
-                'namespace':  'relnamespace',
-                'key':        ['oid']
-                },
-            'pg_attribute': {
-                'st':         {},
-                'cols':       ['attrelid', 'attname', 'atttypid', 'attstattarget', 
-                             'attlen', 'attnum', 'attndims'],
-                'namespace':  None,
-                'key':        ['attrelid', 'attname']
-                },
-            'pg_type': {
-                'st':         {},
-                'cols':       ['oid', 'typname', 'typnamespace', 'typowner', 
-                             'typlen', 'typbyval', 'typtype', 'typisdefined', 
-                             'typdelim', 'typrelid', 'typelem'],
-                'namespace': 'typnamespace',
-                'key':        ['oid']
-                },
-            'pg_namespace': {
-                'st':         {},
-                'cols':       ['oid', 'nspname', 'nspowner'],
-                'namespace':  'oid',
-                'key':        ['oid']
+                'pg_class':  '''
+SELECT nspname, relname, typname, usename, amname, spcname, relnatts,
+       relhasindex, relkind, relacl %s
+FROM pg_catalog.pg_class x
+     LEFT OUTER JOIN pg_catalog.pg_namespace n on (relnamespace = n.oid)
+     LEFT OUTER JOIN pg_catalog.pg_type t on (reltype = t.oid)
+     LEFT OUTER JOIN pg_catalog.pg_user u on (relowner = u.usesysid)
+     LEFT OUTER JOIN pg_catalog.pg_tablespace spc on (reltablespace = spc.oid)
+     LEFT OUTER JOIN pg_catalog.pg_am am on (relam = am.oid)
+WHERE (nspname is null or n.nspname !~ '%s')
+ORDER BY nspname, relname
+''' % (oids, nspexclude),
+                
+                'pg_attribute': '''
+SELECT nspname, relname, attnum, attname, typname, attlen, attbyval, attalign,
+       attstorage, attndims, attstattarget
+FROM pg_catalog.pg_attribute x
+     LEFT OUTER JOIN pg_catalog.pg_class c on (attrelid = c.oid)
+     LEFT OUTER JOIN pg_catalog.pg_namespace n on (relnamespace = n.oid)
+     LEFT OUTER JOIN pg_catalog.pg_type t on (atttypid = t.oid)
+WHERE (nspname is null or nspname !~ '%s')
+ORDER BY nspname, relname, attnum
+''' % (nspexclude),
+
+                'pg_type': '''
+SELECT nspname, typname, relname, usename, 
+       typlen, typbyval, typtype, typisdefined, typdelim, typelem %s
+FROM pg_catalog.pg_type x
+     LEFT OUTER JOIN pg_catalog.pg_namespace n on (typnamespace = n.oid)
+     LEFT OUTER JOIN pg_catalog.pg_class c on (typrelid = c.oid)
+     LEFT OUTER JOIN pg_catalog.pg_user u on (typowner = usesysid)
+ORDER BY nspname, typname
+''' % (oids),
+
+                'pg_namespace': '''
+SELECT nspname, usename, nspacl %s
+FROM   pg_catalog.pg_namespace x
+       LEFT OUTER JOIN pg_catalog.pg_user u on (nspowner = usesysid)
+ORDER BY nspname
+''' % (oids),
                 }
-            }
 
         # Establish a connection to each node
             
@@ -947,8 +957,8 @@ if __name__ == '__main__':
     GV.version = getversion()
     
     # turn on toast table check for 3.2
-    if GV.opt['-t'] == False and not GV.version == "8.2.6":
-        GV.opt['-t'] = True
+    if GV.opt['-o'] == False and not GV.version == "8.2.6":
+        GV.opt['-o'] = True
 
     try:
         GV.tmpdir = tempfile.mkdtemp()
@@ -974,11 +984,6 @@ Performing segment specific consistency checks
 
     closeDbs()
 
-    print """
--------------------------------------------
-Performing cross database consistency tests
--------------------------------------------
-"""
     crossDbCheck()
     
     fixes = (len(Remove) > 0 or len(Reindex) > 0 or len(Constraints))
