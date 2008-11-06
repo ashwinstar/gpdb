@@ -21,7 +21,7 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
           -o        : <output_config> output configuration file
 
           Recovery options:
-          -T        : <timeout> in second [default: 1800 seconds]
+          -T        : <timeout> in second [default: 86400 seconds]
           -l        : <log directory> alternative log file directory [optional]
           -p        : <hostname> recover to spare pool node
                           the pool host must have the following characteristics:
@@ -46,7 +46,7 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
           Connection options:
-          -d        : <master data directory> name of alternative Master database to start up [optional]
+`          -d        : <master data directory> name of alternative Master database to start up [optional]
 
           Format of configuration file:
           failed_host:failed_port:failed_datadir [new_host:new_port:new_datadir]
