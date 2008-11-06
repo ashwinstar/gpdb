@@ -460,12 +460,14 @@ GenerateTypeDependencies(Oid typeNamespace,
 
 	/* dependency on namespace */
 	/* skip for relation rowtype, since we have indirect dependency */
-	if (!OidIsValid(relationOid))
+	if (!OidIsValid(relationOid) || relationKind == RELKIND_COMPOSITE_TYPE)
 	{
 		referenced.classId = NamespaceRelationId;
 		referenced.objectId = typeNamespace;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+
+		recordDependencyOnOwner(TypeRelationId, typeObjectId, owner);
 	}
 
 	/* Normal dependencies on the I/O functions */
@@ -557,8 +559,6 @@ GenerateTypeDependencies(Oid typeNamespace,
 	if (defaultExpr)
 		recordDependencyOnExpr(&myself, defaultExpr, NIL, DEPENDENCY_NORMAL);
 
-	/* Shared dependency on owner. */
-	recordDependencyOnOwner(TypeRelationId, typeObjectId, owner);
 }
 
 /*

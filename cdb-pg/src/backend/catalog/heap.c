@@ -970,14 +970,19 @@ heap_create_with_catalog(const char *relname,
 	AddNewAttributeTuples(relid, new_rel_desc->rd_att, relkind,
 						  oidislocal, oidinhcount);
 
-	/*
-	 * make a dependency link to force the relation to be deleted if its
-	 * namespace is.  Skip this in bootstrap mode, since we don't make
-	 * dependencies while bootstrapping.
-	 *
-	 * Also make a dependency link to its owner.
+    /* Make a dependency link to force the relation to be deleted if its
+     * namespace is.  Also make a dependency link to its owner.
+     *
+     * For composite types, these dependencies are tracked for the pg_type
+     * entry, so we needn't record them here.  Likewise, TOAST tables don't
+     * need a namespace dependency (they live in a pinned namespace) nor an
+     * owner dependency (they depend indirectly through the parent table).
+     * Also, skip this in bootstrap mode, since we don't make dependencies
+     * while bootstrapping.
 	 */
-	if (!IsBootstrapProcessingMode())
+	if (relkind != RELKIND_COMPOSITE_TYPE &&
+		relkind != RELKIND_TOASTVALUE &&
+		!IsBootstrapProcessingMode())
 	{
 		ObjectAddress myself,
 					referenced;
@@ -990,13 +995,7 @@ heap_create_with_catalog(const char *relname,
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
-		/*
-		 * For composite types, the dependency on owner is tracked for the
-		 * pg_type entry, so don't record it here.  All other relkinds need
-		 * their ownership tracked.
-		 */
-		if (relkind != RELKIND_COMPOSITE_TYPE)
-			recordDependencyOnOwner(RelationRelationId, relid, ownerid);
+		recordDependencyOnOwner(RelationRelationId, relid, ownerid);
 	}
 
 	/*

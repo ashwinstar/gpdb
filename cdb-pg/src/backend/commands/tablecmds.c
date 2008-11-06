@@ -7761,7 +7761,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		 * indexes don't have their own entries either.
 		 */
 		if (tuple_class->relkind != RELKIND_COMPOSITE_TYPE &&
-			tuple_class->relkind != RELKIND_INDEX)
+			tuple_class->relkind != RELKIND_INDEX &&
+			tuple_class->relkind != RELKIND_TOASTVALUE)
 			changeDependencyOnOwner(RelationRelationId, relationOid,
 									newOwnerId);
 
