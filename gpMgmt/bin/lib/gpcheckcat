@@ -890,7 +890,9 @@ def checkBitmapIndexes():
     path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
     path += ':/sw/bin'
     env = {'PATH': path}
-    env['SSH_AUTH_SOCK'] = os.environ.get('SSH_AUTH_SOCK')
+    ssh = os.environ.get('SSH_AUTH_SOCK')
+    if ssh:
+        env['SSH_AUTH_SOCK'] = ssh
 
     reindex = []
     threads = []
