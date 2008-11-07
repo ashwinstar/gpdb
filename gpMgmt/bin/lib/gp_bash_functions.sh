@@ -1021,7 +1021,6 @@ GET_TRANS_READ () {
 
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_MSG "[JGE]:---- $EXIT_STATUS"
 		GET_QD_DB_NAME
 		if [ $# -eq 0 ];then
 			QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -U $USER "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by b.dbid;"`) > /dev/null 2>&1
