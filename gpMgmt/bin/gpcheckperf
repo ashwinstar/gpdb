@@ -42,6 +42,11 @@ GPHOME=os.getenv('GPHOME')
 if GPHOME is None:
     sys.exit('Please set GPHOME environment variable')
 
+USER=os.getenv('USER')
+if USER is None or ' ':
+    sys.exit('Please set USER environment variable')
+
+
 ################
 def usage(exitarg):
     print gplib.cli_help() or __doc__
