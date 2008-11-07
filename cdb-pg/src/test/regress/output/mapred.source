@@ -42,7 +42,42 @@ drop external web table if exists check_ps;
 NOTICE:  external table "check_ps" does not exist, skipping
 drop table if exists a1_grep;
 NOTICE:  table "a1_grep" does not exist, skipping
+select * from pg_pltemplate;
+ tmplname  | tmpltrusted |      tmplhandler      |   tmplvalidator   |   tmpllibrary    | tmplacl 
+-----------+-------------+-----------------------+-------------------+------------------+---------
+ plpgsql   | t           | plpgsql_call_handler  | plpgsql_validator | $libdir/plpgsql  | 
+ pltcl     | t           | pltcl_call_handler    |                   | $libdir/pltcl    | 
+ pltclu    | f           | pltclu_call_handler   |                   | $libdir/pltcl    | 
+ plperl    | t           | plperl_call_handler   | plperl_validator  | $libdir/plperl   | 
+ plperlu   | f           | plperl_call_handler   | plperl_validator  | $libdir/plperl   | 
+ plpythonu | f           | plpython_call_handler |                   | $libdir/plpython | 
+ plr       | f           | plr_call_handler      |                   | $libdir/plr      | 
+(7 rows)
+
+select * from pg_language;
+ lanname  | lanispl | lanpltrusted | lanplcallfoid | lanvalidator | lanacl 
+----------+---------+--------------+---------------+--------------+--------
+ internal | f       | f            |             0 |         2246 | 
+ c        | f       | f            |             0 |         2247 | 
+ sql      | f       | t            |             0 |         2248 | 
+ plpgsql  | t       | t            |        450059 |       450060 | 
+ plperl   | t       | t            |        450082 |       450083 | 
+(5 rows)
+
 -- end_ignore
+-- make sure plperl is really installed:
+--      select tmplname, tmpllibrary from pg_pltemplate
+--
+-- to find directory.
+--
+-- if not, you might need to set PG_LANG = true in your environment
+-- and rebuild
+select lanname, lanispl, lanpltrusted from pg_language where lanname = 'plperl';
+ lanname | lanispl | lanpltrusted 
+---------+---------+--------------
+ plperl  | t       | t
+(1 row)
+
 create table a1_grep (aa text);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
@@ -60,7 +95,7 @@ execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT  
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
-ERROR:  error closing file or executing program "execute:( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )": Resource temporarily unavailable (fileam.c:1205)  (seg0 slice1 @hostname@:11002 pid=38224)
+ERROR:  error closing file or executing program "execute:( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )": Resource temporarily unavailable (fileam.c:1205)  (seg0 slice1 @hostname@:11002 pid=63351)
 -- end_ignore
 -- complain about bad database
 drop external web table if exists grep1_mapred;
@@ -119,7 +154,11 @@ execute E'( env | sort)'
 on SEGMENT 0
 format 'text';
 select * from check_ps;
-ERROR:  error closing file or executing program "execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)": Resource temporarily unavailable (fileam.c:1205)  (seg0 slice1 @hostname@:11002 pid=38224)
+                                                                                  x                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+   502 62901     1   0   0:00.00 ??         0:00.00 @gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data
+(1 row)
+
 select * from check_env;
                                                     x                                                    
 ---------------------------------------------------------------------------------------------------------
@@ -127,7 +166,7 @@ select * from check_env;
  GPHOME=/Users/jcohen/greenplum-db-devel
  GP_CID=0
  GP_DATABASE=regression
- GP_DATE=20081104
+ GP_DATE=20081107
  GP_MASTER_HOST=10.254.0.239
  GP_MASTER_PORT=11000
  GP_SEGMENT_COUNT=2
@@ -135,11 +174,11 @@ select * from check_env;
  GP_SEG_DATADIR=/Users/jcohen/cdb-data/testdb0
  GP_SEG_PG_CONF=/Users/jcohen/cdb-data/testdb0/postgresql.conf
  GP_SEG_PORT=11002
- GP_SESSION_ID=185
+ GP_SESSION_ID=182
  GP_SN=6
- GP_TIME=113220
+ GP_TIME=120300
  GP_USER=jcohen
- GP_XID=1225826660-0000007904
+ GP_XID=1225925968-0000000365
  HOME=/Users/jcohen
  LC_COLLATE=en_US.utf-8
  LC_CTYPE=en_US.utf-8
@@ -157,8 +196,8 @@ select * from check_env;
  PWD=/Users/jcohen/cdb-data/testdb0
  SHELL=/bin/bash
  SHLVL=3
- SSH_CLIENT=::1 65146 22
- SSH_CONNECTION=::1 65146 ::1 22
+ SSH_CLIENT=::1 61884 22
+ SSH_CONNECTION=::1 61884 ::1 22
  USER=jcohen
  _=/usr/bin/env
  __CF_USER_TEXT_ENCODING=0x1F6:0:0

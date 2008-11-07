@@ -23,7 +23,20 @@ drop external web table if exists grep1_mapred;
 drop external web table if exists check_ps;
 drop table if exists a1_grep;
 
+select * from pg_pltemplate;
+select * from pg_language;
+
+
 -- end_ignore
+
+-- make sure plperl is really installed:
+--      select tmplname, tmpllibrary from pg_pltemplate
+--
+-- to find directory.
+--
+-- if not, you might need to set PG_LANG = true in your environment
+-- and rebuild
+select lanname, lanispl, lanpltrusted from pg_language where lanname = 'plperl';
 
 create table a1_grep (aa text);
 
