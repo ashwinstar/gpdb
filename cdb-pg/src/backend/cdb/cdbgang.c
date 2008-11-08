@@ -1484,44 +1484,6 @@ int gp_pthread_create(pthread_t *thread,
 	return pthread_err;
 }
 
-static bool guc_val_is_default(struct config_generic *guc)
-{
-	switch(guc->vartype)
-	{
-		case PGC_BOOL:
-			{
-				struct config_bool *bguc = (struct config_bool *) guc;
-				return bguc->reset_val == *(bguc->variable);
-			}
-			break;
-		case PGC_INT:
-			{
-				struct config_int *iguc = (struct config_int *) guc;
-				return iguc->reset_val == *(iguc->variable);
-			}
-			break;
-		case PGC_REAL:
-			{
-				struct config_real *rguc = (struct config_real *) guc;
-				return rguc->reset_val == *(rguc->variable);
-			}
-			break;
-		case PGC_STRING:
-			{
-				struct config_string *sguc = (struct config_string *) guc;
-
-				if(sguc->reset_val==NULL && *(sguc->variable) == NULL)
-					return true;
-				if(sguc->reset_val!=NULL && *(sguc->variable) != NULL)
-					return strcmp(sguc->reset_val, *(sguc->variable)) == 0;
-				return false;
-			}
-		default:
-			Assert(!"Unknown vartype");
-	}
-	return false;
-}
-
 static bool addOneOption(PQExpBufferData *buffer, struct config_generic *guc)
 {
 	Assert(guc && (guc->flags & GUC_GPDB_ADDOPT));
@@ -1661,12 +1623,9 @@ static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, boo
 			)
 		  )
 		{
-			if(!guc_val_is_default(guc))
-			{
-				bool fOK = addOneOption(buffer, guc);
-				if(!fOK)
-					return -i;
-			}
+			bool fOK = addOneOption(buffer, guc);
+			if(!fOK)
+				return -i;
 		}
 	}
 

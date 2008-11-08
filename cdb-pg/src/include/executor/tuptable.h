@@ -20,6 +20,7 @@
 
 #include "access/tupdesc.h"
 #include "access/htup.h"
+#include "access/heapam.h"
 #include "access/memtup.h"
 #include "storage/buf.h"
 
@@ -276,14 +277,17 @@ static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 
 static inline bool slot_attisnull(TupleTableSlot *slot, int attnum)
 {
-	Datum dummy;
-	bool ret;
+	if(attnum <= 0)
+		return false;
 
-	Assert(!TupIsNull(slot));
-	Assert(attnum <= slot->tts_tupleDescriptor->natts);
+	if(TupHasHeapTuple(slot))
+		return heap_attisnull_normalattr(slot->PRIVATE_tts_heaptuple, attnum);
+		
+	if(TupHasVirtualTuple(slot) && slot->PRIVATE_tts_nvalid >= attnum)
+		return slot->PRIVATE_tts_isnull[attnum-1];
 
-	dummy = slot_getattr(slot, attnum, &ret);
-	return ret;
+	Assert(TupHasMemTuple(slot));
+	return memtuple_attisnull(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, attnum);
 }
 
 /*

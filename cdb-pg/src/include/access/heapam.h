@@ -237,6 +237,7 @@ extern Size heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, uint16 *infomask, bits8 *bit);
 extern bool heap_attisnull(HeapTuple tup, int attnum);
+extern bool heap_attisnull_normalattr(HeapTuple tup, int attnum);
 
 extern HeapTuple heaptuple_copy_to(HeapTuple tup, HeapTuple result, uint32 *len);
 

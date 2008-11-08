@@ -266,6 +266,14 @@ heap_attisnull(HeapTuple tup, int attnum)
 
 	return false;
 }
+bool
+heap_attisnull_normalattr(HeapTuple tup, int attnum)
+{
+	Assert(attnum > 0);
+	if (HeapTupleNoNulls(tup))
+		return false;
+	return att_isnull(attnum - 1, tup->t_data->t_bits);
+}
 
 /* ----------------
  *		nocachegetattr

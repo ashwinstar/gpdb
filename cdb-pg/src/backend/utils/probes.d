@@ -21,4 +21,10 @@ probe lwlock__condacquire__fail(int, int);
 probe lock__startwait(int, int);
 probe lock__endwait(int, int);
 
+probe memctxt__alloc(int, int, int, int);
+probe memctxt__free(int, int, int, int);
+probe memctxt__realloc(int, int, int, int);
+
+probe execprocnode__enter(int, int, int, int, int);
+probe execprocnode__exit(int, int, int, int, int);
 };
