@@ -2623,12 +2623,16 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 							  best_path->jpath.jointype);
 
 	/*
+     * MPP-4165: we need to descend left-first if *either* of the
+	 * subplans have any motion.
+	 */
+	/*
 	 * MPP-3300: unify motion-deadlock prevention for all join types.
 	 * This allows us to undo the MPP-989 changes in nodeHashjoin.c
 	 * (allowing us to check the outer for rows before building the
 	 * hash-table).
 	 */
-	if (best_path->jpath.outerjoinpath->motionHazard &&
+	if (best_path->jpath.outerjoinpath->motionHazard ||
 		best_path->jpath.innerjoinpath->motionHazard)
 	{
 		join_plan->join.prefetch_inner = true;

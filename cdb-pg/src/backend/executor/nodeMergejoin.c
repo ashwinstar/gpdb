@@ -717,13 +717,23 @@ ExecMergeJoin(MergeJoinState *node)
 	 */
 	ResetExprContext(econtext);
 
+	/*
+	 * MPP-4165: My fix for MPP-3300 was correct in that we avoided
+	 * the *deadlock* but had very unexpected (and painful)
+	 * performance characteristics: we basically de-pipeline and
+	 * de-parallelize execution of any query which has motion below
+	 * us.
+	 *
+	 * So now prefetch_inner is set (see createplan.c) if we have *any* motion
+	 * below us. If we don't have any motion, it doesn't matter.
+	 */
 	if (node->prefetch_inner)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
-                if (!TupIsNull(innerTupleSlot))
+          	if (!TupIsNull(innerTupleSlot))
           	{
           		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-                        Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+          		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
           	}
 		node->mj_InnerTupleSlot = innerTupleSlot;
 
@@ -814,7 +824,7 @@ ExecMergeJoin(MergeJoinState *node)
 						if (result)
 						{
 							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
-                                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
+                                     	CheckSendPlanStateGpmonPkt(&node->js.ps);
 							return result;
 						}
 					}
@@ -884,7 +894,7 @@ ExecMergeJoin(MergeJoinState *node)
 						if (result)
 						{
 							Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
-                                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
+                                     	CheckSendPlanStateGpmonPkt(&node->js.ps);
 							return result;
 						}
 					}
@@ -953,7 +963,7 @@ ExecMergeJoin(MergeJoinState *node)
 						MJ_printf("ExecMergeJoin: returning tuple\n");
 
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
-                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 					}
 				}
@@ -984,7 +994,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
-                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1367,7 +1377,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node)); 
-                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                               	CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1450,7 +1460,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
-                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                              	CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1539,7 +1549,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
-                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                                CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}
@@ -1590,7 +1600,7 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 					{
 						Gpmon_M_Incr_Rows_Out(GpmonPktFromMergeJoinState(node));
-                                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                               	CheckSendPlanStateGpmonPkt(&node->js.ps);
 						return result;
 					}
 				}

@@ -97,11 +97,14 @@ ExecHashJoin(HashJoinState *node)
 	if (hashtable == NULL)
 	{
 		/*
-		 * MPP-3300: we can relax the MPP-989 restriction, all join
-		 * types have the option of descending the left branch first,
-		 * but only if it is safe: it is safe if only one subtree
-		 * contains a motion-hazard -- if both contain motion-hazards we
-		 * *must* descend inner-first (build the hashtable).
+		 * MPP-4165: My fix for MPP-3300 was correct in that we avoided
+		 * the *deadlock* but had very unexpected (and painful)
+		 * performance characteristics: we basically de-pipeline and
+		 * de-parallelize execution of any query which has motion below
+		 * us.
+		 *
+		 * So now prefetch_inner is set (see createplan.c) if we have *any* motion
+		 * below us. If we don't have any motion, it doesn't matter.
 		 */
 		if (!node->prefetch_inner)
 		{
@@ -236,7 +239,7 @@ ExecHashJoin(HashJoinState *node)
 			}
 
 			Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                        CheckSendPlanStateGpmonPkt(&node->js.ps);
+			CheckSendPlanStateGpmonPkt(&node->js.ps);
 			node->js.ps.ps_OuterTupleSlot = outerTupleSlot;
 			econtext->ecxt_outertuple = outerTupleSlot;
 			node->hj_NeedNewOuter = false;
@@ -306,7 +309,7 @@ ExecHashJoin(HashJoinState *node)
 				if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 				{
 					Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node));
-                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
+					CheckSendPlanStateGpmonPkt(&node->js.ps);
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 
@@ -341,7 +344,7 @@ ExecHashJoin(HashJoinState *node)
 			if (ExecQual(otherqual, econtext, false))
 			{
 				Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node));
-                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+				CheckSendPlanStateGpmonPkt(&node->js.ps);
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 		}

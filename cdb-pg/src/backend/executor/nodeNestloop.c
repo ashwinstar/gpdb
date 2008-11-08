@@ -104,6 +104,16 @@ ExecNestLoop(NestLoopState *node)
 	 */
 	ResetExprContext(econtext);
 
+	/*
+	 * MPP-4165: My fix for MPP-3300 was correct in that we avoided
+	 * the *deadlock* but had very unexpected (and painful)
+	 * performance characteristics: we basically de-pipeline and
+	 * de-parallelize execution of any query which has motion below
+	 * us.
+	 *
+	 * So now prefetch_inner is set (see createplan.c) if we have *any* motion
+	 * below us. If we don't have any motion, it doesn't matter.
+	 */
 	if (node->prefetch_inner)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
@@ -220,7 +230,7 @@ ExecNestLoop(NestLoopState *node)
 
 		innerTupleSlot = ExecProcNode(innerPlan);
 		Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_INNERTUPLE);
-                CheckSendPlanStateGpmonPkt(&node->js.ps);
+          	CheckSendPlanStateGpmonPkt(&node->js.ps);
 
 		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
@@ -254,7 +264,7 @@ ExecNestLoop(NestLoopState *node)
 					ENL1_printf("qualification succeeded, projecting tuple");
 
 					Gpmon_M_Incr_Rows_Out(GpmonPktFromNLJState(node)); 
-                                        CheckSendPlanStateGpmonPkt(&node->js.ps);
+                          	CheckSendPlanStateGpmonPkt(&node->js.ps);
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 			}
@@ -297,7 +307,7 @@ ExecNestLoop(NestLoopState *node)
 				ENL1_printf("qualification succeeded, projecting tuple");
 
 				Gpmon_M_Incr_Rows_Out(GpmonPktFromNLJState(node));
-                                CheckSendPlanStateGpmonPkt(&node->js.ps);
+                     	CheckSendPlanStateGpmonPkt(&node->js.ps);
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 
