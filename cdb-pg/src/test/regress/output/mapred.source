@@ -60,8 +60,8 @@ select * from pg_language;
  internal | f       | f            |             0 |         2246 | 
  c        | f       | f            |             0 |         2247 | 
  sql      | f       | t            |             0 |         2248 | 
- plpgsql  | t       | t            |        450059 |       450060 | 
- plperl   | t       | t            |        450082 |       450083 | 
+ plpgsql  | t       | t            |        451083 |       451084 | 
+ plperl   | t       | t            |        451106 |       451107 | 
 (5 rows)
 
 -- end_ignore
@@ -87,20 +87,27 @@ insert into a1_grep values ('GET http://jimbob.com/joe3.html HTTP');
 insert into a1_grep values ('GET http://jimbob.com/joe4.html HTTP');
 -- start_ignore
 -- complain about missing file
+--
+-- Note: use trick of redirecting stderr to stdout and 
+-- piping thru "cat" to avoid "Resource temporarily unavailable" error.
 drop external web table if exists grep1_mapred;
 NOTICE:  external table "grep1_mapred" does not exist, skipping
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
 --execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT )'
-execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )'
+execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 | cat)'
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
-ERROR:  error closing file or executing program "execute:( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )": Resource temporarily unavailable (fileam.c:1205)  (seg0 slice1 @hostname@:11002 pid=63351)
+                    x                    
+-----------------------------------------
+ Error: Could not open file 'nosuchfile'
+(1 row)
+
 -- end_ignore
 -- complain about bad database
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1  )'
+execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1 | cat )'
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
@@ -113,7 +120,7 @@ select * from grep1_mapred;
 -- complain about missing user
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1  )'
+execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1 | cat )'
 on SEGMENT 0
 format 'text';
 select * from grep1_mapred;
@@ -156,7 +163,7 @@ format 'text';
 select * from check_ps;
                                                                                   x                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   502 62901     1   0   0:00.00 ??         0:00.00 @gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data
+   502 64431     1   0   0:00.00 ??         0:00.00 @gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data
 (1 row)
 
 select * from check_env;
@@ -167,18 +174,18 @@ select * from check_env;
  GP_CID=0
  GP_DATABASE=regression
  GP_DATE=20081107
- GP_MASTER_HOST=10.254.0.239
+ GP_MASTER_HOST=172.16.173.1
  GP_MASTER_PORT=11000
  GP_SEGMENT_COUNT=2
  GP_SEGMENT_ID=0
  GP_SEG_DATADIR=/Users/jcohen/cdb-data/testdb0
  GP_SEG_PG_CONF=/Users/jcohen/cdb-data/testdb0/postgresql.conf
  GP_SEG_PORT=11002
- GP_SESSION_ID=182
+ GP_SESSION_ID=360
  GP_SN=6
- GP_TIME=120300
+ GP_TIME=172305
  GP_USER=jcohen
- GP_XID=1225925968-0000000365
+ GP_XID=1225925968-0000000758
  HOME=/Users/jcohen
  LC_COLLATE=en_US.utf-8
  LC_CTYPE=en_US.utf-8

@@ -47,10 +47,14 @@ insert into a1_grep values ('GET http://jimbob.com/joe4.html HTTP');
 
 -- start_ignore
 -- complain about missing file
+--
+-- Note: use trick of redirecting stderr to stdout and 
+-- piping thru "cat" to avoid "Resource temporarily unavailable" error.
+
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
 --execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT )'
-execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 )'
+execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 | cat)'
 on SEGMENT 0
 format 'text';
 
@@ -61,7 +65,7 @@ select * from grep1_mapred;
 -- complain about bad database
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1  )'
+execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1 | cat )'
 on SEGMENT 0
 format 'text';
 
@@ -71,7 +75,7 @@ select * from grep1_mapred;
 -- complain about missing user
 drop external web table if exists grep1_mapred;
 CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1  )'
+execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1 | cat )'
 on SEGMENT 0
 format 'text';
 
