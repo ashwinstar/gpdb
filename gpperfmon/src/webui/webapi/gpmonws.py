@@ -95,6 +95,7 @@ def timenow():
 class index:
     def GET(self):
         web.header('Content-Type', 'text/html')
+        web.header('Cache-Control', 'no-cache')
         host_and_port = web.ctx.host.split(':',1)
         return render.index(host_and_port[0], host_and_port[1])
 
@@ -104,6 +105,7 @@ class api:
 
     def GET(self):
         web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         tab = []
         for i in range(len(urls)/2-1):
             j = (i+1) * 2 + 1
@@ -124,6 +126,7 @@ class logon:
 
     def POST(self):
         web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         i = web.input()
         session.user = ''
         session.role = {}
@@ -175,6 +178,8 @@ class logon:
 
 class logoff:
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         logoffdata = render.logoff(session.user, 'SUCCESS')
         session.kill()
         # DEBUGGING 
@@ -218,6 +223,8 @@ class config:
 
 
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nCONFIG:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -227,8 +234,6 @@ class config:
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
-        web.header('Content-Type', 'text/xml')
-
         return render.config(self.gpperfmon_config)
     
 
@@ -236,6 +241,8 @@ class hosts:
     nodes = None
 
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nHOSTS:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -246,7 +253,6 @@ class hosts:
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
-        web.header('Content-Type', 'text/xml')
         if hosts.nodes == None:
             # retrieve the list of nodes in the GP DB system
             try:
@@ -260,6 +266,8 @@ class hosts:
 
 class system:
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nSYSTEM:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -268,8 +276,6 @@ class system:
         # DEBUGGING 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
-
-        web.header('Content-Type', 'text/xml')
 
         i = web.input(start='NOW', end='NOW', interval='1min', aggregated='yes')
 
@@ -330,6 +336,8 @@ class queries:
 
 
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nQUERIES:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -338,8 +346,6 @@ class queries:
         # DEBUGGING 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
-
-        web.header('Content-Type', 'text/xml')
 
         i = web.input(start='NOW', end='NOW', status='', textlength='', mintime='', username='', db='')
 
@@ -425,6 +431,8 @@ class queries:
 
 class querydetails:
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nQUERYDETAILS:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -433,8 +441,6 @@ class querydetails:
         # DEBUGGING 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
-
-        web.header('Content-Type', 'text/xml')
 
         i = web.input(id='', realtime='')
 
@@ -487,6 +493,8 @@ class querydetails:
 
 class queryplan:
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nQUERYPLAN:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -495,8 +503,6 @@ class queryplan:
         # DEBUGGING 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
-
-        web.header('Content-Type', 'text/xml')
 
         i = web.input(id='', realtime='')
 
@@ -556,6 +562,8 @@ class queryplan:
 
 class iterator:
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nITERATOR:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -565,8 +573,6 @@ class iterator:
 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
-
-        web.header('Content-Type', 'text/xml')
 
         i = web.input(tmid='', ssid='', ccnt='', nid='')
 
@@ -614,6 +620,8 @@ class iterator:
 
 class database:
     def GET(self):
+        web.header('Content-Type', 'text/xml')
+        web.header('Cache-Control', 'no-cache')
         # DEBUGGING 
         sys.stderr.write("\nDATABASE:\n")
         sys.stderr.write("session: %s\n" % session.getid())
@@ -623,8 +631,6 @@ class database:
 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
-
-        web.header('Content-Type', 'text/xml')
 
         i = web.input(start='NOW', end='NOW', interval='1min')
         

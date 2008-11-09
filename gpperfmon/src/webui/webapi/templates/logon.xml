@@ -4,5 +4,5 @@ $def with (user, status, role, sid)
    <username>$user</username>
    <role>$role</role>
    <status>$status</status>
-   <sid>$sid</sid>
+   <sessionid>$sid</sessionid>
 </logon>
