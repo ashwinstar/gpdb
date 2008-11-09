@@ -363,7 +363,7 @@ def system_history(stime, etime, interval_code, aggregate):
     query = system_sql('system_history', filter, interval_code, aggregate)
 
     sys.stderr.write("system_history query: %s\n" % query)
-    execute_query(query)
+    rows = execute_query(query)
 
     if aggregate == 'yes':
         return _system_consolidate_aggregate(rows)

@@ -7,6 +7,9 @@ $def with (stime, etime, interval, tkeys, ckeys, tab)
 	    $ v = tab[t]
 	    $if not v: v = {}
 	    $ v = v.get(c, '#')
-	    ${loop.index != 1 and '|' or ''} ${v} \
+            $if c == 'sample_time':
+	        ${loop.index != 1 and '|' or ''} ${v} \
+            $else:
+                ${loop.index != 1 and '|' or ''} ${'%s%s%.3s' % ('%s' % v).partition('.')} \
      </$c>
 </system>
