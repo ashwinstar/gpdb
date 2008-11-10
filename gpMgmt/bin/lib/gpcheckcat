@@ -730,10 +730,10 @@ Performing cross database consistency tests
         # segments, otherwise the queries should all be oid/relfile neutral
         if GV.opt['-o'] == True:
             oids       = ', x.oid'
-            nspexclude = 'pg_(temp.*|pg_toast)'
+            nspexclude = 'pg_temp.*'
         else:
             oids       = ''
-            nspexclude = 'pg_temp.*'
+            nspexclude = 'pg_(temp|toast).*'
 
 	# 1: get catalog from every node
         catalogs = {
