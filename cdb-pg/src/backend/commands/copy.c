@@ -4517,7 +4517,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 				 * then this file has bad csv and we have to stop the rolling 
 				 * snowball from getting bigger.
 				 */
-				if(cstate->line_buf.len >= MAX_CSV_LINE_LEN)
+				if(cstate->line_buf.len >= gp_max_csv_line_length)
 				{	
 					csv_is_invalid = true;
 					cstate->in_quote = false;

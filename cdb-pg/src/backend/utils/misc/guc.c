@@ -2506,6 +2506,15 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_max_csv_line_length", PGC_USERSET, EXTERNAL_TABLES,
+			gettext_noop("Maximum allowed length of a csv input data row in bytes"),
+			NULL,
+		},
+		&gp_max_csv_line_length,
+		64*1024, 32*1024, 1*1024*1024, NULL, NULL
+	},
+	
+	{
 		{"block_size", PGC_INTERNAL, PRESET_OPTIONS,
 			gettext_noop("Shows size of a disk block"),
 			NULL,

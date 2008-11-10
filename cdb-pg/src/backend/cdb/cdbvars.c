@@ -99,6 +99,8 @@ bool		gp_set_proc_affinity=false; /* set processor affinity (if platform support
 int			gp_reject_percent_threshold; /* SREH reject % kicks off only after *
 										  * <num> records have been processed  */
 
+int			gp_max_csv_line_length;		/* max allowed len for csv data line in bytes */
+
 bool          gp_select_invisible=false; /* debug mode to allow select to see "invisible" rows */
 
 /*
