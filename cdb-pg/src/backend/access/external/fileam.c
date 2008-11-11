@@ -436,8 +436,6 @@ else \
 	MemoryContext oldcontext;\
 	bool	errmsg_is_a_copy = false; \
 \
-	cur_row_rejected = true; \
-\
 	/* save a copy of the error info */ \
 	oldcontext = MemoryContextSwitchTo(pstate->cdbsreh->badrowcontext);\
 	edata = CopyErrorData();\
@@ -480,11 +478,6 @@ else \
  * FILEAM_HANDLE_ERROR. Therefore, skip to the next row before attempting
  * to do any further processing on this one. 
  */
-#define FILEAM_GOTO_NEXT_ROW \
-EXT_RESET_LINEBUF; \
-cur_row_rejected = false; /* reset for next run */ \
-continue; /* move on to the next data line */
-
 #define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
 if (IsRejectLimitReached(pstate->cdbsreh)) \
 { \
@@ -524,6 +517,99 @@ if (IsRejectLimitReached(pstate->cdbsreh)) \
 			))); \
 }
 
+static int copy_read_one_line(FileScanDesc scan)
+{
+	CopyState pstate = scan->fs_pstate;
+	MemoryContext oldctxt = CurrentMemoryContext;
+	MemoryContext err_ctxt = oldctxt;
+
+	int ret_mode = 0;
+
+	ListCell   *cur;
+	
+	/* Initialize all values for row to NULL */
+	MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
+	MemSet(scan->nulls, true, scan->num_phys_attrs * sizeof(bool));
+	MemSet(pstate->attr_offsets, 0, scan->num_phys_attrs * sizeof(int));
+
+	PG_TRY(); 
+	{
+		/* Get a line */
+		pstate->line_done = pstate->csv_mode ?
+			CopyReadLineCSV(pstate, pstate->bytesread) :
+			CopyReadLineText(pstate, pstate->bytesread);
+
+
+		if(!pstate->line_done)
+		{
+			/*
+			 * We did not finish reading a complete data line.
+			 *
+			 * If eof is not yet reached, we skip att parsing
+			 * and read more data. But if eof _was_ reached it means
+			 * that the original last data line is defective and
+			 * we want to catch that error later on.
+			 */
+			if (!pstate->fe_eof || pstate->end_marker)
+				ret_mode = -1;
+		}
+
+		if(ret_mode == 0)
+		{
+			if(pstate->csv_mode)
+				CopyReadAttributesCSV(pstate, scan->nulls, pstate->attr_offsets,
+						scan->num_phys_attrs, scan->attr);
+			else
+				CopyReadAttributesText(pstate, scan->nulls, pstate->attr_offsets,
+						scan->num_phys_attrs, scan->attr);
+
+			err_ctxt = pstate->rowcontext;
+			MemoryContextSwitchTo(err_ctxt);
+
+			/*
+			 * Loop to read the user attributes on the line.
+			 */
+			foreach(cur, pstate->attnumlist)
+			{
+				int attnum = lfirst_int(cur);
+				int m = attnum - 1;
+				char *string;
+
+				string = pstate->attribute_buf.data + pstate->attr_offsets[m];
+
+				if(!scan->nulls[m])
+				{
+					pstate->cur_attname = NameStr(scan->attr[m]->attname);
+
+					scan->values[m] = InputFunctionCall(&scan->in_functions[m],
+							string,
+							scan->typioparams[m],
+							scan->attr[m]->atttypmod);
+
+					pstate->cur_attname = NULL;
+				}
+			}
+			EXT_RESET_LINEBUF;
+		}
+	} 
+	PG_CATCH();
+	{
+		ret_mode = 1;
+		MemoryContextSwitchTo(err_ctxt);
+		FILEAM_HANDLE_ERROR;
+	}
+	PG_END_TRY();
+
+	MemoryContextSwitchTo(oldctxt);
+
+	if(ret_mode == 1)
+	{
+		FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
+		EXT_RESET_LINEBUF;
+	}
+
+	return ret_mode; 
+}
 
 /* ----------------
 *		filegettup  form another tuple from the data file.
@@ -539,12 +625,7 @@ filegettup(FileScanDesc scan,
 		   ScanDirection dir)
 {
 	HeapTuple	tuple = NULL;
-	bool		isnull;
-	bool		cur_row_rejected = false;
-	ListCell   *cur;
 	CopyState	pstate = scan->fs_pstate;
-    MemoryContext oldcontext;
-    
 
 	Assert(ScanDirectionIsForward(dir));
 
@@ -615,137 +696,30 @@ filegettup(FileScanDesc scan,
 			/* while there is still data in our buffer */
 			while (!pstate->raw_buf_done)
 			{
-				
-				/* Initialize all values for row to NULL */
-				MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
-				MemSet(scan->nulls, true, scan->num_phys_attrs * sizeof(bool));
+				int ret_mode = copy_read_one_line(scan);
 
-				MemSet(pstate->attr_offsets, 0, scan->num_phys_attrs * sizeof(int));
-
-				PG_TRY();
+				if(ret_mode == 0)
 				{
-					/* get a data line */
-					pstate->line_done = pstate->csv_mode ?
-						CopyReadLineCSV(pstate, pstate->bytesread) :
-						CopyReadLineText(pstate, pstate->bytesread);
-				}
-				PG_CATCH();
-				{
- 					/* got here? encoding conversion/check error or
- 					   invalid csv format error occured */
-					FILEAM_HANDLE_ERROR;
-				}
-				PG_END_TRY();					
-
-				if (cur_row_rejected)
-				{
-					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
-					FILEAM_GOTO_NEXT_ROW;
-				}
-				
-				
-				if (!pstate->line_done)
-				{
-					/*
-					 * We did not finish reading a complete data line.
-					 *
-					 * If eof is not yet reached, we skip att parsing
-					 * and read more data. But if eof _was_ reached it means
-					 * that the original last data line is defective and
-					 * we want to catch that error later on.
+					/* convert to heap tuple */
+					/* XXX This is bad code.  Planner should be able to
+					 * decide whether we need heaptuple or memtuple upstream,
+					 * so make the right decision here.
 					 */
-					if (!pstate->fe_eof || pstate->end_marker)
-						break;
+					tuple = heap_form_tuple(scan->fs_tupDesc, 
+							scan->values, scan->nulls);
+
+					pstate->processed++;
+					MemoryContextReset(pstate->rowcontext);
+					return tuple;
 				}
-				
-				/* parse attributes */
-				PG_TRY();
+				else if(ret_mode == 1)
+					continue;
+				else 
 				{
-
-					if (pstate->csv_mode)
-						CopyReadAttributesCSV(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
-					else
-						CopyReadAttributesText(pstate, scan->nulls, pstate->attr_offsets, scan->num_phys_attrs, scan->attr);
+					Assert(ret_mode == -1);
+					break;
 				}
-				PG_CATCH();
-				{
-					/* Got here? missing or extra column error occured */
-					FILEAM_HANDLE_ERROR;
-				}
-				PG_END_TRY();					
-				
-				if (cur_row_rejected)
-				{
-					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
-					FILEAM_GOTO_NEXT_ROW;
-				}
-				
-                oldcontext = MemoryContextSwitchTo(pstate->rowcontext);
-
-				/*
-				 * Loop to read the user attributes on the line.
-				 */
-				foreach(cur, pstate->attnumlist)
-				{
-					int			attnum = lfirst_int(cur);
-					int			m = attnum - 1;
-					char	   *string;
-
-					string = pstate->attribute_buf.data + pstate->attr_offsets[m];
-
-					if (scan->nulls[m])
-						isnull = true;
-					else
-						isnull = false;
-
-					/* we read an SQL NULL, no need to do anything */
-					if (!isnull)
-					{
-						pstate->cur_attname = NameStr(scan->attr[m]->attname);
-						
-						PG_TRY();
-						{
-							scan->values[m] = InputFunctionCall(&scan->in_functions[m],
-																string,
-																scan->typioparams[m],
-																scan->attr[m]->atttypmod);
-						}
-						PG_CATCH();
-						{
-							/* Got here? datum conversion error occured */
-							FILEAM_HANDLE_ERROR;
-						}
-						PG_END_TRY();					
-								
-						if (cur_row_rejected)
-							break; /* get out of loop, then go to next row */
-
-						scan->nulls[m] = false;
-						pstate->cur_attname = NULL;
-					}
-				}
-
-                MemoryContextSwitchTo(oldcontext);
-
-				if (cur_row_rejected)
-				{
-					FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
-					FILEAM_GOTO_NEXT_ROW;
-				}
-				
-				/* we can reset line buffer now. */
-				EXT_RESET_LINEBUF;
-				
-				/* convert to heap tuple */
-				tuple = heap_form_tuple(scan->fs_tupDesc, scan->values, scan->nulls);
-
-				pstate->processed++;
-				
-                MemoryContextReset(pstate->rowcontext);
-
-				return tuple;
 			}
-
 		}
 		else
 		{
