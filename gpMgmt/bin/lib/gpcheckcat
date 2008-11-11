@@ -924,14 +924,16 @@ def checkBitmapIndexes():
 
     oids = {}
     # build up a map of OIDs to index name
+    dboid = 0;
     for row in rows:
         index = '"%s"."%s"' % (row['nspname'], row['relname'])
         oids[row['relfilenode']] = index
+        dboid = row['dboid']
 
     badoids = []
     for dbid in GV.cfg:
         seg = GV.cfg[dbid]
-        dir = '%s/base/%s/' % (seg['datadir'], row['dboid'])
+        dir = '%s/base/%s/' % (seg['datadir'], dboid)
 
         # supply just the relfilenodes, not the full mapping
         thread = fileCheckThread(seg['hostname'], dir, oids.keys(), env)
