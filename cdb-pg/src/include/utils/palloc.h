@@ -63,6 +63,8 @@
 #define CDB_PALLOC_CALLER_ID
 #endif
 
+#include "pg_trace.h"
+
 /*
  * Type MemoryContextData is declared in nodes/memnodes.h.	Most users
  * of memory allocation should just treat it as an abstract type, so we
@@ -80,30 +82,22 @@ extern DLLIMPORT MemoryContext CurrentMemoryContext;
 /*
  * Fundamental memory-allocation operations (more are in utils/memutils.h)
  */
-extern void *MemoryContextAlloc(MemoryContext context, Size size);
-extern void *MemoryContextAllocZero(MemoryContext context, Size size);
-extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
-extern void *repalloc(void *pointer, Size size);
-extern void pfree(void *pointer);
+extern void *MemoryContextAllocImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
+extern void *MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
+extern void *MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
+extern void *MemoryContextReallocImpl(void *pointer, Size size, const char* file, const char *func, int line);
+extern void MemoryContextFreeImpl(void *pointer, const char* file, const char *func, int sline);
 
-#ifdef CDB_PALLOC_CALLER_ID
-#define MemoryContextAlloc(context, size)               (MemoryContextAllocDbg(context, size, __FILE__, __LINE__))
-#define MemoryContextAllocZero(context, size)           (MemoryContextAllocZeroDbg(context, size, __FILE__, __LINE__))
-#define MemoryContextAllocZeroAligned(context, size)    (MemoryContextAllocZeroAlignedDbg(context, size, __FILE__, __LINE__))
-#define repalloc(pointer, size)                         (repallocDbg(pointer, size, __FILE__, __LINE__))
-#define pfree(pointer)                                  (pfreeDbg(pointer, __FILE__, __LINE__))
-extern void *MemoryContextAllocDbg(MemoryContext context, Size size, const char* sfile, int sline);
-extern void *MemoryContextAllocZeroDbg(MemoryContext context, Size size, const char* sfile, int sline);
-extern void *MemoryContextAllocZeroAlignedDbg(MemoryContext context, Size size, const char* sfile, int sline);
-extern void *repallocDbg(void *pointer, Size size, const char* sfile, int sline);
-extern void pfreeDbg(void *pointer, const char* sfile, int sline);
-#endif
+#define MemoryContextAlloc(ctxt, sz) MemoryContextAllocImpl((ctxt), (sz), __FILE__, __func__, __LINE__)
+#define palloc(sz) MemoryContextAlloc(CurrentMemoryContext, (sz)) 
+#define ctxt_alloc(ctxt, sz) MemoryContextAlloc((ctxt), (sz)) 
 
-#define palloc(sz)	MemoryContextAlloc(CurrentMemoryContext, (sz))
-
+#define MemoryContextAllocZero(ctxt, sz) MemoryContextAllocZeroImpl((ctxt), (sz), __FILE__, __func__, __LINE__)
 #define palloc0(sz) MemoryContextAllocZero(CurrentMemoryContext, (sz))
 
-#define ctxt_alloc(ctxt, sz) MemoryContextAlloc((ctxt), (sz))
+#define repalloc(ptr, sz) MemoryContextReallocImpl(ptr, (sz), __FILE__, __func__, __LINE__)
+#define pfree(ptr) MemoryContextFreeImpl(ptr, __FILE__, __func__, __LINE__)
+
 /*
  * The result of palloc() is always word-aligned, so we can skip testing
  * alignment of the pointer when deciding which MemSet variant to use.
@@ -113,9 +107,9 @@ extern void pfreeDbg(void *pointer, const char* sfile, int sline);
  * practice.
  */
 #define palloc0fast(sz) \
-	( MemSetTest(0, sz) ? \
-		MemoryContextAllocZeroAligned(CurrentMemoryContext, sz) : \
-		MemoryContextAllocZero(CurrentMemoryContext, sz) )
+	( MemSetTest(0, (sz)) ? \
+		MemoryContextAllocZeroAlignedImpl(CurrentMemoryContext, (sz), __FILE__, __func__, __LINE__) : \
+		MemoryContextAllocZeroImpl(CurrentMemoryContext, (sz), __FILE__, __func__, __LINE__))
 
 /*
  * MemoryContextSwitchTo

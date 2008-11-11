@@ -784,6 +784,9 @@ extern int gp_hashjoin_bloomfilter;
 
 /* Analyze tools */
 extern int gp_motion_slice_noop;
+#ifdef ENABLE_LTRACE
+extern int gp_ltrace_flag;
+#endif
 
 /* Disable setting of hint-bits while reading db pages */
 extern bool gp_disable_tuple_hints;

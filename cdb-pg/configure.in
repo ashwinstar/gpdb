@@ -215,6 +215,14 @@ PGAC_ARG_BOOL(enable, debug, no,
 AC_SUBST(enable_debug)
 
 #
+# --enable-ltrace enables poor linux's trace
+#
+PGAC_ARG_BOOL(enable, ltrace, no, [  --enable-ltrace        enable linux trace], 
+              [AC_DEFINE([ENABLE_LTRACE], 1,
+                         [Define to 1 to build with linux trace. (--enable-ltrace)])])
+
+
+#
 # DTrace
 #
 PGAC_ARG_BOOL(enable, dtrace, no,

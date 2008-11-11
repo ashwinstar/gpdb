@@ -93,7 +93,6 @@ extern DLLIMPORT MemoryContext PortalContext;
  */
 extern void MemoryContextInit(void);
 extern void MemoryContextReset(MemoryContext context);
-extern void MemoryContextDelete(MemoryContext context);
 extern void MemoryContextResetChildren(MemoryContext context);
 extern void MemoryContextDeleteChildren(MemoryContext context);
 extern void MemoryContextResetAndDeleteChildren(MemoryContext context);
@@ -109,10 +108,8 @@ extern char *MemoryContextName(MemoryContext context, MemoryContext relativeTo,
                                char *buf, int bufsize);
 extern void MemoryContextStats(MemoryContext context);
 
-#ifdef CDB_PALLOC_CALLER_ID
-#define MemoryContextDelete(context)    (MemoryContextDeleteDbg(context, __FILE__, __LINE__))
-extern void MemoryContextDeleteDbg(MemoryContext context, const char* sfile, int sline);
-#endif
+#define MemoryContextDelete(context)    (MemoryContextDeleteImpl(context, __FILE__, __func__, __LINE__))
+extern void MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline);
 
 #ifdef CDB_PALLOC_TAGS
 extern void dump_memory_allocation(const char* fname);

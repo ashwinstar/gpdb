@@ -39,6 +39,9 @@
 /* Define to 1 to enable DTrace support. (--enable-dtrace) */
 #undef ENABLE_DTRACE
 
+/* Define to 1 to enable Linux Trace. (--enable-ltrace) */
+#undef ENABLE_LTRACE
+
 /* Define to 1 if you want National Language Support. (--enable-nls) */
 #undef ENABLE_NLS
 

@@ -37,12 +37,6 @@
 #endif
 
 #ifdef CDB_PALLOC_CALLER_ID
-#undef MemoryContextAlloc
-#undef MemoryContextAllocZero
-#undef MemoryContextAllocZeroAligned
-#undef MemoryContextDelete
-#undef repalloc
-#undef pfree
 #define CDB_MCXT_WHERE(context) (context)->callerFile, (context)->callerLine
 #else
 #define CDB_MCXT_WHERE(context) __FILE__, __LINE__
@@ -186,14 +180,7 @@ MemoryContextResetChildren(MemoryContext context)
  * node from its parent, if it has one.
  */
 void
-MemoryContextDelete(MemoryContext context)
-#ifdef CDB_PALLOC_CALLER_ID
-{
-    MemoryContextDeleteDbg(context, "unknown", 0);
-}
-void
-MemoryContextDeleteDbg(MemoryContext context, const char* sfile, int sline)
-#endif
+MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline)
 {
 	AssertArg(MemoryContextIsValid(context));
 	/* We had better not be deleting TopMemoryContext ... */
@@ -202,8 +189,8 @@ MemoryContextDeleteDbg(MemoryContext context, const char* sfile, int sline)
 	Assert(context != CurrentMemoryContext);
 
 #ifdef CDB_PALLOC_CALLER_ID
-    context->callerFile = sfile;
-    context->callerLine = sline;
+	context->callerFile = sfile;
+	context->callerLine = sline;
 #endif
 
 	MemoryContextDeleteChildren(context);
@@ -420,31 +407,33 @@ MemoryContextNoteFree(MemoryContext context, Size nbytes)
  * MemoryContextError
  *		Report failure of a memory context operation.  Does not return.
  */
-void
+	void
 MemoryContextError(int errorcode, MemoryContext context,
-                   const char *sfile, int sline,
-                   const char *fmt, ...)
+		const char *sfile, int sline,
+		const char *fmt, ...)
 {
 	va_list args;
-    char    buf[200];
+	char    buf[200];
 
-    MemoryContextStats(TopMemoryContext);
+	MemoryContextStats(TopMemoryContext);
+
+	Assert(!"MemoryContextError");
 
 	/* Format caller's message. */
 	va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf)-32, fmt, args);
+	vsnprintf(buf, sizeof(buf)-32, fmt, args);
 	va_end(args);
 
-    ereport(ERROR, (errcode(errorcode),
-                    errmsg("%s (context '%s') (%s:%d)",
-                           buf,
-                           context->name,
-                           sfile ? sfile : "",
-                           sline)
-            ));
+	ereport(ERROR, (errcode(errorcode),
+				errmsg("%s (context '%s') (%s:%d)",
+					buf,
+					context->name,
+					sfile ? sfile : "",
+					sline)
+		       ));
 
-    /* not reached */
-    abort();
+	/* not reached */
+	abort();
 }                               /* MemoryContextError */
 
 
@@ -765,29 +754,35 @@ MemoryContextCreate(NodeTag tag, Size size,
  * nodes/memnodes.h into postgres.h which seems a bad idea.
  */
 void *
-MemoryContextAlloc(MemoryContext context, Size size)
-#ifdef CDB_PALLOC_CALLER_ID
+MemoryContextAllocImpl(MemoryContext context, Size size, const char* sfile, const char *sfunc, int sline)
 {
-    return MemoryContextAllocDbg(context, size, "unknown", 0);
-}
-void *
-MemoryContextAllocDbg(MemoryContext context, Size size, const char* sfile, int sline)
+	void *ret;
+
+#ifdef ENABLE_LTRACE	
+	StandardChunkHeader *header;
 #endif
-{
 	AssertArg(MemoryContextIsValid(context));
 
 #ifdef CDB_PALLOC_CALLER_ID
-    context->callerFile = sfile;
-    context->callerLine = sline;
+	context->callerFile = sfile;
+	context->callerLine = sline;
 #endif
 
-    if (!AllocSizeIsValid(size))
-        MemoryContextError(ERRCODE_INTERNAL_ERROR,
-                           context, CDB_MCXT_WHERE(context),
-                           "invalid memory alloc request size %lu",
-                           (unsigned long)size);
+	if (!AllocSizeIsValid(size))
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				context, CDB_MCXT_WHERE(context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
-	return (*context->methods.alloc) (context, size);
+	ret = (*context->methods.alloc) (context, size);
+#ifdef ENABLE_LTRACE
+	header = (StandardChunkHeader *)
+		((char *) ret - STANDARDCHUNKHEADERSIZE);
+
+	LTRACE_PROBE(memctxt__alloc, sfile, sfunc, sline, size, header->size, 0, 0, (long) context->name); 
+#endif
+
+	return ret;
 }
 
 /*
@@ -798,33 +793,36 @@ MemoryContextAllocDbg(MemoryContext context, Size size, const char* sfile, int s
  *	is a very common combination, so we provide the combined operation.
  */
 void *
-MemoryContextAllocZero(MemoryContext context, Size size)
-#ifdef CDB_PALLOC_CALLER_ID
-{
-    return MemoryContextAllocZeroDbg(context, size, "unknown", 0);
-}
-void *
-MemoryContextAllocZeroDbg(MemoryContext context, Size size, const char* sfile, int sline)
-#endif
+MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* sfile, const char *sfunc, int sline)
 {
 	void	   *ret;
 
+#ifdef ENABLE_LTRACE	
+	StandardChunkHeader *header;
+#endif
 	AssertArg(MemoryContextIsValid(context));
 
 #ifdef CDB_PALLOC_CALLER_ID
-    context->callerFile = sfile;
-    context->callerLine = sline;
+	context->callerFile = sfile;
+	context->callerLine = sline;
 #endif
 
 	if (!AllocSizeIsValid(size))
-        MemoryContextError(ERRCODE_INTERNAL_ERROR,
-                           context, CDB_MCXT_WHERE(context),
-                           "invalid memory alloc request size %lu",
-                           (unsigned long)size);
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				context, CDB_MCXT_WHERE(context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
 	ret = (*context->methods.alloc) (context, size);
 
 	MemSetAligned(ret, 0, size);
+
+#ifdef ENABLE_LTRACE
+	header = (StandardChunkHeader *)
+		((char *) ret - STANDARDCHUNKHEADERSIZE);
+
+	LTRACE_PROBE(memctxt__alloc, sfile, sfunc, sline, size, header->size, 0, 0, (long) context->name); 
+#endif
 
 	return ret;
 }
@@ -837,33 +835,37 @@ MemoryContextAllocZeroDbg(MemoryContext context, Size size, const char* sfile, i
  *	is so often called with compile-time-constant sizes.
  */
 void *
-MemoryContextAllocZeroAligned(MemoryContext context, Size size)
-#ifdef CDB_PALLOC_CALLER_ID
-{
-    return MemoryContextAllocZeroAlignedDbg(context, size, "unknown", 0);
-}
-void *
-MemoryContextAllocZeroAlignedDbg(MemoryContext context, Size size, const char* sfile, int sline)
-#endif
+MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* sfile, const char *sfunc, int sline)
 {
 	void	   *ret;
+
+#ifdef ENABLE_LTRACE	
+	StandardChunkHeader *header;
+#endif
 
 	AssertArg(MemoryContextIsValid(context));
 
 #ifdef CDB_PALLOC_CALLER_ID
-    context->callerFile = sfile;
-    context->callerLine = sline;
+	context->callerFile = sfile;
+	context->callerLine = sline;
 #endif
 
 	if (!AllocSizeIsValid(size))
-        MemoryContextError(ERRCODE_INTERNAL_ERROR,
-                           context, CDB_MCXT_WHERE(context),
-                           "invalid memory alloc request size %lu",
-                           (unsigned long)size);
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				context, CDB_MCXT_WHERE(context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
 	ret = (*context->methods.alloc) (context, size);
 
 	MemSetLoop(ret, 0, size);
+
+#ifdef ENABLE_LTRACE
+	header = (StandardChunkHeader *)
+		((char *) ret - STANDARDCHUNKHEADERSIZE);
+
+	LTRACE_PROBE(memctxt__alloc, sfile, sfunc, sline, size, header->size, 0, 0, (long) context->name); 
+#endif
 
 	return ret;
 }
@@ -873,14 +875,7 @@ MemoryContextAllocZeroAlignedDbg(MemoryContext context, Size size, const char* s
  *		Release an allocated chunk.
  */
 void
-pfree(void *pointer)
-#ifdef CDB_PALLOC_CALLER_ID
-{
-    pfreeDbg(pointer, "unknown", 0);
-}
-void
-pfreeDbg(void *pointer, const char *sfile, int sline)
-#endif
+MemoryContextFreeImpl(void *pointer, const char *sfile, const char *sfunc, int sline)
 {
 	StandardChunkHeader *header;
 
@@ -900,9 +895,19 @@ pfreeDbg(void *pointer, const char *sfile, int sline)
 
 	AssertArg(MemoryContextIsValid(header->context));
 
+#ifdef ENABLE_LTRACE
+	LTRACE_PROBE(memctxt__free, sfile, sfunc, sline, 0, 0, 
+#ifdef MEMORY_CONTEXT_CHECKING
+		header->requested_size, header->size,
+#else
+		0, header->size, 
+#endif
+		(long) header->context->name); 
+#endif
+
 #ifdef CDB_PALLOC_CALLER_ID
-    header->context->callerFile = sfile;
-    header->context->callerLine = sline;
+	header->context->callerFile = sfile;
+	header->context->callerLine = sline;
 #endif
 
 	if (header->context->methods.free_p)
@@ -916,16 +921,15 @@ pfreeDbg(void *pointer, const char *sfile, int sline)
  *		Adjust the size of a previously allocated chunk.
  */
 void *
-repalloc(void *pointer, Size size)
-#ifdef CDB_PALLOC_CALLER_ID
-{
-    return repallocDbg(pointer, size, "unknown", 0);
-}
-void *
-repallocDbg(void *pointer, Size size, const char* sfile, int sline)
-#endif
+MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char *sfunc, int sline)
 {
 	StandardChunkHeader *header;
+	void *ret;
+
+#ifdef ENABLE_LTRACE
+	long old_reqsize;
+	long old_size;
+#endif
 
 	/*
 	 * Try to detect bogus pointers handed to us, poorly though we can.
@@ -943,19 +947,36 @@ repallocDbg(void *pointer, Size size, const char* sfile, int sline)
 
 	AssertArg(MemoryContextIsValid(header->context));
 
+#ifdef ENABLE_LTRACE
+#ifdef MEMORY_CONTEXT_CHECKING
+	old_reqsize = header->requested_size;
+#else
+	old_reqsize = 0;
+#endif
+	old_size = header->size;
+#endif
+
 #ifdef CDB_PALLOC_CALLER_ID
-    header->context->callerFile = sfile;
-    header->context->callerLine = sline;
+	header->context->callerFile = sfile;
+	header->context->callerLine = sline;
 #endif
 
 	if (!AllocSizeIsValid(size))
-        MemoryContextError(ERRCODE_INTERNAL_ERROR,
-                           header->context, CDB_MCXT_WHERE(header->context),
-                           "invalid memory alloc request size %lu",
-                           (unsigned long)size);
+		MemoryContextError(ERRCODE_INTERNAL_ERROR,
+				header->context, CDB_MCXT_WHERE(header->context),
+				"invalid memory alloc request size %lu",
+				(unsigned long)size);
 
-	return (*header->context->methods.realloc) (header->context,
-												 pointer, size);
+	ret = (*header->context->methods.realloc) (header->context, pointer, size);
+
+#ifdef ENABLE_LTRACE
+	header = (StandardChunkHeader *)
+		((char *) ret - STANDARDCHUNKHEADERSIZE);
+
+	LTRACE_PROBE(memctxt__realloc, sfile, sfunc, sline, size, header->size, old_reqsize, old_size, (long) header->context->name);
+#endif
+
+	return ret;
 }
 
 

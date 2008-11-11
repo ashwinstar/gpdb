@@ -865,6 +865,7 @@ Optional Features:
   --disable-rpath         do not embed shared library search path in executables
   --disable-spinlocks     do not use spinlocks
   --enable-debug          build with debugging symbols (-g)
+  --enable-ltrace        enable linux trace
   --enable-dtrace         build with DTrace support
   --enable-depend         turn on automatic dependency tracking
   --enable-cassert        enable assertion checks (for debugging)
@@ -1947,6 +1948,41 @@ echo "$as_me: error: no argument expected for --enable-debug option" >&2;}
 
 else
   enable_debug=no
+
+fi;
+
+
+
+#
+# --enable-ltrace enables poor linux's trace
+#
+
+pgac_args="$pgac_args enable_ltrace"
+
+# Check whether --enable-ltrace or --disable-ltrace was given.
+if test "${enable_ltrace+set}" = set; then
+  enableval="$enable_ltrace"
+
+  case $enableval in
+    yes)
+
+cat >>confdefs.h <<\_ACEOF
+#define ENABLE_LTRACE 1
+_ACEOF
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      { { echo "$as_me:$LINENO: error: no argument expected for --enable-ltrace option" >&5
+echo "$as_me: error: no argument expected for --enable-ltrace option" >&2;}
+   { (exit 1); exit 1; }; }
+      ;;
+  esac
+
+else
+  enable_ltrace=no
 
 fi;
 

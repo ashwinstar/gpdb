@@ -178,7 +178,7 @@ opt:
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
-devel : CONFIGFLAGS+= --enable-cassert --enable-debug
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-ltrace
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -192,7 +192,7 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
-devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
+devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak --enable-ltrace
 devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -224,6 +224,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
+dist_prof : CONFIGFLAGS+= --enable-ltrace 
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -238,6 +239,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
 dist_prof : INSTLOC=$(DISTPATH)
+dist_prof : CONFIGFLAGS+= --enable-ltrace 
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -252,7 +254,7 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 
 dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
 dist_faultinj : INSTLOC=$(DISTPATH)
-dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak
+dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak --enable-ltrace
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install

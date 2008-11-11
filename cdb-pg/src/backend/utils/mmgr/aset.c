@@ -887,8 +887,11 @@ AllocSetFree(MemoryContext context, void *pointer)
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < chunk->size)
 		if (((char *) pointer)[chunk->requested_size] != 0x7E)
-            elog(WARNING, "detected write past chunk end in %s %p (%s:%d)",
-				 set->header.name, chunk, CDB_MCXT_WHERE(&set->header));
+		{
+			Assert(!"Memory error");
+			elog(WARNING, "detected write past chunk end in %s %p (%s:%d)",
+					set->header.name, chunk, CDB_MCXT_WHERE(&set->header));
+		}
 #endif
 
 	if (chunk->size > ALLOC_CHUNK_LIMIT)
@@ -974,8 +977,11 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < oldsize)
 		if (((char *) pointer)[chunk->requested_size] != 0x7E)
-            elog(WARNING, "detected write past chunk end in %s %p (%s:%d)",
+		{
+			Assert(!"Memory error");
+			elog(WARNING, "detected write past chunk end in %s %p (%s:%d)",
 				 set->header.name, chunk, CDB_MCXT_WHERE(&set->header));
+		}
 #endif
 
 	/* isReset must be false already */
@@ -1255,8 +1261,11 @@ AllocSetCheck(MemoryContext context)
 		if (!blk_used)
 		{
 			if (set->keeper != block)
-                elog(WARNING, "problem in alloc set %s: empty block %p (%s:%d)",
+			{
+				Assert(!"Memory Context problem");
+				elog(WARNING, "problem in alloc set %s: empty block %p (%s:%d)",
 					 name, block, CDB_MCXT_WHERE(&set->header));
+			}
 		}
 
 		/*
@@ -1277,17 +1286,25 @@ AllocSetCheck(MemoryContext context)
 			 * Check chunk size
 			 */
 			if (dsize > chsize)
-                elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p (%s:%d)",
+			{
+				Assert(!"Memory Context error");
+				elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p (%s:%d)",
 					 name, chunk, block, CDB_MCXT_WHERE(&set->header));
+			}
 			if (chsize < (1 << ALLOC_MINBITS))
-                elog(WARNING, "problem in alloc set %s: bad size %lu for chunk %p in block %p (%s:%d)",
+			{
+				Assert(!"Memory Context Error");
+				elog(WARNING, "problem in alloc set %s: bad size %lu for chunk %p in block %p (%s:%d)",
 					 name, (unsigned long) chsize, chunk, block, CDB_MCXT_WHERE(&set->header));
+			}
 
 			/* single-chunk block? */
-			if (chsize > ALLOC_CHUNK_LIMIT &&
-				chsize + ALLOC_CHUNKHDRSZ != blk_used)
-                elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p (%s:%d)",
-					 name, chunk, block, CDB_MCXT_WHERE(&set->header));
+			if (chsize > ALLOC_CHUNK_LIMIT && chsize + ALLOC_CHUNKHDRSZ != blk_used)
+			{
+				Assert(!"Memory context error");
+				elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p (%s:%d)",
+						name, chunk, block, CDB_MCXT_WHERE(&set->header));
+			}
 
 			/*
 			 * If chunk is allocated, check for correct aset pointer. (If it's
@@ -1295,15 +1312,21 @@ AllocSetCheck(MemoryContext context)
 			 * easily...)
 			 */
 			if (dsize > 0 && chunk->aset != (void *) set)
-                elog(WARNING, "problem in alloc set %s: bogus aset link in block %p, chunk %p (%s:%d)",
+			{
+				Assert(!"Memory context error");
+				elog(WARNING, "problem in alloc set %s: bogus aset link in block %p, chunk %p (%s:%d)",
 					 name, block, chunk, CDB_MCXT_WHERE(&set->header));
+			}
 
 			/*
 			 * Check for overwrite of "unallocated" space in chunk
 			 */
 			if (dsize > 0 && dsize < chsize && *chdata_end != 0x7E)
-                elog(WARNING, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p (%s:%d)",
-					 name, block, chunk, CDB_MCXT_WHERE(&set->header));
+			{
+				Assert(!"Memory context error");
+				elog(WARNING, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p (%s:%d)",
+						name, block, chunk, CDB_MCXT_WHERE(&set->header));
+			}
 
 			blk_data += chsize;
 			nchunks++;
@@ -1312,8 +1335,11 @@ AllocSetCheck(MemoryContext context)
 		}
 
 		if ((blk_data + (nchunks * ALLOC_CHUNKHDRSZ)) != blk_used)
-            elog(WARNING, "problem in alloc set %s: found inconsistent memory block %p (%s:%d)",
-				 name, block, CDB_MCXT_WHERE(&set->header));
+		{
+			Assert(!"Memory context error");
+			elog(WARNING, "problem in alloc set %s: found inconsistent memory block %p (%s:%d)",
+					name, block, CDB_MCXT_WHERE(&set->header));
+		}
 	}
 }
 
