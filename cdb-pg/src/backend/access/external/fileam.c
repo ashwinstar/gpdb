@@ -517,13 +517,25 @@ if (IsRejectLimitReached(pstate->cdbsreh)) \
 			))); \
 }
 
-static int copy_read_one_line(FileScanDesc scan)
+/*
+ * parse_next_line
+ * 
+ * Given a buffer of data, extract the next data line from it and parse it
+ * to attributes according to the data format specifications.
+ * 
+ * Returns:
+ * 	LINE_OK		    - line parsed successfully.			
+ *	LINE_ERROR		- line was mal-formatted. error caught and handled.
+ *	NEED_MORE_DATA  - line not parsed all the way through. need more data.
+ *	END_MARKER      - saw line end marker. skip attr parsing, we're done.
+ */
+static DataLineStatus parse_next_line(FileScanDesc scan)
 {
 	CopyState pstate = scan->fs_pstate;
 	MemoryContext oldctxt = CurrentMemoryContext;
 	MemoryContext err_ctxt = oldctxt;
 
-	int ret_mode = 0;
+	DataLineStatus ret_mode = LINE_OK;
 
 	ListCell   *cur;
 	
@@ -539,22 +551,24 @@ static int copy_read_one_line(FileScanDesc scan)
 			CopyReadLineCSV(pstate, pstate->bytesread) :
 			CopyReadLineText(pstate, pstate->bytesread);
 
-
+		/* Did not get a complete and valid data line? */
 		if(!pstate->line_done)
 		{
 			/*
-			 * We did not finish reading a complete data line.
-			 *
-			 * If eof is not yet reached, we skip att parsing
-			 * and read more data. But if eof _was_ reached it means
-			 * that the original last data line is defective and
-			 * we want to catch that error later on.
+			 * If eof is not yet reached, we skip att parsing and read more 
+			 * data. But if eof _was_ reached it means that this data line is 
+			 * defective and let the attribute parser find the error (we leave
+			 * ret_mode intact).
 			 */
-			if (!pstate->fe_eof || pstate->end_marker)
-				ret_mode = -1;
+			if (!pstate->fe_eof)
+				ret_mode = NEED_MORE_DATA;
+			
+			/* found end marker "\." set ret_mode to skip attribute parsing */
+			if (pstate->end_marker)
+				ret_mode = END_MARKER;
 		}
 
-		if(ret_mode == 0)
+		if(ret_mode == LINE_OK)
 		{
 			if(pstate->csv_mode)
 				CopyReadAttributesCSV(pstate, scan->nulls, pstate->attr_offsets,
@@ -594,7 +608,7 @@ static int copy_read_one_line(FileScanDesc scan)
 	} 
 	PG_CATCH();
 	{
-		ret_mode = 1;
+		ret_mode = LINE_ERROR;
 		MemoryContextSwitchTo(err_ctxt);
 		FILEAM_HANDLE_ERROR;
 	}
@@ -602,7 +616,7 @@ static int copy_read_one_line(FileScanDesc scan)
 
 	MemoryContextSwitchTo(oldctxt);
 
-	if(ret_mode == 1)
+	if(ret_mode == LINE_ERROR)
 	{
 		FILEAM_IF_REJECT_LIMIT_REACHED_ABORT;
 		EXT_RESET_LINEBUF;
@@ -687,8 +701,7 @@ filegettup(FileScanDesc scan,
 				
 				EXT_RESET_LINEBUF;
 				pstate->header_line = false;
-			}
-				
+			}	
 		}
 
 		if (pstate->bytesread > 0 || !pstate->fe_eof)
@@ -696,9 +709,9 @@ filegettup(FileScanDesc scan,
 			/* while there is still data in our buffer */
 			while (!pstate->raw_buf_done)
 			{
-				int ret_mode = copy_read_one_line(scan);
+				DataLineStatus ret_mode = parse_next_line(scan);
 
-				if(ret_mode == 0)
+				if(ret_mode == LINE_OK)
 				{
 					/* convert to heap tuple */
 					/* XXX This is bad code.  Planner should be able to
@@ -712,11 +725,15 @@ filegettup(FileScanDesc scan,
 					MemoryContextReset(pstate->rowcontext);
 					return tuple;
 				}
-				else if(ret_mode == 1)
-					continue;
+				else if(ret_mode == LINE_ERROR)
+				{
+					/* error was handled in parse_next_line. move to the next */
+					continue;					
+				}
 				else 
 				{
-					Assert(ret_mode == -1);
+					/* try to get more data if possible */
+					Assert(ret_mode == NEED_MORE_DATA || ret_mode == END_MARKER);
 					break;
 				}
 			}

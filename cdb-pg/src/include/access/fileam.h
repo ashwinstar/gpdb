@@ -31,4 +31,12 @@ extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
 extern void AtAbort_ExtTables(void);
 char*linenumber_atoi(char buffer[20],int64_t linenumber);
 
+typedef enum DataLineStatus
+{
+	LINE_OK,					
+	LINE_ERROR,				
+	NEED_MORE_DATA,
+	END_MARKER
+} DataLineStatus;
+
 #endif   /* FILEAM_H */
