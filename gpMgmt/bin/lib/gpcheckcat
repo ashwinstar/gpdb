@@ -56,6 +56,12 @@ class Global():
     dbname    = None
     db        = {}
     tmpdir    = None
+    home      = os.environ.get('HOME')
+    if home == None:
+        usage('Error: $HOME must be set')
+    user      = os.environ.get('USER') or os.environ.get('LOGNAME')
+    if user == None:
+        usage('Error: either $USER or $LOGNAME must be set')
 
 GV = Global()
 # array of SQL statements. Key is dbid
@@ -840,20 +846,21 @@ ORDER BY nspname
             GV.retcode = 1
 
 class fileCheckThread(Thread):
-    def __init__(self, index, host, file, env):
+    def __init__(self, host, dir, oidlist, env):
        self.host = host
-       self.file = file
-       self.index = index
-       self.exists = False
+       self.dir = dir
+       self.oidlist = oidlist
        self.env = env
+       self.badoids = []
        Thread.__init__(self)
 
     def run(self):
-        verbose('Checking bitmap index %s on host %s' % \
-                (self.file, self.host))
+        verbose('Checking bitmap indexes on host %s' % self.host)
+        veryverbose('List of OIDs:\n%s' % str(self.oidlist))
 
         try:
-            cmd = "ssh %s ls -l %s" % (self.host, self.file)
+            cmd = "ssh -o StrictHostKeyChecking=no %s (cd %s ; ls -1)" % \
+                    (self.host, self.dir)
             veryverbose('running command %s' % cmd)
             cmd = cmd.split(' ')
             pipe = subprocess.Popen(cmd, env=self.env,
@@ -864,8 +871,22 @@ class fileCheckThread(Thread):
             print '%s, %s' % (' '.join(cmd),  str(e))
             raise
     
+        veryverbose('directory listing:\n%s' % result[0])
         if pipe.returncode == 0:
-            self.exists = True
+            oidhash = {}
+            for line in result[0].split('\n'):
+                if line.isdigit():
+                    oidhash[int(line)] = True
+
+            for oid in self.oidlist:
+                oid = int(oid)
+                veryverbose('Checking %s' % oid)
+                if not oidhash.get(oid):
+                    self.badoids.append(oid)
+                    verbose('Found not find index with relfilenode %s' % oid)
+
+        else:
+            self.badoids = oidlist
 
 def checkBitmapIndexes():
     print '-----------------------------------'
@@ -889,61 +910,60 @@ def checkBitmapIndexes():
     path = '/usr/kerberos/bin:/usr/sfw/bin:/opt/sfw/bin'
     path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
     path += ':/sw/bin'
-    env = {'PATH': path}
+    env = {'PATH': path, 'LOGNAME': GV.user, 'USER': GV.user,
+           'HOME': GV.home}
     ssh = os.environ.get('SSH_AUTH_SOCK')
     if ssh:
         env['SSH_AUTH_SOCK'] = ssh
 
     reindex = []
     threads = []
+    mod = GV.opt['-B'] / 4
+    if mod == 0:
+        mod = 1
+
+    oids = {}
+    # build up a map of OIDs to index name
     for row in rows:
         index = '"%s"."%s"' % (row['nspname'], row['relname'])
-        exists = True
-        for dbid in GV.cfg:
-            seg = GV.cfg[dbid]
-            file = '%s/base/%s/%s' % (seg['datadir'], row['dboid'],
-                        row['relfilenode'])
-    
-            thread = fileCheckThread(index, seg['hostname'], file, env)
-            thread.start()
-            threads.append(thread)
+        oids[row['relfilenode']] = index
 
-            if (len(threads) % GV.opt['-B']) == 0:
-                for th in threads:
-                    veryverbose('[INFO] waiting on thread %s' % 
-                            th.getName())
-                    th.join()
-                    if th.exists == False:
-                        exists = False
-                        verbose('Could not find %s:%s' % \
-                                (seg['hostname'], file))
-                        reindex.append('"%s"."%s"' % (row['nspname'], 
-                                                      row['relname']))
-                threads = []
+    badoids = []
+    for dbid in GV.cfg:
+        seg = GV.cfg[dbid]
+        dir = '%s/base/%s/' % (seg['datadir'], row['dboid'])
 
-            if exists == False:
-                break
-        # stragglers 
-        for th in threads:
-            veryverbose('[INFO] waiting on thread %s' % 
-                           th.getName())
-            th.join()
-            if th.exists == False:
-                exists = False
-                verbose('Could not find %s:%s' % \
-                            (seg['hostname'], file))
-                reindex.append('"%s"."%s"' % (row['nspname'], 
-                                                  row['relname']))
+        # supply just the relfilenodes, not the full mapping
+        thread = fileCheckThread(seg['hostname'], dir, oids.keys(), env)
+        thread.start()
+        threads.append(thread)
+
+        if (len(threads) % mod) == 0:
+            for th in threads:
+                veryverbose('[INFO] waiting on thread %s' % th.getName())
+                th.join()
+                badoids += th.badoids
+
             threads = []
 
-    if reindex:
+    # stragglers 
+    for th in threads:
+        veryverbose('[INFO] waiting on thread %s' % 
+                       th.getName())
+        th.join()
+        badoids += th.badoids
+
+    threads = []
+
+    if badoids:
         GV.retcode = 1
         # unique
-        a = list(set(reindex))
+        a = list(set(badoids))
         print '[ERROR] %d bitmap issue(s)' % len(a)
         for b in a:
-            print '[ERROR] %s' % b
-            Reindex.append(b)
+            index = oids[b]
+            print '[ERROR] %s' % index
+            Reindex.append(index)
 
     else:
         print '[OK] bitmap indexes'
@@ -954,6 +974,7 @@ def closeDbs():
 
 #############
 if __name__ == '__main__':
+
     parseCommandLine()
     GV.cfg = getGPConfiguration()
     GV.version = getversion()
@@ -982,6 +1003,7 @@ Performing segment specific consistency checks
     checkPGClassToast()
     checkPGNamespace()
     checkDistribPolicy()
+
     checkBitmapIndexes()
 
     closeDbs()
