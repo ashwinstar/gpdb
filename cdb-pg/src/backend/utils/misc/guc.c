@@ -2653,7 +2653,7 @@ static struct config_int ConfigureNamesInt[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
         },
         &Gp_udp_bufsize_k,
-        0, 0, 128, NULL, NULL
+        0, 0, 256, NULL, NULL
 	},
 
 #ifdef USE_ASSERT_CHECKING
