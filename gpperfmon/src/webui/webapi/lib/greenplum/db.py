@@ -285,6 +285,17 @@ def system_file():
                 'net_rp_rate', 'net_wp_rate',
                 'net_rb_rate', 'net_wb_rate' ]
 
+    # Scale some of the fields to MBytes
+    scaling = [ 1, 1, 1048576, 1048576, 
+                1048576, 1048576,
+                1048576, 1048576,
+                1, 1,
+                1, 1, 1,
+                1, 1, 1, 1,
+                1, 1, 
+                1048576, 1048576,
+                1, 1, 
+                1048576, 1048576 ]
     rows = []
 
     try:
@@ -305,7 +316,10 @@ def system_file():
             entry[0] = datetime.datetime.strptime(entry[0], "%Y-%m-%d %H:%M:%S")
             # append realtime data to the end of the array
             for i in range(len(cnames)):
-                columns[cnames[i]] = entry[i]
+                if scaling[i] == 1:
+                    columns[cnames[i]] = entry[i]
+                else:
+                    columns[cnames[i]] = float(entry[i])/scaling[i]
             rows.append(columns)
     finally:
         f.close()
@@ -324,6 +338,14 @@ def system_sql(table, filter, interval_code, aggregate):
                 'disk_wb_rate', 'net_rp_rate', 'net_wp_rate', 'net_rb_rate',
                 'net_wb_rate']
 
+    # Scale some of the fields to MBytes
+    scaling = [ 1048576, 1048576, 1048576, 1048576,
+                1048576, 1048576, 1, 1,
+                1, 1, 1, 1, 1, 1, 
+                1, 1, 1048576, 
+                1048576, 1, 1, 1048576, 
+                1048576 ]
+
     # Time aggregation expressions for each level of aggregration
     #  1min, 5min, 1hr, 6hr, 1day, 1wk, 6mth
     itvl_sql = ["date_trunc('minute', ctime)",   
@@ -337,16 +359,22 @@ def system_sql(table, filter, interval_code, aggregate):
 
     if aggregate == 'yes':
         query_fragment = "select %s as sample_time" % itvl_sql[interval_code]
-        for column in columns:
-            query_fragment += ", avg(%s) as %s" % (column, column)
+        for i in range(len(columns)):
+            if scaling[i] == 1:
+                query_fragment += ", avg(%s) as %s" % (columns[i], columns[i])
+            else:
+                query_fragment += ", (avg(%s)::real/%s) as %s" % (columns[i], scaling[i], columns[i])
 
         query_fragment += " from %s %s" % (table, filter)
         query_fragment += " group by sample_time"
 
     else:
         query_fragment = "select %s as sample_time, hostname" % itvl_sql[interval_code]
-        for column in columns:
-            query_fragment += ", avg(%s) as %s" % (column, column)
+        for i in range(len(columns)):
+            if scaling[i] == 1:
+                query_fragment += ", avg(%s) as %s" % (columns[i], columns[i])
+            else:
+                query_fragment += ", (avg(%s)::real/%s) as %s" % (columns[i], scaling[i], columns[i])
 
         query_fragment += " from %s %s" % (table, filter)
         query_fragment += " group by hostname, sample_time"
@@ -360,7 +388,9 @@ def system_history(stime, etime, interval_code, aggregate):
     else:
         filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
 
-    query = system_sql('system_history', filter, interval_code, aggregate)
+    query1 = system_sql('system_history', filter, interval_code, aggregate)
+    query2 = system_sql('system_tail', filter, interval_code, aggregate)
+    query = '%s union all %s' % (query1, query2)
 
     sys.stderr.write("system_history query: %s\n" % query)
     rows = execute_query(query)
@@ -410,15 +440,17 @@ def queryText(tmid, ssid, ccnt):
         q = open(filename, 'r')
     except:
         sys.stderr.write("query file not found: %s\n" % filename)
-        raise GPDBError, 'Real-time query_text file unavailable'
-        return ''
+
+        # Changing this from exception to just return 'not available'
+        #raise GPDBError, 'Real-time query_text file unavailable'
+        return '[not available]'
 
     try:
         qtext = ''
         # skip the first line
         q.readline()
         for line in q:
-            qtext += line.strip()
+            qtext += line.rstrip() + '\n'
     finally:
         q.close()
 
@@ -481,10 +513,10 @@ def queries_file(status, username, database, textlength, tmid, ssid, ccnt):
                 entry[9] = datetime.datetime.strptime(entry[9], "%Y-%m-%d %H:%M:%S")
             for i in range(len(cnames)):
                 if cnames[i] == 'query_text':
-                    tmid = entry[1]
-                    ssid = entry[2]
-                    ccnt = entry[3]
-                    entry[i] = queryText(tmid, ssid, ccnt)
+                    _tmid = entry[1]
+                    _ssid = entry[2]
+                    _ccnt = entry[3]
+                    entry[i] = queryText(_tmid, _ssid, _ccnt)
                     if textlength != '':
                         # truncate the query text
                         if textlength > 3 and len(entry[i]) > textlength:

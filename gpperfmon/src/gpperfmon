@@ -250,27 +250,19 @@ def gpperfmon_setup():
     logloc_default=opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs'
 
     # defaults for webapi
-    max_datapoints_default = 600
-    load2_threshold_default = 2.00
-    cpu_threshold_default = 80
-    memory_threshold_default = 80
-    cpu_skew_threshold_default = 100
+    remote_default = 'no'
+    require_password_default = 'no'
 
     config = ConfigParser.ConfigParser()
     config.add_section('GPMMON')
-    config.add_section('WS')
-    config.add_section('SYSTEM METRICS')
-    config.add_section('QUERY METRICS')
+    config.add_section('WEB SERVICE')
     config.set('GPMMON', 'quantum', quantum_default)
     config.set('GPMMON', 'min_query_time', minqt_default)
     config.set('GPMMON', 'min_detailed_query_time', mindqt_default)
     config.set('GPMMON', 'verbose', verbose_default)
     config.set('GPMMON', 'log_location', logloc_default)
-    config.set('WS', 'max_data_points', max_datapoints_default)
-    config.set('SYSTEM METRICS', 'load2_threshold', load2_threshold_default)
-    config.set('SYSTEM METRICS', 'cpu_threshold', cpu_threshold_default)
-    config.set('SYSTEM METRICS', 'memory_threshold', memory_threshold_default)
-    config.set('QUERY METRICS', 'cpu_skew_threshold', cpu_skew_threshold_default) 
+    config.set('WEB SERVICE', 'remote', remote_default)
+    config.set('WEB SERVICE', 'require_password', require_password_default)
 
     if os.path.isfile(GPPERFMON_CONF_FILE):
         yn = get_yesno('gpperfmon.conf already exists for this database instance.\nDo you want to reconfigure gpperfmon? [N]', 'N')
@@ -622,7 +614,7 @@ fastcgi.server = ( "/gpmonws.py" =>
 ((
    "socket" => "/tmp/fastcgi.socket",
    "bin-path" => "%s",
-   "max-procs" => 2,
+   "max-procs" => 1,
    "bin-environment" => (
      "REAL_SCRIPT_NAME" => ""
    ),

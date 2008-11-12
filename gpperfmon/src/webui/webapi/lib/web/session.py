@@ -66,13 +66,6 @@ class Session(utils.ThreadedDict):
         cookie_domain = self._config.cookie_domain
         self.session_id = web.cookies().get(cookie_name)
         
-        # additional greenplum code
-        i = web.input()
-        if i.has_key('sessionid'):
-            sys.stderr.write("\nsessionid: %s\n" % i.sessionid)
-            self.session_id = i.sessionid
-        # additional greenplum code
-        
         self._check_expiry()
         if self.session_id:
             d = self.store[self.session_id]
@@ -189,6 +182,9 @@ class DiskStore(Store):
             ...
         KeyError: 'a'
     """
+    SESSION_PREFIX = 'session-'
+    LOCK_SUFFIX = '.lock'
+
     def __init__(self, root):
         # if the storage root doesn't exists, create it.
         if not os.path.exists(root):
@@ -208,6 +204,9 @@ class DiskStore(Store):
             raise KeyError, key
 
     def __setitem__(self, key, value):
+        #GREENPLUM
+        self.acquire_lock(key)
+        #GREENPLUM
         pickled = self.encode(value)    
         path = os.path.join(self.root, key)
         try:
@@ -218,6 +217,10 @@ class DiskStore(Store):
                 f.close()
         except IOError:
             pass
+        #GREENPLUM
+        finally:
+            self.release_lock(key)
+        #GREENPLUM
 
     def __delitem__(self, key):
         path = os.path.join(self.root, key)
@@ -231,6 +234,32 @@ class DiskStore(Store):
             atime = os.stat(path).st_atime
             if now - atime > timeout :
                 os.remove(path)
+
+    # GREENPLUM  additions to provide session locking support     
+    # BEGINS HERE 
+
+    def _get_file_path(self, key):
+        return os.path.join(self.root, self.SESSION_PREFIX + key)
+
+    def acquire_lock(self, key):
+        path = self._get_file_path(key)
+        path += self.LOCK_SUFFIX
+        while True:
+            try:
+                lockfd = os.open(path, os.O_CREAT|os.O_WRONLY|os.O_EXCL)
+            except OSError:
+                time.sleep(0.1)
+            else:
+                os.close(lockfd)
+                break
+        self.locked = True
+
+    def release_lock(self, key):
+        path = self._get_file_path(key)
+        os.unlink(path + self.LOCK_SUFFIX)
+        self.locked = False
+
+    # ENDS HERE 
 
 class DBStore(Store):
     """Store for saving a session in database
