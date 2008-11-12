@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	paddingLeft="5" paddingRight="5" horizontalAlign="center" 
+	xmlns:panel="panel.*" xmlns:chart="chart.*" xmlns:view="view.*"
+	creationPolicy="queued">
+
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+    ]]>
+</mx:Script>	
+
+    <mx:HBox width="100%" verticalAlign="middle">
+    	<mx:Label text="[ Click any graph for detailed view ]" 
+    				includeInLayout="{(mdl.nav.metricSelected==0) &amp;&amp; 
+    								  (mdl.nav.durationSelected != 0)}"
+    				visible="{(mdl.nav.metricSelected==0) &amp;&amp; 
+    								  (mdl.nav.durationSelected != 0)}"/>
+    	<mx:Button label="Return to summary view" click="{mdl.nav.metricSelected = 0}"
+    				includeInLayout="{(mdl.nav.metricSelected!=0) &amp;&amp;
+    								  (mdl.nav.durationSelected != 0)}"
+    				visible="{(mdl.nav.metricSelected!=0) &amp;&amp;
+    								  (mdl.nav.durationSelected != 0)}"/>
+    	<mx:Spacer width="100%"/>
+
+		<mx:ToggleButtonBar id="duration" dataProvider="{mdl.nav.durationList}"  
+			creationComplete="{duration.selectedIndex=1}" 
+			itemClick="mdl.system.durationChange(event)"/>
+			
+    </mx:HBox>	
+    
+    <mx:ViewStack width="100%" height="100%"
+    	 selectedIndex="{mdl.nav.durationSelected==0?0:(mdl.nav.metricSelected == 0?1:2)}">
+
+		<view:SystemMetricsNowView id="sysMetricsNowView"/>
+    	<view:SystemMetricsSummaryView id="sysMetricsSummaryView"/>
+    	<view:SystemMetricsDetailView id="sysMetricsDetailView"/>
+
+	</mx:ViewStack>
+
+</mx:VBox>

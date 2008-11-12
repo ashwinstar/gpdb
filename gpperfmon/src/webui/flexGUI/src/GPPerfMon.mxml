@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application 
+	xmlns:mx="http://www.adobe.com/2006/mxml" 
+	xmlns:view="view.*"
+	pageTitle="Greenplum Performance Monitor"
+    historyManagementEnabled="false"
+    applicationComplete="initApp()">
+	
+	<mx:Style source="assets/css/styles.css"/>
+	
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+	  
+	  function initApp():void{
+		mdl.session.setDatabaseConnection( 
+			Application.application.parameters.serverHost,
+			Application.application.parameters.serverPort);    
+	    //mdl.session.setDatabaseConnection("192.168.0.184","28080",false);
+	  }	
+    ]]>
+</mx:Script>	
+		
+	<mx:ViewStack id="loginStack" width="100%" height="100%"
+        selectedIndex="{mdl.session.loggedIn}">
+    	<view:LoginView id="loginView"/>
+		<view:MainAppView id="mainAppView"/>
+	</mx:ViewStack>
+	
+</mx:Application>

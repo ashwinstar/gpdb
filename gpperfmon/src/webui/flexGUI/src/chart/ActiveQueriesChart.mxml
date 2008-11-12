@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml">
+    <mx:Script>
+        <![CDATA[
+		import model.GPPerfMonModelLocator;
+		import mx.charts.HitData;
+		import mx.charts.series.items.LineSeriesItem;
+		import util.MiscUtils;
+		import model.Session;
+		
+		[Bindable]
+		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+
+        ]]>
+    </mx:Script>
+    
+  <mx:SolidColor id="user_clr" color="0x00FF00" alpha=".8"/>
+  <mx:SolidColor id="sys_clr" color="0x0000FF" alpha=".8"/>
+  <mx:SolidColor id="idle_clr" color="0xCCCCCC" alpha=".1"/>
+   
+  <mx:AreaChart showDataTips="true" id="myChart" width="100%" height="100%"
+  				dataProvider="{mdl.system.activeAggLookup[mdl.nav.durationSelected]}" 
+  				type="stacked">
+  		<mx:series>	 
+ 			<mx:AreaSeries yField="cpu_user"
+  			               xField="sample_time" displayName="CPU User %"
+  			               areaFill="{user_clr}">
+ 			</mx:AreaSeries>  
+  			<mx:AreaSeries yField="cpu_sys" 
+  				           xField="sample_time" displayName="CPU System %"
+  				           areaFill="{sys_clr}">
+  			</mx:AreaSeries>	   
+  			<mx:AreaSeries yField="cpu_idle" 
+  						   xField="sample_time" displayName="CPU Idle %"
+  						   areaFill="{idle_clr}">
+  		  	</mx:AreaSeries>	       
+  		</mx:series>
+  		
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+  		
+        <mx:horizontalAxis>
+            <mx:DateTimeAxis id="haxis" displayLocalTime="true" 
+            	minimum="{mdl.session.timeArray.getItemAt(mdl.nav.durationSelected) as Date}"
+            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
+        </mx:horizontalAxis>
+        <mx:verticalAxis>
+            <mx:LinearAxis id="vaxis" baseAtZero="true" maximum="100"/>
+        </mx:verticalAxis>
+        
+		<mx:horizontalAxisRenderers>
+		    <mx:AxisRenderer axis="{haxis}">
+		        <mx:axisStroke>
+		            <mx:Stroke color="#999999" weight="1"/>
+		        </mx:axisStroke>
+		    </mx:AxisRenderer>
+		</mx:horizontalAxisRenderers>
+		 
+		<mx:verticalAxisRenderers>
+		    <mx:AxisRenderer axis="{vaxis}">
+		        <mx:axisStroke>
+		            <mx:Stroke color="#999999" weight="1" />
+		        </mx:axisStroke>
+		    </mx:AxisRenderer>
+		</mx:verticalAxisRenderers>
+  </mx:AreaChart>
+  
+  <mx:Legend dataProvider="{myChart}"/>
+     
+  
+</mx:HBox>

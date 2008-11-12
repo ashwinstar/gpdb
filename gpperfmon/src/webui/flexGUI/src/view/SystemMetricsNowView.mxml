@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
+
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+    ]]>
+</mx:Script>	
+
+  <mx:SolidColor id="user_clr" color="0x00FF00" alpha=".8"/>
+  <mx:SolidColor id="sys_clr" color="0x0000FF" alpha=".8"/>
+  <mx:SolidColor id="idle_clr" color="0x000000" alpha=".5"/>
+
+ <mx:Label text="{'Last updated: ' + mdl.system.systemNowXML.host[0].sample_time}"/>
+ <mx:HBox width="100%" height="100%">
+ 
+    <mx:VBox height="100%" horizontalAlign="right">
+   	 <mx:Spacer height="100"/> 
+  	 <mx:BarChart showDataTips="true" id="myChart0" height="100%"
+  				dataProvider="{mdl.system.systemNowXML.host}" 
+  				width="150" gutterLeft="150">		
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+        <mx:verticalAxis>
+            <mx:CategoryAxis id='cataxis0' dataProvider="{mdl.system.systemNowXML.host}" 
+            	categoryField="@name"/>
+        </mx:verticalAxis>
+        <mx:horizontalAxis>
+            <mx:LinearAxis  id='haxis0'/>
+        </mx:horizontalAxis>
+		<mx:verticalAxisRenderers>
+        	<mx:AxisRenderer axis="{cataxis0}" showLabels="true" showLine="false"/>
+        </mx:verticalAxisRenderers>
+ 		<mx:horizontalAxisRenderers>
+        	<mx:AxisRenderer axis="{haxis0}" visible="false" includeInLayout="false"/>
+        </mx:horizontalAxisRenderers>       
+		<mx:backgroundElements>
+			<mx:Array/>
+		</mx:backgroundElements>
+  	</mx:BarChart>	
+   </mx:VBox> 
+
+   <mx:VBox height="100%" width="25%" horizontalAlign="center">
+   	 <mx:Legend height="100" verticalAlign="top" dataProvider="{myChart}"/> 
+  	 <mx:BarChart showDataTips="true" id="myChart" height="100%" width="100%"
+  				dataProvider="{mdl.system.systemNowXML.host}" >
+  		<mx:series>	 
+  			<mx:BarSet type="stacked">
+	  			<mx:BarSeries xField="cpu_user"  
+	 						  displayName="CPU User" fill="{user_clr}">
+	 			</mx:BarSeries>  
+	  			<mx:BarSeries xField="cpu_sys" 
+	  						  displayName="CPU System" fill="{sys_clr}">
+	  			</mx:BarSeries>	   
+	  			<mx:BarSeries xField="cpu_idle" 
+	  						   displayName="CPU Idle" fill="{idle_clr}">
+	  		  	</mx:BarSeries>	      				
+  			</mx:BarSet>     
+  		</mx:series>
+  		
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+  		
+        <mx:verticalAxis>
+            <mx:CategoryAxis id='cataxis1' dataProvider="{mdl.system.systemNowXML.host}" 
+            	categoryField="@name"/>
+        </mx:verticalAxis>
+        <mx:horizontalAxis>
+            <mx:LinearAxis id="vaxis1" baseAtZero="true" title="CPU %"/>
+        </mx:horizontalAxis>
+		<mx:verticalAxisRenderers>
+        	<mx:AxisRenderer axis="{cataxis1}" showLabels="false"/>
+        </mx:verticalAxisRenderers>
+        
+  	</mx:BarChart>	
+   </mx:VBox> 
+
+   <mx:VBox height="100%" width="25%" horizontalAlign="center">
+   	 <mx:Legend height="100" verticalAlign="top" dataProvider="{myChart2}"/>	
+  	 <mx:BarChart showDataTips="true" id="myChart2" height="100%" width="100%"
+  				dataProvider="{mdl.system.systemNowXML.host}">
+  		<mx:series>	 
+  			<mx:BarSet type="stacked">
+	  			<mx:BarSeries xField="mem_actual_used"  
+	 						  displayName="Used memory" fill="{user_clr}">
+	 			</mx:BarSeries>  
+	  			<mx:BarSeries xField="mem_actual_free" 
+	  						  displayName="Free memory" fill="{idle_clr}">
+	  			</mx:BarSeries>	        				
+  			</mx:BarSet>     
+  		</mx:series>
+  		
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+  		
+        <mx:verticalAxis>
+            <mx:CategoryAxis id='cataxis2' dataProvider="{mdl.system.systemNowXML.host}" 
+            	categoryField="@name"/>
+        </mx:verticalAxis>
+        <mx:horizontalAxis>
+            <mx:LinearAxis id="vaxis2" baseAtZero="true" title="MBytes"/>
+        </mx:horizontalAxis>
+		<mx:verticalAxisRenderers>
+        	<mx:AxisRenderer axis="{cataxis2}" showLabels="false"/>
+        </mx:verticalAxisRenderers>
+        
+  	</mx:BarChart>
+    
+   </mx:VBox> 
+ 
+  <mx:VBox height="100%" width="25%" horizontalAlign="center">
+     
+   	<mx:Legend height="100" verticalAlign="top" dataProvider="{myChart3}"/>	
+  	<mx:BarChart showDataTips="true" id="myChart3" height="100%" width="100%"
+  				dataProvider="{mdl.system.systemNowXML.host}">
+  		<mx:series>	 
+  			<mx:BarSet type="clustered">
+	  			<mx:BarSeries xField="disk_rb_rate"  
+	 						  displayName="Disk read rate">
+	 			</mx:BarSeries>  
+	  			<mx:BarSeries xField="disk_wb_rate" 
+	  						  displayName="Disk write rate">
+	  			</mx:BarSeries>	         				
+  			</mx:BarSet>     
+  		</mx:series>
+  		
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+  		
+        <mx:verticalAxis>
+            <mx:CategoryAxis id='cataxis3' dataProvider="{mdl.system.systemNowXML.host}" 
+            	categoryField="@name"/>
+        </mx:verticalAxis>
+        <mx:horizontalAxis>
+            <mx:LinearAxis id="vaxis3" baseAtZero="true" title="MBytes/s"/>
+        </mx:horizontalAxis>
+        <mx:verticalAxisRenderers>
+        	<mx:AxisRenderer axis="{cataxis3}" showLabels="false"/>
+        </mx:verticalAxisRenderers>
+        
+  	</mx:BarChart>
+
+  </mx:VBox> 
+
+  <mx:VBox height="100%" width="25%" horizontalAlign="center">
+      
+   	<mx:Legend height="100" verticalAlign="top" dataProvider="{myChart4}"/>	
+  	<mx:BarChart showDataTips="true" id="myChart4" height="100%" width="100%"
+  				dataProvider="{mdl.system.systemNowXML.host}">
+  		<mx:series>	 
+  			<mx:BarSet type="clustered">
+	  			<mx:BarSeries xField="net_rb_rate"  
+	 						  displayName="Network reads rate">
+	 			</mx:BarSeries>  
+	  			<mx:BarSeries xField="net_wb_rate" 
+	  						  displayName="Network write rate">
+	  			</mx:BarSeries>	         				
+  			</mx:BarSet>     
+  		</mx:series>
+  		
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+  		
+        <mx:verticalAxis>
+            <mx:CategoryAxis id='cataxis4' dataProvider="{mdl.system.systemNowXML.host}" 
+            	categoryField="@name"/>
+        </mx:verticalAxis>
+        <mx:horizontalAxis>
+            <mx:LinearAxis id="vaxis4" baseAtZero="true" title="MBytes/s"/>
+        </mx:horizontalAxis>
+        <mx:verticalAxisRenderers>
+        	<mx:AxisRenderer axis="{cataxis4}" showLabels="false"/>
+        </mx:verticalAxisRenderers>
+        
+  	</mx:BarChart>
+
+  </mx:VBox> 
+
+</mx:HBox>  
+
+  
+  	
+</mx:VBox>

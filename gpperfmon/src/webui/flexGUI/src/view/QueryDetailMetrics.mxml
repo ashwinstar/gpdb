@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	initialize="doInitialize();">
+		
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+      import util.Debug;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	  public function doInitialize():void
+	  {
+	  	 Debug.debug("Initializing QueryDetailMetrics");
+	  }	
+    ]]>
+</mx:Script>	
+
+	<mx:Text width="50%" text="{'TODO: This screen is identical to the main ' +
+		   'system metrics page, except that the time window of the metrics covers ' + 
+		   'the runtime of the query. It is built off the same component and ' + 
+		   'allows drill-in into specific metrics.'}"/>
+	
+</mx:VBox>

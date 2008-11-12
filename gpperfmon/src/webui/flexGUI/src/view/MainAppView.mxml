@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox 
+	xmlns:mx="http://www.adobe.com/2006/mxml" 
+	width="100%" height="100%" 
+	xmlns:view="view.*"
+	paddingTop="2" paddingBottom="4"
+	paddingLeft="2" paddingRight="2" verticalGap="8">
+	
+<mx:Script>
+<![CDATA[
+    import model.GPPerfMonModelLocator;
+  	import mx.events.CloseEvent;
+  	import mx.controls.Alert;	
+  	import model.Resources;
+  			
+  	[Bindable]
+	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+
+    private function tryLogout():void 
+	{
+		var a:Alert = Alert.show("Are you sure you want to logout?", "Logout", 
+			Alert.YES|Alert.NO, this, logoutHandler, Resources.confirmIcon, Alert.NO);
+			
+		// modify the look of the Alert box
+		a.setStyle("backgroundColor", 0xffffff);
+		a.setStyle("backgroundAlpha", 0.75);
+		a.setStyle("borderColor", 0xefffe0);
+		a.setStyle("borderAlpha", 0.90);
+		a.setStyle("color", 0x000000); // text color
+	}
+	 
+	private function logoutHandler(event:CloseEvent):void
+  	{
+  		if (event.detail==Alert.YES)
+  		{
+    		mdl.session.logout()
+    	}
+  	}
+  	
+  	private function aboutBox():void 
+	{
+		var str:String = "Greenplum Performance Monitor\n\n" + 
+					     Resources.version + "\n\n" +
+					     Resources.copyright2;
+					  
+		var a:Alert = Alert.show(str, "About", Alert.OK, this, null, Resources.gp_logo_sml);
+			
+		// modify the look of the Alert box
+		a.setStyle("backgroundColor", 0xffffff);
+		a.setStyle("backgroundAlpha", 0.75);
+		a.setStyle("borderColor", 0xefffe0);
+		a.setStyle("borderAlpha", 0.90);
+		a.setStyle("color", 0x000000); // text color
+	}
+  	
+]]>   	
+</mx:Script>	
+
+	<mx:HBox width="100%" height="46" verticalAlign="middle" paddingLeft="5" paddingRight="2"
+	   			 paddingTop="2" paddingBottom="2"
+	   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
+	   			 borderThickness="0" borderStyle="solid" cornerRadius="6">
+		<mx:Image source="{Resources.gp_logo_sml}" scaleContent="false"/>
+		<mx:Spacer width="100%"/>
+		<mx:Label styleName="mainTitle" text="Greenplum Performance Monitor"/>	
+		<mx:Spacer width="100%"/>
+		<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
+		<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
+		<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>
+	</mx:HBox>
+	
+	<mx:TabNavigator width="100%" height="100%" styleName="mainTabNavigator">
+		<view:Top_DashboardView label="DASHBOARD"/>
+		<view:Top_SystemMetricsView label="SYSTEM METRICS"/>
+		<view:Top_QueryMonitorView label="QUERY MONITOR"/>
+		<view:DebugView label="DEBUG"/>
+	</mx:TabNavigator>
+	  
+	<mx:HBox width="100%" verticalAlign="middle" paddingLeft="5" paddingRight="2"
+	   			 paddingTop="2" paddingBottom="2"
+	   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
+	   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
+	   			 styleName="footerText">
+		<mx:Label text="{Resources.version}" id="versionString" fontSize="9"/>
+		<mx:Spacer width="100%"/>
+		<mx:Label text="{Resources.copyright}"/>
+		<mx:Spacer width="100%"/>
+		<mx:Label text="{'Greenplum server: ' + mdl.session.databaseName + ' (' + 
+		                          mdl.session.connectionStatus + ')'}" id="serverName"/>
+	</mx:HBox>
+	 
+</mx:VBox>

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	xmlns:panel="panel.*" xmlns:chart="chart.*"
+	creationPolicy="queued">
+
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+    ]]>
+</mx:Script>	
+	
+	<mx:VBox width="50%" height="100%"> 
+		<mx:Panel title="{mdl.nav.metricsList[1]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">	
+			<chart:ActiveQueriesChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=1}"/>				
+		</mx:Panel>
+		<mx:Panel title="{mdl.nav.metricsList[3]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+			<chart:CPUChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=3}"/>	
+		</mx:Panel>
+		<mx:Panel title="{mdl.nav.metricsList[5]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+			<chart:SwapInUseChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=5}"/>	
+		</mx:Panel>
+		<mx:Panel title="{mdl.nav.metricsList[7]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+			<chart:DiskIOPSChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=7}"/>	
+		</mx:Panel>				
+		<mx:Panel title="{mdl.nav.metricsList[9]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+				<chart:NetworkPacketsChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=9}"/>	
+		</mx:Panel>		
+	</mx:VBox>
+	
+	<mx:VBox width="50%" height="100%">
+		<mx:Panel title="{mdl.nav.metricsList[2]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+				<chart:MemoryChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=2}"/>	
+		</mx:Panel>		
+		<mx:Panel title="{mdl.nav.metricsList[4]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+				<chart:LoadChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=4}"/>	
+		</mx:Panel>		
+		<mx:Panel title="{mdl.nav.metricsList[6]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+				<chart:SwapPagingChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=6}"/>	
+		</mx:Panel>		
+		<mx:Panel title="{mdl.nav.metricsList[8]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+				<chart:DiskIOBytesChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=8}"/>	
+		</mx:Panel>					
+		<mx:Panel title="{mdl.nav.metricsList[10]}" width="100%" height="20%" 
+			styleName="smallMetricGraph">
+				<chart:NetworkBytesChart width="100%" height="100%" 
+				click="{mdl.nav.metricSelected=10}"/>	
+		</mx:Panel>					
+	</mx:VBox>		
+
+</mx:HBox>

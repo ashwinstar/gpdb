@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	paddingLeft="5" paddingRight="5" horizontalAlign="left" 
+	xmlns:view="view.*">
+
+<mx:Script>
+    <![CDATA[
+    	import mx.events.ItemClickEvent;
+    	import model.Queries;
+    	import value.Query;
+    	import mx.collections.ArrayCollection;
+      	import model.GPPerfMonModelLocator;
+      	import mx.managers.PopUpManager;
+      	import mx.core.IFlexDisplayObject;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	  private function showSearch():void {
+            // Create a modal TitleWindow container.
+      		var searchWindow:IFlexDisplayObject =
+                    PopUpManager.createPopUp(this, QuerySearchPopup, true);
+            PopUpManager.centerPopUp(searchWindow);
+      }
+
+	  private function querySelectionChange(evt:Event):void {
+	  		mdl.queries.selectedQueryID = dgQueries.selectedItem.id;
+      }
+      
+	  private function queryDataChange(evt:Event):void {
+	  	if (!dgQueries.selectedItem || 
+	  	    (dgQueries.selectedItem.id != mdl.queries.selectedQueryID))
+	  	{
+	  		// Look to reset selected item based on query ID
+	  		for each(var query:Query in dgQueries.dataProvider)
+	  		{
+	  			if (query.id == mdl.queries.selectedQueryID)
+	  			{
+	  				dgQueries.selectedItem = query;
+	  				return;
+	  			}
+			}		
+			mdl.queries.selectedQueryID = 'None Selected';
+	  	}		  
+      }
+      
+    public function getDateLabel(item:Object,column:DataGridColumn):String 
+	{
+		return dateFormatter.format(item[column.dataField]);
+	}	
+	
+	public function qListToggleClick(event:ItemClickEvent):void
+	{
+		if (event.index == 0)
+			dgQueries.dataProvider = mdl.queries.queriesNowArray;
+		else if (event.index == 1)
+			dgQueries.dataProvider = mdl.queries.myQueriesNowArray;		
+	}
+	
+    ]]>
+</mx:Script>	
+
+    <mx:DateFormatter id="dateFormatter" formatString="L:NN:SS A, MMM-D-YYYY"/>
+
+	<mx:ToggleButtonBar id="qListToggle"
+		dataProvider="{mdl.nav.queryListToggle}" itemClick="qListToggleClick(event)"/>
+		
+	<mx:VBox width="100%" backgroundColor="0xBFDC92" verticalGap="0"
+		paddingTop="3" paddingBottom="3" paddingLeft="10" paddingRight="10">
+		<mx:HBox width="100%" verticalAlign="middle"
+			visible="{qListToggle.selectedIndex==3}"
+			includeInLayout="{qListToggle.selectedIndex==3}">
+			<mx:Text htmlText="{mdl.ql.qsearchSummary}" width="500"/>
+			<mx:Spacer width="100%"/>
+			<mx:Button label="New Search" visible="{qListToggle.selectedIndex==3}" 
+				includeInLayout="{qListToggle.selectedIndex==3}"
+				click="showSearch();"/>	
+		</mx:HBox>
+		<mx:Text htmlText="{mdl.queries.queryNowSummary}" visible="{qListToggle.selectedIndex==0}" 
+				includeInLayout="{qListToggle.selectedIndex==0}"/>
+		<mx:Text htmlText="{mdl.queries.myQueryNowSummary}" visible="{qListToggle.selectedIndex==1}" 
+				includeInLayout="{qListToggle.selectedIndex==1}"/>
+	</mx:VBox>
+	
+		
+	<mx:VDividedBox height="100%" width="100%">
+	
+		<mx:DataGrid id="dgQueries" width="100%" height="60%" fontSize="9" 
+			dataProvider="{mdl.queries.queriesNowArray}" doubleClickEnabled="true" 
+			doubleClick="{mdl.nav.queryDetailID=dgQueries.selectedIndex}"
+			change="querySelectionChange(event)" updateComplete="queryDataChange(event)"
+			rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
+			<mx:columns>
+				<mx:DataGridColumn headerText="Watch" width="45">
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:VBox width="100%" height="100%" horizontalAlign="center">
+								<mx:CheckBox/>					
+							</mx:VBox>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>
+				<mx:DataGridColumn headerText="Query ID" dataField="id" width="140"/>
+				<mx:DataGridColumn headerText="Submit time" dataField="tsubmit" width="140" 
+									labelFunction="getDateLabel"/>			
+				<mx:DataGridColumn headerText="Username" dataField="username" width="80"/>
+				<mx:DataGridColumn headerText="Database" dataField="db" width="80"/>
+				<mx:DataGridColumn headerText="Status" dataField="status" width="60"/>
+				<mx:DataGridColumn headerText="Wait time" dataField="time_queued" 
+					width="50" headerWordWrap="true"/>
+				<mx:DataGridColumn headerText="Run time" dataField="time_run"
+					width="60" headerWordWrap="true"/>				
+				<mx:DataGridColumn headerText="CPU usage" dataField="cpu_elapsed"
+					width="60" headerWordWrap="true"/>
+				<mx:DataGridColumn headerText="CPU velocity" dataField="cpu_velocity"
+					width="55" headerWordWrap="true"/>	
+				<mx:DataGridColumn headerText="CPU skew" dataField="skew_cpu"
+					width="45" headerWordWrap="true"/>	
+				<mx:DataGridColumn headerText="Row Skew" dataField="skew_rows"
+					width="45" headerWordWrap="true"/>	
+				<mx:DataGridColumn headerText="Details" width="45">
+					<mx:itemRenderer>
+						<mx:Component>
+							<mx:VBox width="100%" height="100%" horizontalAlign="center">
+								<mx:LinkButton label="link" 
+									click="{outerDocument.mdl.nav.queryDetailID = 
+											outerDocument.dgQueries.selectedIndex}"/>				
+							</mx:VBox>
+						</mx:Component>
+					</mx:itemRenderer>
+				</mx:DataGridColumn>			
+			</mx:columns>
+		</mx:DataGrid>
+		
+		<mx:Panel title="{'Query Text (' + mdl.queries.selectedQueryID + ')'}"
+			width="100%" height="40%" styleName="smallMetricGraph" layout="horizontal">
+				<mx:TextArea editable="false" width="100%" height="100%"
+				    text="{dgQueries.selectedItem.query_text}"/>
+		</mx:Panel>		
+		
+	</mx:VDividedBox>
+	
+</mx:VBox>
+

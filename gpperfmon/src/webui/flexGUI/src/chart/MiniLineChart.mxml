@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:LineChart xmlns:mx="http://www.adobe.com/2006/mxml"
+	 showDataTips="true" width="120" height="32"
+	 paddingLeft="0" paddingRight="0" paddingTop="0" paddingBottom="0"
+  	 gutterLeft="2" gutterRight="2" gutterTop="1" gutterBottom="2"
+  	 dataProvider="{mdl.system.oneMinAggData}">
+  	  
+<mx:Script>
+    <![CDATA[
+      import model.GPPerfMonModelLocator;
+      import model.Session;
+  			
+  	  [Bindable]
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+    ]]>
+</mx:Script>
+  		<mx:seriesFilters>
+           <mx:Array/>
+        </mx:seriesFilters>
+          		
+        <mx:horizontalAxis>
+            <mx:DateTimeAxis id="haxis" displayLocalTime="true" 
+            	minimum="{mdl.session.timeArray.getItemAt(Session.FIFTEEN_MINS_AGO) as Date}"
+            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
+        </mx:horizontalAxis>
+        <mx:verticalAxis>
+            <mx:LinearAxis id="vaxis" baseAtZero="false"/>
+        </mx:verticalAxis>
+        
+		<mx:horizontalAxisRenderers>
+		    <mx:AxisRenderer axis="{haxis}" visible="false" includeInLayout="false"/>
+		</mx:horizontalAxisRenderers>
+		 
+		<mx:verticalAxisRenderers>
+		    <mx:AxisRenderer axis="{vaxis}" visible="false" includeInLayout="false"/>
+		</mx:verticalAxisRenderers>
+	
+		<mx:backgroundElements>
+			<mx:Array/>
+		</mx:backgroundElements>
+	
+		<mx:fill>
+			<mx:SolidColor color="0xDFFCB2" alpha="1.0"/>
+		</mx:fill>
+		
+</mx:LineChart>
+
+
+
+
+
