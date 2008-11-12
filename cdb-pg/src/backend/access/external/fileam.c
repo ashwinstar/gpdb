@@ -436,6 +436,12 @@ else \
 	MemoryContext oldcontext;\
 	bool	errmsg_is_a_copy = false; \
 \
+	/* SREH must only handle data errors. all other errors must not be caught */\
+	if(ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
+	{\
+		PG_RE_THROW(); \
+	}\
+\
 	/* save a copy of the error info */ \
 	oldcontext = MemoryContextSwitchTo(pstate->cdbsreh->badrowcontext);\
 	edata = CopyErrorData();\

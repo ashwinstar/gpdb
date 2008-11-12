@@ -3837,7 +3837,9 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 							   isnull, tupdesc, estate->es_partition_state);
 
 	if (!OidIsValid(targetid))
-		elog(ERROR, "no partition for partitioning key");
+		ereport(ERROR,
+				(errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY),
+				 errmsg("no partition for partitioning key")));			
 
 	if (estate->es_partition_state->result_partition_hash == NULL)
 	{

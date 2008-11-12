@@ -1000,7 +1000,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3839)  (seg1 localhost:11003 pid=37401)
+ERROR:  no partition for partitioning key
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1308,7 +1308,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3839)
+ERROR:  no partition for partitioning key
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- Same test with append only
@@ -1347,7 +1347,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3839)
+ERROR:  no partition for partitioning key
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- complain if create table as select (CTAS)
@@ -2114,7 +2114,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3839)  (seg0 localhost:11002 pid=37400)
+ERROR:  no partition for partitioning key
 select * from d;
  i | j  
 ---+----
@@ -2213,7 +2213,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3839)  (seg0 localhost:11002 pid=37400)
+ERROR:  no partition for partitioning key
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2253,10 +2253,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3839)  (seg0 localhost:11002 pid=37400)
+ERROR:  no partition for partitioning key
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3839)  (seg0 localhost:11002 pid=37400)
+ERROR:  no partition for partitioning key
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -3360,7 +3360,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key (execMain.c:3839)  (seg1 localhost:11003 pid=37454)
+ERROR:  no partition for partitioning key
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 

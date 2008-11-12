@@ -2097,6 +2097,15 @@ else \
 	bool	errmsg_is_a_copy = false; \
 	cur_row_rejected = true; \
 \
+	/* SREH must only handle data errors. all other errors must not be caught */\
+	if(ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
+	{\
+		/* re-throw error and abort */ \
+		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+			cdbCopyEnd(cdbCopy); \
+		PG_RE_THROW(); \
+	}\
+\
 	/* save a copy of the error info */ \
 	oldcontext = MemoryContextSwitchTo(cstate->cdbsreh->badrowcontext);\
 	edata = CopyErrorData();\
