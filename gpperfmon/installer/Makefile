@@ -53,8 +53,7 @@ all:
 	cp $(GPMON_DIR)/gpmon_catqrynow.py .tmp/lib
 	cp $(GPMON_DIR)/gpperfmon.sql .tmp
 	cp -R $(GPMONWS_DIR)/* .tmp/www
-# TODO: Web UI files need to be copied.
-#	cp -R $(GPMONUI_DIR)/* .tmp/www/static
+	cp -R $(GPMONUI_DIR)/bin-release/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
 	cp $(GPMONDOCS_DIR)/GPMonGuide.pdf .tmp/docs
 	cp $(GPMONDOCS_DIR)/GPMon_2000_README.pdf .tmp/docs
