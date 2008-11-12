@@ -199,9 +199,21 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 
 		/* sanity check */
 		if (tcSize > Gp_max_packet_size)
+		{
+			/*
+			 * MPP-4010: add some extra debugging.
+			 */
+			if (lastTcItem != NULL)
+				elog(LOG, "Interconnect error parsing message: last item length %d inplace %p", lastTcItem->chunk_length, lastTcItem->inplace);
+			else
+				elog(LOG, "Interconnect error parsing message: no last item");
+
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error parsing message"),
-							errdetail("tcSize %d > max %d", tcSize, Gp_max_packet_size)));
+							errdetail("tcSize %d > max %d header %d processed %d/%d from %p",
+									  tcSize, Gp_max_packet_size,
+									  TUPLE_CHUNK_HEADER_SIZE, bytesProcessed, conn->msgSize, conn->msgPos)));
+		}
 			
 
 		/* we only check for interrupts here when we don't have a guaranteed full-message */
