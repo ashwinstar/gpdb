@@ -1847,7 +1847,7 @@ cdbgang_parse_gpqeid_params(struct Port *port __attribute__((unused)) , const ch
 	return;
 
 bad:
-	elog(FATAL, "QE dispatched with invalid option: 'gpqeid=%s'", gpqeid_value);
+	elog(FATAL, "Segment dispatched with invalid option: 'gpqeid=%s'", gpqeid_value);
 }	/* cdbgang_parse_gpqeid_params */
 
 
@@ -1891,7 +1891,7 @@ cdbgang_parse_gpqdid_params(struct Port *port __attribute__((unused)) , const ch
 	return;
 
 bad:
-	elog(FATAL, "QD callback dispatched with invalid option: 'gpqdid=%s'", gpqdid_value);
+	elog(FATAL, "Master callback dispatched with invalid option: 'gpqdid=%s'", gpqdid_value);
 }	/* cdbgang_parse_gpqdid_params */
 
 void
@@ -2756,11 +2756,11 @@ getCdbProcessList(Gang *gang, int sliceIndex)
 
 			if (qeinfo == NULL)
 			{
-				elog(ERROR, "getCdbProcessList: a required QE is unexpectedly unavailable");
+				elog(ERROR, "getCdbProcessList: a required segment is unexpectedly unavailable");
 			}
 			else if (qeinfo->hostip == NULL)
 			{
-				elog(ERROR, "getCdbProcessList: a required QE-ip is unexpectedly unavailable");
+				elog(ERROR, "getCdbProcessList: a required segment-ip is unexpectedly unavailable");
 			}
 
 			/*
@@ -2847,7 +2847,7 @@ getCdbProcessesForQD(int isPrimary)
 	Assert((Gp_role == GP_ROLE_DISPATCH) && Gp_is_primary);
 	if (!isPrimary)
 	{
-		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
+		elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process");
 	}
 
 	if (cdb_component_dbs == NULL)

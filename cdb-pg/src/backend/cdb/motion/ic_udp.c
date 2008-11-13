@@ -1870,7 +1870,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 				pthread_mutex_unlock(&rx_thread_mutex);
 
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error QD lost contact with QE")));
+								errmsg("Interconnect error master lost contact with segment.")));
 
 				/* not reached */
 				return NULL;
@@ -1892,10 +1892,10 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 			{
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-									errmsg("Interconnect error QE lost contact with QD (recv)")));
+									errmsg("Interconnect error segment lost contact with master (recv)")));
 				else
 					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-									errmsg("Interconnect error QD lost contact with client (recv)")));
+									errmsg("Interconnect error master lost contact with client (recv)")));
 			}
 		}
 
@@ -2262,7 +2262,7 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		{
 			if (!dispatcherAYT())
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error QE lost contact with QD (xmit)")));
+								errmsg("Interconnect error segment lost contact with master (xmit)")));
 		}
 
 		timeout = Max(1, timeout);

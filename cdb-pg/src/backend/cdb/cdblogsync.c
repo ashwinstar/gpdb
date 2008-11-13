@@ -670,7 +670,7 @@ parseCmd(const char *cmd)
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("QDSYNC: invalid command '%s'", cmd),
-				 errhint("Failover-QD needs to be 'activated' before issuing queries")));
+				 errhint("Failover-master needs to be 'activated' before issuing queries")));
 
 }
 

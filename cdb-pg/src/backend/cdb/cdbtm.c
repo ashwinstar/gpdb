@@ -279,31 +279,31 @@ char* DtxContextToString(DtxContext context)
 		return "Local Only";
 		
 	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-		return "QD Distributed-Capable";
+		return "Master Distributed-Capable";
 
 	case DTX_CONTEXT_QD_RETRY_PHASE_2:
-		return "QD Retry Phase 2";
+		return "Master Retry Phase 2";
 
 	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-		return "QE Entry DB Singleton";
+		return "Segment Entry DB Singleton";
 		
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-		return "QE Auto-Commit Implicit";
+		return "Segment Auto-Commit Implicit";
 		
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-		return "QE Two-Phase Explicit Writer";
+		return "Segment Two-Phase Explicit Writer";
 		
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-		return "QE Two-Phase Implicit Writer";
+		return "Segment Two-Phase Implicit Writer";
 		
 	case DTX_CONTEXT_QE_READER:
-		return "QE Reader";
+		return "Segment Reader";
 		
 	case DTX_CONTEXT_QE_PREPARED:
-		return "QE Prepared";
+		return "Segment Prepared";
 		
 	case DTX_CONTEXT_QE_FINISH_PREPARED:
-		return "QE Finish Prepared";
+		return "Segment Finish Prepared";
 		
 	default:
 		return "Unknown";
