@@ -888,6 +888,16 @@ KillAndReadBuffer(Buffer buffer,
 	}
 
 	/* now, invalidate the buffer, but don't put on freelist */
+	/* XXX MPP-4192. Pass down a flag saying we will not spin.  
+	 * In vanilla postgres the InvalidateBuffer assumes that the only case that 
+	 * someone else is holding a refcount on the buffer is that the other guy 
+	 * is flushing.  Therefore, it spins, to wait to become the sole owner and 
+	 * then it can invalidate the buffer.  Here is greenplum code,
+	 * which invalidate a buffer aggressively during scan.  In case of a 
+	 * some other process is blocked by a Motion (so the other guy will hold a
+	 * ref count but will not progress), the spin can possibly cause a 
+	 * dead lock.
+	 */
 	if (! InvalidateBuffer(bufHdr, false, false)) /* this will unlock bufhdr */
 		return ReadBuffer(relation, blockNum);
 
