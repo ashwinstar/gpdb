@@ -3150,10 +3150,10 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 	if (!pthread_equal(main_tid, pthread_self()))
 	{
 #ifndef _WIN32
-		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
+		write_stderr("\nUnexpected internal error: Master %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
 					 MyProcPid, postgres_signal_arg, (unsigned long)pthread_self());
 #else
-		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
+		write_stderr("\nUnexpected internal error: Master %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
 					 MyProcPid, postgres_signal_arg, (unsigned long)pthread_self().p);
 #endif 
 		/* Only forward if the main thread isn't quick-dying. */
@@ -3198,9 +3198,9 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
     }
 
     if (Gp_role == GP_ROLE_DISPATCH)
-        pts = "QD process";
+        pts = "Master process";
     else if (Gp_role == GP_ROLE_EXECUTE)
-        pts = "QE process";
+        pts = "Segment process";
     else if (Gp_role == GP_ROLE_DISPATCHAGENT)
     	pts = "DA process";
     else

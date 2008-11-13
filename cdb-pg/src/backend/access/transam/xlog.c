@@ -1781,7 +1781,7 @@ XLogQDMirrorCatchup(XLogRecPtr *flushedLocation)
 	connected = WalSendServerClientConnect(/* complain */ true);
 	if (!connected)
 	{
-		elog(LOG, "disabling QD mirroring (cannot connect to WAL Send server)");
+		elog(LOG, "disabling master mirroring (cannot connect to WAL Send server)");
 
 		return false;
 	}
@@ -1807,13 +1807,13 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 	WalSendRequest walSendRequest;
 	bool successful;
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Master mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
 		 startidx, npages, timeLineID, logId, logSeg, logOff);
 
 	if (!QDMirroringWriteCheck())
 	{
 		if (Debug_print_qd_mirroring)
-			elog(LOG,"Skipping QD mirroring -- not enabled");
+			elog(LOG,"Skipping master mirroring -- not enabled");
 		return;
 	}
 	connected = WalSendServerClientConnect(/* complain */ true);
@@ -1859,14 +1859,14 @@ XLogQDMirrorFlush(void)
 	WalSendRequest walSendRequest;
 	bool successful;
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring FlushWalPages");
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Master mirroring FlushWalPages");
 
 	FtsCheckReadyToSend(&ready, 
 		                &haveNewCheckpointLocation, &newCheckpointLocation);
 	if (!ready)
 	{
 		if (Debug_print_qd_mirroring)
-			elog(LOG,"Skipping QD mirroring -- not enabled");
+			elog(LOG,"Skipping master mirroring -- not enabled");
 		return;
 	}
 	connected = WalSendServerClientConnect(/* complain */ true);
@@ -1905,19 +1905,19 @@ XLogQDMirrorCloseForShutdown(void)
 	WalSendRequest walSendRequest;
 	bool successful;
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring CloseForShutdown");
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Master mirroring CloseForShutdown");
 
 	if (isQDMirroringNotConfigured() ||
 		isQDMirroringNotKnownYet())
 	{
 		if (Debug_print_qd_mirroring)
-			elog(LOG,"Skipping QD mirroring -- not configured or known");
+			elog(LOG,"Skipping master mirroring -- not configured or known");
 		return;
 	}
 	if (isQDMirroringDisabled())
 	{
 		if (Debug_print_qd_mirroring)
-			elog(LOG,"Skipping QD mirroring -- disabled");
+			elog(LOG,"Skipping master mirroring -- disabled");
 		return;
 	}
 	connected = WalSendServerClientConnect(/* complain */ false);
@@ -1949,7 +1949,7 @@ XLogQDMirrorCloseForShutdown(void)
 		return;
 	}
 	
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Successful QD mirroring CloseForShutdown");
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Successful master mirroring CloseForShutdown");
 }
 
 
@@ -2619,7 +2619,7 @@ XLogFileCopy(uint32 log, uint32 seg,
 
 	unlink(tmppath);
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD Mirroring: copying xlog file '%s' to '%s'",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Master Mirroring: copying xlog file '%s' to '%s'",
 		 path, tmppath);
 	
 	/* do not use XLOG_SYNC_BIT here --- want to fsync only at end of fill */

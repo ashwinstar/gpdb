@@ -625,7 +625,7 @@ LockAcquire(const LOCKTAG *locktag,
 		else if (gp_enable_functions && gp_is_callback && gp_qd_proc_offset!=-1 && Gp_role == GP_ROLE_DISPATCH)
 		{
 			lockHolderProcPtr = (PGPROC *)MAKE_PTR(gp_qd_proc_offset);
-			elog(DEBUG1,"QD callback trying to acquire a lock [%u,%u] %s %d",
+			elog(DEBUG1,"Master callback trying to acquire a lock [%u,%u] %s %d",
 					 locktag->locktag_field1, locktag->locktag_field2,
 					 lock_mode_names[lockmode], (int)locktag->locktag_type);
 			
