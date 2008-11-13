@@ -3418,12 +3418,12 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 				if (!haveDistributedSnapshot)
 				{
 					elog((Debug_print_full_dtm ? LOG : DEBUG5),
-						 "setupQEDtxContext QE Writer is involved in a distributed transaction without a distributed snapshot...");
+						 "setupQEDtxContext Segment Writer is involved in a distributed transaction without a distributed snapshot...");
 				}
 			
 				if (IsTransactionOrTransactionBlock())
 				{
-					elog(ERROR, "Starting an explict distributed transaction in QE -- cannot already be in a transaction");
+					elog(ERROR, "Starting an explict distributed transaction in segment -- cannot already be in a transaction");
 				}
 
 				if (explicitBegin)
@@ -3448,7 +3448,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 				if (IsTransactionOrTransactionBlock())
 				{
 					elog(ERROR,
-						 "Going to start a local implicit transaction in QE using a distribute "
+						 "Going to start a local implicit transaction in segment using a distribute "
 						 "snapshot -- cannot already be in a transaction");
 				}
 
@@ -3510,7 +3510,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 			break;
 		
 		default:
-			elog(PANIC, "Unexpected QE distribute transaction context value: %d",
+			elog(PANIC, "Unexpected segment distribute transaction context value: %d",
 				 (int) DistributedTransactionContext);
 			break;
 	}
@@ -3733,7 +3733,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 						  DistributedTransactionId gxid __attribute__((unused)) )
 {
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "performDtxProtocolCommand called with DTX protocol = %s, QE distribute transaction context: '%s'",
+		 "performDtxProtocolCommand called with DTX protocol = %s, segment distribute transaction context: '%s'",
 		 DtxProtocolCommandToString(dtxProtocolCommand), DtxContextToString(DistributedTransactionContext));
 	
 	switch (dtxProtocolCommand)
@@ -3769,11 +3769,11 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 				case DTX_CONTEXT_QE_FINISH_PREPARED:
 				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 				case DTX_CONTEXT_QE_READER:
-					elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+					elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
 						 DtxContextToString(DistributedTransactionContext));
 
 				default:
-					elog(PANIC, "Unexpected QE distribute transaction context value: %d",
+					elog(PANIC, "Unexpected segment distribute transaction context value: %d",
 						 (int) DistributedTransactionContext);
 					break;
 			}
@@ -3803,11 +3803,11 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 				case DTX_CONTEXT_QD_RETRY_PHASE_2:
 				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 				case DTX_CONTEXT_QE_READER:
-					elog(PANIC, "Unexpected QE distribute transaction context: '%s'",
+					elog(PANIC, "Unexpected segment distribute transaction context: '%s'",
 						 DtxContextToString(DistributedTransactionContext));
 
 				default:
-					elog(PANIC, "Unexpected QE distribute transaction context value: %d",
+					elog(PANIC, "Unexpected segment distribute transaction context value: %d",
 						 (int) DistributedTransactionContext);
 					break;
 			}
@@ -3816,7 +3816,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_COMMIT_PREPARED:
 			if (DistributedTransactionContext != DTX_CONTEXT_QE_PREPARED)
 			{
-				elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+				elog(FATAL, "Expected segment distribute transaction context to be '%s', found '%s'",
 					 DtxContextToString(DTX_CONTEXT_QE_PREPARED),
 					 DtxContextToString(DistributedTransactionContext));
 			}
@@ -3827,7 +3827,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
 			if (DistributedTransactionContext != DTX_CONTEXT_QE_PREPARED)
 			{
-				elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+				elog(FATAL, "Expected segment distribute transaction context to be '%s', found '%s'",
 					 DtxContextToString(DTX_CONTEXT_QE_PREPARED),
 					 DtxContextToString(DistributedTransactionContext));
 			}
@@ -3839,7 +3839,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
 			if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
 			{
-				elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+				elog(FATAL, "Expected segment distribute transaction context to be '%s', found '%s'",
 					 DtxContextToString(DTX_CONTEXT_LOCAL_ONLY),
 					 DtxContextToString(DistributedTransactionContext));
 			}
@@ -3851,7 +3851,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
 			if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
 			{
-				elog(FATAL, "Expected QE distribute transaction context to be '%s', found '%s'",
+				elog(FATAL, "Expected segment distribute transaction context to be '%s', found '%s'",
 					 DtxContextToString(DTX_CONTEXT_LOCAL_ONLY),
 					 DtxContextToString(DistributedTransactionContext));
 			}

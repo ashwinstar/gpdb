@@ -2782,7 +2782,7 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 	{
 #if 0
 		if (log_min_messages >= DEBUG1)
-		write_log("%s -> Collected QE Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
+		write_log("%s -> Collected Segment Writer transaction info (segment %d (%s), DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s) \n", 
 			segdbDesc->whoami,
 			segdbDesc->segment_database_info->segindex,
 			(segdbDesc->segment_database_info->isprimary ? "primary" : "mirror"),

@@ -664,7 +664,7 @@ GetDistributedSnapshotMaxCount(void)
 			return max_prepared_xacts;		// UNDONE: For now?
 	
 	case DTX_CONTEXT_QE_PREPARED:
-		elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+		elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
 			 DtxContextToString(DistributedTransactionContext));
 		break;
 	
@@ -762,7 +762,7 @@ FillInDistributedSnapshot(Snapshot snapshot)
 		break;
 	
 	case DTX_CONTEXT_QE_PREPARED:
-		elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+		elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
 			 DtxContextToString(DistributedTransactionContext));
 		break;
 	
@@ -1297,7 +1297,7 @@ void UpdateSerializableCommandId(void)
 		}
 
 		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
-			 "[Distributed Snapshot #%u] *Update Serializable Command Id* QE currcid = %d, QDcid = %d, SerializableSnapshot currcid = %d, Shared currcid = %d (gxid = %u, '%s')", 
+			 "[Distributed Snapshot #%u] *Update Serializable Command Id* segment currcid = %d, QDcid = %d, SerializableSnapshot currcid = %d, Shared currcid = %d (gxid = %u, '%s')", 
 		 	  QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
 		 	  QEDtxContextInfo.curcid,
 		 	  SharedLocalSnapshotSlot->QDcid,

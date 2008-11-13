@@ -823,7 +823,7 @@ cdbCopyEnd(CdbCopy *c)
 
 				if (PQresultStatus(res) == PGRES_COPY_OUT)
 				{
-					elog(LOG,"QE still in copy out, cleaning retrying the putCopyEnd");
+					elog(LOG,"Segment still in copy out, cleaning retrying the putCopyEnd");
 					result = PQputCopyEnd(q->conn, NULL);
 				}
 

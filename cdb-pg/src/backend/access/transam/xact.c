@@ -570,7 +570,7 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON))
 	{
 #ifdef WATCH_VISIBILITY_IN_ACTION
-		count += sprintf(&WatchCurrentTransactionBuffer[count]," QE Reader or QE Entry DB singleton");
+		count += sprintf(&WatchCurrentTransactionBuffer[count]," Segment Reader or Segment Entry DB singleton");
 #endif
         /*
 		 * Naively, it seems like these should be Asserts()
@@ -1338,7 +1338,7 @@ RecordSubTransactionCommit(void)
 		case DTX_CONTEXT_QD_RETRY_PHASE_2:
 		case DTX_CONTEXT_QE_FINISH_PREPARED:
 		case DTX_CONTEXT_QE_PREPARED:
-			elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+			elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
 				 DtxContextToString(DistributedTransactionContext));
 			break;
 		
@@ -2208,7 +2208,7 @@ StartTransaction(void)
 		break;
 	
 	case DTX_CONTEXT_QE_PREPARED:
-		elog(FATAL, "Unexpected QE distribute transaction context: '%s'",
+		elog(FATAL, "Unexpected segment distribute transaction context: '%s'",
 			 DtxContextToString(DistributedTransactionContext));
 		break;
 	
@@ -2287,7 +2287,7 @@ CommitTransaction(void)
 
 
 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
-		elog(DEBUG1,"CommitTransaction: called as QE Reader");
+		elog(DEBUG1,"CommitTransaction: called as segment Reader");
 	
 	/*
 	 * Do pre-commit processing (most of this stuff requires database access,
@@ -3222,7 +3222,7 @@ CommitTransactionCommand(void)
 	TransactionState s = CurrentTransactionState;
 
 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
-		elog(DEBUG1,"CommitTransactionCommand: called as QE Reader in state %s",
+		elog(DEBUG1,"CommitTransactionCommand: called as segment Reader in state %s",
 		     BlockStateAsString(s->blockState));
 	
 	switch (s->blockState)

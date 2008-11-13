@@ -1229,7 +1229,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		if (p->QEWriter_Dirty)
 		{
 			if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
-				elog(NOTICE,"First QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
+				elog(NOTICE,"First segment reported it is dirty, but segment DtxContextInfo doesn't have a distributed xid");
 			
 			/*
 			 * Don't mark our local transaction dirty, because this slows us down
@@ -1403,7 +1403,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					if (p->QEWriter_Dirty)
 					{
 						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
-										elog(NOTICE,"a Primary QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
+										elog(NOTICE,"a Primary segment reported it is dirty, but segment DtxContextInfo doesn't have a distributed xid");
 
 						/*
 						 * Don't mark our local transaction dirty, because this slows us down
@@ -1481,7 +1481,7 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 					if (p->QEWriter_Dirty)
 					{
 						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
-							elog(NOTICE,"Mirror QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
+							elog(NOTICE,"Mirror segment reported it is dirty, but segment DtxContextInfo doesn't have a distributed xid");
 
 						/*
 						 * Don't mark our local transaction dirty, because this slows us down
