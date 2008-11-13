@@ -664,7 +664,7 @@ BufferAlloc(Relation reln,
  * about this buf.
  */
 static bool
-InvalidateBuffer(volatile BufferDesc *buf, bool putInFreeList)
+InvalidateBuffer(volatile BufferDesc *buf, bool putInFreeList, bool spin)
 {
 	BufferTag	oldTag;
 	uint32		oldHash;		/* hash value for oldTag */
@@ -719,8 +719,14 @@ retry:
 		/* safety check: should definitely not be our *own* pin */
 		if (PrivateRefCount[buf->buf_id] != 0)
 			elog(ERROR, "buffer is pinned in InvalidateBuffer");
-		WaitIO(buf);
-		goto retry;
+
+		if(spin)
+		{
+			WaitIO(buf);
+			goto retry;
+		}
+		else
+			return false;
 	}
 
 	/*
@@ -882,7 +888,7 @@ KillAndReadBuffer(Buffer buffer,
 	}
 
 	/* now, invalidate the buffer, but don't put on freelist */
-	if (! InvalidateBuffer(bufHdr, false)) /* this will unlock bufhdr */
+	if (! InvalidateBuffer(bufHdr, false, false)) /* this will unlock bufhdr */
 		return ReadBuffer(relation, blockNum);
 
 	/* reuse the freed buffer to read the new page if possible */
@@ -1585,7 +1591,7 @@ DropRelFileNodeBuffers(RelFileNode rnode, bool isLocalBuf,
 		LockBufHdr(bufHdr);
 		if (RelFileNodeEquals(bufHdr->tag.rnode, rnode) &&
 			bufHdr->tag.blockNum >= firstDelBlock)
-			InvalidateBuffer(bufHdr, true);	/* releases spinlock */
+			InvalidateBuffer(bufHdr, true, true);	/* releases spinlock */
 		else
 			UnlockBufHdr(bufHdr);
 	}
@@ -1618,7 +1624,7 @@ DropDatabaseBuffers(Oid dbid)
 		bufHdr = &BufferDescriptors[i];
 		LockBufHdr(bufHdr);
 		if (bufHdr->tag.rnode.dbNode == dbid)
-			InvalidateBuffer(bufHdr, true);	/* releases spinlock */
+			InvalidateBuffer(bufHdr, true, true);	/* releases spinlock */
 		else
 			UnlockBufHdr(bufHdr);
 	}
