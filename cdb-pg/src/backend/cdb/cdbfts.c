@@ -731,7 +731,7 @@ enableQDMirroring(char *message, char *detail)
 			LWLockRelease(ftsQDMirrorLock);
 			
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
-				 "QD mirroring already disabled");
+				 "Master mirroring already disabled");
 			return;
 		}
 		else
@@ -741,7 +741,7 @@ enableQDMirroring(char *message, char *detail)
 			LWLockRelease(ftsQDMirrorLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("Unexpected QD Mirror state '%s'",
+					 errmsg("Unexpected master mirror state '%s'",
 						    QDMirroringStateToString(state))));
 		}
 	}
@@ -1730,7 +1730,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	if (len >= sizeof(ftsQDMirrorInfo->name))
 	{
 		LWLockRelease(ftsQDMirrorLock);
-		elog(ERROR, "hostname too long for fts QD mirror configuration storage");
+		elog(ERROR, "hostname too long for fts master mirror configuration storage");
 	}
 	memcpy(ftsQDMirrorInfo->name, dbinfo->hostname, len);
 	ftsQDMirrorInfo->name[len] = 0;
@@ -1777,7 +1777,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 			LWLockRelease(ftsQDMirrorLock);
 			
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
-				 "QD mirroring already disabled (connecting)");
+				 "Master mirroring already disabled (connecting)");
 			return;
 		}
 		else
@@ -1811,7 +1811,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 			LWLockRelease(ftsQDMirrorLock);
 			
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
-				 "QD mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
+				 "Master mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
 			return;
 		}
 		else
@@ -1819,14 +1819,14 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 			QDMIRRORState state = ftsQDMirrorInfo->state;
 			
 			LWLockRelease(ftsQDMirrorLock);
-			elog(ERROR,"Unexpected QD Mirror state '%s'",
+			elog(ERROR,"Unexpected master mirror state '%s'",
 				 QDMirroringStateToString(state));
 		}
 	}
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHUPPENDING;
 	LWLockRelease(ftsQDMirrorLock);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
-		 "positioning QD mirror to end complete -- next step is catch-up");
+		 "positioning master mirror to end complete -- next step is catch-up");
 }
 
 /*
@@ -1873,7 +1873,7 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 			LWLockRelease(ftsQDMirrorLock);
 			
 			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
-				 "QD mirroring already disabled (request Catchup -- could not send to WAL Send server)");
+				 "Master mirroring already disabled (request Catchup -- could not send to WAL Send server)");
 			return;
 		}
 		else
@@ -1881,14 +1881,14 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 			QDMIRRORState state = ftsQDMirrorInfo->state;
 			
 			LWLockRelease(ftsQDMirrorLock);
-			elog(ERROR,"Unexpected QD Mirror state '%s'",
+			elog(ERROR,"Unexpected master mirror state '%s'",
 				 QDMirroringStateToString(state));
 		}
 	}
 	
 	LWLockRelease(ftsQDMirrorLock);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
-		 "finished catching up QD mirror");
+		 "finished catching up master mirror");
 }
 
 /*
@@ -1993,11 +1993,11 @@ FtsDumpQDMirrorInfo(void)
 	if (!isQDMirroringEnabled() ||
 		ftsQDMirrorInfo->name[0] == 0 || ftsQDMirrorInfo->port == 0)
 	{
-		elog(LOG, "QD mirroring not enabled");
+		elog(LOG, "Master mirroring not enabled");
 		return;
 	}
 
-	elog(LOG, "QD mirror active name (%s:%d), port %d",
+	elog(LOG, "Master mirror active name (%s:%d), port %d",
 		 ftsQDMirrorInfo->name, 
 		 (int)strlen(ftsQDMirrorInfo->name), 
 		 ftsQDMirrorInfo->port);

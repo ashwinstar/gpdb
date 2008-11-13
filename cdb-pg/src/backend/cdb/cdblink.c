@@ -163,7 +163,7 @@ buildMirrorQDDefinition(void)
 	
 	if (cdb_component_dbs->total_entry_dbs <= 1)
 	{
-		elog(LOG, "no QD mirroring standby configuration found");
+		elog(LOG, "no master mirroring standby configuration found");
 		FtsSetNoQDMirroring();
 		return;
 	}
@@ -202,7 +202,7 @@ buildMirrorQDDefinition(void)
 		 * mirror, we don't want to connect to ourselves! So we
 		 * turn off mirroring after issuing a 'NOTICE' message.
 		 */			
-		elog(LOG, "QD mirror active, don't connect to self.");
+		elog(LOG, "Master mirror active, don't connect to self.");
 		FtsSetNoQDMirroring();
 		return;
 	}
@@ -247,7 +247,7 @@ buildQDMirrorFromShmem(void)
 	/* connect to mirrored QD */
 	if (!cdblink_connectQD(cdb_mirrored_entry_db))
 	{
-		elog(ERROR, "QD mirroring connect failed for entry db. %s",
+		elog(ERROR, "Master mirroring connect failed for entry db. %s",
 			 cdb_mirrored_entry_db->error_message.data);
 
 		cdb_mirrored_entry_db->errcode = 0;
@@ -311,7 +311,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 			/* did we successfully rebuild from shmem cache ? */
 			if (cdb_mirrored_entry_db == NULL)
 			{
-				elog(ERROR, "no QD mirror");
+				elog(ERROR, "No master mirror");
 			}
 			/* we were able to rebuild the mirror entry from our shared-memory cache */
 		}
@@ -320,7 +320,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 
 		if (PQstatus(conn) != CONNECTION_OK)
 		{
-			elog(ERROR, "QD mirror connection failed");
+			elog(ERROR, "Master mirror connection failed");
 		}
 
 		if (PQsendQuery(conn, cmd) == 0)
@@ -518,7 +518,7 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 		if (!segdbDesc->errcode)
 			segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
 		appendPQExpBuffer(&segdbDesc->error_message,
-						  "QD unable to connect to %s with options %s: %s\n",
+						  "Master unable to connect to %s with options %s: %s\n",
 						  q->hostname,
 						  buffer.data,
 						  PQerrorMessage(segdbDesc->conn));
@@ -533,7 +533,7 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 	 */
 	else
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "Connected to mirror-QD %s with options %s\n",
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "Connected to mirror-master %s with options %s\n",
 			 q->hostname,
 			 buffer.data);
 	}

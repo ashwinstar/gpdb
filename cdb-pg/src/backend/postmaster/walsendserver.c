@@ -260,7 +260,7 @@ WalSendServer_ServiceShutdown(void)
 	{
 		disableQDMirroring_ShutDown();
 		if (disconnectMirrorQD_SendClose())
-			elog(LOG,"QD mirror disconnected");
+			elog(LOG,"Master mirror disconnected");
 	}
 	PG_CATCH();
 	{
@@ -528,11 +528,11 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 		}
 		else if (isQDMirroringDisabled())
 		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD Mirror Send: QD mirroring not catching-up (state is disabled)");
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Master Mirror Send: Master mirroring not catching-up (state is disabled)");
 		}
 		else
 		{
-			elog(ERROR,"unexpected QD mirroring state %s",
+			elog(ERROR,"unexpected master mirroring state %s",
 				 QDMirroringStateString());
 		}
 		
@@ -586,7 +586,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 			
 			if (Debug_print_qd_mirroring)
 				elog(LOG,
-					 "QD Mirror Send: WriteWalPages (%s) startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff 0x%X, nbytes 0x%X",
+					 "Master Mirror Send: WriteWalPages (%s) startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff 0x%X, nbytes 0x%X",
 					 (more ? "more" : "new"),
 					 walSendRequest->startidx,
 					 walSendRequest->npages,
@@ -651,7 +651,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					{
 						if (Debug_print_qd_mirroring)
 							elog(LOG,
-							     "Send to QD mirror successful.  New end location %s (old %s)",
+							     "Send to Master mirror successful.  New end location %s (old %s)",
 							     XLogLocationToString(&currentEndLocation),
 							     XLogLocationToString2(&oldEndLocation));
 					}
@@ -693,7 +693,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					                       NULL, &walsend_shutdown_requested);
 				if (successful)
 				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"Send of new checkpoint location to QD mirror successful");
+					elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"Send of new checkpoint location to master mirror successful");
 				}
 				else
 				{
@@ -707,11 +707,11 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
         }
 		else if (isQDMirroringDisabled())
 		{
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD Mirror Send: QD mirroring not enabled");
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Master Mirror Send: Master mirroring not enabled");
 		}
 		else
 		{
-			elog(ERROR,"unexpected QD mirroring state %s",
+			elog(ERROR,"unexpected master mirroring state %s",
 				 QDMirroringStateString());
 		}
 		

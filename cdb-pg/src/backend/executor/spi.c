@@ -2368,7 +2368,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 			if (PQsendGpQuery_shared(_QD_conn, (char *)query_text, query_text_len) == 0)
 			{
 				/* Note the error. */
-				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
+				elog(ERROR,"Command could not be sent to master %s", PQerrorMessage(_QD_conn));
 			}
 	
 			free(query_text);  /* allocted with malloc, so use free  */
@@ -2453,7 +2453,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
                          0 /*resultFormat*/) )
             {
             	/* Note the error. */
-				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
+				elog(ERROR,"Command could not be sent to master %s", PQerrorMessage(_QD_conn));
             }  
 		}
            
