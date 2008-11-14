@@ -2275,6 +2275,7 @@ _outPartitionNode(StringInfo str, PartitionNode *node)
 	WRITE_NODE_TYPE("PARTITIONNODE");
 
 	WRITE_NODE_FIELD(part);
+	WRITE_NODE_FIELD(default_part);
 	WRITE_NODE_FIELD(rules);
 }
 

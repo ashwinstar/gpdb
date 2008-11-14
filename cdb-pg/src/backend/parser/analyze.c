@@ -224,8 +224,6 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 char *exprBuf,
 		 Node *pWhere							
 		);
-static Node *coerce_partition_value(Node *node, Oid typid, int32 typmod,
-									 PartitionByType partype);
 
 /*
  * parse_analyze
@@ -5238,7 +5236,7 @@ L_setprevElem:
 	vstate->prevElem = vstate->pElem;
 }
 
-static Node *
+Node *
 coerce_partition_value(Node *node, Oid typid, int32 typmod,
 					   PartitionByType partype)
 {
@@ -6841,13 +6839,10 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 	/* see if there are any duplicate column references */
-	pcolcxt.cols = NIL;
-	pcolcxt.pstate = pstate;
-
 	if (0) /* MPP-3988: allow same column in multiple partitioning
 			* keys at different levels */
 		partition_col_walker((Node *)pBy, &pcolcxt);
-	
+
 	if (pBy->partType == PARTTYP_HASH)
 	{
 
@@ -9272,11 +9267,11 @@ transformAlterTable_all_PartitionStmt(
 	PartitionNode 		*prevNode  = NULL;
 	int 			 	 partDepth = 0;
 	Oid 			 	 par_oid   = InvalidOid;
+	StringInfoData   sid1, sid2;
 
 	if (atc1->subtype == AT_PartAlter)
 	{
 		PgPartRule* 	 prule = NULL;
-		StringInfoData   sid1, sid2;
 		char 			*lrelname;
 		Relation 		 rel   = heap_openrv(rv, AccessShareLock);
 		
@@ -9417,162 +9412,7 @@ transformAlterTable_all_PartitionStmt(
 						(Node *)transformExpressionList(
 								pstate, vallist);
 			}
-			if (atc1->subtype == AT_PartSplit)
-			{
-				bool rollup_vals = false;
-				AlterPartitionId *pid = (AlterPartitionId *) pci->partid;
-				ListCell *l;
-				Relation rel = heap_openrv(rv, AccessShareLock);
-				bool is_at = true;
-				List *todo;
-				PgPartRule *prule = get_part_rule(rel, pid, true, true,
-												  CurrentMemoryContext, NULL,
-												  false);
-				
-				if (linitial((List *)pci->arg1))
-					is_at = false;
-
-				if (prule->topRule->parisdefault &&
-					prule->pNode->part->parkind == 'r' &&
-					is_at)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("AT clause cannot be used when splitting "
-									"a default RANGE partition")));
-				}
-				else if (prule->pNode->part->parkind == 'l' && !is_at)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("cannot SPLIT DEFAULT PARTITION "
-									"with LIST"),
-							 errhint("Use SPLIT with the AT clause instead.")));
-
-				}
-
-				if (prule->pNode->part->parkind == 'h')
-					ereport(ERROR,
-							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-							 errmsg("SPLIT is not supported for HASH partitions")));
-			
-				
-
-				todo = (List *)pci->arg1;
-
-				pci->arg1 = (Node *)NIL;
-				foreach(l, todo)
-				{
-					List *l1;
-					ListCell *lc;
-					Node *t = lfirst(l);
-
-					if (!t)
-					{
-						pci->arg1 = (Node *)lappend((List *)pci->arg1, NULL);
-						continue;
-					}
-					else if (is_at)
-						l1 = (List *)t;
-					else if (!is_at)
-					{
-						Node *n = t;
-						PartitionRangeItem *ri = (PartitionRangeItem *)n;
-
-						Assert(IsA(n, PartitionRangeItem));
-
-						l1 = ri->partRangeVal;
-					}
-
-					if (prule->pNode->part->parkind == 'r' ||
-						IsA(linitial(l1), A_Const))
-					{
-						List *new = NIL;
-						ListCell *lc;
-	
-						foreach(lc, l1)
-							new = lappend(new, list_make1(lfirst(lc)));
-	
-						l1 = new;
-						rollup_vals = true;
-					}
-	
-					foreach(lc, l1)
-					{
-						List *vals = lfirst(lc);
-						ListCell *lc2;
-						int i = 0;
-	
-						if (prule->pNode->part->parnatts != list_length(vals))
-						{
-							AttrNumber parnatts = prule->pNode->part->parnatts;
-							int location = parse_expr_location((Expr *)linitial(vals));
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("partition being split has %i column%s but parameter has %i column%s",
-											parnatts,
-											parnatts > 1 ? "s" : "", 
-											list_length(vals),
-											list_length(vals) > 1 ? "s" : ""),
-											parser_errposition(pstate, location)));
-						}
-	
-						vals = (List *)transformExpressionList(pstate, vals);
-	
-						foreach(lc2, vals)
-						{
-							Node *n = lfirst(lc2);
-							AttrNumber attnum = prule->pNode->part->paratts[i];
-							Oid typid = rel->rd_att->attrs[attnum - 1]->atttypid;
-							int32 typmod = rel->rd_att->attrs[attnum - 1]->atttypmod;
-							char parkind = prule->pNode->part->parkind;
-							PartitionByType t = (parkind == 'r') ?
-												 PARTTYP_RANGE : PARTTYP_LIST;
-	
-							n = coerce_partition_value(n, typid, typmod, t);
-	
-							lfirst(lc2) = n;
-	
-							i++;
-						}
-						lfirst(lc) = vals;
-					}
-				
-					if (rollup_vals)
-					{
-						/* now, unroll */
-						if (prule->pNode->part->parkind == 'r')
-						{
-							List *new = NIL;
-							ListCell *lc;
-							Node *n;
-	
-							foreach(lc, l1)
-								new = lappend(new, linitial(lfirst(lc)));
-	
-							if (is_at)
-								n = (Node *)new;
-							else
-							{
-								PartitionRangeItem *ri = lfirst(l);
-
-								ri->partRangeVal = new;
-								n = (Node *)ri;
-							}
-							pci->arg1 = (Node *)lappend((List *)pci->arg1, n);
-						}
-						else
-						{
-							/* for LIST, leave it as is */
-							pci->arg1 = (Node *)lappend((List *)pci->arg1,
-														l1);
-						}
-					}
-				}
-
-				heap_close(rel, NoLock);
-			}
-			break;
+	break;
 		default:
 			break;
 	}

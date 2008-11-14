@@ -2514,8 +2514,75 @@ _copyPartitionBoundSpec(PartitionBoundSpec *from)
 	COPY_NODE_FIELD(partStart);
 	COPY_NODE_FIELD(partEnd);
 	COPY_NODE_FIELD(partEvery);
-//	COPY_NODE_FIELD(everyGenList);
 	COPY_SCALAR_FIELD(location);
+
+	return newnode;
+}
+
+static PgPartRule *
+_copyPgPartRule(PgPartRule *from)
+{
+	PgPartRule *newnode = makeNode(PgPartRule);
+
+	COPY_NODE_FIELD(pNode);
+	COPY_NODE_FIELD(topRule);
+	COPY_STRING_FIELD(partIdStr);
+	COPY_SCALAR_FIELD(isName);
+	COPY_SCALAR_FIELD(topRuleRank);
+	COPY_STRING_FIELD(relname);
+
+	return newnode;
+}
+
+static Partition *
+_copyPartition(Partition *from)
+{
+	Partition *newnode = makeNode(Partition);
+	
+	COPY_SCALAR_FIELD(partid);
+	COPY_SCALAR_FIELD(parrelid);
+	COPY_SCALAR_FIELD(parkind);
+	COPY_SCALAR_FIELD(parlevel);
+	COPY_SCALAR_FIELD(paristemplate);
+	COPY_SCALAR_FIELD(parnatts);
+	COPY_POINTER_FIELD(paratts, from->parnatts * sizeof(AttrNumber));
+	COPY_POINTER_FIELD(parclass, from->parnatts * sizeof(Oid));
+
+	return newnode;
+}
+
+static PartitionRule *
+_copyPartitionRule(PartitionRule *from)
+{
+	PartitionRule *newnode = makeNode(PartitionRule);
+
+	COPY_SCALAR_FIELD(parruleid);
+	COPY_SCALAR_FIELD(paroid);
+	COPY_SCALAR_FIELD(parchildrelid);
+	COPY_SCALAR_FIELD(parparentoid);
+	COPY_SCALAR_FIELD(parisdefault);
+	COPY_STRING_FIELD(parname);
+	COPY_NODE_FIELD(parrangestart);
+	COPY_SCALAR_FIELD(parrangestartincl);
+	COPY_NODE_FIELD(parrangeend);
+	COPY_SCALAR_FIELD(parrangeendincl);
+	COPY_NODE_FIELD(parrangeevery);
+	COPY_NODE_FIELD(parlistvalues);
+	COPY_SCALAR_FIELD(parruleord);
+	COPY_NODE_FIELD(parreloptions);
+	COPY_NODE_FIELD(children); /* sub partition */
+
+	return newnode;
+}
+
+static PartitionNode *
+_copyPartitionNode(PartitionNode *from)
+{
+	PartitionNode *newnode = makeNode(PartitionNode);
+
+	COPY_NODE_FIELD(part);
+	COPY_NODE_FIELD(default_part);
+	COPY_NODE_FIELD(rules);
 
 	return newnode;
 }
@@ -2583,7 +2650,6 @@ _copyDropStmt(DropStmt *from)
 	DropStmt   *newnode = makeNode(DropStmt);
 
 	COPY_NODE_FIELD(objects);
-	COPY_SCALAR_FIELD(removeType);
 	COPY_SCALAR_FIELD(behavior);
 	COPY_SCALAR_FIELD(missing_ok);
 	COPY_SCALAR_FIELD(bAllowPartn);
@@ -3844,6 +3910,18 @@ copyObject(void *from)
 			break;
 		case T_PartitionBoundSpec:
 			retval = _copyPartitionBoundSpec(from);
+			break;
+		case T_PgPartRule:
+			retval = _copyPgPartRule(from);
+			break;
+		case T_PartitionNode:
+			retval = _copyPartitionNode(from);
+			break;
+		case T_Partition:
+			retval = _copyPartition(from);
+			break;
+		case T_PartitionRule:
+			retval = _copyPartitionRule(from);
 			break;
 		case T_ExtTableTypeDesc:
 			retval = _copyExtTableTypeDesc(from);

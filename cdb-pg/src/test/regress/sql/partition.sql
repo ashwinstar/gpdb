@@ -2776,3 +2776,53 @@ create table list_test(a int, b int, c int) distributed by (a)
 alter table list_test drop column b;
 alter table list_test drop column c;
 drop table list_test;
+
+-- MPP-3678: allow exchange and split on tables with subpartitioning
+CREATE TABLE rank (
+id int,
+rank int,
+year int,
+gender char(1),
+count int ) 
+
+DISTRIBUTED BY (id)
+PARTITION BY LIST (gender)
+SUBPARTITION BY RANGE (year)
+SUBPARTITION TEMPLATE (
+SUBPARTITION year1 START (2001),
+SUBPARTITION year2 START (2002),
+SUBPARTITION year3 START (2003),
+SUBPARTITION year4 START (2004),
+SUBPARTITION year5 START (2005),
+SUBPARTITION year6 START (2006) END (2007) )
+(PARTITION girls VALUES ('F'),
+PARTITION boys VALUES ('M')
+);
+alter table rank alter partition girls add default partition gfuture;
+alter table rank alter partition boys add default partition bfuture;
+insert into rank values(1, 1, 2007, 'M', 1);
+insert into rank values(2, 2, 2008, 'M', 3);
+select * from rank;
+alter table rank alter partition boys split default partition start ('2007')
+end ('2008') into (partition bfuture, partition year7);
+select * from rank_1_prt_boys_2_prt_bfuture;
+select * from rank_1_prt_boys_2_prt_year7;
+select * from rank;
+
+--exchange test
+create table r (like rank);
+insert into rank values(3, 3, 2004, 'F', 100);
+insert into r values(3, 3, 2004, 'F', 100000);
+alter table rank alter partition girls exchange partition year4 with table r;
+select * from rank_1_prt_girls_2_prt_year4;
+select * from r;
+alter table rank alter partition girls exchange partition year4 with table r;
+select * from rank_1_prt_girls_2_prt_year4;
+select * from r;
+
+-- Split test
+alter table rank alter partition girls split default partition start('2008')
+  end('2020') into (partition years, partition gfuture);
+insert into rank values(4, 4, 2009, 'F', 100);
+drop table rank;
+drop table r;

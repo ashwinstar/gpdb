@@ -65,5 +65,6 @@ List *make_partition_rules(ParseState *pstate,
 						   int everyOffset, int maxEveryOffset,
 						   ListCell	**pp_lc_anp,
 						   bool doRuleStmt);
-
+Node *coerce_partition_value(Node *node, Oid typid, int32 typmod,
+							 PartitionByType partype);
 #endif   /* ANALYZE_H */

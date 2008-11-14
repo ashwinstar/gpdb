@@ -6059,3 +6059,117 @@ ERROR:  cannot drop partitioning column "b"
 alter table list_test drop column c;
 ERROR:  cannot drop partitioning column "c"
 drop table list_test;
+-- MPP-3678: allow exchange and split on tables with subpartitioning
+CREATE TABLE rank (
+id int,
+rank int,
+year int,
+gender char(1),
+count int ) 
+DISTRIBUTED BY (id)
+PARTITION BY LIST (gender)
+SUBPARTITION BY RANGE (year)
+SUBPARTITION TEMPLATE (
+SUBPARTITION year1 START (2001),
+SUBPARTITION year2 START (2002),
+SUBPARTITION year3 START (2003),
+SUBPARTITION year4 START (2004),
+SUBPARTITION year5 START (2005),
+SUBPARTITION year6 START (2006) END (2007) )
+(PARTITION girls VALUES ('F'),
+PARTITION boys VALUES ('M')
+);
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_year1" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_year2" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_year3" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_year4" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_year5" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_year6" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year1" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year2" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year3" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year4" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year5" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year6" for table "rank_1_prt_boys"
+alter table rank alter partition girls add default partition gfuture;
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_gfuture" for table "rank_1_prt_girls"
+alter table rank alter partition boys add default partition bfuture;
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_bfuture" for table "rank_1_prt_boys"
+insert into rank values(1, 1, 2007, 'M', 1);
+insert into rank values(2, 2, 2008, 'M', 3);
+select * from rank;
+ id | rank | year | gender | count 
+----+------+------+--------+-------
+  1 |    1 | 2007 | M      |     1
+  2 |    2 | 2008 | M      |     3
+(2 rows)
+
+alter table rank alter partition boys split default partition start ('2007')
+end ('2008') into (partition bfuture, partition year7);
+NOTICE:  exchanged partition "bfuture" of partition "boys" of relation "rank" with relation "pg_temp_974444"
+NOTICE:  dropped partition "bfuture" for partition "boys" of relation "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year7" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_bfuture" for table "rank_1_prt_boys"
+select * from rank_1_prt_boys_2_prt_bfuture;
+ id | rank | year | gender | count 
+----+------+------+--------+-------
+  2 |    2 | 2008 | M      |     3
+(1 row)
+
+select * from rank_1_prt_boys_2_prt_year7;
+ id | rank | year | gender | count 
+----+------+------+--------+-------
+  1 |    1 | 2007 | M      |     1
+(1 row)
+
+select * from rank;
+ id | rank | year | gender | count 
+----+------+------+--------+-------
+  1 |    1 | 2007 | M      |     1
+  2 |    2 | 2008 | M      |     3
+(2 rows)
+
+--exchange test
+create table r (like rank);
+insert into rank values(3, 3, 2004, 'F', 100);
+insert into r values(3, 3, 2004, 'F', 100000);
+alter table rank alter partition girls exchange partition year4 with table r;
+NOTICE:  exchanged partition "year4" of partition "girls" of relation "rank" with relation "r"
+select * from rank_1_prt_girls_2_prt_year4;
+ id | rank | year | gender | count  
+----+------+------+--------+--------
+  3 |    3 | 2004 | F      | 100000
+(1 row)
+
+select * from r;
+ id | rank | year | gender | count 
+----+------+------+--------+-------
+  3 |    3 | 2004 | F      |   100
+(1 row)
+
+alter table rank alter partition girls exchange partition year4 with table r;
+NOTICE:  exchanged partition "year4" of partition "girls" of relation "rank" with relation "r"
+select * from rank_1_prt_girls_2_prt_year4;
+ id | rank | year | gender | count 
+----+------+------+--------+-------
+  3 |    3 | 2004 | F      |   100
+(1 row)
+
+select * from r;
+ id | rank | year | gender | count  
+----+------+------+--------+--------
+  3 |    3 | 2004 | F      | 100000
+(1 row)
+
+-- Split test
+alter table rank alter partition girls split default partition start('2008')
+  end('2020') into (partition years, partition gfuture);
+NOTICE:  exchanged partition "gfuture" of partition "girls" of relation "rank" with relation "pg_temp_974444"
+NOTICE:  dropped partition "gfuture" for partition "girls" of relation "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_years" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_gfuture" for table "rank_1_prt_girls"
+insert into rank values(4, 4, 2009, 'F', 100);
+drop table rank;
+drop table r;
