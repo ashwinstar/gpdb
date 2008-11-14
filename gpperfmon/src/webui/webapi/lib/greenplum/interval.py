@@ -1,5 +1,7 @@
 import os, sys, datetime, time, math
 
+DEBUG = False
+
 granularity = ['1min', '5min', '1hr', '6hr', '1day', '1wk', '6mth']
 seconds_per_interval_array = [60, 300, 3600, 21600, 86400, 604800, 7776000]
 
@@ -35,8 +37,9 @@ def calc_samples(start, end, interval):
     duration = end_seconds-start_seconds;
     samples = math.ceil(duration / seconds_per_interval);
 
-    sys.stderr.write("Interval: seconds_per_interval = %s\n" % seconds_per_interval)
-    sys.stderr.write("          samples = %s\n\n" % samples)
+    if DEBUG:
+        sys.stderr.write("Interval: seconds_per_interval = %s\n" % seconds_per_interval)
+        sys.stderr.write("          samples = %s\n\n" % samples)
 
     return (True, interval_code, samples)
 

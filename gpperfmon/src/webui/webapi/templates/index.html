@@ -1,4 +1,4 @@
-$def with (host, port)
+$def with (protocol, host, port)
 <html lang="en">
 
 <!-- 
@@ -62,7 +62,7 @@ if ( hasProductInstall && !hasRequestedVersion ) {
 
 	AC_FL_RunContent(
 		"src", "playerProductInstall",
-		"FlashVars", "serverHost=${host}&serverPort=${port}&MMredirectURL="+MMredirectURL+'&MMplayerType='+MMPlayerType+'&MMdoctitle='+MMdoctitle+"",
+		"FlashVars", "serverProtocol=${protocol}&serverHost=${host}&serverPort=${port}&MMredirectURL="+MMredirectURL+'&MMplayerType='+MMPlayerType+'&MMdoctitle='+MMdoctitle+"",
 		"width", "100%",
 		"height", "100%",
 		"align", "middle",
@@ -79,7 +79,7 @@ if ( hasProductInstall && !hasRequestedVersion ) {
 	// embed the Flash Content SWF when all tests are passed
 	AC_FL_RunContent(
 			"src", "static/GPPerfMon",
-			"FlashVars", "serverHost=${host}&serverPort=${port}&MMredirectURL="+MMredirectURL+'&MMplayerType='+MMPlayerType+'&MMdoctitle='+MMdoctitle+"",
+			"FlashVars", "serverProtocol=${protocol}&serverHost=${host}&serverPort=${port}&MMredirectURL="+MMredirectURL+'&MMplayerType='+MMPlayerType+'&MMdoctitle='+MMdoctitle+"",
 			"width", "100%",
 			"height", "100%",
 			"align", "middle",
@@ -111,7 +111,7 @@ if ( hasProductInstall && !hasRequestedVersion ) {
 				width="100%" height="100%" name="GPPerfMon" align="middle"
 				play="true"
 				loop="false"
-				FlashVars="serverHost=10.254.0.126&serverPort=8000"
+				FlashVars="serverProtocol=${protocol}&serverHost=${host}&serverPort=${port}"
 				quality="high"
 				allowScriptAccess="sameDomain"
 				type="application/x-shockwave-flash"

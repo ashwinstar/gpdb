@@ -251,7 +251,6 @@ def gpperfmon_setup():
 
     # defaults for webapi
     remote_default = 'no'
-    require_password_default = 'no'
 
     config = ConfigParser.ConfigParser()
     config.add_section('GPMMON')
@@ -262,7 +261,6 @@ def gpperfmon_setup():
     config.set('GPMMON', 'verbose', verbose_default)
     config.set('GPMMON', 'log_location', logloc_default)
     config.set('WEB SERVICE', 'remote', remote_default)
-    config.set('WEB SERVICE', 'require_password', require_password_default)
 
     if os.path.isfile(GPPERFMON_CONF_FILE):
         yn = get_yesno('gpperfmon.conf already exists for this database instance.\nDo you want to reconfigure gpperfmon? [N]', 'N')

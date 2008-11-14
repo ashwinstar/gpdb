@@ -1,14 +1,17 @@
 import os, sys, datetime
 
+DEBUG = False
+
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 import pg8000
 
 pguser = 'gpmon'
-pgdatabase = os.environ.get('PGDATABASE', 'gpperfmon')
+pgdatabase = 'gpperfmon'
 pgpass = os.environ.get('PGPASSWORD', '')
 pgport = os.environ.get('PGPORT', '5432')
 pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
+pghost_logon = os.environ.get('PGHOST_LOGON', pghost)
 path = os.environ.get('MASTER_DATA_DIRECTORY') + '/gpperfmon/data'
 
 # Use this to throw exceptions related to unavailability of the DB
@@ -33,7 +36,8 @@ def create_db_conn():
       conn = None
 
 def raise_db_error(text):
-    sys.stderr.write(text+'\n\n')
+    if DEBUG:
+        sys.stderr.write(text+'\n\n')
     raise GPDBError, text
 
 def validate_db_conn(): 
@@ -51,14 +55,32 @@ create_db_conn()
 def get_role(username, password):
     validate_db_conn()
 
-    res = (False, False)
+    res = (False, False, 'Incorrect username/password')
+
+    # First make sure the login credentials are valid
+
+    #  Check without password -- and fail if we can login without
     try:
-        # First make sure the login credentials are valid
-        auth_conn = pg8000.Connection(user=username, password=password, host=pghost, port=pgport, database=pgdatabase)
-        sys.stderr.write('Logon: validated that the login credentials are valid\n\n')
+        auth_conn = pg8000.Connection(user=username, host=pghost_logon, port=pgport, database=pgdatabase)
+        # If succeeded, then we're not checking password, so disallow logon
+        res = (False, False, "Unprotected 'trust' logon blocked")
+        if DEBUG:
+            sys.stderr.write("Logon: unprotected 'trust' logon blocked\n\n")
+        auth_conn.close()
+        return res
+    except:
+        if DEBUG:
+            sys.stderr.write("Logon: validated that password is required\n\n")
+        
+    # Now check with password 
+    try:
+        auth_conn = pg8000.Connection(user=username, password=password, host=pghost_logon, port=pgport, database=pgdatabase)
+        if DEBUG:
+            sys.stderr.write('Logon: validated that the login credentials are valid\n\n')
         auth_conn.close()
     except:
-        sys.stderr.write('Logon: attempt to connect with user credentials failed\n\n')
+        if DEBUG:
+            sys.stderr.write('Logon: attempt to connect with user credentials failed\n\n')
         return res
 
     try:
@@ -67,8 +89,9 @@ def get_role(username, password):
         conn.execute(check_auth)
    
         for r in conn.iterate_dict():
-            res = (True, r['rolsuper'])
-        sys.stderr.write('Logon: checked if the user is superuser or not\n\n')
+            res = (True, r['rolsuper'], '')
+        if DEBUG:
+            sys.stderr.write('Logon: checked if the user is superuser or not\n\n')
     except:
         raise_db_error('Exception during query: %s ' % check_auth)
 
@@ -92,7 +115,8 @@ def _system_consolidate_aggregate(rows):
     td = {}   #time dimension
     tab = {}  #table where the key is composed of host and time
 
-    sys.stderr.write("_SYSTEM_CONSOLIDATE_AGGREGATE")
+    if DEBUG:
+        sys.stderr.write("_SYSTEM_CONSOLIDATE_AGGREGATE")
     x = None
     for r in rows:
         t = r['sample_time']
@@ -262,7 +286,8 @@ def system_now(remote):
         nonaggregate = 'no'
         interval_code = 7 # magic number
         query = system_sql('system_now', '', interval_code, nonaggregate)
-        sys.stderr.write("system_now query: %s\n" % query)
+        if DEBUG:
+            sys.stderr.write("system_now query: %s\n" % query)
         rows = execute_query(query)
     else:
         rows = system_file()
@@ -301,7 +326,8 @@ def system_file():
     try:
         f = open(filename, 'r')
     except:
-        sys.stderr.write("file not found: %s\n" % filename)
+        if DEBUG:
+            sys.stderr.write("file not found: %s\n" % filename)
         raise GPDBError, 'Real-time system_now file unavailable'
         return rows
 
@@ -324,9 +350,8 @@ def system_file():
     finally:
         f.close()
 
-    # DEBUGGING 
-    print rows
-    # DEBUGGING 
+    if DEBUG:
+        print rows
     return rows
 
 
@@ -392,7 +417,8 @@ def system_history(stime, etime, interval_code, aggregate):
     query2 = system_sql('system_tail', filter, interval_code, aggregate)
     query = '%s union all %s' % (query1, query2)
 
-    sys.stderr.write("system_history query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("system_history query: %s\n" % query)
     rows = execute_query(query)
 
     if aggregate == 'yes':
@@ -425,7 +451,8 @@ def queries_now(remote, status, username, database, textlength):
         columns = queries_sql(textlength)
 
         query = '%s from queries_now %s' % (columns, filter)
-        sys.stderr.write("queries_now query: %s\n" % query)
+        if DEBUG:
+            sys.stderr.write("queries_now query: %s\n" % query)
         rows = queries_db(query, textlength)
     else:
         rows = queries_file(status, username, database, textlength, '', '', '')
@@ -439,7 +466,8 @@ def queryText(tmid, ssid, ccnt):
     try:
         q = open(filename, 'r')
     except:
-        sys.stderr.write("query file not found: %s\n" % filename)
+        if DEBUG:
+            sys.stderr.write("query file not found: %s\n" % filename)
 
         # Changing this from exception to just return 'not available'
         #raise GPDBError, 'Real-time query_text file unavailable'
@@ -473,15 +501,15 @@ def queries_file(status, username, database, textlength, tmid, ssid, ccnt):
     try:
         f = open(filename, 'r')
     except:
-        sys.stderr.write("file not found: %s\n" % filename)
+        if DEBUG:
+            sys.stderr.write("file not found: %s\n" % filename)
         raise GPDBError, 'Real-time queries_now file unavailable'
         return ''
 
     try:
         for line in f:
-            # DEBUGGING 
-            print line
-            # DEBUGGING 
+            if DEBUG:
+                print line
 
             columns = {} # dict to contain the values of each column
             entry = line.split('|')
@@ -572,7 +600,8 @@ def queries_history(status, stime, etime, username, runtime, database, textlengt
     query1 = '%s from queries_history %s' % (columns, filter)
     query2 = '%s from queries_tail %s' % (columns, filter)
     query = "(%s) union all (%s) limit %s" % (query1, query2, max_query_limit)
-    sys.stderr.write("queries_history query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("queries_history query: %s\n" % query)
 
     rows = queries_db(query, textlength)
     return _queries_consolidate(rows)
@@ -605,7 +634,8 @@ def querydetails_now(remote, tmid, ssid, ccnt, username):
             filter += " and username='%s'" % username
         query = '%s from queries_now %s' % (columns, filter)
 
-        sys.stderr.write("querydetails_now query: %s\n" % query)
+        if DEBUG:
+            sys.stderr.write("querydetails_now query: %s\n" % query)
         rows = execute_query(query)
     else:
         rows = queries_file('', username, '', '', tmid, ssid, ccnt)
@@ -624,7 +654,8 @@ def querydetails_history(tmid, ssid, ccnt, username):
     query2 = '%s from queries_tail %s' % (columns, filter)
     query = "(%s) union all (%s) limit 1" % (query1, query2)
 
-    sys.stderr.write("querydetails_history query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("querydetails_history query: %s\n" % query)
 
     rows = execute_query(query)
 
@@ -672,7 +703,8 @@ def queryplan_get_username_now(tmid, ssid, ccnt):
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     query = "%s from queries_now %s limit 1" % (query_fragment, filter)
     
-    sys.stderr.write("queryplan_get_username_now query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("queryplan_get_username_now query: %s\n" % query)
 
     result = ''
     try:
@@ -689,7 +721,8 @@ def queryplan_now(tmid, ssid, ccnt, username):
     if username != '':
         q_username = queryplan_get_username_now(tmid, ssid, ccnt)
         if q_username != username:
-            sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
+            if DEBUG:
+                sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
             return _queryplan_consolidate(rows)
             
     query_fragment = "select *"
@@ -698,7 +731,8 @@ def queryplan_now(tmid, ssid, ccnt, username):
     query1 = "%s from iterators_now_rollup %s" % (query_fragment, filter)
     query = "%s order by pnid, nid" % query1
 
-    sys.stderr.write("queryplan_now query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("queryplan_now query: %s\n" % query)
 
     rows = execute_query(query)
 
@@ -713,7 +747,8 @@ def queryplan_get_username_history(tmid, ssid, ccnt):
     query2 = "%s from queries_tail %s" % (query_fragment, filter)
     query = "(%s) union all (%s) limit 1" % (query1, query2)
     
-    sys.stderr.write("queryplan_get_username_history query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("queryplan_get_username_history query: %s\n" % query)
 
     result = ''
     try:
@@ -730,7 +765,8 @@ def queryplan_history(tmid, ssid, ccnt, username):
     if username != '':
         q_username = queryplan_get_username_history(tmid, ssid, ccnt)
         if q_username != username:
-            sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
+            if DEBUG:
+                sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
             return _queryplan_consolidate(rows)
             
     query_fragment = "select *"
@@ -740,7 +776,8 @@ def queryplan_history(tmid, ssid, ccnt, username):
     query2 = "%s from iterators_tail_rollup %s" % (query_fragment, filter)
     query = "(%s) union all (%s) order by pnid, nid" % (query1, query2)
 
-    sys.stderr.write("queryplan_now query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("queryplan_now query: %s\n" % query)
 
     rows = execute_query(query)
 
@@ -778,42 +815,47 @@ def rt_queryiterators(tmid, ssid, ccnt, segid='', nid=''):
     try:
         f = open(filename, 'r')
     except:
-        sys.stderr.write("file not found: %s\n" % filename)
+        if DEBUG:
+            sys.stderr.write("file not found: %s\n" % filename)
         raise GPDBError, 'Real-time iterators_now file unavailable'
         return ''
 
     try:
         for line in f:
-            # DEBUGGING 
-            print line
-            # DEBUGGING 
+            if DEBUG:
+                print line
 
             columns = {} # dict to contain the values of each column
             entry = line.split('|')
             # positional matching. if cnames is modified, the index
             # might be affected.
             if entry[1] != tmid:
-                sys.stderr.write("no tmid match: %s != %s\n\n" % (entry[1], str(tmid)))
+                if DEBUG:
+                    sys.stderr.write("no tmid match: %s != %s\n\n" % (entry[1], str(tmid)))
                 continue
             # positional matching. if cnames is modified, the index
             # might be affected.
             elif entry[2] != ssid:
-                sys.stderr.write("no ssid match: %s != %s\n\n" % (entry[2], str(ssid)))
+                if DEBUG:
+                    sys.stderr.write("no ssid match: %s != %s\n\n" % (entry[2], str(ssid)))
                 continue
             # positional matching. if cnames is modified, the index
             # might be affected.
             elif entry[3] != ccnt:
-                sys.stderr.write("no ccnt match: %s != %s\n\n" % (entry[3], str(ccnt)))
+                if DEBUG:
+                    sys.stderr.write("no ccnt match: %s != %s\n\n" % (entry[3], str(ccnt)))
                 continue
             # positional matching. if cnames is modified, the index
             # might be affected.
             elif segid != '' and entry[4] != segid:
-                sys.stderr.write("no segid match: %s != %s\n\n" % (entry[4], str(segid)))
+                if DEBUG:
+                    sys.stderr.write("no segid match: %s != %s\n\n" % (entry[4], str(segid)))
                 continue
             # positional matching. if cnames is modified, the index
             # might be affected.
             elif nid != '' and entry[6] != nid:
-                sys.stderr.write("no segid match: %s != %s\n\n" % (entry[6], str(nid)))
+                if DEBUG:
+                    sys.stderr.write("no segid match: %s != %s\n\n" % (entry[6], str(nid)))
                 continue
             # convert ctime date string into datetime object
             entry[0] = datetime.datetime.strptime(entry[0], "%Y-%m-%d %H:%M:%S")
@@ -872,7 +914,8 @@ def queryiterator(tmid, ssid, ccnt, nid):
 
     rows = execute_query(query)
 
-    sys.stderr.write("ITERATOR RESULT:\n%s\n\n\n" % rows)
+    if DEBUG:
+        sys.stderr.write("ITERATOR RESULT:\n%s\n\n\n" % rows)
 
     # query real-time information.
     segid = ''
@@ -887,7 +930,8 @@ def database_now(remote):
     if remote:
         interval_code = 7
         query = database_sql('database_now', '', interval_code)
-        sys.stderr.write("database_now query: %s\n" % query)
+        if DEBUG:
+            sys.stderr.write("database_now query: %s\n" % query)
         rows = execute_query(query)
     else:
         rows = database_file()
@@ -907,7 +951,8 @@ def database_file():
     try:
         f = open(filename, 'r')
     except:
-        sys.stderr.write("file not found: %s\n" % filename)
+        if DEBUG:
+            sys.stderr.write("file not found: %s\n" % filename)
         raise GPDBError, 'Real-time database_now file unavailable'
         return ''
 
@@ -924,9 +969,8 @@ def database_file():
     finally:
         f.close()
 
-    # DEBUGGING 
-    print rows
-    # DEBUGGING 
+    if DEBUG:
+        print rows
     return rows
 
 
@@ -965,7 +1009,8 @@ def database_history(stime, etime, interval_code):
 
     query = database_sql('database_history', filter, interval_code)
 
-    sys.stderr.write("database_history query: %s\n" % query)
+    if DEBUG:
+        sys.stderr.write("database_history query: %s\n" % query)
     rows = execute_query(query)
 
     return _database_consolidate(rows)

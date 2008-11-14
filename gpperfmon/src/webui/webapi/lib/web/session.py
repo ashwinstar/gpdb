@@ -198,17 +198,23 @@ class DiskStore(Store):
     def __getitem__(self, key):
         path = os.path.join(self.root, key)
         if os.path.exists(path): 
+            #GREENPLUM
+            self.acquire_lock(key)
+            #GREENPLUM
             pickled = open(path).read()
+            #GREENPLUM
+            self.release_lock(key)
+            #GREENPLUM
             return self.decode(pickled)
         else:
             raise KeyError, key
 
     def __setitem__(self, key, value):
+        pickled = self.encode(value)    
+        path = os.path.join(self.root, key)
         #GREENPLUM
         self.acquire_lock(key)
         #GREENPLUM
-        pickled = self.encode(value)    
-        path = os.path.join(self.root, key)
         try:
             f = open(path, 'w')
             try:
