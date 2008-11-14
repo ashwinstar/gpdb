@@ -171,7 +171,8 @@ def connect(user=None, password=None, host=None, port=None,
     if not database: database = GV.dbname
     try:
         db = pg8000.Connection(user=user, password=password, host=host,
-                                port=port, database=database, options=options)
+                                port=port, database=database, options=options,
+                                socket_timeout=120)
     except pg8000.errors.ProgrammingError, p:
         print "Exception: ", p[0]
         print "SQL code: ", p[1]
