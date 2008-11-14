@@ -459,6 +459,14 @@ wait_on_receiver(int timeout_us)
 
 #define CONN_HASH_VALUE(icpkt) ((uint32)((((icpkt)->srcPid ^ (icpkt)->dstPid)) + (icpkt)->dstContentId))
 
+#define CONN_HASH_MATCH(a, b) (((a)->motNodeId == (b)->motNodeId && \
+								(a)->dstContentId == (b)->dstContentId && \
+								(a)->srcContentId == (b)->srcContentId && \
+								(a)->recvSliceIndex == (b)->recvSliceIndex && \
+								(a)->sendSliceIndex == (b)->sendSliceIndex && \
+								(a)->srcPid == (b)->srcPid &&			\
+								(a)->dstPid == (b)->dstPid && (a)->icId == (b)->icId) ? true : false)
+
 static bool
 conn_addhash(MotionConn *conn)
 {
@@ -470,15 +478,7 @@ conn_addhash(MotionConn *conn)
 	/* check for collision ? */
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
-		if (bin->conn->conn_info.motNodeId == conn->conn_info.motNodeId &&
-			bin->conn->conn_info.dstContentId == conn->conn_info.dstContentId &&
-			bin->conn->conn_info.srcContentId == conn->conn_info.srcContentId &&
-
-			bin->conn->conn_info.recvSliceIndex == conn->conn_info.recvSliceIndex &&
-			bin->conn->conn_info.sendSliceIndex == conn->conn_info.sendSliceIndex &&
-
-			bin->conn->conn_info.srcPid == conn->conn_info.srcPid &&
-			bin->conn->conn_info.dstPid == conn->conn_info.dstPid)
+		if (CONN_HASH_MATCH(&bin->conn->conn_info, &conn->conn_info))
 		{
 			elog(DEBUG5, "conn_addhash(): duplicate ?! node %d route %d", conn->conn_info.motNodeId, conn->route);
 			return true; /* false *only* indicates memory-alloc failure. */
@@ -511,17 +511,7 @@ conn_delhash(MotionConn *conn)
 	p = NULL;
 	while (c != NULL)
 	{
-		if (c->conn->conn_info.motNodeId == conn->conn_info.motNodeId &&
-			c->conn->conn_info.dstContentId == conn->conn_info.dstContentId &&
-			c->conn->conn_info.srcContentId == conn->conn_info.srcContentId &&
-
-			c->conn->conn_info.recvSliceIndex == conn->conn_info.recvSliceIndex &&
-			c->conn->conn_info.sendSliceIndex == conn->conn_info.sendSliceIndex &&
-
-
-			c->conn->conn_info.srcPid == conn->conn_info.srcPid &&
-			c->conn->conn_info.dstPid == conn->conn_info.dstPid)
-
+		if (CONN_HASH_MATCH(&c->conn->conn_info, &conn->conn_info))
 			break;
 
 		p = c;
@@ -557,17 +547,7 @@ findConnByHeader(struct icpkthdr *hdr)
 
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
-		if (bin->conn->conn_info.motNodeId == hdr->motNodeId &&
-			bin->conn->conn_info.dstContentId == hdr->dstContentId &&
-			bin->conn->conn_info.srcContentId == hdr->srcContentId &&
-
-			bin->conn->conn_info.recvSliceIndex == hdr->recvSliceIndex &&
-			bin->conn->conn_info.sendSliceIndex == hdr->sendSliceIndex &&
-
-			bin->conn->conn_info.srcPid == hdr->srcPid &&
-			bin->conn->conn_info.dstPid == hdr->dstPid &&
-
-			bin->conn->conn_info.icId == hdr->icId)
+		if (CONN_HASH_MATCH(&bin->conn->conn_info, hdr))
 		{
 			ret = bin->conn;
 
@@ -1182,7 +1162,7 @@ SetupUDPInterconnect(EState *estate)
 				pthread_mutex_unlock(&rx_thread_mutex);
 
 				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-					errmsg("Setup UDP interconnect failed: out of memory")));
+								errmsg("Setup UDP interconnect failed: out of memory")));
 				/* not reached */
 			}
 
@@ -1279,7 +1259,6 @@ SetupUDPInterconnect(EState *estate)
 				switch (conn->state)
 				{
 					case mcsSetupOutgoingConnection:
-					case mcsConnecting:
 						/* Set time limit for connect() to complete. */
 						conn->wakeup_ms = TIMEOUT(iteration) + elapsed_ms;
 						break;
@@ -1344,7 +1323,8 @@ SetupUDPInterconnect(EState *estate)
 
 				if (pkt.flags & UDPIC_FLAGS_STOP)
 				{
-					elog(DEBUG1, "during setup received ack with STOP. node %d route %d state %d pktseq %d connseq %d", pkt.motNodeId, conn->route, conn->state, pkt.seq, conn->conn_info.seq);
+					elog(DEBUG1, "during setup received ack with STOP. node %d route %d state %d pktseq %d connseq %d",
+						 pkt.motNodeId, conn->route, conn->state, pkt.seq, conn->conn_info.seq);
 				}
 
 				conn = findConnByHeader(&pkt);
@@ -1361,10 +1341,12 @@ SetupUDPInterconnect(EState *estate)
 						outgoing_count++;
 					}
 					else
-						elog(DEBUG1, "state not waiting for setup node %d route %d state %d conn %p pktflags %d", pkt.motNodeId, conn->route, conn->state, conn, pkt.flags);
+						elog(DEBUG1, "state not waiting for setup node %d route %d state %d conn %p pktflags %d",
+							 pkt.motNodeId, conn->route, conn->state, conn, pkt.flags);
 				}
 				else
-					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.icId, pkt.dstPid);
+					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d",
+						 pkt.motNodeId, pkt.icId, pkt.dstPid);
 				/* if we have more available, don't wait at all --
 				 * we'll wait once we run out of acks */
 			} /* for (;;) */
@@ -1449,6 +1431,42 @@ SetupUDPInterconnect(EState *estate)
 			int to = interconnect_setup_timeout * 1000;
 
 			if (to <= elapsed_ms + 20)
+			{
+				/* If we're in debug mode, dump out the details of the interconnect setup failure */
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				{
+					if (outgoing_count != expectedTotalOutgoing)
+					{						
+						n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
+						for (i = 0; i < n; i++)
+						{
+							conn = &sendingChunkTransportState->conns[i];
+
+							if (conn->state == mcsStarted)
+								continue;
+
+							elog(LOG, "Outbound connection timed out (content/pid) %d/%d -> %d/%d",
+								 conn->conn_info.srcContentId, conn->conn_info.srcPid,
+								 conn->conn_info.dstContentId, conn->conn_info.dstPid);
+						}
+					}
+					if (incoming_count != expectedTotalIncoming &&
+						list_length(estate->interconnect_context->incompleteConns) != 0)
+					{
+						foreach(cell, mySlice->children)
+						{
+							conn = (MotionConn *) lfirst(cell);
+
+							if (conn->state == mcsStarted)
+								continue;
+
+							elog(LOG, "Inbound connection timed out (content/pid) %d/%d -> %d/%d",
+								 conn->conn_info.srcContentId, conn->conn_info.srcPid,
+								 conn->conn_info.dstContentId, conn->conn_info.dstPid);
+						}
+					}
+				}
+
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("Interconnect timeout: Unable to "
 									   "complete setup of all connections "
@@ -1460,6 +1478,7 @@ SetupUDPInterconnect(EState *estate)
 										  incoming_count, expectedTotalIncoming,
 										  outgoing_count, expectedTotalOutgoing,
 										  interconnect_setup_timeout)));
+			}
 		}
 
 		/* Back to top of loop and look again. */
