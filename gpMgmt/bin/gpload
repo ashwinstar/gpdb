@@ -299,7 +299,7 @@ class gpload:
     def read_config(self):
 	self.table = self.getconfig('gpload:output:table',str)
 	if not self.options.h:
-	    self.options.h = self.getconfig('hostname',str,None)
+	    self.options.h = self.getconfig('host',str,None)
 	if not self.options.h:
 	    self.options.h = os.environ.get('PGHOST')
 	if not self.options.h or len(self.options.h) == 0:
@@ -310,7 +310,7 @@ class gpload:
 	if not self.options.p:
 	    try:
     		self.options.p = int(os.environ.get('PGPORT'))
-	    except ValueError:
+	    except (ValueError, TypeError):
     		pass
 	if not self.options.p:
 	    self.log(0,"You need to specify your port number with the -p option or in your configuration or in your environment as PGPORT.")
