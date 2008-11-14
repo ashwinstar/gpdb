@@ -1432,8 +1432,12 @@ SetupUDPInterconnect(EState *estate)
 
 			if (to <= elapsed_ms + 20)
 			{
-				/* If we're in debug mode, dump out the details of the interconnect setup failure */
-				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				/*
+				 * If we're in verbose mode dump out at most one timed
+				 * out connection.  In debug mode, dump out the
+				 * details of the interconnect setup failure.
+				 */
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
 				{
 					if (outgoing_count != expectedTotalOutgoing)
 					{						
@@ -1448,12 +1452,17 @@ SetupUDPInterconnect(EState *estate)
 							elog(LOG, "Outbound connection timed out (content/pid) %d/%d -> %d/%d",
 								 conn->conn_info.srcContentId, conn->conn_info.srcPid,
 								 conn->conn_info.dstContentId, conn->conn_info.dstPid);
+
+							if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+								continue;
+							else
+								break;
 						}
 					}
 					if (incoming_count != expectedTotalIncoming &&
 						list_length(estate->interconnect_context->incompleteConns) != 0)
 					{
-						foreach(cell, mySlice->children)
+						foreach(cell, estate->interconnect_context->incompleteConns)
 						{
 							conn = (MotionConn *) lfirst(cell);
 
@@ -1463,6 +1472,11 @@ SetupUDPInterconnect(EState *estate)
 							elog(LOG, "Inbound connection timed out (content/pid) %d/%d -> %d/%d",
 								 conn->conn_info.srcContentId, conn->conn_info.srcPid,
 								 conn->conn_info.dstContentId, conn->conn_info.dstPid);
+
+							if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+								continue;
+							else
+								break;
 						}
 					}
 				}
