@@ -646,6 +646,13 @@ class gpload:
         '''
 
         distkey = set(self.get_table_dist_key())
+
+        if len(distkey) == 0: # randomly distributed
+            self.log(0, 'FATAL: table "' + self.table + '" is ' +
+                        'distributed randomly and ' +
+                        'therefore does not support update or merge via gpload')
+            sys.exit(2)
+
         self.distkey = distkey
         # update_columns better not be in distkey
         update_columns = set(self.getconfig('gpload:output:update_columns', 
