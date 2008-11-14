@@ -9264,8 +9264,8 @@ transformAlterTable_all_PartitionStmt(
 		List **extras_after)
 {
 	AlterPartitionCmd 	*pc   	   = (AlterPartitionCmd *) cmd->def;
-	AlterPartitionId  	*pid  	   = (AlterPartitionId *)pc->partid;
 	AlterPartitionCmd 	*pci  	   = pc;
+	AlterPartitionId  	*pid  	   = (AlterPartitionId *)pci->partid;
 	AlterTableCmd 		*atc1 	   = cmd;
 	RangeVar 			*rv   	   = stmt->relation;
 	PartitionNode 		*pNode 	   = NULL;
@@ -9299,8 +9299,8 @@ transformAlterTable_all_PartitionStmt(
 			/* Processes nested ALTER (if it exists) */
 			while (1)
 			{
-				AlterPartitionId  	*pid2;
-					
+				AlterPartitionId  	*pid2 = NULL;
+
 				if (atc1->subtype != AT_PartAlter)
 				{
 					rv = makeRangeVar(
@@ -9310,11 +9310,9 @@ transformAlterTable_all_PartitionStmt(
 					heap_close(rel, NoLock);
 					break;
 				}
-					
-				partDepth++;
-					
+
 				pid2 = (AlterPartitionId *)pci->partid;
-				
+					
 				if (pid2 && (pid2->idtype == AT_AP_IDValue))
 				{
 					List *vallist = (List *)pid2->partiddef;
@@ -9322,6 +9320,8 @@ transformAlterTable_all_PartitionStmt(
 							(Node *)transformExpressionList(
 									pstate, vallist);
 				}
+					
+				partDepth++;
 					
 				if (!pNode)
 					prule = NULL;
@@ -9408,6 +9408,8 @@ transformAlterTable_all_PartitionStmt(
 		case AT_PartSetTemplate:		/* Set Subpartn Template */
 		case AT_PartTruncate:			/* Truncate */
 		case AT_PartSplit:				/* Split */
+			/* MPP-4011: get right pid for FOR(value) */
+			pid  	   = (AlterPartitionId *)pci->partid;
 			if (pid && (pid->idtype == AT_AP_IDValue))
 			{
 				List *vallist = (List *)pid->partiddef;
@@ -9712,7 +9714,6 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				break;
 
 			/* CDB: Partitioned Tables */
-            case AT_PartSplit:				/* Split */
             case AT_PartAlter:				/* Alter */
             case AT_PartAdd:				/* Add */
             case AT_PartCoalesce:			/* Coalesce */
@@ -9722,6 +9723,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
             case AT_PartModify:				/* Modify */
             case AT_PartRename:				/* Rename */
             case AT_PartSetTemplate:		/* Set Subpartition Template */
+            case AT_PartSplit:				/* Split */
             case AT_PartTruncate:			/* Truncate */
 			{
 				cmd = transformAlterTable_all_PartitionStmt(

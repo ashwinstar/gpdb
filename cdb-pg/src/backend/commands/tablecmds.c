@@ -10736,7 +10736,11 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 				if (ppn_out)
 				{
 					*ppn_out = partnode->default_part->children;
-					return relid;
+
+					/* don't return the relid, it is invalid -- return
+					 * the relid of the default partition instead
+					 */
+					return partnode->default_part->parchildrelid;
 				}
 				return selectPartition1(partnode->default_part->children,
 										values, isnull, tupdesc, pstate,
@@ -10869,14 +10873,23 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	{
 		if (pid->idtype == AT_AP_IDValue)
 		{
-			bool *isnull;
-			TupleDesc tupledesc = RelationGetDescr(rel);
+			bool				*isnull;
+			TupleDesc			 tupledesc = RelationGetDescr(rel);
+			PartitionNode 		*pNode2	   = NULL;
+			Datum	*d	= magic_expr_to_datum(rel, pNode, 
+											  pid->partiddef, &isnull);
 
-			Datum *d = magic_expr_to_datum(rel, pNode, 
-										   pid->partiddef, &isnull);
-
-			partrelid = selectPartition1(pNode, d, isnull, tupledesc, NULL,
-										 pSearch, ppNode);
+			/* MPP-4011: get right pid for FOR(value).  pass a pNode
+			 * ptr down to prevent recursion in selectPartition -- we
+			 * only want the top-most partition for the value in this
+			 * case
+			 */
+			if (ppNode)
+				partrelid = selectPartition1(pNode, d, isnull, tupledesc, NULL,
+											 pSearch, ppNode);
+			else
+				partrelid = selectPartition1(pNode, d, isnull, tupledesc, NULL,
+											 pSearch, &pNode2);
 
 			/* build a string rep for the value */
 			{
@@ -11037,6 +11050,24 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	if (!bExistError)
 		goto L_fin_partrule;
 
+	/* MPP-3722: complain if for(value) matches the default partition */
+	if ((pid->idtype == AT_AP_IDValue)
+		&& prule &&
+		(prule->topRule == prule->pNode->default_part))
+	{
+		if (bMustExist)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("FOR expression matches "
+							"DEFAULT partition%s of %s",
+							prule->isName ?
+							partIdStr : "",
+							relname),
+					 errhint("FOR expression may only specify "
+							 "a non-default partition in this context.")));
+		
+	}
+
 	if (bMustExist && !prule)
 	{
 		switch (pid->idtype)
@@ -11079,14 +11110,14 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 			case AT_AP_IDRank:				/* IDentifier FOR Rank */
 			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("partition%s of %s already exists",
 							partIdStr,
 							relname)));
 				break;
 			case AT_AP_IDDefault:			/* IDentify DEFAULT partition */
 				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("DEFAULT partition%s of %s already exists",
 							prule->isName ?
 							partIdStr : "",
@@ -13262,6 +13293,19 @@ ATPExecPartDrop(Relation rel,
 
 	prule = get_part_rule(rel, pid, bCheckMaybe, true, 
 						  CurrentMemoryContext, NULL, false);
+
+	/* MPP-3722: complain if for(value) matches the default partition */
+	if ((locPid->idtype == AT_AP_IDValue)
+		&& prule &&
+		(prule->topRule == prule->pNode->default_part))
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("FOR expression matches "
+							"DEFAULT partition%s of %s",
+							prule->partIdStr,
+							prule->relname),
+					 errhint("FOR expression may only specify "
+							 "a non-default partition in this context.")));
 
 	if (!prule)
 	{

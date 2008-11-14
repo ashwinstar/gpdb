@@ -990,12 +990,20 @@ alter table rank DROP partition boys restrict;
 
 select * from rank ;
 
-alter table rank DROP partition if exists neuter;
+-- MPP-3722: complain if for(value) matches the default partition 
+alter table rank truncate partition for('N');
+alter table rank DROP partition for('N');
+alter table rank DROP partition if exists for('N');
+
+alter table rank DROP default partition if exists ;
 
 -- can't drop the final partition - must drop the table
 alter table rank DROP partition girls;
 
--- XXX XXX: should work but doesn't
+-- MPP-4011: make FOR(value) work
+alter table rank alter partition for ('F') add default partition def1;
+alter table rank alter partition for ('F') 
+truncate partition for ('2010-10-10');
 alter table rank truncate partition for ('F');
 
 drop table rank cascade;
