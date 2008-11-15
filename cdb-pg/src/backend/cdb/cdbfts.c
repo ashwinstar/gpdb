@@ -1171,8 +1171,25 @@ markSegDBTransientState(int dbid, bool state)
 				break;
 		}
 
-		/* assert on segdb not found */
-		assert(i != cdb_component_dbs->total_segment_dbs);
+		if (i == cdb_component_dbs->total_segment_dbs)
+		{
+			/* we didn't find a matching segment. Maybe we were asked about the entry-db ? */
+			for (i = 0; i < cdb_component_dbs->total_entry_dbs; i++)
+			{
+				segDb = cdb_component_dbs->entry_db_info + i;
+				if (segDb->dbid == dbid)
+					break;
+			}
+
+			if (i < cdb_component_dbs->total_entry_dbs)
+			{
+				elog(LOG, "markSegDBTransientState: segdb is entry-db, will not mark down");
+			}
+			else
+				elog(LOG, "markSegDBTransientState: could not find segment dbid %d", dbid);
+
+			return;
+		}
 
 		if (!segDb->isprimary)
 		{
