@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# gpload - load file(s) into Greenplum Database
+# Copyright Greenplum 2008
 
 import sys
 if sys.hexversion<0x2040400:
@@ -47,7 +49,7 @@ def bytestr(size, precision=1):
         float_string = integer_part
     return float_string + suffix
 
-
+# simply threading wrapper
 class CatThread(threading.Thread):
     def __init__(self,gpload,fd):
         threading.Thread.__init__(self)
