@@ -3308,6 +3308,7 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	plan->righttree = NULL;
 	node->appendplans = appendplans;
 	node->isTarget = isTarget;
+	node->isZapped = false;
 
 	return node;
 }
