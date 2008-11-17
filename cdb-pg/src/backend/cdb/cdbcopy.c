@@ -64,10 +64,7 @@ makeCdbCopy(bool is_copy_in)
 	c->total_segs = getgpsegmentCount();
 	c->aotupcounts = NULL;
 
-	if (c->total_segs < 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("MPPCOPY - Got an invalid segment database count of 0.")));
+	Assert(c->total_segs >= 0);
 
 	/*
 	 * Initialize mirror (secondary) database count for each segment.
@@ -485,7 +482,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 					/* if the COPY command had an error */
 					if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 					{
-						appendStringInfo(&(c->err_msg), "MPPCOPY - Error from segment %d: %s\n",
+						appendStringInfo(&(c->err_msg), "Error from segment %d: %s\n",
 										 source_seg, PQresultErrorMessage(res));
 						c->remote_data_err = true;
 					}
@@ -513,13 +510,13 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 				/* should never happen since we are blocking. Don't bother to try again, exit with error. */
 				if (nbytes == 0)
 					appendStringInfo(&(c->err_msg),
-									 "MPPCOPY - Failed to get data from segment %d, attempt blocked\n",
+									 "Failed to get data from segment %d, attempt blocked\n",
 									 source_seg);
 				
 				if (nbytes == -2)
 				{
 					appendStringInfo(&(c->err_msg),
-									 "MPPCOPY - Failed to get data from segment %d: %s\n",
+									 "Failed to get data from segment %d: %s\n",
 									 source_seg, PQerrorMessage(q->conn));
 									 
 					/* remove the segment that completed sending data from the list*/
@@ -629,7 +626,7 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 					/* if the COPY command had an error */
 					if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 					{
-						appendStringInfo(&(c->err_msg), "MPPCOPY - Error from segment %d: %s\n",
+						appendStringInfo(&(c->err_msg), "Error from segment %d: %s\n",
 										 source_seg, PQresultErrorMessage(res));
 						c->remote_data_err = true;
 					}
@@ -657,13 +654,13 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 				/* should never happen since we are blocking. Don't bother to try again, exit with error. */
 				if (nbytes == 0)
 					appendStringInfo(&(c->err_msg),
-									 "MPPCOPY - Failed to get data from segment %d, attempt blocked\n",
+									 "Failed to get data from segment %d, attempt blocked\n",
 									 source_seg);
 				
 				if (nbytes == -2)
 				{
 					appendStringInfo(&(c->err_msg),
-									 "MPPCOPY - Failed to get data from segment %d: %s\n",
+									 "Failed to get data from segment %d: %s\n",
 									 source_seg, PQerrorMessage(q->conn));
 									 
 					/* remove the segment that completed sending data from the list*/
