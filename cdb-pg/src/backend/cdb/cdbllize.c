@@ -1088,6 +1088,8 @@ motion_sanity_walker(Node *node, int *result)
 	switch (nodeTag(node))
 	{
 		case T_Result:
+		case T_Window:
+		case T_ShareInputScan:
 		case T_Append:
 		case T_SeqScan:
 		case T_ExternalScan:
@@ -1156,8 +1158,8 @@ motion_sanity_walker(Node *node, int *result)
 
 			*result |= left_result | right_result;
 
-			elog(DEBUG5, "    %s branch point left 0x%x right 0x%x res 0x%x",
-				 branch_label, left_result, right_result, *result);
+			elog(DEBUG5, "    %s branch point left 0x%x right 0x%x res 0x%x%s",
+				 branch_label, left_result, right_result, *result, deadlock_safe ? " deadlock safe: prefetching" : "");
 		}
 		break;
 		default:
