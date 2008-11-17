@@ -1999,3 +1999,68 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	return plan;
 }
 
+Plan *zap_trivial_result(Plan *plan)
+{
+	if(plan == NULL)
+		return NULL;
+
+	if(IsA(plan, SubPlan))
+	{
+		SubPlan *subp = (SubPlan *) plan;
+		subp->plan = zap_trivial_result(subp->plan);
+		return plan;
+	}
+
+	if(IsA(plan, List))
+	{
+		List *l = (List *) plan;
+		ListCell *lc;
+
+		foreach(lc, l)
+		{
+			lfirst(lc) = zap_trivial_result(lfirst(lc));
+		}
+
+		return plan;
+	}
+
+	if(IsA(plan, Append))
+	{
+		Append *app = (Append *) plan;
+		app->appendplans = (List *) zap_trivial_result((Plan *) app->appendplans);
+		return plan;
+	}
+
+	if(IsA(plan, SubqueryScan))
+	{
+		SubqueryScan *subq = (SubqueryScan *) plan;
+		subq->subplan = zap_trivial_result(subq->subplan);
+		return plan;
+	}
+
+	if(IsA(plan, Result))
+	{
+		Result *res = (Result *) plan;
+		plan->lefttree = zap_trivial_result(plan->lefttree);
+
+		if(plan->lefttree && IsA(plan->lefttree, Append) && !res->resconstantqual && !res->hashFilter)
+		{
+			Append *app = (Append *) plan->lefttree;
+			app->plan.targetlist = plan->targetlist;
+			app->plan.qual = plan->qual;
+			app->isZapped = true;
+			return (Plan *) app;
+		}
+		else
+			return plan;
+	}
+
+	plan->lefttree = zap_trivial_result(plan->lefttree);
+	plan->righttree = zap_trivial_result(plan->righttree);
+	plan->initPlan = (List *) zap_trivial_result((Plan *) plan->initPlan);
+
+	return plan;
+}
+			
+
+

@@ -171,6 +171,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 			result_plan = materialize_finished_plan(result_plan);
 	}
 
+
 	/* Fix sharing id and shared id.  
 	 *
 	 * This must be called before set_plan_references and cdbparallelize.  The other mutator
@@ -211,6 +212,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	PlannerParamList = save_PlannerParamList;
 	PlannerBoundParamList = save_PlannerBoundParamList;
 
+	result_plan = zap_trivial_result(result_plan);
 	return result_plan;
 }
 

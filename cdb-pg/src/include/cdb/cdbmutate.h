@@ -57,6 +57,7 @@ typedef struct ApplyShareInputContext
 	int nextPlanId;
 } ApplyShareInputContext;
 
+extern Plan *zap_trivial_result(Plan *plan); 
 extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 
 extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
 #endif   /* CDBMUTATE_H */
