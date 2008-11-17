@@ -260,15 +260,29 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 
     fun = "setsockopt";
 
-	/* the max-size supported by all of our platforms appears to be 128K ? */
-	rcvbuf = 128 * 1024;
+	/*
+	 * the max-size supported by all of our platforms appears to be 128K ?
+	 *
+	 * We'll try 256k first, and fall back to 128K if that doesn't work.
+	 */
+	rcvbuf = 256 * 1024;
 
 	if (Gp_udp_bufsize_k != 0)
 		rcvbuf = Gp_udp_bufsize_k * 1024;
 
+retry:
 	rcvbufsize = sizeof(rcvbuf);
     if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
+	{
+		/* try a smaller buffer ? */
+		if (Gp_udp_bufsize_k == 0 && rcvbuf == 256 * 1024)
+		{
+			rcvbuf = 128 * 1024;
+			goto retry;
+		}
+
 		goto error;
+	}
 
     fun = "getsockopt";
 	rcvbufsize = sizeof(rcvbuf);
@@ -467,6 +481,11 @@ wait_on_receiver(int timeout_us)
 								(a)->srcPid == (b)->srcPid &&			\
 								(a)->dstPid == (b)->dstPid && (a)->icId == (b)->icId) ? true : false)
 
+/*
+ * Note: we want to add a connection to the hashtable if it isn't
+ * already there ... so we just have to check the pointer values -- no
+ * need to use CONN_HASH_MATCH() at all!
+ */
 static bool
 conn_addhash(MotionConn *conn)
 {
@@ -475,10 +494,13 @@ conn_addhash(MotionConn *conn)
 
 	hashcode = CONN_HASH_VALUE(&conn->conn_info) % conn_htab_size;
 
-	/* check for collision ? */
+	/*
+	 * check for collision -- if we already have an entry for this
+	 * connection, don't add another one. 
+	 */
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
-		if (CONN_HASH_MATCH(&bin->conn->conn_info, &conn->conn_info))
+		if (bin->conn == conn)
 		{
 			elog(DEBUG5, "conn_addhash(): duplicate ?! node %d route %d", conn->conn_info.motNodeId, conn->route);
 			return true; /* false *only* indicates memory-alloc failure. */
@@ -497,6 +519,11 @@ conn_addhash(MotionConn *conn)
 	return true;
 }
 
+/*
+ * Note: we want to remove a connection from the hashtable if it is
+ * there ... so we just have to check the pointer values -- no need to
+ * use CONN_HASH_MATCH() at all!
+ */
 static void
 conn_delhash(MotionConn *conn)
 {
@@ -511,7 +538,8 @@ conn_delhash(MotionConn *conn)
 	p = NULL;
 	while (c != NULL)
 	{
-		if (CONN_HASH_MATCH(&c->conn->conn_info, &conn->conn_info))
+		/* found ? */
+		if (c->conn == conn)
 			break;
 
 		p = c;
@@ -536,8 +564,16 @@ conn_delhash(MotionConn *conn)
 	return;
 }
 
+/*
+ * If the caller tells us that mirrors may be involved (xmit only),
+ * we further disambiguate (MPP-4194).
+ *
+ * NOTE: the icpkthdr field dstListenerPort is used for disambiguation.
+ * on receivers it may not match the actual port (it may have an extra bit
+ * set (1<<31)).
+ */
 static MotionConn *
-findConnByHeader(struct icpkthdr *hdr)
+findConnByHeader(struct icpkthdr *hdr, bool mirrorsPossible)
 {
 	uint32 hashcode;
 	struct conn_htab_bin *bin;
@@ -549,6 +585,14 @@ findConnByHeader(struct icpkthdr *hdr)
 	{
 		if (CONN_HASH_MATCH(&bin->conn->conn_info, hdr))
 		{
+			/* MPP-4194: disambiguate mirror connection collisions */
+			if (mirrorsPossible)
+			{
+				/* the dstlistenerPorts should also match */
+				if (hdr->dstListenerPort != bin->conn->conn_info.dstListenerPort)
+					continue;
+			}
+
 			ret = bin->conn;
 
 			if (DEBUG5 >= log_min_messages)
@@ -844,6 +888,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
             conn->pBuff = conn->ping;
 			conn->activeXmit = NULL;
             conn->state = mcsSetupOutgoingConnection;
+			conn->isMirror = true;
 			conn->route = i++;
             (*pOutgoingCount)++;
 		}
@@ -996,12 +1041,17 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	conn->conn_info.dstContentId = conn->cdbProc->contentid;
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-		elog(DEBUG3, "setupOutgoingUDPConnection: node %d route %d srccontent %d dstcontent %d", pEntry->motNodeId, conn->route, Gp_segment, conn->cdbProc->contentid);
+		elog(DEBUG3, "setupOutgoingUDPConnection: node %d route %d srccontent %d dstcontent %d: %s",
+			 pEntry->motNodeId, conn->route, Gp_segment, conn->cdbProc->contentid, conn->remoteHostAndPort);
 
 	conn->conn_info.srcListenerPort = (Gp_listener_port>>16) & 0x0ffff;
 	conn->conn_info.srcPid = MyProcPid;
 	conn->conn_info.dstPid = conn->cdbProc->pid;
 	conn->conn_info.dstListenerPort = conn->cdbProc->listenerPort;
+
+	/* MPP-4194: add marker for mirror-disambiguation. */
+	if (conn->isMirror)
+		conn->conn_info.dstListenerPort |= (1<<31);
 
 	conn->conn_info.sessionId = gp_session_id;
 	conn->conn_info.icId = gp_interconnect_id;
@@ -1327,7 +1377,7 @@ SetupUDPInterconnect(EState *estate)
 						 pkt.motNodeId, conn->route, conn->state, pkt.seq, conn->conn_info.seq);
 				}
 
-				conn = findConnByHeader(&pkt);
+				conn = findConnByHeader(&pkt, true);
 				if (conn != NULL)
 				{
 					if (conn->state == mcsSetupOutgoingConnection)
@@ -1345,8 +1395,15 @@ SetupUDPInterconnect(EState *estate)
 							 pkt.motNodeId, conn->route, conn->state, conn, pkt.flags);
 				}
 				else
-					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d",
-						 pkt.motNodeId, pkt.icId, pkt.dstPid);
+				{
+					char		remoteHostAndPort[64];
+
+					format_sockaddr((struct sockaddr *) &peer, remoteHostAndPort, sizeof(remoteHostAndPort));
+
+					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d: %s",
+						 pkt.motNodeId, pkt.icId, pkt.dstPid, remoteHostAndPort);
+				}
+
 				/* if we have more available, don't wait at all --
 				 * we'll wait once we run out of acks */
 			} /* for (;;) */
@@ -2123,7 +2180,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		{
 			/* packet is for me */
 
-			ackConn = findConnByHeader(&pkt);
+			ackConn = findConnByHeader(&pkt, true);
 
 			if (ackConn == NULL)
 			{
@@ -2840,7 +2897,7 @@ ic_rx_thread_func(void *arg)
 
 			pthread_mutex_lock(&rx_thread_mutex);
 
-			conn = findConnByHeader(pkt);
+			conn = findConnByHeader(pkt, false);
 			if (conn != NULL)
 			{
 				/* Is this a connection request ? */
@@ -2860,6 +2917,9 @@ ic_rx_thread_func(void *arg)
 
 					/* fill in the peer */
 					conn->peer = peer;
+
+					/* MPP-4194: fill in the dstListenerPort from the peer (may have mirror marking) */
+					conn->conn_info.dstListenerPort = pkt->dstListenerPort;
 
 					if (conn->state == mcsNull)
 					{

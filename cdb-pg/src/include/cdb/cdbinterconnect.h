@@ -25,7 +25,14 @@ struct icpkthdr
 {
 	int			motNodeId;
 
-	/* three pairs which seem useful for identifying packets */
+	/*
+	 * three pairs which seem useful for identifying packets.
+	 *
+	 * MPP-4194:
+	 * It turns out that these can cause collisions; but the
+	 * high bit (1<<31) of the dstListener port is now used
+	 * for disambiguation with mirrors.
+	 */
 	int32		srcPid;
 	int32		srcListenerPort;
 
@@ -35,7 +42,14 @@ struct icpkthdr
     int32       sessionId;
     uint32      icId;
 
-	/* are these really useful ? YES THEY ARE! they're guaranteed to specify a connection */
+	/*
+	 * are these really useful ? YES THEY ARE! they're guaranteed to
+	 * specify a connection.
+	 *
+	 * MPP-4194: the one piece that they don't specify is the
+	 * difference between outbound connections to primaries
+	 * vs. mirrors (see above).
+	 */
     int32       recvSliceIndex;
     int32       sendSliceIndex;
 	int32       srcContentId;
@@ -102,7 +116,8 @@ typedef struct MotionConn
     int         wakeup_ms;
 
 	struct icpkthdr		conn_info;
-	
+	bool		isMirror;
+
     struct CdbProcess  *cdbProc;
     int			remoteContentId;
     char        remoteHostAndPort[64];
