@@ -120,10 +120,29 @@ class Progress(threading.Thread):
                 break
             time.sleep(1)
 
-def usage():
-    sys.stderr.write("%s [-h hostname] [-p port] [-U username] [-d databasename] [-W] [-q] [-D] [-v] [-V] [-l logfile] -f configfile\n"%sys.argv[0])
-    sys.stderr.write("%s -?\n"%sys.argv[0])
-    sys.stderr.write("%s --version\n"%sys.argv[0])
+def usage(error=None):
+    if error:
+        sys.stderr.write('ERROR: ' + error + '\n')
+        sys.stderr.write('\n')
+
+    usage = '''gpload [options] -f configuration file
+
+Options:
+    -h hostname: host to connect to
+    -p port: port to connect to
+    -U username: user to connect as
+    -d database: database to connect to
+    -W: force password authentication
+    -q: quiet mode
+    -D: do not actually load data
+    -v: verbose
+    -V: very verbose
+    -l logfile: log output to logfile
+    --version: print version number and exit
+    -?: help
+'''
+
+    sys.stderr.write(usage)
     sys.exit(2)
 
 def quote(a):
@@ -234,7 +253,7 @@ class gpload:
                 sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
                 sys.exit(2)
         if configFilename==None or argv:
-            usage()
+            usage('configuration file required')
         self.logfile = open(self.options.l,'a')
         self.log(0,'*'*10)
         self.log(0,'gpload session started '+datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
