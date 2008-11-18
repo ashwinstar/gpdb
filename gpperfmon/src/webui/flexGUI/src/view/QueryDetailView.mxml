@@ -9,22 +9,40 @@
   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	  private function toggleQDBar(event:Event):void
+	  {
+	  	mdl.nav.queryDetailTabPage=qdToggle.selectedIndex
+	  	if (qdToggle.selectedIndex == 1)
+	  	{
+			mdl.queries.doQueryPlan(mdl.nav.detailQuery);
+	  	}
+	  }
+	  
+	  private function returnToList(event:Event):void
+	  {
+	  	 mdl.nav.detailQuery = null;
+	  	 mdl.queries.doQueryPlan(null);
+	  }
+	  
     ]]>
 </mx:Script>	
 
 	<mx:VBox width="100%" backgroundColor="0xBFDC92" verticalGap="0"
 		paddingTop="3" paddingBottom="3" paddingLeft="10" paddingRight="10">
 		<mx:HBox width="100%" verticalAlign="middle">
-
-			<mx:Spacer width="100%"/>
-			<mx:Button label="Return to list" click="{mdl.nav.queryDetailID=-1}"/>	
+			<mx:Button label="Return to list" click="returnToList(event)"/>
+			<mx:Spacer width="10"/>
+			<mx:Label text="{'Query ' + mdl.nav.detailQuery.id}" styleName="dashboardTitle"/>	
 		</mx:HBox>	
 	</mx:VBox>
 
-	<mx:TabNavigator width="100%" height="100%">
-		<view:QueryDetailSummary label="SUMMARY"/>
-		<view:QueryDetailPlan label="QUERY PLAN"/>
-		<view:QueryDetailMetrics label="SYSTEM METRICS"/>
-	</mx:TabNavigator>
-			
+	<mx:ToggleButtonBar id="qdToggle" dataProvider="{queryDetailsStack}" 
+		selectedIndex="{mdl.nav.queryDetailTabPage}"
+		   itemClick="toggleQDBar(event)"/>
+	
+	<mx:ViewStack id="queryDetailsStack" width="100%" height="100%">
+		<view:QueryDetailSummary label="Query Details"/>
+		<view:QueryDetailPlan label="Query Plan"/>
+	</mx:ViewStack>			
 </mx:VBox>

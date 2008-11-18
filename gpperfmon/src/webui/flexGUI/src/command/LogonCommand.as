@@ -4,11 +4,11 @@ package command
 	
 	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
+	
 	import util.Debug;
 	import util.ServiceUtils;
-	import command.ConfigCommand;
-			
-	public class LogonCommand implements IResponder
+				
+	public class LogonCommand extends BaseCommand implements ICommand, IResponder
 	{
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
@@ -17,19 +17,29 @@ package command
 		private var username:String;
 		private var role:String;
 						
+		// These hold the parameters
+		private var login:String;
+		private var password:String;
+						
 		// Callback function to return the status of the login
 		private var loginCallback:Function = null;
 		
         public function LogonCommand() {     
         }
+        
+        public function setParameters(_login: String, _password:String, callback:Function=null):void
+        {
+			loginCallback = callback;     
+			login = _login;
+			password = _password;
+        }
 		
-		public function execute(login: String, password:String, callback:Function=null):void
+		public function execute():void
 		{
-			loginCallback = callback;
-			
-			ServiceUtils.send(mdl.session.databaseURL+'logon',
+			ServiceUtils.send(mdl.session.webServiceURL+'logon',
 							  this,
 							  {username: login, password: password});
+			password = '';
 		}
 		
 		// Result of follow-on call to get configuration information
@@ -57,9 +67,8 @@ package command
 		public function result(data:Object):void
 		{
         	var logon:XML = XML(data.result);
-        	
-        	var status:String = logon.status;
-        	if (status == 'SUCCESS')
+         	
+ 			if (logon.name() == 'logon' && logon.status == 'SUCCESS')
         	{
         		Debug.debug("Login as " + logon.username + ": SUCCESS");
         		
@@ -70,17 +79,24 @@ package command
         		
 				// Now fetch config information
 				var configCommand:ConfigCommand = new ConfigCommand;
-				configCommand.execute(configResult);
+				configCommand.setCallback(configResult);
+				configCommand.execute();
 				
-        	} else if (status == 'FAILURE') {
-          		Debug.debug("Login: Incorrect username/password");
+        	} 
+        	else if (logon.name() == 'error' && logon.code == 'ACCESS_DENIED')
+  			{
+  				Debug.debug("Login: " + logon.message);
           		if (loginCallback != null)
-          			loginCallback(false, 'Incorrect username/password');      		
-        	} else {
+          			loginCallback(false, logon.message);      		
+        	} 
+        	else 
+        	{
         		Debug.debug("Login: Error communicating with server");
         		if (loginCallback != null)
         			loginCallback(false, 'Error communicating with server');
         	}
+        	
+        	executeChainedCommand(); 
 		}
 		
 		// Called when the logon request returns unsuccessfully
@@ -90,6 +106,8 @@ package command
 			Debug.debug("Login: Unable to connect to the server");
             if (loginCallback != null)
             	loginCallback(false, "Unable to connect to the server");
+            	
+            executeChainedCommand(); 
 		}
 	}
 }

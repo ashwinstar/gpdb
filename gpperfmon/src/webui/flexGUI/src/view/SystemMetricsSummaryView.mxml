@@ -1,71 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
-	xmlns:panel="panel.*" xmlns:chart="chart.*"
-	creationPolicy="queued">
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml"
+	width="100%" height="100%" xmlns:panel="panel.*" xmlns:chart="chart.*"
+	creationPolicy="queued" creationComplete="canvasInit(event)">
+<mx:HBox width="{this.width}" height="{this.height}">
 
 <mx:Script>
     <![CDATA[
       import model.GPPerfMonModelLocator;
+      import mx.charts.events.ChartItemEvent;
   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	private function canvasInit(event:Event): void 
+	{ 
+		event.target.addEventListener(ChartItemEvent.CHANGE, chartItemEventChange, true, 0, true); 
+	} 
+
+	private function chartItemEventChange(event: Event): void 
+	{ 
+		var evt:ChartItemEvent = event as ChartItemEvent;
+		if (evt)
+			evt.stopImmediatePropagation(); 
+	}
     ]]>
 </mx:Script>	
 	
-	<mx:VBox width="50%" height="100%"> 
-		<mx:Panel title="{mdl.nav.metricsList[1]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">	
-			<chart:ActiveQueriesChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=1}"/>				
-		</mx:Panel>
-		<mx:Panel title="{mdl.nav.metricsList[3]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-			<chart:CPUChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=3}"/>	
-		</mx:Panel>
-		<mx:Panel title="{mdl.nav.metricsList[5]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-			<chart:SwapInUseChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=5}"/>	
-		</mx:Panel>
-		<mx:Panel title="{mdl.nav.metricsList[7]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-			<chart:DiskIOPSChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=7}"/>	
-		</mx:Panel>				
-		<mx:Panel title="{mdl.nav.metricsList[9]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-				<chart:NetworkPacketsChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=9}"/>	
-		</mx:Panel>		
-	</mx:VBox>
-	
-	<mx:VBox width="50%" height="100%">
-		<mx:Panel title="{mdl.nav.metricsList[2]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-				<chart:MemoryChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=2}"/>	
-		</mx:Panel>		
-		<mx:Panel title="{mdl.nav.metricsList[4]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-				<chart:LoadChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=4}"/>	
-		</mx:Panel>		
-		<mx:Panel title="{mdl.nav.metricsList[6]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-				<chart:SwapPagingChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=6}"/>	
-		</mx:Panel>		
-		<mx:Panel title="{mdl.nav.metricsList[8]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-				<chart:DiskIOBytesChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=8}"/>	
-		</mx:Panel>					
-		<mx:Panel title="{mdl.nav.metricsList[10]}" width="100%" height="20%" 
-			styleName="smallMetricGraph">
-				<chart:NetworkBytesChart width="100%" height="100%" 
-				click="{mdl.nav.metricSelected=10}"/>	
-		</mx:Panel>					
+	<mx:VBox width="100%" height="100%">
+		<mx:HBox width="100%" height="100%">
+			
+			<mx:Panel title="{mdl.nav.metricsList[0]}" 
+				styleName="smallMetricGraph" width="50%" height="100%">	
+				<chart:ActiveQueriesChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=0; mdl.nav.systemTabPage=1;}"/>				
+			</mx:Panel>			
+					
+		
+			<mx:Panel title="{mdl.nav.metricsList[1]}" 
+				styleName="smallMetricGraph" width="50%" height="100%">
+					<chart:MemoryChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=1; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>					
+				
+		</mx:HBox>
+		<mx:HBox width="100%" height="100%">
+		
+			<mx:Panel title="{mdl.nav.metricsList[2]}" 
+				styleName="smallMetricGraph" width="50%" height="100%">
+				<chart:CPUChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=2; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>			
+					
+		
+			<mx:Panel title="{mdl.nav.metricsList[3]}"
+				styleName="smallMetricGraph" width="50%" height="100%">
+					<chart:LoadChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=3; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>					
+				
+		</mx:HBox>
+		<mx:HBox width="100%" height="100%">
+			
+			<mx:Panel title="{mdl.nav.metricsList[4]}" 
+				styleName="smallMetricGraph" width="50%" height="100%">
+				<chart:SwapInUseChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=4; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>			
+					
+		
+			<mx:Panel title="{mdl.nav.metricsList[5]}"  
+				styleName="smallMetricGraph" width="50%" height="100%">
+					<chart:SwapPagingChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=5; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>					
+				
+		</mx:HBox>		
+		<mx:HBox width="100%" height="100%">
+			
+			<mx:Panel title="{mdl.nav.metricsList[6]}"
+				styleName="smallMetricGraph" width="50%" height="100%">
+				<chart:DiskIOPSChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=6; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>							
+					
+		
+			<mx:Panel title="{mdl.nav.metricsList[7]}"
+				styleName="smallMetricGraph" width="50%" height="100%">
+					<chart:DiskIOBytesChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=7; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>								
+				
+		</mx:HBox>
+		<mx:HBox width="100%" height="100%">
+		
+			<mx:Panel title="{mdl.nav.metricsList[8]}" 
+				styleName="smallMetricGraph" width="50%" height="100%">
+					<chart:NetworkPacketsChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=8; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>					
+					
+		
+			<mx:Panel title="{mdl.nav.metricsList[9]}"
+				styleName="smallMetricGraph" width="50%" height="100%">
+					<chart:NetworkBytesChart width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=9; mdl.nav.systemTabPage=1;}"/>	
+			</mx:Panel>								
+				
+		</mx:HBox>				
 	</mx:VBox>		
 
 </mx:HBox>
+</mx:Canvas>

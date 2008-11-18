@@ -17,13 +17,15 @@ package model
 		
 		[Embed(source='assets/img/exclamation.png')]
    		public static var confirmIcon:Class;
- 		
- 		[Embed(source='assets/img/minigraph.PNG')]
-   		public static var minigraph:Class;
+ 
+ 		[Embed(source='assets/img/Magnifying-Glass-16x16.png')]
+   		public static var magGlass:Class;
    		  				
-		public static var version:String = "Version 2.0a [Eng Preview A]";
+   		public static var version:String = "Version 2.0.0.0 [Eng Preview D]";
 		
 		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
+
+		public static var copyrightShort:String = "(c) 2008 Greenplum, Inc.";
 		
 		public static var copyright2:String = "Copyright (c) 2008 Greenplum, Inc.\nAll Rights Reserved";
 	}

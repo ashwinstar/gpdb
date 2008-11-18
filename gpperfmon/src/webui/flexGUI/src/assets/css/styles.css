@@ -50,13 +50,44 @@ Panel {
    headerHeight: 18;
 }
 
-.largeMetricGraph {
-   titleStyleName: "largeMetricGraphTitle";
+.dashboardMinigraphs {
+   borderThicknessLeft: 5;
+   borderThicknessTop: 5;
+   borderThicknessBottom: 5;
+   borderThicknessRight: 5;
+   headerHeight: 18;	
+   padding-top: 2;
+   padding-bottom: 2;
+   padding-left: 2;
+   padding-right: 2;
 }
 
-.largeMetricGraphTitle {
+.largeMetricGraphCombo {
    fontSize: 12;
    fontWeight: bold;
+}
+
+.largeMetricGraphTitleBackground {
+   backgroundColor: #BFDC92;
+   backgroundAlpha: 0.4;
+   padding-top: 4;
+   padding-bottom: 4;
+   padding-left: 4;
+   padding-right: 4;
+}
+
+.dashboardTitle {
+   fontSize: 14;
+   fontWeight: bold;	
+}
+
+.dashboardMetricTitle {
+   fontSize: 10;	
+}
+
+.dashboardMetricValue {
+   fontSize: 12;
+   fontWeight: bold;	
 }
 
 .titlelessPanel {
@@ -71,6 +102,11 @@ Panel {
 .mainTitle {
 	fontWeight: bold;
 	fontSize: 16;
+}
+
+.mainSubTitle {
+	fontWeight: bold;
+	fontSize: 10;
 }
 
 .footerText {

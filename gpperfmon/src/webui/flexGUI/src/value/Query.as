@@ -19,5 +19,6 @@ package value
 		public var cpu_velocity:Number = 0;
 		public var tsubmit:Date = null;
 		public var username:String = '';
+		public var watched:Boolean = false;
 	}
 }

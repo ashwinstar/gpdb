@@ -53,40 +53,58 @@
 		a.setStyle("color", 0x000000); // text color
 	}
   	
+  	private function toggleMainTab(event:Event):void
+  	{
+  		mdl.nav.mainPageIndex = mainTab.selectedIndex;
+  		
+  		// Handle pausing or resuming of query plan requests based on page
+  		if (mainTab.selectedIndex == 2)
+  			mdl.queries.resumeQueryPlan();
+  		else
+  			mdl.queries.pauseQueryPlan();
+  	}
+  	
 ]]>   	
 </mx:Script>	
 
 	<mx:HBox width="100%" height="46" verticalAlign="middle" paddingLeft="5" paddingRight="2"
 	   			 paddingTop="2" paddingBottom="2"
 	   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
-	   			 borderThickness="0" borderStyle="solid" cornerRadius="6">
+	   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
+	   			 minWidth="0" 
+	   			 horizontalScrollPolicy="off" verticalScrollPolicy="off">
 		<mx:Image source="{Resources.gp_logo_sml}" scaleContent="false"/>
 		<mx:Spacer width="100%"/>
-		<mx:Label styleName="mainTitle" text="Greenplum Performance Monitor"/>	
+		<mx:Label styleName="mainTitle" text="{mdl.session.databaseName}"/>			
 		<mx:Spacer width="100%"/>
 		<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
 		<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
 		<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>
 	</mx:HBox>
 	
-	<mx:TabNavigator width="100%" height="100%" styleName="mainTabNavigator">
+	<mx:TabNavigator id="mainTab" width="100%" height="100%" styleName="mainTabNavigator"
+		 selectedIndex="{mdl.nav.mainPageIndex}" 
+		 change="toggleMainTab(event)">
 		<view:Top_DashboardView label="DASHBOARD"/>
 		<view:Top_SystemMetricsView label="SYSTEM METRICS"/>
 		<view:Top_QueryMonitorView label="QUERY MONITOR"/>
 		<view:DebugView label="DEBUG"/>
 	</mx:TabNavigator>
 	  
-	<mx:HBox width="100%" verticalAlign="middle" paddingLeft="5" paddingRight="2"
+	<mx:HBox width="100%" verticalAlign="middle" paddingLeft="5" paddingRight="5"
 	   			 paddingTop="2" paddingBottom="2"
 	   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
 	   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
-	   			 styleName="footerText">
-		<mx:Label text="{Resources.version}" id="versionString" fontSize="9"/>
+	   			 styleName="footerText" minWidth="0" 
+	   			 horizontalScrollPolicy="off" verticalScrollPolicy="off">
+		<mx:Label text="{Resources.copyrightShort}"/>
 		<mx:Spacer width="100%"/>
-		<mx:Label text="{Resources.copyright}"/>
+		<mx:Label styleName="mainSubTitle"  text="Greenplum Performance Monitor"/>	
 		<mx:Spacer width="100%"/>
-		<mx:Label text="{'Greenplum server: ' + mdl.session.databaseName + ' (' + 
-		                          mdl.session.connectionStatus + ')'}" id="serverName"/>
+		<mx:Label text="{'Status: ' + mdl.session.connectionStatus}"/>
 	</mx:HBox>
 	 
 </mx:VBox>
+
+
+		

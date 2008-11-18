@@ -18,6 +18,7 @@ package model
 					
 					// Do initialization
 					system = new System(this);
+					db = new Database(this);
 					queries = new Queries(this);
 				}
 			}
@@ -42,14 +43,14 @@ package model
 		// NavState class
 		public var nav:NavState = new NavState;
 		
-		// Query list class
-		public var ql:QueryList = new QueryList;	
-		
 		// Session class
 		public var session:Session = new Session;	
 		
 		// System class
 		public var system:System = null;
+
+		// Database class
+		public var db:Database = null;
 		
 		// Queries class
 		public var queries:Queries = null;

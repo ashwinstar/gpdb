@@ -1,12 +1,12 @@
 package command
 {
 	import model.GPPerfMonModelLocator;
-	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
 	import util.Debug;
 	import util.ServiceUtils;
-			
-	public class SystemNowCommand implements IResponder
+	import mx.rpc.IResponder;
+				
+	public class SystemNowCommand extends BaseCommand implements ICommand, IResponder
 	{
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
@@ -16,7 +16,7 @@ package command
 		
 		public function execute():void
 		{
-			ServiceUtils.send(mdl.session.databaseURL+'system', this);
+			ServiceUtils.send(mdl.session.webServiceURL+'system', this);
 		}
         							    
 		// Called when the SystemNow request returns successfully
@@ -35,6 +35,8 @@ package command
 			}	
 			else
 				Debug.debug("SystemNow error: " + result);
+			
+		 	executeChainedCommand(); 
 		}
 		
 		// Called when the SystemNow request returns unsuccessfully
@@ -43,6 +45,8 @@ package command
 			var faultEvent : FaultEvent = info as FaultEvent;
 			Debug.debug("SystemNow fault: " + faultEvent.toString());
 			mdl.session.connectionBad();
+			
+			executeChainedCommand(); 
 		}
 	}
 }

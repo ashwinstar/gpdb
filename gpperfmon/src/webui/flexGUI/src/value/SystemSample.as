@@ -37,6 +37,7 @@ package value
 			swap_used = Math.round(swap_used*mult)/1000.0;			
 		}
 
+		
 		public function add(samp:SystemSample):void
 		{
 			cpu_idle += samp.cpu_idle;
@@ -67,7 +68,53 @@ package value
 			swap_total += samp.swap_total;
 			swap_used += samp.swap_used;		
 		}
-			
+
+		// Updates the max values if necessary based on a new sample
+		public function calcMax(samp:SystemSample):void
+		{
+			// Just use disk_rb_rate to represent all disk vals
+			if (samp.disk_rb_rate > disk_rb_rate)
+			  disk_rb_rate = samp.disk_rb_rate;
+			if (samp.disk_ro_rate > disk_rb_rate)
+			  disk_rb_rate = samp.disk_ro_rate;
+			if (samp.disk_wb_rate > disk_rb_rate)
+			  disk_rb_rate = samp.disk_wb_rate;			  
+			if (samp.disk_wo_rate > disk_rb_rate)
+			  disk_rb_rate = samp.disk_wo_rate;
+			  
+			// Just use load_0 to represent all disk vals
+			if (samp.load_0 > load_0)
+				load_0 = samp.load_0;
+			if (samp.load_1 > load_0)
+				load_0 = samp.load_1;
+			if (samp.load_2 > load_0)
+				load_0 = samp.load_2;
+				
+			// Just use mem_total to represent all mem vals
+			if ((samp.mem_actual_free+samp.mem_actual_used) > mem_total)
+				mem_total = samp.mem_actual_free+samp.mem_actual_used;
+
+			// Just use net_rb_rate to represent all net vals
+			if (samp.net_rb_rate > net_rb_rate)
+			  net_rb_rate = samp.net_rb_rate;
+			if (samp.net_rp_rate > net_rb_rate)
+			  net_rb_rate = samp.net_rp_rate;
+			if (samp.net_wb_rate > net_rb_rate)
+			  net_rb_rate = samp.net_wb_rate;			  
+			if (samp.net_wp_rate > net_rb_rate)
+			  net_rb_rate = samp.net_wp_rate;
+				
+			// Just use swap_page_in to represent all net vals
+			if (samp.swap_page_in > swap_page_in)
+				swap_page_in = samp.swap_page_in;				
+			if (samp.swap_page_out > swap_page_in)
+				swap_page_in = samp.swap_page_out;	
+
+			// Just use swap_total to represent all swap vals
+			if (samp.swap_total > swap_total)
+				swap_total = samp.swap_total;	
+		}			
+
 				
 		public var sample_time:Date = null;
 		public var cpu_idle:Number = 0;

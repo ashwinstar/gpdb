@@ -4,14 +4,15 @@
 <mx:Script>
     <![CDATA[
       import model.GPPerfMonModelLocator;
-  			
+      import value.Query;
+ 	  import mx.utils.ObjectUtil; 			
+ 	  
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
     ]]>
 </mx:Script>	
 
-	<mx:Text width="50%" text="{'TODO: This screen presents a high-level snapshot of the ' +
-		   'query. i.e. the data from the queries_now/queries_history values and the ' +
-		   'query text.'}"/>
+	<mx:TextArea editable="false" width="100%" height="100%"
+	 text="{ObjectUtil.toString(mdl.nav.detailQuery)}"/>
 	
 </mx:VBox>

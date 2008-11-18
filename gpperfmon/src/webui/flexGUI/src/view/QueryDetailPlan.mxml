@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
-	 initialize="doInitialize();">
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" >
 		
 <mx:Script>
     <![CDATA[
@@ -9,22 +8,10 @@
   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
-	  
-	  public function doInitialize():void
-	  {
-	  	Debug.debug("Initializing QueryDetailPlan");
-	  }	
+
     ]]>
 </mx:Script>	
 
-	<mx:Text width="50%" text="{'TODO: This screen presents a graphical diagram of the ' +
-		   'query plan, showing iterators grouped into slices and connected by arrows. ' + 
-		   'The size of each slice group indicates the amount of cpu elapsed there, ' + 
-		   'and the color of each group indicates the current CPU usage and skew. ' + 
-		   'The size of each arrow indicates the amount of rows that have travelled ' + 
-		   'through it, and the color indicates the current flow and row skew. ' + 
-		   'Each iterator has an icon, and a status value. ' + 
-		   'Clicking on an iterator will show its full details in the detail pane. ' +
-		   'In v1 we will have CPU skew (per slice) and row skew (per iterator) ' +
-		   'but otherwise we just average the metrics across the segments.'}"/>
+	<mx:TextArea width="100%" height="100%" text="{mdl.queries.queryPlanCurrent}"/>
+
 </mx:VBox>

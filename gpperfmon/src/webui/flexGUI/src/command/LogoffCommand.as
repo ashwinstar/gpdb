@@ -1,12 +1,12 @@
 package command
 {
 	import model.GPPerfMonModelLocator;
-	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
 	import util.ServiceUtils;
 	import util.Debug;
-		
-	public class LogoffCommand implements IResponder
+	import mx.rpc.IResponder;
+			
+	public class LogoffCommand extends BaseCommand implements ICommand, IResponder
 	{	
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
@@ -16,7 +16,7 @@ package command
 		
 		public function execute():void
 		{
-			ServiceUtils.send(mdl.session.databaseURL+'logoff', this);
+			ServiceUtils.send(mdl.session.webServiceURL+'logoff', this);
 		}
 		
 		public function result(data:Object):void
@@ -25,12 +25,16 @@ package command
         	
         	var status:String = logoff.status;
         	Debug.debug("Logoff as " + logoff.username + ": " + status);
+        	
+         	executeChainedCommand(); 
 		}
 		
 		public function fault(info:Object):void
 		{
 			var faultEvent : FaultEvent = info as FaultEvent;
             Debug.debug("Logoff: unable to connect to the server");
+            
+           	executeChainedCommand(); 
 		}
 	}
 }

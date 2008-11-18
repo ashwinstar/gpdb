@@ -1,6 +1,6 @@
 import os, sys, datetime
 
-DEBUG = False
+DEBUG = True
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 import pg8000
@@ -52,25 +52,26 @@ def validate_db_conn():
 # Connect to the database
 create_db_conn()
 
-def get_role(username, password):
+def get_role(username, password, allow_trust_logon):
     validate_db_conn()
 
     res = (False, False, 'Incorrect username/password')
 
     # First make sure the login credentials are valid
 
-    #  Check without password -- and fail if we can login without
-    try:
-        auth_conn = pg8000.Connection(user=username, host=pghost_logon, port=pgport, database=pgdatabase)
-        # If succeeded, then we're not checking password, so disallow logon
-        res = (False, False, "Unprotected 'trust' logon blocked")
-        if DEBUG:
-            sys.stderr.write("Logon: unprotected 'trust' logon blocked\n\n")
-        auth_conn.close()
-        return res
-    except:
-        if DEBUG:
-            sys.stderr.write("Logon: validated that password is required\n\n")
+    if not allow_trust_logon:
+        #  Check without password -- and fail if we can login without
+        try:
+            auth_conn = pg8000.Connection(user=username, host=pghost_logon, port=pgport, database=pgdatabase)
+            # If succeeded, then we're not checking password, so disallow logon
+            res = (False, False, "Unprotected 'trust' logon blocked")
+            if DEBUG:
+                sys.stderr.write("Logon: unprotected 'trust' logon blocked\n\n")
+            auth_conn.close()
+            return res
+        except:
+            if DEBUG:
+                sys.stderr.write("Logon: validated that password is required\n\n")
         
     # Now check with password 
     try:
@@ -411,7 +412,7 @@ def system_history(stime, etime, interval_code, aggregate):
     if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
-        filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+        filter = "where '%s' <= ctime and ctime < '%s'" % (stime, etime)
 
     query1 = system_sql('system_history', filter, interval_code, aggregate)
     query2 = system_sql('system_tail', filter, interval_code, aggregate)
@@ -1005,9 +1006,11 @@ def database_history(stime, etime, interval_code):
     if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
-        filter = "where '%s' <= ctime and ctime <= '%s'" % (stime, etime)
+        filter = "where '%s' <= ctime and ctime < '%s'" % (stime, etime)
 
-    query = database_sql('database_history', filter, interval_code)
+    query1 = database_sql('database_history', filter, interval_code)
+    query2 = database_sql('database_tail', filter, interval_code)
+    query = '%s union all %s' % (query1, query2)
 
     if DEBUG:
         sys.stderr.write("database_history query: %s\n" % query)

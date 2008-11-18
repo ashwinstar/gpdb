@@ -1,49 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml">
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:control="control.*">
     <mx:Script>
         <![CDATA[
+        import mx.collections.ArrayCollection;
 		import model.GPPerfMonModelLocator;
-		import mx.charts.HitData;
-		import mx.charts.series.items.LineSeriesItem;
 		import util.MiscUtils;
 		import model.Session;
-		
+  		import model.Resources;
+  			
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
-
         ]]>
     </mx:Script>
     
-  <mx:SolidColor id="user_clr" color="0x00FF00" alpha=".8"/>
-  <mx:SolidColor id="sys_clr" color="0x0000FF" alpha=".8"/>
-  <mx:SolidColor id="idle_clr" color="0xCCCCCC" alpha=".1"/>
+  <mx:SolidColor id="user_clr" color="0x4ABF84" alpha="1.0"/>
+  <mx:SolidColor id="sys_clr" color="0x374CE3" alpha="1.0"/>
+  <mx:SolidColor id="idle_clr" color="0xD8D8D8" alpha="1.0"/>
    
-  <mx:AreaChart showDataTips="true" id="myChart" width="100%" height="100%"
+  <mx:ColumnChart showDataTips="true" id="myChart" width="100%" height="100%"
   				dataProvider="{mdl.system.activeAggLookup[mdl.nav.durationSelected]}" 
-  				type="stacked">
+  				type="100%" updateComplete="{dataSelector.invalidateDisplayList()}">
   		<mx:series>	 
- 			<mx:AreaSeries yField="cpu_user"
+ 			<mx:ColumnSeries yField="cpu_user" sortOnXField="false"
   			               xField="sample_time" displayName="CPU User %"
-  			               areaFill="{user_clr}">
- 			</mx:AreaSeries>  
-  			<mx:AreaSeries yField="cpu_sys" 
+  			               fill="{user_clr}">
+ 			</mx:ColumnSeries>  
+  			<mx:ColumnSeries yField="cpu_sys" sortOnXField="false"
   				           xField="sample_time" displayName="CPU System %"
-  				           areaFill="{sys_clr}">
-  			</mx:AreaSeries>	   
-  			<mx:AreaSeries yField="cpu_idle" 
+  				           fill="{sys_clr}">
+  			</mx:ColumnSeries>	   
+  			<mx:ColumnSeries yField="cpu_idle" sortOnXField="false"
   						   xField="sample_time" displayName="CPU Idle %"
-  						   areaFill="{idle_clr}">
-  		  	</mx:AreaSeries>	       
+  						   fill="{idle_clr}">
+  		  	</mx:ColumnSeries>	       
   		</mx:series>
+ 
+ 	    <mx:annotationElements>
+	        <control:HorizontalAxisDataSelector id="dataSelector"
+				selectorColor="0x000000" enabled="{mdl.nav.systemTabPage==1}"
+								         visible="{mdl.nav.systemTabPage==1}"/>
+		</mx:annotationElements>		
   		
   		<mx:seriesFilters>
            <mx:Array/>
         </mx:seriesFilters>
+ 		
+  		 <mx:backgroundElements>
+  			<mx:VBox verticalAlign="middle" horizontalAlign="center"
+  				visible="{!(mdl.system.dataLoaded.getItemAt(mdl.nav.durationSelected) as Boolean)}">
+  				<mx:Label text="Loading..."/>  				
+  			</mx:VBox>
+  		</mx:backgroundElements>
   		
         <mx:horizontalAxis>
             <mx:DateTimeAxis id="haxis" displayLocalTime="true" 
             	minimum="{mdl.session.timeArray.getItemAt(mdl.nav.durationSelected) as Date}"
-            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
+            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"
+            	dataInterval="{mdl.system.dataIntervalNumber[mdl.nav.durationSelected]}" 
+            	dataUnits="{mdl.system.dataIntervalUnit[mdl.nav.durationSelected]}"/>
         </mx:horizontalAxis>
         <mx:verticalAxis>
             <mx:LinearAxis id="vaxis" baseAtZero="true" maximum="100"/>
@@ -64,7 +78,7 @@
 		        </mx:axisStroke>
 		    </mx:AxisRenderer>
 		</mx:verticalAxisRenderers>
-  </mx:AreaChart>
+  </mx:ColumnChart>
   
   <mx:Legend dataProvider="{myChart}"/>
   

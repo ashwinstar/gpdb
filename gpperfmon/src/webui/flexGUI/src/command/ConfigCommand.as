@@ -1,13 +1,12 @@
 package command
 {
 	import model.GPPerfMonModelLocator;
-	import mx.rpc.IResponder;
-	import mx.rpc.events.FaultEvent;
-	import mx.controls.Alert;
+	import mx.rpc.events.FaultEvent;	
 	import util.Debug;
 	import util.ServiceUtils;
-	
-	public class ConfigCommand implements IResponder
+	import mx.rpc.IResponder;
+		
+	public class ConfigCommand extends BaseCommand implements ICommand, IResponder
 	{
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
@@ -18,10 +17,14 @@ package command
         public function ConfigCommand() {     
         }
 		
-		public function execute(callback:Function=null):void
+		public function setCallback(callback:Function=null):void
 		{
-			configCallback = callback;
-			ServiceUtils.send(mdl.session.databaseURL+'config', this);
+			configCallback = callback;			
+		}
+		
+		public function execute():void
+		{
+			ServiceUtils.send(mdl.session.webServiceURL+'config', this);
 		}
 		
 		public function result(data:Object):void
@@ -46,7 +49,9 @@ package command
         			configCallback(false, "Unable to access required config settings");	
         	}	
 			else
-				configCallback(true);        	
+				configCallback(true);     
+				
+			executeChainedCommand();   	
 		}
 		
 		public function fault(info:Object):void
@@ -55,6 +60,8 @@ package command
 			Debug.debug("Config: request failed");
             if (configCallback != null)
             	configCallback(false, "Unable to read config from server");
+            	
+            executeChainedCommand();   
 		}
 	}
 }

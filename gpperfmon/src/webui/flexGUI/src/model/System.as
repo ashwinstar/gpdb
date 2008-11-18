@@ -1,9 +1,6 @@
 package model
 {
-	import command.SystemHistoricCommand;
-	
 	import mx.collections.ArrayCollection;
-	import mx.events.ItemClickEvent;
 	
 	import util.Debug;
 	import util.MiscUtils;
@@ -73,17 +70,21 @@ package model
 				
 				count++;				
 			}
-			
 			newVals.divideBy(count);
+			
+			if (numHosts != count)
+			  numHosts = count;			  			
 			
 			systemNowAgg = newVals;		
 			
 			populateMinuteRollup();	
+			
+			populateLongerRollups();
 		}
 
 		// Rolls up the latest samples into 1 minute buckets, and appends each 
 		// completed minute to the oneMinAggData array	
-		public function populateMinuteRollup():void
+		private function populateMinuteRollup():void
 		{
 			if (!systemNowAgg || systemNowAgg.sample_time == null)
 			{
@@ -108,15 +109,24 @@ package model
 				systemNowCurrMinute.divideBy(systemNowCurrMinute_numSamples);
 		
 				// Add this to the array
-				if (!oneMin_lastReceivedDate || 
-					(oneMin_lastReceivedDate.time < systemNowCurrMinute.sample_time.time))
+				if (!oneMin_lastCalcDate || 
+					(oneMin_lastCalcDate.time < systemNowCurrMinute.sample_time.time))
 				{
+					if (oneMin_lastCalcDate)
+					{
+						// Insert a gap object if there's a gap in the data
+						var nextDate:Number = oneMin_lastCalcDate.time + MiscUtils.MINUTE;
+						if (nextDate < systemNowCurrMinute.sample_time.time) {
+							var missingData:Object = new Object;
+							missingData.sample_time = new Date(nextDate);
+							oneMinAggData.addItem(missingData);
+						}
+					}			
+					oneMin_lastCalcDate = systemNowCurrMinute.sample_time;
+					// Check if it changes the max values
+					oneMinAggMax.calcMax(systemNowCurrMinute);
+					// Insert it into the adday
 					oneMinAggData.addItem(systemNowCurrMinute);
-				}	
-				else
-				{
-					Debug.debug("Dropping real-time data for date " + 
-							systemNowCurrMinute.sample_time.toString());
 				}	
 				
 				// Restart the per-minute rollup
@@ -126,23 +136,198 @@ package model
 			}
 			else
 			{
-				// Add to the existing rollup
-				
+				// Add to the existing rollup			
 				systemNowCurrMinute.add(systemNowAgg);		
 				
 				systemNowCurrMinute_numSamples += 1;
 			}
 		}
 
+		// Updates the 5min, 1hr and 1day rollups based on the gathered realtime data	
+		private function populateLongerRollups():void
+		{
+			if (!systemNowAgg || systemNowAgg.sample_time == null)
+			{
+				Debug.debug("systemNow: populateLongerRollup received null value");
+				return;
+			}
+
+			// Do we need to do the 5 min rollup now?
+			if (fiveMin_lastCalcDate)
+			{				
+				var prevFiveMins:Number = 
+					MiscUtils.date_trim_5min(systemNowAgg.sample_time).time - (MiscUtils.MINUTE*5);
+							
+				if (fiveMin_lastCalcDate.time < prevFiveMins)
+				{
+					Debug.debug("systemNow: generating 5 min rollup for " + (new Date(prevFiveMins)).toString());
+					populateFiveMinuteRollup(prevFiveMins);
+				}
+			}
+
+			// Do we need to do the 1hr rollup now?
+			if (oneHr_lastCalcDate)
+			{				
+				var prevOneHr:Number = 
+					MiscUtils.date_trim_1hr(systemNowAgg.sample_time).time - (MiscUtils.HOUR);
+							
+				if (oneHr_lastCalcDate.time < prevOneHr)
+				{
+					Debug.debug("systemNow: generating 1hr rollup for " + (new Date(prevOneHr)).toString());
+					populateOneHrRollup(prevOneHr);
+				}
+			}
+			
+			// Do we need to do the 1day rollup now?
+			if (oneDay_lastCalcDate)
+			{				
+				var prevOneDay:Number = 
+					MiscUtils.date_trim_1day(systemNowAgg.sample_time).time - (MiscUtils.DAY);
+							
+				if (oneDay_lastCalcDate.time < prevOneDay)
+				{
+					Debug.debug("systemNow: generating 1day rollup for " + (new Date(prevOneDay)).toString());
+					populateOneDayRollup(prevOneDay);
+				}
+			}
+		}
+
+		// Uses 1min samples to build the next 5minute sample
+		private function populateFiveMinuteRollup(sampleTime:Number):void
+		{
+			var newVal:SystemSample = new SystemSample;
+			newVal.sample_time = new Date(sampleTime);
+
+			var count:int = 0;
+			for each(var _val:Object in oneMinAggData)
+			{	
+				var val:SystemSample = _val as SystemSample;
+				if (val && (val.sample_time.time >= sampleTime &&
+				    	    (val.sample_time.time < sampleTime+(MiscUtils.MINUTE*5))))
+				{
+					newVal.add(val);
+					count++;
+				}
+			}
+			
+			Debug.debug("populateFiveMinuteRollup: found " + count.toString() +
+			            " 1min samples");
+			if (count > 0)
+			{
+				newVal.divideBy(count);
+				
+				if (fiveMin_lastCalcDate)
+				{
+					// Insert a gap object if there's a gap in the data
+					var nextDate:Number = fiveMin_lastCalcDate.time + (MiscUtils.MINUTE*5);
+					if (nextDate < sampleTime) {
+						var missingData:Object = new Object;
+						missingData.sample_time = new Date(nextDate);
+						fiveMinAggData.addItem(missingData);
+						Debug.debug("Inserting 5min sample gap at " + missingData.sample_time.toString());
+					}
+				}			
+				fiveMin_lastCalcDate = newVal.sample_time;
+				Debug.debug("Adding 5min sample for " + newVal.sample_time.toString());
+				fiveMinAggMax.calcMax(newVal);
+				fiveMinAggData.addItem(newVal);			
+			}	          
+		}
+
+		// Uses 5min samples to build the next hour sample
+		private function populateOneHrRollup(sampleTime:Number):void
+		{
+			var newVal:SystemSample = new SystemSample;
+			newVal.sample_time = new Date(sampleTime);
+
+			var count:int = 0;
+			for each(var _val:Object in fiveMinAggData)
+			{	
+				var val:SystemSample = _val as SystemSample;
+				if (val && (val.sample_time.time >= sampleTime &&
+				    	    (val.sample_time.time < sampleTime+MiscUtils.HOUR)))
+				{
+					newVal.add(val);
+					count++;
+				}
+			}
+			
+			Debug.debug("populateOneHourRollup: found " + count.toString() +
+			            " 5min samples");
+			if (count > 0)
+			{
+				newVal.divideBy(count);
+				
+				if (oneHr_lastCalcDate)
+				{
+					// Insert a gap object if there's a gap in the data
+					var nextDate:Number = oneHr_lastCalcDate.time + (MiscUtils.HOUR);
+					if (nextDate < sampleTime) {
+						var missingData:Object = new Object;
+						missingData.sample_time = new Date(nextDate);
+						oneHrAggData.addItem(missingData);
+						Debug.debug("Inserting 1hr sample gap at " + missingData.sample_time.toString());
+					}
+				}			
+				oneHr_lastCalcDate = newVal.sample_time;
+				Debug.debug("Adding 1hr sample for " + newVal.sample_time.toString());
+				oneHrAggMax.calcMax(newVal);
+				oneHrAggData.addItem(newVal);			
+			}	          
+		}
+
+		// Uses 1hr samples to build the next 1day sample
+		private function populateOneDayRollup(sampleTime:Number):void
+		{
+			var newVal:SystemSample = new SystemSample;
+			newVal.sample_time = new Date(sampleTime);
+
+			var count:int = 0;
+			for each(var _val:Object in oneHrAggData)
+			{	
+				var val:SystemSample = _val as SystemSample;
+				if (val && (val.sample_time.time >= sampleTime &&
+				    	    (val.sample_time.time < sampleTime+MiscUtils.DAY)))
+				{
+					newVal.add(val);
+					count++;
+				}
+			}
+			
+			Debug.debug("populateOneDayRollup: found " + count.toString() +
+			            " 1hr samples");
+			if (count > 0)
+			{
+				newVal.divideBy(count);
+				
+				if (oneDay_lastCalcDate)
+				{
+					// Insert a gap object if there's a gap in the data
+					var nextDate:Number = oneDay_lastCalcDate.time + (MiscUtils.DAY);
+					if (nextDate < sampleTime) {
+						var missingData:Object = new Object;
+						missingData.sample_time = new Date(nextDate);
+						oneDayAggData.addItem(missingData);
+						Debug.debug("Inserting 1day sample gap at " + missingData.sample_time.toString());
+					}
+				}			
+				oneDay_lastCalcDate = newVal.sample_time;
+				Debug.debug("Adding 1day sample for " + newVal.sample_time.toString());
+				oneDayAggMax.calcMax(newVal);
+				oneDayAggData.addItem(newVal);			
+			}	          
+		}
+
+
 		// Load historic system data
 		public function systemHistoric(detail:String, start:Date, end:Date, systemData:XML):void
 		{
 			var elementArray:Array = new Array();
 			var nameArray:Array = new Array();
-			
+	
 			var maxLength:int = 0;
 			var numColumns:int = 0;
-			
+						
 			// Ensure the the array is empty
 			if (detail == '1min')
 				oneMinAggData.removeAll();
@@ -180,12 +365,16 @@ package model
 			}
 			numColumns = nameArray.length;
 			
+			if (numColumns == 0)
+				Debug.debug("systemLoadHistoric found no values");
+				
+			// Keep track of dates to make sure each is greater than the last
+			var latestDate:Date = null;			
+			
 			for (var j:int=0; j<maxLength; j++)
 			{
 				// object to store system metrics for a single slice in time
-				var obj:Object = new SystemSample();
-				// Keep track of dates to make sure each is greater than the last
-				var latestDate:Date = null;
+				var obj:SystemSample = new SystemSample();
 				var thisDate:Date = null;
 				// iterate through each element in a host node
 				for (var i:int=0; i<numColumns; i++)
@@ -202,91 +391,128 @@ package model
 				}
 				if (!latestDate || (latestDate.time < thisDate.time))
 				{
-					latestDate = thisDate;
 					if (detail == '1min')
+					{
+						if (latestDate)
+						{
+							// Insert a gap object if there's a gap in the data
+							var nextDate:Number = latestDate.time + MiscUtils.MINUTE;
+							if (nextDate < thisDate.time) {
+								var missingData:Object = new Object;
+								missingData.sample_time = new Date(nextDate);
+								oneMinAggData.addItem(missingData);
+							}
+						}
+						oneMinAggMax.calcMax(obj);
 						oneMinAggData.addItem(obj);
+					}
 					else if (detail == '5min')
+					{
+						if (latestDate)
+						{
+							// Insert a gap object if there's a gap in the data
+							var nextDate:Number = latestDate.time + (MiscUtils.MINUTE*5);
+							if (nextDate < thisDate.time) {
+								var missingData:Object = new Object;
+								missingData.sample_time = new Date(nextDate);
+								fiveMinAggData.addItem(missingData);
+							}
+						}						
+						fiveMinAggMax.calcMax(obj);
 						fiveMinAggData.addItem(obj);
+					}
 					else if (detail == '1hr')
+					{
+						if (latestDate)
+						{
+							// Insert a gap object if there's a gap in the data
+							var nextDate:Number = latestDate.time + MiscUtils.HOUR;
+							if (nextDate < thisDate.time) {
+								var missingData:Object = new Object;
+								missingData.sample_time = new Date(nextDate);
+								oneHrAggData.addItem(missingData);
+							}
+						}	
+						oneHrAggMax.calcMax(obj);
 						oneHrAggData.addItem(obj);
+					}
 					else if (detail == '1day')
-						oneDayAggData.addItem(obj);				
+					{
+						if (latestDate)
+						{
+							// Insert a gap object if there's a gap in the data
+							var nextDate:Number = latestDate.time + MiscUtils.DAY;
+							if (nextDate < thisDate.time) {
+								var missingData:Object = new Object;
+								missingData.sample_time = new Date(nextDate);
+								oneDayAggData.addItem(missingData);
+							}
+						}	
+						oneDayAggMax.calcMax(obj);
+						oneDayAggData.addItem(obj);	
+					}
+									
+					latestDate = thisDate;
 				}
 				else
 				{
-					Debug.debug("Dropping historic data for date " + thisDate.toString());
+					Debug.debug("System dropping historic data for date " + thisDate.toString());
 				}
 			}
 			if (detail == '1min')
 			{
 				oneMin_firstReceivedDate = start;
 				oneMin_lastReceivedDate = latestDate;
+				oneMin_lastCalcDate = latestDate;
+				dataLoaded[0] = true;
+				dataLoaded[1] = true;
 			}
 			else if (detail == '5min')
 			{
 				fiveMin_firstReceivedDate = start;
 				fiveMin_lastReceivedDate = latestDate;
+				fiveMin_lastCalcDate = latestDate;				
+				dataLoaded[2] = true;
 			}
 			else if (detail == '1hr')
 			{
 				oneHr_firstReceivedDate = start;
 				oneHr_lastReceivedDate = latestDate;
+				oneHr_lastCalcDate = latestDate;
+				dataLoaded[3] = true;
+				dataLoaded[4] = true;
 			}
 			else if (detail == '1day')
 			{
 				oneDay_firstReceivedDate = start;
-				oneDay_lastReceivedDate = latestDate;				
+				oneDay_lastReceivedDate = latestDate;
+				oneDay_lastCalcDate = latestDate;		
+				dataLoaded[5] = true;
+				dataLoaded[6] = true;	
 			}	
 		}
-
-		// Called when the duration toggle is changed
-		// -- use to trigger deferred data loading
-		public function durationChange(event:ItemClickEvent):void
+		
+		// Loads detailed data for a single point in time (based on selection)
+		public function systemHistoricDetailed(detail:String, start:Date, end:Date, systemData:XML):void
 		{
-			// Apply the change
-			if (event.index >= 0)
-				mdl.nav.durationSelected = event.index;
-			
-			if (mdl.system.activeAggLookup[event.index] == oneMinAggData)
+			if (!mdl.nav.selectedSystemItem || (start != mdl.nav.selectedSystemItem.sample_time))
 			{
-				// Shouldn't be here -- get 1min data on startup
-				// -- could retry if failed, but skip for now
-				if (!oneMin_lastReceivedDate)
-					Debug.debug("Duration change: identified missing 1min data");
-			} 
-			else if (mdl.system.activeAggLookup[event.index] == fiveMinAggData)
-			{
-				if (!fiveMin_lastReceivedDate)
-				{
-					//Issue request to get the last 24hrs of 5min system data
-					var fiveMinRequest:SystemHistoricCommand = new SystemHistoricCommand;
-					fiveMinRequest.execute('5min', mdl.session.timeArray[Session.ONE_DAY_AGO]);	
-				}
+				Debug.debug("systemHistoricDetailed received sample for old selection - discarding");
+				return;
 			}
-			else if (mdl.system.activeAggLookup[event.index] == oneHrAggData)
-			{
-				if (!oneHr_lastReceivedDate)
-				{
-					//Issue request to get the last two weeks of 1hr system data
-					var oneHrRequest:SystemHistoricCommand = new SystemHistoricCommand;
-					oneHrRequest.execute('1hr', mdl.session.timeArray[Session.TWO_WEEKS_AGO]);	
-				}
-			}				
-			else if (mdl.system.activeAggLookup[event.index] == oneDayAggData)
-			{
-				if (!oneDay_lastReceivedDate)
-				{
-					//Issue request to get the last 1yrs of 1day system data
-					var oneDayRequest:SystemHistoricCommand = new SystemHistoricCommand;
-					oneDayRequest.execute('1day', mdl.session.timeArray[Session.ONE_YEAR_AGO]);	
-				}
-			}			
+
+			selectedDataDetails = systemData;	
 		}
 
+
 		// Stores the most recent system now info, aggregated across systems
-		public var systemNowAgg:SystemSample = new SystemSample();
+		public var systemNowAgg:SystemSample = null;
 		// Stores the raw XML of the most recent system now response
 		public var systemNowXML:XML = null;
+		public var numHosts:int = 0;
+		
+		// Holds detailed date for a selected point in tine
+		public var selectedDataDetails:XML = null;
 		
 		// Stores a running sum of the current minute's system information
 		public var systemNowCurrMinute:SystemSample = null;
@@ -296,30 +522,58 @@ package model
 		
 		// Stores last 6 hours at 1 minute granularity
 		public var oneMinAggData:ArrayCollection = new ArrayCollection;
+		// Stores the max values for graphing
+		public var oneMinAggMax:SystemSample = new SystemSample;
 		// Last date for which we've received data
 		public var oneMin_firstReceivedDate:Date = null;
 		public var oneMin_lastReceivedDate:Date = null;
-
+		public var oneMin_lastCalcDate:Date = null;
+		
 		// Stores last 24 hours at 5 minute granularity
 		public var fiveMinAggData:ArrayCollection = new ArrayCollection;
+		// Stores the max values for graphing
+		public var fiveMinAggMax:SystemSample = new SystemSample;
 		public var fiveMin_firstReceivedDate:Date = null;
 		public var fiveMin_lastReceivedDate:Date = null;
-
+		public var fiveMin_lastCalcDate:Date = null;
+		
 		// Stores last 30 days at 1 hr granularity
 		public var oneHrAggData:ArrayCollection = new ArrayCollection;	
+		// Stores the max values for graphing
+		public var oneHrAggMax:SystemSample = new SystemSample;
 		public var oneHr_firstReceivedDate:Date = null;
 		public var oneHr_lastReceivedDate:Date = null;
-
+		public var oneHr_lastCalcDate:Date = null;
+		
 		// Stores last 2 years at 1 day granularity 
 		public var oneDayAggData:ArrayCollection = new ArrayCollection;			
+		// Stores the max values for graphing
+		public var oneDayAggMax:SystemSample = new SystemSample;		
 		public var oneDay_firstReceivedDate:Date = null;
 		public var oneDay_lastReceivedDate:Date = null;		
+		public var oneDay_lastCalcDate:Date = null;
 		
-		// Lookup to find the appropriate data provide at each duration
-		public var activeAggLookup:Array = new Array( null,
+		// Lookup to find the appropriate data provider at each duration
+		public var activeAggLookup:Array = new Array(
 			oneMinAggData, oneMinAggData, fiveMinAggData, oneHrAggData, 
 			oneHrAggData, oneDayAggData, oneDayAggData);	
-		
+
+		// Lookup to find the appropriate max at each duration
+		public var activeMaxLookup:Array = new Array(
+			oneMinAggMax, oneMinAggMax, fiveMinAggMax, oneHrAggMax, 
+			oneHrAggMax, oneDayAggMax, oneDayAggMax);
+
+		// Is the data loaded for each duration
+		public var dataLoaded:ArrayCollection = new ArrayCollection( 
+			new Array(false, false, false, false, 
+					  false, false, false));
+
+		// Lookup to find interval for each val
+		public var dataIntervalNumber:Array = 
+			new Array(1, 1, 5, 1, 1, 1, 1);
+		public var dataIntervalUnit:Array =
+			new Array('minutes', 'minutes', 'minutes', 'hours', 'hours', 'days', 'days');
+
 		// Reference to the model
 		private var mdl:GPPerfMonModelLocator;	
 	}

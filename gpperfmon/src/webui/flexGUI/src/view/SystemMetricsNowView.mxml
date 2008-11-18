@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml"
+	width="100%" height="100%" xmlns:panel="panel.*" xmlns:chart="chart.*"
+	creationPolicy="queued">
 
 <mx:Script>
     <![CDATA[
@@ -9,19 +11,25 @@
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
     ]]>
 </mx:Script>	
-
-  <mx:SolidColor id="user_clr" color="0x00FF00" alpha=".8"/>
-  <mx:SolidColor id="sys_clr" color="0x0000FF" alpha=".8"/>
-  <mx:SolidColor id="idle_clr" color="0x000000" alpha=".5"/>
-
- <mx:Label text="{'Last updated: ' + mdl.system.systemNowXML.host[0].sample_time}"/>
- <mx:HBox width="100%" height="100%">
+   
+  <mx:SolidColor id="user_clr" color="0x4ABF84" alpha="1.0"/>
+  <mx:SolidColor id="sys_clr" color="0x374CE3" alpha="1.0"/>
+  <mx:SolidColor id="idle_clr" color="0xD8D8D8" alpha="1.0"/>
  
-    <mx:VBox height="100%" horizontalAlign="right">
-   	 <mx:Spacer height="100"/> 
-  	 <mx:BarChart showDataTips="true" id="myChart0" height="100%"
+ <mx:HBox width="100%">
+ 	<mx:Spacer width="150"/>
+ 	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart}"/>
+ 	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart2}"/>
+ 	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart3}"/>
+ 	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart4}"/>
+ </mx:HBox>    	
+ 
+ <mx:Canvas id="canvas" width="100%" height="100%">
+   <mx:HBox width="{canvas.width}" height="{canvas.height}">
+  	 <mx:BarChart showDataTips="true" id="myChart0"
   				dataProvider="{mdl.system.systemNowXML.host}" 
-  				width="150" gutterLeft="150">		
+  				width="150" height="{(mdl.system.numHosts*25)+100}" gutterLeft="150"
+  				gutterBottom="100">		
   		<mx:seriesFilters>
            <mx:Array/>
         </mx:seriesFilters>
@@ -42,14 +50,11 @@
 			<mx:Array/>
 		</mx:backgroundElements>
   	</mx:BarChart>	
-   </mx:VBox> 
 
-   <mx:VBox height="100%" width="25%" horizontalAlign="center">
-   	 <mx:Legend height="100" verticalAlign="top" dataProvider="{myChart}"/> 
-  	 <mx:BarChart showDataTips="true" id="myChart" height="100%" width="100%"
-  				dataProvider="{mdl.system.systemNowXML.host}" >
+  	 <mx:BarChart showDataTips="true" id="myChart" width="100%" height="{(mdl.system.numHosts*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
   		<mx:series>	 
-  			<mx:BarSet type="stacked">
+  			<mx:BarSet type="100%">
 	  			<mx:BarSeries xField="cpu_user"  
 	 						  displayName="CPU User" fill="{user_clr}">
 	 			</mx:BarSeries>  
@@ -71,19 +76,16 @@
             	categoryField="@name"/>
         </mx:verticalAxis>
         <mx:horizontalAxis>
-            <mx:LinearAxis id="vaxis1" baseAtZero="true" title="CPU %"/>
+            <mx:LinearAxis id="vaxis1" baseAtZero="true" maximum="100" title="CPU %"/>
         </mx:horizontalAxis>
 		<mx:verticalAxisRenderers>
         	<mx:AxisRenderer axis="{cataxis1}" showLabels="false"/>
         </mx:verticalAxisRenderers>
         
   	</mx:BarChart>	
-   </mx:VBox> 
-
-   <mx:VBox height="100%" width="25%" horizontalAlign="center">
-   	 <mx:Legend height="100" verticalAlign="top" dataProvider="{myChart2}"/>	
-  	 <mx:BarChart showDataTips="true" id="myChart2" height="100%" width="100%"
-  				dataProvider="{mdl.system.systemNowXML.host}">
+	
+  	 <mx:BarChart showDataTips="true" id="myChart2" width="100%" height="{(mdl.system.numHosts*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="stacked">
 	  			<mx:BarSeries xField="mem_actual_used"  
@@ -111,14 +113,9 @@
         </mx:verticalAxisRenderers>
         
   	</mx:BarChart>
-    
-   </mx:VBox> 
- 
-  <mx:VBox height="100%" width="25%" horizontalAlign="center">
-     
-   	<mx:Legend height="100" verticalAlign="top" dataProvider="{myChart3}"/>	
-  	<mx:BarChart showDataTips="true" id="myChart3" height="100%" width="100%"
-  				dataProvider="{mdl.system.systemNowXML.host}">
+
+  	<mx:BarChart showDataTips="true" id="myChart3" width="100%" height="{(mdl.system.numHosts*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="clustered">
 	  			<mx:BarSeries xField="disk_rb_rate"  
@@ -147,13 +144,8 @@
         
   	</mx:BarChart>
 
-  </mx:VBox> 
-
-  <mx:VBox height="100%" width="25%" horizontalAlign="center">
-      
-   	<mx:Legend height="100" verticalAlign="top" dataProvider="{myChart4}"/>	
-  	<mx:BarChart showDataTips="true" id="myChart4" height="100%" width="100%"
-  				dataProvider="{mdl.system.systemNowXML.host}">
+  	<mx:BarChart showDataTips="true" id="myChart4" width="100%" height="{(mdl.system.numHosts*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="clustered">
 	  			<mx:BarSeries xField="net_rb_rate"  
@@ -182,10 +174,6 @@
         
   	</mx:BarChart>
 
-  </mx:VBox> 
-
-</mx:HBox>  
-
-  
-  	
+  </mx:HBox>  
+ </mx:Canvas>	
 </mx:VBox>

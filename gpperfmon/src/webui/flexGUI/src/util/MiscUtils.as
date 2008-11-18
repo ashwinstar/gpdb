@@ -2,6 +2,7 @@ package util {
 	import mx.collections.ArrayCollection;
 	import mx.controls.Alert;
 	import mx.controls.DataGrid;
+	import mx.core.Container;
 	import mx.rpc.events.FaultEvent;
 	import mx.rpc.events.ResultEvent;
 	
@@ -148,6 +149,25 @@ package util {
 			return new Date(input.fullYear, input.month, input.date, input.hours, input.minutes);
 		}
 
+		// Returns date rounded off to 5 minutes
+		public static function date_trim_5min(input:Date):Date
+		{
+			return new Date(input.fullYear, input.month, input.date, input.hours, 5 * int(input.minutes/5));
+		}
+
+		// Returns date rounded off to 1 hr
+		public static function date_trim_1hr(input:Date):Date
+		{
+			return new Date(input.fullYear, input.month, input.date, input.hours);
+		}
+
+		// Returns date rounded off to 1 day
+		public static function date_trim_1day(input:Date):Date
+		{
+			return new Date(input.fullYear, input.month, input.date);
+		}
+
+
 		// Returns number of previous minute rounded off to the minute
 		public static function prevMinAsNumber():Number
 		{
@@ -181,5 +201,6 @@ package util {
 			
 			return output;	
 		}
+		
 	}
 }

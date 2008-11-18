@@ -16,10 +16,20 @@
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 	  
 	  function initApp():void{
-		mdl.session.setDatabaseConnection( 
-			Application.application.parameters.serverHost,
-			Application.application.parameters.serverPort);    
-	    //mdl.session.setDatabaseConnection("192.168.0.184","28080",false);
+	  	var test:Boolean = false;
+	  	if (test)
+	  	{
+	    	mdl.session.setDatabaseConnection("http","192.168.0.195","8080",
+	    		"testServer");	  		  		
+	  	}
+	  	else
+	  	{
+			mdl.session.setDatabaseConnection( 
+			    Application.application.parameters.serverProtocol,
+				Application.application.parameters.serverHost,
+				Application.application.parameters.serverPort,
+			    Application.application.parameters.serverName);
+	  	}
 	  }	
     ]]>
 </mx:Script>	

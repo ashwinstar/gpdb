@@ -15,26 +15,21 @@ package model
 		import command.LogonCommand;
 		import command.LogoffCommand;
 		import command.SystemNowCommand;
+		import command.DatabaseNowCommand;
 		import command.QueriesNowCommand;
 		import command.SystemHistoricCommand;
-		
-		public function setDatabaseConnection(name:String, port:String, 
-											  useHTTPS:Boolean = true):void
+		import command.DatabaseHistoricCommand;
+				
+		public function setDatabaseConnection(protocol:String, 
+		                                      address:String, port:String,
+		                                      serverName:String):void
 		{
-			databaseName = name;
-			databasePort = port;
-			usingHTTPS = useHTTPS;
+			databaseName = serverName;
 			
-			if (useHTTPS)
-			{
-				databaseURL = "https://" + databaseName + ":" + databasePort + "/";
-			}
-			else
-			{
-				databaseURL = "http://" + databaseName + ":" + databasePort + "/";
-			}
+			webServiceURL = protocol + "://" + address + ":" + port + "/";
 			
-			Debug.debug("DatabaseURL = " + databaseURL);
+			Debug.debug("databaseName = " + databaseName);
+			Debug.debug("webServiceURL = " + webServiceURL);
 		}
 			
 		// Attempts to log the user into the system
@@ -43,7 +38,8 @@ package model
 			uiCallback = callback;
 			
 			var logonCommand:LogonCommand = new LogonCommand;
-			logonCommand.execute(loginTI, passwordTI, loginResult);
+			logonCommand.setParameters(loginTI, passwordTI, loginResult);
+			logonCommand.execute();
 		}
 
 	    // Callback from login command
@@ -67,9 +63,13 @@ package model
 				quantumTimer.addEventListener(TimerEvent.TIMER, onQuantumTimer);
 				quantumTimer.start();
 				
-				//Issue request to get the last 6hrs of 1min system data
-				var oneMinRequest:SystemHistoricCommand = new SystemHistoricCommand;
-				oneMinRequest.execute('1min', timeArray[Session.SIX_HOURS_AGO]);						
+				//Issue request to get the last 6hrs of 1min system and db data
+				var oneMinRequestSys:SystemHistoricCommand = new SystemHistoricCommand;
+				oneMinRequestSys.setParameters('1min', timeArray[Session.SIX_HOURS_AGO]);	
+				var oneMinRequestDB:DatabaseHistoricCommand = new DatabaseHistoricCommand;
+				oneMinRequestDB.setParameters('1min', timeArray[Session.SIX_HOURS_AGO]);
+				oneMinRequestSys.chainCommand(oneMinRequestDB);
+				oneMinRequestSys.execute();					
 			}
 			else
 			{
@@ -112,10 +112,10 @@ package model
 			{
 				accessDeniedVisible = true;
 				
-				var a:Alert = Alert.show("Your session has expired. Do you wish to logout?", 
+				var a:Alert = Alert.show("Your session has expired.\nClick to return to the logon screen.", 
 				    "Session Expired", 
-					Alert.YES|Alert.NO, null, accessDeniedPopupHandler, 
-					Resources.confirmIcon, Alert.NO);
+					Alert.OK, null, accessDeniedPopupHandler, 
+					Resources.confirmIcon, Alert.OK);
 				
 				// modify the look of the Alert box
 				a.setStyle("backgroundColor", 0xffffff);
@@ -129,10 +129,7 @@ package model
 		private function accessDeniedPopupHandler(event:CloseEvent):void
   		{
   			accessDeniedVisible = false;
-  			if (event.detail==Alert.YES)
-  			{
-    			logout()
-    		}
+    		logout();
   		}
 		
 		// Called every quantum tick
@@ -140,16 +137,17 @@ package model
 		{
 			setTimeVals();
 			var systemNowCommand:SystemNowCommand = new SystemNowCommand;
-			systemNowCommand.execute();
+			var databaseNowCommand:DatabaseNowCommand = new DatabaseNowCommand;
 			var queriesNowCommand:QueriesNowCommand = new QueriesNowCommand;
-			queriesNowCommand.execute();
+			systemNowCommand.chainCommand(databaseNowCommand);
+			databaseNowCommand.chainCommand(queriesNowCommand);
+			systemNowCommand.execute();
 		}
 
 		// Initializes the time values
 		public function initTimeVals():void
 		{
 			var latestTick:Number = MiscUtils.prevMinAsNumber();
-			timeArray.addItemAt(new Date(latestTick), LATEST_TICK);
 			timeArray.addItemAt(new Date(latestTick-MiscUtils.HOUR), ONE_HOUR_AGO);
 			timeArray.addItemAt(new Date(latestTick-(MiscUtils.HOUR*6)), SIX_HOURS_AGO);
 			timeArray.addItemAt(new Date(latestTick-MiscUtils.DAY), ONE_DAY_AGO);
@@ -157,7 +155,9 @@ package model
 			timeArray.addItemAt(new Date(latestTick-(MiscUtils.DAY*14)), TWO_WEEKS_AGO);
 			timeArray.addItemAt(new Date(latestTick-(MiscUtils.MONTH*3)), THREE_MONTHS_AGO);
 			timeArray.addItemAt(new Date(latestTick-MiscUtils.YEAR), ONE_YEAR_AGO);
-			timeArray.addItemAt(new Date(latestTick-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);		}
+			timeArray.addItemAt(new Date(latestTick), LATEST_TICK);
+			timeArray.addItemAt(new Date(latestTick-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);
+		}
 
 		// Sets bindable time values
 		public function setTimeVals():void
@@ -165,7 +165,7 @@ package model
 			var latestTick:Number = MiscUtils.prevMinAsNumber();
 			if ((timeArray.getItemAt(LATEST_TICK) as Date).time < latestTick)						
 			{
-				timeArray.setItemAt(new Date(latestTick), LATEST_TICK);
+				timeArray.disableAutoUpdate();
 				timeArray.setItemAt(new Date(latestTick-MiscUtils.HOUR), ONE_HOUR_AGO);
 				timeArray.setItemAt(new Date(latestTick-(MiscUtils.HOUR*6)), SIX_HOURS_AGO);
 				timeArray.setItemAt(new Date(latestTick-MiscUtils.DAY), ONE_DAY_AGO);
@@ -173,20 +173,22 @@ package model
 				timeArray.setItemAt(new Date(latestTick-(MiscUtils.DAY*14)), TWO_WEEKS_AGO);
 				timeArray.setItemAt(new Date(latestTick-(MiscUtils.MONTH*3)), THREE_MONTHS_AGO);
 				timeArray.setItemAt(new Date(latestTick-MiscUtils.YEAR), ONE_YEAR_AGO);
+				timeArray.setItemAt(new Date(latestTick), LATEST_TICK);
 				timeArray.setItemAt(new Date(latestTick-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);
+				timeArray.enableAutoUpdate();
 			}
 		}
 
 		// Called when an operation fails
 		public function connectionBad():void 
 		{
-			connectionStatus = 'disconnected';
+			connectionStatus = 'Disconnected';
 		}
 
 		// Called when an operation succeeds
 		public function connectionGood():void 
 		{
-			connectionStatus = 'connected';
+			connectionStatus = 'Connected';
 		}
 
         ////////////////////////////////////////////////
@@ -194,18 +196,12 @@ package model
         
         // IP address or name
 		public var databaseName:String = "";
-		
-		// Port
-		public var databasePort:String = "";
 
         // URL
-		public var databaseURL:String = "";
-		
-		// Are we using HTTPS?
-		public var usingHTTPS:Boolean = true;
+		public var webServiceURL:String = "";
 
         // What is the state of the connection?
-        public var connectionStatus:String = 'connected';
+        public var connectionStatus:String = 'Connected';
 		
 		////////////////////////////////////////////////
         // Per-session values
@@ -236,15 +232,16 @@ package model
         
         public var timeArray:ArrayCollection = new ArrayCollection();
         
-        // Note: these numbers line up with the togglebar values
-        public static const LATEST_TICK:int = 0; 
-        public static const ONE_HOUR_AGO:int = 1; 
-        public static const SIX_HOURS_AGO:int = 2; 
-        public static const ONE_DAY_AGO:int = 3; 
-        public static const SEVEN_DAYS_AGO:int = 4; 
-        public static const TWO_WEEKS_AGO:int = 5; 
-        public static const THREE_MONTHS_AGO:int = 6; 
-        public static const ONE_YEAR_AGO:int = 7; 
+        // Note: these numbers line up with the list values
+        public static const ONE_HOUR_AGO:int = 0; 
+        public static const SIX_HOURS_AGO:int = 1; 
+        public static const ONE_DAY_AGO:int = 2; 
+        public static const SEVEN_DAYS_AGO:int = 3; 
+        public static const TWO_WEEKS_AGO:int = 4; 
+        public static const THREE_MONTHS_AGO:int = 5; 
+        public static const ONE_YEAR_AGO:int = 6; 
+        // -- and others
+        public static const LATEST_TICK:int = 7; 
         public static const FIFTEEN_MINS_AGO:int = 8;
         
 		////////////////////////////////////////////////

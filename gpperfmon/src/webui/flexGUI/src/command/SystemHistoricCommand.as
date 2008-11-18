@@ -1,15 +1,13 @@
 package command
 {
 	import model.GPPerfMonModelLocator;
-	
-	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
-	
 	import util.Debug;
 	import util.MiscUtils;
 	import util.ServiceUtils;
-			
-	public class SystemHistoricCommand implements IResponder
+	import mx.rpc.IResponder;
+				
+	public class SystemHistoricCommand extends BaseCommand implements ICommand, IResponder
 	{
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
@@ -21,18 +19,22 @@ package command
 		
         public function SystemHistoricCommand() {     
         }
-		
-		public function execute(interval:String, start:Date, end:Date=null):void
+
+		public function setParameters(interval:String, start:Date, end:Date=null):void
 		{
 			startTime = start;
 			endTime = end;
-			detail = interval;
-			var req:String = '?start=' + MiscUtils.formatDateToString(start.time);
-			if (end)
-				req += '&end=' + MiscUtils.formatDateToString(end.time);
-			req += '&interval=' + interval;
+			detail = interval;			
+		}
+		
+		public function execute():void
+		{
+			var req:String = '?start=' + MiscUtils.formatDateToString(startTime.time);
+			if (endTime)
+				req += '&end=' + MiscUtils.formatDateToString(endTime.time);
+			req += '&interval=' + detail;
 			
-			ServiceUtils.send(mdl.session.databaseURL+'system'+req, this);
+			ServiceUtils.send(mdl.session.webServiceURL+'system'+req, this);
 		}
         							    
 		// Called when the SystemNow request returns successfully
@@ -46,6 +48,8 @@ package command
 				mdl.system.systemHistoric(detail, startTime, endTime, result);
 			else
 				Debug.debug("SystemHistoric error: " + result);	
+				
+		 	executeChainedCommand(); 
 		}
 		
 		// Called when the SystemNow request returns unsuccessfully
@@ -54,6 +58,8 @@ package command
 			var faultEvent : FaultEvent = info as FaultEvent;
 			Debug.debug("SystemHistoric fault: " + faultEvent.toString());
 			mdl.session.connectionBad();
+			
+		 	executeChainedCommand(); 
 		}
 	}
 }

@@ -1,12 +1,12 @@
 package command
 {
 	import model.GPPerfMonModelLocator;
-	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
 	import util.Debug;
 	import util.ServiceUtils;
-			
-	public class QueriesNowCommand implements IResponder
+	import mx.rpc.IResponder;
+				
+	public class QueriesNowCommand extends BaseCommand implements ICommand, IResponder
 	{
 		[Bindable]
 		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
@@ -16,7 +16,7 @@ package command
 		
 		public function execute():void
 		{
-			ServiceUtils.send(mdl.session.databaseURL+'queries?textlength=1024', this);
+			ServiceUtils.send(mdl.session.webServiceURL+'queries?textlength=1024', this);
 		}
         							    
 		// Called when the QueriesNow request returns successfully
@@ -35,6 +35,8 @@ package command
 			}	
 			else
 				Debug.debug("QueriesNow error: " + result);
+				
+	 		executeChainedCommand(); 
 		}
 		
 		// Called when the QueriesNow request returns unsuccessfully
@@ -43,6 +45,8 @@ package command
 			var faultEvent : FaultEvent = info as FaultEvent;
 			Debug.debug("QueriesNow fault: " + faultEvent.toString());
 			mdl.session.connectionBad();
+			
+		 	executeChainedCommand(); 
 		}
 	}
 }

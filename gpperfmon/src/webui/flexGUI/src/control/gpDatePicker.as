@@ -93,8 +93,6 @@ package control
 		dtInput.text='';
 
 		dtPick.selectedDate = this._date;
-		
-		trace ("ss: ".concat(ss));
 
 		if ((_date.getMonth()+1)<10)
 		{

@@ -76,5 +76,7 @@
 		</mx:Panel>
 
 	</mx:VBox>
+	
+	<mx:Spacer width="10"/>
 
 </mx:HBox>

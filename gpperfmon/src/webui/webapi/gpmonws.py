@@ -2,6 +2,7 @@
 
 import os, sys, socket, re, ConfigParser
 import time, datetime, tempfile
+from socket import gethostname
 
 gphome = os.environ.get('GPHOME')
 if not gphome:
@@ -28,6 +29,8 @@ MAX_AGGREGATED_SAMPLES = 2000
 MAX_NONAGGREGATED_SAMPLES = 16
 MAX_QUERIES_PER_SEARCH = 250
 remote = False
+allow_trust_logon = False
+displayed_server_name = ''
 
 urls = ('/', 'index',
         '/api', 'api',
@@ -67,12 +70,12 @@ def internal_error():
     return mkerr(error.INTERNAL, '%s: %s' % (type, value))
 
 app.notfound = page_not_found
-#app.internalerror = web.debugerror
-app.internalerror = internal_error
+app.internalerror = web.debugerror
+#app.internalerror = internal_error
 
 
 def authrole(username, password):
-    (valid, issuper, message) = db.get_role(username, password)
+    (valid, issuper, message) = db.get_role(username, password, allow_trust_logon)
     if DEBUG:
         sys.stderr.write("\nAUTH:\n\tvalid:  %s\n\tsuperuser: %s\n" % (valid, issuper))
     if valid:
@@ -97,8 +100,11 @@ def timenow():
 class index:
     def GET(self):
         web.header('Content-Type', 'text/html')
+        web.header('Cache-Control', 'no-cache')
         host_and_port = web.ctx.host.split(':',1)
-        return render.index(web.ctx.protocol, host_and_port[0], host_and_port[1])
+        if DEBUG:
+            sys.stderr.write("host=%s, port=%s, server_name=%s\n" % (host_and_port[0], host_and_port[1], displayed_server_name))
+        return render.index(web.ctx.protocol, host_and_port[0], host_and_port[1], displayed_server_name)
 
 class api:
     def __init__(self):
@@ -193,6 +199,8 @@ class logoff:
 
 class config:
     def __init__(self):
+        global remote, displayed_server_name, allow_trust_logon
+        
         # Holds the complete configuration
         self.gpperfmon_config = {}
 
@@ -215,11 +223,27 @@ class config:
 
         # look for specific values
         try:
-            remote = cfg.getboolean("WEB SERVICE", "remote")
+            remote = cfg.getboolean("WEB APP", "remote")
         except:
             remote = False
         if DEBUG:
-            sys.stderr.write("remote = %s\n" % remote)
+            sys.stderr.write("WEB APP/remote = %s\n" % remote)
+
+        # look for specific values
+        try:
+            displayed_server_name = cfg.get("WEB APP", "server_name")
+        except:
+            displayed_server_name = gethostname()
+        if DEBUG:
+            sys.stderr.write("WEB APP/server_name = %s\n" % displayed_server_name)
+
+        # look for specific values
+        try:
+            allow_trust_logon = cfg.get("WEB APP", "allow_trust_logon")
+        except:
+            allow_trust_logon = False
+        if DEBUG:
+            sys.stderr.write("WEB APP/allow_trust_logon = %s\n" % allow_trust_logon)
 
 
     def GET(self):

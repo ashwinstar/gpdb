@@ -1,17 +1,39 @@
 package model
 {
+	import command.QueryDetailsCommand;
+	
+	import value.DatabaseSample;
+	import value.Query;
+	import value.SystemSample;
+	
 	[Bindable]
 	public class NavState
 	{
+		// What main page are we on?
+		public var mainPageIndex:int = 0;
+		
 		// Duration control for system metrics view
 		public var durationList:Array = new Array(
-			"Now", "1 hour", "6 hours", "24 hours", "7 days", 
+			"1 hour", "6 hours", "24 hours", "7 days", 
 			"2 weeks", "3 months", "1 year");
-		public var durationSelected:int = 1;	
+		public var durationSelected:int = 0;	
+
+		// Which system tab page are we on
+		public var systemTabPage:int = 0;
+
+		// Which query tab page are we on
+		public var queryTabPage:int = 0;
+
+		// Which query detail tab page are we on
+		public var queryDetailTabPage:int = 0;
+		
+		// Stores the selected data index
+		public var selectedSystemIndex:int = -1;
+		public var selectedSystemItem:SystemSample = null;					
+		public var selectedDatabaseItem:DatabaseSample = null;	
 
 		// Controls whether we are on summary view or detail view for a metric
 		public var metricsList:Array = new Array(
-			"Summary View",
 			"Active Queries", "Memory", "CPU", "Load", 
 			"Swap (in use)", "Swap (pages in/out)", 
 			"Disk I/O (packets)", "Disk I/O (MBytes)", 
@@ -21,12 +43,36 @@ package model
 		// Which view on the query list page
 		public var queryListToggle:Array = new Array(
 			"Active - all queries", "Active - my queries", "Watched queries", "Query search");
-		public var queryListView:int = 0;	
 		
-		// Are we looking at the query details of a specific query?
-		public var queryDetailID:int = -1;
+		// Which query ID and data provider do we wish to see details on?
+		public var detailQuery:Query = null;
+		public var detailQueryIsActive:Boolean = false;
+
+		// Current query search
+		public var qsearchSummary:String = "Click 'New Search' to search for queries";			
 		
-		// Are we looking at the details of a specific query iterator?
-		public var queryIteratorID:int = -1;
+		// Jumps from anywhere in the app to this active query
+		public function jumpToQueryDetails(q:Query, active:Boolean):void
+		{
+			if (q)
+			{
+				// Save the query we want details for
+				detailQuery = q;
+				// It is realtime, so we want updates
+				detailQueryIsActive = active;
+				// And toggle the main tabs to the query page
+				mainPageIndex = 2;
+				// Finally toggle the query detail page
+				queryDetailTabPage = 0;
+				
+				// Check if the query text was shortened and requires an additional request
+				if (q.query_text.substr(-3, 3) == '...')
+				{
+					var queryDetailsCommand:QueryDetailsCommand = new QueryDetailsCommand();
+					queryDetailsCommand.setParameters(detailQuery.id, detailQueryIsActive);
+					queryDetailsCommand.execute();
+				}
+			}
+		}
 	}
 }

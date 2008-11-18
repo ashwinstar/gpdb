@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml">
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:control="control.*">
     <mx:Script>
         <![CDATA[
 		import model.GPPerfMonModelLocator;
-		import mx.charts.HitData;
 		import mx.charts.series.items.LineSeriesItem;
 		import model.Session;
 	
@@ -13,37 +12,46 @@
         ]]>
     </mx:Script>
 
-  <mx:LineChart showDataTips="true" id="myChart" width="100%" height="100%"
-  				dataProvider="{mdl.system.activeAggLookup[mdl.nav.durationSelected]}">
-  		<mx:series>
-  			<mx:LineSeries yField="mem_total" 
-  				           xField="sample_time" displayName="Total (MBytes)">
-  				<mx:lineStroke>
-                	<mx:Stroke weight="2" color="0xff0000" alpha="0.8"/>
-            	</mx:lineStroke> 
-  			</mx:LineSeries>			 
-  			<mx:LineSeries yField="mem_actual_used"
-  			               xField="sample_time" displayName="Used (MBytes)">
-  				<mx:lineStroke>
-                	<mx:Stroke weight="2" color="0x00ff00" alpha="0.8"/>
-            	</mx:lineStroke> 
-  			</mx:LineSeries>	  				        
-  			<mx:LineSeries yField="mem_actual_free" 
-  				           xField="sample_time" displayName="Free (MBytes)">
-  				<mx:lineStroke>
-                	<mx:Stroke weight="2" color="0x0000ff" alpha="0.8"/>
-            	</mx:lineStroke> 
-  			</mx:LineSeries>	  			              
+  <mx:SolidColor id="used_clr" color="0x4ABF84" alpha="1.0"/>
+  <mx:SolidColor id="free_clr" color="0xD8D8D8" alpha="1.0"/>
+ 
+  <mx:ColumnChart showDataTips="true" id="myChart" width="100%" height="100%"
+  				dataProvider="{mdl.system.activeAggLookup[mdl.nav.durationSelected]}" 
+  				type="stacked" updateComplete="{dataSelector.invalidateDisplayList()}">
+  		<mx:series>	 
+ 			<mx:ColumnSeries yField="mem_actual_used" sortOnXField="false"
+  			               xField="sample_time" displayName="Used (MBytes)"
+  			               fill="{used_clr}">
+  			</mx:ColumnSeries>	   
+  			<mx:ColumnSeries yField="mem_actual_free" sortOnXField="false"
+  						   xField="sample_time" displayName="Free (MBytes)"
+  						   fill="{free_clr}">
+  		  	</mx:ColumnSeries>	       
   		</mx:series>
 
-		<mx:seriesFilters>
+ 	    <mx:annotationElements>
+	        <control:HorizontalAxisDataSelector id="dataSelector"
+				selectorColor="0x000000" enabled="{mdl.nav.systemTabPage==1}"
+								         visible="{mdl.nav.systemTabPage==1}"/>
+		</mx:annotationElements>	
+  		
+  		<mx:seriesFilters>
            <mx:Array/>
         </mx:seriesFilters>
+  		
+  		 <mx:backgroundElements>
+  			<mx:VBox verticalAlign="middle" horizontalAlign="center"
+  				visible="{!(mdl.system.dataLoaded.getItemAt(mdl.nav.durationSelected) as Boolean)}">
+  				<mx:Label text="Loading..."/>  				
+  			</mx:VBox>
+  		</mx:backgroundElements>
   		
         <mx:horizontalAxis>
             <mx:DateTimeAxis id="haxis" displayLocalTime="true" 
             	minimum="{mdl.session.timeArray.getItemAt(mdl.nav.durationSelected) as Date}"
-            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"/>
+            	maximum="{mdl.session.timeArray.getItemAt(Session.LATEST_TICK) as Date}"
+            	dataInterval="{mdl.system.dataIntervalNumber[mdl.nav.durationSelected]}" 
+            	dataUnits="{mdl.system.dataIntervalUnit[mdl.nav.durationSelected]}"/>
         </mx:horizontalAxis>
         <mx:verticalAxis>
             <mx:LinearAxis id="vaxis" baseAtZero="true"/>
@@ -64,10 +72,9 @@
 		        </mx:axisStroke>
 		    </mx:AxisRenderer>
 		</mx:verticalAxisRenderers>
-
-  </mx:LineChart>
-  
+  </mx:ColumnChart>
   
   <mx:Legend dataProvider="{myChart}"/>
   
 </mx:HBox>
+

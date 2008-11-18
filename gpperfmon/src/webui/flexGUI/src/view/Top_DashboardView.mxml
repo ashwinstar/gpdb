@@ -1,388 +1,454 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
-	paddingLeft="5" paddingRight="5" creationPolicy="queued" xmlns:chart="chart.*">
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+		   xmlns:chart="chart.*" creationPolicy="queued" xmlns:container="container.*">
 
 <mx:Script>
 <![CDATA[
+	import value.Query;
     import model.GPPerfMonModelLocator;
   	import mx.events.CloseEvent;
   	import mx.controls.Alert;	
   	import model.Resources;
+  	import util.MiscUtils;
+  	import mx.events.ListEvent;
+  	import util.Debug;
   	  			
   	[Bindable]
-	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+
+	  // Handle a click by jumping to the query
+	  private function clickQuery(evt:ListEvent):void {
+	  	 // Clear any active query plan requests
+	  	 mdl.queries.doQueryPlan(null);
+	  	 // Jump to the page
+	  	 mdl.nav.jumpToQueryDetails(evt.itemRenderer.data as Query, true);
+	  }
+
 ]]>   	
 </mx:Script>	
 	
-<mx:Stroke id="whiteStrk" weight="2" color="0x000000" alpha="1.0"/>
+<mx:Stroke id="whiteStrk" weight="1.5" color="0x000000" alpha="0.8"/>
+<mx:LineSeries id="queries_running_series" yField="queries_running" xField="sample_time" 
+ 						   displayName="Queries running" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false" dataProvider="{mdl.db.oneMinAggData}"/>
+<mx:LineSeries id="queries_queued_series" yField="queries_queued" xField="sample_time" 
+ 						   displayName="Queries queued" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false" dataProvider="{mdl.db.oneMinAggData}"/>
 <mx:LineSeries id="load_0_series" yField="load_0" xField="sample_time" 
- 						   displayName="Load 0" lineStroke="{whiteStrk}"/>
+ 						   displayName="Load 0" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="load_1_series" yField="load_1" xField="sample_time" 
- 						   displayName="Load 1" lineStroke="{whiteStrk}"/>
+ 						   displayName="Load 1" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="load_2_series" yField="load_2" xField="sample_time" 
- 						   displayName="Load 2" lineStroke="{whiteStrk}"/> 						   	
+ 						   displayName="Load 2" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 						   	
 <mx:LineSeries id="cpu_user_series" yField="cpu_user" xField="sample_time" 
- 						   displayName="CPU User" lineStroke="{whiteStrk}"/>
+ 						   displayName="CPU User" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="cpu_sys_series" yField="cpu_sys" xField="sample_time" 
- 						   displayName="CPU Sys" lineStroke="{whiteStrk}"/> 						   
+ 						   displayName="CPU Sys" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 						   
 <mx:LineSeries id="cpu_idle_series" yField="cpu_idle" xField="sample_time" 
- 						   displayName="CPU Idle" lineStroke="{whiteStrk}"/>
+ 						   displayName="CPU Idle" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="disk_rb_series" yField="disk_rb_rate" xField="sample_time" 
- 						   displayName="Disk read (MBytes/s)" lineStroke="{whiteStrk}"/>
+ 						   displayName="Disk read (MBytes/s)" lineStroke="{whiteStrk}" 
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="disk_ro_series" yField="disk_ro_rate" xField="sample_time" 
- 						   displayName="Disk read (ops/s)" lineStroke="{whiteStrk}"/> 						   
+ 						   displayName="Disk read (ops/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 						   
 <mx:LineSeries id="disk_wb_series" yField="disk_wb_rate" xField="sample_time" 
- 						   displayName="Disk write (MBytes/s)" lineStroke="{whiteStrk}"/>
+ 						   displayName="Disk write (MBytes/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="disk_wo_series" yField="disk_wo_rate" xField="sample_time" 
- 						   displayName="Disk write (ops/s)" lineStroke="{whiteStrk}"/> 
+ 						   displayName="Disk write (ops/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 
 <mx:LineSeries id="net_rb_series" yField="net_rb_rate" xField="sample_time" 
- 						   displayName="Net read (MBytes/s)" lineStroke="{whiteStrk}"/>
+ 						   displayName="Net read (MBytes/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="net_rp_series" yField="net_rp_rate" xField="sample_time" 
- 						   displayName="Net read (pkts/s)" lineStroke="{whiteStrk}"/> 						   
+ 						   displayName="Net read (pkts/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 						   
 <mx:LineSeries id="net_wb_series" yField="net_wb_rate" xField="sample_time" 
- 						   displayName="Net write (MBytes/s)" lineStroke="{whiteStrk}"/>
+ 						   displayName="Net write (MBytes/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="net_wp_series" yField="net_wp_rate" xField="sample_time" 
- 						   displayName="Net write (pkts/s)" lineStroke="{whiteStrk}"/> 
+ 						   displayName="Net write (pkts/s)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 
 <mx:LineSeries id="mem_used_series" yField="mem_actual_used" xField="sample_time" 
- 						   displayName="Mem used (MB)" lineStroke="{whiteStrk}"/>
+ 						   displayName="Mem used (MB)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="mem_free_series" yField="mem_actual_free" xField="sample_time" 
- 						   displayName="Mem free (MB)" lineStroke="{whiteStrk}"/> 
+ 						   displayName="Mem free (MB)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 
 <mx:LineSeries id="swap_in_series" yField="swap_page_in" xField="sample_time" 
- 						   displayName="Swap pages in" lineStroke="{whiteStrk}"/>
+ 						   displayName="Swap pages in" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="swap_out_series" yField="swap_page_out" xField="sample_time" 
- 						   displayName="Swap pages out" lineStroke="{whiteStrk}"/> 
+ 						   displayName="Swap pages out" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/> 
 <mx:LineSeries id="swap_total_series" yField="swap_total" xField="sample_time" 
- 						   displayName="Swap total (MB)" lineStroke="{whiteStrk}"/>
+ 						   displayName="Swap total (MB)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>
 <mx:LineSeries id="swap_used_series" yField="swap_used" xField="sample_time" 
- 						   displayName="Swap used (MB)" lineStroke="{whiteStrk}"/>  						   
+ 						   displayName="Swap used (MB)" lineStroke="{whiteStrk}"
+ 						   sortOnXField="false"/>  						   
  						   
- 						    						   
-	<mx:Panel title="System Snapshot" label="horizontal" width="400" horizontalAlign="center" paddingTop="10" paddingBottom="10">
-	  <mx:Grid>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="CPU sys"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[cpu_sys_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.cpu_sys + '%'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="CPU user"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[cpu_user_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.cpu_user + '%'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="CPU idle"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[cpu_idle_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.cpu_idle + '%'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Load 0"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[load_0_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.load_0}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Load 1"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[load_1_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.load_1}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Load 2"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[load_2_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.load_2}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Disk read"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[disk_rb_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.disk_rb_rate + ' MB/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Disk read"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[disk_ro_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.disk_ro_rate + ' ops/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Disk write MB/s"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[disk_wb_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.disk_wb_rate + ' MB/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Disk write ops/s"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[disk_wo_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.disk_wo_rate + ' ops/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Mem free (MB)"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[mem_free_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.mem_actual_free + ' MB'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Mem used (MB)"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[mem_used_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.mem_actual_used + ' MB'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Net read MB/s"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[net_rb_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.net_rb_rate + ' MB/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Net read pkts/s"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[net_rp_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.net_rp_rate + ' pkts/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Net write MB/s"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[net_wb_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.net_wb_rate + ' MB/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Net write pkts/s"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[net_wp_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.net_wp_rate + ' pkts/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Swap in"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[swap_in_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.swap_page_in + ' pg/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Swap out"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[swap_out_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.swap_page_out + ' pg/s'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Swap total (MB)"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[swap_total_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.swap_total + ' MB'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem horizontalAlign="right" verticalAlign="middle">
-	  		  <mx:Label styleName="largeMetricGraphTitle" text="Swap used (MB)"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem><chart:MiniLineChart series="{[swap_used_series]}"/></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="left" verticalAlign="middle">
-	  			<mx:Label styleName="largeMetricGraphTitle" text="{mdl.system.systemNowAgg.swap_used + ' MB'}"/>
-	  		</mx:GridItem>		
-	  	</mx:GridRow>
-	  	
-	  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
-	  		<mx:GridItem></mx:GridItem>
-	  		<mx:GridItem horizontalAlign="center">
-	  			<mx:Label height="20" text="[Last 15 minutes]"/>
-	  		</mx:GridItem>
-	  		<mx:GridItem></mx:GridItem>		
-	  	</mx:GridRow>
-	  </mx:Grid>
-	</mx:Panel>
-
-	<mx:VBox width="100%">
+ 	
+<mx:HBox width="{this.width}" height="{this.height}"
+	 			paddingLeft="5" paddingRight="5" horizontalGap="20">
+							    						   
+	<mx:VBox width="50%" height="100%" horizontalAlign="center">
 		
-	<mx:Panel title="Active Query Summary" width="100%" backgroundColor="0xBFDC92"
-		 layout="vertical" horizontalAlign="center">
-		<mx:Text htmlText="{'All queries: ' + mdl.queries.queryNowSummary}"/>	
-		<mx:Text htmlText="{'My queries: ' + mdl.queries.myQueryNowSummary}"/>		
-	</mx:Panel> 
+	  <mx:VBox width="100%" backgroundColor="0xBFDC92" horizontalAlign="center">
+	  	<mx:Label text="System Summary" styleName="dashboardTitle"/>
+	  </mx:VBox>
+	  
+	  <mx:Panel title="CPU" styleName="dashboardMinigraphs" width="100%" 
+	  			layout="vertical" horizontalAlign="center"> 			
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="system"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="user"/>
+		  		</mx:GridItem>		  		
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="idle"/>
+		  		</mx:GridItem>		  		
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[cpu_sys_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[cpu_user_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[cpu_idle_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.cpu_sys + '%'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.cpu_user + '%'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.cpu_idle + '%'}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>
 
-	<mx:Panel title="Top Running Queries (by runtime)" label="horizontal" width="100%">
-		<mx:DataGrid width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByRuntime}" 
-			sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-			rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
-      <mx:columns>
-        <mx:DataGridColumn headerText="Query ID"
-          dataField="id"/>
-        <mx:DataGridColumn headerText="User"
-          dataField="username"/>
-        <mx:DataGridColumn headerText="Run time"
-          dataField="time_run"/>
-		<mx:DataGridColumn headerText="Details">
-					<mx:itemRenderer>
-						<mx:Component>
-							<mx:VBox width="100%" height="100%" horizontalAlign="center">
-								<mx:LinkButton label="link"/>				
-							</mx:VBox>
-						</mx:Component>
-					</mx:itemRenderer>
-				</mx:DataGridColumn>	
-      </mx:columns>
-    </mx:DataGrid>		
-	</mx:Panel>
+	 <mx:HBox width="100%" >
+	  <mx:Panel title="Queries" styleName="dashboardMinigraphs" 
+	  			layout="vertical" horizontalAlign="center" width="100%" >  					
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Running"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Queued"/>
+		  		</mx:GridItem>		  			  		
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[queries_running_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[queries_queued_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.db.databaseNowAgg.queries_running}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.db.databaseNowAgg.queries_queued}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>
 
-	<mx:Panel title="Top Running Queries (by CPU usage)" label="horizontal" width="100%">
-		<mx:DataGrid width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuUsage}" 
-			sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-			rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
-      <mx:columns>
-        <mx:DataGridColumn headerText="Query ID"
-          dataField="id"/>
-        <mx:DataGridColumn headerText="User"
-          dataField="username"/>
-        <mx:DataGridColumn headerText="CPU usage"
-          dataField="cpu_elapsed"/>
-		<mx:DataGridColumn headerText="Details">
-					<mx:itemRenderer>
-						<mx:Component>
-							<mx:VBox width="100%" height="100%" horizontalAlign="center">
-								<mx:LinkButton label="link"/>				
-							</mx:VBox>
-						</mx:Component>
-					</mx:itemRenderer>
-				</mx:DataGridColumn>	
-      </mx:columns>
-    </mx:DataGrid>		
-	</mx:Panel>
+	  <mx:Panel title="Memory" styleName="dashboardMinigraphs" 
+	  			layout="vertical" horizontalAlign="center" width="100%" >  					
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Used"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Free"/>
+		  		</mx:GridItem>		  			  		
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[mem_used_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[mem_free_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.mem_actual_used + ' MB'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.mem_actual_free + ' MB'}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>	
+	 </mx:HBox>	  	
 
-	<mx:Panel title="Top Running Queries (by CPU velocity)" label="horizontal" width="100%">
-		<mx:DataGrid width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuVelocity}" 
-			sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-			rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
-      <mx:columns>
-        <mx:DataGridColumn headerText="Query ID"
-          dataField="id"/>
-        <mx:DataGridColumn headerText="User"
-          dataField="username"/>
-        <mx:DataGridColumn headerText="CPU velocity"
-          dataField="cpu_velocity"/>
-		<mx:DataGridColumn headerText="Details">
-					<mx:itemRenderer>
-						<mx:Component>
-							<mx:VBox width="100%" height="100%" horizontalAlign="center">
-								<mx:LinkButton label="link"/>				
-							</mx:VBox>
-						</mx:Component>
-					</mx:itemRenderer>
-				</mx:DataGridColumn>	
-      </mx:columns>
-    </mx:DataGrid>		
-	</mx:Panel>
+	  <mx:Panel title="Load" styleName="dashboardMinigraphs" width="100%"  
+	  			layout="vertical" horizontalAlign="center">  					
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Load 0"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Load 1"/>
+		  		</mx:GridItem>		  		
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Load 2"/>
+		  		</mx:GridItem>		  		
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[load_0_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[load_1_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[load_2_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.load_0}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.load_1}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.load_2}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>	
 
-	<mx:Panel title="Top Running Queries (by CPU skew)" label="horizontal" width="100%">
-		<mx:DataGrid width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuSkew}" 
-			sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-			rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
-      <mx:columns>
-        <mx:DataGridColumn headerText="Query ID"
-          dataField="id"/>
-        <mx:DataGridColumn headerText="User"
-          dataField="username"/>
-        <mx:DataGridColumn headerText="CPU skew"
-          dataField="skew_cpu"/>
-		<mx:DataGridColumn headerText="Details">
-					<mx:itemRenderer>
-						<mx:Component>
-							<mx:VBox width="100%" height="100%" horizontalAlign="center">
-								<mx:LinkButton label="link"/>				
-							</mx:VBox>
-						</mx:Component>
-					</mx:itemRenderer>
-				</mx:DataGridColumn>	
-      </mx:columns>
-    </mx:DataGrid>		
-	</mx:Panel>
+	  <mx:Panel title="Disk" styleName="dashboardMinigraphs" width="100%"  
+	  			layout="vertical" horizontalAlign="center">  					
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Read (MBytes/s)"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Write (MBytes/s)"/>
+		  		</mx:GridItem>		  			  		
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Read (ops/s)"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Write (ops/s)"/>
+		  		</mx:GridItem>	
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[disk_rb_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[disk_wb_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[disk_ro_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[disk_wo_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.disk_rb_rate + ' MB/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.disk_wb_rate + ' MB/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.disk_ro_rate + ' ops/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.disk_wo_rate + ' ops/s'}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>	
 
-	<mx:Panel title="Top Running Queries (by row skew)" label="horizontal" width="100%">
-		<mx:DataGrid width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByRowSkew}" 
-			sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-			rollOverColor="0xDFFCB2" selectionColor="0xBFDC92">
-      <mx:columns>
-        <mx:DataGridColumn headerText="Query ID"
-          dataField="id"/>
-        <mx:DataGridColumn headerText="User"
-          dataField="username"/>
-        <mx:DataGridColumn headerText="Row skew"
-          dataField="skew_rows"/>
-		<mx:DataGridColumn headerText="Details">
-					<mx:itemRenderer>
-						<mx:Component>
-							<mx:VBox width="100%" height="100%" horizontalAlign="center">
-								<mx:LinkButton label="link"/>				
-							</mx:VBox>
-						</mx:Component>
-					</mx:itemRenderer>
-				</mx:DataGridColumn>	
-      </mx:columns>
-    </mx:DataGrid>		
-	</mx:Panel>
+	  <mx:Panel title="Network" styleName="dashboardMinigraphs" width="100%" 
+	  			layout="vertical" horizontalAlign="center">  					
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Read (MBytes/s)"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Write (MBytes/s)"/>
+		  		</mx:GridItem>		  			  		
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Read (pkts/s)"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Write (pkts/s)"/>
+		  		</mx:GridItem>	
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[net_rb_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[net_wb_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[net_rp_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[net_wp_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.net_rb_rate + ' MB/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.net_wb_rate + ' MB/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.net_rp_rate + ' pkts/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.net_wp_rate + ' pkts/s'}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>	
+
+	  <mx:Panel title="Swap" styleName="dashboardMinigraphs" width="100%"  
+	  			layout="vertical" horizontalAlign="center">  					
+		  <mx:Grid verticalGap="0">
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="In (pg/s)"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Out (pg/s)"/>
+		  		</mx:GridItem>		  	
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Total (MBs)"/>
+		  		</mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center">
+		  		  <mx:Label styleName="dashboardMetricTitle" text="Used (MBs)"/>
+		  		</mx:GridItem>		  			  				  		
+		  	</mx:GridRow>		  		
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">		  		
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[swap_in_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[swap_out_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[swap_total_series]}"/></mx:GridItem>
+		  		<mx:GridItem horizontalAlign="center"><chart:MiniLineChart series="{[swap_used_series]}"/></mx:GridItem>
+		  	</mx:GridRow>
+		  	<mx:GridRow verticalAlign="middle" horizontalAlign="center">
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.swap_page_in + ' pages/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.swap_page_out + ' pages/s'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.swap_total + ' MB'}"/>
+		  		</mx:GridItem>		
+		  		<mx:GridItem horizontalAlign="center">
+		  			<mx:Label styleName="dashboardMetricValue" text="{mdl.system.systemNowAgg.swap_used + ' MB'}"/>
+		  		</mx:GridItem>		
+		  	</mx:GridRow>	
+		  </mx:Grid> 
+	  </mx:Panel>	
+	 
+	  <mx:Label fontStyle="italic" text="Graphs span previous 15 minutes"/>
+
+	</mx:VBox>
+
+	<mx:VBox width="50%" height="100%" horizontalAlign="center">
+
+	  <mx:VBox backgroundColor="0xBFDC92" width="100%" horizontalAlign="center">
+	  	<mx:Label text="Queries Summary" styleName="dashboardTitle"/>
+	  </mx:VBox>
+	  		
+		<mx:Text htmlText="{mdl.queries.queryNowSummary + '   |   ' + mdl.queries.myQueryNowSummary}"/>			
+	
+		<mx:Panel title="Runtime (top active queries)" label="horizontal" width="100%"
+			 styleName="dashboardMinigraphs">
+			<mx:DataGrid id="dg1" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByRuntime}" 
+				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
+				selectable="false" itemClick="clickQuery(event)">
+	      <mx:columns>
+	        <mx:DataGridColumn headerText="Query ID"
+	          dataField="id" width="150"/>
+	        <mx:DataGridColumn headerText="User"
+	          dataField="username"/>
+	        <mx:DataGridColumn headerText="Database"
+	          dataField="db"/>
+	        <mx:DataGridColumn headerText="Run time"
+	          dataField="time_run"/>
+	      </mx:columns>
+	    </mx:DataGrid>		
+		</mx:Panel>
+
+		<mx:Panel title="CPU % (top active queries)" label="horizontal" width="100%"
+			 styleName="dashboardMinigraphs">
+			<mx:DataGrid id="dg2" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuPct}" 
+				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
+				selectable="false" itemClick="clickQuery(event)">
+	      <mx:columns>
+	        <mx:DataGridColumn headerText="Query ID"
+	          dataField="id" width="150"/>
+	        <mx:DataGridColumn headerText="User"
+	          dataField="username"/>
+	        <mx:DataGridColumn headerText="Database"
+	          dataField="db"/>
+	        <mx:DataGridColumn headerText="CPU %"
+	          dataField="cpu_elapsed"/>
+	      </mx:columns>
+	    </mx:DataGrid>		
+		</mx:Panel>
+	
+		<mx:Panel title="CPU Total (top active queries)" label="horizontal" width="100%"
+			 styleName="dashboardMinigraphs">
+			<mx:DataGrid id="dg3" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuTotal}" 
+				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
+				selectable="false" itemClick="clickQuery(event)">
+	      <mx:columns>
+	        <mx:DataGridColumn headerText="Query ID"
+	          dataField="id" width="150"/>
+	        <mx:DataGridColumn headerText="User"
+	          dataField="username"/>
+	        <mx:DataGridColumn headerText="Database"
+	          dataField="db"/>
+	        <mx:DataGridColumn headerText="CPU total"
+	          dataField="cpu_elapsed"/>
+	      </mx:columns>
+	    </mx:DataGrid>		
+		</mx:Panel>
+
+		<mx:Panel title="CPU Skew (top active queries)" label="horizontal" width="100%"
+			 styleName="dashboardMinigraphs">
+			<mx:DataGrid id="dg4" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuSkew}" 
+				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
+				selectable="false" itemClick="clickQuery(event)">
+	      <mx:columns>
+	        <mx:DataGridColumn headerText="Query ID"
+	          dataField="id" width="150"/>
+	        <mx:DataGridColumn headerText="User"
+	          dataField="username"/>
+	        <mx:DataGridColumn headerText="Database"
+	          dataField="db"/>
+	        <mx:DataGridColumn headerText="CPU skew"
+	          dataField="skew_cpu"/>
+	      </mx:columns>
+	    </mx:DataGrid>		
+		</mx:Panel>
+	
+		<mx:Panel title="Row Skew (top active queries)" label="horizontal" width="100%"
+			 styleName="dashboardMinigraphs">
+			<mx:DataGrid id="dg5" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByRowSkew}" 
+				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
+				selectable="false" itemClick="clickQuery(event)">
+	      <mx:columns>
+	        <mx:DataGridColumn headerText="Query ID"
+	          dataField="id" width="150"/>
+	        <mx:DataGridColumn headerText="User"
+	          dataField="username"/>
+	        <mx:DataGridColumn headerText="Database"
+	          dataField="db"/>
+	        <mx:DataGridColumn headerText="Row skew"
+	          dataField="skew_rows"/>	
+	      </mx:columns>
+	    </mx:DataGrid>		
+		</mx:Panel>
 				
 	</mx:VBox>
 	
 </mx:HBox>
+</mx:Canvas>
+
