@@ -1313,7 +1313,7 @@ DoCopy(const CopyStmt *stmt)
 		{
 			if (is_from && relationOid != -1) 
 			{
-				VacuumStmt *analyzeStmt;
+				VacuumStmt *analyzeStmt = NULL;
 				if (processed > gp_autostats_onchange_threshold) 
 				{
 					elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Performing ANALYZE on tableoid=%d.",(uint) processed, (uint) gp_autostats_onchange_threshold, relationOid);  

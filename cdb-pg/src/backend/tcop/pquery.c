@@ -250,9 +250,9 @@ ProcessQuery(Portal portal,
 	{
 		if (Gp_role == GP_ROLE_DISPATCH) 
 		{
-			Oid         relationOid;
+			Oid         relationOid = -1;
 			bool        candidateForAutoStats = false;
-			RangeTblEntry * rte;
+			RangeTblEntry * rte = NULL;
 
 			switch (parsetree->commandType) 
 			{
@@ -279,7 +279,7 @@ ProcessQuery(Portal portal,
 
 			if (candidateForAutoStats) 
 			{
-				VacuumStmt *analyzeStmt;
+				VacuumStmt *analyzeStmt = NULL;
 				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) queryDesc->es_processed, (uint) gp_autostats_onchange_threshold, relationOid);  
 
 				analyzeStmt = makeNode(VacuumStmt);
