@@ -240,6 +240,10 @@ bool		gp_enable_fast_sri=true;
 /* Disable logging while creating mapreduce objects */
 bool        gp_mapreduce_define=false;
 
+/* Experimental feature for MPP-4082. Please read doc before setting this guc */
+GpAutoStatsModeValue gp_autostats_mode;
+char                *gp_autostats_mode_string;
+int                  gp_autostats_onchange_threshold = 100000;
 
 /* --------------------------------------------------------------------------------------------------
  * Miscellaneous developer use
@@ -768,3 +772,46 @@ gpvars_show_gp_interconnect_type(void)
 			return "TCP";
 	}
 }                               /* gpvars_show_gp_log_interconnect */
+
+
+
+/*
+ * gpvars_assign_gp_autostats_mode
+ * gpvars_show_gp_autostats_mode
+ */
+const char *
+gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source __attribute__((unused)) )
+{
+	int newtype = 0;
+
+	if (newval == NULL || newval[0] == 0 ||
+		!pg_strcasecmp("none", newval))
+		newtype = GP_AUTOSTATS_NONE;
+	else if (!pg_strcasecmp("onchange", newval))
+		newtype = GP_AUTOSTATS_ONCHANGE;
+	else
+		elog(ERROR, "Unknown autostats mode. (current type is '%s')", gpvars_show_gp_autostats_mode());
+
+	if (doit)
+	{
+		gp_autostats_mode = newtype;
+	}
+
+	return newval;
+}                               
+
+const char *
+gpvars_show_gp_autostats_mode(void)
+{
+	switch(gp_autostats_mode)
+	{
+		case GP_AUTOSTATS_NONE:
+			return "NONE";
+		case GP_AUTOSTATS_ONCHANGE:
+			return "ONCHANGE";
+		default:
+			return "NONE";
+	}
+}                               
+
+

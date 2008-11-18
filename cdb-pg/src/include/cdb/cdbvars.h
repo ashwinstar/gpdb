@@ -800,6 +800,21 @@ extern int gp_hashagg_compress_spill_files;
 /* Disable logging while creating mapreduce views */
 extern bool gp_mapreduce_define;
 
+
+/* Autostats feature for MPP-4082. */
+typedef enum
+{
+	GP_AUTOSTATS_NONE = 0,		/* Autostats is switched off */
+	GP_AUTOSTATS_ONCHANGE,		/* Autostats is enabled on change (insert/delete/update/ctas) */
+} GpAutoStatsModeValue;
+extern GpAutoStatsModeValue gp_autostats_mode;
+extern char                *gp_autostats_mode_string;
+extern int                  gp_autostats_onchange_threshold;
+/* hook functions to set gp_autostats_mode */
+extern const char *gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source);
+extern const char *gpvars_show_gp_autostats_mode(void);
+
+
 /* --------------------------------------------------------------------------------------------------
  * Miscellaneous developer use
  */

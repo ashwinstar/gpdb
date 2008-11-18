@@ -1886,7 +1886,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3007,6 +3006,15 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_vmem_protect_limit,
 		0, 0, INT_MAX / 2, NULL, NULL
 	},
+	{
+		{"gp_autostats_onchange_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Threshold for number of tuples added to table by CTAS or Insert-to to trigger autostats in onchange mode. See gp_autostats_mode."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_autostats_onchange_threshold,
+		INT_MAX, 0, INT_MAX, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -3797,6 +3805,15 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&Debug_dtm_action_sql_command_tag,
 		"", NULL, NULL
+	},
+	{
+		{"gp_autostats_mode", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the autostats mode."),
+			gettext_noop("Valid values are NONE, ONCHANGE. ONCHANGE requires setting gp_autostats_onchange_threshold."),
+			GUC_NOT_IN_SAMPLE 
+		},
+		&gp_autostats_mode_string,
+		"none", gpvars_assign_gp_autostats_mode, gpvars_show_gp_autostats_mode
 	},
 
     /* End-of-list marker */

@@ -60,6 +60,7 @@
 #include "cdb/cdbrelsize.h"
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
+#include "commands/vacuum.h"
 
 /* DestReceiver for COPY (SELECT) TO */
 typedef struct
@@ -665,7 +666,10 @@ DoCopy(const CopyStmt *stmt)
 	TupleDesc   tupDesc;
 	int         num_phys_attrs;
 	uint64      processed;
-	bool		qe_copy_from = (is_from && (Gp_role == GP_ROLE_EXECUTE));
+	bool        qe_copy_from = (is_from && (Gp_role == GP_ROLE_EXECUTE));
+    /* save relationOid for auto-stats */
+	Oid         relationOid = -1; 
+
 
 	/* Allocate workspace and zero all fields */
 	cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
@@ -928,6 +932,9 @@ DoCopy(const CopyStmt *stmt)
 		/* Open and lock the relation, using the appropriate lock type. */
 		cstate->rel = heap_openrv(stmt->relation, NoLock);
 			LockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock));
+
+		/* save relation oid for auto-stats call later */
+		relationOid = RelationGetRelid(cstate->rel); 
 
 		/* Check relation permissions. */
 		aclresult = pg_class_aclcheck(RelationGetRelid(cstate->rel),
@@ -1296,6 +1303,41 @@ DoCopy(const CopyStmt *stmt)
 	/* Clean up storage (probably not really necessary) */
 	processed = cstate->processed;
 	
+    /* 	 Fix for MPP-4082. If auto-stats is in onchange mode and the number */
+    /* 	 of tuples inserted/deleted/updated is greater than */
+    /* 	 threshold, this will trigger an ANALYZE. */
+
+	if (gp_autostats_mode == GP_AUTOSTATS_ONCHANGE) 
+	{
+		if (Gp_role == GP_ROLE_DISPATCH) 
+		{
+			if (is_from && relationOid != -1) 
+			{
+				VacuumStmt *analyzeStmt;
+				if (processed > gp_autostats_onchange_threshold) 
+				{
+					elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Performing ANALYZE on tableoid=%d.",(uint) processed, (uint) gp_autostats_onchange_threshold, relationOid);  
+
+					analyzeStmt = makeNode(VacuumStmt);
+	   
+					/* Set up command parameters */
+					analyzeStmt->vacuum = false;
+					analyzeStmt->full = false;
+					analyzeStmt->analyze = true;
+					analyzeStmt->freeze_min_age = -1;
+					analyzeStmt->verbose = false;
+					analyzeStmt->relation = NULL;     /* not used since we pass relids list */
+					analyzeStmt->va_cols = NIL;
+	   
+					vacuum(analyzeStmt, list_make1_oid(relationOid));
+	   
+					pfree(analyzeStmt);
+					elog(LOG, "Finished ANALYZE by auto-stats.");
+				}
+			}
+		}
+	} /*end auto-stats block*/
+
 	pfree(cstate->attribute_buf.data);
 	pfree(cstate->line_buf.data);
 	pfree(cstate);

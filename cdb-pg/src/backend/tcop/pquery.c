@@ -31,8 +31,8 @@
 #include "tcop/utility.h"
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
-
-
+#include "commands/vacuum.h"
+#include "parser/parsetree.h"
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
  * if there are several).
@@ -242,6 +242,66 @@ ProcessQuery(Portal portal,
 	}
 	
 	
+    /* 	 Fix for MPP-4082. If auto-stats is in onchange mode and the number */
+    /* 	 of tuples inserted/deleted/updated is greater than */
+    /* 	 threshold, this will trigger an ANALYZE. */
+
+	if (gp_autostats_mode == GP_AUTOSTATS_ONCHANGE) 
+	{
+		if (Gp_role == GP_ROLE_DISPATCH) 
+		{
+			Oid         relationOid;
+			bool        candidateForAutoStats = false;
+			RangeTblEntry * rte;
+
+			switch (parsetree->commandType) 
+			{
+				case CMD_SELECT: 
+					if (parsetree->into != NULL) 
+					{
+						/* Only for a SELECT INTO (equivalently, a CTAS) */
+						relationOid = parsetree->intoOidInfo.relOid;
+						candidateForAutoStats = true;
+					}
+					break;
+				case CMD_INSERT:
+				case CMD_UPDATE:
+				case CMD_DELETE:
+					rte =  rt_fetch(parsetree->resultRelation, parsetree->rtable);
+					relationOid = rte->relid;
+					candidateForAutoStats = true;
+					break;
+				default:
+					candidateForAutoStats = false;
+			}
+
+			candidateForAutoStats = candidateForAutoStats && (queryDesc->es_processed > gp_autostats_onchange_threshold);
+
+			if (candidateForAutoStats) 
+			{
+				VacuumStmt *analyzeStmt;
+				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) queryDesc->es_processed, (uint) gp_autostats_onchange_threshold, relationOid);  
+
+				analyzeStmt = makeNode(VacuumStmt);
+	   
+				/* Set up command parameters */
+				analyzeStmt->vacuum = false;
+				analyzeStmt->full = false;
+				analyzeStmt->analyze = true;
+				analyzeStmt->freeze_min_age = -1;
+				analyzeStmt->verbose = false;
+				analyzeStmt->relation = NULL;     /* not used since we pass relids list */
+				analyzeStmt->va_cols = NIL;
+	   
+				vacuum(analyzeStmt, list_make1_oid(relationOid));
+	   
+				pfree(analyzeStmt);
+				elog(LOG, "Finished ANALYZE by auto-stats.");
+			}
+		}
+	} /* end auto-stats block */
+
+
 	FreeQueryDesc(queryDesc);
 
 	FreeSnapshot(ActiveSnapshot);
