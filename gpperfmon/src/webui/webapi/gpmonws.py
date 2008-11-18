@@ -70,8 +70,8 @@ def internal_error():
     return mkerr(error.INTERNAL, '%s: %s' % (type, value))
 
 app.notfound = page_not_found
-app.internalerror = web.debugerror
-#app.internalerror = internal_error
+#app.internalerror = web.debugerror
+app.internalerror = internal_error
 
 
 def authrole(username, password):
