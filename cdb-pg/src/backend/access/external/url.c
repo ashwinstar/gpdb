@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 
+#include "libpq/pqsignal.h"
 #include "access/fileam.h"
 #include "access/heapam.h"
 #include "access/valid.h"
@@ -52,11 +53,21 @@
 #define TRUE 1
 #endif
 
+struct itimers {
+	struct itimerval rtimer;		/* ITIMER_REAL */
+	struct itimerval vtimer;		/* ITIMER_VIRTUAL */
+	struct itimerval ptimer;		/* ITIMER_PROF */
+};
+static int resetTimers(struct itimers *timers);
+static int restoreTimers(const struct itimers *timers);
+static char *interpretExitCode(int exitCode, char *buf, size_t buflen);
+static const char *getSignalNameFromCode(int signo);
+
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
 
 /* curl calls this routine to return HTTP header from server */
-static size_t 
+static size_t
 header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 {
     URL_FILE *url = (URL_FILE *)userp;
@@ -76,14 +87,14 @@ header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 			ptr++, len--;
 			while (len > 0 && (*ptr == ' ' || *ptr == '\t'))
 				ptr++, len--;
-			for (i = 0; i < sizeof(buf) - 1 && i < len; i++) 
+			for (i = 0; i < sizeof(buf) - 1 && i < len; i++)
 				buf[i] = ptr[i];
 			buf[i] = 0;
 			url->u.curl.gp_proto = strtol(buf, 0, 0);
 			// elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto);
 		}
 	}
-	
+
 	return size*nmemb;
 }
 
@@ -162,14 +173,14 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 
 	if (! (200 <= response_code && response_code < 300))
 	{
-		if (response_code == 0) 
+		if (response_code == 0)
 			elog(ERROR, "connection failed while %s", file->url);
 		else
 		{
 			/* we need to sleep 1 sec to avoid this condition:
 			   1- seg X gets an error message from gpfdist
 			   2- I gets a 500 error
-			   3- I report error before seg X, and error message 
+			   3- I report error before seg X, and error message
 			   in seg X is thrown away.
 			*/
 			sleep(1);
@@ -195,7 +206,7 @@ fill_buffer(URL_FILE *file,int want)
     int nfds, e;
 	curlctl_t* curl = &file->u.curl;
 
-	/* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d", 
+	/* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d",
 	   file->u.curl.still_running, curl->buf.bot, curl->buf.top, want);
 	*/
 
@@ -213,7 +224,7 @@ fill_buffer(URL_FILE *file,int want)
         /* get file descriptors from the transfers */
         if (0 != (e = curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd)))
 		{
-			elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)", 
+			elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)",
 				 e, curl_easy_strerror(e));
 			return -1;
 		}
@@ -224,7 +235,7 @@ fill_buffer(URL_FILE *file,int want)
 			break;
 		}
 
-        if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout))) 
+        if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout)))
 		{
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
@@ -233,26 +244,26 @@ fill_buffer(URL_FILE *file,int want)
 			return -1;
 		}
 
-		if (nfds > 0) 
+		if (nfds > 0)
 		{
             /* timeout or readable/writable sockets */
             /* note we *could* be more efficient and not wait for
              * CURLM_CALL_MULTI_PERFORM to clear here and check it on re-entry
              * but that gets messy */
-			while (CURLM_CALL_MULTI_PERFORM == 
+			while (CURLM_CALL_MULTI_PERFORM ==
 				   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
-			if (e != 0) 
+			if (e != 0)
 			{
-				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
+				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 					 e, curl_easy_strerror(e));
 				return -1;
 			}
         }
 
-		/* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d", 
+		/* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d",
 		   file->u.curl.still_running, curl->buf.bot, curl->buf.top, want);
 		*/
-    } 
+    }
     return 0;
 }
 
@@ -289,7 +300,7 @@ make_export(char *name, const char *value, char *buf)
 		strcpy(p, "='");
 	p += 2;
 
-	for ( ; 0 != (ch = *value); value++) 
+	for ( ; 0 != (ch = *value); value++)
 	{
 		if (ch == '\'' || ch == '\\')
 		{
@@ -305,7 +316,7 @@ make_export(char *name, const char *value, char *buf)
 	if (buf)
 		strcpy(p, "' && export ");
 	p += strlen("' && export ");
-	
+
 	if (buf)
 		strcpy(p, name);
 	p += strlen(name);
@@ -313,7 +324,7 @@ make_export(char *name, const char *value, char *buf)
 	if (buf)
 		strcpy(p, " && ");
 	p += 4;
-	
+
 	return p - buf;
 }
 
@@ -338,7 +349,7 @@ make_command(const char *cmd, extvar_t * ev, char *buf)
 	sz += make_export("GP_SEG_PORT", ev->GP_SEG_PORT, buf ? buf + sz : 0);
 	sz += make_export("GP_SESSION_ID", ev->GP_SESSION_ID, buf ? buf + sz : 0);
 	sz += make_export("GP_SEGMENT_COUNT", ev->GP_SEGMENT_COUNT, buf ? buf + sz : 0);
-	
+
 	if (buf)
 		strcpy(buf + sz, cmd);
 	sz += strlen(cmd);
@@ -400,7 +411,7 @@ make_url(const char *url, extvar_t *ev, char *buf)
 	hostname_start = strchr(authority_start, '@');
 	if (! (hostname_start && hostname_start < authority_end))
 		hostname_start = authority_start;
-	
+
 	hostname_end = strchr(hostname_start, ':');
 	if (! (hostname_end && hostname_end < authority_end))
 		hostname_end = authority_end;
@@ -418,7 +429,7 @@ make_url(const char *url, extvar_t *ev, char *buf)
 	{
 		strcpy(hostip, inet_ntoa(*(struct in_addr*)he->h_addr));
 		/* elog(NOTICE, "IP: %s", hostip); */
-	} 
+	}
 	else
 	{
 #if 0
@@ -426,7 +437,7 @@ make_url(const char *url, extvar_t *ev, char *buf)
 		FILE* fp;
 		int a, b, c, d;
 
-		snprintf(line, sizeof(line), 
+		snprintf(line, sizeof(line),
 				 "python -c 'from socket import *; print gethostbyname(\"%s\") ' 2> /tmp/tt",
 				 hostname);
 		line[sizeof(line)-1] = 0;
@@ -434,7 +445,7 @@ make_url(const char *url, extvar_t *ev, char *buf)
 			line[0] = 0;
 		}
 		else {
-			if (0 == fgets(line, sizeof(line), fp)) 
+			if (0 == fgets(line, sizeof(line), fp))
 				line[0] = 0;
 			pclose(fp);
 			line[sizeof(line)-1] = 0;
@@ -476,15 +487,15 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 	 * if the url happens to be a command to execute it uses
 	 * popen to execute it.
 	 */
-	
+
 	/* an EXECUTE string will always be prefixed like this */
 	const char *exec_prefix = "execute:";
-	
+
 	/*char  sessionIDBuf[80];*/
 	URL_FILE *file;
 	int e;
     (void)operation;
-	
+
 
     if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
@@ -498,33 +509,65 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 	file->url = ((char *) file) + sizeof(URL_FILE);
 	strcpy(file->url, url);
 
-	/* 
-	 * if 'url' starts with "execute:" then it's a command to execute and 
-	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE) 
+	/*
+	 * if 'url' starts with "execute:" then it's a command to execute and
+	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE)
 	 */
 	if (pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
 	{
+		int save_errno;
+		struct itimers savetimers;
+
 		char *cmd = url + strlen(exec_prefix);
 		int sz = make_command(cmd, ev, 0);
 		char *shexec = palloc(sz);
 		make_command(cmd, ev, shexec);
- 		
-		file->type = CFTYPE_EXEC; /* marked as a EXEC */	
-		file->u.exec.fp = popen(shexec, "r");
+
+		file->type = CFTYPE_EXEC; /* marked as a EXEC */
 		file->u.exec.shexec = shexec;
+
+		/* Clear process interval timers */
+		if (resetTimers(&savetimers) < 0)
+		{
+			*response_code = 500;
+			*response_string = "Internal Server Error";
+			free(file);
+			return NULL;
+		}
+
+		file->u.exec.fp = popen(shexec, "r");
+		save_errno = errno;
+
+		/* Restore process interval timers */
+		if (restoreTimers(&savetimers) < 0)
+		{
+			*response_code = 500;
+			*response_string = "Internal Server Error";
+			free(file);
+			return NULL;
+		}
+
 		if (file->u.exec.fp == NULL)
+		{
+			errno = save_errno;
 			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
+			*response_code = 500;
+			*response_string = "Internal Server Error";
+			free(file);
+			return NULL;
+		}
 	}
     else if (IS_FILE_URI(url))
     {
 		char *path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		struct fstream_options fo;
 		memset(&fo,0,sizeof fo);
-		if (!path) 
+		if (!path)
 		{
 			elog(ERROR, "External Table error opening file: '%s'", url);
 			*response_code = 400;
 			*response_string = "Bad Request";
+			free(file);
 			return NULL;
 		}
 
@@ -535,7 +578,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		fo.header = pstate->header_line;
 		pstate->header_line = 0;
 		file->u.file.fp = fstream_open(path,&fo,response_code,response_string);
-		
+
 		/* couldn't open local file. return NULL to display proper error */
 		if (!file->u.file.fp)
 		{
@@ -548,7 +591,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		int sz = make_url(file->url, ev, 0);
 
         file->type = CFTYPE_CURL; /* marked as URL */
-		if (sz < 0) 
+		if (sz < 0)
 		{
 			elog(ERROR, "illegal URL: %s", file->url);
 			url_fclose(file);
@@ -578,19 +621,19 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		/* elog(NOTICE, "URL: %s", file->u.curl.curl_url); */
 
-        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url))) 
+        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error (%d - %s)",
-				 file->u.curl.curl_url, 
+				 file->u.curl.curl_url,
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			*response_code = 500;
 			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
-        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE))) 
+        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE)))
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)", 
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			*response_code = 500;
@@ -600,7 +643,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* set callback for each header received from server */
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HEADERFUNCTION, header_callback)))
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			*response_code = 500;
@@ -620,7 +663,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* set callback for each data block received from server */
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
 		{
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 			url_fclose(file);
 			*response_code = 500;
@@ -646,7 +689,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			*response_string = "curl_easy_setopt failed";
 			return NULL;
 		}
-	
+
 		file->u.curl.x_httpheader = NULL;
 		if (set_httpheader(file, "X-GP-MASTER_HOST", ev->GP_MASTER_HOST) ||
 			set_httpheader(file, "X-GP-MASTER_PORT", ev->GP_MASTER_PORT) ||
@@ -681,7 +724,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			return NULL;
         }
 
-        if (!multi_handle) 
+        if (!multi_handle)
 		{
             if (! (multi_handle = curl_multi_init()))
 			{
@@ -697,7 +740,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		{
 			if (CURLM_CALL_MULTI_PERFORM != e)
 			{
-				elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)", 
+				elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)",
 					 e, curl_easy_strerror(e));
 				url_fclose(file);
 				*response_code = 500;
@@ -707,10 +750,10 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		}
 
         /* lets start the fetch */
-		while (CURLM_CALL_MULTI_PERFORM == 
+		while (CURLM_CALL_MULTI_PERFORM ==
 			   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
 
-		if (e != 0) 
+		if (e != 0)
 		{
 			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 				 e, curl_easy_strerror(e));
@@ -719,7 +762,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			*response_string = "curl_multi_perform failed";
 			return NULL;
 		}
-		
+
 		/* read some bytes to make sure the connection is established */
 		fill_buffer(file, 1);
 
@@ -746,6 +789,12 @@ url_fclose(URL_FILE *file)
 
 		case CFTYPE_EXEC:
 			ret = pclose(file->u.exec.fp);
+			if (ret != 0)
+			{
+				char buf[128];
+				elog(DEBUG1, "Stream for \"%s\" closed: %s",
+                            file->url, interpretExitCode(ret, buf, sizeof(buf)/sizeof(char)));
+			}
 			break;
 
 		case CFTYPE_CURL:
@@ -800,7 +849,7 @@ url_feof(URL_FILE *file)
 
 		case CFTYPE_EXEC:
 			ret = feof(file->u.exec.fp);
-			break;    	
+			break;
 
 		case CFTYPE_CURL:
 			ret = file->u.curl.eof;
@@ -827,7 +876,7 @@ int url_ferror(URL_FILE *file)
 
 		case CFTYPE_EXEC:
 			ret = ferror(file->u.exec.fp);
-			break;    	
+			break;
 
 		case CFTYPE_CURL:
 			ret = file->u.curl.error ? -1 : 0;
@@ -854,7 +903,7 @@ static size_t gp_proto0_read(char *buf, int bufsz, URL_FILE* file)
 	 * either errored or EOF. For proto0, we cannot distinguish
 	 * between error and EOF. */
 	n = curl->buf.top - curl->buf.bot;
-	if (n == 0 && !curl->still_running) 
+	if (n == 0 && !curl->still_running)
 		curl->eof = 1;
 
 	if (n > bufsz)
@@ -898,12 +947,12 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		curl->buf.bot += 4;
 		if (len < 0)
 		{
-			elog(ERROR, "gpfdist error: bad packet type %d len %d", 
+			elog(ERROR, "gpfdist error: bad packet type %d len %d",
 				 type, len);
 			return -1;
 		}
 
-		/* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+		/* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len,
 		   curl->buf.bot, curl->buf.top);
 		*/
 
@@ -911,7 +960,7 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		{
 			fill_buffer(file, len);
 			n = curl->buf.top - curl->buf.bot;
-			if (n > len) 
+			if (n > len)
 				n = len;
 			if (n > 0)
 			{
@@ -1015,7 +1064,7 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 	/* read data block */
 	if (bufsz > curl->block.datalen)
 		bufsz = curl->block.datalen;
-	
+
 	n = curl->buf.top - curl->buf.bot;
 	// elog(NOTICE, "n = %d", n);
 	fill_buffer(file, bufsz);
@@ -1043,7 +1092,7 @@ static size_t curl_fread(char *buf, int bufsz, URL_FILE* file,CopyState pstate)
 	char *q = buf + bufsz;
 	int n;
 	const int gp_proto = curl->gp_proto;
-	
+
 	if (gp_proto != 0 && gp_proto != 1)
 	{
 		elog(ERROR, "unknown gp protocol %d", curl->gp_proto);
@@ -1056,7 +1105,7 @@ static size_t curl_fread(char *buf, int bufsz, URL_FILE* file,CopyState pstate)
 			n = gp_proto0_read(p, q - p, file);
 		else
 			n = gp_proto1_read(p, q - p, file,pstate,buf);
-		
+
 		//elog(NOTICE, "curl_fread %d bytes", n);
 
 		if (n <= 0)
@@ -1092,9 +1141,9 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 		case CFTYPE_EXEC:
 			want = fread(ptr, size, nmemb, file->u.exec.fp);
 			break;
-    	
+
 		case CFTYPE_CURL:
-		
+
 			n = curl_fread(ptr, nmemb * size, file,pstate);
 			/* number of items - nb correct op - checked
 			 * with glibc code*/
@@ -1122,7 +1171,7 @@ url_rewind(URL_FILE *file)
 		case CFTYPE_FILE:
 			fstream_rewind(file->u.file.fp);
 			break;
-       
+
 		case CFTYPE_EXEC:
 			/* we'll need to execute the command again */
 			assert(0); /* There is no way the following code is right. */
@@ -1130,7 +1179,7 @@ url_rewind(URL_FILE *file)
 
 			/* most of these are null fo us. */
 			url_fopen(url, NULL, NULL,NULL,NULL,0);
-			break; 
+			break;
 
 		case CFTYPE_CURL:
 			/* halt transaction */
@@ -1153,4 +1202,235 @@ url_rewind(URL_FILE *file)
 			break;
 
     }
+}
+
+
+/*
+ * resetTimers - disable process interval timers
+ *
+ * Testing has shown that fork on some systems doesn't clear timers as it should and
+ * exec is subjected to *fatal* interruption by timers so the timers are disabled
+ * before the fork is done.  Before resetting the interval timers, the all signals
+ * are blocked.  After resetting the interval timers, the signal mask is restored.
+ *
+ * otimers: a pointer to an itmers struct to contain the old timer values.  If
+ * 		NULL, the old timer valuess are not preserved.
+ *
+ * Returns -1 if an error is encountered; 0 if successful.
+ */
+static int
+resetTimers(struct itimers *otimers)
+{
+	struct itimerval xtimer;				/* Zero timer for disabling */
+	struct itimerval *p_rtimer = NULL;		/* ITIMER_REAL */
+	struct itimerval *p_vtimer = NULL;		/* ITIMER_VIRTUAL */
+	struct itimerval *p_ptimer = NULL;		/* ITIMER_PROF */
+
+	int rc = -1;
+
+	if (otimers != NULL)
+	{
+		p_rtimer = &otimers->rtimer;
+		p_vtimer = &otimers->vtimer;
+		p_ptimer = &otimers->ptimer;
+	}
+
+	/*
+	 * Block signals while capturing timers.
+	 */
+	PG_SETMASK(&BlockSig);
+
+	/*
+	 * Disable all process interval timers preserving the old
+	 * values if requested.
+	 */
+	timerclear(&xtimer.it_interval);
+	timerclear(&xtimer.it_value);
+
+	if (setitimer(ITIMER_REAL, &xtimer, p_rtimer) < 0)
+	{
+		elog( ERROR, "Unable to fetch/clear ITIMER_REAL" );
+	}
+	else if (setitimer(ITIMER_VIRTUAL, &xtimer, p_vtimer) < 0)
+	{
+		elog( ERROR, "Unable to fetch/clear ITIMER_VIRTUAL" );
+	}
+	else if (setitimer(ITIMER_REAL, &xtimer, p_ptimer) < 0)
+	{
+		elog( ERROR, "Unable to fetch/clear ITIMER_PROF" );
+	}
+	else
+	{
+		rc = 0;
+	}
+
+	/*
+	 * Restore signal mask.
+	 */
+	PG_SETMASK(&UnBlockSig);
+
+	return rc;
+}
+
+
+/*
+ * restoreTimers - restore timers from itimers struct.
+ *
+ * Restores the process interval timers stored in the itimers struct
+ * by resetTimers.
+ *
+ * timers: a reference to the itimers struct passed to the resetTimers
+ * 		function.
+ *
+ * Returns -1 if an error is encountered; 0 if successful.
+ */
+static int
+restoreTimers(const struct itimers *timers)
+{
+	if (timers == NULL)
+	{
+		/* Coding error! */
+		elog( FATAL, "Old timer values not provided" );
+		return -1;
+	}
+
+	/*
+	 * Restore any active timers.
+	 */
+	if (timerisset(&timers->rtimer.it_interval) || timerisset(&timers->rtimer.it_value))
+	{
+		if (setitimer(ITIMER_REAL, &timers->rtimer, NULL) < 0)
+		{
+			elog( ERROR, "Unable to restore ITIMER_REAL" );
+			return -1;
+		}
+	}
+	if (timerisset(&timers->vtimer.it_interval) || timerisset(&timers->vtimer.it_value))
+	{
+		if (setitimer(ITIMER_VIRTUAL, &timers->vtimer, NULL) < 0)
+		{
+			elog( ERROR, "Unable to restore ITIMER_VIRTUAL" );
+			return -1;
+		}
+	}
+	if (timerisset(&timers->ptimer.it_interval) || timerisset(&timers->ptimer.it_value))
+	{
+		if (setitimer(ITIMER_PROF, &timers->ptimer, NULL) < 0)
+		{
+			elog( ERROR, "Unable to restore ITIMER_PROF" );
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+
+/*
+ * interpretExitCode - formats a brief message and the exit code from pclose()
+ * 		(or wait4()).
+ *
+ *
+ */
+static char *
+interpretExitCode(int rc, char *buf, size_t buflen)
+{
+	if (WIFEXITED(rc))
+	{
+		int exitCode = WEXITSTATUS(rc);
+		if (exitCode >= 128)
+		{
+			/*
+			 * If the exit code has the 128-bit set, the exit code represents
+			 * a shell exited by signal where the signal number is exitCode - 128.
+			 */
+			exitCode -= 128;
+			snprintf(buf, buflen, "SHELL TERMINATED by signal %s (%d)", getSignalNameFromCode(exitCode), exitCode);
+		}
+		else if (exitCode == 0)
+		{
+			snprintf(buf, buflen, "EXITED; rc=%d", exitCode);
+		}
+		else
+		{
+			snprintf(buf, buflen, "EXITED; rc=%d: %s", exitCode, strerror(exitCode));
+		}
+	}
+	else if (WIFSIGNALED(rc))
+	{
+		int signalCode = WTERMSIG(rc);
+		snprintf(buf, buflen, "TERMINATED by signal %s (%d)", getSignalNameFromCode(signalCode), signalCode);
+	}
+	else if (WIFSTOPPED(rc))
+	{
+		int signalCode = WSTOPSIG(rc);
+		snprintf(buf, buflen, "STOPPED by signal %s (%d)", getSignalNameFromCode(signalCode), signalCode);
+	}
+	else
+	{
+		snprintf(buf, buflen, "UNRECOGNIZED termination; rc=%#x", rc);
+	}
+
+	return buf;
+}
+
+
+struct signalDef {
+	const int			signalCode;
+	const char		   *signalName;
+};
+
+/*
+ * Table mapping signal numbers to signal identifiers (names).
+ */
+struct signalDef signals[] = {
+		{ SIGHUP,    "SIGHUP" },
+		{ SIGINT,    "SIGINT" },
+		{ SIGQUIT,   "SIGQUIT" },
+		{ SIGILL,    "SIGILL" },
+		{ SIGTRAP,   "SIGTRAP" },
+		{ SIGABRT,   "SIGABRT" },
+		{ SIGEMT,    "SIGEMT" },
+		{ SIGFPE,    "SIGFPE" },
+		{ SIGKILL,   "SIGKILL" },
+		{ SIGBUS,    "SIGBUS" },
+		{ SIGSEGV,   "SIGSEGV" },
+		{ SIGSYS,    "SIGSYS" },
+		{ SIGPIPE,   "SIGPIPE" },
+		{ SIGALRM,   "SIGALRM" },
+		{ SIGTERM,   "SIGTERM" },
+		{ SIGURG,    "SIGURG" },
+		{ SIGSTOP,   "SIGSTOP" },
+		{ SIGTSTP,   "SIGTSTP" },
+		{ SIGCONT,   "SIGCONT" },
+		{ SIGCHLD,   "SIGCHLD" },
+		{ SIGTTIN,   "SIGTTIN" },
+		{ SIGTTOU,   "SIGTTOU" },
+		{ SIGIO,     "SIGIO" },
+		{ SIGXCPU,   "SIGXCPU" },
+		{ SIGXFSZ,   "SIGXFSZ" },
+		{ SIGVTALRM, "SIGVTALRM" },
+		{ SIGPROF,   "SIGPROF" },
+		{ SIGWINCH,  "SIGWINCH" },
+		{ SIGINFO,   "SIGINFO" },
+		{ SIGUSR1,   "SIGUSR1" },
+		{ SIGUSR2,   "SIGUSR2" },
+		{ -1, "" }
+};
+
+
+/*
+ * getSignalNameFromCode - gets the signal name given the signal number.
+ */
+static const char *
+getSignalNameFromCode(int signo)
+{
+	int i;
+	for (i = 0; signals[i].signalCode != -1; i++)
+	{
+		if (signals[i].signalCode == signo)
+			return signals[i].signalName;
+	}
+
+	return "UNRECOGNIZED";
 }
