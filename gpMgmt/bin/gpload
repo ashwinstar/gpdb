@@ -531,7 +531,7 @@ class gpload:
                 try:
                     i = map(lambda a:a[0],self.into_columns).index(key)
                 except ValueError:
-                    self.log(0,'%s in mapping is not in table %s:.'%(key,self.table))
+                    self.log(0,'%s in mapping is not in table %s'%(key,self.table))
                     sys.exit(2)
                 self.into_columns[i][2] = value.lower()
         self.log(2,'table %s columns are--'%self.table)
