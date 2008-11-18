@@ -25,8 +25,11 @@ extern "C" {
 #include "optimizer/pathnode.h" /* Path, pathnode_walker() */
 #include "optimizer/paths.h"    /* compare_pathkeys() */
 
+#include "parser/parse_expr.h"	/* exprType() */
+
 #include "cdb/cdbdef.h"         /* CdbSwap() */
 #include "cdb/cdbllize.h"       /* makeFlow() */
+#include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 
 #include "cdb/cdbpath.h"        /* me */
 
@@ -528,6 +531,33 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo   *root,
 }                               /* cdbpath_match_preds_to_both_partkeys */
 
 
+
+/*
+ * cdb_pathkey_isGreenplumDbHashable
+ *
+ * Iterates through a list of PathKeyItems and determines if all of them
+ * are GreenplumDbHashable.
+ *
+ */
+static bool
+cdbpath_pathkey_isGreenplumDbHashable(List *pathkey)
+{
+    ListCell *plcell = NULL;
+    foreach(plcell, pathkey)
+    {
+        PathKeyItem *pki = (PathKeyItem*) lfirst(plcell);
+
+        if (!isGreenplumDbHashable(exprType(pki->key)))
+        {
+            /* bail if any of the items are non-hashable */
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 /*
  * cdbpath_partkeys_from_preds
  *
@@ -558,6 +588,15 @@ cdbpath_partkeys_from_preds(PlannerInfo    *root,
         {
             cache_mergeclause_pathkeys(root, rinfo);
             Assert(rinfo->left_pathkey);
+        }
+
+        /*
+         * skip non-hashable keys
+         */
+        if (!cdbpath_pathkey_isGreenplumDbHashable(rinfo->left_pathkey) ||
+            !cdbpath_pathkey_isGreenplumDbHashable(rinfo->right_pathkey))
+        {
+            continue;
         }
 
         /* Left & right pathkeys are usually the same... */
