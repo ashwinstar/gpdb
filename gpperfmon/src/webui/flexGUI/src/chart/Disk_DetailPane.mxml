@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
+  <mx:DataGrid width="100%" height="100%" selectable="false"
+  	  dataProvider="{mdl.system.selectedDataDetails.host}">
+    <mx:Script>
+        <![CDATA[
+		import model.GPPerfMonModelLocator;
+			
+		[Bindable]
+		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+
+        ]]>
+    </mx:Script>
+
+	<mx:columns>
+	  <mx:DataGridColumn headerText="Server" dataField="@name" width="250"/>
+	  <mx:DataGridColumn headerText="Disk Read (MBytes/s)" dataField="disk_rb_rate"/>
+	  <mx:DataGridColumn headerText="Disk Write (MBytes/s)" dataField="disk_wb_rate"/>
+	  <mx:DataGridColumn headerText="Disk Read (ops/s)" dataField="disk_ro_rate"/>	
+	  <mx:DataGridColumn headerText="Disk Write (ops/s)" dataField="disk_wo_rate"/>			
+	</mx:columns>	
+  </mx:DataGrid>
+</mx:VBox> 

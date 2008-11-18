@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
+  <mx:DataGrid width="100%" height="100%" selectable="false" 
+	dataProvider="{mdl.nav.selectedDatabaseItem}">
+    <mx:Script>
+        <![CDATA[
+		import model.GPPerfMonModelLocator;
+			
+		[Bindable]
+		public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+
+        ]]>
+    </mx:Script>
+
+	<mx:columns>
+	  <mx:DataGridColumn headerText="Running (avg)" dataField="queries_running"/>
+	  <mx:DataGridColumn headerText="Running (max)" dataField="queries_running_max"/>
+	  <mx:DataGridColumn headerText="Running (min)" dataField="queries_running_min"/>	
+	  <mx:DataGridColumn headerText="Queued (avg)" dataField="queries_queued"/>
+	  <mx:DataGridColumn headerText="Queued (max)" dataField="queries_queued_max"/>
+	  <mx:DataGridColumn headerText="Queued (min)" dataField="queries_queued_min"/>				
+	</mx:columns>	
+  </mx:DataGrid>
+</mx:VBox>
