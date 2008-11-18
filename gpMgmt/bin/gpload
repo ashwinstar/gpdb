@@ -388,10 +388,10 @@ class gpload:
                 popenList.append('-V')
 
             try:
+                self.log(2, 'trying to run %s' % ' '.join(popenList))
                 a = subprocess.Popen(popenList,stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE,close_fds=True)
                 self.subprocesses.append(a)
-                self.log(0, 'started %s' % ' '.join(popenList))
             except Exception, e:
                 self.log(0, "could not run %s: %s" % (' '.join(popenList), str(e)))
                 sys.exit(2)
@@ -402,13 +402,15 @@ class gpload:
             while 1:
                 line = a.stdout.readline()
                 if line=='':
-                    self.log(0,'Failed to start gpfdist.')
+                    self.log(0,'ERROR: failed to start gpfdist')
+                    self.log(0, 'gpfdist command line: ' + ' '.join(popenList))
                     sys.exit(2)
                 line = line.strip('\n')
                 self.log(2,line)
                 if line.startswith('Serving HTTP on port '):
                     port = int(line[21:line.index(',')])
                     break
+            self.log(0, 'started %s' % ' '.join(popenList))
             self.log(2,'gpfdist is running on port %d'%port)
             if port in availablePorts:
                 availablePorts.remove(port)
