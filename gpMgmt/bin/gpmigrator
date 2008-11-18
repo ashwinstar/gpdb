@@ -2243,12 +2243,12 @@ This issue must be resolved before upgrade can complete.
         # the initial configuration, then copy the segment to every
         # host once it is ready.
         self.Log('INFO', '...master')
-        cmd = '%s/gpinitsegment -A %s -D %s -p %s -n 1 -K %s -E %s -L %s -M %s' % \
+        cmd = '%s/gpinitsegment -A "%s" -D %s -p %s -n 1 -K %s -E %s -L %s -M %s' % \
             (libdir, arrayname, mdir, mport, chkpoint, encoding, locale, maxconn)
         self.RunCmd(cmd, env=self.newenv)
 
         self.Log('INFO', '...segment')
-        cmd = '%s/gpinitsegment -A %s -C %s -D %s -p %s -c 0 -i 2 -n 1' % \
+        cmd = '%s/gpinitsegment -A "%s" -C %s -D %s -p %s -c 0 -i 2 -n 1' % \
             (libdir, arrayname, mdir, segdir, segport)
         self.RunCmd(cmd, env=self.newenv)
 
@@ -2344,7 +2344,7 @@ This issue must be resolved before upgrade can complete.
 
                 cmd  = os.path.join(libdir, 'gpinitsegment')
                 cmd += ' -C %s:%s' % (self.host, dummyseg)
-                cmd += ' -A %s' % self.config['ARRAY_NAME']
+                cmd += ' -A "%s"' % self.config['ARRAY_NAME']
                 cmd += ' -h %s' % hostname
                 cmd += ' -p %s' % port
                 cmd += ' -c %s' % content
