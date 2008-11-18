@@ -17,13 +17,13 @@
 #include <math.h>
 
 #include "access/heapam.h"
-#include "access/appendonlyam.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "access/aosegfiles.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "cdb/cdbappendonlyam.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "miscadmin.h"

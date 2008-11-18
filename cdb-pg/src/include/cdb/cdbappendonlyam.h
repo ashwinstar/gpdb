@@ -26,6 +26,8 @@
 #include "utils/tqual.h"
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
+#include "cdb/cdbbufferedread.h"
+#include "cdb/cdbvarblock.h"
 
 #define DEFAULT_COMPRESS_LEVEL				  0
 #define MIN_APPENDONLY_BLOCK_SIZE			  8*1024
@@ -77,6 +79,67 @@ typedef struct AppendOnlyInsertDescData
 } AppendOnlyInsertDescData;
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
+
+/*
+ * used for scan of append only relations using BufferedRead and VarBlocks
+ */
+typedef struct AppendOnlyScanDescData
+{
+	/* scan parameters */
+	Relation	aos_rd;				/* target relation descriptor */
+	Index       aos_scanrelid;
+	int			aos_nkeys;			/* number of scan keys */
+	ScanKey		aos_key;			/* array of scan key descriptors */
+	bool		aos_compressed;		/* is relation stored compressed? */
+	bool		aos_checksum;		/* is relation stored with checksums? */
+	
+	/* file segment scan state */
+	File	    aos_file;			/* the current segment file */
+	int			aos_filenamepath_maxlen;
+	char		*aos_filenamepath;
+									/* the current segment file pathname. */
+	int			aos_total_segfiles;	/* the relation file segment number */
+	int			aos_segfiles_processed; /* num of segfiles already processed */
+	FileSegInfo *aos_segfile_arr;	/* array of all segfiles information */
+	bool		aos_need_new_segfile;
+	bool		aos_done_all_segfiles;
+	
+	/* buffered read context */
+	BufferedRead    bufferedRead;
+	VarBlockReader  varBlockReader;
+	MemoryContext	aoScanInitContext; /* mem context at init time */
+
+	int32			headerLen;
+	uint8			*uncompressedBuffer; /* for decompression */
+	int32			maxBufferLen;
+	int32			maxDataLen;
+	int32			largeReadLen;
+	int32			safefswritesize;
+
+	int64           bufferCount;
+	int				readerItemCount;
+	int				currentItemCount;
+	int64			rowNumber;
+	int64			rowNumberInSegmentFile;
+
+	uint8			*singleRow;
+	int32			singleRowLen;
+	
+	/* current scan state */
+	bool		bufferDone;
+	bool		aos_bufread_inited;
+	TupleDesc	aos_tupDesc;
+	MemTupleData aos_ctup;		/* current tuple in scan, if any */
+	
+	/* synthetic system attributes */
+	ItemPointerData cdb_fake_ctid;
+	MemTupleBinding *mt_bind;
+
+	PgStat_Info aos_pgstat_info; /* statistics collector hook */
+	
+}	AppendOnlyScanDescData;
+
+typedef AppendOnlyScanDescData *AppendOnlyScanDesc;
 
 /* ----------------
  *		function prototypes for appendonly access method

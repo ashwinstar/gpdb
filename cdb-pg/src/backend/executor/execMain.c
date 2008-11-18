@@ -39,7 +39,6 @@
 #include "gpmon/gpmon.h"
 
 #include "access/heapam.h"
-#include "access/appendonlyam.h"
 #include "access/aosegfiles.h"
 #include "access/appendonlywriter.h"
 #include "access/reloptions.h"
@@ -73,6 +72,8 @@
 #include "catalog/pg_class.h"
 
 #include "tcop/tcopprot.h"
+
+#include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"

@@ -23,10 +23,7 @@
 #include <sys/time.h>
 #endif
 
-#include "access/appendonlyam.h"
 #include "access/relscan.h"
-#include "cdb/cdbhash.h"
-#include "cdb/cdbchunkbuf.h"
 #include "utils/memutils.h"
 #include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
 #include "lib/dllist.h"
@@ -259,7 +256,7 @@ typedef struct ResultRelInfo
 	List	  **ri_ConstraintExprs;
 	JunkFilter *ri_junkFilter;
 	ProjectionInfo *ri_projectReturning;
-	AppendOnlyInsertDescData *ri_aoInsertDesc;
+	struct AppendOnlyInsertDescData *ri_aoInsertDesc;
 	int			ri_aosegno;
 	uint64		ri_aoprocessed; /* tuples processed for AO */
 } ResultRelInfo;
@@ -624,6 +621,13 @@ static inline void cxt_free(void *manager, void *pointer)
 		pfree(pointer);
 }
 
+#if 0
+/*
+ * <= temporarily removed =>
+ *
+ * This code is unused and depends on unshipped headers 
+ */
+
 static inline void *chunkbuf_alloc(void *manager, Size len)
 {
 	return CdbChunkBuf_Alloc((CdbChunkBuf *)manager, len);
@@ -635,6 +639,11 @@ static inline void chunkbuf_free(void *manager, void *pointer)
     UnusedArg(pointer);
 	/* no op */
 }
+
+/*
+ * <= temporarily removed =>
+ */
+#endif
 
 static inline void *mpool_cxt_alloc(void *manager, Size len)
 {
@@ -1459,7 +1468,7 @@ typedef struct ExternalScanState
 typedef struct AppendOnlyScanState
 {
 	ScanState	ss;
-	AppendOnlyScanDesc	aos_ScanDesc;
+	struct AppendOnlyScanDescData *aos_ScanDesc;
 } AppendOnlyScanState;
 
 
@@ -1974,7 +1983,7 @@ typedef struct MotionState
 	List 		*sliceEntries;      /* for each outgoing slices */
 	bool		sentEndOfStream;  	/* set when end-of-stream has successfully been sent */
 	List		*hashExpr;		/* state struct used for evaluating the hash expressions */
-	CdbHash		*cdbhash;			/* hash api object */
+	struct CdbHash *cdbhash;			/* hash api object */
 
 	/* For Motion recv */
 	struct CdbHeap		*tupleheap;		/* data structure for match merge in sorted motion node */

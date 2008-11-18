@@ -18,6 +18,7 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbhash.h"
 #include "executor/executor.h"
 #include "executor/execdebug.h"
 #include "executor/nodeMotion.h"

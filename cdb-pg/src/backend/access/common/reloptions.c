@@ -16,8 +16,8 @@
 #include "postgres.h"
 
 #include "access/reloptions.h"
-#include "access/appendonlyam.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "utils/array.h"

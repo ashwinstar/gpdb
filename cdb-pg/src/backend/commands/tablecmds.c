@@ -15,7 +15,6 @@
  */
 #include "postgres.h"
 
-#include "access/appendonlyam.h"
 #include "access/appendonlywriter.h"
 #include "access/genam.h"
 #include "access/hash.h"
@@ -44,6 +43,7 @@
 #include "catalog/pg_partition_rule.h"
 #include "catalog/toasting.h"
 #include "catalog/pg_exttable.h"
+#include "cdb/cdbappendonlyam.h"
 #include "commands/cluster.h"
 #include "commands/copy.h"
 #include "commands/defrem.h"

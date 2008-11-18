@@ -19,8 +19,8 @@
  */
 #include "postgres.h"
 
-#include "access/appendonlyam.h"
 #include "access/heapam.h"
+#include "cdb/cdbappendonlyam.h"
 #include "executor/execdebug.h"
 #include "executor/nodeAppendOnlyscan.h"
 

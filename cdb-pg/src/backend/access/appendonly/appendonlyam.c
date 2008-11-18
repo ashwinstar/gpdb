@@ -33,7 +33,6 @@
 #include <sys/file.h>
 #include <unistd.h>
 
-#include "access/appendonlyam.h"
 #include "access/appendonlystorage.h"
 #include "access/aomd.h"
 #include "access/heapam.h"
@@ -48,6 +47,7 @@
 #include "catalog/pg_appendonly.h"
 #include "catalog/namespace.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbappendonlyam.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/procarray.h"
