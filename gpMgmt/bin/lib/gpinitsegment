@@ -217,7 +217,7 @@ class GPInitSegment():
         ENV      = '%s/bin/lib/gpenv.sh' % self.gphome
         cmd  = 'ssh %s %s %s' % (self.host, ENV, __file__)
         cmd += ' -G %s' % self.gphome
-        cmd += ' -A %s' % self.cluster
+        cmd += ' -A "%s"' % self.cluster
         cmd += ' -p %s' % self.port
         cmd += ' -c %s' % self.content
         cmd += ' -i %s' % self.dbid
