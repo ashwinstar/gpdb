@@ -15,7 +15,7 @@ Options:
 import sys, os, signal, subprocess, types, csv
 import optparse, tempfile, re, traceback
 from datetime import date
-from time import localtime, strftime
+from time import localtime, strftime, sleep
 import urllib    # for passing strings across gpssh
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -49,7 +49,7 @@ def pretty_version(v):
     m = re.compile('Revision: #(\d+)').search(v)
     if m: return str(2 + (float(m.group(1))/100))
     else: return str(v)
-__version__ = pretty_version('$Revision: #9 $')
+__version__ = pretty_version('$Revision: #10 $')
 
 #============================================================
 def cli_help():
@@ -184,7 +184,6 @@ class GPUpgrade:
 
             # The configuration file
             conf = os.path.join(self.masterdir, 'postgresql.conf')
-
 
             # All the parameters we are interested in are integer values
             def getconf(x):
@@ -943,7 +942,7 @@ class GPUpgrade:
             logname = os.path.join(self.logdir, 'gpstop_%s.log' % today)
             if retcode == 1:
                 self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated starting cluster')
+                self.Log('WARN', 'Warnings generated stopping cluster')
                 self.Log('WARN', 'Check %s for detailed warnings' % logname)
                 self.Log('WARN', '***************************************')
             if retcode > 1:
@@ -1303,6 +1302,8 @@ tool shipped with that release''')
             # Finally now that we have those directories we'll make a state file
             self.state = open('%s/state' % self.workdir, 'w')
 
+            self.Update("COPY gp_configuration to '%s/gp_config'" % self.workdir)
+
         else:
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
@@ -1398,8 +1399,8 @@ This may be specified on the commandline with:
         o.write('ARRAY_NAME="%s"\n'          % self.config['ARRAY_NAME'])
         o.write('SEG_PREFIX=%s\n'            % self.config['SEG_PREFIX'])
         o.write('TRUSTED_SHELL=%s\n'         % self.config['TRUSTED_SHELL'])
-        o.write('CHECK_POINT_SEGMENTS=%s\n'  % self.config['CHECK_POINT_SEGMENTS'])
-        o.write('ENCODING=%s\n'              % self.config['ENCODING'])
+        o.write('CHECK_POINT_SEGMENTS=%s\n'  % self.config['CHECKPOINT_SEGMENTS'])
+        o.write('ENCODING=%s\n'              % self.config['CLIENT_ENCODING'])
 
         o.write('QD_PRIMARY_ARRAY=%s:%d:%s:1:-1\n' %
                 (self.config['MASTER_HOSTNAME'],
@@ -1619,12 +1620,20 @@ Cannot downgrade a database with append only tables     <<<<<
         self.config['TRUSTED_SHELL'] = 'ssh'
 
         # CHECK_POINT_SEGMENTS 
-        self.config['CHECK_POINT_SEGMENTS'] = \
+        self.config['CHECKPOINT_SEGMENTS'] = \
             self.Select('show checkpoint_segments')[0]
 
         # ENCODING
-        self.config['ENCODING'] = \
+        self.config['CLIENT_ENCODING'] = \
             self.Select('show client_encoding')[0]
+
+        # LOCALE
+        self.config['LOCALE'] = \
+            self.Select('show lc_ctype')[0]
+
+        # MAX_CONNECTIOS
+        self.config['MAX_CONNECTIONS'] = \
+            self.Select('show max_connections')[0]
 
         # Handle mirrors, if present
         mirror_dirs = set();
@@ -1671,10 +1680,7 @@ This issue must be resolved before upgrade can complete.
         '''
         Change pg_hba.conf to disallow access to everyone except the
         upgrade user.
-        
-        We assume that the MIGRATIONUSER user has already been created
         '''
-
 
         os_type = self.RunCmd('uname -s').lower()
 
@@ -1685,14 +1691,11 @@ This issue must be resolved before upgrade can complete.
             if utility:
                 raise UpgradeError("Cannot lock database in utility mode")
 
-            self.Log('INFO', 'Creating upgrade user')
+            self.Log('INFO', '...Creating upgrade user')
             self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
             self.Update('CREATE USER %s with superuser' % MIGRATIONUSER)
-            self.Shutdown()
 
-            self.Log('INFO', 'Creating pg_hba.conf ')
-            datadirs   = [self.root]
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
+            self.Log('INFO', '...Creating pg_hba.conf ')
 
             # To write out a new pg_hba.conf we need to know all the ip 
             # addresses that the master identifies with.
@@ -1711,83 +1714,59 @@ This issue must be resolved before upgrade can complete.
                 if m:
                     ip.append(m.group(1))
 
-            if env == self.oldenv: suffix = ""
-            else: suffix = os.path.join(WORKDIR, UPGRADEDIR)
-
-            
+            # Currently we only lock the MASTER node
+            #
             # locking down the segments requires having gpstart
             # pass the PGUSER to the segments otherwise the segments
             # don't have the permissions to startup.
             # 
-            # Disabling this leaves a "hole" in the lockdown that
-            # still allows utility connections to the segments.
-            #
-            # If this is re-enabled the corresponding call also needs
-            # to be uncommented from ReleaseLockdown
-            
-            # The one case where we still call this is for "lockdown" of
-            # the newly inited DB.  Lockdown in this case is just copying
-            # the pg_hba.conf, pg_ident.conf, and postgresql.conf from 
-            # the old database.
-            if suffix:
-                self.CallSlaves('LOCKDOWN', self.config['SEG_PREFIX'], suffix)
+            # This leaves a "hole" in the lockdown that still allows 
+            # utility connections to the segments.
+            hba   = os.path.join(self.masterdir, 'pg_hba.conf')
+            ident = os.path.join(self.masterdir, 'pg_ident.conf')
 
-        else:
-            datadirs   = self.datadirs
-            seg_prefix = self.option
-            suffix     = self.option2
+            if env == self.oldenv: 
+                # pre-upgrade database makes a backup of files and then
+                # writes a new one
 
-        seg_re = re.compile('^%s\d+$' % seg_prefix)
-        for d in datadirs:
+                # Solaris doesn't support ident authentication
+                if os_type != 'sunos':
+                    self.RunCmd('mv -f %s %s' % (ident, ident+LOCKEXT))
+                    file = open(ident, 'w')
+                    file.write('%s %s %s\n' % 
+                               (MIGRATIONUSER, self.user, MIGRATIONUSER))
+                    file.close()
 
-            # Find the segments for this directory
-            for seg in os.listdir(d):
-                if seg_re.match(seg):
-                    hba   = os.path.join(d, seg, 'pg_hba.conf')
-                    ident = os.path.join(d, seg, 'pg_ident.conf')
+                self.RunCmd('mv -f %s %s' % (hba, hba+LOCKEXT))
+                file = open(hba, 'w')
+                if os_type == 'sunos':
+                    file.write('local all %s trust\n' % MIGRATIONUSER)
+                else:
+                    file.write('local all %s ident %s\n' 
+                               % (MIGRATIONUSER, MIGRATIONUSER))
+                for addr in ip:
+                    file.write('host all %s %s/32 trust\n'
+                               % (MIGRATIONUSER, addr))
+                file.close()
+            else:
+                # upgrade database just copies all locking information 
+                # from the pre-upgrade database which should already be
+                # locked
+                dir = self.newmaster
 
-                    if suffix:
-                        dir = os.path.join(d, suffix, seg)
+                self.RunCmd('cp -f %s %s' % (hba, dir))
+                self.RunCmd('cp -f %s %s' % (ident, dir))
 
-                        # upgrade database just copies all locking information 
-                        # from the pre-upgrade database which should already be
-                        # locked
-                        self.RunCmd('cp -f %s %s' % (hba, dir))
-                        self.RunCmd('cp -f %s %s' % (ident, dir))
+                # Grab the original versions to (if any)
+                if os.path.exists(hba + LOCKEXT):
+                    self.RunCmd('cp -f %s %s' % (hba+LOCKEXT, dir))
+                if os.path.exists(ident + LOCKEXT):
+                    self.RunCmd('cp -f %s %s' % (ident+LOCKEXT, dir))
 
-                        # Grab the original versions to (if any)
-                        if os.path.exists(hba + LOCKEXT):
-                            self.RunCmd('cp -f %s %s' % (hba+LOCKEXT, dir))
-                        if os.path.exists(ident + LOCKEXT):
-                            self.RunCmd('cp -f %s %s' % (ident+LOCKEXT, dir))
-
-                        # and we also copy postgresql.conf
-                        postconf = os.path.join(d, seg, 'postgresql.conf')
-                        self.RunCmd('cp -f %s %s' % (postconf, dir))
-
-                    else:
-                        # pre-upgrade database makes a backup of files and then
-                        # writes a new one
-
-                        # Solaris doesn't support ident authentication
-                        if os_type != 'sunos':
-                            self.RunCmd('mv -f %s %s' % (ident, ident+LOCKEXT))
-                            file = open(ident, 'w')
-                            file.write('%s %s %s\n' % 
-                                       (MIGRATIONUSER, self.user, MIGRATIONUSER))
-                            file.close()
-
-                        self.RunCmd('mv -f %s %s' % (hba, hba+LOCKEXT))
-                        file = open(hba, 'w')
-                        if os_type == 'sunos':
-                            file.write('local all %s trust\n' % MIGRATIONUSER)
-                        else:
-                            file.write('local all %s ident %s\n' 
-                                       % (MIGRATIONUSER, MIGRATIONUSER))
-                        for addr in ip:
-                            file.write('host all %s %s/32 trust\n'
-                                       % (MIGRATIONUSER, addr))
-                        file.close()
+            # With the new lockfiles in place force the server to reload
+            self.Log('INFO', '...Syncing')
+            self.RunCmd('gpstop -u', env=env)
+            self.Log('INFO', 'Database Locked')
 
 
     #------------------------------------------------------------
@@ -1813,7 +1792,6 @@ This issue must be resolved before upgrade can complete.
                 return
 
             self.Log('INFO', 'Unlocking database')
-            self.CheckDown()
 
             # See comment about disabling lockdown on segments in SetupLockdown()
             # self.CallSlaves('UNLOCK', self.config['SEG_PREFIX'])
@@ -1838,6 +1816,10 @@ This issue must be resolved before upgrade can complete.
                         self.RunCmd('mv -f %s %s' % (ident+LOCKEXT, ident))
 
 
+        # Resource the conf files if the database is up.
+        if self.dbup:
+            self.RunCmd('gpstop -u', env=env)
+
         # We would love to actually delete the user, but it's not actually
         # safe to do so here because we unlock the source database before we
         # are done with the upgrade.
@@ -1854,49 +1836,64 @@ This issue must be resolved before upgrade can complete.
         '''
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
-            datadirs = [self.root]
             [env, utility] = self.dbup
             if (env == self.oldenv):
                 self.Log('INFO', 'Building original oid Mappings')
                 type = 'source'
+                datadirs = [ self.root ]
             else:
                 self.Log('INFO', 'Building upgraded oid Mappings')
                 type = 'target'
+                datadirs = [ os.path.join(self.workdir, UPGRADEDIR) ]
 
-            self.CallSlaves('MAPPINGS', self.config['SEG_PREFIX'], type)
+            # Currently we only build target mappings on the dummy segment, 
+            # which resides on the same machine as the master, it will
+            # then copy for all other segments as needed
+            #
+            # Source mappings are still done by each actual segment
+            if type == 'source':
+                self.CallSlaves('MAPPINGS', self.config['SEG_PREFIX'], type)
 
         else:
             seg_prefix = self.option
-            type   = self.option2
-            datadirs = self.datadirs
+            type       = self.option2
+            datadirs   = self.datadirs
 
         errors = 0
         port_re = re.compile('^\s*port=(\d+)')
+        seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)
         for d in datadirs:
             for seg in os.listdir(d):
-                if re.compile('^%s\d+$' % seg_prefix).match(seg):
+                if seg_re.match(seg):
                     
                     # The directory for this segment
-                    if type == 'source':
-                        dir = os.path.join(d, seg)
-                    else:
-                        dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-
                     # We keep both mapping files in the work directory
-                    logdir = os.path.join(d, WORKDIR)
+                    dir = os.path.join(d, seg)
+                    if type == 'source':
+                        logdir = os.path.join(d, WORKDIR)
+                    else:
+                        logdir = os.path.split(d)[0]       # back up one directory
                 
                     # Open the mapping file
                     mapfilename = os.path.join(logdir, '%s_%s_mapping' % (seg, type))
                     mapfile = open(mapfilename, 'w')
 
+                    # Find the last line in the conf file that matches our expression
+                    conf = os.path.join(dir, 'postgresql.conf')
+                    def getconf(x):
+                        conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
+                        conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                        value = None
+                        for line in conf_str.split('\n'):
+                            match = conf_re.search(line)
+                            if match:
+                                value = int(match.group(1))
+                        return value
+
                     # Find the port for this segment:
-                    port_str = self.RunCmd('grep port %s/postgresql.conf' % dir)
-                    match = port_re.search(port_str)
-                    if match:
-                        port = int(match.group(1))
-                    else:
-                        raise UpgradeError(
-                            'Could not determine port from %s/postgresql.conf' % dir)
+                    port = getconf('port')
+                    if port == None:
+                        raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
 
                     # Get a list of databases
                     databases = self.Select(
@@ -2226,6 +2223,169 @@ This issue must be resolved before upgrade can complete.
 
     #------------------------------------------------------------
     def InitNewDB(self):
+        '''
+        Create and configure the upgrade instance
+        '''
+        self.Log('INFO', 'Initializing upgraded cluster')
+        self.newenv['PGPORT'] = str(self.new_master_port)
+
+        arrayname = self.config['ARRAY_NAME']
+        mdir      = self.newmaster
+        mport     = self.new_master_port
+        segdir    = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
+        segport   = self.new_port_base
+        chkpoint  = self.config['CHECKPOINT_SEGMENTS']
+        encoding  = self.config['CLIENT_ENCODING']
+        locale    = self.config['LOCALE']
+        maxconn   = self.config['MAX_CONNECTIONS']
+        
+        # We create the master and one segment on the master host as 
+        # the initial configuration, then copy the segment to every
+        # host once it is ready.
+        self.Log('INFO', '...master')
+        cmd = '%s/gpinitsegment -A %s -D %s -p %s -n 1 -K %s -E %s -L %s -M %s' % \
+            (libdir, arrayname, mdir, mport, chkpoint, encoding, locale, maxconn)
+        self.RunCmd(cmd, env=self.newenv)
+
+        self.Log('INFO', '...segment')
+        cmd = '%s/gpinitsegment -A %s -C %s -D %s -p %s -c 0 -i 2 -n 1' % \
+            (libdir, arrayname, mdir, segdir, segport)
+        self.RunCmd(cmd, env=self.newenv)
+
+        # Shutdown won't work correctly until gp_configuration is correctly
+        # initialized, so we need some extra guards for cleanup.
+        self.Log('INFO', '...adjusting configuration')
+        try:
+            # Write out an initial gp_configuration
+            cmd = 'pg_ctl -D %s -o "-p%s" -l %s.log start' % \
+                (mdir, mport, mdir)
+            self.RunCmd(cmd, env=self.newenv)
+
+            # Give it 20 seconds to startup, polling pg_controldata every second
+            # to see if startup has completed
+            count = 0
+            state = None
+            while state != 'in production':
+                count += 1
+                if (count > 20):
+                    raise UpgradeError("New master startup timeout")
+                sleep(1)
+                ctl = self.RunCmd('pg_controldata %s' % mdir, env=self.newenv)
+                for line in ctl.split('\n'):
+                    (field, value) = line.split(':')
+                    if field == 'Database cluster state':
+                        state = value.strip()
+                        break
+            
+            # Database is up
+            self.dbup = [self.newenv, True]
+            self.Update("INSERT INTO gp_configuration values (-1, 't', 1, 't', 't', '%s', %s, '%s')"
+                        % (self.host, mport, mdir), port=mport)
+            self.Update("INSERT INTO gp_configuration values ( 0, 't', 2, 't', 't', '%s', %s, '%s')"
+                        % (self.host, segport, segdir), port=mport)
+
+        except Exception, e:
+            cmd = 'pg_ctl -D %s -o "-p%s" stop' % (mdir, mport)
+            self.RunCmd(cmd, env=self.newenv)
+            raise e
+
+        # Startup the segment
+        self.dbup = [self.newenv, False]
+
+        cmd = 'pg_ctl -D %s -o "-p%s" -l %s.log start' % \
+            (segdir, segport, segdir)
+        self.RunCmd(cmd, env=self.newenv)
+
+        # Give it 20 seconds to startup, polling pg_controldata every second
+        # to see if startup has completed
+        count = 0
+        state = None
+        while state != 'in production':
+            count += 1
+            if (count > 20):
+                raise UpgradeError("New master startup timeout")
+            sleep(1)
+            ctl = self.RunCmd('pg_controldata %s' % segdir, env=self.newenv)
+            for line in ctl.split('\n'):
+                (field, value) = line.split(':')
+                if field == 'Database cluster state':
+                    state = value.strip()
+                    break
+
+    #------------------------------------------------------------
+    def ExpandSystem(self):
+        '''
+        Copies the dummyseg from the master node to all segments.
+        '''
+        
+        self.Log('INFO', 'Expanding cluster')
+        self.Log('INFO', '...This may take a while')
+        pids = []
+
+        try:
+            dummyseg = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
+            filename = os.path.join(self.workdir, 'gp_config')
+            config = open(filename, 'r')
+            for line in config:
+                record = line.strip().split("\t")
+
+                content = record[0]
+                dbid    = record[2]
+                hostname = record[5]
+                port     = record[6]
+                datadir  = record[7]
+
+                (path, seg) = os.path.split(datadir)
+                workdir = os.path.join(path, WORKDIR)
+                datadir = os.path.join(workdir, UPGRADEDIR, seg)
+
+                if int(content) < 0:  
+                    continue   # skip master segments
+
+                cmd  = os.path.join(libdir, 'gpinitsegment')
+                cmd += ' -C %s:%s' % (self.host, dummyseg)
+                cmd += ' -A %s' % self.config['ARRAY_NAME']
+                cmd += ' -h %s' % hostname
+                cmd += ' -p %s' % port
+                cmd += ' -c %s' % content
+                cmd += ' -i %s' % dbid
+                cmd += ' -n %s' % len(self.segments)
+                cmd += ' -D %s' % datadir
+                cmd += ' -G %s' % self.newenv['GPHOME']
+
+                # Launch the remote process
+                #   ! Would be good to add some smarts to limit the
+                #   ! number of processes we spawn
+                self.Log('DEBUG', 'CMD: ' + cmd)
+                p = subprocess.Popen(cmd, shell=True, env=self.newenv,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                pids.append([p, record])
+            
+                # And copy the target mapping file as well
+                cmd = 'scp %s %s:%s' % (
+                    os.path.join(self.workdir, 'dummyseg_target_mapping'),
+                    hostname, 
+                    os.path.join(workdir, seg+'_target_mapping')
+                    )
+                self.RunCmd(cmd)
+
+            # All processes launched, wait for them to finish
+            for tuple in pids:
+                (p, record) = tuple
+                result = p.communicate()
+                if p.returncode:
+                    self.Log('FATAL', result[1])
+                    raise UpgradeError('Error Expanding %s:%s'
+                                       % (record[5], record[7]))
+
+        except Exception, e:
+            # Do something smart?
+            raise e
+
+
+    #------------------------------------------------------------
+    def InitNewDB_old(self):
         '''
         Create and configure the upgrade instance
         '''
@@ -2768,11 +2928,14 @@ This issue must be resolved before upgrade can complete.
         # host that contains gp_configuration information
         self.Startup(self.newenv, utility=True)
         self.Log('INFO', 'Adjusting gp_configuration')
-        self.Update(
-         '''
-            UPDATE gp_configuration 
-              SET datadir=regexp_replace(datadir, '%s/%s/([^/]*)$', E'\\\\1')
-         ''' % (WORKDIR, UPGRADEDIR))
+
+        # gp_configuration needs to point back to the original directory locations.
+        # All the information should be stored in gp_config
+        self.Update("DELETE FROM gp_configuration")
+        self.Update("COPY gp_configuration FROM '%s/gp_config'" % self.workdir) 
+        self.Update("VACUUM FREEZE gp_configuration")
+        self.Update("UPDATE gp_id SET numsegments = %d" % len(self.segments))
+        self.Update("VACUUM FREEZE gp_id")
         self.Shutdown()
         self.newenv['MASTER_DATA_DIRECTORY'] = \
             self.oldenv['MASTER_DATA_DIRECTORY']
@@ -2835,7 +2998,6 @@ u = GPUpgrade()
 # parses and validates input
 try:
     u.Setup()
-    u.Log('INFO', 'gpmigrator version ' + __version__)
 except Exception, e:
     u.Log('FATAL', str(e))
     sys.exit(1)
@@ -2848,6 +3010,7 @@ try:
     # MASTER - the main case, run on master only
     if u.cmd == 'MASTER':
 
+        u.Log('INFO', 'gpmigrator version ' + __version__)
         u.Log('INFO', 'Python version %d.%d.%d %s %d' % sys.version_info)
 
         # User requested a revert to previous version
@@ -2946,6 +3109,7 @@ try:
         # + Database is left down
         if u.execute:
             u.SetupLockdown()
+            u.Shutdown()
         elif shutdown:
             u.Shutdown()
 
@@ -2978,9 +3142,10 @@ try:
         u.CheckDown()
 
         # Set the ports for the upgrade server to the correct values
-        if 'REMAP_PORTS' not in current_state:
-            u.RemapPorts()
-            u.SetState('REMAP_PORTS')
+        #  OLD METHOD - needs review
+        # if 'REMAP_PORTS' not in current_state:
+        #    u.RemapPorts()
+        #    u.SetState('REMAP_PORTS')
 
         # Start the database back up on all hosts so that we can 
         # gather information from them.
@@ -3035,6 +3200,7 @@ try:
         if 'NEWDB_LOCKDOWN' not in current_state:
             u.Startup(u.newenv)
             u.SetupLockdown()
+            u.Shutdown()    # FIXME!
             u.SetState('NEWDB_LOCKDOWN')
 
         # Import schema and build the mappings
@@ -3051,6 +3217,12 @@ try:
                 u.SetState('MAPPINGS2')
             u.Shutdown()
 
+
+        # Distribute the dummy seg to all the segments and re-adjust 
+        # gp_configuration on the master node.
+        if 'EXPAND_SYS' not in current_state:
+            u.ExpandSystem()
+            u.SetState('EXPAND_SYS')
 
         # Reset the Xlogs
         if 'RESET_XLOGS' not in current_state:
@@ -3119,7 +3291,6 @@ try:
                 u.Log('INFO', 'Validating upgraded instance')
                 u.CheckCatalog()
                 u.CollectValidation()
-            u.Shutdown()
 
             # Everything upgraded and validated
             # + Release the lockdown
