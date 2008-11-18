@@ -335,8 +335,8 @@ def gpperfmon_setup():
         sys.exit(1)
 
     try:
-        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/lib/gpmon_catqrynow.py'):
-            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/lib/gpmon_catqrynow.py')
+        if os.path.islink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/gpmon_catqrynow.py'):
+            os.unlink(opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/gpmon_catqrynow.py')
         os.symlink(GPPERFMONHOME + '/lib/gpmon_catqrynow.py', opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/bin/gpmon_catqrynow.py')
     except OSError, detail:
         print 'Error linking gpmon_catqrynow.py: %s' % detail
