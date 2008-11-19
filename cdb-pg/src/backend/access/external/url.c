@@ -1384,37 +1384,99 @@ struct signalDef {
  * Table mapping signal numbers to signal identifiers (names).
  */
 struct signalDef signals[] = {
+#ifdef SIGHUP
 		{ SIGHUP,    "SIGHUP" },
+#endif
+#ifdef SIGINT
 		{ SIGINT,    "SIGINT" },
+#endif
+#ifdef SIGQUIT
 		{ SIGQUIT,   "SIGQUIT" },
+#endif
+#ifdef SIGILL
 		{ SIGILL,    "SIGILL" },
+#endif
+#ifdef SIGTRAP
 		{ SIGTRAP,   "SIGTRAP" },
+#endif
+#ifdef SIGABRT
 		{ SIGABRT,   "SIGABRT" },
+#endif
+#ifdef SIGEMT
 		{ SIGEMT,    "SIGEMT" },
+#endif
+#ifdef SIGFPE
 		{ SIGFPE,    "SIGFPE" },
+#endif
+#ifdef SIGKILL
 		{ SIGKILL,   "SIGKILL" },
+#endif
+#ifdef SIGBUS
 		{ SIGBUS,    "SIGBUS" },
+#endif
+#ifdef SIGSEGV
 		{ SIGSEGV,   "SIGSEGV" },
+#endif
+#ifdef SIGSYS
 		{ SIGSYS,    "SIGSYS" },
+#endif
+#ifdef SIGPIPE
 		{ SIGPIPE,   "SIGPIPE" },
+#endif
+#ifdef SIGALRM
 		{ SIGALRM,   "SIGALRM" },
+#endif
+#ifdef SIGTERM
 		{ SIGTERM,   "SIGTERM" },
+#endif
+#ifdef SIGURG
 		{ SIGURG,    "SIGURG" },
+#endif
+#ifdef SIGSTOP
 		{ SIGSTOP,   "SIGSTOP" },
+#endif
+#ifdef SIGTSTP
 		{ SIGTSTP,   "SIGTSTP" },
+#endif
+#ifdef SIGCONT
 		{ SIGCONT,   "SIGCONT" },
+#endif
+#ifdef SIGCHLD
 		{ SIGCHLD,   "SIGCHLD" },
+#endif
+#ifdef SIGTTIN
 		{ SIGTTIN,   "SIGTTIN" },
+#endif
+#ifdef SIGTTOU
 		{ SIGTTOU,   "SIGTTOU" },
+#endif
+#ifdef SIGIO
 		{ SIGIO,     "SIGIO" },
+#endif
+#ifdef SIGXCPU
 		{ SIGXCPU,   "SIGXCPU" },
+#endif
+#ifdef SIGXFSZ
 		{ SIGXFSZ,   "SIGXFSZ" },
+#endif
+#ifdef SIGVTALRM
 		{ SIGVTALRM, "SIGVTALRM" },
+#endif
+#ifdef SIGPROF
 		{ SIGPROF,   "SIGPROF" },
+#endif
+#ifdef SIGWINCH
 		{ SIGWINCH,  "SIGWINCH" },
+#endif
+#ifdef SIGINFO
 		{ SIGINFO,   "SIGINFO" },
+#endif
+#ifdef SIGUSR1
 		{ SIGUSR1,   "SIGUSR1" },
+#endif
+#ifdef SIGUSR2
 		{ SIGUSR2,   "SIGUSR2" },
+#endif
 		{ -1, "" }
 };
 
