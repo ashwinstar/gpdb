@@ -1039,7 +1039,7 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 	copy_cost = num_subplans * context->subplan->total_cost;
 	share_cost = cost_share_plan(context->subplan, num_subplans);
 
-	if (copy_cost > share_cost)
+	if (num_subplans == 1 || copy_cost > share_cost)
 		subplans = share_plan(root, context->subplan, num_subplans);
 	else
 	{
