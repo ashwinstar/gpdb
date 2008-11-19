@@ -251,16 +251,20 @@ def gpperfmon_setup():
 
     # defaults for webapi
     remote_default = 'no'
+    server_name_default = '[server name to display]'
+    allow_trust_logon_default = '[no|yes] - setting to yes is insecure and only for testing'
 
     config = ConfigParser.ConfigParser()
     config.add_section('GPMMON')
-    config.add_section('WEB SERVICE')
+    config.add_section('WEB APP')
     config.set('GPMMON', 'quantum', quantum_default)
     config.set('GPMMON', 'min_query_time', minqt_default)
     config.set('GPMMON', 'min_detailed_query_time', mindqt_default)
     config.set('GPMMON', 'verbose', verbose_default)
     config.set('GPMMON', 'log_location', logloc_default)
-    config.set('WEB SERVICE', 'remote', remote_default)
+    config.set('WEB APP', 'remote', remote_default)
+    config.set('WEB APP', '#server_name', server_name_default)
+    config.set('WEB APP', '#allow_trust_logon', allow_trust_logon_default)
 
     if os.path.isfile(GPPERFMON_CONF_FILE):
         yn = get_yesno('gpperfmon.conf already exists for this database instance.\nDo you want to reconfigure gpperfmon? [N]', 'N')
