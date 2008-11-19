@@ -415,8 +415,17 @@ class GPUpgrade:
         Runs a single command on this machine
         '''
 
+        if type(cmd) in [type('string'), type(u'unicode')]:
+            cmdstr = cmd
+            cmd    = cmd.split(' ')
+        elif type(cmd) == type(['list']):
+            cmdstr = ' '.join(cmd)
+        else:
+            self.Log('WARN', "Unknown RunCmd datatype '%s'" % str(type(cmd)))
+            cmdstr = str(cmd)
+        
         if self.debug and not supressDebug: 
-            self.Log('DEBUG', "CMD: " + cmd)
+            self.Log('DEBUG', "CMD: " + cmdstr)
 
         # If utility mode has been specified add role to env
         if env == None:
@@ -425,14 +434,13 @@ class GPUpgrade:
         if utility:
             env['PGOPTIONS'] = '-c gp_session_role=utility'
 
-        cmd = cmd.split(' ')
         try:
             pipe = subprocess.Popen(cmd, env=env, 
                                     stdout=subprocess.PIPE, 
                                     stderr=subprocess.PIPE)
             result  = pipe.communicate();
         except OSError, e:
-            raise CmdError(' '.join(cmd), '', str(e))
+            raise CmdError(cmdstr, '', str(e))
 
         if self.debug and not supressDebug:
             self.Log('DEBUG', result[1])
@@ -1140,10 +1148,10 @@ class GPUpgrade:
         #  [3.1.0.0 - 3.2.0.0] + (main) by default
         def checkversion(v):
             if v == 'main': return
-            if v < '3.1.0.0':
+            if v < '3.1.1.5':
                 raise UpgradeError(
 "Greenplum Version '%s' not supported for upgrade/downgrade" % v)
-            if v > '3.2.9.9':
+            if v > '3.2.1.99':
                 raise UpgradeError(
 '''To upgrade/downgrade from Greenplum Version '%s' use the upgrade/downgrade
 tool shipped with that release''')
@@ -1768,7 +1776,6 @@ This issue must be resolved before upgrade can complete.
             self.RunCmd('gpstop -u', env=env)
             self.Log('INFO', 'Database Locked')
 
-
     #------------------------------------------------------------
     def ReleaseLockdown(self, env):
         '''
@@ -2233,7 +2240,7 @@ This issue must be resolved before upgrade can complete.
         mdir      = self.newmaster
         mport     = self.new_master_port
         segdir    = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
-        segport   = self.new_port_base
+        segport   = self.new_port_base + 1
         chkpoint  = self.config['CHECKPOINT_SEGMENTS']
         encoding  = self.config['CLIENT_ENCODING']
         locale    = self.config['LOCALE']
@@ -2243,13 +2250,26 @@ This issue must be resolved before upgrade can complete.
         # the initial configuration, then copy the segment to every
         # host once it is ready.
         self.Log('INFO', '...master')
-        cmd = '%s/gpinitsegment -A "%s" -D %s -p %s -n 1 -K %s -E %s -L %s -M %s' % \
-            (libdir, arrayname, mdir, mport, chkpoint, encoding, locale, maxconn)
+        cmd = [os.path.join(libdir, 'gpinitsegment'),
+               '-A', arrayname,
+               '-D', mdir,
+               '-p', str(mport),
+               '-n', '1',
+               '-K', chkpoint,
+               '-E', encoding,
+               '-L', locale,
+               '-M', maxconn]
         self.RunCmd(cmd, env=self.newenv)
 
         self.Log('INFO', '...segment')
-        cmd = '%s/gpinitsegment -A "%s" -C %s -D %s -p %s -c 0 -i 2 -n 1' % \
-            (libdir, arrayname, mdir, segdir, segport)
+        cmd = [os.path.join(libdir, 'gpinitsegment'),
+               '-A', arrayname,
+               '-C', mdir,
+               '-D', segdir,
+               '-p', str(segport),
+               '-c', '0', 
+               '-i', '2', 
+               '-n', '1']
         self.RunCmd(cmd, env=self.newenv)
 
         # Shutdown won't work correctly until gp_configuration is correctly
@@ -2356,7 +2376,7 @@ This issue must be resolved before upgrade can complete.
                 # Launch the remote process
                 #   ! Would be good to add some smarts to limit the
                 #   ! number of processes we spawn
-                self.Log('DEBUG', 'CMD: ' + cmd)
+                self.Log('DEBUG', 'CMD: ' + str(cmd))
                 p = subprocess.Popen(cmd, shell=True, env=self.newenv,
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.PIPE)
@@ -2375,6 +2395,7 @@ This issue must be resolved before upgrade can complete.
                 (p, record) = tuple
                 result = p.communicate()
                 if p.returncode:
+                    self.Log('FATAL', result[0])
                     self.Log('FATAL', result[1])
                     raise UpgradeError('Error Expanding %s:%s'
                                        % (record[5], record[7]))
@@ -3200,7 +3221,7 @@ try:
         if 'NEWDB_LOCKDOWN' not in current_state:
             u.Startup(u.newenv)
             u.SetupLockdown()
-            u.Shutdown()    # FIXME!
+            u.Shutdown()
             u.SetState('NEWDB_LOCKDOWN')
 
         # Import schema and build the mappings
