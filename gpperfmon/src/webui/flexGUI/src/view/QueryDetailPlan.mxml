@@ -1,17 +1,313 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" >
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
 		
 <mx:Script>
     <![CDATA[
-      import model.GPPerfMonModelLocator;
-      import util.Debug;
+    	import mx.events.TreeEvent;
+    	import mx.controls.List;
+    	import mx.events.FlexEvent;
+        import model.GPPerfMonModelLocator;
+        import util.Debug;
+        import mx.binding.utils.BindingUtils;
+        import mx.collections.XMLListCollection;
   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+	  
+	  private var lastQueryID:String = '';
+	  private var openList:Object = new Object();
+	  private var selectedNode:String = '';
+	  
+	  [Bindable]
+	  private var selectedText:String = '';
 
+	  [Embed(source="assets/img/ex_aggregate.png")]	
+	  public static var ex_aggregate:Class;
+	  [Embed(source="assets/img/ex_append.png")]	
+	  public static var ex_append:Class;
+	  [Embed(source="assets/img/ex_bmp_heap.png")]	
+	  public static var ex_bmp_heap:Class;		
+	  [Embed(source="assets/img/ex_bmp_index.png")]	
+	  public static var ex_bmp_index:Class;
+	  [Embed(source="assets/img/ex_broadcast_motion.png")]	
+	  public static var ex_broadcast_motion:Class;
+	  [Embed(source="assets/img/ex_gather_motion.png")]	
+	  public static var ex_gather_motion:Class;			
+	  [Embed(source="assets/img/ex_group.png")]	
+	  public static var ex_group:Class;
+	  [Embed(source="assets/img/ex_hash.png")]	
+	  public static var ex_hash:Class;
+	  [Embed(source="assets/img/ex_index_scan.png")]	
+	  public static var ex_index_scan:Class;		
+	  [Embed(source="assets/img/ex_join.png")]	
+	  public static var ex_join:Class;
+	  [Embed(source="assets/img/ex_limit.png")]	
+	  public static var ex_limit:Class;
+	  [Embed(source="assets/img/ex_materialize.png")]	
+	  public static var ex_materialize:Class;	  		
+	  [Embed(source="assets/img/ex_merge.png")]	
+	  public static var ex_merge:Class;			
+	  [Embed(source="assets/img/ex_nested.png")]	
+	  public static var ex_nested:Class;
+	  [Embed(source="assets/img/ex_redistribute_motion.png")]	
+	  public static var ex_redistribute_motion:Class;
+	  [Embed(source="assets/img/ex_result.png")]	
+	  public static var ex_result:Class;		
+	  [Embed(source="assets/img/ex_scan.png")]	
+	  public static var ex_scan:Class;
+	  [Embed(source="assets/img/ex_seek.png")]	
+	  public static var ex_seek:Class;
+	  [Embed(source="assets/img/ex_setop.png")]	
+	  public static var ex_setop:Class;			
+	  [Embed(source="assets/img/ex_sort.png")]	
+	  public static var ex_sort:Class;		
+	  [Embed(source="assets/img/ex_subplan.png")]	
+	  public static var ex_subplan:Class;
+	  [Embed(source="assets/img/ex_tid_scan.png")]	
+	  public static var ex_tid_scan:Class;
+	  [Embed(source="assets/img/ex_unique.png")]	
+	  public static var ex_unique:Class;			
+	  [Embed(source="assets/img/ex_unknown.png")]	
+	  public static var ex_unknown:Class;		
+		
+	// Called when the query plan data changes
+	private function treeDataChange(inputXML:XML):void
+	{
+		queryPlanTree.invalidateList();
+		queryPlanTree.invalidateDisplayList();
+		
+		if (inputXML == null || inputXML.children().length() == 0)
+		{
+			openList = new Object();
+			lastQueryID = '';
+			selectedNode = '';
+			queryPlanTree.dataProvider = null;
+			return;
+		}
+		queryPlanTree.dataProvider = mdl.queries.queryPlanCurrent;
+		
+		// Is it the same or a different query
+		if (lastQueryID == inputXML.@id)
+		{
+			updateTreeXML(inputXML);
+		}
+		else
+		{
+			lastQueryID = inputXML.@id;
+			openList = new Object();
+			selectedNode = '';
+			replaceTreeXML(inputXML);
+		}
+	}
+	
+	// Replaces the tree XML using the input XML
+	private function replaceTreeXML(inputXML:XML):void
+	{		
+		queryPlanTree.validateNow();
+	
+		// Set all the items to be open
+		for each(var child:XML in inputXML.children())
+		{
+		   queryPlanTree.expandChildrenOf(child, true);
+		}    		
+	}
+
+	// Updates the tree XML using the input XML
+	private function updateTreeXML(inputXML:XML):void
+	{
+		queryPlanTree.validateNow();
+
+		// Set the appropriate items to be open
+		for each(var child:XML in inputXML.descendants())
+		{
+		   if (!openList[child.@nid] || openList[child.@nid] == 'open')
+		   queryPlanTree.expandItem(child, true);
+		   
+		   if (child.@nid == selectedNode)
+		   {
+		   	 	queryPlanTree.selectedItem = child;
+		   		
+		   		var attributes:XMLList = child.@*;
+				selectedText = '';
+				for (var i:int = 0; i < attributes.length(); i++)
+				{
+					selectedText += attributes[i].name();
+					selectedText += ": ";
+					selectedText += attributes[i] + '\n';
+				}
+		   }
+		}    
+	}
+	
+	// An item opened
+	public function itemOpen(event:TreeEvent):void
+	{
+		var xml:XML = event.item as XML;
+		if (xml)
+			openList[xml.@nid] = 'open';
+	}
+
+	// An item closed
+	public function itemClose(event:TreeEvent):void
+	{
+		var xml:XML = event.item as XML;
+		if (xml)
+			openList[xml.@nid] = 'closed';
+	}
+	
+	// An item was selected
+	public function selectionChange(event:Event):void
+	{
+		var xml:XML = queryPlanTree.selectedItem as XML;
+		if (xml)
+		{
+			selectedNode = xml.@nid;
+			
+			var attributes:XMLList = xml.@*;
+			selectedText = '';
+			for (var i:int = 0; i < attributes.length(); i++)
+			{
+				selectedText += attributes[i].name();
+				selectedText += ": ";
+				selectedText += attributes[i] + '\n';
+			}
+		}
+	}	
+	
+	// Label function for each tree item
+	public function labelFunction(item:Object):String
+	{
+		var xml:XML = item as XML;
+		if (xml && xml.@nid)
+		{
+			return xml.@ntype + "\n[Status: " + xml.@nstatus + 
+							   "]\n[Rows out: " + xml.@rows_out + '' + 
+							   "] [Skew: " + xml.@skew_cpu + " / " + xml.@skew_rows + "]"; 
+		}
+		else
+		{
+			return null;
+		}
+	}
+
+	// Icon function for each tree item
+	public function iconFunction(item:Object):Class
+	{
+		var xml:XML = item as XML;
+		if (xml && xml.@nid)
+		{
+			var nodeType:String = xml.@ntype;
+			
+			switch(nodeType) {
+				
+				case "Agg":
+				case "GroupAggregate":
+				case "Hash Agg":
+				  return ex_aggregate; break;
+				
+				case "Append":
+				  return ex_append; break;				
+
+				case "Bitmap Heap Scan":
+				case "BitmapAnd":
+				case "BitmapOr":
+				  return ex_bmp_heap; break;
+
+				case "Bitmap Index Scan":
+				  return ex_bmp_index; break;
+				  
+				case "Broadcast Motion":				  
+				  return ex_broadcast_motion; break;
+				  
+				case "Gather Motion":
+				  return ex_gather_motion; break;
+				  
+				case "Group":
+				  return ex_group; break;
+
+				case "Hash":				  
+				  return ex_hash; break;
+				  				 
+				case "Index Scan":
+				  return ex_index_scan; break;
+				  				  
+				case "Adaptive Join Choice":
+				case "Merge Join":
+				case "Merge Left Join":
+				case "Merge Full Join":
+				case "Merge Right Join":
+				case "Merge EXISTS Join":
+				case "Hash Left Join":
+				case "Hash Full Join":
+				case "Hash Right Join":
+				case "Hash EXISTS Join":
+				case "HashJoin":
+				  return ex_join; break;
+				  
+				case "Limit":				  
+				  return ex_limit; break;
+				
+				case "Materialize":
+				  return ex_materialize; break;
+				  
+				case "Nested Loop":
+				case "Nested Loop Left Join":
+				case "Nested Loop Full Join":
+				case "Nested Loop Right Join":
+				case "Nested Loop EXISTS Join":
+				case "Nested Loop ??? Join": 	
+				  return ex_nested; break;			
+				
+				case "Redistribute Motion":
+				  return ex_redistribute_motion; break;
+				
+				case "ResultNode":
+   				  return ex_result; break;
+
+				case "Sequential Scan":
+				case "Append-Only Scan":
+				case "ExternalScan":
+				case "Subquery Scan":
+				case "Function Scan":
+				case "Values Scan":
+	   		      return ex_scan; break;
+				  
+				case "SetOp Intersect":
+				case "SetOp Intersect All":
+				case "SetOp Except":
+				case "SetOp Except All":
+				  return ex_setop; break;				  
+				  
+				case "Sort":
+				  return ex_sort; break;
+				  				  
+				case "Tid Scan":
+				  return ex_tid_scan; break;
+
+				case "Unique":
+				  return ex_unique; break;
+				
+				default:
+				  return ex_unknown;
+			}
+		}
+		else
+		{
+			return null;
+		}
+	}
+	
     ]]>
 </mx:Script>	
+	<mx:Tree id="queryPlanTree" dropEnabled="false" 
+		dragEnabled="false" dragMoveEnabled="false" 
+		width="50%" height="100%" alternatingItemColors="{[0xEEEEEE,0xFFFFFF]}"
+	    showRoot="false" change="selectionChange(event)"
+	    labelFunction="labelFunction" iconFunction="iconFunction"
+	    borderThickness="0" itemClose="itemClose(event)" itemOpen="itemOpen(event)"
+	    creationComplete="BindingUtils.bindSetter(treeDataChange, mdl.queries, 'queryPlanCurrent')"
+	    maxHorizontalScrollPosition="900" horizontalScrollPolicy="auto"/>
 
-	<mx:TextArea width="100%" height="100%" text="{mdl.queries.queryPlanCurrent}"/>
+	<mx:TextArea width="50%" height="100%" text="{selectedText}"/>
 
-</mx:VBox>
+</mx:HBox>
