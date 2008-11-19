@@ -1315,25 +1315,28 @@ DoCopy(const CopyStmt *stmt)
 		{
 			if (is_from && relationOid != -1) 
 			{
-				VacuumStmt *analyzeStmt = NULL;
-				RangeVar   *relation = makeRangeVar(get_namespace_name(relationOid), get_rel_name(relationOid));
+				if (processed > gp_autostats_onchange_threshold) 
+				{
+					VacuumStmt *analyzeStmt = NULL;
+					RangeVar   *relation = makeRangeVar(get_namespace_name(relationOid), get_rel_name(relationOid));
 
-				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) processed, (uint) gp_autostats_onchange_threshold, relationOid);  
+					elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) processed, (uint) gp_autostats_onchange_threshold, relationOid);  
 
-				analyzeStmt = makeNode(VacuumStmt);
+					analyzeStmt = makeNode(VacuumStmt);
 	   
-				/* Set up command parameters */
-				analyzeStmt->vacuum = false;
-				analyzeStmt->full = false;
-				analyzeStmt->analyze = true;
-				analyzeStmt->freeze_min_age = -1;
-				analyzeStmt->verbose = false;
-				analyzeStmt->relation = relation;     /* not used since we pass relids list */
-				analyzeStmt->va_cols = NIL;
+					/* Set up command parameters */
+					analyzeStmt->vacuum = false;
+					analyzeStmt->full = false;
+					analyzeStmt->analyze = true;
+					analyzeStmt->freeze_min_age = -1;
+					analyzeStmt->verbose = false;
+					analyzeStmt->relation = relation;     /* not used since we pass relids list */
+					analyzeStmt->va_cols = NIL;
 	   
-				vacuum(analyzeStmt, NIL);
-				pfree(analyzeStmt);
-				elog(LOG, "Finished ANALYZE by auto-stats.");
+					vacuum(analyzeStmt, NIL);
+					pfree(analyzeStmt);
+					elog(LOG, "Finished ANALYZE by auto-stats.");
+				}
 			}
 		}
 	} /*end auto-stats block*/
