@@ -33,6 +33,9 @@
 #include "utils/resscheduler.h"
 #include "commands/vacuum.h"
 #include "parser/parsetree.h"
+#include "utils/lsyscache.h"
+#include "nodes/makefuncs.h"
+
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
  * if there are several).
@@ -280,6 +283,8 @@ ProcessQuery(Portal portal,
 			if (candidateForAutoStats) 
 			{
 				VacuumStmt *analyzeStmt = NULL;
+				RangeVar   *relation = makeRangeVar(get_namespace_name(relationOid), get_rel_name(relationOid));
+
 				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) queryDesc->es_processed, (uint) gp_autostats_onchange_threshold, relationOid);  
 
 				analyzeStmt = makeNode(VacuumStmt);
@@ -290,11 +295,10 @@ ProcessQuery(Portal portal,
 				analyzeStmt->analyze = true;
 				analyzeStmt->freeze_min_age = -1;
 				analyzeStmt->verbose = false;
-				analyzeStmt->relation = NULL;     /* not used since we pass relids list */
+				analyzeStmt->relation = relation;     /* not used since we pass relids list */
 				analyzeStmt->va_cols = NIL;
 	   
-				vacuum(analyzeStmt, list_make1_oid(relationOid));
-	   
+				vacuum(analyzeStmt, NIL);
 				pfree(analyzeStmt);
 				elog(LOG, "Finished ANALYZE by auto-stats.");
 			}

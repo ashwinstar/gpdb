@@ -61,6 +61,8 @@
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
 #include "commands/vacuum.h"
+#include "utils/lsyscache.h"
+#include "nodes/makefuncs.h"
 
 /* DestReceiver for COPY (SELECT) TO */
 typedef struct
@@ -1314,26 +1316,24 @@ DoCopy(const CopyStmt *stmt)
 			if (is_from && relationOid != -1) 
 			{
 				VacuumStmt *analyzeStmt = NULL;
-				if (processed > gp_autostats_onchange_threshold) 
-				{
-					elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Performing ANALYZE on tableoid=%d.",(uint) processed, (uint) gp_autostats_onchange_threshold, relationOid);  
+				RangeVar   *relation = makeRangeVar(get_namespace_name(relationOid), get_rel_name(relationOid));
 
-					analyzeStmt = makeNode(VacuumStmt);
+				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) processed, (uint) gp_autostats_onchange_threshold, relationOid);  
+
+				analyzeStmt = makeNode(VacuumStmt);
 	   
-					/* Set up command parameters */
-					analyzeStmt->vacuum = false;
-					analyzeStmt->full = false;
-					analyzeStmt->analyze = true;
-					analyzeStmt->freeze_min_age = -1;
-					analyzeStmt->verbose = false;
-					analyzeStmt->relation = NULL;     /* not used since we pass relids list */
-					analyzeStmt->va_cols = NIL;
+				/* Set up command parameters */
+				analyzeStmt->vacuum = false;
+				analyzeStmt->full = false;
+				analyzeStmt->analyze = true;
+				analyzeStmt->freeze_min_age = -1;
+				analyzeStmt->verbose = false;
+				analyzeStmt->relation = relation;     /* not used since we pass relids list */
+				analyzeStmt->va_cols = NIL;
 	   
-					vacuum(analyzeStmt, list_make1_oid(relationOid));
-	   
-					pfree(analyzeStmt);
-					elog(LOG, "Finished ANALYZE by auto-stats.");
-				}
+				vacuum(analyzeStmt, NIL);
+				pfree(analyzeStmt);
+				elog(LOG, "Finished ANALYZE by auto-stats.");
 			}
 		}
 	} /*end auto-stats block*/
