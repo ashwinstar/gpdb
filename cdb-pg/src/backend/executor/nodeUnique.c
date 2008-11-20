@@ -32,9 +32,6 @@
 
 /* ----------------------------------------------------------------
  *		ExecUnique
- *
- *		This is a very simple node which filters out duplicate
- *		tuples from a stream of sorted tuples from a subplan.
  * ----------------------------------------------------------------
  */
 TupleTableSlot *				/* return: a tuple or NULL */
@@ -54,11 +51,7 @@ ExecUnique(UniqueState *node)
 	/*
 	 * now loop, returning only non-duplicate tuples. We assume that the
 	 * tuples arrive in sorted order so we can detect duplicates easily.
-	 *
-	 * We return the first tuple from each group of duplicates (or the last
-	 * tuple of each group, when moving backwards).  At either end of the
-	 * subplan, clear the result slot so that we correctly return the
-	 * first/last tuple when reversing direction.
+	 * The first tuple of each group is returned.
 	 */
 	for (;;)
 	{
@@ -69,7 +62,7 @@ ExecUnique(UniqueState *node)
 
 		if (TupIsNull(slot))
 		{
-			/* end of subplan; reset in case we change direction */
+			/* end of subplan, so we're done */
 			ExecClearTuple(resultTupleSlot);
 			return NULL;
 		}
@@ -77,7 +70,7 @@ ExecUnique(UniqueState *node)
 		Gpmon_M_Incr(GpmonPktFromUniqueState(node), GPMON_QEXEC_M_ROWSIN); 
 
 		/*
-		 * Always return the first/last tuple from the subplan.
+		 * Always return the first tuple from the subplan.
 		 */
 		if (TupIsNull(resultTupleSlot))
 			break;
@@ -122,7 +115,7 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 	UniqueState *uniquestate;
 
 	/* check for unsupported flags */
-	Assert(!(eflags & EXEC_FLAG_MARK));
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
 	/*
 	 * create state structure

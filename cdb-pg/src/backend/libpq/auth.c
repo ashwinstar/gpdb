@@ -746,8 +746,14 @@ CheckLDAPAuth(Port *port)
 	}
 
 	/*
-	 * Crack the LDAP url. We do a very trivial parse..
+	 * Crack the LDAP url. We do a very trivial parse:
+	 *
 	 * ldap[s]://<server>[:<port>]/<basedn>[;prefix[;suffix]]
+	 *
+	 * This code originally used "%127s" for the suffix, but that doesn't
+	 * work for embedded whitespace.  We know that tokens formed by
+	 * hba.c won't include newlines, so we can use a "not newline" scanset
+	 * instead.
 	 */
 
 	server[0] = '\0';
@@ -757,13 +763,13 @@ CheckLDAPAuth(Port *port)
 
 	/* ldap, including port number */
 	r = sscanf(port->auth_arg,
-			   "ldap://%127[^:]:%i/%127[^;];%127[^;];%127s",
+			   "ldap://%127[^:]:%i/%127[^;];%127[^;];%127[^\n]",
 			   server, &ldapport, basedn, prefix, suffix);
 	if (r < 3)
 	{
 		/* ldaps, including port number */
 		r = sscanf(port->auth_arg,
-				   "ldaps://%127[^:]:%i/%127[^;];%127[^;];%127s",
+				   "ldaps://%127[^:]:%i/%127[^;];%127[^;];%127[^\n]",
 				   server, &ldapport, basedn, prefix, suffix);
 		if (r >= 3)
 			ssl = true;
@@ -772,14 +778,14 @@ CheckLDAPAuth(Port *port)
 	{
 		/* ldap, no port number */
 		r = sscanf(port->auth_arg,
-				   "ldap://%127[^/]/%127[^;];%127[^;];%127s",
+				   "ldap://%127[^/]/%127[^;];%127[^;];%127[^\n]",
 				   server, basedn, prefix, suffix);
 	}
 	if (r < 2)
 	{
 		/* ldaps, no port number */
 		r = sscanf(port->auth_arg,
-				   "ldaps://%127[^/]/%127[^;];%127[^;];%127s",
+				   "ldaps://%127[^/]/%127[^;];%127[^;];%127[^\n]",
 				   server, basedn, prefix, suffix);
 		if (r >= 2)
 			ssl = true;

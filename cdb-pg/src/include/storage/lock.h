@@ -369,7 +369,7 @@ typedef struct LOCALLOCKOWNER
 	 * Must use a forward struct reference to avoid circularity.
 	 */
 	struct ResourceOwnerData *owner;
-	int			nLocks;			/* # of times held by this owner */
+	int64		nLocks;			/* # of times held by this owner */
 } LOCALLOCKOWNER;
 
 typedef struct LOCALLOCK
@@ -383,7 +383,7 @@ typedef struct LOCALLOCK
 	uint32		hashcode;		/* copy of LOCKTAG's hash value */
 	bool		preparable;		/* MPP: During prepare we populate this to avoid MPP-1094 */
 	bool		isFake;			/* For MPP */
-	int			nLocks;			/* total number of times lock is held */
+	int64		nLocks;			/* total number of times lock is held */
 	int			numLockOwners;	/* # of relevant ResourceOwners */
 	int			maxLockOwners;	/* allocated size of array */
 	LOCALLOCKOWNER *lockOwners; /* dynamically resizable array */

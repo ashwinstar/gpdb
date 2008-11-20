@@ -385,10 +385,15 @@ InitPostgres(const char *dbname, const char *username)
 	on_shmem_exit(ShutdownPostgres, 0);
 
 	/*
-	 * Start a new transaction here before first access to db
+	 * Start a new transaction here before first access to db, and get a
+	 * snapshot.  We don't have a use for the snapshot itself, but we're
+	 * interested in the secondary effect that it sets RecentGlobalXmin.
 	 */
 	if (!bootstrap)
+	{
 		StartTransactionCommand();
+		(void) GetTransactionSnapshot();
+	}
 
 	/*
 	 * Now that we have a transaction, we can take locks.  Take a writer's

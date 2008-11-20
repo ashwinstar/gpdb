@@ -115,7 +115,8 @@ static bool deleteDependentObjects(const ObjectAddress *object,
 					   DropBehavior behavior,
 					   int msglevel,
 					   ObjectAddresses *oktodelete,
-					   Relation depRel);
+					   Relation depRel,
+					   ObjectAddresses *alreadyDeleted);
 static void doDeletion(const ObjectAddress *object);
 static bool find_expr_references_walker(Node *node,
 							find_expr_references_context *context);
@@ -353,7 +354,7 @@ deleteWhatDependsOn(const ObjectAddress *object,
 	if (!deleteDependentObjects(object, objDescription,
 								DROP_CASCADE,
 								showNotices ? NOTICE : DEBUG2,
-								oktodelete, depRel))
+								oktodelete, depRel, NULL))
 		ereport(ERROR,
 				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 				 errmsg("failed to drop all objects depending on %s",
@@ -484,6 +485,9 @@ findAutoDeletableObjects(const ObjectAddress *object,
  * or more AUTO or INTERNAL dependencies from the original target).
  *
  * depRel is the already-open pg_depend relation.
+ *
+ * alreadyDeleted is a list to add objects to as they are deleted, or NULL
+ * if the caller doesn't need to have such a list.
  *
  *
  * In RESTRICT mode, we perform all the deletions anyway, but ereport a message
@@ -714,7 +718,7 @@ recursiveDeletion(const ObjectAddress *object,
 	 */
 	if (!deleteDependentObjects(object, objDescription,
 								behavior, msglevel,
-								oktodelete, depRel))
+								oktodelete, depRel, alreadyDeleted))
 		ok = false;
 
 	/*
@@ -780,6 +784,7 @@ recursiveDeletion(const ObjectAddress *object,
  *	behavior: desired drop behavior
  *	oktodelete: stuff that's AUTO-deletable
  *	depRel: already opened pg_depend relation
+ *	alreadyDeleted: optional list to add deleted objects to
  *
  * Returns TRUE if all is well, false if any problem found.
  *
@@ -795,7 +800,8 @@ deleteDependentObjects(const ObjectAddress *object,
 					   DropBehavior behavior,
 					   int msglevel,
 					   ObjectAddresses *oktodelete,
-					   Relation depRel)
+					   Relation depRel,
+					   ObjectAddresses *alreadyDeleted)
 {
 	bool		ok = true;
 	ScanKeyData key[3];
@@ -875,7 +881,8 @@ deleteDependentObjects(const ObjectAddress *object,
 				}
 
 				if (!recursiveDeletion(&otherObject, behavior, msglevel,
-									   object, oktodelete, depRel, NULL))
+									   object, oktodelete, depRel,
+									   alreadyDeleted))
 					ok = false;
 				break;
 			case DEPENDENCY_AUTO:
@@ -891,7 +898,8 @@ deleteDependentObjects(const ObjectAddress *object,
 								getObjectDescription(&otherObject))));
 
 				if (!recursiveDeletion(&otherObject, behavior, msglevel,
-									   object, oktodelete, depRel, NULL))
+									   object, oktodelete, depRel,
+									   alreadyDeleted))
 					ok = false;
 				break;
 			case DEPENDENCY_PIN:

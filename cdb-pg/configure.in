@@ -23,7 +23,7 @@ dnl       $Author$
 dnl ------------------------------------------------------------------
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-AC_INIT([Greenplum Database], [8.2.9], [support@greenplum.com])
+AC_INIT([Greenplum Database], [8.2.10], [support@greenplum.com])
 
 m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.59], [], [m4_fatal([Autoconf version 2.59 is required.
 Untested combinations of 'autoconf' and PostgreSQL versions are not
