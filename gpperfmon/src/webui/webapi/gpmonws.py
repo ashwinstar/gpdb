@@ -239,7 +239,7 @@ class config:
 
         # look for specific values
         try:
-            allow_trust_logon = cfg.get("WEB APP", "allow_trust_logon")
+            allow_trust_logon = cfg.getboolean("WEB APP", "allow_trust_logon")
         except:
             allow_trust_logon = False
         if DEBUG:
