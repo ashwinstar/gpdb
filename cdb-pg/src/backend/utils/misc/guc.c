@@ -1867,13 +1867,13 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_gpperfmon", PGC_SUSET, LOGGING_WHAT,
+		{"gp_enable_gpperfmon", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Enable gpperfmon logging."),
 			NULL,
 			GUC_GPDB_ADDOPT
 		},
 		&gp_enable_gpperfmon,
-		false, NULL, NULL
+		false, gpvars_assign_gp_enable_gpperfmon, NULL
 	},
 
 	{
@@ -2512,7 +2512,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_max_csv_line_length,
 		64*1024, 32*1024, 1*1024*1024, NULL, NULL
 	},
-	
+
 	{
 		{"block_size", PGC_INTERNAL, PRESET_OPTIONS,
 			gettext_noop("Shows size of a disk block"),
@@ -2923,7 +2923,7 @@ static struct config_int ConfigureNamesInt[] =
 		 gettext_noop("Linux Tracing flag"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
-		&gp_ltrace_flag, 
+		&gp_ltrace_flag,
 		0, 0, INT_MAX, NULL, NULL
 	},
 #endif
@@ -2938,14 +2938,15 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_gpperfmon_send_interval", PGC_SUSET, LOGGING_WHAT,
+		{"gp_gpperfmon_send_interval", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Interval in seconds between sending messages to gpperfmon."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&gp_gpperfmon_send_interval,
-		1, 1, 3600, NULL, NULL
+		1, 1, 3600, gpvars_assign_gp_gpperfmon_send_interval, NULL
 	},
-		
+
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),
@@ -3134,7 +3135,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_UNIT_KB | GUC_NO_SHOW_ALL
 		},
 		&gp_process_memory_cutoff,
-		0, 0, SIZE_MAX/2/1024, NULL, NULL, 
+		0, 0, SIZE_MAX/2/1024, NULL, NULL,
 	},
 
 	{
@@ -3810,7 +3811,7 @@ static struct config_string ConfigureNamesString[] =
 		{"gp_autostats_mode", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the autostats mode."),
 			gettext_noop("Valid values are NONE, ONCHANGE. ONCHANGE requires setting gp_autostats_onchange_threshold."),
-			GUC_NOT_IN_SAMPLE 
+			GUC_NOT_IN_SAMPLE
 		},
 		&gp_autostats_mode_string,
 		"none", gpvars_assign_gp_autostats_mode, gpvars_show_gp_autostats_mode

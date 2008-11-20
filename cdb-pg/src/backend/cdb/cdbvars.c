@@ -146,7 +146,7 @@ int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
  *
  * Dropseg: specifies which segment to apply the drop_percent to.
  */
-int gp_udpic_dropseg = UNDEF_SEGMENT; 
+int gp_udpic_dropseg = UNDEF_SEGMENT;
 int gp_udpic_dropxmit_percent = 0;
 int gp_udpic_dropacks_percent = 0;
 #endif
@@ -742,7 +742,7 @@ gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource sour
 				elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
 			else
 				elog(LOG, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
-				
+
 		}
 		else if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
 		{
@@ -798,7 +798,7 @@ gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source 
 	}
 
 	return newval;
-}                               
+}
 
 const char *
 gpvars_show_gp_autostats_mode(void)
@@ -812,6 +812,56 @@ gpvars_show_gp_autostats_mode(void)
 		default:
 			return "NONE";
 	}
-}                               
+}
+
+
+/* gp_enable_gpperfmon and gp_gpperfmon_send_interval are GUCs that we'd like 
+ * to have propagate from master to segments but we don't want non-super users 
+ * to be able to set it.  Unfortunately, as long as we use libpq to connect to 
+ * the segments its hard to create a clean way of doing this.
+ *
+ * Here we check and enforce that if the value is being set on the master its being
+ * done as superuser and not a regular user.
+ *
+ */
+bool
+gpvars_assign_gp_enable_gpperfmon(bool newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && !superuser())
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to set gp_enable_gpperfmon")));
+		}
+		else
+		{
+			gp_enable_gpperfmon=newval;
+		}
+	}
+
+	return true;
+}
+
+bool
+gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && !superuser())
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to set gp_gpperfmon_send_interval")));
+		}
+		else
+		{
+			gp_gpperfmon_send_interval=newval;
+		}
+	}
+
+	return true;
+}
 
 

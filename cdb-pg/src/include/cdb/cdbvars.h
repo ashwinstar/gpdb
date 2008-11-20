@@ -207,7 +207,7 @@ extern int			gp_cached_gang_threshold;
  * from the 1st row, since for example, if the second row is bad this will
  * mean that 50% of the data is bad even if all the following rows are valid.
  * Therefore we want to keep track of count of bad rows but start calculating
- * the percent at a later stage in the game. By default we'll start the 
+ * the percent at a later stage in the game. By default we'll start the
  * calculation after 100 rows were processed, but this GUC can be set for
  * some other number if it makes more sense in certain situations.
  */
@@ -215,18 +215,18 @@ extern int			gp_reject_percent_threshold;
 
 /*
  * gp_max_csv_line_length
- * 
+ *
  * maximum csv line length for COPY and external tables. It is best to keep
  * the default value of 64K to as it protects against a never ending rejection
  * of valid csv data as a result of a quote related formatting error. however,
- * there may be cases where data lines are indeed larger than 64K and that's 
+ * there may be cases where data lines are indeed larger than 64K and that's
  * when this guc must be increased in order to be able to load the data.
  */
 extern int 			gp_max_csv_line_length;
 
 /*
  * For use while debugging DTM issues: alter MVCC semantics such that
- * "invisible" rows are returned. 
+ * "invisible" rows are returned.
  */
 extern bool           gp_select_invisible;
 
@@ -276,7 +276,7 @@ extern bool gp_external_grant_privileges;
 
 /* gp_external_max_segs
  *
- * The maximum number of segment databases that will get assigned to  
+ * The maximum number of segment databases that will get assigned to
  * connect to a specific gpfdist client (1 gpfdist:// URI). The limit
  * is good to have as there is a number of segdbs that as we increase
  * it won't add to performance but may actually decrease it, while
@@ -296,11 +296,11 @@ extern int gp_command_count;
 /*
  * gp_safefswritesize
  *
- * should only be set to <N bytes> on file systems that the so called 
+ * should only be set to <N bytes> on file systems that the so called
  * 'torn-write' problem may occur. This guc should be set for the minimum
- * write size that is always safe on this particular file system. The side 
- * effect of increasing this value for torn write protection is that single row 
- * INSERTs into append only tables will use <N bytes> of space and therefore 
+ * write size that is always safe on this particular file system. The side
+ * effect of increasing this value for torn write protection is that single row
+ * INSERTs into append only tables will use <N bytes> of space and therefore
  * also slow down SELECTs and become strongly discouraged.
  *
  * On mature file systems where torn write may not occur this GUC should be
@@ -479,7 +479,7 @@ typedef enum GpVars_Verbosity
 {
 	GPVARS_VERBOSITY_UNDEFINED = 0,
     GPVARS_VERBOSITY_OFF,
-	GPVARS_VERBOSITY_TERSE,	
+	GPVARS_VERBOSITY_TERSE,
 	GPVARS_VERBOSITY_VERBOSE,
     GPVARS_VERBOSITY_DEBUG,
 } GpVars_Verbosity;
@@ -579,7 +579,7 @@ extern int      gp_segments_for_planner;
  */
 extern bool enable_agg_restruct;
 
-/* 
+/*
  * Perform a post-planning scan of the final plan looking for motion deadlocks:
  * emit verbose messages about any found.
  */
@@ -599,7 +599,7 @@ extern int gp_hashagg_groups_per_bucket;
 
 
 /*
- * Damping of selectivities of clauses which pertain to the same base 
+ * Damping of selectivities of clauses which pertain to the same base
  * relation; compensates for undetected correlation
  */
 extern bool gp_selectivity_damping_for_scans;
@@ -615,7 +615,7 @@ extern bool gp_selectivity_damping_for_joins;
 extern double gp_selectivity_damping_factor;
 
 /*
- * Sort selectivities by significance before applying 
+ * Sort selectivities by significance before applying
  * damping (ON by default)
  */
 extern bool gp_selectivity_damping_sigsort;
@@ -634,10 +634,10 @@ extern bool gp_selectivity_damping_sigsort;
  */
 extern bool gp_enable_agg_distinct;
 
-/* 
+/*
  * "gp_enable_agg_distinct_pruning"
  *
- * May Greenplum use grouping in the first phases of 3-phase aggregation to 
+ * May Greenplum use grouping in the first phases of 3-phase aggregation to
  * prune values from DISTINCT-qualified aggregate function arguments?
  *
  * The code uses planner estimates to decide whether to use this feature,
@@ -648,7 +648,7 @@ extern bool gp_enable_dqa_pruning;
 /*
  * "gp_eager_agg_distinct_pruning"
  *
- * Should Greenplum bias planner estimates so as to favor the use of grouping 
+ * Should Greenplum bias planner estimates so as to favor the use of grouping
  * in the first phases of 3-phase aggregation to prune values from DISTINCT-
  * qualified aggregate function arguments?
  *
@@ -681,7 +681,7 @@ extern bool gp_eager_two_phase_agg;
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.
  *
- * The code uses planner estimates for this.  If enabled, the tactic is used 
+ * The code uses planner estimates for this.  If enabled, the tactic is used
  * only if it is estimated to be cheaper that a 1-phase approach.  However,
  * see gp_eqger_preunique.
  */
@@ -702,7 +702,7 @@ extern bool gp_eager_preunique;
 extern bool gp_enable_sequential_window_plans;
 
 /* May Greenplum dump statistics for all segments as a huge ugly string
- * during EXPLAIN ANALYZE? 
+ * during EXPLAIN ANALYZE?
  *
  */
 extern bool gp_enable_explain_allstat;
@@ -729,9 +729,9 @@ extern bool gp_enable_sort_distinct;
  */
 extern int gp_sort_flags;
 
-/* If Greenplum is discarding duplicate rows in sort, switch back to 
+/* If Greenplum is discarding duplicate rows in sort, switch back to
  * standard sort if the number of distinct values exceeds max_distinct.
- * (If the number of distinct values is too large the behavior of the 
+ * (If the number of distinct values is too large the behavior of the
  * insertion sort is inferior to the heapsort)
  */
 extern int gp_sort_max_distinct;
@@ -755,7 +755,7 @@ extern bool	gp_enable_tablespace_auto_mkdir;
 
 /* The maximum number of times on average that the hybrid hashed aggregation
  * algorithm will plan to spill an input row to disk before including it in
- * an aggregation.  Increasing this parameter will cause the planner to choose 
+ * an aggregation.  Increasing this parameter will cause the planner to choose
  * hybrid hashed aggregation at lower settings of work_mem than it otherwise
  * would.
  */
@@ -767,7 +767,7 @@ extern double gp_hashagg_rewrite_limit;
 extern bool gp_hashagg_recalc_density;
 
 /* If we use two stage hashagg, we can stream the bottom half */
-extern bool gp_hashagg_streambottom; 
+extern bool gp_hashagg_streambottom;
 
 /* The default number of batches to use when the hybrid hashed aggregation
  * algorithm (re-)spills in-memory groups to disk.
@@ -792,6 +792,8 @@ extern int gp_ltrace_flag;
 extern bool gp_disable_tuple_hints;
 
 /* Enable gpmon */
+extern bool gpvars_assign_gp_enable_gpperfmon(bool newval, bool doit, GucSource source);
+extern bool gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucSource source);
 extern bool gp_enable_gpperfmon;
 extern int gp_gpperfmon_send_interval;
 
