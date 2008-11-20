@@ -19,6 +19,7 @@ for line in open(os.path.join(GPMONDIR, "queries_now.dat")):
         qrytxt = fp.read(int(meta[0])).strip()
         fp.close()
     except:
+        qrttxt = "Zombie Query"
         if fp: fp.close()
 
     # escape all " with ""
