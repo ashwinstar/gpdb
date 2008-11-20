@@ -2529,6 +2529,7 @@ partition p3 start('15') exclusive end('19'), partition p4 start('19')  WITH (co
 partition p5 start('20')
 );
 delete from tmp_nation;
+drop table tmp_nation;
 
 -- SPLIT tests
 -- basic sanity tests. All should pass.
@@ -2826,3 +2827,16 @@ alter table rank alter partition girls split default partition start('2008')
 insert into rank values(4, 4, 2009, 'F', 100);
 drop table rank;
 drop table r;
+
+-- MPP-4245: remove virtual subpartition templates when we drop the partitioned
+-- table
+create table bar (i int, j int) partition by range(i) subpartition by range(j)
+subpartition template(start(1) end(10) every(1)) subpartition by range(i)
+subpartition template(start(1) end(10) every(5)) (start(1) end(10));
+alter table bar alter partition for ('5') alter partition for ('5')
+  drop partition for ('5');
+insert into bar values(1, 1);
+insert into bar values(5, 5);
+drop table bar;
+select parrelid::regclass, * from pg_partition;
+select * from pg_partition_rule;

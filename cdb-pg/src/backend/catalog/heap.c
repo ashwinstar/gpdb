@@ -1072,43 +1072,36 @@ RelationRemoveInheritance(Oid relid)
 }
 
 static void
+del_part_entry_by_key(Relation rel, Oid indexOid, ScanKey key, int nkeys)
+{
+	SysScanDesc scan;
+	HeapTuple tuple;
+
+	scan = systable_beginscan(rel, indexOid,
+							  true, SnapshotNow, nkeys, key);
+
+	while ((tuple = systable_getnext(scan)))
+		simple_heap_delete(rel, &tuple->t_self);
+
+	systable_endscan(scan);
+}
+
+static void
 RemovePartitioning(Oid relid)
 {
 	ScanKeyData key;
 	Relation rel;
 	HeapTuple tuple;
-	bool is_rule = false;
 	SysScanDesc scan;
+	Relation pgrule;
 
 	if (Gp_role == GP_ROLE_EXECUTE) 
 		return;
 
-	/* delete any records from child partitions */
-	rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
-	ScanKeyInit(&key,
-				Anum_pg_partition_rule_parchildrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relid));
-
-	scan = systable_beginscan(rel, PartitionRuleParchildrelidIndexId,
-							  true, SnapshotNow, 1, &key);
-
-	tuple = systable_getnext(scan);
-	if (HeapTupleIsValid(tuple))
-	{
-		simple_heap_delete(rel, &tuple->t_self);
-		is_rule = true;
-	}
-
-	systable_endscan(scan);
-	heap_close(rel, NoLock);
-
-	/* We wont be a partition leaf and the target of partitioning... */
-	if (is_rule)
-		return;
-	
+	/* loop through all matches in pg_partition */
 	rel = heap_open(PartitionRelationId, RowExclusiveLock);
-
+	pgrule = heap_open(PartitionRuleRelationId,
+					   RowExclusiveLock);
 	ScanKeyInit(&key,
 				Anum_pg_partition_parrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -1118,10 +1111,33 @@ RemovePartitioning(Oid relid)
 							  true, SnapshotNow, 1, &key);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
-		  simple_heap_delete(rel, &tuple->t_self);
+	{
+		ScanKeyData rkey;
+		Oid paroid = HeapTupleGetOid(tuple);
 
+		ScanKeyInit(&rkey,
+					Anum_pg_partition_rule_paroid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(paroid));
+		del_part_entry_by_key(pgrule, PartitionRuleParoidParentRuleOrdIndexId,
+							  &rkey, 1);
+
+		/* remove ourself */
+		simple_heap_delete(rel, &tuple->t_self);
+	}
 	systable_endscan(scan);
 	heap_close(rel, NoLock);
+
+	/* we might be a leaf partition: delete any records */
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	del_part_entry_by_key(pgrule, PartitionRuleParchildrelidIndexId, &key, 1);
+
+	heap_close(pgrule, NoLock);
+
 	CommandCounterIncrement();
 }
 

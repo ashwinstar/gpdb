@@ -5221,6 +5221,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n_nationkey' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 delete from tmp_nation;
+drop table tmp_nation;
 -- SPLIT tests
 -- basic sanity tests. All should pass.
 create table k (i int) partition by range(i) (start(1) end(10) every(2), 
@@ -6173,3 +6174,52 @@ NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_gfuture" for
 insert into rank values(4, 4, 2009, 'F', 100);
 drop table rank;
 drop table r;
+-- MPP-4245: remove virtual subpartition templates when we drop the partitioned
+-- table
+create table bar (i int, j int) partition by range(i) subpartition by range(j)
+subpartition template(start(1) end(10) every(1)) subpartition by range(i)
+subpartition template(start(1) end(10) every(5)) (start(1) end(10));
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1" for table "bar"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_1" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_2" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_3" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_4" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_5" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_6" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_7" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_8" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_9" for table "bar_1_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_1_3_prt_1" for table "bar_1_prt_1_2_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_1_3_prt_2" for table "bar_1_prt_1_2_prt_1"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_2_3_prt_1" for table "bar_1_prt_1_2_prt_2"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_2_3_prt_2" for table "bar_1_prt_1_2_prt_2"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_3_3_prt_1" for table "bar_1_prt_1_2_prt_3"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_3_3_prt_2" for table "bar_1_prt_1_2_prt_3"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_4_3_prt_1" for table "bar_1_prt_1_2_prt_4"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_4_3_prt_2" for table "bar_1_prt_1_2_prt_4"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_5_3_prt_1" for table "bar_1_prt_1_2_prt_5"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_5_3_prt_2" for table "bar_1_prt_1_2_prt_5"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_6_3_prt_1" for table "bar_1_prt_1_2_prt_6"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_6_3_prt_2" for table "bar_1_prt_1_2_prt_6"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_7_3_prt_1" for table "bar_1_prt_1_2_prt_7"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_7_3_prt_2" for table "bar_1_prt_1_2_prt_7"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_8_3_prt_1" for table "bar_1_prt_1_2_prt_8"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_8_3_prt_2" for table "bar_1_prt_1_2_prt_8"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_9_3_prt_1" for table "bar_1_prt_1_2_prt_9"
+NOTICE:  CREATE TABLE will create partition "bar_1_prt_1_2_prt_9_3_prt_2" for table "bar_1_prt_1_2_prt_9"
+alter table bar alter partition for ('5') alter partition for ('5')
+  drop partition for ('5');
+insert into bar values(1, 1);
+insert into bar values(5, 5);
+ERROR:  no partition for partitioning key
+drop table bar;
+select parrelid::regclass, * from pg_partition;
+ parrelid | parrelid | parkind | parlevel | paristemplate | parnatts | paratts | parclass 
+----------+----------+---------+----------+---------------+----------+---------+----------
+(0 rows)
+
+select * from pg_partition_rule;
+ paroid | parchildrelid | parparentrule | parname | parisdefault | parruleord | parrangestartincl | parrangeendincl | parrangestart | parrangeend | parrangeevery | parlistvalues | parreloptions 
+--------+---------------+---------------+---------+--------------+------------+-------------------+-----------------+---------------+-------------+---------------+---------------+---------------
+(0 rows)
+
