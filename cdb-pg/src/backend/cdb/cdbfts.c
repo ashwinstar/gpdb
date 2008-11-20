@@ -30,6 +30,7 @@
 #include "executor/spi.h"
 
 #include "postmaster/service.h"
+#include "postmaster/walsendserver.h"
 
 volatile bool	*ftsEnabled;
 static LWLockId	ftsControlLock;

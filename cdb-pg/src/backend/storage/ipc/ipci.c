@@ -29,6 +29,7 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
 #include "postmaster/walredoserver.h"
+#include "postmaster/walsendserver.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"

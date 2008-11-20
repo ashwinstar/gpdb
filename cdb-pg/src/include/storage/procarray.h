@@ -16,7 +16,6 @@
 
 #include "storage/lock.h"
 #include "utils/tqual.h"
-#include "cdb/cdbdistributedsnapshot.h"
 
 extern Size ProcArrayShmemSize(void);
 extern void CreateSharedProcArray(void);

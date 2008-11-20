@@ -23,6 +23,7 @@
  * never pretended to be very independent of the backend anyhow ...
  */
 #include "postgres.h"
+
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
@@ -61,9 +62,13 @@ int			optreset;
 #include "cdb_backup_status.h"
 #include "cdb_dump_util.h"
 #include "cdb_table.h"
-#include <regex.h>
 #include <assert.h>
+#include <limits.h>
+#include <regex.h>
 #include <sys/wait.h>
+
+
+
 
 extern char *optarg;
 extern int	optind,

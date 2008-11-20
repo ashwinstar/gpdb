@@ -33,6 +33,7 @@
 #ifndef CDBLINK_H
 #define CDBLINK_H
 
+#include "access/xlogdefs.h"
 
 /*
  * Called by backend/utils/init/postinit.c to setup the connections to the

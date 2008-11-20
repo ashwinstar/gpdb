@@ -22,8 +22,6 @@
 #include "nodes/primnodes.h"
 #include "nodes/value.h"
 
-#include "cdb/cdbcat.h"
-
 typedef struct PartitionNode PartitionNode; /* see relation.h */
 
 /* Possible sources of a Query */
@@ -192,7 +190,7 @@ typedef struct Query
 	
 	TableOidInfo	intoOidInfo;  /* MPP */
 	 
-	GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
+	struct GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
 } Query;
 
 /****************************************************************************
@@ -1277,7 +1275,7 @@ typedef struct CreateStmt
 	Node       *partitionBy;     /* what columns we partition the data by */
 	TableOidInfo oidInfo;
 	char	    relKind;         /* CDB: force relkind to this */
-	GpPolicy  *policy;
+	struct GpPolicy  *policy;
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
 } CreateStmt;
 

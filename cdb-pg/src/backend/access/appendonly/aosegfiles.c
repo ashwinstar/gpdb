@@ -14,6 +14,7 @@
 
 #include "miscadmin.h"
 #include "access/heapam.h"
+#include "access/genam.h"
 #include "access/aosegfiles.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_proc.h"

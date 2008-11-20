@@ -25,6 +25,7 @@
 
 #include "commands/tablespace.h"
 #include "catalog/catalog.h"
+#include "catalog/gp_policy.h"
 #include "catalog/pg_type.h"
 
 #include "catalog/pg_proc.h"

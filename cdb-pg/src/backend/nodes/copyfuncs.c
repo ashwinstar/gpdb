@@ -27,6 +27,8 @@
 
 #include "postgres.h"
 
+#include "access/attnum.h"
+#include "catalog/gp_policy.h"
 #include "nodes/plannodes.h"
 #include "nodes/execnodes.h" /* CdbProcess, Slice, and SliceTable. */
 #include "nodes/relation.h"

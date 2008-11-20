@@ -27,6 +27,7 @@
 #include "access/aosegfiles.h"
 #include "access/appendonlywriter.h"
 #include "access/xact.h"
+#include "catalog/gp_policy.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"

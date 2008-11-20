@@ -16,7 +16,6 @@
 #define _PROC_H_
 
 #include "cdb/cdblocaldistribxact.h"
-#include "postmaster/walsendserver.h"
 #include "storage/lock.h"
 #include "storage/spin.h"
 #include "storage/pg_sema.h"

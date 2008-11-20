@@ -15,7 +15,6 @@
 #define NODEAGG_H
 
 #include "nodes/execnodes.h"
-#include "cdb/cdbchunkbuf.h"
 
 extern int	ExecCountSlotsAgg(Agg *node);
 extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);

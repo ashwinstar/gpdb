@@ -17,7 +17,7 @@ all: pg_config.h pg_config_os.h
 
 
 # Subdirectories containing headers for server-side dev
-SUBDIRS = access bootstrap catalog commands executor lib libpq mb \
+SUBDIRS = access bootstrap catalog commands executor gpmon lib libpq mb \
 	nodes optimizer parser regex rewrite storage tcop utils \
 	port port/win32 port/win32/arpa port/win32/netinet port/win32/sys
 
@@ -46,10 +46,8 @@ install: all installdirs
 	done
 # These headers are needed for PGXS
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbcat.h   $(DESTDIR)$(includedir_internal_cdb)
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbhash.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir_internal_cdb)
-	$(INSTALL_DATA) $(srcdir)/cdb/cdbtm.h   $(DESTDIR)$(includedir_internal_cdb)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq' \

@@ -17,7 +17,6 @@
 #include "nodes/parsenodes.h"
 #include "tcop/dest.h"
 #include "executor/executor.h"
-#include "cdb/cdbsreh.h"
 
 
 /*
@@ -224,7 +223,7 @@ typedef struct CopyStateData
 	
 	/* Error handling options */
 	CopyErrMode	errMode;
-	CdbSreh		*cdbsreh; /* single row error handler */
+	struct CdbSreh		*cdbsreh; /* single row error handler */
 	int			num_consec_csv_err; /* # of consecutive csv invalid format errs */
 
 	struct HeapInsertDesc *heapInsertDesc;

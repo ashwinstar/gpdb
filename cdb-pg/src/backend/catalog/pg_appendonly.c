@@ -15,6 +15,7 @@
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_proc.h"
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"

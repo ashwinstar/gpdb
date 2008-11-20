@@ -32,32 +32,33 @@
 
 #include "postgres.h"
 
+#include <arpa/inet.h>
 #include <stdarg.h>
 #include <sys/stat.h>
+#include <fstream/gfile.h>
 
 #include "access/fileam.h"
 #include "access/heapam.h"
 #include "access/valid.h"
-#include "commands/dbcommands.h"
 #include "catalog/namespace.h"
-#include "cdb/cdbutil.h"
+#include "commands/copy.h"
+#include "commands/dbcommands.h"
 #include "libpq/libpq-be.h"
-#include "pgstat.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
+#include "pgstat.h"
+#include "postmaster/postmaster.h"  /*postmaster port*/
 #include "utils/relcache.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/uri.h"
-#include "mb/pg_wchar.h"
-#include "commands/copy.h"
 #include "utils/guc.h"
 #include "utils/builtins.h"
-#include "nodes/makefuncs.h"
-#include "cdb/cdbvars.h"
-#include "postmaster/postmaster.h"  /*postmaster port*/
-#include <arpa/inet.h>
-#include <fstream/gfile.h>
 
+#include "cdb/cdbsreh.h"
+#include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
 #include "cdb/url.h"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
