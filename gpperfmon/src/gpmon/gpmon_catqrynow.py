@@ -11,7 +11,7 @@ GPMONDIR = 'gpperfmon/data'
 for line in open(os.path.join(GPMONDIR, "queries_now.dat")):
     line = line.split('|')
     (tmid, xid, cid) = line[1:4]
-    qrytext = ''
+    qrytxt = ''
     fp = None
     try:
         fp = open(os.path.join(GPMONDIR, "q%s-%s-%s.txt" % (tmid, xid, cid)), 'r')
