@@ -491,6 +491,8 @@ static void gx_recvqlog(gpmon_packet_t* pkt)
 	gpmon_fatal(FLINE, "assert failed; expected pkttype qlog");
     
     p = &pkt->u.qlog;
+    TR2(("Received qlog packet for query %d-%d-%d.  Status now %d\n",
+         p->key.tmid, p->key.ssid, p->key.ccnt, p->status));
     rec = apr_hash_get(gx.qlogtab, &p->key, sizeof(p->key));
     if (rec) {
 	memcpy(rec, pkt, sizeof(*pkt));
