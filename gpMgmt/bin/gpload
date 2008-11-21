@@ -49,8 +49,11 @@ def bytestr(size, precision=1):
         float_string = integer_part
     return float_string + suffix
 
-# simply threading wrapper
 class CatThread(threading.Thread):
+    """
+    Simply therading wrapper to read a file descriptor and put the contents
+    in the log file.
+    """
     def __init__(self,gpload,fd):
         threading.Thread.__init__(self)
         self.gpload = gpload
@@ -63,13 +66,21 @@ class CatThread(threading.Thread):
             self.gpload.log(2,line.strip('\n'))
 
 class Progress(threading.Thread):
+    """
+    Determine our progress from the gpfdist daemon
+    """
     def __init__(self,gpload,ports):
         threading.Thread.__init__(self)
         self.gpload = gpload
         self.ports = ports
         self.number = 0
         self.condition = threading.Condition()
+
     def get(self,port):
+        """
+        Connect to gpfdist and issue an HTTP query. No need to do this with
+        httplib as the transaction is extremely simple
+        """
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         s.connect(('127.0.0.1',port))
         s.sendall('GET gpfdist/status HTTP/1.0\r\n\r\n')
@@ -90,7 +101,11 @@ class Progress(threading.Thread):
                 total_sessions = int(a[1])
         f.close()
         return read_bytes,total_bytes,total_sessions
+
     def get1(self):
+        """
+        Parse gpfdist output
+        """
         read_bytes = 0
         total_bytes = 0
         for port in self.ports:
@@ -105,6 +120,9 @@ class Progress(threading.Thread):
             (bytestr(read_bytes),bytestr(total_bytes)))
 
     def run(self):
+        """
+        Thread worker
+        """
         while 1:
             try:
                 self.condition.acquire()
@@ -146,9 +164,17 @@ Options:
     sys.exit(2)
 
 def quote(a):
+    """
+    SQLify a string
+    """
     return "'"+a.replace("'","''").replace('\\','\\\\')+"'"
 
 def splitPgpassLine(a):
+    """
+    If the user has specified a .pgpass file, we'll have to parse it. We simply
+    split the string into arrays at :. We could just use a native python
+    function but we need to escape the ':' character.
+    """
     b = []
     escape = False
     d = ''
@@ -167,6 +193,9 @@ def splitPgpassLine(a):
     return b
 
 def dictKeyToLower(a):
+    """
+    down case all entries in a list or dict
+    """
     if type(a)==list:
         return map(dictKeyToLower,a)
     if type(a)==dict:
@@ -182,9 +211,12 @@ class options:
     pass
 
 class gpload:
+    """
+    Main class wrapper
+    """
 
     def __init__(self,argv):
-        self.threads = []
+        self.threads = [] # remember threads so that we can join() against them
         self.exitValue = 0
         self.options = options()
         self.options.h = None
@@ -195,11 +227,15 @@ class gpload:
         self.options.password = None
         self.options.d = None
         self.options.qv = 1
+
+        # default to gpAdminLogs for a log file, may be overwritten
         self.options.l = os.path.join(os.environ.get('HOME'), 'gpAdminLogs')
         self.options.l = os.path.join(self.options.l, 'gpload_' + \
                         datetime.date.today().strftime('%Y%m%d') + '.log')
 
         self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
+
+        # SQL to run in order to undo our temporary work
         self.cleanupSql = []
         self.distkey = None
         configFilename = None
@@ -252,24 +288,30 @@ class gpload:
             except ValueError:
                 sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
                 sys.exit(2)
+
         if configFilename==None or argv:
             usage('configuration file required')
+
         self.logfile = open(self.options.l,'a')
         self.log(0,'*'*10)
         self.log(0,'gpload session started '+datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         if self.options.D:
             self.log(0,'Gpload has the -D option, so it does not actually load any data.')
         self.log(0,'*'*10)
+
         try:
             f = open(configFilename,'r')
         except IOError,e:
             sys.stderr.write("Could not open the config file.\n%s\n"%e)
             sys.exit(2)
+
+        # pull in the config file, which should be in valid YAML
         try:
             self.config = yaml.load(f.read())
         except yaml.scanner.ScannerError,e:
             sys.stderr.write("YAML error in config file.\n%s\n"%e)
             sys.exit(2)
+
         f.close()
         self.config = dictKeyToLower(self.config)
         self.subprocesses = []
@@ -282,6 +324,15 @@ class gpload:
             sys.stdout.write(a)
 
     def getconfig(self,a,typ=None,default='error',extraStuff=''):
+        """
+        Look for a config entry, via a column delimited string. a:b:c points to
+        
+        a:
+            b:
+                c
+
+        Make sure that end point is of type 'typ' when not set to None.
+        """
         config = self.config
         for s in a.split(':'):
             index = 1
@@ -318,14 +369,27 @@ class gpload:
         return config
 
     def read_config(self):
+        """
+        Configure ourselves
+        """
+
         self.table = self.getconfig('gpload:output:table',str)
+
+        # Precendence for configuration: command line > config file > env
+        # variable
+        
+        # host to connect to
         if not self.options.h:
             self.options.h = self.getconfig('host',str,None)
         if not self.options.h:
             self.options.h = os.environ.get('PGHOST')
         if not self.options.h or len(self.options.h) == 0:
-            self.log(0,"You need to specify your host name with the -h option or in your configuration file or in your environment as PGHOST.")
+            self.log(0,"You need to specify your host name with the -h " +
+                       "option or in your configuration file or in your " +
+                       "environment as PGHOST.")
             sys.exit(2)
+
+        # Port to connect to
         if not self.options.p:
             self.options.p = self.getconfig('port',int,None)
         if not self.options.p:
@@ -334,24 +398,37 @@ class gpload:
             except (ValueError, TypeError):
                     pass
         if not self.options.p:
-            self.log(0,"You need to specify your port number with the -p option or in your configuration or in your environment as PGPORT.")
+            self.log(0,"You need to specify your port number with the -p " +
+                       "option or in your configuration or in your " +
+                       "environment as PGPORT.")
             sys.exit(2)
+
+        # User to connect as
         if not self.options.U:
             self.options.U = self.getconfig('user',str,None)
         if not self.options.U:
             self.options.U = os.environ.get('PGUSER')
         if not self.options.U or len(self.options.U) == 0:
-            self.log(0,"You need to specify your username with the -U option or in your configuration or in your environment as PGUSER.")
+            self.log(0,"You need to specify your username with the -U " +
+                       "option or in your configuration or in your " +
+                       "environment as PGUSER.")
             sys.exit(2)
+
+        # database to connect to
         if not self.options.d:
             self.options.d = self.getconfig('database',str,None)
         if not self.options.d:
             self.options.d = os.environ.get('PGDATABASE')
         if not self.options.d or len(self.options.d) == 0:
-            self.log(0,"You need to specify your database with the -d option or in your configuration or in your environment as PGDATABASE.")
+            self.log(0,"You need to specify your database with the -d " +
+                       "option or in your configuration or in your " +
+                       "environment as PGDATABASE.")
             sys.exit(2)
 
     def start_gpfdists(self):
+        """
+        Start gpfdist daemon(s)
+        """
         self.locations = []
         self.ports = []
         sourceIndex = 0
@@ -368,7 +445,8 @@ class gpload:
                     startPort = int(port_range[0])
                     endPort = int(port_range[1])
                 except (IndexError,ValueError):
-                    self.log(0,name+":port_range must be a sequence of two integers.")
+                    self.log(0,name+":port_range must be a sequence of " +
+                               "two integers.")
                     sys.exit(2)
             else:
                 startPort = self.getconfig(name+':port',int,8000)
@@ -381,7 +459,8 @@ class gpload:
                 if type(i)!=str:
                     self.log(0,name+":file must be a sequence of strings.")
                     sys.exit(2)
-            popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),'-f',' '.join(file)]
+            popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
+                         '-f',' '.join(file)]
             if self.options.qv==2:
                 popenList.append('-v')
             elif self.options.qv>2:
@@ -393,12 +472,14 @@ class gpload:
                                      stderr=subprocess.PIPE,close_fds=True)
                 self.subprocesses.append(a)
             except Exception, e:
-                self.log(0, "could not run %s: %s" % (' '.join(popenList), str(e)))
+                self.log(0, "could not run %s: %s" % \
+                                (' '.join(popenList), str(e)))
                 sys.exit(2)
 
             t = CatThread(self,a.stderr)
             t.start()
             self.threads.append(t)
+
             while 1:
                 line = a.stdout.readline()
                 if line=='':
@@ -428,6 +509,9 @@ class gpload:
                                        (l,port,'%20'.join(file)))
 
     def readPgpass(self,pgpassname):
+        """
+        Get password form .pgpass file
+        """
         try:
             f = open(pgpassname,'r')
         except IOError:
@@ -449,6 +533,9 @@ class gpload:
         f.close()
 
     def setup_connection(self):
+        """
+        Connect to the backend
+        """
         if self.pg8000!=None:
             self.pg8000.close()
         if self.options.W:
@@ -462,7 +549,12 @@ class gpload:
             if self.options.password==None:
                 self.readPgpass(os.environ.get('PGPASSFILE',os.environ.get('HOME','.')+'/.pgpass'))
         try:
-            self.pg8000 = pg8000.Connection(user=self.options.U,host=self.options.h,port=self.options.p,database=self.options.d,password=self.options.password,socket_timeout=None)
+            self.pg8000 = pg8000.Connection(user=self.options.U,
+                                            host=self.options.h,
+                                            port=self.options.p,
+                                            database=self.options.d,
+                                            password=self.options.password,
+                                            socket_timeout=None)
         except pg8000.errors.InterfaceError,e:
             self.log(0,"Could not connect to database.\n%s"%e)
             sys.exit(2)
@@ -473,7 +565,8 @@ class gpload:
             self.from_columns = []
             for d in columns:
                 if type(d)!=dict:
-                    self.log(0,"gpload:input:columns must be a sequence of mappings. Type is %s")
+                    self.log(0,"gpload:input:columns must be a sequence of " +
+                               "mappings.")
                     sys.exit(2)
                 key = d.keys()[0]
                 if d[key] == None:
@@ -499,7 +592,9 @@ class gpload:
         if i>=0:
             tableSchema = tableName[:i]
             tableName = tableName[i+1:]
-        self.pg8000.execute("select * from information_schema.columns where table_name=$1 and table_schema=$2 order by ordinal_position",tableName,tableSchema)
+        self.pg8000.execute("""select * from information_schema.columns where 
+                               table_name=$1 and table_schema=$2 order by 
+                               ordinal_position""", tableName, tableSchema)
         count = 0
         self.into_columns = []
         self.into_columns_dict = dict()
@@ -568,8 +663,11 @@ class gpload:
                 if type(i)!=str:
                     self.log(0,'gpload:input:force_not_null_columns must be a sequence of strings.')
                     sys.exit(2)
-            sql += "force not null %s "%','.join(force_not_null_columns)
+            # not yet, see MPP-4254
+            #sql += "force not null %s "%','.join(force_not_null_columns)
+            self.log(2, "ignoring FORCE NOT NULL as it is not supported")
         sql += ")"
+
         encoding = self.getconfig('gpload:input:encoding',str,None)
         if encoding:
             sql += "encoding%s"%quote(encoding)
@@ -604,6 +702,9 @@ class gpload:
             self.exitValue = 1
 
     def do_insert(self,dest):
+        """
+        Handle the INSERT case
+        """
         cols = filter(lambda a:a[2]!=None,self.into_columns)
         sql = 'insert into %s'%dest
         sql += '(%s)'%','.join(map(lambda a:a[0],cols))
@@ -642,6 +743,9 @@ class gpload:
         return lis
 
     def do_update(self,fromname,index):
+        """
+        UPDATE case
+        """
         sql = 'update %s into_table '%self.table
         sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table.%s'%(x,y),index))
         sql += 'from %s from_table '%fromname
@@ -715,13 +819,6 @@ class gpload:
         self.table_supports_update()
         a = self.getconfig('gpload:output:update_columns', list)
 
-# LIKE should handle this for us
-#        diststr = ''
-#        if len(self.distkey) == 0:
-#            diststr = 'randomly'
-#        else:
-#            diststr = 'by(%s)' % ', '.join(self.distkey)
-
         sql = 'create temp table temp_%s(like %s)' % \
               (self.name, self.table)
         self.log(2, sql)
@@ -739,11 +836,6 @@ class gpload:
 
         self.table_supports_update()
 
-#        diststr = ''
-#        if len(self.distkey) == 0:
-#            diststr = 'randomly'
-#        else:
-#            diststr = 'by(%s)' % ', '.join(self.distkey)
         sql = 'create temp table temp_%s(like %s)'%(self.name,self.table)
         self.log(2,sql)
         if not self.options.D:
