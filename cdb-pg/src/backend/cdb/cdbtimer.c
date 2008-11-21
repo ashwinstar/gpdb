@@ -88,7 +88,7 @@ resetTimers(struct itimers *otimers)
  * PGSempahoreLockTimed).
  */
 void
-restoreTimers(const struct itimers *timers)
+restoreTimers(struct itimers *timers)
 {
 	int err;
 

@@ -22,6 +22,6 @@ typedef struct itimers {
 } itimers;
 
 void resetTimers(struct itimers *timers);
-void restoreTimers(const struct itimers *timers);
+void restoreTimers(struct itimers *timers);
 
 #endif /* CDBTIMER_H_ */
