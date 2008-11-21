@@ -119,8 +119,6 @@ class GPInitSegment():
 
         home = os.environ.get('HOME')
         
-        self.running  = None
-        self.dblog    = None
         self.logfile  = None
         
         def notNone(a,b):
@@ -217,7 +215,7 @@ class GPInitSegment():
         ENV      = '%s/bin/lib/gpenv.sh' % self.gphome
         cmd  = 'ssh %s %s %s' % (self.host, ENV, __file__)
         cmd += ' -G %s' % self.gphome
-        cmd += ' -A "%s"' % self.cluster
+        cmd += ' -A \'\\"%s\\"\'' % self.cluster
         cmd += ' -p %s' % self.port
         cmd += ' -c %s' % self.content
         cmd += ' -i %s' % self.dbid
@@ -382,10 +380,13 @@ class GPInitSegment():
         psql    = options + ' psql -p %s' % self.port
 
         def runSQL(sql):
-            subprocess.call(psql + ' -c "%s" template1' % sql,
-                            shell=True,
-                            stdout=self.logfile,
-                            stderr=self.logfile)
+            r = subprocess.call(psql + ' -c "%s" template1' % sql,
+                                shell=True,
+                                stdout=self.logfile,
+                                stderr=self.logfile)
+            if r != 0:
+                raise SegmentError('Error Executing SQL (return code %s)' % str(r))
+
         runSQL("delete from gp_id")
         runSQL("insert into gp_id values %s" % ident)
         runSQL("vacuum freeze gp_id")
@@ -394,61 +395,42 @@ class GPInitSegment():
     #----------------------------------------------------------------------
     def Startup(self):
         '''
-
+        Uses pg_ctl to startup the database:
+          + pg_ctl will wait for the startup to complete
+          + pg_ctl may gives up after about a minute if the startup fails
         '''
-        self.dblog = open(self.dir+'.log', 'a')
-        self.running = subprocess.Popen('postgres -D %s' % self.dir,
-                                        shell=True, env=self.env,
-                                        stdout=self.dblog, 
-                                        stderr=self.dblog)
 
-        self.Log('INFO', "Starting Greenplum (pid=%s, port=%s, dir=%s)" 
-                 % (self.running.pid, self.port, self.dir))
+        self.Log('INFO', "Starting Greenplum (port=%s, dir=%s)" 
+                 % (self.port, self.dir))
 
-
-        # wait until pg_control data reports that we are up
-        state = None
-        while state != 'in production':
-
-            # give the system a second to start up
-            time.sleep(1)
-
-            if self.running.poll() != None:
-                raise SegmentError("Startup failed")
-
-            ctl = RunCmd('pg_controldata %s' % self.dir, self.env)
-            for line in ctl.split('\n'):
-                (field, value) = line.split(':')
-                if field == 'Database cluster state':
-                    state = value.strip()
-                    break
+        cmd  = 'pg_ctl start -w -D %s -l %s.log' % (self.dir, self.dir)
+        cmd += ' -o "-i -p %s -c gp_role=utility"' % str(self.port)
+        self.Log('INFO', cmd)
+        retcode = subprocess.call(cmd, shell=True, env=self.env)
+        if retcode != 0:
+            raise SegmentError('Segment failed to startup, pg_ctl returned %s' 
+                               % str(retcode))
 
 
     #----------------------------------------------------------------------
     def Shutdown(self):
         '''
+        Checks for a postmaster.pid file.
+          + If found it calls pg_ctl to stop the database.  
+          + pg_ctl will wait until the database is stopped
+          + pg_ctl may gives up after about a minute if the shutdown fails
         '''
-        if self.running:
-            # poll() returns None when process is still running
-            if self.running.poll() == None:
-                self.Log('INFO', "Stopping Greenplum (pid=%s, port=%s)" 
-                         % (self.running.pid, self.port))
-                try:
-                    cmd = 'pg_ctl -D %s -o "-p%s" stop' % (self.dir, self.port)
-                    RunCmd(cmd, env=self.env)
-                    err = self.running.wait()
-                    if err != 0:
-                        os.kill(self.running.pid, signal.SIGKILL)
-                        self.Log('WARN', 'Error shutting down postgres')
 
-                except Exception, e: 
-                    self.Log('WARN', str(e))
-                    
-            self.running = None
+        if os.path.exists(os.path.join(self.dir, 'postmaster.pid')):
+            self.Log('INFO', "Stopping Greenplum (port=%s, dir=%s)" 
+                     % (self.port, self.dir))
 
-        if self.dblog:
-            self.dblog.close()
-            self.dblog = None
+            cmd  = 'pg_ctl stop -D %s -m fast' % self.dir
+            self.Log('INFO', cmd)
+            retcode = subprocess.call(cmd, shell=True, env=self.env)
+            if retcode != 0:
+                raise SegmentError('Segment failed to stop, pg_ctl returned %s' 
+                                   % str(retcode))
 
 
     #----------------------------------------------------------------------
@@ -475,7 +457,7 @@ class GPInitSegment():
             subprocess.call(cmd, shell=True,
                             stdout=self.logfile,
                             stderr=self.logfile)
-        except Exception, e:
+        except BaseException, e:
             try:     
                 os.removedirs(self.dir)
             except:  pass
@@ -542,7 +524,7 @@ if __name__ == "__main__":
         s = GPInitSegment(options)
         try:
             s.CreateSegment()
-        except Exception, e:
+        except BaseException, e:
             s.Log('FATAL', str(e))
             raise Exception('')
         finally:
