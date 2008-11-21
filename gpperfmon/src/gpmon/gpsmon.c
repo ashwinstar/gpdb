@@ -5,6 +5,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
+#if defined (sun)
+  #include <kstat.h>
+#endif /* sun */
 #include <math.h>
 #include "apr_getopt.h"
 #include "apr_env.h"
@@ -75,6 +78,10 @@ struct gx_t {
     apr_hash_t* pidtab;		/* key=pid, value=pidrec_t */
 };
 static struct gx_t gx = {0};
+
+#if defined (sun)
+static kstat_ctl_t *kc = NULL;
+#endif /* sun */
 
 static void gx_accept(SOCKET sock, short event, void* arg);
 static void gx_recvfrom(SOCKET sock, short event, void* arg);
@@ -178,7 +185,6 @@ static void send_machine_metrics(SOCKET sock)
     sigar_swap_t swap;
     sigar_cpu_t cpu;
     sigar_loadavg_t loadavg;
-    sigar_file_system_usage_t fsusage;
     sigar_disk_usage_t tdisk;
     sigar_net_interface_stat_t tnet;
     static int first = 1;
@@ -187,7 +193,13 @@ static void send_machine_metrics(SOCKET sock)
     static sigar_cpu_t pcpu = {0};
     static sigar_swap_t pswap = {0};
     gpmon_packet_t pkt;
+#if defined (sun)
+    kstat_t *ksp = NULL;
+    kstat_io_t kio;
+#else /* sun */
+    sigar_file_system_usage_t fsusage;
     const char** fsdir;
+#endif /* sun */
     const char** netname;
     sigar_net_interface_stat_t netstat;
     int cpu_total_diff;
@@ -216,6 +228,24 @@ static void send_machine_metrics(SOCKET sock)
     TR2(("load_avg: %e %e %e\n", loadavg.loadavg[0], loadavg.loadavg[1], loadavg.loadavg[2]));
 
     memset(&tdisk, 0, sizeof(tdisk));
+
+#if defined (sun)
+    /* libsigar currently doesn't support ZFS, so for now
+       use kstat directly for drive I/O stats */
+    kstat_chain_update(kc);
+    
+    for (ksp = kc->kc_chain; ksp != NULL; ksp = ksp->ks_next)
+    {
+        if (ksp->ks_type == KSTAT_TYPE_IO && strcmp(ksp->ks_class, "disk") == 0)
+        {
+            kstat_read(kc, ksp, &kio);
+	    tdisk.reads += kio.reads;
+	    tdisk.writes += kio.writes;
+	    tdisk.write_bytes += kio.nwritten;
+	    tdisk.read_bytes += kio.nread;            
+        }
+    }
+#else /* sun */
     for (fsdir = gx.fslist; *fsdir; fsdir++) {
 	int e = sigar_file_system_usage_get(gx.sigar, *fsdir, &fsusage);
 	TR2(("get fs: %s, e: %d\n", *fsdir, e));
@@ -226,6 +256,7 @@ static void send_machine_metrics(SOCKET sock)
 	    tdisk.read_bytes += fsusage.disk.read_bytes;
 	}
     }
+#endif /* sun */
     TR2(("disk reads: %" FMT64 " writes: %" FMT64
 	 " rbytes: %" FMT64 " wbytes: %" FMT64 "\n",
 	 tdisk.reads, tdisk.writes, tdisk.read_bytes, tdisk.write_bytes));
@@ -933,6 +964,11 @@ int main(int argc, const char* const argv[])
 	if (0 != (e = apr_proc_detach(1))) 
 	    gpmon_fatalx(FLINE, e, "apr_proc_detach failed");
     }
+
+#if defined (sun)
+    if (NULL == (kc = kstat_open()))
+        gpmon_fatal(FLINE, "failed to open kstat");
+#endif /* sun */
 
     gx_main(port, signature);
     return 0;
