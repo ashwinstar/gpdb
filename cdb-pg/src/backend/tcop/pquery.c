@@ -283,9 +283,9 @@ ProcessQuery(Portal portal,
 			if (candidateForAutoStats) 
 			{
 				VacuumStmt *analyzeStmt = NULL;
-				RangeVar   *relation = makeRangeVar(get_namespace_name(relationOid), get_rel_name(relationOid));
+				RangeVar   *relation = makeRangeVar(get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid));
 
-				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on tableoid=%d.",(uint) queryDesc->es_processed, (uint) gp_autostats_onchange_threshold, relationOid);  
+				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on table=%s.%s, oid=%d",(uint) queryDesc->es_processed, (uint) gp_autostats_onchange_threshold, get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
 
 				analyzeStmt = makeNode(VacuumStmt);
 	   
