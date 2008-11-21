@@ -40,6 +40,6 @@ esac
 
 # execute whatever was given to us
 if [ "$#" -gt 0 ]
-then $*
+then eval $*
 else env
 fi
