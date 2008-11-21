@@ -28,17 +28,17 @@
  * otimers: a pointer to an itmers struct to contain the old timer values.  If
  * 		NULL, the old timer valuess are not preserved.
  *
- * Returns -1 if an error is encountered; 0 if successful.
+ * Errors from setitimer are not expected and are handled using Assert (as in
+ * PGSempahoreLockTimed).
  */
-int
+void
 resetTimers(struct itimers *otimers)
 {
+	int err;
 	struct itimerval xtimer;				/* Zero timer for disabling */
 	struct itimerval *p_rtimer = NULL;		/* ITIMER_REAL */
 	struct itimerval *p_vtimer = NULL;		/* ITIMER_VIRTUAL */
 	struct itimerval *p_ptimer = NULL;		/* ITIMER_PROF */
-
-	int rc = -1;
 
 	if (otimers != NULL)
 	{
@@ -59,29 +59,19 @@ resetTimers(struct itimers *otimers)
 	timerclear(&xtimer.it_interval);
 	timerclear(&xtimer.it_value);
 
-	if (setitimer(ITIMER_REAL, &xtimer, p_rtimer) < 0)
-	{
-		elog( ERROR, "Unable to fetch/clear ITIMER_REAL" );
-	}
-	else if (setitimer(ITIMER_VIRTUAL, &xtimer, p_vtimer) < 0)
-	{
-		elog( ERROR, "Unable to fetch/clear ITIMER_VIRTUAL" );
-	}
-	else if (setitimer(ITIMER_REAL, &xtimer, p_ptimer) < 0)
-	{
-		elog( ERROR, "Unable to fetch/clear ITIMER_PROF" );
-	}
-	else
-	{
-		rc = 0;
-	}
+	err = setitimer(ITIMER_REAL, &xtimer, p_rtimer);
+	Assert(err == 0);
+
+	err = setitimer(ITIMER_VIRTUAL, &xtimer, p_vtimer);
+	Assert(err == 0);
+
+	err = setitimer(ITIMER_REAL, &xtimer, p_ptimer);
+	Assert(err == 0);
 
 	/*
 	 * Restore signal mask.
 	 */
 	PG_SETMASK(&UnBlockSig);
-
-	return rc;
 }
 
 
@@ -94,16 +84,18 @@ resetTimers(struct itimers *otimers)
  * timers: a reference to the itimers struct passed to the resetTimers
  * 		function.
  *
- * Returns -1 if an error is encountered; 0 if successful.
+ * Errors from setitimer are not expected and are handled using Assert (as in
+ * PGSempahoreLockTimed).
  */
-int
+void
 restoreTimers(const struct itimers *timers)
 {
+	int err;
+
 	if (timers == NULL)
 	{
 		/* Coding error! */
 		elog( FATAL, "Old timer values not provided" );
-		return -1;
 	}
 
 	/*
@@ -111,29 +103,18 @@ restoreTimers(const struct itimers *timers)
 	 */
 	if (timerisset(&timers->rtimer.it_interval) || timerisset(&timers->rtimer.it_value))
 	{
-		if (setitimer(ITIMER_REAL, &timers->rtimer, NULL) < 0)
-		{
-			elog( ERROR, "Unable to restore ITIMER_REAL" );
-			return -1;
-		}
+		err = setitimer(ITIMER_REAL, &timers->rtimer, NULL);
+		Assert(err == 0);
 	}
 	if (timerisset(&timers->vtimer.it_interval) || timerisset(&timers->vtimer.it_value))
 	{
-		if (setitimer(ITIMER_VIRTUAL, &timers->vtimer, NULL) < 0)
-		{
-			elog( ERROR, "Unable to restore ITIMER_VIRTUAL" );
-			return -1;
-		}
+		err = setitimer(ITIMER_VIRTUAL, &timers->vtimer, NULL);
+		Assert(err == 0);
 	}
 	if (timerisset(&timers->ptimer.it_interval) || timerisset(&timers->ptimer.it_value))
 	{
-		if (setitimer(ITIMER_PROF, &timers->ptimer, NULL) < 0)
-		{
-			elog( ERROR, "Unable to restore ITIMER_PROF" );
-			return -1;
-		}
+		err = setitimer(ITIMER_PROF, &timers->ptimer, NULL);
+		Assert(err == 0);
 	}
-
-	return 0;
 }
 

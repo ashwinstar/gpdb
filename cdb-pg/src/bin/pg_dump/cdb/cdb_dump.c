@@ -1413,6 +1413,7 @@ void* threadProc(void *arg)
 	PQExpBuffer Qry;
 	PGresult*	pRes;
 	int			sock;
+	fd_set		target_mask;
 	fd_set		input_mask;
 	bool		bSentCancelMessage;
 	BackupStateMachine* pState;
@@ -1491,8 +1492,8 @@ void* threadProc(void *arg)
 
 	/* Now wait for notifications from the back end */
 	sock = PQsocket( pConn );
-	FD_ZERO( &input_mask );
-	FD_SET( sock, &input_mask );
+	FD_ZERO( &target_mask );
+	FD_SET( sock, &target_mask );
 
 	bSentCancelMessage = false;
 
@@ -1533,7 +1534,7 @@ void* threadProc(void *arg)
 
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
-
+		FD_COPY( &target_mask, &input_mask );
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			g_b_SendCancelMessage = true;

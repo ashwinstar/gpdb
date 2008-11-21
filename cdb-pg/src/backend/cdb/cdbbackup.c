@@ -19,6 +19,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbbackup.h"
+#include "cdb/cdbtimer.h"
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 
@@ -74,6 +75,8 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	int			len;
 	int			instid;			/* dispatch node */
 	bool		is_compress;
+	itimers 	savetimers;
+
 
 	getGpId();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
@@ -151,6 +154,9 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		pszDBName = "";
 	if (pszUserName == NULL)
 		pszUserName = "";
+
+	/* Clear process interval timers */
+	resetTimers(&savetimers);
 
 	/* Fork off gp_dump_agent	*/
 #ifdef _WIN32
@@ -263,6 +269,10 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		_exit(127);
 	}
 
+
+	/* Restore process interval timers */
+	restoreTimers(&savetimers);
+
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 
 	return DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName));
@@ -302,6 +312,8 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				len_name;
 	bool		is_decompress;
 	bool		is_file_compressed; /* is the dump file ending with '.gz'*/
+	itimers 	savetimers;
+
 	getGpId();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
@@ -398,6 +410,9 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 		pszDBName = "";
 	if (pszUserName == NULL)
 		pszUserName = "";
+
+	/* Clear process interval timers */
+	resetTimers(&savetimers);
 
 	/* Fork off gp_restore_agent  */
 #ifdef _WIN32
@@ -512,6 +527,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 						"/bin/sh", pszCmdLine)));
 		_exit(127);
 	}
+
+
+	/* Restore process interval timers */
+	restoreTimers(&savetimers);
 
 	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 

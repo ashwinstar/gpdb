@@ -21,7 +21,7 @@ typedef struct itimers {
 	struct itimerval ptimer;		/* ITIMER_PROF */
 } itimers;
 
-int resetTimers(struct itimers *timers);
-int restoreTimers(const struct itimers *timers);
+void resetTimers(struct itimers *timers);
+void restoreTimers(const struct itimers *timers);
 
 #endif /* CDBTIMER_H_ */

@@ -522,25 +522,13 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		file->u.exec.shexec = shexec;
 
 		/* Clear process interval timers */
-		if (resetTimers(&savetimers) < 0)
-		{
-			*response_code = 500;
-			*response_string = "Internal Server Error";
-			free(file);
-			return NULL;
-		}
+		resetTimers(&savetimers);
 
 		file->u.exec.fp = popen(shexec, "r");
 		save_errno = errno;
 
 		/* Restore process interval timers */
-		if (restoreTimers(&savetimers) < 0)
-		{
-			*response_code = 500;
-			*response_string = "Internal Server Error";
-			free(file);
-			return NULL;
-		}
+		restoreTimers(&savetimers);
 
 		if (file->u.exec.fp == NULL)
 		{
