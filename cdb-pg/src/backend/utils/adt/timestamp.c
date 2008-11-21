@@ -4276,7 +4276,7 @@ timestamp_zone(PG_FUNCTION_ARGS)
  	int			type,
  				val;
  	pg_tz	   *tzp;
-  
+
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		PG_RETURN_TIMESTAMPTZ(timestamp);
@@ -4293,7 +4293,7 @@ timestamp_zone(PG_FUNCTION_ARGS)
  										   VARSIZE(zone) - VARHDRSZ,
  										   false);
  	type = DecodeSpecial(0, lowzone, &val);
-  
+
  	if (type == TZ || type == DTZ)
  	{
  		tz = -(val * 60);
@@ -4309,8 +4309,8 @@ timestamp_zone(PG_FUNCTION_ARGS)
  		{
  			/* Apply the timezone change */
  			struct pg_tm tm;
- 			fsec_t		fsec;
-  
+ 			fsec_t		fsec = 0;
+
  			if (timestamp2tm(timestamp, NULL, &tm, &fsec, NULL, tzp) != 0)
  				ereport(ERROR,
  						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -4453,10 +4453,10 @@ timestamptz_zone(PG_FUNCTION_ARGS)
  	int			type,
  				val;
  	pg_tz	   *tzp;
-  
+
   	if (TIMESTAMP_NOT_FINITE(timestamp))
   		PG_RETURN_TIMESTAMP(timestamp);
-  
+
   	/*
  	 * Look up the requested timezone.  First we look in the date token table
  	 * (to handle cases like "EST"), and if that fails, we look in the
@@ -4469,7 +4469,7 @@ timestamptz_zone(PG_FUNCTION_ARGS)
  										   VARSIZE(zone) - VARHDRSZ,
  										   false);
  	type = DecodeSpecial(0, lowzone, &val);
-  
+
  	if (type == TZ || type == DTZ)
  	{
  		tz = val * 60;
@@ -4485,8 +4485,8 @@ timestamptz_zone(PG_FUNCTION_ARGS)
  		{
  			/* Apply the timezone change */
  			struct pg_tm tm;
- 			fsec_t		fsec;
-  
+ 			fsec_t		fsec = 0;
+
  			if (timestamp2tm(timestamp, &tz, &tm, &fsec, NULL, tzp) != 0)
  				ereport(ERROR,
  						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -4557,7 +4557,7 @@ interval_amalg(PG_FUNCTION_ARGS)
 {
 	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
-	
+
 	PG_RETURN_ARRAYTYPE_P(interval_amalg_demalg(aTransArray, bTransArray,
 												true));
 }
@@ -4567,7 +4567,7 @@ interval_demalg(PG_FUNCTION_ARGS)
 {
 	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
 	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
-	
+
 	PG_RETURN_ARRAYTYPE_P(interval_amalg_demalg(aTransArray, bTransArray,
 												false));
 }
@@ -4619,7 +4619,7 @@ interval_amalg_demalg(ArrayType  *aTransArray,
 														 IntervalPGetDatum(&bSumMiX)));
 		aN.time += bN.time;
 	}
-	
+
 	else
 	{
 		newsummi = DatumGetIntervalP(DirectFunctionCall2(interval_mi,

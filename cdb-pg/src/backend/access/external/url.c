@@ -6,6 +6,7 @@
 
 #include <stdarg.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include "access/fileam.h"
 #include "access/heapam.h"
