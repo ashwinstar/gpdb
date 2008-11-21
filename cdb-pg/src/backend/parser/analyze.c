@@ -4660,8 +4660,9 @@ validate_range_partition(partValidationState *vstate)
 					 errmsg("invalid use of %s boundary "
 							"specification in partition clause",
 							specTName),
-					 parser_errposition(vstate->pstate, spec->location)));
-			
+						 /* MPP-4249: use value spec location if have one */
+			 parser_errposition(vstate->pstate, 
+								((PartitionValuesSpec*)spec)->location)));
 		}
 	}
 	else
@@ -5668,7 +5669,14 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 									specTName,
 									vstate->namBuf,
 									vstate->at_depth),
-							 parser_errposition(pstate, pBSpec->location)));
+						 /* MPP-4249: use value spec location if have one */
+						 ((IsA(vstate->spec, PartitionValuesSpec)) ?
+			  parser_errposition(pstate, 
+							 ((PartitionValuesSpec*)vstate->spec)->location) :
+						  /* else use boundspec */
+			  parser_errposition(pstate, 
+							 ((PartitionBoundSpec*)vstate->spec)->location) 
+								 )));
 				}
 				break;
 			case PARTTYP_RANGE:
@@ -6025,7 +6033,14 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 								"in partition%s of type RANGE%s",
 								namBuf,
 								at_depth),
-						 parser_errposition(pstate, pBSpec->location)));
+						 /* MPP-4249: use value spec location if have one */
+						 ((IsA(pBSpec, PartitionValuesSpec)) ?
+			  parser_errposition(pstate, 
+								 ((PartitionValuesSpec*)pBSpec)->location) :
+						  /* else use invalid parsestate/postition */
+						  parser_errposition(NULL, 0) 
+								 )
+								));
 			}
 
 			Assert(IsA(pBSpec, PartitionBoundSpec));
