@@ -267,6 +267,7 @@ class gpload:
             sys.exit(2)
         try:
             self.config = yaml.load(f.read())
+            print self.config
         except yaml.scanner.ScannerError,e:
             sys.stderr.write("YAML error in config file.\n%s\n"%e)
             sys.exit(2)
@@ -471,9 +472,16 @@ class gpload:
             self.from_columns = []
             for d in columns:
                 if type(d)!=dict:
-                    self.log(0,"gpload:input:columns must be a sequence of mappings.")
+                    self.log(0,"gpload:input:columns must be a sequence of mappings. Type is %s")
                     sys.exit(2)
                 key = d.keys()[0]
+                if d[key] == None:
+                    self.log(2, 'getting source column data type from target')
+                    for name, typ, mapto in self.into_columns:
+                        if name == key:
+                            d[key] = typ
+                            break
+
                 self.from_columns.append([key,d[key],None])
         else:
             self.from_columns = self.into_columns
