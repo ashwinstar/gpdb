@@ -105,7 +105,7 @@ DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 DEFPORT=5432
 CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred
 
-ifeq (true, ${PG_LANG})
+ifneq (false, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python
 ifdef TCL_CFG
 CONFIGFLAGS+= --with-tcl-config=${TCL_CFG}

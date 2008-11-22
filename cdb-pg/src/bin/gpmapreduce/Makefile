@@ -28,6 +28,10 @@ all: submake-libpq gpmapreduce
 gpmapreduce: $(OBJS) $(libpq_builddir)/libpq.a
 	$(CC) $(CFLAGS) $(OBJS) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
+internal:
+	rm $(SRCDIR)/mapred.o
+	$(MAKE) CFLAGS="-DINTERNAL_BUILD" all
+
 check:
 	$(MAKE) -C test
 
