@@ -96,6 +96,9 @@ static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
 static bool
 contains_nonconstant_walker(Node *node, void *context)
 {
+	if (node == NULL)
+		return false;
+
     if (IsA(node, Const))
         return false;
     if (contain_volatile_functions(node))
