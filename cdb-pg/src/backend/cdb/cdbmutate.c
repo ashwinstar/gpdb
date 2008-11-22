@@ -96,8 +96,6 @@ static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
 static bool
 contains_nonconstant_walker(Node *node, void *context)
 {
-	if (node == NULL)
-		return false;
     if (IsA(node, Const))
         return false;
     if (contain_volatile_functions(node))
@@ -2000,6 +1998,36 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	return plan;
 }
 
+static bool can_zap_result(Result *res)
+{
+	ListCell *lc;
+
+	if(!res->plan.lefttree
+	  || !IsA(res->plan.lefttree, Append)
+	  || res->resconstantqual
+	  || res->hashFilter
+	  )
+		return false;
+
+	foreach(lc, res->plan.targetlist)
+	{
+		TargetEntry *te = (TargetEntry *) lfirst(lc);
+		if(!IsA(te->expr, Var))
+		{
+			if(IsA(te->expr, FuncExpr))
+			{
+				FuncExpr *fe = (FuncExpr *) te->expr;
+				if(fe->funcretset)
+					return false;
+			}
+
+			return false;
+		}
+	}
+
+	return true;
+}
+
 Plan *zap_trivial_result(Plan *plan)
 {
 	if(plan == NULL)
@@ -2042,9 +2070,9 @@ Plan *zap_trivial_result(Plan *plan)
 	if(IsA(plan, Result))
 	{
 		Result *res = (Result *) plan;
-		plan->lefttree = zap_trivial_result(plan->lefttree);
 
-		if(plan->lefttree && IsA(plan->lefttree, Append) && !res->resconstantqual && !res->hashFilter)
+		plan->lefttree = zap_trivial_result(plan->lefttree);
+		if(can_zap_result(res))
 		{
 			Append *app = (Append *) plan->lefttree;
 			app->plan.targetlist = plan->targetlist;
