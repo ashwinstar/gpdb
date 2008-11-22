@@ -361,7 +361,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 													below_outer_join,
 													&rightids, &right_inners);
 				*qualscope = bms_union(leftids, rightids);
-				*inner_join_rels = *qualscope;
+				*inner_join_rels = bms_copy(*qualscope);
 				/* Inner join adds no restrictions for quals */
 				nonnullable_rels = NULL;
 				break;
