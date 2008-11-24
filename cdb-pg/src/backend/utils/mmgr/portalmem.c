@@ -1119,7 +1119,7 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 	Assert(gpmon_qlog_status >= GPMON_QLOG_STATUS_SILENT && gpmon_qlog_status <= GPMON_QLOG_STATUS_ERROR);
 
-	if (Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
+	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
 	{
 		if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT ||
 		   gpmon_qlog_status == GPMON_QLOG_STATUS_START ||
@@ -1144,8 +1144,10 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
 		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
-		if (gp_enable_gpperfmon)
-			gpmon_send(&p->gpmon_pkt);
+                elog(DEBUG2, "gpperfmon - query %d-%d-%d status changed from %d to %d",
+                     p->gpmon_pkt.u.qlog.key.tmid, p->gpmon_pkt.u.qlog.key.ssid,
+                     p->gpmon_pkt.u.qlog.key.ccnt, p->portal_status, s);
+                gpmon_send(&p->gpmon_pkt);
 	}
 
 	p->portal_status = s;
