@@ -3087,11 +3087,11 @@ CopyFromDispatch(CopyState cstate)
 				}
 				
 
-				/*
-				 * try to parse and convert the data line attributes.
-				 */
 				PG_TRY();
 				{
+					/*
+					 * parse and convert the data line attributes.
+					 */
 					if (cstate->csv_mode)
 						CopyReadAttributesCSV(cstate, nulls, attr_offsets, num_phys_attrs, attr);
 					else
@@ -3105,143 +3105,112 @@ CopyFromDispatch(CopyState cstate)
 							   	 in_functions, typioparams,
 								 values);
 
-				}
-				PG_CATCH();
-				{
-					/* Got here? missing or extra column error occurred */
-					COPY_HANDLE_ERROR;
-				}
-				PG_END_TRY();
-				
-				if(cur_row_rejected)
-				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
-					QD_GOTO_NEXT_ROW;						
-				}
-
-				/*
-				 * Now compute defaults for only:
-				 * 1 - the distribution column,
-				 * 2 - any other column with a non-constant default expression
-				 * (such as a function) that is, of course, if these columns 
-				 * not provided by the input data.	
-				 * Anything not processed here or above will remain NULL.
-				 */
-				for (i = 0; i < num_defaults; i++)
-				{
-					bool compute_default = false;
-
-					/* check 1: is this default for a distribution column? */
-					for (p_index = 0; p_index < p_nattrs; p_index++)
+					/*
+					 * Now compute defaults for only:
+					 * 1 - the distribution column,
+					 * 2 - any other column with a non-constant default expression
+					 * (such as a function) that is, of course, if these columns 
+					 * not provided by the input data.	
+					 * Anything not processed here or above will remain NULL.
+					 */
+					for (i = 0; i < num_defaults; i++)
 					{
-						h_attnum = policy->attrs[p_index];	
-						
-						if(h_attnum - 1 == defmap[i])
-							compute_default = true;
-					}
-					
-					/* check 2: is this a default function? (non-constant default) */
-					if(defexprs[i]->expr->type != T_Const)
-						compute_default = true;
-					
-					if(compute_default)
-					{
-						char *string;
-						
-						PG_TRY();
+						bool compute_default = false;
+	
+						/* check 1: is this default for a distribution column? */
+						for (p_index = 0; p_index < p_nattrs; p_index++)
 						{
+							h_attnum = policy->attrs[p_index];	
+							
+							if(h_attnum - 1 == defmap[i])
+								compute_default = true;
+						}
+						
+						/* check 2: is this a default function? (non-constant default) */
+						if(defexprs[i]->expr->type != T_Const)
+							compute_default = true;
+						
+						if(compute_default)
+						{
+							char *string;
+							
 							values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
 															 &isnull, NULL);
-						}
-						PG_CATCH();
-						{
-							/* TODO: is an error really possible here? */
-							COPY_HANDLE_ERROR;
-						}
-						PG_END_TRY();
-						
-						if(cur_row_rejected)
-						{
-							IF_REJECT_LIMIT_REACHED_ABORT;
-							QD_GOTO_NEXT_ROW;							
-						}
-
-						/*
-						 * prepare to concatinate next value:
-						 * remove eol characters from end of line buf
-						 */
-						truncateEol(&cstate->line_buf, cstate->eol_type);
-						
-						if (isnull)
-						{
-							appendStringInfo(&cstate->line_buf, "%c%s", cstate->delim[0], cstate->null_print);
-						}
-						else
-						{
-							nulls[defmap[i]] = false;	
+	
+							/*
+							 * prepare to concatinate next value:
+							 * remove eol characters from end of line buf
+							 */
+							truncateEol(&cstate->line_buf, cstate->eol_type);
 							
-							appendStringInfo(&cstate->line_buf, "%c", cstate->delim[0]); /* write the delimiter */
-											
-							string = DatumGetCString(FunctionCall3(&out_functions[defmap[i]],
-																   values[defmap[i]],
-																   ObjectIdGetDatum(typioparams[defmap[i]]),
-																   Int32GetDatum(attr[defmap[i]]->atttypmod)));
-							if (cstate->csv_mode)
+							if (isnull)
 							{
-								CopyAttributeOutCSV(cstate, string,
-													false, /*force_quote[attnum - 1],*/
-													list_length(cstate->attnumlist) == 1);
+								appendStringInfo(&cstate->line_buf, "%c%s", cstate->delim[0], cstate->null_print);
 							}
 							else
-								CopyAttributeOutText(cstate, string);								
-						}
+							{
+								nulls[defmap[i]] = false;	
+								
+								appendStringInfo(&cstate->line_buf, "%c", cstate->delim[0]); /* write the delimiter */
 												
-						/* re-add the eol characters */
-						concatenateEol(cstate);
-					}
-					
-				}
-
-				/* lock partition */
-				if (estate->es_result_partitions)
-				{
-					PartitionNode *n = estate->es_result_partitions;
-					MemoryContext cxt_save;
-					/* lazily initialised */
-					if (part_values == NULL)
-					{
-						List *pattnums = get_partition_attrs(n);
-						ListCell *lc;
-						int ii = 0;
-
-						cxt_save = MemoryContextSwitchTo(oldcontext);
-
-						part_values = palloc0(num_phys_attrs * sizeof(Datum));
-						part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
-						part_typio = palloc(num_phys_attrs * sizeof(Oid));
-						part_infuncs = 
-							palloc(num_phys_attrs * sizeof(FmgrInfo));
-						part_attnum = palloc(num_phys_attrs * 
-											 sizeof(AttrNumber));
-						part_attnums = list_length(pattnums);
-						MemoryContextSwitchTo(cxt_save);
-
-						foreach(lc, pattnums)
-						{
-							AttrNumber attnum = (AttrNumber)lfirst_int(lc);
-							Oid in_func_oid;
-
-							getTypeInputInfo(attr[attnum - 1]->atttypid,
-											 &in_func_oid,
-											 &part_typio[attnum - 1]);
-							fmgr_info(in_func_oid, &part_infuncs[attnum - 1]);
-							part_attnum[ii++] = attnum;
+								string = DatumGetCString(FunctionCall3(&out_functions[defmap[i]],
+																	   values[defmap[i]],
+																	   ObjectIdGetDatum(typioparams[defmap[i]]),
+																	   Int32GetDatum(attr[defmap[i]]->atttypmod)));
+								if (cstate->csv_mode)
+								{
+									CopyAttributeOutCSV(cstate, string,
+														false, /*force_quote[attnum - 1],*/
+														list_length(cstate->attnumlist) == 1);
+								}
+								else
+									CopyAttributeOutText(cstate, string);								
+							}
+													
+							/* re-add the eol characters */
+							concatenateEol(cstate);
 						}
+						
 					}
-					MemSet(part_values, 0, num_phys_attrs * sizeof(Datum));
-					
-					PG_TRY();
+	
+					/* lock partition */
+					if (estate->es_result_partitions)
 					{
+						PartitionNode *n = estate->es_result_partitions;
+						MemoryContext cxt_save;
+						/* lazily initialised */
+						if (part_values == NULL)
+						{
+							List *pattnums = get_partition_attrs(n);
+							ListCell *lc;
+							int ii = 0;
+	
+							cxt_save = MemoryContextSwitchTo(oldcontext);
+	
+							part_values = palloc0(num_phys_attrs * sizeof(Datum));
+							part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
+							part_typio = palloc(num_phys_attrs * sizeof(Oid));
+							part_infuncs = 
+								palloc(num_phys_attrs * sizeof(FmgrInfo));
+							part_attnum = palloc(num_phys_attrs * 
+												 sizeof(AttrNumber));
+							part_attnums = list_length(pattnums);
+							MemoryContextSwitchTo(cxt_save);
+	
+							foreach(lc, pattnums)
+							{
+								AttrNumber attnum = (AttrNumber)lfirst_int(lc);
+								Oid in_func_oid;
+	
+								getTypeInputInfo(attr[attnum - 1]->atttypid,
+												 &in_func_oid,
+												 &part_typio[attnum - 1]);
+								fmgr_info(in_func_oid, &part_infuncs[attnum - 1]);
+								part_attnum[ii++] = attnum;
+							}
+						}
+						MemSet(part_values, 0, num_phys_attrs * sizeof(Datum));
+						
 						attr_get_key(cstate, cdbCopy,
 									 original_lineno_for_qe,
 									 target_seg,
@@ -3250,42 +3219,27 @@ CopyFromDispatch(CopyState cstate)
 									 attr, attr_offsets, nulls,
 									 part_infuncs, part_typio,
 									 part_values);
-					}
-					PG_CATCH();
-					{
-						/* Got here? datum conversion error */
-						COPY_HANDLE_ERROR;
-					}
-					PG_END_TRY();
-
-					if(cur_row_rejected)
-					{
-						IF_REJECT_LIMIT_REACHED_ABORT;
-						QD_GOTO_NEXT_ROW;	
-					}
-
-					/* values_get_partition() calls palloc() */
-					cxt_save = MemoryContextSwitchTo(oldcontext);
-
-					/* partition might not exist */
-					PG_TRY();
-					{
+	
+						/* values_get_partition() calls palloc() */
+						cxt_save = MemoryContextSwitchTo(oldcontext);
+	
 						resultRelInfo = values_get_partition(part_values,
 															 nulls, 
-														 	 tupDesc, estate);
+															 tupDesc, estate);
+
+						MemoryContextSwitchTo(cxt_save);
 					}
-					PG_CATCH();
-					{
-						COPY_HANDLE_ERROR;
-					}
-					PG_END_TRY();
-					MemoryContextSwitchTo(cxt_save);
-						
-					if (cur_row_rejected)
-					{
-						IF_REJECT_LIMIT_REACHED_ABORT;
-						QD_GOTO_NEXT_ROW;							
-					}
+				}
+				PG_CATCH();
+				{
+					COPY_HANDLE_ERROR;
+				}
+				PG_END_TRY();
+				
+				if(cur_row_rejected)
+				{
+					IF_REJECT_LIMIT_REACHED_ABORT;
+					QD_GOTO_NEXT_ROW;						
 				}
 
 				/*
@@ -3895,11 +3849,61 @@ CopyFrom(CopyState cstate)
 						CopyReadAttributesCSV(cstate, nulls, attr_offsets, num_phys_attrs, attr);
 					else
 						CopyReadAttributesText(cstate, nulls, attr_offsets, num_phys_attrs, attr);
+				
+					/*
+					 * Loop to read the user attributes on the line.
+					 */
+					foreach(cur, cstate->attnumlist)
+					{
+						int			attnum = lfirst_int(cur);
+						int			m = attnum - 1;
+						char	   *string;
+	
+						string = cstate->attribute_buf.data + attr_offsets[m];
+	
+						if (nulls[m])
+							isnull = true;
+						else
+							isnull = false;
+	
+						if (cstate->csv_mode && isnull && cstate->force_notnull_flags[m])
+						{
+							string = cstate->null_print;		/* set to NULL string */
+							isnull = false;
+						}
+	
+						/* we read an SQL NULL, no need to do anything */
+						if (!isnull)
+						{
+							cstate->cur_attname = NameStr(attr[m]->attname);
+							
+							values[m] = InputFunctionCall(&in_functions[m],
+														  string,
+														  typioparams[m],
+														  attr[m]->atttypmod);
+																					
+							nulls[m] = false;
+							cstate->cur_attname = NULL;
+						}
+					}
+	
+					/*
+					 * Now compute and insert any defaults available for the columns
+					 * not provided by the input data.	Anything not processed here or
+					 * above will remain NULL.
+					 */
+					for (i = 0; i < num_defaults; i++)
+					{
+						values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
+														 &isnull, NULL);
+						
+						if (!isnull)
+							nulls[defmap[i]] = false;
+					}
 				}
 				PG_CATCH();
 				{
-					/* Got here? missing or extra column error occured */
-					COPY_HANDLE_ERROR;
+					COPY_HANDLE_ERROR; /* SREH */
 				}
 				PG_END_TRY();
 				
@@ -3907,91 +3911,6 @@ CopyFrom(CopyState cstate)
 				{
 					IF_REJECT_LIMIT_REACHED_ABORT;
 					QE_GOTO_NEXT_ROW;						
-				}
-				
-				/*
-				 * Loop to read the user attributes on the line.
-				 */
-				foreach(cur, cstate->attnumlist)
-				{
-					int			attnum = lfirst_int(cur);
-					int			m = attnum - 1;
-					char	   *string;
-
-					string = cstate->attribute_buf.data + attr_offsets[m];
-
-					if (nulls[m])
-						isnull = true;
-					else
-						isnull = false;
-
-					if (cstate->csv_mode && isnull && cstate->force_notnull_flags[m])
-					{
-						string = cstate->null_print;		/* set to NULL string */
-						isnull = false;
-					}
-
-					/* we read an SQL NULL, no need to do anything */
-					if (!isnull)
-					{
-						cstate->cur_attname = NameStr(attr[m]->attname);
-						
-						PG_TRY();
-						{
-							values[m] = InputFunctionCall(&in_functions[m],
-														  string,
-														  typioparams[m],
-														  attr[m]->atttypmod);
-						}
-						PG_CATCH();
-						{
-							COPY_HANDLE_ERROR;
-						}
-						PG_END_TRY();
-						
-						if(cur_row_rejected)
-							break; /* get out of loop, don't parse next attributes */
-													
-						nulls[m] = false;
-						cstate->cur_attname = NULL;
-						
-					}
-				}
-				
-				/* if this row had an error in SREH mode, on to the next.. */
-				if(cur_row_rejected)
-				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
-					QE_GOTO_NEXT_ROW;	
-				}
-
-				/*
-				 * Now compute and insert any defaults available for the columns
-				 * not provided by the input data.	Anything not processed here or
-				 * above will remain NULL.
-				 */
-				for (i = 0; i < num_defaults; i++)
-				{
-					PG_TRY();
-					{
-						values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
-														 &isnull, NULL);
-					}
-					PG_CATCH();
-					{
-						/* TODO: is an error really possible here? */
-						COPY_HANDLE_ERROR;
-					}
-					PG_END_TRY();
-					
-					if (!isnull)
-						nulls[defmap[i]] = false;
-				}
-
-				if(cur_row_rejected)
-				{
-					IF_REJECT_LIMIT_REACHED_ABORT;
-					QE_GOTO_NEXT_ROW;							
 				}
 
 				/* 
