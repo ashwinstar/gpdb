@@ -632,6 +632,13 @@ class gpload:
                 if a[0] in map(lambda a:a[0],self.from_columns):
                     self.log(2, "mapping %s to itself" % a[0])
                     a[2] = a[0]
+                else:
+                    # There is a difference between the input columns and
+                    # the table's column layout. We do not have a mapping
+                    # from the user so give up
+                    self.log(0, "Table column %s not found in input " % a[0] +
+                                "column schema")
+                    sys.exit(2)
         else:
             for key,value in mapping.iteritems():
                 if type(key)!=str or type(value)!=str:
