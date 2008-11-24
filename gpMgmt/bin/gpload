@@ -384,10 +384,8 @@ class gpload:
         if not self.options.h:
             self.options.h = os.environ.get('PGHOST')
         if not self.options.h or len(self.options.h) == 0:
-            self.log(0,"You need to specify your host name with the -h " +
-                       "option or in your configuration file or in your " +
-                       "environment as PGHOST.")
-            sys.exit(2)
+            self.log(2), "no host supplied, defaulting to localhost"
+            self.options.h = "localhost"
 
         # Port to connect to
         if not self.options.p:
@@ -576,6 +574,8 @@ class gpload:
                             d[key] = typ
                             break
 
+                # Mark this column as having no mapping, which is important
+                # for do_insert()
                 self.from_columns.append([key,d[key],None])
         else:
             self.from_columns = self.into_columns
@@ -617,6 +617,7 @@ class gpload:
             i = [name,ct,None]
             self.into_columns.append(i)
             self.into_columns_dict[name] = i
+            self.log(2, "found input column: " + str(i))
         if count==0:
             self.log(0,'Table %s does not exist.'%self.table)
             sys.exit(2)
@@ -624,8 +625,12 @@ class gpload:
     def read_mapping(self):
         mapping = self.getconfig('gpload:output:mapping',dict,None)
         if mapping==None:
+            self.log(2, "No mapping found")
+            self.log(2, "looking at into columns " + str(self.into_columns)) 
+            self.log(2, "from " + str(self.from_columns))
             for a in self.into_columns:
                 if a[0] in map(lambda a:a[0],self.from_columns):
+                    self.log(2, "mapping %s to itself" % a[0])
                     a[2] = a[0]
         else:
             for key,value in mapping.iteritems():
@@ -651,7 +656,10 @@ class gpload:
         sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]),self.from_columns))
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
-        sql += "delimiter%s"%quote(self.getconfig('gpload:input:delimiter',str))
+        if self.getconfig('gpload:input:delimiter', str, False):
+            sql += "delimiter%s" % \
+                quote(self.getconfig('gpload:input:delimiter',str))
+
         if self.getconfig('gpload:input:header',bool,False):
             sql += "header "
         if format=='csv':
@@ -705,6 +713,7 @@ class gpload:
         """
         Handle the INSERT case
         """
+        self.log(2, "into columns " + str(self.into_columns))
         cols = filter(lambda a:a[2]!=None,self.into_columns)
         sql = 'insert into %s'%dest
         sql += '(%s)'%','.join(map(lambda a:a[0],cols))
