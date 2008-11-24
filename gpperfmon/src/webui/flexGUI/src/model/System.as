@@ -1,6 +1,9 @@
 package model
 {
 	import mx.collections.ArrayCollection;
+	import mx.collections.Sort;
+	import mx.collections.SortField;
+	import mx.collections.XMLListCollection;
 	
 	import util.Debug;
 	import util.MiscUtils;
@@ -13,11 +16,17 @@ package model
 		public function System(_mdl:GPPerfMonModelLocator):void
 		{
 			mdl = _mdl;	
+			
+			// Setup the sort on XMLList
+			var s:Sort = new Sort();
+			s.fields = [new SortField("@name", true, true)];
+			systemNowXML.sort = s;
 		}
 		
 		public function systemNow(systemData:XML):void
 		{
-			systemNowXML = systemData;
+			// Assign the XML to a XMLListCollection for display
+			systemNowXML.source = systemData.host;
 			
 			var newVals:SystemSample = new SystemSample;
 			
@@ -73,10 +82,7 @@ package model
 			newVals.divideBy(count);
 			
 			// Set the latest time based on the sample time
-			mdl.session.mostRecentTick = newVals.sample_time;
-			
-			if (numHosts != count)
-			  numHosts = count;			  			
+			mdl.session.mostRecentTick = newVals.sample_time;	
 			
 			systemNowAgg = newVals;		
 			
@@ -84,6 +90,8 @@ package model
 			
 			populateLongerRollups();
 		}
+
+		//public function setXML
 
 		// Rolls up the latest samples into 1 minute buckets, and appends each 
 		// completed minute to the oneMinAggData array	
@@ -511,8 +519,7 @@ package model
 		// Stores the most recent system now info, aggregated across systems
 		public var systemNowAgg:SystemSample = null;
 		// Stores the raw XML of the most recent system now response
-		public var systemNowXML:XML = null;
-		public var numHosts:int = 0;
+		public var systemNowXML:XMLListCollection = new XMLListCollection();
 		
 		// Holds detailed date for a selected point in tine
 		public var selectedDataDetails:XML = null;

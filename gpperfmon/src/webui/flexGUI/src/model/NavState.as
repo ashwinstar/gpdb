@@ -36,8 +36,8 @@ package model
 		public var metricsList:Array = new Array(
 			"Active Queries", "Memory", "CPU", "Load", 
 			"Swap (in use)", "Swap (pages in/out)", 
-			"Disk I/O (packets)", "Disk I/O (MBytes)", 
-			"Network (packets)", "Network (MBytes)");
+			"Disk I/O (ops/s)", "Disk I/O (MB/s)", 
+			"Network (pkts/s)", "Network (MB/s)");
 		public var metricSelected:int = 0;
 				
 		// Which view on the query list page

@@ -5,10 +5,29 @@
 
 <mx:Script>
     <![CDATA[
+      import mx.collections.Sort;
+      import mx.collections.SortField;
       import model.GPPerfMonModelLocator;
+      import mx.collections.XMLListCollection;
   			
   	  [Bindable]
-	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
+	  
+	  private function sortComboChange(event:Event):void
+	  {
+	  	if (combo.selectedItem)
+	  	{
+	  		var val:String = combo.selectedItem.val;
+	  		var s:Sort = mdl.system.systemNowXML.sort;
+	  		
+	  		if (val == '@name')
+	  		   s.fields = [new SortField(val, true, true)];	
+	  		else
+	  		   s.fields = [new SortField(val, false, false, true)];	
+	  	
+			mdl.system.systemNowXML.refresh();
+	  	}	  	 
+	  }	
     ]]>
 </mx:Script>	
    
@@ -17,7 +36,23 @@
   <mx:SolidColor id="idle_clr" color="0xD8D8D8" alpha="1.0"/>
  
  <mx:HBox width="100%">
- 	<mx:Spacer width="150"/>
+ 	<mx:VBox width="150" horizontalAlign="left">
+ 		<mx:Label text="Sort by:"/>
+ 		<mx:ComboBox id="combo" labelField="label" change="sortComboChange(event)" rowCount="10" >
+ 			<mx:dataProvider>
+				<mx:Object label="Name" val="@name"/>
+				<mx:Object label="CPU User" val="cpu_user"/>
+				<mx:Object label="CPU System" val="cpu_sys"/>
+				<mx:Object label="CPU Idle" val="cpu_idle"/> 			
+				<mx:Object label="Used memory" val="mem_actual_used"/>
+				<mx:Object label="Free memory" val="mem_actual_free"/>
+				<mx:Object label="Disk read rate" val="disk_rb_rate"/> 
+				<mx:Object label="Disk write rate" val="disk_wb_rate"/> 
+				<mx:Object label="Net read rate" val="net_rb_rate"/> 
+				<mx:Object label="Net write rate" val="net_rb_rate"/> 
+ 			</mx:dataProvider>
+ 		</mx:ComboBox>
+ 	</mx:VBox>	
  	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart}"/>
  	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart2}"/>
  	<mx:Legend width="100%" verticalAlign="top" horizontalAlign="right" dataProvider="{myChart3}"/>
@@ -27,14 +62,14 @@
  <mx:Canvas id="canvas" width="100%" height="100%">
    <mx:HBox width="{canvas.width}" height="{canvas.height}">
   	 <mx:BarChart showDataTips="true" id="myChart0"
-  				dataProvider="{mdl.system.systemNowXML.host}" 
-  				width="150" height="{(mdl.system.numHosts*25)+100}" gutterLeft="150"
+  				dataProvider="{mdl.system.systemNowXML}" 
+  				width="150" height="{((mdl.system.systemNowXML.length)*25)+100}" gutterLeft="150"
   				gutterBottom="100">		
   		<mx:seriesFilters>
            <mx:Array/>
         </mx:seriesFilters>
         <mx:verticalAxis>
-            <mx:CategoryAxis id='cataxis0' dataProvider="{mdl.system.systemNowXML.host}" 
+            <mx:CategoryAxis id='cataxis0' dataProvider="{mdl.system.systemNowXML}" 
             	categoryField="@name"/>
         </mx:verticalAxis>
         <mx:horizontalAxis>
@@ -51,8 +86,8 @@
 		</mx:backgroundElements>
   	</mx:BarChart>	
 
-  	 <mx:BarChart showDataTips="true" id="myChart" width="100%" height="{(mdl.system.numHosts*25)+100}"
-  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
+  	 <mx:BarChart showDataTips="true" id="myChart" width="100%" height="{((mdl.system.systemNowXML.length)*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="100%">
 	  			<mx:BarSeries xField="cpu_user"  
@@ -72,7 +107,7 @@
         </mx:seriesFilters>
   		
         <mx:verticalAxis>
-            <mx:CategoryAxis id='cataxis1' dataProvider="{mdl.system.systemNowXML.host}" 
+            <mx:CategoryAxis id='cataxis1' dataProvider="{mdl.system.systemNowXML}" 
             	categoryField="@name"/>
         </mx:verticalAxis>
         <mx:horizontalAxis>
@@ -84,8 +119,8 @@
         
   	</mx:BarChart>	
 	
-  	 <mx:BarChart showDataTips="true" id="myChart2" width="100%" height="{(mdl.system.numHosts*25)+100}"
-  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
+  	 <mx:BarChart showDataTips="true" id="myChart2" width="100%" height="{((mdl.system.systemNowXML.length)*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="stacked">
 	  			<mx:BarSeries xField="mem_actual_used"  
@@ -102,7 +137,7 @@
         </mx:seriesFilters>
   		
         <mx:verticalAxis>
-            <mx:CategoryAxis id='cataxis2' dataProvider="{mdl.system.systemNowXML.host}" 
+            <mx:CategoryAxis id='cataxis2' dataProvider="{mdl.system.systemNowXML}" 
             	categoryField="@name"/>
         </mx:verticalAxis>
         <mx:horizontalAxis>
@@ -114,8 +149,8 @@
         
   	</mx:BarChart>
 
-  	<mx:BarChart showDataTips="true" id="myChart3" width="100%" height="{(mdl.system.numHosts*25)+100}"
-  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
+  	<mx:BarChart showDataTips="true" id="myChart3" width="100%" height="{((mdl.system.systemNowXML.length)*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="clustered">
 	  			<mx:BarSeries xField="disk_rb_rate"  
@@ -132,7 +167,7 @@
         </mx:seriesFilters>
   		
         <mx:verticalAxis>
-            <mx:CategoryAxis id='cataxis3' dataProvider="{mdl.system.systemNowXML.host}" 
+            <mx:CategoryAxis id='cataxis3' dataProvider="{mdl.system.systemNowXML}" 
             	categoryField="@name"/>
         </mx:verticalAxis>
         <mx:horizontalAxis>
@@ -144,15 +179,15 @@
         
   	</mx:BarChart>
 
-  	<mx:BarChart showDataTips="true" id="myChart4" width="100%" height="{(mdl.system.numHosts*25)+100}"
-  				dataProvider="{mdl.system.systemNowXML.host}" gutterBottom="100">
+  	<mx:BarChart showDataTips="true" id="myChart4" width="100%" height="{((mdl.system.systemNowXML.length)*25)+100}"
+  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100">
   		<mx:series>	 
   			<mx:BarSet type="clustered">
 	  			<mx:BarSeries xField="net_rb_rate"  
-	 						  displayName="Network reads rate">
+	 						  displayName="Net read rate">
 	 			</mx:BarSeries>  
 	  			<mx:BarSeries xField="net_wb_rate" 
-	  						  displayName="Network write rate">
+	  						  displayName="Net write rate">
 	  			</mx:BarSeries>	         				
   			</mx:BarSet>     
   		</mx:series>
@@ -162,7 +197,7 @@
         </mx:seriesFilters>
   		
         <mx:verticalAxis>
-            <mx:CategoryAxis id='cataxis4' dataProvider="{mdl.system.systemNowXML.host}" 
+            <mx:CategoryAxis id='cataxis4' dataProvider="{mdl.system.systemNowXML}" 
             	categoryField="@name"/>
         </mx:verticalAxis>
         <mx:horizontalAxis>

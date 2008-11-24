@@ -2,7 +2,6 @@ package model
 {
 	import flash.events.TimerEvent;
 	import flash.utils.Timer;
-	
 	import mx.collections.ArrayCollection;
 	import mx.controls.Alert;
 	import mx.events.CloseEvent;
@@ -215,6 +214,9 @@ package model
 
         // What is the state of the connection?
         public var connectionStatus:String = 'Connected';
+		
+		// What is the application URL?
+		public var appURL:String = '';
 		
 		////////////////////////////////////////////////
         // Per-session values

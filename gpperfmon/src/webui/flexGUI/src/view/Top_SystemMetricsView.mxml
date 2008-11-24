@@ -91,7 +91,7 @@
     	<mx:ComboBox id="duration" dataProvider="{mdl.nav.durationList}"  
 			change="durationChange(event)" visible="{mdl.nav.systemTabPage!=2}"
 			includeInLayout="{mdl.nav.systemTabPage!=2}" rowCount="7"/>
-		<mx:Label text="{'Last updated: ' + mdl.system.systemNowXML.host[0].sample_time}"
+		<mx:Label text="{'Last updated: ' + mdl.session.mostRecentTick}"
 			visible="{mdl.nav.systemTabPage==2}"
 			includeInLayout="{mdl.nav.systemTabPage==2}"/>			
     </mx:HBox>	
