@@ -1919,7 +1919,7 @@ CopyToDispatch(CopyState cstate)
 			
 		if(done)
 		{
-			if(cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
+			if(cdbCopy->remote_data_err || cdbCopy->io_errors)
 				appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 
 			break;
@@ -1932,7 +1932,7 @@ CopyToDispatch(CopyState cstate)
 	/*
 	 * report all accumulated errors back to the client.
 	 */
-	if (cdbCopy->remote_data_err || cdbCopy->local_data_err)
+	if (cdbCopy->remote_data_err)
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
@@ -3202,14 +3202,6 @@ CopyFromDispatch(CopyState cstate)
 					
 				}
 
-				if (cdbCopy->local_data_err)	/* if data error occured,
-											* break out of all loops */
-				{
-					no_more_data = true;
-					break;
-				}
-
-
 				/* lock partition */
 				if (estate->es_result_partitions)
 				{
@@ -3394,7 +3386,7 @@ CopyFromDispatch(CopyState cstate)
 	CHECK_FOR_INTERRUPTS();
 
 
-	if (cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
+	if (cdbCopy->remote_data_err || cdbCopy->io_errors)
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 
 	if (cdbCopy->remote_data_err)
@@ -3409,7 +3401,7 @@ CopyFromDispatch(CopyState cstate)
 	 * happened in all-or-nothing error handling mode or if reject limit was
 	 * reached in single-row error handling mode.
 	 */
-	if (cdbCopy->remote_data_err || cdbCopy->local_data_err)
+	if (cdbCopy->remote_data_err)
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
@@ -6410,13 +6402,7 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 			done = cdbCopyRelayData(cdbCopy, copy_cancel, &cstate->processed);
 
 			if(done)
-			{
-				 //if(cdbCopy->remote_data_err || cdbCopy->local_data_err || cdbCopy->io_errors)
-				 //	appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
-	
 				break;
-			}
-
 		}
 		
 		/* we can throw the error now if QueryCancelPending was set previously */

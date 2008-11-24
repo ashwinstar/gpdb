@@ -49,7 +49,6 @@ makeCdbCopy(bool is_copy_in)
 	c->mirror_map = NULL;
 	c->primary_writer = NULL;
 	c->mirror_writer = NULL;
-	c->local_data_err = false;
 	c->remote_data_err = false;	
 	c->io_errors = false;
 	c->copy_in = is_copy_in;
