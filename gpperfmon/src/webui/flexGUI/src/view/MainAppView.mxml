@@ -16,6 +16,11 @@
   	[Bindable]
 	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
 
+	private var debugModeActive:Boolean = false;
+
+	// Stores keystrokes entered into the about box
+	private var aboutKeys:String = '';
+
     private function tryLogout():void 
 	{
 		var a:Alert = Alert.show("Are you sure you want to logout?", "Logout", 
@@ -37,6 +42,15 @@
     	}
   	}
   	
+  	// Receives characters in the about box
+  	// - for turning on special modes
+  	private function aboutKeyListener(keyEvent:KeyboardEvent):void
+  	{
+  		aboutKeys += String.fromCharCode(keyEvent.charCode);
+  		if (aboutKeys == 'debug')
+  			enableDebugMode();
+  	}
+  	
   	private function aboutBox():void 
 	{
 		var str:String = "Greenplum Performance Monitor\n\n" + 
@@ -51,6 +65,9 @@
 		a.setStyle("borderColor", 0xefffe0);
 		a.setStyle("borderAlpha", 0.90);
 		a.setStyle("color", 0x000000); // text color
+		
+		aboutKeys = '';
+		a.addEventListener(KeyboardEvent.KEY_DOWN, aboutKeyListener);
 	}
   	
   	private function toggleMainTab(event:Event):void
@@ -62,6 +79,17 @@
   			mdl.queries.resumeQueryPlan();
   		else
   			mdl.queries.pauseQueryPlan();
+  	}
+  	
+  	public function enableDebugMode():void
+  	{
+  		if (!debugModeActive)
+  		{
+  			var debugView:DebugView = new DebugView();
+  			debugView.label = "DEBUG";
+  			mainTab.addChild(debugView);
+  			debugModeActive = true;
+  		}
   	}
   	
 ]]>   	
@@ -88,7 +116,6 @@
 		<view:Top_DashboardView label="DASHBOARD"/>
 		<view:Top_SystemMetricsView label="SYSTEM METRICS"/>
 		<view:Top_QueryMonitorView label="QUERY MONITOR"/>
-		<view:DebugView label="DEBUG"/>
 	</mx:TabNavigator>
 	  
 	<mx:HBox width="100%" verticalAlign="middle" paddingLeft="5" paddingRight="5"

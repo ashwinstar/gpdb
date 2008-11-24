@@ -664,41 +664,6 @@ def querydetails_history(tmid, ssid, ccnt, username):
 
 
 
-# TODO: remove this function as testing is done
-def qp():
-    res = queryplan_history('1223590674', '221', '1', '0')
-    (tab, tree, root) = res
-
-    stack = [{root : 0}]
-    parent = stack[0].keys()[0]
-    child = stack[0].values()[0]
-    while stack:
-        while child < len(tree[parent]):
-            indent = ''
-            for i in range(parent): indent += '\t'
-            print("%s<iterator label=%s nid=%s>" % (indent, tab[tree[parent][child]]['ntype'], tree[parent][child]))
-            if tree[parent][child] in tree.keys():
-                parent = tree[parent][child]
-                stack.append({parent : child})
-                child = 0
-                break
-            indent = ''
-            for i in range(parent): indent += '\t'
-            print("%s</iterator nid=%s>" % (indent, tree[parent][child]))
-            child = child + 1
-        else:
-            element = stack.pop()
-            parent = element.keys()[0]
-            child = element.values()[0] + 1
-            if not stack:
-                break
-            if child < len(tree[parent]):
-                continue
-            indent = ''
-            for i in range(parent): indent += '\t'
-            print("%s</iterator parent=%s child=%s>" % (indent, parent, child))
-
-
 def queryplan_get_username_now(tmid, ssid, ccnt):
     query_fragment = "select username"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)

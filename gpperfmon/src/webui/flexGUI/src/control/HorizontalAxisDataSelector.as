@@ -236,10 +236,10 @@ public class HorizontalAxisDataSelector extends ChartElement
 	private function handleMouseMove( event:MouseEvent ):void
 	{
 		// Change the value as the user drags the mouse
-		if ( this.enabled && mouseIsDown )
-		{
-			setSelectedDataIndex( event );
-		}
+		//if ( this.enabled && mouseIsDown )
+		//{
+		//	setSelectedDataIndex( event );
+		//}
 	}
 	
 	/**

@@ -16,13 +16,23 @@
   	[Bindable]
 	public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 
-	  // Handle a click by jumping to the query
-	  private function clickQuery(evt:ListEvent):void {
-	  	 // Clear any active query plan requests
-	  	 mdl.queries.doQueryPlan(null);
-	  	 // Jump to the page
-	  	 mdl.nav.jumpToQueryDetails(evt.itemRenderer.data as Query, true);
-	  }
+    public var magGlass:Class = Resources.magGlass;
+	
+	// Handle a dblclick by jumping to the query
+	public function dblClickQuery(evt:Event):void {
+		// Clear any active query plan requests
+		mdl.queries.doQueryPlan(null);
+
+		mdl.nav.jumpToQueryDetails(evt.target.data as Query, true);
+	}
+
+	// Handle a click by jumping to the query
+	public function clickQuery(obj:Object):void {
+		// Clear any active query plan requests
+		mdl.queries.doQueryPlan(null);
+
+		mdl.nav.jumpToQueryDetails(obj as Query, true);
+	}
 
 ]]>   	
 </mx:Script>	
@@ -361,7 +371,7 @@
 			 styleName="dashboardMinigraphs">
 			<mx:DataGrid id="dg1" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByRuntime}" 
 				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-				selectable="false" itemClick="clickQuery(event)">
+				selectable="false" doubleClickEnabled="true" doubleClick="dblClickQuery(event)">
 	      <mx:columns>
 	        <mx:DataGridColumn headerText="Query ID"
 	          dataField="id" width="150"/>
@@ -371,6 +381,16 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="Run time"
 	          dataField="time_run"/>
+			<mx:DataGridColumn headerText="Details">
+				<mx:itemRenderer>
+					<mx:Component>
+						<mx:VBox width="100%" height="100%" horizontalAlign="center">
+							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)"/>				
+						</mx:VBox>
+					</mx:Component>
+				</mx:itemRenderer>
+			</mx:DataGridColumn>	     
 	      </mx:columns>
 	    </mx:DataGrid>		
 		</mx:Panel>
@@ -379,7 +399,7 @@
 			 styleName="dashboardMinigraphs">
 			<mx:DataGrid id="dg2" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuPct}" 
 				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-				selectable="false" itemClick="clickQuery(event)">
+				selectable="false" doubleClickEnabled="true" doubleClick="dblClickQuery(event)">
 	      <mx:columns>
 	        <mx:DataGridColumn headerText="Query ID"
 	          dataField="id" width="150"/>
@@ -388,7 +408,17 @@
 	        <mx:DataGridColumn headerText="Database"
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="CPU %"
-	          dataField="cpu_elapsed"/>
+	          dataField="cpu_currpct"/>
+			<mx:DataGridColumn headerText="Details">
+				<mx:itemRenderer>
+					<mx:Component>
+						<mx:VBox width="100%" height="100%" horizontalAlign="center">
+							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)"/>				
+						</mx:VBox>
+					</mx:Component>
+				</mx:itemRenderer>
+			</mx:DataGridColumn>
 	      </mx:columns>
 	    </mx:DataGrid>		
 		</mx:Panel>
@@ -397,7 +427,7 @@
 			 styleName="dashboardMinigraphs">
 			<mx:DataGrid id="dg3" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuTotal}" 
 				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-				selectable="false" itemClick="clickQuery(event)">
+				selectable="false" doubleClickEnabled="true" doubleClick="dblClickQuery(event)">
 	      <mx:columns>
 	        <mx:DataGridColumn headerText="Query ID"
 	          dataField="id" width="150"/>
@@ -407,6 +437,16 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="CPU total"
 	          dataField="cpu_elapsed"/>
+			<mx:DataGridColumn headerText="Details">
+				<mx:itemRenderer>
+					<mx:Component>
+						<mx:VBox width="100%" height="100%" horizontalAlign="center">
+							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)"/>				
+						</mx:VBox>
+					</mx:Component>
+				</mx:itemRenderer>
+			</mx:DataGridColumn>
 	      </mx:columns>
 	    </mx:DataGrid>		
 		</mx:Panel>
@@ -415,7 +455,7 @@
 			 styleName="dashboardMinigraphs">
 			<mx:DataGrid id="dg4" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByCpuSkew}" 
 				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-				selectable="false" itemClick="clickQuery(event)">
+				selectable="false" doubleClickEnabled="true" doubleClick="dblClickQuery(event)">
 	      <mx:columns>
 	        <mx:DataGridColumn headerText="Query ID"
 	          dataField="id" width="150"/>
@@ -425,6 +465,16 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="CPU skew"
 	          dataField="skew_cpu"/>
+			<mx:DataGridColumn headerText="Details">
+				<mx:itemRenderer>
+					<mx:Component>
+						<mx:VBox width="100%" height="100%" horizontalAlign="center">
+							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)"/>				
+						</mx:VBox>
+					</mx:Component>
+				</mx:itemRenderer>
+			</mx:DataGridColumn>
 	      </mx:columns>
 	    </mx:DataGrid>		
 		</mx:Panel>
@@ -433,7 +483,7 @@
 			 styleName="dashboardMinigraphs">
 			<mx:DataGrid id="dg5" width="100%" rowCount="3" dataProvider="{mdl.queries.queriesNowByRowSkew}" 
 				sortableColumns="false" draggableColumns="false" verticalScrollPolicy="off" 
-				selectable="false" itemClick="clickQuery(event)">
+				selectable="false" doubleClickEnabled="true" doubleClick="dblClickQuery(event)">
 	      <mx:columns>
 	        <mx:DataGridColumn headerText="Query ID"
 	          dataField="id" width="150"/>
@@ -443,6 +493,16 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="Row skew"
 	          dataField="skew_rows"/>	
+			<mx:DataGridColumn headerText="Details">
+				<mx:itemRenderer>
+					<mx:Component>
+						<mx:VBox width="100%" height="100%" horizontalAlign="center">
+							<mx:Image source="{outerDocument.magGlass}" scaleContent="false" 
+									  click="outerDocument.clickQuery(data)"/>				
+						</mx:VBox>
+					</mx:Component>
+				</mx:itemRenderer>
+			</mx:DataGridColumn>
 	      </mx:columns>
 	    </mx:DataGrid>		
 		</mx:Panel>

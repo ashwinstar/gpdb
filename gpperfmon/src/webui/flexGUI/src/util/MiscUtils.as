@@ -2,7 +2,6 @@ package util {
 	import mx.collections.ArrayCollection;
 	import mx.controls.Alert;
 	import mx.controls.DataGrid;
-	import mx.core.Container;
 	import mx.rpc.events.FaultEvent;
 	import mx.rpc.events.ResultEvent;
 	
@@ -169,11 +168,9 @@ package util {
 
 
 		// Returns number of previous minute rounded off to the minute
-		public static function prevMinAsNumber():Number
+		public static function prevMinAsNumber(date:Date):Number
 		{
-			var tmpDate:Date = new Date();
-			tmpDate.seconds = 0;
-			tmpDate.milliseconds = 0;
+			var tmpDate:Date = new Date(date.fullYear, date.month, date.date, date.hours, date.minutes);
 			return (tmpDate.time - MINUTE);
 		}
 				
@@ -201,6 +198,18 @@ package util {
 			
 			return output;	
 		}
-		
+	
+		// Removes line feeds from the text
+		public static function noLineFeed ( text:String ):String
+		{
+			var res:String = '';
+			
+			for (var i:int = 0; i<text.length; i++)
+		    {
+		    	if (text.charAt(i) != '\r')
+		    		res += text.charAt(i);
+		    }	
+		    return res;
+		}	
 	}
 }

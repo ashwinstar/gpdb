@@ -18,8 +18,8 @@ $else:
                      $c="${m}"\
             >\
             $if tree[parent][child] in tree.keys():
-                $ parent = tree[parent][child]
                 $ stack.append({parent : child})
+                $ parent = tree[parent][child]
                 $ child = 0
                 $break
             </iterator>

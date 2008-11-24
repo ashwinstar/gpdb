@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%">
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+	xmlns:control="control.*">
 		
 <mx:Script>
     <![CDATA[
+    	import mx.formatters.NumberFormatter;
     	import mx.events.TreeEvent;
     	import mx.controls.List;
     	import mx.events.FlexEvent;
@@ -17,6 +19,10 @@
 	  private var lastQueryID:String = '';
 	  private var openList:Object = new Object();
 	  private var selectedNode:String = '';
+	  
+	  // Scroll positions
+	  private var vscroll:Number = 0;
+	  private var hscroll:Number = 0;
 	  
 	  [Bindable]
 	  private var selectedText:String = '';
@@ -110,6 +116,10 @@
 		{
 		   queryPlanTree.expandChildrenOf(child, true);
 		}    		
+		
+		// Save away the width of the tree items
+		queryPlanTree.contentsWidth = 
+			queryPlanTree.measureWidthOfItems();
 	}
 
 	// Updates the tree XML using the input XML
@@ -136,7 +146,11 @@
 					selectedText += attributes[i] + '\n';
 				}
 		   }
-		}    
+		}   	 
+			
+		// Reappy the scroll positions
+		queryPlanTree.verticalScrollPosition = vscroll;
+		queryPlanTree.horizontalScrollPosition = hscroll;
 	}
 	
 	// An item opened
@@ -182,7 +196,8 @@
 		{
 			return xml.@ntype + "\n[Status: " + xml.@nstatus + 
 							   "]\n[Rows out: " + xml.@rows_out + '' + 
-							   "] [Skew: " + xml.@skew_cpu + " / " + xml.@skew_rows + "]"; 
+							   "] [Skew: " + nformat.format(xml.@skew_cpu) 
+							   + " / " + nformat.format(xml.@skew_rows) + "]"; 
 		}
 		else
 		{
@@ -296,17 +311,25 @@
 			return null;
 		}
 	}
+
+	private function saveScrollPositions():void
+	{
+		vscroll = queryPlanTree.verticalScrollPosition;
+		hscroll = queryPlanTree.horizontalScrollPosition;
+	}
 	
     ]]>
 </mx:Script>	
-	<mx:Tree id="queryPlanTree" dropEnabled="false" 
+	<mx:NumberFormatter id="nformat" precision="4"/>
+
+	<control:AutoSizeTree id="queryPlanTree" dropEnabled="false" 
 		dragEnabled="false" dragMoveEnabled="false" 
+		render="saveScrollPositions()"
 		width="50%" height="100%" alternatingItemColors="{[0xEEEEEE,0xFFFFFF]}"
 	    showRoot="false" change="selectionChange(event)"
 	    labelFunction="labelFunction" iconFunction="iconFunction"
 	    borderThickness="0" itemClose="itemClose(event)" itemOpen="itemOpen(event)"
-	    creationComplete="BindingUtils.bindSetter(treeDataChange, mdl.queries, 'queryPlanCurrent')"
-	    maxHorizontalScrollPosition="900" horizontalScrollPolicy="auto"/>
+	    creationComplete="BindingUtils.bindSetter(treeDataChange, mdl.queries, 'queryPlanCurrent')"/>
 
 	<mx:TextArea width="50%" height="100%" text="{selectedText}"/>
 

@@ -8,9 +8,14 @@
     <![CDATA[
       import model.GPPerfMonModelLocator;
       import mx.charts.events.ChartItemEvent;
+      import model.Resources;
+      import mx.managers.CursorManager;
   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
+	  
+	  // What cursor are we showing?
+	  private var cursorID:int = 0;
 	  
 	private function canvasInit(event:Event): void 
 	{ 
@@ -23,6 +28,20 @@
 		if (evt)
 			evt.stopImmediatePropagation(); 
 	}
+	
+	private function changeCursor(e:MouseEvent):void{
+		if (cursorID == 0)
+		{
+			cursorID = CursorManager.setCursor(Resources.spyglassCursor);
+		}
+	}
+	private function restoreCursor(e:MouseEvent):void{
+		if (cursorID != 0)
+		{
+			CursorManager.removeCursor(cursorID);
+			cursorID = 0;
+		}
+	}	
     ]]>
 </mx:Script>	
 	
@@ -31,15 +50,19 @@
 			
 			<mx:Panel title="{mdl.nav.metricsList[0]}" 
 				styleName="smallMetricGraph" width="50%" height="100%">	
-				<chart:ActiveQueriesChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=0; mdl.nav.systemTabPage=1;}"/>				
+				<chart:ActiveQueriesChart id="smg0" width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=0; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>			
 			</mx:Panel>			
 					
 		
 			<mx:Panel title="{mdl.nav.metricsList[1]}" 
 				styleName="smallMetricGraph" width="50%" height="100%">
-					<chart:MemoryChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=1; mdl.nav.systemTabPage=1;}"/>	
+					<chart:MemoryChart id="smg1" width="100%" height="100%" 
+					click="{mdl.nav.metricSelected=1; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
 			</mx:Panel>					
 				
 		</mx:HBox>
@@ -48,14 +71,18 @@
 			<mx:Panel title="{mdl.nav.metricsList[2]}" 
 				styleName="smallMetricGraph" width="50%" height="100%">
 				<chart:CPUChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=2; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=2; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
 			</mx:Panel>			
 					
 		
 			<mx:Panel title="{mdl.nav.metricsList[3]}"
 				styleName="smallMetricGraph" width="50%" height="100%">
 					<chart:LoadChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=3; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=3; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
 			</mx:Panel>					
 				
 		</mx:HBox>
@@ -64,14 +91,18 @@
 			<mx:Panel title="{mdl.nav.metricsList[4]}" 
 				styleName="smallMetricGraph" width="50%" height="100%">
 				<chart:SwapInUseChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=4; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=4; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
 			</mx:Panel>			
 					
 		
 			<mx:Panel title="{mdl.nav.metricsList[5]}"  
 				styleName="smallMetricGraph" width="50%" height="100%">
 					<chart:SwapPagingChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=5; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=5; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
 			</mx:Panel>					
 				
 		</mx:HBox>		
@@ -80,14 +111,18 @@
 			<mx:Panel title="{mdl.nav.metricsList[6]}"
 				styleName="smallMetricGraph" width="50%" height="100%">
 				<chart:DiskIOPSChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=6; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=6; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
 			</mx:Panel>							
 					
 		
 			<mx:Panel title="{mdl.nav.metricsList[7]}"
 				styleName="smallMetricGraph" width="50%" height="100%">
 					<chart:DiskIOBytesChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=7; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=7; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
 			</mx:Panel>								
 				
 		</mx:HBox>
@@ -96,14 +131,18 @@
 			<mx:Panel title="{mdl.nav.metricsList[8]}" 
 				styleName="smallMetricGraph" width="50%" height="100%">
 					<chart:NetworkPacketsChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=8; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=8; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>	
 			</mx:Panel>					
 					
 		
 			<mx:Panel title="{mdl.nav.metricsList[9]}"
 				styleName="smallMetricGraph" width="50%" height="100%">
 					<chart:NetworkBytesChart width="100%" height="100%" 
-					click="{mdl.nav.metricSelected=9; mdl.nav.systemTabPage=1;}"/>	
+					click="{mdl.nav.metricSelected=9; mdl.nav.systemTabPage=1;}"
+					mouseOver="{changeCursor(event)}"
+					mouseOut="{restoreCursor(event)}"/>		
 			</mx:Panel>								
 				
 		</mx:HBox>				

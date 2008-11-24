@@ -20,8 +20,11 @@ package model
  
  		[Embed(source='assets/img/Magnifying-Glass-16x16.png')]
    		public static var magGlass:Class;
+
+ 		[Embed(source='assets/img/spyglass_cursor.png')]
+   		public static var spyglassCursor:Class;
    		  				
-   		public static var version:String = "Version 2.0.0.0 [Eng Preview D]";
+   		public static var version:String = "Version 2.0.0.0 [Eng Preview E]";
 		
 		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
 

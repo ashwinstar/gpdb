@@ -85,12 +85,18 @@ package model
 		// Attempts to log the user out of the system
 		public function logout():void
 		{
-			// Stop the quantum timer
-			quantumTimer.stop();
+			if (loggedIn)
+			{
+				// Stop the quantum timers
+				if (quantumTimer)
+					quantumTimer.stop();
+				if (queryPlanTimer)
+				   queryPlanTimer.stop();
 			
-			var logoffCommand:LogoffCommand = new LogoffCommand;
-			logoffCommand.execute();
-			resetState();
+				var logoffCommand:LogoffCommand = new LogoffCommand;
+				logoffCommand.execute();
+				resetState();
+			}
 		}
 
         // Reset all per-session values
@@ -103,9 +109,10 @@ package model
 			config = null;
 			monitorQuantum = 0;
 			quantumTimer = null;
+			queryPlanTimer = null;
 		}
 		
-		// Called if we hit an access denied -- e.g. session exired
+		// Called if we hit an access denied -- e.g. session expired
 		public function accessDenied():void
 		{
 			if (!accessDeniedVisible)
@@ -123,6 +130,12 @@ package model
 				a.setStyle("borderColor", 0xefffe0);
 				a.setStyle("borderAlpha", 0.90);
 				a.setStyle("color", 0x000000); // text color
+
+				// Stop the quantum timers
+				if (quantumTimer)
+					quantumTimer.stop();
+				if (queryPlanTimer)
+				   queryPlanTimer.stop();
 			}
 		}
 	
@@ -147,34 +160,34 @@ package model
 		// Initializes the time values
 		public function initTimeVals():void
 		{
-			var latestTick:Number = MiscUtils.prevMinAsNumber();
-			timeArray.addItemAt(new Date(latestTick-MiscUtils.HOUR), ONE_HOUR_AGO);
-			timeArray.addItemAt(new Date(latestTick-(MiscUtils.HOUR*6)), SIX_HOURS_AGO);
-			timeArray.addItemAt(new Date(latestTick-MiscUtils.DAY), ONE_DAY_AGO);
-			timeArray.addItemAt(new Date(latestTick-(MiscUtils.DAY*7)), SEVEN_DAYS_AGO);
-			timeArray.addItemAt(new Date(latestTick-(MiscUtils.DAY*14)), TWO_WEEKS_AGO);
-			timeArray.addItemAt(new Date(latestTick-(MiscUtils.MONTH*3)), THREE_MONTHS_AGO);
-			timeArray.addItemAt(new Date(latestTick-MiscUtils.YEAR), ONE_YEAR_AGO);
-			timeArray.addItemAt(new Date(latestTick), LATEST_TICK);
-			timeArray.addItemAt(new Date(latestTick-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);
+			var prevMin:Number = MiscUtils.prevMinAsNumber(mostRecentTick);
+			timeArray.addItemAt(new Date(prevMin-MiscUtils.HOUR), ONE_HOUR_AGO);
+			timeArray.addItemAt(new Date(prevMin-(MiscUtils.HOUR*6)), SIX_HOURS_AGO);
+			timeArray.addItemAt(new Date(prevMin-MiscUtils.DAY), ONE_DAY_AGO);
+			timeArray.addItemAt(new Date(prevMin-(MiscUtils.DAY*7)), SEVEN_DAYS_AGO);
+			timeArray.addItemAt(new Date(prevMin-(MiscUtils.DAY*14)), TWO_WEEKS_AGO);
+			timeArray.addItemAt(new Date(prevMin-(MiscUtils.MONTH*3)), THREE_MONTHS_AGO);
+			timeArray.addItemAt(new Date(prevMin-MiscUtils.YEAR), ONE_YEAR_AGO);
+			timeArray.addItemAt(new Date(prevMin), LATEST_TICK);
+			timeArray.addItemAt(new Date(prevMin-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);
 		}
 
 		// Sets bindable time values
 		public function setTimeVals():void
 		{
-			var latestTick:Number = MiscUtils.prevMinAsNumber();
-			if ((timeArray.getItemAt(LATEST_TICK) as Date).time < latestTick)						
+			var prevMin:Number = MiscUtils.prevMinAsNumber(mostRecentTick);
+			if ((timeArray.getItemAt(LATEST_TICK) as Date).time != prevMin)						
 			{
 				timeArray.disableAutoUpdate();
-				timeArray.setItemAt(new Date(latestTick-MiscUtils.HOUR), ONE_HOUR_AGO);
-				timeArray.setItemAt(new Date(latestTick-(MiscUtils.HOUR*6)), SIX_HOURS_AGO);
-				timeArray.setItemAt(new Date(latestTick-MiscUtils.DAY), ONE_DAY_AGO);
-				timeArray.setItemAt(new Date(latestTick-(MiscUtils.DAY*7)), SEVEN_DAYS_AGO);
-				timeArray.setItemAt(new Date(latestTick-(MiscUtils.DAY*14)), TWO_WEEKS_AGO);
-				timeArray.setItemAt(new Date(latestTick-(MiscUtils.MONTH*3)), THREE_MONTHS_AGO);
-				timeArray.setItemAt(new Date(latestTick-MiscUtils.YEAR), ONE_YEAR_AGO);
-				timeArray.setItemAt(new Date(latestTick), LATEST_TICK);
-				timeArray.setItemAt(new Date(latestTick-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);
+				timeArray.setItemAt(new Date(prevMin-MiscUtils.HOUR), ONE_HOUR_AGO);
+				timeArray.setItemAt(new Date(prevMin-(MiscUtils.HOUR*6)), SIX_HOURS_AGO);
+				timeArray.setItemAt(new Date(prevMin-MiscUtils.DAY), ONE_DAY_AGO);
+				timeArray.setItemAt(new Date(prevMin-(MiscUtils.DAY*7)), SEVEN_DAYS_AGO);
+				timeArray.setItemAt(new Date(prevMin-(MiscUtils.DAY*14)), TWO_WEEKS_AGO);
+				timeArray.setItemAt(new Date(prevMin-(MiscUtils.MONTH*3)), THREE_MONTHS_AGO);
+				timeArray.setItemAt(new Date(prevMin-MiscUtils.YEAR), ONE_YEAR_AGO);
+				timeArray.setItemAt(new Date(prevMin), LATEST_TICK);
+				timeArray.setItemAt(new Date(prevMin-(MiscUtils.MINUTE*15)), FIFTEEN_MINS_AGO);
 				timeArray.enableAutoUpdate();
 			}
 		}
@@ -227,8 +240,14 @@ package model
 		// Timer to trigger per-quantum actions
 		private var quantumTimer:Timer = null;
 
+		// Timer to trigger query plan actions
+		public var queryPlanTimer:Timer = null;
+
 		////////////////////////////////////////////////
         // Time values
+        
+        // This value is populated from the system samples we receive from the server
+        public var mostRecentTick:Date = new Date();
         
         public var timeArray:ArrayCollection = new ArrayCollection();
         

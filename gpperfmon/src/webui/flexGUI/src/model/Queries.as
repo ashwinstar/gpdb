@@ -210,7 +210,7 @@ package model
 			}
 			
 			// If things look good, then just copy over the complete SQL text
-			mdl.nav.detailQuery.query_text = query.query_text;	
+			mdl.nav.detailQuery.query_text = MiscUtils.noLineFeed(query.query_text);	
 		}
 
 		
@@ -238,7 +238,7 @@ package model
 					query.cpu_currpct = queryXML.cpu_currpct;
 					query.cpu_elapsed = queryXML.cpu_elapsed;
 					query.db = queryXML.db;
-					query.query_text = queryXML.query_text;					
+					query.query_text = MiscUtils.noLineFeed(queryXML.query_text);					
 					query.rows_out = queryXML.rows_out;
 					query.skew_cpu = queryXML.skew_cpu;
 					query.skew_rows = queryXML.skew_rows;
@@ -381,11 +381,11 @@ package model
 		//  - navigated away from the page
 		public function pauseQueryPlan():void
 		{
-			if (queryPlanTimer)
+			if (mdl.session.queryPlanTimer)
 			{
 				// Stop the quantum timer
-				queryPlanTimer.stop();
-				queryPlanTimer = null;
+				mdl.session.queryPlanTimer.stop();
+				mdl.session.queryPlanTimer = null;
 			}
 		}
 			
@@ -393,16 +393,16 @@ package model
 		//  - navigated back to the page
 		public function resumeQueryPlan():void
 		{
-			if (queryPlanTimer)
+			if (mdl.session.queryPlanTimer)
 			   return;
 			
 			if ((queryPlanID != '') && queryPlanRealtime)
 			{
 				// First call it once for good measure
 				onQueryPlanTimer(null);
-				queryPlanTimer = new Timer( mdl.session.monitorQuantum * 1000);
-				queryPlanTimer.addEventListener(TimerEvent.TIMER, onQueryPlanTimer);
-				queryPlanTimer.start();				
+				mdl.session.queryPlanTimer = new Timer( mdl.session.monitorQuantum * 1000);
+				mdl.session.queryPlanTimer.addEventListener(TimerEvent.TIMER, onQueryPlanTimer);
+				mdl.session.queryPlanTimer.start();				
 			}
 		}
 
@@ -485,8 +485,7 @@ package model
 		public var queryPlans:Object = new Object();
 		public var queryPlanCurrent:XML = null;
 		public var queryPlanRealtime:Boolean = false;
-		// Timer to trigger per-quantum actions
-		private var queryPlanTimer:Timer = null;
+
 
 		// Additional arrayCollections with sort orders applied
 		public var queriesNowByRuntime:ArrayCollection = new ArrayCollection();

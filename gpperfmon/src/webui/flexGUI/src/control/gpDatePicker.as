@@ -7,6 +7,7 @@ package control
 	import mx.containers.ControlBar;
 	import mx.containers.HBox;
 	import mx.containers.VBox;
+	import mx.controls.Button;
 	import mx.controls.DateChooser;
 	import mx.controls.DateField;
 	import mx.controls.Image;
@@ -27,12 +28,16 @@ package control
 		
 		private var dtSelectedDateTime:Number = -1;
 		
-		private var dtPop:Image;	
-		private var dtClear:Image;	
+		private var dtPop:Button;	
+		private var dtClear:Button;	
 		private var dtTemp:DateField;
 		private var dtPanel:ControlBar;
 		private var pickPanel:HBox;
 		private var pickPanel2:VBox;
+		
+		private var buttonPanel:HBox;
+		private var okButton:Button;
+		private var cancelButton:Button;
 		
 		private var lHour:Label;
 		private var lMin:Text;
@@ -252,16 +257,33 @@ package control
 			pickPanel2 = new VBox();
 			
 			dtInput = new Label();
+			dtInput.text = "[not specified]";
 			dtHour = new NumericStepper();
 			dtMin = new NumericStepper();
 			dtSec = new NumericStepper();
 			
-			dtPop = new Image();
-			dtClear = new Image();
+			dtPop = new Button();
+			dtClear = new Button();
 			
 			lHour = new Label();
 			lMin = new Text();
 			lSec = new Label();
+
+			buttonPanel = new HBox();
+            buttonPanel.setStyle ("paddingLeft",5);
+            buttonPanel.setStyle ("paddingRight", 5);
+            buttonPanel.setStyle ("paddingTop", 5);
+            buttonPanel.setStyle ("paddingBottom", 5);
+            buttonPanel.setStyle ("horizontalGap", 5);
+            buttonPanel.setStyle ("horizontalAlign", "center");
+			okButton = new Button();
+			okButton.label = "Ok";
+			okButton.width = 80;
+			okButton.addEventListener(MouseEvent.CLICK,icalClick);			
+			cancelButton = new Button();
+			cancelButton.label = "Cancel";
+			cancelButton.width = 80;
+			cancelButton.addEventListener(MouseEvent.CLICK,icalCancelClick);		
 
 			dtInput.width=150;
 			dtHour.width=45;
@@ -282,18 +304,18 @@ package control
             dtPanel.setStyle ("paddingBottom", 0);
             dtPanel.height=25;
             
-			dtPop.source = calendarIcon; 
+			dtPop.setStyle ("upIcon", calendarIcon); 
+			dtPop.setStyle ("overIcon", calendarIcon);
+			dtPop.setStyle ("downIcon", calendarIcon);  
 			dtPop.width=20;
 			dtPop.height=20;
-			dtPop.buttonMode=true;
-			dtPop.useHandCursor=true;
 			dtPop.addEventListener(MouseEvent.CLICK,ibtnClick);
 
-			dtClear.source = crossIcon; 
+			dtClear.setStyle ("upIcon", crossIcon); 
+			dtClear.setStyle ("overIcon", crossIcon);
+			dtClear.setStyle ("downIcon", crossIcon);
 			dtClear.width=20;
 			dtClear.height=20;
-			dtClear.buttonMode=true;
-			dtClear.useHandCursor=true;
 			dtClear.addEventListener(MouseEvent.CLICK,clearClick);
 
 			dtPick = new DateChooser();
@@ -401,16 +423,27 @@ package control
 			}
 			dtInput.text = dtInput.text.concat(tmp);
 			
+			removePopup();
+			dispatchEvent(new Event("changeDate",false,true));
+		}
+		
+		private function removePopup():void
+		{
 			dtPop.drawFocus(false);
 			pickPanel2.visible=false;
-			_showingDTPick=false;
-			dispatchEvent(new Event("changeDate",false,true));
+			_showingDTPick=false;			
 		}
 		
 		private function icalClick(event:MouseEvent):void
 		{
 			if (pickPanel2.visible)
 				captureDateTime();
+		}
+		
+		private function icalCancelClick(event:MouseEvent):void
+		{
+			if (pickPanel2.visible)
+				removePopup();
 		}
 
 		private function initializeHandler(event:FlexEvent):void
@@ -455,7 +488,7 @@ package control
 		
 		private function clearClick(event:MouseEvent):void
 		{
-			dtInput.text = "";
+			dtInput.text = "[not specified]";
 			dtSelectedDateTime = -1;
 		}
 				
@@ -493,6 +526,11 @@ package control
 			
 			pickPanel2.addChild(pickPanel);
 			pickPanel2.addChild(dtPick);
+			
+			buttonPanel.addChild(okButton);
+			buttonPanel.addChild(cancelButton);
+			
+			pickPanel2.addChild(buttonPanel);
 
 			addChild(dtPanel);
 								

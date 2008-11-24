@@ -72,6 +72,9 @@ package model
 			}
 			newVals.divideBy(count);
 			
+			// Set the latest time based on the sample time
+			mdl.session.mostRecentTick = newVals.sample_time;
+			
 			if (numHosts != count)
 			  numHosts = count;			  			
 			
