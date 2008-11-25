@@ -1093,6 +1093,12 @@ class GPUpgrade:
         Validates that the upgrade/downgrade from old->new is okay
         '''
 
+        # Log the OS type info
+        os_type = os.uname()[0]
+        os_ver  = os.uname()[2]
+        self.Log('INFO', 'Operating System: %s %s' % (os_type, os_ver))
+
+        # Log version checking
         self.Log('INFO', 'Checking version compatability')
 
         # --gp-version added in 3.2, but that doesn't help us determine
@@ -1690,7 +1696,7 @@ This issue must be resolved before upgrade can complete.
         upgrade user.
         '''
 
-        os_type = self.RunCmd('uname -s').lower()
+        os_type = os.uname()[0].lower()
 
         if self.cmd == 'MASTER':
             self.Log('INFO', 'Locking database')
@@ -2587,14 +2593,17 @@ This issue must be resolved before upgrade can complete.
                                 stdout=subprocess.PIPE, 
                                 stderr=subprocess.PIPE)
 
-        msg_re  = re.compile('psql:%s/pgdump.sql:(\d+): *([^:]*): *(.*)' % self.workdir)
+        msg_re  = re.compile('(?:psql:%s/pgdump.sql:(\d+): *)?([^:]*): *(.*)' % self.workdir)
         user_re = re.compile('role ".*" already exists')
         schema_re = re.compile('schema ".*" does not exist')
         for line in pipe.stderr:
             match = msg_re.match(line)
             if match:
-                line = '%s:  %s, at line %s' % (
-                    match.group(2), match.group(3), match.group(1))
+                if match.group(1):
+                    line = '%s:  %s, at line %s' % (
+                        match.group(2), match.group(3), match.group(1) )
+                else:
+                    line = '%s:  %s' % ( match.group(2), match.group(3) )
 
                 # Check for expected safe errors
                 if (user_re.match(match.group(3)) or
@@ -2684,7 +2693,11 @@ This issue must be resolved before upgrade can complete.
         # to clear statistics.
         databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
         for db in databases:
-            self.Update('update pg_class set relpages=0, reltuples=0', db=db);
+            self.Update('''
+               UPDATE pg_class set relpages=0, reltuples=0
+               FROM pg_namespace n
+               WHERE relnamespace = n.oid and nspname !~ '(pg.*|information_schema)'
+               ''', db=db);
         
         # Now read the stat files and update statistics based on what was in previous
         # catalog.
