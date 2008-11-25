@@ -107,6 +107,7 @@
 #include "catalog/pg_operator.h"
 #include "executor/instrument.h"        /* Instrumentation */
 #include "lib/stringinfo.h"             /* StringInfo */
+#include "executor/nodeSort.h" 		/* gpmon */
 #include "miscadmin.h"
 #include "utils/datum.h"
 #include "storage/buffile.h"
@@ -161,7 +162,7 @@ struct TuplesortPos_mk
 	 * the next tuple to return.  (In the tape case, the tape's current read
 	 * position is also critical state.)
 	 */
-	int			current;		/* array index (only used if SORTEDINMEM) */
+	int		current;	/* array index (only used if SORTEDINMEM) */
 	bool		eof_reached;	/* reached EOF (needed for cursors) */
 
 	/* markpos_xxx holds marked position for mark and restore */
@@ -211,17 +212,17 @@ typedef struct TupsortMergeReadCtxt
  */
 struct Tuplesortstate_mk
 {
-	TupSortStatus status;		/* enumerated value as shown above */
-	int			nKeys;			/* number of columns in sort key */
+	TupSortStatus 	status;		/* enumerated value as shown above */
+	int		nKeys;		/* number of columns in sort key */
 	bool		randomAccess;	/* did caller request random access? */
 
 	long 		memAllowed;
 	long 		memUsed;
 
-	int			maxTapes;		/* number of tapes (Knuth's T) */
-	int			tapeRange;		/* maxTapes-1 (Knuth's P) */
-	MemoryContext sortcontext;	/* memory context holding all sort data */
-	LogicalTapeSet *tapeset;	/* logtape.c object for tapes in a temp file */
+	int		maxTapes;	/* number of tapes (Knuth's T) */
+	int		tapeRange;	/* maxTapes-1 (Knuth's P) */
+	MemoryContext 	sortcontext;	/* memory context holding all sort data */
+	LogicalTapeSet 	*tapeset;	/* logtape.c object for tapes in a temp file */
 
 	/*
 	 * Function to copy a supplied input tuple into palloc'd space and set up
@@ -238,7 +239,7 @@ struct Tuplesortstate_mk
 	 * pfree() the out-of-line data (not the SortTuple struct!), and increase
 	 * state->availMem by the amount of memory space thereby released.
 	 */
-	void		(*writetup) (Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e);
+	void (*writetup) (Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e);
 
 	/*
 	 * Function to read a stored tuple from tape back into memory. 'len' is
@@ -246,7 +247,7 @@ struct Tuplesortstate_mk
 	 * initialize tuple/datum1/isnull1 in the target SortTuple struct, and
 	 * decrease state->availMem by the amount of memory space consumed.
 	 */
-	void		(*readtup) (Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e, 
+	void (*readtup) (Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e, 
 			LogicalTape *lt, uint32 len);
 
 	/*
@@ -293,29 +294,29 @@ struct Tuplesortstate_mk
 	 * mergefreelist. It is OK to use 0 as a null link in these lists, because
 	 * memtuples[0] is part of the merge heap and is never a pre-read tuple.
 	 */
-	bool	   *mergeactive;	/* active input run source? */
-	int		   *mergenext;		/* first preread tuple for each source */
-	int		   *mergelast;		/* last preread tuple for each source */
-	int		   *mergeavailslots;	/* slots left for prereading each tape */
-	long	   *mergeavailmem;	/* availMem for prereading each tape */
-	int			mergefreelist;	/* head of freelist of recycled slots */
-	int			mergefirstfree; /* first slot never used in this merge */
+	bool 	*mergeactive;		/* active input run source? */
+	int 	*mergenext;		/* first preread tuple for each source */
+	int 	*mergelast;		/* last preread tuple for each source */
+	int 	*mergeavailslots;	/* slots left for prereading each tape */
+	long 	*mergeavailmem;		/* availMem for prereading each tape */
+	int 	mergefreelist;		/* head of freelist of recycled slots */
+	int	mergefirstfree; 	/* first slot never used in this merge */
 
 	/*
 	 * Variables for Algorithm D.  Note that destTape is a "logical" tape
 	 * number, ie, an index into the tp_xxx[] arrays.  Be careful to keep
 	 * "logical" and "actual" tape numbers straight!
 	 */
-	int			Level;			/* Knuth's l */
-	int			destTape;		/* current output tape (Knuth's j, less 1) */
-	int		   *tp_fib;			/* Target Fibonacci run counts (A[]) */
-	int		   *tp_runs;		/* # of real runs on each tape */
-	int		   *tp_dummy;		/* # of dummy runs for each tape (D[]) */
-	int		   *tp_tapenum;		/* Actual tape numbers (TAPE[]) */
-	int			activeTapes;	/* # of active input tapes in merge pass */
+	int	Level;			/* Knuth's l */
+	int	destTape;		/* current output tape (Knuth's j, less 1) */
+	int   	*tp_fib;		/* Target Fibonacci run counts (A[]) */
+	int   	*tp_runs;		/* # of real runs on each tape */
+	int   	*tp_dummy;		/* # of dummy runs for each tape (D[]) */
+	int   	*tp_tapenum;		/* Actual tape numbers (TAPE[]) */
+	int	activeTapes;		/* # of active input tapes in merge pass */
 
 	LogicalTape  *result_tape;	/* actual tape of finished output */
-	TuplesortPos_mk pos; 			/* current postion */
+	TuplesortPos_mk pos; 		/* current postion */
 
 	/*
 	 * Tuple desc and binding, for MemTuple.
@@ -334,36 +335,35 @@ struct Tuplesortstate_mk
 	 * These variables are specific to the Datum case; they are set by
 	 * tuplesort_begin_datum and used only by the DatumTuple routines.
 	 */
-	Oid			datumType;
-	Oid			sortOperator;
+	Oid		datumType;
+	Oid		sortOperator;
 	FmgrInfo	sortOpFn;		/* cached lookup data for sortOperator */
 	SortFunctionKind sortFnKind;
 
 	/* we need typelen and byval in order to know how to copy the Datums. */
-	int			datumTypeLen;
+	int		datumTypeLen;
 	bool		datumTypeByVal;
 
-    /*
-     * CDB: EXPLAIN ANALYZE reporting interface and statistics.
-     */
-    struct Instrumentation *instrument;
-    struct StringInfoData  *explainbuf;
-    int64       spilledBytes;
-
 	/*
-	 * Resource snapshot for time of sort start.
+	 * CDB: EXPLAIN ANALYZE reporting interface and statistics.
 	 */
-	PGRUsage	ru_start;
+	struct Instrumentation *instrument;
+	struct StringInfoData  *explainbuf;
+	int64       spilledBytes;
 
 	/* 
 	 * File fo dump/load logical tape set state.  Used by sharing sort across slice 
 	 */
-	char       *pfile_rwfile_prefix;
+	char    *pfile_rwfile_prefix;
 	BufFile *pfile_rwfile_state;
 
 	/* My debug counters */
 	int64 put_cnt;
 	int64 get_cnt;
+
+	/* Gpmon */
+	gpmon_packet_t *gpmon_pkt;
+	int *gpmon_sort_tick;
 };
 
 static bool is_sortstate_rwfile(Tuplesortstate_mk *state)
@@ -381,8 +381,18 @@ static bool is_under_sort_ctxt(Tuplesortstate_mk *state)
 #define WRITETUP(state,tape,stup)	((*(state)->writetup) (state, tape, stup))
 #define READTUP(state,pos,stup,tape,len) ((*(state)->readtup) (state, pos, stup, tape, len))
 #define LACKMEM(state)		((state)->memUsed > (state)->memAllowed)
-#define USEMEM(state,amt)	((state)->memUsed += (amt))
-#define FREEMEM(state,amt)  ((state)->memUsed -= (amt))
+static inline void USEMEM(Tuplesortstate_mk *state, int amt)
+{
+	state->memUsed += amt;
+	if(state->gpmon_pkt)
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_MEMORY_BYTE, amt);
+}
+static inline void FREEMEM(Tuplesortstate_mk *state, int amt)
+{
+	state->memUsed -= amt;
+	if(state->gpmon_pkt)
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_MEMORY_BYTE, -amt);
+}
 
 /*
  * NOTES about on-tape representation of tuples:
@@ -515,10 +525,10 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 	 * needed by the sort will live inside this context.
 	 */
 	sortcontext = AllocSetContextCreate(CurrentMemoryContext,
-										"TupleSort",
-										ALLOCSET_DEFAULT_MINSIZE,
-										ALLOCSET_DEFAULT_INITSIZE,
-										ALLOCSET_DEFAULT_MAXSIZE);
+			"TupleSort",
+			ALLOCSET_DEFAULT_MINSIZE,
+			ALLOCSET_DEFAULT_INITSIZE,
+			ALLOCSET_DEFAULT_MAXSIZE);
 
 	/*
 	 * Make the Tuplesortstate_mk within the per-sort context.  This way, we
@@ -531,9 +541,6 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 	 * every var of the tuplestate to 0 below.
 	 */
 	state = (Tuplesortstate_mk *) palloc0(sizeof(Tuplesortstate_mk));
-
-	if (trace_sort)
-		pg_rusage_init(&state->ru_start);
 
 	state->status = TSS_INITIAL;
 	state->randomAccess = randomAccess;
@@ -556,7 +563,6 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 	 * maxTapes, tapeRange, and Algorithm D variables will be initialized by
 	 * inittapes(), if needed
 	 */
-
 	MemoryContextSwitchTo(oldcontext);
 	return state;
 }
@@ -599,22 +605,20 @@ void tuplesort_begin_pos_mk(Tuplesortstate_mk *st, TuplesortPos_mk **pos)
 	
 Tuplesortstate_mk *
 tuplesort_begin_heap_mk(TupleDesc tupDesc,
-					 int nkeys,
-					 Oid *sortOperators, AttrNumber *attNums,
-					 int workMem, bool randomAccess)
+		int nkeys,
+		Oid *sortOperators, AttrNumber *attNums,
+		int workMem, bool randomAccess)
 {
 	Tuplesortstate_mk *state = tuplesort_begin_common(workMem, randomAccess, true);
 	MemoryContext oldcontext;
-	int			i;
+	int	i;
 
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
 	AssertArg(nkeys > 0);
 
 	if (trace_sort)
-		elog(LOG,
-			 "begin tuple sort: nkeys = %d, workMem = %d, randomAccess = %c",
-			 nkeys, workMem, randomAccess ? 't' : 'f');
+		PG_TRACE3(tuplesort__begin, nkeys, workMem, randomAccess);
 
 	state->nKeys = nkeys;
 	state->copytup = copytup_heap;
@@ -768,10 +772,7 @@ tuplesort_begin_index_mk(Relation indexRel,
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
 	if (trace_sort)
-		elog(LOG,
-			 "begin index sort: unique = %c, workMem = %d, randomAccess = %c",
-			 enforceUnique ? 't' : 'f',
-			 workMem, randomAccess ? 't' : 'f');
+		PG_TRACE3(tuplesort__begin, enforceUnique, workMem, randomAccess);
 
 	state->nKeys = RelationGetNumberOfAttributes(indexRel);
 	tupdesc = RelationGetDescr(indexRel);
@@ -781,6 +782,7 @@ tuplesort_begin_index_mk(Relation indexRel,
 	state->readtup = readtup_index;
 
 	state->indexRel = indexRel;
+
 	/* see comments below about btree dependence of this code... */
 	{
 		int i;
@@ -853,11 +855,9 @@ tuplesort_begin_datum_mk(Oid datumType,
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
 	if (trace_sort)
-		elog(LOG,
-			 "begin datum sort: workMem = %d, randomAccess = %c",
-			 workMem, randomAccess ? 't' : 'f');
+		PG_TRACE3(tuplesort__begin, datumType, workMem, randomAccess);
 
-	state->nKeys = 1;			/* always a one-column sort */
+	state->nKeys = 1;	/* always a one-column sort */
 
 	state->copytup = copytup_datum;
 	state->writetup = writetup_datum;
@@ -935,32 +935,24 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
 		state->tapeset = NULL;
 	}
 
-    /* 
-     * CDB: Report statistics to EXPLAIN ANALYZE. 
-     */ 
-    if (state->instrument)
-    {
-        /* How close did we come to the work_mem limit? */
-        if (state->instrument->workmemused < state->memUsed) 
-            state->instrument->workmemused = state->memUsed; 
-
-        /* Report executor memory used by our memory context. */
-        state->instrument->execmemused +=
-            (double)MemoryContextGetPeakSpace(state->sortcontext);
-    }
-
-	if (trace_sort)
+	/* 
+	 * CDB: Report statistics to EXPLAIN ANALYZE. 
+	 */ 
+	if (state->instrument)
 	{
-		if (state->tapeset)
-			elog(LOG, "external sort ended, %ld disk blocks used: %s",
-				 spaceUsed, pg_rusage_show(&state->ru_start));
-		else
-			elog(LOG, "internal sort ended, %ld KB used: %s",
-				 spaceUsed, pg_rusage_show(&state->ru_start));
+		/* How close did we come to the work_mem limit? */
+		if (state->instrument->workmemused < state->memUsed) 
+			state->instrument->workmemused = state->memUsed; 
+
+		/* Report executor memory used by our memory context. */
+		state->instrument->execmemused +=
+			(double)MemoryContextGetPeakSpace(state->sortcontext);
 	}
 
-	MemoryContextSwitchTo(oldcontext);
+	if (trace_sort)
+		PG_TRACE2(tuplesort__end, state->tapeset ? 1 : 0, spaceUsed);
 
+	MemoryContextSwitchTo(oldcontext);
 	/*
 	 * Free the per-sort memory context, thereby releasing all working memory,
 	 * including the Tuplesortstate_mk struct itself.
@@ -1063,6 +1055,10 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 {
 	Assert(is_under_sort_ctxt(state));
 	++state->put_cnt;
+
+	if(state->gpmon_pkt)
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_QEXEC_M_ROWSIN);
+
 	switch (state->status)
 	{
 		case TSS_INITIAL:
@@ -1125,8 +1121,7 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
 	if (trace_sort)
-		elog(LOG, "performsort starting: %s",
-				pg_rusage_show(&state->ru_start));
+		PG_TRACE(tuplesort__perform__sort);
 
 	switch (state->status)
 	{
@@ -1155,6 +1150,13 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
 			/* Fall through */
 		case TSS_BUILDRUNS:
 			dumptuples(state, true);
+
+			if(state->instrument)
+			{
+				state->instrument->workmemwanted =
+					Max(state->instrument->workmemwanted, state->memUsed + state->spilledBytes);
+			}
+
 			mergeruns(state);
 
 			state->pos.eof_reached = false;
@@ -1360,6 +1362,10 @@ tuplesort_gettupleslot_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
 	{
 		Assert(!mke_test_flag(&e, MKE_Empty));
 		ExecStoreMemTuple(e.ptr, slot, should_free);
+
+		if(state->gpmon_pkt)
+			Gpmon_M_Incr_Rows_Out(state->gpmon_pkt);
+
 		return true;
 	}
 
@@ -1442,7 +1448,7 @@ tuplesort_merge_order(long allowedMem)
 		(MERGE_BUFFER_SIZE + TAPE_BUFFER_OVERHEAD);
 
 	mOrder = Max(mOrder, MINORDER);
-    mOrder = Min(mOrder, MAXORDER); 
+	mOrder = Min(mOrder, MAXORDER); 
 
 	return mOrder;
 }
@@ -1478,8 +1484,7 @@ inittapes(Tuplesortstate_mk *state, const char* rwfile_prefix)
 	state->tapeRange = maxTapes - 1;
 
 	if (trace_sort)
-		elog(LOG, "switching to external sort with %d tapes: %s",
-			 maxTapes, pg_rusage_show(&state->ru_start));
+		PG_TRACE1(tuplesort__switch__external, maxTapes);
 
 	/*
 	 * Decrease availMem to reflect the space needed for tape buffers; but
@@ -1625,6 +1630,14 @@ mergeruns(Tuplesortstate_mk *state)
 		LogicalTapeRewind(state->tapeset, lt, false);
 	}
 
+	/* Clear gpmon for respilling data */
+	if(state->gpmon_pkt)
+	{
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_SPILLPASS);
+		Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_TUPLE, 0);
+		Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_BYTE, 0);
+	}
+
 	for (;;)
 	{
 		/*
@@ -1766,8 +1779,7 @@ mergeonerun(Tuplesortstate_mk *state)
 	state->tp_runs[state->tapeRange]++;
 
 	if (trace_sort)
-		elog(LOG, "finished %d-way merge step: %s", state->activeTapes,
-			 pg_rusage_show(&state->ru_start));
+		PG_TRACE1(tuplesort__mergeonerun, state->activeTapes);
 }
 
 static bool tupsort_preread(TupsortMergeReadCtxt *ctxt)
@@ -2048,10 +2060,7 @@ dumptuples(Tuplesortstate_mk *state, bool alltuples)
 			state->tp_dummy[state->destTape]--; /* per Alg D step D2 */
 
 			if (trace_sort)
-				elog(LOG, "finished writing%s run %d to tape %d: %s",
-						(state->entry_count == 0) ? " final" : "",
-						state->currentRun, state->destTape,
-						pg_rusage_show(&state->ru_start));
+				PG_TRACE3(tuplesort__dumptuples, state->entry_count, state->currentRun, state->destTape);
 
 			/*
 			 * Done if heap is empty, else prepare for new run.
@@ -2068,6 +2077,9 @@ dumptuples(Tuplesortstate_mk *state, bool alltuples)
 	spilledBytes = state->memAllowed - state->memUsed - spilledBytes;
 	if (spilledBytes > 0)
 		state->spilledBytes += spilledBytes;
+
+	if(state->gpmon_pkt)
+		tuplesort_checksend_gpmonpkt(state->gpmon_pkt, state->gpmon_sort_tick);
 }
 
 /*
@@ -2374,6 +2386,14 @@ writetup_heap(Tuplesortstate_mk *state, LogicalTape *lt, MKEntry *e)
 
 	if (state->randomAccess)	/* need trailing length word? */
 		LogicalTapeWrite(state->tapeset, lt, (void *) &tuplen, sizeof(tuplen));
+
+	if (state->gpmon_pkt)
+	{
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_SPILLTUPLE);
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_SPILLBYTE, tuplen);
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_TUPLE);
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_BYTE, tuplen);
+	}
 
 	FREEMEM(state, GetMemoryChunkSpace(e->ptr)); 
 	pfree(e->ptr); 
@@ -3000,11 +3020,10 @@ static void tuplesort_limit_sort(Tuplesortstate_mk *state)
 }
 
 void 
-tuplesort_set_gpmon_mk(Tuplesortstate_mk *state,
-					gpmon_packet_t *gpmon_pkt,
-					int *gpmon_tick)
+tuplesort_set_gpmon_mk(Tuplesortstate_mk *state, gpmon_packet_t *gpmon_pkt, int *gpmon_tick)
 {
-	/* NYI */
+	state->gpmon_pkt = gpmon_pkt;
+	state->gpmon_sort_tick = gpmon_tick;
 }
 
 

@@ -63,6 +63,13 @@ enum
 	execprocnode__enter,
 	execprocnode__exit,
 
+	tuplesort__begin,
+	tuplesort__end,
+	tuplesort__perform__sort,
+	tuplesort__mergeonerun,
+	tuplesort__dumptuples,
+	tuplesort__switch__external,
+
 	/* Internal test and debug use */
 	LTR_DEBUG_START = 1000000,
 

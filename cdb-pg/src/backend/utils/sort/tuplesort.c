@@ -494,7 +494,6 @@ static void readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *s
 			  LogicalTape *lt, unsigned int len);
 
 
-static void checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick);
 /*
  *		tuplesort_begin_xxx
  *
@@ -2205,7 +2204,7 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 		state->spilledBytes += spilledBytes;
 
 	if(state->gpmon_pkt)
-		checksend_gpmonpkt(state->gpmon_pkt, state->gpmon_sort_tick);
+		tuplesort_checksend_gpmonpkt(state->gpmon_pkt, state->gpmon_sort_tick);
 }
 
 /*
@@ -3300,7 +3299,7 @@ readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 	}
 }
 
-static void checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick)
+void tuplesort_checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick)
 {
 	if(!pkt)
 		return;
