@@ -5281,6 +5281,15 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 					  typeByVal(typ));
 		ReleaseSysCache(typ);
 		out = (Node *)c;
+
+		/* coerce against for typmod */
+		out = coerce_to_target_type(NULL, out, exprType(out), 
+									typid, typmod,
+									COERCION_EXPLICIT,
+									COERCE_IMPLICIT_CAST);
+
+		Insist(IsA(out, Const));
+
 	}
 	else
 		Assert(IsA(out, Const));

@@ -2840,3 +2840,13 @@ insert into bar values(5, 5);
 drop table bar;
 select parrelid::regclass, * from pg_partition;
 select * from pg_partition_rule;
+
+-- MPP-4172
+-- should fail
+create table ggg (a char(1), b int)
+distributed by (b)
+partition by range(a)
+(
+partition aa start ('2006') end ('2009'), partition bb start ('2007') end
+('2008')
+);
