@@ -5282,14 +5282,18 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 		ReleaseSysCache(typ);
 		out = (Node *)c;
 
-		/* coerce against for typmod */
+		/* 
+		 * coerce again for typmod: if we can't coerce the type mod, we'll error
+		 * out
+		 */
 		out = coerce_to_target_type(NULL, out, exprType(out), 
 									typid, typmod,
 									COERCION_EXPLICIT,
 									COERCE_IMPLICIT_CAST);
 
-		Insist(IsA(out, Const));
-
+		/* be careful, we might just add the coercion function back in! */
+		if (IsA(out, FuncExpr) || IsA(out, OpExpr))
+			out = (Node *)c;
 	}
 	else
 		Assert(IsA(out, Const));
@@ -6413,11 +6417,12 @@ static void
 make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 			   	PartitionBy *curPby, Node *newSub,
 				Node *pRuleCatalog, Node *pPostCreate, Node *pConstraint,
-				Node *pStoreAttr)
+				Node *pStoreAttr, char *prtstr)
 {
 	RangeVar *parent_tab_name = makeNode(RangeVar);
 	RangeVar *child_tab_name = makeNode(RangeVar);
 	CreateStmt *child_tab_stmt = makeNode(CreateStmt);
+	ListCell *lc;
 
 	parent_tab_name->catalogname = cxt->relation->catalogname;
 	parent_tab_name->schemaname  = cxt->relation->schemaname;
@@ -6445,6 +6450,38 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	 * issues with constraints and foreign keys.
 	 */
 	child_tab_stmt->tableElts = copyObject(stmt->tableElts);
+
+	/* update constraint names to have an extension after them for uniqueness */
+	foreach(lc, child_tab_stmt->tableElts)
+	{
+		Node *n = lfirst(lc);
+
+		if (IsA(n, Constraint) || IsA(n, FkConstraint))
+		{
+			/* Only do it for table constraints */
+			if (IsA(n, Constraint))
+			{
+				Constraint *c = (Constraint *)n;
+
+				/* 
+				 * Only do it for table constraints which generate pg_class
+				 * entries.
+				 */
+				if (c->name && (c->contype == CONSTR_PRIMARY ||
+								c->contype == CONSTR_UNIQUE))
+				{
+					/* extra 1 char for _ */
+					int len = (strlen(c->name) + strlen(prtstr) + 1 + 1) * 
+								sizeof(char);
+					char *buf = palloc(len);
+
+					snprintf(buf, len, "%s_%s", c->name, prtstr);
+
+					c->name = buf;
+				}
+			}
+		}
+	}
 
 	if (pConstraint && ((enable_partition_rules &&
 						 curPby->partType == PARTTYP_HASH) ||
@@ -7218,7 +7255,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			newSub->parentRel = copyObject(pBy->parentRel);
 
 		make_child_node(stmt, cxt, relname, curPby, (Node *)newSub,
-						pRuleCatalog, pPostCreate, pConstraint, pStoreAttr);
+						pRuleCatalog, pPostCreate, pConstraint, pStoreAttr,
+						prtstr);
 
 		if (pBSpec)
 			prevEvery = pBSpec->partEvery;
