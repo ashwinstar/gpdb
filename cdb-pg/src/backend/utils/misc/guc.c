@@ -122,11 +122,6 @@ extern bool enable_partition_rules;
 List       *gp_guc_list_for_explain;
 List       *gp_guc_list_for_no_plan;
 
-#ifdef TRACE_SORT
-extern bool trace_sort;
-#endif
-
-
 /*
  * Assign/Show hook functions defined in this module
  */
@@ -1105,7 +1100,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-#ifdef TRACE_SORT
 	{
 		{"trace_sort", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Emit information about resource usage in sorting."),
@@ -1115,7 +1109,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&trace_sort,
 		false, NULL, NULL
 	},
-#endif
 
 #ifdef WAL_DEBUG
 	{
@@ -1334,7 +1327,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_sort_limit", PGC_USERSET, QUERY_TUNING_METHOD,
-            gettext_noop("Enable LIMIT operation to be performed while sorting."),
+			gettext_noop("Enable LIMIT operation to be performed while sorting."),
 			gettext_noop("Sort more efficiently when plan requires the first <n> rows at most.")
 		},
 		&gp_enable_sort_limit,
@@ -1343,12 +1336,24 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_sort_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
-            gettext_noop("Enable duplicate removal to be performed while sorting."),
-            gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows.")
+			gettext_noop("Enable duplicate removal to be performed while sorting."),
+			gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows.")
 		},
 		&gp_enable_sort_distinct,
 		true, NULL, NULL
 	},
+
+	{
+		{"gp_enable_mk_sort", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable duplicate removal to be performed while sorting."),
+			gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+
+		},
+		&gp_enable_mk_sort,
+		false, NULL, NULL
+	},
+
 
 	{
 		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -1364,7 +1369,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_enable_motion_deadlock_sanity", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable verbose check at planning time."),
 			NULL,
-            GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_motion_deadlock_sanity,
 		false, NULL, NULL

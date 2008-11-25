@@ -119,18 +119,41 @@ ShareInputNext(ShareInputScanState *node)
 			char rwfile_prefix[60];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
-			node->ts_state = tuplesort_begin_heap_file_readerwriter(
+			if(gp_enable_mk_sort)
+			{
+				node->ts_state = tuplesort_begin_heap_file_readerwriter_mk(
 					rwfile_prefix, false,
 					NULL, 0, NULL, NULL, work_mem, true);
-			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
-			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
+
+				tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
+				tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos); 
+			}
+			else
+			{
+				node->ts_state = tuplesort_begin_heap_file_readerwriter(
+					rwfile_prefix, false,
+					NULL, 0, NULL, NULL, work_mem, true);
+
+				tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
+				tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
+			}
 		}
 		else 
 		{
 			Assert(sisc->share_type == SHARE_SORT);
-			node->ts_state = ((SortState *)snState)->tuplesortstate;
-			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
-			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
+
+			if(gp_enable_mk_sort)
+			{
+				node->ts_state = ((SortState *)snState)->tuplesortstate;
+				tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
+				tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos);
+			}
+			else
+			{
+				node->ts_state = ((SortState *)snState)->tuplesortstate;
+				tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
+				tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
+			}
 		}
 	}
 
@@ -150,7 +173,12 @@ ShareInputNext(ShareInputScanState *node)
 #endif
 		}
 		else
-			gotOK = tuplesort_gettupleslot_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos, forward, slot);
+		{
+			if(gp_enable_mk_sort)
+				gotOK = tuplesort_gettupleslot_pos_mk((Tuplesortstate_mk *)node->ts_state, (TuplesortPos_mk *)node->ts_pos, forward, slot);
+			else
+				gotOK = tuplesort_gettupleslot_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *)node->ts_pos, forward, slot);
+		}
 
 		if(!gotOK)
 			return NULL;
@@ -346,8 +374,12 @@ void ExecShareInputScanMarkPos(ShareInputScanState *node)
 #endif
 	}
 	else if(sisc->share_type == SHARE_SORT || sisc->share_type == SHARE_SORT_XSLICE) 
-		tuplesort_markpos_pos((Tuplesortstate *)node->ts_state,
-				(TuplesortPos *) node->ts_pos);
+	{
+		if(gp_enable_mk_sort)
+			tuplesort_markpos_pos_mk((Tuplesortstate_mk *)node->ts_state, (TuplesortPos_mk *) node->ts_pos);
+		else
+			tuplesort_markpos_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *) node->ts_pos);
+	}
 	else
 		Assert(!"ExecShareInputScanMarkPos: invalid share type");
 }
@@ -372,8 +404,12 @@ void ExecShareInputScanRestrPos(ShareInputScanState *node)
 #endif
 	}
 	else if(sisc->share_type == SHARE_SORT || sisc->share_type == SHARE_SORT_XSLICE) 
-		tuplesort_restorepos_pos((Tuplesortstate *) node->ts_state,
-				(TuplesortPos *) node->ts_pos);
+	{
+		if(gp_enable_mk_sort)
+			tuplesort_restorepos_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *) node->ts_pos);
+		else
+			tuplesort_restorepos_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *) node->ts_pos);
+	}
 	else
 		Assert(!"ExecShareInputScanRestrPos: invalid share type");
 
@@ -402,8 +438,12 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 #endif
 	}
 	else if (sisc->share_type == SHARE_SORT || sisc->share_type == SHARE_SORT_XSLICE)
-		tuplesort_rescan_pos((Tuplesortstate *)node->ts_state,
-				(TuplesortPos *) node->ts_pos);
+	{
+		if(gp_enable_mk_sort)
+			tuplesort_rescan_pos_mk((Tuplesortstate_mk *)node->ts_state, (TuplesortPos_mk *) node->ts_pos);
+		else
+			tuplesort_rescan_pos((Tuplesortstate *)node->ts_state, (TuplesortPos *) node->ts_pos);
+	}
 	else
 		Assert(!"ExecShareInputScanReScan: invalid share type ");
 

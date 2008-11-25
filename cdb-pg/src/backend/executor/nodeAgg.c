@@ -228,24 +228,46 @@ initialize_aggregates(AggState *aggstate,
 			 * In case of rescan, maybe there could be an uncompleted sort
 			 * operation?  Clean it up if so.
 			 */
-			if (peraggstate->sortstate)
-				tuplesort_end(peraggstate->sortstate);
+			if(gp_enable_mk_sort)
+			{
+				if (peraggstate->sortstate)
+					tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
 
-			peraggstate->sortstate =
-				tuplesort_begin_datum(peraggstate->inputType,
-									  peraggstate->sortOperator,
-									  work_mem, false);
+				peraggstate->sortstate =
+					tuplesort_begin_datum_mk(peraggstate->inputType,
+							peraggstate->sortOperator,
+							work_mem, false);
 
-            /* 
-             * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
-             * share our Instrumentation object and message buffer.
-             */
-            if (aggstate->ss.ps.instrument)
-                tuplesort_set_instrument(peraggstate->sortstate,
-                                         aggstate->ss.ps.instrument,
-                                         aggstate->ss.ps.cdbexplainbuf);
+				/* 
+				 * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
+				 * share our Instrumentation object and message buffer.
+				 */
+				if (aggstate->ss.ps.instrument)
+					tuplesort_set_instrument_mk((Tuplesortstate_mk *) peraggstate->sortstate,
+							aggstate->ss.ps.instrument,
+							aggstate->ss.ps.cdbexplainbuf);
+			}
+			else
+			{
+				if (peraggstate->sortstate)
+					tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
 
-            /* CDB: Set enhanced sort options. */
+				peraggstate->sortstate =
+					tuplesort_begin_datum(peraggstate->inputType,
+							peraggstate->sortOperator,
+							work_mem, false);
+
+				/* 
+				 * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
+				 * share our Instrumentation object and message buffer.
+				 */
+				if (aggstate->ss.ps.instrument)
+					tuplesort_set_instrument((Tuplesortstate *) peraggstate->sortstate,
+							aggstate->ss.ps.instrument,
+							aggstate->ss.ps.cdbexplainbuf);
+			}
+
+			/* CDB: Set enhanced sort options. */
 			{
 				int64 		limit = 0;
 				int64 		offset = 0;
@@ -253,9 +275,14 @@ initialize_aggregates(AggState *aggstate,
 				int 		sort_flags = gp_sort_flags; /* get the guc */
 				int         maxdistinct = gp_sort_max_distinct; /* get guc */
 
-				cdb_tuplesort_init(peraggstate->sortstate, 
-								   offset, limit, unique, 
-								   sort_flags, maxdistinct);
+				if(gp_enable_mk_sort)
+					cdb_tuplesort_init_mk((Tuplesortstate_mk *) peraggstate->sortstate, 
+							offset, limit, unique, 
+							sort_flags, maxdistinct);
+				else
+					cdb_tuplesort_init((Tuplesortstate *) peraggstate->sortstate, 
+							offset, limit, unique, 
+							sort_flags, maxdistinct);
 			}
 		}
 
@@ -468,8 +495,13 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
 			/* XXX we assume there is only one input column */
 			if (fcinfo.argnull[1])
 				continue;
-			tuplesort_putdatum(peraggstate->sortstate, fcinfo.arg[1],
-							   fcinfo.argnull[1]);
+
+			if(gp_enable_mk_sort)
+				tuplesort_putdatum_mk((Tuplesortstate_mk *) peraggstate->sortstate, fcinfo.arg[1],
+						fcinfo.argnull[1]);
+			else
+				tuplesort_putdatum((Tuplesortstate *) peraggstate->sortstate, fcinfo.arg[1],
+						fcinfo.argnull[1]);
 		}
 		else
 		{
@@ -500,7 +532,10 @@ process_sorted_aggregate(AggState *aggstate,
 	bool	   *isNull;
 	FunctionCallInfoData fcinfo;
 
-	tuplesort_performsort(peraggstate->sortstate);
+	if(gp_enable_mk_sort)
+		tuplesort_performsort_mk((Tuplesortstate_mk *) peraggstate->sortstate);
+	else
+		tuplesort_performsort((Tuplesortstate *) peraggstate->sortstate);
 
 	newVal = fcinfo.arg + 1;
 	isNull = fcinfo.argnull + 1;
@@ -511,8 +546,12 @@ process_sorted_aggregate(AggState *aggstate,
 	 * pfree them when they are no longer needed.
 	 */
 
-	while (tuplesort_getdatum(peraggstate->sortstate, true,
-							  newVal, isNull))
+	while (
+		gp_enable_mk_sort ? 
+		tuplesort_getdatum_mk((Tuplesortstate_mk *)peraggstate->sortstate, true, newVal, isNull)
+		:
+		tuplesort_getdatum((Tuplesortstate *)peraggstate->sortstate, true, newVal, isNull)
+		)
 	{
 		/*
 		 * DISTINCT always suppresses nulls, per SQL spec, regardless of the
@@ -554,7 +593,10 @@ process_sorted_aggregate(AggState *aggstate,
 	if (haveOldVal && !peraggstate->inputtypeByVal)
 		pfree(DatumGetPointer(oldVal));
 
-	tuplesort_end(peraggstate->sortstate);
+	if(gp_enable_mk_sort)
+		tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
+	else
+		tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
 	peraggstate->sortstate = NULL;
 }
 
@@ -2149,10 +2191,13 @@ ExecEndAgg_internal(AggState *node)
 		AggStatePerAgg peraggstate = &node->peragg[aggno];
 
 		if (peraggstate->sortstate)
-        {
-            tuplesort_end(peraggstate->sortstate);
-            peraggstate->sortstate = NULL;
-        }
+		{
+			if(gp_enable_mk_sort)
+				tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
+			else
+				tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
+			peraggstate->sortstate = NULL;
+		}
 	}
 }
 
@@ -2235,7 +2280,13 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 		AggStatePerAgg peraggstate = &node->peragg[aggno];
 
 		if (peraggstate->sortstate)
-			tuplesort_end(peraggstate->sortstate);
+		{
+			if(gp_enable_mk_sort)
+				tuplesort_end_mk((Tuplesortstate_mk *)peraggstate->sortstate);
+			else
+				tuplesort_end((Tuplesortstate *)peraggstate->sortstate);
+		}
+
 		peraggstate->sortstate = NULL;
 	}
 

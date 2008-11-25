@@ -218,7 +218,9 @@ bool		gp_eager_two_phase_agg = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
-int			gp_sort_flags = 0;
+bool		gp_enable_mk_sort = false;
+bool 		trace_sort = false;
+int		gp_sort_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 
 bool		gp_enable_hash_partitioned_tables = FALSE;

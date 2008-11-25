@@ -48,7 +48,8 @@ ExecSort(SortState *node)
 {
 	EState	   *estate;
 	ScanDirection dir;
-	Tuplesortstate *tuplesortstate;
+	Tuplesortstate *tuplesortstate = NULL;
+	Tuplesortstate_mk *tuplesortstate_mk = NULL;
 	TupleTableSlot *slot;
 	Sort 		*plannode;
 
@@ -60,7 +61,12 @@ ExecSort(SortState *node)
 
 	estate = node->ss.ps.state;
 	dir = estate->es_direction;
-	tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
+
+	if(gp_enable_mk_sort)
+		tuplesortstate_mk = (Tuplesortstate_mk *) node->tuplesortstate;
+	else
+		tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
+
 	plannode = (Sort *) node->ss.ps.plan;
 
 	/*
@@ -102,7 +108,19 @@ ExecSort(SortState *node)
 
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), plannode->share_id);
 			elog(LOG, "Sort node create shareinput rwfile %s", rwfile_prefix);
-			tuplesortstate = tuplesort_begin_heap_file_readerwriter(
+
+			if(gp_enable_mk_sort)
+				tuplesortstate_mk = tuplesort_begin_heap_file_readerwriter_mk(
+					rwfile_prefix, true,
+					tupDesc,
+					plannode->numCols,
+					plannode->sortOperators,
+					plannode->sortColIdx,
+					work_mem,
+					true
+					); 
+			else
+				tuplesortstate = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, true,
 					tupDesc,
 					plannode->numCols,
@@ -114,16 +132,26 @@ ExecSort(SortState *node)
 		}
 		else
 		{
-			tuplesortstate = tuplesort_begin_heap(tupDesc,
-											  plannode->numCols,
-											  plannode->sortOperators,
-											  plannode->sortColIdx,
-											  work_mem,
-											  node->randomAccess);
+			if(gp_enable_mk_sort)
+				tuplesortstate_mk = tuplesort_begin_heap_mk(tupDesc,
+						plannode->numCols,
+						plannode->sortOperators,
+						plannode->sortColIdx,
+						work_mem,
+						node->randomAccess);
+			else
+				tuplesortstate = tuplesort_begin_heap(tupDesc,
+						plannode->numCols,
+						plannode->sortOperators,
+						plannode->sortColIdx,
+						work_mem,
+						node->randomAccess);
 		}
 
-		Assert(tuplesortstate);
-		node->tuplesortstate = (void *) tuplesortstate;
+		if(gp_enable_mk_sort)
+			node->tuplesortstate = (void *) tuplesortstate_mk;
+		else
+			node->tuplesortstate = (void *) tuplesortstate;
 
 		/* CDB */
 		{
@@ -169,22 +197,38 @@ ExecSort(SortState *node)
 			if (node->noduplicates)
 				unique = 1;
 			
-			cdb_tuplesort_init(tuplesortstate, offset, limit, unique, 
-							   sort_flags, maxdistinct);
+			if(gp_enable_mk_sort)
+				cdb_tuplesort_init_mk(tuplesortstate_mk, offset, limit, unique, sort_flags, maxdistinct);
+			else
+				cdb_tuplesort_init(tuplesortstate, offset, limit, unique, sort_flags, maxdistinct);
 		}
 
-        /* If EXPLAIN ANALYZE, share our Instrumentation object with sort. */
-        if (node->ss.ps.instrument)
-            tuplesort_set_instrument(tuplesortstate,
-                                     node->ss.ps.instrument,
-                                     node->ss.ps.cdbexplainbuf);
+		/* If EXPLAIN ANALYZE, share our Instrumentation object with sort. */
+		if(gp_enable_mk_sort)
+		{
+			if (node->ss.ps.instrument)
+				tuplesort_set_instrument_mk(tuplesortstate_mk,
+						node->ss.ps.instrument,
+						node->ss.ps.cdbexplainbuf);
 
-		tuplesort_set_gpmon(tuplesortstate, &node->ss.ps.gpmon_pkt, &node->ss.ps.gpmon_plan_tick);
+			tuplesort_set_gpmon_mk(tuplesortstate_mk, &node->ss.ps.gpmon_pkt, 
+					&node->ss.ps.gpmon_plan_tick);
+		}
+		else
+		{
+			if (node->ss.ps.instrument)
+				tuplesort_set_instrument(tuplesortstate,
+						node->ss.ps.instrument,
+						node->ss.ps.cdbexplainbuf);
+
+			tuplesort_set_gpmon(tuplesortstate, &node->ss.ps.gpmon_pkt, 
+					&node->ss.ps.gpmon_plan_tick);
+		}
+
 
 		/*
 		 * Scan the subplan and feed all the tuples to tuplesort.
 		 */
-
 		for (;;)
 		{
 			slot = ExecProcNode(outerNode);
@@ -193,13 +237,20 @@ ExecSort(SortState *node)
 				break;
 
                         CheckSendPlanStateGpmonPkt(&node->ss.ps);
-			tuplesort_puttupleslot(tuplesortstate, slot);
+			if(gp_enable_mk_sort)
+				tuplesort_puttupleslot_mk(tuplesortstate_mk, slot);
+			else
+				tuplesort_puttupleslot(tuplesortstate, slot);
 		}
 
 		/*
 		 * Complete the sort.
 		 */
-		tuplesort_performsort(tuplesortstate);
+		if(gp_enable_mk_sort)
+			tuplesort_performsort_mk(tuplesortstate_mk);
+		else
+			tuplesort_performsort(tuplesortstate);
+
                 CheckSendPlanStateGpmonPkt(&node->ss.ps);
 		/*
 		 * restore to user specified direction
@@ -221,7 +272,11 @@ ExecSort(SortState *node)
 			{
 				if(plannode->driver_slice == currentSliceId)
 				{
-					tuplesort_flush(tuplesortstate);
+					if(gp_enable_mk_sort)
+						tuplesort_flush_mk(tuplesortstate_mk);
+					else
+						tuplesort_flush(tuplesortstate);
+
 					node->share_lk_ctxt = shareinput_writer_notifyready(plannode->share_id, plannode->nsharer_xslice);
 				}
 			}
@@ -241,9 +296,15 @@ ExecSort(SortState *node)
 	 * tuples.
 	 */
 	slot = node->ss.ps.ps_ResultTupleSlot;
-	(void) tuplesort_gettupleslot(tuplesortstate,
-								  ScanDirectionIsForward(dir),
-								  slot);
+	if(gp_enable_mk_sort)
+		(void) tuplesort_gettupleslot_mk(tuplesortstate_mk,
+				ScanDirectionIsForward(dir),
+				slot);
+	else
+		(void) tuplesort_gettupleslot(tuplesortstate,
+				ScanDirectionIsForward(dir),
+				slot);
+
 	return slot;
 }
 
@@ -321,17 +382,17 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &sortstate->ss.ps);
 	sortstate->ss.ss_ScanTupleSlot = ExecInitExtraTupleSlot(estate);
 
-    /* 
-     * CDB: Offer extra info for EXPLAIN ANALYZE.
-     */
-    if (estate->es_instrument)
-    {
-	    /* Allocate string buffer. */
-        sortstate->ss.ps.cdbexplainbuf = makeStringInfo();
+	/* 
+	 * CDB: Offer extra info for EXPLAIN ANALYZE.
+	 */
+	if (estate->es_instrument)
+	{
+		/* Allocate string buffer. */
+		sortstate->ss.ps.cdbexplainbuf = makeStringInfo();
 
-        /* Request a callback at end of query. */
-        sortstate->ss.ps.cdbexplainfun = ExecSortExplainEnd;
-    }
+		/* Request a callback at end of query. */
+		sortstate->ss.ps.cdbexplainfun = ExecSortExplainEnd;
+	}
 
 	/*
 	 * initialize child nodes
@@ -421,7 +482,10 @@ ExecEndSort_internal(SortState *node)
 		if(sort->share_type == SHARE_SORT_XSLICE)
 			shareinput_writer_waitdone(node->share_lk_ctxt, sort->share_id, sort->nsharer_xslice);
 
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+		if(gp_enable_mk_sort)
+			tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
+		else
+			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
 	}
 
 	node->tuplesortstate = NULL;
@@ -458,7 +522,11 @@ ExecSortMarkPos(SortState *node)
 	if (!node->sort_Done)
 		return;
 
-	tuplesort_markpos((Tuplesortstate *) node->tuplesortstate);
+	if(gp_enable_mk_sort)
+		tuplesort_markpos_mk((Tuplesortstate_mk *) node->tuplesortstate);
+	else
+		tuplesort_markpos((Tuplesortstate *) node->tuplesortstate);
+
 }
 
 /* ----------------------------------------------------------------
@@ -479,7 +547,10 @@ ExecSortRestrPos(SortState *node)
 	/*
 	 * restore the scan to the previously marked position
 	 */
-	tuplesort_restorepos((Tuplesortstate *) node->tuplesortstate);
+	if(gp_enable_mk_sort)
+		tuplesort_restorepos_mk((Tuplesortstate_mk *) node->tuplesortstate);
+	else
+		tuplesort_restorepos((Tuplesortstate *) node->tuplesortstate);
 }
 
 void
@@ -506,7 +577,10 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 		!node->randomAccess)
 	{
 		node->sort_Done = false;
-		tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+		if(gp_enable_mk_sort)
+			tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
+		else
+			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
 		node->tuplesortstate = NULL;
 
 		/*
@@ -517,7 +591,12 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 			ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
 	}
 	else
-		tuplesort_rescan((Tuplesortstate *) node->tuplesortstate);
+	{
+		if(gp_enable_mk_sort)
+			tuplesort_rescan_mk((Tuplesortstate_mk *) node->tuplesortstate);
+		else
+			tuplesort_rescan((Tuplesortstate *) node->tuplesortstate);
+	}
 }
 
 

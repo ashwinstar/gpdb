@@ -723,6 +723,11 @@ extern bool gp_enable_sort_limit;
  */
 extern bool gp_enable_sort_distinct;
 
+/* Greenplum MK Sort */
+extern bool gp_enable_mk_sort;
+
+extern bool trace_sort;
+
 /* Generic Greenplum sort flag for testing.
  *
  *

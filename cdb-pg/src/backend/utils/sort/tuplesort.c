@@ -119,10 +119,6 @@
 #include "cdb/cdbvars.h"
 
 /* GUC variable */
-#ifdef TRACE_SORT
-bool		trace_sort = false;
-#endif
-
 
 /*
  * The objects we actually sort are SortTuple structs.	These contain
@@ -378,9 +374,7 @@ struct Tuplesortstate
 	/*
 	 * Resource snapshot for time of sort start.
 	 */
-#ifdef TRACE_SORT
 	PGRUsage	ru_start;
-#endif
 
 	/* 
 	 * File fo dump/load logical tape set state.  Used by sharing sort across slice 
@@ -548,10 +542,8 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 
 	state = (Tuplesortstate *) palloc0(sizeof(Tuplesortstate));
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		pg_rusage_init(&state->ru_start);
-#endif
 
 	state->status = TSS_INITIAL;
 	state->randomAccess = randomAccess;
@@ -665,12 +657,10 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 
 	AssertArg(nkeys > 0);
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin tuple sort: nkeys = %d, workMem = %d, randomAccess = %c",
 			 nkeys, workMem, randomAccess ? 't' : 'f');
-#endif
 
 	state->nKeys = nkeys;
 
@@ -783,13 +773,11 @@ tuplesort_begin_index(Relation indexRel,
 
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin index sort: unique = %c, workMem = %d, randomAccess = %c",
 			 enforceUnique ? 't' : 'f',
 			 workMem, randomAccess ? 't' : 'f');
-#endif
 
 	state->nKeys = RelationGetNumberOfAttributes(indexRel);
 
@@ -821,12 +809,10 @@ tuplesort_begin_datum(Oid datumType,
 
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG,
 			 "begin datum sort: workMem = %d, randomAccess = %c",
 			 workMem, randomAccess ? 't' : 'f');
-#endif
 
 	state->nKeys = 1;			/* always a one-column sort */
 
@@ -868,14 +854,12 @@ tuplesort_end(Tuplesortstate *state)
 	/* context swap probably not needed, but let's be safe */
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
-#ifdef TRACE_SORT
 	long		spaceUsed;
 
 	if (state->tapeset)
 		spaceUsed = LogicalTapeSetBlocks(state->tapeset);
 	else
 		spaceUsed = (state->allowedMem - state->availMem + 1023) / 1024;
-#endif
 
 	/*
 	 * Delete temporary "tape" files, if any.
@@ -904,7 +888,6 @@ tuplesort_end(Tuplesortstate *state)
             (double)MemoryContextGetPeakSpace(state->sortcontext);
     }
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 	{
 		if (state->tapeset)
@@ -914,7 +897,6 @@ tuplesort_end(Tuplesortstate *state)
 			elog(LOG, "internal sort ended, %ld KB used: %s",
 				 spaceUsed, pg_rusage_show(&state->ru_start));
 	}
-#endif
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -1203,11 +1185,9 @@ tuplesort_performsort(Tuplesortstate *state)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG, "performsort starting: %s",
 				pg_rusage_show(&state->ru_start));
-#endif
 
 	switch (state->status)
 	{
@@ -1268,7 +1248,6 @@ tuplesort_performsort(Tuplesortstate *state)
 			break;
 	}
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 	{
 		if (state->status == TSS_FINALMERGE)
@@ -1279,7 +1258,6 @@ tuplesort_performsort(Tuplesortstate *state)
 			elog(LOG, "performsort done: %s",
 				 pg_rusage_show(&state->ru_start));
 	}
-#endif
 
 	/* MPP-1559 */
 	state->availMemMin01 = state->availMemMin;
@@ -1586,39 +1564,6 @@ tuplesort_getdatum(Tuplesortstate *state, bool forward,
 }
 
 /*
- * tuplesort_merge_order - report merge order we'll use for given memory
- * (note: "merge order" just means the number of input tapes in the merge).
- *
- * This is exported for use by the planner.  allowedMem is in bytes.
- */
-int
-tuplesort_merge_order(long allowedMem)
-{
-	int			mOrder;
-
-	/*
-	 * We need one tape for each merge input, plus another one for the output,
-	 * and each of these tapes needs buffer space.	In addition we want
-	 * MERGE_BUFFER_SIZE workspace per input tape (but the output tape doesn't
-	 * count).
-	 *
-	 * Note: you might be thinking we need to account for the memtuples[]
-	 * array in this calculation, but we effectively treat that as part of the
-	 * MERGE_BUFFER_SIZE workspace.
-	 */
-	mOrder = (allowedMem - TAPE_BUFFER_OVERHEAD) /
-		(MERGE_BUFFER_SIZE + TAPE_BUFFER_OVERHEAD);
-
-	/* Even in minimum memory, use at least a MINORDER merge */
-	mOrder = Max(mOrder, MINORDER);
-
-    /* CDB: Don't be ridiculous.  And don't call me Shirley. */
-    mOrder = Min(mOrder, 1000);
-
-	return mOrder;
-}
-
-/*
  * inittapes - initialize for tape sorting.
  *
  * This is called only if we have found we don't have room to sort in memory.
@@ -1645,11 +1590,9 @@ inittapes(Tuplesortstate *state, const char* rwfile_prefix)
 	state->maxTapes = maxTapes;
 	state->tapeRange = maxTapes - 1;
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG, "switching to external sort with %d tapes: %s",
 			 maxTapes, pg_rusage_show(&state->ru_start));
-#endif
 
 	/*
 	 * Decrease availMem to reflect the space needed for tape buffers; but
@@ -1980,11 +1923,9 @@ mergeonerun(Tuplesortstate *state)
 	markrunend(state, destTape);
 	state->tp_runs[state->tapeRange]++;
 
-#ifdef TRACE_SORT
 	if (trace_sort)
 		elog(LOG, "finished %d-way merge step: %s", state->activeTapes,
 			 pg_rusage_show(&state->ru_start));
-#endif
 }
 
 /*
@@ -2239,13 +2180,11 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 			state->tp_runs[state->destTape]++;
 			state->tp_dummy[state->destTape]--; /* per Alg D step D2 */
 
-#ifdef TRACE_SORT
 			if (trace_sort)
 				elog(LOG, "finished writing%s run %d to tape %d: %s",
 						(state->memtupcount == 0) ? " final" : "",
 						state->currentRun, state->destTape,
 						pg_rusage_show(&state->ru_start));
-#endif
 
 			/*
 			 * Done if heap is empty, else prepare for new run.

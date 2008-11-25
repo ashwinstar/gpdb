@@ -101,7 +101,7 @@ typedef struct AggStatePerAggData
 	 * the transition function on the rest.
 	 */
 
-	Tuplesortstate *sortstate;	/* sort object, if a DISTINCT agg */
+	void *sortstate;	/* sort object, if a DISTINCT agg */
 } AggStatePerAggData;
 
 /*
