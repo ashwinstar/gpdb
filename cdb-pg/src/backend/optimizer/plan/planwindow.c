@@ -277,7 +277,7 @@ static List *make_rowkey_targets(void);
 static Coplan *makeCoplan(CoplanType type, WindowContext *context);
 static Plan *assure_collocation_and_order(PlannerInfo *root, Plan *input_plan, 
 		int partkey_len, AttrNumber *partkey_attrs, List *sortclause, 
-		CdbPathLocus input_locus, List **pathkeys_ptr);
+		CdbPathLocus input_locus, CdbPathLocus *output_locus, List **pathkeys_ptr);
 static AttrNumber addTargetToCoplan(Node *target, Coplan *coplan, WindowContext *context);
 static Aggref* makeWindowAggref(WindowRef *winref);
 static Aggref* makeAuxCountAggref(void);
@@ -1832,6 +1832,8 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
  *
  * Returns the input plan, possibly with new nodes on top.  Input and output
  * must have flow declarations.
+ *
+ * The output locus for the result plan is also returned if output_locus is not NULL.
  */
 Plan *assure_collocation_and_order(
 		PlannerInfo *root,
@@ -1839,7 +1841,8 @@ Plan *assure_collocation_and_order(
 		int partkey_len,
 		AttrNumber *partkey_attrs,
 		List *sortclause,								 
-		CdbPathLocus input_locus, /*OUT*/
+		CdbPathLocus input_locus,
+		CdbPathLocus *output_locus,  /*OUT*/
 		List **pathkeys_ptr /*OUT*/
 		)
 {
@@ -1856,6 +1859,8 @@ Plan *assure_collocation_and_order(
 	
 	result_plan = input_plan;
 	pathkeys = *pathkeys_ptr;
+	if (output_locus != NULL)
+		*output_locus = input_locus;
 	
 	if ( sortclause != NIL )
 	{
@@ -1922,6 +1927,12 @@ Plan *assure_collocation_and_order(
 			result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
 			*pathkeys_ptr = NIL; /* no longer sorted */
 			Assert(result_plan->flow);
+
+			/*
+			 * Change output_locus based on the new distribution pathkeys.
+			 */
+			if (output_locus != NULL)
+				CdbPathLocus_MakeHashed(output_locus, dist_pathkeys);
 		}
 
 		if(sortclause != NIL)
@@ -1934,6 +1945,7 @@ Plan *assure_collocation_and_order(
 			}
 		}
 	}
+
 	return result_plan;
 }
 
@@ -2030,6 +2042,7 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 											   winfo->partkey_attrs,
 											   winfo->sortclause,
 											   input_locus,
+											   NULL,
 											   &pathkeys);
 	
 	/* Add the single Window node. */
@@ -2267,9 +2280,9 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	List * join_tlist = NIL;
 	Query *agg_subquery;
 	bool hasaux, hasagg;
+	CdbPathLocus input_locus = *locus_ptr;
 
 	/* In-Out parameters */
-	CdbPathLocus locus = *locus_ptr;
 	List *pathkeys = *pathkeys_ptr;
 	
 	/* elog(NOTICE, "Start of plan_sequential_stage()."); */
@@ -2337,7 +2350,8 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 											   winfo->partkey_len,
 											   winfo->partkey_attrs,
 											   winfo->sortclause,
-											   locus,
+											   input_locus,
+											   locus_ptr,
 											   &pathkeys);
 	
 	if ( hasagg )
@@ -3432,6 +3446,7 @@ construct_share_plans(PlannerInfo *root, WindowContext *context)
 											 winfo->partkey_attrs,
 											 winfo->sortclause,
 											 context->subplan_locus,
+											 NULL,
 											 &pathKeys);
 			new_share_nodes = share_plan(root, new_plan, 2);
 			share_nodes = list_concat(share_nodes, new_share_nodes);
@@ -3454,6 +3469,7 @@ construct_share_plans(PlannerInfo *root, WindowContext *context)
 											 winfo->partkey_attrs,
 											 winfo->sortclause,
 											 context->subplan_locus,
+											 NULL,
 											 &pathKeys);
 			share_nodes = lappend(share_nodes, new_plan);
 			
