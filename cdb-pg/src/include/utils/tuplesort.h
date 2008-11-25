@@ -202,5 +202,7 @@ tuplesort_set_gpmon_mk(Tuplesortstate_mk *state,
 					gpmon_packet_t *gpmon_pkt,
 					int *gpmon_tick);
 
+extern void 
+tuplesort_checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick);
 
 #endif   /* TUPLESORT_H */
