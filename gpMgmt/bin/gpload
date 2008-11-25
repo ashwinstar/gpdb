@@ -745,7 +745,7 @@ class gpload:
     def report_errors(self):
         errors = self.count_errors()-self.initial_errors
         if errors==1:
-            self.log(self.INFO, 'one bad row')
+            self.log(self.INFO, '1 bad row')
             self.exitValue = 1
         elif errors:
             self.log(self.INFO, '%d bad rows'%errors)
