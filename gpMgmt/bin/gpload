@@ -766,7 +766,17 @@ class gpload:
         self.threads.append(p)
         self.log(self.DEBUG, sql)
         if not self.options.D:
-            self.pg8000.execute(sql)
+            try:
+                self.pg8000.execute(sql)
+            except pg8000.ProgrammingError, p:
+                # See if we hit the segment reject limit
+                if p[1] == '40M00':
+                    # seems like we did
+                    self.log(self.ERROR, 'error limit reached while loading ' +
+                        'data')
+                else:
+                    self.log(self.ERROR, 'error encountered running "%s"' % sql)
+
         p.condition.acquire()
         p.number = 1
         p.condition.wait()
