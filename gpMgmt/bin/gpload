@@ -423,17 +423,16 @@ class gpload:
             except (ValueError, TypeError):
                     pass
         if not self.options.p:
-            self.log(self.ERROR,
-                       "You need to specify your port number with the -p " +
-                       "option or in your configuration or in your " +
-                       "environment as PGPORT.")
-            sys.exit(2)
+            self.options.p = 5432
 
         # User to connect as
         if not self.options.U:
             self.options.U = self.getconfig('user',str,None)
         if not self.options.U:
             self.options.U = os.environ.get('PGUSER')
+        if not self.options.U:
+            self.options.U = os.environ.get('USER') or os.environ.get('LOGNAME')
+
         if not self.options.U or len(self.options.U) == 0:
             self.log(self.ERROR,
                        "You need to specify your username with the -U " +
