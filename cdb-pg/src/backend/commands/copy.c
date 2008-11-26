@@ -104,6 +104,206 @@ static int CopyExtractLineNum(CopyState cstate);
 static void preProcessDataLine(CopyState cstate);
 static void concatenateEol(CopyState cstate);
 static char *escape_quotes(const char *src);
+static void attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
+						 unsigned int target_seg, AttrNumber p_nattrs, AttrNumber *attrs,
+						 Form_pg_attribute *attr_descs, int *attr_offsets, bool *attr_nulls,
+						 FmgrInfo *in_functions, Oid *typioparams, Datum *values);
+static void copy_in_error_callback(void *arg);
+static void CopyInitPartitioningState(EState *estate);
+static void CopyInitDataParser(CopyState cstate);
+
+/* ==========================================================================
+ * The follwing macros aid in major refactoring of data processing code (in
+ * CopyFrom(+Dispatch)). We use macros because in some cases the code must be in
+ * line in order to work (for example elog_dismiss() in PG_CATCH) while in 
+ * other cases we'd like to inline the code for performance reasons.
+ *
+ * NOTE that an almost identical set of macros exists in fileam.c. If you make 
+ * changes here you may want to consider taking a look there as well.
+ * ==========================================================================
+ */
+
+#define RESET_LINEBUF \
+cstate->line_buf.len = 0; \
+cstate->line_buf.data[0] = '\0'; \
+cstate->line_buf.cursor = 0;
+
+#define RESET_ATTRBUF \
+cstate->attribute_buf.len = 0; \
+cstate->attribute_buf.data[0] = '\0'; \
+cstate->attribute_buf.cursor = 0;
+
+#define RESET_LINEBUF_WITH_LINENO \
+line_buf_with_lineno.len = 0; \
+line_buf_with_lineno.data[0] = '\0'; \
+line_buf_with_lineno.cursor = 0;
+
+/*
+ * A data error happened. This code block will always be inside a PG_CATCH()
+ * block right when a higher stack level produced an error. We handle the error
+ * by checking which error mode is set (SREH or all-or-nothing) and do the right
+ * thing accordingly. Note that we MUST have this code in a macro (as opposed 
+ * to a function) as elog_dismiss() has to be inlined with PG_CATCH in order to 
+ * access local error state variables.
+ *
+ * changing me? take a look at FILEAM_HANDLE_ERROR in fileam.c as well.
+ */
+#define COPY_HANDLE_ERROR \
+if(cstate->errMode == ALL_OR_NOTHING) \
+{ \
+	/* re-throw error and abort */ \
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+		cdbCopyEnd(cdbCopy); \
+	PG_RE_THROW(); \
+} \
+else \
+{ \
+	/* SREH - release error state and handle error */ \
+\
+	ErrorData	*edata; \
+	MemoryContext oldcontext;\
+	bool	rawdata_is_a_copy = false; \
+	bool	errmsg_is_a_copy = false; \
+	cur_row_rejected = true; \
+\
+	/* SREH must only handle data errors. all other errors must not be caught */\
+	if(ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
+	{\
+		/* re-throw error and abort */ \
+		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+			cdbCopyEnd(cdbCopy); \
+		PG_RE_THROW(); \
+	}\
+\
+	/* save a copy of the error info */ \
+	oldcontext = MemoryContextSwitchTo(cstate->cdbsreh->badrowcontext);\
+	edata = CopyErrorData();\
+	MemoryContextSwitchTo(oldcontext);\
+\
+	if(!elog_dismiss(DEBUG5)) \
+		PG_RE_THROW(); /* <-- hope to never get here! */ \
+\
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)\
+	{\
+		Insist(cstate->err_loc_type == ROWNUM_ORIGINAL);\
+		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
+												   sizeof(char) + 1 + 24); \
+\
+		rawdata_is_a_copy = true; \
+		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%s", \
+			    original_lineno_for_qe, \
+				ORIGINAL_LINENO_DELIM, \
+				target_seg, \
+				ORIGINAL_LINENO_DELIM, \
+				cstate->line_buf.data);	\
+	}\
+	else\
+	{\
+		/* truncate trailing eol chars if we need to store this row in errtbl */ \
+		if(cstate->cdbsreh->errtbl) \
+			truncateEol(&cstate->line_buf, cstate->eol_type); \
+\
+		if(Gp_role == GP_ROLE_EXECUTE)\
+		{\
+			/* if line has embedded rownum, update the cursor to the pos right after */ \
+			Insist(cstate->err_loc_type == ROWNUM_EMBEDDED);\
+			cstate->line_buf.cursor = 0;\
+			cstate->cur_lineno = CopyExtractLineNum(cstate); \
+		}\
+\
+		cstate->cdbsreh->rawdata = cstate->line_buf.data + cstate->line_buf.cursor; \
+	}\
+\
+	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
+	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
+	cstate->cdbsreh->processed = ++cstate->processed; \
+	cstate->cdbsreh->consec_csv_err = cstate->num_consec_csv_err; \
+\
+	/* set the error message. Use original msg and add column name if availble */ \
+	if (cstate->cur_attname)\
+	{\
+		cstate->cdbsreh->errmsg = (char *) palloc((strlen(edata->message) + \
+												  strlen(cstate->cur_attname) + \
+												  10 + 1) * sizeof(char)); \
+		errmsg_is_a_copy = true; \
+		sprintf(cstate->cdbsreh->errmsg, "%s, column %s", \
+				edata->message, \
+				cstate->cur_attname); \
+	}\
+	else\
+	{\
+		cstate->cdbsreh->errmsg = edata->message; \
+	}\
+\
+	/* after all the prep work let cdbsreh do the real work */ \
+	HandleSingleRowError(cstate->cdbsreh); \
+\
+	/* cleanup any extra memory copies we made */\
+	if(rawdata_is_a_copy) \
+		pfree(cstate->cdbsreh->rawdata); \
+	if(errmsg_is_a_copy && !IsRejectLimitReached(cstate->cdbsreh)) \
+		pfree(cstate->cdbsreh->errmsg); \
+}
+
+/*
+ * if in SREH mode and data error occured it was already handled in 
+ * COPY_HANDLE_ERROR. Therefore, skip to the next row before attempting
+ * to do any further processing on this one. There's a QE and QD versions
+ * since the QE doesn't have a linebuf_with_lineno stringInfo.
+ */
+#define QD_GOTO_NEXT_ROW \
+RESET_LINEBUF_WITH_LINENO; \
+RESET_LINEBUF; \
+cur_row_rejected = false; /* reset for next run */ \
+continue; /* move on to the next data line */
+
+#define QE_GOTO_NEXT_ROW \
+RESET_LINEBUF; \
+cur_row_rejected = false; /* reset for next run */ \
+cstate->cur_attname = NULL;\
+continue; /* move on to the next data line */
+
+#define IF_REJECT_LIMIT_REACHED_ABORT \
+if(IsRejectLimitReached(cstate->cdbsreh)) \
+{\
+	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
+	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
+	char *finalmsg;\
+\
+	if(FIRST_1000_BAD(cstate->cdbsreh))\
+	{\
+		/* the special "first 1000 are bad" case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_allbad) + 12 + 1)\
+									* sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
+	}\
+	else if(CSV_IS_UNPARSABLE(cstate->cdbsreh))\
+	{\
+		/* the special "csv un-parsable" case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
+									* sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, cstate->cdbsreh->errmsg);\
+	}\
+	else\
+	{\
+		/* the normal case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_normal) + 12 + 1)\
+									* sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
+	}\
+\
+	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
+		cdbCopyEnd(cdbCopy); \
+\
+	ereport(ERROR, \
+			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
+			(errmsg(finalmsg) \
+			))); \
+}
 
 /*
  * Send copy start/stop messages for frontend copies.  These have changed
@@ -1948,417 +2148,174 @@ CopyToDispatch(CopyState cstate)
 
 
 /*
- * error context callback for COPY FROM
+ * CopyCreateDispatchCommand
+ * 
+ * The COPY command that needs to get dispatched to the QE's isn't necessarily
+ * the same command that arrived from the parser to the QD. For example, we
+ * always change filename to STDIN, we may pre-evaluate constant values or
+ * functions on the QD and send them to the QE with an extended column list.
  */
-static void
-copy_in_error_callback(void *arg)
+static void CopyCreateDispatchCommand(CopyState cstate,
+									  StringInfo cdbcopy_cmd,
+									  GpPolicy  *policy,
+									  AttrNumber	num_phys_attrs,
+									  AttrNumber	num_defaults,
+									  AttrNumber	p_nattrs,
+									  AttrNumber	h_attnum,
+									  int *defmap,
+								 	  ExprState **defexprs,
+									  Form_pg_attribute *attr)
 {
-	void *buff_orig;
-	CopyState	cstate = (CopyState) arg;
+	ListCell   *cur;
+	bool		is_first_col;
+	int			i,
+				p_index = 0;
+	AttrNumber	extra_attr_count = 0; /* count extra attributes we add in the dispatcher COPY
+										 usually non constant defaults we pre-evaluate in here */
 	
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+	
+	/* append schema and tablename */
+	appendStringInfo(cdbcopy_cmd, "COPY %s.%s",
+					 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->rel))),
+					 quote_identifier(RelationGetRelationName(cstate->rel)));
 	/*
-	 * Make sure to not modify the actual line_buf here (for example
-	 * in limit_printout_length() ) as we may got here not because of
-	 * a data error but because of an innocent elog(NOTICE) for example
-	 * somewhere in the code. We make a copy of line_buf and use it for 
-	 * the error context purposes so that a non-data related elog call
-	 * won't corrupt our data in line_buf.
+	 * append column list. NOTE: if not specified originally, attnumlist will
+	 * include all non-dropped columns of the table by default
 	 */
-	StringInfoData copy_of_line_buf;
-	char buffer[20];
-				
-	initStringInfo(&copy_of_line_buf);
-	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
-	
-	/* NB:  be sure not to add anymore appendStringInfo() calls between here
-	 *      and the pfree() at the bottom.
-	 */
-	buff_orig = copy_of_line_buf.data;
+	if(num_phys_attrs > 0) /* don't append anything for zero column table */
+	{
+		appendStringInfo(cdbcopy_cmd, "(");
 		
-	/*
-	 * If our (copy of) linebuf has the embedded original row number, remove 
-     * it. It is not part of the actual data, and should not be displayed.
-	 */
-	if(cstate->err_loc_type == ROWNUM_EMBEDDED)
-	{
-		/* the following is a compacted mod of CopyExtractLineNum */
-		int lineno_str_len = 0;
-		char *line_start = copy_of_line_buf.data;
-		char *lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
-		
-		/* Calling Insist or Assert here will cause recursive errors */
-		if (!(lineno_delim && (lineno_delim != line_start)))
-			write_log("Error in copy_in_error_callback: !(lineno_delim && (lineno_delim != line_start))\n");
-		else
-		{
-			lineno_str_len = lineno_delim - line_start + 1;
-			copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
-			copy_of_line_buf.len -= lineno_str_len;
-	
-			/* skip target_seg */
-			line_start = copy_of_line_buf.data;
-			lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
-			
-			if (lineno_delim && (lineno_delim != line_start))
-			{	
-				lineno_str_len = lineno_delim - line_start + 1;
-				copy_of_line_buf.data += lineno_str_len; /* advance beyond target_seg */
-				copy_of_line_buf.len -= lineno_str_len;
-			}
-		}
-	}
-	
-	/*
-	 * If we saved the error context from a QE in cdbcopy.c append it here.
-	 */
-	if((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
-			&& cstate->executor_err_context.len > 0)
-	{
-		errcontext("%s", cstate->executor_err_context.data);
-		pfree(buff_orig);
-		return;
-	}
-	
-	if (cstate->cur_attname)
-	{
-		/* error is relevant to a particular column */
-		limit_printout_length(&cstate->attribute_buf);
-
-		if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-			errcontext("COPY %s, line %s, column %s",
-					   cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->cur_attname);
-	}
-	else
-	{
-
-		/* error is relevant to a particular line */
-		if (cstate->line_buf_converted || !cstate->need_transcoding)
-		{
-			truncateEol(&copy_of_line_buf, cstate->eol_type);
-			limit_printout_length(&copy_of_line_buf);
-
-			if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-				errcontext("COPY %s, line %s: \"%s\"", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), copy_of_line_buf.data);
-		}
-		else
-		{
-			/*
-			 * Here, the line buffer is still in a foreign encoding,
-			 * and indeed it's quite likely that the error is precisely
-			 * a failure to do encoding conversion (ie, bad data).	We
-			 * dare not try to convert it, and at present there's no way
-			 * to regurgitate it without conversion.  So we have to punt
-			 * and just report the line number.
-			 */
-			if(!cstate->error_on_executor)
-				errcontext("COPY %s, line %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno));
-		}
-	}	
-	pfree(buff_orig);
-}
-
-/*
- * Make sure we don't print an unreasonable amount of COPY data in a message.
- *
- * It would seem a lot easier to just use the sprintf "precision" limit to
- * truncate the string.  However, some versions of glibc have a bug/misfeature
- * that vsnprintf will always fail (return -1) if it is asked to truncate
- * a string that contains invalid byte sequences for the current encoding.
- * So, do our own truncation.  We assume we can alter the StringInfo buffer
- * holding the input data.
- */
-void
-limit_printout_length(StringInfo buf)
-{
-#define MAX_COPY_DATA_DISPLAY 100
-
-	int			len;
-
-	/* Fast path if definitely okay */
-	if (buf->len <= MAX_COPY_DATA_DISPLAY)
-		return;
-
-	/* Apply encoding-dependent truncation */
-	len = pg_mbcliplen(buf->data, buf->len, MAX_COPY_DATA_DISPLAY);
-	if (buf->len <= len)
-		return;					/* no need to truncate */
-	buf->len = len;
-	buf->data[len] = '\0';
-
-	/* Add "..." to show we truncated the input */
-	appendStringInfoString(buf, "...");
-}
-
-/* ==========================================================================
- * The follwing macros aid in major refactoring of data processing code (in
- * CopyFrom(+Dispatch)). We use macros because in some cases the code must be in
- * line in order to work (for example elog_dismiss() in PG_CATCH) while in 
- * other cases we'd like to inline the code for performance reasons.
- *
- * NOTE that an almost identical set of macros exists in fileam.c. If you make 
- * changes here you may want to consider taking a look there as well.
- * ==========================================================================
- */
-
-#define RESET_LINEBUF \
-cstate->line_buf.len = 0; \
-cstate->line_buf.data[0] = '\0'; \
-cstate->line_buf.cursor = 0;
-
-#define RESET_ATTRBUF \
-cstate->attribute_buf.len = 0; \
-cstate->attribute_buf.data[0] = '\0'; \
-cstate->attribute_buf.cursor = 0;
-
-#define RESET_LINEBUF_WITH_LINENO \
-line_buf_with_lineno.len = 0; \
-line_buf_with_lineno.data[0] = '\0'; \
-line_buf_with_lineno.cursor = 0;
-
-/*
- * A data error happened. This code block will always be inside a PG_CATCH()
- * block right when a higher stack level produced an error. We handle the error
- * by checking which error mode is set (SREH or all-or-nothing) and do the right
- * thing accordingly. Note that we MUST have this code in a macro (as opposed 
- * to a function) as elog_dismiss() has to be inlined with PG_CATCH in order to 
- * access local error state variables.
- *
- * changing me? take a look at FILEAM_HANDLE_ERROR in fileam.c as well.
- */
-#define COPY_HANDLE_ERROR \
-if(cstate->errMode == ALL_OR_NOTHING) \
-{ \
-	/* re-throw error and abort */ \
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
-		cdbCopyEnd(cdbCopy); \
-	PG_RE_THROW(); \
-} \
-else \
-{ \
-	/* SREH - release error state and handle error */ \
-\
-	ErrorData	*edata; \
-	MemoryContext oldcontext;\
-	bool	rawdata_is_a_copy = false; \
-	bool	errmsg_is_a_copy = false; \
-	cur_row_rejected = true; \
-\
-	/* SREH must only handle data errors. all other errors must not be caught */\
-	if(ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_DATA_EXCEPTION)\
-	{\
-		/* re-throw error and abort */ \
-		if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
-			cdbCopyEnd(cdbCopy); \
-		PG_RE_THROW(); \
-	}\
-\
-	/* save a copy of the error info */ \
-	oldcontext = MemoryContextSwitchTo(cstate->cdbsreh->badrowcontext);\
-	edata = CopyErrorData();\
-	MemoryContextSwitchTo(oldcontext);\
-\
-	if(!elog_dismiss(DEBUG5)) \
-		PG_RE_THROW(); /* <-- hope to never get here! */ \
-\
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)\
-	{\
-		Insist(cstate->err_loc_type == ROWNUM_ORIGINAL);\
-		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
-												   sizeof(char) + 1 + 24); \
-\
-		rawdata_is_a_copy = true; \
-		sprintf(cstate->cdbsreh->rawdata, "%d%c%d%c%s", \
-			    original_lineno_for_qe, \
-				ORIGINAL_LINENO_DELIM, \
-				target_seg, \
-				ORIGINAL_LINENO_DELIM, \
-				cstate->line_buf.data);	\
-	}\
-	else\
-	{\
-		/* truncate trailing eol chars if we need to store this row in errtbl */ \
-		if(cstate->cdbsreh->errtbl) \
-			truncateEol(&cstate->line_buf, cstate->eol_type); \
-\
-		if(Gp_role == GP_ROLE_EXECUTE)\
-		{\
-			/* if line has embedded rownum, update the cursor to the pos right after */ \
-			Insist(cstate->err_loc_type == ROWNUM_EMBEDDED);\
-			cstate->line_buf.cursor = 0;\
-			cstate->cur_lineno = CopyExtractLineNum(cstate); \
-		}\
-\
-		cstate->cdbsreh->rawdata = cstate->line_buf.data + cstate->line_buf.cursor; \
-	}\
-\
-	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
-	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
-	cstate->cdbsreh->processed = ++cstate->processed; \
-	cstate->cdbsreh->consec_csv_err = cstate->num_consec_csv_err; \
-\
-	/* set the error message. Use original msg and add column name if availble */ \
-	if (cstate->cur_attname)\
-	{\
-		cstate->cdbsreh->errmsg = (char *) palloc((strlen(edata->message) + \
-												  strlen(cstate->cur_attname) + \
-												  10 + 1) * sizeof(char)); \
-		errmsg_is_a_copy = true; \
-		sprintf(cstate->cdbsreh->errmsg, "%s, column %s", \
-				edata->message, \
-				cstate->cur_attname); \
-	}\
-	else\
-	{\
-		cstate->cdbsreh->errmsg = edata->message; \
-	}\
-\
-	/* after all the prep work let cdbsreh do the real work */ \
-	HandleSingleRowError(cstate->cdbsreh); \
-\
-	/* cleanup any extra memory copies we made */\
-	if(rawdata_is_a_copy) \
-		pfree(cstate->cdbsreh->rawdata); \
-	if(errmsg_is_a_copy && !IsRejectLimitReached(cstate->cdbsreh)) \
-		pfree(cstate->cdbsreh->errmsg); \
-}
-
-/*
- * if in SREH mode and data error occured it was already handled in 
- * COPY_HANDLE_ERROR. Therefore, skip to the next row before attempting
- * to do any further processing on this one. There's a QE and QD versions
- * since the QE doesn't have a linebuf_with_lineno stringInfo.
- */
-#define QD_GOTO_NEXT_ROW \
-RESET_LINEBUF_WITH_LINENO; \
-RESET_LINEBUF; \
-cur_row_rejected = false; /* reset for next run */ \
-continue; /* move on to the next data line */
-
-#define QE_GOTO_NEXT_ROW \
-RESET_LINEBUF; \
-cur_row_rejected = false; /* reset for next run */ \
-cstate->cur_attname = NULL;\
-continue; /* move on to the next data line */
-
-#define IF_REJECT_LIMIT_REACHED_ABORT \
-if(IsRejectLimitReached(cstate->cdbsreh)) \
-{\
-	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
-	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
-	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
-	char *finalmsg;\
-\
-	if(FIRST_1000_BAD(cstate->cdbsreh))\
-	{\
-		/* the special "first 1000 are bad" case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_allbad) + 12 + 1)\
-									* sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
-	}\
-	else if(CSV_IS_UNPARSABLE(cstate->cdbsreh))\
-	{\
-		/* the special "csv un-parsable" case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
-									* sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, cstate->cdbsreh->errmsg);\
-	}\
-	else\
-	{\
-		/* the normal case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_normal) + 12 + 1)\
-									* sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
-	}\
-\
-	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
-		cdbCopyEnd(cdbCopy); \
-\
-	ereport(ERROR, \
-			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			(errmsg(finalmsg) \
-			))); \
-}
-
-static void
-attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
-			 unsigned int target_seg,
-			 AttrNumber p_nattrs, AttrNumber *attrs,
-			 Form_pg_attribute *attr_descs, int *attr_offsets, bool *attr_nulls,
-			 FmgrInfo *in_functions, Oid *typioparams, Datum *values)
-{
-	AttrNumber p_index;
-
-	/*
-	 * Since we only need the internal format of values that
-	 * we want to hash on (partitioning keys only), we want to
-	 * skip converting the other values so we can run faster.
-	 */
-	for (p_index = 0; p_index < p_nattrs; p_index++)
-	{
-		ListCell *cur;
-
-		/*
-		 * For this partitioning key, search for its location in the attr list.
-		 * (note that fields may be out of order, so this is necessary).
-		 */
+		is_first_col = true;
 		foreach(cur, cstate->attnumlist)
 		{
 			int			attnum = lfirst_int(cur);
 			int			m = attnum - 1;
-			char	   *string;
-			bool		isnull;
 
-			if (attnum == attrs[p_index])
+			/* We don't add dropped attributes */
+			if (attr[m]->attisdropped)
+				continue;
+			
+			/* append column string. quote it if needed */
+			if (is_first_col)
+				appendStringInfo(cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
+			else
+				appendStringInfo(cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
+
+			is_first_col = false;
+		}
+		
+		/*
+		 * In order to maintain consistency between the primary and mirror segment data, we
+		 * want to evaluate all table columns that are not participating in this COPY command
+		 * and have a non-constant default values on the dispatcher. If we let them evaluate
+		 * on the primary and mirror executors separately - they will get different values.
+		 * Also, if the distribution column is not participating and it has any default value,
+		 * we have to evaluate it on the dispatcher only too, so that it wouldn't hash as a null
+		 * and inserted as a default value on the segment databases.
+		 *
+		 * Therefore, we include these columns in the column list for the executor COPY.
+		 * The default values will be evaluated on the dispatcher COPY and the results for
+		 * the added columns will be appended to each data row that is shipped to the segments.	
+		 */
+		extra_attr_count = 0;
+		
+		for (i = 0; i < num_defaults; i++)
+		{
+			bool add_to_list = false;
+			
+			/* check 1: is this default for a distribution column? */
+			for (p_index = 0; p_index < p_nattrs; p_index++)
 			{
-				string = cstate->attribute_buf.data + attr_offsets[m];
-
-				if (attr_nulls[m])
-					isnull = true;
-				else
-					isnull = false;
-
-				if (cstate->csv_mode && isnull && 
-					cstate->force_notnull_flags[m])
-				{
-					string = cstate->null_print;		/* set to NULL string */
-					isnull = false;
-				}
-
-				/* we read an SQL NULL, no need to do anything */
-				if (!isnull)
-				{
-					cstate->cur_attname = NameStr(attr_descs[m]->attname);
-
-					values[m] = InputFunctionCall(&in_functions[m],
-												  string,
-												  typioparams[m],
-												  attr_descs[m]->atttypmod);
-
-					cstate->cur_attname = NULL;
-				}		/* end if (!isnull) */
-
-				break;	/* go to next partitioning key
-						 * attribute */
+				h_attnum = policy->attrs[p_index];	
+				
+				if(h_attnum - 1 == defmap[i])
+					add_to_list = true;
 			}
-		}		/* end foreach */
-	}			/* end for partitioning indexes */
+			
+			/* check 2: is this a non constant default? */
+			if(defexprs[i]->expr->type != T_Const)
+				add_to_list = true;
+			
+			if(add_to_list)
+			{
+				/* We don't add dropped attributes */
+				if (attr[defmap[i]]->attisdropped)
+					continue;
+				
+				/* append column string. quote it if needed */
+				if (is_first_col)
+					appendStringInfo(cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
+				else
+					appendStringInfo(cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
+				
+				extra_attr_count++;
+				is_first_col = false;			
+			}
+		}
+
+		appendStringInfo(cdbcopy_cmd, ")");
+	}
+	
+	/* 
+	 * NOTE: we used to always pass STDIN here to the QEs. But since we want
+	 * the QEs to know the original file name for recording it in an error table
+	 * (if they use one) we actually pass the filename here, and in the QE COPY
+	 * we get it, save it, and then always revert back to actually using STDIN.
+	 * (if we originally use STDIN we just pass it along and record that in the
+	 * error table).
+	 */
+	if(cstate->filename)		
+		appendStringInfo(cdbcopy_cmd, " FROM '%s' WITH", cstate->filename);
+	else
+		appendStringInfo(cdbcopy_cmd, " FROM STDIN WITH");
+
+	if (cstate->oids)
+		appendStringInfo(cdbcopy_cmd, " OIDS");
+	
+	appendStringInfo(cdbcopy_cmd, " DELIMITER AS E'%s'", cstate->delim);
+	appendStringInfo(cdbcopy_cmd, " NULL AS E'%s'", escape_quotes(cstate->null_print));
+
+	/* if default escape in text format ("\") leave expression out */
+	if (!cstate->csv_mode && strcmp(cstate->escape, "\\") != 0) 
+		appendStringInfo(cdbcopy_cmd, " ESCAPE AS E'%s'", cstate->escape);
+
+	if (cstate->csv_mode)
+	{
+		appendStringInfo(cdbcopy_cmd, " CSV");
+		appendStringInfo(cdbcopy_cmd, " QUOTE AS E'%s'", escape_quotes(cstate->quote));
+		appendStringInfo(cdbcopy_cmd, " ESCAPE AS E'%s'", escape_quotes(cstate->escape));
+
+		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
+	}
+	
+	/* add single row error handling clauses if necessary */
+	if (cstate->errMode != ALL_OR_NOTHING)
+	{
+		if (cstate->errMode == SREH_LOG)
+		{
+			appendStringInfo(cdbcopy_cmd, " LOG ERRORS INTO %s.%s",
+							 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->cdbsreh->errtbl))),
+							 quote_identifier(RelationGetRelationName(cstate->cdbsreh->errtbl)));
+		}
+		
+		appendStringInfo(cdbcopy_cmd, " SEGMENT REJECT LIMIT %d %s", 
+						 cstate->cdbsreh->rejectlimit, (cstate->cdbsreh->is_limit_in_rows ? "ROWS" : "PERCENT"));
+	}
+	
 }
 
 /*
  * Copy FROM file to relation.
  */
- void
+void
 CopyFromDispatch(CopyState cstate)
 {
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
 				attr_count,
-				extra_attr_count = 0, /* count extra attributes we add in the dispatcher COPY
-							         usually non constant defaults we pre-evaluate in here */
 				num_defaults;
 	FmgrInfo   *in_functions;
 	FmgrInfo   *out_functions; /* for handling defaults in Greenplum Database */
@@ -2383,11 +2340,9 @@ CopyFromDispatch(CopyState cstate)
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorContextCallback errcontext;
 	bool		no_more_data = false;
-	bool		is_first_col;
 	ListCell   *cur;
 	bool		cur_row_rejected = false;	
 	CdbCopy    *cdbCopy;
-	Size 		sz;
 	
 	/*
 	 * This stringInfo will contain 2 types of error messages:
@@ -2405,9 +2360,7 @@ CopyFromDispatch(CopyState cstate)
 	StringInfoData cdbcopy_err;
 
 	/*
-	 * contains a copy of the original COPY command string that was issued by the
-	 * client. This copy of the COPY command string is sent to all the segment
-	 * databases to execute there in gp_role execute
+	 * a reconstructed and modified COPY command that is dispatched to segments.
 	 */
 	StringInfoData cdbcopy_cmd;
 
@@ -2531,31 +2484,19 @@ CopyFromDispatch(CopyState cstate)
 
 	/*
 	 * prepare to COPY data into segDBs:
-	 * 1 - set table partitioning information
-	 * 2 - set append only table relevant info for dispatch.
-	 * 3 - get the distribution policy for this table.
-	 * 4 - re-construct the orignial COPY command sent from the client.
-	 * 5 - execute a BEGIN DTM transaction.
-	 * 6 - send the COPY command to all segment databases.
-	 * 7 - prepare cdbhash for hashing on row values.
+	 * - set table partitioning information
+	 * - set append only table relevant info for dispatch.
+	 * - get the distribution policy for this table.
+	 * - build a COPY command to dispatch to segdbs.
+	 * - dispatch the modified COPY command to all segment databases.
+	 * - prepare cdbhash for hashing on row values.
 	 */
 	cdbCopy = makeCdbCopy(true);
 
 	estate->es_result_partitions = cdbCopy->partitions = 
 		RelationBuildPartitionDesc(cstate->rel, false);
 
-	if (estate->es_result_partitions)
-	{
-		estate->es_partition_state = makeNode(PartitionState);
-	
-		sz = num_partition_levels(estate->es_result_partitions);
-		sz *= sizeof(void *);
-		estate->es_partition_state->amstate = palloc0(sz);
-		estate->es_partition_state->max_partition_attr =
-			max_partition_attr(estate->es_result_partitions);
-		estate->es_partition_state->result_partition_array_size =
-				estate->es_num_result_relations;
-	}
+	CopyInitPartitioningState(estate);
 	
 	if(list_length(cstate->ao_segnos) > 0)
 		cdbCopy->ao_segnos = cstate->ao_segnos;
@@ -2575,8 +2516,8 @@ CopyFromDispatch(CopyState cstate)
 		p_nattrs = policy->nattrs;	/* number of partitioning keys */
 	else
 		p_nattrs = 0;
-	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
-		* reference */
+	
+	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);	/* Create hash API reference */
 
 	/*
 	 * Extract types for each partition key from the tuple descriptor,
@@ -2608,135 +2549,17 @@ CopyFromDispatch(CopyState cstate)
 	initStringInfo(&cdbcopy_err);
 	initStringInfo(&cdbcopy_cmd);
 
-	/* append schema and tablename */
-	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s",
-					 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->rel))),
-					 quote_identifier(RelationGetRelationName(cstate->rel)));
-	/*
-	 * append column list. NOTE: if not specified originally, attnumlist will
-	 * include all non-dropped columns of the table by default
-	 */
-	if(num_phys_attrs > 0) /* don't append anything for zero column table */
-	{
-		appendStringInfo(&cdbcopy_cmd, "(");
-		
-		is_first_col = true;
-		foreach(cur, cstate->attnumlist)
-		{
-			int			attnum = lfirst_int(cur);
-			int			m = attnum - 1;
-
-			/* We don't add dropped attributes */
-			if (attr[m]->attisdropped)
-				continue;
-			
-			/* append column string. quote it if needed */
-			if (is_first_col)
-				appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
-			else
-				appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
-
-			is_first_col = false;
-		}
-		
-		/*
-		 * In order to maintain consistency between the primary and mirror segment data, we
-		 * want to evaluate all table columns that are not participating in this COPY command
-		 * and have a non-constant default values on the dispatcher. If we let them evaluate
-		 * on the primary and mirror executors separately - they will get different values.
-		 * Also, if the distribution column is not participating and it has any default value,
-		 * we have to evaluate it on the dispatcher only too, so that it wouldn't hash as a null
-		 * and inserted as a default value on the segment databases.
-		 *
-		 * Therefore, we include these columns in the column list for the executor COPY.
-		 * The default values will be evaluated on the dispatcher COPY and the results for
-		 * the added columns will be appended to each data row that is shipped to the segments.	
-		 */
-		extra_attr_count = 0;
-		
-		for (i = 0; i < num_defaults; i++)
-		{
-			bool add_to_list = false;
-			
-			/* check 1: is this default for a distribution column? */
-			for (p_index = 0; p_index < p_nattrs; p_index++)
-			{
-				h_attnum = policy->attrs[p_index];	
-				
-				if(h_attnum - 1 == defmap[i])
-					add_to_list = true;
-			}
-			
-			/* check 2: is this a non constant default? */
-			if(defexprs[i]->expr->type != T_Const)
-				add_to_list = true;
-			
-			if(add_to_list)
-			{
-				/* We don't add dropped attributes */
-				if (attr[defmap[i]]->attisdropped)
-					continue;
-				
-				/* append column string. quote it if needed */
-				if (is_first_col)
-					appendStringInfo(&cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
-				else
-					appendStringInfo(&cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
-				
-				extra_attr_count++;
-				is_first_col = false;			
-			}
-		}
-
-		appendStringInfo(&cdbcopy_cmd, ")");
-	}
-	
-	/* 
-	 * NOTE: we used to always pass STDIN here to the QEs. But since we want
-	 * the QEs to know the original file name for recording it in an error table
-	 * (if they use one) we actually pass the filename here, and in the QE COPY
-	 * we get it, save it, and then always revert back to actually using STDIN.
-	 * (if we originally use STDIN we just pass it along and record that in the
-	 * error table).
-	 */
-	if(cstate->filename)		
-		appendStringInfo(&cdbcopy_cmd, " FROM '%s' WITH", cstate->filename);
-	else
-		appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
-
-	if (cstate->oids)
-		appendStringInfo(&cdbcopy_cmd, " OIDS");
-	
-	appendStringInfo(&cdbcopy_cmd, " DELIMITER AS E'%s'", cstate->delim);
-	appendStringInfo(&cdbcopy_cmd, " NULL AS E'%s'", escape_quotes(cstate->null_print));
-
-	/* if default escape in text format ("\") leave expression out */
-	if (!cstate->csv_mode && strcmp(cstate->escape, "\\") != 0) 
-		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS E'%s'", cstate->escape);
-
-	if (cstate->csv_mode)
-	{
-		appendStringInfo(&cdbcopy_cmd, " CSV");
-		appendStringInfo(&cdbcopy_cmd, " QUOTE AS E'%s'", escape_quotes(cstate->quote));
-		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS E'%s'", escape_quotes(cstate->escape));
-
-		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
-	}
-	
-	/* add single row error handling clauses if necessary */
-	if (cstate->errMode != ALL_OR_NOTHING)
-	{
-		if (cstate->errMode == SREH_LOG)
-		{
-			appendStringInfo(&cdbcopy_cmd, " LOG ERRORS INTO %s.%s",
-							 quote_identifier(get_namespace_name(RelationGetNamespace(cstate->cdbsreh->errtbl))),
-							 quote_identifier(RelationGetRelationName(cstate->cdbsreh->errtbl)));
-		}
-		
-		appendStringInfo(&cdbcopy_cmd, " SEGMENT REJECT LIMIT %d %s", 
-						 cstate->cdbsreh->rejectlimit, (cstate->cdbsreh->is_limit_in_rows ? "ROWS" : "PERCENT"));
-	}
-	
+	/* store the COPY command string in cdbcopy_cmd */
+	CopyCreateDispatchCommand(cstate,
+							  &cdbcopy_cmd,
+							  policy,
+							  num_phys_attrs,
+							  num_defaults,
+							  p_nattrs,
+							  h_attnum,
+							  defmap,
+							  defexprs,
+							  attr);
 
 	/*
 	 * for optimized parsing - get the last field number in the
@@ -2778,22 +2601,19 @@ CopyFromDispatch(CopyState cstate)
 	
 
 	/*
-	 * Start a COPY command in every db of every segment in MPP.
+	 * Dispatch the COPY command.
 	 *
-	 * From this point in the code we need to be extra careful
-	 * about error handling. ereport() must not be called until
-	 * the COPY command sessions are closed on the executors.
-	 * Calling ereport() will leave the executors hanging in
-	 * COPY state.
+	 * From this point in the code we need to be extra careful about error 
+	 * handling. ereport() must not be called until the COPY command sessions 
+	 * are closed on the executors. Calling ereport() will leave the executors 
+	 * hanging in COPY state.
 	 *
-	 * For errors detected by the dispatcher, we save the
-	 * error message in cdbcopy_err StringInfo, move on
-	 * to closing all COPY sessions on the executors and
-	 * only then raise an error. We need to make sure to
-	 * TRY/CATCH all other errors that may be raised from
-	 * elsewhere in the backend. All error during COPY on the
-	 * executors will be detected only when we end the COPY
-	 * session there, so we are fine there.
+	 * For errors detected by the dispatcher, we save the error message in 
+	 * cdbcopy_err StringInfo, move on to closing all COPY sessions on the 
+	 * executors and only then raise an error. We need to make sure to TRY/CATCH 
+	 * all other errors that may be raised from elsewhere in the backend. All 
+	 * error during COPY on the executors will be detected only when we end the 
+	 * COPY session there, so we are fine there.
 	 */
 	elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
 	PG_TRY();
@@ -2838,13 +2658,6 @@ CopyFromDispatch(CopyState cstate)
 	nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
 
-	/* Initialize static variables */
-	cstate->fe_eof = false;
-	cstate->eol_type = EOL_UNKNOWN;
-	cstate->cur_relname = RelationGetRelationName(cstate->rel);
-	cstate->cur_lineno = 0;
-	cstate->cur_attname = NULL;
-
 	/* Set up callback to identify error line number */
 	errcontext.callback = copy_in_error_callback;
 	errcontext.arg = (void *) cstate;
@@ -2852,25 +2665,7 @@ CopyFromDispatch(CopyState cstate)
 	error_context_stack = &errcontext;
 	cstate->err_loc_type = ROWNUM_ORIGINAL;
 		
-	/*
-	 * initialize buffered scan variables.
-	 */
-	if (cstate->csv_mode)
-	{
-		cstate->in_quote = false;
-		cstate->last_was_esc = false;
-		cstate->num_consec_csv_err = 0;
-	}
-
-	cstate->null_print_len = strlen(cstate->null_print);
-
-	/* Set up data buffer to hold a chunk of data */
-	MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
-	cstate->raw_buf[RAW_BUF_SIZE] = '\0';
-
-	no_more_data = false;		/* no more input data to read from file or FE */
-	cstate->line_done = true;
-	cstate->raw_buf_done = false;
+	CopyInitDataParser(cstate);
 
 	do
 	{
@@ -3505,7 +3300,7 @@ CopyFrom(CopyState cstate)
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorContextCallback errcontext;
 	int		   *attr_offsets;
-	bool		no_more_data;
+	bool		no_more_data = false;
 	ListCell   *cur;
 	bool		cur_row_rejected = false;
 	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
@@ -3539,19 +3334,7 @@ CopyFrom(CopyState cstate)
 	estate->es_result_relation_info = resultRelInfo;
 	estate->es_result_partitions = cstate->partitions; 
 
-	if (estate->es_result_partitions)
-	{
-		Size sz;
-		estate->es_partition_state = makeNode(PartitionState);
-
-		sz = num_partition_levels(estate->es_result_partitions);
-		sz *= sizeof(void *);
-		estate->es_partition_state->amstate = palloc0(sz);
-		estate->es_partition_state->max_partition_attr =
-			max_partition_attr(estate->es_result_partitions);
-		estate->es_partition_state->result_partition_array_size =
-				estate->es_num_result_relations;
-	}
+	CopyInitPartitioningState(estate);
 
 	/* Set up a tuple slot too */
 	slot = MakeSingleTupleTableSlot(tupDesc);
@@ -3617,13 +3400,6 @@ CopyFrom(CopyState cstate)
 	nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
 
-	/* Initialize static variables */
-	cstate->fe_eof = false;
-	cstate->eol_type = EOL_UNKNOWN;
-	cstate->cur_relname = RelationGetRelationName(cstate->rel);
-	cstate->cur_lineno = 0;
-	cstate->cur_attname = NULL;
-
 	/* Set up callback to identify error line number */
 	errcontext.callback = copy_in_error_callback;
 	errcontext.arg = (void *) cstate;
@@ -3634,26 +3410,8 @@ CopyFrom(CopyState cstate)
 	else
 		cstate->err_loc_type = ROWNUM_ORIGINAL; /* we can count rows by ourselves */
 
-	/*
-	 * initialize buffered scan variables.
-	 */
-	if (cstate->csv_mode)
-	{
-		cstate->in_quote = false;
-		cstate->last_was_esc = false;
-		cstate->num_consec_csv_err = 0;
-	}
-
-	cstate->null_print_len = strlen(cstate->null_print);
-
-	/* Set up data buffer to hold a chunk of data */
-	MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
-	cstate->raw_buf[RAW_BUF_SIZE] = '\0';
-
-	no_more_data = false;		/* no more input data to read from file or FE */
-	cstate->line_done = true;
-	cstate->raw_buf_done = false;
-
+	CopyInitDataParser(cstate);
+	
 	do
 	{
 		size_t		bytesread = 0;
@@ -5675,6 +5433,213 @@ int CopyExtractLineNum(CopyState cstate)
 	return lineno;
 }
 
+/*
+ * error context callback for COPY FROM
+ */
+static void
+copy_in_error_callback(void *arg)
+{
+	void *buff_orig;
+	CopyState	cstate = (CopyState) arg;
+	
+	/*
+	 * Make sure to not modify the actual line_buf here (for example
+	 * in limit_printout_length() ) as we may got here not because of
+	 * a data error but because of an innocent elog(NOTICE) for example
+	 * somewhere in the code. We make a copy of line_buf and use it for 
+	 * the error context purposes so that a non-data related elog call
+	 * won't corrupt our data in line_buf.
+	 */
+	StringInfoData copy_of_line_buf;
+	char buffer[20];
+				
+	initStringInfo(&copy_of_line_buf);
+	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
+	
+	/* NB:  be sure not to add anymore appendStringInfo() calls between here
+	 *      and the pfree() at the bottom.
+	 */
+	buff_orig = copy_of_line_buf.data;
+		
+	/*
+	 * If our (copy of) linebuf has the embedded original row number, remove 
+     * it. It is not part of the actual data, and should not be displayed.
+	 */
+	if(cstate->err_loc_type == ROWNUM_EMBEDDED)
+	{
+		/* the following is a compacted mod of CopyExtractLineNum */
+		int lineno_str_len = 0;
+		char *line_start = copy_of_line_buf.data;
+		char *lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+		
+		/* Calling Insist or Assert here will cause recursive errors */
+		if (!(lineno_delim && (lineno_delim != line_start)))
+			write_log("Error in copy_in_error_callback: !(lineno_delim && (lineno_delim != line_start))\n");
+		else
+		{
+			lineno_str_len = lineno_delim - line_start + 1;
+			copy_of_line_buf.data += lineno_str_len; /* advance beyond original lineno */
+			copy_of_line_buf.len -= lineno_str_len;
+	
+			/* skip target_seg */
+			line_start = copy_of_line_buf.data;
+			lineno_delim = memchr(line_start, ORIGINAL_LINENO_DELIM, 32);
+			
+			if (lineno_delim && (lineno_delim != line_start))
+			{	
+				lineno_str_len = lineno_delim - line_start + 1;
+				copy_of_line_buf.data += lineno_str_len; /* advance beyond target_seg */
+				copy_of_line_buf.len -= lineno_str_len;
+			}
+		}
+	}
+	
+	/*
+	 * If we saved the error context from a QE in cdbcopy.c append it here.
+	 */
+	if((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)
+			&& cstate->executor_err_context.len > 0)
+	{
+		errcontext("%s", cstate->executor_err_context.data);
+		pfree(buff_orig);
+		return;
+	}
+	
+	if (cstate->cur_attname)
+	{
+		/* error is relevant to a particular column */
+		limit_printout_length(&cstate->attribute_buf);
+
+		if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
+			errcontext("COPY %s, line %s, column %s",
+					   cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->cur_attname);
+	}
+	else
+	{
+
+		/* error is relevant to a particular line */
+		if (cstate->line_buf_converted || !cstate->need_transcoding)
+		{
+			truncateEol(&copy_of_line_buf, cstate->eol_type);
+			limit_printout_length(&copy_of_line_buf);
+
+			if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
+				errcontext("COPY %s, line %s: \"%s\"", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), copy_of_line_buf.data);
+		}
+		else
+		{
+			/*
+			 * Here, the line buffer is still in a foreign encoding,
+			 * and indeed it's quite likely that the error is precisely
+			 * a failure to do encoding conversion (ie, bad data).	We
+			 * dare not try to convert it, and at present there's no way
+			 * to regurgitate it without conversion.  So we have to punt
+			 * and just report the line number.
+			 */
+			if(!cstate->error_on_executor)
+				errcontext("COPY %s, line %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno));
+		}
+	}	
+	pfree(buff_orig);
+}
+
+/*
+ * Make sure we don't print an unreasonable amount of COPY data in a message.
+ *
+ * It would seem a lot easier to just use the sprintf "precision" limit to
+ * truncate the string.  However, some versions of glibc have a bug/misfeature
+ * that vsnprintf will always fail (return -1) if it is asked to truncate
+ * a string that contains invalid byte sequences for the current encoding.
+ * So, do our own truncation.  We assume we can alter the StringInfo buffer
+ * holding the input data.
+ */
+void
+limit_printout_length(StringInfo buf)
+{
+#define MAX_COPY_DATA_DISPLAY 100
+
+	int			len;
+
+	/* Fast path if definitely okay */
+	if (buf->len <= MAX_COPY_DATA_DISPLAY)
+		return;
+
+	/* Apply encoding-dependent truncation */
+	len = pg_mbcliplen(buf->data, buf->len, MAX_COPY_DATA_DISPLAY);
+	if (buf->len <= len)
+		return;					/* no need to truncate */
+	buf->len = len;
+	buf->data[len] = '\0';
+
+	/* Add "..." to show we truncated the input */
+	appendStringInfoString(buf, "...");
+}
+
+
+static void
+attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
+			 unsigned int target_seg,
+			 AttrNumber p_nattrs, AttrNumber *attrs,
+			 Form_pg_attribute *attr_descs, int *attr_offsets, bool *attr_nulls,
+			 FmgrInfo *in_functions, Oid *typioparams, Datum *values)
+{
+	AttrNumber p_index;
+
+	/*
+	 * Since we only need the internal format of values that
+	 * we want to hash on (partitioning keys only), we want to
+	 * skip converting the other values so we can run faster.
+	 */
+	for (p_index = 0; p_index < p_nattrs; p_index++)
+	{
+		ListCell *cur;
+
+		/*
+		 * For this partitioning key, search for its location in the attr list.
+		 * (note that fields may be out of order, so this is necessary).
+		 */
+		foreach(cur, cstate->attnumlist)
+		{
+			int			attnum = lfirst_int(cur);
+			int			m = attnum - 1;
+			char	   *string;
+			bool		isnull;
+
+			if (attnum == attrs[p_index])
+			{
+				string = cstate->attribute_buf.data + attr_offsets[m];
+
+				if (attr_nulls[m])
+					isnull = true;
+				else
+					isnull = false;
+
+				if (cstate->csv_mode && isnull && 
+					cstate->force_notnull_flags[m])
+				{
+					string = cstate->null_print;		/* set to NULL string */
+					isnull = false;
+				}
+
+				/* we read an SQL NULL, no need to do anything */
+				if (!isnull)
+				{
+					cstate->cur_attname = NameStr(attr_descs[m]->attname);
+
+					values[m] = InputFunctionCall(&in_functions[m],
+												  string,
+												  typioparams[m],
+												  attr_descs[m]->atttypmod);
+
+					cstate->cur_attname = NULL;
+				}		/* end if (!isnull) */
+
+				break;	/* go to next partitioning key
+						 * attribute */
+			}
+		}		/* end foreach */
+	}			/* end for partitioning indexes */
+}
 
 /*
  * The following are custom versions of the string function strchr().
@@ -5894,6 +5859,48 @@ CreateCopyDestReceiver(void)
 }
 
 
+static void CopyInitPartitioningState(EState *estate)
+{
+	if (estate->es_result_partitions)
+	{
+		Size sz;
+		estate->es_partition_state = makeNode(PartitionState);
+
+		sz = num_partition_levels(estate->es_result_partitions);
+		sz *= sizeof(void *);
+		estate->es_partition_state->amstate = palloc0(sz);
+		estate->es_partition_state->max_partition_attr =
+			max_partition_attr(estate->es_result_partitions);
+		estate->es_partition_state->result_partition_array_size =
+				estate->es_num_result_relations;
+	}	
+}
+
+/*
+ * Initialize data loader parsing state
+ */
+static void CopyInitDataParser(CopyState cstate)
+{
+	cstate->fe_eof = false;
+	cstate->eol_type = EOL_UNKNOWN;
+	cstate->cur_relname = RelationGetRelationName(cstate->rel);
+	cstate->cur_lineno = 0;
+	cstate->cur_attname = NULL;
+	cstate->null_print_len = strlen(cstate->null_print);
+
+	if (cstate->csv_mode)
+	{
+		cstate->in_quote = false;
+		cstate->last_was_esc = false;
+		cstate->num_consec_csv_err = 0;
+	}
+
+	/* Set up data buffer to hold a chunk of data */
+	MemSet(cstate->raw_buf, ' ', RAW_BUF_SIZE * sizeof(char));
+	cstate->raw_buf[RAW_BUF_SIZE] = '\0';
+	cstate->line_done = true;
+	cstate->raw_buf_done = false;	
+}
 
 uint64
 DoCopyDispatchAgent(const CopyStmt *stmt)
