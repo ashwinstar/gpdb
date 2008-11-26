@@ -577,7 +577,15 @@ int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
 
 	/* Greater than or Equal. */
 	if(ins >= 0)
+	{
+		if(mkheap->mkctxt->enforceUnique && ins == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
+						errmsg("could not create unique index"),
+						errdetail("Table contains duplicated values.")));
+		}
 		return ins;
+	}
 
 	++e->run;
 	ins = mkheap_puget_impl(mkheap, e); 
@@ -614,6 +622,13 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
 	Assert(out->run == 0);
 
 	ins = mkheap_puget_impl(mkheap, out);
+	if(mkheap->mkctxt->enforceUnique && ins == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
+					errmsg("could not create unique index"),
+					errdetail("Table contains duplicated values.")));
+	}
+
 	Assert(ins >= 0);
 	Assert(out->reader == n);
 	Assert(!mke_test_flag(out, MKE_Empty));

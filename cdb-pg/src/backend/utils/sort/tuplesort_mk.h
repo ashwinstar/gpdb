@@ -69,15 +69,15 @@ typedef struct MKContext_LvCommon
 typedef struct MKContext {
 	int total_lv;
 	MKCompare *comp; 	/* One comparison function for each level */
-	MKPrepare *prep;    /* One prepare function (memtuple_getattr) for each level */
+	MKPrepare *prep;    	/* One prepare function (memtuple_getattr) for each level */
 
-	MKCopyFree  cpfr;   /* Just one refcnt function.  */
+	MKCopyFree  cpfr;   	/* Just one refcnt function.  */
 	size_t ctxt_size;
 	void *ctxt;
 
-	int64 limit;
-	bool unique;
-	bool enforceUnique;
+	int64 limit;		/* Limit sort */
+	bool unique;		/* Unique sort */
+	bool enforceUnique;	/* enforce Unique, for index build */
 } MKContext;
 
 static inline void *mk_get_ctxt(MKContext *mk_ctxt, int n)
@@ -86,10 +86,10 @@ static inline void *mk_get_ctxt(MKContext *mk_ctxt, int n)
 }
 
 /* MK quicksort stuff */
-extern void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt);
+extern void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt, bool seenNull);
 static inline void mk_qsort(MKEntry* a, int n, MKContext *ctxt)
 {
-	return mk_qsort_impl(a, 0, n-1, 0, true, ctxt);
+	return mk_qsort_impl(a, 0, n-1, 0, true, ctxt, false);
 }
 
 /* MK Heap stuff */

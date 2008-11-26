@@ -186,7 +186,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 }
 
-void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt)
+void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt, bool seenNull)
 {
 	int i; 
 	int j; 
@@ -247,12 +247,19 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 	}
 #endif
 
-	mk_qsort_impl(a, left, i, lv, false, ctxt);
-	mk_qsort_impl(a, j, right, lv, false, ctxt);
+	mk_qsort_impl(a, left, i, lv, false, ctxt, seenNull);
+	mk_qsort_impl(a, j, right, lv, false, ctxt, seenNull);
 
 
 	if(lv < ctxt->total_lv-1)
-		mk_qsort_impl(a, i+1, j-1, lv+1, true, ctxt);
+		mk_qsort_impl(a, i+1, j-1, lv+1, true, ctxt, seenNull || mke_test_flag(a+i+1, MKE_NullFlag));
+	else
+	{
+		if(ctxt->enforceUnique && j-1 > i+1 && !seenNull && !mke_test_flag(a+i+1, MKE_NullFlag))
+			ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
+					errmsg("could not create unique index"),
+					errdetail("Table contains duplicate values.")));
+	}
 
 #ifdef USE_ASSERT_CHECKING
 	if(lv == 0)
