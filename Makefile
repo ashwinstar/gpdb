@@ -387,7 +387,8 @@ mgmtcopy :
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 
 pkgplr:
-	if [ ! -z "$(PLRDIR)" ]; then \
+	@if [ ! -z "$(PLRDIR)" ]; then \
+	    echo "`date` -- INFO: Found a previous PL/R package, removing it"; \
 	    rm -rf $(PLRDIR); \
 	fi
 	@if [ -f $(INSTLOC)/lib/postgresql/plr.so ] ; then \
