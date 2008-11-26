@@ -1354,6 +1354,18 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+#ifdef USE_ASSERT_CHECKING
+	{
+		{"gp_mk_sort_check", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Extensive check mk_sort"), 
+			gettext_noop("Expensive debug checking"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_mk_sort_check,
+		false, NULL, NULL
+	},
+#endif
+
 
 	{
 		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,

@@ -9,6 +9,8 @@
 #include "tuplesort_mk.h"
 #include "utils/datum.h"
 
+#include "cdb/cdbvars.h"
+
 /* 
  * MKHeap. Multi Key Heap.
  * 	This is a heap, plus an array.  The array holds the expanded level of keys (Datum).
@@ -84,7 +86,12 @@ static inline int mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
 
 	/* Now test lvs, deeper level is smaller */
 	if(a->lv != b->lv)
+	{
+		Assert(a->lv <= heap->p[0].lv);
+		Assert(b->lv <= heap->p[0].lv);
+
 		return (a->lv < b->lv) ? 1 : -1;
+	}
 
 	/* Now test runs. prev run is smaller */
 	if(a->run != b->run)
@@ -95,7 +102,6 @@ static inline int mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
 	return heap->mkctxt->limit == 0 ? ret : (-ret);
 }
 
-#define NO_MKHEAP_CHECK_HEAP 
 #ifdef USE_ASSERT_CHECKING
 extern void mkheap_verify_heap(MKHeap *heap, int top);
 #else
@@ -206,7 +212,7 @@ void mkheap_destroy(MKHeap *mkheap)
 /* 
  * Choose a child to sift down a hole (empty entry)
  */
-static int mkheap_siftdown_choosecld(MKHeap *heap, int hole, int run, bool *needHeapify)
+static int mkheap_siftdown_choosecld(MKHeap *heap, int hole, int run)
 {
 	int left = LEFT(hole);
 	int right = RIGHT(hole);
@@ -239,9 +245,6 @@ static int mkheap_siftdown_choosecld(MKHeap *heap, int hole, int run, bool *need
 
 	/* Return smaller of two child */
 	c =  mkheap_compare(heap, heap->p+left, heap->p+right);
-	
-	if(hole == 0 && c == 0)
-		*needHeapify = true;
 
 	if(c <= 0)
 		return left;
@@ -251,24 +254,29 @@ static int mkheap_siftdown_choosecld(MKHeap *heap, int hole, int run, bool *need
 /*
  * MKHeap siftdown a hole.  Return the hole position.
  */
-static int mkheap_siftdown_hole(MKHeap *heap, int run, bool *needHeapify) 
+static void mkheap_siftdown(MKHeap *heap, MKEntry *e)
 {
 	int hole = 0;
+	int cld;
+	int c;
 
 	while(1)
 	{
-		int cld = mkheap_siftdown_choosecld(heap, hole, run, needHeapify);
+		cld = mkheap_siftdown_choosecld(heap, hole, e->run);
 		
 		/* Reached bottom, stop */
 		if(cld == 0)
-			return hole; 
+			break;
+
+		c = mkheap_compare(heap, e, heap->p+cld);
+		if(c <= 0)
+			break;
 
 		heap->p[hole] = heap->p[cld]; 
 		hole = cld;
 	}
-	
-	Assert(!"Should not reach");
-	return -1; 
+
+	heap->p[hole] = *e;
 }
 
 /* Sift up */
@@ -313,29 +321,39 @@ static int mkheap_prep_lv(MKHeap *mkheap, int lv, int cur, MKPrepare prep, void 
 
 	int c;
 
+	Assert(cur < mkheap->maxentry);
+
 	/* If necessary, expand right */
-	c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+RIGHT(cur));
-	if(c==0)
+	if(RIGHT(cur) < mkheap->maxentry)
 	{
-		n = mkheap_prep_lv(mkheap, lv, RIGHT(cur), prep, ctxt);
-		if(n>max)
-			max = n;
+		c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+RIGHT(cur));
+		if(c==0)
+		{
+			n = mkheap_prep_lv(mkheap, lv, RIGHT(cur), prep, ctxt);
+			if(n>max)
+				max = n;
+		}
 	}
 	
 	/* If necessary, expand left */
-	c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+LEFT(cur));
-	if(c==0)
+	if(LEFT(cur) < mkheap->maxentry)
 	{
-		n = mkheap_prep_lv(mkheap, lv, LEFT(cur), prep, ctxt);
-		if(n>max)
-			max = n;
+		c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+LEFT(cur));
+		if(c==0)
+		{
+			n = mkheap_prep_lv(mkheap, lv, LEFT(cur), prep, ctxt);
+			if(n>max)
+				max = n;
+		}
 	}
 
 	Assert(mkheap->p[cur].lv == lv-1);
-	if(prep)
+	if(prep && max > 0)
+	{
 		(prep)(mkheap->p+cur, ctxt);
+		mkheap->p[cur].lv = lv;
+	}
 
-	mkheap->p[cur].lv = lv;
 	return max;
 }
 
@@ -375,11 +393,10 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
 		MKPrepare prep = mkheap->mkctxt->prep[lv+1];
 		void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, lv+1);
 		int last;
-
-		mkheap_save_lvtop(mkheap); 
 		
-		/* Done. */
+		mkheap_save_lvtop(mkheap);
 		last = mkheap_prep_lv(mkheap, lv+1, 0, prep, ctxtnext);
+
 		if(last == 0)
 			break;
 
@@ -391,8 +408,9 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
 		}
 	}
 
-#ifdef MKHEAP_CHECK_HEAP
-	mkheap_verify_heap(mkheap, 0);
+#ifdef USE_ASSERT_CHECKING
+	if(gp_mk_sort_check)
+		mkheap_verify_heap(mkheap, 0);
 #endif
 }
 
@@ -406,12 +424,10 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
 static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 {
 	int c = 0; 
-	int hole; 
 	int toplv;
 	void *ctxt; 
 	MKPrepare prep;
 	MKEntry tmp;
-	bool needHeapify = false;
 
 	Assert(mkheap->count > 0);
 
@@ -475,6 +491,8 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 			 * This means, e is smaller/eq to any entry except the heap top.
 			 */
 
+			Assert(e->lv == mkheap->p[0].lv);
+
 			/* First find out if e is <, ==, or > than the heap top.  Do 
 			 * expansion as necessary 
 			 */
@@ -485,6 +503,7 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 				void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, lv+1);
 
 				mkheap_save_lvtop(mkheap); 
+
 				if(prep)
 				{
 					(prep)(mkheap->p, ctxtnext);
@@ -517,19 +536,17 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 	*e = mkheap->p[0];
 
 	/* Sift down a hole to bottom of (current or next) run, depends on tmp.run */
-	hole = mkheap_siftdown_hole(mkheap, tmp.run, &needHeapify); 
-
-	/* Then sift up the new entry */
-	hole = mkheap_siftup(mkheap, hole, &tmp);
+	mkheap_siftdown(mkheap, &tmp);
 	
-	needHeapify = (needHeapify || (!mkheap_empty(mkheap) && hole == 0));
-
-	if(needHeapify)
+	/* Heapify if needed */
+	if(!mkheap_empty(mkheap) && mkheap->p[0].lv < mkheap->mkctxt->total_lv-1)
 		mkheap_heapify(mkheap, false);
-
-#ifdef MKHEAP_CHECK_HEAP
-	mkheap_verify_heap(mkheap, 0);
+	
+#ifdef USE_ASSERT_CHECKING
+	if(gp_mk_sort_check)
+		mkheap_verify_heap(mkheap, 0);
 #endif
+
 	return 1;
 }
 
@@ -626,6 +643,7 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 {
 	int empty_cnt = 0;
 	int i; 
+	MKEntry e;
 
 	if(heap->count == 0)
 		return;
@@ -634,6 +652,35 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 	Assert(heap->maxentry > 0);
 	Assert(heap->count <= heap->maxentry);
 	Assert(heap->maxentry <= heap->alloc_size);
+
+	e = heap->p[0];
+	e.lv = 0;
+	e.flags = 0;
+
+	/* Checking for lvtops */
+	for(i=0; i<heap->p[0].lv; ++i)
+	{
+		MKPrepare prep = heap->mkctxt->prep[i];
+		void *ctxt = mk_get_ctxt(heap->mkctxt, i);
+		int c;
+
+		/* Too much trouble dealing with ref counters.  Just don't */
+		/*
+		if(!mke_test_flag(heap->lvtops+i, MKE_RefCnt | MKE_Copied))
+		{
+		*/
+			if(prep)
+			{
+				e.lv = i;
+				(prep) (&e, ctxt);
+			}
+
+			c = mkheap_compare(heap, &e, heap->lvtops+i);
+			Assert(c==0);
+		/*
+		}
+		*/
+	}
 
 	/* Verify Heap property */
 	for(i=top; i<heap->maxentry; ++i)

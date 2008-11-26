@@ -3002,17 +3002,17 @@ static void tuplesort_limit_sort(Tuplesortstate_mk *state)
 	mkheap_verify_heap(state->mkheap, 0);
 #endif
 
-	for(; state->entry_count < state->mkctxt.limit; ++state->entry_count) 
+	for(; state->entry_count < state->mkctxt.limit; ++state->entry_count, --pe) 
 	{
-		mke_set_flag(pe - state->entry_count, MKE_Empty);
-		mkheap_puget(state->mkheap, pe - state->entry_count);
+		mke_set_flag(pe, MKE_Empty);
+		mkheap_puget(state->mkheap, pe);
 		tupsort_cpfr(pe, NULL, mk_get_ctxt(&state->mkctxt, pe->lv)); 
 
 #ifdef USE_ASSERT_CHECKING
 		mkheap_verify_heap(state->mkheap, 0);
 #endif
 
-		Assert(!mke_test_flag(pe-state->entry_count, MKE_Empty));
+		Assert(!mke_test_flag(pe, MKE_Empty));
 	}
 
 	mkheap_destroy(state->mkheap);
