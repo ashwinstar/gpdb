@@ -399,6 +399,7 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 	char	abs_builddir[MAXPGPATH];
 	char	testtablespace[MAXPGPATH];
 	char	indir[MAXPGPATH];
+	char    outdir[MAXPGPATH];
 	char  **name;
 	char  **names;
 	int		count = 0;
@@ -427,6 +428,11 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 	if (!names)
 		/* Error logged in pgfnames */
 		exit_nicely(2);
+
+	/* also create the output directory if not present */
+	snprintf(outdir, sizeof(outdir), "%s/%s", abs_srcdir, dest);
+	if (!directory_exists(outdir))
+		make_directory(outdir);
 
 #ifdef WIN32
 	/* in Win32, replace backslashes with forward slashes */
@@ -465,7 +471,7 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		/* build the full actual paths to open */
 		snprintf(prefix, strlen(*name) - 6, "%s", *name);
 		snprintf(srcfile, MAXPGPATH, "%s/%s", indir, *name);
-		snprintf(destfile, MAXPGPATH, "%s/%s.%s", dest, prefix, suffix);
+		snprintf(destfile, MAXPGPATH, "%s/%s.%s", outdir, prefix, suffix);
 
 		infile = fopen(srcfile, "r");
 		if (!infile)
@@ -532,6 +538,10 @@ convert_sourcefiles(void)
 	ret = stat("output", &st);
 	if (ret == 0 && S_ISDIR(st.st_mode))
 		convert_sourcefiles_in("output", "expected", "out");
+
+	ret = stat("mapred", &st);
+	if (ret == 0 && S_ISDIR(st.st_mode))
+		convert_sourcefiles_in("mapred", "yml", "yml");
 }
 
 /*

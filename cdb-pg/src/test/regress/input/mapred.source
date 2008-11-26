@@ -1,6 +1,5 @@
 --
--- map/reduce tests, derived from external tables 1.  Short and simple
--- functional tests. The full set of tests exists in cdbunit.
+-- map/reduce tests
 --
 -- Some notes: the PATH variable doesn't necessarily work correctly in
 -- the regression context, so use the "gpwhich" token to get the full
@@ -8,288 +7,131 @@
 -- to make this work correctly with gpsourcify, you need to add your
 -- gpwhich token to gptokencheck.
 
+-- start_matchsubs
+-- m|mapreduce_\d+_run|
+-- s|mapreduce_\d+_run|mapreduce_PID_run|
+-- end_matchsubs
+
+--
+-- This test makes use of plperlu
+--
 -- start_ignore
-drop external web table if exists check_mapred;
-CREATE EXTERNAL WEB TABLE check_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --help regression)'
-on SEGMENT 0
-format 'text';
 
-select * from check_mapred;
+create language plperlu;
+create language plpythonu;
 
-create language plperl;
-
-drop external web table if exists grep1_mapred;
-drop external web table if exists check_ps;
-drop table if exists a1_grep;
-
+-- Take a look at the installed languages, plperl should be in the list.
+--  + pg_pltemplate contains the list of languages that can be simply installed
+--  + pl_language contains the list of languages that are actually installed
 select * from pg_pltemplate;
 select * from pg_language;
 
-
 -- end_ignore
-
--- make sure plperl is really installed:
---      select tmplname, tmpllibrary from pg_pltemplate
 --
--- to find directory.
+-- Create a harness to run shell commands and output stderr and stdout
 --
--- if not, you might need to set PG_LANG = true in your environment
--- and rebuild
-select lanname, lanispl, lanpltrusted from pg_language where lanname = 'plperl';
-
-create table a1_grep (aa text);
-
-insert into a1_grep values ('GET http://joebob.com/joe1.html HTTP');
-insert into a1_grep values ('GET http://joebob.com/joe2.html HTTP');
-insert into a1_grep values ('GET http://jimbob.com/joe3.html HTTP');
-insert into a1_grep values ('GET http://jimbob.com/joe4.html HTTP');
-
--- start_ignore
--- complain about missing file
---
--- Note: use trick of redirecting stderr to stdout and 
--- piping thru "cat" to avoid "Resource temporarily unavailable" error.
-
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
---execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT )'
-execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 | cat)'
-on SEGMENT 0
-format 'text';
-
-select * from grep1_mapred;
-
--- end_ignore
-
--- complain about bad database
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1 | cat )'
-on SEGMENT 0
-format 'text';
-
-select * from grep1_mapred;
-
--- start_ignore
--- complain about missing user
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1 | cat )'
-on SEGMENT 0
-format 'text';
-
-select * from grep1_mapred;
--- end_ignore
-
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (kkey text, vval text)
-execute E'( (@gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression $USER -p $GP_MASTER_PORT 2>&1 ) | grep aa  )'
-on SEGMENT 0
-format 'text' (delimiter '|');
-
-select * from grep1_mapred;
-
-
--- start_ignore
--- --------------------------------------
--- check platform
--- --------------------------------------
-drop external web table if exists check_ps;
-CREATE EXTERNAL WEB TABLE check_ps (x text)
-execute E'( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)'
-on SEGMENT 0
-format 'text';
-
-drop external web table if exists check_env;
-CREATE EXTERNAL WEB TABLE check_env (x text)
-execute E'( env | sort)'
-on SEGMENT 0
-format 'text';
-
-select * from check_ps;
-select * from check_env;
-
--- end_ignore
-
-
--- --------------------------------------
--- 'gpfdist' protocol
--- --------------------------------------
-
-CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py @hostname@:7070 2>&1 || echo) '
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
-
-CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
-
-CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
-execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stopping..."'
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
-
--- start_ignore
-select * from gpfdist_stop;
-select * from gpfdist_status;
-select * from gpfdist_start;
-select * from gpfdist_status;
--- end_ignore
-
-CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
-                            N_NAME       CHAR(25) ,
-                            N_REGIONKEY  INTEGER ,
-                            N_COMMENT    VARCHAR(152))
-location ('gpfdist://@hostname@:7070/nation.tbl' )
-FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL TABLE EXT_REGION  (LIKE REG_REGION)
-location ('gpfdist://@hostname@:7070/region.tbl' )
-FORMAT 'text' (delimiter '|');
-
-SELECT * FROM EXT_NATION;
-SELECT * FROM EXT_REGION;
-SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONKEY;
-
--- start_ignore
-select * from gpfdist_status;
-select * from gpfdist_stop;
-select * from gpfdist_status;
--- end_ignore
-
--- drop tables
-DROP EXTERNAL TABLE EXT_NATION;
-DROP EXTERNAL TABLE EXT_REGION;
+CREATE OR REPLACE FUNCTION execute(cmd text) returns text as $$
+import subprocess
+p = subprocess.Popen(cmd, shell=True, 
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = p.communicate()
+return r[0]
+$$ LANGUAGE plpythonu;
 
 --
--- gpfdist in csv (mpp-1519, etc)
+-- Create a harness to run mapreduce jobs on the correct host/port
 --
-CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
--- 
--- "
--- (end the double quote so emacs highlighting works correctly)
+CREATE OR REPLACE FUNCTION mapreduce(file text) returns setof text as $$
+import subprocess
+
+rv = plpy.execute("select hostname, port, user as user, " +
+   " current_database() as db from gp_configuration where content=-1")
+
+cmd = ['@gpwhich_gpmapreduce@',
+       '--host=%s' % rv[0]['hostname'],
+       '--port=%s' % rv[0]['port'],
+       '--file=%s' % file,
+       rv[0]['db'], rv[0]['user'] ]
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = p.communicate()
+err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
+out = 'STDOUT>\n' + r[0].replace('\t', ', ')
+return [err, out]
+$$ LANGUAGE plpythonu;
+
+CREATE OR REPLACE FUNCTION mapreduce(file text, keys text) returns setof text as $$
+import subprocess
+
+rv = plpy.execute("select hostname, port, user as user, " +
+   " current_database() as db from gp_configuration where content=-1")
+
+cmd = ['@gpwhich_gpmapreduce@',
+       '--host=%s' % rv[0]['hostname'],
+       '--port=%s' % rv[0]['port'],
+       '--file=%s' % file,
+       rv[0]['db'], rv[0]['user'] ]
+for key in keys.split(';'):
+  cmd.append('--key=%s' % key)
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = p.communicate()
+err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
+out = 'STDOUT>\n' + r[0].replace('\t', ', ')
+return [err, out]
+$$ LANGUAGE plpythonu;
+
 --
--- start_ignore
-select * from gpfdist_status;
-select * from gpfdist_stop;
-select * from gpfdist_status;
-select * from gpfdist_csv_start;
-select * from gpfdist_status;
--- end_ignore
-
-create external table ext_whois (
-source_lineno			int,
-domain_name			varchar(350),
-subdomain			varchar(150),
-tld				varchar(50),
-ip_address			inet,
-ip_address_int			bigint,
-reverse_dns			varchar(512),
-reverse_domain			varchar(350),
-registrar			varchar(200),
-registrar_referral		varchar(512),
-whois_server			varchar(512),
-harvest_date			timestamp with time zone,
-created_on			timestamp with time zone,
-update_date			timestamp with time zone,
-expire_date			timestamp with time zone,
-rank				int,
-status				char(1),
-update_status			int,
-nameserver1			varchar(512),
-nameserver1_domain_name		varchar(350),
-nameserver1_subdomain		varchar(150),
-nameserver1_tld			varchar(50),
-nameserver2			varchar(512),
-nameserver2_domain_name		varchar(350),
-nameserver2_subdomain		varchar(150),
-nameserver2_tld			varchar(50),
-nameserver3			varchar(512),
-nameserver3_domain_name		varchar(350),
-nameserver3_subdomain		varchar(150),
-nameserver3_tld			varchar(50),
-nameserver4			varchar(512),
-nameserver4_domain_name		varchar(350),
-nameserver4_subdomain		varchar(150),
-nameserver4_tld			varchar(50),
-nameserver5			varchar(512),
-nameserver5_domain_name		varchar(350),
-nameserver5_subdomain		varchar(150),
-nameserver5_tld			varchar(50),
-registrant_name			varchar(200),
-registrant_organization		varchar(200),
-registrant_email		varchar(512),
-registrant_email_domain		varchar(350),
-registrant_email_subdomain	varchar(150),
-registrant_email_tld		varchar(50),
-registrant_phone		varchar(50),
-registrant_fax			varchar(50),
-registrant_addrall		varchar(1024),
-registrant_street1		varchar(200),
-registrant_street2		varchar(200),
-registrant_street3		varchar(200),
-registrant_city			varchar(200),
-registrant_state_province	varchar(100),
-registrant_postal_code		varchar(50),
-registrant_country		varchar(100),
-tech_name			varchar(200),
-tech_organization		varchar(200),
-tech_email			varchar(512),
-tech_email_domain		varchar(350),
-tech_email_subdomain		varchar(150),
-tech_email_tld			varchar(50),
-tech_phone			varchar(50),
-tech_fax			varchar(50),
-tech_addrall			varchar(1024),
-tech_street1			varchar(200),
-tech_street2			varchar(200),
-tech_street3			varchar(200),
-tech_city			varchar(200),
-tech_state_province		varchar(100),
-tech_postal_code		varchar(50),
-tech_country			varchar(100),
-admin_name			varchar(200),
-admin_organization		varchar(200),
-admin_email			varchar(512),
-admin_email_domain		varchar(350),
-admin_email_subdomain		varchar(150),
-admin_email_tld			varchar(50),
-admin_phone			varchar(50),
-admin_fax			varchar(50),
-admin_addrall			varchar(1024),
-admin_street1			varchar(200),
-admin_street2			varchar(200),
-admin_street3			varchar(200),
-admin_city			varchar(200),
-admin_state_province		varchar(100),
-admin_postal_code		varchar(50),
-admin_country			varchar(100),
-rec_path			varchar(512),
-raw_record			text
-)
-location ('gpfdist://@hostname@:7070/whois.csv' )
-format 'csv' ( quote as '"' header);
--- "
-
-select count(*) from ext_whois;
+-- Find gpmapreduce and print the help file
+--
+-- ignore
+select execute( '@gpwhich_gpmapreduce@ --help' );
 
 
--- start_ignore
-drop external table ext_whois;
+--
+-- CHECK 1) make sure plperlu is really installed:
+--
+-- Note: if not, you might need to 'export PG_LANG=true' and reconfigure/rebuild
+--
+SELECT lanname, lanispl, lanpltrusted FROM pg_language WHERE lanname = 'plperlu';
 
-drop external table gpfdist_status;
-drop external table gpfdist_start;
-drop external table gpfdist_csv_start;
-drop external table gpfdist_stop;
-drop external table check_ps;
-drop external table check_env;
 
-drop external web table if exists grep1_mapred;
-drop external web table if exists check_ps;
-drop table if exists a1_grep;
--- end_ignore
+--
+-- TEST 1) complain about missing file
+--
+SELECT mapreduce('nosuchfile') ORDER BY 1;
+
+
+--
+-- TEST 2) Tests reading and sorting an input file;
+--
+SELECT mapreduce('@abs_srcdir@/yml/sort.yml') ORDER BY 1;
+
+
+--
+-- TEST 3) Tests a basic map function and parameter passing
+--
+SELECT mapreduce('@abs_srcdir@/yml/grep.yml', 'key=an') ORDER BY 1;
+
+--
+-- Test 4) Tests producing multiple columns
+--
+SELECT mapreduce('@abs_srcdir@/yml/grep2.yml', 'key=an') ORDER BY 1;
+
+--
+-- Test 5) Tests a basic reduce function
+--
+SELECT mapreduce('@abs_srcdir@/yml/agebracket.yml') ORDER BY 1;
+
+--
+-- Test 6) File Output tests
+--
+SELECT execute('rm @abs_srcdir@/results/fileout_*.out');
+
+SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
+SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
+SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
+SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
+
+SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
+SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
+SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
+SELECT execute('cat @abs_srcdir@/results/fileout_append.out');

@@ -1,22 +1,103 @@
 --
--- map/reduce tests, derived from external tables 1.  Short and simple
--- functional tests. The full set of tests exists in cdbunit.
+-- map/reduce tests
 --
 -- Some notes: the PATH variable doesn't necessarily work correctly in
 -- the regression context, so use the "gpwhich" token to get the full
 -- path from your environment (see gpstringsubs for more details).  And
 -- to make this work correctly with gpsourcify, you need to add your
 -- gpwhich token to gptokencheck.
+-- start_matchsubs
+-- m|mapreduce_\d+_run|
+-- s|mapreduce_\d+_run|mapreduce_PID_run|
+-- end_matchsubs
+--
+-- This test makes use of plperlu
+--
 -- start_ignore
-drop external web table if exists check_mapred;
-NOTICE:  external table "check_mapred" does not exist, skipping
-CREATE EXTERNAL WEB TABLE check_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --help regression)'
-on SEGMENT 0
-format 'text';
-select * from check_mapred;
-                                              x                                               
-----------------------------------------------------------------------------------------------
+create language plperlu;
+create language plpythonu;
+-- Take a look at the installed languages, plperl should be in the list.
+--  + pg_pltemplate contains the list of languages that can be simply installed
+--  + pl_language contains the list of languages that are actually installed
+select * from pg_pltemplate;
+ tmplname  | tmpltrusted |      tmplhandler      |   tmplvalidator   |   tmpllibrary    | tmplacl 
+-----------+-------------+-----------------------+-------------------+------------------+---------
+ plpgsql   | t           | plpgsql_call_handler  | plpgsql_validator | $libdir/plpgsql  | 
+ pltcl     | t           | pltcl_call_handler    |                   | $libdir/pltcl    | 
+ pltclu    | f           | pltclu_call_handler   |                   | $libdir/pltcl    | 
+ plperl    | t           | plperl_call_handler   | plperl_validator  | $libdir/plperl   | 
+ plperlu   | f           | plperl_call_handler   | plperl_validator  | $libdir/plperl   | 
+ plpythonu | f           | plpython_call_handler |                   | $libdir/plpython | 
+ plr       | f           | plr_call_handler      |                   | $libdir/plr      | 
+(7 rows)
+
+select * from pg_language;
+  lanname  | lanispl | lanpltrusted | lanplcallfoid | lanvalidator | lanacl 
+-----------+---------+--------------+---------------+--------------+--------
+ internal  | f       | f            |             0 |         2246 | 
+ c         | f       | f            |             0 |         2247 | 
+ sql       | f       | t            |             0 |         2248 | 
+ plperlu   | t       | f            |        103741 |       103742 | 
+ plpythonu | t       | f            |        103744 |            0 | 
+(5 rows)
+
+-- end_ignore
+--
+-- Create a harness to run shell commands and output stderr and stdout
+--
+CREATE OR REPLACE FUNCTION execute(cmd text) returns text as $$
+import subprocess
+p = subprocess.Popen(cmd, shell=True, 
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = p.communicate()
+return r[0]
+$$ LANGUAGE plpythonu;
+--
+-- Create a harness to run mapreduce jobs on the correct host/port
+--
+CREATE OR REPLACE FUNCTION mapreduce(file text) returns setof text as $$
+import subprocess
+
+rv = plpy.execute("select hostname, port, user as user, " +
+   " current_database() as db from gp_configuration where content=-1")
+
+cmd = ['@gpwhich_gpmapreduce@',
+       '--host=%s' % rv[0]['hostname'],
+       '--port=%s' % rv[0]['port'],
+       '--file=%s' % file,
+       rv[0]['db'], rv[0]['user'] ]
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = p.communicate()
+err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
+out = 'STDOUT>\n' + r[0].replace('\t', ', ')
+return [err, out]
+$$ LANGUAGE plpythonu;
+CREATE OR REPLACE FUNCTION mapreduce(file text, keys text) returns setof text as $$
+import subprocess
+
+rv = plpy.execute("select hostname, port, user as user, " +
+   " current_database() as db from gp_configuration where content=-1")
+
+cmd = ['@gpwhich_gpmapreduce@',
+       '--host=%s' % rv[0]['hostname'],
+       '--port=%s' % rv[0]['port'],
+       '--file=%s' % file,
+       rv[0]['db'], rv[0]['user'] ]
+for key in keys.split(';'):
+  cmd.append('--key=%s' % key)
+p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+r = p.communicate()
+err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
+out = 'STDOUT>\n' + r[0].replace('\t', ', ')
+return [err, out]
+$$ LANGUAGE plpythonu;
+--
+-- Find gpmapreduce and print the help file
+--
+-- ignore
+select execute( '@gpwhich_gpmapreduce@ --help' );
+                                            execute                                            
+-----------------------------------------------------------------------------------------------
  @gpwhich_gpmapreduce@ - Greenplum Map/Reduce Driver 1.00b2
  
  Usage:
@@ -33,458 +114,264 @@ select * from check_mapred;
    -p | --port <port>            database server port
    -U | --username <username>    database user name
    -W | --password               prompt for password
-(16 rows)
+ 
+(1 row)
 
-create language plperl;
-drop external web table if exists grep1_mapred;
-NOTICE:  external table "grep1_mapred" does not exist, skipping
-drop external web table if exists check_ps;
-NOTICE:  external table "check_ps" does not exist, skipping
-drop table if exists a1_grep;
-NOTICE:  table "a1_grep" does not exist, skipping
-select * from pg_pltemplate;
- tmplname  | tmpltrusted |      tmplhandler      |   tmplvalidator   |   tmpllibrary    | tmplacl 
------------+-------------+-----------------------+-------------------+------------------+---------
- plpgsql   | t           | plpgsql_call_handler  | plpgsql_validator | $libdir/plpgsql  | 
- pltcl     | t           | pltcl_call_handler    |                   | $libdir/pltcl    | 
- pltclu    | f           | pltclu_call_handler   |                   | $libdir/pltcl    | 
- plperl    | t           | plperl_call_handler   | plperl_validator  | $libdir/plperl   | 
- plperlu   | f           | plperl_call_handler   | plperl_validator  | $libdir/plperl   | 
- plpythonu | f           | plpython_call_handler |                   | $libdir/plpython | 
- plr       | f           | plr_call_handler      |                   | $libdir/plr      | 
-(7 rows)
-
-select * from pg_language;
- lanname  | lanispl | lanpltrusted | lanplcallfoid | lanvalidator | lanacl 
-----------+---------+--------------+---------------+--------------+--------
- internal | f       | f            |             0 |         2246 | 
- c        | f       | f            |             0 |         2247 | 
- sql      | f       | t            |             0 |         2248 | 
- plpgsql  | t       | t            |        451083 |       451084 | 
- plperl   | t       | t            |        451106 |       451107 | 
-(5 rows)
-
--- end_ignore
--- make sure plperl is really installed:
---      select tmplname, tmpllibrary from pg_pltemplate
 --
--- to find directory.
+-- CHECK 1) make sure plperlu is really installed:
 --
--- if not, you might need to set PG_LANG = true in your environment
--- and rebuild
-select lanname, lanispl, lanpltrusted from pg_language where lanname = 'plperl';
+-- Note: if not, you might need to 'export PG_LANG=true' and reconfigure/rebuild
+--
+SELECT lanname, lanispl, lanpltrusted FROM pg_language WHERE lanname = 'plperlu';
  lanname | lanispl | lanpltrusted 
 ---------+---------+--------------
- plperl  | t       | t
+ plperlu | t       | f
 (1 row)
 
-create table a1_grep (aa text);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-insert into a1_grep values ('GET http://joebob.com/joe1.html HTTP');
-insert into a1_grep values ('GET http://joebob.com/joe2.html HTTP');
-insert into a1_grep values ('GET http://jimbob.com/joe3.html HTTP');
-insert into a1_grep values ('GET http://jimbob.com/joe4.html HTTP');
--- start_ignore
--- complain about missing file
 --
--- Note: use trick of redirecting stderr to stdout and 
--- piping thru "cat" to avoid "Resource temporarily unavailable" error.
-drop external web table if exists grep1_mapred;
-NOTICE:  external table "grep1_mapred" does not exist, skipping
-CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
---execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT )'
-execute E'( @gpwhich_gpmapreduce@ --f nosuchfile regression -p $GP_MASTER_PORT    2>&1 | cat)'
-on SEGMENT 0
-format 'text';
-select * from grep1_mapred;
-                    x                    
------------------------------------------
- Error: Could not open file 'nosuchfile'
-(1 row)
-
--- end_ignore
--- complain about bad database
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml nosuchdatabase $USER -p $GP_MASTER_PORT 2>&1 | cat )'
-on SEGMENT 0
-format 'text';
-select * from grep1_mapred;
-                        x                         
---------------------------------------------------
- FATAL:  database "nosuchdatabase" does not exist
-(1 row)
-
--- start_ignore
--- complain about missing user
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (x text)
-execute E'( @gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression -p $GP_MASTER_PORT 2>&1 | cat )'
-on SEGMENT 0
-format 'text';
-select * from grep1_mapred;
-                              x                              
--------------------------------------------------------------
- FATAL:  no PostgreSQL user name specified in startup packet
-(1 row)
-
--- end_ignore
-drop external web table if exists grep1_mapred;
-CREATE EXTERNAL WEB TABLE grep1_mapred (kkey text, vval text)
-execute E'( (@gpwhich_gpmapreduce@ --f @abs_srcdir@/data/1_grep.yml regression $USER -p $GP_MASTER_PORT 2>&1 ) | grep aa  )'
-on SEGMENT 0
-format 'text' (delimiter '|');
-select * from grep1_mapred;
- kkey | vval  
-------+-------
- aa   | bb   
- aa   | bb   
- aa   | bb   
- aa   | bb   
-(4 rows)
-
--- start_ignore
--- --------------------------------------
--- check platform
--- --------------------------------------
-drop external web table if exists check_ps;
-NOTICE:  external table "check_ps" does not exist, skipping
-CREATE EXTERNAL WEB TABLE check_ps (x text)
-execute E'( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)'
-on SEGMENT 0
-format 'text';
-drop external web table if exists check_env;
-NOTICE:  external table "check_env" does not exist, skipping
-CREATE EXTERNAL WEB TABLE check_env (x text)
-execute E'( env | sort)'
-on SEGMENT 0
-format 'text';
-select * from check_ps;
-                                                                                  x                                                                                  
----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   502 64431     1   0   0:00.00 ??         0:00.00 @gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data
-(1 row)
-
-select * from check_env;
-                                                    x                                                    
----------------------------------------------------------------------------------------------------------
- DYLD_LIBRARY_PATH=/Users/jcohen/greenplum-db-devel/lib:/Users/jcohen/greenplum-db-devel/ext/python/lib:
- GPHOME=/Users/jcohen/greenplum-db-devel
- GP_CID=0
- GP_DATABASE=regression
- GP_DATE=20081107
- GP_MASTER_HOST=172.16.173.1
- GP_MASTER_PORT=11000
- GP_SEGMENT_COUNT=2
- GP_SEGMENT_ID=0
- GP_SEG_DATADIR=/Users/jcohen/cdb-data/testdb0
- GP_SEG_PG_CONF=/Users/jcohen/cdb-data/testdb0/postgresql.conf
- GP_SEG_PORT=11002
- GP_SESSION_ID=360
- GP_SN=6
- GP_TIME=172305
- GP_USER=jcohen
- GP_XID=1225925968-0000000758
- HOME=/Users/jcohen
- LC_COLLATE=en_US.utf-8
- LC_CTYPE=en_US.utf-8
- LC_MESSAGES=C
- LC_MONETARY=C
- LC_NUMERIC=C
- LC_TIME=C
- LOGNAME=jcohen
- MAIL=/var/mail/jcohen
- PATH=/Users/jcohen/greenplum-db-devel/ext/python/bin:/usr/bin:/bin:/usr/sbin:/sbin
- PGDATA=/Users/jcohen/cdb-data/testdb0
- PGPATH=/Users/jcohen/greenplum-db-devel/bin
- PGPORT=11002
- PGSYSCONFDIR=/Users/jcohen/greenplum-db-devel/etc/postgresql
- PWD=/Users/jcohen/cdb-data/testdb0
- SHELL=/bin/bash
- SHLVL=3
- SSH_CLIENT=::1 61884 22
- SSH_CONNECTION=::1 61884 ::1 22
- USER=jcohen
- _=/usr/bin/env
- __CF_USER_TEXT_ENCODING=0x1F6:0:0
-(39 rows)
-
--- end_ignore
--- --------------------------------------
--- 'gpfdist' protocol
--- --------------------------------------
-CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py @hostname@:7070 2>&1 || echo) '
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
-execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stopping..."'
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
--- start_ignore
-select * from gpfdist_stop;
-      x      
--------------
- stopping...
-(1 row)
-
-select * from gpfdist_status;
-                          x                           
-------------------------------------------------------
- Error: gpfdist is not running (reason: socket error)
- Exit: 1
- 
-(3 rows)
-
-select * from gpfdist_start;
-      x      
--------------
- starting...
-(1 row)
-
-select * from gpfdist_status;
-                                  x                                   
-----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on @hostname@:7070.
-(1 row)
-
--- end_ignore
-CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
-                            N_NAME       CHAR(25) ,
-                            N_REGIONKEY  INTEGER ,
-                            N_COMMENT    VARCHAR(152))
-location ('gpfdist://@hostname@:7070/nation.tbl' )
-FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL TABLE EXT_REGION  (LIKE REG_REGION)
-location ('gpfdist://@hostname@:7070/region.tbl' )
-FORMAT 'text' (delimiter '|');
-ERROR:  relation "reg_region" does not exist
-SELECT * FROM EXT_NATION;
- n_nationkey |          n_name           | n_regionkey |                                                     n_comment                                                      
--------------+---------------------------+-------------+--------------------------------------------------------------------------------------------------------------------
-           0 | ALGERIA                   |           0 |  haggle. carefully final deposits detect slyly agai
-           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
-           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
-           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
-           4 | EGYPT                     |           4 | y above the carefully unusual theodolites. final dugouts are quickly across the furiously regular d
-           5 | ETHIOPIA                  |           0 | ven packages wake quickly. regu
-           6 | FRANCE                    |           3 | refully final requests. regular, ironi
-           7 | GERMANY                   |           3 | l platelets. regular accounts x-ray: unusual, regular acco
-           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
-           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
-          10 | IRAN                      |           4 | efully alongside of the slyly final dependencies. 
-          11 | IRAQ                      |           4 | nic deposits boost atop the quickly final requests? quickly regula
-          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
-          13 | JORDAN                    |           4 | ic deposits are blithely about the carefully regular pa
-          14 | KENYA                     |           0 |  pending excuses haggle furiously deposits. pending, express pinto beans wake fluffily past t
-          15 | MOROCCO                   |           0 | rns. blithely bold courts among the closely regular packages use furiously bold platelets?
-          16 | MOZAMBIQUE                |           0 | s. ironic, unusual asymptotes wake blithely r
-          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
-          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
-          19 | ROMANIA                   |           3 | ular asymptotes are about the furious multipliers. express dependencies nag above the ironically ironic account
-          20 | SAUDI ARABIA              |           4 | ts. silent requests haggle. closely express packages sleep across the blithely
-          21 | VIETNAM                   |           2 | hely enticingly express accounts. even, final 
-          22 | RUSSIA                    |           3 |  requests against the platelets use never according to the quickly regular pint
-          23 | UNITED KINGDOM            |           3 | eans boost carefully special requests. accounts are. carefull
-          24 | UNITED STATES             |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
-(25 rows)
-
-SELECT * FROM EXT_REGION;
-ERROR:  relation "ext_region" does not exist
-LINE 1: SELECT * FROM EXT_REGION;
-                      ^
-SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONKEY;
-ERROR:  relation "ext_region" does not exist
-LINE 1: SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REG...
-                      ^
--- start_ignore
-select * from gpfdist_status;
-                                  x                                   
-----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on @hostname@:7070.
-(1 row)
-
-select * from gpfdist_stop;
-      x      
--------------
- stopping...
-(1 row)
-
-select * from gpfdist_status;
-                          x                           
-------------------------------------------------------
- Error: gpfdist is not running (reason: socket error)
- Exit: 1
- 
-(3 rows)
-
--- end_ignore
--- drop tables
-DROP EXTERNAL TABLE EXT_NATION;
-DROP EXTERNAL TABLE EXT_REGION;
-ERROR:  external table "ext_region" does not exist
+-- TEST 1) complain about missing file
 --
--- gpfdist in csv (mpp-1519, etc)
---
-CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
-on SEGMENT 0
-FORMAT 'text' (delimiter '|');
--- 
--- "
--- (end the double quote so emacs highlighting works correctly)
---
--- start_ignore
-select * from gpfdist_status;
-                          x                           
-------------------------------------------------------
- Error: gpfdist is not running (reason: socket error)
- Exit: 1
+SELECT mapreduce('nosuchfile') ORDER BY 1;
+                    mapreduce                    
+-------------------------------------------------
+ STDERR> Error: Could not open file 'nosuchfile'
+ STDERR> 
+ STDOUT>
  
-(3 rows)
+(2 rows)
 
-select * from gpfdist_stop;
-      x      
--------------
- stopping...
-(1 row)
-
-select * from gpfdist_status;
-                          x                           
-------------------------------------------------------
- Error: gpfdist is not running (reason: socket error)
- Exit: 1
+--
+-- TEST 2) Tests reading and sorting an input file;
+--
+SELECT mapreduce('@abs_srcdir@/yml/sort.yml') ORDER BY 1;
+           mapreduce           
+-------------------------------
+ STDERR> mapreduce_30837_run_1
+ STDERR> 
+ STDOUT>
+ value                    
+ -------------------------
+ alex, 30, (1.352,8.2)      
+ belinda, 38, (8.9,1.7)     
+ bertha, 88, (2.75,9.4)     
+ carina, 58, (4.27,8.8)     
+ carmen, 78, (3.8,8.2)      
+ chris, 78, (9.78,2)        
+ denise, 24, (3.78,87.90)   
+ diane, 18, (5.912,5.3)     
+ edna, 18, (1.53,3.5)       
+ esther, 98, (5.36,7.6)     
+ fanny, 08, (1.2,0.9)       
+ gina, 18, (9.82,7.5)       
+ jane, 58, (1.34,0.44)      
+ jean, 28, (8.561,7.3)      
+ jenifer, 38, (6.6,23.3)    
+ joan, 18, (9.4,47.04)      
+ joe, 20, (5.5,2.5)         
+ juanita, 58, (4.57,35.8)   
+ julie, 68, (3.6,7.2)       
+ karen, 48, (8.73,0.0)      
+ koko, 88, (1.7,5.5)        
+ leah, 68, (0.6,3.37)       
+ lita, 25, (1.3,8.7)        
+ liza, 38, (9.76,6.90)      
+ louise, 98, (5.0,8.7)      
+ martie, 88, (8.358,.93)    
+ mary, 08, (3.7,39.20)      
+ melissa, 28, (3.089,087.23)
+ mike, 40, (3.1,6.2)        
+ nan, 28, (6.35,0.43)       
+ pamela, 48, (8.21,9.3)     
+ pat, 18, (1.19,0.6)        
+ paula, 68, (0.5,0.5)       
+ rean, 48, (8.5,5.0)        
+ sally, 34, (3.8,45.8)      
+ sandra, 19, (9.345,09.6)   
+ sandy, 38, (3.8,0.2)       
+ sarah, 88, (8.4,2.3)       
+ sharon, 78, (9.237,8.8)    
+ sue, 50, (8.34,7.375)      
+ sumi, 38, (1.15,0.6)       
+ susan, 78, (6.579,3)       
+ teresa, 38, (7.7,1.8)      
+ trisha, 88, (1.29,2.2)     
+ trudy, 88, (6.01,0.5)      
+ velma, 68, (8.8,8.9)       
+ vera, 78, (9.73,6.4)       
+ wendy, 78, (2.62,03.3)     
+ zena, 98, (0.35,0)         
+ zola, 58, (2.56,4.3)       
+ (50 rows)
  
-(3 rows)
+ 
+(2 rows)
 
-select * from gpfdist_csv_start;
-      x      
--------------
- starting...
+--
+-- TEST 3) Tests a basic map function and parameter passing
+--
+SELECT mapreduce('@abs_srcdir@/yml/grep.yml', 'key=an') ORDER BY 1;
+           mapreduce           
+-------------------------------
+ STDERR> mapreduce_30843_run_1
+ STDERR> 
+ STDOUT>
+ key|value                 
+ ---+----------------------
+ an |diane, 18, (5.912,5.3)  
+ an |fanny, 08, (1.2,0.9)    
+ an |jane, 58, (1.34,0.44)   
+ an |jean, 28, (8.561,7.3)   
+ an |joan, 18, (9.4,47.04)   
+ an |juanita, 58, (4.57,35.8)
+ an |nan, 28, (6.35,0.43)    
+ an |rean, 48, (8.5,5.0)     
+ an |sandra, 19, (9.345,09.6)
+ an |sandy, 38, (3.8,0.2)    
+ an |susan, 78, (6.579,3)    
+ (11 rows)
+ 
+ 
+(2 rows)
+
+--
+-- Test 4) Tests producing multiple columns
+--
+SELECT mapreduce('@abs_srcdir@/yml/grep2.yml', 'key=an') ORDER BY 1;
+           mapreduce           
+-------------------------------
+ STDERR> mapreduce_30849_run_1
+ STDERR> 
+ STDOUT>
+ name   |age|location    
+ -------+---+------------
+ diane  | 18|(5.912,5.3) 
+ fanny  |  8|(1.2,0.9)   
+ jane   | 58|(1.34,0.44) 
+ jean   | 28|(8.561,7.3) 
+ joan   | 18|(9.4,47.04) 
+ juanita| 58|(4.57,35.8) 
+ nan    | 28|(6.35,0.43) 
+ rean   | 48|(8.5,5.0)   
+ sandra | 19|(9.345,09.6)
+ sandy  | 38|(3.8,0.2)   
+ susan  | 78|(6.579,3)   
+ (11 rows)
+ 
+ 
+(2 rows)
+
+--
+-- Test 5) Tests a basic reduce function
+--
+SELECT mapreduce('@abs_srcdir@/yml/agebracket.yml') ORDER BY 1;
+           mapreduce           
+-------------------------------
+ STDERR> mapreduce_30855_run_1
+ STDERR> 
+ STDOUT>
+ key            |value
+ ---------------+-----
+ 0 => age < 10  |    2
+ 10 => age < 20 |    6
+ 20 => age < 30 |    6
+ 30 => age < 40 |    8
+ 40 => age < 50 |    4
+ 50 => age < 60 |    5
+ 60 => age < 70 |    4
+ 70 => age < 80 |    6
+ 80 => age < 90 |    6
+ 90 => age < 100|    3
+ (10 rows)
+ 
+ 
+(2 rows)
+
+--
+-- Test 6) File Output tests
+--
+SELECT execute('rm @abs_srcdir@/results/fileout_*.out');
+ execute 
+---------
+ 
 (1 row)
 
-select * from gpfdist_status;
-                                  x                                   
-----------------------------------------------------------------------
- Okay, gpfdist version "main build dev" is running on @hostname@:7070.
+SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
+           mapreduce           
+-------------------------------
+ STDERR> mapreduce_30864_run_1
+ STDERR> mapreduce_30864_run_2
+ STDERR> mapreduce_30864_run_3
+ STDERR> 
+ STDOUT>
+ 
+(2 rows)
+
+SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
+   execute    
+--------------
+ row 1:data 1
+ row 2:data 2
+ row 3:data 3
+ 
 (1 row)
 
--- end_ignore
-create external table ext_whois (
-source_lineno			int,
-domain_name			varchar(350),
-subdomain			varchar(150),
-tld				varchar(50),
-ip_address			inet,
-ip_address_int			bigint,
-reverse_dns			varchar(512),
-reverse_domain			varchar(350),
-registrar			varchar(200),
-registrar_referral		varchar(512),
-whois_server			varchar(512),
-harvest_date			timestamp with time zone,
-created_on			timestamp with time zone,
-update_date			timestamp with time zone,
-expire_date			timestamp with time zone,
-rank				int,
-status				char(1),
-update_status			int,
-nameserver1			varchar(512),
-nameserver1_domain_name		varchar(350),
-nameserver1_subdomain		varchar(150),
-nameserver1_tld			varchar(50),
-nameserver2			varchar(512),
-nameserver2_domain_name		varchar(350),
-nameserver2_subdomain		varchar(150),
-nameserver2_tld			varchar(50),
-nameserver3			varchar(512),
-nameserver3_domain_name		varchar(350),
-nameserver3_subdomain		varchar(150),
-nameserver3_tld			varchar(50),
-nameserver4			varchar(512),
-nameserver4_domain_name		varchar(350),
-nameserver4_subdomain		varchar(150),
-nameserver4_tld			varchar(50),
-nameserver5			varchar(512),
-nameserver5_domain_name		varchar(350),
-nameserver5_subdomain		varchar(150),
-nameserver5_tld			varchar(50),
-registrant_name			varchar(200),
-registrant_organization		varchar(200),
-registrant_email		varchar(512),
-registrant_email_domain		varchar(350),
-registrant_email_subdomain	varchar(150),
-registrant_email_tld		varchar(50),
-registrant_phone		varchar(50),
-registrant_fax			varchar(50),
-registrant_addrall		varchar(1024),
-registrant_street1		varchar(200),
-registrant_street2		varchar(200),
-registrant_street3		varchar(200),
-registrant_city			varchar(200),
-registrant_state_province	varchar(100),
-registrant_postal_code		varchar(50),
-registrant_country		varchar(100),
-tech_name			varchar(200),
-tech_organization		varchar(200),
-tech_email			varchar(512),
-tech_email_domain		varchar(350),
-tech_email_subdomain		varchar(150),
-tech_email_tld			varchar(50),
-tech_phone			varchar(50),
-tech_fax			varchar(50),
-tech_addrall			varchar(1024),
-tech_street1			varchar(200),
-tech_street2			varchar(200),
-tech_street3			varchar(200),
-tech_city			varchar(200),
-tech_state_province		varchar(100),
-tech_postal_code		varchar(50),
-tech_country			varchar(100),
-admin_name			varchar(200),
-admin_organization		varchar(200),
-admin_email			varchar(512),
-admin_email_domain		varchar(350),
-admin_email_subdomain		varchar(150),
-admin_email_tld			varchar(50),
-admin_phone			varchar(50),
-admin_fax			varchar(50),
-admin_addrall			varchar(1024),
-admin_street1			varchar(200),
-admin_street2			varchar(200),
-admin_street3			varchar(200),
-admin_city			varchar(200),
-admin_state_province		varchar(100),
-admin_postal_code		varchar(50),
-admin_country			varchar(100),
-rec_path			varchar(512),
-raw_record			text
-)
-location ('gpfdist://@hostname@:7070/whois.csv' )
-format 'csv' ( quote as '"' header);
-NOTICE:  HEADER means that each one of the data files has a header row.
--- "
-select count(*) from ext_whois;
- count 
--------
-    23
+SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
+   execute    
+--------------
+ row 1|data 1
+ row 2|data 2
+ row 3|data 3
+ 
 (1 row)
 
--- start_ignore
-drop external table ext_whois;
-drop external table gpfdist_status;
-drop external table gpfdist_start;
-drop external table gpfdist_csv_start;
-drop external table gpfdist_stop;
-drop external table check_ps;
-drop external table check_env;
-drop external web table if exists grep1_mapred;
-drop external web table if exists check_ps;
-NOTICE:  external table "check_ps" does not exist, skipping
-drop table if exists a1_grep;
--- end_ignore
+SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
+   execute    
+--------------
+ row 1,data 1
+ row 2,data 2
+ row 3,data 3
+ 
+(1 row)
+
+SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
+                                                                   mapreduce                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------
+ STDERR> mapreduce_30873_run_1
+ STDERR> Error: OUTPUT 'out_1': file '@abs_srcdir@/results/fileout_none.out' already exists, at line 15
+ STDERR> mapreduce_30873_run_2
+ STDERR> mapreduce_30873_run_3
+ STDERR> 
+ STDOUT>
+ 
+(2 rows)
+
+SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
+   execute    
+--------------
+ row 1:data 1
+ row 2:data 2
+ row 3:data 3
+ 
+(1 row)
+
+SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
+   execute    
+--------------
+ row 1|data 1
+ row 2|data 2
+ row 3|data 3
+ 
+(1 row)
+
+SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
+   execute    
+--------------
+ row 1,data 1
+ row 2,data 2
+ row 3,data 3
+ row 1,data 1
+ row 2,data 2
+ row 3,data 3
+ 
+(1 row)
+

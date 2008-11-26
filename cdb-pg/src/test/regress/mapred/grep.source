@@ -5,13 +5,16 @@ VERSION:         1.0.0.1
 DEFINE:
   - INPUT:
       NAME:      access_logs
-      TABLE:     a1_grep
+      FILE:      @hostname@:@abs_srcdir@/data/person.data
+      DELIMITER: ^
          
   - MAP:
       NAME:      grep_map
-      LANGUAGE:  perl
+      LANGUAGE:  perlu
       FUNCTION:  |
-        return [{"key" => "aa", "value" => "bb"}];
+        my ($key, $value) = @_ ;
+        return_next {"key", $key, "value", $value} if ($value =~ /$key/);
+        return [];
       
 EXECUTE:
   - RUN:
