@@ -1380,6 +1380,11 @@ if (1)
             dodotfile($plantree, \@timelist, $qqq, $parse_ctx, 
                       $glob_direction);
         }
+        if ($glob_optn =~ m/operator/i)
+        {
+            doOperatorDump($plantree);
+        }
+
         if ($glob_optn =~ m/$GV_formats/i)
         {
             my $dotapp = "/Applications/Graphviz.app/Contents/MacOS/dot";
@@ -1500,6 +1505,21 @@ sub doDataDump
     treeMap($plantree, undef, $map_expr);
     
     print Data::Dumper->Dump([$plantree]);
+}
+
+sub doOperatorDump
+{
+    my $plantree = shift;
+    
+	print $plantree->{short}, "\n" if (exists($plantree->{short}));
+
+	return
+		unless (exists($plantree->{child}));
+
+	for my $kid (@{$plantree->{child}})
+	{
+		doOperatorDump($kid);
+	}
 }
 
 # add slice info to node

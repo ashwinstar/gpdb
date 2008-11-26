@@ -723,6 +723,8 @@ sub format_explain
 {
     my ($outarr, $directive) = @_;
     my $prefix = "";
+	my $xopt = "perl"; # normal case
+	my $psuffix = "";
 
     $directive = {} unless (defined($directive));
 
@@ -754,7 +756,16 @@ sub format_explain
 
         close $tmpfh;
 
-        my $xplan = `explain.pl -opt perl -prune heavily < $tmpnam`;
+        if (exists($directive->{explain})
+			&& ($directive->{explain} =~ m/operator/i))
+		{
+			$xopt = "operator";
+			$psuffix = " | sort ";
+		}
+
+		my $plantxt = "explain.pl -opt $xopt -prune heavily < $tmpnam $psuffix";
+
+		my $xplan = `$plantxt`;
 
         unlink $tmpnam;
 
@@ -763,7 +774,26 @@ sub format_explain
             $xplan =~ s/^/$prefix/gm;
         }
 
-        print $xplan;
+
+		print $xplan;
+
+		# for "force_explain operator", replace the outarr with the
+		# processed output (for equivalence regions )
+        if (scalar(@{$outarr}) 
+			&& exists($directive->{explain})
+			&& ($directive->{explain} =~ m/operator/i))
+		{
+			my @foo = split (/\n/, $xplan);
+
+			# gross -- need to add the carriage return back!
+			for my $ii (0..(scalar(@foo)-1))
+			{
+				$foo[$ii] .= "\n";
+			}
+
+			return  \@foo;
+		}
+
     }
 }    
 
@@ -777,6 +807,25 @@ sub format_query_output
 
     if (exists($directive->{make_equiv_expected}))
     {
+		# special case for EXPLAIN PLAN as first "query"
+		if (exists($directive->{explain}))
+		{
+			my $stat = format_explain($outarr, $directive);
+
+			# save the first query output from equiv as "expected rows"
+
+			if ($stat)
+			{
+				push @{$equiv_expected_rows}, @{$stat};
+			}
+			else
+			{
+				push @{$equiv_expected_rows}, @{$outarr};
+			}
+			return ;
+
+		}
+
         # save the first query output from equiv as "expected rows"
         push @{$equiv_expected_rows}, @{$outarr};
     }
@@ -788,9 +837,11 @@ sub format_query_output
         push @{$outarr}, @{$equiv_expected_rows};
     }
 
+	# explain (if not in an equivalence region)
     if (exists($directive->{explain}))
     {
-        return format_explain($outarr, $directive);
+       format_explain($outarr, $directive);
+	   return;
     }
 
     $prefix = "GP_IGNORE:"
@@ -921,6 +972,15 @@ sub format_query_output
         {
             $unsorth{$col} = 1;
         }
+
+		# clear sorted column list if just "order 0"
+        if ((1 == scalar(@presortcols))
+			&& ($presortcols[0] eq "0"))
+        {
+			@presortcols = ();
+		}
+
+
         for my $col (@presortcols)
         {
             if (exists($unsorth{$col}))
@@ -1334,15 +1394,20 @@ EOF_formatfix
 
                 if ($ini =~ m/explain.*(insert|update|delete|select)/i)
                 { 
-                   $directive->{explain} = 1;
+                   $directive->{explain} = "normal";
                 }
 
             }
 
+            if ($ini =~ m/\-\-\s*force\_explain\s+operator.*$/i)
+            {
+                # ENGINF-137: force_explain 
+                $directive->{explain} = "operator";
+            }
             if ($ini =~ m/\-\-\s*force\_explain\s*$/i)
             {
                 # ENGINF-137: force_explain 
-                $directive->{explain} = 1;
+                $directive->{explain} = "normal";
             }
             if ($ini =~ m/\-\-\s*ignore\s*$/i)
             { 
