@@ -21,7 +21,7 @@ except ImportError:
     sys.stderr.write("gpload needs pg8000.\n")
     sys.exit(2)
  
-import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback
+import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 
 _abbrevs = [
     (1<<50L, ' PB'),
@@ -793,6 +793,10 @@ class gpload:
             lis.append(format(j[0],j[index]))
         return lis
 
+    def fix_update_cond(self, match):
+        self.log(self.DEBUG, match.group(0))
+        return 'into_table.' + match.group(0)
+
     def do_update(self,fromname,index):
         """
         UPDATE case
@@ -803,6 +807,18 @@ class gpload:
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),index)
         update_condition = self.getconfig('gpload:output:update_condition',str,None)
         if update_condition:
+            # place table alias infront of column references
+
+            update_condition = ' ' + update_condition + ' '
+            for name, type, mapto in self.into_columns:
+                regexp = '(?<=[^\w])%s(?=[^\w])' % name
+                self.log(self.DEBUG, 'update_condition re: ' + regexp)
+                update_condition = re.sub(regexp,
+                                    self.fix_update_cond,
+                                    update_condition)
+
+            self.log(self.DEBUG, "updated update_condition to %s" %
+                         update_condition)
             match.append(update_condition)
         sql += 'where %s '%' and '.join(match)
         self.log(self.DEBUG, sql)
