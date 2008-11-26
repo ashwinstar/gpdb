@@ -96,7 +96,7 @@ ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 		};
 
 		InitPlanStateGpmonPkt(&bitmaporstate->ps, "BitmapOr", 
-                                      (int64)0,  m);
+                                      (int64)0,  m, NULL);
 	}
 
 	return bitmaporstate;

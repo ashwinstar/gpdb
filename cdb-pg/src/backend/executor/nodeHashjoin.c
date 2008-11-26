@@ -537,7 +537,8 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 
 		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&hjstate->js.ps, "HashJoin", 
-                                      (int64) hjstate->js.ps.plan->plan_rows, m); 
+                                      (int64) hjstate->js.ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
 	return hjstate;

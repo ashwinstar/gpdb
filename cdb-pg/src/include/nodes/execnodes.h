@@ -1114,7 +1114,13 @@ typedef struct Gpmon_NameUnit_MaxVal
 	int64 maxval;
 } Gpmon_NameUnit_MaxVal;
 
-extern void InitPlanStateGpmonPkt(PlanState *ps, const char *name, int64 rowsout_est, Gpmon_NameUnit_MaxVal *m); 
+typedef struct Gpmon_NameVal_Text
+{
+	char *name;
+	char *value;
+} Gpmon_NameVal_Text;
+
+extern void InitPlanStateGpmonPkt(PlanState *ps, const char *name, int64 rowsout_est, Gpmon_NameUnit_MaxVal *m, Gpmon_NameVal_Text *t); 
 extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
 extern void EndPlanStateGpmonPkt(PlanState *ps);
 
@@ -1256,6 +1262,9 @@ typedef struct ScanState
  * no additional fields.
  */
 typedef ScanState SeqScanState;
+
+/* Gpperfmon helper function */
+extern char *GetScanRelNameGpmon(Oid relid, char schema_table_name[NAMEDATALEN*2]);
 
 /*
  * These structs store information about index quals that don't have simple

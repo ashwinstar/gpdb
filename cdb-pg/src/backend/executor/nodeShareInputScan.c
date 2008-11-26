@@ -267,7 +267,8 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 
 		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&sisstate->ss.ps, "ShareInputScan",
-                                      (int64)sisstate->ss.ps.plan->plan_rows, m);
+                                      (int64)sisstate->ss.ps.plan->plan_rows, 
+                                      m, NULL);
 	}
 
 	return sisstate;

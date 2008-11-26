@@ -438,7 +438,8 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 		Assert(GPMON_SORT_TOTAL <= GPMON_QEXEC_M_COUNT);
 
 		InitPlanStateGpmonPkt(&sortstate->ss.ps, "Sort", 
-                                      (int64) sortstate->ss.ps.plan->plan_rows, m); 
+                                      (int64) sortstate->ss.ps.plan->plan_rows, 
+                                      m, NULL); 
 	}
 
 	return sortstate;

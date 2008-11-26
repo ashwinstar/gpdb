@@ -287,9 +287,15 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 			{ "SubqueryScan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0},
 		};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
+			{ NULL, NULL }
+		};
 
 		InitPlanStateGpmonPkt(&subquerystate->ss.ps, "Subquery Scan", 
-                                      (int64) subquerystate->ss.ps.plan->plan_rows, m); 
+                                      (int64) subquerystate->ss.ps.plan->plan_rows, 
+                                      m, t); 
 	}
 
 	return subquerystate;

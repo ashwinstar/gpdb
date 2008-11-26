@@ -284,7 +284,8 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 
 		Assert(GPMON_APPEND_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&appendstate->ps, "Append", 
-                                      (int64)appendstate->ps.plan->plan_rows, m);
+                                      (int64)appendstate->ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
 		

@@ -205,7 +205,9 @@ create table iterators_history (
        m15_name varchar(64),
        m15_unit varchar(64),
        m15_val bigint,
-       m15_est bigint
+       m15_est bigint,
+       t0_name varchar(64),
+       t0_val varchar(128)
 )
 with (fillfactor=100)
 distributed by (ctime)

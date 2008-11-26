@@ -165,7 +165,8 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 		};
 
 		InitPlanStateGpmonPkt(&anlstate->ps, "AdaptiveNestLoop Join", 
-                                      (int64)anlstate->ps.plan->plan_rows, m);
+                                      (int64)anlstate->ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
     return anlstate;

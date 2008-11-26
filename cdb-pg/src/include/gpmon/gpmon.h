@@ -136,11 +136,19 @@ enum {
 	GPMON_QEXEC_M_COUNT = 16
 };
 
+enum {
+	GPMON_QEXEC_T_SCHEMA_TABLE = 0,
+	GPMON_QEXEC_T_COUNT = 1
+};
+
 #define GPMON_QEXEC_M_INIT \
  	{ "Rows in", "Rows", 0 }
 
 #define GPMON_QEXEC_M_INIT_ROWS_IN(rowsin_max) \
  	{ "Rows in", "Rows", (rowsin_max) }
+
+#define GPMON_QEXEC_T_RELATION(rel_name) \
+	{ "Name", rel_name }
 
 struct gpmon_qexec_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
@@ -162,6 +170,10 @@ struct gpmon_qexec_t {
 		apr_int64_t value; 
 		apr_int64_t valuemax;
     } m[GPMON_QEXEC_M_COUNT]; 		/* Measures */
+    struct {
+    	char name[NAMEDATALEN];
+    	char value[NAMEDATALEN * 2];
+    } t[GPMON_QEXEC_T_COUNT];
 };
 
 
@@ -176,7 +188,7 @@ struct gpmon_hello_t {
 
 
 #define GPMON_MAGIC     0x78ab928d
-#define GPMON_PACKET_VERSION   2
+#define GPMON_PACKET_VERSION   3
 
 enum gpmon_pkttype_t {
     GPMON_PKTTYPE_NONE = 0,

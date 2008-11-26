@@ -901,7 +901,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		InitPlanStateGpmonPkt(&motionstate->ps, 
                                       node->motionType == MOTIONTYPE_HASH ? "Redistribute Motion" :
                                       (node->numOutputSegs == 0 ? "Broadcast Motion" : "Gather Motion"), 
-                                      (int64) motionstate->ps.plan->plan_rows, m); 
+                                      (int64) motionstate->ps.plan->plan_rows, m, NULL); 
 	}
 
 

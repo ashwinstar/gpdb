@@ -30,6 +30,7 @@
 #include "executor/nodeTidscan.h"
 #include "optimizer/clauses.h"
 #include "utils/array.h"
+#include "parser/parsetree.h"
 
 
 #define IsCTIDVar(node)  \
@@ -545,10 +546,19 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 			GPMON_QEXEC_M_INIT,
 			{ NULL, NULL, 0}
 		};
+		
+		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }	
+		};
 
 		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tidscan", 
-                                      (int64)tidstate->ss.ps.plan->plan_rows, m);
+                                      (int64)tidstate->ss.ps.plan->plan_rows, 
+                                      m, t);
 	}
 
 	/*

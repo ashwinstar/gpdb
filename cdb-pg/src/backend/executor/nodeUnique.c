@@ -173,7 +173,8 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 
 		Assert(GPMON_UNIQUE_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&uniquestate->ps, "Unique", 
-                                      (int64)uniquestate->ps.plan->plan_rows, m);
+                                      (int64)uniquestate->ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
 	return uniquestate;

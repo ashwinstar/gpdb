@@ -1807,7 +1807,8 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 
 		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&mergestate->js.ps, "MergeJoin", 
-                                      (int64)mergestate->js.ps.plan->plan_rows, m);
+                                      (int64)mergestate->js.ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
 	return mergestate;

@@ -440,7 +440,8 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 
 		Assert(GPMON_GROUP_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&grpstate->ss.ps, "Group",
-                                      (int64)grpstate->ss.ps.plan->plan_rows, m);
+                                      (int64)grpstate->ss.ps.plan->plan_rows,
+                                      m, NULL);
 	}
 	
 	return grpstate;

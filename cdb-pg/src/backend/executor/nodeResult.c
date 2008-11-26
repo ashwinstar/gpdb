@@ -348,7 +348,7 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_RESULT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&resstate->ps, "ResultNode", (int64)0, m);
+		InitPlanStateGpmonPkt(&resstate->ps, "ResultNode", (int64)0, m, NULL);
 	}
 
 	return resstate;

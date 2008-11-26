@@ -24,6 +24,7 @@
 #include "executor/nodeExternalscan.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "parser/parsetree.h"
 
 
 static TupleTableSlot *ExternalNext(ExternalScanState *node);
@@ -184,10 +185,19 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
                	{ "ExternalScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
+		
+		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
 
 		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&externalstate->ss.ps, "ExternalScan", 
-                                      (int64)externalstate->ss.ps.plan->plan_rows, m);
+                                      (int64)externalstate->ss.ps.plan->plan_rows,
+                                      m, t);
 	}
 
 	return externalstate;

@@ -29,6 +29,9 @@
 #include "executor/execdebug.h"
 #include "executor/nodeSeqscan.h"
 
+#include "parser/parsetree.h"
+#include "utils/lsyscache.h"
+
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 
@@ -266,10 +269,18 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 			{ "SeqScan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 } 
 		};
+		
+		RangeTblEntry *rte = rt_fetch(((Scan *)scanstate->ps.plan)->scanrelid, estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
 
 		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&scanstate->ps, "Sequential Scan", 
-                                      (int64) scanstate->ps.plan->plan_rows, m); 
+                                      (int64) scanstate->ps.plan->plan_rows, m, t); 
 	}
 
 	return scanstate;
@@ -416,8 +427,24 @@ ExecSeqRestrPos(SeqScanState *node)
 }
 
 /* Gpmon helpers. */
+char * GetScanRelNameGpmon(Oid relid, char schema_rel_name[NAMEDATALEN * 2])
+{
+	if (relid > 0)
+	{
+		char *relname = get_rel_name(relid);
+		char *schemaname = get_namespace_name(get_rel_namespace(relid));
+		snprintf(schema_rel_name, NAMEDATALEN * 2 - 1, "%s.%s", schemaname, relname);
+		if (relname)
+			pfree(relname);
+		if (schemaname)
+			pfree(schemaname);
+	}
+	return schema_rel_name;
+}
+
 void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, 
-                           int64 rowsout_est, Gpmon_NameUnit_MaxVal *m) 
+                           int64 rowsout_est, Gpmon_NameUnit_MaxVal *m,
+                           Gpmon_NameVal_Text *t) 
 {
 
 	if(!ps)
@@ -465,6 +492,24 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 			}
 			else
 				break;
+		}
+	}
+	
+	if (t)
+	{
+		int i=0;
+		for (i=0; i < GPMON_QEXEC_T_COUNT; ++i)
+		{
+			if (t[i].name)
+			{
+				Assert(t[i].value);
+				snprintf(ps->gpmon_pkt.u.qexec.t[i].name,
+						 sizeof(ps->gpmon_pkt.u.qexec.t[i].name),
+						 t[i].name);
+				snprintf(ps->gpmon_pkt.u.qexec.t[i].value,
+						 sizeof(ps->gpmon_pkt.u.qexec.t[i].value),
+						 t[i].value);
+			}
 		}
 	}
 

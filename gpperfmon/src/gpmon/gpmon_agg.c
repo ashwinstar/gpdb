@@ -360,8 +360,7 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
     for (i = 0; i < sizeof(qexec->m) / sizeof(qexec->m[0]); i++) {
         if (qexec->m[i].name[0] == '\0')
         {
-            sprintf(p += strlen(p), "|null|null");
-            sprintf(p += strlen(p), "|null|null");
+            sprintf(p += strlen(p), "|null|null|null|null");
         }
         else
         {
@@ -370,6 +369,13 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
             sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64,
                     qexec->m[i].value, qexec->m[i].valuemax);
         }
+    }
+    for (i = 0; i < sizeof(qexec->t) / sizeof(qexec->t[0]); i++)
+    {
+    	if (qexec->t[i].name[0] == '\0')
+    		sprintf(p += strlen(p), "|null|null");
+    	else
+    		sprintf(p += strlen(p), "|%s|%s", qexec->t[i].name, qexec->t[i].value);
     }
 
     fprintf(fp, "%s\n", line);

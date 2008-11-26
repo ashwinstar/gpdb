@@ -32,6 +32,7 @@
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
@@ -305,10 +306,22 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
            	GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
-
+		
+		RangeTblEntry *rte = rt_fetch(((Scan *)scanstate->ss.ps.plan)->scanrelid, estate->es_range_table);
+		Oid funcid = (rte->funcexpr && IsA(rte->funcexpr, FuncExpr)) ? ((FuncExpr *)rte->funcexpr)->funcid : 0;
+		char *funcname = get_func_name(funcid);
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(funcname),
+			{ NULL, NULL }
+		};
+		
 		Assert(GPMON_FUNCSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&scanstate->ss.ps, "FunctionScan", 
-                                      (int64)scanstate->ss.ps.plan->plan_rows, m);
+                                      (int64)scanstate->ss.ps.plan->plan_rows,
+                                      m, t);
+		if (funcname)
+			pfree(funcname);
 	}
 
 	return scanstate;

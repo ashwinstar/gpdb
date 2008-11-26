@@ -29,6 +29,7 @@
 #include "executor/nodeIndexscan.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "utils/lsyscache.h"
 
 
 /* ----------------------------------------------------------------
@@ -351,13 +352,23 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPINDEXSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT,
-               	{ "BitmapIndexScan Rescan", "Rescans", 0 },
+            { "BitmapIndexScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0 }
 		};
-
+		
+		char *relname = get_rel_name(node->indexid);
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(relname),
+			{ NULL, NULL }
+		};
+		
 		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&indexstate->ss.ps, "BitmapIndexScan", 
-                                      (int64)indexstate->ss.ps.plan->plan_rows, m);
+                                      (int64)indexstate->ss.ps.plan->plan_rows, 
+                                      m, t);
+		if (relname)
+			pfree(relname);
 	}
 
 	return indexstate;

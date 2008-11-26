@@ -414,7 +414,8 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 
 		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&matstate->ss.ps, "Material", 
-                                      (int64)matstate->ss.ps.plan->plan_rows, m);
+                                      (int64)matstate->ss.ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
 	return matstate;

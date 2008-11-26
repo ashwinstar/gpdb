@@ -2150,7 +2150,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		Assert(GPMON_AGG_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&aggstate->ss.ps, 
 			node->aggstrategy == AGG_HASHED ? "Hash Agg" : "Agg", 
-                                      (int64) aggstate->ss.ps.plan->plan_rows, m);
+                                      (int64) aggstate->ss.ps.plan->plan_rows,
+                                      m, NULL);
 	}
 	
 	return aggstate;

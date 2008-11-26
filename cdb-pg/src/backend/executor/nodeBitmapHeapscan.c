@@ -41,6 +41,7 @@
 #include "pgstat.h"
 #include "utils/memutils.h"
 #include "miscadmin.h"
+#include "parser/parsetree.h"
 
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static void bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres);
@@ -621,10 +622,19 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
                	{ "BitmapHeapScan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
+		
+		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
 
 		Assert(GPMON_BITMAPHEAPSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&scanstate->ss.ps, "BitmapHeapScan", 
-                                      (int64) scanstate->ss.ps.plan->plan_rows, m);
+                                      (int64) scanstate->ss.ps.plan->plan_rows,
+                                      m, t);
 	}
 	/*
 	 * all done.

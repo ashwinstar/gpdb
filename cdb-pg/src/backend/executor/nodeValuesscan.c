@@ -291,8 +291,13 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 			GPMON_QEXEC_M_INIT,
 			{ NULL, NULL, 0}
 		};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(rte->eref->aliasname),
+			{ NULL, NULL }
+		};
 
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "ValuesScan", (int64)0, m);
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "ValuesScan", (int64)0, m, t);
 	}
 
 	return scanstate;

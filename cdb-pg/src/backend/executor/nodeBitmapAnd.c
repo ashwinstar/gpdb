@@ -94,7 +94,8 @@ ExecInitBitmapAnd(BitmapAnd *node, EState *estate, int eflags)
 			{ NULL, NULL, 0}
 		};
 
-		InitPlanStateGpmonPkt(&bitmapandstate->ps, "BitmapAnd", (int64)0, m);
+		InitPlanStateGpmonPkt(&bitmapandstate->ps, "BitmapAnd", (int64)0,
+							  m, NULL);
 	}
 		
 

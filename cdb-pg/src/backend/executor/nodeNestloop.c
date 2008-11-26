@@ -473,7 +473,8 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 
 		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&nlstate->js.ps, "NestloopJoin", 
-                                      (int64)nlstate->js.ps.plan->plan_rows, m);
+                                      (int64)nlstate->js.ps.plan->plan_rows,
+                                      m, NULL);
 	}
 
 	return nlstate;

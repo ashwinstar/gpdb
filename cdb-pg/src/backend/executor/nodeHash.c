@@ -209,7 +209,8 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 
 		Assert(GPMON_HASH_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&hashstate->ps, "Hash", 
-                                      (int64) hashstate->ps.plan->plan_rows, m); 
+                                      (int64) hashstate->ps.plan->plan_rows,
+                                      m, NULL); 
 	}
 
 	return hashstate;

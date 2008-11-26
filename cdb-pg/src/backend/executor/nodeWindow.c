@@ -5683,7 +5683,7 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 		Assert(GPMON_WINDOW_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&wstate->ps, "Window", 
-                                      (int64)wstate->ps.plan->plan_rows, m);
+                                      (int64)wstate->ps.plan->plan_rows, m, NULL);
 	}
 	wstate->mem_manager.alloc = cxt_alloc;
 	wstate->mem_manager.free = cxt_free;

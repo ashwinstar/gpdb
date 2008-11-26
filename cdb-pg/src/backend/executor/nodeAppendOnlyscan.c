@@ -24,6 +24,8 @@
 #include "executor/execdebug.h"
 #include "executor/nodeAppendOnlyscan.h"
 
+#include "parser/parsetree.h"
+
 static TupleTableSlot *AppendOnlyNext(AppendOnlyScanState *node);
 
 /* ----------------------------------------------------------------
@@ -159,10 +161,19 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 			{ "AppendOnlyScan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }
 		};
+		
+		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
+		char schema_rel_name[NAMEDATALEN * 2] = {0};
+		
+		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
+			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
+			{ NULL, NULL }
+		};
 
 		Assert(GPMON_APPONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "AppendOnly Scan", 
-                                      (int64)appendonlystate->ss.ps.plan->plan_rows, m);
+                                      (int64)appendonlystate->ss.ps.plan->plan_rows,
+                                      m, t);
 	}
 
 	return appendonlystate;
