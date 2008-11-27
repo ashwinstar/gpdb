@@ -24,7 +24,7 @@ create language plpythonu;
 --  + pg_pltemplate contains the list of languages that can be simply installed
 --  + pl_language contains the list of languages that are actually installed
 select * from pg_pltemplate;
-select * from pg_language;
+select lanname, lanispl, lanpltrusted from pg_language;
 
 -- end_ignore
 --
@@ -35,7 +35,8 @@ import subprocess
 p = subprocess.Popen(cmd, shell=True, 
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 r = p.communicate()
-return r[0]
+header = "---------------------\n"
+return header + r[0]
 $$ LANGUAGE plpythonu;
 
 --
@@ -54,9 +55,10 @@ cmd = ['@gpwhich_gpmapreduce@',
        rv[0]['db'], rv[0]['user'] ]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 r = p.communicate()
+header = "---------------------"
 err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
 out = 'STDOUT>\n' + r[0].replace('\t', ', ')
-return [err, out]
+return [header, err, out]
 $$ LANGUAGE plpythonu;
 
 CREATE OR REPLACE FUNCTION mapreduce(file text, keys text) returns setof text as $$
@@ -74,17 +76,11 @@ for key in keys.split(';'):
   cmd.append('--key=%s' % key)
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 r = p.communicate()
+header = "---------------------"
 err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
 out = 'STDOUT>\n' + r[0].replace('\t', ', ')
-return [err, out]
+return [header, err, out]
 $$ LANGUAGE plpythonu;
-
---
--- Find gpmapreduce and print the help file
---
--- ignore
-select execute( '@gpwhich_gpmapreduce@ --help' );
-
 
 --
 -- CHECK 1) make sure plperlu is really installed:
@@ -93,6 +89,21 @@ select execute( '@gpwhich_gpmapreduce@ --help' );
 --
 SELECT lanname, lanispl, lanpltrusted FROM pg_language WHERE lanname = 'plperlu';
 
+--
+-- Since many of these tests will end up having variable length output depending
+-- on local paths we want to disable the "----" lines from psql so that our diffs
+-- look reasonable.
+--
+-- The default is "aligned" if that ever changes then we need to change how we restore
+-- it at the end of the test
+\pset format
+\pset format unaligned
+
+--
+-- Check 2) Find gpmapreduce and print the help file
+--
+-- ignore
+select execute( '@gpwhich_gpmapreduce@ --help' );
 
 --
 -- TEST 1) complain about missing file
@@ -124,14 +135,20 @@ SELECT mapreduce('@abs_srcdir@/yml/agebracket.yml') ORDER BY 1;
 --
 -- Test 6) File Output tests
 --
-SELECT execute('rm @abs_srcdir@/results/fileout_*.out');
+SELECT execute('rm @abs_srcdir@/results/fileout_*.out') ORDER BY 1;
 
 SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
-SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
-SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
+SELECT execute('cat @abs_srcdir@/results/fileout_none.out') ORDER BY 1;
+SELECT execute('cat @abs_srcdir@/results/fileout_replace.out') ORDER BY 1;
+SELECT execute('cat @abs_srcdir@/results/fileout_append.out') ORDER BY 1;
 
 SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
-SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
-SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
+SELECT execute('cat @abs_srcdir@/results/fileout_none.out') ORDER BY 1;
+SELECT execute('cat @abs_srcdir@/results/fileout_replace.out') ORDER BY 1;
+SELECT execute('cat @abs_srcdir@/results/fileout_append.out') ORDER BY 1;
+
+
+--
+-- Cleanup) Restore normal formatting options
+--
+\pset format aligned

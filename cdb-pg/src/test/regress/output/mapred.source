@@ -31,14 +31,14 @@ select * from pg_pltemplate;
  plr       | f           | plr_call_handler      |                   | $libdir/plr      | 
 (7 rows)
 
-select * from pg_language;
-  lanname  | lanispl | lanpltrusted | lanplcallfoid | lanvalidator | lanacl 
------------+---------+--------------+---------------+--------------+--------
- internal  | f       | f            |             0 |         2246 | 
- c         | f       | f            |             0 |         2247 | 
- sql       | f       | t            |             0 |         2248 | 
- plperlu   | t       | f            |        103741 |       103742 | 
- plpythonu | t       | f            |        103744 |            0 | 
+select lanname, lanispl, lanpltrusted from pg_language;
+  lanname  | lanispl | lanpltrusted 
+-----------+---------+--------------
+ internal  | f       | f
+ c         | f       | f
+ sql       | f       | t
+ plperlu   | t       | f
+ plpythonu | t       | f
 (5 rows)
 
 -- end_ignore
@@ -50,7 +50,8 @@ import subprocess
 p = subprocess.Popen(cmd, shell=True, 
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 r = p.communicate()
-return r[0]
+header = "---------------------\n"
+return header + r[0]
 $$ LANGUAGE plpythonu;
 --
 -- Create a harness to run mapreduce jobs on the correct host/port
@@ -68,9 +69,10 @@ cmd = ['@gpwhich_gpmapreduce@',
        rv[0]['db'], rv[0]['user'] ]
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 r = p.communicate()
+header = "---------------------"
 err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
 out = 'STDOUT>\n' + r[0].replace('\t', ', ')
-return [err, out]
+return [header, err, out]
 $$ LANGUAGE plpythonu;
 CREATE OR REPLACE FUNCTION mapreduce(file text, keys text) returns setof text as $$
 import subprocess
@@ -87,36 +89,11 @@ for key in keys.split(';'):
   cmd.append('--key=%s' % key)
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 r = p.communicate()
+header = "---------------------"
 err = '\nSTDERR> '.join(('STDERR> ' + r[1]).split('\n')).replace('\t', '   ')
 out = 'STDOUT>\n' + r[0].replace('\t', ', ')
-return [err, out]
+return [header, err, out]
 $$ LANGUAGE plpythonu;
---
--- Find gpmapreduce and print the help file
---
--- ignore
-select execute( '@gpwhich_gpmapreduce@ --help' );
-                                            execute                                            
------------------------------------------------------------------------------------------------
- @gpwhich_gpmapreduce@ - Greenplum Map/Reduce Driver 1.00b2
- 
- Usage:
-   @gpwhich_gpmapreduce@ [options] -f file.yml [dbname [username]]
- 
- General options:
-   -? | --help                   show this help, then exit
-   -V | --version                show version information, then exit
-   -v | --verbose                verbose output
-   -k | --key <name>=<value>     sets a yaml variable
- 
- Connection options:
-   -h | --host <hostname>        database server host or socket directory
-   -p | --port <port>            database server port
-   -U | --username <username>    database user name
-   -W | --password               prompt for password
- 
-(1 row)
-
 --
 -- CHECK 1) make sure plperlu is really installed:
 --
@@ -129,249 +106,273 @@ SELECT lanname, lanispl, lanpltrusted FROM pg_language WHERE lanname = 'plperlu'
 (1 row)
 
 --
+-- Since many of these tests will end up having variable length output depending
+-- on local paths we want to disable the "----" lines from psql so that our diffs
+-- look reasonable.
+--
+-- The default is "aligned" if that ever changes then we need to change how we restore
+-- it at the end of the test
+\pset format
+\pset format unaligned
+--
+-- Check 2) Find gpmapreduce and print the help file
+--
+-- ignore
+select execute( '@gpwhich_gpmapreduce@ --help' );
+execute
+---------------------
+@gpwhich_gpmapreduce@ - Greenplum Map/Reduce Driver 1.00b2
+
+Usage:
+  @gpwhich_gpmapreduce@ [options] -f file.yml [dbname [username]]
+
+General options:
+  -? | --help                   show this help, then exit
+  -V | --version                show version information, then exit
+  -v | --verbose                verbose output
+  -k | --key <name>=<value>     sets a yaml variable
+
+Connection options:
+  -h | --host <hostname>        database server host or socket directory
+  -p | --port <port>            database server port
+  -U | --username <username>    database user name
+  -W | --password               prompt for password
+
+(1 row)
+--
 -- TEST 1) complain about missing file
 --
 SELECT mapreduce('nosuchfile') ORDER BY 1;
-                    mapreduce                    
--------------------------------------------------
- STDERR> Error: Could not open file 'nosuchfile'
- STDERR> 
- STDOUT>
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> Error: Could not open file 'nosuchfile'
+STDERR> 
+STDOUT>
 
+(3 rows)
 --
 -- TEST 2) Tests reading and sorting an input file;
 --
 SELECT mapreduce('@abs_srcdir@/yml/sort.yml') ORDER BY 1;
-           mapreduce           
--------------------------------
- STDERR> mapreduce_30837_run_1
- STDERR> 
- STDOUT>
- value                    
- -------------------------
- alex, 30, (1.352,8.2)      
- belinda, 38, (8.9,1.7)     
- bertha, 88, (2.75,9.4)     
- carina, 58, (4.27,8.8)     
- carmen, 78, (3.8,8.2)      
- chris, 78, (9.78,2)        
- denise, 24, (3.78,87.90)   
- diane, 18, (5.912,5.3)     
- edna, 18, (1.53,3.5)       
- esther, 98, (5.36,7.6)     
- fanny, 08, (1.2,0.9)       
- gina, 18, (9.82,7.5)       
- jane, 58, (1.34,0.44)      
- jean, 28, (8.561,7.3)      
- jenifer, 38, (6.6,23.3)    
- joan, 18, (9.4,47.04)      
- joe, 20, (5.5,2.5)         
- juanita, 58, (4.57,35.8)   
- julie, 68, (3.6,7.2)       
- karen, 48, (8.73,0.0)      
- koko, 88, (1.7,5.5)        
- leah, 68, (0.6,3.37)       
- lita, 25, (1.3,8.7)        
- liza, 38, (9.76,6.90)      
- louise, 98, (5.0,8.7)      
- martie, 88, (8.358,.93)    
- mary, 08, (3.7,39.20)      
- melissa, 28, (3.089,087.23)
- mike, 40, (3.1,6.2)        
- nan, 28, (6.35,0.43)       
- pamela, 48, (8.21,9.3)     
- pat, 18, (1.19,0.6)        
- paula, 68, (0.5,0.5)       
- rean, 48, (8.5,5.0)        
- sally, 34, (3.8,45.8)      
- sandra, 19, (9.345,09.6)   
- sandy, 38, (3.8,0.2)       
- sarah, 88, (8.4,2.3)       
- sharon, 78, (9.237,8.8)    
- sue, 50, (8.34,7.375)      
- sumi, 38, (1.15,0.6)       
- susan, 78, (6.579,3)       
- teresa, 38, (7.7,1.8)      
- trisha, 88, (1.29,2.2)     
- trudy, 88, (6.01,0.5)      
- velma, 68, (8.8,8.9)       
- vera, 78, (9.73,6.4)       
- wendy, 78, (2.62,03.3)     
- zena, 98, (0.35,0)         
- zola, 58, (2.56,4.3)       
- (50 rows)
- 
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> mapreduce_73685_run_1
+STDERR> 
+STDOUT>
+value                    
+-------------------------
+alex, 30, (1.352,8.2)      
+belinda, 38, (8.9,1.7)     
+bertha, 88, (2.75,9.4)     
+carina, 58, (4.27,8.8)     
+carmen, 78, (3.8,8.2)      
+chris, 78, (9.78,2)        
+denise, 24, (3.78,87.90)   
+diane, 18, (5.912,5.3)     
+edna, 18, (1.53,3.5)       
+esther, 98, (5.36,7.6)     
+fanny, 08, (1.2,0.9)       
+gina, 18, (9.82,7.5)       
+jane, 58, (1.34,0.44)      
+jean, 28, (8.561,7.3)      
+jenifer, 38, (6.6,23.3)    
+joan, 18, (9.4,47.04)      
+joe, 20, (5.5,2.5)         
+juanita, 58, (4.57,35.8)   
+julie, 68, (3.6,7.2)       
+karen, 48, (8.73,0.0)      
+koko, 88, (1.7,5.5)        
+leah, 68, (0.6,3.37)       
+lita, 25, (1.3,8.7)        
+liza, 38, (9.76,6.90)      
+louise, 98, (5.0,8.7)      
+martie, 88, (8.358,.93)    
+mary, 08, (3.7,39.20)      
+melissa, 28, (3.089,087.23)
+mike, 40, (3.1,6.2)        
+nan, 28, (6.35,0.43)       
+pamela, 48, (8.21,9.3)     
+pat, 18, (1.19,0.6)        
+paula, 68, (0.5,0.5)       
+rean, 48, (8.5,5.0)        
+sally, 34, (3.8,45.8)      
+sandra, 19, (9.345,09.6)   
+sandy, 38, (3.8,0.2)       
+sarah, 88, (8.4,2.3)       
+sharon, 78, (9.237,8.8)    
+sue, 50, (8.34,7.375)      
+sumi, 38, (1.15,0.6)       
+susan, 78, (6.579,3)       
+teresa, 38, (7.7,1.8)      
+trisha, 88, (1.29,2.2)     
+trudy, 88, (6.01,0.5)      
+velma, 68, (8.8,8.9)       
+vera, 78, (9.73,6.4)       
+wendy, 78, (2.62,03.3)     
+zena, 98, (0.35,0)         
+zola, 58, (2.56,4.3)       
+(50 rows)
 
+
+(3 rows)
 --
 -- TEST 3) Tests a basic map function and parameter passing
 --
 SELECT mapreduce('@abs_srcdir@/yml/grep.yml', 'key=an') ORDER BY 1;
-           mapreduce           
--------------------------------
- STDERR> mapreduce_30843_run_1
- STDERR> 
- STDOUT>
- key|value                 
- ---+----------------------
- an |diane, 18, (5.912,5.3)  
- an |fanny, 08, (1.2,0.9)    
- an |jane, 58, (1.34,0.44)   
- an |jean, 28, (8.561,7.3)   
- an |joan, 18, (9.4,47.04)   
- an |juanita, 58, (4.57,35.8)
- an |nan, 28, (6.35,0.43)    
- an |rean, 48, (8.5,5.0)     
- an |sandra, 19, (9.345,09.6)
- an |sandy, 38, (3.8,0.2)    
- an |susan, 78, (6.579,3)    
- (11 rows)
- 
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> mapreduce_73691_run_1
+STDERR> 
+STDOUT>
+key|value                 
+---+----------------------
+an |diane, 18, (5.912,5.3)  
+an |fanny, 08, (1.2,0.9)    
+an |jane, 58, (1.34,0.44)   
+an |jean, 28, (8.561,7.3)   
+an |joan, 18, (9.4,47.04)   
+an |juanita, 58, (4.57,35.8)
+an |nan, 28, (6.35,0.43)    
+an |rean, 48, (8.5,5.0)     
+an |sandra, 19, (9.345,09.6)
+an |sandy, 38, (3.8,0.2)    
+an |susan, 78, (6.579,3)    
+(11 rows)
 
+
+(3 rows)
 --
 -- Test 4) Tests producing multiple columns
 --
 SELECT mapreduce('@abs_srcdir@/yml/grep2.yml', 'key=an') ORDER BY 1;
-           mapreduce           
--------------------------------
- STDERR> mapreduce_30849_run_1
- STDERR> 
- STDOUT>
- name   |age|location    
- -------+---+------------
- diane  | 18|(5.912,5.3) 
- fanny  |  8|(1.2,0.9)   
- jane   | 58|(1.34,0.44) 
- jean   | 28|(8.561,7.3) 
- joan   | 18|(9.4,47.04) 
- juanita| 58|(4.57,35.8) 
- nan    | 28|(6.35,0.43) 
- rean   | 48|(8.5,5.0)   
- sandra | 19|(9.345,09.6)
- sandy  | 38|(3.8,0.2)   
- susan  | 78|(6.579,3)   
- (11 rows)
- 
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> mapreduce_73697_run_1
+STDERR> 
+STDOUT>
+name   |age|location    
+-------+---+------------
+diane  | 18|(5.912,5.3) 
+fanny  |  8|(1.2,0.9)   
+jane   | 58|(1.34,0.44) 
+jean   | 28|(8.561,7.3) 
+joan   | 18|(9.4,47.04) 
+juanita| 58|(4.57,35.8) 
+nan    | 28|(6.35,0.43) 
+rean   | 48|(8.5,5.0)   
+sandra | 19|(9.345,09.6)
+sandy  | 38|(3.8,0.2)   
+susan  | 78|(6.579,3)   
+(11 rows)
 
+
+(3 rows)
 --
 -- Test 5) Tests a basic reduce function
 --
 SELECT mapreduce('@abs_srcdir@/yml/agebracket.yml') ORDER BY 1;
-           mapreduce           
--------------------------------
- STDERR> mapreduce_30855_run_1
- STDERR> 
- STDOUT>
- key            |value
- ---------------+-----
- 0 => age < 10  |    2
- 10 => age < 20 |    6
- 20 => age < 30 |    6
- 30 => age < 40 |    8
- 40 => age < 50 |    4
- 50 => age < 60 |    5
- 60 => age < 70 |    4
- 70 => age < 80 |    6
- 80 => age < 90 |    6
- 90 => age < 100|    3
- (10 rows)
- 
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> mapreduce_73703_run_1
+STDERR> 
+STDOUT>
+key            |value
+---------------+-----
+0 => age < 10  |    2
+10 => age < 20 |    6
+20 => age < 30 |    6
+30 => age < 40 |    8
+40 => age < 50 |    4
+50 => age < 60 |    5
+60 => age < 70 |    4
+70 => age < 80 |    6
+80 => age < 90 |    6
+90 => age < 100|    3
+(10 rows)
 
+
+(3 rows)
 --
 -- Test 6) File Output tests
 --
-SELECT execute('rm @abs_srcdir@/results/fileout_*.out');
- execute 
----------
- 
-(1 row)
+SELECT execute('rm @abs_builddir@/results/fileout_*.out') ORDER BY 1;
+execute
+---------------------
 
+(1 row)
 SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
-           mapreduce           
--------------------------------
- STDERR> mapreduce_30864_run_1
- STDERR> mapreduce_30864_run_2
- STDERR> mapreduce_30864_run_3
- STDERR> 
- STDOUT>
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> mapreduce_73712_run_1
+STDERR> mapreduce_73712_run_2
+STDERR> mapreduce_73712_run_3
+STDERR> 
+STDOUT>
 
-SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
-   execute    
---------------
- row 1:data 1
- row 2:data 2
- row 3:data 3
- 
+(3 rows)
+SELECT execute('cat @abs_builddir@/results/fileout_none.out') ORDER BY 1;
+execute
+---------------------
+row 1:data 1
+row 2:data 2
+row 3:data 3
+
 (1 row)
+SELECT execute('cat @abs_builddir@/results/fileout_replace.out') ORDER BY 1;
+execute
+---------------------
+row 1|data 1
+row 2|data 2
+row 3|data 3
 
-SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
-   execute    
---------------
- row 1|data 1
- row 2|data 2
- row 3|data 3
- 
 (1 row)
+SELECT execute('cat @abs_builddir@/results/fileout_append.out') ORDER BY 1;
+execute
+---------------------
+row 1,data 1
+row 2,data 2
+row 3,data 3
 
-SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
-   execute    
---------------
- row 1,data 1
- row 2,data 2
- row 3,data 3
- 
 (1 row)
-
 SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
-                                                                   mapreduce                                                                    
-------------------------------------------------------------------------------------------------------------------------------------------------
- STDERR> mapreduce_30873_run_1
- STDERR> Error: OUTPUT 'out_1': file '@abs_srcdir@/results/fileout_none.out' already exists, at line 15
- STDERR> mapreduce_30873_run_2
- STDERR> mapreduce_30873_run_3
- STDERR> 
- STDOUT>
- 
-(2 rows)
+mapreduce
+---------------------
+STDERR> mapreduce_73721_run_1
+STDERR> Error: OUTPUT 'out_1': file '@abs_builddir@/results/fileout_none.out' already exists, at line 15
+STDERR> mapreduce_73721_run_2
+STDERR> mapreduce_73721_run_3
+STDERR> 
+STDOUT>
 
-SELECT execute('cat @abs_srcdir@/results/fileout_none.out');
-   execute    
---------------
- row 1:data 1
- row 2:data 2
- row 3:data 3
- 
+(3 rows)
+SELECT execute('cat @abs_builddir@/results/fileout_none.out') ORDER BY 1;
+execute
+---------------------
+row 1:data 1
+row 2:data 2
+row 3:data 3
+
 (1 row)
+SELECT execute('cat @abs_builddir@/results/fileout_replace.out') ORDER BY 1;
+execute
+---------------------
+row 1|data 1
+row 2|data 2
+row 3|data 3
 
-SELECT execute('cat @abs_srcdir@/results/fileout_replace.out');
-   execute    
---------------
- row 1|data 1
- row 2|data 2
- row 3|data 3
- 
 (1 row)
+SELECT execute('cat @abs_builddir@/results/fileout_append.out') ORDER BY 1;
+execute
+---------------------
+row 1,data 1
+row 2,data 2
+row 3,data 3
+row 1,data 1
+row 2,data 2
+row 3,data 3
 
-SELECT execute('cat @abs_srcdir@/results/fileout_append.out');
-   execute    
---------------
- row 1,data 1
- row 2,data 2
- row 3,data 3
- row 1,data 1
- row 2,data 2
- row 3,data 3
- 
 (1 row)
-
+--
+-- Cleanup) Restore normal formatting options
+--
+\pset format aligned
