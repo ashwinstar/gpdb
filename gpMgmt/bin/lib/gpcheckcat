@@ -98,7 +98,7 @@ def getversion():
     version = row[0]
 
     verbose('got version %s' % version)
-    if not (version == "8.2.6" or version == "8.2.9"):
+    if not (version == "8.2.6" or version == "8.2.9" or version == "8.2.10"):
         usage('Error: only Greenplum database 3.1 and 3.2 are supported')
 
     return version
