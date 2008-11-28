@@ -200,6 +200,10 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 		/* sanity check */
 		if (tcSize > Gp_max_packet_size)
 		{
+			/* see MPP-720: it is possible that our message got messed
+			 * up by a cancellation ? */
+			ML_CHECK_FOR_INTERRUPTS(inTeardown);
+
 			/*
 			 * MPP-4010: add some extra debugging.
 			 */
@@ -221,8 +225,8 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 		{
 			if (tcSize >= conn->msgSize)
 			{
-				/* it is possible that our message got messed up by a
-				 * cancellation ? */
+				/* see MPP-720: it is possible that our message got
+				 * messed up by a cancellation ? */
 				ML_CHECK_FOR_INTERRUPTS(inTeardown);
 
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
