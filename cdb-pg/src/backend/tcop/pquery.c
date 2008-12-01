@@ -147,8 +147,7 @@ ProcessQuery(Portal portal,
 {
 	int			operation = parsetree->commandType;
 	QueryDesc  *queryDesc;
-	bool		issueTrunc=false;
-	Oid			truncOid;
+	Oid			truncOid = InvalidOid;
 
 	ereport(DEBUG3,
 			(errmsg_internal("ProcessQuery")));
@@ -244,7 +243,6 @@ ProcessQuery(Portal portal,
 			Relation truncRel;
 
 			truncOid = rte->relid;
-			issueTrunc = true;
 
 			/* acquire the lock required by Truncate. */
 			truncRel = heap_open(truncOid, AccessExclusiveLock);
@@ -295,7 +293,7 @@ ProcessQuery(Portal portal,
 	/*
 	 * MPP-4145: truncate using saved Oid from earlier.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && issueTrunc)
+	if (Gp_role == GP_ROLE_DISPATCH && OidIsValid(truncOid))
 	{
 		TruncateStmt *truncStmt = NULL;
 		RangeVar   *truncRel;
