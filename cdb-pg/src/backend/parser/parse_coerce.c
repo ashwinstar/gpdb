@@ -315,6 +315,45 @@ coerce_type(ParseState *pstate, Node *node,
         inputTypeId = fixvar->vartype;
         if (targetTypeId == inputTypeId)
             return node;
+		else
+		{
+			/* 
+			 * That didn't work, so, try and cast the unknown value to
+			 * what ever the user wants. If it can't be done, they'll
+			 * get an IO error later.
+			 */
+
+			Oid outfunc = InvalidOid;
+			bool outtypisvarlena = false;
+			Oid infunc = InvalidOid;
+			Oid intypioparam = InvalidOid;
+			FuncExpr *fe;
+			List *args = NIL;
+
+			getTypeOutputInfo(UNKNOWNOID, &outfunc, &outtypisvarlena);
+			getTypeInputInfo(targetTypeId, &infunc, &intypioparam);
+
+			Insist(OidIsValid(outfunc));
+			Insist(OidIsValid(infunc));
+
+			/* do unknownout(Var) */
+			fe = makeFuncExpr(outfunc, CSTRINGOID, list_make1(node), cformat);
+
+			/* 
+			 * Now pass the above as an argument to the input function of the
+			 * type we're casting to
+			 */
+			args = list_make3(fe,
+							  makeConst(OIDOID, sizeof(Oid),
+										ObjectIdGetDatum(intypioparam),
+										false, true),
+							  makeConst(INT4OID, sizeof(int32),
+										Int32GetDatum(-1),
+										false, true));
+			fe = makeFuncExpr(infunc, targetTypeId, args, cformat);
+			return (Node *)fe;
+
+		}
 	}
 	if (find_coercion_pathway(targetTypeId, inputTypeId, ccontext,
 							  &funcId))

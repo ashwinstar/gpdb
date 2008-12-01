@@ -7102,7 +7102,8 @@ ATPrepAlterColumnType(List **wqueue,
 	 * because we need the expression to be parsed against the original table
 	 * rowtype.
 	 */
-	if (cmd->transform)
+
+	/* GPDB: we always need the RTE */
 	{
 		RangeTblEntry *rte;
 
@@ -7113,9 +7114,11 @@ ATPrepAlterColumnType(List **wqueue,
 											false,
 											true);
 		addRTEtoQuery(pstate, rte, false, true, true);
+	}
 
+	if (cmd->transform)
+	{
 		transform = transformExpr(pstate, cmd->transform);
-
 		/* It can't return a set */
 		if (expression_returns_set(transform))
 			ereport(ERROR,
