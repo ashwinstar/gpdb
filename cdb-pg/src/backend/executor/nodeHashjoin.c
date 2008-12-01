@@ -853,6 +853,8 @@ start_over:
 
 	    for (;;)
 	    {
+		    CHECK_FOR_INTERRUPTS();
+
 		    slot = ExecHashJoinGetSavedTuple(&batch->innerside,
 				    &hashvalue,
 				    hjstate->hj_HashTupleSlot);

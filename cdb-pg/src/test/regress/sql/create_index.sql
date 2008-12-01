@@ -424,3 +424,38 @@ create index bm_test_j on bm_test using bitmap(j);
 update bm_test set j=20 where j=1;
 vacuum bm_test;
 drop table bm_test;
+
+-- unique index with null value tests
+drop table if exists ijk;
+create table ijk(i int, j int, k int);
+insert into ijk values (1, 1, 3);
+insert into ijk values (1, 2, 4);
+insert into ijk values (1, 3, NULL);
+insert into ijk values (1, 3, NULL);
+insert into ijk values (1, NULL, NULL);
+insert into ijk values (1, NULL, NULL);
+
+-- should fail.
+create unique index ijk_i on ijk(i);
+create unique index ijk_ij on ijk(i,j);
+-- should OK.
+create unique index ijk_ijk on ijk(i,j,k);
+
+set gp_enable_mk_sort=on;
+drop table if exists ijk;
+create table ijk(i int, j int, k int);
+insert into ijk values (1, 1, 3);
+insert into ijk values (1, 2, 4);
+insert into ijk values (1, 3, NULL);
+insert into ijk values (1, 3, NULL);
+insert into ijk values (1, NULL, NULL);
+insert into ijk values (1, NULL, NULL);
+
+-- should fail.
+create unique index ijk_i on ijk(i);
+create unique index ijk_ij on ijk(i,j);
+-- should OK.
+create unique index ijk_ijk on ijk(i,j,k);
+
+set gp_enable_mk_sort=off;
+drop table ijk;
