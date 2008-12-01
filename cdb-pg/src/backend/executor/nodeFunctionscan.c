@@ -308,9 +308,10 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 		};
 		
 		RangeTblEntry *rte = rt_fetch(((Scan *)scanstate->ss.ps.plan)->scanrelid, estate->es_range_table);
-		Oid funcid = (rte->funcexpr && IsA(rte->funcexpr, FuncExpr)) ? ((FuncExpr *)rte->funcexpr)->funcid : 0;
-		char *funcname = get_func_name(funcid);
-		
+		char *funcname = (rte->funcexpr && IsA(rte->funcexpr, FuncExpr)) ? 
+					get_func_name(((FuncExpr *)rte->funcexpr)->funcid)
+				 	: rte->eref->aliasname;
+
 		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
 			GPMON_QEXEC_T_RELATION(funcname),
 			{ NULL, NULL }
@@ -320,7 +321,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 		InitPlanStateGpmonPkt(&scanstate->ss.ps, "FunctionScan", 
                                       (int64)scanstate->ss.ps.plan->plan_rows,
                                       m, t);
-		if (funcname)
+		if (funcname && funcname != rte->eref->aliasname)
 			pfree(funcname);
 	}
 

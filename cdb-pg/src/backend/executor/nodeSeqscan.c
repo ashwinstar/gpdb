@@ -500,7 +500,7 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename,
 		int i=0;
 		for (i=0; i < GPMON_QEXEC_T_COUNT; ++i)
 		{
-			if (t[i].name)
+			if (t[i].name && t[i].value)
 			{
 				Assert(t[i].value);
 				snprintf(ps->gpmon_pkt.u.qexec.t[i].name,
