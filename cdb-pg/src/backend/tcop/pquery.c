@@ -32,6 +32,7 @@
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
 #include "commands/vacuum.h"
+#include "commands/tablecmds.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
@@ -146,6 +147,8 @@ ProcessQuery(Portal portal,
 {
 	int			operation = parsetree->commandType;
 	QueryDesc  *queryDesc;
+	bool		issueTrunc=false;
+	Oid			truncOid;
 
 	ereport(DEBUG3,
 			(errmsg_internal("ProcessQuery")));
@@ -205,6 +208,51 @@ ProcessQuery(Portal portal,
 	AfterTriggerEndQuery(queryDesc->estate);
 
 	/*
+	 * MPP-4145: convert qualifying "delete from" queries into
+	 * truncate, after the delete has run -- this will return the
+	 * correct number of rows to the client, and will also free the
+	 * underlying storage.
+	 *
+	 * We save Oid before ending query.
+	 *
+	 * If we're deleting a complete table in parallel, add on a
+	 * truncate step after we've done the delete -- this frees the
+	 * storage whereas the delete itself does not.
+	 *
+	 * A delete of the table should already have the appropriate
+	 * locks (?), so we ought not deadlock here.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH &&
+		gp_enable_delete_as_truncate &&
+		queryDesc->plantree->dispatch == DISPATCH_PARALLEL &&
+		queryDesc->operation == CMD_DELETE &&
+		queryDesc->parsetree->resultRelation == 1 &&
+		queryDesc->plantree != NULL)
+	{
+		RangeTblEntry *rte;
+
+		rte = linitial(queryDesc->parsetree->rtable);
+		/*
+		 * if the delete command we just ran had no qualifiers and
+		 * was against a simple table, it is nice to be able to
+		 * substitute a truncate-command.
+		 */
+		if (queryDesc->plantree->qual == NULL &&
+			queryDesc->plantree->lefttree == NULL &&
+			queryDesc->plantree->righttree == NULL)
+		{
+			Relation truncRel;
+
+			truncOid = rte->relid;
+			issueTrunc = true;
+
+			/* acquire the lock required by Truncate. */
+			truncRel = heap_open(truncOid, AccessExclusiveLock);
+			heap_close(truncRel, NoLock);
+		}
+	}
+
+	/*
 	 * Now, we close down all the scans and free allocated resources.
 	 */
 	ExecutorEnd(queryDesc);
@@ -243,12 +291,39 @@ ProcessQuery(Portal portal,
 				break;
 		}
 	}
-	
-	
-    /* 	 Fix for MPP-4082. If auto-stats is in onchange mode and the number */
-    /* 	 of tuples inserted/deleted/updated is greater than */
-    /* 	 threshold, this will trigger an ANALYZE. */
 
+	/*
+	 * MPP-4145: truncate using saved Oid from earlier.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && issueTrunc)
+	{
+		TruncateStmt *truncStmt = NULL;
+		RangeVar   *truncRel;
+		char	*schemaName;
+		char	*relName;
+
+		truncStmt = makeNode(TruncateStmt);
+		truncStmt->behavior = DROP_RESTRICT; /* don't cascade */
+		truncStmt->relations = NIL;
+
+		schemaName = get_namespace_name(get_rel_namespace(truncOid));
+		relName = get_rel_name(truncOid);
+		if (schemaName != NULL && relName != NULL)
+		{
+			elog(DEBUG1, "converting delete into truncate on %s.%s", schemaName, relName);
+
+			/* we need a list of RangeVars */
+			truncRel = makeRangeVar(get_namespace_name(get_rel_namespace(truncOid)), get_rel_name(truncOid));
+			truncStmt->relations = lappend(truncStmt->relations, truncRel);
+
+			ExecuteTruncate(truncStmt);
+		}
+	}
+    /*
+	 * Fix for MPP-4082. If auto-stats is in onchange mode and the
+     * number of tuples inserted/deleted/updated is greater than
+     * threshold, this will trigger an ANALYZE.
+	 */
 	if (gp_autostats_mode == GP_AUTOSTATS_ONCHANGE) 
 	{
 		if (Gp_role == GP_ROLE_DISPATCH) 

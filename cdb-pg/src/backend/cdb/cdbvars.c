@@ -118,6 +118,14 @@ int			gp_snapshotadd_timeout=10;
 bool	gp_enable_slow_writer_testmode = false;
 
 /*
+ * gp_enable_delete_as_truncate
+ *
+ * piggy-back a truncate on simple delete statements (statements
+ * without qualifiers "delete from foo").
+ */
+bool	gp_enable_delete_as_truncate = false;
+
+/*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
  * is used for the duration of this process and should never change.

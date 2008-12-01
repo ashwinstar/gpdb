@@ -1388,6 +1388,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_delete_as_truncate", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable verbose check at planning time."),
+			NULL,
+		},
+		&gp_enable_delete_as_truncate,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_adjust_selectivity_for_outerjoins", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Adjust selectivity of null tests over outer joins."),
 			NULL,

@@ -236,6 +236,11 @@ extern bool           gp_select_invisible;
  */
 extern bool           gp_enable_slow_writer_testmode;
 
+/*
+ * MPP-4145: convert certain delete statements into truncate statements.
+ */
+extern bool           gp_enable_delete_as_truncate;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter
