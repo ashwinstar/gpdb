@@ -654,8 +654,16 @@ class gpload:
             self.into_columns_dict[name] = i
             self.log(self.DEBUG, "found input column: " + str(i))
         if count==0:
-            self.log(self.ERROR, 'table %s does not exist.'%self.table)
-            sys.exit(2)
+            # see if it's a permissions issue or it actually doesn't exist
+            self.pg8000.execute("select 1 from pg_class c, pg_namespace n " +
+                        "where c.relname = '%s' and " % tableName +
+                        "n.nspname = '%s' and " % tableSchema +
+                        "n.oid = c.relnamespace")
+            if self.pg8000.row_count > 0:
+                self.log(self.ERROR, "permission denied for table %s.%s" % \
+                            (tableSchema, tableName))
+            else:
+               self.log(self.ERROR, 'table %s does not exist'%self.table)
 
     def read_mapping(self):
         mapping = self.getconfig('gpload:output:mapping',dict,None)
