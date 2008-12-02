@@ -481,7 +481,7 @@ class gpload:
                 endPort = self.getconfig(name+':port',int,9000)
             if not (set(xrange(startPort,endPort+1)) & availablePorts):
                 self.log(self.ERROR,
-                         "There are no more ports available for gpfdist.")
+                         "no more ports available for gpfdist")
                 sys.exit(2)
             file = self.getconfig(name+':file',list)
             for i in file:
@@ -491,9 +491,9 @@ class gpload:
                     sys.exit(2)
             popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
                          '-f',' '.join(file)]
-            if self.options.qv==2:
+            if self.options.qv == self.LOG:
                 popenList.append('-v')
-            elif self.options.qv>2:
+            elif self.options.qv > self.LOG:
                 popenList.append('-V')
 
             try:
@@ -506,6 +506,7 @@ class gpload:
                                 (' '.join(popenList), str(e)))
                 sys.exit(2)
 
+            # get all the output from the daemon(s)
             t = CatThread(self,a.stderr)
             t.start()
             self.threads.append(t)
