@@ -640,7 +640,7 @@ ssl.pemfile = "%s"
 #################
 def generate_cert(destfile):
     # TODO: configurable cert params
-    cert_gen_cmd = 'openssl req -new -x509 -keyout %s -out %s -days 365 -nodes' % (destfile, destfile)
+    cert_gen_cmd = 'openssl req -new -x509 -keyout %s -out %s -days 3650 -nodes' % (destfile, destfile)
     res = os.system(cert_gen_cmd)
     return (res == 0)
 
