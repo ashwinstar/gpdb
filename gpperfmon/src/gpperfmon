@@ -535,6 +535,7 @@ def lighty_status():
 
 #################
 def generate_lighty_conf(docroot, errlog, accesslog, port, webpybin, usessl, certpath):
+    fcgisocket = opt['MASTER_DATA_DIRECTORY'].lstrip('/').rstrip('/').replace('/', '.') + '.fastcgi.socket'
     return '''server.modules = (
     "mod_rewrite",
     "mod_fastcgi",
@@ -614,7 +615,7 @@ compress.filetype = ("text/plain", "text/html", "text/xml")
 
 fastcgi.server = ( "/gpmonws.py" =>
 ((
-   "socket" => "/tmp/fastcgi.socket",
+   "socket" => "/tmp/%s",
    "bin-path" => "%s",
    "max-procs" => 1,
    "bin-environment" => (
@@ -633,7 +634,7 @@ fastcgi.server = ( "/gpmonws.py" =>
 #### SSL engine
 ssl.engine = "%s"
 ssl.pemfile = "%s"
-''' % (docroot, opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/lighttpd.pid', errlog, accesslog, port, webpybin, usessl, certpath)
+''' % (docroot, opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/lighttpd.pid', errlog, accesslog, port, fcgisocket, webpybin, usessl, certpath)
 
 
 #################
