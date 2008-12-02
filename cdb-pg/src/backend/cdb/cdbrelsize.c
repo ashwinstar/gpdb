@@ -60,7 +60,10 @@ int64 cdbRelSize(Oid relOid)
 	struct pg_result **results = NULL;
 	StringInfoData errbuf;
 	StringInfoData buffer;
-	
+
+	char	*schemaName;
+	char	*relName;	
+
 	if (last_cache_entry  >= 0)
 		for (i=0; i < relsize_cache_size; i++)
 		{
@@ -74,12 +77,19 @@ int64 cdbRelSize(Oid relOid)
 	 */
 	initStringInfo(&buffer);
 	initStringInfo(&errbuf);
-	
+
+	schemaName = get_namespace_name(get_rel_namespace(relOid));
+	relName = get_rel_name(relOid);
+
+	if (schemaName == NULL || relName == NULL)
+		elog(ERROR, "Relation with oid %d does not exist", relOid);
+
 	/* 
 	 * Safer to pass names than oids, just in case they get out of sync between QD and QE,
 	 * which might happen with a toast table or index, I think (but maybe not)
 	 */
-	appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", quote_identifier(get_namespace_name(get_rel_namespace(relOid))),quote_identifier(get_rel_name(relOid)));
+	appendStringInfo(&buffer, "select pg_relation_size('%s.%s')",
+					 quote_identifier(schemaName), quote_identifier(relName));
 
 	/* 
 	 * In the future, it would be better to send the command to only one QE for the optimizer's needs,
@@ -90,7 +100,7 @@ int64 cdbRelSize(Oid relOid)
 	if (errbuf.len > 0)
 	{
 		ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-						errdetail("%s", errbuf.data)));
+						  errdetail("%s", errbuf.data)));
 		pfree(errbuf.data);
 		pfree(buffer.data);
 		
@@ -131,7 +141,6 @@ int64 cdbRelSize(Oid relOid)
 	
 		free(results);
 	}
-	
 
 	if (size >= 0)	/* Cache the size even if it is zero, as table might be empty */
 	{
@@ -141,9 +150,6 @@ int64 cdbRelSize(Oid relOid)
 		relsize_cache[last_cache_entry].size = size;
 		last_cache_entry = (last_cache_entry+1) % relsize_cache_size;
 	}
-	
-		
-	
-	return size;
 
+	return size;
 }
