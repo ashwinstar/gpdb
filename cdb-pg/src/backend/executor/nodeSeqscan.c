@@ -264,9 +264,9 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
-			{ "SeqScan Page Stats", "Pages", 0 }, 
-			{ "SeqScan Restore Pos", "Restores", 0},
-			{ "SeqScan Rescan", "Rescans", 0},
+			{ "Seq Scan Page Stats", "Pages", 0 }, 
+			{ "Seq Scan Restore Pos", "Restores", 0},
+			{ "Seq Scan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 } 
 		};
 		
@@ -279,7 +279,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ps, "Sequential Scan", 
+		InitPlanStateGpmonPkt(&scanstate->ps, "Seq Scan", 
                                       (int64) scanstate->ps.plan->plan_rows, m, t); 
 	}
 

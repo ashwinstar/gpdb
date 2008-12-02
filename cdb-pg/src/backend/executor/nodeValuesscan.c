@@ -297,7 +297,7 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 			{ NULL, NULL }
 		};
 
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "ValuesScan", (int64)0, m, t);
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Values Scan", (int64)0, m, t);
 	}
 
 	return scanstate;

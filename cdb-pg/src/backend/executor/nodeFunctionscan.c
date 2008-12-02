@@ -318,7 +318,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 		};
 		
 		Assert(GPMON_FUNCSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "FunctionScan", 
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Function Scan", 
                                       (int64)scanstate->ss.ps.plan->plan_rows,
                                       m, t);
 		if (funcname && funcname != rte->eref->aliasname)

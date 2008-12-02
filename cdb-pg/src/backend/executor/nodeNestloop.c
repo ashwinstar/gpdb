@@ -466,13 +466,13 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "NestloopJoin inner tuples", "Tuples", 0},
-			{ "NestloopJoin outer tuples", "Tuples", 0},
+			{ "Nested Loop Inner Tuples", "Tuples", 0},
+			{ "Nested Loop Outer Tuples", "Tuples", 0},
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&nlstate->js.ps, "NestloopJoin", 
+		InitPlanStateGpmonPkt(&nlstate->js.ps, "Nested Loop", 
                                       (int64)nlstate->js.ps.plan->plan_rows,
                                       m, NULL);
 	}

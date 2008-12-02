@@ -1800,13 +1800,13 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_MERGEJOIN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT,
-			{ "MergeJoin inner side tuples", "Tuples", 0},
-			{ "MergeJoin outer side tuples", "Tuples", 0},
+			{ "Merge Join Inner Tuples", "Tuples", 0},
+			{ "Merge Join Outer Tuples", "Tuples", 0},
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&mergestate->js.ps, "MergeJoin", 
+		InitPlanStateGpmonPkt(&mergestate->js.ps, "Merge Join", 
                                       (int64)mergestate->js.ps.plan->plan_rows,
                                       m, NULL);
 	}

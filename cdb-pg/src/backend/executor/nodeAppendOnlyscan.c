@@ -158,7 +158,7 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_APPONLYSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT, 
-			{ "AppendOnlyScan Rescan", "Rescans", 0},
+			{ "Append-Only Scan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }
 		};
 		
@@ -171,7 +171,7 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_APPONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "AppendOnly Scan", 
+		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "Append-Only Scan", 
                                       (int64)appendonlystate->ss.ps.plan->plan_rows,
                                       m, t);
 	}

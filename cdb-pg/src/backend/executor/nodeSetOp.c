@@ -284,7 +284,7 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_SETOP_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&setopstate->ps, "SetOpNode", 
+		InitPlanStateGpmonPkt(&setopstate->ps, "SetOp", 
                                       (int64)setopstate->ps.plan->plan_rows,
                                       m, NULL);
 	}

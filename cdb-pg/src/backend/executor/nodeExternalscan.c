@@ -182,7 +182,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-               	{ "ExternalScan Rescan", "Rescans", 0 },
+               	{ "External Scan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 		
@@ -195,7 +195,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&externalstate->ss.ps, "ExternalScan", 
+		InitPlanStateGpmonPkt(&externalstate->ss.ps, "External Scan", 
                                       (int64)externalstate->ss.ps.plan->plan_rows,
                                       m, t);
 	}

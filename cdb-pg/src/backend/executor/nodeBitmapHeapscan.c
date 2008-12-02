@@ -618,8 +618,8 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPHEAPSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "BitmapHeapScan Pages", "Pages", 0 },
-               	{ "BitmapHeapScan Rescan", "Rescans", 0 },
+			{ "Bitmap Heap Scan Pages", "Pages", 0 },
+               	{ "Bitmap Heap Scan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 		
@@ -632,7 +632,7 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_BITMAPHEAPSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ss.ps, "BitmapHeapScan", 
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Bitmap Heap Scan", 
                                       (int64) scanstate->ss.ps.plan->plan_rows,
                                       m, t);
 	}

@@ -160,11 +160,11 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_ADAPTIVENL_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT, 
-              	{ "AdaptiveNestloop Strategy", "Strategy", 0 },
+              	{ "Adaptive Join Strategy", "Strategy", 0 },
 			{ NULL, NULL, 0 }
 		};
 
-		InitPlanStateGpmonPkt(&anlstate->ps, "AdaptiveNestLoop Join", 
+		InitPlanStateGpmonPkt(&anlstate->ps, "Adaptive Join", 
                                       (int64)anlstate->ps.plan->plan_rows,
                                       m, NULL);
 	}

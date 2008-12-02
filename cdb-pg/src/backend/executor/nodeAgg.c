@@ -2120,23 +2120,23 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		Gpmon_NameUnit_MaxVal m[GPMON_AGG_TOTAL+1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			/* GPMON_AGG_SPILLTUPLE */
-			{ "Agg Total Spill Tuples", "Tuples", 0 },
+			{ "Aggregate Total Spill Tuples", "Tuples", 0 },
 			/* GPMON_AGG_SPILLBYTE */
-			{ "Agg Total Spill Bytes", "Bytes", 0},
+			{ "Aggregate Total Spill Bytes", "Bytes", 0},
 			/* GPMON_AGG_SPILLBATCH */
-			{ "Agg Total Spill Batches", "Batches", 0 },
+			{ "Aggregate Total Spill Batches", "Batches", 0 },
 			/* GPMON_AGG_SPILLPASS */
-			{ "Agg Total Spill Pass", "Passes", 0},
+			{ "Aggregate Total Spill Pass", "Passes", 0},
 			/* GPMON_AGG_CURRSPILLPASS_READTUPLE */
-			{ "Agg Current Spill Pass Read Tuples", "Tuples", 0},
+			{ "Aggregate Current Spill Pass Read Tuples", "Tuples", 0},
 			/* GPMON_AGG_CURRSPILLPASS_READBYTE */
-			{ "Agg Current Spill Pass Read Bytes", "Bytes", 0},
+			{ "Aggregate Current Spill Pass Read Bytes", "Bytes", 0},
 			/* GPMON_AGG_CURRSPILLPASS_TUPLE */
-			{ "Agg Current Spill Pass Tuples", "Tuples", 0},
+			{ "Aggregate Current Spill Pass Tuples", "Tuples", 0},
 			/* GPMON_AGG_CURRSPILLPASS_BYTE */
-			{ "Agg Current Spill Pass Bytes", "Bytes", 0},
+			{ "Aggregate Current Spill Pass Bytes", "Bytes", 0},
 			/* GPMON_AGG_CURRSPILLPASS_BATCH */
-			{ "Agg Current Spill Pass Batches", "Batches", 0},
+			{ "Aggregate Current Spill Pass Batches", "Batches", 0},
 			/* GPMON_AGG_TOTAL */
 			{ NULL, NULL, 0 },
 		};
@@ -2149,7 +2149,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 		Assert(GPMON_AGG_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&aggstate->ss.ps, 
-			node->aggstrategy == AGG_HASHED ? "Hash Agg" : "Agg", 
+			node->aggstrategy == AGG_HASHED ? "Hash Aggregate" : "Aggregate", 
                                       (int64) aggstate->ss.ps.plan->plan_rows,
                                       m, NULL);
 	}

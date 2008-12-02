@@ -526,17 +526,17 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			/* SPILLBATCH */
-			{ "Hashjoin Spill Batches", "Batches", 0 }, 
+			{ "Hash Join Spill Batches", "Batches", 0 }, 
 			/* SPILLTUPLE */
-			{ "Hashjoin Spill Tuples", "Tuples", 0 }, 
+			{ "Hash Join Spill Tuples", "Tuples", 0 }, 
 			/* SPILLBYTE */
-			{ "Hashjoin Spill Bytes", "Bytes", 0 }, 
+			{ "Hash Join Spill Bytes", "Bytes", 0 }, 
 			/* TOTAL */
 			{ NULL, NULL, 0},
 		};
 
 		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&hjstate->js.ps, "HashJoin", 
+		InitPlanStateGpmonPkt(&hjstate->js.ps, "Hash Join", 
                                       (int64) hjstate->js.ps.plan->plan_rows,
                                       m, NULL);
 	}

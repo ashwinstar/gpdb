@@ -556,7 +556,7 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tidscan", 
+		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tid Scan", 
                                       (int64)tidstate->ss.ps.plan->plan_rows, 
                                       m, t);
 	}

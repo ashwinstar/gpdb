@@ -260,8 +260,8 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "ShareInputScan restore pos", "Restores", 0},
-			{ "ShareInputScan rescan", "Rescans", 0},
+			{ "ShareInputScan Restore Pos", "Restores", 0},
+			{ "ShareInputScan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }
 		};
 

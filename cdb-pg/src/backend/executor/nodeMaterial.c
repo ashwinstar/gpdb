@@ -408,12 +408,12 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_MATERIAL_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT,
-                { "GPMON_MATERIAL_RESCAN", "Rescans", 0 },
+                { "Materialize Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 
 		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&matstate->ss.ps, "Material", 
+		InitPlanStateGpmonPkt(&matstate->ss.ps, "Materialize", 
                                       (int64)matstate->ss.ps.plan->plan_rows,
                                       m, NULL);
 	}

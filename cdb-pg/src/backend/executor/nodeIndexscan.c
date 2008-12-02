@@ -598,8 +598,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_INDEXSCAN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "IndexScan Restore Pos", "Restores", 0 },
-			{ "IndexScan Rescan", "Rescans", 0 },
+			{ "Index Scan Restore Pos", "Restores", 0 },
+			{ "Index Scan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
 		
@@ -611,7 +611,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 		};
 		
 		Assert(GPMON_INDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&indexstate->ss.ps, "IndexScan", 
+		InitPlanStateGpmonPkt(&indexstate->ss.ps, "Index Scan", 
                                       (int64)indexstate->ss.ps.plan->plan_rows, 
                                       m, t);
 		if (relname)
