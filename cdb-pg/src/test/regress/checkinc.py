@@ -17,6 +17,7 @@ fileset = {
     'ia64/sys/inline.h': [],
     'io.h':              [],
     'libintl.h':         [],
+    'libc.h':            [],
     'mutex.h':           [],
     'pipe.h':            [],
     'process.h':         [],
