@@ -1,7 +1,6 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 3.1.x.x system to 3.2.
-
+Upgrades an existing Greenplum Database 3.1.1.5 - 3.1.1.12 system to 3.2.
 
 *****************************************************
 SYNOPSIS
@@ -11,8 +10,7 @@ gpmigrator <old_GPHOME_path> <new_GPHOME_path>
            [-d <master_data_directory>] [-l <logfile_directory>] [-q]
 
 gpmigrator --prepare 
-          [ --noinit | 
-            --master_port <port> --port_base <port> --mirror_port_base <port> ] 
+          [--master_port <port> --port_base <port> --mirror_port_base <port>] 
           <old_GPHOME_path> <new_GPHOME_path> 
           [-d <master_data_directory>] [-l <logfile_directory>] [-q]
 
@@ -25,32 +23,30 @@ PREREQUISITES
 
 The following tasks should be performed prior to executing an upgrade:
 
-* Make sure you are logged in to the master host as the Greenplum 
-  Database superuser (gpadmin).
+* Make sure you are logged in to the master host as the 
+  Greenplum Database superuser (gpadmin).
 
-* Install the Greenplum Database 3.2.0.x binaries on all Greenplum hosts.
+* Install the Greenplum Database 3.2 binaries on all Greenplum hosts.
 
 * Copy any custom modules from your 3.1 installation to your 3.2 
-  installation on all Greenplum hosts. For example, shared library 
-  files for user-defined functions in $GPHOME/lib or PostgreSQL add-on 
-  modules (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
+  installation on all Greenplum hosts. For example, shared library files 
+  for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
+  (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
 
-* Check for and recover any failed segments in your current Greenplum 
-  Database system (gpstate, gprecoverseg).
+* Check for and recover any failed segments in your current 
+  Greenplum Database system (gpstate, gprecoverseg).
 
-* Verify the integrity of your 3.1.x.x system catalogs using the 
+* Verify the integrity of your 3.1 system catalogs using the 
   --prepare step of gpmigrator. This will check your system catalogs 
-  and indexes. By default, it will also initialize a temporary 3.2 system 
-  that you can use to verify your segment configuration prior to executing 
-  the upgrade (use --noinit to skip this step). If problems are found, 
-  contact Greenplum customer support.
+  and indexes and initialize a temporary 3.2 system. If problems are 
+  found, contact Greenplum customer support.
 
-* Backup your 3.1.x.x databases (gpcrondump or ZFS snapshots).
+* Backup your 3.1.1.x databases (gpcrondump or ZFS snapshots).
 
 * Remove the standby master from your system configuration 
   (gpinitstandby -r).
 
-* Do a clean shutdown of your 3.1.x.x system (gpstop).
+* Do a clean shutdown of your 3.1.1.x system (gpstop).
 
 * Update your environment to point to the new 3.2 installation.
 
@@ -63,85 +59,81 @@ The following tasks should be performed prior to executing an upgrade:
 DESCRIPTION
 *****************************************************
 
-The gpmigrator utility upgrades an existing Greenplum Database 3.1.x.x 
-system to 3.2. It can also be used to downgrade a 3.2 system back to 3.1. 
-This utility updates the system catalog and internal version number, but 
-not the actual software binaries.
+The gpmigrator utility upgrades an existing Greenplum Database 
+3.1.1.5 -3.1.1.12 system to 3.2. It can also be used to downgrade 
+a 3.2 system back to 3.1.1.x. This utility updates the system catalog 
+and internal version number, but not the actual software binaries.
 
-During the migration process, all client connections to the master will 
-be locked out. The migration utility locks all client access to the master, 
-however it does not block direct utility mode access to the segments. 
-To ensure a safe upgrade, make sure users are aware that any connections 
-to a Greenplum segment are not safe during the upgrade time frame.
+During the migration process, all client connections to the master 
+will be locked out. The migration utility locks all client access 
+to the master, however it does not block direct utility mode access 
+to the segments. To ensure a safe upgrade, make sure users are aware 
+that any connections to a Greenplum segment are not safe during the 
+upgrade time frame.
 
-Prior to executing the upgrade, you can optionally run gpmigrator in 
-prepare mode to perform some pre-upgrade validation without actually 
-executing the upgrade. The prepare phase does three things; it runs a 
-utility called gpcheckcat to verify your system catalogs, it checks 
-for invalid indexes that need rebuilding, and it initializes a temporary 
-3.2 system from which you can validate your segment configuration. You 
-can optionally skip the initialization step by specifying --noinit.
+Prior to executing the upgrade, you can optionally run gpmigrator 
+in prepare mode to perform some pre-upgrade validation without 
+actually executing the upgrade. The prepare phase does three things; 
+it runs a utility called gpcheckcat to verify your system catalogs, 
+it checks for invalid indexes that need rebuilding, and it initializes 
+a temporary 3.2 system.
 
 
 *****************************************************
 OPTIONS
 *****************************************************
 
+
 <old_GPHOME_path>
 
-Required. The absolute path to the current version of Greenplum 
-Database software you want to migrate away from.
+Required. The absolute path to the current version of 
+Greenplum Database software you want to migrate away from.
 
 
 <new_GPHOME_path>
 
-Required. The absolute path to the new version of Greenplum Database 
-software you want to migrate to.
+Required. The absolute path to the new version of 
+Greenplum Database software you want to migrate to.
 
 
 --prepare
 
-Optional. Running gpmigrator with the --prepare option will perform 
-some pre-upgrade validation, but not execute the upgrade. The prepare 
-phase does three things; it runs a utility called gpcheckcat to verify 
-your system catalogs, it checks for invalid indexes that need rebuilding, 
-and it initializes a temporary 3.2 system from which you can validate 
-your segment configuration (use --noinit to skip this step). 
+Optional. Running gpmigrator with the --prepare option will 
+perform some pre-upgrade validation, but not execute the upgrade. 
+The prepare phase does three things; it runs a utility called 
+gpcheckcat to verify your system catalogs, it checks for invalid 
+indexes that need rebuilding, and it initializes a temporary 
+3.2 system. 
 
 
 --master_port <port>
 --port_base <port>
 --mirror_port_base <port>
 
-Used with the --prepare option to supply a temporary master port, 
-primary segment port base, and mirror segment port base for the 
-temporary 3.2 system to be initialized. These must be different that 
-what your current 3.1.x.x system is using. If not supplied on the 
-command-line, then gpmigrator will prompt you for them.
+Used with the --prepare option to supply a temporary master 
+port, primary segment port base, and mirror segment port base 
+for the temporary 3.2 system to be initialized. These must be 
+different than what your current 3.1.1.x system is using. If not 
+supplied on the command-line, then gpmigrator will prompt you 
+for them if your 3.1.1.x system is up and running.
 
 
---noinit
+-d <master_data_directory>
 
-When used with the --prepare option, will skip the initialization 
-step. The prepare phase will verify system catalogs and check for 
-invalid indexes, but not initialize a temporary 3.2 system. 
-
-
--d master_data_directory
-
-Optional. The current master host data directory. If not specified, 
-the value set for $MASTER_DATA_DIRECTORY will be used.
+Optional. The current master host data directory. If not 
+specified, the value set for $MASTER_DATA_DIRECTORY will 
+be used.
 
 
--l logfile_directory
+-l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 -q (quiet mode)
 
-Run in quiet mode. Command output is not displayed on the screen, 
-but is still written to the log file.
+Run in quiet mode. Command output is not displayed on the 
+screen, but is still written to the log file.
 
 
 --help
@@ -158,21 +150,21 @@ Displays the version of this utility.
 EXAMPLES
 *****************************************************
 
-Perform pre-upgrade validation (skipping the initialization step), 
+Perform pre-upgrade validation on your current system, 
 but do not execute the upgrade:
 
-/usr/local/greenplum-db-3.2.0.4/bin/gpmigrator --prepare --noinit \
+/usr/local/greenplum-db-3.2.1.0/bin/gpmigrator --prepare \
 /usr/local/greenplum-db-3.1.1.9 \
-/usr/local/greenplum-db-3.2.0.4
+/usr/local/greenplum-db-3.2.1.0
 
 
-Upgrade to version 3.2 from version 3.1.1.9 (first make sure you 
-are using the 3.2 version of the Greenplum utilities):
+Upgrade to version 3.2 from version 3.1.1.9 
+(first make sure you are using the 3.2 software version):
 
-source /usr/local/greenplum-db-3.2.0.4/greenplum_path.sh
+source /usr/local/greenplum-db-3.2.1.0/greenplum_path.sh
 
 gpmigrator /usr/local/greenplum-db-3.1.1.9 
-/usr/local/greenplum-db-3.2.0.4
+/usr/local/greenplum-db-3.2.1.0
 
 
 *****************************************************
