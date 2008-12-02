@@ -20,7 +20,8 @@
 #include "utils/timestamp.h"  /* TimestampTz */
 #include "access/xact.h"   /* MaxGpSavePoints */
 #include "utils/combocid.h" /*MaxComboCids*/
-#include "cdb/cdbdistributedsnapshot.h"
+
+#include "cdb/cdbdistributedsnapshot.h"  /* DistributedSnapshotWithLocalMapping */
 
 
 /*
@@ -91,10 +92,6 @@ extern DLLIMPORT Snapshot ActiveSnapshot;
 extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;
 extern TransactionId RecentGlobalXmin;
-
-extern DtxContext DistributedTransactionContext;
-
-extern DtxContextInfo QEDtxContextInfo;
 
 /* MPP Shared Snapshot */
 typedef struct SharedSnapshotSlot
@@ -325,12 +322,5 @@ extern Snapshot GetLatestSnapshot(void);
 extern Snapshot CopySnapshot(Snapshot snapshot);
 extern void FreeSnapshot(Snapshot snapshot);
 extern void FreeXactSnapshot(void);
-
-/* in procarray.c; declared here to avoid including tqual.h in procarray.h: */
-extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable);
-extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller);
-extern char* DebugGetSnapshotString(const Snapshot snapshot);
-
-extern void GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots);
 
 #endif   /* TQUAL_H */

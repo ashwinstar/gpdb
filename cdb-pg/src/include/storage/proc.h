@@ -15,10 +15,11 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
-#include "cdb/cdblocaldistribxact.h"
 #include "storage/lock.h"
 #include "storage/spin.h"
 #include "storage/pg_sema.h"
+
+#include "cdb/cdbpublic.h"  /* LocalDistribXactRef */
 
 
 /*

@@ -22,6 +22,7 @@
 
 #include "utils/tqual.h" 			/*for the snapshot */
 #include "storage/proc.h"  			/* MyProc */
+#include "storage/procarray.h"      /* updateSharedLocalSnapshot */
 #include "access/xact.h"  			/*for GetCurrentTransactionId */
 
 

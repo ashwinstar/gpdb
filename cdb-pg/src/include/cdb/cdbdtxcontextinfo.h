@@ -29,7 +29,8 @@ typedef struct DtxContextInfo
 
 	uint32							segmateSync;
 } DtxContextInfo;
-	
+
+extern DtxContextInfo QEDtxContextInfo;	
 
 extern void DtxContextInfo_Reset(DtxContextInfo *dtxContextInfo);
 extern void DtxContextInfo_CreateOnMaster(

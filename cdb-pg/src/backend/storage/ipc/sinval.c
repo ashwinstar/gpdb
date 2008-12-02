@@ -25,8 +25,9 @@
 #include "storage/sinvaladt.h"
 #include "utils/inval.h"
 
-#include "cdb/cdbvars.h"		/* Gp_is_writer */
 #include "cdb/cdbgang.h"
+#include "cdb/cdbtm.h"          /* DtxContext */
+#include "cdb/cdbvars.h"		/* Gp_is_writer */
 
 /*
  * Because backends sitting idle will not be reading sinval events, we

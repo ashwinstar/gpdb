@@ -9,6 +9,10 @@
 #ifndef CDBDISTRIBUTEDSNAPSHOT_H
 #define CDBDISTRIBUTEDSNAPSHOT_H
 
+/* This is a shipped header, do not include other files under "cdb" */
+#include "c.h"     /* DistributedTransactionId */
+
+
 /*
  * Combine global and local information captured while scanning the
  * distributed transactions so they can be sorted as a unit.

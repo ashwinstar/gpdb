@@ -112,7 +112,6 @@
 #include "bootstrap/bootstrap.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
-#include "cdb/cdbvars.h"
 #include "commands/async.h"
 #include "lib/dllist.h"
 #include "libpq/auth.h"
@@ -144,6 +143,8 @@
 
 #include "cdb/cdbgang.h"                /* cdbgang_parse_gpqeid_params */
 #include "cdb/cdblogsync.h"
+#include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"

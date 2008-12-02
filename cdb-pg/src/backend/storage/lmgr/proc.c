@@ -48,6 +48,8 @@
 #include "utils/portal.h"
 
 #include "utils/tqual.h"  /*SharedLocalSnapshotSlot*/
+
+#include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbvars.h"  /*Gp_is_writer*/
 
 /* GUC variables */

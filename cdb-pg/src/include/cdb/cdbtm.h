@@ -14,6 +14,7 @@
 #include "cdb/cdbdistributedsnapshot.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbdtxcontextinfo.h"
+#include "cdb/cdbpublic.h"
 
 /* DTX states */
 typedef enum
@@ -78,11 +79,7 @@ typedef enum
 	DTX_CONTEXT_QE_FINISH_PREPARED
 } DtxContext;
 
-typedef struct TMGXACT_LOG
-{
-	char						gid[TMGIDSIZE];
-	DistributedTransactionId	gxid;
-}	TMGXACT_LOG;
+
 
 typedef struct TMGXACT_CHECKPOINT
 {
@@ -182,8 +179,11 @@ typedef struct TmControlBlock
 	TMGXACT  			       *gxact_array[1];
 }	TmControlBlock;
 
+
 #define TMCONTROLBLOCK_BYTES(num_gxacts) \
             (SIZEOF_VARSTRUCT(num_gxacts, TmControlBlock, gxact_array))
+
+extern DtxContext DistributedTransactionContext;
 
 /* state variables for how much of the log file has been flushed */
 extern volatile bool *shmDtmStarted;

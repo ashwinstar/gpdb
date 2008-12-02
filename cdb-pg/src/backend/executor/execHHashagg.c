@@ -18,7 +18,6 @@
 #include "postgres.h"
 
 #include "miscadmin.h" /* work_mem */
-#include "cdb/cdbvars.h"
 #include "executor/executor.h"
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
@@ -31,6 +30,10 @@
 #include "utils/elog.h"
 
 #include "access/hash.h"
+
+#include "cdb/cdbcellbuf.h"
+#include "cdb/cdbexplain.h"
+#include "cdb/cdbvars.h"
 
 #define HHA_MSG_LVL DEBUG2
 

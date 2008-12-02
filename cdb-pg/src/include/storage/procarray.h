@@ -15,7 +15,9 @@
 #define PROCARRAY_H
 
 #include "storage/lock.h"
-#include "utils/tqual.h"
+
+struct DtxContextInfo;         /* cdb/cdbdtxcontextinfo.h */
+struct SnapshotData;           /* utils/tqual.h */
 
 extern Size ProcArrayShmemSize(void);
 extern void CreateSharedProcArray(void);
@@ -41,4 +43,9 @@ extern void XidCacheRemoveRunningXids(TransactionId xid,
 extern PGPROC *FindProcByGpSessionId(long gp_session_id);
 extern void UpdateSerializableCommandId(void);
 
+extern struct SnapshotData* GetSnapshotData(struct SnapshotData *snapshot, bool serializable);
+extern void updateSharedLocalSnapshot(struct DtxContextInfo *dtxContextInfo, struct SnapshotData *snapshot, char* debugCaller);
+extern char* DebugGetSnapshotString(struct SnapshotData * const snapshot);
+
+extern void GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots);
 #endif   /* PROCARRAY_H */

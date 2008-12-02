@@ -37,6 +37,7 @@
 #include "utils/lsyscache.h"
 #include "utils/debugbreak.h"
 
+#include "cdb/cdbexplain.h"
 #include "cdb/cdbvars.h"
 
 static void ExecHashIncreaseNumBatches(HashJoinTable hashtable);

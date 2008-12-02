@@ -65,6 +65,7 @@
 #include "utils/typcache.h"
 
 #include "cdb/cdbcat.h"         /* GpPolicy */
+#include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"        /* Gp_role */
 
 

@@ -11,20 +11,7 @@
 
 #include "storage/lock.h"
 
-#define LocalDistribXactRef_Eyecatcher "LDX"
-#define LocalDistribXactRef_StaticInit {LocalDistribXactRef_Eyecatcher,-1}
-#define LocalDistribXactRef_EyecatcherLen 4
-
-typedef struct LocalDistribXactRef
-{
-	char		eyecatcher[LocalDistribXactRef_EyecatcherLen];	
-								/* 
-								 * Used to validate this is a LocalDistribXact
-								 * reference.  3 characters plus NUL.
-								 */
-	int			index;			/* Index to the element. */
-
-}	LocalDistribXactRef;
+#include "cdb/cdbpublic.h"   /* LocalDistribXactRef */
 
 typedef enum
 {

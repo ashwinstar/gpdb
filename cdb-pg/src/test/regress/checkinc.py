@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, re, subprocess
+import sys, os, re, subprocess
 
 p = subprocess.Popen('pg_config --pkgincludedir', stdout=subprocess.PIPE, shell=True)
 pkginc = p.communicate()[0].strip();
@@ -49,7 +49,7 @@ for inc_dir in inc_dirs:
 
 
 # For all files, check to see if the list of includes is in the list
-first = True
+missing = False
 keys = fileset.keys()
 keys.sort()
 for f in keys:
@@ -67,9 +67,11 @@ for f in keys:
 
         # But if it's not one of those then it's probably a file that we have
         # omitted
-        if first:
-            print "filename: missing include";
-            first = False
-        print f + ' : ' + i
+        missing = True
+        print '  %-30s includes missing file "%s" ' % (f, i)
 
-        
+if missing:
+    sys.exit(1)
+else:
+    print "Include files are ok" 
+    sys.exit(0)

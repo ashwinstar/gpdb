@@ -17,11 +17,7 @@
 #define EXECBYBRIDHASHAGG_H
 
 #include "executor/nodeAgg.h" /* Must see AggStatePerGroupData. */
-#include "cdb/cdbcellbuf.h"
-#ifdef HASHAGG_USE_CHUCKBUF
-#include "cdb/cdbchunkbuf.h"
-#endif
-#include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
+#include "cdb/cdbpublic.h"    /* CdbExplain_Agg / CdbCellBuf */
 
 typedef uint32 HashKey;
 typedef struct BatchFileInfo BatchFileInfo;

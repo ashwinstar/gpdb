@@ -57,6 +57,7 @@
 #include "utils/builtins.h"
 
 #include "cdb/cdbsreh.h"
+#include "cdb/cdbtm.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "cdb/url.h"

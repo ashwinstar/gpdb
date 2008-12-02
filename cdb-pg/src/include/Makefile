@@ -45,9 +45,11 @@ install: all installdirs
 	  chmod $(INSTALL_DATA_MODE) '$(DESTDIR)$(includedir_server)'/$$dir/*.h  || exit; \
 	done
 # These headers are needed for PGXS
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbpublic.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbcat.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdbdistributedsnapshot.h   $(DESTDIR)$(includedir_internal_cdb)
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq' \

@@ -36,6 +36,8 @@
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "utils/portal.h"
+
+#include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
 void AddQEWriterTransactionInfo(StringInfo buf);

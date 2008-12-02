@@ -54,6 +54,7 @@
 #include "utils/pg_locale.h"
 
 #include "cdb/cdblink.h"
+#include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
 // Avoid trying to pull in cdbfts.h

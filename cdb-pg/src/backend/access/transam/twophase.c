@@ -48,7 +48,6 @@
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
 #include "access/xact.h"
-#include "cdb/cdbvars.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -60,6 +59,9 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "access/distributedlog.h"
+
+#include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"
 
 
 /*

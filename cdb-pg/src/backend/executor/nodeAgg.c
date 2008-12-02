@@ -105,6 +105,7 @@
 #include "utils/tuplesort.h"
 #include "utils/datum.h"
 
+#include "cdb/cdbexplain.h"
 #include "cdb/cdbvars.h" /* mpp_hybrid_hash_agg */
 
 #if 0

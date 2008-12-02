@@ -22,7 +22,7 @@
 #include "storage/buffile.h"
 #endif
 
-#include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
+#include "cdb/cdbpublic.h"                 /* CdbExplain_Agg */
 
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 

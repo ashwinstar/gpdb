@@ -58,6 +58,8 @@
 #include "funcapi.h"
 
 #include "utils/builtins.h"
+
+#include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
 /*

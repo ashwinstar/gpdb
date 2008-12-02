@@ -118,7 +118,7 @@ endif
 
 # And finally some extra C modules...
 
-all: all-spi tablespace-setup
+all: all-spi tablespace-setup includecheck
 
 .PHONY: all-spi
 all-spi:
@@ -129,6 +129,11 @@ all-spi:
 tablespace-setup:
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
+
+# Check for include files that are not being shipped
+.PHONY: includecheck
+includecheck:
+	./checkinc.py
 
 ##
 ## Run tests

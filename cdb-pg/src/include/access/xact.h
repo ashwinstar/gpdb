@@ -18,7 +18,8 @@
 #include "nodes/pg_list.h"
 #include "storage/relfilenode.h"
 #include "utils/timestamp.h"
-#include "cdb/cdbtm.h"
+
+#include "cdb/cdbpublic.h"
 
 /*
  * Xact isolation levels
@@ -130,11 +131,13 @@ typedef struct xl_xact_abort_prepared
 
 #define MinSizeOfXactAbortPrepared offsetof(xl_xact_abort_prepared, arec.xnodes)
 
+/* 
+ * xl_xact_distributed_forget - moved to cdb/cdbtm.h 
+ */
 typedef struct xl_xact_distributed_forget
 {
 	TMGXACT_LOG gxact_log;
 } xl_xact_distributed_forget;
-
 
 /*
  * Maximum number of subtransactions per transaction allowed under MPP until
@@ -205,7 +208,7 @@ extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
 extern void RecordTransactionCommit(void);
-extern void RecordDistributedForgetCommitted(TMGXACT_LOG *gxact_log);
+extern void RecordDistributedForgetCommitted(struct TMGXACT_LOG *gxact_log);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
