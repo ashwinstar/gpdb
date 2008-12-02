@@ -347,31 +347,29 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 			continue;
 
 		/*
-		 * Sanity checks for the limit types: 
-		 * We want to ensure that the new thresholds are not less than the 
-		 * current values. 
-		 * For overcommittable limits we need to ensure the queue is not in 
+		 * MPP-4340:
+		 * The goal of the resource queues is to allow us to throttle work
+		 * onto the cluster: a key requirement is that given a queue we be able to
+		 * change the limit values -- especially in a situation where we're already
+		 * overloading the system, we'd like to be able to drop the queue limit.
+		 *
+		 * The original sanity checks here disallowed modifications which might
+		 * reduce the threshold. To throttle the system for better performance,
+		 * work had to get cancelled. That's an unacceptable limitation; so
+		 * now we allow the queues to be changed.
+		 *
+		 * Overcommit is a much more serious type of change.
+		 *
+		 * For overcommitable limits we need to ensure the queue is not in 
 		 * an overcommited state if we about to turn overcommit off.
 		 */
 		switch (i)
 		{
-
 			case RES_COUNT_LIMIT:
-			{
-				/* Don't change a threshold to below the current value. */
-				if ((queue->limits[i].threshold_value != limits[i]) &&
-					(limits[i] <= queue->limits[i].current_value))
-					result = ALTERQUEUE_SMALL_THRESHOLD;
-			}
-			break;
+				break;
 
 			case RES_COST_LIMIT:
 			{
-				/* Don't change a threshold to below the current value. */
-				if ((queue->limits[i].threshold_value != limits[i]) &&
-					(limits[i] <= queue->limits[i].current_value))
-					result = ALTERQUEUE_SMALL_THRESHOLD;
-
 				/* 
 				 * Don't turn overcommit off if queue could be overcommitted.
 				 * We err on the side of caution in this case and demand that
@@ -385,8 +383,6 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 			}
 			break;
 		}
-
-
 	}
 
 	/*
@@ -418,12 +414,11 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 			queue->overcommit = overcommit;
 
 		/* Set ignore cost limit if that has changed. */
-		if ( queue->ignorecostlimit != ignorelimit)
+		if (queue->ignorecostlimit != ignorelimit)
 			queue->ignorecostlimit = ignorelimit;
 	}
 	
 	return result;
-	
 }
 
 

@@ -600,6 +600,9 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
  *	The resource queue lightweight lock (ResQueueLock) must be held while
  *	this function is called.
  *
+ * MPP-4340: modified logic so that we return STATUS_OK when
+ * decrementing resource -- decrements shouldn't care, let's not stop
+ * them from freeing resources!
  */
 int
 ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, 
@@ -612,7 +615,6 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 	int				status = STATUS_OK;
 	Cost			increment_amt;
 	int				i;
-
 
 	/* Get the queue for this lock.*/
 	queue = GetResQueueFromLock(lock);
@@ -631,18 +633,19 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 			case RES_COUNT_LIMIT:
 			{
 				Assert((limits[i].threshold_is_max));
+
 				/* Setup whether to increment or decrement the # active. */
 				if (increment)
 				{
 					increment_amt = incrementSet->increments[i];
+
+					if (limits[i].current_value + increment_amt > limits[i].threshold_value)
+						over_limit = true;
 				}
 				else
 				{
 					increment_amt = -1 * incrementSet->increments[i];
 				}
-				if (limits[i].current_value + increment_amt > 
-					limits[i].threshold_value)
-					over_limit = true;
 
 #ifdef RESLOCK_DEBUG
 				elog(DEBUG1, "checking count limit threshold %.0f current %.0f",
@@ -653,42 +656,40 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 
 			case RES_COST_LIMIT:
 			{
-
 				Assert((limits[i].threshold_is_max));
+
 				/* Setup whether to increment or decrement the cost. */
 				if (increment)
 				{
 					increment_amt = incrementSet->increments[i];
+
+					/* Check if this will overcommit */
+					if (increment_amt > limits[i].threshold_value)
+						will_overcommit = true;
+
+					if (queue->overcommit)
+					{
+						/*
+						 * Autocommit is enabled, allow statements that
+						 * blowout the limit if noone else is active!
+						 */
+						if ((limits[i].current_value + increment_amt > limits[i].threshold_value) &&
+							(limits[i].current_value > 0.1))
+							over_limit = true;
+					} 
+					else
+					{
+						/*
+						 * No autocommit, so always fail statements that
+						 * blowout the limit.
+						 */
+						if (limits[i].current_value + increment_amt > limits[i].threshold_value)
+							over_limit = true;
+					}
 				}
 				else
 				{
 					increment_amt = -1 * incrementSet->increments[i];
-				}
-
-				/* Check if this will overcommit */
-				if (increment_amt > limits[i].threshold_value)
-					will_overcommit = true;
-
-				if (queue->overcommit)
-				{
-					/*
-					 * Autocommit is enabled, allow statements that
-					 * blowout the limit if noone else is active!
-					 */
-					if ((limits[i].current_value + increment_amt > 
-						limits[i].threshold_value) &&
-						(limits[i].current_value > 0.1))
-						over_limit = true;
-				} 
-				else
-				{
-					/*
-					 * No autocommit, so always fail statements that
-					 * blowout the limit.
-					 */
-					if (limits[i].current_value + increment_amt > 
-						limits[i].threshold_value)
-						over_limit = true;
 				}
 
 #ifdef RESLOCK_DEBUG
@@ -699,8 +700,7 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 			break;
 
 			default:
-			break;
-		
+				break;		
 		}
 	}
 
