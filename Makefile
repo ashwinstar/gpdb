@@ -174,12 +174,14 @@ test3: HOMEDEP
 both : dbg opt ;
 
 dbg:
-	rsync -rlvt --exclude=devel/ --exclude=dist/ ./ devel/
-	cd devel && $(MAKE) HOME=`pwd` AUTH=true PG_LANG=true devel
+	rsync -rlvt --exclude=devel*/ --exclude=dist*/ --exclude=LOG.* ./ devel/
+	cd devel/ && if [ ! -f authlib_libpath_setup.sh ]; then $(MAKE) HOME=`pwd` authlibs; fi
+	cd devel/ && $(MAKE) HOME=`pwd` AUTH=true PG_LANG=true devel
 
 opt:
-	rsync -rlvt --exclude=devel/ --exclude=dist/ ./ dist/
-	cd dist && $(MAKE) GPROOT=`pwd` AUTH=true PG_LANG=true dist
+	rsync -rlvt --exclude=devel*/ --exclude=dist*/ --exclude=LOG.* ./ dist/
+	cd dist/ && if [ ! -f authlib_libpath_setup.sh ]; then $(MAKE) GPROOT=`pwd` authlibs; fi
+	cd dist/ && . authlib_libpath_setup.sh && $(MAKE) GPROOT=`pwd` AUTH=true PG_LANG=true dist
 
 #---------------------------------------------------------------------
 # Development builds
@@ -419,6 +421,10 @@ copylibs : thirdparty-dist
 	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
+ifeq "$(AUTH)" "true"
+	mkdir -p $(INSTLOC)/include
+	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
+endif
 
 greenplum_path:
 	releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
