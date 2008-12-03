@@ -233,7 +233,7 @@ class gpload:
         self.options.qv = self.INFO
 
         seenv = False
-        sendq = False
+        seenq = False
 
         # default to gpAdminLogs for a log file, may be overwritten
         self.options.l = os.path.join(os.environ.get('HOME'), 'gpAdminLogs')
@@ -366,19 +366,26 @@ class gpload:
 
         Make sure that end point is of type 'typ' when not set to None.
         """
+        self.log(self.DEBUG, "getting config for " + a)
         config = self.config
         for s in a.split(':'):
+            self.log(self.DEBUG, "trying " + s)
             index = 1
+
             if s[-1:]==')':
                 j = s.index('(')
                 index = int(s[j+1:-1])
                 s = s[:j]
+
             if type(config)!=list:
                 config = [config]
+
+            self.log(self.DEBUG, "config = " + str(config))
             for c in config:
                 if type(c)==dict and s in c:
                     index -= 1
                     if not index:
+                        self.log(self.DEBUG, "found " + s)
                         config = c[s]
                         break
             else:
@@ -387,6 +394,8 @@ class gpload:
                              "configuration must contain %s%s."%(a,extraStuff))
                     sys.exit(2)
                 return default
+
+        self.log(self.DEBUG, "left with " + str(config))
         if typ!=None and type(config)!=typ:
             if typ==list:
                 self.log(self.ERROR,
@@ -724,6 +733,11 @@ class gpload:
             sql += "delimiter%s" % \
                 quote(self.getconfig('gpload:input:delimiter',str))
 
+        nullas = self.getconfig('gpload:input:nullas', str, False)
+        self.log(self.LOG, "null as " + str(nullas))
+        if nullas:
+            sql += " null as '%s' " % nullas
+
         if self.getconfig('gpload:input:header',bool,False):
             sql += "header "
         if format=='csv':
@@ -747,7 +761,8 @@ class gpload:
             sql += "log errors into %s "%self.error_table
             limit = self.getconfig('gpload:input:error_limit',int,0)
             sql += "segment reject limit %s "%limit
-        self.log(self.log, sql)
+        self.log(self.LOG, sql)
+
         if not self.options.D:
             self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
         try:
