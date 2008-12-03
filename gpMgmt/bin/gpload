@@ -232,12 +232,17 @@ class gpload:
         self.ERROR = 1
         self.options.qv = self.INFO
 
+        seenv = False
+        sendq = False
+
         # default to gpAdminLogs for a log file, may be overwritten
         self.options.l = os.path.join(os.environ.get('HOME'), 'gpAdminLogs')
         self.options.l = os.path.join(self.options.l, 'gpload_' + \
                         datetime.date.today().strftime('%Y%m%d') + '.log')
 
         self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
+        self.logfile = open(self.options.l,'a')
+        self.log(self.INFO,'gpload session started '+datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
         # SQL to run in order to undo our temporary work
         self.cleanupSql = []
@@ -258,15 +263,18 @@ class gpload:
                     elif argv[0]=='-q':
                         self.options.qv -= 1
                         argv = argv[1:]
+                        seenq = True
                     elif argv[0]=='--version':
-                        sys.stderr.write("gpload version 1.\n")
+                        sys.stderr.write("gpload version 1.0\n")
                         sys.exit(0)
                     elif argv[0]=='-v':
-                        self.options.qv += 1
+                        self.options.qv = self.LOG
                         argv = argv[1:]
+                        seenv = True
                     elif argv[0]=='-V':
-                        self.options.qv += 2
+                        self.options.qv = self.DEBUG
                         argv = argv[1:]
+                        seenv = True
                     elif argv[0]=='-W':
                         self.options.W = True
                         argv = argv[1:]
@@ -296,8 +304,9 @@ class gpload:
         if configFilename==None or argv:
             usage('configuration file required')
 
-        self.logfile = open(self.options.l,'a')
-        self.log(self.INFO,'gpload session started '+datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        if seenv and seenq:
+            self.log(self.ERROR, "-q conflicts with -v and -V")
+
         if self.options.D:
             self.log(self.INFO, 'gpload has the -D option, so it does not actually load any data.')
 
@@ -339,9 +348,11 @@ class gpload:
             str = '|'.join(
                        [datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
                         self.elevel2str(level), a]) + '\n'
-            self.logfile.write(str)
-            self.logfile.flush()
-            sys.stdout.write(str)
+            if self.logfile:
+                self.logfile.write(str)
+                self.logfile.flush()
+                sys.stdout.write(str)
+
             if level == self.ERROR:
                 sys.exit(2)
 
