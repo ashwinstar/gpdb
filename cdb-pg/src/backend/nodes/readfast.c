@@ -2611,6 +2611,7 @@ _readHashJoin(const char ** str)
 	readJoinInfo(str, (Join *)local_node);
 
 	READ_NODE_FIELD(hashclauses);
+	READ_NODE_FIELD(hashqualclauses);
 
 	READ_DONE();
 }

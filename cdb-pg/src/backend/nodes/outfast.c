@@ -535,6 +535,7 @@ _outHashJoin(StringInfo str, HashJoin *node)
 	_outJoinPlanInfo(str, (Join *) node);
 
 	WRITE_LIST_FIELD(hashclauses);
+	WRITE_LIST_FIELD(hashqualclauses);
 }
 
 static void

@@ -258,6 +258,8 @@ plan_tree_walker(Node *node,
 				return true;
 			if (walker((Node *) ((HashJoin *) node)->hashclauses, context))
 				return true;
+			if (walker((Node *) ((HashJoin *) node)->hashqualclauses, context))
+				return true;
 			break;
 
 		case T_Material:
@@ -810,6 +812,7 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newhjoin, hjoin, HashJoin);
 				JOINMUTATE(newhjoin, hjoin);
 				MUTATE(newhjoin->hashclauses, hjoin->hashclauses, List *);
+				MUTATE(newhjoin->hashqualclauses, hjoin->hashqualclauses, List *);
 				return (Node *) newhjoin;
 			}
 			break;

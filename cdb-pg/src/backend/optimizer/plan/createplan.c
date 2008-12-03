@@ -2618,6 +2618,7 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 							  joinclauses,
 							  otherclauses,
 							  hashclauses,
+							  NIL, /* hashqualclauses */
 							  outer_plan,
 							  (Plan *) hash_plan,
 							  best_path->jpath.jointype);
@@ -3392,6 +3393,7 @@ make_hashjoin(List *tlist,
 			  List *joinclauses,
 			  List *otherclauses,
 			  List *hashclauses,
+			  List *hashqualclauses,
 			  Plan *lefttree,
 			  Plan *righttree,
 			  JoinType jointype)
@@ -3405,6 +3407,7 @@ make_hashjoin(List *tlist,
 	plan->lefttree = lefttree;
 	plan->righttree = righttree;
 	node->hashclauses = hashclauses;
+	node->hashqualclauses = hashqualclauses;
 	node->join.jointype = jointype;
 	node->join.joinqual = joinclauses;
 

@@ -1099,6 +1099,8 @@ finalize_plan(Plan *plan, List *rtable,
 							  &context);
 			finalize_primnode((Node *) ((HashJoin *) plan)->hashclauses,
 							  &context);
+			finalize_primnode((Node *) ((HashJoin *) plan)->hashqualclauses,
+							  &context);
 			break;
 
 		case T_Motion:

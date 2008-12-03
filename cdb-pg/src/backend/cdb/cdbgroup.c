@@ -2067,9 +2067,10 @@ join_dqa_coplan(PlannerInfo *root, MppGroupContext *ctx, Plan *outer, int dqa_in
 			Hash *hash_plan = make_hash(inner);
 			
 			join_plan = (Plan*)make_hashjoin(join_tlist,
-											 joinclause, /* joinclauses */
+											 NIL, /* joinclauses */
 											 NIL, /* otherclauses */
 											 hashclause, /* hashclauses */
+											 joinclause, /* hashqualclauses */
 											 outer, (Plan*)hash_plan,
 											 JOIN_INNER);
 		}

@@ -387,7 +387,14 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 
 	hjstate->outer_q = NULL;
 	
-	hjstate->hj_nonequijoin = isNotDistinctJoin(node->hashclauses); /* CDB */
+	if ( node->hashqualclauses != NIL )
+	{
+		/* CDB: This must be an IS NOT DISTINCT join!  */
+		Insist( isNotDistinctJoin(node->hashqualclauses) );
+		hjstate->hj_nonequijoin = true;
+	}
+	else
+		hjstate->hj_nonequijoin = false;
 
 	/*
 	 * initialize child expressions
@@ -405,6 +412,17 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	hjstate->hashclauses = (List *)
 		ExecInitExpr((Expr *) node->hashclauses,
 					 (PlanState *) hjstate);
+	
+	if ( node->hashqualclauses != NIL )
+	{
+		hjstate->hashqualclauses = (List *)
+			ExecInitExpr((Expr *) node->hashqualclauses,
+						 (PlanState *) hjstate);
+	}
+	else
+	{
+		hjstate->hashqualclauses = hjstate->hashclauses;
+	}	
 
 	/* MPP-3300, we only pre-build hashtable if we need to (this is
 	 * relaxing the fix to MPP-989) */
@@ -651,7 +669,7 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			econtext->ecxt_outertuple = slot;
 			if (ExecHashGetHashValue(hashtable, econtext,
 						hjstate->hj_OuterHashKeys,
-						(hjstate->js.jointype == JOIN_LEFT),
+						(hjstate->js.jointype == JOIN_LEFT) || hjstate->hj_nonequijoin,
 						hashvalue))
 			{
 				/* remember outer relation is not empty for possible rescan */

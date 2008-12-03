@@ -331,6 +331,8 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, ctxt);
 			fix_expr_references(plan,
 								(Node *) ((HashJoin *) plan)->hashclauses, ctxt);
+			fix_expr_references(plan,
+								(Node *) ((HashJoin *) plan)->hashqualclauses, ctxt);
 			break;
 		case T_Hash:
 		case T_Material:
@@ -904,6 +906,8 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) ((Join *) plan)->joinqual, rtoffset);
 			adjust_expr_varnos((Node *) ((HashJoin *) plan)->hashclauses,
 							   rtoffset);
+			adjust_expr_varnos((Node *) ((HashJoin *) plan)->hashqualclauses,
+							   rtoffset);
 			break;
 		case T_AdaptiveNestLoop:
 		case T_Hash:
@@ -1238,6 +1242,14 @@ set_join_references(Join *join)
 										  outer_itlist,
 										  inner_itlist,
 										  (Index) 0);
+		
+		if ( hj->hashqualclauses != NIL )
+		{
+			hj->hashqualclauses = join_references(hj->hashqualclauses,
+												  outer_itlist,
+												  inner_itlist,
+												  (Index) 0);
+		}
 	}
 
 	pfree(outer_itlist);

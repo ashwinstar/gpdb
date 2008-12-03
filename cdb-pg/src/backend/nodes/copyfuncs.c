@@ -565,6 +565,7 @@ _copyHashJoin(HashJoin *from)
 	 * copy remainder of node
 	 */
 	COPY_NODE_FIELD(hashclauses);
+	COPY_NODE_FIELD(hashqualclauses);
 
 	return newnode;
 }

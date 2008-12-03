@@ -111,7 +111,7 @@ extern Group *make_group(PlannerInfo *root, List *tlist, List *qual,
 						 Plan *lefttree);
 extern HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
-			  List *hashclauses,
+			  List *hashclauses, List *hashqualclauses,
 			  Plan *lefttree, Plan *righttree,
 			  JoinType jointype);
 extern Hash *make_hash(Plan *lefttree);

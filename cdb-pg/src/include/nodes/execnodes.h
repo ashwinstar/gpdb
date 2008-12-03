@@ -1611,7 +1611,8 @@ typedef struct HashJoinTableData *HashJoinTable;
 typedef struct HashJoinState
 {
 	JoinState	js;				/* its first field is NodeTag */
-	List	   *hashclauses;	/* list of ExprState nodes */
+	List	   *hashclauses;	/* list of ExprState nodes (hash) */
+	List	   *hashqualclauses;	/* CDB: list of ExprState nodes (match) */
 	HashJoinTable hj_HashTable;
 	uint32		hj_CurHashValue;
 	int			hj_CurBucketNo;

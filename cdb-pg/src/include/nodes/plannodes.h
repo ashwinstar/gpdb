@@ -452,12 +452,19 @@ typedef struct MergeJoin
 
 /* ----------------
  *		hash join (probe) node
+ *
+ * CDB:	In order to support hash join on IS NOT DISTINCT FROM (as well as =),
+ *		field hashqualclauses is added to hold the expression that tests for
+ *		a match.  This is normally identical to hashclauses (which holds the
+ *		equality test), but differs in case of non-equijoin comparisons.
+ *		Field hashclauses is retained for use in hash table operations.
  * ----------------
  */
 typedef struct HashJoin
 {
 	Join		join;
 	List	   *hashclauses;
+	List	   *hashqualclauses;
 } HashJoin;
 
 /* ----------------
