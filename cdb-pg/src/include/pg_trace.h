@@ -13,6 +13,8 @@
 #define PG_TRACE_H
 
 #ifdef ENABLE_DTRACE
+#define PGTRACE_ENABLED
+
 #include <sys/sdt.h>
 
 /*
@@ -40,6 +42,7 @@
 
 #else
 #ifdef ENABLE_LTRACE
+#define PGTRACE_ENABLED
 enum 
 {
 	/* Postgres dtrace family, 1 to 999,999 */

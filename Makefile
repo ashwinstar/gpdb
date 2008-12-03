@@ -16,10 +16,10 @@ all : devel
 
 # Targets for building GPDB with various options
 # (development builds)
-.PHONY : devel devel_faultinj forceplan
+.PHONY : devel devel_faultinj 
 
 # (release builds)
-.PHONY : dist dist_prof dist_faultinj
+.PHONY : dist dist_prof 
 
 # Targets which refresh files via rsync before building
 .PHONY : dbg opt both
@@ -59,6 +59,7 @@ include Makefile.thirdparty
 # Directory paths and file names
 #---------------------------------------------------------------------
 
+BLD_ARCH_HOST=$(shell $(CURDIR)/releng/set_bld_arch.sh)
 GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
 GPCC=gpcc
@@ -81,8 +82,16 @@ ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 INLINE_FLAGS=-finline-limit=1800
 
-OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)"
-PROFFLAGS="-O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS)"
+ifeq (sol10_x86_64, ${BLD_ARCH_HOST})
+	TRACE_CFG_FLAG=--enable-dtrace DTRACEFLAGS=-64
+	TRACE_GCC_FLAG=-m64
+else
+	TRACE_CFG_FLAG=--enable-ltrace
+	TRACE_GCC_FALG=
+endif
+
+OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG)"
+PROFFLAGS="-O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG)"
 
 ifeq (on, ${GPDBGINLINE})
 CFLAGS_INLINE=$(INLINE_FLAGS)
@@ -96,14 +105,14 @@ else
 CFLAGS_OPT=-O0
 endif
 
-DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
+DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3 $(TRACE_GCC_FLAG)"
 
 #---------------------------------------------------------------------
 # configure
 #---------------------------------------------------------------------
 
 DEFPORT=5432
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG)
 
 ifneq (false, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python
@@ -178,7 +187,7 @@ opt:
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
-devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-ltrace
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -192,22 +201,8 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
-devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak --enable-ltrace
+devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak 
 devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
-	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon
-	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
-	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
-
-forceplan : INSTCFLAGS=$(DEBUGFLAGS)
-forceplan : INSTLOC=$(DEVPATH)
-forceplan : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
-forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
@@ -224,7 +219,6 @@ forceplan : HOMEDEP $(ISCONFIG)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
-dist_prof : CONFIGFLAGS+= --enable-ltrace 
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -239,23 +233,8 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
 dist_prof : INSTLOC=$(DISTPATH)
-dist_prof : CONFIGFLAGS+= --enable-ltrace 
+dist_prof : CONFIGFLAGS+= --enable-faultinjection 
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
-	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) groupSession
-	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon
-	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
-	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
-	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
-
-dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
-dist_faultinj : INSTLOC=$(DISTPATH)
-dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak --enable-ltrace
-dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession

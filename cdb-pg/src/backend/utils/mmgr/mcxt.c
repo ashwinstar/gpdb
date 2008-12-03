@@ -758,7 +758,7 @@ MemoryContextAllocImpl(MemoryContext context, Size size, const char* sfile, cons
 {
 	void *ret;
 
-#ifdef ENABLE_LTRACE	
+#ifdef PGTRACE_ENABLED
 	StandardChunkHeader *header;
 #endif
 	AssertArg(MemoryContextIsValid(context));
@@ -775,11 +775,10 @@ MemoryContextAllocImpl(MemoryContext context, Size size, const char* sfile, cons
 				(unsigned long)size);
 
 	ret = (*context->methods.alloc) (context, size);
-#ifdef ENABLE_LTRACE
+#ifdef PGTRACE_ENABLED
 	header = (StandardChunkHeader *)
 		((char *) ret - STANDARDCHUNKHEADERSIZE);
-
-	LTRACE_PROBE(memctxt__alloc, sfile, sfunc, sline, size, header->size, 0, 0, (long) context->name); 
+	PG_TRACE5(memctxt__alloc, size, header->size, 0, 0, (long) context->name);
 #endif
 
 	return ret;
@@ -797,7 +796,7 @@ MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* sfile, 
 {
 	void	   *ret;
 
-#ifdef ENABLE_LTRACE	
+#ifdef PGTRACE_ENABLED
 	StandardChunkHeader *header;
 #endif
 	AssertArg(MemoryContextIsValid(context));
@@ -817,11 +816,10 @@ MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* sfile, 
 
 	MemSetAligned(ret, 0, size);
 
-#ifdef ENABLE_LTRACE
+#ifdef PGTRACE_ENABLED
 	header = (StandardChunkHeader *)
 		((char *) ret - STANDARDCHUNKHEADERSIZE);
-
-	LTRACE_PROBE(memctxt__alloc, sfile, sfunc, sline, size, header->size, 0, 0, (long) context->name); 
+	PG_TRACE5(memctxt__alloc, size, header->size, 0, 0, (long) context->name);
 #endif
 
 	return ret;
@@ -839,7 +837,7 @@ MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* 
 {
 	void	   *ret;
 
-#ifdef ENABLE_LTRACE	
+#ifdef PGTRACE_ENABLED
 	StandardChunkHeader *header;
 #endif
 
@@ -860,11 +858,10 @@ MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* 
 
 	MemSetLoop(ret, 0, size);
 
-#ifdef ENABLE_LTRACE
+#ifdef PGTRACE_ENABLED
 	header = (StandardChunkHeader *)
 		((char *) ret - STANDARDCHUNKHEADERSIZE);
-
-	LTRACE_PROBE(memctxt__alloc, sfile, sfunc, sline, size, header->size, 0, 0, (long) context->name); 
+	PG_TRACE5(memctxt__alloc, size, header->size, 0, 0, (long) context->name);
 #endif
 
 	return ret;
@@ -895,8 +892,8 @@ MemoryContextFreeImpl(void *pointer, const char *sfile, const char *sfunc, int s
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-#ifdef ENABLE_LTRACE
-	LTRACE_PROBE(memctxt__free, sfile, sfunc, sline, 0, 0, 
+#ifdef PGTRACE_ENABLED
+	PG_TRACE5(memctxt__free, 0, 0, 
 #ifdef MEMORY_CONTEXT_CHECKING
 		header->requested_size, header->size,
 #else
@@ -926,7 +923,7 @@ MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char
 	StandardChunkHeader *header;
 	void *ret;
 
-#ifdef ENABLE_LTRACE
+#ifdef PGTRACE_ENABLED 
 	long old_reqsize;
 	long old_size;
 #endif
@@ -947,7 +944,7 @@ MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char
 
 	AssertArg(MemoryContextIsValid(header->context));
 
-#ifdef ENABLE_LTRACE
+#ifdef PGTRACE_ENABLED
 #ifdef MEMORY_CONTEXT_CHECKING
 	old_reqsize = header->requested_size;
 #else
@@ -969,11 +966,10 @@ MemoryContextReallocImpl(void *pointer, Size size, const char *sfile, const char
 
 	ret = (*header->context->methods.realloc) (header->context, pointer, size);
 
-#ifdef ENABLE_LTRACE
+#ifdef PGTRACE_ENABLED
 	header = (StandardChunkHeader *)
 		((char *) ret - STANDARDCHUNKHEADERSIZE);
-
-	LTRACE_PROBE(memctxt__realloc, sfile, sfunc, sline, size, header->size, old_reqsize, old_size, (long) header->context->name);
+	PG_TRACE5(memctxt__realloc, size, header->size, old_reqsize, old_size, (long) header->context->name);
 #endif
 
 	return ret;
