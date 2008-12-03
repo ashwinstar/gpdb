@@ -550,8 +550,11 @@ class gpload:
                              name + ":local_hostname must be a sequence " +
                                "of strings.")
                     sys.exit(2)
-                self.locations.append('gpfdist://%s:%d/%s' % \
-                                       (l,port,'%20'.join(file)))
+                sep = ''
+                if file[0] != '/':
+                    sep = '/'
+                self.locations.append('gpfdist://%s:%d%s%s' % \
+                                       (l, port, sep, '%20'.join(file)))
 
     def readPgpass(self,pgpassname):
         """
@@ -794,7 +797,16 @@ class gpload:
                     self.log(self.ERROR, 'error limit reached while loading ' +
                         'data')
                 else:
-                    self.log(self.ERROR, 'error encountered running "%s"' % sql)
+                    errstr = p[2]
+                    r = re.compile("^http response code 404 while gpfdist://" +
+                        "([^/]+):\d+/([^ ]+)")
+                    m = r.match(errstr)
+                    if m:
+                        self.log(self.ERROR, 'file "' + m.group(2) + '"' +
+                                ' does not exist on host ' + m.group(1))
+                    else:
+                        self.log(self.ERROR, 'error encountered running ' +
+                            '%s: %s' % (sql, p[2]))
 
         p.condition.acquire()
         p.number = 1
