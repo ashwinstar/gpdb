@@ -241,8 +241,6 @@ class gpload:
                         datetime.date.today().strftime('%Y%m%d') + '.log')
 
         self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
-        self.logfile = open(self.options.l,'a')
-        self.log(self.INFO,'gpload session started '+datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
         # SQL to run in order to undo our temporary work
         self.cleanupSql = []
@@ -304,6 +302,12 @@ class gpload:
         if configFilename==None or argv:
             usage('configuration file required')
 
+        try:
+            self.logfile = open(self.options.l,'a')
+        except Exception, e:
+            sys.stderr.write(str(e) + '\n')
+            sys.exit(2)
+
         if seenv and seenq:
             self.log(self.ERROR, "-q conflicts with -v and -V")
 
@@ -326,6 +330,8 @@ class gpload:
         f.close()
         self.config = dictKeyToLower(self.config)
         self.subprocesses = []
+        self.log(self.INFO,'gpload session started ' + \
+                 datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
     def elevel2str(self, level):
         if level == self.DEBUG:
