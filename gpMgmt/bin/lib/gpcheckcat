@@ -847,9 +847,11 @@ ORDER BY nspname
             GV.retcode = 1
 
 class fileCheckThread(Thread):
-    def __init__(self, host, dir, oidlist, env):
+    # connect to host and look for oidlist for each segment on the host
+    # dirs is a dict mapping segid -> dir
+    def __init__(self, host, dirs, oidlist, env):
        self.host = host
-       self.dir = dir
+       self.dirs = dirs
        self.oidlist = oidlist
        self.env = env
        self.badoids = []
@@ -860,8 +862,14 @@ class fileCheckThread(Thread):
         veryverbose('List of OIDs:\n%s' % str(self.oidlist))
 
         try:
-            cmd = "ssh -o StrictHostKeyChecking=no %s (cd %s ; ls -1)" % \
-                    (self.host, self.dir)
+            cs = ""
+            for segid, dir in self.dirs.iteritems():
+                cs += 'cd ' + dir + '; ls -1 | while read file; ' + \
+                       'do echo ' + str(segid) + '=$file; done; '
+
+            cmd = "ssh -o StrictHostKeyChecking=no %s (%s)" % \
+                    (self.host, cs)
+
             veryverbose('running command %s' % cmd)
             cmd = cmd.split(' ')
             pipe = subprocess.Popen(cmd, env=self.env,
@@ -874,20 +882,35 @@ class fileCheckThread(Thread):
     
         veryverbose('directory listing:\n%s' % result[0])
         if pipe.returncode == 0:
-            oidhash = {}
+            oidseghash = {}
             for line in result[0].split('\n'):
-                if line.isdigit():
-                    oidhash[int(line)] = True
+                l = line.split('=')
+                if len(l) == 2:
+                    if l[0].isdigit() and l[1].isdigit():
+                        segid = int(l[0])
+                        oid = int(l[1])
+                        if oidseghash.get(segid) == None:
+                            oidseghash[segid] = {}
 
-            for oid in self.oidlist:
-                oid = int(oid)
-                veryverbose('Checking %s' % oid)
-                if not oidhash.get(oid):
-                    self.badoids.append(oid)
-                    verbose('Found not find index with relfilenode %s' % oid)
+                        oidseghash[segid][oid] = True
+
+            for segid, dir in self.dirs.iteritems():
+                if not oidseghash.get(segid):
+                    self.badoids = self.oidlist
+                    break
+                  
+                for oid in self.oidlist:
+                    oid = int(oid)
+                    veryverbose('Checking %s' % oid)
+                    if not oidseghash[segid].get(oid):
+                        self.badoids[segid].append(oid)
+                        verbose('Could not find index with relfilenode %s' % oid)
 
         else:
-            self.badoids = oidlist
+            self.badoids = self.oidlist
+
+        # unique
+        self.badoids = list(set(self.badoids))
 
 def checkBitmapIndexes():
     print '-----------------------------------'
@@ -927,17 +950,27 @@ def checkBitmapIndexes():
     # build up a map of OIDs to index name
     dboid = 0;
     for row in rows:
-        index = '"%s"."%s"' % (row['nspname'], row['relname'])
+        index = '%s.%s' % (row['nspname'], row['relname'])
         oids[row['relfilenode']] = index
         dboid = row['dboid']
 
     badoids = []
-    for dbid in GV.cfg:
-        seg = GV.cfg[dbid]
-        dir = '%s/base/%s/' % (seg['datadir'], dboid)
 
+    hostsegmap = {}
+    if dboid:
+        for dbid in GV.cfg:
+            seg = GV.cfg[dbid]
+
+            if hostsegmap.get(seg['hostname']) == None:
+                hostsegmap[seg['hostname']] = {}
+
+            hostsegmap[seg['hostname']][dbid] = '%s/base/%s/' % \
+                    (seg['datadir'], dboid)
+
+    for host in hostsegmap.keys():
+        dirs = hostsegmap[host]
         # supply just the relfilenodes, not the full mapping
-        thread = fileCheckThread(seg['hostname'], dir, oids.keys(), env)
+        thread = fileCheckThread(host, dirs, oids.keys(), env)
         thread.start()
         threads.append(thread)
 
