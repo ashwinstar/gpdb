@@ -299,8 +299,14 @@ class gpload:
                 sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
                 sys.exit(2)
 
-        if configFilename==None or argv:
+        if configFilename==None:
             usage('configuration file required')
+        elif argv:
+            a = ""
+            if len(argv) > 1:
+                a = "s"
+            usage('unrecognized argument%s: %s' % (a, ' '.join(argv)))
+
 
         try:
             self.logfile = open(self.options.l,'a')
