@@ -560,18 +560,31 @@ Datum
 pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 {
 	int64		size = 0;
-	Oid			relid = PG_GETARG_OID(0);
+	Oid			relOid = PG_GETARG_OID(0);
 	
-	size = calculate_total_relation_size(relid);
+	size = calculate_total_relation_size(relOid);
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		StringInfoData buffer;
-		
+		char *schemaName;
+		char *relName;
+
+		schemaName = get_namespace_name(get_rel_namespace(relOid));
+		if (schemaName == NULL)
+		{
+			elog(ERROR, "Cannot find schema for oid %d", relOid);
+		}
+
+		relName = get_rel_name(relOid);
+		if (relName == NULL)
+		{
+			elog(ERROR, "Cannot find relation for oid %d", relOid);
+		}
+
 		initStringInfo(&buffer);
-		
-		appendStringInfo(&buffer, "select pg_total_relation_size('%s.%s')", quote_identifier(get_namespace_name(get_rel_namespace(relid))),quote_identifier(get_rel_name(relid)));
-		
+		appendStringInfo(&buffer, "select pg_total_relation_size('%s.%s')", quote_identifier(schemaName), quote_identifier(relName));
+
 		size += get_size_from_segDBs(buffer.data);
 	}
 
