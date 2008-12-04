@@ -432,7 +432,7 @@ static void doNegateFloat(Value *v);
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ERRORS ESCAPE EVERY EXCEPT 
 	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
+	FALSE_P FETCH FIELDS FILL FILTER FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
 	FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
@@ -454,7 +454,7 @@ static void doNegateFloat(Value *v);
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOG_P LOGIN_P
 
-	MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MODIFY 
+	MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MISSING MODE MODIFY 
 	MONTH_P MOVE
 
 	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
@@ -2548,6 +2548,10 @@ copy_opt_item:
 				{
 					$$ = makeDefElem("force_notnull", (Node *)$4);
 				}
+			| FILL MISSING FIELDS
+				{
+					$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(TRUE));
+				}
 		;
 
 /* The following exist for backward compatibility */
@@ -3896,6 +3900,10 @@ format_opt_item:
 			| FORCE NOT NULL_P columnList
 			{
 				$$ = makeDefElem("force_notnull", (Node *)$4);
+			}
+			| FILL MISSING FIELDS
+			{
+				$$ = makeDefElem("fill_missing_fields", (Node *)makeInteger(TRUE));
 			}
 		;
 
@@ -10665,6 +10673,8 @@ unreserved_keyword:
 			| EXPLAIN
 			| EXTERNAL
 			| FETCH
+			| FIELDS
+			| FILL
 			| FIRST_P
 			| FORCE
 			| FORMAT
@@ -10715,6 +10725,7 @@ unreserved_keyword:
 			| MINUTE_P
 			| MINVALUE
 			| MIRROR
+			| MISSING
 			| MODE
 			| MODIFY
 			| MONTH_P

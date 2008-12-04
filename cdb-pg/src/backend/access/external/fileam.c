@@ -870,6 +870,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	pstate->bytesread = 0;
 	pstate->csv_mode = !isText;
 	pstate->header_line = false;
+	pstate->fill_missing = false;
 	pstate->line_buf_converted = false;
 	pstate->raw_buf_index = 0;
 	pstate->processed = 0;
@@ -1050,22 +1051,42 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	}
 
 	/*
-	 * HEADER
+	 * HEADER or FILL MISSING FIELDS
+	 * 
+	 * note: this parsing logic is kinda ugly but must be done this way
+	 * until we switch from strtok's to a more high level mechanism.
 	 */
 	clause = strtok(NULL, " ");
 
 	if (clause)
 	{
-		FILEAM_VERIFY_CLAUSE(clause, "header");
-		pstate->header_line = true;
+		if (pg_strcasecmp(clause, "header") == 0)
+		{
+			pstate->header_line = true;
+			
+			clause = strtok(NULL, " "); /* is "header" followed by "fill missing fields"? */
+			if (clause)
+			{
+				FILEAM_VERIFY_CLAUSE(clause, "fill");
+				pstate->fill_missing = true;
+			}
+		}
+		else if (pg_strcasecmp(clause, "fill") == 0)
+		{
+			pstate->fill_missing = true;
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("internal parse error. expected \"header\" or"
+							 "\"fill missing fields\", got \"%s\"", clause)));
+		}
 	}
 
-
-	/*
-	 * elog(NOTICE, "delim %s null %s escape %s quote %s %s", pstate->delim,
-	 * pstate->null_print, pstate->escape, pstate->quote, pstate->header_line
-	 * ? "header" : "");
-	 */
+	 // elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim,
+	 // pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line
+	 // ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : ""));
 
 	if (pstate->csv_mode)
 	{

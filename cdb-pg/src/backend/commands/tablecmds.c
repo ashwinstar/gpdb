@@ -17445,6 +17445,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	char *escape = NULL;
 	bool header_line = false;
 	bool csv_mode;
+	bool fill_missing = false;
 	Size len;
 	
 	Assert(formattype == 'c' || formattype == 't');
@@ -17503,13 +17504,21 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("FORCE NOT NULL not yet implemented")));
 		}
+		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
+		{
+			if (fill_missing)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			fill_missing = intVal(defel->arg);
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
 	}
 	
 	/* 
-		* Set defaults 
+	 * Set defaults 
 	 */	
 	if (!delim)
 		delim = csv_mode ? "," : "\t";
@@ -17554,7 +17563,8 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 		len +=	1 +								/* space			*/
 			5 + 1 + 3							/* "quote 'x'"		*/;
 
-	len += header_line ? 1 + 6 : 0;			/* " header"		*/
+	len += header_line ? strlen(" header") : 0;	
+	len += fill_missing ? strlen(" fill missing fields") : 0;
 	
 	/* +1 leaves room for sprintf's trailing null */
 	format_str = (char *) palloc(len + 1);
@@ -17562,13 +17572,15 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	switch(formattype)
 	{
 		case 't':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'%s", 
-					delim, null_print, escape,header_line?" header":"");
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'%s%s", 
+					delim, null_print, escape, (header_line ? " header":""), 
+					(fill_missing ? " fill missing fields":"") );
 			break;	
 			
 		case 'c':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s", 
-					delim, null_print, escape, quote, (header_line ? " header" : "") );
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s", 
+					delim, null_print, escape, quote, (header_line ? " header" : ""),
+					(fill_missing ? " fill missing fields":""));
 			break;
 			
 		default:

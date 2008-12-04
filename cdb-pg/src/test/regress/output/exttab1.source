@@ -380,6 +380,28 @@ select count(*) from ext_whois;
     23
 (1 row)
 
+-- test FILL EMPTY FIELDS
+create external table ext_fill1(a int, b int, c int)
+location('gpfdist://@hostname@:7070/missing_fields1.data' )
+format 'text' ( delimiter '|' fill missing fields);
+create external table ext_fill2(a int, b int, c int)
+location('gpfdist://@hostname@:7070/missing_fields2.data' )
+format 'text' ( delimiter '|' fill missing fields);
+select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
+ a | b | c 
+---+---+---
+ 1 | 1 | 1
+ 2 | 2 |  
+ 3 |   |  
+ 4 | 4 |  
+ 5 | 5 | 5
+(5 rows)
+
+select * from ext_fill2 order by a,b,c; -- should fail due to empty data line
+ERROR:  missing data for column "b", found empty data line  (seg1 slice1 @hostname@:11002 pid=26319)
+DETAIL:  External table ext_fill2, line 3 of gpfdist://@hostname@:7070/missing_fields2.data: ""
+drop external table ext_fill1;
+drop external table ext_fill2;
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------

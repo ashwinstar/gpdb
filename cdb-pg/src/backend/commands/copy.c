@@ -111,6 +111,7 @@ static void attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno
 static void copy_in_error_callback(void *arg);
 static void CopyInitPartitioningState(EState *estate);
 static void CopyInitDataParser(CopyState cstate);
+static void CopyCheckIsLastLine(CopyState cstate);
 
 /* ==========================================================================
  * The follwing macros aid in major refactoring of data processing code (in
@@ -969,11 +970,19 @@ DoCopy(const CopyStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			force_notnull = (List *) defel->arg;
 		}
+		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
+		{
+			if (cstate->fill_missing)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			cstate->fill_missing = intVal(defel->arg);
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
 	}
-
+	
 	/* Set defaults */
 	
 	cstate->err_loc_type = ROWNUM_ORIGINAL; 
@@ -996,7 +1005,7 @@ DoCopy(const CopyStmt *stmt)
 
 	if (!cstate->csv_mode && !cstate->escape)
 		cstate->escape = "\\";			/* default escape for text mode */
-
+	
 	/*
 	 * Error handling setup
 	 */
@@ -2289,6 +2298,9 @@ static void CopyCreateDispatchCommand(CopyState cstate,
 
 		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
 	}
+	
+	if (cstate->fill_missing)
+		appendStringInfo(cdbcopy_cmd, " FILL MISSING FIELDS");
 	
 	/* add single row error handling clauses if necessary */
 	if (cstate->errMode != ALL_OR_NOTHING)
@@ -3913,18 +3925,18 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 	 * Detect end of line type if not already detected.
 	 */
 	if (cstate->eol_type == EOL_UNKNOWN)
-	{
-		bool		eol_detected;
-		
+	{		
 		cstate->quote = NULL;
-		eol_detected = DetectLineEnd(cstate, bytesread);
 
-		if (!eol_detected)
+		if (!DetectLineEnd(cstate, bytesread))
 		{
 			/* load entire input buffer into line buf, and quit */
 			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, bytesread);
 			cstate->raw_buf_done = true;
-			return false;
+			cstate->line_done = false;
+			CopyCheckIsLastLine(cstate); /* may set line_done to true */
+			
+			return cstate->line_done;
 		}
 	}
 
@@ -3987,6 +3999,8 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 
 			cstate->line_done = false;
 			cstate->raw_buf_done = true;
+			CopyCheckIsLastLine(cstate); /* may set line_done to true */
+			
 			break;
 		}
 		else
@@ -4049,7 +4063,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 	/* Done reading a complete line. Do pre processing of the raw input data */
 	if (cstate->line_done)
 		preProcessDataLine(cstate);
-						
+	
 	/*
 	 * check if this line is an end marker -- "\."
 	 */
@@ -4093,7 +4107,7 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 		cstate->line_done = false;
 		cstate->raw_buf_done = true;
 	}
-
+	
 	return cstate->line_done;
 }
 
@@ -4127,15 +4141,14 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	 */
 	if (cstate->eol_type == EOL_UNKNOWN)
 	{
-		bool		eol_detected = DetectLineEnd(cstate, bytesread);
-
-		if (!eol_detected)
+		if (!DetectLineEnd(cstate, bytesread))
 		{
-			/* load entire input buffer into line buf, and quit */
+			/* EOL not found. load entire input buffer into line buf, and return */
 			appendBinaryStringInfo(&cstate->line_buf, cstate->raw_buf, bytesread);
 			cstate->line_done = false;
 			cstate->raw_buf_done = true;
-
+			CopyCheckIsLastLine(cstate); /* may set line_done to true */
+			
 			return cstate->line_done;
 		}
 	}
@@ -4180,7 +4193,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 
 	/*
 	 * (we need a loop so that if eol_ch is found, but we are in quotes,
-		* we can search for the next eol_ch)
+	 * we can search for the next eol_ch)
 	 */
 	while (true)
 	{
@@ -4203,6 +4216,8 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 
 			cstate->line_done = false;
 			cstate->raw_buf_done = true;
+			CopyCheckIsLastLine(cstate); /* may set line_done to true */
+			
 			break;
 		}
 		else
@@ -4495,24 +4510,26 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 	char	   *scan_end;		/* pointer to line buffer where char was found */
 	char	   *stop;
 	char	   *scanner;
-	int			attr_pre_len;	/* attr raw len, before processing escapes */
-	int			attr_post_len;	/* current attr len after escaping */
+	int			attr_pre_len = 0;/* attr raw len, before processing escapes */
+	int			attr_post_len = 0;/* current attr len after escaping */
 	int			m;				/* attribute index being parsed */
 	int			bytes_remaining;/* num bytes remaining to be scanned in line
 								 * buf */
 	int			chunk_start;	/* offset to beginning of line chunk to load */
-	int			chunk_len;		/* length of chunk of data to load to attr buf */
+	int			chunk_len = 0;	/* length of chunk of data to load to attr buf */
 	int			oct_val;		/* byte value for octal escapes */
 	int			hex_val;
 	int			attnum;			/* attribute number being parsed */
+	int			attribute = 1;
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
-	int			attribute;
 
 	/* init variables for attribute scan */
 	RESET_ATTRBUF;
 
 	/* cursor is now > 0 if we copy WITH OIDS */
 	scan_start = cstate->line_buf.data + cstate->line_buf.cursor;
+	chunk_start = cstate->line_buf.cursor;
+
 	cur = list_head(cstate->attnumlist);
 	
 	/* check for zero column table case */
@@ -4522,12 +4539,6 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 		m = attnum - 1;
 	}
 	
-	chunk_start = cstate->line_buf.cursor;
-	chunk_len = 0;
-	attr_pre_len = 0;
-	attr_post_len = 0;
-	attribute = 1;
-
 	if (cstate->escape_off)
 		escapec = delimc;		/* look only for delimiters, escapes are
 								 * disabled */
@@ -4587,11 +4598,29 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 			cstate->line_buf.cursor += attr_pre_len + 2;		/* skip eol char and
 														 * '\0' to exit loop */
 
+			/*
+			 * line is done, but do we have more attributes to process?
+			 * 	
+			 * normally, remaining attributes that have no data means ERROR,
+			 * however, with FILL MISSING FIELDS remaining attributes become
+			 * NULL. since attrs are null by default we leave unchanged and 
+			 * avoid throwing an error, with the exception of empty data lines
+			 * for multiple attributes, which we intentionally don't support.
+			 */
 			if (lnext(cur) != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("missing data for column \"%s\"",
-					   NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
+			{
+				if (!cstate->fill_missing)
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("missing data for column \"%s\"",
+									 NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));									
+				
+				else if (attribute == 1 && attr_pre_len == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("missing data for column \"%s\", found empty data line",
+									 NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));									
+			}			
 		}
 		else
 			/* FOUND A DELIMITER OR ESCAPE */
@@ -4608,7 +4637,6 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 
 				/* (we don't include the delimiter ch in length) */
 				attr_pre_len += scan_end - scan_start;
-				/* (we don't include the delimiter ch in length) */
 				attr_post_len += scan_end - scan_start;
 
 				/* check if this is a null print or data (assumed NULL) */
@@ -4816,13 +4844,13 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 	char		c;
 	int			start_cursor = cstate->line_buf.cursor;
 	int			end_cursor = start_cursor;
-	int			input_len;
-	bool		in_quote = false;
-	bool		saw_quote = false;
+	int			input_len = 0;
 	int			attnum;			/* attribute number being parsed */
 	int			m = 0;			/* attribute index being parsed */
+	int			attribute = 1;
+	bool		in_quote = false;
+	bool		saw_quote = false;
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
-	int			attribute;
 
 	/* init variables for attribute scan */
 	RESET_ATTRBUF;
@@ -4834,10 +4862,6 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 		attnum = lfirst_int(cur);
 		m = attnum - 1;
 	}
-
-	input_len = 0;
-	attribute = 1;
-
 
 	for (;;)
 	{
@@ -4882,15 +4906,32 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 					ereport(ERROR,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("unterminated CSV quoted field")));
-				
-
 			}
 
+			/*
+			 * line is done, but do we have more attributes to process?
+			 * 	
+			 * normally, remaining attributes that have no data means ERROR,
+			 * however, with FILL MISSING FIELDS remaining attributes become
+			 * NULL. since attrs are null by default we leave unchanged and 
+			 * avoid throwing an error, with the exception of empty data lines
+			 * for multiple attributes, which we intentionally don't support.
+			 */
 			if (lnext(cur) != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("missing data for column \"%s\"",
-								NameStr(attr[m + 1]->attname))));
+			{
+				if (!cstate->fill_missing)
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("missing data for column \"%s\"",
+									NameStr(attr[m + 1]->attname))));
+				
+				else if (attribute == 1 && input_len == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+							 errmsg("missing data for column \"%s\", found empty data line",
+									NameStr(attr[m + 1]->attname))));
+			}
+
 			break;
 		}
 
@@ -5754,7 +5795,12 @@ void truncateEol(StringInfo buf, EolType eol_type)
 	}
 }
 
-/* add end of line chars to end line buf */
+/* 
+ * concatenateEol
+ * 
+ * add end of line chars to end line buf.
+ * 
+ */
 static void concatenateEol(CopyState cstate)
 {
 	switch (cstate->eol_type)
@@ -5769,7 +5815,7 @@ static void concatenateEol(CopyState cstate)
 			appendStringInfo(&cstate->line_buf, "\r\n");
 			break;
 		case EOL_UNKNOWN:
-			/* TODO: find a way to throw an error safely */
+			appendStringInfo(&cstate->line_buf, "\n");
 			break;
 			
 	}
@@ -5902,6 +5948,26 @@ static void CopyInitDataParser(CopyState cstate)
 	cstate->raw_buf_done = false;	
 }
 
+/*
+ * CopyCheckIsLastLine
+ * 
+ * This routine checks if the line being looked at is the last line of data.
+ * If it is, it makes sure that this line is terminated with an EOL. We must
+ * do this check in order to support files that don't end up EOL before EOF,
+ * because we want to treat that last line as normal - and be able to pre
+ * process it like the other lines (remove metadata chars, encoding conversion).
+ * 
+ * See MPP-4406 for an example of why this is needed.
+ */
+static void CopyCheckIsLastLine(CopyState cstate)
+{
+	if (cstate->fe_eof) 
+	{
+		concatenateEol(cstate);
+		cstate->line_done = true;
+	}	
+}
+
 uint64
 DoCopyDispatchAgent(const CopyStmt *stmt)
 {		
@@ -5966,6 +6032,10 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 		else if (strcmp(defel->defname, "force_notnull") == 0)
 		{
 			force_notnull = (List *) defel->arg;
+		}
+		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
+		{
+			cstate->fill_missing = intVal(defel->arg);
 		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",

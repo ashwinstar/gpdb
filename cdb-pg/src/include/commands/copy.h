@@ -141,6 +141,7 @@ typedef struct CopyStateData
 	char	   *escape;			/* CSV escape char (must be 1 byte) */
 	bool	   *force_quote_flags;		/* per-column CSV FQ flags */
 	bool	   *force_notnull_flags;	/* per-column CSV FNN flags */
+	bool		fill_missing;	/* missing attrs at end of line are NULL */
 
 	/* these are just for error messages, see copy_in_error_callback */
 	const char *cur_relname;	/* table name for error messages */

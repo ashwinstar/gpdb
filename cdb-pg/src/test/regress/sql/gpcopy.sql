@@ -378,6 +378,68 @@ DROP TABLE copy_regression_csv1;
 DROP TABLE copy_regression_csv2;
 DROP TABLE copy_regression_csv3;
 
+-- ######################################################
+-- FILL MISSING FIELDS
+-- ######################################################
+
+CREATE TABLE copy_regression_fill1(a int, b int, c text) distributed by(a);
+CREATE TABLE copy_regression_fill2(a int, b int, c text) distributed by(c);
+
+-- text
+COPY copy_regression_fill1 from stdin with delimiter '|' fill missing fields;
+1|1|one
+2|2
+3
+\.
+COPY copy_regression_fill1(c,b) from stdin with delimiter '|' fill missing fields;
+one|1
+two
+three
+\.
+COPY copy_regression_fill2(a,c) from stdin with delimiter '|' fill missing fields;
+1|one
+2
+3|three
+\.
+SELECT * FROM copy_regression_fill1 ORDER BY a,b,c;
+SELECT * FROM copy_regression_fill2 ORDER BY a,b,c;
+TRUNCATE copy_regression_fill1;
+TRUNCATE copy_regression_fill2;
+
+-- csv
+COPY copy_regression_fill1 from stdin with csv delimiter '|' fill missing fields;
+1|1|one
+2|2
+3
+\.
+COPY copy_regression_fill1(c,b) from stdin with csv delimiter '|' fill missing fields;
+one|1
+two
+three
+\.
+COPY copy_regression_fill2(a,c) from stdin with csv delimiter '|' fill missing fields;
+1|one
+2
+3|three
+\.
+SELECT * FROM copy_regression_fill1 ORDER BY a,b,c;
+SELECT * FROM copy_regression_fill2 ORDER BY a,b,c;
+
+-- empty row should fail
+COPY copy_regression_fill1 from stdin with delimiter '|' fill missing fields;
+
+\.
+COPY copy_regression_fill2 from stdin with delimiter '|' fill missing fields;
+
+\.
+COPY copy_regression_fill1 from stdin with csv delimiter '|' fill missing fields;
+
+\.
+COPY copy_regression_fill2 from stdin with csv delimiter '|' fill missing fields;
+
+\.
+DROP TABLE copy_regression_fill1;
+DROP TABLE copy_regression_fill2;
 
 -- ###########################################################
 -- distributed data error consolidation + original row numbers

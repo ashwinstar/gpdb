@@ -336,6 +336,74 @@ SELECT * FROM copy_regression_csv3 ORDER BY b;
 DROP TABLE copy_regression_csv1;
 DROP TABLE copy_regression_csv2;
 DROP TABLE copy_regression_csv3;
+-- ######################################################
+-- FILL MISSING FIELDS
+-- ######################################################
+CREATE TABLE copy_regression_fill1(a int, b int, c text) distributed by(a);
+CREATE TABLE copy_regression_fill2(a int, b int, c text) distributed by(c);
+-- text
+COPY copy_regression_fill1 from stdin with delimiter '|' fill missing fields;
+COPY copy_regression_fill1(c,b) from stdin with delimiter '|' fill missing fields;
+COPY copy_regression_fill2(a,c) from stdin with delimiter '|' fill missing fields;
+SELECT * FROM copy_regression_fill1 ORDER BY a,b,c;
+ a | b |   c   
+---+---+-------
+ 1 | 1 | one
+ 2 | 2 | 
+ 3 |   | 
+   | 1 | one
+   |   | three
+   |   | two
+(6 rows)
+
+SELECT * FROM copy_regression_fill2 ORDER BY a,b,c;
+ a | b |   c   
+---+---+-------
+ 1 |   | one
+ 2 |   | 
+ 3 |   | three
+(3 rows)
+
+TRUNCATE copy_regression_fill1;
+TRUNCATE copy_regression_fill2;
+-- csv
+COPY copy_regression_fill1 from stdin with csv delimiter '|' fill missing fields;
+COPY copy_regression_fill1(c,b) from stdin with csv delimiter '|' fill missing fields;
+COPY copy_regression_fill2(a,c) from stdin with csv delimiter '|' fill missing fields;
+SELECT * FROM copy_regression_fill1 ORDER BY a,b,c;
+ a | b |   c   
+---+---+-------
+ 1 | 1 | one
+ 2 | 2 | 
+ 3 |   | 
+   | 1 | one
+   |   | three
+   |   | two
+(6 rows)
+
+SELECT * FROM copy_regression_fill2 ORDER BY a,b,c;
+ a | b |   c   
+---+---+-------
+ 1 |   | one
+ 2 |   | 
+ 3 |   | three
+(3 rows)
+
+-- empty row should fail
+COPY copy_regression_fill1 from stdin with delimiter '|' fill missing fields;
+ERROR:  missing data for column "b", found empty data line
+CONTEXT:  COPY copy_regression_fill1, line 1: ""
+COPY copy_regression_fill2 from stdin with delimiter '|' fill missing fields;
+ERROR:  missing data for column "b", found empty data line
+CONTEXT:  COPY copy_regression_fill2, line 1: ""
+COPY copy_regression_fill1 from stdin with csv delimiter '|' fill missing fields;
+ERROR:  missing data for column "b", found empty data line
+CONTEXT:  COPY copy_regression_fill1, line 1: ""
+COPY copy_regression_fill2 from stdin with csv delimiter '|' fill missing fields;
+ERROR:  missing data for column "b", found empty data line
+CONTEXT:  COPY copy_regression_fill2, line 1: ""
+DROP TABLE copy_regression_fill1;
+DROP TABLE copy_regression_fill2;
 -- ###########################################################
 -- distributed data error consolidation + original row numbers
 -- ###########################################################

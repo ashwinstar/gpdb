@@ -212,6 +212,20 @@ format 'csv' ( quote as '"' header);
 
 select count(*) from ext_whois;
 
+-- test FILL EMPTY FIELDS
+create external table ext_fill1(a int, b int, c int)
+location('gpfdist://@hostname@:7070/missing_fields1.data' )
+format 'text' ( delimiter '|' fill missing fields);
+
+create external table ext_fill2(a int, b int, c int)
+location('gpfdist://@hostname@:7070/missing_fields2.data' )
+format 'text' ( delimiter '|' fill missing fields);
+
+select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
+select * from ext_fill2 order by a,b,c; -- should fail due to empty data line
+
+drop external table ext_fill1;
+drop external table ext_fill2;
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------
