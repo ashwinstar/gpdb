@@ -486,10 +486,14 @@ class gpload:
         self.ports = []
         sourceIndex = 0
         availablePorts = set(xrange(1,65535))
+
+        self.getconfig('gpload:input', list)
+
         while 1:
             sourceIndex += 1
             name = 'gpload:input:source(%d)'%sourceIndex
-            if not self.getconfig(name,None,None):
+            a = self.getconfig(name,None,None)
+            if not a:
                 break
             local_hostname = self.getconfig(name+':local_hostname',list)
             port_range = self.getconfig(name+':port_range',list,None)
