@@ -1154,13 +1154,29 @@ class GPUpgrade:
         #  [3.1.0.0 - 3.2.0.0] + (main) by default
         def checkversion(v):
             if v == 'main': return
-            if v < '3.1.1.5':
+            vs = v.split('.')
+
+            # all released versions have 4 integer version components
+            # but dev builds may have anywhere from 2-4
+            try:
+                vs = map(int, vs)
+            except:
+                raise UpgradeError("Unrecognised Greenplum Version '%s'" % v)
+            if len(vs) < 4:
+                vs.extend([99,99,99,99])
+
+            # Acceptable versions are 3.1.1.5 - 3.2.x
+            if ((vs[0] < 3) or
+                (vs[0] == 3 and vs[1] < 1) or
+                (vs[0] == 3 and vs[1] == 1 and vs[2] < 1) or
+                (vs[0] == 3 and vs[1] == 1 and vs[2] == 1 and vs[3] < 5)):
                 raise UpgradeError(
-"Greenplum Version '%s' not supported for upgrade/downgrade" % v)
-            if v > '3.2.1.99':
+                    "Greenplum Version '%s' not supported for upgrade/downgrade" % v)
+            if ((vs[0] > 3) or (vs[0] == 3 and vs[1] > 2)):
                 raise UpgradeError(
-'''To upgrade/downgrade from Greenplum Version '%s' use the upgrade/downgrade
-tool shipped with that release''')
+                    "To upgrade/downgrade from Greenplum Version '%s' use the upgrade tool "
+                    "shipped with that release" % v)
+            
 
         checkversion(oldversion)
         checkversion(newversion)
