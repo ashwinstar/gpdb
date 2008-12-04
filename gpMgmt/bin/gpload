@@ -779,8 +779,9 @@ class gpload:
             sql += "segment reject limit %s "%limit
         self.log(self.LOG, sql)
 
-        if not self.options.D:
-            self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
+        #if not self.options.D:
+        self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
+
         try:
                 self.pg8000.execute(sql)
         except Exception, e:
