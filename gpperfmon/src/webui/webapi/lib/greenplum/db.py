@@ -644,12 +644,14 @@ def querydetails_now(remote, tmid, ssid, ccnt, username):
     return _queries_consolidate(rows)
 
 
-def querydetails_history(tmid, ssid, ccnt, username):
+def querydetails_history(tmid, ssid, ccnt, username, start, end):
     columns = queries_sql('')
 
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     if username != '':
         filter += " and username='%s'" % username
+    if start != '' and end != '':
+        filter += " and ctime>='%s' and ctime<='%s'" % (start, end)
 
     query1 = '%s from queries_history %s' % (columns, filter)
     query2 = '%s from queries_tail %s' % (columns, filter)
@@ -682,6 +684,46 @@ def queryplan_get_username_now(tmid, ssid, ccnt):
     return result
 
 
+def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
+    query = """select
+       min(ctime) as sample_time, tmid, ssid, ccnt, nid, min(pnid) as pnid,
+       min(ntype) as ntype, array_to_string(iterators_array_accum(distinct nstatus), ',') as nstatus,
+       min(tstart) as tstart, avg(tduration) as tduration,
+       avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax,
+       avg(memsize) as memsize, avg(memresid) as memresid,
+       avg(memshare) as memshare, sum(cpu_elapsed) as cpu_elapsed,
+       avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase, 
+       sum(rows_out) as rows_out, sum(rows_out_est) as rows_out_est,
+       case when avg(cpu_elapsed) <= 0.001 THEN 0 else
+          (stddev(cpu_elapsed)/avg(cpu_elapsed))*100 end as skew_cpu,
+       case when avg(rows_out) <= 0.001 THEN 0 else
+          (stddev(rows_out)/avg(rows_out))*100 end as skew_rows,
+       min(m0_name)||'|'||min(m0_unit)||'|'||avg(m0_val)||'|'||avg(m0_est) as m0,
+       min(m1_name)||'|'||min(m1_unit)||'|'||avg(m1_val)||'|'||avg(m1_est) as m1,
+       min(m2_name)||'|'||min(m2_unit)||'|'||avg(m2_val)||'|'||avg(m2_est) as m2,
+       min(m3_name)||'|'||min(m3_unit)||'|'||avg(m3_val)||'|'||avg(m3_est) as m3,
+       min(m4_name)||'|'||min(m4_unit)||'|'||avg(m4_val)||'|'||avg(m4_est) as m4,
+       min(m5_name)||'|'||min(m5_unit)||'|'||avg(m5_val)||'|'||avg(m5_est) as m5,
+       min(m6_name)||'|'||min(m6_unit)||'|'||avg(m6_val)||'|'||avg(m6_est) as m6,
+       min(m7_name)||'|'||min(m7_unit)||'|'||avg(m7_val)||'|'||avg(m7_est) as m7,
+       min(m8_name)||'|'||min(m8_unit)||'|'||avg(m8_val)||'|'||avg(m8_est) as m8,
+       min(m9_name)||'|'||min(m9_unit)||'|'||avg(m9_val)||'|'||avg(m9_est) as m9,
+       min(m10_name)||'|'||min(m10_unit)||'|'||avg(m10_val)||'|'||avg(m10_est) as m10,
+       min(m11_name)||'|'||min(m11_unit)||'|'||avg(m11_val)||'|'||avg(m11_est) as m11,
+       min(m12_name)||'|'||min(m12_unit)||'|'||avg(m12_val)||'|'||avg(m12_est) as m12,
+       min(m13_name)||'|'||min(m13_unit)||'|'||avg(m13_val)||'|'||avg(m13_est) as m13,
+       min(m14_name)||'|'||min(m14_unit)||'|'||avg(m14_val)||'|'||avg(m14_est) as m14,
+       min(m15_name)||'|'||min(m15_unit)||'|'||avg(m15_val)||'|'||avg(m15_est) as m15,
+       min(t0_name)||'|'||min(t0_val) as t0
+       from %s""" % table
+    query += "\nwhere tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    if start != '' and end != '':
+        query += " and ctime>='%s' and ctime<='%s'" % (start, end)
+    query += "\ngroup by tmid, ssid, ccnt, nid"
+
+    return query
+
+
 def queryplan_now(tmid, ssid, ccnt, username):
     # If not superuser, check that username matches
     if username != '':
@@ -691,11 +733,8 @@ def queryplan_now(tmid, ssid, ccnt, username):
                 sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
             return _queryplan_consolidate(rows)
             
-    query_fragment = "select *"
-    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-
-    query1 = "%s from iterators_now_rollup %s" % (query_fragment, filter)
-    query = "%s order by pnid, nid" % query1
+    query1 = queryplan_sql("iterators_now", tmid, ssid, ccnt)
+    query = query1 + " order by pnid, nid"
 
     if DEBUG:
         sys.stderr.write("queryplan_now query: %s\n" % query)
@@ -706,9 +745,11 @@ def queryplan_now(tmid, ssid, ccnt, username):
 
 
 
-def queryplan_get_username_history(tmid, ssid, ccnt):
+def queryplan_get_username_history(tmid, ssid, ccnt, start, end):
     query_fragment = "select username"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
+    if start != '' and end != '':
+        filter += " and ctime>='%s' and ctime<='%s'" % (start, end)
     query1 = "%s from queries_history %s" % (query_fragment, filter)
     query2 = "%s from queries_tail %s" % (query_fragment, filter)
     query = "(%s) union all (%s) limit 1" % (query1, query2)
@@ -726,20 +767,17 @@ def queryplan_get_username_history(tmid, ssid, ccnt):
     return result
 
 
-def queryplan_history(tmid, ssid, ccnt, username):
+def queryplan_history(tmid, ssid, ccnt, username, start, end):
     # If not superuser, check that username matches
     if username != '':
-        q_username = queryplan_get_username_history(tmid, ssid, ccnt)
+        q_username = queryplan_get_username_history(tmid, ssid, ccnt, start, end)
         if q_username != username:
             if DEBUG:
                 sys.stderr.write("Non-superuser %s can't access row of %s\n" % (username, q_username))
             return _queryplan_consolidate(rows)
             
-    query_fragment = "select *"
-    filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
-
-    query1 = "%s from iterators_history_rollup %s" % (query_fragment, filter)
-    query2 = "%s from iterators_tail_rollup %s" % (query_fragment, filter)
+    query1 = queryplan_sql("iterators_history", tmid, ssid, ccnt, start, end)
+    query2 = queryplan_sql("iterators_tail", tmid, ssid, ccnt)
     query = "(%s) union all (%s) order by pnid, nid" % (query1, query2)
 
     if DEBUG:
@@ -775,7 +813,8 @@ def rt_queryiterators(tmid, ssid, ccnt, segid='', nid=''):
                 'm12_name', 'm12_unit', 'm12_val', 'm12_est',
                 'm13_name', 'm13_unit', 'm13_val', 'm13_est',
                 'm14_name', 'm14_unit', 'm14_val', 'm14_est',
-                'm15_name', 'm15_unit', 'm15_val', 'm15_est' ]
+                'm15_name', 'm15_unit', 'm15_val', 'm15_est',
+                't0_name', 't0_val' ]
 
     rows = []
     try:
@@ -860,7 +899,8 @@ def iterator_sql():
                 'm12_name', 'm12_unit', 'm12_val', 'm12_est',
                 'm13_name', 'm13_unit', 'm13_val', 'm13_est',
                 'm14_name', 'm14_unit', 'm14_val', 'm14_est',
-                'm15_name', 'm15_unit', 'm15_val', 'm15_est' ]
+                'm15_name', 'm15_unit', 'm15_val', 'm15_est',
+                't0_name', 't0_val' ]
 
     query_fragment = "select ctime"
     for column in columns:

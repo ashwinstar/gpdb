@@ -4,7 +4,7 @@ package command
 	
 	import mx.rpc.IResponder;
 	import mx.rpc.events.FaultEvent;
-	
+	import util.MiscUtils;	
 	import util.Debug;
 	import util.ServiceUtils;
 				
@@ -16,21 +16,29 @@ package command
 		// Store parameters to the request
 		private var queryID:String = '';
 		private var queryRealtime:Boolean = false;
+		private var startDate:Date = null;
+		private var endDate:Date = null;
 		
         public function QueryPlanCommand() {     
         }
 
-		public function setParameters(id:String, realtime:Boolean):void
+		public function setParameters(id:String, realtime:Boolean, start:Date=null, end:Date=null):void
 		{
 			queryID = id;
 			queryRealtime = realtime;		
+			startDate = start;
+			endDate = end;
 		}
 		
 		public function execute():void
 		{
 			var req:String = '?id=' + queryID;
 			req += '&realtime=' + (queryRealtime?'yes':'no');
-			
+			if (startDate)
+				req += '&start=' + MiscUtils.formatDateToString(startDate.time);
+			if (endDate)
+				req += '&end=' + MiscUtils.formatDateToString(endDate.time);
+							
 			ServiceUtils.send(mdl.session.webServiceURL+'queryplan'+req, this);
 		}
         							    

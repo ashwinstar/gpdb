@@ -215,8 +215,8 @@
 			
 			switch(nodeType) {
 				
-				case "Agg":
-				case "GroupAggregate":
+				case "Aggregate":
+				case "Hash Aggregate":
 				case "Hash Agg":
 				  return ex_aggregate; break;
 				
@@ -246,16 +246,8 @@
 				case "Index Scan":
 				  return ex_index_scan; break;
 				  				  
-				case "Adaptive Join Choice":
-				case "Merge Join":
-				case "Merge Left Join":
-				case "Merge Full Join":
-				case "Merge Right Join":
-				case "Merge EXISTS Join":
-				case "Hash Left Join":
-				case "Hash Full Join":
-				case "Hash Right Join":
-				case "Hash EXISTS Join":
+				case "Adaptive Join":
+				case "Hash Join":
 				case "HashJoin":
 				  return ex_join; break;
 				  
@@ -265,36 +257,37 @@
 				case "Materialize":
 				  return ex_materialize; break;
 				  
-				case "Nested Loop":
-				case "Nested Loop Left Join":
-				case "Nested Loop Full Join":
-				case "Nested Loop Right Join":
-				case "Nested Loop EXISTS Join":
-				case "Nested Loop ??? Join": 	
+				case "Merge Join":
+				  return ex_merge; break;
+				  
+				case "Nested Loop":	
 				  return ex_nested; break;			
 				
 				case "Redistribute Motion":
 				  return ex_redistribute_motion; break;
 				
+				case "Result":
 				case "ResultNode":
    				  return ex_result; break;
 
+				case "Seq Scan":
 				case "Sequential Scan":
 				case "Append-Only Scan":
+				case "External Scan":
 				case "ExternalScan":
-				case "Subquery Scan":
 				case "Function Scan":
 				case "Values Scan":
+				case "ShareInputScan":
 	   		      return ex_scan; break;
 				  
-				case "SetOp Intersect":
-				case "SetOp Intersect All":
-				case "SetOp Except":
-				case "SetOp Except All":
+				case "SetOp":
 				  return ex_setop; break;				  
 				  
 				case "Sort":
 				  return ex_sort; break;
+				  				  
+				case "Subquery Scan":	
+				  return ex_subplan; break;			  				  
 				  				  
 				case "Tid Scan":
 				  return ex_tid_scan; break;
@@ -302,6 +295,7 @@
 				case "Unique":
 				  return ex_unique; break;
 				
+				case "Window":
 				default:
 				  return ex_unknown;
 			}

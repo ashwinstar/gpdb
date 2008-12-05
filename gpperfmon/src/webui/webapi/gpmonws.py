@@ -312,10 +312,6 @@ class system:
                 res = db.system_now(remote)
                 i.aggregated = 'no'
             else:
-                # Only allow superuser to look up historical information
-                if not session.role['superuser']:
-                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to view historical information')
-
                 i.aggregated = i.aggregated.lower()
                 if not i.aggregated in ['yes', 'no']:
                     return mkerr(error.BADREQ, 'Invalid aggregated parameter')
@@ -459,7 +455,7 @@ class querydetails:
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
-        i = web.input(id='', realtime='')
+        i = web.input(id='', realtime='', start='', end='')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -476,6 +472,22 @@ class querydetails:
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
 
+        # check_valid() sanitizes input against SQL injection attacks
+        try:
+            if i.start == '':
+                if i.end != '':
+                     return mkerr(error.BADREQ, 'Invalid date parameters')
+            else:
+                interval.check_valid(i.start)
+
+            if i.end == '':
+                if i.start != '':
+                    return mkerr(error.BADREQ, 'Invalid date parameters')
+            else:
+                interval.check_valid(i.end)
+        except ValueError:
+            return mkerr(error.BADREQ, 'Invalid date parameters')
+
         if i.realtime == '':
             return mkerr(error.BADREQ, 'Missing realtime parameter')
 
@@ -486,6 +498,7 @@ class querydetails:
         if DEBUG:
             sys.stderr.write("\n\n\n<query details>\n")
             sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
+            sys.stderr.write("\trealtime = %s\n\tstart = %s\n\tend = %s\n" % (i.realtime, i.start, i.end))
             sys.stderr.write("</query details>\n\n\n")
 
         # Ensure that only superusers can find other's queries
@@ -497,7 +510,7 @@ class querydetails:
             if i.realtime == 'yes':
                 res = db.querydetails_now(remote, id_split[0], id_split[1], id_split[2], username)
             else:
-                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username)
+                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username, i.start, i.end)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -519,7 +532,7 @@ class queryplan:
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, 'You must be logged on to perform this operation')
 
-        i = web.input(id='', realtime='')
+        i = web.input(id='', realtime='', start='', end='')
 
         if i.id == '':
             return mkerr(error.BADREQ, 'Must specify query ID parameter')
@@ -536,6 +549,22 @@ class queryplan:
         except:
             return mkerr(error.BADREQ, 'Invalid query ID')
 
+         # check_valid() sanitizes input against SQL injection attacks
+        try:
+            if i.start == '':
+                if i.end != '':
+                    return mkerr(error.BADREQ, 'Invalid date parameters')
+            else:
+                interval.check_valid(i.start)
+
+            if i.end == '':
+                if i.start != '':
+                    return mkerr(error.BADREQ, 'Invalid date parameters')
+            else:
+                interval.check_valid(i.end)
+        except ValueError:
+            return mkerr(error.BADREQ, 'Invalid date parameters')
+
         if i.realtime == '':
             return mkerr(error.BADREQ, 'Missing realtime parameter')
 
@@ -546,6 +575,8 @@ class queryplan:
         if DEBUG:
             sys.stderr.write("\n\n\n<query plan>\n")
             sys.stderr.write("\ttmid = %s\n\tssid = %s\n\tccnt = %s\n" % (id_split[0], id_split[1], id_split[2]))
+            sys.stderr.write("\trealtime = %s\n\tstart = %s\n\tend = %s\n" % (i.realtime, i.start, i.end))
+            
             sys.stderr.write("</query plan>\n\n\n")
 
         # Ensure that only superusers can find other's queries
@@ -557,7 +588,7 @@ class queryplan:
             if i.realtime == 'yes':
                 res = db.queryplan_now(id_split[0], id_split[1], id_split[2], username)
             else:
-                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username)
+                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username, i.start, i.end)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -654,10 +685,6 @@ class database:
             if i.start == 'NOW':
                 res = db.database_now(remote)
             else:
-                # Only allow superuser to look up historical information
-                if not session.role['superuser']:
-                    return mkerr(error.NOT_AUTHORIZED, 'Must be database superuser to see historical information')
-
                 if i.end == 'NOW':
                     i.end = timenow()
 

@@ -38,6 +38,7 @@
         selectedIndex="{mdl.session.loggedIn}">
     	<view:LoginView id="loginView"/>
 		<view:MainAppView id="mainAppView"/>
+		<view:LogoutView id="logoutView"/>
 	</mx:ViewStack>
 	
 </mx:Application>

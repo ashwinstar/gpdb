@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
+<mx:VDividedBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%"
 	xmlns:util="util.*">
 
 <mx:Script>
@@ -13,15 +13,22 @@
     ]]>
 </mx:Script>	
 
-	<mx:HBox verticalAlign="middle">
-		<mx:Label text="Display the 'model' data structure "/>
-		<mx:Button label="Refresh" click="{area.text = ObjectUtil.toString(mdl)}"/>
-	</mx:HBox>
-	<mx:TextArea editable="false" id="area" width="100%" height="100%"/>
-	<mx:Spacer height="10"/>
-	<mx:HBox verticalAlign="middle">
-		<mx:Label text="Internal logging output "/>
-		<mx:Button label="Clear" click="{Debug.debugBuffer = ''}"/>
-	</mx:HBox>
-	<mx:TextArea editable="false" text="{Debug.debugBuffer}" width="100%" height="100%"/>
-</mx:VBox>
+	<mx:VBox height="100%" width="100%">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label text="Display internal 'model' (click to refresh) "/>
+			<mx:Button label="NavState" click="{area.text = ObjectUtil.toString(mdl.nav)}"/>
+			<mx:Button label="Session" click="{area.text = ObjectUtil.toString(mdl.session)}"/>
+			<mx:Button label="System" click="{area.text = ObjectUtil.toString(mdl.system)}"/>
+			<mx:Button label="Database" click="{area.text = ObjectUtil.toString(mdl.db)}"/>
+			<mx:Button label="Queries" click="{area.text = ObjectUtil.toString(mdl.queries)}"/>
+		</mx:HBox>
+		<mx:TextArea editable="false" id="area" width="100%" height="100%"/>
+	</mx:VBox>
+	<mx:VBox height="100%" width="100%">
+		<mx:HBox verticalAlign="middle">
+			<mx:Label text="Internal logging output "/>
+			<mx:Button label="Clear" click="{Debug.debugBuffer = ''}"/>
+		</mx:HBox>
+		<mx:TextArea editable="false" text="{Debug.debugBuffer}" width="100%" height="100%"/>
+	</mx:VBox>		
+</mx:VDividedBox>

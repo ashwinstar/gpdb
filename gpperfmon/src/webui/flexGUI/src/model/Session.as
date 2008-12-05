@@ -1,7 +1,10 @@
 package model
 {
 	import flash.events.TimerEvent;
+	import flash.net.navigateToURL;
+	import flash.net.URLRequest;
 	import flash.utils.Timer;
+	
 	import mx.collections.ArrayCollection;
 	import mx.controls.Alert;
 	import mx.events.CloseEvent;
@@ -26,7 +29,7 @@ package model
 			databaseName = serverName;
 			
 			webServiceURL = protocol + "://" + address + ":" + port + "/";
-			
+		
 			Debug.debug("databaseName = " + databaseName);
 			Debug.debug("webServiceURL = " + webServiceURL);
 		}
@@ -84,7 +87,7 @@ package model
 		// Attempts to log the user out of the system
 		public function logout():void
 		{
-			if (loggedIn)
+			if (loggedIn == 1)
 			{
 				// Stop the quantum timers
 				if (quantumTimer)
@@ -94,7 +97,12 @@ package model
 			
 				var logoffCommand:LogoffCommand = new LogoffCommand;
 				logoffCommand.execute();
-				resetState();
+				
+				// Switch to the logged-out page (in case the reload of the plugin doesn't work)
+				loggedIn=2;
+				GPPerfMonModelLocator.releaseInstanceData();
+				// Now try to reload the plugin
+				navigateToURL(new URLRequest(webServiceURL),'_self');
 			}
 		}
 
@@ -147,7 +155,6 @@ package model
 		// Called every quantum tick
 		public function onQuantumTimer(event:TimerEvent):void
 		{
-			setTimeVals();
 			var systemNowCommand:SystemNowCommand = new SystemNowCommand;
 			var databaseNowCommand:DatabaseNowCommand = new DatabaseNowCommand;
 			var queriesNowCommand:QueriesNowCommand = new QueriesNowCommand;
@@ -172,8 +179,11 @@ package model
 		}
 
 		// Sets bindable time values
-		public function setTimeVals():void
+		public function setTimeVals(serverDate:Date):void
 		{
+			// Set the most recent tick based on the server's datetime
+			mostRecentTick = serverDate;	
+			
 			var prevMin:Number = MiscUtils.prevMinAsNumber(mostRecentTick);
 			if ((timeArray.getItemAt(LATEST_TICK) as Date).time != prevMin)						
 			{
@@ -221,7 +231,7 @@ package model
 		////////////////////////////////////////////////
         // Per-session values
         	
-		// Is a user logged in?
+		// Is a user logged in (0=no, 1=yes, 2=loggedOut)?
 		public var loggedIn:int = 0;
 				
 		// Login ID of the user

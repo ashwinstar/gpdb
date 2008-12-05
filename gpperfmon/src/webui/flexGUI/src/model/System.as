@@ -82,7 +82,7 @@ package model
 			newVals.divideBy(count);
 			
 			// Set the latest time based on the sample time
-			mdl.session.mostRecentTick = newVals.sample_time;	
+			mdl.session.setTimeVals(newVals.sample_time);
 			
 			systemNowAgg = newVals;		
 			
@@ -125,8 +125,8 @@ package model
 				{
 					if (oneMin_lastCalcDate)
 					{
-						// Insert a gap object if there's a gap in the data
-						var nextDate:Number = oneMin_lastCalcDate.time + MiscUtils.MINUTE;
+						// Insert a gap object if the new datapoint isn't within 5 mins of the last
+						var nextDate:Number = oneMin_lastCalcDate.time + (MiscUtils.MINUTE * 5);
 						if (nextDate < systemNowCurrMinute.sample_time.time) {
 							var missingData:Object = new Object;
 							missingData.sample_time = new Date(nextDate);
@@ -406,8 +406,8 @@ package model
 					{
 						if (latestDate)
 						{
-							// Insert a gap object if there's a gap in the data
-							var nextDate:Number = latestDate.time + MiscUtils.MINUTE;
+							// // Insert a gap object if the new datapoint isn't within 5 mins of the last
+							var nextDate:Number = latestDate.time + (MiscUtils.MINUTE*5);
 							if (nextDate < thisDate.time) {
 								var missingData:Object = new Object;
 								missingData.sample_time = new Date(nextDate);

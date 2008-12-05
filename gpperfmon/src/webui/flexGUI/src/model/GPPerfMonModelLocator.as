@@ -40,6 +40,17 @@ package model
 			return instance;
 		}			
 		
+		// Releases all instance data (system, database, queries) 
+		public static function releaseInstanceData():void
+		{
+			if (instance)
+			{
+				instance.system = null;
+				instance.db = null;
+				instance.queries = null;	
+			}
+		}
+		
 		// NavState class
 		public var nav:NavState = new NavState;
 		

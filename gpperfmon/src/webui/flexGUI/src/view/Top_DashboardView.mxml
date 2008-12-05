@@ -4,6 +4,7 @@
 
 <mx:Script>
 <![CDATA[
+	import mx.controls.dataGridClasses.DataGridItemRenderer;
 	import value.Query;
     import model.GPPerfMonModelLocator;
   	import mx.events.CloseEvent;
@@ -23,7 +24,9 @@
 		// Clear any active query plan requests
 		mdl.queries.doQueryPlan(null);
 
-		mdl.nav.jumpToQueryDetails(evt.target.data as Query, true);
+		var renderer:DataGridItemRenderer = evt.target as DataGridItemRenderer;
+		if (renderer)
+			mdl.nav.jumpToQueryDetails(renderer.data as Query, true);
 	}
 
 	// Handle a click by jumping to the query
@@ -362,10 +365,16 @@
 	<mx:VBox width="50%" height="100%" horizontalAlign="center">
 
 	  <mx:VBox backgroundColor="0xBFDC92" width="100%" horizontalAlign="center">
-	  	<mx:Label text="Queries Summary" styleName="dashboardTitle"/>
+	  	<mx:Label text="Queries Summary" styleName="dashboardTitle"
+	  		visible="{mdl.session.isSuperuser}" includeInLayout="{mdl.session.isSuperuser}"/>
+	  	<mx:Label text="My Queries Summary" styleName="dashboardTitle"
+	  		visible="{!mdl.session.isSuperuser}" includeInLayout="{!mdl.session.isSuperuser}"/>
 	  </mx:VBox>
 	  		
-		<mx:Text htmlText="{mdl.queries.queryNowSummary + '   |   ' + mdl.queries.myQueryNowSummary}"/>			
+		<mx:Text htmlText="{mdl.queries.queryNowSummary + '   |   ' + mdl.queries.myQueryNowSummary}" 
+			visible="{mdl.session.isSuperuser}" includeInLayout="{mdl.session.isSuperuser}"/>			
+		<mx:Text htmlText="{mdl.queries.myQueryNowSummary}"
+			visible="{!mdl.session.isSuperuser}" includeInLayout="{!mdl.session.isSuperuser}"/>			
 	
 		<mx:Panel title="Runtime (top active queries)" label="horizontal" width="100%"
 			 styleName="dashboardMinigraphs">
@@ -381,7 +390,7 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="Run time"
 	          dataField="time_run"/>
-			<mx:DataGridColumn headerText="Details">
+			<mx:DataGridColumn headerText="Details" width="60">
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
@@ -409,7 +418,7 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="CPU %"
 	          dataField="cpu_currpct"/>
-			<mx:DataGridColumn headerText="Details">
+			<mx:DataGridColumn headerText="Details" width="60">
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
@@ -437,7 +446,7 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="CPU total"
 	          dataField="cpu_elapsed"/>
-			<mx:DataGridColumn headerText="Details">
+			<mx:DataGridColumn headerText="Details" width="60">
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
@@ -465,7 +474,7 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="CPU skew"
 	          dataField="skew_cpu"/>
-			<mx:DataGridColumn headerText="Details">
+			<mx:DataGridColumn headerText="Details" width="60">
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">
@@ -493,7 +502,7 @@
 	          dataField="db"/>
 	        <mx:DataGridColumn headerText="Row skew"
 	          dataField="skew_rows"/>	
-			<mx:DataGridColumn headerText="Details">
+			<mx:DataGridColumn headerText="Details" width="60">
 				<mx:itemRenderer>
 					<mx:Component>
 						<mx:VBox width="100%" height="100%" horizontalAlign="center">

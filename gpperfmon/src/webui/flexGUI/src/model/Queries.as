@@ -28,32 +28,27 @@ package model
 			// Setup the sort functions
 			
 			var runttimeSort:Sort = new Sort();
-			var runtimeSortField:SortField = new SortField("time_run");
-			runtimeSortField.descending = true;
+			var runtimeSortField:SortField = new SortField("time_run", false, true, true);
 			runttimeSort.fields = new Array( runtimeSortField );
 			queriesNowByRuntime.sort = runttimeSort;
 
 			var cpuPctSort:Sort = new Sort();
-			var cpuPctSortField:SortField = new SortField("cpu_currpct");
-			cpuPctSortField.descending = true;
+			var cpuPctSortField:SortField = new SortField("cpu_currpct", false, true, true);
 			cpuPctSort.fields = new Array( cpuPctSortField );
 			queriesNowByCpuPct.sort = cpuPctSort;
 			
 			var cpuTotalSort:Sort = new Sort();
-			var cpuTotalSortField:SortField = new SortField("cpu_elapsed");
-			cpuTotalSortField.descending = true;
+			var cpuTotalSortField:SortField = new SortField("cpu_elapsed", false, true, true);
 			cpuTotalSort.fields = new Array( cpuTotalSortField );
 			queriesNowByCpuTotal.sort = cpuTotalSort;
 
 			var cpuSkewSort:Sort = new Sort();
-			var cpuSkewSortField:SortField = new SortField("skew_cpu");
-			cpuSkewSortField.descending = true;
+			var cpuSkewSortField:SortField = new SortField("skew_cpu", false, true, true);
 			cpuSkewSort.fields = new Array( cpuSkewSortField );
 			queriesNowByCpuSkew.sort = cpuSkewSort;
 
 			var rowSkewSort:Sort = new Sort();
-			var rowSkewSortField:SortField = new SortField("skew_rows");
-			rowSkewSortField.descending = true;
+			var rowSkewSortField:SortField = new SortField("skew_rows", false, true, true);
 			rowSkewSort.fields = new Array( rowSkewSortField );
 			queriesNowByRowSkew.sort = rowSkewSort;
 		}
@@ -161,7 +156,6 @@ package model
 					}
 					count++;
 				}
-				mdl.queries.updateWatchedQueriesSummary();
 
 				// Now add the query to the array, and we're done for this loop
 				if (queryXML.status == 'start' || queryXML.status == 'submit')
@@ -189,6 +183,8 @@ package model
 			myQueryNowSummary = "<b>My Queries:</b> " +
 			                  "<font size='16'>" + myRunCount.toString() + "</font> Running, " +
 			                  "<font size='16'>" + myQueuedCount.toString() + "</font> Queued"               
+
+			mdl.queries.updateWatchedQueriesSummary();
 		}
 
 
@@ -370,7 +366,8 @@ package model
 					{
 						// Issue a single request to get the data					
 						var queryPlanCommand:QueryPlanCommand = new QueryPlanCommand();
-						queryPlanCommand.setParameters(queryPlanID, false);
+						queryPlanCommand.setParameters(queryPlanID, false,
+												query.tsubmit, query.sample_time);
 						queryPlanCommand.execute();
 					} 
 				} 
@@ -421,15 +418,21 @@ package model
 				}
 			}
 			queryPlanRealtime = isRunning;
+
+			var queryPlanCommand:QueryPlanCommand = new QueryPlanCommand();
 			
 			// Stop the timer if it isn't running any more
 			if (!queryPlanRealtime)
 			{
 				pauseQueryPlan();
+				// Search for +/- 5 mins of the latest tick
+				queryPlanCommand.setParameters(queryPlanID, false,
+						new Date(mdl.session.mostRecentTick.time-(MiscUtils.MINUTE*5)),
+						new Date(mdl.session.mostRecentTick.time+(MiscUtils.MINUTE*5)));
 			}
-			
-			var queryPlanCommand:QueryPlanCommand = new QueryPlanCommand();
-		    queryPlanCommand.setParameters(queryPlanID, queryPlanRealtime);
+			else
+				queryPlanCommand.setParameters(queryPlanID, true);
+		    
 			queryPlanCommand.execute(); 
 		}
 

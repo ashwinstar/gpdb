@@ -42,7 +42,8 @@ package model
 				
 		// Which view on the query list page
 		public var queryListToggle:Array = new Array(
-			"Active - all queries", "Active - my queries", "Watched queries", "Query search");
+			"Active - all queries", "Active - my queries", 
+			"Watched queries", "Query search", "Query Details");
 		
 		// Which query ID and data provider do we wish to see details on?
 		public var detailQuery:Query = null;
@@ -62,6 +63,8 @@ package model
 				detailQueryIsActive = active;
 				// And toggle the main tabs to the query page
 				mainPageIndex = 2;
+				// On the query page we want the detail tab
+				queryTabPage = 4;
 				// Finally toggle the query detail page
 				queryDetailTabPage = 0;
 				
@@ -69,7 +72,11 @@ package model
 				if (q.query_text.substr(-3, 3) == '...')
 				{
 					var queryDetailsCommand:QueryDetailsCommand = new QueryDetailsCommand();
-					queryDetailsCommand.setParameters(detailQuery.id, detailQueryIsActive);
+					if (detailQueryIsActive)
+						queryDetailsCommand.setParameters(detailQuery.id, true);
+					else
+						queryDetailsCommand.setParameters(detailQuery.id, false,
+													q.tsubmit, q.sample_time);
 					queryDetailsCommand.execute();
 				}
 			}

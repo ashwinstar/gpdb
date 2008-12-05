@@ -136,7 +136,13 @@
 				<mx:Label text="Username:"/>
 			</mx:GridItem>
 			<mx:GridItem horizontalAlign="left">
-				<mx:TextInput id="username" width="200"/>
+				<mx:TextInput id="username" width="200"
+					visible="{mdl.session.isSuperuser}" 
+					includeInLayout="{mdl.session.isSuperuser}"/>
+				<mx:TextInput width="200" editable="false"
+					text="{mdl.session.username}"
+					visible="{!mdl.session.isSuperuser}" 
+					includeInLayout="{!mdl.session.isSuperuser}"/>
 			</mx:GridItem>
 		</mx:GridRow>
 		<mx:GridRow>

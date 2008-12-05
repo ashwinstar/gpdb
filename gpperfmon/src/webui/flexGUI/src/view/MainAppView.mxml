@@ -75,7 +75,7 @@
   		mdl.nav.mainPageIndex = mainTab.selectedIndex;
   		
   		// Handle pausing or resuming of query plan requests based on page
-  		if (mainTab.selectedIndex == 2)
+  		if (mainTab.selectedIndex == 2 && mdl.nav.queryTabPage == 4)
   			mdl.queries.resumeQueryPlan();
   		else
   			mdl.queries.pauseQueryPlan();
