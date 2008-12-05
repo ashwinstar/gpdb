@@ -901,9 +901,9 @@ class fileCheckThread(Thread):
                   
                 for oid in self.oidlist:
                     oid = int(oid)
-                    veryverbose('Checking %s' % oid)
+                    veryverbose('Checking index oid %s' % oid)
                     if not oidseghash[segid].get(oid):
-                        self.badoids[segid].append(oid)
+                        self.badoids.append(oid)
                         verbose('Could not find index with relfilenode %s' % oid)
 
         else:
