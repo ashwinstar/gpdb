@@ -501,7 +501,20 @@ class gpload:
             a = self.getconfig(name,None,None)
             if not a:
                 break
-            local_hostname = self.getconfig(name+':local_hostname',list)
+            local_hostname = self.getconfig(name+':local_hostname',list, False)
+
+            # do default host, the current one
+            if not local_hostname:
+                try:
+                    pipe = subprocess.Popen("hostname",
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE)
+                    result  = pipe.communicate();
+                except OSError, e:
+                    self.log(self.ERROR, "command failed: " + str(e))
+                
+                local_hostname = [result[0].strip()]
+
             port_range = self.getconfig(name+':port_range',list,None)
             if port_range:
                 try:
@@ -515,6 +528,7 @@ class gpload:
             else:
                 startPort = self.getconfig(name+':port',int,8000)
                 endPort = self.getconfig(name+':port',int,9000)
+
             if not (set(xrange(startPort,endPort+1)) & availablePorts):
                 self.log(self.ERROR,
                          "no more ports available for gpfdist")
@@ -779,7 +793,6 @@ class gpload:
             sql += "segment reject limit %s "%limit
         self.log(self.LOG, sql)
 
-        #if not self.options.D:
         self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
 
         try:
