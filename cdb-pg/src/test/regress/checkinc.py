@@ -2,8 +2,15 @@
 
 import sys, os, re, subprocess
 
-p = subprocess.Popen('pg_config --pkgincludedir', stdout=subprocess.PIPE, shell=True)
-pkginc = p.communicate()[0].strip();
+p1 = subprocess.Popen('pg_config --includedir', stdout=subprocess.PIPE, shell=True)
+p2 = subprocess.Popen('pg_config --pkgincludedir', stdout=subprocess.PIPE, shell=True)
+inc    = p1.communicate()[0].strip();
+pkginc = p2.communicate()[0].strip();
+
+print "Greenplum INCLUDEDIR:    %s" % inc
+print "Greenplum PKGINCLUDEDIR: %s" % pkginc
+print "Checking includes..."
+
 include = re.compile('\s*#include\s*["<](\S*)[">]')
 
 # Hard code standard includes that are okay but we can't check via standard methods.
@@ -67,10 +74,14 @@ for f in keys:
         # There are a couple reasons an included file might not be listed:
 
         # 1. It might be a standard include
+        if os.path.exists(os.path.join(inc,i)):
+            continue
+
+        # 2. It might be a system include
         if os.path.exists(os.path.join('/usr/include',i)):
             continue
 
-        # 2. It might not have been well qualified
+        # 3. It might not have been well qualified
         (d,s) = os.path.split(f)
         if fileset.get(os.path.join(d,i)):
             continue
