@@ -387,6 +387,13 @@ format 'text' ( delimiter '|' fill missing fields);
 create external table ext_fill2(a int, b int, c int)
 location('gpfdist://@hostname@:7070/missing_fields2.data' )
 format 'text' ( delimiter '|' fill missing fields);
+-- also test force not null in addition to fill empty fields
+create external table ext_fill3_fnn(a text, b text, c text)
+location('gpfdist://localhost:7070/missing_fields1.data' )
+format 'csv' ( delimiter '|' fill missing fields force not null c);
+create external table ext_fill4_fnn(a text, b text, c text)
+location('gpfdist://localhost:7070/missing_fields1.data' )
+format 'csv' ( delimiter '|' fill missing fields force not null b,c);
 select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
  a | b | c 
 ---+---+---
@@ -398,10 +405,28 @@ select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
 (5 rows)
 
 select * from ext_fill2 order by a,b,c; -- should fail due to empty data line
-ERROR:  missing data for column "b", found empty data line  (seg1 slice1 @hostname@:11002 pid=26319)
+ERROR:  missing data for column "b", found empty data line  (seg0 slice1 @hostname@:11001 pid=44570)
 DETAIL:  External table ext_fill2, line 3 of gpfdist://@hostname@:7070/missing_fields2.data: ""
+select * from ext_fill3_fnn where c is null; -- should be empty
+ a | b | c 
+---+---+---
+(0 rows)
+
+select * from ext_fill3_fnn where b is null; -- one row result
+ a | b | c 
+---+---+---
+ 3 |   | 
+(1 row)
+
+select * from ext_fill4_fnn where c is null or b is null; -- should be empty
+ a | b | c 
+---+---+---
+(0 rows)
+
 drop external table ext_fill1;
 drop external table ext_fill2;
+drop external table ext_fill3_fnn;
+drop external table ext_fill4_fnn;
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------

@@ -588,26 +588,36 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 			err_ctxt = pstate->rowcontext;
 			MemoryContextSwitchTo(err_ctxt);
 
-			/*
-			 * Loop to read the user attributes on the line.
-			 */
 			foreach(cur, pstate->attnumlist)
 			{
-				int attnum = lfirst_int(cur);
-				int m = attnum - 1;
-				char *string;
+				int 	attnum = lfirst_int(cur);
+				int 	m = attnum - 1;
+				char   *string;
+				bool	isnull;
 
 				string = pstate->attribute_buf.data + pstate->attr_offsets[m];
 
 				if(!scan->nulls[m])
+					isnull = false;
+				else
+					isnull = true;
+
+				/* check FORCE NOT NULL for this column */
+				if (pstate->csv_mode && isnull && pstate->force_notnull_flags[m])
+				{
+					string = pstate->null_print;	/* set to NULL string */
+					isnull = false;
+				}
+
+				if(!isnull)
 				{
 					pstate->cur_attname = NameStr(scan->attr[m]->attname);
 
 					scan->values[m] = InputFunctionCall(&scan->in_functions[m],
-							string,
-							scan->typioparams[m],
-							scan->attr[m]->atttypmod);
-
+														string,
+														scan->typioparams[m],
+														scan->attr[m]->atttypmod);
+					scan->nulls[m] = false;
 					pstate->cur_attname = NULL;
 				}
 			}
@@ -840,6 +850,15 @@ else\
 	val++;\
 }
 
+#define FILEAM_GET_LIST(val, clause) \
+if (!val)\
+{\
+	ereport(ERROR,\
+			(errcode(ERRCODE_SYNTAX_ERROR),\
+			 errmsg("internal parse error for %s clause value", clause)));\
+}\
+
+
 
 /*
  * Initialize the data parsing state.
@@ -1051,36 +1070,76 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	}
 
 	/*
-	 * HEADER or FILL MISSING FIELDS
+	 * Possible remaining opts:
+	 * - HEADER 
+	 * - FILL MISSING FIELDS
+	 * - FORCE NOT NULL <list>
 	 * 
 	 * note: this parsing logic is kinda ugly but must be done this way
 	 * until we switch from strtok's to a more high level mechanism.
 	 */
-	clause = strtok(NULL, " ");
-
-	if (clause)
+	while(true)
 	{
-		if (pg_strcasecmp(clause, "header") == 0)
+		clause = strtok(NULL, " ");
+
+		if (clause)
 		{
-			pstate->header_line = true;
-			
-			clause = strtok(NULL, " "); /* is "header" followed by "fill missing fields"? */
-			if (clause)
+			if (pg_strcasecmp(clause, "header") == 0)
 			{
-				FILEAM_VERIFY_CLAUSE(clause, "fill");
-				pstate->fill_missing = true;
+				pstate->header_line = true;
 			}
-		}
-		else if (pg_strcasecmp(clause, "fill") == 0)
-		{
-			pstate->fill_missing = true;
+			else if(pg_strcasecmp(clause, "fill") == 0)
+			{
+				pstate->fill_missing = true;
+
+				/* consume the rest of the related keywords */
+				clause = strtok(NULL, " ");
+				FILEAM_VERIFY_CLAUSE(clause, "missing");
+				clause = strtok(NULL, " ");
+				FILEAM_VERIFY_CLAUSE(clause, "fields");
+			}
+			else if(pg_strcasecmp(clause, "force") == 0)
+			{
+				List *temp = NIL;
+				ListCell *l;
+				
+				Assert(pstate->csv_mode);
+				
+				/* consume the rest of the related keywords */
+				clause = strtok(NULL, " ");
+				FILEAM_VERIFY_CLAUSE(clause, "not");
+				clause = strtok(NULL, " ");
+				FILEAM_VERIFY_CLAUSE(clause, "null");
+				
+				/* get the fnn attr list */
+				value = strtok(NULL, " ");
+
+				if(!SplitIdentifierString(value, ',', &temp))
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid list syntax for \"force not null\"")));
+				}
+				
+				/* wrap each string of temp inside a Value node and copy to 
+				 * force_notnull so that later CopyGetAttnums could use it 
+				 */ 
+				foreach(l, temp)
+				{
+					Value *val = makeString((char *)lfirst(l));
+					pstate->force_notnull = lappend(pstate->force_notnull, val);
+				}
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("internal parse error at end of format string. got \"%s\"", clause)));
+			}
 		}
 		else
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("internal parse error. expected \"header\" or"
-							 "\"fill missing fields\", got \"%s\"", clause)));
+			break;
 		}
 	}
 
@@ -1099,7 +1158,23 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 
 	/* Generate or convert list of attributes to process */
 	pstate->attnumlist = CopyGetAttnums(tupDesc, relation, NIL);
-    
+
+	/* Convert FORCE NOT NULL name list to per-column flags, check validity */
+	pstate->force_notnull_flags = (bool *) palloc0(tupDesc->natts * sizeof(bool));
+	if (pstate->force_notnull)
+	{
+		List	   *attnums;
+		ListCell   *cur;
+		
+		attnums = CopyGetAttnums(tupDesc, relation, pstate->force_notnull);
+		
+		foreach(cur, attnums)
+		{
+			int			attnum = lfirst_int(cur);			
+			pstate->force_notnull_flags[attnum - 1] = true;
+		}
+	}
+
     /*
 	 * Create a temporary memory context that we can reset once per row to
 	 * recover palloc'd memory.  This avoids any problems with leaks inside

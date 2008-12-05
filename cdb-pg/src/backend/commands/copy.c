@@ -1304,6 +1304,9 @@ DoCopy(const CopyStmt *stmt)
 								NameStr(tupDesc->attrs[attnum - 1]->attname))));
 			cstate->force_notnull_flags[attnum - 1] = true;
 		}
+		
+		/* keep the raw version too, we will need it later */
+		cstate->force_notnull = force_notnull;
 	}
 	
 	/*
@@ -2207,10 +2210,8 @@ static void CopyCreateDispatchCommand(CopyState cstate,
 				continue;
 			
 			/* append column string. quote it if needed */
-			if (is_first_col)
-				appendStringInfo(cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
-			else
-				appendStringInfo(cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
+			appendStringInfo(cdbcopy_cmd, (is_first_col ? "%s" : ",%s"), 
+							 quote_identifier(NameStr(attr[m]->attname)));
 
 			is_first_col = false;
 		}
@@ -2254,11 +2255,9 @@ static void CopyCreateDispatchCommand(CopyState cstate,
 					continue;
 				
 				/* append column string. quote it if needed */
-				if (is_first_col)
-					appendStringInfo(cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
-				else
-					appendStringInfo(cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[defmap[i]]->attname)));
-				
+				appendStringInfo(cdbcopy_cmd, (is_first_col ? "%s" : ",%s"), 
+								 quote_identifier(NameStr(attr[defmap[i]]->attname)));
+
 				extra_attr_count++;
 				is_first_col = false;			
 			}
@@ -2296,6 +2295,22 @@ static void CopyCreateDispatchCommand(CopyState cstate,
 		appendStringInfo(cdbcopy_cmd, " QUOTE AS E'%s'", escape_quotes(cstate->quote));
 		appendStringInfo(cdbcopy_cmd, " ESCAPE AS E'%s'", escape_quotes(cstate->escape));
 
+		if(cstate->force_notnull)
+		{
+			ListCell   *l;
+			
+			is_first_col = true;
+			appendStringInfo(cdbcopy_cmd, " FORCE NOT NULL");
+			
+			foreach(l, cstate->force_notnull)
+			{
+				const char	   *col_name = strVal(lfirst(l));
+
+				appendStringInfo(cdbcopy_cmd, (is_first_col ? " %s" : ",%s"), 
+								 quote_identifier(col_name));
+				is_first_col = false;
+			}
+		}
 		/* do NOT include HEADER. Header row is "swallowed" by dispatcher COPY */
 	}
 	
@@ -5672,6 +5687,7 @@ attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
 												  typioparams[m],
 												  attr_descs[m]->atttypmod);
 
+					attr_nulls[m] = false;
 					cstate->cur_attname = NULL;
 				}		/* end if (!isnull) */
 

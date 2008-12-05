@@ -17446,7 +17446,9 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	bool header_line = false;
 	bool csv_mode;
 	bool fill_missing = false;
+	List *force_notnull = NIL;
 	Size len;
+	StringInfoData fnn;
 	
 	Assert(formattype == 'c' || formattype == 't');
 	
@@ -17499,10 +17501,11 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 		}
 		else if (strcmp(defel->defname, "force_notnull") == 0)
 		{
-			/* MPP-3502: disable for now */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("FORCE NOT NULL not yet implemented")));
+			if (force_notnull)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			force_notnull = (List *) defel->arg;
 		}
 		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
 		{
@@ -17536,7 +17539,29 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	
 	if (!csv_mode && !escape)
 		escape = "\\";			/* default escape for text mode */
+	
+	/*
+	 * re-construct the FORCE NOT NULL list string.
+	 * TODO: is there no existing util function that does this? can't find.
+	 */
+	if(force_notnull)
+	{
+		ListCell   *l;
+		bool 		is_first_col = true;
 		
+		initStringInfo(&fnn);
+		appendStringInfo(&fnn, " force not null");		
+		
+		foreach(l, force_notnull)
+		{
+			const char	   *col_name = strVal(lfirst(l));
+
+			appendStringInfo(&fnn, (is_first_col ? " %s" : ",%s"), 
+							 quote_identifier(col_name));
+			is_first_col = false;
+		}
+	}
+
 	/* verify all user supplied control char combinations are legal */
 	ValidateControlChars(false,
 						 true, 
@@ -17545,8 +17570,8 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 						 null_print, 
 						 quote, 
 						 escape,
-						 NIL, 
-						 NIL,
+						 NIL, /* not yet supported */
+						 force_notnull,
 						 header_line);	
 
 	/*
@@ -17565,7 +17590,8 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 
 	len += header_line ? strlen(" header") : 0;	
 	len += fill_missing ? strlen(" fill missing fields") : 0;
-	
+	len += force_notnull ? strlen(fnn.data) : 0;
+			
 	/* +1 leaves room for sprintf's trailing null */
 	format_str = (char *) palloc(len + 1);
 	
@@ -17578,9 +17604,10 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 			break;	
 			
 		case 'c':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s", 
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s%s", 
 					delim, null_print, escape, quote, (header_line ? " header" : ""),
-					(fill_missing ? " fill missing fields":""));
+					(fill_missing ? " fill missing fields":""),
+					(force_notnull ? fnn.data :""));
 			break;
 			
 		default:

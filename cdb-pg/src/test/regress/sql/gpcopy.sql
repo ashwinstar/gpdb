@@ -441,6 +441,46 @@ COPY copy_regression_fill2 from stdin with csv delimiter '|' fill missing fields
 DROP TABLE copy_regression_fill1;
 DROP TABLE copy_regression_fill2;
 
+-- ######################################################
+-- FORCE NOT NULL
+-- ######################################################
+
+CREATE TABLE copy_regression_fnn(a text, b text, c text) distributed by(a);
+
+COPY copy_regression_fnn from stdin with csv;
+one,,one
+two,,
+\.
+SELECT * FROM copy_regression_fnn WHERE b is null order by a;
+SELECT * FROM copy_regression_fnn WHERE c is null order by a;
+TRUNCATE copy_regression_fnn;
+
+COPY copy_regression_fnn from stdin with csv force not null b;
+one,,one
+two,,
+\.
+SELECT * FROM copy_regression_fnn WHERE b is null order by a;
+SELECT * FROM copy_regression_fnn WHERE c is null order by a;
+TRUNCATE copy_regression_fnn;
+
+COPY copy_regression_fnn from stdin with csv force not null b,c;
+one,,one
+two,,
+\.
+SELECT * FROM copy_regression_fnn WHERE b is null order by a;
+SELECT * FROM copy_regression_fnn WHERE c is null order by a;
+TRUNCATE copy_regression_fnn;
+
+-- now combine with fill missing fields
+COPY copy_regression_fnn from stdin with csv fill missing fields force not null b;
+one,,one
+two,
+\.
+SELECT * FROM copy_regression_fnn WHERE b is null order by a;
+SELECT * FROM copy_regression_fnn WHERE c is null order by a;
+
+DROP TABLE copy_regression_fnn;
+
 -- ###########################################################
 -- distributed data error consolidation + original row numbers
 -- ###########################################################

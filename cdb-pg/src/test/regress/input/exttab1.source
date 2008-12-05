@@ -221,11 +221,25 @@ create external table ext_fill2(a int, b int, c int)
 location('gpfdist://@hostname@:7070/missing_fields2.data' )
 format 'text' ( delimiter '|' fill missing fields);
 
+-- also test force not null in addition to fill empty fields
+create external table ext_fill3_fnn(a text, b text, c text)
+location('gpfdist://@hostname@:7070/missing_fields1.data' )
+format 'csv' ( delimiter '|' fill missing fields force not null c);
+
+create external table ext_fill4_fnn(a text, b text, c text)
+location('gpfdist://@hostname@:7070/missing_fields1.data' )
+format 'csv' ( delimiter '|' fill missing fields force not null b,c);
+
 select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
 select * from ext_fill2 order by a,b,c; -- should fail due to empty data line
+select * from ext_fill3_fnn where c is null; -- should be empty
+select * from ext_fill3_fnn where b is null; -- one row result
+select * from ext_fill4_fnn where c is null or b is null; -- should be empty
 
 drop external table ext_fill1;
 drop external table ext_fill2;
+drop external table ext_fill3_fnn;
+drop external table ext_fill4_fnn;
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------
