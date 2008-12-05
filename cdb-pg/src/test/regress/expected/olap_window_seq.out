@@ -7578,9 +7578,9 @@ insert into wintest values(1);
 update wintest set i = count(*) over (order by i);
 ERROR:  cannot use window function in UPDATE
 -- domain suport
-create domain wintestd as int default count(*) over (order by i);
+create domain wintestd as int default count(*) over ();
 ERROR:  cannot use window function in default expression
-create domain wintestd as int check (value < count(*) over (order by i));
+create domain wintestd as int check (value < count(*) over ());
 ERROR:  cannot use window function in check constraint
 drop table wintest;
 -- MPP-3295

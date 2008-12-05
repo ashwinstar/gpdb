@@ -8314,14 +8314,14 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	/* process the FROM clause */
 	transformFromClause(pstate, stmt->fromClause);
 
+	/* tidy up expressions in window clauses */
+	transformWindowSpecExprs(pstate);
+
 	/* transform targetlist */
 	qry->targetList = transformTargetList(pstate, stmt->targetList);
 
 	/* mark column origins */
 	markTargetListOrigins(pstate, qry->targetList);
-
-	/* tidy up expressions in window clauses */
-	transformWindowSpecExprs(pstate);
 
 	/* transform WHERE */
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");

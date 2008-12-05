@@ -976,8 +976,14 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 		}
 		else if ( sinfo->frame != NULL )
 		{
-			sinfo->frame->lead = adjustFrameBound(sinfo->frame->lead, sinfo->frame->is_rows);
-			sinfo->frame->trail = adjustFrameBound(sinfo->frame->trail, sinfo->frame->is_rows);
+			if (sinfo->frame->lead &&
+				sinfo->frame->lead->kind != WINDOW_DELAYED_BOUND_PRECEDING &&
+				sinfo->frame->lead->kind != WINDOW_DELAYED_BOUND_FOLLOWING)
+				sinfo->frame->lead = adjustFrameBound(sinfo->frame->lead, sinfo->frame->is_rows);
+			if (sinfo->frame->trail &&
+				sinfo->frame->trail->kind != WINDOW_DELAYED_BOUND_PRECEDING &&
+				sinfo->frame->trail->kind != WINDOW_DELAYED_BOUND_FOLLOWING)
+				sinfo->frame->trail = adjustFrameBound(sinfo->frame->trail, sinfo->frame->is_rows);
 		}
 		
 		sinfo->refset = bms_add_member(sinfo->refset, i);

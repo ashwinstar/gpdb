@@ -1302,8 +1302,8 @@ insert into wintest values(1);
 update wintest set i = count(*) over (order by i);
 
 -- domain suport
-create domain wintestd as int default count(*) over (order by i);
-create domain wintestd as int check (value < count(*) over (order by i));
+create domain wintestd as int default count(*) over ();
+create domain wintestd as int check (value < count(*) over ());
 
 drop table wintest;
 

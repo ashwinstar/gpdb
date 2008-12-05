@@ -806,6 +806,58 @@ checkExprHasGroupExtFuncs(Node *node)
 }
 
 /*
+ * transformWindowSpec
+ *
+ * Transform the expression inside a "WindowSpec" structure.
+ */
+void
+transformWindowSpec(ParseState *pstate, WindowSpec *spec)
+{
+	ListCell *lc2;
+	List *new = NIL;
+
+	foreach(lc2, spec->partition)
+		{
+			Node *n = (Node *)lfirst(lc2);
+			SortBy *sb;
+
+			Assert(IsA(n, SortBy));
+
+			sb = (SortBy *)n;
+
+			sb->node = (Node *)transformExpr(pstate, sb->node);
+			new = lappend(new, (void *)sb);
+		}
+	spec->partition = new;
+		
+	new = NIL;
+	foreach(lc2, spec->order)
+		{
+			Node *n = (Node *)lfirst(lc2);
+			SortBy *sb;
+
+			Assert(IsA(n, SortBy));
+
+			sb = (SortBy *)n;
+
+			sb->node = (Node *)transformExpr(pstate, sb->node);
+			new = lappend(new, (void *)sb);
+		}
+	spec->order = new;
+
+	if (spec->frame)
+	{
+		WindowFrame *frame = spec->frame;
+
+		if (frame->trail)
+			frame->trail->val = transformExpr(pstate, frame->trail->val);
+		if (frame->lead)
+			frame->lead->val = transformExpr(pstate, frame->lead->val);
+
+	}
+}
+
+/*
  * transformWindowSpecExprs
  *
  * Do a quick pre-process of WindowSpecs to transform expressions into
@@ -819,48 +871,7 @@ transformWindowSpecExprs(ParseState *pstate)
 	foreach(lc, pstate->p_win_clauses)
 	{
 		WindowSpec *s = (WindowSpec *)lfirst(lc);
-		ListCell *lc2;
-		List *new = NIL;
-
-		foreach(lc2, s->partition)
-		{
-			Node *n = (Node *)lfirst(lc2);
-			SortBy *sb;
-
-			Assert(IsA(n, SortBy));
-
-			sb = (SortBy *)n;
-
-			sb->node = (Node *)transformExpr(pstate, sb->node);
-			new = lappend(new, (void *)sb);
-		}
-		s->partition = new;
-		
-		new = NIL;
-		foreach(lc2, s->order)
-		{
-			Node *n = (Node *)lfirst(lc2);
-			SortBy *sb;
-
-			Assert(IsA(n, SortBy));
-
-			sb = (SortBy *)n;
-
-			sb->node = (Node *)transformExpr(pstate, sb->node);
-			new = lappend(new, (void *)sb);
-		}
-		s->order = new;
-
-		if (s->frame)
-		{
-			WindowFrame *frame = s->frame;
-
-			if (frame->trail)
-				frame->trail->val = transformExpr(pstate, frame->trail->val);
-			if (frame->lead)
-				frame->lead->val = transformExpr(pstate, frame->lead->val);
-
-		}
+		transformWindowSpec(pstate, s);
 	}
 }
 
