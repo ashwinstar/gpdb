@@ -432,6 +432,8 @@ class gpload:
         Configure ourselves
         """
 
+        # ensure output is of type list
+        self.getconfig('gpload:output', list)
         self.table = self.getconfig('gpload:output:table',str)
 
         # Precendence for configuration: command line > config file > env
