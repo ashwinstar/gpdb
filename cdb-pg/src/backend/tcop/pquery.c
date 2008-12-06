@@ -36,6 +36,8 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
+#include "utils/acl.h"
+#include "catalog/catalog.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -242,11 +244,27 @@ ProcessQuery(Portal portal,
 		{
 			Relation truncRel;
 
-			truncOid = rte->relid;
+			/*
+			 * acquire the lock required by Truncate.
+			 *
+			 * We only want to set the truncOid if we think the
+			 * truncate will not return an error (we have to be
+			 * the owner of the table, for instance).
+			 */
+			truncRel = heap_open(rte->relid, AccessExclusiveLock);
+			do
+			{
+				if (truncRel->rd_rel->relkind != RELKIND_RELATION ||
+					!pg_class_ownercheck(RelationGetRelid(truncRel), GetUserId()) ||
+					(!allowSystemTableMods && IsSystemRelation(truncRel)))
+				{
+					heap_close(truncRel, AccessExclusiveLock);
+					break;
+				}
 
-			/* acquire the lock required by Truncate. */
-			truncRel = heap_open(truncOid, AccessExclusiveLock);
-			heap_close(truncRel, NoLock);
+				truncOid = rte->relid;
+				heap_close(truncRel, NoLock);
+			} while (0);
 		}
 	}
 
