@@ -355,18 +355,23 @@ class gpload:
         """
         Level is either DEBUG, LOG, INFO, ERROR. a is the message
         """
-        if level <= self.options.qv:
-            t = time.localtime()
-            str = '|'.join(
+        t = time.localtime()
+        str = '|'.join(
                        [datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
                         self.elevel2str(level), a]) + '\n'
-            if self.logfile:
-                self.logfile.write(str)
-                self.logfile.flush()
+
+        # only write up to LOG to the logfile, unless log level is DEBUG
+        if self.logfile and (level <= self.LOG or self.options.qv ==
+                             self.DEBUG):
+
+            self.logfile.write(str)
+            self.logfile.flush()
+    
+        if level <= self.options.qv:
                 sys.stdout.write(str)
 
-            if level == self.ERROR:
-                sys.exit(2)
+        if level == self.ERROR:
+            sys.exit(2)
 
     def getconfig(self,a,typ=None,default='error',extraStuff=''):
         """
