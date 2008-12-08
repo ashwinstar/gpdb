@@ -1058,13 +1058,15 @@ typedef struct DomainConstraintState
 
 typedef struct PlanState
 {
-	NodeTag		type;
+	NodeTag	   type;
 
 	Plan	   *plan;			/* associated Plan node */
 
 	EState	   *state;			/* at execution time, state's of individual
 								 * nodes point to one EState for the whole
 								 * top-level plan */
+
+	bool 	fHadSentGpmon;
 
 	/*
 	 * Common structural data for all Plan types.  These links to subsidiary

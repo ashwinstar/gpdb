@@ -50,7 +50,7 @@ static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoDa
  *		This is a workhorse for ExecFunctionScan
  * ----------------------------------------------------------------
  */
-static TupleTableSlot *
+	static TupleTableSlot *
 FunctionNext(FunctionScanState *node)
 {
 	TupleTableSlot *slot;
@@ -82,25 +82,25 @@ FunctionNext(FunctionScanState *node)
 				&funcTupdesc);
 		node->tuplestorestate = tuplestorestate;
 
-        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
-        if (node->ss.ps.instrument)
-        {
-            /* Let the tuplestore share our Instrumentation object. */
-            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+		/* CDB: Offer extra info for EXPLAIN ANALYZE. */
+		if (node->ss.ps.instrument)
+		{
+			/* Let the tuplestore share our Instrumentation object. */
+			tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
 
-            /* Request a callback at end of query. */
-            node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
-        }
+			/* Request a callback at end of query. */
+			node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
+		}
 
-        /* CDB: Offer extra info for EXPLAIN ANALYZE. */
-        if (node->ss.ps.instrument)
-        {
-            /* Let the tuplestore share our Instrumentation object. */
-            tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
+		/* CDB: Offer extra info for EXPLAIN ANALYZE. */
+		if (node->ss.ps.instrument)
+		{
+			/* Let the tuplestore share our Instrumentation object. */
+			tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
 
-            /* Request a callback at end of query. */
-            node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
-        }
+			/* Request a callback at end of query. */
+			node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
+		}
 
 		/*
 		 * If function provided a tupdesc, cross-check it.	We only really
@@ -126,29 +126,29 @@ FunctionNext(FunctionScanState *node)
 	 */
 	slot = node->ss.ss_ScanTupleSlot;
 	if (tuplestore_gettupleslot(tuplestorestate, 
-								ScanDirectionIsForward(direction),
-								slot))
+				ScanDirectionIsForward(direction),
+				slot))
 	{
-        /* CDB: Label each row with a synthetic ctid for subquery dedup. */
-        if (node->cdb_want_ctid)
-        {
-            HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
+		/* CDB: Label each row with a synthetic ctid for subquery dedup. */
+		if (node->cdb_want_ctid)
+		{
+			HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
 
-            /* Increment 48-bit row count */
-            node->cdb_fake_ctid.ip_posid++;
-            if (node->cdb_fake_ctid.ip_posid == 0)
-                ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
-                                          1 + ItemPointerGetBlockNumber(&node->cdb_fake_ctid));
+			/* Increment 48-bit row count */
+			node->cdb_fake_ctid.ip_posid++;
+			if (node->cdb_fake_ctid.ip_posid == 0)
+				ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
+						1 + ItemPointerGetBlockNumber(&node->cdb_fake_ctid));
 
-            tuple->t_self = node->cdb_fake_ctid;
-        }
-    }
+			tuple->t_self = node->cdb_fake_ctid;
+		}
+	}
 
-   	if (!TupIsNull(slot))
-        {
-     		Gpmon_M_Incr_Rows_Out(GpmonPktFromFuncScanState(node));
-                CheckSendPlanStateGpmonPkt(&node->ss.ps);
-        }
+	if (!TupIsNull(slot))
+	{
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromFuncScanState(node));
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
+	}
 	return slot;
 }
 

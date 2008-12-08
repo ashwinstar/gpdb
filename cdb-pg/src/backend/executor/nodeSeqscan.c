@@ -531,13 +531,21 @@ void CheckSendPlanStateGpmonPkt(PlanState *ps)
 
 	if(gp_enable_gpperfmon)
 	{
-		if(ps->gpmon_plan_tick != gpmon_tick)
+		if(!ps->fHadSentGpmon)
 		{
-			if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
-				gpmon_send(&ps->gpmon_pkt);
+			gpmon_send(&ps->gpmon_pkt);
+			ps->fHadSentGpmon = true;
 		}
+		else
+		{
+			if(ps->gpmon_plan_tick != gpmon_tick)
+			{
+				if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
+					gpmon_send(&ps->gpmon_pkt);
+			}
 
-		ps->gpmon_plan_tick = gpmon_tick;
+			ps->gpmon_plan_tick = gpmon_tick;
+		}
 	}
 }
 

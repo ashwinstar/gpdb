@@ -417,6 +417,9 @@ ExecProcNode(PlanState *node)
 	if (node->instrument)
 		InstrStartNode(node->instrument);
 
+	if(!node->fHadSentGpmon)
+		CheckSendPlanStateGpmonPkt(node);
+		
 	switch (nodeTag(node))
 	{
 			/*
