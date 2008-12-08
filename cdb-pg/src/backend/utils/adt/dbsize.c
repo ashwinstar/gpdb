@@ -193,8 +193,8 @@ pg_database_size_oid(PG_FUNCTION_ARGS)
 		appendStringInfo(&buffer, "select pg_database_size(%u)", dbOid);
 		
 		size += get_size_from_segDBs(buffer.data);
-		
 	}
+
 	PG_RETURN_INT64(size);
 }
 
@@ -222,8 +222,8 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 		appendStringInfo(&buffer, "select pg_database_size('%s')", quote_identifier(NameStr(*dbName)));
 		
 		size += get_size_from_segDBs(buffer.data);
-		
 	}
+
 	PG_RETURN_INT64(size);
 }
 
@@ -303,8 +303,8 @@ pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 		appendStringInfo(&buffer, "select pg_tablespace_size(%u)", tblspcOid);
 		
 		size += get_size_from_segDBs(buffer.data);
-		
 	}
+
 	PG_RETURN_INT64(size);
 }
 
@@ -332,8 +332,8 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 		appendStringInfo(&buffer, "select pg_tablespace_size('%s')", quote_identifier(NameStr(*tblspcName)));
 		
 		size += get_size_from_segDBs(buffer.data);
-		
 	}
+
 	PG_RETURN_INT64(size);
 }
 
@@ -346,7 +346,7 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
  * in number, and so we must check for all possibly existing AO relfiles
  * and calculate their size as well (0 >= segno < MAX_AOREL_CONCURRENCY)
  */
- static int64
+static int64
 calculate_relation_size(RelFileNode *rfn)
 {
 	int64		totalsize = 0;
@@ -384,6 +384,7 @@ calculate_relation_size(RelFileNode *rfn)
 						 errmsg("could not stat file \"%s\": %m", pathname)));				
 			}
 		}
+
 		totalsize += fst.st_size;
 	}
 		
@@ -403,8 +404,6 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 		size = 0;
 	else
 		size = calculate_relation_size(&(rel->rd_node));
-
-	relation_close(rel, AccessShareLock);
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -431,6 +430,8 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 		size += get_size_from_segDBs(buffer.data);
 	}
 
+	relation_close(rel, AccessShareLock);
+
 	PG_RETURN_INT64(size);
 }
 
@@ -456,8 +457,8 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 		AcceptInvalidationMessages();
 		
 		namespaceId =  GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum(relrv->schemaname),
-								 0, 0, 0);
+									  CStringGetDatum(relrv->schemaname),
+									  0, 0, 0);
 		relOid = get_relname_relid(relrv->relname, namespaceId);
 		
 		if (relOid == InvalidOid)
@@ -476,8 +477,6 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 		size = 0;
 	else
 		size = calculate_relation_size(&(rel->rd_node));
-
-	relation_close(rel, AccessShareLock);
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -492,12 +491,11 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 		appendStringInfo(&buffer, "select pg_relation_size('%s')", rawname);
 		
 		size += get_size_from_segDBs(buffer.data);
-		
 	}
 
+	relation_close(rel, AccessShareLock);
 
 	PG_RETURN_INT64(size);
-	
 }
 
 
