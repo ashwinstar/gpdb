@@ -837,7 +837,7 @@ class gpload:
         p = Progress(self,self.ports)
         p.start()
         self.threads.append(p)
-        self.log(self.DEBUG, sql)
+        self.log(self.LOG, sql)
         if not self.options.D:
             try:
                 self.pg8000.execute(sql)
@@ -913,7 +913,7 @@ class gpload:
                          update_condition)
             match.append(update_condition)
         sql += 'where %s '%' and '.join(match)
-        self.log(self.DEBUG, sql)
+        self.log(self.LOG, sql)
         if not self.options.D:
             try:
                 self.pg8000.execute(sql)
@@ -979,7 +979,7 @@ class gpload:
 
         sql = 'create temp table temp_%s(like %s)' % \
               (self.name, self.table)
-        self.log(self.DEBUG, sql)
+        self.log(self.LOG, sql)
 
         if not self.options.D:
             self.cleanupSql.append('drop table if exists temp_%s'%self.name)
@@ -1014,7 +1014,7 @@ class gpload:
         sql += 'where %s '%' and '.join(where)
         sql += 'and gpload_row_number=1 '
         sql += ')'
-        self.log(self.DEBUG, sql)
+        self.log(self.LOG, sql)
         if not self.options.D:
             self.pg8000.execute(sql)
 
