@@ -37,6 +37,8 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
+#include "utils/pg_locale.h"
+#include "utils/builtins.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
@@ -1488,7 +1490,8 @@ typedef struct
 typedef struct
 {
 	Datum		value;			/* a data value */
-	int			tupno;			/* position index for tuple it came from */
+	int		tupno;			/* position index for tuple it came from */
+	void 		*ptr;			/* a ptr for str sort */
 } ScalarItem;
 
 typedef struct
@@ -1501,7 +1504,8 @@ typedef struct
 {
 	FmgrInfo   *cmpFn;
 	SortFunctionKind cmpFnKind;
-	int		   *tupnoLink;
+	int	   *tupnoLink;
+	bool       fStrCmp;
 } CompareScalarsContext;
 
 
@@ -2038,12 +2042,83 @@ compute_scalar_stats(VacAttrStatsP stats,
 		int			slot_idx = 0;
 		CompareScalarsContext cxt;
 
-		/* Sort the collected values */
 		cxt.cmpFn = &f_cmpfn;
 		cxt.cmpFnKind = cmpFnKind;
 		cxt.tupnoLink = tupnoLink;
-		qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
-				  compare_scalars, (void *) &cxt);
+
+		if(!lc_collate_is_c() && (
+				f_cmpfn.fn_addr == bpcharcmp || 
+				f_cmpfn.fn_addr == bttextcmp)
+		  )
+		{
+
+			char *p = NULL;
+			void *tofree = NULL;
+			int len;
+			int llen;
+			int i;
+
+			char cbuf[512];
+			char *pbuf = cbuf;
+			int avail = 512;
+
+			cxt.fStrCmp = true;
+
+			/* Now prepare all the char ptrs */
+			for(i=0; i<values_cnt; ++i)
+			{
+				varattrib_untoast_ptr_len(values[i].value, &p, &len, &tofree); 
+
+				if(f_cmpfn.fn_addr == bpcharcmp)
+					for(; len > 1 && p[len] == ' '; --len)
+
+				if(len > avail - 2)
+				{
+					if(pbuf != cbuf)
+						pfree(pbuf);
+
+					pbuf = palloc(len + 2);
+					avail = len + 2;
+				}
+
+				memcpy(pbuf, p, len);
+				pbuf[len] = '\0';
+
+				values[i].ptr = palloc(len * 3);
+				llen = (int) strxfrm(values[i].ptr, pbuf, len * 3);
+				if(llen >= len * 3)
+				{
+					values[i].ptr = repalloc(values[i].ptr, llen);
+					len = llen;
+					llen = (int) strxfrm(values[i].ptr, pbuf, len);
+					Assert(llen <= len);
+				}
+
+				if(tofree)
+					pfree(tofree);
+			}
+
+			if(pbuf != cbuf)
+				pfree(pbuf);
+
+			qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
+					compare_scalars, (void *) &cxt);
+			
+			for(i=0; i<values_cnt; ++i)
+			{
+				Assert(values[i].ptr);
+				pfree(values[i].ptr);
+				values[i].ptr = NULL;
+			}
+		}
+		else
+		{
+			cxt.fStrCmp = false;
+			qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
+					compare_scalars, (void *) &cxt);
+		}
+
+
 
 		/*
 		 * Now scan the values in order, find the most common ones, and also
@@ -2410,8 +2485,40 @@ compare_scalars(const void *a, const void *b, void *arg)
 	CompareScalarsContext *cxt = (CompareScalarsContext *) arg;
 	int32		compare;
 
-	compare = ApplySortFunction(cxt->cmpFn, cxt->cmpFnKind,
-								da, false, db, false);
+	if(cxt->fStrCmp)
+	{
+		/* Compare two str.  First we do the strcmp of the collate converted str.
+		 * if they are equal, we break tie by byte compare original datum.
+		 * 
+		 * See varstr_cmp.
+		 */
+		compare = strcmp(((ScalarItem *) a)->ptr, ((ScalarItem *) b)->ptr);
+		if(compare == 0)
+		{
+			char *p0; void *tofree0; int len0;
+			char *p1; void *tofree1; int len1;
+
+			varattrib_untoast_ptr_len(da, &p0, &len0, &tofree0);
+			varattrib_untoast_ptr_len(db, &p1, &len1, &tofree1);
+
+			if(cxt->cmpFn->fn_addr == bpcharcmp)
+			{
+				for(; len0 > 1 && p0[len0] == ' '; --len0);
+				for(; len1 > 1 && p1[len1] == ' '; --len1);
+			}
+
+			compare = strncmp(p0, p1, Min(len0, len1));
+			if ((compare == 0) && (len0 != len1))
+				compare = (len0 < len1) ? -1 : 1;
+
+			if(tofree0)
+				pfree(tofree0);
+			if(tofree1)
+				pfree(tofree1);
+		}
+	}
+	else
+		compare = ApplySortFunction(cxt->cmpFn, cxt->cmpFnKind, da, false, db, false);
 	if (compare != 0)
 		return compare;
 
