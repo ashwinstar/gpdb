@@ -335,7 +335,49 @@ ProcessQuery(Portal portal,
 			ExecuteTruncate(truncStmt);
 		}
 	}
-    /*
+	
+	/* MPP-4407. Logging number of tuples modified. */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		Oid modifiedRelationOid = -1;
+		RangeTblEntry * rte = NULL;
+		char statement_type[20];
+		switch (parsetree->commandType)
+		{
+			case CMD_SELECT:
+				if (parsetree->into != NULL)
+				{
+					/* CTAS */
+					modifiedRelationOid = parsetree->intoOidInfo.relOid;
+					snprintf(statement_type, sizeof(statement_type), "CTAS");
+				}
+				break;
+			case CMD_INSERT:
+				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+				modifiedRelationOid = rte->relid;
+				snprintf(statement_type, sizeof(statement_type), "INSERT");
+				break;
+			case CMD_UPDATE:
+				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+				modifiedRelationOid = rte->relid;
+				snprintf(statement_type, sizeof(statement_type), "UPDATE");
+				break;
+			case CMD_DELETE:
+				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+				modifiedRelationOid = rte->relid;
+				snprintf(statement_type, sizeof(statement_type), "DELETE");
+				break;
+			default:
+				break;
+		}
+
+		if (modifiedRelationOid != -1)
+		{
+			elog(LOG, "type_of_statement = %s tableoid = %d num_tuples_modified = %u", statement_type, modifiedRelationOid, (uint) queryDesc->es_processed);
+		}
+	}
+
+	/*
 	 * Fix for MPP-4082. If auto-stats is in onchange mode and the
      * number of tuples inserted/deleted/updated is greater than
      * threshold, this will trigger an ANALYZE.

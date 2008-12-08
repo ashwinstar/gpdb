@@ -1518,6 +1518,12 @@ DoCopy(const CopyStmt *stmt)
 	/* Clean up storage (probably not really necessary) */
 	processed = cstate->processed;
 	
+    /* MPP-4407. Logging number of tuples copied */
+	if (Gp_role == GP_ROLE_DISPATCH && is_from && relationOid != -1)
+	{
+		elog(LOG, "type_of_statement = COPY tableoid = %d num_tuples_modified = %u", relationOid, (uint) processed);
+	}
+
     /* 	 Fix for MPP-4082. If auto-stats is in onchange mode and the number */
     /* 	 of tuples inserted/deleted/updated is greater than */
     /* 	 threshold, this will trigger an ANALYZE. */
