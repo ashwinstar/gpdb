@@ -13,7 +13,8 @@
       	import mx.managers.PopUpManager;
       	import mx.core.IFlexDisplayObject;
       	import model.Resources;
-  			
+  	    import mx.utils.ObjectUtil; 	
+  	   			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();	
 	  
@@ -76,29 +77,32 @@
 	public function toggleWatched(item:Object):void
 	{
 		var q:Query = item as Query;
-		q.watched = !q.watched;
-		
-		if (q.watched)
+		if (q)
 		{
-			mdl.queries.watchedQueriesCounts[q.status]++;
-			mdl.queries.watchedQueriesArray.addItem(q);
-		}
-		else
-		{
-			var count:int = 0;
-			for each (var i:Query in mdl.queries.watchedQueriesArray)
+			q.watched = !q.watched;
+			
+			if (q.watched)
 			{
-				if (i.id == q.id)
-				{
-					mdl.queries.watchedQueriesCounts[q.status]--;
-					mdl.queries.watchedQueriesArray.removeItemAt(count);
-					break;
-				}
-				
-				count++;
+				mdl.queries.watchedQueriesCounts[q.status]++;
+				mdl.queries.watchedQueriesArray.addItem(q);
 			}
+			else
+			{
+				var count:int = 0;
+				for each (var i:Query in mdl.queries.watchedQueriesArray)
+				{
+					if (i.id == q.id)
+					{
+						mdl.queries.watchedQueriesCounts[q.status]--;
+						mdl.queries.watchedQueriesArray.removeItemAt(count);
+						break;
+					}
+					
+					count++;
+				}
+			}
+			mdl.queries.updateWatchedQueriesSummary();
 		}
-		mdl.queries.updateWatchedQueriesSummary();
 	}
 
 	  private function toggleQDBar(event:Event):void
@@ -109,7 +113,17 @@
 			mdl.queries.doQueryPlan(mdl.nav.detailQuery);
 	  	}
 	  }
-	  
+
+	  private function CopyToClipboard():void
+	  {
+	  	 if (mdl.nav.detailQuery)
+	  	 {
+	  	 	if (qdToggle.selectedIndex == 0)
+	  	 		System.setClipboard(ObjectUtil.toString(mdl.nav.detailQuery));
+	  	 	else if (qdToggle.selectedIndex == 1)
+	  	 	 	System.setClipboard(ObjectUtil.toString(mdl.queries.queryPlanCurrent));
+	  	 }  	 
+	  }	  
 	
     ]]>
 </mx:Script>	
@@ -176,6 +190,8 @@
 							width="55" headerWordWrap="true"/>
 						<mx:DataGridColumn headerText="Run time" dataField="time_run"
 							width="60" headerWordWrap="true"/>				
+						<mx:DataGridColumn headerText="Rows out" dataField="rows_out"
+							width="55" headerWordWrap="true"/>	
 						<mx:DataGridColumn headerText="CPU %" dataField="cpu_currpct" width="50"/>
 						<mx:DataGridColumn headerText="CPU total" dataField="cpu_elapsed"
 							width="60" headerWordWrap="true"/>
@@ -183,7 +199,7 @@
 							width="60" headerWordWrap="true"/>	
 						<mx:DataGridColumn headerText="CPU skew" dataField="skew_cpu"
 							width="55" headerWordWrap="true"/>	
-						<mx:DataGridColumn headerText="Row Skew" dataField="skew_rows"
+						<mx:DataGridColumn headerText="Row skew" dataField="skew_rows"
 							width="55" headerWordWrap="true"/>	
 						<mx:DataGridColumn headerText="Details" width="45">
 							<mx:itemRenderer>
@@ -216,7 +232,13 @@
 					<mx:ToggleButtonBar id="qdToggle" dataProvider="{queryDetailsStack}" 
 						selectedIndex="{mdl.nav.queryDetailTabPage}"
 				   		itemClick="toggleQDBar(event)"/>
-					<mx:Label text="{'Query ' + mdl.nav.detailQuery.id}" styleName="dashboardTitle"/>	
+					<mx:Label text="{mdl.nav.detailQuery?('Query ' + mdl.nav.detailQuery.id):'No Query Selected'}" 
+						styleName="dashboardTitle"/>	
+					<mx:Spacer width="100%"/>
+					<mx:Label text="Watched"/>
+					<mx:CheckBox selected="{mdl.nav.detailQuery.watched}"
+						click="toggleWatched(mdl.nav.detailQuery)"/>
+					<mx:Button label="Copy to Clipboard" click="CopyToClipboard()"/>	
 				</mx:HBox>	
 			</mx:VBox>
 		

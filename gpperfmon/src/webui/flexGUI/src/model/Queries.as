@@ -129,7 +129,9 @@ package model
 					query.time_run = 0;					
 				}	
 				if (query.time_run > 0)
-					query.cpu_velocity = query.cpu_elapsed / query.time_run;
+				{
+					query.cpu_velocity = Math.round((query.cpu_elapsed*1000.0) / query.time_run)/1000.0;
+				}
 				else
 					query.cpu_velocity = 0;
 

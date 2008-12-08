@@ -24,7 +24,7 @@ package model
  		[Embed(source='assets/img/spyglass_cursor.png')]
    		public static var spyglassCursor:Class;
    		  				
-   		public static var version:String = "Version 2.0.0.0 [Eng Preview F]";
+   		public static var version:String = "Version 2.0.0.0 [Eng Preview G]";
 		
 		public static var copyright:String = "Copyright (c) 2008 Greenplum, Inc. All Rights Reserved";
 
