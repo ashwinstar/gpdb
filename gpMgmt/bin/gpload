@@ -371,9 +371,11 @@ class gpload:
                 sys.stdout.write(str)
 
         if level == self.ERROR:
-            sys.exit(2)
+            print "exiting"
+            self.exitValue = 2;
+            sys.exit(self.exitValue)
 
-    def getconfig(self,a,typ=None,default='error',extraStuff=''):
+    def getconfig(self, a, typ=None, default='error', extraStuff=''):
         """
         Look for a config entry, via a column delimited string. a:b:c points to
         
@@ -484,12 +486,9 @@ class gpload:
             self.options.d = self.getconfig('database',str,None)
         if not self.options.d:
             self.options.d = os.environ.get('PGDATABASE')
-        if not self.options.d or len(self.options.d) == 0:
-            self.log(self.ERROR,
-                       "You need to specify your database with the -d " +
-                       "option or in your configuration or in your " +
-                       "environment as PGDATABASE.")
-            sys.exit(2)
+        if not self.options.d:
+            # like libpq, just inherit USER
+            self.options.d = self.options.U
 
     def start_gpfdists(self):
         """
@@ -1041,7 +1040,7 @@ class gpload:
         self.read_mapping()
         self.start_gpfdists()
         self.do_method()
-        self.log(self.INFO, 'Running time: %.2f seconds'%(time.time()-start))
+        self.log(self.INFO, 'running time: %.2f seconds'%(time.time()-start))
 
     def run(self):
         self.pg8000 = None
@@ -1051,11 +1050,12 @@ class gpload:
             except Exception:
                 traceback.print_exc(file=self.logfile)
                 self.logfile.flush()
-                traceback.print_exc()
+                if (self.options.qv >= self.INFO):
+                    traceback.print_exc()
                 self.exitValue = 2
         finally:
             if self.cleanupSql:
-                self.log(self.LOG, 'Removing temporary data.')
+                self.log(self.LOG, 'removing temporary data.')
                 self.setup_connection()
                 for a in self.cleanupSql:
                     try:
@@ -1066,7 +1066,7 @@ class gpload:
                         self.logfile.flush()
                         traceback.print_exc()
             if self.subprocesses:
-                self.log(self.LOG, 'Killing gpfdist.')
+                self.log(self.LOG, 'killing gpfdist')
                 for a in self.subprocesses:
                     try:
                         os.kill(a.pid,signal.SIGTERM)
@@ -1074,12 +1074,13 @@ class gpload:
                         pass
             for t in self.threads:
                 t.join()
-        if self.exitValue==0:
-            self.log(self.INFO, 'gpload succeeded.')
-        elif self.exitValue==1:
-            self.log(self.INFO, 'gpload succeeded with warnings.')
-        else:
-            self.log(self.INFO, 'gpload failed.')
+
+            if self.exitValue==0:
+                self.log(self.INFO, 'gpload succeeded')
+            elif self.exitValue==1:
+                self.log(self.INFO, 'gpload succeeded with warnings')
+            else:
+                self.log(self.INFO, 'gpload failed')
 
 g = gpload(sys.argv[1:])
 g.run()
