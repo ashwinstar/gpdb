@@ -438,12 +438,9 @@ static inline void FREEMEM(Tuplesortstate_mk *state, int amt)
 
 static Tuplesortstate_mk *tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple);
 static void puttuple_common(Tuplesortstate_mk *state, MKEntry *e); 
-static void inittapes(Tuplesortstate_mk *state, const char* rwfile_prefix);
 static void selectnewtape(Tuplesortstate_mk *state);
 static void mergeruns(Tuplesortstate_mk *state);
-static void mergeonerun(Tuplesortstate_mk *state);
 static void beginmerge(Tuplesortstate_mk *state);
-static void dumptuples(Tuplesortstate_mk *state, bool alltuples);
 static uint32 getlen(Tuplesortstate_mk *state, TuplesortPos_mk *pos, LogicalTape *lt, bool eofOK);
 static void markrunend(Tuplesortstate_mk *state, int tapenum);
 
@@ -480,6 +477,11 @@ static void tuplesort_limit_sort(Tuplesortstate_mk *state);
 
 static void tupsort_refcnt(void *vp, int ref); 
 static void tupsort_cpfr(MKEntry *dst, MKEntry *src, void *ctxt);
+
+/* Declare the following as extern so that older dtrace will not complain */
+extern void inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix);
+extern void dumptuples_mk(Tuplesortstate_mk *state, bool alltuples);
+extern void mergeonerun_mk(Tuplesortstate_mk *state);
 
 #if 0
 static inline bool tupsort_opt_type(Form_pg_attribute attr)
@@ -1093,7 +1095,7 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 			/* If out of work_mem, switch to diskmode */
 			if(LACKMEM(state))
 			{
-				inittapes(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
+				inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
 				Assert(state->status == TSS_BUILDRUNS);
 			}
 			break;
@@ -1146,10 +1148,10 @@ tuplesort_performsort_mk(Tuplesortstate_mk *state)
 				break;
 
 			/* Shareinput sort, need to put this stuff onto disk */
-			inittapes(state, state->pfile_rwfile_prefix);
+			inittapes_mk(state, state->pfile_rwfile_prefix);
 			/* Fall through */
 		case TSS_BUILDRUNS:
-			dumptuples(state, true);
+			dumptuples_mk(state, true);
 
 			if(state->instrument)
 			{
@@ -1458,8 +1460,8 @@ tuplesort_merge_order(long allowedMem)
  *
  * This is called only if we have found we don't have room to sort in memory.
  */
-static void
-inittapes(Tuplesortstate_mk *state, const char* rwfile_prefix)
+void
+inittapes_mk(Tuplesortstate_mk *state, const char* rwfile_prefix)
 {
 	int			maxTapes;
 	int 		j;
@@ -1692,7 +1694,7 @@ mergeruns(Tuplesortstate_mk *state)
 					state->tp_dummy[tapenum]--;
 			}
 			else
-				mergeonerun(state);
+				mergeonerun_mk(state);
 		}
 
 		/* Step D6: decrease level */
@@ -1745,8 +1747,8 @@ mergeruns(Tuplesortstate_mk *state)
  * This is the inner loop of Algorithm D step D5.  We know that the
  * output tape is TAPE[T].
  */
-static void
-mergeonerun(Tuplesortstate_mk *state)
+void
+mergeonerun_mk(Tuplesortstate_mk *state)
 {
 	int			destTape = state->tp_tapenum[state->tapeRange];
 	MKEntry e;
@@ -1984,8 +1986,8 @@ beginmerge(Tuplesortstate_mk *state)
  * only happen at end of input data).  If we see that the tuple run number
  * at the top of the heap has changed, start a new run.
  */
-static void
-dumptuples(Tuplesortstate_mk *state, bool alltuples)
+void
+dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
 {
 	int i;
 	int     bDumped = 0;
