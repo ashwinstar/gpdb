@@ -769,7 +769,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
 def append_pg_hba(host, datadir, new_addr):
     pg_hba = os.path.join(datadir, 'pg_hba.conf')
     for addr in new_addr:
-        (ok, out) = run('%s "echo host all all %s/32 trust" >> %s' % 
+        (ok, out) = run_warn('%s "echo host all all %s/32 trust >> %s"' % 
                         (gplib.ssh_prefix(host=host), 
                          addr, pg_hba))
         if not ok:
