@@ -389,6 +389,18 @@ pkgplr:
 	fi
 
 
+BLD_LDD=ldd
+osx104_x86_LDD=otool -L
+ifneq "$($(BLD_ARCH)_LDD)" ""
+BLD_LDD=$($(BLD_ARCH)_LDD)
+endif
+
+BLD_LDD_FILTER=|awk '{print $$3}' | sort -u | perl -p -i -e 's,^(.*\.so.*),\1\*,'
+osx104_x86_LDD_FILTER=|awk '{print $$1}' | perl -p -i -e 's,^(.*)\.dylib,\1\*\.dylib,'
+ifneq "$($(BLD_ARCH)_LDD_FILTER)" ""
+BLD_LDD_FILTER=$($(BLD_ARCH)_LDD_FILTER)
+endif
+
 libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
 
 copylibs : thirdparty-dist
@@ -421,6 +433,14 @@ copylibs : thirdparty-dist
 	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
+	@lib_wildcards=`$(BLD_LDD) $(INSTLOC)/bin/lib/gpcheckdb | egrep 'libstdc\+\+' $(BLD_LDD_FILTER)` export lib_wildcards; \
+	lib_list=`ls $${lib_wildcards}` export lib_list; \
+	for lib in $${lib_list}; do \
+	  echo "Copying $$lib to $(subst $(CURDIR)/,,$(INSTLOC)/lib)..."; \
+	    if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then echo "...already there."; continue; fi; \
+	    if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
+	    $(call libcopy,`dirname $$lib`,`basename $$lib`,$(INSTLOC)/lib); \
+	done
 ifeq "$(AUTH)" "true"
 	mkdir -p $(INSTLOC)/include
 	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
