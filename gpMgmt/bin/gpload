@@ -235,12 +235,18 @@ def splitPgpassLine(a):
     return b
 
 def test_key(gp, key, crumb):
+    """
+    Make sure that a key is a valid keyword in the configuration grammar and
+    that it appears in the configuration file where we expect -- that is, where
+    it has the parent we expect
+    """
     val = valid_tokens.get(key)
     if val == None:
         gp.log(gp.ERROR, 'unrecognized key: "%s"' % key)
     
     p = val['parent']
 
+    # simplify for when the same keyword can appear in multiple places
     if type(p) != list:
         p = [p]
 
@@ -270,7 +276,7 @@ def yaml_walk(gp, node, crumb):
                 if (len(a) > 1 and val['parse_children'] and
                     (isinstance(a[1], yaml.nodes.MappingNode) or
                      isinstance(a[1], yaml.nodes.SequenceNode))):
-                    crumb.append(a[0].value)
+                    crumb.append(key)
                     yaml_walk(gp, a[1], crumb)
                     crumb.pop()
             elif isinstance(a, yaml.nodes.ScalarNode):
