@@ -535,6 +535,7 @@ void CheckSendPlanStateGpmonPkt(PlanState *ps)
 		{
 			if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
 				gpmon_send(&ps->gpmon_pkt);
+			ps->fHadSentGpmon = true;
 		}
 
 		ps->gpmon_plan_tick = gpmon_tick;
