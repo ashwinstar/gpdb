@@ -877,18 +877,20 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
 		targpage = BufferGetPage(targbuffer);
 		maxoffset = PageGetMaxOffsetNumber(targpage);
-		LockBuffer(targbuffer, BUFFER_LOCK_UNLOCK);
 
 		/* Inner loop over all tuples on the selected page */
 		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
 		{
+			ItemId itemid;
 			HeapTupleData targtuple;
 
+			itemid = PageGetItemId(targpage, targoffset);
+
 			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
-			/* We use heap_release_fetch to avoid useless bufmgr traffic */
-			if (heap_release_fetch(onerel, SnapshotNow,
-								   &targtuple, &targbuffer,
-								   true, NULL))
+			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
+			targtuple.t_len = ItemIdGetLength(itemid);
+
+			if(HeapTupleSatisfiesVisibility(&targtuple, SnapshotNow, targbuffer))
 			{
 				/*
 				 * The first targrows live rows are simply copied into the
@@ -942,7 +944,7 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 		}
 
 		/* Now release the pin on the page */
-		ReleaseBuffer(targbuffer);
+		UnlockReleaseBuffer(targbuffer);
 	}
 
 	/*
