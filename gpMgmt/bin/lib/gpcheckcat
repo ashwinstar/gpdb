@@ -305,6 +305,10 @@ def checkDistribPolicy():
 
     print '-----------------------------------'
     print 'Checking that unique constraints are only on distribution columns'
+
+    # final part of the WHERE clause here is a little tricky: we want to make
+    # sure that the set of distribution columns is a left subset of the
+    # constraint. 
     qry = '''Select  n.nspname, rel.relname,
           pk.conname as constraint
           from pg_constraint pk
@@ -312,7 +316,8 @@ def checkDistribPolicy():
                   join pg_namespace n on (rel.relnamespace = n.oid)
                       join gp_distribution_policy d on (rel.oid = d.localoid)
                       where pk.contype in ('p', 'u') and
-                       (d.attrnums is null or not d.attrnums @> pk.conkey);'''
+                       (d.attrnums is null or not 
+                       d.attrnums <@ pk.conkey[1:array_upper(d.attrnums, 1)]);'''
 
     db.execute(qry)
 
@@ -849,21 +854,39 @@ ORDER BY nspname
 class fileCheckThread(Thread):
     # connect to host and look for oidlist for each segment on the host
     # dirs is a dict mapping segid -> dir
-    def __init__(self, host, dirs, oidlist, env):
+    def __init__(self, host, segs, env):
        self.host = host
-       self.dirs = dirs
-       self.oidlist = oidlist
+       self.segs = segs
        self.env = env
-       self.badoids = []
+       self.badinds = []
        Thread.__init__(self)
 
     def run(self):
         verbose('Checking bitmap indexes on host %s' % self.host)
-        veryverbose('List of OIDs:\n%s' % str(self.oidlist))
 
+        oidsbyseg = {}
+        dboid = 0
+
+        for seg in self.segs:
+            db = connect2(seg)
+            db.execute('''
+    select d.oid as dboid, nspname, relname, relfilenode from 
+    pg_class c, pg_index i, pg_namespace n, pg_am a,
+    pg_database d where c.relam = a.oid and 
+    a.amname = 'bitmap' and i.indexrelid = c.oid and c.relnamespace = n.oid
+    and d.datname = current_database();
+            ''')
+            oidsbyseg[seg['dbid']] = {}
+            for row in db.iterate_dict():
+                dboid = row['dboid']
+                oidsbyseg[seg['dbid']][row['relfilenode']] = row
+
+        
         try:
             cs = ""
-            for segid, dir in self.dirs.iteritems():
+            for seg in self.segs:
+                dir = '%s/base/%s/' % (seg['datadir'], dboid)
+                segid = seg['dbid'];
                 cs += 'cd ' + dir + '; ls -1 | while read file; ' + \
                        'do echo ' + str(segid) + '=$file; done; '
 
@@ -894,41 +917,43 @@ class fileCheckThread(Thread):
 
                         oidseghash[segid][oid] = True
 
-            for segid, dir in self.dirs.iteritems():
+            for seg in self.segs:
+                segid = seg['dbid']
                 if not oidseghash.get(segid):
-                    self.badoids = self.oidlist
+                    for oid, row in oidsbyseg[segid]:
+                        self.badinds.append(row)
                     break
                   
-                for oid in self.oidlist:
+                for oid, row in oidsbyseg[segid].iteritems():
                     oid = int(oid)
                     veryverbose('Checking index oid %s' % oid)
                     if not oidseghash[segid].get(oid):
-                        self.badoids.append(oid)
+                        self.badinds.append(row)
                         verbose('Could not find index with relfilenode %s' % oid)
 
         else:
-            self.badoids = self.oidlist
+            # XXX: fix to set all indexes bad
+            for segid in oidsbyseg:
+                for oid, row in oidsbyseg[segid]:
+                    self.badinds.append(row)
+            pass
 
-        # unique
-        self.badoids = list(set(self.badoids))
 
 def checkBitmapIndexes():
     print '-----------------------------------'
     print 'Checking bitmap indexes'
 
-    c = GV.cfg[1] # master
-    db = connect2(c)
-
+    db = connect2(GV.cfg[1])
     db.execute('''
     select d.oid as dboid, nspname, relname, relfilenode from 
     pg_class c, pg_index i, pg_namespace n, pg_am a,
     pg_database d where c.relam = a.oid and 
     a.amname = 'bitmap' and i.indexrelid = c.oid and c.relnamespace = n.oid
     and d.datname = current_database();
-    ''')
-    rows = []
-    for row in db.iterate_dict():
-        rows.append(row)
+            ''')
+    if db.row_count == 0:
+        print '[OK] not bitmaps to check'
+        return
 
     # same path as gpinitsystem
     path = '/usr/kerberos/bin:/usr/sfw/bin:/opt/sfw/bin'
@@ -946,31 +971,20 @@ def checkBitmapIndexes():
     if mod == 0:
         mod = 1
 
-    oids = {}
-    # build up a map of OIDs to index name
-    dboid = 0;
-    for row in rows:
-        index = '%s.%s' % (row['nspname'], row['relname'])
-        oids[row['relfilenode']] = index
-        dboid = row['dboid']
-
-    badoids = []
+    badinds = []
 
     hostsegmap = {}
-    if dboid:
-        for dbid in GV.cfg:
-            seg = GV.cfg[dbid]
+    for segid in GV.cfg:
+        seg = GV.cfg[segid]
+        if not hostsegmap.get(seg['hostname']):
+            hostsegmap[seg['hostname']] = []
 
-            if hostsegmap.get(seg['hostname']) == None:
-                hostsegmap[seg['hostname']] = {}
-
-            hostsegmap[seg['hostname']][dbid] = '%s/base/%s/' % \
-                    (seg['datadir'], dboid)
+        hostsegmap[seg['hostname']].append(seg)
 
     for host in hostsegmap.keys():
-        dirs = hostsegmap[host]
+        segs = hostsegmap[host]
         # supply just the relfilenodes, not the full mapping
-        thread = fileCheckThread(host, dirs, oids.keys(), env)
+        thread = fileCheckThread(host, segs, env)
         thread.start()
         threads.append(thread)
 
@@ -978,7 +992,7 @@ def checkBitmapIndexes():
             for th in threads:
                 veryverbose('[INFO] waiting on thread %s' % th.getName())
                 th.join()
-                badoids += th.badoids
+                badinds += th.badinds
 
             threads = []
 
@@ -987,17 +1001,21 @@ def checkBitmapIndexes():
         veryverbose('[INFO] waiting on thread %s' % 
                        th.getName())
         th.join()
-        badoids += th.badoids
+        badinds += th.badinds
 
     threads = []
 
-    if badoids:
+    if badinds:
         GV.retcode = 1
         # unique
-        a = list(set(badoids))
+        reindex = []
+
+        for row in badinds:
+            reindex.append(row['nspname'] + '.' + row['relname'])
+
+        a = list(set(reindex))
         print '[ERROR] %d bitmap issue(s)' % len(a)
-        for b in a:
-            index = oids[b]
+        for index in a:
             print '[ERROR] %s' % index
             Reindex.append(index)
 
