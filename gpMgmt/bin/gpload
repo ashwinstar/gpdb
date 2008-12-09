@@ -651,7 +651,7 @@ class gpload:
 
             if not (set(xrange(startPort,endPort+1)) & availablePorts):
                 self.log(self.ERROR,
-                         "no more ports available for gpfdist")
+                         "invalid port")
                 sys.exit(2)
             file = self.getconfig(name+':file',list)
             for i in file:
