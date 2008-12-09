@@ -612,6 +612,7 @@ class gpload:
         self.ports = []
         sourceIndex = 0
         availablePorts = set(xrange(1,65535))
+        found_source = False
 
         self.getconfig('gpload:input', list)
 
@@ -621,6 +622,7 @@ class gpload:
             a = self.getconfig(name,None,None)
             if not a:
                 break
+            found_source = True
             local_hostname = self.getconfig(name+':local_hostname',list, False)
 
             # do default host, the current one
@@ -714,6 +716,9 @@ class gpload:
                     sep = '/'
                 self.locations.append('gpfdist://%s:%d%s%s' % \
                                        (l, port, sep, '%20'.join(file)))
+        if not found_source:
+            self.log(self.ERROR, "configuration file must contain source " +
+                                 "definition")
 
     def readPgpass(self,pgpassname):
         """
