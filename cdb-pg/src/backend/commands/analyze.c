@@ -886,6 +886,13 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 
 			itemid = PageGetItemId(targpage, targoffset);
 
+			if(!ItemIdIsNormal(itemid))
+			{
+				if(ItemIdIsDead(itemid))
+					deadrows += 1;
+				continue;
+			}
+
 			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
 			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 			targtuple.t_len = ItemIdGetLength(itemid);
@@ -2072,7 +2079,10 @@ compute_scalar_stats(VacAttrStatsP stats,
 				varattrib_untoast_ptr_len(values[i].value, &p, &len, &tofree); 
 
 				if(f_cmpfn.fn_addr == bpcharcmp)
+				{
 					for(; len > 1 && p[len] == ' '; --len)
+						;
+				}
 
 				if(len > avail - 2)
 				{

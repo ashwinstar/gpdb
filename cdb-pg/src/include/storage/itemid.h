@@ -30,12 +30,18 @@ typedef ItemIdData *ItemId;
  * lp_flags contains these flags:
  */
 #define LP_USED			0x01	/* this line pointer is being used */
-
 #define LP_DELETE		0x02	/* item is to be deleted */
+#define LP_UNUSED  		0
+#define LP_DEAD                 3
 
 #define ItemIdDeleted(itemId) \
 	(((itemId)->lp_flags & LP_DELETE) != 0)
 
+#define ItemIdIsNormal(itemid) \
+	(((itemid)->lp_flags == LP_USED))
+
+#define ItemIdIsDead(itemid) \
+	(((itemid)->lp_flags == LP_DEAD))
 /*
  * This bit may be passed to PageAddItem together with
  * LP_USED & LP_DELETE bits to specify overwrite mode
