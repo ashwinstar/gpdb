@@ -448,6 +448,7 @@ class LocalPysync:
 		self.work()
 	    except OSError, e:
 		sys.stderr.write(str(e))
+                raise 
 	finally:
 	    if self.p:
                 os.kill(self.p.pid,9)
