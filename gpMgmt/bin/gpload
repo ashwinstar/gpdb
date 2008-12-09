@@ -764,8 +764,11 @@ class gpload:
                                             password=self.options.password,
                                             socket_timeout=None)
         except pg8000.errors.InterfaceError,e:
-            self.log(self.ERROR, "could not connect to database.\n%s"%e)
-            sys.exit(2)
+            if e[0] == "server requesting MD5 password authentication, but no password was provided":
+                self.options.password = getpass.getpass()
+                self.setup_connection()
+            else: 
+                self.log(self.ERROR, "could not connect to database: %s"%e)
 
     def read_columns(self):
         columns = self.getconfig('gpload:input:columns',list,None)
