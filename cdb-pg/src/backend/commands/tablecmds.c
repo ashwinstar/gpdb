@@ -7534,22 +7534,23 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	heap_close(depRel, RowExclusiveLock);
 	
 	policy = rel->rd_cdbpolicy;
-	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED && !hashCompatible)
+	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED && 
+		!hashCompatible)
 	{
 		int			ia = 0;
 
 		if (cdbRelSize(rel->rd_id) != 0)
-		for (ia = 0; ia < policy->nattrs; ia++)
 		{
-			if (attnum == policy->attrs[ia])
+			for (ia = 0; ia < policy->nattrs; ia++)
 			{
-				policy->nattrs = 0;
-				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
-				GpPolicyReplace(rel->rd_id, policy);
-				if (Gp_role != GP_ROLE_EXECUTE)
-					ereport(NOTICE,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Changing the datatype of a column that is part of the distribution policy forces a NULL distribution policy")));
+				if (attnum == policy->attrs[ia])
+				{
+					if (Gp_role != GP_ROLE_EXECUTE)
+						ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot alter type of a column used in "
+									"a distribution policy")));
+				}
 			}
 		}
 	}
