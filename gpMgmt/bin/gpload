@@ -54,6 +54,7 @@ valid_tokens = {
     "null_as": {'parse_children': True, 'parent': "input"},
     "quote": {'parse_children': True, 'parent': "input"}, 
     "encoding": {'parse_children': True, 'parent': "input"},
+    "force_not_null": {'parse_children': False, 'parent': "input"},
     "error_limit": {'parse_children': True, 'parent': "input"}, 
     "error_percent": {'parse_children': True, 'parent': "input"},
     "error_table": {'parse_children': True, 'parent': "input"},
@@ -637,8 +638,13 @@ class gpload:
                 
                 local_hostname = [result[0].strip()]
 
-            port_range = self.getconfig(name+':port_range',list,None)
-            if port_range:
+            port = self.getconfig(name + ':port', int, None)
+            port_range = self.getconfig(name+':port_range', list, None)
+
+            if port:
+                startPort = endPort = port
+                endPort += 1
+            elif port_range:
                 try:
                     startPort = int(port_range[0])
                     endPort = int(port_range[1])
@@ -902,11 +908,11 @@ class gpload:
         if format=='csv':
             sql += "quote as%s"%quote(self.getconfig('gpload:input:quote',str,extraStuff=' for csv formatted data'))
             sql += "escape as%s"%quote(self.getconfig('gpload:input:escape',str,extraStuff=' for csv formatted data'))
-        force_not_null_columns = self.getconfig('gpload:input:force_not_null_columns',list,[])
+        force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
         if force_not_null_columns:
             for i in force_not_null_columns:
                 if type(i)!=str:
-                    self.log(self.ERROR,'gpload:input:force_not_null_columns must be a sequence of strings.')
+                    self.log(self.ERROR,'gpload:input:force_not_null must be a sequence of strings.')
                     sys.exit(2)
             # not yet, see MPP-4254
             #sql += "force not null %s "%','.join(force_not_null_columns)
