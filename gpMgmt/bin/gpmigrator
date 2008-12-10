@@ -16,6 +16,8 @@ import sys, os, signal, subprocess, types, csv
 import optparse, tempfile, re, traceback
 from datetime import date
 from time import localtime, strftime, sleep
+from threading import Thread
+from Queue     import Queue
 import urllib    # for passing strings across gpssh
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -23,14 +25,14 @@ libdir = sys.path[0] + '/lib'
 sys.path.append(libdir)
 try: 
     import pg8000
+#    import paramiko
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
 if sys.version_info < (2, 5, 0):
-    sys.stderr.write(
-'''Error: %s is supported on Python versions 2.5 or greater
-       Please upgrade python installed on this machine.
-''' % EXECNAME)
+    sys.stderr.write("Error: %s is supported on Python versions 2.5 or greater\n" 
+                     "Please upgrade python installed on this machine." 
+                     % EXECNAME)
     sys.exit(1)
 
 
@@ -39,6 +41,7 @@ LOCKEXT       = '.gpmigrator_orig'
 WORKDIR       = 'gpmigrator'
 BACKUPDIR     = 'backup'
 UPGRADEDIR    = 'upgrade'
+PARALLELISM   = 16
 
 
 #============================================================
@@ -80,6 +83,98 @@ class CmdError(StandardError):
         return self.stderr
 
 #============================================================
+class Worker(Thread):
+    def __init__(self, harness):
+        self.harness  = harness
+        self.problems = []
+        Thread.__init__(self)
+
+    # Note that we do not override Thread's __init__ method.
+    # The Queue module makes this not necessary.
+    def run(self):
+
+        # Have our thread serve "forever":
+        while True:
+
+            # Get a client out of the queue
+            task = self.harness.queue.get()
+
+            # tasks placed into the threadpool are tuples with the first
+            # element describing the directive.
+            if task != None:
+                try:
+                    if task[0] == 'EXIT':
+                        self.harness.queue.task_done()
+                        return
+
+                    if task[0] == 'REMOTE':
+                        host = task[1]
+                        cmd  = task[2]
+                 
+#                        # use paramiko to invoke SSH to run the command.
+#                        p = SSHClient()
+#                        p.load_system_host_keys()
+#                        p.connect(host)
+#                        (cin, cout, cerr) = p.exec_command(cmd)
+                        raise UpgradeError('remote thread exec not implemented')
+
+                    elif task[0] == 'LOCAL':
+                        cmd  = task[1]
+                        pipe = subprocess.Popen(cmd, shell=True,
+                                                stdout=subprocess.PIPE,
+                                                stderr=subprocess.PIPE)
+                        result = pipe.communicate()
+                        if pipe.returncode:
+                            raise CmdError(str(cmd), result[0], result[1])
+
+                    else:
+                        raise UpgradeError('Unknown Worker directive: ' + str(task))
+                except BaseException, e:
+                    self.problems.append(e)
+                
+                 # Tell the queue that the task is done
+                sys.stderr.write('.')
+                self.harness.queue.task_done()
+
+class Harness():
+    def __init__(self, size):
+        self.pool  = []
+        self.queue = Queue(size*2)
+        for x in range(size):
+            w = Worker(self)
+            w.start()
+            self.pool.append(w)
+
+    def __del__(self):
+        for w in self.pool:
+            self.queue.put(['EXIT'])
+        self.wait()
+
+    def remoteCommand(self, host, cmd):
+        self.queue.put(['REMOTE', host, cmd])
+
+    def localCommand(self, cmd):
+        self.queue.put(['LOCAL', cmd])
+
+    def wait(self):
+        failed = False
+
+        # Wait until the queue is empty and all tasks complete
+        self.queue.join()
+        sys.stderr.write('\n')
+
+        # Report any errors the threads encountered
+        for w in self.pool:
+            for e in w.problems:
+                self.Log('FATAL', str(e))
+                failed = True
+            w.problems = []
+
+        if failed:
+            raise UpgradeError('Error encountered in threaded execution')
+
+
+#============================================================
 class GPUpgrade:
     '''
     Greenplum Database Upgrade/Downgrade Utility
@@ -108,6 +203,7 @@ class GPUpgrade:
         self.noinit    = False
 
         self.pid       = os.getpid()   # Process ID of the master
+        self.threadpool = None
 
         # Non-master variables
         self.option    = None     # Argument passed to cmd
@@ -153,6 +249,7 @@ class GPUpgrade:
         self.mirrors    = []       # list of mirrors
         self.dbup       = None
         self.interupted = False    # SIGINT recieved
+
 
     #------------------------------------------------------------
     def Setup(self):
@@ -214,6 +311,9 @@ class GPUpgrade:
 
             # Find the SEG_PREFIX (everything except the trailing "-1" on the masterdir)
             self.config['SEG_PREFIX'] = masterdir[:-2]
+
+            # Setup the pool of worker threads
+            self.threadpool = Harness(PARALLELISM)
 
         else:
             self.oldenv = self.SetupEnv(self.oldhome, None)
@@ -381,6 +481,9 @@ class GPUpgrade:
                 self.ReleaseLockdown(self.oldenv)
             except Exception, e:
                 self.Log('FATAL', 'Cleanup failure: ' + str(e))
+
+            if self.threadpool:
+                del self.threadpool
 
 
 
@@ -2267,6 +2370,15 @@ This issue must be resolved before upgrade can complete.
         encoding  = self.config['CLIENT_ENCODING']
         locale    = self.config['LOCALE']
         maxconn   = self.config['MAX_CONNECTIONS']
+
+        # Multiple layers of code (python/ssh/bash/python) combined with
+        # different os/ssh/shell versions make string escaping a big pain.
+        # If we detect that the array name contains anything that would make
+        # quoteing necessary we just punt.  It can be fixed after upgrade
+        # if needed.
+        array_re = re.compile('^\w+$')
+        if not array_re.match(arrayname):
+            arrayname = 'Greenplum_Database'
         
         # We create the master and one segment on the master host as 
         # the initial configuration, then copy the segment to every
@@ -2395,32 +2507,18 @@ This issue must be resolved before upgrade can complete.
                 cmd += ' -D %s' % datadir
                 cmd += ' -G %s' % self.newenv['GPHOME']
 
-                # Launch the remote process
-                #   ! Would be good to add some smarts to limit the
-                #   ! number of processes we spawn
-                self.Log('DEBUG', 'CMD: ' + str(cmd))
-                p = subprocess.Popen(cmd, shell=True, env=self.newenv,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
-                pids.append([p, record])
-            
+                self.threadpool.localCommand(cmd)
+
                 # And copy the target mapping file as well
                 cmd = 'scp %s %s:%s' % (
                     os.path.join(self.workdir, 'dummyseg_target_mapping'),
                     hostname, 
                     os.path.join(workdir, seg+'_target_mapping')
                     )
-                self.RunCmd(cmd)
+                self.threadpool.localCommand(cmd)
 
             # All processes launched, wait for them to finish
-            for tuple in pids:
-                (p, record) = tuple
-                result = p.communicate()
-                if p.returncode:
-                    self.Log('FATAL', result[0])
-                    self.Log('FATAL', result[1])
-                    raise UpgradeError('Error Expanding %s:%s'
-                                       % (record[5], record[7]))
+            self.threadpool.wait()
 
         except Exception, e:
             # Do something smart?
@@ -3428,6 +3526,11 @@ To complete the environment configuration
     else:
         raise Exception('Unknown cmd: ' + str(u.cmd))
 
+    if u.threadpool:
+        t = u.threadpool
+        u.threadpool = None
+        del t
+
 # Any error that can happen
 except KeyboardInterrupt:
     try:    u.Cleanup()
@@ -3478,3 +3581,7 @@ except Exception, e:
     u.Log('FATAL', '***************************************')
     sys.stderr.write(traceback.format_exc())
     sys.exit(1)
+
+# This shouldn't need to be explicit, but if something goes wrong in
+# thread shutdown it forces the issue.
+sys.exit(0)
