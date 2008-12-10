@@ -195,13 +195,14 @@ static void send_machine_metrics(SOCKET sock)
     gpmon_packet_t pkt;
 #if defined (sun)
     kstat_t *ksp = NULL;
+	kstat_named_t *knp = NULL;
     kstat_io_t kio;
 #else /* sun */
     sigar_file_system_usage_t fsusage;
     const char** fsdir;
+	const char** netname;
+	sigar_net_interface_stat_t netstat;
 #endif /* sun */
-    const char** netname;
-    sigar_net_interface_stat_t netstat;
     int cpu_total_diff;
 
     float cpu_norm = 0.0f;
@@ -228,23 +229,57 @@ static void send_machine_metrics(SOCKET sock)
     TR2(("load_avg: %e %e %e\n", loadavg.loadavg[0], loadavg.loadavg[1], loadavg.loadavg[2]));
 
     memset(&tdisk, 0, sizeof(tdisk));
-
+	memset(&tnet, 0, sizeof(tnet));
 #if defined (sun)
     /* libsigar currently doesn't support ZFS, so for now
-       use kstat directly for drive I/O stats */
+       use kstat directly for drive I/O stats 
+	   
+	   Additionally, thumper and thors have network I/O stat
+	   issues with libsigar so we'll pull those from kstat
+	   as well.
+	   
+	   TODO: Fix libsigar (update it?)
+	 */
     kstat_chain_update(kc);
     
     for (ksp = kc->kc_chain; ksp != NULL; ksp = ksp->ks_next)
     {
-        if (ksp->ks_type == KSTAT_TYPE_IO && strcmp(ksp->ks_class, "disk") == 0)
-        {
-            kstat_read(kc, ksp, &kio);
-	    tdisk.reads += kio.reads;
-	    tdisk.writes += kio.writes;
-	    tdisk.write_bytes += kio.nwritten;
-	    tdisk.read_bytes += kio.nread;            
-        }
-    }
+		switch(ksp->ks_type)
+		{
+			case KSTAT_TYPE_IO:
+				if (strcmp(ksp->ks_class, "disk") == 0)
+				{
+					kstat_read(kc, ksp, &kio);
+					tdisk.reads += kio.reads;
+					tdisk.writes += kio.writes;
+					tdisk.write_bytes += kio.nwritten;
+					tdisk.read_bytes += kio.nread;
+				}
+				break;
+			case KSTAT_TYPE_NAMED:
+				if (strcmp(ksp->ks_class, "net") == 0 &&
+					strcmp(ksp->ks_name, "lo0") != 0)
+				{
+					kstat_read(kc, ksp, NULL);
+					knp = kstat_data_lookup(ksp, "obytes");
+					if (knp)
+						tnet.tx_bytes += knp.value.ui64;
+					knp = kstat_data_lookup(ksp, "rbytes");
+					if (knp)
+						tnet.rx_bytes += knp.value.ui64;
+					knp = kstat_data_lookup(ksp, "opackets");
+					if (knp)
+						tnet.tx_packets += knp.value.ui64;
+					knp = kstat_data_lookup(ksp, "ipackets");
+					if (knp)
+						tnet.rx_packets += knp.value.ui64;
+				}
+				break;
+			default:
+				/* not interested */
+				break;
+		}
+	}
 #else /* sun */
     for (fsdir = gx.fslist; *fsdir; fsdir++) {
 	int e = sigar_file_system_usage_get(gx.sigar, *fsdir, &fsusage);
