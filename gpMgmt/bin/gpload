@@ -75,6 +75,21 @@ _abbrevs = [
     (1, ' bytes')
     ]
 
+received_kill = False
+
+def handle_kill(signum, frame):
+    # already dying?
+    global received_kill
+    if received_kill:
+        return
+
+    received_kill = True
+
+    g.log(g.INFO, "received signal %d" % signum)
+    g.exitValue = 2
+    sys.exit(2)
+
+
 def bytestr(size, precision=1):
     """Return a string representing the greek/metric suffix of a size"""
     if size==1:
@@ -594,7 +609,6 @@ class gpload:
                        "You need to specify your username with the -U " +
                        "option or in your configuration or in your " +
                        "environment as PGUSER.")
-            sys.exit(2)
 
         # database to connect to
         if not self.options.d:
@@ -652,7 +666,6 @@ class gpload:
                     self.log(self.ERROR,
                              name+":port_range must be a sequence of " +
                              "two integers.")
-                    sys.exit(2)
             else:
                 startPort = self.getconfig(name+':port',int,8000)
                 endPort = self.getconfig(name+':port',int,9000)
@@ -660,13 +673,11 @@ class gpload:
             if not (set(xrange(startPort,endPort+1)) & availablePorts):
                 self.log(self.ERROR,
                          "invalid port")
-                sys.exit(2)
             file = self.getconfig(name+':file',list)
             for i in file:
                 if type(i)!=str:
                     self.log(self.ERROR,
                              name+":file must be a sequence of strings.")
-                    sys.exit(2)
             popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
                          '-f',' '.join(file)]
             if self.options.qv == self.LOG:
@@ -682,7 +693,6 @@ class gpload:
             except Exception, e:
                 self.log(self.ERROR, "could not run %s: %s" % \
                                 (' '.join(popenList), str(e)))
-                sys.exit(2)
 
             # get all the output from the daemon(s)
             t = CatThread(self,a.stderr)
@@ -694,7 +704,6 @@ class gpload:
                 if line=='':
                     self.log(self.ERROR,'failed to start gpfdist \n' +
                              'gpfdist command line: ' + ' '.join(popenList))
-                    sys.exit(2)
 
                 line = line.strip('\n')
                 self.log(self.LOG,'gpfdist says: ' + line)
@@ -716,7 +725,6 @@ class gpload:
                     self.log(self.ERROR,
                              name + ":local_hostname must be a sequence " +
                                "of strings.")
-                    sys.exit(2)
                 sep = ''
                 if file[0] != '/':
                     sep = '/'
@@ -750,7 +758,7 @@ class gpload:
                 pass
         f.close()
 
-    def setup_connection(self):
+    def setup_connection(self, recurse = 0):
         """
         Connect to the backend
         """
@@ -777,7 +785,11 @@ class gpload:
         except pg8000.errors.InterfaceError,e:
             if e[0] == "server requesting MD5 password authentication, but no password was provided":
                 self.options.password = getpass.getpass()
-                self.setup_connection()
+                recurse += 1
+                if recurse > 10:
+                    self.log(self.ERROR, "too many login attempt failures")
+
+                self.setup_connection(recurse)
             else: 
                 self.log(self.ERROR, "could not connect to database: %s"%e)
 
@@ -790,7 +802,6 @@ class gpload:
                     self.log(self.ERROR,
                                "gpload:input:columns must be a sequence of " +
                                "mappings.")
-                    sys.exit(2)
                 key = d.keys()[0]
                 if d[key] == None:
                     self.log(self.DEBUG, 
@@ -871,17 +882,14 @@ class gpload:
                     self.log(self.ERROR, 
                                 "table column %s not found in input " % a[0] +
                                 "column schema")
-                    sys.exit(2)
         else:
             for key,value in mapping.iteritems():
                 if type(key)!=str or type(value)!=str:
                     self.log(self.ERROR,'gpload:output:mapping must be a mapping from strings to strings.')
-                    sys.exit(2)
                 try:
                     i = map(lambda a:a[0],self.into_columns).index(key)
                 except ValueError:
                     self.log(self.ERROR,'%s in mapping is not in table %s'%(key,self.table))
-                    sys.exit(2)
                 self.into_columns[i][2] = value.lower()
         self.log(self.DEBUG,'table %s columns are--'%self.table)
         for name,typ,mapto in self.into_columns:
@@ -913,7 +921,6 @@ class gpload:
             for i in force_not_null_columns:
                 if type(i)!=str:
                     self.log(self.ERROR,'gpload:input:force_not_null must be a sequence of strings.')
-                    sys.exit(2)
             # not yet, see MPP-4254
             #sql += "force not null %s "%','.join(force_not_null_columns)
             self.log(self.LOG, "ignoring FORCE NOT NULL as it is not supported")
@@ -934,7 +941,6 @@ class gpload:
                 self.pg8000.execute(sql)
         except Exception, e:
             self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, str(e)))
-            sys.exit(2)
 
         self.initial_errors = self.count_errors()
 
@@ -1003,14 +1009,11 @@ class gpload:
         for i in self.getconfig(config,list):
             if type(i)!=str:
                 self.log(self.ERROR,'%s must be a sequence of strings.'%config)
-                sys.exit(2)
             j = self.into_columns_dict.get(i.lower())
             if not j:
                 self.log(self.ERROR,'column %s in %s does not exist.'%(i,config))
-                sys.exit(2)
             if not j[index]:
                 self.log(self.ERROR,'there is no mapping from the column %s in %s.'%(i,config))
-                sys.exit(2)
             lis.append(format(j[0],j[index]))
         return lis
 
@@ -1048,7 +1051,6 @@ class gpload:
                 self.pg8000.execute(sql)
             except pg8000.ProgrammingError, p:
                 self.log(self.ERROR, 'error encountered executing SQL "%s"' % sql)
-                sys.exit(2)
 
     def get_table_dist_key(self):
         sql = "select attname from pg_attribute a, gp_distribution_policy p "+\
@@ -1075,7 +1077,6 @@ class gpload:
             self.log(self.ERROR, 'table "' + self.table + '" is ' +
                         'distributed randomly and ' +
                         'therefore does not support update or merge via gpload')
-            sys.exit(2)
 
         self.distkey = distkey
         # update_columns better not be in distkey
@@ -1089,7 +1090,6 @@ class gpload:
                         'key: %s\nupdate_columns: %s\naffected columns: %s' % \
                         (', '.join(distkey), ', '.join(update_columns),
                          ', '.join(a)))
-            sys.exit(2)
 
         # remember, match_columns might be a superset of the key
         match_columns = set(self.getconfig('gpload:output:match_columns', list))
@@ -1157,7 +1157,6 @@ class gpload:
             self.do_method_merge()
         else:
             self.log(self.ERROR, 'unsupported method %s' % method)
-            sys.exit(2)
 
     def run2(self):
         self.log(self.DEBUG, 'config ' + str(self.config))
@@ -1173,6 +1172,11 @@ class gpload:
 
     def run(self):
         self.pg8000 = None
+        signal.signal(signal.SIGINT, handle_kill)
+        signal.signal(signal.SIGQUIT, handle_kill)
+        signal.signal(signal.SIGTERM, handle_kill)
+
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
         try:
             try:
                 self.run2()
