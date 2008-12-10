@@ -176,7 +176,7 @@ both : dbg opt ;
 dbg:
 	rsync -rlvt --exclude=devel*/ --exclude=dist*/ --exclude=LOG.* ./ devel/
 	cd devel/ && if [ ! -f authlib_libpath_setup.sh ]; then $(MAKE) HOME=`pwd` authlibs; fi
-	cd devel/ && $(MAKE) HOME=`pwd` AUTH=true PG_LANG=true devel
+	cd devel/ && . authlib_libpath_setup.sh && $(MAKE) HOME=`pwd` AUTH=true PG_LANG=true devel
 
 opt:
 	rsync -rlvt --exclude=devel*/ --exclude=dist*/ --exclude=LOG.* ./ dist/
@@ -195,7 +195,7 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon
+	@$(MAKE) mkgpperfmon INSTLOC=$(HOME)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
@@ -209,7 +209,7 @@ devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon
+	@$(MAKE) mkgpperfmon INSTLOC=$(HOME)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
@@ -226,7 +226,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon
+	@$(MAKE) mkgpperfmon INSTLOC=$(GPROOT)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
@@ -241,7 +241,7 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession
 	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon
+	@$(MAKE) mkgpperfmon INSTLOC=$(GPROOT)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
@@ -301,6 +301,8 @@ mkgpcc:
 
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE)
+	rm -f $(INSTLOC)/greenplum-perfmon-*.zip
+	ln gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/
 
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
