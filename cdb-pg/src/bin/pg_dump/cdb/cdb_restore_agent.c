@@ -914,8 +914,6 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 
 	// Now wait for a cancel notification
 	sock = PQsocket( g_conn_status );
-	FD_ZERO( &input_mask );
-	FD_SET( sock, &input_mask );
 	bGotFinished = false;
 	bGotCancelRequest = false;
 	PID = PQbackendPID( g_conn_status );
@@ -925,7 +923,8 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 	{
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
-
+		FD_ZERO( &input_mask );
+		FD_SET( sock, &input_mask );
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			mpp_err_msg(logError, pszProgName, "select failed for backup key %s, instid %d, segid %d failed\n",

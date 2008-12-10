@@ -950,8 +950,6 @@ void* threadProc(void *arg)
 
 	/* Now wait for notifications from the back end back end */
 	sock = PQsocket( pConn );
-	FD_ZERO( &input_mask );
-	FD_SET( sock, &input_mask );
 
 	bSentCancelMessage = false;
 	bIsFinished = false;
@@ -978,7 +976,8 @@ void* threadProc(void *arg)
 
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
-
+		FD_ZERO( &input_mask );
+		FD_SET( sock, &input_mask );
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			g_b_SendCancelMessage = true;
