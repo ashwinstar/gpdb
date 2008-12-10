@@ -62,7 +62,8 @@ all:
 	./create-gpperfmon-installer.sh
 	mv greenplum-perfmon.bin greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
 	rm -rf .tmp
+	zip -q greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
 
 clean:
 	rm -rf .tmp
-	rm -f greenplum-perfmon.tar.gz greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
+	rm -f greenplum-perfmon.tar.gz greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin greenplum-perfmon-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip
