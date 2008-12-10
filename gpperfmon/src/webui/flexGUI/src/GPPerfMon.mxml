@@ -19,7 +19,7 @@
 	  	var test:Boolean = false;
 	  	if (test)
 	  	{
-	    	mdl.session.setDatabaseConnection("http","192.168.0.184","8080",
+	    	mdl.session.setDatabaseConnection("http","10.254.0.226","8080",
 	    		"testServer");	  		  		
 	  	}
 	  	else

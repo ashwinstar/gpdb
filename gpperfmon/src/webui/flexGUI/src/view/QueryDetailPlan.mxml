@@ -29,53 +29,49 @@
 	  [Bindable]
 	  private var selectedXML:XML = new XML();
 
-	  [Embed(source="assets/img/ex_aggregate.png")]	
+	  [Embed(source="assets/img/aggregate.png")]	
 	  public static var ex_aggregate:Class;
-	  [Embed(source="assets/img/ex_append.png")]	
+	  [Embed(source="assets/img/append.png")]	
 	  public static var ex_append:Class;
-	  [Embed(source="assets/img/ex_bmp_heap.png")]	
+	  [Embed(source="assets/img/bitmap_heap.png")]	
 	  public static var ex_bmp_heap:Class;		
-	  [Embed(source="assets/img/ex_bmp_index.png")]	
+	  [Embed(source="assets/img/bitmap_index.png")]	
 	  public static var ex_bmp_index:Class;
-	  [Embed(source="assets/img/ex_broadcast_motion.png")]	
+	  [Embed(source="assets/img/broadcast_motion.png")]	
 	  public static var ex_broadcast_motion:Class;
-	  [Embed(source="assets/img/ex_gather_motion.png")]	
+	  [Embed(source="assets/img/gather_motion.png")]	
 	  public static var ex_gather_motion:Class;			
-	  [Embed(source="assets/img/ex_group.png")]	
-	  public static var ex_group:Class;
-	  [Embed(source="assets/img/ex_hash.png")]	
+	  [Embed(source="assets/img/hash.png")]	
 	  public static var ex_hash:Class;
-	  [Embed(source="assets/img/ex_index_scan.png")]	
+	  [Embed(source="assets/img/index_scan.png")]	
 	  public static var ex_index_scan:Class;		
-	  [Embed(source="assets/img/ex_join.png")]	
+	  [Embed(source="assets/img/join.png")]	
 	  public static var ex_join:Class;
-	  [Embed(source="assets/img/ex_limit.png")]	
+	  [Embed(source="assets/img/limit.png")]	
 	  public static var ex_limit:Class;
-	  [Embed(source="assets/img/ex_materialize.png")]	
+	  [Embed(source="assets/img/materialize.png")]	
 	  public static var ex_materialize:Class;	  		
-	  [Embed(source="assets/img/ex_merge.png")]	
+	  [Embed(source="assets/img/merge.png")]	
 	  public static var ex_merge:Class;			
-	  [Embed(source="assets/img/ex_nested.png")]	
+	  [Embed(source="assets/img/nested.png")]	
 	  public static var ex_nested:Class;
-	  [Embed(source="assets/img/ex_redistribute_motion.png")]	
+	  [Embed(source="assets/img/redistribute_motion.png")]	
 	  public static var ex_redistribute_motion:Class;
-	  [Embed(source="assets/img/ex_result.png")]	
+	  [Embed(source="assets/img/result.png")]	
 	  public static var ex_result:Class;		
-	  [Embed(source="assets/img/ex_scan.png")]	
+	  [Embed(source="assets/img/scan.png")]	
 	  public static var ex_scan:Class;
-	  [Embed(source="assets/img/ex_seek.png")]	
+	  [Embed(source="assets/img/seek.png")]	
 	  public static var ex_seek:Class;
-	  [Embed(source="assets/img/ex_setop.png")]	
+	  [Embed(source="assets/img/setop.png")]	
 	  public static var ex_setop:Class;			
-	  [Embed(source="assets/img/ex_sort.png")]	
+	  [Embed(source="assets/img/sort.png")]	
 	  public static var ex_sort:Class;		
-	  [Embed(source="assets/img/ex_subplan.png")]	
+	  [Embed(source="assets/img/subplan.png")]	
 	  public static var ex_subplan:Class;
-	  [Embed(source="assets/img/ex_tid_scan.png")]	
-	  public static var ex_tid_scan:Class;
-	  [Embed(source="assets/img/ex_unique.png")]	
+	  [Embed(source="assets/img/unique.png")]	
 	  public static var ex_unique:Class;			
-	  [Embed(source="assets/img/ex_unknown.png")]	
+	  [Embed(source="assets/img/unknown.png")]	
 	  public static var ex_unknown:Class;		
 		
 	// Called when the query plan data changes
@@ -151,21 +147,26 @@
 		{
 			var name:String = attributes[i].name();
 			
+			if (name == 't0' || name == 't1' || name == 't2' || name == 't3')
+			{
+				var valueArray:Array = attributes[i].split('|');
+				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
+				extraAttributes += valueArray[1] + '\n';				
+			}
+		}
+		for (var j:int = 0; j < attributes.length(); j++)
+		{
+			var name:String = attributes[j].name();
+			
 			if (name == 'm0' || name == 'm1' || name == 'm2' || name == 'm3' ||
 			    name == 'm4' || name == 'm5' || name == 'm6' || name == 'm7' ||
 			    name == 'm8' || name == 'm9' || name == 'm10' || name == 'm11' ||
 			    name == 'm12' || name == 'm13' || name == 'm14' || name == 'm15')
 			{
-				var valueArray:Array = attributes[i].split('|');
+				var valueArray:Array = attributes[j].split('|');
 				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
 				extraAttributes += valueArray[2] + ' ' + valueArray[1];
 				extraAttributes += ' (estimated ' + valueArray[3] + ')\n';
-			}
-			else if (name == 't0' || name == 't1' || name == 't2' || name == 't3')
-			{
-				var valueArray:Array = attributes[i].split('|');
-				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
-				extraAttributes += valueArray[1] + '\n';				
 			}
 		}			
 	}
@@ -232,10 +233,20 @@
 		var xml:XML = item as XML;
 		if (xml && xml.@nid)
 		{
-			return xml.@ntype + "(" + xml.@nstatus + ")\n" +
-							   "[CPU %: " + xml.@cpu_currpct + ", CPU total: " + xml.@cpu_elapsed + "]\n" +
-							   "[CPU skew: " + nformat.format(xml.@skew_cpu) 
-							   + ", Row skew: " + nformat.format(xml.@skew_rows) + "]"; 
+			var res:String = " " + xml.@ntype + " ";
+			var t0:String = xml.@t0;
+			if (t0 != '')
+			{		
+				var valueArray:Array = t0.split('|');
+				if (valueArray[0] == 'Name')
+				   res += '[' + valueArray[1] + '] ';
+			}
+				
+			res += "(" + xml.@nstatus + ")\n"
+			
+			return res + " [CPU %: " + xml.@cpu_currpct + ", CPU total: " + xml.@cpu_elapsed + "]\n"
+				       + " [CPU skew: " + nformat.format(xml.@skew_cpu) 
+					   + ", Row skew: " + nformat.format(xml.@skew_rows) + "]"; 
 		}
 		else
 		{
@@ -254,16 +265,15 @@
 			switch(nodeType) {
 				
 				case "Aggregate":
-				case "Hash Aggregate":
-				case "Hash Agg":
+				case "HashAggregate":
+				case "GroupAggregate":
+				case "Group":
 				  return ex_aggregate; break;
 				
 				case "Append":
 				  return ex_append; break;				
 
 				case "Bitmap Heap Scan":
-				case "BitmapAnd":
-				case "BitmapOr":
 				  return ex_bmp_heap; break;
 
 				case "Bitmap Index Scan":
@@ -273,10 +283,7 @@
 				  return ex_broadcast_motion; break;
 				  
 				case "Gather Motion":
-				  return ex_gather_motion; break;
-				  
-				case "Group":
-				  return ex_group; break;
+				  return ex_gather_motion; break;		
 
 				case "Hash":				  
 				  return ex_hash; break;
@@ -285,8 +292,11 @@
 				  return ex_index_scan; break;
 				  				  
 				case "Adaptive Join":
-				case "Hash Join":
-				case "HashJoin":
+                case "Hash Join":
+                case "Hash Left Join":
+                case "Hash Full Join":
+                case "Hash Right Join":
+                case "Hash EXISTS Join":
 				  return ex_join; break;
 				  
 				case "Limit":				  
@@ -296,39 +306,47 @@
 				  return ex_materialize; break;
 				  
 				case "Merge Join":
+                case "Merge Left Join":
+                case "Merge Full Join":
+                case "Merge Right Join":
+                case "Merge EXISTS Join":
 				  return ex_merge; break;
 				  
 				case "Nested Loop":	
+				case "Nested Loop Left Join":
+                case "Nested Loop Full Join":
+                case "Nested Loop Right Join":
 				  return ex_nested; break;			
 				
 				case "Redistribute Motion":
 				  return ex_redistribute_motion; break;
 				
 				case "Result":
-				case "ResultNode":
    				  return ex_result; break;
 
 				case "Seq Scan":
-				case "Sequential Scan":
-				case "Append-Only Scan":
+				case "Append-only Scan":
 				case "External Scan":
-				case "ExternalScan":
 				case "Function Scan":
 				case "Values Scan":
-				case "ShareInputScan":
+				case "Shared Scan":
+				case "Tid Scan":
 	   		      return ex_scan; break;
 				  
 				case "SetOp":
+                case "SetOp Intersect":
+                case "SetOp Intersect All":
+                case "SetOp Except":
+                case "SetOpt Except All":
+				case "BitmapAnd":
+				case "BitmapOr":
 				  return ex_setop; break;				  
 				  
 				case "Sort":
 				  return ex_sort; break;
 				  				  
 				case "Subquery Scan":	
-				  return ex_subplan; break;			  				  
-				  				  
-				case "Tid Scan":
-				  return ex_tid_scan; break;
+				  return ex_subplan; break;			  				  			  				 
 
 				case "Unique":
 				  return ex_unique; break;
@@ -365,6 +383,7 @@
 		    showRoot="false" change="selectionChange(event)"
 		    labelFunction="labelFunction" iconFunction="iconFunction"
 		    borderThickness="0" itemClose="itemClose(event)" itemOpen="itemOpen(event)"
+		    rollOverColor="0xDFFCB2" selectionColor="0xBFDC92"
 		    creationComplete="BindingUtils.bindSetter(treeDataChange, mdl.queries, 'queryPlanCurrent')"/>
 	</mx:VBox>
 

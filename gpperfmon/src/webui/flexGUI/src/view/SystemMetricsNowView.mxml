@@ -9,7 +9,11 @@
       import mx.collections.SortField;
       import model.GPPerfMonModelLocator;
       import mx.collections.XMLListCollection;
-  			
+   	  import mx.charts.HitData;
+      import mx.charts.chartClasses.DataTransform; 
+      import mx.charts.chartClasses.CartesianTransform;
+      import mx.charts.series.items.BarSeriesItem;	
+      	   		 			
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 	  
@@ -28,6 +32,29 @@
 			mdl.system.systemNowXML.refresh();
 	  	}	  	 
 	  }	
+	  
+	  	private function formatDataTip(hd:HitData):String
+		{
+			 var dt:String = "";
+	         var this_series:BarSeries = BarSeries(hd.element);
+	         var dataTransform:DataTransform = this_series.dataTransform;
+	         var vertical_axis:CategoryAxis = CategoryAxis(dataTransform.getAxis(CartesianTransform.VERTICAL_AXIS));
+	         var horizontal_axis:LinearAxis = LinearAxis(dataTransform.getAxis(CartesianTransform.HORIZONTAL_AXIS));        
+	         
+	         var n:String = this_series.displayName;
+	         if (n && n != "")
+	         dt += "<b>" + n + "</b><BR/>";
+	        
+	         dt += vertical_axis.formatForScreen(BarSeriesItem(hd.chartItem).yValue) + "\n";
+	                  
+	         var xValue:Object = horizontal_axis.formatForScreen(
+	         			((BarSeriesItem(hd.chartItem).xValue as Number) -
+	         			(BarSeriesItem(hd.chartItem).minValue as Number)).toFixed(2));
+	         			
+	         dt += xValue + "\n";
+	         
+	         return dt;
+		}
     ]]>
 </mx:Script>	
    
@@ -36,7 +63,7 @@
   <mx:SolidColor id="idle_clr" color="0xD8D8D8" alpha="1.0"/>
  
  <mx:HBox width="100%">
- 	<mx:VBox width="150" horizontalAlign="left">
+ 	<mx:VBox width="180" horizontalAlign="left">
  		<mx:Label text="Sort by:"/>
  		<mx:ComboBox id="combo" labelField="label" change="sortComboChange(event)" rowCount="10" >
  			<mx:dataProvider>
@@ -63,7 +90,7 @@
    <mx:HBox width="{canvas.width}" height="{canvas.height}">
   	 <mx:BarChart showDataTips="true" id="myChart0"
   				dataProvider="{mdl.system.systemNowXML}" 
-  				width="150" height="{((mdl.system.systemNowXML.length)*25)+100}" gutterLeft="150"
+  				width="180" height="{((mdl.system.systemNowXML.length)*25)+100}" gutterLeft="180"
   				gutterBottom="100">		
   		<mx:seriesFilters>
            <mx:Array/>
@@ -87,7 +114,7 @@
   	</mx:BarChart>	
 
   	 <mx:BarChart showDataTips="true" id="myChart" width="100%" height="{((mdl.system.systemNowXML.length)*25)+100}"
-  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100">
+  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100" dataTipFunction="formatDataTip">
   		<mx:series>	 
   			<mx:BarSet type="100%">
 	  			<mx:BarSeries xField="cpu_user"  
@@ -120,7 +147,7 @@
   	</mx:BarChart>	
 	
   	 <mx:BarChart showDataTips="true" id="myChart2" width="100%" height="{((mdl.system.systemNowXML.length)*25)+100}"
-  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100">
+  				dataProvider="{mdl.system.systemNowXML}" gutterBottom="100" dataTipFunction="formatDataTip"> 
   		<mx:series>	 
   			<mx:BarSet type="stacked">
 	  			<mx:BarSeries xField="mem_actual_used"  
