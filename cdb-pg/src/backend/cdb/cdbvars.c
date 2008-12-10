@@ -828,9 +828,9 @@ gpvars_show_gp_autostats_mode(void)
 }
 
 
-/* gp_enable_gpperfmon and gp_gpperfmon_send_interval are GUCs that we'd like 
- * to have propagate from master to segments but we don't want non-super users 
- * to be able to set it.  Unfortunately, as long as we use libpq to connect to 
+/* gp_enable_gpperfmon and gp_gpperfmon_send_interval are GUCs that we'd like
+ * to have propagate from master to segments but we don't want non-super users
+ * to be able to set it.  Unfortunately, as long as we use libpq to connect to
  * the segments its hard to create a clean way of doing this.
  *
  * Here we check and enforce that if the value is being set on the master its being
@@ -842,7 +842,8 @@ gpvars_assign_gp_enable_gpperfmon(bool newval, bool doit, GucSource source)
 {
 	if (doit)
 	{
-		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && !superuser())
+
+		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && GetCurrentRoleId() != InvalidOid && !superuser())
 		{
 			ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -862,7 +863,7 @@ gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucSource source
 {
 	if (doit)
 	{
-		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && !superuser())
+		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && GetCurrentRoleId() != InvalidOid && !superuser())
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
