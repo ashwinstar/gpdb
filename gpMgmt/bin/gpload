@@ -898,7 +898,7 @@ class gpload:
             sql += "delimiter%s" % \
                 quote(self.getconfig('gpload:input:delimiter',str))
 
-        nullas = self.getconfig('gpload:input:nullas', str, False)
+        nullas = self.getconfig('gpload:input:null_as', str, False)
         self.log(self.LOG, "null as " + str(nullas))
         if nullas:
             sql += " null as '%s' " % nullas
