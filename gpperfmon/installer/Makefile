@@ -9,27 +9,14 @@ GPMONUI_DIR=../src/webui/flexGUI
 GPMONDOCS_DIR=../docs/release
 LIGHTY_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/lighttpd-1.4.19/
 GPPERFMON_VERSION=$$(< $(BLD_TOP)/gpperfmon/VERSION)
-PACKAGE_ARCH=
 
-ifeq (osx104_x86, $(BLD_ARCH))
-	PACKAGE_ARCH=OSX-i386
-endif
-
-ifeq (rhel4_x86_32, $(BLD_ARCH))
-	PACKAGE_ARCH=RHEL4-i386
-endif
-
-ifeq (rhel4_x86_64, $(BLD_ARCH))
-	PACKAGE_ARCH=RHEL4-x86_64
-endif
-
-ifeq (rhel5_x86_64, $(BLD_ARCH))
-	PACKAGE_ARCH=RHEL5-x86_64
-endif
-
-ifeq (sol10_x86_64, $(BLD_ARCH))
-	PACKAGE_ARCH=SOL-x86_64
-endif
+osx104_x86_PACKAGE_ARCH=OSX-i386
+rhel4_x86_32_PACKAGE_ARCH=RHEL4-i386
+rhel4_x86_64_PACKAGE_ARCH=RHEL4-x86_64
+rhel5_x86_64_PACKAGE_ARCH=RHEL5-x86_64
+sol10_x86_64_PACKAGE_ARCH=SOL-x86_64
+sol10_sparc_PACKAGE_ARCH=SOL10_sparc
+PACKAGE_ARCH=$($(BLD_ARCH)_PACKAGE_ARCH)
 
 all:
 	@if [ "$(PACKAGE_ARCH)" = "" ]; then \
