@@ -885,7 +885,7 @@ explain_outNode(StringInfo str,
 			pname = "Seq Scan";
 			break;
 		case T_AppendOnlyScan:
-			pname = "Append-Only Scan";
+			pname = "Append-only Scan";
 			break;
 		case T_ExternalScan:
 			pname = "External Scan";
@@ -914,7 +914,7 @@ explain_outNode(StringInfo str,
 		case T_ShareInputScan:
 			{
 				ShareInputScan *sisc = (ShareInputScan *) plan;
-				appendStringInfo(str, "ShareInputScan (share slice:id %d:%d)", 
+				appendStringInfo(str, "Shared Scan (share slice:id %d:%d)", 
 						currentSlice ? currentSlice->sliceIndex : -1, sisc->share_id);
 				pname = "";
 			}

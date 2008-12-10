@@ -260,13 +260,13 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
-			{ "ShareInputScan Restore Pos", "Restores", 0},
-			{ "ShareInputScan Rescan", "Rescans", 0},
+			{ "Shared Scan Restore Pos", "Restores", 0},
+			{ "Shared Scan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }
 		};
 
 		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&sisstate->ss.ps, "ShareInputScan",
+		InitPlanStateGpmonPkt(&sisstate->ss.ps, "Shared Scan",
                                       (int64)sisstate->ss.ps.plan->plan_rows, 
                                       m, NULL);
 	}

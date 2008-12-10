@@ -278,10 +278,29 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 							   node->dupColIdx);
 
 	{
+		char *iname = NULL;
 		Gpmon_NameUnit_MaxVal m[GPMON_SETOP_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ NULL, NULL, 0}
 		};
+
+		switch(node->cmd)
+		{
+			case SETOPCMD_INTERSECT:
+				iname = "SetOp Intersect";
+				break;
+			case SETOPCMD_INTERSECT_ALL:
+				iname = "SetOp Intersect All";
+				break;
+			case SETOPCMD_EXCEPT:
+				iname = "SetOp Except";
+				break;
+			case SETOPCMD_EXCEPT_ALL:
+				iname = "SetOp Except All";
+				break;
+			default:
+				iname = "SetOp ???";
+		}
 
 		Assert(GPMON_SETOP_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&setopstate->ps, "SetOp", 

@@ -464,12 +464,34 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 			   "node initialized");
 
 	{
+		char *iname = NULL;
 		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
 			{ "Nested Loop Inner Tuples", "Tuples", 0},
 			{ "Nested Loop Outer Tuples", "Tuples", 0},
 			{ NULL, NULL, 0}
 		};
+
+		switch(node->join.jointype)
+		{
+			case JOIN_INNER:
+				iname = "Nested Loop";
+				break;
+			case JOIN_LEFT:
+				iname = "Nested Loop Left Join";
+				break;
+			case JOIN_FULL:
+				iname = "Nested Loop Full Join";
+				break;
+			case JOIN_RIGHT:
+				iname = "Nested Loop Right Join";
+				break;
+			case JOIN_IN:
+				iname = "Nested Loop EXISTS Join";
+				break;
+			default:
+				iname = "Nested Loop ??? Join";
+		}
 
 		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
 		InitPlanStateGpmonPkt(&nlstate->js.ps, "Nested Loop", 

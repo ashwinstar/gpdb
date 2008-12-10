@@ -2118,6 +2118,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->num_repeats = 0;
 
 	{
+		char *iname = NULL;
 		Gpmon_NameUnit_MaxVal m[GPMON_AGG_TOTAL+1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			/* GPMON_AGG_SPILLTUPLE */
@@ -2142,6 +2143,21 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			{ NULL, NULL, 0 },
 		};
 
+		switch(node->aggstrategy)
+		{
+			case AGG_PLAIN:
+				iname = "Aggregate";
+				break;
+			case AGG_SORTED:
+				iname = "GroupAggregate";
+				break;
+			case AGG_HASHED:
+				iname = "HashAggregate";
+				break;
+			default:
+				iname = "Aggregate ???";
+		}
+
 	/* Set the default memory manager */
 	aggstate->mem_manager.alloc = cxt_alloc;
 	aggstate->mem_manager.free = cxt_free;
@@ -2149,8 +2165,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->mem_manager.realloc_ratio = 1;
 
 		Assert(GPMON_AGG_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&aggstate->ss.ps, 
-			node->aggstrategy == AGG_HASHED ? "Hash Aggregate" : "Aggregate", 
+		InitPlanStateGpmonPkt(&aggstate->ss.ps, iname,
                                       (int64) aggstate->ss.ps.plan->plan_rows,
                                       m, NULL);
 	}

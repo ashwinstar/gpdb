@@ -1798,6 +1798,7 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 			   "node initialized");
 
 	{
+		char *iname = NULL;
 		Gpmon_NameUnit_MaxVal m[GPMON_MERGEJOIN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT,
 			{ "Merge Join Inner Tuples", "Tuples", 0},
@@ -1805,8 +1806,29 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 			{ NULL, NULL, 0}
 		};
 
+		switch(node->join.jointype)
+		{
+			case JOIN_INNER:
+				iname = "Merge Join";
+				break;
+			case JOIN_LEFT:
+				iname = "Merge Left Join";
+				break;
+			case JOIN_FULL:
+				iname = "Merge Full Join";
+				break;
+			case JOIN_RIGHT:
+				iname = "Merge Right Join";
+				break;
+			case JOIN_IN:
+				iname = "Merge EXISTS Join";
+				break;
+			default:
+				iname = "Merge ??? Join";
+		}
+
 		Assert(GPMON_MERGEJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&mergestate->js.ps, "Merge Join", 
+		InitPlanStateGpmonPkt(&mergestate->js.ps, iname, 
                                       (int64)mergestate->js.ps.plan->plan_rows,
                                       m, NULL);
 	}

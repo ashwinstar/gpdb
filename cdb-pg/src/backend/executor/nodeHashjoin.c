@@ -541,6 +541,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 
 	/* Set up gpmon */
 	{
+		char *iname = NULL;
 		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0), 
 			/* SPILLBATCH */
@@ -553,8 +554,29 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 			{ NULL, NULL, 0},
 		};
 
+		switch(node->join.jointype)
+		{
+			case JOIN_INNER:
+				iname = "Hash Join";
+				break;
+			case JOIN_LEFT:
+				iname = "Hash Left Join";
+				break;
+			case JOIN_FULL:
+				iname = "Hash Full Join";
+				break;
+			case JOIN_RIGHT:
+				iname = "Hash Right Join";
+				break;
+			case JOIN_IN:
+				iname = "Hash EXISTS Join";
+				break;
+			default:
+				iname = "Hash ??? Join";
+		}
+
 		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&hjstate->js.ps, "Hash Join", 
+		InitPlanStateGpmonPkt(&hjstate->js.ps, iname, 
                                       (int64) hjstate->js.ps.plan->plan_rows,
                                       m, NULL);
 	}
