@@ -25,6 +25,8 @@
 
 apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 {
+	static apr_int64_t last_err_sec = 0;
+
     if (pkt->magic != GPMON_MAGIC) {
 	int i;
 
@@ -107,21 +109,39 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	}
     }
 
-    if (pkt->magic != GPMON_MAGIC) {
-	gpmon_warning(FLINE, "bad packet (magic number mismatch)");
-	return APR_EINVAL;
+    if (pkt->magic != GPMON_MAGIC) 
+	{
+		apr_int64_t now = apr_time_sec(apr_time_now());
+		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
+		{
+			last_err_sec = now;
+			gpmon_warning(FLINE, "bad packet (magic number mismatch)");
+		}
+		return APR_EINVAL;
     }
 
-    if (pkt->version != GPMON_PACKET_VERSION) {
-	gpmon_warning(FLINE, "bad packet (version %d, expected %d)",
-		      pkt->version, GPMON_PACKET_VERSION);
-	return APR_EINVAL;
+    if (pkt->version != GPMON_PACKET_VERSION) 
+	{
+		apr_int64_t now = apr_time_sec(apr_time_now());
+		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
+		{
+			last_err_sec = now;
+			gpmon_warning(FLINE, "bad packet (version %d, expected %d)",
+		    			  pkt->version, GPMON_PACKET_VERSION);
+		}
+		return APR_EINVAL;
     }
 
-    if (! (GPMON_PKTTYPE_NONE < pkt->pkttype && pkt->pkttype < GPMON_PKTTYPE_MAX)) {
-	gpmon_warning(FLINE, "bad packet (unexpected packet type %d)", 
-		      pkt->pkttype);
-	return APR_EINVAL;
+    if (! (GPMON_PKTTYPE_NONE < pkt->pkttype && pkt->pkttype < GPMON_PKTTYPE_MAX)) 
+	{
+		apr_int64_t now = apr_time_sec(apr_time_now());
+		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
+		{
+			last_err_sec = now;
+			gpmon_warning(FLINE, "bad packet (unexpected packet type %d)", 
+		    			  pkt->pkttype);
+		}
+		return APR_EINVAL;
     }
 
     return 0;

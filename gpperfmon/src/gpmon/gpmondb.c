@@ -67,39 +67,50 @@ int gpdb_get_gpmon_port(void)
 
 
 
-void gpdb_get_hostlist(int* hostcnt, char*** hostvec, apr_pool_t* pool)
+void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec, apr_pool_t* pool)
 {
     PGconn* conn = 0;
     PGresult* result = 0;
     int rowcount, i;
-    const char* QUERY = "SELECT DISTINCT(hostname) FROM gp_configuration WHERE valid = 't'";
+    const char* QUERY = "SELECT hostname, datadir, dbid FROM gp_configuration WHERE valid = 't' ORDER BY dbid ASC";
     int    cnt = 0;
     char** vec = 0;
+	char** vec2 = 0;
     const char* errmsg = gpdb_exec(&conn, &result, QUERY);
     if (errmsg) {
 	gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
     }
 
     rowcount = PQntuples(result);
-    if (rowcount > 0) {
-	vec = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
-	CHECKMEM(vec);
+    if (rowcount > 0) 
+	{
+		vec = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
+		CHECKMEM(vec);
+		vec2 = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
+		CHECKMEM(vec2);
 	
-	for (i = 0; i < rowcount; i++) {
-	    char* p = PQgetvalue(result, i, 0);
-	    if (!p) 
-		continue;
-	    p = apr_pstrdup(pool, p);
-	    CHECKMEM(p);
-	    p = gpmon_trim(p);
-	    vec[cnt++] = p;
-	}
+		for (i = 0; i < rowcount; i++) 
+		{
+	    	char* p = PQgetvalue(result, i, 0);
+			char* datadir = PQgetvalue(result, i, 1);
+	    	if (!p || !datadir) 
+				continue;
+	    	p = apr_pstrdup(pool, p);
+	    	CHECKMEM(p);
+			datadir = apr_pstrdup(pool, datadir);
+			CHECKMEM(datadir);
+	    	p = gpmon_trim(p);
+			datadir = gpmon_trim(datadir);
+	    	vec[cnt] = p;
+			vec2[cnt++] = datadir;
+		}
     }
     PQclear(result);
     PQfinish(conn);
 
     *hostcnt = cnt;
     *hostvec = vec;
+	*datadirvec = vec2;
 }
 
 

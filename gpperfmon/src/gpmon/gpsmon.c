@@ -9,6 +9,7 @@
   #include <kstat.h>
 #endif /* sun */
 #include <math.h>
+#include <sys/param.h>
 #include "apr_getopt.h"
 #include "apr_env.h"
 #include "apr_time.h"
@@ -30,6 +31,8 @@ static struct {
     int V;
     int D;
     const char* arg_port;
+	const char* log_dir;
+	apr_int64_t max_log_size;
 } opt = {0};
 
 
@@ -504,16 +507,16 @@ static void gx_accept(SOCKET sock, short event, void* arg)
 	p += n;
     }
 
-    if (0 != gpmon_ntohpkt(&pkt)) {
-	gpmon_warning(FLINE, "bad packet");
-	close(nsock);
-	return;
+    if (0 != gpmon_ntohpkt(&pkt)) 
+	{
+		close(nsock);
+		return;
     }
 
-    if (pkt.pkttype != GPMON_PKTTYPE_HELLO) {
-	gpmon_warning(FLINE, "bad packet");
-	close(nsock);
-	return;
+    if (pkt.pkttype != GPMON_PKTTYPE_HELLO) 
+	{
+		close(nsock);
+		return;
     }
     
     if (pkt.u.hello.signature != gx.signature) {
@@ -629,10 +632,8 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
     }
 
     /* do some packet marshalling */
-    if (0 != gpmon_ntohpkt(&pkt)) {
-	gpmon_warning(FLINE, "bad packet");
-	return;
-    }
+    if (0 != gpmon_ntohpkt(&pkt)) 
+		return;
 
     /* process the packet */
     switch (pkt.pkttype) {
@@ -845,21 +846,23 @@ static void setup_sigar(void)
 
 void gx_main(int port, apr_int64_t signature)
 {
-    char* user = 0;
-
     /* set up our log files */
-    if (0 != apr_env_get(&user, "USER", gx.pool)) 
-	if (0 != apr_env_get(&user, "LOGIN", gx.pool))
-	    user = 0;
-
-    if (0 == chdir("/tmp")) {
-	if (user) {
-	    mkdir(user, 01700);
-	    chdir(user);
+    if (opt.log_dir)
+	{
+		if (0 != chdir(opt.log_dir))
+		{
+			/* Invalid dir for log file, try home dir */
+			char *home_dir = NULL;
+			if (0 == apr_env_get(&home_dir, "HOME", gx.pool))
+			{
+				if (home_dir)
+					chdir(home_dir);
+			}
+		}
 	}
-    }
-    freopen("gpsmon.out", "a", stderr);
-    freopen("gpsmon.out", "a", stdout);
+		
+	freopen("gpsmon.log", "a", stderr);
+    freopen("gpsmon.log", "a", stdout);
     setlinebuf(stderr);
     setlinebuf(stdout);
 
@@ -869,34 +872,52 @@ void gx_main(int port, apr_int64_t signature)
     setup_tcp();
 
     gx.tick = 0;
-    for (;;) {
-	struct timeval tv;
-	apr_hash_index_t* hi;
+    for (;;) 
+	{
+		struct timeval tv;
+		apr_hash_index_t* hi;
 
-	/* serve events every 2 second */
-	gx.tick++;
-	gx.now = apr_time_now();
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	if (-1 == event_loopexit(&tv)) {
-	    gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), 
-			   "event_loopexit failed");
-	}
-	if (-1 == event_dispatch()) {
-	    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
-			 "event_dispatch failed");
-	}
+		/* serve events every 2 second */
+		gx.tick++;
+		gx.now = apr_time_now();
+		tv.tv_sec = 2;
+		tv.tv_usec = 0;
+		if (-1 == event_loopexit(&tv)) {
+		    gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), 
+				   "event_loopexit failed");
+		}
+		if (-1 == event_dispatch()) {
+		    gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), 
+				 "event_dispatch failed");
+		}
 
-	/* get pid metrics */
-	for (hi = apr_hash_first(0, gx.qexectab); hi; hi = apr_hash_next(hi)) {
-	    void* vptr;
-	    gpmon_packet_t* rec;
-	    apr_hash_this(hi, 0, 0, &vptr);
-	    rec = vptr;
-	    if (rec->pkttype != GPMON_PKTTYPE_QEXEC)
-		continue;
-	    get_pid_metrics(rec->u.qexec.key.pid);
-	}
+		/* get pid metrics */
+		for (hi = apr_hash_first(0, gx.qexectab); hi; hi = apr_hash_next(hi)) 
+		{
+		    void* vptr;
+			gpmon_packet_t* rec;
+	    	apr_hash_this(hi, 0, 0, &vptr);
+	    	rec = vptr;
+	    	if (rec->pkttype != GPMON_PKTTYPE_QEXEC)
+				continue;
+	    	get_pid_metrics(rec->u.qexec.key.pid);
+		}
+
+		/* check log size */
+		if (gx.tick % 30 == 0)
+		{
+			apr_finfo_t finfo;
+			if (0 == apr_stat(&finfo, "gpsmon.log", APR_FINFO_SIZE, gx.pool))
+			{
+				if (opt.max_log_size != 0 && finfo.size > opt.max_log_size)
+				{
+					freopen("gpsmon.log", "w+", stdout);
+					freopen("gpsmon.log", "w+", stderr);
+					setlinebuf(stderr);
+					setlinebuf(stdout);
+				}
+			}
+		}
     }
 }
 
@@ -934,6 +955,8 @@ static void parse_command_line(int argc, const char* const argv[])
 	{      NULL, 'v', 0, "verbose" },
 	{      NULL, 'V', 0, "very verbose" },
 	{      NULL, 'D', 0, "debug mode" },
+	{      NULL, 'l', 1, "log directory" },
+	{      NULL, 'm', 1, "max log size" },
 	{ "version", 256, 0, "print version number" },
 	{ NULL, 0, 0, NULL}
     };
@@ -945,6 +968,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
     opt.pname = argv[0];
     opt.v = opt.V = opt.D = 0;
+	opt.max_log_size = 0;
 
     if (0 != (e = apr_getopt_init(&os, pool, argc, argv))) {
 	gpmon_fatalx(FLINE, e, "apr_getopt_init failed");
@@ -956,6 +980,8 @@ static void parse_command_line(int argc, const char* const argv[])
 	case 'v': opt.v = 1; break;
 	case 'V': opt.v = opt.V = 1; break;
 	case 'D': opt.D = 1; break;
+	case 'l': opt.log_dir = strdup(arg); break;
+	case 'm': opt.max_log_size = apr_atoi64(arg); break;
 	case 256: print_version(); break;
 	}
     }

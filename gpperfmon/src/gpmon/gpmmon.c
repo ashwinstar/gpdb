@@ -33,6 +33,7 @@ struct {
     const char* pname;
     char* conf_file;
     char* log_dir;
+	apr_uint64_t max_log_size;
     /* TODO: add log file rotation values */
     int max_fd;			/* this is the max fd value we ever seen */
     int v;
@@ -91,6 +92,7 @@ struct host_t {
     char* hostname;		/* static */
     char* realhostname;		/* static */
     char* ipstr;		/* static */
+	char* data_dir;
 };
 
 static struct {
@@ -382,8 +384,8 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 		for (j = 0; j < 8 && i < count_broken; j++, i++) {
 		    host_t* h = &tab[broken[i]];
 		    sprintf(line, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
-			    " %s %s/bin/gpsmon %s %d ",
-			    h->hostname, ax.gpperfmonhome, 
+			    " %s %s/bin/gpsmon -m %" FMT64 " -l %s %s %d ",
+			    h->hostname, ax.gpperfmonhome, opt.max_log_size, h->data_dir,
 			    (opt.V ? "-V" : (opt.v ? "-v" : "")),
 			    ax.port);
                     TR0(("Connection to %s lost.  Restarting gpsmon", h->hostname));
@@ -549,6 +551,21 @@ static void gpmmon_main(void)
 	    harvest_failure = gpdb_harvest();
 	}
 
+	if (0 == (ax.gpmon_tick % 60))
+	{
+		apr_finfo_t finfo;
+		char log_file[MAXPATHLEN + 1] = {0};
+		snprintf(log_file, MAXPATHLEN + 1, "%s/%s", opt.log_dir, "gpmmon.log");
+		if (0 == apr_stat(&finfo, log_file, APR_FINFO_SIZE, ax.pool))
+		{
+			if (opt.max_log_size != 0 && finfo.size > opt.max_log_size)
+			{
+				freopen(log_file, "w+", stdout);
+				freopen(log_file, "w+", stderr);
+			}
+		}
+	}
+
 	if (31 == (ax.gpmon_tick % 32)) {
 	    TR2(("checking for configuration changes...\n"));
 	    int confchanges = getconfig();
@@ -583,6 +600,7 @@ int read_conf_file(char *conffile)
     opt.m = min_query_time;
     opt.d = min_detailed_query_time;
     opt.harvest_interval = 120;
+	opt.max_log_size = 0;
 
     while (NULL != fgets(buffer, 1024, fp))
     {
@@ -641,6 +659,10 @@ int read_conf_file(char *conffile)
             {
                 opt.tail_buffer_max = apr_atoi64(pVal);
             }
+			else if (apr_strnatcasecmp(pName, "max_log_size") == 0)
+			{
+				opt.max_log_size = apr_atoi64(pVal);
+			}
             /* TODO: Log rotation settings 
             else if (apr_strnatcasecmp(pName, "log_rotation_age") == 0)
             {
@@ -919,6 +941,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
     apr_array_header_t* hostarray;
     int host_count = 0;
     char **hosts = NULL;
+	char **data_dirs = NULL;
 
     if (0 != (e = apr_pool_create(&pool, NULL))) {
         gpmon_fatalx(FLINE, e, "apr_pool_create failed");
@@ -931,7 +954,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
     CHECKMEM(htab);
     
     /* Connect to database, get segment hosts from gp_configuration */
-    gpdb_get_hostlist(&host_count, &hosts, ax.pool);
+    gpdb_get_hostlist(&host_count, &hosts, &data_dirs, ax.pool);
 
     for (i = 0; i < host_count; i++)
     {
@@ -939,6 +962,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
         CHECKMEM(host);
         memset(host, 0, sizeof(*host));
         host->hostname = hosts[i];
+		host->data_dir = data_dirs[i];
     }
 
 
@@ -996,6 +1020,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
                 /* FIXME:throw a coin to determine which hostname to use */
                 /* for now, just use the last entry that got there */
                 rec->hostname = host[i].hostname;
+				rec->data_dir = host[i].data_dir;
             }
             else {
                 /* insert a new entry */
@@ -1004,6 +1029,8 @@ static void gethostlist(host_t** rettab, int* rettabsz)
                 memcpy(rec, &host[i], sizeof(*rec));
                 rec->realhostname = apr_pstrdup(pool, rec->realhostname);
                 CHECKMEM(rec->realhostname);
+				rec->data_dir = apr_pstrdup(pool, rec->data_dir);
+				CHECKMEM(rec->data_dir);
                 apr_hash_set(htab, rec->realhostname, 
                              APR_HASH_KEY_STRING, rec);
             }

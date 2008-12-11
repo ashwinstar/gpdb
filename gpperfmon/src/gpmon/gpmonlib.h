@@ -18,6 +18,8 @@ typedef int SOCKET;
 
 #define GPMON_DBUSER "gpmon"
 
+#define GPMON_PACKET_ERR_LOG_TIME 60
+
 #define FMT64 APR_INT64_T_FMT
 #define FLINE __FILE__ ":" APR_STRINGIFY(__LINE__)
 #define CHECKMEM(x)  if (x) ; else gpmon_fatal(FLINE, "out of memory")

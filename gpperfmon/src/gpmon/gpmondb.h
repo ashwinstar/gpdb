@@ -15,7 +15,7 @@ APR_DECLARE(int) gpdb_get_gpmon_port(void);
  *  @param hostvec return array of hostnames.
  *  @param pool where to allocate hostvec and its contents.
  */
-APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, char*** hostvec, apr_pool_t* pool);
+APR_DECLARE(void) gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec, apr_pool_t* pool);
 
 /**
  *  Get the MD5 of the gp_configuration
