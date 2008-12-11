@@ -402,8 +402,9 @@ MAPPING - Optional. If a mapping is specified, it overrides the default
             target_column_name: source_column_name
            or
             target_column_name: 'expression'
-          Where expression is a Boolean condition (similar to what 
-          you would declare in a WHERE clause).
+          Where expression is any expression that you would specify in the 
+          SELECT list of a query, such as a constant value, a column reference, 
+          an operator invocation, a function call, and so on.
 
 
 *****************************************************
