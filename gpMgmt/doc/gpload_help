@@ -19,10 +19,11 @@ PREREQUISITES
 
 The client machine where gpload is executed must have the following:
 
-* Python 2.4.4 or later. Note that Python 2.5.1 is included with 
-  the Greenplum Database server installation, so if you have 
-  Greenplum Database installed on the machine where gpload is running, 
-  you do not need a separate Python installation.
+* Python 2.4.4 or later, pg8000 (the Python interface to PostgreSQL), 
+  and pyyaml. Note that Python 2.5.1 and the required Python libraries 
+  are included with the Greenplum Database server installation, so if 
+  you have Greenplum Database installed on the machine where gpload 
+  is running, you do not need a separate Python installation.
 
 * The gpfdist parallel file distribution program installed and in 
   your $PATH. This program is located in $GPHOME/bin of your 
@@ -30,6 +31,9 @@ The client machine where gpload is executed must have the following:
 
 * Network access to and from all hosts in your Greenplum Database 
   array (master and segments).
+
+* Network access to and from the hosts where the data to be loaded 
+  resides (ETL servers).
 
 
 *****************************************************
@@ -98,7 +102,7 @@ CONNECTION OPTIONS
 
 -d <database>
 
-The database to load. If not specified, reads from the load 
+The database to load into. If not specified, reads from the load 
 control file, the environment variable $PGDATABASE or defaults
 to the current system user name.
 
@@ -107,7 +111,8 @@ to the current system user name.
 
 Specifies the host name of the machine on which the Greenplum 
 master database server is running. If not specified, reads from 
-the environment variable $PGHOST or defaults to localhost.
+the load control file, the environment variable $PGHOST or 
+defaults to localhost.
 
 
 -p <port>
@@ -127,9 +132,8 @@ or defaults to the current system user name.
 
 -W (force password prompt)
 
-Force a password prompt if password authentication is 
-configured. If not specified, reads the password from the 
-environment variable $PGPASSWORD or from a password file 
+Force a password prompt. If not specified, reads the password 
+from the environment variable $PGPASSWORD or from a password file 
 specified by $PGPASSFILE or in ~/.pgpass. If these are not set, 
 then gpload will prompt for a password even if -W is not supplied.
 
@@ -172,7 +176,7 @@ GPLOAD:
     - FORMAT: text | csv
     - DELIMITER: <delimiter_character>
     - ESCAPE: <escape_character>
-    - NULL: <null_string>
+    - NULL_AS: <null_string>
     - QUOTE: <csv_quote_character>
     - HEADER: true | false
     - ENCODING: <database_encoding>
@@ -187,20 +191,20 @@ GPLOAD:
            - <target_column_name>
     - UPDATE_CONDITION: '<boolean_condition>'
     - MAPPING:
-           - <target_column_name>: <source_column_name> | '<expression>'
+             <target_column_name>: <source_column_name> | '<expression>'
 
 
 *****************************************************
 CONTROL FILE SCHEMA ELEMENT DESCRIPTIONS
 *****************************************************
 
-VERSION - Required. The version of the gpload control file schema. 
+VERSION - Optional. The version of the gpload control file schema. 
           The current version is 1.0.0.1. 
 
 DATABASE - Optional. Specifies which database in Greenplum to 
-           connect to. If not specified, defaults to the default 
-           database or $PGDATABASE if set. You can also specify the 
-           database on the command line using the -d option. 
+           connect to. If not specified, defaults to $PGDATABASE if 
+           set or the current system user name. You can also specify 
+           the database on the command line using the -d option. 
 
 USER - Optional. Specifies which database role to use to connect. 
        If not specified, defaults to the current user or $PGUSER 
@@ -226,10 +230,9 @@ INPUT - Required. Defines the location and the format of the input
         data to be loaded. gpload will start one or more instances of 
         the gpfdist file distribution program on the current host and 
         create the required external table definitions in Greenplum 
-        Database that point to the source data residing on the local file 
-        system. Note that the host from which you run gpload must be 
-        accessible over the network by all Greenplum hosts 
-        (master and segments).
+        Database that point to the source data. Note that the host 
+        from which you run gpload must be accessible over the network 
+        by all Greenplum hosts (master and segments).
 
 SOURCE - Required. The SOURCE block of an INPUT specification defines 
          the location of a source file. An INPUT section can have more 
@@ -298,17 +301,14 @@ ESCAPE - Optional. Specifies the single character that is used for C
          delimiters. Make sure to choose an escape character that is not 
          used anywhere in your actual column data. The default escape 
          character is a \ (backslash), however it is possible to specify 
-         any other character to represent an escape. It is also possible 
-         to disable escaping by specifying the value 'OFF' as the escape 
-         value. This is very useful for data such as web log data that 
-         has many embedded backslashes that are not intended to be escapes.
+         any other character to represent an escape. 
 
-NULL - Optional. Specifies the string that represents a null value. The 
-       default is \N (backslash-N) in TEXT mode, and an empty value with 
-       no quotations in CSV mode. You might prefer an empty string even 
-       in TEXT mode for cases where you do not want to distinguish nulls 
-       from empty strings. Any source data item that matches this string 
-       will be considered a null value.
+NULL_AS - Optional. Specifies the string that represents a null value. The 
+          default is \N (backslash-N) in TEXT mode, and an empty value with 
+          no quotations in CSV mode. You might prefer an empty string even 
+          in TEXT mode for cases where you do not want to distinguish nulls 
+          from empty strings. Any source data item that matches this string 
+          will be considered a null value.
 
 QUOTE - Optional. Specifies the quotation character for CSV mode. The 
         default is double-quote (").
@@ -326,12 +326,12 @@ ENCODING - Optional. Character set encoding of the source data.
            client encoding. If not specified, the default client 
            encoding is used.
 
-ERROR_LIMIT - Optional. Enables single row error isolation mode 
-              for this load operation. When enabled, input rows that 
-              have format errors will be discarded provided that the error 
-              limit count is not reached on any Greenplum segment instance 
-              during input processing. If the error limit is not reached, all 
-              good rows will be loaded and any error rows will either be 
+ERROR_LIMIT - Required when ERROR_TABLE is declared. Enables single row 
+              error isolation mode for this load operation. When enabled, 
+              input rows that have format errors will be discarded provided 
+              that the error limit count is not reached on any Greenplum segment 
+              instance during input processing. If the error limit is not reached, 
+              all good rows will be loaded and any error rows will either be 
               discarded or logged to the table specified in ERROR_TABLE. 
               The default is to abort the load operation on the first error 
               encountered. Note that single row error isolation only applies 
@@ -341,7 +341,7 @@ ERROR_LIMIT - Optional. Enables single row error isolation mode
               violations, will still cause the load operation to abort if 
               encountered.
 
-ERROR_TABLE - Optional when ERROR_LIMIT is declared. Specifies an error 
+ERROR_TABLE - Required when ERROR_LIMIT is declared. Specifies an error 
               table where rows with formatting errors will be logged when 
               running in single row error isolation mode. You can then 
               examine this error table to see error rows that were not loaded 
@@ -362,6 +362,7 @@ MODE - Optional. Defaults to INSERT if not specified. There are three
        * UPDATE - Updates the UPDATE_COLUMNS of the target table where 
            the rows have MATCH_COLUMNS attribute values equal to those 
            of the input data, and the optional UPDATE_CONDITION is true.
+           UPDATE is not supported on tables with a random distribution policy.
 
        * MERGE - Inserts new rows and updates the UPDATE_COLUMNS of 
            existing rows where MATCH_COLUMNS attribute values are equal 
@@ -371,17 +372,22 @@ MODE - Optional. Defaults to INSERT if not specified. There are three
            data of the target table. If there are multiple new MATCH_COLUMNS 
            values that are the same, only one new row for that value will 
            be inserted (use UPDATE_CONDITION to filter out the rows you 
-           want to discard).
+           want to discard). MERGE is not supported on tables with a 
+           random distribution policy.
 
 MATCH_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
                 column(s) to use as the join condition for the update. 
                 The attribute value in the specified target column(s) must 
                 be equal to that of the corresponding source data column(s) 
                 in order for the row to be updated in the target table.
+                The MATCH_COLUMNS declared must be the same as the 
+                Greenplum distribution key columns for the table.
 
 UPDATE_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
                  column(s) to update for the rows that meet the 
                  MATCH_COLUMNS criteria and the optional UPDATE_CONDITION.
+                 Update columns cannot be columns that are used for Greenplum 
+                 distribution key for the table.
 
 UPDATE_CONDITION - Optional if MODE is UPDATE or MERGE. Specifies a Boolean 
                    condition (similar to what you would declare in a WHERE clause) 
@@ -393,9 +399,9 @@ MAPPING - Optional. If a mapping is specified, it overrides the default
           mapping is based on a match of column names as defined in the 
           source COLUMNS section and the column names of the target TABLE. 
           A mapping is specified as either:
-           - target_column_name: source_column_name
+            target_column_name: source_column_name
            or
-           - target_column_name: 'expression'
+            target_column_name: 'expression'
           Where expression is a Boolean condition (similar to what 
           you would declare in a WHERE clause).
 
