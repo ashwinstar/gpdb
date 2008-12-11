@@ -1162,7 +1162,7 @@ void updateAppendOnlyStats(PGconn* pConn)
 	int			i_schemaname = 0;
 	int			i = 0;
 
-	mpp_err_msg(logInfo, pszProgName, "updating Append Only table statistics");
+	mpp_err_msg(logInfo, pszProgName, "updating Append Only table statistics\n");
 
 	/* Fetch all Append Only tables */
 	appendPQExpBuffer(get_query,

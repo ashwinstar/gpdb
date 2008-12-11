@@ -80,6 +80,7 @@ typedef struct option optType;
 // mpp specific stuff
 extern void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void myChildHandler(int signo);
+static void psqlHandler(int signo);
 static void myHandler(int signo);
 static void* monitorThreadProc(void *arg __attribute__((unused)));
 static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
@@ -87,7 +88,8 @@ static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 static char* testProgramExists(char* pszProgramName);
 
 static bool bUsePSQL = false;
-static bool bPSQLDone = false;
+static volatile sig_atomic_t bPSQLDone = false;
+static volatile sig_atomic_t bKillPsql = false;
 static bool bCompUsed = false; /* de-compression is used */
 static char* g_compPg = NULL;   /* de-compression program with full path */
 static char*            g_gpdumpInfo = NULL;
@@ -133,7 +135,7 @@ main(int argc, char **argv)
 	static int	disable_triggers = 0;
     SegmentDatabase SegDB;
     StatusOp* pOp;
-    struct sigaction act, oact;
+    struct sigaction act;
     pid_t newpid;
     char* pszOnErrorStop    = "-v ON_ERROR_STOP=";
     int len;  /* psql */
@@ -519,13 +521,11 @@ main(int argc, char **argv)
         /* Install Ctrl-C interrupt handler, now that we have a connection */
         if ( !bUsePSQL )
         {
-            struct sigaction act, oact;
-
             act.sa_handler = myHandler;
             sigemptyset(&act.sa_mask);
             act.sa_flags = 0;
             act.sa_flags |= SA_RESTART;
-            if ( sigaction(SIGINT, &act, &oact) < 0 )
+            if ( sigaction(SIGINT, &act, NULL) < 0 )
             {
                 mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGINT interrupt handler\n");
             }
@@ -534,7 +534,7 @@ main(int argc, char **argv)
             sigemptyset(&act.sa_mask);
             act.sa_flags = 0;
             act.sa_flags |= SA_RESTART;
-            if ( sigaction(SIGTERM, &act, &oact) < 0 )
+            if ( sigaction(SIGTERM, &act, NULL) < 0 )
             {
                 mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGTERM interrupt handler\n");
             }
@@ -552,11 +552,30 @@ main(int argc, char **argv)
     if ( bUsePSQL )
     {
         /* Install Ctrl-C interrupt handler, now that we have a connection */
+        act.sa_handler = psqlHandler;
+        sigemptyset(&act.sa_mask);
+        act.sa_flags = 0;
+        act.sa_flags |= SA_RESTART;
+        if ( sigaction(SIGINT, &act, NULL) < 0 )
+        {
+            mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGINT interrupt handler\n");
+        }
+
+        act.sa_handler = psqlHandler;
+        sigemptyset(&act.sa_mask);
+        act.sa_flags = 0;
+        act.sa_flags |= SA_RESTART;
+        if ( sigaction(SIGTERM, &act, NULL) < 0 )
+        {
+            mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGTERM interrupt handler\n");
+        }
+
+        /* Establish a SIGCHLD handler to catch termination the psql process */
         act.sa_handler = myChildHandler;
         sigemptyset(&act.sa_mask);
         act.sa_flags = 0;
         act.sa_flags |= SA_RESTART;
-        if ( sigaction(SIGCHLD, &act, &oact) < 0 )
+        if ( sigaction(SIGCHLD, &act, NULL) < 0 )
         {
             mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGCHLD interrupt handler\n");
             exit(1);
@@ -670,6 +689,13 @@ main(int argc, char **argv)
             while ( !bPSQLDone )
             {
                 sleep( 5 );
+            }
+
+            /* If this process has been sent a SIGINT or SIGTERM, we need to send a SIGINT to the psql process. */
+            if ( bKillPsql )
+            {
+            	mpp_err_msg(logInfo, pszProgName, "Terminating psql due to signal.\n");
+            	kill( newpid, SIGINT );
             }
 
             waitpid( newpid, &status, 0 );
@@ -841,6 +867,18 @@ void myChildHandler(int signo)
 	bPSQLDone = true;
 }
 
+
+/*
+ * psqlHandler: This function is the signal handler for SIGINT and SIGTERM when a psql
+ * process is used to restore data.  This process
+ */
+static void psqlHandler(int signo)
+{
+	bKillPsql = true;
+	bPSQLDone = true;
+}
+
+
 /*
  * makeSureMonitorThreadEnds: This function adds a request for a TASK_FINISH
  * status row, and then waits for the g_monitor_tid to end.
@@ -1004,6 +1042,8 @@ void* monitorThreadProc(void *arg __attribute__((unused)))
 
 	return NULL;
 }
+
+
 /*
  * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.
  * It checks to see whether there is an active transaction running on the g_conn connection
