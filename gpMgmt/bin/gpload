@@ -925,9 +925,15 @@ class gpload:
         encoding = self.getconfig('gpload:input:encoding',str,None)
         if encoding:
             sql += "encoding%s"%quote(encoding)
+
+        limit = self.getconfig('gpload:input:error_limit',int, None)
+        if self.error_table and not limit:
+            self.log(self.ERROR, "gpload:input:error_table requires " +
+                    "gpload:input:error_limit to be specified")
         if self.error_table:
-            sql += "log errors into %s "%self.error_table
-            limit = self.getconfig('gpload:input:error_limit',int)
+            sql += "log errors into %s " % self.error_table
+
+        if limit:
             sql += "segment reject limit %s "%limit
         self.log(self.LOG, sql)
 
