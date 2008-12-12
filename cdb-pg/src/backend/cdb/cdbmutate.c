@@ -1628,13 +1628,25 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 			foreach(cell, app->appendplans)
 				shareinput_walker(f, (Node *)lfirst(cell), ctxt);
 		}
-
 		else if(IsA(node, SubqueryScan))
 		{
 			SubqueryScan *subqscan = (SubqueryScan *) node;
 			shareinput_walker(f, (Node *) subqscan->subplan, ctxt);
 		}
-
+		else if(IsA(node, BitmapAnd))
+		{
+			ListCell *cell;
+			BitmapAnd *ba = (BitmapAnd *) node;
+			foreach(cell, ba->bitmapplans)
+				shareinput_walker(f, (Node *)lfirst(cell), ctxt);
+		}
+		else if(IsA(node, BitmapOr))
+		{
+			ListCell *cell;
+			BitmapOr *bo = (BitmapOr *) node;
+			foreach(cell, bo->bitmapplans)
+				shareinput_walker(f, (Node *)lfirst(cell), ctxt);
+		}
 		else if(IsA(node, NestLoop))
 		{
 			/* Nest loop join is strange.  Exec order depends on prefetch_inner */
@@ -1663,6 +1675,78 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 			shareinput_walker(f, (Node *)plan->lefttree, ctxt);
 			shareinput_walker(f, (Node *)plan->righttree, ctxt);
 			shareinput_walker(f, (Node *)plan->initPlan, ctxt);
+		}
+	}
+
+	(*f)(node, ctxt, true);
+}
+
+static void leftdeep_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputContext *ctxt)
+{
+	Plan *plan = NULL; 
+	bool recursive_down;
+
+	if(node == NULL)
+		return;
+
+	if(IsA(node, SubPlan))
+	{
+		SubPlan *subplan = (SubPlan *) node;
+		leftdeep_walker(f, (Node *)subplan->plan, ctxt); 
+		return;
+	}
+
+	if(IsA(node, List))
+	{
+		List *l = (List *) node;
+		ListCell *lc;
+		foreach(lc, l)
+		{
+			Node* n = lfirst(lc);
+			leftdeep_walker(f, n, ctxt);
+		}
+		return;
+	}
+
+	if(!is_plan_node(node))
+		return;
+
+	plan = (Plan *) node;
+	recursive_down = (*f)(node, ctxt, false);
+
+	if(recursive_down) 
+	{
+		if(IsA(node, Append))
+		{
+			ListCell *cell;
+			Append *app = (Append *) node;
+			foreach(cell, app->appendplans)
+				leftdeep_walker(f, (Node *)lfirst(cell), ctxt);
+		}
+		else if(IsA(node, BitmapAnd))
+		{
+			ListCell *cell;
+			BitmapAnd *ba = (BitmapAnd *) node;
+			foreach(cell, ba->bitmapplans)
+				leftdeep_walker(f, (Node *)lfirst(cell), ctxt);
+		}
+		else if(IsA(node, BitmapOr))
+		{
+			ListCell *cell;
+			BitmapOr *bo = (BitmapOr *) node;
+			foreach(cell, bo->bitmapplans)
+				leftdeep_walker(f, (Node *)lfirst(cell), ctxt);
+		}
+		else if(IsA(node, SubqueryScan))
+		{
+			SubqueryScan *subqscan = (SubqueryScan *) node;
+			leftdeep_walker(f, (Node *) subqscan->subplan, ctxt);
+		}
+		else
+		{
+			leftdeep_walker(f, (Node *)plan->lefttree, ctxt);
+			leftdeep_walker(f, (Node *)plan->righttree, ctxt);
+			leftdeep_walker(f, (Node *)plan->initPlan, ctxt);
 		}
 	}
 
@@ -1996,7 +2080,7 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	/* 
 	 * Generate a plan node id for each node.  Used by gpmon. 
 	 */
-	shareinput_walker(shareinput_mutator_gpmon, (Node *) plan, ctxt);
+	leftdeep_walker(shareinput_mutator_gpmon, (Node *) plan, ctxt);
 	
 	return plan;
 }

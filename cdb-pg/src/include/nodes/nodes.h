@@ -52,11 +52,17 @@ typedef enum NodeTag
 	 * TAGS FOR PLAN NODES (plannodes.h)
 	 */
 	T_Plan = 100,
-	T_Result,
+	T_Scan,
+	T_Join,
+
+	/* Real plan node starts below.  Scan and Join are "Virtal nodes",
+	 * It will take the form of IndexScan, SeqScan, etc. 
+	 */
+	T_Plan_Start,
+	T_Result = T_Plan_Start,
 	T_Append,
 	T_BitmapAnd,
 	T_BitmapOr,
-	T_Scan,
 	T_SeqScan,
 	T_ExternalScan,
 	T_AppendOnlyScan,
@@ -67,7 +73,6 @@ typedef enum NodeTag
 	T_SubqueryScan,
 	T_FunctionScan,
 	T_ValuesScan,
-	T_Join,
 	T_NestLoop,
 	T_MergeJoin,
 	T_HashJoin,
@@ -83,6 +88,7 @@ typedef enum NodeTag
 	T_AdaptiveNestLoop,
 	T_ShareInputScan,
 	T_Window,
+	T_Plan_End = T_Window,
 
 	/*
 	 * TAGS FOR PLAN STATE NODES (execnodes.h)
@@ -90,11 +96,17 @@ typedef enum NodeTag
 	 * These should correspond one-to-one with Plan node types.
 	 */
 	T_PlanState = 200,
-	T_ResultState,
+	T_ScanState,
+	T_JoinState,
+
+	/* Real plan node starts below.  Scan and Join are "Virtal nodes",
+	 * It will take the form of IndexScan, SeqScan, etc. 
+	 */
+	T_PlanState_Start,
+	T_ResultState = T_PlanState_Start,
 	T_AppendState,
 	T_BitmapAndState,
 	T_BitmapOrState,
-	T_ScanState,
 	T_SeqScanState,
 	T_AppendOnlyScanState,
 	T_ExternalScanState,
@@ -105,7 +117,6 @@ typedef enum NodeTag
 	T_SubqueryScanState,
 	T_FunctionScanState,
 	T_ValuesScanState,
-	T_JoinState,
 	T_NestLoopState,
 	T_MergeJoinState,
 	T_HashJoinState,
@@ -121,6 +132,7 @@ typedef enum NodeTag
 	T_AdaptiveNestLoopState,
 	T_ShareInputScanState,
 	T_WindowState,
+	T_PlanState_End = T_WindowState,
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)

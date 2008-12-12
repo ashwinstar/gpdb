@@ -656,40 +656,8 @@ is_plan_node(Node *node)
 	if (node == NULL)
 		return false;
 
-	switch (nodeTag(node))
-	{
-		case T_Result:
-		case T_Append:
-		case T_SeqScan:
-		case T_ExternalScan:
-		case T_AppendOnlyScan:
-		case T_IndexScan:
-		case T_BitmapIndexScan:
-		case T_BitmapHeapScan:
-		case T_TidScan:
-		case T_SubqueryScan:
-		case T_FunctionScan:
-        case T_ValuesScan:
-		case T_AdaptiveNestLoop:
-		case T_NestLoop:
-		case T_MergeJoin:
-		case T_HashJoin:
-		case T_Material:
-		case T_Sort:
-		case T_Group:
-		case T_Agg:
-		case T_Unique:
-		case T_Hash:
-		case T_SetOp:
-		case T_Limit:
-		case T_Motion:
-		case T_ShareInputScan:
-		case T_Window:
-			return true;
-
-		default:
-			break;
-	}
+	if(nodeTag(node) >= T_Plan_Start && nodeTag(node) <= T_Plan_End)
+		return true;
 	return false;
 }
 
