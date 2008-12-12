@@ -311,6 +311,9 @@ static inline Datum Float8GetDatumFast(float8 f) { return Float8GetDatum(f); }
  * ----------------------------------------------------------------
  */
 
+#define COMPILE_ASSERT(e) ((void)sizeof(char[1-2*!(e)]))
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+
 extern DLLIMPORT bool assert_enabled;
 
 /*
