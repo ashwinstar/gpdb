@@ -447,6 +447,7 @@ copylibs : thirdparty-dist
 	    done ; \
 	fi
 	@lib_wildcards=`$(BLD_LDD) $(INSTLOC)/bin/lib/gpcheckdb | egrep 'libstdc\+\+' $(BLD_LDD_FILTER)` export lib_wildcards; \
+	if [ -z "$${lib_wildcards}" ]; then exit 0; fi; \
 	lib_list=`ls $${lib_wildcards}` export lib_list; \
 	for lib in $${lib_list}; do \
 	  echo "Copying $$lib to $(subst $(CURDIR)/,,$(INSTLOC)/lib)..."; \
