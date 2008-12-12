@@ -398,7 +398,7 @@ def gpperfmon_setup():
 
     # Web Server configuration
     enable_ssl = 'disable'
-    lighty_port = 8080
+    lighty_port = 28080
     if not opt.has_key('noweb'):
         print '------------------------'
         print 'Web Server Configuration'
@@ -409,7 +409,7 @@ def gpperfmon_setup():
         lighty_error_log = logloc + '/lighttpd-error.log'
 
         print '\ngpperfmon runs a small web server for the UI and web API.  This web'
-        print 'server by default runs on port 8080, but you may specify any available port.'
+        print 'server by default runs on port 28080, but you may specify any available port.'
         lighty_port = get_int('Web server port [28080]', 28080, 1, 65534)
     
         ssl_cert = ''
