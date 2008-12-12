@@ -58,6 +58,7 @@ valid_tokens = {
     "error_limit": {'parse_children': True, 'parent': "input"}, 
     "error_percent": {'parse_children': True, 'parent': "input"},
     "error_table": {'parse_children': True, 'parent': "input"},
+    "header": {'parse_children': True, 'parent': "input"},
     "output": {'parse_children': True, 'parent': "gpload"},
     "table": {'parse_children': True, 'parent': "output"}, 
     "mode": {'parse_children': True, 'parent': "output"},
