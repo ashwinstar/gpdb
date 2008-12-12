@@ -691,26 +691,44 @@ main(int argc, char **argv)
                 sleep( 5 );
             }
 
-            /* If this process has been sent a SIGINT or SIGTERM, we need to send a SIGINT to the psql process. */
+            /*
+             * If this process has been sent a SIGINT or SIGTERM, we need
+             * to send a SIGTERM to the psql process; SIGINT isn't strong
+             * enough -- it simply kills the current statement.
+             */
             if ( bKillPsql )
             {
             	mpp_err_msg(logInfo, pszProgName, "Terminating psql due to signal.\n");
-            	kill( newpid, SIGINT );
+            	kill( newpid, SIGTERM );
             }
 
             waitpid( newpid, &status, 0 );
             if ( WIFEXITED(status) )
             {
                 rc = WEXITSTATUS(status);
-
-				mpp_err_msg(logInfo, pszProgName,"psql finished with rc %d.\n", rc );
-                if ( rc != 0 )
+                if (rc == 0)
                 {
-                    pszErrorMsg = MakeString( "psql finished abnormally with return code %d.\n", rc  );
-
-                    makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
-                    free( pszErrorMsg );
-                    exit_code=2;
+					mpp_err_msg(logInfo, pszProgName,"psql finished with rc %d.\n", rc );
+					/* Normal completion falls to end of routine. */
+                }
+                else
+               	{
+                	if (rc >= 128)
+					{
+						/*
+						 * If the exit code has the 128-bit set, the exit code represents
+						 * a shell exited by signal where the signal number is exitCode - 128.
+						 */
+						rc -= 128;
+						pszErrorMsg = MakeString( "psql finished abnormally with signal number %d.\n", rc );
+					}
+                	else
+                	{
+						pszErrorMsg = MakeString( "psql finished abnormally with return code %d.\n", rc );
+                	}
+					makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
+					free( pszErrorMsg );
+					exit_code=2;
                 }
             }
             else if( WIFSIGNALED(status) )
@@ -723,7 +741,7 @@ main(int argc, char **argv)
             }
             else
             {
-                pszErrorMsg = MakeString( "psql crashed or finished badly.\n" );
+                pszErrorMsg = MakeString( "psql crashed or finished badly; status=%#x.\n", status );
 				mpp_err_msg(logError, pszProgName, pszErrorMsg);
                 makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
                 free( pszErrorMsg );
