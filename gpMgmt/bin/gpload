@@ -492,15 +492,10 @@ class gpload:
                        [datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
                         self.elevel2str(level), a]) + '\n'
 
-        # only write up to LOG to the logfile, unless log level is DEBUG
-        if self.logfile and (level <= self.LOG or self.options.qv ==
-                             self.DEBUG):
-
+        if level <= self.options.qv:
+            sys.stdout.write(str)
             self.logfile.write(str)
             self.logfile.flush()
-    
-        if level <= self.options.qv:
-                sys.stdout.write(str)
 
         if level == self.ERROR:
             self.exitValue = 2;
@@ -908,7 +903,7 @@ class gpload:
                 quote(self.getconfig('gpload:input:delimiter',str))
 
         nullas = self.getconfig('gpload:input:null_as', str, False)
-        self.log(self.LOG, "null as " + str(nullas))
+        self.log(self.DEBUG, "null as " + str(nullas))
         if nullas:
             sql += " null as '%s' " % nullas
 
