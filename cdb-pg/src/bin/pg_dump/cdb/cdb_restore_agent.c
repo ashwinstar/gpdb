@@ -673,6 +673,13 @@ main(int argc, char **argv)
 
 			mpp_err_msg(logInfo, pszProgName, "Command Line: %s\n", pszCmdLine);
 
+			/*
+			 * Make this new process the process group leader of the
+			 * children being launched.  This allows a signal to be sent
+			 * to all processes in the group simultaneously.
+			 */
+			setpgid( newpid, newpid );
+
             execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
 			mpp_err_msg(logInfo, pszProgName, "Error in gp_restore_agent - execl of %s with Command Line %s failed",
@@ -682,7 +689,17 @@ main(int argc, char **argv)
         }
         else
         {
-        	// Allow the monitor thread to begin execution.
+			/*
+			 * Make the new child process the process group leader of the
+			 * children being launched.  This allows a signal to be sent
+			 * to all processes in the group simultaneously.
+			 *
+			 * This is a redundant call to avoid a race condition suggested
+			 * by Stevens.
+			 */
+			setpgid( newpid, newpid );
+
+			// Allow the monitor thread to begin execution.
         	pthread_mutex_unlock( &g_threadSyncPoint );
 
         	// Parent .  Lets sleep and wake up until we see it's done
@@ -693,13 +710,12 @@ main(int argc, char **argv)
 
             /*
              * If this process has been sent a SIGINT or SIGTERM, we need
-             * to send a SIGTERM to the psql process; SIGINT isn't strong
-             * enough -- it simply kills the current statement.
+             * to send a SIGINT to the psql process GROUP.
              */
             if ( bKillPsql )
             {
             	mpp_err_msg(logInfo, pszProgName, "Terminating psql due to signal.\n");
-            	kill( newpid, SIGTERM );
+            	kill( -newpid, SIGINT );
             }
 
             waitpid( newpid, &status, 0 );
