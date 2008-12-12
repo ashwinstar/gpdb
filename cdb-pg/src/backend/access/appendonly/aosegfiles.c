@@ -12,6 +12,7 @@
 */
 #include "postgres.h"
 
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "access/heapam.h"
 #include "access/genam.h"
@@ -23,6 +24,7 @@
 #include "cdb/cdbvars.h"
 #include "executor/spi.h"
 #include "nodes/makefuncs.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
@@ -762,5 +764,214 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	heap_close(parentrel, RowExclusiveLock);
 	
 	return total_count;
+}
+
+typedef struct 
+{
+	int index;
+	int rows;
+} QueryInfo;
+
+/*
+ * get_ao_distribution
+ * 
+ * given AO (+schema) table name, show the total distribution
+ * of rows across all segment databases in the system.
+ */
+PG_FUNCTION_INFO_V1(get_ao_distribution__);
+int
+get_ao_distribution__(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	MemoryContext 	oldcontext;
+	AclResult		aclresult;
+	QueryInfo 		*query_block = NULL;
+	StringInfoData 	sqlstmt;
+	RangeVar		*parentrv;	
+	Relation		parentrel;
+	Relation		aosegrel;
+	char			aoseg_relname[32];
+	char			*namespace = NULL;
+	char			*relname = NULL;
+	char			relstorage;
+    short			nargs = PG_NARGS();
+    int 			ret;
+	
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	/* 
+	 * stuff done only on the first call of the function. In here we
+	 * execute the query, gather the result rows and keep them in our
+	 * context so that we could return them in the next calls to this func.
+	 */
+	if (SRF_IS_FIRSTCALL())
+	{
+		bool 			connected = false;
+
+        funcctx = SRF_FIRSTCALL_INIT();
+
+		/* this check may be redundant. error is caught beforehand */
+		if(nargs != 2)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("get_ao_distribution called with %d arguments", 
+							nargs),
+					 errhint("arguments should be (schemaname, tablename)")));
+		}
+		
+		if (!PG_ARGISNULL(0))
+			namespace = GET_STR(PG_GETARG_TEXT_P(0));
+		
+		if (PG_ARGISNULL(1))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("get_ao_distribution called with NULL relname")));
+		
+		relname = GET_STR(PG_GETARG_TEXT_P(1));
+		
+		parentrv = makeRangeVar(namespace, relname);
+		
+		/*
+		 * get the relid of the parent (main) relation
+		 */
+		parentrel = heap_openrv(parentrv, RowExclusiveLock);
+		
+		/*
+		 * check permission to SELECT from this table (this function
+		 * is effectively a form of COUNT(*) FROM TABLE 
+		 */
+		aclresult = pg_class_aclcheck(parentrel->rd_id, GetUserId(), 
+									  ACL_SELECT);
+
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, ACL_KIND_CLASS, relname);
+
+		/*
+		 * verify this is an AO relation
+		 */
+		relstorage = parentrel->rd_rel->relstorage;
+		if(relstorage != RELSTORAGE_AO)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("get_ao_distribution called with non append "
+							"only relation (rel '%s', storage '%c')", 
+							relname, relstorage)));
+		
+		/*
+		 * get the name of the aoseg relation
+		 */
+		aosegrel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+		sprintf(aoseg_relname, "%s", RelationGetRelationName(aosegrel));
+		heap_close(aosegrel, AccessShareLock);
+		
+		/*
+		 * assemble our query string
+		 */
+		initStringInfo(&sqlstmt);
+		appendStringInfo(&sqlstmt, "select gp_segment_id,sum(tupcount) " 
+						 "from gp_dist_random('pg_aoseg.%s') "
+						 "group by (gp_segment_id)", aoseg_relname);
+		
+		PG_TRY();
+		{
+			
+			if (SPI_OK_CONNECT != SPI_connect())
+			{
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								errmsg("Unable to obtain AO relation information from segment databases."),
+								errdetail("SPI_connect failed in get_ao_distribution")));
+			}
+			connected = true;
+			
+			/* Do the query. */
+			ret = SPI_execute(sqlstmt.data, false, 0);
+						
+			if (ret > 0 && SPI_tuptable != NULL)
+			{
+				QueryInfo *query_block_state = NULL;
+				
+		        /* switch to memory context appropriate for multiple function calls */
+		        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		        funcctx->tuple_desc = BlessTupleDesc(SPI_tuptable->tupdesc);
+
+				/* 
+				 * Allocate cross-call state, so that we can keep track of 
+				 * where we're at in the processing.
+		         */
+		        query_block_state = (QueryInfo *) palloc0( sizeof(QueryInfo) );
+				funcctx->user_fctx = (int *)query_block_state;
+				
+				query_block_state->index	= 0;
+				query_block_state->rows	= SPI_processed;
+				MemoryContextSwitchTo(oldcontext);
+			}			
+		}
+		
+		/* Clean up in case of error. */
+		PG_CATCH();
+		{
+			if (connected)
+				SPI_finish();
+			
+			/* Carry on with error handling. */
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+		
+		pfree(sqlstmt.data);
+		heap_close(parentrel, RowExclusiveLock);
+	}
+	
+	/*
+     * Per-call operations
+     */
+    
+    funcctx = SRF_PERCALL_SETUP();
+
+	query_block = (QueryInfo *)funcctx->user_fctx;
+	if ( query_block->index < query_block->rows )
+	{
+		/*
+		 * Get heaptuple from SPI, then deform it, and reform it using
+		 * our tuple desc.
+		 * If we don't do this, but rather try to pass the tuple from SPI
+		 * directly back, we get an error because
+		 * the tuple desc that is associated with the SPI call
+		 * has not been blessed.
+		 */
+		HeapTuple tuple = SPI_tuptable->vals[query_block->index++];
+		TupleDesc tupleDesc = funcctx->tuple_desc;
+
+		Datum *values = (Datum *) palloc(tupleDesc->natts * sizeof(Datum));
+		char *nulls = (char *) palloc(tupleDesc->natts * sizeof(char));
+
+		HeapTuple res = NULL;
+		Datum result;
+		
+		heap_deformtuple(tuple, tupleDesc, values, nulls);
+
+		res = heap_formtuple(tupleDesc, values, nulls );
+
+		pfree(values);
+		pfree(nulls);
+		
+		/* make the tuple into a datum */
+		result  = HeapTupleGetDatum(res);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	/* 
+	 * do when there is no more left 
+	 */
+	pfree(query_block);
+
+	SPI_finish();
+	
+	funcctx->user_fctx = NULL;
+	
+	SRF_RETURN_DONE(funcctx);
 }
 

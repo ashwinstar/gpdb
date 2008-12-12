@@ -4742,6 +4742,8 @@ DESCR("window final function");
 
 DATA(insert OID = 7156 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 2 23 f "25 25" _null_ _null_ _null_ gp_update_ao_master_stats__  - _null_  ));
 DESCR("append only tables utility function");
+DATA(insert OID = 7169 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 2 2249 f "25 25" "{25,25,23,701}" "{i,i,o,o}" "{schema,table,segmentid,tupcount}" get_ao_distribution__  - _null_  ));
+DESCR("show append only table tuple distribution across segment databases");
 
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));
