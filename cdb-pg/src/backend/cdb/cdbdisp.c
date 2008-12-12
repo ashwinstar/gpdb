@@ -133,6 +133,46 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
                         struct CdbDispatchResults **pMirrorResults,
 						struct CdbDispatchCmdThreads  **pDispatchThreads);
 
+#define BEGIN_STR "BEGIN "
+#define PREPARE_STR "PREPARE "
+#define COMMIT_STR "COMMIT "
+#define ROLLBACK_STR "ROLLBACK "
+#define PG_RELATION_SIZE_STR "select pg_relation_size("
+#define PG_HIGHEST_OID_STR "select pg_highest_oid("
+#define MPPEXEC_CAP_STR "MPPEXEC "
+#define MPPEXEC_STR "mppexec "
+
+/* check if any segment is down and give a notice. */
+static inline void
+checkSegmentDown(const char *strCommand, int nsegdb,
+				 Gang *primaryGang, Gang *mirrorGang)
+{
+	if (mirrorGang &&
+		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
+	{
+		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
+			 nsegdb, mirrorGang->segdb_count, mirrorGang->size);
+		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
+			 nsegdb, primaryGang->segdb_count, primaryGang->size);
+		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
+
+		if (strncmp(strCommand, BEGIN_STR, sizeof(BEGIN_STR) - 1) != 0 &&
+			strncmp(strCommand, PREPARE_STR, sizeof(PREPARE_STR) - 1) != 0 &&
+			strncmp(strCommand, COMMIT_STR, sizeof(COMMIT_STR) - 1) != 0 &&
+			strncmp(strCommand, ROLLBACK_STR, sizeof(ROLLBACK_STR) - 1) != 0 &&
+			strncmp(strCommand, PG_RELATION_SIZE_STR, sizeof(PG_RELATION_SIZE_STR) - 1) != 0 &&
+			strncmp(strCommand, PG_HIGHEST_OID_STR, sizeof(PG_HIGHEST_OID_STR) - 1) != 0
+			)
+		{
+			if (strncmp(strCommand, MPPEXEC_CAP_STR, sizeof(MPPEXEC_CAP_STR) - 1) == 0 ||
+				strncmp(strCommand, MPPEXEC_STR, sizeof(MPPEXEC_STR) - 1) == 0)
+				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
+			else
+				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
+		}
+	}
+}
+
 /*
  * We need an array describing the relationship between a slice and
  * the number of "child" slices which depend on it.
@@ -1364,27 +1404,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	if (dispatchToMirrors && mirrorGang)
 		queryParms.mirror_gang_id = mirrorGang->gang_id;
 
-	if (mirrorGang &&
-		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
-	{
-		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
-		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
-		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
-
-		if (strncmp(strCommand, "BEGIN ", 6) != 0 &&
-			strncmp(strCommand, "PREPARE ", 8) != 0 &&
-			strncmp(strCommand, "COMMIT ", 6) != 0 &&
-			strncmp(strCommand, "ROLLBACK ", 9) != 0 &&
-			strncmp(strCommand, "select pg_relation_size(", 24) != 0 &&
-			strncmp(strCommand, "select pg_highest_oid(", 22) != 0
-			)
-		{
-			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
-				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
-			else
-				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
-		}
-	}
+	checkSegmentDown(strCommand, nsegdb, primaryGang, mirrorGang);
 
 	/* Serialize a version of our DTX Context Info */
 	queryParms.serializedDtxContextInfo = 
@@ -1672,29 +1692,8 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	
 	if (mirrorGang)
 		queryParms.mirror_gang_id = mirrorGang->gang_id;
-	
 
-	if (mirrorGang &&
-		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
-	{
-		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
-			 nsegdb, mirrorGang->segdb_count, mirrorGang->size);
-		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
-			 nsegdb, primaryGang->segdb_count, primaryGang->size);
-		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
-
-		if (strncmp(strCommand, "BEGIN ", 6) != 0 &&
-			strncmp(strCommand, "PREPARE ", 8) != 0 &&
-			strncmp(strCommand, "COMMIT ", 6) != 0 &&
-			strncmp(strCommand, "ROLLBACK ", 9) != 0 &&
-			strncmp(strCommand, "select pg_relation_size(", 24) != 0)
-		{
-			if (strncmp(strCommand, "MPPEXEC ", 7) == 0 || strncmp(strCommand, "mppexec ", 7) == 0)
-				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
-			else
-				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
-		}
-	}
+	checkSegmentDown(strCommand, nsegdb, primaryGang, mirrorGang);
 
 	/* serialized a version of our snapshot */
 	queryParms.serializedDtxContextInfo = 
