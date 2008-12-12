@@ -332,5 +332,16 @@ fetch 1 from cursor1;
 
 close cursor1;
 abort;
+-- MPP-4504: cursor + InitPlan
+begin;
+declare c1 cursor for select * from dtmcurse_foo where a = (select min(a) from dtmcurse_foo);
+fetch 1 from c1;
+ a | b 
+---+---
+ 1 | 2
+(1 row)
+
+close c1;
+end;
 drop table if exists dtmcurse_foo;
 drop table if exists dtmcurse_bar;

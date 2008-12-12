@@ -1071,6 +1071,12 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			Assert((queryDesc->estate->interconnect_context));
 
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
+
+			/*
+			 * We rewind the segmateSync value since the InitPlan can
+			 * share the same value with its parent plan. See MPP-4504.
+			 */
+			DtxContextInfo_RewindSegmateSync();
 		}
 
 		/*
