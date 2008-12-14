@@ -2,6 +2,23 @@
 # gpload - load file(s) into Greenplum Database
 # Copyright Greenplum 2008
 
+'''gpload [options] -f configuration file
+
+Options:
+    -h hostname: host to connect to
+    -p port: port to connect to
+    -U username: user to connect as
+    -d database: database to connect to
+    -W: force password authentication
+    -q: quiet mode
+    -D: do not actually load data
+    -v: verbose
+    -V: very verbose
+    -l logfile: log output to logfile
+    --version: print version number and exit
+    -?: help
+'''
+
 import sys
 if sys.hexversion<0x2040400:
     sys.stderr.write("gpload needs python version at least 2.4.4\n")
@@ -22,6 +39,8 @@ except ImportError:
     sys.exit(2)
  
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
+
+EXECNAME = os.path.split(__file__)[-1]
 
 # Mapping for validing our configuration file. We're only concerned with
 # keys -- stuff left of ':'. It gets complex in two cases: firstly when 
@@ -196,30 +215,25 @@ class Progress(threading.Thread):
             except socket.error:
                 break
             time.sleep(1)
+def cli_help():
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + 
+                             '_help');
+    f = None
+    try:
+        try:
+            f = open(help_path);
+            return f.read(-1)
+        except:
+            return ''
+    finally:
+        if f: f.close()
 
-def usage(error=None):
+#============================================================
+def usage(error = None):
     if error:
         sys.stderr.write('ERROR: ' + error + '\n')
         sys.stderr.write('\n')
-
-    usage = '''gpload [options] -f configuration file
-
-Options:
-    -h hostname: host to connect to
-    -p port: port to connect to
-    -U username: user to connect as
-    -d database: database to connect to
-    -W: force password authentication
-    -q: quiet mode
-    -D: do not actually load data
-    -v: verbose
-    -V: very verbose
-    -l logfile: log output to logfile
-    --version: print version number and exit
-    -?: help
-'''
-
-    sys.stderr.write(usage)
+    print cli_help() or __doc__
     sys.exit(2)
 
 def quote(a):
