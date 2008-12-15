@@ -806,6 +806,7 @@ class gpload:
     def read_columns(self):
         columns = self.getconfig('gpload:input:columns',list,None)
         if columns!=None:
+            self.from_cols_from_user = True # user specified from columns
             self.from_columns = []
             for d in columns:
                 if type(d)!=dict:
@@ -816,18 +817,28 @@ class gpload:
                 if d[key] == None:
                     self.log(self.DEBUG, 
                              'getting source column data type from target')
-                    for name, typ, mapto in self.into_columns:
+                    for name, typ, mapto, hasseq in self.into_columns:
                         if name == key:
                             d[key] = typ
                             break
+
+                # perform the same kind of magic type change that postgres does
+                if d[key] == 'bigserial':
+                    d[key] = 'bigint'
+                elif d[key] == 'serial':
+                    d[key] = 'int4'
 
                 # Mark this column as having no mapping, which is important
                 # for do_insert()
                 self.from_columns.append([key,d[key],None])
         else:
             self.from_columns = self.into_columns
+            self.from_cols_from_user = False
+
         self.log(self.DEBUG, 'from columns are--')
-        for name,typ,mapto in self.from_columns:
+        for c in self.from_columns:
+            name = c[0]
+            typ = c[1]
             self.log(self.DEBUG, '%s: %s'%(name,typ))
 
     def read_table_metadata(self):
@@ -837,7 +848,10 @@ class gpload:
         if i>=0:
             tableSchema = tableName[:i]
             tableName = tableName[i+1:]
-        self.pg8000.execute("""select * from information_schema.columns where 
+        self.pg8000.execute("""select *, data_type in ('int4', 'bigint') and 
+                               column_default ~ E'nextval\\\\(.*regclass' as 
+                               has_sequence 
+                               from information_schema.columns where 
                                table_name=$1 and table_schema=$2 order by 
                                ordinal_position""", tableName, tableSchema)
         count = 0
@@ -850,6 +864,10 @@ class gpload:
                 stuff = ('numeric_precision','numeric_scale')
             elif ct=='character' or ct=='character varying':
                 stuff = ('character_maximum_length',)
+            elif ct == 'bigserial':
+                ct = 'bigint'
+            elif ct == 'serial':
+                ct = 'int4'
             else:
                 stuff = ()
             stuff2 = []
@@ -859,7 +877,11 @@ class gpload:
             if stuff2:
                 ct += '('+','.join(stuff2)+')'
             name = str(row['column_name']).lower()
-            i = [name,ct,None]
+            if row['has_sequence'] == True:
+                has_seq = True
+            else:
+                has_seq = False
+            i = [name,ct,None, has_seq]
             self.into_columns.append(i)
             self.into_columns_dict[name] = i
             self.log(self.DEBUG, "found input column: " + str(i))
@@ -902,14 +924,23 @@ class gpload:
                     self.log(self.ERROR,'%s in mapping is not in table %s'%(key,self.table))
                 self.into_columns[i][2] = value.lower()
         self.log(self.DEBUG,'table %s columns are--'%self.table)
-        for name,typ,mapto in self.into_columns:
+        for name,typ,mapto,seq in self.into_columns:
             self.log(self.DEBUG,'%s: %s = %s'%(name,typ,mapto))
 
     def create_external_table(self):
         self.error_table = self.getconfig('gpload:input:error_table',str,None)
         format = self.getconfig('gpload:input:format',str,'text').lower()
         sql = "create external table ext_%s"%self.name
-        sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]),self.from_columns))
+
+        if not self.from_cols_from_user:
+            # don't put values serial columns
+            from_cols = filter(lambda a: a[3] != True,
+                               self.from_columns)
+        else:
+            from_cols = self.from_columns
+
+        sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]), from_cols))
+
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
         if self.getconfig('gpload:input:delimiter', str, False):
@@ -980,7 +1011,25 @@ class gpload:
         Handle the INSERT case
         """
         self.log(self.DEBUG, "into columns " + str(self.into_columns))
-        cols = filter(lambda a:a[2]!=None,self.into_columns)
+        cols = filter(lambda a:a[2]!=None, self.into_columns)
+        
+        # only insert non-serial columns, unless the user told us to 
+        # insert the serials explicitly
+        if not self.from_cols_from_user:
+            cols = filter(lambda a:a[3] == False, cols)
+#            fc = []
+#
+#            for a in filter(lambda a:a[3] == False,
+#                self.from_columns):
+#                fc.append(a[0])
+#
+#            cols2 = []
+#            for c in cols:
+#                if c[0] in fc:
+#                    cols2.append(c)
+#
+#            cols = cols2
+
         sql = 'insert into %s'%dest
         sql += '(%s)'%','.join(map(lambda a:a[0],cols))
         sql += 'select %s '%','.join(map(lambda a:a[2],cols))
