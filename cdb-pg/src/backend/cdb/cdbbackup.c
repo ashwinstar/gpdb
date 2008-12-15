@@ -735,64 +735,112 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 /*
  * createBackupDirectory( char* pszPathName ) return bool
  *
- * This will create a directory if it doesn't exist.  If pszPathName exists, it just returns.
+ * This will create a directory if it doesn't exist.
  *
- * It works by checking for the existence of the subdirectories. starting from the first
- * slash.  If the subdirectory doesn't exist, it creates it if it can, then moves on to the
- * next slash.
+ * This routine first attempts to create the directory using the full path (in case the
+ * mkdir function is able to create the full directory).  If this mkdir fails with EEXIST,
+ * filesystem object is checked to ensure it is a directory and fails with ENOTDIR if it
+ * is not.
+ *
+ * If the "full" mkdir fails with a code other than ENOENT, this routine fails.  For the
+ * ENOENT code, the routine attempts to create the directory tree from the top, one level
+ * at a time, failing if unable to create a directory with a code other than EEXIST and
+ * the EEXIST level is not a directory.  Being tolerant of EEXIST failures allows for
+ * multiple segments to attempt to create the directory simultaneously.
  */
 bool
 createBackupDirectory(char *pszPathName)
 {
+	int			rc;
 	struct stat info;
 	char	   *pSlash;
-
-	/* Does pszPathName already exist?	If so, return */
-	if (0 == stat(pszPathName, &info))
-		return true;
 
 	/* Can we make it in its entirety?	If so, return */
 	if (0 == mkdir(pszPathName, S_IRWXU))
 		return true;
 
-	/* Try to create each level of the hierarchy that doesn't already exist */
-	pSlash = pszPathName + 1;
-
-	while (pSlash != NULL && *pSlash != '\0')
+	if (errno == ENOENT)
 	{
-		/* Find next subdirectory delimiter */
-		pSlash = strchr(pSlash, '/');
-		if (pSlash == NULL)
-		{
-			/* If no more, we try to create the whole thing. */
-			if (0 > stat(pszPathName, &info))
-			{
-				if (0 != mkdir(pszPathName, S_IRWXU))
-					return false;
-			}
-		}
-		else
-		{
-			/* Temporarily end the string at the / we just found. */
-			*pSlash = '\0';
+		/* Try to create each level of the hierarchy that doesn't already exist */
+		pSlash = pszPathName + 1;
 
-			/* See whether this partial path exists. */
-			if (0 > stat(pszPathName, &info))
+		while (pSlash != NULL && *pSlash != '\0')
+		{
+			/* Find next subdirectory delimiter */
+			pSlash = strchr(pSlash, '/');
+			if (pSlash == NULL)
 			{
-				/* If not, create it. */
-				if (0 != mkdir(pszPathName, S_IRWXU))
+				/*
+				 * If no more slashes we're at the last level. Attempt to
+				 * create it; if it fails for any reason other than EEXIST,
+				 * fail the call.
+				 */
+				rc = mkdir(pszPathName, S_IRWXU);
+				if (rc != 0 && errno != EEXIST)
 				{
-					*pSlash = '/';
 					return false;
 				}
 			}
+			else
+			{
+				/* Temporarily end the string at the / we just found. */
+				*pSlash = '\0';
 
-			/* Put back the slash we overwrote above. */
-			*pSlash = '/';
+				/* Attempt to create the level; return code checked below. */
+				rc = mkdir(pszPathName, S_IRWXU);
 
-			/* Advance past the slash. */
-			pSlash++;
+				/*
+				 * If failed and the directory level does not exist, fail the call.
+				 * Is it possible for a directory level to exist and the mkdir() call
+				 * fail with a code such as ENOSYS (and possibly others) instead of
+				 * EEXIST.  So, if mkdir() fails, the directory level's existence is
+				 * checked.  If the level does't exist or isn't a directory, the
+				 * call is failed.
+				 */
+				if (rc != 0)
+				{
+					struct stat statbuf;
+					int errsave = errno;	/* Save mkdir error code over stat() call. */
+
+					if ( stat(pszPathName, &statbuf) < 0 || !S_ISDIR(statbuf.st_mode) )
+					{
+						errno = errsave;		/* Restore mkdir error code. */
+						*pSlash = '/';			/* Put back the slash we overwrote above. */
+						return false;
+					}
+				}
+
+				/* Put back the slash we overwrote above. */
+				*pSlash = '/';
+
+				/*
+				 * At this point, this level exists -- either because it was created
+				 * or it already exists.  If it already exists, it *could* be a
+				 * non-directory.  This will be caught when attempting to create the
+				 * next level.
+				 */
+
+				/* Advance past the slash. */
+				pSlash++;
+			}
 		}
+	}
+	else if (errno != EEXIST)
+	{
+		return false;
+	}
+
+	/* At this point, the path has been created or otherwise exists.  Ensure it's a directory. */
+	if (0 != stat(pszPathName, &info))
+	{
+		/* An unexpected failure obtaining the file info. errno is set. */
+		return false;
+	}
+	else if (!S_ISDIR(info.st_mode))
+	{
+		/* The pathname exists but is not a directory! */
+		errno = ENOTDIR;
+		return false;
 	}
 
 	return true;
