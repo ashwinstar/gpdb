@@ -465,16 +465,16 @@ class gpload:
         try:
             # do an initial parse, validating the config file
             doc = f.read()
+            self.config = yaml.load(doc)
+
+            # second parse, to check that the keywords are sensible
             y = yaml.compose(doc)
             # first should be MappingNode
             if not isinstance(y, yaml.MappingNode):
-                raise
+                self.log(self.ERROR, "configuration file must begin with a " +
+                         "mapping")
 
             yaml_walk(self, y.value, [])
-
-            # second parse, to convert to python objects
-            self.config = yaml.load(doc)
-
         except yaml.scanner.ScannerError,e:
             sys.stderr.write("YAML error in config file.\n%s\n"%e)
             sys.exit(2)
@@ -680,9 +680,12 @@ class gpload:
                 startPort = self.getconfig(name+':port',int,8000)
                 endPort = self.getconfig(name+':port',int,9000)
 
-            if not (set(xrange(startPort,endPort+1)) & availablePorts):
-                self.log(self.ERROR,
-                         "invalid port")
+            if (startPort > 65535 or endPort > 65535):
+                # Do not allow invalid ports
+                self.log(self.ERROR, "invalid port")
+            elif not (set(xrange(startPort,endPort+1)) & availablePorts):
+                self.log(self.ERROR, "no more ports available for gpfdist")
+
             file = self.getconfig(name+':file',list)
             for i in file:
                 if type(i)!=str:
@@ -956,7 +959,15 @@ class gpload:
             sql += "header "
         if format=='csv':
             sql += "quote as%s"%quote(self.getconfig('gpload:input:quote',str,extraStuff=' for csv formatted data'))
-            sql += "escape as%s"%quote(self.getconfig('gpload:input:escape',str,extraStuff=' for csv formatted data'))
+            esc = self.getconfig('gpload:input:escape', str,
+                                 ' for csv formatted data')
+            if esc.lower() == "off":
+                pass
+            else:
+                esc = " as %s" % quote(esc)
+
+            sql += "escape '%s'" % esc
+
         force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
         if force_not_null_columns:
             for i in force_not_null_columns:
@@ -1017,18 +1028,6 @@ class gpload:
         # insert the serials explicitly
         if not self.from_cols_from_user:
             cols = filter(lambda a:a[3] == False, cols)
-#            fc = []
-#
-#            for a in filter(lambda a:a[3] == False,
-#                self.from_columns):
-#                fc.append(a[0])
-#
-#            cols2 = []
-#            for c in cols:
-#                if c[0] in fc:
-#                    cols2.append(c)
-#
-#            cols = cols2
 
         sql = 'insert into %s'%dest
         sql += '(%s)'%','.join(map(lambda a:a[0],cols))
