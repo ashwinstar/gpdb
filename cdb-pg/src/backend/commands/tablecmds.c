@@ -10134,13 +10134,13 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 
 	{
 		ListCell   *lc;
+		int i = 0;
 
 		foreach(lc, (List *)expr)
 		{
 			Node *n1 = (Node *) lfirst(lc);
 			Const *c1;
-			/* XXX: do for all attributes */
-			AttrNumber attno = part->paratts[0];
+			AttrNumber attno = part->paratts[i++];
 			Form_pg_attribute attribute = tupleDesc->attrs[attno - 1];
 			Oid lhsid = attribute->atttypid;
 
@@ -10171,12 +10171,13 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 				/* explicit coerce */
 				if (IsA(out, FuncExpr))
 				{
-					Datum d = partition_arg_get_val(out);
+					bool null = false;
+					Datum d = partition_arg_get_val(out, &null);
 					Type typ = typeidType(lhsid);
 
 					/* pfree(out); */
 
-					c1 = makeConst(lhsid, typeLen(typ), d, false,
+					c1 = makeConst(lhsid, typeLen(typ), d, null,
 								  typeByVal(typ));
 					ReleaseSysCache(typ);
 				}
@@ -10190,7 +10191,7 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 
 			/* XXX: cache */
 			values[attno - 1] = c1->constvalue;
-			isnull[attno - 1] = c1->constisnull; /* XXX: not handled yet */
+			isnull[attno - 1] = c1->constisnull;
 		}
 	}
 
@@ -11049,8 +11050,8 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	{
 		if (pid->idtype == AT_AP_IDValue)
 		{
-			bool				*isnull;
 			TupleDesc			 tupledesc = RelationGetDescr(rel);
+			bool				*isnull;
 			PartitionNode 		*pNode2	   = NULL;
 			Datum	*d	= magic_expr_to_datum(rel, pNode, 
 											  pid->partiddef, &isnull);

@@ -5271,13 +5271,14 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 	/* explicit coerce */
 	if (IsA(out, FuncExpr) || IsA(out, OpExpr))
 	{
-		Datum d = partition_arg_get_val(out);
+		bool isnull;
+		Datum d = partition_arg_get_val(out, &isnull);
 		Const *c;
 		Type typ = typeidType(typid);
 
 		pfree(out);
 
-		c = makeConst(typid, typeLen(typ), d, false,
+		c = makeConst(typid, typeLen(typ), d, isnull,
 					  typeByVal(typ));
 		ReleaseSysCache(typ);
 		out = (Node *)c;
@@ -5747,6 +5748,7 @@ flatten_partition_val(Node *node, Oid target_type)
 		int32 typmod = ((Form_pg_type)typ)->typtypmod;
 		int16 typlen = ((Form_pg_type)typ)->typlen;
 		bool typbyval = ((Form_pg_type)typ)->typbyval;
+		bool isnull;
 
 		ReleaseSysCache(typ);
 
@@ -5763,8 +5765,8 @@ flatten_partition_val(Node *node, Oid target_type)
 				elog(ERROR, "could not coerce partitioning parameter");
 		}
 		
-		res = partition_arg_get_val(node);
-		c = makeConst(target_type, typlen, res, false, typbyval);
+		res = partition_arg_get_val(node, &isnull);
+		c = makeConst(target_type, typlen, res, isnull, typbyval);
 
 		return c;
 	}
@@ -5776,7 +5778,7 @@ flatten_partition_val(Node *node, Oid target_type)
  * of cases we must cover because the parser guarantees constant input.
  */
 Datum
-partition_arg_get_val(Node *node)
+partition_arg_get_val(Node *node, bool *isnull)
 {
 	switch (nodeTag(node))
 	{
@@ -5790,26 +5792,35 @@ partition_arg_get_val(Node *node)
 				{
 					case 1:
 						{
-							Datum d1 = partition_arg_get_val(linitial(fe->args));
+							Datum d1 = 
+								partition_arg_get_val(linitial(fe->args), isnull);
 
-							d = OidFunctionCall1(fe->funcid, d1);
+							if (!*isnull)
+								d = OidFunctionCall1(fe->funcid, d1);
 						}
 						break;
 					case 2:
 						{
-							Datum d1 = partition_arg_get_val(linitial(fe->args));
-							Datum d2 = partition_arg_get_val(lsecond(fe->args));
+							bool null1, null2;
+							Datum d1 = partition_arg_get_val(linitial(fe->args), &null1);
+							Datum d2 = partition_arg_get_val(lsecond(fe->args), &null2);
 
-							d = OidFunctionCall2(fe->funcid, d1, d2);
+							*isnull = null1 || null2;
+							if (!*isnull)
+								d = OidFunctionCall2(fe->funcid, d1, d2);
 						}
 						break;
 					case 3:
 						{
-							Datum d1 = partition_arg_get_val(linitial(fe->args));
-							Datum d2 = partition_arg_get_val(lsecond(fe->args));
-							Datum d3 = partition_arg_get_val(lthird(fe->args));
+							bool null1, null2, null3;
 
-							d = OidFunctionCall3(fe->funcid, d1, d2, d3);
+							Datum d1 = partition_arg_get_val(linitial(fe->args), &null1);
+							Datum d2 = partition_arg_get_val(lsecond(fe->args), &null2);
+							Datum d3 = partition_arg_get_val(lthird(fe->args), &null3);
+
+							*isnull = null1 || null2 || null3;
+							if (!*isnull)
+								d = OidFunctionCall3(fe->funcid, d1, d2, d3);
 						}
 						break;
 					default:
@@ -5832,15 +5843,19 @@ partition_arg_get_val(Node *node)
 				{
 					case 1: 
 						{
-							Datum d1 = partition_arg_get_val(linitial(op->args));
-							d = OidFunctionCall1(op->opfuncid, d1);
+							Datum d1 = partition_arg_get_val(linitial(op->args), isnull);
+							if (!*isnull)
+								d = OidFunctionCall1(op->opfuncid, d1);
 						}
 						break;
 					case 2:
 						{
-							Datum d1 = partition_arg_get_val(linitial(op->args));
-							Datum d2 = partition_arg_get_val(lsecond(op->args));
-							d = OidFunctionCall2(op->opfuncid, d1, d2);
+							bool null1, null2;
+							Datum d1 = partition_arg_get_val(linitial(op->args), &null1);
+							Datum d2 = partition_arg_get_val(lsecond(op->args), &null2);
+							*isnull = null1 || null2;
+							if (!*isnull)
+								d = OidFunctionCall2(op->opfuncid, d1, d2);
 						}
 						break;
 					default:
@@ -5848,14 +5863,17 @@ partition_arg_get_val(Node *node)
 				}
 				return d;
 			}
+			*isnull = false;
 			break;
 		case T_RelabelType:
 			{
 				RelabelType *n = (RelabelType *)node;
-				return partition_arg_get_val((Node *)n->arg);
+				
+				return partition_arg_get_val((Node *)n->arg, isnull);
 			}
 			break;
 		case T_Const:
+			*isnull = ((Const *)node)->constisnull;
 			return ((Const *)node)->constvalue;
 			break;
 		default:
@@ -5882,14 +5900,15 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				  Node *rightarg, bool *typbyval, int16 *typlen,
 				  Oid *restypid, int location)
 {
-	Datum res;
-	Datum lhs;
-	Datum rhs;
+	Datum res = 0;
+	Datum lhs = 0;
+	Datum rhs = 0;
 	OpExpr *opexpr;
 	HeapTuple optup;
 	bool byval;
 	int16 len;
 	bool need_typ_info = (PointerIsValid(restypid) && *restypid == InvalidOid);
+	bool isnull;
 	
 	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, location);
 	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
@@ -5901,9 +5920,13 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 
 	ReleaseSysCache(optup);
 
-	lhs = partition_arg_get_val((Node *)linitial(opexpr->args));
-	rhs = partition_arg_get_val((Node *)lsecond(opexpr->args));
-	res = OidFunctionCall2(opexpr->opfuncid, lhs, rhs);
+	lhs = partition_arg_get_val((Node *)linitial(opexpr->args), &isnull);
+	if (!isnull)
+	{
+		rhs = partition_arg_get_val((Node *)lsecond(opexpr->args), &isnull);
+		if (!isnull)
+			res = OidFunctionCall2(opexpr->opfuncid, lhs, rhs);
+	}
 
 	/* If the caller supplied a target result type, coerce if necesssary */
 	if (PointerIsValid(restypid))
@@ -5918,7 +5941,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				Const *c;
 	
 				c = makeConst(opexpr->opresulttype, typeLen(typ), res,
-							  false, typeByVal(typ));
+							  isnull, typeByVal(typ));
 				ReleaseSysCache(typ);
 
 				typ = typeidType(*restypid);
@@ -5930,7 +5953,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 										COERCION_EXPLICIT,
 										COERCE_IMPLICIT_CAST);
 			
-				res = partition_arg_get_val((Node *)e);
+				res = partition_arg_get_val((Node *)e, &isnull);
 			}
 		}
 		else
