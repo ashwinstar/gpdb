@@ -111,10 +111,19 @@ def interactive():
         # Set the maximum number of commands to 100
         readline.set_history_length(500)
         try:
-            readline.read_history_file(histfile)
+            readline.read_history_file(histfile)            
         except IOError:
             pass
-        atexit.register(readline.write_history_file, histfile)
+        
+        #MPP-4054 - let's check the permissons before we register
+        try:
+            f=open(histfile,'a')
+            atexit.register(readline.write_history_file, histfile)
+            f.close()                        
+        except IOError:
+            print "\n[WARN] Unable to write to gpssh history file: '%s'. Please check permissions." % histfile
+        
+            
     except Exception, e:
         print "Note: command history unsupported on this machine ..."
 
