@@ -63,7 +63,7 @@ details. See 'CONTROL FILE FORMAT' below.
 -l <log_file>
 
 Specifies where to write the log file. Defaults to 
-~/gpAdminLogs/gpload_YYYYMMDD. 
+~/gpAdminLogs/gpload_YYYYMMDD. See Also: LOG FILE FORMAT section.
 
 
 -v (verbose mode)
@@ -184,7 +184,7 @@ GPLOAD:
     - ERROR_TABLE: <schema>.<table_name>
    OUTPUT:
     - TABLE: <schema>.<table_name>
-    - MODE: insert | update | delete
+    - MODE: insert | update | merge
     - MATCH_COLUMNS:
            - <target_column_name>
     - UPDATE_COLUMNS:
@@ -229,7 +229,7 @@ GPLOAD - Required. Begins the load specification section. A GPLOAD
 INPUT - Required. Defines the location and the format of the input 
         data to be loaded. gpload will start one or more instances of 
         the gpfdist file distribution program on the current host and 
-        create the required external table definitions in Greenplum 
+        create the required external table definition(s) in Greenplum 
         Database that point to the source data. Note that the host 
         from which you run gpload must be accessible over the network 
         by all Greenplum hosts (master and segments).
@@ -326,11 +326,11 @@ ENCODING - Optional. Character set encoding of the source data.
            client encoding. If not specified, the default client 
            encoding is used.
 
-ERROR_LIMIT - Required when ERROR_TABLE is declared. Enables single row 
-              error isolation mode for this load operation. When enabled, 
-              input rows that have format errors will be discarded provided 
-              that the error limit count is not reached on any Greenplum segment 
-              instance during input processing. If the error limit is not reached, 
+ERROR_LIMIT - Optional. Enables single row error isolation mode for 
+              this load operation. When enabled, input rows that have 
+              format errors will be discarded provided that the error 
+              limit count is not reached on any Greenplum segment instance 
+              during input processing. If the error limit is not reached, 
               all good rows will be loaded and any error rows will either be 
               discarded or logged to the table specified in ERROR_TABLE. 
               The default is to abort the load operation on the first error 
@@ -341,7 +341,7 @@ ERROR_LIMIT - Required when ERROR_TABLE is declared. Enables single row
               violations, will still cause the load operation to abort if 
               encountered.
 
-ERROR_TABLE - Required when ERROR_LIMIT is declared. Specifies an error 
+ERROR_TABLE - Optional when ERROR_LIMIT is declared. Specifies an error 
               table where rows with formatting errors will be logged when 
               running in single row error isolation mode. You can then 
               examine this error table to see error rows that were not loaded 
@@ -386,12 +386,12 @@ MATCH_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the
 UPDATE_COLUMNS - Required if MODE is UPDATE or MERGE. Specifies the 
                  column(s) to update for the rows that meet the 
                  MATCH_COLUMNS criteria and the optional UPDATE_CONDITION.
-                 Update columns cannot be columns that are used for Greenplum 
-                 distribution key for the table.
+                 Update columns cannot be columns that are used for the 
+                 Greenplum distribution key for the table.
 
-UPDATE_CONDITION - Optional if MODE is UPDATE or MERGE. Specifies a Boolean 
-                   condition (similar to what you would declare in a WHERE clause) 
-                   that must be met in order for a row in the target table to be 
+UPDATE_CONDITION - Optional. Specifies a Boolean condition (similar to 
+                   what you would declare in a WHERE clause) that must be 
+                   met in order for a row in the target table to be 
                    updated (or inserted in the case of a MERGE).
 
 MAPPING - Optional. If a mapping is specified, it overrides the default 
@@ -406,6 +406,27 @@ MAPPING - Optional. If a mapping is specified, it overrides the default
           SELECT list of a query, such as a constant value, a column reference, 
           an operator invocation, a function call, and so on.
 
+
+*****************************************************
+LOG FILE FORMAT
+*****************************************************
+
+Log files output by gpload have the following format:
+
+<timestamp>|<level>|<message>
+Where <timestamp> takes the form: YYYY-MM-DD HH:MM:SS, 
+<level> is one of DEBUG, LOG, INFO, ERROR, and <message> is 
+a normal text message. Some INFO messages that may be of 
+interest in the log files are (where # corresponds to the 
+actual number of seconds, units of data, or failed rows):
+
+INFO|running time: #.## seconds
+INFO|transferred #.# kB of #.# kB.
+INFO|gpload succeeded
+INFO|gpload succeeded with warnings
+INFO|gpload failed
+INFO|1 bad row
+INFO|# bad rows
 
 *****************************************************
 EXAMPLES
