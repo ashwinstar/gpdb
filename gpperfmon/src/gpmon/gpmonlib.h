@@ -52,5 +52,8 @@ extern char* gpmon_trim(char* s);
 /* datetime, e.g. 2004-02-14  23:50:02 */
 extern char* gpmon_datetime(apr_time_t t, char str[24]);
 
+/* utility */
+extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
+									apr_int32_t ccnt);
 
 #endif /* GPMONLIB_H */

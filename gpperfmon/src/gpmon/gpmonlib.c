@@ -286,3 +286,28 @@ char* gpmon_datetime(apr_time_t t, char str[24])
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
     return str;
 }
+
+/* get status from query text file */
+apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
+							 apr_int32_t ccnt)
+{
+	char fname[GPMON_DIR_MAX_PATH];
+	FILE *fp;
+	apr_int32_t status = GPMON_QLOG_STATUS_INVALID;
+
+	snprintf(fname, GPMON_DIR_MAX_PATH, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
+
+	fp = fopen(fname, "r");
+	if (!fp)
+		return GPMON_QLOG_STATUS_INVALID;
+
+	if (0 != fseek(fp, -1, SEEK_END))
+	{
+		fclose(fp);
+		return GPMON_QLOG_STATUS_INVALID;
+	}
+
+	fscanf(fp, "%d", &status);
+	fclose(fp);
+	return status;
+}

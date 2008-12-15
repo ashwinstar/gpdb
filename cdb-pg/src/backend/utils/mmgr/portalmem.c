@@ -1135,8 +1135,9 @@ void PortalSetStatus(Portal p, PortalStatus s)
 			{
 				if(p->gpmon_pkt.u.qlog.tsubmit == 0)
 					p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
-
-				p->gpmon_pkt.u.qlog.tstart = tv.tv_sec;
+				/* check needed for subqueries so start time isn't overwritten */
+				if(p->gpmon_pkt.u.qlog.tstart == 0)
+					p->gpmon_pkt.u.qlog.tstart = tv.tv_sec;
 			}
 			else
 				p->gpmon_pkt.u.qlog.tfin = tv.tv_sec;
@@ -1144,10 +1145,11 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
 		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
-                elog(DEBUG2, "gpperfmon - query %d-%d-%d status changed from %d to %d",
-                     p->gpmon_pkt.u.qlog.key.tmid, p->gpmon_pkt.u.qlog.key.ssid,
-                     p->gpmon_pkt.u.qlog.key.ccnt, p->portal_status, s);
-                gpmon_send(&p->gpmon_pkt);
+		gpmon_record_update(p->gpmon_pkt.u.qlog.key.tmid,
+							p->gpmon_pkt.u.qlog.key.ssid,
+							p->gpmon_pkt.u.qlog.key.ccnt,
+							gpmon_qlog_status);
+        gpmon_send(&p->gpmon_pkt);
 	}
 
 	p->portal_status = s;

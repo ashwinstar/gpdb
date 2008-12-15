@@ -53,8 +53,6 @@ extern int min_detailed_query_time;
 extern apr_uint64_t gpmmon_tail_buffer_max(void);
 extern apr_status_t gpmmon_harvest_status(void);
 
-static apr_uint32_t is_qd_be_running(qdnode_t* qdnode);
-
 static apr_status_t agg_put_metrics(agg_t* agg, const gpmon_metrics_t* met)
 {
     gpmon_metrics_t* rec;
@@ -226,15 +224,17 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	qdnode_t* newdp;
 	qenode_t** tail;
 	int cnt;
+	apr_int32_t status;
 
 	apr_hash_this(hi, 0, 0, &vptr);
 	dp = vptr;
 
 	/* skip all entries that weren't updated recently and aren't waiting in a queue */
+	/* Read status from query text as this is reliable */
+	status = get_query_status(dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt);
 	if (dp->last_updated_generation < newagg->generation - 1
-            && dp->qlog.status != GPMON_QLOG_STATUS_SUBMIT
-            && (!is_qd_be_running(dp) || (dp->qlog.status == GPMON_QLOG_STATUS_DONE || 
-                                          dp->qlog.status == GPMON_QLOG_STATUS_ERROR))) {
+            && status != GPMON_QLOG_STATUS_SUBMIT
+            && status != GPMON_QLOG_STATUS_START) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
 		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
@@ -243,6 +243,10 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	    }
 	    continue;
 	}
+
+	/* check if we missed a status change */
+	if (dp->qlog.status != status)
+		dp->qlog.status = status;
 
 	if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 	    TR2(("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n", 
@@ -583,37 +587,59 @@ static void delete_old_files(bloom_t* bloom)
 {
     FILE* fp = popen("ls -1 " GPMON_DIR "q*-*.txt 2> /dev/null", "r");
     time_t cutoff = time(0) - gpmmon_quantum() * 3;
-    if (fp) {
-	for (;;) {
-	    char line[1024];
-	    char* p;
-	    struct stat stbuf;
+    if (fp) 
+	{
+		for (;;) 
+		{
+		    char line[1024];
+		    char* p;
+		    struct stat stbuf;
+			apr_int32_t status;
 
-	    line[sizeof(line) - 1] = 0;
-	    if (! (p = fgets(line, sizeof(line), fp))) 
-		break;
-	    if (line[sizeof(line) - 1]) 
-		continue; 	/* fname too long */
+		    line[sizeof(line) - 1] = 0;
+		    if (! (p = fgets(line, sizeof(line), fp))) 
+				break;
+		    if (line[sizeof(line) - 1]) 
+				continue; 	/* fname too long */
 	    
-	    p = gpmon_trim(p);
-	    if (bloom_isset(bloom, p))
-		continue;	/* probably one of our files */
-	    
-	    if (0 == stat(p, &stbuf)) {
-		//printf("file %s mtime %d cutoff %d ", p, (int)stbuf.st_mtimespec.tv_sec, (int)cutoff);
+		    p = gpmon_trim(p);
+		    TR2(("Checking file %s\n", p));
+
+		    if (0 == stat(p, &stbuf)) 
+			{
 #if defined(sun) || defined(linux)
-		int expired = stbuf.st_mtime < cutoff;
+				int expired = stbuf.st_mtime < cutoff;
 #else
-		int expired = stbuf.st_mtimespec.tv_sec < cutoff;
+				int expired = stbuf.st_mtimespec.tv_sec < cutoff;
 #endif
-		if (expired) {
-		    //printf(" ---> deleting");
-		    unlink(p);
+				TR2(("File %s expired: %d\n", p, expired));
+				if (expired) 
+				{
+					apr_int32_t tmid = 0, ssid = 0, ccnt = 0;
+					if (bloom_isset(bloom, p))
+					{
+						TR2(("File %s has bloom set.  Checking status\n", p));
+						/* Verify no bloom collision */
+						sscanf(p, GPMON_DIR "q%d-%d-%d.txt", &tmid, &ssid, &ccnt);
+						TR2(("tmid: %d, ssid: %d, ccnt: %d\n", tmid, ssid, ccnt));
+						status = get_query_status(tmid, ssid, ccnt);
+						TR2(("File %s has status of %d\n", p, status));
+						if (status == GPMON_QLOG_STATUS_DONE ||
+						   status == GPMON_QLOG_STATUS_ERROR)
+						{
+							TR2(("Deleting file %s\n", p));
+							unlink(p);
+						}
+					}
+					else
+					{
+						TR2(("Deleting file %s\n", p));
+						unlink(p);
+					}
+				}
+		    }
 		}
-		//printf("\n");
-	    }
-	}
-	pclose(fp);
+		pclose(fp);
     }
 }
 
@@ -899,24 +925,6 @@ static double get_cpu_skew(qdnode_t* qdnode)
     return (cpu_avg ? (var/(double)cpu_avg) * 100.0f : 0.0f);
 }
 
-static apr_uint32_t is_qd_be_running(qdnode_t* qdnode)
-{
-    apr_uint32_t running = 0;
-    qenode_t* pqe = NULL;
-
-    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
-    {
-        /* find qd be process in list */
-        if (pqe->qexec.key.segid == -1 && pqe->qexec.pnid == -1)
-        {
-            running = kill(pqe->qexec.key.pid, 0) != -1;
-            break;
-        }
-    }
-
-    return running;
-}
-
 static double get_row_skew(qdnode_t* qdnode)
 {
 
@@ -1030,8 +1038,11 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, apr_uint
     sprintf(p += strlen(p), "|%s", 
             gpmon_datetime(apr_time_from_sec(qdnode->qlog.tsubmit), 
                              tmstr));
-    sprintf(p += strlen(p), "|%s", 
-            gpmon_datetime(apr_time_from_sec(qdnode->qlog.tstart), 
+	if (qdnode->qlog.tstart == 0)
+		sprintf(p += strlen(p), "|null");
+	else
+    	sprintf(p += strlen(p), "|%s", 
+            	gpmon_datetime(apr_time_from_sec(qdnode->qlog.tstart), 
                              tmstr));
     if (done)
         sprintf(p += strlen(p), "|%s", 

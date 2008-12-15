@@ -24,6 +24,7 @@ typedef struct gpmon_metrics_t gpmon_metrics_t;
  * suffix / 
  */
 #define GPMON_DIR   "./gpperfmon/data/"
+#define GPMON_DIR_MAX_PATH 100
 #define GPMON_DB    "gpperfmon"
 
 /* ------------------------------------------------------------------
@@ -33,6 +34,9 @@ extern void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 						 const char* type, /* "qtext", "qplan" */
 						 const char* content /* the query text or plan */
 						 );
+extern void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid, 
+								apr_int32_t ccnt, apr_int32_t status);
+
 extern void gpmon_send(gpmon_packet_t*);
 
 extern void gpmon_gettmid(apr_int32_t*);

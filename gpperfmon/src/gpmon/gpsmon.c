@@ -294,7 +294,12 @@ static void send_machine_metrics(SOCKET sock)
 	    tdisk.read_bytes += fsusage.disk.read_bytes;
 	}
     }
-    
+#endif /* sun */
+    TR2(("disk reads: %" FMT64 " writes: %" FMT64
+         " rbytes: %" FMT64 " wbytes: %" FMT64 "\n",
+         tdisk.reads, tdisk.writes, tdisk.read_bytes, tdisk.write_bytes));
+
+#if !defined(sun)
     for (netname = gx.netlist; *netname; netname++) {
 	int e = sigar_net_interface_stat_get(gx.sigar, *netname, &netstat);
 	if (0 == e) {
@@ -304,11 +309,7 @@ static void send_machine_metrics(SOCKET sock)
 	    tnet.tx_bytes += netstat.tx_bytes;
 	}
     }
-#endif /* sun */
-    TR2(("disk reads: %" FMT64 " writes: %" FMT64
-         " rbytes: %" FMT64 " wbytes: %" FMT64 "\n",
-         tdisk.reads, tdisk.writes, tdisk.read_bytes, tdisk.write_bytes));
-
+#endif /* !sun */
     TR2(("rx: %" FMT64 " rx_bytes: %" FMT64 "\n", 
 	 tnet.rx_packets, tnet.rx_bytes));
     TR2(("tx: %" FMT64 " tx_bytes: %" FMT64 "\n",

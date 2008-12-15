@@ -1,6 +1,6 @@
 import os, sys, datetime
 
-DEBUG = True
+DEBUG = False 
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 import pg8000
@@ -483,7 +483,7 @@ def queryText(tmid, ssid, ccnt):
     finally:
         q.close()
 
-    return qtext
+    return qtext.rstrip()[0:-1]
 
 
 def queries_file(status, username, database, textlength, tmid, ssid, ccnt):
@@ -535,7 +535,8 @@ def queries_file(status, username, database, textlength, tmid, ssid, ccnt):
             # convert tsubmit date string into datetime object
             entry[7] = datetime.datetime.strptime(entry[7], "%Y-%m-%d %H:%M:%S")
             # convert tstart date string into datetime object
-            entry[8] = datetime.datetime.strptime(entry[8], "%Y-%m-%d %H:%M:%S")
+            if entry[8] != 'null':
+			    entry[8] = datetime.datetime.strptime(entry[8], "%Y-%m-%d %H:%M:%S")
             # if the query hasn't completed, the ftin will be set to 'null'
             if entry[9] != 'null':
                 # convert tfin date string into datetime object

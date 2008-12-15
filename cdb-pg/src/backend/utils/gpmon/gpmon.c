@@ -82,11 +82,11 @@ void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 				  const char* type,
 				  const char* content)
 {
-	char fname[100];
+	char fname[GPMON_DIR_MAX_PATH];
 	FILE* fp;
 	int len = strlen(content);
 
-	sprintf(fname, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
+	snprintf(fname, GPMON_DIR_MAX_PATH, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
 
 	fp = fopen(fname, "a");
 	if (!fp)
@@ -94,10 +94,30 @@ void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 
 	fprintf(fp, "%d %s\n", len + 1, type);
 	fwrite(content, 1, len, fp);
-	fwrite("\n", 1, 1, fp);
+	fprintf(fp, "\n%d", GPMON_QLOG_STATUS_SUBMIT);
+
 	fclose(fp);
 }
 
+void gpmon_record_update(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
+						 apr_int32_t status)
+{
+	char fname[GPMON_DIR_MAX_PATH];
+	FILE *fp;
+
+	snprintf(fname, GPMON_DIR_MAX_PATH, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
+
+	fp = fopen(fname, "r+");
+
+	if (!fp)
+		return;
+
+	if (0 == fseek(fp, -1, SEEK_END))
+	{
+		fprintf(fp, "%d", status);
+	}
+	fclose(fp);
+}
 
 void gpmon_gettmid(apr_int32_t* tmid)
 {
