@@ -966,7 +966,7 @@ class gpload:
             else:
                 esc = " as %s" % quote(esc)
 
-            sql += "escape '%s'" % esc
+            sql += "escape %s" % esc
 
         force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
         if force_not_null_columns:
