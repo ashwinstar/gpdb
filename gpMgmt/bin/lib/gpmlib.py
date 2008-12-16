@@ -129,13 +129,18 @@ def makeCommand(cmd):
                ENV.LIB_TYPE,
                cmd))
 
+
 #############
-def run2(cmd, on_error_warn=False):
+def run2(cmd, on_error_warn=False, setpid_callback=None):
     p = None
     ok = False
     out = []
     try:
         p = popen2.Popen3(cmd, capturestderr=True)
+
+        if setpid_callback:
+            setpid_callback(p.pid)
+
         e = p.wait()
         for line in p.fromchild:
             out.append(line)
@@ -174,8 +179,8 @@ def run2(cmd, on_error_warn=False):
 def run(cmd):
     return run2(cmd, False)
 
-def run_warn(cmd):
-    return run2(cmd, True)
+def run_warn(cmd, setpid_callback=None):
+    return run2(cmd, on_error_warn=True,setpid_callback=setpid_callback)
 
 #############
 def file_exists(file, host=None):
@@ -665,8 +670,16 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
         return True
 
 
+def kill_sync_segment_datadir(src_host, dst_cfg, logfile):
+    cmd = makeCommand('kill `cat /tmp/pysync.py.%s.ppid`' % (dst_cfg['datadir'].replace('/', '_')))
+    run('%s "%s" >> %s 2>&1' % 
+        (gplib.ssh_prefix(host=src_host),
+         cmd,
+         logfile))
+
+
 #############
-def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
+def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True, setpid_callback=None, err_is_fatal=True):
 
     if directory_exists(dst_cfg['datadir'], dst_cfg['hostname']):
         log_info('Data Directory %s exists' % dst_cfg['datadir'])
@@ -686,14 +699,26 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                                                                src_dir,
                                                                dst_cfg['hostname'],
                                                                dst_cfg['datadir']))
-    (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
-                         (gplib.ssh_prefix(host=src_host),
-                          cmd,
-                          logfile))
+
+    if setpid_callback:
+        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                             (gplib.ssh_prefix(host=src_host),
+                              cmd,
+                              logfile), setpid_callback=setpid_callback)
+    else:
+        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                             (gplib.ssh_prefix(host=src_host),
+                              cmd,
+                              logfile))
 
     if not ok:
-        fatal('failed to synchronize data from primary segment %s:%s to mirror segment %s:%s' % (src_host, src_dir, 
+        if err_is_fatal:
+            fatal('failed to synchronize data from primary segment %s:%s to mirror segment %s:%s' % (src_host, src_dir, 
                                                                                                  dst_cfg['hostname'], dst_cfg['datadir']))
+        else:
+            log_error('failed to synchronize data from primary segment %s:%s to mirror segment %s:%s' % (src_host, src_dir, 
+                                                                                                 dst_cfg['hostname'], dst_cfg['datadir']))
+            return False
 
     # delete postmaster.pid in case active segment is still running
     postmaster_pid = os.path.join(dst_cfg['datadir'], 'postmaster.pid')

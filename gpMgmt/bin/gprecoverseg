@@ -56,7 +56,7 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
 
 '''
 from __future__ import with_statement
-import os, sys, getopt, socket, StringIO
+import os, sys, getopt, socket, StringIO, signal
 from threading import Thread
 from datetime import date, datetime, timedelta
 
@@ -561,6 +561,15 @@ class SyncDataThread(Thread):
         self.status = False
         self.logfile = logfile
         self.timeout = datetime.today() + timedelta(seconds=timeout)
+        self.child_pid = -1
+
+    def set_child_pid(self, pid):
+        self.child_pid = pid
+
+    def kill_child(self):
+        if self.child_pid != -1:
+            os.kill(self.child_pid, signal.SIGTERM)
+            self.child_pid = -1
 
     def run(self):
         global opt
@@ -614,7 +623,9 @@ class SyncDataThread(Thread):
                                            self.active_qe['datadir'],
                                            self.pool_array,
                                            self.logfile,
-                                           force_stop = opt['-f']):
+                                           force_stop = opt['-f'],
+                                           setpid_callback = self.set_child_pid,
+                                           err_is_fatal=False):
             gpmlib.log_error('Copy data from (%s:%s) to (%s:%s) failed' % 
                              (self.active_qe['hostname'], self.active_qe['datadir'], 
                               self.pool_array['hostname'], self.pool_array['datadir']))
@@ -625,6 +636,32 @@ class SyncDataThread(Thread):
     def timed_out(self):
         return datetime.today() > self.timeout
 
+def process_batch(thlist, recovered_qes, kill, error):
+    while len(thlist) > 0:
+        tmplist = []
+        while len(thlist) > 0:
+            th = thlist.pop()
+            th.join(2)
+            if th.isAlive():
+                if th.timed_out():
+                    # kill the ssh session
+                    th.kill_child()
+                    # kill the pysync.py or it will keep running until it completes 
+                    gpmlib.kill_sync_segment_datadir(th.active_qe['hostname'], th.pool_array, opt['-l'])
+                    kill.append((th.failed_qe['hostname'], th.failed_qe['datadir']))
+                    gpmlib.log_error('Thread (%s, %s) timed out' % (th.failed_qe['hostname'], th.failed_qe['datadir']))
+                else:
+                    tmplist.append(th)
+                    sys.stdout.write('.')
+                    sys.stdout.flush()
+            else:
+                if not th.status:
+                    error.append((th.failed_qe['hostname'], th.failed_qe['datadir']))
+                else:
+                    recovered_qes.append(th.failed_qe)
+        if len(tmplist) > 0:
+            thlist = tmplist
+
 ################
 def recover_data(failed_instance_array, active_instance_array, pool_failed_instance_array):
     global opt
@@ -632,6 +669,7 @@ def recover_data(failed_instance_array, active_instance_array, pool_failed_insta
     timeout = opt['-T']
     error = []
     kill = []
+    recovered_qes = []
     thlist = []
     n = 0
     gpmlib.log_info('Commencing parallel segment instance startup, please wait...')
@@ -653,53 +691,13 @@ def recover_data(failed_instance_array, active_instance_array, pool_failed_insta
         if len(thlist) == opt['-B']:
             n += 1
             gpmlib.log_info('Spawning parallel processes Batch[%d], please wait...' % n)
-            
-            while len(thlist) > 0:
-                tmplist = []
-                while len(thlist) > 0:
-                    th = thlist.pop()
-                    th.join(2)
-                    if th.isAlive():
-                        if th.timed_out():
-                            # python no thread.kill, just ignore the thread now
-                            kill.append((th.mir_cfg['hostname'], th.mir_cfg['datadir']))
-                            gpmlib.log_error('Thread (%s, %s) timed out' % (th.mir_cfg['hostname'], th.mir_cfg['datadir']))
-                        else:
-                            tmplist.append(th)
-                        sys.stdout.write('.')
-                        sys.stdout.flush()
-                    else:
-                        if not th.status:
-                            error.append((th.failed_qe['hostname'], th.failed_qe['datadir']))
-
-                if len(tmplist) > 0:
-                    thlist = tmplist
+            process_batch(thlist, recovered_qes, kill, error)
             thlist = []
 
     if len(thlist) > 0:
         n += 1
         gpmlib.log_info('Spawning parallel processes Batch[%d], please wait...' % n)
-
-        while len(thlist) > 0:
-            tmplist = []
-            while len(thlist) > 0:
-                th = thlist.pop()
-                th.join(2)
-                if th.isAlive():
-                    if th.timed_out():
-                        # python no thread.kill, just ignore the thread now                       
-                        kill.append((th.mir_cfg['hostname'], th.mir_cfg['datadir'])) 
-                        gpmlib.log_error('Thread (%s, %s) timed out' % (th.mir_cfg['hostname'], th.mir_cfg['datadir']))
-                    else:
-                        tmplist.append(th)
-                    sys.stdout.write('.')
-                    sys.stdout.flush()
-                else:
-                    if not th.status:
-                        error.append((th.failed_qe['hostname'], th.failed_qe['datadir']))
-
-            if len(tmplist) > 0:
-                thlist = tmplist
+        process_batch(thlist, recovered_qes, kill, error)
 
     sys.stdout.write('\n')
     sys.stdout.flush()
@@ -716,9 +714,9 @@ def recover_data(failed_instance_array, active_instance_array, pool_failed_insta
     gpmlib.log_info('-------------------------------------------')
 
     if failed + killed > 0:
-        return (False, completed, killed, failed, len(failed_instance_array))
+        return (False, completed, killed, failed, len(failed_instance_array), recovered_qes)
 
-    return (True, completed, killed, failed, len(failed_instance_array))
+    return (True, completed, killed, failed, len(failed_instance_array), recovered_qes)
 
 ################
 def update_gp_conf(mirrors):
@@ -1372,27 +1370,33 @@ def pool_catalog_update(db, update_sql):
         db.execute("update gp_configuration set hostname=$1, datadir=$2, port=$3 where dbid=$4", sql[0], sql[1], sql[2], sql[3])
 
 ################
-def update_status(db, failed_instance_array):
+def update_status(db, recovered_qes):
 
-    for failed_qe in failed_instance_array:
+    for qe in recovered_qes:
         gpmlib.log_info('Setting %s dbid=%d port=%d as active' % 
-                        (failed_qe['hostname'],
-                         failed_qe['dbid'],
-                         failed_qe['port']))
-
-        db.begin()
-        db.execute("update gp_configuration set valid = 't' where dbid = CAST(%d AS smallint)" % failed_qe['dbid'])
-        db.execute("update gp_configuration set isprimary = definedprimary where content = CAST(%d AS smallint)" % failed_qe['content'])
-        db.commit()
+                        (qe['hostname'],
+                         qe['dbid'],
+                         qe['port']))
+        try:
+            db.begin()
+            db.execute("update gp_configuration set valid = 't' where dbid = CAST(%d AS smallint)" % qe['dbid'])
+            db.execute("update gp_configuration set isprimary = definedprimary where content = CAST(%d AS smallint)" % qe['content'])
+            db.commit()
+        except (pg8000.errors.InterfaceError, pg8000.errors.ProgrammingError), e:
+            gpmlib.log_warn('Unable to mark dbid %d as valid.' % int(qe['dbid']))
+            gpmlib.log_warn('Encountered database error: %s' % e)
+            gpmlib.log_warn('Segment Recovery will need to be performed again for this segment.')
 
 ################
-def reset_valid(db, failed_dbids):
+def reset_valid(db, recovered_qes):
     gpmlib.log_info('Resetting invalid segment status values')
-    for dbid in failed_dbids:
+    for qe in recovered_qes:
         try:
-            db.execute("update gp_configuration set valid='t' where dbid=%d" % dbid)
-        except pg8000.errors.InterfaceError, e:
-            gpmlib.log_warn('Issue with reset dbid %d as valid' % dbid)
+            db.execute("update gp_configuration set valid='t' where dbid=%d" % int(qe['dbid']))
+        except (pg8000.errors.InterfaceError, pg8000.errors.ProgrammingError), e:
+            gpmlib.log_warn('Unable to mark dbid %d as valid.' % int(qe['dbid']))
+            gpmlib.log_warn('Encountered database error: %s' % e)
+            gpmlib.log_warn('Segment Recovery will need to be performed again for this segment.')
 
 ################
 def reset_qe_connect(db):
@@ -1697,7 +1701,7 @@ try:
     stop_database(failed_instance_array)
 
     # recover data
-    (success, completed, killed, failed, total) = recover_data(failed_instance_array, active_instance_array, pool_failed_instance_array)
+    (success, completed, killed, failed, total, recovered_qes) = recover_data(failed_instance_array, active_instance_array, pool_failed_instance_array)
 
     # start master QD in admin mode if force restart
     if opt['-f']:
@@ -1715,11 +1719,14 @@ try:
 
 
         if opt['-f']:
-            # update status 
-            update_status(db, failed_instance_array)
+            # update status of recovered segments
+            update_status(db, recovered_qes)
 
-            # update valid='t'
-            reset_valid(db, failed_dbids)
+            # update valid='t' of recovered segments
+            reset_valid(db, recovered_qes)
+
+            db.close()
+            db = None
 
             # stop master QD
             gpmlib.log_info('Shutting down the master instance')

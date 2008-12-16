@@ -408,6 +408,12 @@ class LocalPysync:
 
     def work(self):
 	while 1:
+            try:
+                # check if parent still alive
+                os.kill(os.getppid(), 0)
+            except:
+                # parent gone, exit
+                break
 	    a = self.p.stdout.readline()
 	    if len(a)==0:
 		break
@@ -426,6 +432,8 @@ class LocalPysync:
 		self.sendData = None
 
     def run(self):
+        # save of ppid to allow the process to be stopped.
+        os.system('echo %d > /tmp/pysync.py.%s.ppid' % (os.getppid(), self.destDir.replace('/', '_')))
         PATH = os.environ.get('PATH') or '.'
         LIBPATH = os.environ.get('LD_LIBRARY_PATH') or '.'
         
@@ -450,6 +458,7 @@ class LocalPysync:
 		sys.stderr.write(str(e))
                 raise 
 	finally:
+            os.remove('/tmp/pysync.py.%s.ppid' % (self.destDir.replace('/','_')))
 	    if self.p:
                 os.kill(self.p.pid,9)
 
