@@ -122,7 +122,8 @@ class Worker(Thread):
                         cmd  = task[1]
                         pipe = subprocess.Popen(cmd, shell=True,
                                                 stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE)
+                                                stderr=subprocess.PIPE,
+                                                close_fds=True)
                         result = pipe.communicate()
                         if pipe.returncode:
                             raise CmdError(str(cmd), result[0], result[1])
@@ -540,7 +541,8 @@ class GPUpgrade:
         try:
             pipe = subprocess.Popen(cmd, env=env, 
                                     stdout=subprocess.PIPE, 
-                                    stderr=subprocess.PIPE)
+                                    stderr=subprocess.PIPE,
+                                    close_fds=True)
             result  = pipe.communicate();
         except OSError, e:
             raise CmdError(cmdstr, '', str(e))
@@ -936,7 +938,8 @@ class GPUpgrade:
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
                                        stdout=self.logfile, 
-                                       stderr=self.logfile)
+                                       stderr=self.logfile,
+                                       close_fds=True)
             finally:
                 if os.path.exists(locked):
                     del env['PGUSER']
@@ -1024,7 +1027,8 @@ class GPUpgrade:
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
                                        stdout=self.logfile, 
-                                       stderr=self.logfile)
+                                       stderr=self.logfile,
+                                       close_fds=True)
             finally:
                 if os.path.exists(locked):
                     del env['PGUSER']
@@ -2312,7 +2316,8 @@ This issue must be resolved before upgrade can complete.
             outfilename = os.path.join(self.workdir, 'gpcheckcat_%s.log' % db)
             outfile = open(outfilename, 'w')
 
-            pipe = subprocess.Popen(cmd, shell=True, stdout=outfile, stderr=outfile)
+            pipe = subprocess.Popen(cmd, shell=True, stdout=outfile, stderr=outfile,
+                                    close_fds=True)
             retcode = pipe.wait()
 
             if retcode < 0:
@@ -2542,7 +2547,8 @@ This issue must be resolved before upgrade can complete.
             pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                    env=self.newenv, shell=True,
                                    stdout=self.logfile, 
-                                   stderr=self.logfile)
+                                   stderr=self.logfile,
+                                   close_fds=True)
 
             # Ignore interupt requests until startup is done
             error = None
@@ -2705,7 +2711,8 @@ This issue must be resolved before upgrade can complete.
                                 (user, self.workdir),
                                 env=self.newenv, shell=True,
                                 stdout=subprocess.PIPE, 
-                                stderr=subprocess.PIPE)
+                                stderr=subprocess.PIPE,
+                                close_fds=True)
 
         msg_re  = re.compile('(?:psql:%s/pgdump.sql:(\d+): *)?([^:]*): *(.*)' % self.workdir)
         user_re = re.compile('role ".*" already exists')
@@ -2767,7 +2774,7 @@ This issue must be resolved before upgrade can complete.
         for db in databases:
             r = subprocess.call('psql -U %s -c "vacuum freeze" %s' % (user, db),
                                 env=self.newenv, shell=True,
-                                stdout=self.logfile, stderr=self.logfile)
+                                stdout=self.logfile, stderr=self.logfile,close_fds=True)
             if r:
                 raise UpgradeError('Vacuum exited with status %d' % r)
 
