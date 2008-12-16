@@ -1098,7 +1098,7 @@ class gpload:
             # place table alias infront of column references
 
             update_condition = ' ' + update_condition + ' '
-            for name, type, mapto in self.into_columns:
+            for name, type, mapto, seq in self.into_columns:
                 regexp = '(?<=[^\w])%s(?=[^\w])' % name
                 self.log(self.DEBUG, 'update_condition re: ' + regexp)
                 update_condition = re.sub(regexp,
