@@ -720,7 +720,7 @@ class sysCatThread(Thread):
         cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" %s' % \
             (outfile, host, port, GV.opt['-U'], catalog, GV.dbname)
     
-        subprocess.call(cmd, shell=True)
+        subprocess.call(cmd, shell=True, close_fds=True)
     
 
 def row2str(row):
@@ -829,7 +829,7 @@ ORDER BY nspname
                 cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat.%s.%s_s' % \
                     (GV.tmpdir, GV.tmpdir, dbid, cid)
                 pipe = subprocess.Popen(cmd, shell=True,
-                                        stdout=subprocess.PIPE)
+                                        stdout=subprocess.PIPE, close_fds=True)
 
                 lines = ''
                 for line in pipe.stdout:
@@ -897,7 +897,7 @@ class fileCheckThread(Thread):
             cmd = cmd.split(' ')
             pipe = subprocess.Popen(cmd, env=self.env,
                                     stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE)
+                                    stderr=subprocess.PIPE, close_fds=True)
             result  = pipe.communicate();
         except OSError, e:
             print '%s, %s' % (' '.join(cmd),  str(e))
@@ -1160,5 +1160,5 @@ Performing segment specific consistency checks
             sys.exit(1)
 
         print '[INFO] repair scripts generated in directory %s' % GV.opt['-g']
-    subprocess.call('rm -rf ' + GV.tmpdir, shell=True)
+    subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
     sys.exit(GV.retcode)
