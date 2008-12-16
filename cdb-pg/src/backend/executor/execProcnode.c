@@ -102,6 +102,7 @@
 #include "executor/nodeNestloop.h"
 #include "executor/nodeAdaptiveNestloop.h"
 #include "executor/nodeResult.h"
+#include "executor/nodeRepeat.h"
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSetOp.h"
 #include "executor/nodeShareInputScan.h"
@@ -160,6 +161,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			 */
 		case T_Result:
 			result = (PlanState *) ExecInitResult((Result *) node,
+												  estate, eflags);
+			break;
+
+		case T_Repeat:
+			result = (PlanState *) ExecInitRepeat((Repeat *) node,
 												  estate, eflags);
 			break;
 
@@ -429,6 +435,10 @@ ExecProcNode(PlanState *node)
 			result = ExecResult((ResultState *) node);
 			break;
 
+		case T_RepeatState:
+			result = ExecRepeat((RepeatState *) node);
+			break;
+
 		case T_AppendState:
 			result = ExecAppend((AppendState *) node);
 			break;
@@ -647,6 +657,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_Result:
 			return ExecCountSlotsResult((Result *) node);
 
+		case T_Repeat:
+			return ExecCountSlotsRepeat((Repeat *) node);
+
 		case T_Append:
 			return ExecCountSlotsAppend((Append *) node);
 
@@ -851,6 +864,10 @@ ExecEndNode(PlanState *node)
 			ExecEndResult((ResultState *) node);
 			break;
 
+		case T_RepeatState:
+			ExecEndRepeat((RepeatState *) node);
+			break;
+
 		case T_AppendState:
 			ExecEndAppend((AppendState *) node);
 			break;
@@ -1017,6 +1034,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			 */
 		case T_ResultState:
 			nameTag = "Result";
+			break;
+
+		case T_RepeatState:
+			nameTag = "Repeat";
 			break;
 
 		case T_AppendState:

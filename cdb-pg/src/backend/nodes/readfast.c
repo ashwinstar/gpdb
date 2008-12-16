@@ -2326,6 +2326,22 @@ _readResult(const char ** str)
 }
 
 /*
+ * _readRepeat
+ */
+static Repeat *
+_readRepeat(const char ** str)
+{
+	READ_LOCALS(Repeat);
+
+	readPlanInfo(str, (Plan *)local_node);
+
+	READ_NODE_FIELD(repeatCountExpr);
+	READ_UINT64_FIELD(grouping);
+
+	READ_DONE();
+}
+
+/*
  * _readAppend
  */
 static Append *
@@ -3225,6 +3241,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_Result:
 				return_value = _readResult(str);
+				break;
+			case T_Repeat:
+				return_value = _readRepeat(str);
 				break;
 			case T_Append:
 				return_value = _readAppend(str);

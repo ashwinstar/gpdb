@@ -1129,6 +1129,7 @@ finalize_plan(Plan *plan, List *rtable,
 		case T_Unique:
 		case T_SetOp:
 		case T_Group:
+		case T_Repeat:
 			break;
 
 		default:

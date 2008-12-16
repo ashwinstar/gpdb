@@ -1082,11 +1082,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * Select the best path.  If we are doing hashed grouping, we will
 		 * always read all the input tuples, so use the cheapest-total path.
 		 * Otherwise, trust query_planner's decision about which to use.
-		 *
-		 * For grouping extension queries, we use SORT-based path only
-		 * for now.
 		 */
-		if ((!grpext && use_hashed_grouping) || !sorted_path)
+		if (use_hashed_grouping || !sorted_path)
 		{
             best_path = cheapest_path;
              /* elog(DEBUG1, "Path chosen: unordered"); CDB*/
@@ -1108,18 +1105,55 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if ( Gp_role == GP_ROLE_DISPATCH )
 		{
 			bool querynode_changed = false;
+			GroupContext group_context;
+
+			group_context.best_path = best_path;
+			group_context.cheapest_path = cheapest_path;
+			group_context.subplan = NULL;
+			group_context.tlist = tlist;
+			group_context.use_hashed_grouping = use_hashed_grouping;
+			group_context.tuple_fraction = tuple_fraction;
+			group_context.canonical_grpsets = canonical_grpsets;
+			group_context.grouping = 0;
+			group_context.numGroupCols = 0;
+			group_context.groupColIdx = NULL;
+			group_context.numDistinctCols = 0;
+			group_context.distinctColIdx = NULL;
+			group_context.p_dNumGroups = &dNumGroups;
+			group_context.pcurrent_pathkeys = &current_pathkeys;
+			group_context.querynode_changed = &querynode_changed;
 
 			result_plan = cdb_grouping_planner(root,
 											   &agg_counts,
-											   tlist,
-											   best_path,
-											   cheapest_path,
-											   use_hashed_grouping,
-											   tuple_fraction,
-											   &dNumGroups,
-											   canonical_grpsets,
-											   &current_pathkeys,
-											   &querynode_changed);
+											   &group_context);
+
+			/* Add the Repeat node if needed. */
+			if (result_plan != NULL &&
+				canonical_grpsets != NULL &&
+				canonical_grpsets->grpset_counts != NULL)
+			{
+				bool need_repeat_node = false;
+				int grpset_no;
+				int repeat_count = 0;
+				
+				for (grpset_no = 0; grpset_no < canonical_grpsets->ngrpsets; grpset_no++)
+				{
+					if (canonical_grpsets->grpset_counts[grpset_no] > 1)
+					{
+						need_repeat_node = true;
+						break;
+					}
+				}
+				
+				if (canonical_grpsets->ngrpsets == 1)
+					repeat_count = canonical_grpsets->grpset_counts[0];
+				
+				if (need_repeat_node)
+				{
+					result_plan = add_repeat_node(result_plan, repeat_count, 0);
+				}
+			}
+
 			if ( result_plan != NULL && result_plan->flow->numSortCols == 0 )
 			{
 				/*
@@ -1245,11 +1279,24 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 												numGroups,
 												0, /* num_nullcols */
 												0, /* input_grouping */
-												0, /* grouping_id */
+												0, /* grouping */
 												0, /* rollup_gs_times */
 												agg_counts.numAggs,
 												agg_counts.transitionSpace,
 												result_plan);
+
+				if (canonical_grpsets != NULL &&
+					canonical_grpsets->grpset_counts != NULL &&
+					canonical_grpsets->grpset_counts[0] > 1)
+				{
+					result_plan->flow = pull_up_Flow(result_plan,
+													 result_plan->lefttree,
+													 (current_pathkeys != NIL));
+					result_plan = add_repeat_node(result_plan,
+												  canonical_grpsets->grpset_counts[0],
+												  0);
+				}
+
 				/* Hashed aggregation produces randomly-ordered results */
 				current_pathkeys = NIL;
 				CdbPathLocus_MakeNull(&current_locus);
@@ -1303,11 +1350,24 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													numGroups,
 													0, /* num_nullcols */
 													0, /* input_grouping */
-													0, /* grouping_id */
+													0, /* grouping */
 													0, /* rollup_gs_times */
 													agg_counts.numAggs,
 													agg_counts.transitionSpace,
 													result_plan);
+
+					if (canonical_grpsets != NULL &&
+						canonical_grpsets->grpset_counts != NULL &&
+						canonical_grpsets->grpset_counts[0] > 1)
+					{
+						result_plan->flow = pull_up_Flow(result_plan,
+														 result_plan->lefttree,
+														 (current_pathkeys != NIL));
+						result_plan = add_repeat_node(result_plan,
+													  canonical_grpsets->grpset_counts[0],
+													  0);
+					}
+
 					CdbPathLocus_MakeNull(&current_locus);
 				}
 
@@ -1337,6 +1397,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					}
 
 					result_plan = plan_grouping_extension(root, best_path, tuple_fraction,
+														  use_hashed_grouping,
 														  &new_tlist, result_plan->targetlist,
 														  true, false,
 														  (List *) parse->havingQual,
@@ -1403,6 +1464,18 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													  0, /* grouping_id */
 													  0, /* rollup_gs_times */
 													  result_plan);
+
+					if (canonical_grpsets != NULL &&
+						canonical_grpsets->grpset_counts != NULL &&
+						canonical_grpsets->grpset_counts[0] > 1)
+					{
+						result_plan->flow = pull_up_Flow(result_plan,
+														 result_plan->lefttree,
+														 (current_pathkeys != NIL));
+						result_plan = add_repeat_node(result_plan,
+													  canonical_grpsets->grpset_counts[0],
+													  0);
+					}
 				}
 				else
 				{
@@ -1427,6 +1500,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 
 					result_plan = (Plan *)
 						plan_grouping_extension(root, best_path, tuple_fraction,
+												use_hashed_grouping,
 												&new_tlist, result_plan->targetlist,
 												false, false,
 												(List *) parse->havingQual,
@@ -1478,22 +1552,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		}						/* end of non-minmax-aggregate case */
 
 		/* free canonical_grpsets */
-		{
-			int grpset_no;
-			for (grpset_no=0; grpset_no<canonical_grpsets->ngrpsets; grpset_no++)
-			{
-				bms_free(canonical_grpsets->grpsets[grpset_no]);
-			}
-
-			if (canonical_grpsets)
-			{
-				if (canonical_grpsets->grpsets)
-					pfree(canonical_grpsets->grpsets);
-				if (canonical_grpsets->grpset_counts)
-					pfree(canonical_grpsets->grpset_counts);
-				pfree(canonical_grpsets);
-			}
-		}
+		free_canonical_groupingsets(canonical_grpsets);
 	}							/* end of if (setOperations) */
 
     /*

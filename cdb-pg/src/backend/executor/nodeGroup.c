@@ -70,42 +70,6 @@ ExecGroup(GroupState *node)
 	is_middle_rollup_group =
 		(input_has_grouping && group_node->numNullCols > 0);
 
-	/*
-	 * If the previous group tuple needs to be outputed
-	 * several times, we simple return the previous output tuple.
-	 */
-	if (node->num_repeats > 0)
-	{
-		/*
-		 * XXX We do the projection here again. It may be cheaper to simply
-		 * update the GROUP_ID column, but it seems that it is so much easier
-		 * to just do the projection again.
-		 */
-		econtext->ecxt_scantuple = node->prev_groupslot;
-		econtext->group_id = node->num_repeats;
-
-		if (is_final_rollup_group)
-			econtext->grouping =
-				get_grouping_groupid(econtext->ecxt_scantuple,
-									 group_node->grpColIdx[numCols-2]);
-		else
-			econtext->grouping = group_node->grouping;
-
-		while (econtext->group_id > 0)
-		{
-			econtext->group_id --;
-			node->num_repeats--;
-
-			if (ExecQual(node->ss.ps.qual, econtext, false))
-				return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
-		}
-	}
-
-	/* Do not need to release the space since this is just a pointer
-	 * to a slot, which will be released somewhere else.
-	 */
-	node->prev_groupslot = NULL;
-
 	if (node->grp_done)
 		return NULL;
 
@@ -250,8 +214,9 @@ ExecGroup(GroupState *node)
 		 * We obtain GROUP_ID from the input tuples when this is
 		 * the middle Group or final Group in a ROLLUP.
 		 */
-		if (is_final_rollup_group ||
-			(passthru_ready && is_middle_rollup_group))
+		if ((is_final_rollup_group ||
+			 (passthru_ready && is_middle_rollup_group)) &&
+			input_has_grouping)
 			econtext->group_id =
 				get_grouping_groupid(econtext->ecxt_scantuple,
 									 group_node->grpColIdx[numCols-1]);
@@ -259,8 +224,9 @@ ExecGroup(GroupState *node)
 			econtext->group_id = group_node->rollupGSTimes;
 
 		/* Set GROUPING value */
-		if (is_final_rollup_group ||
-			(passthru_ready && is_middle_rollup_group))
+		if ((is_final_rollup_group ||
+			 (passthru_ready && is_middle_rollup_group)) &&
+			input_has_grouping)
 			econtext->grouping =
 				get_grouping_groupid(econtext->ecxt_scantuple,
 									 group_node->grpColIdx[numCols-2]);
@@ -307,46 +273,29 @@ ExecGroup(GroupState *node)
 		}
 		
 		/*
-		 * Since one tuple may be outputted several times with different
-		 * GROUP_ID values, and when the GROUP_ID() is appeared in
-		 * the HAVING clause, we want to loop here to find the first
-		 * tuple that satisfies the qual.
+		 * Check the qual (HAVING clause); if the group does not match, ignore
+		 * it and loop back to try to process another group.
 		 */
-		do
+		if (ExecQual(node->ss.ps.qual, econtext, false))
 		{
-			if (group_node->lastGroup)
-			{
-				node->prev_groupslot = econtext->ecxt_scantuple;
-				node->num_repeats = econtext->group_id - 1;
-				if (econtext->group_id > 0)
-					econtext->group_id--;
-			}
-
 			/*
-			 * Check the qual (HAVING clause); if the group does not match, ignore
-			 * it and loop back to try to process another group.
+			 * Form and return a projection tuple using the aggregate results
+			 * and the representative input tuple.	Note we do not support
+			 * aggregates returning sets ...
 			 */
-			if (ExecQual(node->ss.ps.qual, econtext, false))
-			{
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node)); 
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
+			
 #if 1
-				/*
-				 * Form and return a projection tuple using the aggregate results
-				 * and the representative input tuple.	Note we do not support
-				 * aggregates returning sets ...
-				 */
-				Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node)); 
-				CheckSendPlanStateGpmonPkt(&node->ss.ps);
-
-				return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+			return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
 #else
-				TupleTableSlot *out = ExecProject(node->ss.ps.ps_ProjInfo, NULL);
-				if (out != NULL)
-					elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, output tuple: %s",
-							group_node->numNullCols, group_node->inputHasGrouping, tup2str(out));
-				return out;
+			TupleTableSlot *out = ExecProject(node->ss.ps.ps_ProjInfo, NULL);
+			if (out != NULL)
+				elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, output tuple: %s",
+					 group_node->numNullCols, group_node->inputHasGrouping, tup2str(out));
+			return out;
 #endif
-			}
-		} while (econtext->group_id > 0);
+		}
 	}
 	
 	/* NOTREACHED */

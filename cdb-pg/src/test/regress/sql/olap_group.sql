@@ -66,9 +66,9 @@ select cn, vn, null, count(distinct dt) from sale group by cn, vn
 union all
 select cn, null, null, count(distinct dt) from sale group by cn
 union all
-select null, null, null, count(distinct dt) from sale;    
-select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn);
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn));
+select null, null, null, count(distinct dt) from sale;    --mvd 1,2,3->4
+select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn);--mvd 1,2,3->4
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn));--mvd 1,2,3->4
 -- end_equiv
 
 --start_equiv order 1,2,3
@@ -500,3 +500,18 @@ create view grp_v3 as select count(*) from sale group by grouping sets((), ());
 drop view grp_v1;
 drop view grp_v2;
 drop view grp_v3;
+
+select cn,group_id(), qty, sale.pn, prc, vn, to_char(coalesce(sum(distinct qty*prc), 0), '999999.9999')
+from sale, product
+where sale.pn=product.pn
+group by grouping sets ((qty, sale.pn, prc, cn,vn), (qty,sale.pn,prc,vn,cn), (sale.qty, prc, cn)); --mvd 1,3,4,5,6->7
+
+select sale.pn, count(distinct prc), count(distinct vn), grouping(sale.pn)
+from sale, product where sale.pn = product.pn group by rollup(sale.pn); --mvd 1,2->3
+select sale.pn, count(distinct prc), count(distinct vn), sum(prc) + grouping(sale.pn)
+from sale, product where sale.pn = product.pn group by rollup(sale.pn); --mvd 1->3
+select sale.pn, count(distinct prc), count(distinct vn), sum(prc) + log(sale.pn) + grouping(sale.pn)
+from sale, product where sale.pn = product.pn group by rollup(sale.pn); --mvd 1->3
+
+SELECT group_id(), sale.pn, sale.qty, sale.cn, sale.prc, STDDEV(sale.prc*sale.cn),MIN(DISTINCT sale.prc*sale.vn) from sale
+GROUP BY ROLLUP((sale.qty,sale.cn),(sale.qty,sale.pn),(sale.vn),(sale.prc)),ROLLUP((sale.dt,sale.pn,sale.qty)); --mvd 2,3,4,5->6

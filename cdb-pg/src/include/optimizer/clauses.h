@@ -31,6 +31,9 @@ typedef struct
 	bool	missing_prelimfunc; /* CDB: any agg func w/o a prelim func? */
 } AggClauseCounts;
 
+/*
+ * Representing a canonicalized grouping sets.
+ */
 typedef struct CanonicalGroupingSets
 {
 	int num_distcols;   /* number of distinct grouping columns */

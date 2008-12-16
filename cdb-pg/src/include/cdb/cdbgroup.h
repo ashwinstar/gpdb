@@ -16,21 +16,14 @@
 #include "nodes/params.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "nodes/relation.h"   /* GroupContext */
 
-#include "optimizer/clauses.h" /* AggClauseCount */
+#include "optimizer/clauses.h" /* AggClauseCounts */
 
 extern Plan *
-cdb_grouping_planner(PlannerInfo* root, 
+cdb_grouping_planner(PlannerInfo* root,
 					 AggClauseCounts *agg_counts,
-					 List *tlist,
-					 Path *best_path,
-					 Path *cheapest_path,
-					 bool use_hashed_grouping,
-					 double tuple_fraction,
-					 double *p_dNumGroups,
-					 CanonicalGroupingSets *canonical_grpsets,
-					 List **pcurrent_pathkeys,
-					 bool *querynode_changed);
+					 GroupContext *group_context);
 
 extern bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys);
 extern CdbPathLocus cdbpathlocus_from_flow(Flow *flow);
@@ -64,8 +57,10 @@ extern Plan *add_second_stage_agg(PlannerInfo *root,
 								  List **p_current_pathkeys,
 								  Plan *result_plan,
 								  bool use_root);
-extern List *generate_subquery_tlist(Index varno, List *input_tlist, int **p_resno_map);
+extern List *generate_subquery_tlist(Index varno, List *input_tlist,
+									 bool keep_resjunk, int **p_resno_map);
 extern List *reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_map,
 								  List *orig_tlist, List *new_tlist);
+extern List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols, bool return_resno);
 
 #endif   /* CDBGROUP_H */

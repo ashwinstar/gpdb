@@ -31,6 +31,7 @@ OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        nodeMaterial.o nodeMergejoin.o nodeMotion.o \
        nodeNestloop.o \
        nodeResult.o \
+       nodeRepeat.o \
        nodeSeqscan.o nodeSetOp.o nodeShareInputScan.o nodeSort.o \
        nodeSubplan.o nodeSubqueryscan.o \
        nodeTidscan.o \

@@ -794,6 +794,9 @@ explain_outNode(StringInfo str,
 		case T_Result:
 			pname = "Result";
 			break;
+		case T_Repeat:
+			pname = "Repeat";
+			break;
 		case T_Append:
 			pname = "Append";
 			break;
@@ -1357,6 +1360,13 @@ explain_outNode(StringInfo str,
 							NULL, OUTER, outerPlan(plan),
 							NULL, 0, NULL,
 							str, indent, es);
+			show_upper_qual(plan->qual,
+							"Filter",
+							NULL, OUTER, outerPlan(plan),
+							NULL, 0, NULL,
+							str, indent, es);
+			break;
+		case T_Repeat:
 			show_upper_qual(plan->qual,
 							"Filter",
 							NULL, OUTER, outerPlan(plan),

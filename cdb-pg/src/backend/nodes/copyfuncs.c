@@ -152,6 +152,28 @@ _copyResult(Result *from)
 }
 
 /*
+ * _copyRepeat
+ */
+static Repeat *
+_copyRepeat(Repeat *from)
+{
+	Repeat *newnode = makeNode(Repeat);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyPlanFields((Plan *)from, (Plan *)newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_NODE_FIELD(repeatCountExpr);
+	COPY_SCALAR_FIELD(grouping);
+
+	return newnode;
+}
+
+/*
  * _copyAppend
  */
 static Append *
@@ -3574,6 +3596,9 @@ copyObject(void *from)
 			break;
 		case T_Result:
 			retval = _copyResult(from);
+			break;
+		case T_Repeat:
+			retval = _copyRepeat(from);
 			break;
 		case T_Append:
 			retval = _copyAppend(from);

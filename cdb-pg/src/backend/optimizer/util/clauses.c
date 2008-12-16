@@ -4456,6 +4456,9 @@ contain_grouping_clause_walker(Node *node, void *context)
 /*
  * is_grouping_extension -
  *     Return true if a given grpsets contain multiple grouping sets.
+ *
+ * This function also returns false when a query has a single unique
+ * groupig set appearing multiple times.
  */
 bool
 is_grouping_extension(CanonicalGroupingSets *grpsets)
@@ -4464,8 +4467,7 @@ is_grouping_extension(CanonicalGroupingSets *grpsets)
 		grpsets->ngrpsets == 0)
 		return false;
 
-	if (grpsets->ngrpsets == 1 &&
-		grpsets->grpset_counts[0] == 1)
+	if (grpsets->ngrpsets == 1)
 		return false;
 
 	return true;

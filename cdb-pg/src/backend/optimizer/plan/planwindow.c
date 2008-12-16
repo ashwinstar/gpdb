@@ -4032,7 +4032,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	/* Make the target list for the plan and for the wrapper Query
 	 * that will correspond to it.
 	 */
-	subq_tlist = generate_subquery_tlist(varno, plan->targetlist, &resno_map);
+	subq_tlist = generate_subquery_tlist(varno, plan->targetlist, false, &resno_map);
 	
 	/* Make the plan. 
 	 */
@@ -4138,7 +4138,7 @@ Plan *add_join_to_wrapper(
 	/* Make the target list for the plan and for the wrapper Query
 	 * that will correspond to it.
 	 */
-	subq_tlist = generate_subquery_tlist(varno, plan->targetlist, &resno_map);
+	subq_tlist = generate_subquery_tlist(varno, plan->targetlist, false, &resno_map);
 	
 	/* Make the plan. 
 	 */

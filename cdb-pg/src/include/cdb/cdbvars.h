@@ -682,6 +682,25 @@ extern bool gp_eager_one_phase_agg;
  */
 extern bool gp_eager_two_phase_agg;
 
+/*
+ * "gp_enable_groupext_distinct_pruning"
+ *
+ * Should Greenplum bias planner estimates so as to favor the use of
+ * grouping in the first phases of 3-phase aggregation to prune values
+ * from DISTINCT-qualified aggregate function arguments on a grouping
+ * extension query?
+ */
+extern bool gp_enable_groupext_distinct_pruning;
+
+/*
+ * "gp_enable_groupext_distinct_gather"
+ *
+ * Should Greenplum bias planner estimates so as to favor the use of
+ * gathering motion to gather the data into a single node to compute
+ * DISTINCT-qualified aggregates on a grouping extension query?
+ */
+extern bool gp_enable_groupext_distinct_gather;
+
 /* May Greenplum apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.

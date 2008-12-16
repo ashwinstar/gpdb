@@ -789,7 +789,7 @@ hash_agg_entry_size(int numAggs)
 TupleTableSlot *
 ExecAgg(AggState *node)
 {
-	if (node->agg_done && node->num_repeats == 0)
+	if (node->agg_done)
 		return NULL;
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
@@ -905,111 +905,6 @@ ExecAgg(AggState *node)
 }
 
 /*
- * get_repeat_slot -- return the tuple slot that needs to be returned
- * multiple times with a decreasing GROUP_ID value.
- *
- * Return NULL if the GROUP_ID is less than 0.
- */
-static TupleTableSlot *
-get_repeat_slot(AggState *aggstate)
-{
-	Agg		   *node = (Agg *) aggstate->ss.ps.plan;
-	bool        input_has_grouping = node->inputHasGrouping;
-	bool        is_final_rollup_agg =
-		(node->lastAgg ||
-		 (input_has_grouping && node->numNullCols == 0));
-	ExprContext *econtext;
-	ExprContext *tmpcontext;
-	ProjectionInfo *projInfo;
-
-	econtext = aggstate->ss.ps.ps_ExprContext;
-	tmpcontext = aggstate->tmpcontext;
-	projInfo = aggstate->ss.ps.ps_ProjInfo;
-
-	/*
-	 * We can not clear/reset the per-output tuple memory context here,
-	 * because we still need aggregate values stored in econtext to verify
-	 * the qual. However, if we don't reset the per-output tuple memory
-	 * context, when group_id is very large, we are likely to run out of
-	 * memory (see MPP-1995, MPP-2118). The compromise here is that we
-	 * only reset econtext when group_id is large (>1000). However, to
-	 * be able to do that, we make a copy of aggregate values from econtext
-	 * before resetting it, and then copy them back to econtext after
-	 * that. This would definitely slow down the performance, but this
-	 * case should be fairly rare.
-	 */
-	if (aggstate->num_repeats > 1000)
-	{
-		/*
-		 * Make a copy for all aggregate values.Use per-input tuple
-		 * memory context.
-		 */
-		Datum *aggvalues;
-		bool *aggnulls;
-		MemoryContext old_ctx;
-		int aggno;
-
-		ResetExprContext(tmpcontext);
-		old_ctx = MemoryContextSwitchTo(tmpcontext->ecxt_per_tuple_memory);
-		
-		aggvalues = (Datum *) palloc0(sizeof(Datum) * aggstate->numaggs);;
-		aggnulls = (bool *) palloc0(sizeof(bool) * aggstate->numaggs);
-
-		for (aggno=0; aggno<aggstate->numaggs; aggno++)
-		{
-			AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
-			aggvalues[aggno] = datumCopy(econtext->ecxt_aggvalues[aggno],
-										 peraggstate->resulttypeByVal,
-										 peraggstate->resulttypeLen);
-			aggnulls[aggno] = econtext->ecxt_aggnulls[aggno];
-		}
-
-		MemoryContextSwitchTo(old_ctx);
-		
-		/* Reset the per-output tuple memory context */
-		ResetExprContext(econtext);
-
-		/* Copy aggregate values back. */
-		old_ctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
-		for (aggno=0; aggno<aggstate->numaggs; aggno++)
-		{
-			AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
-			econtext->ecxt_aggvalues[aggno] = datumCopy(aggvalues[aggno],
-														peraggstate->resulttypeByVal,
-														peraggstate->resulttypeLen);
-			econtext->ecxt_aggnulls[aggno] = aggnulls[aggno];
-		}
-		
-		MemoryContextSwitchTo(old_ctx);
-
-		pfree(aggvalues);
-		pfree(aggnulls);
-	}
-	
-	econtext->ecxt_scantuple = aggstate->prev_aggslot;
-	econtext->group_id = aggstate->num_repeats;
-
-	/* Get grouping from the input tuple or the Agg node. */
-	if (is_final_rollup_agg)
-		econtext->grouping =
-			get_grouping_groupid(econtext->ecxt_scantuple,
-								 node->grpColIdx[node->numCols-node->numNullCols-2]);
-	else
-		econtext->grouping = node->grouping;
-	
-	while (econtext->group_id > 0)
-	{
-		econtext->group_id--;
-		aggstate->num_repeats--;
-		
-		if (ExecQual(aggstate->ss.ps.qual, econtext, false))
-			return ExecProject(projInfo, NULL);
-	}
-	
-	return NULL;
-}
-
-/*
  * ExecAgg for non-hashed case
  */
 static TupleTableSlot *
@@ -1055,22 +950,6 @@ agg_retrieve_direct(AggState *aggstate)
 	pergroup = aggstate->pergroup;
 	perpassthru = aggstate->perpassthru;
 	firstSlot = aggstate->ss.ss_ScanTupleSlot;
-
-	/*
-	 * If the previous aggregated result needs to be outputed
-	 * several times, we simple return the previous output tuple.
-	 */
-	if (aggstate->num_repeats > 0)
-	{
-		TupleTableSlot *slot = get_repeat_slot(aggstate);
-		if (slot != NULL)
-			return slot;
-	}
-
-	/* Do not need to release the space since this is just a pointer
-	 * to a slot, which will be released somewhere else.
-	 */
-	aggstate->prev_aggslot = NULL;
 
 	if (aggstate->agg_done)
 		return NULL;
@@ -1387,8 +1266,9 @@ agg_retrieve_direct(AggState *aggstate)
 		 * We obtain GROUP_ID from the input tuples when this is
 		 * the middle Agg or final Agg in a ROLLUP.
 		 */
-		if (is_final_rollup_agg ||
-			(passthru_ready && is_middle_rollup_agg))
+		if ((is_final_rollup_agg ||
+			(passthru_ready && is_middle_rollup_agg)) &&
+			input_has_grouping)
 			econtext->group_id =
 				get_grouping_groupid(econtext->ecxt_scantuple,
 									 node->grpColIdx[node->numCols-node->numNullCols-1]);
@@ -1396,8 +1276,9 @@ agg_retrieve_direct(AggState *aggstate)
 			econtext->group_id = node->rollupGSTimes;
 
 		/* Set GROUPING value */
-		if (is_final_rollup_agg ||
-			(passthru_ready && is_middle_rollup_agg))
+		if ((is_final_rollup_agg ||
+			 (passthru_ready && is_middle_rollup_agg)) &&
+			input_has_grouping)
 			econtext->grouping =
 				get_grouping_groupid(econtext->ecxt_scantuple,
 									 node->grpColIdx[node->numCols-node->numNullCols-2]);
@@ -1451,41 +1332,21 @@ agg_retrieve_direct(AggState *aggstate)
 		}
 
 		/*
-		 * Since one tuple may be outputted several times with different
-		 * GROUP_ID values, and when the GROUP_ID() is appeared in
-		 * the HAVING clause, we want to loop here to find the first
-		 * tuple that satisfies the qual.
+		 * Check the qual (HAVING clause); if the group does not match, ignore
+		 * it and loop back to try to process another group.
 		 */
-		do
+		if (ExecQual(aggstate->ss.ps.qual, econtext, false))
 		{
-			if ((peragg->aggref == NULL && node->lastAgg) ||
-				(peragg->aggref != NULL &&
-				 (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
-				  peragg->aggref->aggstage == AGGSTAGE_NORMAL)))
-			{
-				aggstate->prev_aggslot = econtext->ecxt_scantuple;
-				aggstate->num_repeats = econtext->group_id - 1;
-				if (econtext->group_id > 0)
-					econtext->group_id--;
-			}
-
 			/*
-			 * Check the qual (HAVING clause); if the group does not match, ignore
-			 * it and loop back to try to process another group.
+			 * Form and return a projection tuple using the aggregate results
+			 * and the representative input tuple.	Note we do not support
+			 * aggregates returning sets ...
 			 */
-			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
-			{
-                            /*
-                             * Form and return a projection tuple using the aggregate results
-                             * and the representative input tuple.	Note we do not support
-                             * aggregates returning sets ...
-                             */
-                            Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
-                            CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
-
-                            return ExecProject(projInfo, NULL);
-			}
-		} while (econtext->group_id > 0);
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate)); 
+			CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+			
+			return ExecProject(projInfo, NULL);
+		}
 	}
 
 	/* No more groups */
@@ -1522,22 +1383,6 @@ agg_retrieve_hash_table(AggState *aggstate)
 	projInfo = aggstate->ss.ps.ps_ProjInfo;
 	peragg = aggstate->peragg;
 	firstSlot = aggstate->ss.ss_ScanTupleSlot;
-
-	/*
-	 * If the previous aggregated result needs to be outputed
-	 * several times, we simple return the previous output tuple.
-	 */
-	if (aggstate->num_repeats > 0)
-	{
-		TupleTableSlot *slot = get_repeat_slot(aggstate);
-		if (slot != NULL)
-			return slot;
-	}
-
-	/* Do not need to release the space since this is just a pointer
-	 * to a slot, which will be released somewhere else.
-	 */
-	aggstate->prev_aggslot = NULL;
 
 	if (aggstate->agg_done)
 		return NULL;
@@ -1597,7 +1442,7 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 */
 		econtext->ecxt_scantuple = firstSlot;
 
-		if (is_final_rollup_agg)
+		if (is_final_rollup_agg && input_has_grouping)
 		{
 			econtext->group_id =
 				get_grouping_groupid(econtext->ecxt_scantuple,
@@ -1606,42 +1451,27 @@ agg_retrieve_hash_table(AggState *aggstate)
 				get_grouping_groupid(econtext->ecxt_scantuple,
 									 node->grpColIdx[node->numCols-node->numNullCols-2]);
 		}
-		
-		/*
-		 * Since one tuple may be outputted several times with different
-		 * GROUP_ID values, and when the GROUP_ID() is appeared in
-		 * the HAVING clause, we want to loop here to find the first
-		 * tuple that satisfies the qual.
-		 */
-		do
+		else
 		{
-			if ((peragg->aggref == NULL && node->lastAgg) ||
-				(peragg->aggref != NULL &&
-				 (peragg->aggref->aggstage == AGGSTAGE_FINAL ||
-				  peragg->aggref->aggstage == AGGSTAGE_NORMAL)))
-			{
-				aggstate->prev_aggslot = econtext->ecxt_scantuple;
-				aggstate->num_repeats = econtext->group_id - 1;
-				if (econtext->group_id > 0)
-					econtext->group_id--;
-			}
-			
+			econtext->group_id = node->rollupGSTimes;
+			econtext->grouping = node->grouping;
+		}
+
+		/*
+		 * Check the qual (HAVING clause); if the group does not match, ignore
+		 * it and loop back to try to process another group.
+		 */
+		if (ExecQual(aggstate->ss.ps.qual, econtext, false))
+		{
 			/*
-			 * Check the qual (HAVING clause); if the group does not match, ignore
-			 * it and loop back to try to process another group.
+			 * Form and return a projection tuple using the aggregate results
+			 * and the representative input tuple.	Note we do not support
+			 * aggregates returning sets ...
 			 */
-			if (ExecQual(aggstate->ss.ps.qual, econtext, false))
-			{
-                            /*
-                             * Form and return a projection tuple using the aggregate results
-                             * and the representative input tuple.	Note we do not support
-                             * aggregates returning sets ...
-                             */
-                            Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate));
-                            CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
-                            return ExecProject(projInfo, NULL);
-			}
-		} while (econtext->group_id > 0);
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromAggState(aggstate)); 
+			CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+			return ExecProject(projInfo, NULL);
+		}
 	}
 
 	/* No more groups */
@@ -2114,8 +1944,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	}
 
 	aggstate->num_attrs = 0;
-	aggstate->prev_aggslot = NULL;
-	aggstate->num_repeats = 0;
 
 	{
 		char *iname = NULL;
@@ -2315,8 +2143,6 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	}
 
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	node->prev_aggslot = NULL;
-	node->num_repeats = 0;
 	node->has_partial_agg = false;
 
 	/* Forget current agg values */

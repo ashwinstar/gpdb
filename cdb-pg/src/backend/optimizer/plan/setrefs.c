@@ -471,6 +471,11 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 			fix_expr_references(plan, (Node *) plan->qual, ctxt);
 			fix_expr_references(plan, ((Result *) plan)->resconstantqual, ctxt);
 			break;
+		case T_Repeat:
+			set_uppernode_references(plan, (Index) OUTER);
+			fix_expr_references(plan, (Node *) plan->targetlist, ctxt);
+			fix_expr_references(plan, (Node *) plan->qual, ctxt);
+			break;
 		case T_Append:
 
 			/*
@@ -946,6 +951,10 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
 			adjust_expr_varnos(((Result *) plan)->resconstantqual, rtoffset);
+			break;
+		case T_Repeat:
+			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
+			adjust_expr_varnos((Node *) plan->qual, rtoffset);
 			break;
 		case T_Append:
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
@@ -1804,6 +1813,7 @@ replace_vars_with_subplan_refs_mutator(Node *node,
 
 	if (node == NULL)
 		return NULL;
+
 	if (IsA(node, Var))
 	{
 		Var		   *var = (Var *) node;
@@ -1815,8 +1825,10 @@ replace_vars_with_subplan_refs_mutator(Node *node,
 			elog(ERROR, "variable not found in subplan target list");
 		return (Node *) newvar;
 	}
-	/* Try matching more complex expressions too, if tlist has any */
-	if (context->subplan_itlist->has_non_vars)
+	/* Try matching more complex expressions too, if tlist has any.
+	 * Ignore GROUP_ID.
+	 */
+	if (context->subplan_itlist->has_non_vars && !IsA(node, GroupId))
 	{
 		newvar = search_indexed_tlist_for_non_var(node,
 												  context->subplan_itlist,

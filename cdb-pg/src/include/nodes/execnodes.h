@@ -1182,6 +1182,20 @@ typedef struct ResultState
 } ResultState;
 
 /* ----------------
+ *	 RepeatState information
+ * ----------------
+ */
+typedef struct RepeatState
+{
+	PlanState	ps;				/* its first field is NodeTag */
+
+	bool repeat_done;           /* are we done? */
+	TupleTableSlot *slot;       /* The current tuple */
+	int repeat_count;           /* The number of repeats for the current tuple */
+	ExprState *expr_state;      /* The state to evaluate the expression */
+} RepeatState;
+
+/* ----------------
  *	 AppendState information
  *
  *		nplans			how many plans are in the list
@@ -1736,16 +1750,6 @@ typedef struct GroupState
 	bool        is_passthru;     /* indicate if grp_firstTuple is a pass-thru tuple. */
 
 	/*
-	 * This Group node may require to output each group tuple multiple times
-	 * since it may represent a grouping set which appears multiple times
-	 * in a grouping set. We use prev_groupslot to indicate if a previous output
-	 * tuple needs to be output again. How many times this tuple
-	 * needs to be outputed is defined in num_repeats.
-	 */
-	TupleTableSlot *prev_groupslot;
-	int             num_repeats;
-
-	/*
 	 * The following are used for modifying an input tuple based
 	 * on the rollup level of this node.
 	 */
@@ -1803,16 +1807,6 @@ typedef struct AggState
 
 	/* ROLLUP */
 	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
-
-	/*
-	 * This Agg node may require to output each aggregate tuple multiple times
-	 * since it may represent a grouping set which appears multiple times
-	 * in a grouping set. We use prev_aggslot to indicate if a previous output
-	 * tuple needs to be output again. How many times this tuple
-	 * needs to be outputed is defined in num_repeats.
-	 */
-	TupleTableSlot *prev_aggslot;
-	int             num_repeats;
 
 	/*
 	 * The following are used to define how to modify input tuples to

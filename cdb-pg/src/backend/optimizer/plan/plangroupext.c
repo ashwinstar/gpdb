@@ -30,13 +30,15 @@
 #include "cdb/cdbpathlocus.h"
 #include "cdb/cdbgroup.h" 					/* generate_three_tlists */
 #include "cdb/cdbllize.h"                   /* pull_up_Flow */
+#include "catalog/pg_type.h"                /* INT4OID */
+#include "utils/lsyscache.h"                /* get_typavgwidth */
 
 /*
  * Define a canonical form of a ROLLUP.
  *
  * This can be used to represent a complete or partial ROLLUP, from
  * the user requested ROLLUP clause, or part of user requested CUBE
- * or GROUPING SETS clauases.
+ * or GROUPING SETS clauses.
  */
 typedef struct CanonicalRollup
 {
@@ -86,7 +88,9 @@ typedef struct CanonicalRollup
 typedef struct GroupExtContext
 {
 	Path *path; /* the path before grouping planning */
+	
 	double tuple_fraction;
+	bool use_hashed_grouping;
 	List *tlist;
 	List *sub_tlist;
 	List *qual;
@@ -94,12 +98,15 @@ typedef struct GroupExtContext
 	AggStrategy aggstrategy;
 	int numGroupCols;
 	AttrNumber *grpColIdx;
+	int numDistinctCols;
+	AttrNumber *distinctColIdx;
 	AggClauseCounts *agg_counts;
 	double *p_dNumGroups;
 	List *current_pathkeys;
 	
 	bool is_agg; /* indicate whether to create Agg/Group nodes. */
 	bool twostage; /* indicate if this appears in a two-stage aggregation. */
+	bool need_repeat_node; /* indicate if a Repeat node is needed in a two-stage aggregation. */
 	bool querynode_changed; /* indicate if root->parse is changed. */
 
 	List *canonical_rollups; /* list of CanonicalRollups */
@@ -131,9 +138,12 @@ static Plan *make_list_aggs_for_rollup(PlannerInfo *root,
 static Plan*make_append_aggs_for_rollup(PlannerInfo *root,
 										GroupExtContext *context,
 										Plan *lefttree);
-static List *plan_list_aggs(PlannerInfo *root,
-							GroupExtContext *context,
-							Plan *lefttree);
+static Plan *plan_append_aggs_with_rewrite(PlannerInfo *root,
+										   GroupExtContext *context,
+										   Plan *lefttree);
+static Plan *plan_append_aggs_with_gather(PlannerInfo *root,
+										  GroupExtContext *context,
+										  Plan *lefttree);
 static Plan *add_first_agg(PlannerInfo *root,
 						   GroupExtContext *context,
 						   int num_nullcols,
@@ -155,6 +165,12 @@ static void append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 static Plan *plan_list_rollup_plans(PlannerInfo *root,
 									GroupExtContext *context,
 									Plan *lefttree);
+static Node *replace_grouping_columns(Node *node,
+									  List *sub_tlist,
+									  AttrNumber *grpColIdx,
+									  int start_colno,
+									  int end_colno);
+static bool contain_groupingfunc(Node *node);
 
 /*
  * Create the plan for grouping extensions
@@ -178,6 +194,7 @@ Plan *
 plan_grouping_extension(PlannerInfo *root,
 						Path *path,
 						double tuple_fraction,
+						bool use_hashed_grouping,
 						List **p_tlist, List *sub_tlist,
 						bool is_agg, bool twostage,
 						List *qual,
@@ -196,6 +213,7 @@ plan_grouping_extension(PlannerInfo *root,
 
 	context.path = path;
 	context.tuple_fraction = tuple_fraction;
+	context.use_hashed_grouping = use_hashed_grouping;
 	context.tlist = tlist;
 	context.sub_tlist = copyObject(sub_tlist);
 	context.qual = qual;
@@ -203,11 +221,14 @@ plan_grouping_extension(PlannerInfo *root,
 	context.grpColIdx = palloc0(context.numGroupCols * sizeof(AttrNumber));
 	memcpy(context.grpColIdx, *p_grpColIdx,
 		   context.numGroupCols * sizeof(AttrNumber));
+	context.numDistinctCols = 0;
+	context.distinctColIdx = NULL;
 	context.agg_counts = agg_counts;
 	context.p_dNumGroups = p_dNumGroups;
 	context.current_pathkeys = *p_current_pathkeys;
 	context.is_agg = is_agg;
 	context.twostage = twostage;
+	context.need_repeat_node = false;
 	context.querynode_changed = false;
 	context.canonical_rollups = NIL;
 
@@ -269,6 +290,25 @@ plan_grouping_extension(PlannerInfo *root,
 	*querynode_changed = context.querynode_changed;
 
 	return result_plan;
+}
+
+void
+free_canonical_groupingsets(CanonicalGroupingSets *canonical_grpsets)
+{
+	int grpset_no;
+	for (grpset_no=0; grpset_no<canonical_grpsets->ngrpsets; grpset_no++)
+	{
+		bms_free(canonical_grpsets->grpsets[grpset_no]);
+	}
+	
+	if (canonical_grpsets)
+	{
+		if (canonical_grpsets->grpsets)
+			pfree(canonical_grpsets->grpsets);
+		if (canonical_grpsets->grpset_counts)
+			pfree(canonical_grpsets->grpset_counts);
+		pfree(canonical_grpsets);
+	}
 }
 
 /*
@@ -334,6 +374,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	double numGroups = *context->p_dNumGroups; /* make a copy of the original number */
 	/* The query has a non-empty set group clause */
 	bool has_groups = (root->parse->groupClause != NIL);
+	bool need_repeat_node = false;
 
 	TargetEntry *tle;
 	uint64    input_grouping = 0;
@@ -402,8 +443,15 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	for (group_no=0; group_no < context->current_rollup->numcols + 1; group_no++)
 	{
 		if (context->current_rollup->grpset_counts[group_no] > 0)
+		{
 			last_group_no = group_no;
+			if (context->current_rollup->grpset_counts[group_no] > 1)
+				need_repeat_node = true;
+		}
 	}
+
+	if (context->twostage && context->need_repeat_node)
+		need_repeat_node = true;
 
 	/* Generate the bottom-level Agg node */
 	for (group_no=0; group_no <= last_group_no; group_no++)
@@ -470,7 +518,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			{
 				current_qual = context->qual;
 				context->tlist = add_grouping_groupid(context->tlist);
-				current_tlist = context->tlist;
+				current_tlist = copyObject(context->tlist);
 				prelimGroupColIdx[context->numGroupCols-1] = list_length(current_tlist) - 1;
 				prelimGroupColIdx[context->numGroupCols-2] = list_length(current_tlist) - 2;
 			}
@@ -485,7 +533,8 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 									 group_no,
 									 0,
 									 grouping,
-									 context->current_rollup->grpset_counts[group_no],
+									 (need_repeat_node ?
+									  context->current_rollup->grpset_counts[group_no] : 0),
 									 context->numGroupCols - 2, /* ignore GROUPING, GROUP_ID */
 									 groupColIdx,
 									 current_tlist,
@@ -493,7 +542,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 									 current_lefttree);
 
 			current_lefttree = agg_node;
-			context->tlist = current_tlist;
+			context->tlist = copyObject(current_tlist);
 
 			input_grouping = grouping;
 			group_no++;
@@ -557,7 +606,8 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										current_qual, context->aggstrategy,
 										context->numGroupCols, new_grpColIdx,
 										group_no, input_grouping, grouping,
-										context->current_rollup->grpset_counts[group_no],
+										(need_repeat_node ?
+										 context->current_rollup->grpset_counts[group_no] : 0),
 										current_numGroups,
 										context->agg_counts->numAggs,
 										context->agg_counts->transitionSpace,
@@ -574,7 +624,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		context->querynode_changed = true;
 
 		current_lefttree = agg_node;
-		context->tlist = current_tlist;
+		context->tlist = copyObject(current_tlist);
 		input_grouping = grouping;
 	}
 	
@@ -688,7 +738,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										0,  /* num_nullcols */
 										0, /* input_grouping */
 										0, /* grouping */
-										0, /* rollup_gs_times */
+										(need_repeat_node ? 1 : 0), /* rollup_gs_times */
 										lNumGroups, context->agg_counts->numAggs,
 										context->agg_counts->transitionSpace,
 										"rollup", &context->current_pathkeys,
@@ -700,7 +750,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			((Group *)agg_node)->inputHasGrouping = true;
 
 		context->querynode_changed = true;
-		context->tlist = tlist3;
+		context->tlist = copyObject(tlist3);
 	}
 
 	if (!context->twostage)
@@ -709,32 +759,392 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			((Agg *)agg_node)->lastAgg = true;
 		else
 			((Group*)agg_node)->lastGroup = true;
+
+		if (need_repeat_node)
+			agg_node = add_repeat_node(agg_node, 0, 0);
 	}
 
 	pfree(orig_grpColIdx);
+
 	return agg_node;
 }
+
+/*
+ * Add an Append node for a given list of subplans.
+ *
+ * If there is only 1 subplan in the given list, no Append node is
+ * added and the first subplan is returned.
+ */
+static Plan *
+add_append_node(List *subplans,
+				GroupExtContext *context)
+{
+	Plan *result_plan;
+	GpSetOpType optype = PSETOP_NONE;
+	
+	/* Add 'Append' if there are more than one subplan. */
+	if (list_length(subplans) > 1)
+	{
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			optype = choose_setop_type(subplans);
+			adjust_setop_arguments(subplans, optype);
+		}
+		
+		/* Append all agg_plans together */
+		result_plan = (Plan *)make_append(subplans, false, context->tlist);
+		mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
+
+		/* set the final pathkey to NIL */
+		context->current_pathkeys = NIL;
+	}
+	
+	else
+	{
+		result_plan = (Plan *)linitial(subplans);
+	}
+
+	return result_plan;
+}
+				
 
 /*
  * Create an agg plan by using an Append node to glue together a list
  * of Agg/Group nodes, each of which represents an Agg/Group node in a
  * rollup level.
+ *
+ * This function generates two different Agg/Group plan for each
+ * rollup level: one is by bringing all data into a single QE and
+ * let it handle all distinct-qualified aggregates; the other is
+ * by calling cdb_grouping_planner to obtain a plan for rewritten
+ * distinct-qualified aggregates. This function chooses a cheaper
+ * one from these two. The former plan is also the fallback plan.
  */
 static Plan*
 make_append_aggs_for_rollup(PlannerInfo *root,
 							GroupExtContext *context,
 							Plan *lefttree)
 {
+	Plan *result_plan = NULL;
+	Plan *rewrite_agg_plan = NULL;
+	Plan *gather_agg_plan = NULL;
+	Query *query_for_gather = NULL;
+	List *pathkeys_for_gather = NULL;
+	GroupExtContext context_copy;
+	double numGroups = *(context->p_dNumGroups);
+	double numGroups_for_gather = 0;
+
+	root->group_pathkeys = canonicalize_pathkeys(root, root->group_pathkeys);
+
+	/* Plan a list of plans, one for each rollup level. */
+	if (gp_enable_groupext_distinct_gather ||
+		!gp_enable_groupext_distinct_pruning)
+	{
+		memcpy(&context_copy, context, sizeof(GroupExtContext));
+		gather_agg_plan =
+			plan_append_aggs_with_gather(root, &context_copy, lefttree);
+		if (gp_enable_groupext_distinct_pruning)
+		{
+			query_for_gather = copyObject(root->parse);
+			pathkeys_for_gather = context->current_pathkeys;
+			numGroups_for_gather = *(context->p_dNumGroups);
+		}
+	}
+	
+	if (gp_enable_groupext_distinct_pruning)
+	{
+		*(context->p_dNumGroups) = numGroups;
+		rewrite_agg_plan =
+			plan_append_aggs_with_rewrite(root, context, lefttree);
+	}
+
+	result_plan = gather_agg_plan;
+	if (result_plan == NULL)
+	{
+		result_plan = rewrite_agg_plan;
+	}
+	
+	else if (rewrite_agg_plan != NULL)
+	{
+		/* Choose a cheaper plan */
+		if (rewrite_agg_plan->total_cost < gather_agg_plan->total_cost)
+			result_plan = rewrite_agg_plan;
+		else if (rewrite_agg_plan->total_cost == gather_agg_plan->total_cost &&
+				 rewrite_agg_plan->startup_cost < rewrite_agg_plan->startup_cost)
+			result_plan = rewrite_agg_plan;
+	}
+
+	if (result_plan == gather_agg_plan &&
+		rewrite_agg_plan != NULL)
+	{
+		root->parse = query_for_gather;
+		memcpy(context, &context_copy, sizeof(GroupExtContext));
+		*(context->p_dNumGroups) = numGroups_for_gather;
+		context->current_pathkeys = pathkeys_for_gather;
+	}
+
+	return result_plan;
+}
+
+/*
+ * Construct a given grouping set into the form of a canonical grouping
+ * sets.
+ */
+static CanonicalGroupingSets *
+reconstruct_groupingsets(CanonicalRollup *rollup, int grpset_no)
+{
+	CanonicalGroupingSets *grpsets = palloc(sizeof(CanonicalGroupingSets));
+	int group_no;
+	
+	grpsets->num_distcols = rollup->numcols - grpset_no;
+	grpsets->ngrpsets = 1;
+	grpsets->grpsets = (Bitmapset **)palloc0(sizeof(Bitmapset*));
+	grpsets->grpset_counts = (int *)palloc0(sizeof(int));
+	grpsets->grpset_counts[0] =	rollup->grpset_counts[grpset_no];
+
+	for (group_no = 0; group_no < rollup->numcols - grpset_no; group_no++)
+		grpsets->grpsets[0] = bms_add_member(grpsets->grpsets[0], rollup->colIdx[group_no]);
+			
+	return grpsets;
+}
+
+/*
+ * Add the cost of computing DISTINCTs inside an Agg node.
+ */
+static void
+add_distinct_cost(Plan *agg_plan, GroupExtContext *context)
+{
+	ListCell *dqa_lc;
+	
+	double num_groups = *context->p_dNumGroups;
+	double avgsize = agg_plan->plan_rows / num_groups;
+	foreach (dqa_lc, context->agg_counts->dqaArgs)
+	{
+		Path path_dummy;
+		Node *dqa_expr = (Node *)lfirst(dqa_lc);
+		
+		cost_sort(&path_dummy, NULL, NIL, 0.0, avgsize,
+				  get_typavgwidth(exprType(dqa_expr), exprTypmod(dqa_expr)));
+		agg_plan->total_cost += path_dummy.total_cost;
+	}
+}
+
+/*
+ * Generate a plan for a non-extension distinct-qualified query.
+ *
+ * We calls cdb_grouping_planner to generate a one, two, three-stage
+ * plan for this query. When it is not necessary to generate such a plan, we fall
+ * back to the sequential planning -- a simple Agg node.
+ */
+static Plan *
+generate_dqa_plan(PlannerInfo *root,
+				  GroupExtContext *context,
+				  int rollup_level,
+				  uint64 grouping,
+				  List *subplans,
+				  int subplan_no)
+{
+	Plan *agg_plan = NULL;
+	Query *orig_query = root->parse;
+		
+	List *pathkeys = (List *)list_nth(context->pathkeys, subplan_no);
+	List *pathkeys_copy = canonicalize_pathkeys(root, copyObject(pathkeys));
+	List *orig_groupClause = root->parse->groupClause;
+	
+	Plan *subplan = (Plan *)list_nth(subplans, subplan_no);
+	CanonicalGroupingSets *canonical_grpsets;
+	List *new_groupClause;
+	List *new_tlist = copyObject(context->tlist);
+	List *new_qual = copyObject(context->qual);
+	GroupContext group_context;
+	List *orig_group_pathkeys = root->group_pathkeys;
+	
+	root->parse = copyObject(orig_query);
+
+	/*
+	 * Use cdb_grouping_planner to generate a plan for this
+	 * rollup level.
+	 */
+	canonical_grpsets =
+		reconstruct_groupingsets(context->current_rollup,
+								 rollup_level);
+
+	/*
+	 * Reconstruct the root->groupClause for this rollup.
+	 */
+	new_groupClause =
+		reconstruct_group_clause(orig_groupClause, context->sub_tlist,
+								 context->grpColIdx,
+								 context->numGroupCols - rollup_level);
+	root->parse->groupClause = new_groupClause;
+
+	/*
+	 * Rewrite the targetlist and qual by replacing the removed grouping
+	 * columns to NULLs.
+	 */
+	if (rollup_level > 0)
+	{
+		new_tlist =	(List *)replace_grouping_columns((Node *)new_tlist,
+													 context->sub_tlist,
+													 context->grpColIdx,
+													 context->numGroupCols - rollup_level,
+													 context->numGroupCols - 1);
+		Assert(IsA(new_tlist, List));
+		
+		new_qual = (List *)replace_grouping_columns((Node *)new_qual,
+													context->sub_tlist,
+													context->grpColIdx,
+													context->numGroupCols - rollup_level,
+													context->numGroupCols - 1);
+		Assert(new_qual == NULL || IsA(new_qual, List));
+		
+		root->group_pathkeys =
+			make_pathkeys_for_groupclause(root->parse->groupClause,
+										  context->sub_tlist);
+		root->group_pathkeys = canonicalize_pathkeys(root, root->group_pathkeys);
+	}
+
+	root->parse->havingQual = (Node *)new_qual;
+	
+	group_context.best_path = context->path;
+	group_context.cheapest_path = context->path;
+	group_context.subplan = subplan;
+	group_context.tlist = new_tlist;
+	group_context.use_hashed_grouping = context->use_hashed_grouping;
+	group_context.tuple_fraction = context->tuple_fraction;
+	group_context.canonical_grpsets = canonical_grpsets;
+	group_context.grouping = grouping;
+	group_context.numGroupCols = context->numGroupCols - rollup_level;
+	group_context.groupColIdx = context->grpColIdx;
+	group_context.numDistinctCols = context->numDistinctCols;
+	group_context.distinctColIdx = context->distinctColIdx;
+	group_context.p_dNumGroups = context->p_dNumGroups;
+	group_context.pcurrent_pathkeys = &pathkeys;
+	group_context.querynode_changed = &(context->querynode_changed);
+	agg_plan = cdb_grouping_planner(root, context->agg_counts, &group_context);
+
+	if (agg_plan == NULL)
+	{
+		root->parse = orig_query;
+		root->parse->groupClause = new_groupClause;
+		root->parse->havingQual = (Node *)new_qual;
+		
+		/* Add an explicit sort if we couldn't make the path
+		 * come out the way the Agg/Group node needs it.
+		 */
+		if (!pathkeys_contained_in(root->group_pathkeys,
+								   pathkeys_copy))
+		{
+			subplan = (Plan *)
+				make_sort_from_groupcols(root,
+										 root->parse->groupClause,
+										 context->grpColIdx,
+										 false,
+										 subplan);
+			pathkeys_copy = root->group_pathkeys;
+			mark_sort_locus(subplan);
+			
+			/* If this is a Group node, pass DISTINCT to sort */
+			if (!context->is_agg &&
+				IsA(subplan, Sort) &&
+				gp_enable_sort_distinct)
+			{
+				Sort* pSort = (Sort*)subplan;
+				pSort->noduplicates = true;
+			}
+		}
+		
+		context->aggstrategy = AGG_SORTED;
+
+		/* Add an Agg node */
+		agg_plan = add_first_agg(root, context,
+								 rollup_level,
+								 0,
+								 grouping,
+								 ((context->current_rollup->grpset_counts[rollup_level] > 1) ?
+								  context->current_rollup->grpset_counts[rollup_level] : 0),
+								 context->numGroupCols,
+								 context->grpColIdx,
+								 new_tlist,
+								 context->qual,
+								 subplan);
+
+		Assert(agg_plan != NULL);
+		Assert(canonical_grpsets->ngrpsets == 1);
+
+		/*
+		 * The function cost_agg does not cost DISTINCT portion of the work, when
+		 * the Agg node also handles the distinct-qualified aggregates. We add
+		 * this portion of cost here.
+		 */
+		add_distinct_cost(agg_plan, context);
+		
+		if (canonical_grpsets->grpset_counts != NULL &&
+			canonical_grpsets->grpset_counts[0] > 1)
+		{
+			agg_plan = add_repeat_node(agg_plan,
+									   canonical_grpsets->grpset_counts[0],
+									   0);
+		}
+
+		context->current_pathkeys = pathkeys_copy;
+	}
+	else 
+	{
+		/*
+		 * Add Repeat node if needed. Note that if the agg_plan is not
+		 * an Agg node, and its target list or qual contains GroupingFunc,
+		 * we have to compute GroupingFunc inside the Repeat node. So tell
+		 * the Repeat node about that.
+		 */
+		if (!IsA(agg_plan, Agg) &&
+			(grouping > 0 &&
+			 (contain_groupingfunc((Node *)agg_plan->targetlist) ||
+			  contain_groupingfunc((Node *)agg_plan->qual))))
+			agg_plan = add_repeat_node(agg_plan,
+									   canonical_grpsets->grpset_counts[0],
+									   grouping);
+		else if (canonical_grpsets->grpset_counts != NULL &&
+				 canonical_grpsets->grpset_counts[0] > 1)
+		{
+			agg_plan = add_repeat_node(agg_plan,
+									   canonical_grpsets->grpset_counts[0],
+									   0);
+		}
+
+		context->current_pathkeys = pathkeys;
+	}
+
+	free_canonical_groupingsets(canonical_grpsets);
+
+	root->group_pathkeys = orig_group_pathkeys;
+	return agg_plan;
+}
+
+/*
+ * Generate a list of Agg/Group nodes, all of which share the same 
+ * source plan that has a Gather motion on top to bring all data
+ * to a single QE to compute distinct-qualified aggregates.
+ */
+static Plan *
+plan_append_aggs_with_gather(PlannerInfo *root,
+							 GroupExtContext *context,
+							 Plan *lefttree)
+{
 	Plan *result_plan;
+	Plan *gather_subplan = NULL;
 	List *agg_plans = NIL;
-	GpSetOpType optype = PSETOP_NONE;
-	Plan *common_source_plan;
-	double      motion_cost_per_row;
+	int group_no;
+	uint64 grouping = 0;
+	List *subplans = NIL;
+	int num_subplans = 0;
+	int subplan_no;
 	AttrNumber *orig_grpColIdx;
+	double      motion_cost_per_row;
 
 	orig_grpColIdx = context->grpColIdx;
 	context->grpColIdx = context->current_rollup->colIdx;
-
+	
 	/* Add an explicit sort if we couldn't make the path
 	 * come out the way the Agg/Group node needs it.
 	 */
@@ -752,7 +1162,7 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 											   lefttree);
 		context->current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(lefttree);
-
+		
 		/* If this is a Group node, pass DISTINCT to sort */
 		if (!context->is_agg &&
 			IsA(lefttree, Sort) &&
@@ -763,10 +1173,6 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 		}
 	}
 
-	pfree(orig_grpColIdx);
-
-	context->aggstrategy = AGG_SORTED; /* set the strategy to AGG_SORTED */
-
 	/* Precondition the input by adjusting its locus prior to adding
 	 * the Agg or Group node to the base plan, if needed.
 	 *
@@ -775,93 +1181,42 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	 * per row cost added to total cost (also doubtful).
 	 */
 	motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
-				gp_motion_cost_per_row :
-				2.0 * cpu_tuple_cost;
-
+		gp_motion_cost_per_row :
+		2.0 * cpu_tuple_cost;
+	
 	/* The common source plan is a Gather merge node on top of the given
 	 * subplan
 	 */
 	Assert(lefttree->flow != NULL);
 	if (lefttree->flow->flotype != FLOW_SINGLETON)
 	{
-		common_source_plan =
+		gather_subplan =
 			(Plan *)make_motion_gather_to_QE(lefttree, (context->current_pathkeys != NIL));
-		common_source_plan->total_cost +=
-			motion_cost_per_row * common_source_plan->plan_rows;
-	}
-	else
-	{
-		common_source_plan = lefttree;
-	}
-
-	/* Plan a list of Agg/Group nodes with the common source plan */
-	agg_plans = plan_list_aggs(root, context, common_source_plan);
-
-	/* Add 'Append' if there are more than one subplan. */
-	if (list_length(agg_plans) > 1)
-	{
-		optype = choose_setop_type(agg_plans);
-		adjust_setop_arguments(agg_plans, optype);
-
-		/* Append all agg_plans together */
-		result_plan = (Plan *)make_append(agg_plans, false, context->tlist);
-		mark_append_locus(result_plan, optype); /* Mark the plan result locus. */
-
-		/* set the final pathkey to NIL */
-		context->current_pathkeys = NIL;
+		gather_subplan->total_cost +=
+			motion_cost_per_row * gather_subplan->plan_rows;
 	}
 	
-	else
-	{
-		result_plan = (Plan *)linitial(agg_plans);
-	}
-
-	return result_plan;
-}
-
-/*
- * Generates a list of Agg/Group nodes, which share the same
- * common source plan.
- */
-static List *
-plan_list_aggs(PlannerInfo *root,
-			   GroupExtContext *context,
-			   Plan *lefttree)
-{
-	List *agg_plans = NIL;
-	int group_no;
-	uint64 grouping = 0;
-	List *subplans = NIL;
-	int num_subplans = 0;
-	int subplan_no;
+	context->aggstrategy = AGG_SORTED; /* set the strategy to AGG_SORTED */
 
 	/*
 	 * Generate subplans for Agg nodes in each requested rollup level.
 	 * Input sharing should be applied here by constructing appropriate
 	 * subplans to be used.
 	 */
-	context->subplan = lefttree;
-	context->input_locus = context->path->locus;
+	context->subplan = gather_subplan;
+	context->path->locus.partkey = copyObject(context->input_locus.partkey);
 	context->pathkeys = NIL;
-	for (group_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
+
+	/* Compute how many number of subplans is needed. */
+	for (group_no=0, subplan_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
 	{
 		if (context->current_rollup->grpset_counts[group_no] > 0)
-		{
 			num_subplans++;
-			
-			/*
-			 * XXX We use the same pathkeys for each Agg node here. This
-			 * could be improved to use different pathkeys, because each
-			 * Agg node does have different sorting requirements.
-			 */
-			context->pathkeys = lappend(context->pathkeys,
-										context->current_pathkeys);
-		}
 	}
-
+		
 	subplans = generate_list_subplans(root, num_subplans, context);
 
-	/* Append Grouping and GroupId into context->tlist */
+	/* Append Grouping and GroupId into targetlist */
 	context->tlist = add_grouping_groupid(context->tlist);
 
 	/* Generate an Agg/Group node for each rollup level */
@@ -875,13 +1230,14 @@ plan_list_aggs(PlannerInfo *root,
 		{
 			Plan *agg_plan ;
 			Plan *subplan = (Plan *)list_nth(subplans, subplan_no);
+			List *pathkeys = (List *)list_nth(context->pathkeys, subplan_no);
 			subplan_no++;
 
 			/* Add an explicit sort if we couldn't make the path
 			 * come out the way the Agg/Group node needs it.
 			 */
 			if (!pathkeys_contained_in(root->group_pathkeys,
-									   context->current_pathkeys))
+									   pathkeys))
 			{
 				subplan = (Plan *)
 					make_sort_from_groupcols(root,
@@ -889,7 +1245,6 @@ plan_list_aggs(PlannerInfo *root,
 											 context->grpColIdx,
 											 false,
 											 subplan);
-				context->current_pathkeys = root->group_pathkeys;
 				mark_sort_locus(subplan);
 
 				/* If this is a Group node, pass DISTINCT to sort */
@@ -907,18 +1262,161 @@ plan_list_aggs(PlannerInfo *root,
 									 group_no,
 									 0,
 									 grouping,
-									 context->current_rollup->grpset_counts[group_no],
+									 ((context->current_rollup->grpset_counts[group_no] > 1) ?
+									  context->current_rollup->grpset_counts[group_no] : 0),
 									 context->numGroupCols,
 									 context->grpColIdx,
-									 context->tlist,
+									 copyObject(context->tlist),
 									 context->qual,
 									 subplan);
 
+			/*
+			 * The function cost_agg does not cost DISTINCT portion of the work, when
+			 * the Agg node also handles the distinct-qualified aggregates. We add
+			 * this portion of cost here.
+			 */
+			add_distinct_cost(agg_plan, context);
+
+			if (context->current_rollup->grpset_counts != NULL &&
+				context->current_rollup->grpset_counts[group_no] > 1)
+			{
+				agg_plan = add_repeat_node(agg_plan,
+										   context->current_rollup->grpset_counts[group_no],
+										   0);
+			}
+
 			agg_plans = lappend(agg_plans, agg_plan);
+			context->current_pathkeys = pathkeys;
 		}
 	}
 
-	return agg_plans;
+	result_plan = add_append_node(agg_plans, context);
+
+	return result_plan;
+}
+
+
+/*
+ * Generate a plan which appends subplans for each individual
+ * rollup level. Each of the subplans is generated through
+ * the rewrite of distinct-qualified queries.
+ */
+static Plan *
+plan_append_aggs_with_rewrite(PlannerInfo *root,
+							  GroupExtContext *context,
+							  Plan *lefttree)
+{
+	Plan *result_plan;
+	List *agg_plans = NIL;
+	int group_no;
+	List *subplans = NIL;
+	Query *orig_query = root->parse;
+	Query *final_query = NULL;
+	uint64 grouping = 0;
+	int num_subplans = 0;
+	int subplan_no = 0;
+
+	context->grpColIdx = context->current_rollup->colIdx;
+
+	/*
+	 * Generate subplans for Agg nodes in each requested rollup level.
+	 * Input sharing should be applied here by constructing appropriate
+	 * subplans to be used.
+	 */
+	context->subplan = lefttree;
+	context->path->locus.partkey = copyObject(context->input_locus.partkey);
+	context->pathkeys = NIL;
+
+	/* Compute how many subplans is needed. */
+	for (group_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
+	{
+		if (context->current_rollup->grpset_counts[group_no] > 0)
+			num_subplans++;
+	}
+	
+	subplans = generate_list_subplans(root, num_subplans, context);
+
+	/* Append Grouping and GroupId into context->tlist */
+	context->tlist = add_grouping_groupid(context->tlist);
+
+	/* Generate an Agg/Group node for each rollup level */
+	for (group_no=0; group_no<context->current_rollup->numcols + 1; group_no++)
+	{
+		Plan *agg_plan = NULL;
+		
+		if (group_no > 0)
+			grouping += ( ((uint64)1) << context->current_rollup->grping_pos[
+							  context->current_rollup->numcols - group_no]);
+
+		if (context->current_rollup->grpset_counts[group_no] <= 0)
+			continue;
+
+		root->parse = copyObject(orig_query);
+
+		agg_plan = generate_dqa_plan(root, context, group_no, grouping, subplans, subplan_no);
+		subplan_no++;
+		
+		if (agg_plan == NULL)
+			continue;
+		
+		/*
+		 * Since the range table for each rollup plan may be different,
+		 * we build a new range table to include all range table entries.
+		 */
+		if (final_query != NULL)
+		{
+			RangeTblEntry *newrte;
+			List *subquery_tlist = NIL;
+			ListCell *lc;
+			int *resno_map;
+
+			/* addRangeTableEntryForSubquery requires the resnames in 
+			 * the targetlist to be not NULL.
+			 */
+			foreach (lc, root->parse->targetList)
+			{
+				TargetEntry *tle = (TargetEntry *)lfirst(lc);
+				if (tle->resname == NULL)
+				{
+					const char *fmt = "unnamed_attr_%d";
+					char buf[32]; /* big enuf for fmt */
+					snprintf(buf,32, fmt, tle->resno);
+					tle->resname = pstrdup(buf);
+				}
+			}
+
+			/* Since the range table for each rollup plan may be different,
+			 * we build a new range table to include all range table entries.
+			 */
+			newrte = addRangeTableEntryForSubquery(NULL, root->parse,
+												   makeAlias("rollup", NULL),
+												   TRUE);
+			final_query->rtable = lappend(final_query->rtable, newrte);
+			subquery_tlist = generate_subquery_tlist(list_length(final_query->rtable),
+													 agg_plan->targetlist, true, &resno_map);
+			agg_plan = (Plan *)make_subqueryscan(subquery_tlist,
+												 NIL,
+												 list_length(final_query->rtable),
+												 agg_plan);
+			mark_passthru_locus(agg_plan, true, true);
+			pfree(resno_map);
+		}
+
+		else
+		{
+			final_query = root->parse;
+		}
+
+		agg_plans = lappend(agg_plans, agg_plan);
+	}
+
+	/* Update the original Query node */
+	root->parse = orig_query;
+	memcpy(root->parse, final_query, sizeof(Query));
+
+	result_plan = add_append_node(agg_plans, context);
+	
+	return result_plan;
 }
 
 /*
@@ -1056,6 +1554,7 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 	for(group_no = 0; group_no < num_subplans; ++group_no)
 	{
 		List *pathkeys = copyObject(context->current_pathkeys);
+		pathkeys = canonicalize_pathkeys(root, pathkeys);
 		context->pathkeys = lappend(context->pathkeys, pathkeys);
 	}
 
@@ -1073,6 +1572,9 @@ destroyGroupExtContext(GroupExtContext *context)
 
 /*
  * Append Grouping and GroupId into the given target list.
+ *
+ * This function only appends Grouping and GroupId if they are not
+ * the last two in the original targetlist.
  */
 static List *
 add_grouping_groupid(List *tlist)
@@ -1080,6 +1582,18 @@ add_grouping_groupid(List *tlist)
 	TargetEntry *tle;
 	Grouping *grping;
 	GroupId *grpid;
+
+	if (list_length(tlist) >= 2)
+	{
+		TargetEntry *te1, *te2;
+		te1 = get_tle_by_resno(tlist, list_length(tlist));
+		te2 = get_tle_by_resno(tlist, list_length(tlist) - 1);
+		
+		Assert (te1->expr != NULL && te2->expr != NULL);
+		if (IsA(te1->expr, GroupId) &&
+			IsA(te2->expr, Grouping))
+			return tlist;
+	}
 
 	grping = makeNode(Grouping);
 	tle = makeTargetEntry((Expr *)grping, list_length(tlist) + 1,
@@ -1327,20 +1841,34 @@ plan_list_rollup_plans(PlannerInfo *root,
 	Query *final_query = NULL;
 	List *pathkeys = NIL;
 
+	/*
+	 * Augment the targetlist of lefttree with DQA arguments is
+	 * any. If lefttree is not a projection capable plan, we insert a
+	 * Result on top of it
+	 */
+	if (context->agg_counts->dqaArgs != NIL)
+	{
+		if (!is_projection_capable_plan(lefttree))
+		{
+			Plan *plan = (Plan *)make_result(lefttree->targetlist, NULL, lefttree);
+			if (lefttree->flow)
+				plan->flow = pull_up_Flow(plan, lefttree, true);
+			lefttree = plan;
+		}
+	
+		Assert(is_projection_capable_plan(lefttree));
+		lefttree->targetlist = 
+			augment_subplan_tlist(lefttree->targetlist,
+								  context->agg_counts->dqaArgs,
+								  &(context->numDistinctCols),
+								  &(context->distinctColIdx),
+								  true);
+	}
+
 	/* Generate the shared input subplans for all rollups. */
 	context->subplan = lefttree;
 	context->input_locus = context->path->locus;
-	context->pathkeys = NIL;
-	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
-	{
-		List *pathkeys = NIL;
-
-		pathkeys = copyObject(context->current_pathkeys);
-		pathkeys = canonicalize_pathkeys(root, pathkeys);
-		context->pathkeys =	lappend(context->pathkeys, pathkeys);
-	}
-
-	pathkeys = context->pathkeys;
+	context->input_locus.partkey = copyObject(context->path->locus.partkey);
 	context->pathkeys = NIL;
 
 	if (list_length(context->canonical_rollups) > 1)
@@ -1350,9 +1878,35 @@ plan_list_rollup_plans(PlannerInfo *root,
 										  context);
 	}
 	else
+	{
 		subplans = lappend(subplans, lefttree);
+		context->pathkeys = lappend(context->pathkeys,
+									context->current_pathkeys);
+	}
 
+	pathkeys = context->pathkeys;
 	context->tlist = NIL;
+
+	/*
+	 * If this is in a two-stage aggregation, the Repeat node will be
+	 * added in the second stage. We need to set rollup_gs_times based
+	 * on all ROLLUPs instead of individual ROLLUP.
+	 */
+	if (context->twostage)
+	{
+		for (rollup_no=0; rollup_no < list_length(context->canonical_rollups); rollup_no++)
+		{
+			CanonicalRollup *rollup = (CanonicalRollup *)
+				list_nth(context->canonical_rollups, rollup_no);
+			int group_no;
+			
+			for (group_no=0; group_no < rollup->numcols + 1; group_no++)
+			{
+				if (rollup->grpset_counts[group_no] > 1)
+					context->need_repeat_node = true;
+			}
+		}
+	}
 
 	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
 	{
@@ -1391,7 +1945,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 				{
 					const char *fmt = "unnamed_attr_%d";
 					char buf[32]; /* big enuf for fmt */
-					sprintf(buf,fmt,tle->resno);
+					snprintf(buf,32, fmt, tle->resno);
 					tle->resname = pstrdup(buf);
 				}
 			}
@@ -1404,7 +1958,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 												   TRUE);
 			final_query->rtable = lappend(final_query->rtable, newrte);
 			subquery_tlist = generate_subquery_tlist(list_length(final_query->rtable),
-													 rollup_plan->targetlist, &resno_map);
+													 rollup_plan->targetlist, true, &resno_map);
 			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
 													NIL,
 													list_length(final_query->rtable),
@@ -1449,4 +2003,375 @@ plan_list_rollup_plans(PlannerInfo *root,
 	memcpy(root->parse, final_query, sizeof(Query));
 
 	return result_plan;
+}
+
+/*
+ * The context for replacing grouping columns for a given Node
+ * with a NULL constant.
+ */
+typedef struct ReplaceGroupColsContext
+{
+	/* the grouping columns to be replaced */
+	List *grpcols;
+
+	/*
+	 * A temporary variable to indicate if we are currently
+	 * inside an Aggref.
+	 *
+	 * We don't want to replace the grouping columns which
+	 * appear inside an Aggref.
+	 */
+	bool in_aggref;
+} ReplaceGroupColsContext;
+
+
+static Node *
+replace_grouping_columns_mutator(Node *node, void *v_cxt)
+{
+	ReplaceGroupColsContext *cxt = (ReplaceGroupColsContext *)v_cxt;
+	ListCell *lc = NULL;
+	
+	if (node == NULL)
+		return NULL;
+
+	Assert(IsA(cxt->grpcols, List));	
+
+	foreach (lc, cxt->grpcols)
+	{
+		Node *grpcol = lfirst(lc);
+		if (equal(node, grpcol))
+			break;
+	}
+
+	if (IsA(node, Aggref))
+	{
+		Aggref *aggref = (Aggref *)node;
+		Aggref *new_aggref = makeNode(Aggref);
+		memcpy(new_aggref, aggref, sizeof(Aggref));
+
+		cxt->in_aggref = true;
+		new_aggref->args =
+			(List *)replace_grouping_columns_mutator((Node *)new_aggref->args, v_cxt);
+		Assert(IsA(new_aggref->args, List));
+		
+		cxt->in_aggref = false;
+
+		return (Node *)new_aggref;
+	}
+	
+	if (lc != NULL)
+	{
+		/* Generate a NULL constant to replace the node. */
+		Const *null;
+		Node *grpcol = lfirst(lc);
+
+		if (!cxt->in_aggref)
+		{
+			null = makeNullConst(exprType((Node *)grpcol));
+			return (Node *)null;
+		}
+	}
+	
+	return expression_tree_mutator(node, replace_grouping_columns_mutator, v_cxt);
+}
+
+/*
+ * Replace grouping columns with NULL constants in the given targetlist.
+ */
+static Node *
+replace_grouping_columns(Node *node,
+						 List *sub_tlist,
+						 AttrNumber *grpColIdx,
+						 int start_colno,
+						 int end_colno)
+{
+	Node *new_node = NULL;
+	int attno;
+	List *grpcols = NIL;
+	ReplaceGroupColsContext cxt;
+
+	Assert(start_colno <= end_colno);
+
+	if (node == NULL)
+		return NULL;
+	
+	/*
+	 * Compute a list of grouping columns to be replaces.
+	 */
+	for (attno = start_colno; attno <= end_colno; attno++)
+	{
+		TargetEntry *te = get_tle_by_resno(sub_tlist, grpColIdx[attno]);
+		Assert(te != NULL);
+		grpcols = lappend(grpcols, te->expr);
+	}
+
+	cxt.grpcols = grpcols;
+	cxt.in_aggref = false;
+	
+	new_node = replace_grouping_columns_mutator((Node *)node, (void *)&cxt);
+	list_free(grpcols);
+
+	return new_node;
+}
+
+typedef struct qual_context
+{
+	Plan *subplan;
+	uint64 grouping;
+} qual_context;
+
+/*
+ * Push down Aggref/Var in the node to the given subplan.
+ *
+ * This function makes sure that the qual for the upper node is still valid
+ * even if it contains Aggrefs that do not appear in the subplan targetlist.
+ * For example,
+ *   select cn, count(vn) from sale group by grouping sets((cn),(cn),()) having count(pn) < 2;
+ *
+ * The 'count(pn)' only appears in the qual.
+ */
+static Node *
+qual_pushdown_mutator(Node *node, void *ctx)
+{
+	qual_context *qual_ctx = (qual_context *)ctx;
+	Plan *subplan = qual_ctx->subplan;
+	
+	if (node == NULL)
+		return NULL;
+	if (IsA(node, Var) ||
+		IsA(node, Aggref) ||
+		(qual_ctx->grouping == 0 && IsA(node, GroupingFunc)))
+	{
+		ListCell *lc;
+		bool found = false;
+		
+		/*
+		 * Search the subplan target list. If this Aggref/Var is not one of
+		 * its entry, we push it into the subplan targetlist.
+		 */
+		foreach (lc, subplan->targetlist)
+		{
+			TargetEntry *te = (TargetEntry *)lfirst(lc);
+			if (equal(node, te->expr))
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			TargetEntry *te = makeTargetEntry((Expr*)node,
+											  list_length(subplan->targetlist) + 1,
+											  "attr",
+											  false);
+			subplan->targetlist = lappend(subplan->targetlist, te);
+		}
+
+		return copyObject(node);
+	}
+
+	return expression_tree_mutator(node, qual_pushdown_mutator, ctx);
+}
+
+typedef struct expr_context
+{
+	List *list_exprs;
+} expr_context;
+
+static bool
+flatten_expression(Node *expr, void *ctx)
+{
+	if (expr == NULL)
+		return false;
+		
+	if (IsA(expr, Aggref) ||
+		IsA(expr, Var))
+	{
+		((expr_context *)ctx)->list_exprs = lappend(((expr_context *)ctx)->list_exprs, expr);
+	}
+
+	return expression_tree_walker(expr, flatten_expression, ctx);
+}
+
+
+/*
+ * Add a Repeat node on top of a given plan.
+ *
+ * When repeat_count is equal to 1, simple returns the original plan.
+ *
+ * When repeat_count is greater than 1, it represents each tuple
+ * will be repeatly return that many times.
+ *
+ * When repeat_count is 0, it represents that each tuple will be repeated
+ * several times based on an expression. Currently, this expression is
+ * defined by the GROUP_ID attribute in the given result_plan targetlist.
+ * Note that GROUP_ID may not appears in the given result_plan. However,
+ * it sholud appears in a plan node upstream.
+ */
+Plan *
+add_repeat_node(Plan *result_plan, int repeat_count, uint64 grouping)
+{
+	AttrNumber repeat_count_resno = 0;
+	List *targetlist = NIL;
+	ListCell *lc;
+	List *qual;
+	Expr *repeatCountExpr;
+	qual_context ctx;
+
+	Assert(result_plan != NULL);
+	
+	/*
+	 * Pull up target entries from result_plan. Remember if we see
+	 * any GROUP_ID attribute.
+	 */
+	foreach (lc, result_plan->targetlist)
+	{
+		TargetEntry *te = (TargetEntry *)lfirst(lc);
+		Expr *new_expr = NULL;
+		TargetEntry *new_te;
+
+		new_expr = (Expr *)copyObject(te->expr);
+
+		new_te = makeTargetEntry(new_expr, list_length(targetlist) + 1,
+								 te->resname, te->resjunk);
+		new_te->ressortgroupref = te->ressortgroupref;
+		targetlist = lappend(targetlist, new_te);
+
+		/*
+		 * If GROUP_ID exists in the targetlist of result_plan, remember it,
+		 * and mark this target entry as not-junk since the Repeat node needs
+		 * it.
+		 */
+		if (repeat_count == 0 &&
+			IsA(te->expr, GroupId) &&
+			repeat_count_resno == 0)
+		{
+			repeat_count_resno = te->resno;
+			te->resjunk = false;
+		}
+	}
+
+	if (repeat_count == 0 &&
+		repeat_count_resno == 0)
+	{
+		TargetEntry *te;
+		
+		/* The last column has to be GROUP_ID. Mark it as not-junk. */
+		repeat_count_resno = list_length(result_plan->targetlist);
+		te = get_tle_by_resno(result_plan->targetlist, repeat_count_resno);
+		te->resjunk = false;
+	}
+
+	Assert(repeat_count >= 1 ||
+		   repeat_count_resno > 0);
+
+	if (repeat_count >= 1)
+	{
+		repeatCountExpr = (Expr *)makeConst(INT4OID, sizeof(int32),
+											Int32GetDatum(repeat_count),
+											false, true);
+	}
+	else
+	{
+		repeatCountExpr = (Expr *)makeVar(OUTER,
+										  repeat_count_resno,
+										  INT4OID,
+										  -1,
+										  0);
+	}
+
+	Assert(exprType((Node *)repeatCountExpr) == INT4OID);
+
+	/*
+	 * When GroupingFunc will be evaluated in the Repeat node, we have to
+	 * replace its entry in the result_plan targetlist. Otherwise,
+	 * the post planning will replace GroupingFuncs in the Repeat node
+	 * as Vars.
+	 */
+	if (grouping > 0)
+	{
+		foreach (lc, result_plan->targetlist)
+		{
+			TargetEntry *te = (TargetEntry *)lfirst(lc);
+			if (contain_groupingfunc((Node *)te->expr))
+			{
+				ListCell *expr_lc;
+				expr_context exp_ctx;
+
+#ifdef USE_ASSERT_CHECKING
+				bool no_exprs;
+#endif
+
+				exp_ctx.list_exprs = NIL;
+
+#ifdef USE_ASSERT_CHECKING
+				no_exprs =
+#endif
+				flatten_expression((Node *)te->expr, (void *)&exp_ctx);
+
+				Assert(!no_exprs);
+				if (list_length(exp_ctx.list_exprs) == 0)
+				{
+					te->expr = (Expr *)makeNullConst(exprType((Node *)te->expr));
+					continue;
+				}
+
+				expr_lc = list_head(exp_ctx.list_exprs);
+				te->expr = (Expr *)lfirst(expr_lc);
+
+				expr_lc = lnext(expr_lc);
+				while(expr_lc != NULL)
+				{
+					TargetEntry *new_te =
+						makeTargetEntry((Expr *)lfirst(expr_lc),
+										list_length(result_plan->targetlist) + 1,
+										"attr", false);
+					result_plan->targetlist = lappend(result_plan->targetlist, new_te);
+					expr_lc = lnext(expr_lc);
+				}
+			}
+		}
+	}
+
+	/*
+	 * We pull the qual in the result_plan up to the Repeat node, and let it
+	 * be evaluated there. However, we may need to push down Aggrefs/Vars that
+	 * only appear in the qual, but not the result_plan targetlist.
+	 */
+	ctx.subplan = result_plan;
+	ctx.grouping = grouping;
+	qual = (List *)qual_pushdown_mutator((Node *)result_plan->qual, (void *)&ctx);
+	result_plan->qual = NULL;
+	
+	result_plan = (Plan *)
+		make_repeat(targetlist, NULL,
+					repeatCountExpr,
+					grouping,
+					result_plan);
+	result_plan->qual = qual;
+	mark_passthru_locus(result_plan, true, true);
+
+	return result_plan;
+}
+
+static bool
+contain_groupingfunc_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	else if (IsA(node, GroupingFunc))
+		return true;
+	return expression_tree_walker(node,
+								  contain_groupingfunc_walker,
+								  context);
+}
+
+/*
+ * Return true if the given node contains GroupingFunc.
+ */
+static bool
+contain_groupingfunc(Node *node)
+{
+	return contain_groupingfunc_walker(node, NULL);
 }

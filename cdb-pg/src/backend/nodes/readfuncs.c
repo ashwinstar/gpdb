@@ -2397,6 +2397,22 @@ _readResult(void)
 }
 
 /*
+ * _readRepeat
+ */
+static Repeat *
+_readRepeat(void)
+{
+	READ_LOCALS(Repeat);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_NODE_FIELD(repeatCountExpr);
+	READ_UINT64_FIELD(grouping);
+
+	READ_DONE();
+}
+
+/*
  * _readAppend
  */
 static Append *
@@ -3307,6 +3323,7 @@ static ParseNodeInfo infoAr[] =
 	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
 	{"REMOVEOPCLASS", (ReadFn)_readRemoveOpClassStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
+	{"REPEAT", (ReadFn)_readRepeat},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
 	{"ROWCOMPAREEXPR", (ReadFn)_readRowCompareExpr},

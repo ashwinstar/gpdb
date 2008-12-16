@@ -1272,6 +1272,26 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_groupext_distinct_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
+		     gettext_noop("Enable 3-phase aggregation and join to compute distinct-qualified aggregates"
+						  " on grouping extention queries."),
+		     NULL,
+		},
+		&gp_enable_groupext_distinct_pruning,
+		true, NULL, NULL
+	},
+
+	{
+		{"gp_enable_groupext_distinct_gather", PGC_USERSET, QUERY_TUNING_METHOD,
+		     gettext_noop("Enable gathering data to a single node to compute distinct-qualified aggregates"
+						  " on grouping extention queries."),
+		     NULL,
+		},
+		&gp_enable_groupext_distinct_gather,
+		true, NULL, NULL
+	},
+
+	{
 		{"gp_eager_agg_distinct_pruning", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Prefer 3-phase aggregation [and join] to compute distinct-qualified aggregates."),
 			gettext_noop("The planner will prefer to use 3-phase aggregation and join to compute "

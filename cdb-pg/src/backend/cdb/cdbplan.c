@@ -173,6 +173,11 @@ plan_tree_walker(Node *node,
 				return true;
 			break;
 
+		case T_Repeat:
+			if (walk_plan_node_fields((Plan *) node, walker, context))
+				return true;
+			break;
+			
 		case T_Append:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
@@ -578,6 +583,17 @@ plan_tree_mutator(Node *node,
 				PLANMUTATE(newresult, result);
 				MUTATE(newresult->resconstantqual, result->resconstantqual, Node *);
 				return (Node *) newresult;
+			}
+			break;
+
+		case T_Repeat:
+			{
+				Repeat	   *repeat = (Repeat *) node;
+				Repeat	   *newrepeat;
+
+				FLATCOPY(newrepeat, repeat, Repeat);
+				PLANMUTATE(newrepeat, repeat);
+				return (Node *)newrepeat;
 			}
 			break;
 

@@ -180,7 +180,13 @@ typedef struct DqaInfo
  */
 typedef struct AggPlanInfo
 {
-	Path *input_path;
+	/*
+	 * The input is either represented as a Path or a Plan and a Path.
+	 * If input_plan is given, use this plan instead of creating one
+	 * through input_path.
+	 * */
+	Path *input_path; 
+	Plan *input_plan;
 	
 	/* These are the ordinary fields characterizing an aggregation */
 	CdbPathLocus input_locus;
@@ -191,7 +197,7 @@ typedef struct AggPlanInfo
 	/* These are extra for 3-phase plans */
 	DqaJoinStrategy join_strategy;
 	bool use_sharing;
-	
+
 	/* These summarize the status of the structure's cost value. */
 	bool valid;
 	Cost plan_cost;
@@ -206,10 +212,13 @@ typedef struct MppGroupContext
 	Node *havingQual; /* The proprocessed having qual of the original query. */
 	Path *best_path;
 	Path *cheapest_path;
+	Plan *subplan;
 	AggClauseCounts *agg_counts;
 	double tuple_fraction;
 	double *p_dNumGroups; /* Group count estimate shared up the call tree. */
 	CanonicalGroupingSets *canonical_grpsets;
+	int64 grouping; /* the GROUPING value */
+	bool is_grpext; /* identify if this is a grouping extension query */
 
 	List *sub_tlist; /* Derived (in cdb_grouping_planner) input targetlist. */
 	int numGroupCols;
@@ -298,7 +307,6 @@ static void planDqaJoinOrder(PlannerInfo *root, MppGroupContext *ctx,
 static List *make_subplan_tlist(List *tlist, Node *havingQual, 
 								List *grp_clauses, int *pnum_gkeys, AttrNumber **pcols_gkeys,
 								List *dqa_args, int *pnum_dqas, AttrNumber **pcols_dqas);
-static List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols);
 static void generate_multi_stage_tlists(MppGroupContext* ctx,
 						List **p_prelim_tlist,
 						List **p_inter_tlist,
@@ -341,7 +349,7 @@ static Cost cost_1phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, Agg
 static Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInfo *info);
 static Cost cost_3phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInfo *info);
 static void set_cost_of_join_strategies(MppGroupContext *ctx, Cost *hashjoin_cost, Cost *mergejoin_cost);
-static void initAggPlanInfo(AggPlanInfo *info, Path *input_path);
+static void initAggPlanInfo(AggPlanInfo *info, Path *input_path, Plan *input_plan);
 static void set_coplan_strategies(PlannerInfo *root, MppGroupContext *ctx, DqaInfo *dqaArg, Path *input);
 static Cost incremental_sort_cost(double rows, int width, int numKeyCols);
 static Cost incremental_agg_cost(double rows, int width, AggStrategy strategy, 
@@ -378,15 +386,7 @@ static Cost incremental_motion_cost(double sendrows, double recvrows);
 Plan *
 cdb_grouping_planner(PlannerInfo* root,
 					 AggClauseCounts *agg_counts,
-					 List *tlist,
-					 Path *best_path,
-					 Path *cheapest_path,
-					 bool use_hashed_grouping,
-					 double tuple_fraction,
-					 double *p_dNumGroups,
-					 CanonicalGroupingSets *canonical_grpsets,
-					 List **pcurrent_pathkeys,
-					 bool *querynode_changed)
+					 GroupContext *group_context)
 {
 	MppGroupContext ctx;
 	Plan * result_plan = NULL;
@@ -394,11 +394,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	bool has_groups = root->parse->groupClause != NIL;
 	bool has_aggs = agg_counts->numAggs > 0;
 	ListCell *lc;
-	
-	int numGroupCols = 0;
-	AttrNumber *groupColIdx = NULL;
-	int numDistinctCols = 0;
-	AttrNumber *distinctColIdx = NULL;
+
 	bool is_grpext = false;
 	unsigned char consider_agg = AGG_NONE;
 	AggPlanInfo plan_1p;
@@ -410,12 +406,12 @@ cdb_grouping_planner(PlannerInfo* root,
 
 	memset(&ctx, 0, sizeof(ctx));
 
-	*querynode_changed = false;
+	*(group_context->querynode_changed) = false;
 
 	/* We always use sequential plans for distinct-qualified rollup queries,
 	 * so don't waste time working on alternatives.
 	 */ 
-	is_grpext = is_grouping_extension(canonical_grpsets);
+	is_grpext = is_grouping_extension(group_context->canonical_grpsets);
 	if ( is_grpext && agg_counts->numDistinctAggs > 0)
 		return NULL;
 
@@ -423,20 +419,27 @@ cdb_grouping_planner(PlannerInfo* root,
 	 * First choose a one-stage plan.  Since there's always a way to do this,
 	 * it serves as our default choice.
 	 */
+	if (group_context->subplan == NULL)
 	{
-		Path *input_path = cheapest_path;
+		Path *input_path = group_context->cheapest_path;
 		
 		/* Should we prefer the "best" path?  Only for vector aggregation 
 		 * of input already sorted and collocated on the grouping key.
 		 */
 		if ( has_groups && 
-			 pathkeys_contained_in(root->group_pathkeys, best_path->pathkeys) &&
-			 cdbpathlocus_collocates(best_path->locus, root->group_pathkeys) )
+			 pathkeys_contained_in(root->group_pathkeys, group_context->best_path->pathkeys) &&
+			 cdbpathlocus_collocates(group_context->best_path->locus, root->group_pathkeys) )
 		{
-			input_path = best_path;
+			input_path = group_context->best_path;
 		}
 			
-		initAggPlanInfo(&plan_1p, input_path);
+		initAggPlanInfo(&plan_1p, input_path, group_context->subplan);
+	}
+
+	else
+	{
+		initAggPlanInfo(&plan_1p, group_context->best_path, group_context->subplan);
+		plan_1p.input_locus = group_context->best_path->locus;
 	}
 
 	if ( ! CdbPathLocus_IsPartitioned(plan_1p.input_locus) )
@@ -480,51 +483,60 @@ cdb_grouping_planner(PlannerInfo* root,
 	 */
 	if ( plan_1p.group_prep == MPP_GRP_PREP_NONE )
 	{
-		*pcurrent_pathkeys = NIL;
+		*(group_context->pcurrent_pathkeys) = NIL;
 		return NULL;
 	}
 
 	/*
-	 * At this point, we're committed to producing a one- , two- or 
-	 * three-stage plan with motion.  Calculate the subplan target list
-	 * to use in the first stage.  Also note the location of any grouping 
-	 * attributes in the target list (numGroupCols, groupColIdx).
+	 * When the input plan is not given, calculate the subplan target
+	 * list to use in the first stage.  Also note the location of any
+	 * grouping attributes in the target list (numGroupCols,
+	 * groupColIdx).
 	 *
-	 * Also make sure there's a target entry with a non-zero sortgroupref
-	 * for each DQA argument and note the location of the attributes
-	 * (numDistinctCols, distinctColIdx).
+	 * Also make sure there's a target entry with a non-zero
+	 * sortgroupref for each DQA argument and note the location of the
+	 * attributes (numDistinctCols, distinctColIdx).
 	 */
-	sub_tlist = make_subplan_tlist(tlist,
-			root->parse->havingQual,
-			root->parse->groupClause,
-			&numGroupCols,
-			&groupColIdx,
-			agg_counts->dqaArgs, 
-			&numDistinctCols,
-			&distinctColIdx);
-
-	/* Where we need to and we can, add column names to the sub_tlist 
-	 * entries to make EXPLAIN output look nice.  Note that we could dig 
-	 * further than this (if we come up empty handed) by probing the range 
-	 * table (root->parse->rtable), but this covers the ordinary cases. 
-	 */
-	foreach(lc, sub_tlist)
+	if (group_context->subplan == NULL)
 	{
-		TargetEntry *tle = (TargetEntry*)lfirst(lc);
+		sub_tlist = make_subplan_tlist(group_context->tlist,
+									   root->parse->havingQual,
+									   root->parse->groupClause,
+									   &(group_context->numGroupCols),
+									   &(group_context->groupColIdx),
+									   agg_counts->dqaArgs, 
+									   &(group_context->numDistinctCols),
+									   &(group_context->distinctColIdx));
 
-		if ( IsA(tle->expr, Var) && tle->resname == NULL )
+		/* Where we need to and we can, add column names to the sub_tlist 
+		 * entries to make EXPLAIN output look nice.  Note that we could dig 
+		 * further than this (if we come up empty handed) by probing the range 
+		 * table (root->parse->rtable), but this covers the ordinary cases. 
+		 */
+		foreach(lc, sub_tlist)
 		{
-			TargetEntry *vartle = tlist_member((Node*)tle->expr, tlist);
-
-			if ( vartle != NULL && vartle->resname != NULL )
-				tle->resname = pstrdup(vartle->resname);
+			TargetEntry *tle = (TargetEntry*)lfirst(lc);
+			
+			if ( IsA(tle->expr, Var) && tle->resname == NULL )
+			{
+				TargetEntry *vartle =
+					tlist_member((Node*)tle->expr, group_context->tlist);
+				
+				if ( vartle != NULL && vartle->resname != NULL )
+					tle->resname = pstrdup(vartle->resname);
+			}
 		}
 	}
+	else
+	{
+		sub_tlist = group_context->subplan->targetlist;
+	}
 
-   /* Determine what aggregation approaches to explore.
-    * Per MPP-2378, we don't insist on has_aggs for multi-phase
-    * plans.
-	*/
+	/* At this point, we're committed to producing a one- , two- or 
+	 * three-stage plan with motion. Determine what aggregation approaches to explore.
+	 * Per MPP-2378, we don't insist on has_aggs for multi-phase
+	 * plans.
+	 */
 	{
 		unsigned char allowed_agg;
 		unsigned char possible_agg;
@@ -580,8 +592,9 @@ cdb_grouping_planner(PlannerInfo* root,
 	
 	if ( consider_agg & ( AGG_2PHASE | AGG_2PHASE_DQA ) )
 	{
-		/* XXX initAggPlanInfo(&plan_2p, cheapest_path); */
-		initAggPlanInfo(&plan_2p, best_path); /* but why? */
+		/* XXX initAggPlanInfo(&plan_2p, group_context->cheapest_path); */
+		initAggPlanInfo(&plan_2p, group_context->best_path,
+						group_context->subplan); /* but why? */
 		
 		if ( consider_agg & AGG_2PHASE_DQA )
 			{
@@ -619,7 +632,8 @@ cdb_grouping_planner(PlannerInfo* root,
 	
 	if ( consider_agg & AGG_3PHASE )
 	{
-		initAggPlanInfo(&plan_3p, cheapest_path);
+		initAggPlanInfo(&plan_3p, group_context->cheapest_path,
+						group_context->subplan);
 
 		if ( has_groups )
 		{
@@ -638,22 +652,24 @@ cdb_grouping_planner(PlannerInfo* root,
 	 */
 	ctx.prep = plan_1p.group_prep;
 	ctx.type = plan_1p.group_type;
-	ctx.tlist = tlist;
+	ctx.tlist = group_context->tlist;
 	ctx.havingQual = root->parse->havingQual;
 	ctx.sub_tlist = sub_tlist;
-	ctx.numGroupCols = numGroupCols;
-	ctx.groupColIdx = groupColIdx;
-	ctx.numDistinctCols = numDistinctCols;
-	ctx.distinctColIdx = distinctColIdx;
-	ctx.use_hashed_grouping = use_hashed_grouping;
-	ctx.best_path = best_path;
-	ctx.cheapest_path = cheapest_path;
+	ctx.numGroupCols = group_context->numGroupCols;
+	ctx.groupColIdx = group_context->groupColIdx;
+	ctx.numDistinctCols = group_context->numDistinctCols;
+	ctx.distinctColIdx = group_context->distinctColIdx;
+	ctx.use_hashed_grouping = group_context->use_hashed_grouping;
+	ctx.best_path = group_context->best_path;
+	ctx.cheapest_path = group_context->cheapest_path;
 	ctx.input_locus = plan_1p.input_locus;
 	ctx.output_locus = plan_1p.output_locus;
 	ctx.agg_counts = agg_counts;
-	ctx.tuple_fraction = tuple_fraction;
-	ctx.p_dNumGroups = p_dNumGroups;
-	ctx.canonical_grpsets = canonical_grpsets;
+	ctx.tuple_fraction = group_context->tuple_fraction;
+	ctx.p_dNumGroups = group_context->p_dNumGroups;
+	ctx.canonical_grpsets = group_context->canonical_grpsets;
+	ctx.grouping = group_context->grouping;
+	ctx.is_grpext = is_grpext;
 	ctx.current_pathkeys = NIL; /* Initialize to be tidy. */
 	ctx.querynode_changed = false;
 	
@@ -740,11 +756,14 @@ cdb_grouping_planner(PlannerInfo* root,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("no parallel plan for aggregation")));	
 
-	*querynode_changed = ctx.querynode_changed;
-	*pcurrent_pathkeys = ctx.current_pathkeys;
+	if (!is_grpext && result_plan != NULL &&
+		IsA(result_plan, Agg))
+		((Agg *)result_plan)->lastAgg = true;
+
+	*(group_context->querynode_changed) = ctx.querynode_changed;
+	*(group_context->pcurrent_pathkeys) = ctx.current_pathkeys;
 	return result_plan;
 }
-
 
 /*
  * Function make_one_stage_agg_plan
@@ -775,10 +794,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	int i;
 
 	Plan       *result_plan;
-	bool       is_grpext;
 	bool	   is_sorted;
-
-	is_grpext = is_grouping_extension(ctx->canonical_grpsets);
 	
 	/*
 	 * The argument to the "lower" Agg node will use a "flattened" tlist
@@ -792,12 +808,20 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 * we don't plan to move it around and this is a vector aggregation, we
 	 * should use best path.  In other cases, however, use cheapest.
 	 */
-	is_sorted = pathkeys_contained_in(root->group_pathkeys, best_path->pathkeys);
-	path = cheapest_path;
-	if ( is_sorted && ctx->prep == MPP_GRP_PREP_NONE && numGroupCols > 0 )
-		path = best_path;
-	result_plan = create_plan(root, path);
-	current_pathkeys = path->pathkeys;
+	if (ctx->subplan == NULL)
+	{
+		is_sorted = pathkeys_contained_in(root->group_pathkeys, best_path->pathkeys);
+		path = cheapest_path;
+		if ( is_sorted && ctx->prep == MPP_GRP_PREP_NONE && numGroupCols > 0 )
+			path = best_path;
+		result_plan = create_plan(root, path);
+		current_pathkeys = path->pathkeys;
+	}
+	else
+	{
+		result_plan = ctx->subplan;
+		current_pathkeys = ctx->current_pathkeys;
+	}
 	
 	/* Instead of the flat target list produced above, use the sub_tlist
 	 * constructed in cdb_grouping_planner.  Add a Result node if the
@@ -814,7 +838,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	result_plan->total_cost +=
 		tlist_cost.startup +
 		tlist_cost.per_tuple * result_plan->plan_rows;
-	
+
 	/* Precondition the input by adjusting its locus prior to adding
 	 * the Agg or Group node to the base plan, if needed.
 	 */
@@ -868,7 +892,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 *
 	 * HAVING clause, if any, becomes qual of the Agg or Group node.
 	 */
-	if (!is_grpext && use_hashed_grouping)
+	if (!ctx->is_grpext && use_hashed_grouping)
 	{
 		/* Hashed aggregate plan --- no sort needed */
 		result_plan = (Plan *) make_agg(root,
@@ -880,7 +904,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										numGroups,
 										0, /* num_nullcols */
 										0, /* input_grouping */
-										0, /* grouping */
+										ctx->grouping,
 										0, /* rollup_gs_times */
 										ctx->agg_counts->numAggs,
 										ctx->agg_counts->transitionSpace,
@@ -890,7 +914,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	}
 	else if (parse->hasAggs)
 	{
-		if (!is_grpext)
+		if (!ctx->is_grpext)
 		{
 			/* Plain aggregate plan --- sort if needed */
 			AggStrategy aggstrategy;
@@ -932,7 +956,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 											numGroups,
 											0, /* num_nullcols */
 											0, /* input_grouping */
-											0, /* grouping */
+											ctx->grouping,
 											0, /* rollup_gs_times */
 											ctx->agg_counts->numAggs,
 											ctx->agg_counts->transitionSpace,
@@ -942,6 +966,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 		else
 		{
 			result_plan = plan_grouping_extension(root, path, ctx->tuple_fraction,
+												  ctx->use_hashed_grouping,
 												  &tlist, sub_tlist,
 												  true, false,
 												  (List *) parse->havingQual,
@@ -957,7 +982,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	}
 	else if (parse->groupClause)
 	{
-		if (!is_grpext)
+		if (!ctx->is_grpext)
 		{
 			/*
 			 * GROUP BY without aggregation, so insert a group node (plus
@@ -986,7 +1011,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 											  *(ctx->p_dNumGroups),
 											  0, /* num_nullcols */
 											  0, /* input_grouping */
-											  0, /* grouping */
+											  ctx->grouping,
 											  0, /* rollup_gs_times */
 											  result_plan);
 		}
@@ -994,6 +1019,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 		else
 		{
 			result_plan =  plan_grouping_extension(root, path, ctx->tuple_fraction,
+												   ctx->use_hashed_grouping,
 												   &tlist, sub_tlist,
 												   false, false,
 												   (List *) parse->havingQual,
@@ -1064,9 +1090,6 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	long		numGroups = (*(ctx->p_dNumGroups) < 0) ? 0 :
 	                        (*(ctx->p_dNumGroups) > LONG_MAX) ? LONG_MAX :
 							(long)*(ctx->p_dNumGroups);
-	bool       is_grpext;
-
-	is_grpext = is_grouping_extension(ctx->canonical_grpsets);
 		
 	/* Copy these from context rather than using them directly because we may 
 	 * scribble on them in plan_grouping_extension().  It would be good to 
@@ -1078,8 +1101,16 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	/* Create the base plan which will serve as the outer plan (argument)
 	 * of the partial Agg node.
 	 */
-	result_plan = create_plan(root, path);
-	current_pathkeys = path->pathkeys;
+	if (ctx->subplan == NULL)
+	{
+		result_plan = create_plan(root, path);
+		current_pathkeys = path->pathkeys;
+	}
+	else
+	{
+		result_plan = ctx->subplan;
+		current_pathkeys = ctx->current_pathkeys;
+	}
 
 	/* Instead of the flat target list produced by create_plan above, use
 	 * the sub_tlist constructed in cdb_grouping_planner.  This consists
@@ -1175,8 +1206,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	{
 		if (parse->groupClause)
 		{
-			if (!is_grpext && !pathkeys_contained_in(root->group_pathkeys,
-													 current_pathkeys))
+			if (!ctx->is_grpext && !pathkeys_contained_in(root->group_pathkeys,
+														  current_pathkeys))
 			{
 				/* TODO -- Investigate WHY we might sort here!
 				 *
@@ -1209,7 +1240,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		}
 	}
 	
-	if (!is_grpext)
+	if (!ctx->is_grpext)
 	{
 		result_plan = (Plan *) make_agg(root,
 										prelim_tlist,
@@ -1233,6 +1264,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	else
 	{
 		result_plan = plan_grouping_extension(root, path, ctx->tuple_fraction,
+											  ctx->use_hashed_grouping,
 											  &prelim_tlist, ctx->sub_tlist,
 											  true, true,
 											  NIL, /* no havingQual */
@@ -1272,7 +1304,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			TargetEntry *tle;
 
 			/* skip Grouping/GroupId columns */
-			if (is_grpext && (i == numGroupCols-1 || i == numGroupCols-2))
+			if (ctx->is_grpext && (i == numGroupCols-1 || i == numGroupCols-2))
 				continue;
 
 			tle = get_tle_by_resno(prelim_tlist, prelimGroupColIdx[i]);
@@ -1310,7 +1342,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 			make_sort_from_groupcols(root,
 									 parse->groupClause,
 									 prelimGroupColIdx,
-									 is_grpext,
+									 ctx->is_grpext,
 									 result_plan);
 		current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(result_plan);
@@ -1326,7 +1358,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									   prelimGroupColIdx,
 									   0, /* num_nullcols */
 									   0, /* input_grouping */
-									   0, /* grouping */
+									   ctx->grouping,
 									   0, /* rollup_gs_times */
 									   *ctx->p_dNumGroups,
 									   ctx->agg_counts->numAggs,
@@ -1334,11 +1366,68 @@ make_two_stage_agg_plan(PlannerInfo *root,
 									   "partial_aggregation",
 									   &current_pathkeys,
 									   result_plan,
-									   !is_grpext);
+									   !ctx->is_grpext);
 	
-	if (is_grpext)
+	if (ctx->is_grpext)
+	{
+		ListCell *lc;
+		bool found = false;
+
 		((Agg *)result_plan)->inputHasGrouping = true;
-	
+
+		/*
+		 * We want to make sure that the targetlist of result plan contains
+		 * either GROUP_ID or a targetentry to represent the value of
+		 * GROUP_ID from the subplans. This is because we may need this
+		 * entry to determine if a tuple will be outputted repeatly, by
+		 * the later Repeat node. In the current grouping extension
+		 * planner, if there is no GROUP_ID entry, then it must be the last
+		 * entry in the targetlist of the subplan.
+		 */
+		foreach (lc, result_plan->targetlist)
+		{
+			TargetEntry *te = (TargetEntry *)lfirst(lc);
+
+			/*
+			 * Find out if GROUP_ID in the final targetlist. It should
+			 * point to the last attribute in the subplan targetlist.
+			 */
+			if (IsA(te->expr, Var))
+			{
+				Var *var = (Var *)te->expr;
+				if (var->varattno == list_length(prelim_tlist))
+				{
+					found = true;
+					break;
+				}
+			}
+		}
+ 			
+		if (!found)
+		{
+			/* Add a new target entry in the targetlist which point to
+			 * GROUP_ID attribute in the subplan. Mark this entry
+			 * as Junk.
+			 */
+			TargetEntry *te = get_tle_by_resno(prelim_tlist,
+											   list_length(prelim_tlist));
+			Expr *expr;
+			TargetEntry *new_te;
+ 				
+			expr = (Expr *)makeVar(1,
+								   te->resno,
+								   exprType((Node *)te->expr),
+								   exprTypmod((Node *)te->expr),
+								   0);
+			new_te = makeTargetEntry(expr,
+									 list_length(result_plan->targetlist) + 1,
+									 "group_id",
+									 true);
+			result_plan->targetlist = lappend(result_plan->targetlist,
+											  new_te);
+		}
+	}
+
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
 	ctx->querynode_changed = true;
@@ -1398,8 +1487,16 @@ make_three_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx)
 	/* Create the base plan which will serve as the outer plan (argument)
 	 * of the partial Agg node(s).
 	 */
-	result_plan = create_plan(root, path);
-	current_pathkeys = path->pathkeys;
+	if (ctx->subplan == NULL)
+	{
+		result_plan = create_plan(root, path);
+		current_pathkeys = path->pathkeys;
+	}
+	else
+	{
+		result_plan = ctx->subplan;
+		current_pathkeys = ctx->current_pathkeys;
+	}
 
 	/* Instead of the flat target list produced above, use the sub_tlist
 	 * constructed in cdb_grouping_planner.  Add a Result node if the
@@ -1914,7 +2011,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 									   prelimGroupColIdx,
 									   0, /* num_nullcols */
 									   0, /* input_grouping */
-									   0, /* grouping */
+									   ctx->grouping,
 									   0, /* rollup_gs_times */
 									   *ctx->p_dNumGroups,
 									   ctx->agg_counts->numAggs,
@@ -2209,8 +2306,8 @@ List *make_subplan_tlist(List *tlist, Node *havingQual,
 	}
 	
 	if ( dqa_args != NIL )
-		sub_tlist = augment_subplan_tlist(sub_tlist, dqa_args, pnum_dqas, pcols_dqas);
-		
+		sub_tlist = augment_subplan_tlist(sub_tlist, dqa_args, pnum_dqas, pcols_dqas, true);
+
 	return sub_tlist; /* Possibly modified by appending expression entries. */
 }
 
@@ -2229,12 +2326,14 @@ List *make_subplan_tlist(List *tlist, Node *havingQual,
  *
  * Return the (modified) input targetlist.
  * 
- * Implicitly return an array of resno values for exprs in (pnum, *pcols).
+ * Implicitly return an array of resno values for exprs in (pnum, *pcols), if
+ * return_resno is true.
  */
-List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols)
+List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols,
+							bool return_resno)
 {
 	int num;
-	AttrNumber *cols;
+	AttrNumber *cols = NULL;
 	
 	num = list_length(exprs); /* Known to be distinct. */
 	if (num > 0)
@@ -2251,7 +2350,8 @@ List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pc
 				max_sortgroupref = tle->ressortgroupref;
 		}
 
-		cols = (AttrNumber*) palloc(sizeof(AttrNumber) * num);
+		if (return_resno)
+			cols = (AttrNumber*) palloc(sizeof(AttrNumber) * num);
 
 		foreach (lx, exprs)
 		{
@@ -2281,16 +2381,23 @@ List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pc
 			if ( matched_tle->ressortgroupref == 0 )
 				matched_tle->ressortgroupref = ++max_sortgroupref;
 	
-			cols[keyno++] = matched_tle->resno;
+			if (return_resno)
+				cols[keyno++] = matched_tle->resno;
 		}
-	
-		*pnum = num;
-		*pcols = cols;
+
+		if (return_resno)
+		{
+			*pnum = num;
+			*pcols = cols;
+		}
 	}
 	else
 	{
-		*pnum = 0;
-		*pcols = NULL;
+		if (return_resno)
+		{
+			*pnum = 0;
+			*pcols = NULL;
+		}
 	}
 	
 	/* Note that result is a copy, possibly modified by appending expression 
@@ -2317,7 +2424,8 @@ List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pc
  * by the caller, which should have length of list_length(input_tlist).
  */
 List *
-generate_subquery_tlist(Index varno, List *input_tlist, int **p_resno_map)
+generate_subquery_tlist(Index varno, List *input_tlist,
+						bool keep_resjunk, int **p_resno_map)
 {
 	List	   *tlist = NIL;
 	int			resno = 1;
@@ -2342,13 +2450,12 @@ generate_subquery_tlist(Index varno, List *input_tlist, int **p_resno_map)
 
 		(*p_resno_map)[inputtle->resno - 1] = resno;
 
-		/* We don't have to mark resjunk here, the second stage handles it. */
 		tle = makeTargetEntry((Expr *) expr,
 							  (AttrNumber) resno++,
 							  (inputtle->resname == NULL) ?
 									NULL :
 									pstrdup(inputtle->resname),
-							  false);
+							  keep_resjunk ? inputtle->resjunk : false);
 		tle->ressortgroupref = inputtle->ressortgroupref;
 		tlist = lappend(tlist, tle);
 	}
@@ -3337,7 +3444,7 @@ Node* finalize_split_expr_mutator(Node *node, MppGroupContext *ctx)
 		}
 		
 		tle = (TargetEntry*) list_nth(ctx->top_tlist, attrno - 1);
-			
+		
 		return (Node*) tle->expr;
 	}
 	
@@ -3604,7 +3711,7 @@ Plan* add_subqueryscan(PlannerInfo* root, List **p_pathkeys,
 	int *resno_map;
 
 	subplan_tlist = generate_subquery_tlist(varno, subquery->targetList,
-											&resno_map); 
+											false, &resno_map); 
 
 	/* Do we need to fill in more?  I don't think so. */
 	
@@ -4300,11 +4407,16 @@ void set_cost_of_join_strategies(MppGroupContext *ctx, Cost *hashjoin_cost, Cost
 /* Set up basic structure content.  Caller to fill in.
  */
 static
-void initAggPlanInfo(AggPlanInfo *info, Path *input_path)
+void initAggPlanInfo(AggPlanInfo *info, Path *input_path, Plan *input_plan)
 {
 	info->input_path = input_path;
+	info->input_plan = input_plan;
+
+	if (input_path != NULL)
+		info->input_locus = input_path->locus;
+	else
+		CdbPathLocus_MakeNull(&info->input_locus);
 	
-	info->input_locus = input_path->locus;
 	info->group_type = MPP_GRP_TYPE_BASEPLAN;
 	info->group_prep = MPP_GRP_PREP_NONE;
 	CdbPathLocus_MakeNull(&info->output_locus);

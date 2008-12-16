@@ -3919,6 +3919,45 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 					 sortColIdx, sortOperators);
 }
 
+/*
+ * Reconstruct a new list of GroupClause based on the given grpCols.
+ *
+ * The original grouping clauses may contain grouping extensions. This function
+ * extract the raw grouping attributes and construct a list of GroupClauses
+ * that contains only ordinary grouping.
+ */
+List *
+reconstruct_group_clause(List *orig_groupClause, List *tlist, AttrNumber *grpColIdx, int numcols)
+{
+	List *flat_groupcls;
+	List *new_groupClause = NIL;
+	int numgrpkeys;
+	int grpno;
+	
+	numgrpkeys = num_distcols_in_grouplist(orig_groupClause);
+	flat_groupcls = flatten_grouping_list(orig_groupClause);
+	for (grpno = 0; grpno < numcols; grpno++)
+	{
+		ListCell *lc = NULL;
+		TargetEntry *te;
+		GroupClause *gc = NULL;
+		
+		te = get_tle_by_resno(tlist, grpColIdx[grpno]);
+
+		foreach (lc, flat_groupcls)
+		{
+			gc = (GroupClause *)lfirst(lc);
+			
+			if (gc->tleSortGroupRef == te->ressortgroupref)
+				break;
+		}
+		if (lc != NULL)
+			new_groupClause = lappend(new_groupClause, gc);
+	}
+
+	return new_groupClause;
+}
+
 Material *
 make_material(Plan *lefttree)
 {
@@ -4483,6 +4522,34 @@ make_result(List *tlist,
 }
 
 /*
+ * make_repeat
+ *    Build a Repeat plan node
+ */
+Repeat *
+make_repeat(List *tlist,
+			List *qual,
+			Expr *repeatCountExpr,
+			uint64 grouping,
+			Plan *subplan)
+{
+	Repeat *node = makeNode(Repeat);
+	Plan *plan = &node->plan;
+
+	Assert(subplan != NULL);
+	copy_plan_costsize(plan, subplan);
+
+	plan->targetlist = tlist;
+	plan->qual = qual;
+	plan->lefttree = subplan;
+	plan->righttree = NULL;
+
+	node->repeatCountExpr = repeatCountExpr;
+	node->grouping = grouping;
+
+	return node;
+}
+
+/*
  * is_projection_capable_plan
  *		Check whether a given Plan node is able to do projection.
  */
@@ -4501,6 +4568,7 @@ is_projection_capable_plan(Plan *plan)
 		case T_Append:
 		case T_Motion:
         case T_AdaptiveNestLoop:
+		case T_ShareInputScan:
 			return false;
 		default:
 			break;

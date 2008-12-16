@@ -338,6 +338,17 @@ _outResult(StringInfo str, Result *node)
 }
 
 static void
+_outRepeat(StringInfo str, Repeat *node)
+{
+	WRITE_NODE_TYPE("REPEAT");
+
+	_outPlanInfo(str, (Plan *) node);
+
+	WRITE_NODE_FIELD(repeatCountExpr);
+	WRITE_UINT64_FIELD(grouping);
+}
+
+static void
 _outAppend(StringInfo str, Append *node)
 {
 	WRITE_NODE_TYPE("APPEND");
@@ -3088,6 +3099,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Result:
 				_outResult(str, obj);
+				break;
+			case T_Repeat:
+				_outRepeat(str, obj);
 				break;
 			case T_Append:
 				_outAppend(str, obj);

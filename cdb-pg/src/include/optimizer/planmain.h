@@ -24,6 +24,40 @@
 #include "optimizer/clauses.h" /* AggClauseCounts */
 
 /*
+ * A structure that contains information for planning GROUP BY 
+ * queries.
+ */
+typedef struct GroupContext
+{
+	Path *best_path;
+	Path *cheapest_path;
+
+	/*
+	 * If subplan is given, use it instead of creating the plan based
+	 * on the given path.
+	 */
+	Plan *subplan;
+
+	List *tlist;
+	bool use_hashed_grouping;
+	double tuple_fraction;
+	CanonicalGroupingSets *canonical_grpsets;
+	uint64 grouping;
+
+	/*
+	 * When subplan is privided, groupColIdx and distinctColIdx are also provided.
+	 */
+	int numGroupCols;
+	AttrNumber *groupColIdx;
+	int numDistinctCols;
+	AttrNumber *distinctColIdx;
+
+	double *p_dNumGroups;
+	List **pcurrent_pathkeys;
+	bool *querynode_changed;
+} GroupContext;
+
+/*
  * prototypes for plan/planmain.c
  */
 extern void query_planner(PlannerInfo *root, List *tlist,
@@ -64,6 +98,7 @@ extern Value *get_tle_name(TargetEntry *tle, List* rtable, const char *default_n
 extern Plan *plan_grouping_extension(PlannerInfo *root,
 									 Path *path,
 									 double tuple_fraction,
+									 bool use_hashed_grouping,
 									 List **p_tlist, List *sub_tlist,
 									 bool is_agg, bool twostage,
 									 List *qual,
@@ -74,6 +109,8 @@ extern Plan *plan_grouping_extension(PlannerInfo *root,
 									 bool *querynode_changed,
 									 List **p_current_pathkeys,
 									 Plan *lefttree);
+extern void free_canonical_groupingsets(CanonicalGroupingSets *canonical_grpsets);
+extern Plan *add_repeat_node(Plan *result_plan, int repeat_count, uint64 grouping);
 
 /*
  * prototypes for plan/createplan.c
@@ -95,6 +132,9 @@ extern Sort *make_sort_from_reordered_groupcols(PlannerInfo *root,
 												TargetEntry *groupid,
 												int req_ngrpkeys,
 												Plan *lefttree);
+extern List *reconstruct_group_clause(List *orig_groupClause, List *tlist,
+									  AttrNumber *grpColIdx, int numcols);
+
 extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
 					 AggStrategy aggstrategy, bool streaming,
 					 int numGroupCols, AttrNumber *grpColIdx,
@@ -135,6 +175,11 @@ extern Limit *make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 extern SetOp *make_setop(SetOpCmd cmd, Plan *lefttree,
 		   List *distinctList, AttrNumber flagColIdx);
 extern Result *make_result(List *tlist, Node *resconstantqual, Plan *subplan);
+extern Repeat *make_repeat(List *tlist,
+						   List *qual,
+						   Expr *repeatCountExpr,
+						   uint64 grouping,
+						   Plan *subplan);
 extern bool is_projection_capable_plan(Plan *plan);
 extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
                                      List *pathkeys, Relids relids,
