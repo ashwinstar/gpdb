@@ -81,14 +81,16 @@ _bitmap_next(IndexScanDesc scan, ScanDirection dir)
 			_bitmap_reset_batchwords(scanPos->bm_batchWords);
 			scanPos->bm_batchWords->firstTid = scanPos->bm_result.nextTid;
 
+			elog(DEBUG2, "IndexScan next batch words start Tid: " INT64_FORMAT,
+				 scanPos->bm_batchWords->firstTid);
+
 			next_batch_words(scan);
 
 			_bitmap_begin_iterate(scanPos->bm_batchWords, &(scanPos->bm_result));
 		}
 
 		/* If we can not find more words, then this scan is over. */
-		if (scanPos->bm_batchWords->nwords == 0 &&
-			scanPos->bm_result.nextTidLoc >= scanPos->bm_result.numOfTids)
+		if (scanPos->done)
 			return false;
 
 		nextTid = _bitmap_findnexttid(scanPos->bm_batchWords,
@@ -151,6 +153,9 @@ _bitmap_nextbatchwords(IndexScanDesc scan,
 	 */
 	_bitmap_reset_batchwords(so->bm_currPos->bm_batchWords);
 	so->bm_currPos->bm_batchWords->firstTid = so->bm_currPos->bm_result.nextTid;
+	elog(DEBUG2, "BitmapIndexScan next batch words start Tid: " INT64_FORMAT,
+		 so->bm_currPos->bm_batchWords->firstTid);
+
 	next_batch_words(scan);
 
 	return true;
