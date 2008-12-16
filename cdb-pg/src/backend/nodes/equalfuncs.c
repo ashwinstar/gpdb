@@ -1108,7 +1108,7 @@ _equalIndexStmt(IndexStmt *a, IndexStmt *b)
 	COMPARE_SCALAR_FIELD(isconstraint);
 	COMPARE_SCALAR_FIELD(concurrent);
 	COMPARE_NODE_FIELD(idxOids);
-
+	COMPARE_SCALAR_FIELD(do_part);
 
 	return true;
 }

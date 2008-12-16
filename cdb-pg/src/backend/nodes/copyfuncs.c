@@ -2717,6 +2717,7 @@ _copyIndexStmt(IndexStmt *from)
 	COPY_SCALAR_FIELD(isconstraint);
 	COPY_SCALAR_FIELD(concurrent);
 	COPY_NODE_FIELD(idxOids);
+	COPY_SCALAR_FIELD(do_part);
 
 	return newnode;
 }

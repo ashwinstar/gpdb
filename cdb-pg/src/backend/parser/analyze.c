@@ -17,7 +17,10 @@
 #include "access/heapam.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_partition.h"
+#include "catalog/pg_partition_rule.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -26,6 +29,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/plancat.h"
 #include "optimizer/var.h"
 #include "parser/analyze.h"
 #include "parser/gramparse.h"
@@ -41,6 +45,7 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
@@ -136,7 +141,8 @@ static Query *transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 static List *transformInsertRow(ParseState *pstate, List *exprlist,
 				   List *stmtcols, List *icolumns, List *attrnos);
 static List *transformReturningList(ParseState *pstate, List *returningList);
-static Query *transformIndexStmt(ParseState *pstate, IndexStmt *stmt);
+static Query *transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
+								 List **extras_before, List **extras_after);
 static Query *transformRuleStmt(ParseState *query, RuleStmt *stmt,
 				  List **extras_before, List **extras_after);
 static Query *transformSelectStmt(ParseState *pstate, SelectStmt *stmt);
@@ -587,7 +593,8 @@ transformStmt(ParseState *pstate, Node *parseTree,
 			break;
 
 		case T_IndexStmt:
-			result = transformIndexStmt(pstate, (IndexStmt *) parseTree);
+			result = transformIndexStmt(pstate, (IndexStmt *) parseTree,
+										extras_before, extras_after);
 			break;
 
 		case T_RuleStmt:
@@ -7363,9 +7370,12 @@ transformFKConstraints(ParseState *pstate, CreateStmtContext *cxt,
 /*
  * transformIndexStmt -
  *	  transforms the qualification of the index statement
+ *
+ * If do_part is true, build create index statements for our children.
  */
 static Query *
-transformIndexStmt(ParseState *pstate, IndexStmt *stmt)
+transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
+				   List **extras_before, List **extras_after)
 {
 	Query	   *qry;
 	RangeTblEntry *rte = NULL;
@@ -7373,6 +7383,122 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt)
 
 	qry = makeNode(Query);
 	qry->commandType = CMD_UTILITY;
+
+	/* 
+	 * If the table already exists (i.e., this isn't a create table time
+	 * expansion of primary key() or unique()) and we're the ultimate parent 
+	 * of a partitioned table, cascade to all children. We don't do this
+	 * at create table time because transformPartitionBy() automatically
+	 * creates the indexes on the child tables for us.
+	 */
+	if (OidIsValid(RangeVarGetRelid(stmt->relation, true)))
+	{
+		Relation rel = heap_openrv(stmt->relation, AccessShareLock);
+
+		if (RelationBuildPartitionDesc(rel, false))
+			stmt->do_part = true;
+	
+		if (stmt->do_part && Gp_role != GP_ROLE_EXECUTE)
+		{
+			List *children;
+		
+			children = find_inheritance_children(RelationGetRelid(rel));
+	
+			foreach(l, children)
+			{
+				Oid relid = lfirst_oid(l);
+				Relation crel = heap_open(relid, AccessShareLock);
+				IndexStmt *chidx;
+				Relation partrel;
+				ScanKeyData key;
+				SysScanDesc scan;
+				HeapTuple tuple;
+				char *parname;
+				int2 position;
+				int4 depth;
+				NameData name;
+				Oid paroid;
+				char idxname[1024];
+	
+				chidx = (IndexStmt *)copyObject((Node *)stmt);
+	
+				/* now just update the relation and index name fields */
+				chidx->relation = 
+					makeRangeVar(get_namespace_name(RelationGetNamespace(crel)),
+								 RelationGetRelationName(crel));
+	
+				elog(NOTICE, "building index for child partition \"%s\"",
+					 RelationGetRelationName(crel));
+				/* 
+				 * We want the index name to resemble our partition table name
+				 * with the master index name on the front. This means, we
+				 * append to the indexname the parname, position, and depth
+				 * as we do in transformPartitionBy().
+				 *
+				 * So, firstly we must retrieve from pg_partition_rule the 
+				 * partition descriptor for the current relid. This gives us
+				 * partition name and position. With paroid, we can get the
+				 * partition level descriptor from pg_partition and therefore
+				 * our depth.
+				 */
+				partrel = heap_open(PartitionRuleRelationId, AccessShareLock);
+				ScanKeyInit(&key,
+							Anum_pg_partition_rule_parchildrelid,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(relid));
+				scan = systable_beginscan(partrel,
+										  PartitionRuleParchildrelidIndexId,
+										  true, SnapshotNow, 1, &key);
+	
+				tuple = systable_getnext(scan);
+	
+				Assert(HeapTupleIsValid(tuple));
+	
+				name = ((Form_pg_partition_rule)GETSTRUCT(tuple))->parname;
+				parname = pstrdup(NameStr(name));
+				position = ((Form_pg_partition_rule)GETSTRUCT(tuple))->parruleord;
+				paroid = ((Form_pg_partition_rule)GETSTRUCT(tuple))->paroid;
+	
+				systable_endscan(scan);
+				heap_close(partrel, NoLock);
+	
+				partrel = heap_open(PartitionRelationId, AccessShareLock);
+				
+				ScanKeyInit(&key,
+							ObjectIdAttributeNumber,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(paroid));
+				scan = systable_beginscan(partrel,
+										  PartitionOidIndexId,
+										  true, SnapshotNow, 1, &key);
+	
+				tuple = systable_getnext(scan);
+	
+				Assert(HeapTupleIsValid(tuple));
+	
+				depth = ((Form_pg_partition)GETSTRUCT(tuple))->parlevel + 1;
+	
+				systable_endscan(scan);
+				heap_close(partrel, NoLock);
+	
+				heap_close(crel, NoLock);
+	
+				/* now, build the piece to append */
+				if (strlen(parname) == 0)
+					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%d", 
+							 stmt->idxname, depth, position);
+				else
+					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%s",
+							 stmt->idxname, depth, parname);
+	
+				chidx->idxname = pstrdup(idxname);
+	
+				*extras_after = lappend(*extras_after, chidx);
+			}
+		}
+
+		heap_close(rel, AccessShareLock);
+	}
 
 	/* take care of the where clause */
 	if (stmt->whereClause)
