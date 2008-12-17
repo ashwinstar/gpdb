@@ -13393,34 +13393,42 @@ atpxDropList(Relation rel, PartitionNode *pNode)
 	foreach(lc, pNode->rules)
 	{
 		PartitionRule *rule = lfirst(lc);
-		char* prelname;
+		char	*prelname;
+		char 	*nspname;
 		Relation	rel;
 
 		rel = heap_open(rule->parchildrelid, AccessShareLock);
 		prelname = pstrdup(RelationGetRelationName(rel));
+		nspname = pstrdup(get_namespace_name(RelationGetNamespace(rel)));
 		heap_close(rel, NoLock);
 
 		if (l1)
-			l1 = lappend(l1, list_make1(makeString(prelname)));
+			l1 = lappend(l1, list_make2(makeString(nspname),
+										makeString(prelname)));
 		else
-			l1 = list_make1(list_make1(makeString(prelname)));
+			l1 = list_make1(list_make2(makeString(nspname),
+									   makeString(prelname)));
 	}
 
 	/* and the default partition */
 	if (pNode->default_part)
 	{
 		PartitionRule *rule = pNode->default_part;
-		char* prelname;
+		char *prelname;
+		char *nspname;
 		Relation	rel;
 
 		rel = heap_open(rule->parchildrelid, AccessShareLock);
 		prelname = pstrdup(RelationGetRelationName(rel));
+		nspname = pstrdup(get_namespace_name(RelationGetNamespace(rel)));
 		heap_close(rel, NoLock);
 
 		if (l1)
-			l1 = lappend(l1, list_make1(makeString(prelname)));
+			l1 = lappend(l1, list_make2(makeString(nspname),
+										makeString(prelname)));
 		else
-			l1 = list_make1(list_make1(makeString(prelname)));
+			l1 = list_make1(list_make2(makeString(nspname),
+									   makeString(prelname)));
 	}
 
 	return l1;
@@ -13616,10 +13624,13 @@ ATPExecPartDrop(Relation rel,
 		{
 			List *l1 = atpxDropList(rel2, prule->topRule->children);
 
-			ds->objects = lappend(l1, list_make1(makeString(prelname)));
+			ds->objects = lappend(l1, 
+								  list_make2(makeString(namespace_name),
+											 makeString(prelname)));
 		}
 		else
-			ds->objects = list_make1(list_make1(makeString(prelname)));
+			ds->objects = list_make1(list_make2(makeString(namespace_name),
+												makeString(prelname)));
 
 		ProcessUtility(
 				(Node *) ds,
@@ -14057,6 +14068,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		RangeVar       	   *newrelrv  = (RangeVar *)pc->arg1;
 		RangeVar		   *oldrelrv;
 		PartitionNode 	   *pn;
+		Relation			oldrel;
 
 		pn = RelationBuildPartitionDesc(rel, false);
 		pcols = get_partition_attrs(pn);
@@ -14083,8 +14095,12 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 
 		pfree(pc->partid);
 
-		oldrelrv = makeRangeVar(get_namespace_name(oldrelid), 
-							  get_rel_name(oldrelid));
+		oldrel = heap_open(oldrelid, NoLock);
+		oldrelrv = 
+			makeRangeVar(get_namespace_name(RelationGetNamespace(oldrel)), 
+						 get_rel_name(oldrelid));
+		heap_close(oldrel, NoLock);
+
 		pc->partid = (Node *)oldrelrv;
 		pc2 = (AlterPartitionCmd *)pc->arg2;
 		pc2->arg2 = (Node *)pcols; /* for execute nodes */
@@ -14211,6 +14227,10 @@ ATPExecPartMerge(Relation rel,
 		prule1 = get_part_rule(rel, pid, true, true, 
 							   CurrentMemoryContext, NULL, false);
 
+		/* 
+		 * XXX: get_namespace_name(prule1->topRule->parchildrelid) is wrong
+		 * need the relnamespace not relid
+		 */
 		relrv1 = makeRangeVar(
 					get_namespace_name(prule1->topRule->parchildrelid), 
 					get_rel_name(prule1->topRule->parchildrelid));
