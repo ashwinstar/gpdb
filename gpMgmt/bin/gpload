@@ -550,7 +550,7 @@ class gpload:
             else:
                 if default=='error':
                     self.log(self.ERROR,
-                             "configuration must contain %s%s."%(a,extraStuff))
+                             "configuration must contain %s%s"%(a,extraStuff))
                     sys.exit(2)
                 return default
 
@@ -808,7 +808,7 @@ class gpload:
 
     def read_columns(self):
         columns = self.getconfig('gpload:input:columns',list,None)
-        if columns!=None:
+        if columns != None:
             self.from_cols_from_user = True # user specified from columns
             self.from_columns = []
             for d in columns:
@@ -833,16 +833,23 @@ class gpload:
 
                 # Mark this column as having no mapping, which is important
                 # for do_insert()
-                self.from_columns.append([key,d[key],None])
+                self.from_columns.append([key,d[key],None, False])
         else:
             self.from_columns = self.into_columns
             self.from_cols_from_user = False
 
-        self.log(self.DEBUG, 'from columns are--')
+        # make sure that all columns have a type
+        for name, typ, map, hasseq in self.from_columns:
+            if typ == None:
+                self.log(self.ERROR, 'column "%s" has no type ' % name +
+                       'and does not appear in target table "%s"' % self.table)
+        self.log(self.DEBUG, 'from columns are:')
         for c in self.from_columns:
             name = c[0]
             typ = c[1]
             self.log(self.DEBUG, '%s: %s'%(name,typ))
+
+
 
     def read_table_metadata(self):
         tableSchema = 'public'
@@ -958,13 +965,13 @@ class gpload:
         if self.getconfig('gpload:input:header',bool,False):
             sql += "header "
         if format=='csv':
-            sql += "quote as%s"%quote(self.getconfig('gpload:input:quote',str,extraStuff=' for csv formatted data'))
+            sql += "quote as%s" % quote(self.getconfig('gpload:input:quote',str,extraStuff=' for csv formatted data'))
             esc = self.getconfig('gpload:input:escape', str,
-                                 ' for csv formatted data')
-            if esc.lower() == "off":
-                pass
-            else:
-                esc = " as %s" % quote(esc)
+                                 extraStuff = ' for csv formatted data')
+            if len(esc) > 1:
+                self.log(self.ERROR, "in CSV mode, gpload:input:escape must " +
+                         "be a single character")
+            esc = " as %s" % quote(esc)
 
             sql += "escape %s" % esc
 
