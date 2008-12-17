@@ -22,7 +22,7 @@ from greenplum import db
 from greenplum import error
 from greenplum import interval
 
-DEBUG = True
+DEBUG = False
 
 web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
@@ -100,7 +100,7 @@ def timenow():
 class index:
     def GET(self):
         web.header('Content-Type', 'text/html')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         host_and_port = web.ctx.host.split(':',1)
         if DEBUG:
             sys.stderr.write("host=%s, port=%s, server_name=%s\n" % (host_and_port[0], host_and_port[1], displayed_server_name))
@@ -112,7 +112,7 @@ class api:
 
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         tab = []
         for i in range(len(urls)/2-1):
             j = (i+1) * 2 + 1
@@ -133,7 +133,7 @@ class logon:
 
     def POST(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         i = web.input()
         session.user = ''
         session.role = {}
@@ -186,7 +186,7 @@ class logon:
 class logoff:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         logoffdata = render.logoff(session.user, 'SUCCESS')
         session.kill()
         if DEBUG:
@@ -248,7 +248,7 @@ class config:
 
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nCONFIG:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -265,7 +265,7 @@ class hosts:
 
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nHOSTS:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -289,7 +289,7 @@ class hosts:
 class system:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nSYSTEM:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -353,7 +353,7 @@ class queries:
 
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nQUERIES:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -446,7 +446,7 @@ class queries:
 class querydetails:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nQUERYDETAILS:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -523,7 +523,7 @@ class querydetails:
 class queryplan:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nQUERYPLAN:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -607,7 +607,7 @@ class queryplan:
 class iterator:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nITERATOR:\n")
             sys.stderr.write("session: %s\n" % session.getid())
@@ -662,7 +662,7 @@ class iterator:
 class database:
     def GET(self):
         web.header('Content-Type', 'text/xml')
-        web.header('Cache-Control', 'no-cache')
+        web.header('Cache-Control', 'no-store')
         if DEBUG:
             sys.stderr.write("\nDATABASE:\n")
             sys.stderr.write("session: %s\n" % session.getid())

@@ -94,7 +94,7 @@ package util {
 		
 		public static function parseDate(input:String):Date
 		{
-			if(input == null || input == '')
+			if(!input || input == '' || input == 'null')
 				return null;
 		
 			var pattern:RegExp = /-/g;

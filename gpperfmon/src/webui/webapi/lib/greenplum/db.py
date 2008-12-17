@@ -536,7 +536,7 @@ def queries_file(status, username, database, textlength, tmid, ssid, ccnt):
             entry[7] = datetime.datetime.strptime(entry[7], "%Y-%m-%d %H:%M:%S")
             # convert tstart date string into datetime object
             if entry[8] != 'null':
-			    entry[8] = datetime.datetime.strptime(entry[8], "%Y-%m-%d %H:%M:%S")
+           	    entry[8] = datetime.datetime.strptime(entry[8], "%Y-%m-%d %H:%M:%S")
             # if the query hasn't completed, the ftin will be set to 'null'
             if entry[9] != 'null':
                 # convert tfin date string into datetime object

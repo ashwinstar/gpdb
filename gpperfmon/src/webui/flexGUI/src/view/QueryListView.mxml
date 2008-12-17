@@ -232,7 +232,7 @@
 					<mx:ToggleButtonBar id="qdToggle" dataProvider="{queryDetailsStack}" 
 						selectedIndex="{mdl.nav.queryDetailTabPage}"
 				   		itemClick="toggleQDBar(event)"/>
-					<mx:Label text="{mdl.nav.detailQuery?('Query ' + mdl.nav.detailQuery.id):'No Query Selected'}" 
+					<mx:Text text="{mdl.nav.detailQuery?('Query ' + mdl.nav.detailQuery.id):'No Query Selected'}" 
 						styleName="dashboardTitle"/>	
 					<mx:Spacer width="100%"/>
 					<mx:Label text="Watched"/>

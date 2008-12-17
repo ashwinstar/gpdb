@@ -15,11 +15,11 @@
   	  [Bindable]
 	  public var mdl : GPPerfMonModelLocator = GPPerfMonModelLocator.getInstance();
 	  
-	  function initApp():void{
+	  function initApp():void {
 	  	var test:Boolean = false;
 	  	if (test)
 	  	{
-	    	mdl.session.setDatabaseConnection("http","10.254.0.226","8080",
+	    	mdl.session.setDatabaseConnection("http","10.254.0.171","28080",
 	    		"testServer");	  		  		
 	  	}
 	  	else

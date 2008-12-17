@@ -73,6 +73,7 @@ package model
 				query.cost = queryXML.cost;
 				query.cpu_currpct = queryXML.cpu_currpct;
 				query.cpu_elapsed = queryXML.cpu_elapsed;
+				query.cpu_elapsed /= 1000.0;
 				query.db = queryXML.db;
 					
 				query.query_text = queryXML.query_text;
@@ -96,7 +97,7 @@ package model
 				query.skew_rows = queryXML.skew_rows;
 				if (queryXML.status == 'submit')
 				{
-					query.status == 'queued';
+					query.status = 'queued';
 					queuedCount++;
 					if (query.username == mdl.session.username)
 						myQueuedCount++;
@@ -111,17 +112,16 @@ package model
 				else
 					query.status = queryXML.status;
 				
-				if (queryXML.tstart != null)
+				var tStart:Date = MiscUtils.parseDate(queryXML.tstart);
+				if (tStart != null)
 				{
-					query.time_queued = (MiscUtils.parseDate(queryXML.tstart).time -
-										query.tsubmit.time) / 1000.0;
-					if (queryXML.tfinish != null) 
+					query.time_queued = (tStart.time - query.tsubmit.time) / 1000.0;
+					var tFinish:Date = MiscUtils.parseDate(queryXML.tfinish);					
+					if (tFinish != null) 
 					{
-						query.time_run = (MiscUtils.parseDate(queryXML.tfinish).time -
-							MiscUtils.parseDate(queryXML.tstart).time) / 1000.0;
+						query.time_run = (tFinish.time - tStart.time) / 1000.0;
 					} else {
-						query.time_run = (query.sample_time.time -
-							MiscUtils.parseDate(queryXML.tstart).time) / 1000.0;						
+						query.time_run = (query.sample_time.time - tStart.time) / 1000.0;						
 					}
 				} else {
 					query.time_queued = (query.sample_time.time -
@@ -234,7 +234,8 @@ package model
 					query.tsubmit = MiscUtils.parseDate(queryXML.tsubmit);
 					query.cost = queryXML.cost;
 					query.cpu_currpct = queryXML.cpu_currpct;
-					query.cpu_elapsed = queryXML.cpu_elapsed;
+					query.cpu_elapsed = queryXML.cpu_elapsed
+					query.cpu_elapsed /= 1000.0; 
 					query.db = queryXML.db;
 					query.query_text = MiscUtils.noLineFeed(queryXML.query_text);					
 					query.rows_out = queryXML.rows_out;
@@ -246,17 +247,16 @@ package model
 					else if (queryXML.status == 'abort')
 					    abortedCount++;				    
 					
-					if (queryXML.tstart != null)
+					var tStart:Date = MiscUtils.parseDate(queryXML.tstart);
+					if (tStart != null)
 					{
-						query.time_queued = (MiscUtils.parseDate(queryXML.tstart).time -
-											query.tsubmit.time) / 1000.0;
-						if (queryXML.tfinish != null) 
+						query.time_queued = (tStart.time - query.tsubmit.time) / 1000.0;
+						var tFinish:Date = MiscUtils.parseDate(queryXML.tfinish);
+						if (tFinish != null) 
 						{
-							query.time_run = (MiscUtils.parseDate(queryXML.tfinish).time -
-								MiscUtils.parseDate(queryXML.tstart).time) / 1000.0;
+							query.time_run = (tFinish.time - tStart.time) / 1000.0;
 						} else {
-							query.time_run = (query.sample_time.time -
-								MiscUtils.parseDate(queryXML.tstart).time) / 1000.0;						
+							query.time_run = (query.sample_time.time - tStart.time) / 1000.0;						
 						}
 					} else {
 						query.time_queued = (query.sample_time.time -
@@ -264,7 +264,7 @@ package model
 						query.time_run = 0;					
 					}	
 					if (query.time_run > 0)
-						query.cpu_velocity = query.cpu_elapsed / query.time_run;
+						query.cpu_velocity = Math.round((query.cpu_elapsed*1000.0) / query.time_run)/1000.0;
 					else
 						query.cpu_velocity = 0;
 					

@@ -163,10 +163,10 @@
 			    name == 'm8' || name == 'm9' || name == 'm10' || name == 'm11' ||
 			    name == 'm12' || name == 'm13' || name == 'm14' || name == 'm15')
 			{
-				var valueArray:Array = attributes[j].split('|');
+				var valueArray:Array = attributes[j].split('|');				
 				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
 				extraAttributes += valueArray[2] + ' ' + valueArray[1];
-				extraAttributes += ' (estimated ' + valueArray[3] + ')\n';
+				extraAttributes += ' (avg) [estimated ' + valueArray[3] + ']\n';
 			}
 		}			
 	}
@@ -244,9 +244,10 @@
 				
 			res += "(" + xml.@nstatus + ")\n"
 			
-			return res + " [CPU %: " + xml.@cpu_currpct + ", CPU total: " + xml.@cpu_elapsed + "]\n"
-				       + " [CPU skew: " + nformat.format(xml.@skew_cpu) 
-					   + ", Row skew: " + nformat.format(xml.@skew_rows) + "]"; 
+			return res + " [CPU %: " + nformat2.format(xml.@cpu_currpct) 
+			           + ", CPU total: " + (Number(xml.@cpu_elapsed)/1000.0).toFixed(2) + "]\n"
+				       + " [CPU skew: " + nformat2.format(xml.@skew_cpu) 
+					   + ", Row skew: " + nformat2.format(xml.@skew_rows) + "]"; 
 		}
 		else
 		{
@@ -370,7 +371,8 @@
 	
     ]]>
 </mx:Script>	
-	<mx:NumberFormatter id="nformat" precision="3"/>
+	<mx:NumberFormatter id="nformat0" precision="0"/>
+    <mx:NumberFormatter id="nformat2" precision="2"/>
 
 	<mx:VBox width="60%" height="100%">
 		<mx:Label id="msgLabel" visible="{msgLabel.text!=''}" includeInLayout="{msgLabel.text!=''}"
@@ -402,43 +404,43 @@
 				<mx:Label text="{selectedXML.@tstart}" fontWeight="normal"/>
 			</mx:FormItem>					
 			<mx:FormItem label="Duration" fontWeight="bold">
-				<mx:Label text="{selectedXML.@tduration}" fontWeight="normal"/>
+				<mx:Label text="{nformat2.format(selectedXML.@tduration) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>						
 			<mx:FormItem label="PMem Size" fontWeight="bold">
-				<mx:Label text="{selectedXML.@pmemsize}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@pmemsize) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>		
 			<mx:FormItem label="PMem Max" fontWeight="bold">
-				<mx:Label text="{selectedXML.@pmemmax}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@pmemmax) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>	
 			<mx:FormItem label="Mem Size" fontWeight="bold">
-				<mx:Label text="{selectedXML.@memsize}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@memsize) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>		
 			<mx:FormItem label="Mem Resident" fontWeight="bold">
-				<mx:Label text="{selectedXML.@memresid}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@memresid) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>	
 			<mx:FormItem label="Shared mem" fontWeight="bold">
-				<mx:Label text="{selectedXML.@memshare}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@memshare) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>	
 			<mx:FormItem label="CPU total" fontWeight="bold">
-				<mx:Label text="{selectedXML.@cpu_elapsed}" fontWeight="normal"/>
+				<mx:Label text="{(Number(selectedXML.@cpu_elapsed)/1000.0).toFixed(2) + ' (avg)'}" fontWeight="normal"/>		
 			</mx:FormItem>	
 			<mx:FormItem label="CPU %" fontWeight="bold">
-				<mx:Label text="{selectedXML.@cpu_currpct}" fontWeight="normal"/>
+				<mx:Label text="{nformat2.format(selectedXML.@cpu_currpct) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>				
 			<mx:FormItem label="Phase" fontWeight="bold">
 				<mx:Label text="{selectedXML.@phase}" fontWeight="normal"/>
 			</mx:FormItem>	
 			<mx:FormItem label="Rows out" fontWeight="bold">
-				<mx:Label text="{selectedXML.@rows_out}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@rows_out) + ' (sum)'}" fontWeight="normal"/>
 			</mx:FormItem>				
 			<mx:FormItem label="Rows estimate" fontWeight="bold">
-				<mx:Label text="{selectedXML.@rows_out_est}" fontWeight="normal"/>
+				<mx:Label text="{nformat0.format(selectedXML.@rows_out_est) + ' (sum)'}" fontWeight="normal"/>
 			</mx:FormItem>	
 			<mx:FormItem label="CPU skew" fontWeight="bold">
-				<mx:Label text="{nformat.format(selectedXML.@skew_cpu)}" fontWeight="normal"/>
+				<mx:Label text="{nformat2.format(selectedXML.@skew_cpu)}" fontWeight="normal"/>
 			</mx:FormItem>				
 			<mx:FormItem label="Row skew" fontWeight="bold">
-				<mx:Label text="{nformat.format(selectedXML.@skew_rows)}" fontWeight="normal"/>
+				<mx:Label text="{nformat2.format(selectedXML.@skew_rows)}" fontWeight="normal"/>
 			</mx:FormItem>	
 			
 		</mx:Form>	
