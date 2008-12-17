@@ -1015,8 +1015,8 @@ class GPUpgrade:
                               'pg_hba.conf'+LOCKEXT)
 
         try:
-            if utility:  cmd = 'gpstop -fzam'
-            else:        cmd = 'gpstop -fza'
+            if utility:  cmd = 'gpstop -fam'
+            else:        cmd = 'gpstop -fa'
 
             locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                                   'pg_hba.conf'+LOCKEXT)
