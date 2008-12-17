@@ -730,25 +730,24 @@ inheritance_planner(PlannerInfo *root)
 				switch ( locustype )
 				{
 				case CdbLocusType_Entry:
+					locus_ok = locus_ok && (locustype == append_locustype);
+					break;
 				case CdbLocusType_Hashed:
 				case CdbLocusType_HashedOJ:
 				case CdbLocusType_Strewn:
-					/* Loci of inheritance set must match. */
-					locus_ok = locus_ok && (locustype == append_locustype ||
-						(locustype == CdbLocusType_Hashed && append_locustype == CdbLocusType_Strewn) ||
-						(locustype == CdbLocusType_Strewn && append_locustype == CdbLocusType_Hashed));
-					if (locus_ok && locustype != append_locustype)
-						ereport(NOTICE, (
-							errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("This SQL statement involving inheritance has not been tested... Verify correct answers!") ));
+					/* MPP-2023: Among subplans, these loci are okay. */
 					break;
 				case CdbLocusType_Null:
 				case CdbLocusType_SingleQE:
 				case CdbLocusType_General:
 				case CdbLocusType_Replicated:
-				default:
-					/* These loci not valid on base relations. */
+					/* These loci are not valid on base relations */
 					locus_ok = FALSE;
+					break;
+				default:
+					/* We should not be hitting this */
+					locus_ok = FALSE;
+					Assert (0); 
 					break;
 				}
 			}
