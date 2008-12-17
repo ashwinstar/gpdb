@@ -508,6 +508,8 @@ class gpload:
 
         if level <= self.options.qv:
             sys.stdout.write(str)
+
+        if level <= self.options.qv or level <= self.INFO:
             self.logfile.write(str)
             self.logfile.flush()
 
