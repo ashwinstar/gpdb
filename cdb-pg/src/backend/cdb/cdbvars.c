@@ -255,6 +255,9 @@ bool		gp_enable_fast_sri=true;
 /* Disable logging while creating mapreduce objects */
 bool        gp_mapreduce_define=false;
 
+/* Force core dump on memory context error */
+bool 		coredump_on_memerror=false;
+
 /* Experimental feature for MPP-4082. Please read doc before setting this guc */
 GpAutoStatsModeValue gp_autostats_mode;
 char                *gp_autostats_mode_string;

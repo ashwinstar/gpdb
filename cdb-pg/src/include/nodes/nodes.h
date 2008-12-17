@@ -89,7 +89,7 @@ typedef enum NodeTag
 	T_ShareInputScan,
 	T_Window,
 	T_Repeat,
-	T_Plan_End = T_Repeat,
+	T_Plan_End,
 
 	/*
 	 * TAGS FOR PLAN STATE NODES (execnodes.h)
@@ -134,7 +134,7 @@ typedef enum NodeTag
 	T_ShareInputScanState,
 	T_WindowState,
 	T_RepeatState,
-	T_PlanState_End = T_RepeatState,
+	T_PlanState_End,
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)

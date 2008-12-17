@@ -572,8 +572,8 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 static void
 ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 {
-    HashJoinTableStats *stats = hashtable->stats;
-    HashJoinBatchData  *fullbatch = hashtable->batches[hashtable->curbatch];
+	HashJoinTableStats *stats = hashtable->stats;
+	HashJoinBatchData  *fullbatch = hashtable->batches[hashtable->curbatch];
 	int			oldnbatch = hashtable->nbatch;
 	int			curbatch = hashtable->curbatch;
 	int			nbatch;
@@ -581,8 +581,8 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	MemoryContext oldcxt;
 	long		ninmemory;
 	long		nfreed;
-    Size        spaceFreed = 0;
-    Size        sz;
+	Size        spaceFreed = 0;
+	Size        sz;
 
 	/* do nothing if we've decided to shut off growth */
 	if (!hashtable->growEnabled)
@@ -597,30 +597,48 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 	oldcxt = MemoryContextSwitchTo(hashtable->hashCxt);
 
-	/*
-     * enlarge arrays and zero out added entries
-     */
+	{
+		/* Print a warning for the extreme bad cases. */
+		unsigned mintup = hashtable->batches[0]->innertuples;
+		unsigned maxtup = mintup;
 
-    /* array of BatchData ptrs */
-    hashtable->batches = (HashJoinBatchData **)
+		for(i=1; i<oldnbatch; ++i)
+		{
+			unsigned ntup = hashtable->batches[i]->innertuples;
+
+			maxtup = Max(ntup, maxtup);
+			mintup = Min(ntup, mintup);
+		}
+
+		if(maxtup > (mintup * 10))
+			elog(WARNING, "Extreme skew in the innerside of Hashjoin, nbatch %d, mintuples %u, maxtuples %u", oldnbatch, mintup, maxtup);
+	}
+
+
+	/*
+	 * enlarge arrays and zero out added entries
+	 */
+
+	/* array of BatchData ptrs */
+	hashtable->batches = (HashJoinBatchData **)
 		repalloc(hashtable->batches, nbatch * sizeof(hashtable->batches[0]));
 
-    /* one BatchData entry per additional batch */
-    for (i = oldnbatch; i < nbatch; i++)
-        hashtable->batches[i] =
-            (HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
+	/* one BatchData entry per additional batch */
+	for (i = oldnbatch; i < nbatch; i++)
+		hashtable->batches[i] =
+			(HashJoinBatchData *)palloc0(sizeof(HashJoinBatchData));
 
-    /* EXPLAIN ANALYZE batch statistics */
-    if (stats &&
-        stats->nbatchstats < nbatch)
-    {
-        sz = nbatch * sizeof(stats->batchstats[0]);
-        stats->batchstats =
-            (HashJoinBatchStats *)repalloc(stats->batchstats, sz);
-        sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
+	/* EXPLAIN ANALYZE batch statistics */
+	if (stats &&
+			stats->nbatchstats < nbatch)
+	{
+		sz = nbatch * sizeof(stats->batchstats[0]);
+		stats->batchstats =
+			(HashJoinBatchStats *)repalloc(stats->batchstats, sz);
+		sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
 		memset(stats->batchstats + stats->nbatchstats, 0, sz);
-        stats->nbatchstats = nbatch;
-    }
+		stats->nbatchstats = nbatch;
+	}
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -650,7 +668,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 			ninmemory++;
 			ExecHashGetBucketAndBatch(hashtable, tuple->hashvalue,
-									  &bucketno, &batchno);
+					&bucketno, &batchno);
 			Assert(bucketno == i);
 			if (batchno == curbatch)
 			{
@@ -660,14 +678,14 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 			}
 			else
 			{
-                Size    spaceTuple;
+				Size    spaceTuple;
 
 				/* dump it out */
 				Assert(batchno > curbatch);
 				ExecHashJoinSaveTuple(NULL, HJTUPLE_MINTUPLE(tuple),
-									  tuple->hashvalue,
-                                      &hashtable->batches[batchno]->innerside,
-									  hashtable->bfCxt);
+						tuple->hashvalue,
+						&hashtable->batches[batchno]->innerside,
+						hashtable->bfCxt);
 				/* and remove from hash table */
 				if (prevtuple)
 					prevtuple->next = nexttuple;
@@ -675,10 +693,10 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 					hashtable->buckets[i] = nexttuple;
 				/* prevtuple doesn't change */
 
-                spaceTuple = HJTUPLE_OVERHEAD + memtuple_get_size(HJTUPLE_MINTUPLE(tuple), NULL); 
-                spaceFreed += spaceTuple;
-                if (stats)
-                    stats->batchstats[batchno].spillspace_in += spaceTuple;
+				spaceTuple = HJTUPLE_OVERHEAD + memtuple_get_size(HJTUPLE_MINTUPLE(tuple), NULL); 
+				spaceFreed += spaceTuple;
+				if (stats)
+					stats->batchstats[batchno].spillspace_in += spaceTuple;
 
 				pfree(tuple);
 				nfreed++;
@@ -692,26 +710,26 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	}
 
 #ifdef HJDEBUG
-    elog(DEBUG3, "HJ batch %d: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
-         curbatch,
-		 nfreed,
-         ninmemory,
-         (unsigned long)spaceFreed,
-         (unsigned long)fullbatch->innerspace,
-         (unsigned long)(fullbatch->innerspace - spaceFreed));
+	elog(DEBUG3, "HJ batch %d: Freed %ld of %ld tuples, %lu of %lu bytes, space now %lu",
+			curbatch,
+			nfreed,
+			ninmemory,
+			(unsigned long)spaceFreed,
+			(unsigned long)fullbatch->innerspace,
+			(unsigned long)(fullbatch->innerspace - spaceFreed));
 #endif
 
-    /* Update work_mem high-water mark and amount spilled. */
-    if (stats)
-    {
-        stats->workmem_max = Max(stats->workmem_max, fullbatch->innerspace);
-        stats->batchstats[curbatch].spillspace_out += spaceFreed;
-        stats->batchstats[curbatch].spillrows_out += nfreed;
-    }
+	/* Update work_mem high-water mark and amount spilled. */
+	if (stats)
+	{
+		stats->workmem_max = Max(stats->workmem_max, fullbatch->innerspace);
+		stats->batchstats[curbatch].spillspace_out += spaceFreed;
+		stats->batchstats[curbatch].spillrows_out += nfreed;
+	}
 
-    /* Allow reuse of the space that has just been freed. */
-    fullbatch->innerspace -= spaceFreed;
-    fullbatch->innertuples -= nfreed;
+	/* Allow reuse of the space that has just been freed. */
+	fullbatch->innerspace -= spaceFreed;
+	fullbatch->innertuples -= nfreed;
 
 	/*
 	 * If we dumped out either all or none of the tuples in the table, disable
@@ -725,7 +743,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	{
 		hashtable->growEnabled = false;
 #ifdef HJDEBUG
-        elog(DEBUG3, "HJ: Disabling further increase of nbatch");
+		elog(DEBUG3, "HJ: Disabling further increase of nbatch");
 #endif
 	}
 

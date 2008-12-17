@@ -656,7 +656,7 @@ is_plan_node(Node *node)
 	if (node == NULL)
 		return false;
 
-	if(nodeTag(node) >= T_Plan_Start && nodeTag(node) <= T_Plan_End)
+	if(nodeTag(node) >= T_Plan_Start && nodeTag(node) < T_Plan_End)
 		return true;
 	return false;
 }

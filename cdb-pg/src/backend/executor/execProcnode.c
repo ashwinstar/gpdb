@@ -101,8 +101,8 @@
 #include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeAdaptiveNestloop.h"
-#include "executor/nodeResult.h"
 #include "executor/nodeRepeat.h"
+#include "executor/nodeResult.h"
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSetOp.h"
 #include "executor/nodeShareInputScan.h"
@@ -161,11 +161,6 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			 */
 		case T_Result:
 			result = (PlanState *) ExecInitResult((Result *) node,
-												  estate, eflags);
-			break;
-
-		case T_Repeat:
-			result = (PlanState *) ExecInitRepeat((Repeat *) node,
 												  estate, eflags);
 			break;
 
@@ -319,6 +314,12 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												  estate, eflags);
 			break;
 
+		case T_Repeat:
+			result = (PlanState *) ExecInitRepeat((Repeat *) node,
+												  estate, eflags);
+			break;
+
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;		/* keep compiler quiet */
@@ -406,7 +407,43 @@ ExecSliceDependencyNode(PlanState *node)
 TupleTableSlot *
 ExecProcNode(PlanState *node)
 {
-	TupleTableSlot *result;
+	TupleTableSlot *result = NULL;
+	
+	static void *ExecJmpTbl[] = {
+		&&Exec_Jmp_Result,
+		&&Exec_Jmp_Append,
+		&&Exec_Jmp_BitmapAnd,
+		&&Exec_Jmp_BitmapOr,
+		&&Exec_Jmp_SeqScan,
+		&&Exec_Jmp_AppendOnlyScan,
+		&&Exec_Jmp_ExternalScan,
+		&&Exec_Jmp_IndexScan,
+		&&Exec_Jmp_BitmapIndexScan,
+		&&Exec_Jmp_BitmapHeapScan,
+		&&Exec_Jmp_TidScan,
+		&&Exec_Jmp_SubqueryScan,
+		&&Exec_Jmp_FunctionScan,
+		&&Exec_Jmp_ValuesScan,
+		&&Exec_Jmp_NestLoop,
+		&&Exec_Jmp_MergeJoin,
+		&&Exec_Jmp_HashJoin,
+		&&Exec_Jmp_Material,
+		&&Exec_Jmp_Sort,
+		&&Exec_Jmp_Group,
+		&&Exec_Jmp_Agg,
+		&&Exec_Jmp_Unique,
+		&&Exec_Jmp_Hash,
+		&&Exec_Jmp_SetOp,
+		&&Exec_Jmp_Limit,
+		&&Exec_Jmp_Motion,
+		&&Exec_Jmp_AdaptiveNestLoop,
+		&&Exec_Jmp_ShareInputScan,
+		&&Exec_Jmp_Window,
+		&&Exec_Jmp_Repeat,
+	};
+
+	COMPILE_ASSERT((T_Plan_End - T_Plan_Start) == (T_PlanState_End - T_PlanState_Start));
+	COMPILE_ASSERT(ARRAY_SIZE(ExecJmpTbl) == (T_PlanState_End - T_PlanState_Start));
 
 	CHECK_FOR_INTERRUPTS();
 
@@ -425,143 +462,127 @@ ExecProcNode(PlanState *node)
 
 	if(!node->fHadSentGpmon)
 		CheckSendPlanStateGpmonPkt(node);
-		
-	switch (nodeTag(node))
-	{
-			/*
-			 * control nodes
-			 */
-		case T_ResultState:
-			result = ExecResult((ResultState *) node);
-			break;
 
-		case T_RepeatState:
-			result = ExecRepeat((RepeatState *) node);
-			break;
+	Assert(nodeTag(node) >= T_PlanState_Start && nodeTag(node) < T_PlanState_End);
+	goto *ExecJmpTbl[nodeTag(node) - T_PlanState_Start];
 
-		case T_AppendState:
-			result = ExecAppend((AppendState *) node);
-			break;
+Exec_Jmp_Result: 
+	result = ExecResult((ResultState *) node);
+	goto Exec_Jmp_Done;
 
-			/* BitmapAndState does not yield tuples */
+Exec_Jmp_Append:
+	result = ExecAppend((AppendState *) node);
+	goto Exec_Jmp_Done;
 
-			/* BitmapOrState does not yield tuples */
+	/* These two does not yield tuple */
+Exec_Jmp_BitmapAnd:
+Exec_Jmp_BitmapOr:
+	goto Exec_Jmp_Done;
 
-			/*
-			 * scan nodes
-			 */
-		case T_SeqScanState:
-			result = ExecSeqScan((SeqScanState *) node);
-			break;
+Exec_Jmp_SeqScan:
+	result = ExecSeqScan((SeqScanState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_IndexScanState:
-			result = ExecIndexScan((IndexScanState *) node);
-			break;
+Exec_Jmp_AppendOnlyScan:
+	result = ExecAppendOnlyScan((AppendOnlyScanState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_AppendOnlyScanState:
-			result = ExecAppendOnlyScan((AppendOnlyScanState *) node);
-			break;
+Exec_Jmp_ExternalScan:
+	result = ExecExternalScan((ExternalScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_IndexScan:
+	result = ExecIndexScan((IndexScanState *) node);
+	goto Exec_Jmp_Done;
 			
-		case T_ExternalScanState:
-			result = ExecExternalScan((ExternalScanState *) node);
-			break;
-			
-			/* BitmapIndexScanState does not yield tuples */
+	/* BitmapIndexScanState does not yield tuples */
+Exec_Jmp_BitmapIndexScan:
+	goto Exec_Jmp_Done;
 
-		case T_BitmapHeapScanState:
-			result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
-			break;
+Exec_Jmp_BitmapHeapScan:
+	result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_TidScanState:
-			result = ExecTidScan((TidScanState *) node);
-			break;
+Exec_Jmp_TidScan:
+	result = ExecTidScan((TidScanState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_SubqueryScanState:
-			result = ExecSubqueryScan((SubqueryScanState *) node);
-			break;
+Exec_Jmp_SubqueryScan:
+	result = ExecSubqueryScan((SubqueryScanState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_FunctionScanState:
-			result = ExecFunctionScan((FunctionScanState *) node);
-			break;
+Exec_Jmp_FunctionScan:
+	result = ExecFunctionScan((FunctionScanState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_ValuesScanState:
-			result = ExecValuesScan((ValuesScanState *) node);
-			break;
+Exec_Jmp_ValuesScan:
+	result = ExecValuesScan((ValuesScanState *) node);
+	goto Exec_Jmp_Done;
 
-			/*
-			 * join nodes
-			 */
-		case T_AdaptiveNestLoopState:
-			result = ExecAdaptiveNestLoop((AdaptiveNestLoopState *) node);
-			break;
-		case T_NestLoopState:
-			result = ExecNestLoop((NestLoopState *) node);
-			break;
+Exec_Jmp_NestLoop:
+	result = ExecNestLoop((NestLoopState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_MergeJoinState:
-			result = ExecMergeJoin((MergeJoinState *) node);
-			break;
+Exec_Jmp_MergeJoin:
+	result = ExecMergeJoin((MergeJoinState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_HashJoinState:
-			result = ExecHashJoin((HashJoinState *) node);
-			break;
+Exec_Jmp_HashJoin:
+	result = ExecHashJoin((HashJoinState *) node);
+	goto Exec_Jmp_Done;
 
-			/*
-			 * shareinput nodes
-			 */
-		case T_ShareInputScanState:
-			result = ExecShareInputScan((ShareInputScanState *) node);
-			break;
+Exec_Jmp_Material:
+	result = ExecMaterial((MaterialState *) node);
+	goto Exec_Jmp_Done;
 
-			/*
-			 * materialization nodes
-			 */
-		case T_MaterialState:
-			result = ExecMaterial((MaterialState *) node);
-			break;
+Exec_Jmp_Sort:
+	result = ExecSort((SortState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_SortState:
-			result = ExecSort((SortState *) node);
-			break;
+Exec_Jmp_Group:
+	result = ExecGroup((GroupState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_GroupState:
-			result = ExecGroup((GroupState *) node);
-			break;
+Exec_Jmp_Agg:
+	result = ExecAgg((AggState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_AggState:
-			result = ExecAgg((AggState *) node);
-			break;
+Exec_Jmp_Unique:
+	result = ExecUnique((UniqueState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_WindowState:
-			result = ExecWindow((WindowState *) node);
-			break;
+Exec_Jmp_Hash:
+	result = ExecHash((HashState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_UniqueState:
-			result = ExecUnique((UniqueState *) node);
-			break;
+Exec_Jmp_SetOp:
+	result = ExecSetOp((SetOpState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_HashState:
-			result = ExecHash((HashState *) node);
-			break;
+Exec_Jmp_Limit:
+	result = ExecLimit((LimitState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_SetOpState:
-			result = ExecSetOp((SetOpState *) node);
-			break;
+Exec_Jmp_Motion:
+	result = ExecMotion((MotionState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_LimitState:
-			result = ExecLimit((LimitState *) node);
-			break;
+Exec_Jmp_AdaptiveNestLoop:
+	result = ExecAdaptiveNestLoop((AdaptiveNestLoopState *) node);
+	goto Exec_Jmp_Done;
 
-		case T_MotionState:
-			result = ExecMotion((MotionState *) node);
-			break;
+Exec_Jmp_ShareInputScan:
+	result = ExecShareInputScan((ShareInputScanState *) node);
+	goto Exec_Jmp_Done;
 
-		default:
-			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
-			result = NULL;
-			break;
-	}
+Exec_Jmp_Window:
+	result = ExecWindow((WindowState *) node);
+	goto Exec_Jmp_Done;
+Exec_Jmp_Repeat:
+	result = ExecRepeat((RepeatState *) node);
+	goto Exec_Jmp_Done;
 
+Exec_Jmp_Done:
 	if (node->instrument)
 		InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
 
@@ -656,9 +677,6 @@ ExecCountSlotsNode(Plan *node)
 			 */
 		case T_Result:
 			return ExecCountSlotsResult((Result *) node);
-
-		case T_Repeat:
-			return ExecCountSlotsRepeat((Repeat *) node);
 
 		case T_Append:
 			return ExecCountSlotsAppend((Append *) node);
@@ -755,6 +773,8 @@ ExecCountSlotsNode(Plan *node)
 		case T_Motion:
 			return ExecCountSlotsMotion((Motion *) node);
 
+		case T_Repeat:
+			return ExecCountSlotsRepeat((Repeat *) node);
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -862,10 +882,6 @@ ExecEndNode(PlanState *node)
 			 */
 		case T_ResultState:
 			ExecEndResult((ResultState *) node);
-			break;
-
-		case T_RepeatState:
-			ExecEndRepeat((RepeatState *) node);
 			break;
 
 		case T_AppendState:
@@ -991,6 +1007,11 @@ ExecEndNode(PlanState *node)
 			ExecEndMotion((MotionState *) node);
 			break;
 
+		case T_RepeatState:
+			ExecEndRepeat((RepeatState *) node);
+			break;
+
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -1034,10 +1055,6 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			 */
 		case T_ResultState:
 			nameTag = "Result";
-			break;
-
-		case T_RepeatState:
-			nameTag = "Repeat";
 			break;
 
 		case T_AppendState:
@@ -1152,6 +1169,9 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 			}
 			break;
 
+		case T_RepeatState:
+			nameTag = "Repeat";
+			break;
 		default:
 			nameTag = "*unknown*";
 			break;

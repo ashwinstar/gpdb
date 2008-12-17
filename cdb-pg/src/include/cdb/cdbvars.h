@@ -833,7 +833,7 @@ extern int gp_hashagg_compress_spill_files;
 
 /* Disable logging while creating mapreduce views */
 extern bool gp_mapreduce_define;
-
+extern bool coredump_on_memerror;
 
 /* Autostats feature for MPP-4082. */
 typedef enum

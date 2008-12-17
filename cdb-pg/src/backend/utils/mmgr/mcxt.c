@@ -417,7 +417,21 @@ MemoryContextError(int errorcode, MemoryContext context,
 
 	MemoryContextStats(TopMemoryContext);
 
-	Assert(!"MemoryContextError");
+	if(coredump_on_memerror)
+	{
+		/* 
+		 * Turn memory context into a SIGSEGV, so will generate
+		 * a core dump.
+		 *
+		 * XXX What is the right way of doing this?
+		 */
+		*(int *) NULL = errorcode;
+	}
+
+	if(errorcode != ERRCODE_OUT_OF_MEMORY) 
+	{
+		Assert(!"Memory context error!");
+	}
 
 	/* Format caller's message. */
 	va_start(args, fmt);
