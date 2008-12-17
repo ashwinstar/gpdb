@@ -250,7 +250,6 @@ def gpperfmon_setup():
     logloc_default=opt['MASTER_DATA_DIRECTORY'] + '/gpperfmon/logs'
 
     # defaults for webapi
-    remote_default = 'no'
     server_name_default = '[server name to display]'
     allow_trust_logon_default = '[no|yes] - setting to yes is insecure and only for testing'
 
@@ -262,7 +261,6 @@ def gpperfmon_setup():
     config.set('GPMMON', 'min_detailed_query_time', mindqt_default)
     config.set('GPMMON', 'verbose', verbose_default)
     config.set('GPMMON', 'log_location', logloc_default)
-    config.set('WEB APP', 'remote', remote_default)
     config.set('WEB APP', '#server_name', server_name_default)
     config.set('WEB APP', '#allow_trust_logon', allow_trust_logon_default)
 
