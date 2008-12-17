@@ -60,7 +60,7 @@ create table queries_history (
        db varchar(64) not null, -- database name for the query
        cost int not null, -- query cost (not implemented)
        tsubmit timestamp(0) not null, -- query submit time
-       tstart timestamp(0) not null,  -- query start time
+       tstart timestamp(0),  -- query start time
        tfinish timestamp(0) not null,    -- query end time
        status varchar(64) not null,   -- query status (start, end, abort)
        rows_out bigint not null, -- rows out for query
