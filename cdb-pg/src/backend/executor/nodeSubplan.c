@@ -1057,8 +1057,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * to finish unless an error is detected before all are dispatched.
 			 */
 
-			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &primaryResults, NULL, &dispatchThreads);
-
+			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &queryDesc->estate->primaryResults, NULL, &dispatchThreads);
+			primaryResults = queryDesc->estate->primaryResults;
 
 			SetupSequenceServer(queryDesc->estate->es_sliceTable);
 			
@@ -1290,7 +1290,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		
 		/* teardown the sequence server */
 		TeardownSequenceServer();
-		
 		
         /*
          * Clean up the interconnect.
