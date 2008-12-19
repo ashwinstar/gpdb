@@ -17,10 +17,9 @@ Usage: gpcheckcat <option> [dbname]
 import sys, os, subprocess, tempfile, stat
 from threading import Thread
 from datetime import datetime
+import getopt
 
-sys.path.append(sys.path[0] + '/lib')
 try:
-    import getopt
     import pg8000
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))

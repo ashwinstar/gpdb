@@ -21,11 +21,9 @@ from Queue     import Queue
 import urllib    # for passing strings across gpssh
 
 EXECNAME = os.path.split(__file__)[-1]
-libdir = sys.path[0] + '/lib'
-sys.path.append(libdir)
+
 try: 
     import pg8000
-#    import paramiko
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 

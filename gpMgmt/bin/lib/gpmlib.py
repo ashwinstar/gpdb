@@ -6,8 +6,10 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5.0 or greater
 Please upgrade python installed on this machine.''' % progname)
 
-import platform, pg8000, gplib, socket, random, popen2
+import platform,  gplib, socket, random, popen2
 from time import localtime, strftime
+
+import pg8000
 
 ##################
 log = {}

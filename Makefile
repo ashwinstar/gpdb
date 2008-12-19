@@ -338,6 +338,11 @@ copydocs :
 mgmtcopy :
 	@#Copy the management utilities
 	@mkdir -p $(INSTLOC)/bin
+	@mkdir -p $(INSTLOC)/lib
+	@mkdir -p $(INSTLOC)/lib/python	
+	@#Setup /lib/python contents
+	@cp -rp $(GPMGMT)/bin/gppylib $(INSTLOC)/lib/python
+	@cp -rp $(GPMGMT)/bin/ext/* $(INSTLOC)/lib/python
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
 	@cp -rp $(GPCC)/build/bin $(INSTLOC)
 	@cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
@@ -373,10 +378,13 @@ mgmtcopy :
 	@# Remove unwanted files.
 	@rm -rf $(INSTLOC)/bin/CVS
 	@rm -rf $(INSTLOC)/doc/CVS
+	@rm -rf $(INSTLOC)/bin/ext
 	@rm -rf $(INSTLOC)/bin/pythonSrc
 	@rm -rf $(INSTLOC)/bin/Makefile
 	@rm -rf $(INSTLOC)/bin/lib/CVS
+	@rm -rf $(INSTLOC)/bin/lib/.p4ignore
 	@rm -rf $(INSTLOC)/bin/src
+	@rm -rf $(INSTLOC)/bin/gppylib
 	@echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 

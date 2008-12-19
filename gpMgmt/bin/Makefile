@@ -14,7 +14,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 # INSTALL DIRECTORY
 #
 LIB_DIR=$(SRC)/lib
-
+PYLIB_DIR=$(SRC)/ext
 
 all: paramiko pycrypto stream netperf
 
@@ -54,7 +54,7 @@ paramiko:
 		(cd $(PYLIB_SRC)/ && tar -xzf $(PARAMIKO_DIR).tgz);\
 	fi
 	@(cd $(PYLIB_SRC)/$(PARAMIKO_DIR) && python setup.py build > /dev/null 2>&1 )
-	@cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(LIB_DIR)/
+	@cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(PYLIB_DIR)/
 
 
 #
@@ -71,7 +71,7 @@ pycrypto:
 		(cd $(PYLIB_SRC)/; tar -xzf $(PYCRYPTO_DIR).tar.gz)\
 	fi
 	@(cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) && python setup.py build > /dev/null 2>&1 )
-	@cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(LIB_DIR)
+	@cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(PYLIB_DIR)
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \

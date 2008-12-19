@@ -1,0 +1,29 @@
+
+
+=-=-=-=-=-=-=-=-=-=-=- PYTHON =-=-=-=-=-=-=-=-=-=-=-=
+
+For Developers
+==============
+
+If you'd like to run the python scripts directly from this 
+directory you will need to modify your PYTHONPATH variable to add the "ext" 
+directory.  so something like:
+
+	export PYTHONPATH=~/dev/cdb2/gpMgmt/bin/ext
+
+should do the trick.
+
+
+Python Version
+--------------
+
+* The current utilities bundle python 2.5.1.  We are planning on moving 
+  forward to 2.6.1 in the near future.
+
+
+Where Things Go
+---------------
+
+* We are trying to eliminate the "lib" directory here.  If you are adding a GP
+  module please add it to the gppylib dir.  If you are adding a 3rd party
+  module please add it to the ext dir.

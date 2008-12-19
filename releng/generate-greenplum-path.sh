@@ -57,6 +57,11 @@ EOF
     fi
 fi
 
+#setup PYTHONPATH
+cat <<EOF
+PYTHONPATH=\$GPHOME/lib/python:\$PYTHONPATH
+EOF
+
 cat <<EOF
 export GPHOME
 export PATH
@@ -71,3 +76,7 @@ cat <<EOF
 export DYLD_LIBRARY_PATH
 EOF
 fi
+
+cat <<EOF
+export PYTHONPATH
+EOF
