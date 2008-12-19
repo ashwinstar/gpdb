@@ -1257,12 +1257,22 @@ typedef struct BitmapOrState
  *		ScanTupleSlot	   pointer to slot in tuple table holding scan tuple
  * ----------------
  */
+enum {
+	SCAN_INIT 	= 0,
+	SCAN_SCAN 	= 1,
+	SCAN_MARKPOS 	= 2,
+	SCAN_DONE 	= 4,
+};
+
 typedef struct ScanState
 {
 	PlanState	ps;				/* its first field is NodeTag */
 	Relation	ss_currentRelation;
 	HeapScanDesc ss_currentScanDesc;
 	TupleTableSlot *ss_ScanTupleSlot;
+
+	int scan_state;
+
 	/* CKTAN */
 	struct {
 		HeapTupleData item[512];
@@ -1270,7 +1280,6 @@ typedef struct ScanState
 		HeapTuple last;
 		int seen_EOS;
 	} ss_heapTupleData;
-	
 } ScanState;
 
 /*

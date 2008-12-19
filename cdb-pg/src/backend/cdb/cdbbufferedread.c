@@ -61,7 +61,7 @@ void BufferedReadInit(
 	/*
 	 * Large-read memory level members.
 	 */
-    bufferedRead->maxBufferLen = maxBufferLen;
+	bufferedRead->maxBufferLen = maxBufferLen;
     bufferedRead->largeReadLen = largeReadLen;
 
 	bufferedRead->memory = memory;
@@ -460,14 +460,14 @@ void BufferedReadCompleteFile(
 {
 	Assert(bufferedRead != NULL);
 	Assert(bufferedRead->file >= 0);
-	
+
 	bufferedRead->file = -1;
-    bufferedRead->filePathName = NULL;
+	bufferedRead->filePathName = NULL;
 	bufferedRead->fileLen = 0;
-	
-    bufferedRead->bufferOffset = 0;
-    bufferedRead->bufferLen = 0;
-	
+
+	bufferedRead->bufferOffset = 0;
+	bufferedRead->bufferLen = 0;
+
 	bufferedRead->position = 0;
 }
 
@@ -475,14 +475,20 @@ void BufferedReadCompleteFile(
 /*
  * Finish with reading all together.
  */
-void BufferedReadFinish(
-    BufferedRead *bufferedRead)
+void BufferedReadFinish(BufferedRead *bufferedRead)
 {
 	Assert(bufferedRead != NULL);
-	
+
 	//Assert(bufferedRead->file == -1);
 	Assert(bufferedRead->fileLen == 0);
-	
-    Assert(bufferedRead->bufferOffset == 0);
-    Assert(bufferedRead->bufferLen == 0);	
+
+	Assert(bufferedRead->bufferOffset == 0);
+	Assert(bufferedRead->bufferLen == 0);	
+
+	if(bufferedRead->memory)
+	{
+		pfree(bufferedRead->memory);
+		bufferedRead->memory = NULL;
+		bufferedRead->memoryLen = 0; 
+	}
 }

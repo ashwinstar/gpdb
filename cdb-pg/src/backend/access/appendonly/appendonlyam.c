@@ -306,14 +306,8 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 		/* step away from per tuple context */
 		oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
-
 		memory = (uint8*)palloc(memoryLen);
 
-		if (memory == NULL)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("Cannot allocate memory %d bytes",
-								   memoryLen)));
-		
 		/*
 		 * Initialize the BufferedRead module with a large amount of memory.
 		 */
@@ -1422,6 +1416,12 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	
 	CloseScannedFileSeg(scan);	
 	BufferedReadFinish(&scan->bufferedRead);
+
+	if(scan->uncompressedBuffer)
+	{
+		pfree(scan->uncompressedBuffer);
+		scan->uncompressedBuffer = NULL;
+	}
 
 	pfree(scan->aos_filenamepath);
 	

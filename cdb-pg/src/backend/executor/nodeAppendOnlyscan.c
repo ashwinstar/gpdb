@@ -28,6 +28,13 @@
 
 static TupleTableSlot *AppendOnlyNext(AppendOnlyScanState *node);
 
+/* 
+ * Open/Close underlying AO table.
+ * Open/Close means resource acquisition and release.
+ */
+static void OpenAOScanRelation(AppendOnlyScanState *node);
+static void CloseAOScanRelation(AppendOnlyScanState *node);
+
 /* ----------------------------------------------------------------
  *						Scan Support
  * ----------------------------------------------------------------
@@ -47,6 +54,7 @@ AppendOnlyNext(AppendOnlyScanState *node)
 	ScanDirection direction;
 	TupleTableSlot *slot;
 
+	Assert((node->ss.scan_state & SCAN_SCAN) != 0);
 	/*
 	 * get information from the estate and scan state
 	 */
@@ -80,12 +88,22 @@ ExecAppendOnlyScan(AppendOnlyScanState *node)
 	/*
 	 * use AppendOnlyNext as access method
 	 */
-	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) AppendOnlyNext);
+	TupleTableSlot *slot;
+	
+	if((node->ss.scan_state & SCAN_SCAN) == 0)
+		OpenAOScanRelation(node);
+			
+	slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) AppendOnlyNext);
      	if (!TupIsNull(slot))
         {
      		Gpmon_M_Incr_Rows_Out(GpmonPktFromAppOnlyScanState(node));
                 CheckSendPlanStateGpmonPkt(&node->ss.ps);
         }
+
+	Assert((node->ss.scan_state & SCAN_MARKPOS) == 0);
+	if(TupIsNull(slot))
+		CloseAOScanRelation(node);
+
 	return slot;
 }
 
@@ -99,7 +117,6 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 {
 	AppendOnlyScanState	*appendonlystate;
 	Relation			currentRelation;
-	AppendOnlyScanDesc	currentScanDesc;
 	
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
@@ -141,12 +158,7 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	 * and open that relation.
 	 */
 	currentRelation = ExecOpenScanRelation(estate, node->scan.scanrelid);	
-	
-	currentScanDesc = appendonly_beginscan(currentRelation, estate->es_snapshot, 0, NULL);
-	
 	appendonlystate->ss.ss_currentRelation = currentRelation;
-	appendonlystate->aos_ScanDesc = currentScanDesc;
-	
 	ExecAssignScanType(&appendonlystate->ss, RelationGetDescr(currentRelation));
 	
 	/*
@@ -178,6 +190,35 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 
 	return appendonlystate;
 }
+
+/*
+ * Open/Close underlying relation for AO Scan.
+ * 
+ * Open/Close means resource allocation/release.  Here, it is file descriptors
+ * and the buffers in the aos_ScanDesc.
+ * 
+ * See nodeSeqscan.c as well.
+ */
+static void OpenAOScanRelation(AppendOnlyScanState *node)
+{
+	Assert(node->ss.scan_state == SCAN_INIT || node->ss.scan_state == SCAN_DONE);
+	Assert(!node->aos_ScanDesc);
+
+	node->aos_ScanDesc = appendonly_beginscan(
+			node->ss.ss_currentRelation, 
+			node->ss.ps.state->es_snapshot, 
+			0, NULL);
+	node->ss.scan_state = SCAN_SCAN;
+}
+
+static void CloseAOScanRelation(AppendOnlyScanState *node)
+{
+	Assert((node->ss.scan_state & SCAN_SCAN) != 0);
+	appendonly_endscan(node->aos_ScanDesc);
+	node->aos_ScanDesc = NULL;
+	node->ss.scan_state = SCAN_INIT;
+}
+
 
 int
 ExecCountSlotsAppendOnlyScan(AppendOnlyScan *node)
@@ -216,10 +257,8 @@ ExecEndAppendOnlyScan(AppendOnlyScanState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
-	/*
-	 * close heap scan
-	 */
-	appendonly_endscan(scanDesc);
+	if((node->ss.scan_state & SCAN_SCAN) != 0)
+		CloseAOScanRelation(node);
 
 	/*
 	 * close the heap relation.
@@ -257,6 +296,9 @@ ExecAppendOnlyReScan(AppendOnlyScanState *node, ExprContext *exprCtxt)
 		estate->es_evTupleNull[scanrelid - 1] = false;
 		return;
 	}
+
+	if((node->ss.scan_state & SCAN_SCAN) == 0)
+		OpenAOScanRelation(node);
 
 	scan = node->aos_ScanDesc;
 

@@ -36,6 +36,12 @@
 #include "miscadmin.h"
 
 static void InitScanRelation(SeqScanState *node, EState *estate);
+
+/* Open and close scanned relation Open/Close means resource acquisition. 
+ */
+static void OpenScanRelation(SeqScanState *node);
+static void CloseScanRelation(SeqScanState *node);
+
 static TupleTableSlot *SeqNext(SeqScanState *node);
 
 /* ----------------------------------------------------------------
@@ -57,6 +63,8 @@ SeqNext(SeqScanState *node)
 	EState	   *estate;
 	ScanDirection direction;
 	TupleTableSlot *slot;
+
+	Assert((node->scan_state & SCAN_SCAN) != 0);
 
 	/*
 	 * get information from the estate and scan state
@@ -156,12 +164,21 @@ ExecSeqScan(SeqScanState *node)
 	/*
 	 * use SeqNext as access method
 	 */
-	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
+	TupleTableSlot *slot;
+	
+	if((node->scan_state & SCAN_SCAN) == 0)
+		OpenScanRelation(node);
+
+	slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
      	if (!TupIsNull(slot))
         {
      		Gpmon_M_Incr_Rows_Out(GpmonPktFromSeqScanState(node)); 
                 CheckSendPlanStateGpmonPkt(&node->ps);
         }
+
+	if(TupIsNull(slot) && ((node->scan_state & SCAN_MARKPOS) == 0))
+		CloseScanRelation(node);
+
 	return slot;
 }
 
@@ -176,28 +193,69 @@ static void
 InitScanRelation(SeqScanState *node, EState *estate)
 {
 	Relation	currentRelation;
-	HeapScanDesc currentScanDesc;
 
 	/*
 	 * get the relation object id from the relid'th entry in the range table,
 	 * open that relation and acquire appropriate lock on it.
 	 */
-	currentRelation = ExecOpenScanRelation(estate,
-									 ((SeqScan *) node->ps.plan)->scanrelid);
-
-	currentScanDesc = heap_beginscan(currentRelation,
-									 estate->es_snapshot,
-									 0,
-									 NULL);
+	currentRelation = ExecOpenScanRelation(estate, ((SeqScan *) node->ps.plan)->scanrelid);
 
 	node->ss_currentRelation = currentRelation;
-	node->ss_currentScanDesc = currentScanDesc;
+	ExecAssignScanType(node, RelationGetDescr(currentRelation));
+}
+
+/* ---------------------------------------------------------------
+ * Open underlying relation for scan.  
+ * Open means resource acquisition, in seq scan, file descriptor.
+ * 
+ * We delay open as much as possible, and later, close as early as
+ * possible to prevent from hogging lots of resources.  This is
+ * very important because now some user partition a talbe to thousands
+ * of smaller ones.  If we are not careful, we cannot even do a 
+ * scan on the table.  
+ *
+ * We need to do this for all the scanners.  See nodeAppendOnlyscan.c
+ * as well.
+ * --------------------------------------------------------------
+ */
+static void 
+OpenScanRelation(SeqScanState *node)
+{
+	Assert(node->scan_state == SCAN_INIT || node->scan_state == SCAN_DONE);
+	Assert(!node->ss_currentScanDesc);
+
+	node->ss_currentScanDesc = heap_beginscan(
+			node->ss_currentRelation,
+			node->ps.state->es_snapshot,
+			0,
+			NULL);
+
 	/* CKTAN- */
 	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
 		= node->ss_heapTupleData.seen_EOS = 0;
 	node->ss_heapTupleData.last = NULL;
 
-	ExecAssignScanType(node, RelationGetDescr(currentRelation));
+	node->scan_state = SCAN_SCAN;
+}
+
+/* ----------------------------------------------------------------
+ * Close the scanned relation.
+ * Close means release resource.
+ * ----------------------------------------------------------------
+ */
+static void 
+CloseScanRelation(SeqScanState *node)
+{
+	Assert((node->scan_state & SCAN_SCAN) != 0);
+
+	heap_endscan(node->ss_currentScanDesc);
+
+	node->ss_heapTupleData.top = 0;
+	node->ss_heapTupleData.bot = 0;
+	node->ss_heapTupleData.seen_EOS = 1;
+	node->ss_heapTupleData.last = NULL;
+	node->ss_currentScanDesc = NULL;
+	node->scan_state = SCAN_INIT;
 }
 
 
@@ -304,13 +362,11 @@ void
 ExecEndSeqScan(SeqScanState *node)
 {
 	Relation	relation;
-	HeapScanDesc scanDesc;
 
 	/*
 	 * get information from node
 	 */
 	relation = node->ss_currentRelation;
-	scanDesc = node->ss_currentScanDesc;
 
 	/*
 	 * Free the exprcontext
@@ -323,14 +379,8 @@ ExecEndSeqScan(SeqScanState *node)
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss_ScanTupleSlot);
 
-	/*
-	 * close heap scan
-	 */
-	heap_endscan(scanDesc);
-	/* CKTAN */
-	node->ss_heapTupleData.bot = node->ss_heapTupleData.top = 0;
-	node->ss_heapTupleData.seen_EOS = 1;
-	node->ss_heapTupleData.last = NULL;
+	if((node->scan_state & SCAN_SCAN) != 0)
+		CloseScanRelation(node);
 
 	/*
 	 * close the heap relation.
@@ -372,6 +422,9 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 		return;
 	}
 
+	if((node->scan_state & SCAN_SCAN) == 0)
+		OpenScanRelation(node);
+
 	scan = node->ss_currentScanDesc;
 
 	heap_rescan(scan,			/* scan desc */
@@ -396,10 +449,14 @@ ExecSeqMarkPos(SeqScanState *node)
 {
 	HeapScanDesc scan = node->ss_currentScanDesc;
 
+	Assert((node->scan_state & SCAN_SCAN) != 0);
+
 	/* CKTAN
 	heap_markpos(scan);
 	*/
 	heap_markposx(scan, node->ss_heapTupleData.last);
+
+	node->scan_state |= SCAN_MARKPOS;
 }
 
 /* ----------------------------------------------------------------
@@ -413,6 +470,9 @@ ExecSeqRestrPos(SeqScanState *node)
 {
 	HeapScanDesc scan = node->ss_currentScanDesc;
 
+	Assert((node->scan_state & SCAN_SCAN) != 0);
+	Assert((node->scan_state & SCAN_MARKPOS) != 0);
+
 	/*
 	 * Clear any reference to the previously returned tuple.  This is needed
 	 * because the slot is simply pointing at scan->rs_cbuf, which
@@ -424,6 +484,8 @@ ExecSeqRestrPos(SeqScanState *node)
 	heap_restrpos(scan);
 	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_RESTOREPOS);
 	CheckSendPlanStateGpmonPkt(&node->ps);
+
+	node->scan_state &= (~ ((int) SCAN_MARKPOS));
 }
 
 /* Gpmon helpers. */
