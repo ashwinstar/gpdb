@@ -685,6 +685,8 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	node->sub_estate = sp_estate;
 
 	sp_estate->es_range_table = subplan->rtable;
+
+	sp_estate->es_topPlan = estate->es_topPlan; /* needed to calculate correct paramIds. */
 	sp_estate->es_param_list_info = estate->es_param_list_info;
 	sp_estate->es_param_exec_vals = estate->es_param_exec_vals;
 	sp_estate->es_tupleTable =

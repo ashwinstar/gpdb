@@ -121,6 +121,7 @@ SubqueryNext(SubqueryScanState *node)
         Gpmon_M_Incr_Rows_Out(GpmonPktFromSubqueryScanState(node));
         CheckSendPlanStateGpmonPkt(&node->ss.ps);
     }
+
     return slot;
 }
 
@@ -227,6 +228,8 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	subquerystate->sss_SubEState = sp_estate;
 
 	sp_estate->es_range_table = rte->subquery->rtable;
+
+	sp_estate->es_topPlan = estate->es_topPlan; /* needed to calculate correct paramIds. */
 	sp_estate->es_param_list_info = estate->es_param_list_info;
 	sp_estate->es_param_exec_vals = estate->es_param_exec_vals;
 	sp_estate->es_tupleTable =
