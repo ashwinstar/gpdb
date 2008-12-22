@@ -28,6 +28,7 @@
 
 #include "executor/executor.h"
 #include "executor/nodeRepeat.h"
+#include "parser/parsetree.h"
 
 static void init_RepeatState(RepeatState *repeatstate);
 
@@ -70,6 +71,8 @@ ExecRepeat(RepeatState *repeatstate)
 				/* Check the qual until we find one output tuple. */
 				if (ExecQual(repeatstate->ps.qual, econtext, false))
 				{
+					Gpmon_M_Incr_Rows_Out(GpmonPktFromRepeatState(repeatstate));
+					CheckSendPlanStateGpmonPkt(&repeatstate->ps);
 					return ExecProject(repeatstate->ps.ps_ProjInfo, NULL);
 				}
 			} while (repeatstate->repeat_count > 0);
@@ -119,6 +122,8 @@ ExecRepeat(RepeatState *repeatstate)
 			/* Check the qual until we find one output tuple. */
 			if (ExecQual(repeatstate->ps.qual, econtext, false))
 			{
+				Gpmon_M_Incr_Rows_Out(GpmonPktFromRepeatState(repeatstate));
+				CheckSendPlanStateGpmonPkt(&repeatstate->ps);
 				return ExecProject(repeatstate->ps.ps_ProjInfo, NULL);
 			}
 		} while (repeatstate->repeat_count > 0);
@@ -171,6 +176,17 @@ ExecInitRepeat(Repeat *node, EState *estate, int eflags)
 
 	init_RepeatState(repeatstate);
 	
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_REPEAT_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_REPEAT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&repeatstate->ps, "RepeatNode",
+							  (int64)repeatstate->ps.plan->plan_rows, m, NULL);
+	}
+
 	return repeatstate;
 }
 
@@ -191,6 +207,8 @@ ExecEndRepeat(RepeatState *node)
 	
 	/* End the subplans */
 	ExecEndNode(outerPlanState(node));
+	
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 void
