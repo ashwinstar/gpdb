@@ -10329,6 +10329,16 @@ target_el:	a_expr AS ColLabel
 					$$->val = (Node *)n;
 					$$->location = @1;
 				}
+			/* allow optional "AS" in some cases... */
+			| c_expr IDENT
+				{
+					$$ = makeNode(ResTarget);
+					$$->name = $2;
+					$$->indirection = NIL;
+					$$->val = (Node *)$1;
+					$$->location = @1;
+				}
+
 		;
 
 
