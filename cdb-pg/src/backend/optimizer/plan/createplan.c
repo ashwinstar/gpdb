@@ -2623,8 +2623,12 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 							  (Plan *) hash_plan,
 							  best_path->jpath.jointype);
 
+	/* 
+	 * MPP-4635.  best_path->jpath.outerjoinpath may be NULL.  
+	 * From the comment, it is adaptive nestloop join may cause this.
+	 */
 	/*
-     * MPP-4165: we need to descend left-first if *either* of the
+	 * MPP-4165: we need to descend left-first if *either* of the
 	 * subplans have any motion.
 	 */
 	/*
@@ -2633,7 +2637,8 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 	 * (allowing us to check the outer for rows before building the
 	 * hash-table).
 	 */
-	if (best_path->jpath.outerjoinpath->motionHazard ||
+	if (best_path->jpath.outerjoinpath == NULL ||
+		best_path->jpath.outerjoinpath->motionHazard ||
 		best_path->jpath.innerjoinpath->motionHazard)
 	{
 		join_plan->join.prefetch_inner = true;
