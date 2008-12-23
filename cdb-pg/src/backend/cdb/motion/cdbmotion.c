@@ -996,7 +996,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			/* There shouldn't be any partial tuple data in the list! */
 			if (chunkSorterEntry->chunk_list.num_chunks != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				   errmsg("Received TC_WHOLE chunk from [src=%d,mn=%d] after"
 						  " partial tuple data.", srcRoute, motNodeID)));
 			}
@@ -1013,7 +1013,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			/* There shouldn't be any partial tuple data in the list! */
 			if (chunkSorterEntry->chunk_list.num_chunks != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				 errmsg("Received TC_PARTIAL_START chunk from [src=%d,mn=%d]"
 						" after partial tuple data.", srcRoute, motNodeID)));
 			}
@@ -1034,7 +1034,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			/* There should be partial tuple data in the list. */
 			if (chunkSorterEntry->chunk_list.num_chunks <= 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				   errmsg("Received TC_PARTIAL_MID chunk from [src=%d,mn=%d]"
 				  " without any leading tuple data.", srcRoute, motNodeID)));
 			}
@@ -1055,7 +1055,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			/* There should be partial tuple data in the list. */
 			if (chunkSorterEntry->chunk_list.num_chunks <= 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				   errmsg("Received TC_PARTIAL_END chunk from [src=%d,mn=%d]"
 				  " without any leading tuple data.", srcRoute, motNodeID)));
 			}
@@ -1074,7 +1074,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			/* There shouldn't be any partial tuple data in the list! */
 			if (chunkSorterEntry->chunk_list.num_chunks != 0)
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 				 errmsg("Received TC_END_OF_STREAM chunk from [src=%d,mn=%d]"
 						" after partial tuple data.", srcRoute, motNodeID)));
 			}
@@ -1083,7 +1083,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 
 			if (chunkSorterEntry->end_of_stream)
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("Received end-of-stream chunk from"
 				  " [src=%d,mn=%d] when already marked as at end-of-stream.",
 									   srcRoute, motNodeID)));
@@ -1105,7 +1105,7 @@ addChunkToSorter(MotionLayerState *mlStates,
 			break;
 
 		default:
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			   errmsg("Received tuple chunk of unrecognized type %d (len %d)"
 					  " from [src=%d,mn=%d].",
 					  tcType, tcItem->chunk_length, srcRoute, motNodeID)));
