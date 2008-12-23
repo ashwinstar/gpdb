@@ -15,6 +15,7 @@
 #include "commands/copy.h"
 #include "commands/dbcommands.h"
 #include "libpq/libpq-be.h"
+#include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -129,7 +130,6 @@ write_callback(char *buffer,
 			if (!newbuf)
 			{
 				elog(ERROR, "out of memory");
-				return -1;
 			}
 			curl->buf.ptr = newbuf;
 			curl->buf.max = n;
@@ -181,7 +181,6 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 			sleep(1);
 			elog(ERROR, "http response code %ld while %s", response_code, file->url);
 		}
-		return -1;
 	}
 
 	return 0;
@@ -189,7 +188,7 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 
 
 /* use to attempt to fill the read buffer up to requested number of bytes */
-/* return 0 if successful, -1 otherwise */
+/* return 0 if successful; raises ERROR otherwise */
 static int
 fill_buffer(URL_FILE *file,int want)
 {
@@ -221,7 +220,6 @@ fill_buffer(URL_FILE *file,int want)
 		{
 			elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)",
 				 e, curl_easy_strerror(e));
-			return -1;
 		}
 
 		if (maxfd <= 0)
@@ -236,7 +234,6 @@ fill_buffer(URL_FILE *file,int want)
 				continue;
 			elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)",
 				 maxfd, errno, strerror(errno));
-			return -1;
 		}
 
 		if (nfds > 0)
@@ -251,7 +248,6 @@ fill_buffer(URL_FILE *file,int want)
 			{
 				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 					 e, curl_easy_strerror(e));
-				return -1;
 			}
         }
 
@@ -272,7 +268,6 @@ set_httpheader(URL_FILE *fcurl, const char *name, const char *value)
 	if (strlen(name) + strlen(value) + 5 > sizeof(tmp))
 	{
 		elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value);
-		return -1;
 	}
 	sprintf(tmp, "%s: %s", name, value);
 	fcurl->u.curl.x_httpheader = curl_slist_append(fcurl->u.curl.x_httpheader, tmp);
@@ -395,7 +390,6 @@ make_url(const char *url, extvar_t *ev, char *buf)
 	if (! authority_start)
 	{
 		elog(ERROR, "illegal url '%s'", url);
-		return -1;
 	}
 
 	authority_start += 2;
@@ -414,7 +408,6 @@ make_url(const char *url, extvar_t *ev, char *buf)
 	if (hostname_end - hostname_start >= sizeof(hostname))
 	{
 		elog(ERROR, "hostname too long for url '%s'", url);
-		return -1;
 	}
 
 	memcpy(hostname, hostname_start, hostname_end - hostname_start);
@@ -447,13 +440,11 @@ make_url(const char *url, extvar_t *ev, char *buf)
 		}
 		if (4 != sscanf(line, "%d.%d.%d.%d", &a, &b, &c, &d)) {
 			elog(ERROR, "unable to resolve host '%s' in url '%s'", hostname, url);
-			return -1;
 		}
 		sprintf(hostip, "%d.%d.%d.%d", a, b, c, d);
 		/* elog(NOTICE, "IP: %s", hostip); */
 #else
 		elog(ERROR, "unable to resolve host '%s' in url '%s'", hostname, url);
-		return -1;
 #endif
 	}
 
@@ -495,9 +486,6 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
     if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
 		elog(ERROR, "out of memory");
-		*response_code = 500;
-		*response_string = "Out of memory";
-		return NULL;
 	}
     memset(file, 0, sizeof(URL_FILE));
 
@@ -512,6 +500,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 	{
 		int save_errno;
 		struct itimers savetimers;
+		pqsigfunc save_SIGPIPE;
 
 		char *cmd = url + strlen(exec_prefix);
 		int sz = make_command(cmd, ev, 0);
@@ -524,8 +513,18 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* Clear process interval timers */
 		resetTimers(&savetimers);
 
+		/*
+		 * Preserve the SIGPIPE handler and set to default handling.  This
+		 * allows "normal" SIGPIPE handling in the command pipeline.  Normal
+		 * for PG is to *ignore* SIGPIPE.
+		 */
+		save_SIGPIPE = pqsignal(SIGPIPE, SIG_DFL);
+
 		file->u.exec.fp = popen(shexec, "r");
 		save_errno = errno;
+
+		/* Restore the SIGPIPE handler */
+		pqsignal(SIGPIPE, save_SIGPIPE);
 
 		/* Restore process interval timers */
 		restoreTimers(&savetimers);
@@ -533,11 +532,12 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		if (file->u.exec.fp == NULL)
 		{
 			errno = save_errno;
-			elog( ERROR, "External Table error executing cmd: '%s'", cmd );
-			*response_code = 500;
-			*response_string = "Internal Server Error";
 			free(file);
-			return NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+							errmsg("cannot start external table command: %m"),
+							errdetail("Command: %s", url)));
+
 		}
 	}
     else if (IS_FILE_URI(url))
@@ -547,11 +547,8 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		memset(&fo,0,sizeof fo);
 		if (!path)
 		{
-			elog(ERROR, "External Table error opening file: '%s'", url);
-			*response_code = 400;
-			*response_string = "Bad Request";
 			free(file);
-			return NULL;
+			elog(ERROR, "External Table error opening file: '%s'", url);
 		}
 
 		file->type = CFTYPE_FILE; /* marked as local FILE */
@@ -576,11 +573,8 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
         file->type = CFTYPE_CURL; /* marked as URL */
 		if (sz < 0)
 		{
+			url_fclose(file, false);
 			elog(ERROR, "illegal URL: %s", file->url);
-			url_fclose(file);
-			*response_code = 400;
-			*response_string = "Bad Request";
-			return NULL;
 		}
 
 		file->u.curl.curl_url = palloc(sz);
@@ -595,82 +589,58 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
         if (! (file->u.curl.handle = curl_easy_init()))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_init failed");
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_init failed";
-			return NULL;
 		}
 
 		/* elog(NOTICE, "URL: %s", file->u.curl.curl_url); */
 
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error (%d - %s)",
 				 file->u.curl.curl_url,
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
 		/* set callback for each header received from server */
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HEADERFUNCTION, header_callback)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
 		/* file gets passed to header_callback */
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEHEADER, file)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
 		/* set callback for each data block received from server */
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
 		/* file gets passed to write_callback */
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
 		}
 
 		file->u.curl.x_httpheader = NULL;
@@ -690,32 +660,23 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID) ||
 			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: some variable value is too long");
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "Internal Server Error";
-			return NULL;
 		}
 
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_easy_setopt failed";
-			return NULL;
         }
 
         if (!multi_handle)
 		{
             if (! (multi_handle = curl_multi_init()))
 			{
+				url_fclose(file, false);
 				elog(ERROR, "internal error: curl_multi_init failed");
-				url_fclose(file);
-				*response_code = 500;
-				*response_string = "curl_multi_init failed";
-				return NULL;
 			}
 		}
 
@@ -723,12 +684,9 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		{
 			if (CURLM_CALL_MULTI_PERFORM != e)
 			{
+				url_fclose(file, false);
 				elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)",
 					 e, curl_easy_strerror(e));
-				url_fclose(file);
-				*response_code = 500;
-				*response_string = "curl_multi_init_add_handle failed";
-				return NULL;
 			}
 		}
 
@@ -738,12 +696,9 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		if (e != 0)
 		{
+			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 				 e, curl_easy_strerror(e));
-			url_fclose(file);
-			*response_code = 500;
-			*response_string = "curl_multi_perform failed";
-			return NULL;
 		}
 
 		/* read some bytes to make sure the connection is established */
@@ -752,31 +707,67 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* check the connection */
 		if (check_response(file,response_code,response_string))
 		{
-			url_fclose(file);
+			url_fclose(file, false);
 			return NULL;
 		}
     }
     return file;
 }
 
+/*
+ * url_fclose: Disposes of resources associated with this external web table.
+ *
+ * If failOnClose is true, errors encountered while closing the resource results
+ * in raising an ERROR.  This is particularly true for "execute:" resources where
+ * command termination is not reflected until close is called.  If failOnClose is
+ * false, close errors are just logged.  failOnClose should be false when closure
+ * is due to LIMIT clause satisfaction.
+ */
 int
-url_fclose(URL_FILE *file)
+url_fclose(URL_FILE *file, bool failOnError)
 {
+	enum fcurl_type_e type = file->type;
     int ret=0;/* default is good return */
 
-    switch (file->type)
+	char *url = palloc(strlen(file->url));
+	strcpy(url, file->url);
+
+    switch (type)
     {
 		case CFTYPE_FILE:
 			fstream_close(file->u.file.fp);
+			/* fstream_close() returns no error indication. */
 			break;
 
 		case CFTYPE_EXEC:
 			ret = pclose(file->u.exec.fp);
-			if (ret != 0)
+			if (ret == 0)
 			{
-				char buf[128];
-				elog(DEBUG1, "Stream for \"%s\" closed: %s",
-                            file->url, interpretExitCode(ret, buf, sizeof(buf)/sizeof(char)));
+				/* pclose() ended successfully; no errors to reflect */
+				;
+			}
+			else if (ret == -1)
+			{
+				/* pclose()/wait4() ended with an error; errno should be valid */
+				free(file);
+				ereport( (failOnError ? ERROR : LOG),
+						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+								errmsg("cannot close external table command: %m"),
+								errdetail("Command: %s", url)));
+			}
+			else
+			{
+				/*
+				 * pclose() returned the process termination state.  The interpretExitCode() function
+				 * generates a descriptive message from the exit code.
+				 */
+				char buf[512];
+				free(file);
+				ereport( (failOnError ? ERROR : LOG),
+						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+								errmsg("external table command ended with error: %s",
+										interpretExitCode(ret, buf, sizeof(buf)/sizeof(char))),
+								errdetail("Command: %s", url)));
 			}
 			break;
 
@@ -809,8 +800,10 @@ url_fclose(URL_FILE *file)
 			break;
 
 		default: /* unknown or supported type - oh dear */
-			ret=EOF;
-			errno=EBADF;
+			free(file);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg_internal("external table type not implemented: %d", type)));
 			break;
     }
 
@@ -1158,7 +1151,7 @@ url_rewind(URL_FILE *file)
 		case CFTYPE_EXEC:
 			/* we'll need to execute the command again */
 			assert(0); /* There is no way the following code is right. */
-			url_fclose(file);
+			url_fclose(file, true);
 
 			/* most of these are null fo us. */
 			url_fopen(url, NULL, NULL,NULL,NULL,0);
@@ -1191,8 +1184,6 @@ url_rewind(URL_FILE *file)
 /*
  * interpretExitCode - formats a brief message and the exit code from pclose()
  * 		(or wait4()).
- *
- *
  */
 static char *
 interpretExitCode(int rc, char *buf, size_t buflen)
@@ -1215,7 +1206,8 @@ interpretExitCode(int rc, char *buf, size_t buflen)
 		}
 		else
 		{
-			snprintf(buf, buflen, "EXITED; rc=%d: %s", exitCode, strerror(exitCode));
+			/* Exit codes from commands rarely map to strerror() strings */
+			snprintf(buf, buflen, "EXITED; rc=%d [raw=%#x]", exitCode, rc);
 		}
 	}
 	else if (WIFSIGNALED(rc))

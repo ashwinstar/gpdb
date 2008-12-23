@@ -20,21 +20,22 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
-extern FileScanDesc file_beginscan(Relation relation, Index scanrelid, 
-								   uint32 scancounter, List *uriList, 
+extern FileScanDesc file_beginscan(Relation relation, Index scanrelid,
+								   uint32 scancounter, List *uriList,
 								   List *fmtOpts, bool isText, bool isMasterOnly,
-								   int rejLimit, bool rejLimitInRows, 
+								   int rejLimit, bool rejLimitInRows,
 								   Oid fmterrtbl, int encoding);
 extern void file_rescan(FileScanDesc scan);
 extern void file_endscan(FileScanDesc scan);
+extern void file_stopscan(FileScanDesc scan);
 extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
 extern void AtAbort_ExtTables(void);
 char*linenumber_atoi(char buffer[20],int64_t linenumber);
 
 typedef enum DataLineStatus
 {
-	LINE_OK,					
-	LINE_ERROR,				
+	LINE_OK,
+	LINE_ERROR,
 	NEED_MORE_DATA,
 	END_MARKER
 } DataLineStatus;

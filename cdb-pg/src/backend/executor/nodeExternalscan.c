@@ -14,6 +14,7 @@
  *		ExecExternalNext				retrieve next tuple in sequential order.
  *		ExecInitExternalScan			creates and initializes a externalscan node.
  *		ExecEndExternalScan				releases any storage allocated.
+ *		ExecStopExternalScan			closes external resources before EOD.
  *		ExecExternalReScan				rescans the relation
  */
 #include "postgres.h"
@@ -48,7 +49,7 @@ ExternalNext(ExternalScanState *node)
 	EState	   *estate;
 	ScanDirection direction;
 	TupleTableSlot *slot;
-		
+
 	/*
 	 * get information from the estate and scan state
 	 */
@@ -57,12 +58,12 @@ ExternalNext(ExternalScanState *node)
 	scanrelid = ((ExternalScan *) node->ss.ps.plan)->scan.scanrelid;
 	direction = estate->es_direction;
 	slot = node->ss.ss_ScanTupleSlot;
-		
+
 	/*
 	 * get the next tuple from the file access methods
 	 */
 	tuple = file_getnext(scandesc, direction);
-	
+
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
 	 * our scan tuple slot and return the slot.  Note: we pass 'false' because
@@ -75,11 +76,11 @@ ExternalNext(ExternalScanState *node)
      	{
             Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
             CheckSendPlanStateGpmonPkt(&node->ss.ps);
-            ExecStoreGenericTuple(tuple, slot, true);	
+            ExecStoreGenericTuple(tuple, slot, true);
     	}
 	else
 		ExecClearTuple(slot);
-	
+
 	return slot;
 }
 
@@ -113,24 +114,24 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	ExternalScanState *externalstate;
 	Relation	currentRelation;
 	FileScanDesc currentScanDesc;
-	
+
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
-	
+
 	/*
 	 * create state structure
 	 */
 	externalstate = makeNode(ExternalScanState);
 	externalstate->ss.ps.plan = (Plan *) node;
 	externalstate->ss.ps.state = estate;
-	
+
 	/*
 	 * Miscellaneous initialization
 	 *
 	 * create expression context for node
 	 */
 	ExecAssignExprContext(estate, &externalstate->ss.ps);
-	
+
 	/*
 	 * initialize child expressions
 	 */
@@ -140,22 +141,22 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	externalstate->ss.ps.qual = (List *)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) externalstate);
-	
+
 #define EXTSCAN_NSLOTS 2
-	
+
 	/*
 	 * tuple table initialization
 	 */
 	ExecInitResultTupleSlot(estate, &externalstate->ss.ps);
 	ExecInitScanTupleSlot(estate, &externalstate->ss);
-	
+
 	/*
 	 * get the relation object id from the relid'th entry in the range table
 	 * and open that relation.
 	 */
-	currentRelation = ExecOpenScanExternalRelation(estate, node->scan.scanrelid);	
-	
-	
+	currentRelation = ExecOpenScanExternalRelation(estate, node->scan.scanrelid);
+
+
 	currentScanDesc = file_beginscan(currentRelation,
 									 node->scan.scanrelid,
 									 node->scancounter,
@@ -167,35 +168,35 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 									 node->rejLimitInRows,
 									 node->fmterrtbl,
 									 node->encoding);
-	
+
 	externalstate->ss.ss_currentRelation = currentRelation;
 	externalstate->ess_ScanDesc = currentScanDesc;
-	
+
 	ExecAssignScanType(&externalstate->ss, RelationGetDescr(currentRelation));
-	
+
 	/*
 	 * Initialize result tuple type and projection info.
 	 */
 	ExecAssignResultTypeFromTL(&externalstate->ss.ps);
 	ExecAssignScanProjectionInfo(&externalstate->ss);
-	
+
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
 			GPMON_QEXEC_M_INIT_ROWS_IN(0),
                	{ "External Scan Rescan", "Rescans", 0 },
 			{ NULL, NULL, 0}
 		};
-		
+
 		RangeTblEntry *rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
 		char schema_rel_name[NAMEDATALEN * 2] = {0};
-		
+
 		Gpmon_NameVal_Text t[GPMON_QEXEC_T_COUNT + 1] = {
 			GPMON_QEXEC_T_RELATION(GetScanRelNameGpmon(rte->relid, schema_rel_name)),
 			{ NULL, NULL }
 		};
 
 		Assert(GPMON_EXTSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&externalstate->ss.ps, "External Scan", 
+		InitPlanStateGpmonPkt(&externalstate->ss.ps, "External Scan",
                                       (int64)externalstate->ss.ps.plan->plan_rows,
                                       m, t);
 	}
@@ -223,34 +224,59 @@ ExecEndExternalScan(ExternalScanState *node)
 {
 	Relation	relation;
 	FileScanDesc fileScanDesc;
-	
+
 	/*
 	 * get information from node
 	 */
 	relation = node->ss.ss_currentRelation;
 	fileScanDesc = node->ess_ScanDesc;
-	
+
 	/*
 	 * Free the exprcontext
 	 */
 	ExecFreeExprContext(&node->ss.ps);
-	
+
 	/*
 	 * clean out the tuple table
 	 */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	
+
 	/*
 	 * close file scan
 	 */
 	file_endscan(fileScanDesc);
-	
+
 	/*
 	 * close the external relation.
 	 */
 	ExecCloseScanRelation(relation);
 	EndPlanStateGpmonPkt(&node->ss.ps);
+}
+
+/* ----------------------------------------------------------------
+*		ExecStopExternalScan
+*
+*		Performs identically to ExecEndExternalScan except that
+*		closure errors are ignored.  This function is called for
+*		normal termination when the external data source is NOT
+*		exhausted (such as for a LIMIT clause).
+* ----------------------------------------------------------------
+*/
+void
+ExecStopExternalScan(ExternalScanState *node)
+{
+	FileScanDesc fileScanDesc;
+
+	/*
+	 * get information from node
+	 */
+	fileScanDesc = node->ess_ScanDesc;
+
+	/*
+	 * stop the file scan
+	 */
+	file_stopscan(fileScanDesc);
 }
 
 
@@ -271,10 +297,10 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
 	EState	   *estate;
 	Index		scanrelid;
 	FileScanDesc fileScan;
-	
+
 	estate = node->ss.ps.state;
 	scanrelid = ((SeqScan *) node->ss.ps.plan)->scanrelid;
-	
+
 	/* If this is re-scanning of PlanQual ... */
 	if (estate->es_evTuple != NULL &&
 		estate->es_evTuple[scanrelid - 1] != NULL)
@@ -285,6 +311,6 @@ ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt)
 	Gpmon_M_Incr(GpmonPktFromExtScanState(node), GPMON_EXTSCAN_RESCAN);
      	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	fileScan = node->ess_ScanDesc;
-	
+
 	file_rescan(fileScan);
 }

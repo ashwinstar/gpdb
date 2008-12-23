@@ -2,10 +2,10 @@
 *
 * fileam.c
 *	  file access method routines
-*       
+*
 * This access layer mimics the heap access API with respect to how it
 * communicates with its respective scan node (external scan node) but
-* instead of accessing the heap pages, it actually "scans" data by 
+* instead of accessing the heap pages, it actually "scans" data by
 * reading it from a local flat file or a remote data source.
 *
 * The actual data access, whether local or remote, is done with the
@@ -63,14 +63,14 @@
 #include "cdb/url.h"
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
-static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, 
-						   bool isText, bool isMasterOnly, char *uri, int rejectlimit, 
+static void initParseState(CopyState pstate, Relation relation, List *fmtOpts,
+						   bool isText, bool isMasterOnly, char *uri, int rejectlimit,
 						   bool islimitinrows, Oid fmterrtbl, int encoding);
 static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
-static void close_external_file(FILE *dataSource, char *dataSourceName);
+static void close_external_file(FILE *dataSource, bool failOnError);
 
 
 /* ----------------------------------------------------------------
@@ -114,7 +114,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	int			attnum;
 	int			segindex = GpIdentity.segindex;
 	char		*uri = NULL;
-	
+
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -153,7 +153,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		Value *v;
 		int idx = segindex;
 
-		/* 
+		/*
 		 * Segindex may be -1, for the following case.
 		 * A slice is executed on entry db, (for example, gp_configuration),
 		 * then external table is executed on another slice.
@@ -163,14 +163,14 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		if (isMasterOnly && idx == -1)
 			idx = 0;
 
-		if (idx >= 0) 
+		if (idx >= 0)
 		{
-			v = (Value *)list_nth(uriList, idx); 
+			v = (Value *)list_nth(uriList, idx);
 
 			if (v->type == T_Null)
 				uri = NULL;
 			else
-				uri = (char *) strVal(v);	
+				uri = (char *) strVal(v);
 		}
 	}
 	else if (Gp_role == GP_ROLE_DISPATCH && isMasterOnly)
@@ -185,18 +185,18 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 				uri = (char *) strVal(v);
 		}
 	}
-	
+
 	/*
 	 * if a uri is assigned to us - get a reference to it. Some executors
-	 * don't have a uri to scan (if # of uri's < # of primary segdbs). 
-	 * in which case uri will be NULL. If that's the case for this 
+	 * don't have a uri to scan (if # of uri's < # of primary segdbs).
+	 * in which case uri will be NULL. If that's the case for this
 	 * segdb set to no-op.
 	 */
 	if (uri)
 	{
 		/* set external source (uri) */
 		scan->fs_uri = uri;
-		
+
 		/* NOTE: we delay actually opening the data source until file_getnext() */
 	}
 	else
@@ -205,7 +205,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		scan->fs_noop = true;
 		scan->fs_uri = NULL;
 	}
-			
+
 	tupDesc = RelationGetDescr(relation);
 	scan->fs_tupDesc = tupDesc;
 	scan->attr = tupDesc->attrs;
@@ -258,7 +258,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 void
 file_rescan(FileScanDesc scan)
 {
-	
+
 	/* seek to beginning of data source so we can start over */
 	url_rewind((URL_FILE*)scan->fs_file);
 
@@ -310,7 +310,7 @@ file_endscan(FileScanDesc scan)
      * delete the row context
      */
     MemoryContextDelete(scan->fs_pstate->rowcontext);
-    
+
 	/*
 	 * if SREH was active:
 	 * 1) QEs: send a libpq message to QD with num of rows rejected in this segment
@@ -320,9 +320,9 @@ file_endscan(FileScanDesc scan)
 	{
 		if (Gp_role == GP_ROLE_EXECUTE)
 			SendNumRowsRejected(scan->fs_pstate->cdbsreh->rejectcount);
-		
+
 		destroyCdbSreh(scan->fs_pstate->cdbsreh);
-	}	
+	}
 
 	/*
 	 * free parse state memory
@@ -331,7 +331,7 @@ file_endscan(FileScanDesc scan)
 	pfree(scan->fs_pstate->line_buf.data);
 	pfree(scan->fs_pstate->attr_offsets);
 	pfree(scan->fs_pstate);
-	
+
     /*
 	 * clean up error context
 	 */
@@ -342,11 +342,29 @@ file_endscan(FileScanDesc scan)
 	 */
 	if (!scan->fs_noop && scan->fs_file)
 	{
-		close_external_file(scan->fs_file, scan->fs_uri);
+		close_external_file(scan->fs_file, true);
 		scan->fs_file = NULL;
 	}
 
 	pfree(scan);
+}
+
+
+/* ----------------
+*		file_stopscan - closes an external resource without dismantling the scan context
+* ----------------
+*/
+void
+file_stopscan(FileScanDesc scan)
+{
+	/*
+	 * Close the external file
+	 */
+	if (!scan->fs_noop && scan->fs_file)
+	{
+		close_external_file(scan->fs_file, false);
+		scan->fs_file = NULL;
+	}
 }
 
 
@@ -360,19 +378,19 @@ HeapTuple
 file_getnext(FileScanDesc scan, ScanDirection direction)
 {
 	HeapTuple	tuple;
-	
+
 	if (scan->fs_noop)
 		return NULL;
-	
-	/* 
+
+	/*
 	 * open the external source (local file or http).
 	 *
 	 * NOTE: file_beginscan() seems like the natural place for this call. However,
 	 * in queries with more than one gang each gang will initialized all the nodes
 	 * of the plan (but actually executed only the nodes in it's local slice)
-	 * This means that file_beginscan() (and file_endscan() too) will get called 
-	 * more than needed and we'll end up opening too many http connections when 
-	 * they are not expected (see MPP-1261). Therefore we instead do it here on the 
+	 * This means that file_beginscan() (and file_endscan() too) will get called
+	 * more than needed and we'll end up opening too many http connections when
+	 * they are not expected (see MPP-1261). Therefore we instead do it here on the
 	 * first time around only.
 	 */
 	if (!scan->fs_file)
@@ -403,7 +421,7 @@ file_getnext(FileScanDesc scan, ScanDirection direction)
 /* ==========================================================================
  * The follwing macros aid in major refactoring of data processing code (in
  * filegettup() ). We use macros because in some cases the code must be in
- * line in order to work (for example elog_dismiss() in PG_CATCH) while in 
+ * line in order to work (for example elog_dismiss() in PG_CATCH) while in
  * other cases we'd like to inline the code for performance reasons.
  *
  * NOTE that an almost identical set of macros exists in copy.c for the COPY
@@ -420,8 +438,8 @@ pstate->line_buf.cursor = 0;
  * A data error happened. This code block will always be inside a PG_CATCH()
  * block right when a higher stack level produced an error. We handle the error
  * by checking which error mode is set (SREH or all-or-nothing) and do the right
- * thing accordingly. Note that we MUST have this code in a macro (as opposed 
- * to a function) as elog_dismiss() has to be inlined with PG_CATCH in order to 
+ * thing accordingly. Note that we MUST have this code in a macro (as opposed
+ * to a function) as elog_dismiss() has to be inlined with PG_CATCH in order to
  * access local error state variables.
  */
 #define FILEAM_HANDLE_ERROR \
@@ -482,9 +500,9 @@ else \
 }
 
 /*
- * if in SREH mode and data error occured it was already handled in 
+ * if in SREH mode and data error occured it was already handled in
  * FILEAM_HANDLE_ERROR. Therefore, skip to the next row before attempting
- * to do any further processing on this one. 
+ * to do any further processing on this one.
  */
 #define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
 if (IsRejectLimitReached(pstate->cdbsreh)) \
@@ -527,12 +545,12 @@ if (IsRejectLimitReached(pstate->cdbsreh)) \
 
 /*
  * parse_next_line
- * 
+ *
  * Given a buffer of data, extract the next data line from it and parse it
  * to attributes according to the data format specifications.
- * 
+ *
  * Returns:
- * 	LINE_OK		    - line parsed successfully.			
+ * 	LINE_OK		    - line parsed successfully.
  *	LINE_ERROR		- line was mal-formatted. error caught and handled.
  *	NEED_MORE_DATA  - line not parsed all the way through. need more data.
  *	END_MARKER      - saw line end marker. skip attr parsing, we're done.
@@ -546,13 +564,13 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 	DataLineStatus ret_mode = LINE_OK;
 
 	ListCell   *cur;
-	
+
 	/* Initialize all values for row to NULL */
 	MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
 	MemSet(scan->nulls, true, scan->num_phys_attrs * sizeof(bool));
 	MemSet(pstate->attr_offsets, 0, scan->num_phys_attrs * sizeof(int));
 
-	PG_TRY(); 
+	PG_TRY();
 	{
 		/* Get a line */
 		pstate->line_done = pstate->csv_mode ?
@@ -563,14 +581,14 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 		if(!pstate->line_done)
 		{
 			/*
-			 * If eof is not yet reached, we skip att parsing and read more 
-			 * data. But if eof _was_ reached it means that this data line is 
+			 * If eof is not yet reached, we skip att parsing and read more
+			 * data. But if eof _was_ reached it means that this data line is
 			 * defective and let the attribute parser find the error (we leave
 			 * ret_mode intact).
 			 */
 			if (!pstate->fe_eof)
 				ret_mode = NEED_MORE_DATA;
-			
+
 			/* found end marker "\." set ret_mode to skip attribute parsing */
 			if (pstate->end_marker)
 				ret_mode = END_MARKER;
@@ -623,7 +641,7 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 			}
 			EXT_RESET_LINEBUF;
 		}
-	} 
+	}
 	PG_CATCH();
 	{
 		ret_mode = LINE_ERROR;
@@ -640,7 +658,7 @@ static DataLineStatus parse_next_line(FileScanDesc scan)
 		EXT_RESET_LINEBUF;
 	}
 
-	return ret_mode; 
+	return ret_mode;
 }
 
 /* ----------------
@@ -684,7 +702,7 @@ filegettup(FileScanDesc scan,
 			pstate->begloc = pstate->raw_buf;
 			pstate->raw_buf_done = false;
 			pstate->raw_buf_index = 0;
-			
+
 			/* on first time around just throw the header line away */
 			if (pstate->header_line && pstate->bytesread > 0)
 			{
@@ -693,33 +711,33 @@ filegettup(FileScanDesc scan,
 					readHeaderLine(pstate);
 				}
 				PG_CATCH();
-				{					
-					/* 
-					 * got here? encoding conversion error occured on the 
+				{
+					/*
+					 * got here? encoding conversion error occured on the
 					 * header line (first row).
 					 */
 					if (pstate->errMode == ALL_OR_NOTHING)
 					{
-						PG_RE_THROW();											
+						PG_RE_THROW();
 					}
 					else
 					{
 						/* SREH - release error state */
 						if (!elog_dismiss(DEBUG5))
 							PG_RE_THROW(); /* hope to never get here! */
-						
-						/* 
+
+						/*
 						 * note: we don't bother doing anything special here.
 						 * we are never interested in logging a header line
 						 * error. just continue the workflow.
 						 */
-					}			
+					}
 				}
 				PG_END_TRY();
-				
+
 				EXT_RESET_LINEBUF;
 				pstate->header_line = false;
-			}	
+			}
 		}
 
 		if (pstate->bytesread > 0 || !pstate->fe_eof)
@@ -736,7 +754,7 @@ filegettup(FileScanDesc scan,
 					 * decide whether we need heaptuple or memtuple upstream,
 					 * so make the right decision here.
 					 */
-					tuple = heap_form_tuple(scan->fs_tupDesc, 
+					tuple = heap_form_tuple(scan->fs_tupDesc,
 							scan->values, scan->nulls);
 
 					pstate->processed++;
@@ -746,9 +764,9 @@ filegettup(FileScanDesc scan,
 				else if(ret_mode == LINE_ERROR)
 				{
 					/* error was handled in parse_next_line. move to the next */
-					continue;					
+					continue;
 				}
-				else 
+				else
 				{
 					/* try to get more data if possible */
 					Assert(ret_mode == NEED_MORE_DATA || ret_mode == END_MARKER);
@@ -867,8 +885,8 @@ if (!val)\
  * (text, csv), encoding converstion information, etc...
  */
 static void
-initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
-			   bool isMasterOnly, char *uri, int rejectlimit, 
+initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
+			   bool isMasterOnly, char *uri, int rejectlimit,
 			   bool islimitinrows, Oid fmterrtbl, int encoding)
 {
 	TupleDesc	tupDesc = NULL;
@@ -898,11 +916,11 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	/*
 	 * Error handling setup
 	 */
-	if (rejectlimit == -1) 
+	if (rejectlimit == -1)
 	{
 		/* Default error handling - "all-or-nothing" */
 		pstate->cdbsreh = NULL; /* no SREH */
-		pstate->errMode = ALL_OR_NOTHING; 
+		pstate->errMode = ALL_OR_NOTHING;
 	}
 	else
 	{
@@ -913,24 +931,24 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		if (fmterrtbl == InvalidOid)
 		{
 			/* no error table */
-			pstate->errMode = SREH_IGNORE; 
+			pstate->errMode = SREH_IGNORE;
 			errtbl_rv = NULL;
 		}
 		else
 		{
 			/* with error table */
-			
+
 			Relation rel;
-			
-			pstate->errMode = SREH_LOG; 
-			
+
+			pstate->errMode = SREH_LOG;
+
 			/*
 			 * we want to be sure that this error table is alive (wasn't dropped).
 			 * we must do this check until we have proper dependency recorded.
 			 */
 			LockRelationOid(fmterrtbl, AccessShareLock);
 			rel = RelationIdGetRelation(fmterrtbl);
-			
+
 			if (rel == NULL)
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE),
 								errmsg("The specified error table for this "
@@ -938,24 +956,24 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 									   "exist in the database. It may have "
 									   "been dropped."),
 								errhint("Refresh your external table definition.")));
-			
+
 			RelationDecrementReferenceCount(rel); /* must do this after RelationIdGetRelation() */
-			
-			
+
+
 			errtbl_rv = makeRangeVar(get_namespace_name(get_rel_namespace(fmterrtbl)),
 									 get_rel_name(fmterrtbl));
-			
+
 			if (rel->rd_createSubid != InvalidSubTransactionId)
 				curTxnCreatedErrtbl = true;
-				
-#ifdef nothing			
+
+#ifdef nothing
 			/* bummer... a non writer gang can't write to an error table! */
 			if (!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
 				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
 								errmsg("Error tables can not yet be used in queries "
 									   "with more than one table in the FROM clause. "
 									   "You can use the same query with single row "
-									   "error handling by redefining the external " 
+									   "error handling by redefining the external "
 									   "table without an error table ")));
 #endif
 		}
@@ -963,9 +981,9 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		/* Single row error handling */
 		pstate->cdbsreh = makeCdbSreh(true, /* don't DROP errtable at end of execution */
 									  !curTxnCreatedErrtbl, /* really only relevant to COPY though */
-									  rejectlimit, 
-									  islimitinrows, 
-									  errtbl_rv, 
+									  rejectlimit,
+									  islimitinrows,
+									  errtbl_rv,
 									  pstate->filename,
 									  (char *)pstate->cur_relname);
 
@@ -1017,7 +1035,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	 * it for the 2 supported types - text and csv.
 	 */
 	format_str = pstrdup((char *) strVal(linitial(fmtOpts)));
-	
+
 	/*
 	 * DELIMITER
 	 */
@@ -1071,10 +1089,10 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 
 	/*
 	 * Possible remaining opts:
-	 * - HEADER 
+	 * - HEADER
 	 * - FILL MISSING FIELDS
 	 * - FORCE NOT NULL <list>
-	 * 
+	 *
 	 * note: this parsing logic is kinda ugly but must be done this way
 	 * until we switch from strtok's to a more high level mechanism.
 	 */
@@ -1102,15 +1120,15 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 			{
 				List *temp = NIL;
 				ListCell *l;
-				
+
 				Assert(pstate->csv_mode);
-				
+
 				/* consume the rest of the related keywords */
 				clause = strtok(NULL, " ");
 				FILEAM_VERIFY_CLAUSE(clause, "not");
 				clause = strtok(NULL, " ");
 				FILEAM_VERIFY_CLAUSE(clause, "null");
-				
+
 				/* get the fnn attr list */
 				value = strtok(NULL, " ");
 
@@ -1120,10 +1138,10 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid list syntax for \"force not null\"")));
 				}
-				
-				/* wrap each string of temp inside a Value node and copy to 
-				 * force_notnull so that later CopyGetAttnums could use it 
-				 */ 
+
+				/* wrap each string of temp inside a Value node and copy to
+				 * force_notnull so that later CopyGetAttnums could use it
+				 */
 				foreach(l, temp)
 				{
 					Value *val = makeString((char *)lfirst(l));
@@ -1165,12 +1183,12 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	{
 		List	   *attnums;
 		ListCell   *cur;
-		
+
 		attnums = CopyGetAttnums(tupDesc, relation, pstate->force_notnull);
-		
+
 		foreach(cur, attnums)
 		{
-			int			attnum = lfirst_int(cur);			
+			int			attnum = lfirst_int(cur);
 			pstate->force_notnull_flags[attnum - 1] = true;
 		}
 	}
@@ -1203,7 +1221,7 @@ open_external_file(FileScanDesc scan)
 	char        *result = (char *) palloc(7);        /* sign, 5 digits, '\0' */
 	int 		response_code;
 	const char	*response_string;
-	
+
 	/* set up extvar */
 
 	memset(&extvar, 0, sizeof(extvar));
@@ -1213,7 +1231,7 @@ open_external_file(FileScanDesc scan)
 			scan->fs_pstate->escape ? 255&*scan->fs_pstate->escape : 0,
 			scan->fs_pstate->quote ? 255&*scan->fs_pstate->quote : 0,
 			scan->fs_pstate->header_line ? 1 : 0);
-	
+
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
 		pg_itoa(qdPostmasterPort, result);
@@ -1224,32 +1242,32 @@ open_external_file(FileScanDesc scan)
 	{
 		CdbComponentDatabases *cdb_component_dbs = getCdbComponentDatabases();
 		CdbComponentDatabaseInfo *qdinfo = &cdb_component_dbs->entry_db_info[0];
-		
+
 		pg_itoa(qdinfo->port, result);
 		extvar.GP_MASTER_PORT = result;
-		
+
 		if (qdinfo->hostip != NULL)
 			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostip);
 		else
-			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
+			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);
 	}
-	
+
 	if (MyProcPort)
 		extvar.GP_USER = MyProcPort->user_name;
 	else
 		extvar.GP_USER = "";
-	
+
 	extvar.GP_DATABASE = get_database_name(MyDatabaseId);
 	extvar.GP_SEG_PG_CONF = ConfigFileName;   /*location of the segments pg_conf file*/
 	extvar.GP_SEG_DATADIR = data_directory;   /*location of the segments datadirectory*/
    	sprintf(extvar.GP_DATE, "%04d%02d%02d",
 			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
-	sprintf(extvar.GP_TIME, "%02d%02d%02d", 
+	sprintf(extvar.GP_TIME, "%02d%02d%02d",
 			tm->tm_hour, tm->tm_min, tm->tm_sec);
-	if (! getDistributedTransactionIdentifier(extvar.GP_XID)) 
+	if (! getDistributedTransactionIdentifier(extvar.GP_XID))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("cannot get distributed transaction identifier while %s", 
+				 errmsg("cannot get distributed transaction identifier while %s",
 						scan->fs_uri)));
 
 	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.curcid);
@@ -1258,7 +1276,7 @@ open_external_file(FileScanDesc scan)
     sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);
     sprintf(extvar.GP_SESSION_ID, "%d", gp_session_id);
  	sprintf(extvar.GP_SEGMENT_COUNT, "%d", GpIdentity.numsegments);
-    
+
     /*
      * Open the url with url_open().
      */
@@ -1271,11 +1289,11 @@ open_external_file(FileScanDesc scan)
 				 errmsg("could not open \"%s\" for reading: %d %s",
 						scan->fs_uri,response_code,response_string)));
 	}
-	else 
+	else
 	{
 		/*
 		 * Get a global reference to the file pointer, so we can free it from
-		 * AbortTransaction in the case of an error or abort. We don't use it 
+		 * AbortTransaction in the case of an error or abort. We don't use it
 		 * for anything else.
 		 */
 		g_dataSource = scan->fs_file;
@@ -1285,23 +1303,22 @@ open_external_file(FileScanDesc scan)
 
 /*
  * close the external file.
+ *
+ * If failOnError is true, an error closing the external file raises an ERROR.
+ * If failOnError is false, an error closing the external file is written to the
+ * server log.
  */
 static void
-close_external_file(FILE *dataSource, char *dataSourceName)
+close_external_file(FILE *dataSource, bool failOnError)
 {
-	if (dataSource)
-	{
-		if (url_fclose((URL_FILE*) dataSource))
- 		{
- 			g_dataSource = dataSource = NULL;
-			ereport(ERROR,
-					(errcode_for_file_access(),
- 					 errmsg("error closing file or executing program \"%s\": %m",
-							dataSourceName)));
-		}
-	}
-	
+	FILE *f = dataSource;
+
 	g_dataSource = dataSource = NULL;
+
+	if (f)
+	{
+		url_fclose((URL_FILE*) f, failOnError);
+	}
 }
 
 /*
@@ -1318,15 +1335,15 @@ file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
  		  flag set.
  		- failing to do so will result in skipping the last line.
  	*/
- 
+
 	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile,pstate);
- 
- 	if (url_feof(extfile)) 
+
+ 	if (url_feof(extfile))
  	{
   		pstate->fe_eof = true;
  	}
- 
- 	if (bytesread <= 0) 
+
+ 	if (bytesread <= 0)
  	{
  		if (url_ferror(extfile))
  			ereport(ERROR,
@@ -1350,16 +1367,16 @@ file_scan_error_callback(void *arg)
 	 * Make sure to not modify the actual line_buf here (for example
 	 * in limit_printout_length() ) as we may got here not because of
 	 * a data error but because of an innocent elog(NOTICE) for example
-	 * somewhere in the code. We make a copy of line_buf and use it for 
+	 * somewhere in the code. We make a copy of line_buf and use it for
 	 * the error context purposes so that a non-data related elog call
 	 * won't corrupt our data in line_buf.
 	 */
 	StringInfoData copy_of_line_buf;
 	char buffer[20];
-				
+
 	initStringInfo(&copy_of_line_buf);
 	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
-				
+
 	if (cstate->cur_attname)
 	{
 		/* error is relevant to a particular column */
@@ -1399,20 +1416,20 @@ file_scan_error_callback(void *arg)
 
 	/* error context will possibly free it but just in case */
 	pfree(copy_of_line_buf.data);
-	
+
 }
 
 /*
- * Read the data file header line and ignore it. 
+ * Read the data file header line and ignore it.
  *
  * This function should be called only once for each data file
- * and only if HEADER is specified in the SQL command. 
+ * and only if HEADER is specified in the SQL command.
  */
 void readHeaderLine(CopyState pstate)
 {
 	pstate->line_done = pstate->csv_mode ?
 		CopyReadLineCSV(pstate, pstate->bytesread) :
-		CopyReadLineText(pstate, pstate->bytesread);		
+		CopyReadLineText(pstate, pstate->bytesread);
 }
 
 /*
@@ -1420,7 +1437,7 @@ void readHeaderLine(CopyState pstate)
  */
 void AtAbort_ExtTables(void)
 {
-	close_external_file(g_dataSource, g_dataSourceName);
+	close_external_file(g_dataSource, false);
 	g_dataSource = NULL;
 }
 void

@@ -186,16 +186,16 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			result = (PlanState *) ExecInitSeqScan((SeqScan *) node,
 												   estate, eflags);
 			break;
-			
+
 		case T_AppendOnlyScan:
 			result = (PlanState *) ExecInitAppendOnlyScan((AppendOnlyScan *) node,
 														  estate, eflags);
 			break;
-			
+
 		case T_ExternalScan:
 			result = (PlanState *) ExecInitExternalScan((ExternalScan *) node,
 														estate, eflags);
-			break;			
+			break;
 
 		case T_IndexScan:
 			result = (PlanState *) ExecInitIndexScan((IndexScan *) node,
@@ -367,10 +367,10 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 /* ----------------------------------------------------------------
  *		ExecSliceDependencyNode
  *
- *	 	Exec dependency, block till slice dependency are met	
+ *	 	Exec dependency, block till slice dependency are met
  * ----------------------------------------------------------------
  */
-void 
+void
 ExecSliceDependencyNode(PlanState *node)
 {
 	CHECK_FOR_INTERRUPTS();
@@ -408,7 +408,7 @@ TupleTableSlot *
 ExecProcNode(PlanState *node)
 {
 	TupleTableSlot *result = NULL;
-	
+
 	static void *ExecJmpTbl[] = {
 		&&Exec_Jmp_Result,
 		&&Exec_Jmp_Append,
@@ -466,7 +466,7 @@ ExecProcNode(PlanState *node)
 	Assert(nodeTag(node) >= T_PlanState_Start && nodeTag(node) < T_PlanState_End);
 	goto *ExecJmpTbl[nodeTag(node) - T_PlanState_Start];
 
-Exec_Jmp_Result: 
+Exec_Jmp_Result:
 	result = ExecResult((ResultState *) node);
 	goto Exec_Jmp_Done;
 
@@ -494,7 +494,7 @@ Exec_Jmp_ExternalScan:
 Exec_Jmp_IndexScan:
 	result = ExecIndexScan((IndexScanState *) node);
 	goto Exec_Jmp_Done;
-			
+
 	/* BitmapIndexScanState does not yield tuples */
 Exec_Jmp_BitmapIndexScan:
 	goto Exec_Jmp_Done;
@@ -801,6 +801,11 @@ squelchNodeWalker(PlanState *node,
 		ExecStopMotion((MotionState *) node);
 		return CdbVisit_Skip;	/* don't visit subtree */
 	}
+	else if (IsA(node, ExternalScanState))
+	{
+		ExecStopExternalScan((ExternalScanState *) node);
+		/* ExternalScan nodes are expected to be leaf nodes (without subplans) */
+	}
 	return CdbVisit_Walk;
 }	/* squelchNodeWalker */
 
@@ -906,10 +911,10 @@ ExecEndNode(PlanState *node)
 		case T_IndexScanState:
 			ExecEndIndexScan((IndexScanState *) node);
 			break;
-			
+
 		case T_ExternalScanState:
 			ExecEndExternalScan((ExternalScanState *) node);
-			break;			
+			break;
 
 		case T_AppendOnlyScanState:
 			ExecEndAppendOnlyScan((AppendOnlyScanState *) node);
@@ -1071,11 +1076,11 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 		case T_IndexScanState:
 			nameTag = "IndexScan";
 			break;
-			
+
 		case T_BitmapIndexScanState:
 			nameTag = "BitmapIndexScan";
 			break;
-			
+
 		case T_BitmapHeapScanState:
 			nameTag = "BitmapHeapScan";
 			break;
@@ -1219,7 +1224,7 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
  *    value other than CdbVisit_Walk, and returns that result without visiting
  *    any more nodes.
  *
- *    Returns CdbVisit_Walk if 'planstates' is NULL, or if all of the 
+ *    Returns CdbVisit_Walk if 'planstates' is NULL, or if all of the
  *    subtrees return CdbVisit_Walk.
  *
  *    Note that this function never returns CdbVisit_Skip to its caller.
@@ -1245,7 +1250,7 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
  *    value other than CdbVisit_Walk, and returns that result without visiting
  *    any more nodes.
  *
- *    Returns CdbVisit_Walk if the given planstate node ptr is NULL, or if 
+ *    Returns CdbVisit_Walk if the given planstate node ptr is NULL, or if
  *    all of the children return CdbVisit_Walk, or if there are no children.
  *
  *    Note that this function never returns CdbVisit_Skip to its caller.
