@@ -2653,7 +2653,6 @@ recoverTM(void)
 
 	elog(LOG, "Next distributed transaction id is %u", *shmGIDSeq);
 	
-	*shmDtmRecoveryDeferred = false;
 	*shmDtmStarted = true;
 	elog(LOG,"DTM Started");
 }
