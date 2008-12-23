@@ -11,9 +11,10 @@
 subdir = src/backend/postmaster
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
 OBJS = bgwriter.o autovacuum.o service.o seqserver.o ddaserver.o walsendserver.o walredoserver.o pgarch.o pgstat.o postmaster.o syslogger.o \
-	fork_process.o 
+	fork_process.o ftsprobe.o
 
 ALLOBJS = $(OBJS) 
 all: SUBSYS.o

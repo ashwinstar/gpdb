@@ -1171,14 +1171,17 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	if (type == GANGTYPE_PRIMARY_WRITER)
 		FtsEvaluateTransientState();
 
-	/* MPP-2613
+	/*
+	 * MPP-2613
 	 * NOTE: global, and we may be leaking some here (but if we free
 	 * anyone who has pointers into the free()ed space is going to
-	 * freak out) */
+	 * freak out)
+	 */
 	cdb_component_dbs = getCdbComponentDatabases();
 
-	if (cdb_component_dbs == NULL || cdb_component_dbs->total_segments <= 0
-		|| cdb_component_dbs->total_segment_dbs <= 0)
+	if (cdb_component_dbs == NULL ||
+		cdb_component_dbs->total_segments <= 0 ||
+		cdb_component_dbs->total_segment_dbs <= 0)
 	{
 		elog(ERROR, "building Gang:  GP schema not populated");
 		return NULL;
@@ -1251,6 +1254,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
 		p = &cdb_component_dbs->segment_db_info[i];
+
 		if (i == 0 || (p->segindex != last_segindex))
 		{
 			int			j = i;
@@ -1261,9 +1265,9 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 			if (p->definedprimary && type == GANGTYPE_MIRROR_WRITER)
 			{
 				j++;
-				if (cdb_component_dbs->segment_db_info[j].segindex ==
-					p->segindex
-					&& !cdb_component_dbs->segment_db_info[j].definedprimary)
+
+				if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
+					!cdb_component_dbs->segment_db_info[j].definedprimary)
 				{
 					p = &cdb_component_dbs->segment_db_info[j];
 					i = j;
@@ -1276,9 +1280,9 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 			else if ((!p->definedprimary && !p->isprimary))
 			{
 				j++;
-				if (cdb_component_dbs->segment_db_info[j].segindex ==
-					p->segindex
-					&& cdb_component_dbs->segment_db_info[j].definedprimary)
+
+				if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
+					cdb_component_dbs->segment_db_info[j].definedprimary)
 				{
 					/*
 					 * Do we want to change p ?
@@ -1288,11 +1292,10 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 				}
 				else
 				{
-					elog(FATAL, "building Gang: Primary and mirror both unavailable for segment %d", p->segindex);
+					elog(FATAL, "building Gang: Primary and mirror both unavailable for segment %d (i %d j %d)", p->segindex, i, j);
 					continue;
 				}
 			}
-
 
 			if (p->valid)
 			{
@@ -1355,8 +1358,8 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	 * Assert( seg_count == cdb_component_dbs->total_segments );
 	 */
 
-	if (type == GANGTYPE_PRIMARY_WRITER
-		&& seg_count != cdb_component_dbs->total_segments)
+	if (type == GANGTYPE_PRIMARY_WRITER &&
+		seg_count != cdb_component_dbs->total_segments)
 	{
 		elog(FATAL, "Not all primary segment instances are active and connected");
 	}
@@ -1370,7 +1373,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 			return NULL;
 		}
 	}
-
 	
 	Assert(newGangDefinition->size = seg_count || type == GANGTYPE_MIRROR_WRITER);
 	newGangDefinition->size = seg_count;
@@ -3264,9 +3266,11 @@ disconnectAndDestroyGang(Gang * gp)
 			PGTransactionStatusType status =
 				PQtransactionStatus(segdbDesc->conn);
 
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"disconnectAndDestroyGang: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),
+				 "disconnectAndDestroyGang: got QEDistributedTransactionId = %u, QECommandId = %u, and QEDirty = %s",
 			     segdbDesc->conn->QEWriter_DistributedTransactionId, 
-			     segdbDesc->conn->QEWriter_CommandId, (segdbDesc->conn->QEWriter_Dirty ? "true" : "false"));
+			     segdbDesc->conn->QEWriter_CommandId,
+				 (segdbDesc->conn->QEWriter_Dirty ? "true" : "false"));
 
             if (gp_log_gang >= GPVARS_VERBOSITY_TERSE)
             {
@@ -4022,11 +4026,15 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 }
 
 
-/* set segdb states, called by FtsReConfigureMPP and lock should be held there */
+/*
+ * Set segdb states, called by FtsReConfigureMPP.
+ */
 void
 detectFailedConnections(void)
 {
 	int			i;
+	CdbComponentDatabaseInfo *segInfo;
+	bool		fullScan = true;
 
 	/*
 	 * check primary gang
@@ -4035,26 +4043,32 @@ detectFailedConnections(void)
 	{
 		for (i = 0; i < primaryWriterGang->size; i++)
 		{
-			SegmentDatabaseDescriptor *segdbDesc =
-				&(primaryWriterGang->db_descriptors[i]);
+			segInfo = primaryWriterGang->db_descriptors[i].segment_database_info;
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info))
-				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+			/*
+			 * Note: the probe process is responsible for doing the
+			 * actual marking of the segments.
+			 */
+			FtsTestConnection(segInfo, fullScan);
+			fullScan = false;
 		}
 	}
 
 	/*
-	 * check mirrored gang
+	 * check mirror gang
 	 */
 	if (mirrorWriterGang != NULL)
 	{
 		for (i = 0; i < mirrorWriterGang->size; i++)
 		{
-			SegmentDatabaseDescriptor *segdbDesc =
-				&(mirrorWriterGang->db_descriptors[i]);
+			segInfo = mirrorWriterGang->db_descriptors[i].segment_database_info;
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info))
-				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+			/*
+			 * Note: the probe process is responsible for doing the
+			 * actual marking of the segments.
+			 */
+			FtsTestConnection(segInfo, fullScan);
+			fullScan = false;
 		}
 	}
 

@@ -70,8 +70,6 @@ static TMGXACT *currentGxact;
 static bool duringRecovery = false;
 static int	max_tm_gxacts = 100;
 
-static bool resolveDtx = false;
-
 static int	redoFileFD = -1;
 static int  redoFileOffset;
 
@@ -1456,13 +1454,6 @@ isTMInRecovery(void)
 	return duringRecovery;
 }
 
-
-void
-setRecoverTMOn(void)
-{
-	resolveDtx = true;
-}
-
 /*
  * Validate redo transaction commit log record size.
  */
@@ -2220,10 +2211,6 @@ createDtx(
 {
 	TMGXACT    	*gxact;
 	
-	/* UNDONE: Used to check if we have in-doubt transactions to resolve */
-//	if (resolveDtx)
-//		resolveInDoubtDtx();
-
 	/*
 	 * Global locking order: ProcArrayLock then DTM lock.
 	 */

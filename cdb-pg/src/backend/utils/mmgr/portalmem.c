@@ -1115,25 +1115,30 @@ static apr_int32_t gpmon_portal_status_change [PORTAL_STATUSMAX][PORTAL_STATUSMA
 
 void PortalSetStatus(Portal p, PortalStatus s)
 {
-	apr_int32_t gpmon_qlog_status = gpmon_portal_status_change[p->portal_status][s];
+	apr_int32_t gpmon_qlog_status;
+
+	if (p->portal_status >= 0 && p->portal_status < PORTAL_STATUSMAX)
+		gpmon_qlog_status = gpmon_portal_status_change[p->portal_status][s];
+	else
+		gpmon_qlog_status = GPM_ERROR;
 
 	Assert(gpmon_qlog_status >= GPMON_QLOG_STATUS_SILENT && gpmon_qlog_status <= GPMON_QLOG_STATUS_ERROR);
 
 	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
 	{
-		if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT ||
-		   gpmon_qlog_status == GPMON_QLOG_STATUS_START ||
-		   gpmon_qlog_status == GPMON_QLOG_STATUS_DONE ||
-		   gpmon_qlog_status == GPMON_QLOG_STATUS_ERROR)
+		if (gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT ||
+			gpmon_qlog_status == GPMON_QLOG_STATUS_START ||
+			gpmon_qlog_status == GPMON_QLOG_STATUS_DONE ||
+			gpmon_qlog_status == GPMON_QLOG_STATUS_ERROR)
 		{
 			struct timeval tv;
 			gettimeofday(&tv, 0);
 
-			if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT)
+			if (gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT)
 				p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
-			else if(gpmon_qlog_status == GPMON_QLOG_STATUS_START)
+			else if (gpmon_qlog_status == GPMON_QLOG_STATUS_START)
 			{
-				if(p->gpmon_pkt.u.qlog.tsubmit == 0)
+				if (p->gpmon_pkt.u.qlog.tsubmit == 0)
 					p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
 				/* check needed for subqueries so start time isn't overwritten */
 				if(p->gpmon_pkt.u.qlog.tstart == 0)

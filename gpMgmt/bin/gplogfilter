@@ -2,10 +2,34 @@
 #
 # gplogfilter [options] [inputfile]...
 #
+>>>> ORIGINAL //cdb2/main/gpMgmt/bin/gplogfilter#6
 #          $Id$
 #      $Change$
 #    $DateTime$
 #      $Author$
+==== THEIRS //cdb2/private/tkordas/fts_cleanup/gpMgmt/bin/gplogfilter#2
+>>>> ORIGINAL //cdb2/main/gpMgmt/bin/gplogfilter#3
+# $Id$
+# $Change$
+# $DateTime$
+# $Author$
+==== THEIRS //cdb2/main/gpMgmt/bin/gplogfilter#6
+#          $Id$
+#      $Change$
+#    $DateTime$
+#      $Author$
+==== YOURS //tjk-laptop/FTS/cdb2/gpMgmt/bin/gplogfilter
+# $Id$
+# $Change$
+# $DateTime$
+# $Author$
+<<<<
+==== YOURS //tjk-laptop/HEAD/cdb2/gpMgmt/bin/gplogfilter
+#          $Id$
+#      $Change$
+#    $DateTime$
+#      $Author$
+<<<<
 
 # import Python standard library modules
 import gzip

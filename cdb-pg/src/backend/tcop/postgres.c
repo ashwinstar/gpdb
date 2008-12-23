@@ -3017,9 +3017,9 @@ quickdie(SIGNAL_ARGS)
 	ereport(WARNING,
 			(errcode(ERRCODE_CRASH_SHUTDOWN),
 			 errmsg("terminating connection because of crash of another server process"),
-	errdetail("The postmaster has commanded this server process to roll back"
-			  " the current transaction and exit, because another"
-			  " server process exited abnormally."),
+			 errdetail("The postmaster has commanded this server process to roll back"
+					   " the current transaction and exit, because another"
+					   " server process exited abnormally."),
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
 

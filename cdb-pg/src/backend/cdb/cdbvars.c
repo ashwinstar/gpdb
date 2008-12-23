@@ -110,6 +110,18 @@ bool          gp_select_invisible=false; /* debug mode to allow select to see "i
 int			gp_snapshotadd_timeout=10;
 
 /*
+ * Polling interval for the fts prober. A scan of the entire system starts
+ * every time this expires.
+ */
+int			gp_fts_probe_interval=60;
+
+/*
+ * Number of threads to use for probe of segments (it is a good idea to have this
+ * larger than the number of segments per host.
+ */
+int			gp_fts_probe_threadcount=5;
+
+/*
  * gp_enable_slow_writer_testmode
  *
  * In order facilitate testing of reader-gang/writer-gang synchronization,

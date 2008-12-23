@@ -24,7 +24,6 @@
 #include <sys/time.h>
 #include <netinet/in.h>
 
-
 #include "miscadmin.h"
 #include "libpq/pqsignal.h"
 #include "cdb/cdbvars.h"
@@ -38,8 +37,6 @@
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
 #include "utils/ps_status.h"
-
-
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -365,7 +362,7 @@ seqserver_forkexec(void)
 }
 #endif   /* EXEC_BACKEND */
 
-bool shutdown_requested=false;
+static bool shutdown_requested=false;
 
 static void
 RequestShutdown(SIGNAL_ARGS)
@@ -496,7 +493,8 @@ SeqServerMain(int argc, char *argv[])
 	proc_exit(0);
 }
 
-void SeqServerLoop(void)
+static void
+SeqServerLoop(void)
 {
 	int			n,
 				highsock = 0,

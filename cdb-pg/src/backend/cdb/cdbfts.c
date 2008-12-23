@@ -32,18 +32,15 @@
 #include "postmaster/service.h"
 #include "postmaster/walsendserver.h"
 
+FtsProbeInfo *ftsProbeInfo = NULL; /* Probe process updates this structure */
 volatile bool	*ftsEnabled;
 static LWLockId	ftsControlLock;
 
-static volatile int		*ftsSyncCount;
-volatile int			*ftsAction;
+volatile int		*ftsAction;
 static volatile bool	*ftsReadOnlyFlag;
+static volatile bool	*ftsAdminRequestedRO;
 
-static struct FtsSegDBState *ftsSegDBTransientState;
-static int *ftsSegDBTransientCount;
-
-static int	localFtsSyncCount = -1;
-static bool InReConfigure = false;
+static uint64	local_fts_statusVersion;
 
 static LWLockId ftsQDMirrorLock;
 static LWLockId ftsQDMirrorUpdateConfigLock;
@@ -56,17 +53,21 @@ static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 static bool QDMirroringNotSynchronizedWarningGiven = false;
 
 static void CdbShutdown(void);
-static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, char *, PQExpBuffer, bool);
-static void markSegDBTransientState(int, bool);
-static void markSegDBPersistentState(int, bool);
 static char *QDMirroringDisabledReasonToString(QDMIRRORDisabledReason disabledReason);
 
-#define incFtsSyncCount() (localFtsSyncCount = ++*ftsSyncCount)
-
-/* get fts share memory size */
+/*
+ * get fts share memory size
+ */
 int
 FtsShmemSize(void)
 {
+	/*
+	 * this shared memory block doesn't even need to *exist* on the
+	 * QEs!
+	 */
+	if ((Gp_role != GP_ROLE_DISPATCH) && (Gp_role != GP_ROLE_UTILITY))
+		return 0;
+
 	return MAXALIGN(sizeof(FtsControlBlock));
 }
 
@@ -76,7 +77,7 @@ FtsShmemInit(void)
 	bool		found;
 	FtsControlBlock *shared;
 
-	shared = (FtsControlBlock *) ShmemInitStruct("Fault Tolerance manager", FtsShmemSize(), &found);
+	shared = (FtsControlBlock *)ShmemInitStruct("Fault Tolerance manager", FtsShmemSize(), &found);
 	if (!shared)
 		elog(FATAL, "FTS: could not initialize fault tolerance manager share memory");
 
@@ -84,15 +85,17 @@ FtsShmemInit(void)
 
 	ftsEnabled = &shared->ftsEnabled;
 	ftsControlLock = shared->ControlLock;
-	ftsSyncCount = &shared->ftsSyncCount;
 	ftsAction = &shared->ftsAction;
-	ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
+
+	ftsReadOnlyFlag = &shared->ftsReadOnlyFlag; /* global RO state */
+
+	ftsAdminRequestedRO = &shared->ftsAdminRequestedRO; /* Admin request -- guc-controlled RO state */
 
 	ftsQDMirrorLock = shared->ftsQDMirrorLock;
 	ftsQDMirrorUpdateConfigLock = shared->ftsQDMirrorUpdateConfigLock;
 	ftsQDMirrorInfo = &shared->ftsQDMirror;
-	ftsSegDBTransientState = shared->ftsSegDBTransientState;
-	ftsSegDBTransientCount = &shared->ftsSegDBTransientCount;
+
+	ftsProbeInfo = &shared->fts_probe_info;
 
 	if (!IsUnderPostmaster)
 	{
@@ -117,9 +120,11 @@ FtsShmemInit(void)
 		ftsQDMirrorInfo->port = 0;
 
 		/* initialize */
-		shared->ftsSyncCount = 0;
-		shared->ftsSegDBTransientCount = 0;
 		shared->ftsReadOnlyFlag = gp_set_read_only;
+		shared->ftsAdminRequestedRO = gp_set_read_only;
+
+		shared->fts_probe_info.fts_probePid = 0;
+		shared->fts_probe_info.fts_statusVersion = 0;
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
@@ -128,6 +133,19 @@ FtsShmemInit(void)
 		}
 		shared->ftsEnabled = (*ftsAction != FTS_NONE);
 	}
+	elog(LOG, "ftsenabled %d", shared->ftsEnabled);
+}
+
+void
+ftsLock(void)
+{
+	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+}
+
+void
+ftsUnlock(void)
+{
+	LWLockRelease(ftsControlLock);
 }
 
 /*
@@ -136,23 +154,44 @@ FtsShmemInit(void)
 void
 CondSetMPPReadonly(void)
 {
+	/* this no longer actually *sets* things to readonly, just checks. */
 	if (*ftsAction == FTS_READONLY)
 	{
-		elog(LOG, "FTS: Greenplum system is set read only");
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "Count of DTX transactions between 'PREPARING' and confirmed 'COMMIT' or 'ABORT' is %d",
-			 dtxCurrentPhase1Count());
-
-		assign_gp_set_read_only(true, true, PGC_S_DEFAULT);
+		Assert(*ftsReadOnlyFlag == true);
 	}
 }
 
 /*
  * Re-Connect segDB
  */
-bool
+static bool
 FtsReConnectDB(void *failedDB)
 {
 	return reconnectSegDB(failedDB);
+}
+
+static void
+FtsNotifyProber(void)
+{
+	/*
+	 * This is a full-scan request. We set the request-flag == to the bitmap version flag.
+	 * When the version has been bumped, we know that the request has been filled.
+	 */
+	ftsProbeInfo->fts_probeScanRequested = ftsProbeInfo->fts_statusVersion;
+
+	/* signal fts-probe */
+	if (ftsProbeInfo->fts_probePid)
+		kill(ftsProbeInfo->fts_probePid, SIGINT);
+
+	/* sit and spin */
+	while (ftsProbeInfo->fts_probeScanRequested == ftsProbeInfo->fts_statusVersion);
+	{
+		struct timeval tv;
+
+		tv.tv_usec = 10000;
+		tv.tv_sec = 0;
+		select(0, NULL, NULL, NULL, &tv); /* don't care about return value. */
+	}
 }
 
 /*
@@ -160,121 +199,32 @@ FtsReConnectDB(void *failedDB)
  * dispatcher: ONLY CALL THREADSAFE FUNCTIONS -- elog() is NOT threadsafe.
  */
 bool
-FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo)
+FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, bool fullScan)
 {
-   	PGconn		*conn;
-	bool		ret = true;
-	PQExpBuffer	buffer = createPQExpBuffer();
-	char		*errorMsg;
-
-	/* XXX: this connects in UTILITY mode, are UTILITY mode errors
-	 * different from EXECUTE mode ? */
-	initPQConnectionBuffer(failedDBInfo, MyProcPort->user_name, MyProcPort->database_name, buffer, true);
-
-	conn = PQconnectdb(buffer->data);
-
-	do
+	if (!fullScan)
 	{
-		if (PQstatus(conn) == CONNECTION_OK)
-		{
-			ret = true;
-			break;
-		} 
-		else if (PQstatus(conn) != CONNECTION_BAD)
-		{
-			if (LOG >= log_min_messages)
-			{
-				/* Don't use elog, it's not thread-safe */
-				write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
-							 failedDBInfo->dbid, MyProcPort->database_name, PQerrorMessage(conn), PQstatus(conn));
-			}
-			ret = true;
-			break;
-		}
+		return FTS_STATUS_ISALIVE(failedDBInfo->dbid, ftsProbeInfo->fts_status);
+	}
 
-		errorMsg = PQerrorMessage(conn);
-		if (errorMsg == NULL)
-		{
-			if (LOG >= log_min_messages)
-				write_log("FTS: test connection can't parse error message");
-		}
+	FtsNotifyProber();
 
-		if (DEBUG3 >= log_min_messages)
-			write_log("FtsTestConnection: connection failed with message (%s)", errorMsg);
-
-		/* If we get a network error (do we really need a
-		 * comprehensive list here ?) or a "FATAL" database error,
-		 * then it is a real error, otherwise it isn't. See
-		 * fe-connect.c for the details: all fatal network error start
-		 * with "could not":
-		 *
-		 * "could not create" -- socket error
-		 * "could not translate" -- DNS error
-		 * "could not connect" -- network error
-		 * "could not get" -- getsockopt error
-		 * "could not set" -- setsockopt error
-		 * "could not send" -- libpq protocol error
-		 */
-		if (strstr(errorMsg, "FATAL:") == NULL &&
-			strstr(errorMsg, "could not ") == NULL &&
-			strcmp(errorMsg, "timeout expired\n") != 0)
-		{
-			/* non-fatal connection errors are ignored */
-			if (DEBUG3 >= log_min_messages)
-				write_log("FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
-			ret = true;
-			break;
-		}
-
-		if (strstr(errorMsg, "too many clients already") != NULL)
-		{
-			/* don't consider this a failure, essentially we want to force a retry here */
-			ret = true;
-			break;
-		}
-
-		if (strstr(errorMsg, "the database system is starting up") != NULL)
-		{
-			/* don't consider this a failure, essentially we want to force a retry here */
-			ret = true;
-			break;
-		}
-
-		/* This is a real failure for which a reconfigure may be warranted */
-		if (LOG >= log_min_messages)
-			write_log("FTS: test connection failed, dbid %d dbname %s error message %s",
-						 failedDBInfo->dbid, MyProcPort->database_name, PQerrorMessage(conn));
-		ret = false;
-	} while (0);
-
-	PQfinish(conn);
-	free(buffer->data);
-	return ret;
+	return FTS_STATUS_ISALIVE(failedDBInfo->dbid, ftsProbeInfo->fts_status);
 }
 
 /*
- * Re-Configure the system
+ * Re-Configure the system: if someone has noticed that the status
+ * version has been updated, they call this to verify that they've got
+ * the right configuration.
  */
-bool
+void
 FtsReConfigureMPP(void)
 {
-	/* synchronzie fts */
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-	InReConfigure = true;
-
-	/* this code copied from verifyFtsSyncCount to avoid lock deadlock */
-	if (localFtsSyncCount == -1)
+	/* Has the version been bumped ? */
+	if (local_fts_statusVersion != ftsProbeInfo->fts_statusVersion)
 	{
-		localFtsSyncCount = *ftsSyncCount;
-	}
-	else if (localFtsSyncCount != *ftsSyncCount)
-	{
-		localFtsSyncCount = *ftsSyncCount;
-	}
-	else
-	{
-		incFtsSyncCount();
+		/* need to scan to pick up the latest view */
 		detectFailedConnections();
+		local_fts_statusVersion = ftsProbeInfo->fts_statusVersion;
 	}
 
 	elog(LOG, "FTS: reconfiguration is in progress");
@@ -283,13 +233,10 @@ FtsReConfigureMPP(void)
 	allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 	allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 
-	InReConfigure = false;
-	LWLockRelease(ftsControlLock);
-
 	/* rollback current DTM transaction */
 	AbortCurrentTransaction();
 
-	return true;
+	return;
 }
 
 /*
@@ -358,6 +305,13 @@ QDMirroringUpdate(
 					 		 UPDATE_VALIDFLAG_CMD,
 					 		 (validFlag ? 't' : 'f'),
 					 		 ftsQDMirrorInfo->dbid);
+			if (count >= sizeof(cmd))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("FTS: format command string failure")));
+			}
+
 			err = SPI_execute(cmd, false, 0);
 			if (err != SPI_OK_UPDATE)
 			{
@@ -989,20 +943,25 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	bool		dtx_active;
 	bool		reportError = false;
     bool		realFaultFound = false;
+	bool		forceRescan=true;
 
     for (i = 0; i < size; i++)
     {
-        if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK)
+        if (PQstatus(segdbDesc[i].conn) != CONNECTION_OK)
         {
-			elog(DEBUG2, "FtsHandleGangConnectionFailure: looking for real fault on segment %d", i);
-            if (!FtsTestConnection((segdbDesc + i)->segment_database_info))
+			CdbComponentDatabaseInfo *segInfo = segdbDesc[i].segment_database_info;
+
+			elog(DEBUG2, "FtsHandleGangConnectionFailure: looking for real fault on segment dbid %d", segInfo->dbid);
+
+			if (!FtsTestConnection(segInfo, forceRescan))
 			{
-				elog(DEBUG2, "found fault with segment %d", i);
-				realFaultFound = true; 
+				elog(DEBUG2, "found fault with segment dbid %d", segInfo->dbid);
+				realFaultFound = true;
 
 				/* that at least one fault exists is enough, for now */
 				break;
 			}
+			forceRescan = false; /* only force the rescan on the first call. */
         }
     }
     
@@ -1028,25 +987,29 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 		return true;
 	}
 
-	/* set MPP to be read only if necessary */
-	CondSetMPPReadonly();
-
 	elog(LOG, "FTS: reconfiguration is in progress");
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-	incFtsSyncCount();
+
+	forceRescan = true;
 	for (i = 0; i < size; i++)
 	{
-		if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK &&
-			!FtsTestConnection((segdbDesc + i)->segment_database_info))
-			markSegDBStatus((segdbDesc + i)->segment_database_info->dbid, false);
+		CdbComponentDatabaseInfo *segInfo = segdbDesc[i].segment_database_info;
+
+		if (PQstatus(segdbDesc[i].conn) != CONNECTION_OK)
+		{
+			if (!FtsTestConnection(segInfo, forceRescan))
+			{
+				elog(LOG, "FTS: found bad segment with dbid %d", segInfo->dbid);
+				/* probe process has already marked segment down. */
+			}
+			forceRescan = false; /* only force rescan on first call. */
+		}
 	}
+
 	if (gangsExist())
 	{
 		reportError = true;
 		disconnectAndDestroyAllGangs();
 	}
-
-	LWLockRelease(ftsControlLock);
 
 	/* 
 	 * KLUDGE: Do not error out if we are attempting a DTM protocol retry 
@@ -1062,7 +1025,8 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
     /* When the error is raised, it will abort the current DTM transaction */
 	if (dtx_active)
 	{
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure found an active DTM transaction (returning true).");
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),
+			 "FtsHandleGangConnectionFailure found an active DTM transaction (returning true).");
 		return true;
 	}
 
@@ -1074,444 +1038,10 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	if ((*ftsReadOnlyFlag && !isTMInRecovery()) || reportError)
 		return true;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "FtsHandleGangConnectionFailure returning false.");
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "FtsHandleGangConnectionFailure returning false.");
 
 	return false;
-}
-
-/*
- * If calling from a thread it is illegal to leave username or dbName NULL.
- */
-static void
-initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName, PQExpBuffer buffer, bool utility)
-{
-	char *user = username;
-
-	if (user == NULL)
-		user = MyProcPort->user_name;
-
-
-	initPQExpBuffer(buffer);
-
-	if (dbName == NULL)
-		dbName = MyProcPort->database_name;
-	
-	/*
-	 * Build the connection string
-	 */
-	if (utility)
-		appendPQExpBuffer(buffer,
-						  "options='-c gp_session_role=UTILITY' ");
-
-	if (q->hostname == NULL)
-		appendPQExpBufferStr(buffer, "host='' ");
-	else if (isdigit(q->hostname[0]))
-		appendPQExpBuffer(buffer, "hostaddr=%s ", q->hostname);
-	else
-		appendPQExpBuffer(buffer, "host=%s ", q->hostname);
-
-	appendPQExpBuffer(buffer, "port=%u ", q->port);
-	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
-	appendPQExpBuffer(buffer, "user=%s ", user);
-	appendPQExpBuffer(buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
-}
-
-/* set seg db states */
-void
-markStandbyStatus(int dbid, bool state)
-{
-	markSegDBPersistentState(dbid, state);
-}
-
-/* set seg db states */
-void
-markSegDBStatus(int dbid, bool state)
-{
-	if (*ftsAction == FTS_READONLY)
-		markSegDBTransientState(dbid, state);
-	else
-		markSegDBPersistentState(dbid, state);
-}
-
-/* set segdb state transiently */
-static void
-markSegDBTransientState(int dbid, bool state)
-{
-	int			i,
-		segindex;
-	CdbComponentDatabaseInfo *segDb = NULL;
-	CdbComponentDatabases *cdb_component_dbs = NULL;
-
-	/*
-	 * this checking should be taken of care by synchronization, but check again
-	 * for safety, may be removed in the future
-	 */
-	if (state)
-	{
-		/* we do not support automatic "revalidation" of segments */
-		elog(ERROR, "FTS: caller requesting automatic reset of segment to 'valid': operation unsupported.");
-	}
-	else
-	{
-		/* set transient state if state is false */
-
-		if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
-			elog(ERROR, "FTS: the number of failed segdb exceeds the GP limit");
-
-		cdb_component_dbs = getComponentDatabases();
-		ftsSegDBTransientState[*ftsSegDBTransientCount].valid = false;
-		ftsSegDBTransientState[*ftsSegDBTransientCount].id = dbid;
-
-		elog(LOG, "FTS: mark segDB %d as invalid", dbid);
-
-		(*ftsSegDBTransientCount)++;
-		for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
-		{
-			segDb = cdb_component_dbs->segment_db_info + i;
-			if (segDb->dbid == dbid)
-				break;
-		}
-
-		if (i == cdb_component_dbs->total_segment_dbs)
-		{
-			/* we didn't find a matching segment. Maybe we were asked about the entry-db ? */
-			for (i = 0; i < cdb_component_dbs->total_entry_dbs; i++)
-			{
-				segDb = cdb_component_dbs->entry_db_info + i;
-				if (segDb->dbid == dbid)
-					break;
-			}
-
-			if (i < cdb_component_dbs->total_entry_dbs)
-			{
-				elog(LOG, "markSegDBTransientState: segdb is entry-db, will not mark down");
-			}
-			else
-				elog(LOG, "markSegDBTransientState: could not find segment dbid %d", dbid);
-
-			return;
-		}
-
-		if (!segDb->isprimary)
-		{
-			/* we are done */
-			return;
-		}
-
-		/* need to change isPrimary flag */
-		segindex = segDb->segindex;
-		for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
-		{
-			segDb = cdb_component_dbs->segment_db_info + i;
-			if (segDb->segindex == segindex && segDb->dbid != dbid)
-				break;
-		}
-
-		/* assert on segdb not found */
-		assert(i != cdb_component_dbs->total_segment_dbs);
-
-		if (segDb->valid && !segDb->isprimary)
-		{
-			ftsSegDBTransientState[*ftsSegDBTransientCount].primary = true;
-			ftsSegDBTransientState[*ftsSegDBTransientCount].valid = true;
-			ftsSegDBTransientState[*ftsSegDBTransientCount].id = segDb->dbid;
-
-			if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
-				elog(ERROR, "FTS: the number of failed segdb exceeds the GP limit");
-
-			(*ftsSegDBTransientCount)++;
-		}
-		return;
-	}
-}
-
-/* 
- * Set persistent segdb state: we MUST NOT be called from anything
- * other than our main thread. (SPI isn't thread safe)
- */
-static void
-markSegDBPersistentState(int dbid, bool state)
-{
-	TupleDesc tupdesc;
-	char *tmp, cmd[200];
-	int contentid, hasmirror=0;
-	int partnerid = 0, partnervalid = 0;
-	int partnerdefinedprimary, partnerisprimary;
-
-	int			count;
-	PGresult   *rs;
-	CdbComponentDatabaseInfo *q;
-
-	char		*user;
-
-	PQExpBuffer entryBuffer = NULL;
-	PGconn *entryConn = NULL;
-
-	if (state)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: can only automatically invalidate segments")));
-	}
-
-	if (SPI_OK_CONNECT != SPI_connect())
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("SPI_connect failed in FTS")));
-	}
-
-	/* We're going to use the content id for some sanity checking, and
-	 * to retrieve the "partner" database. We could get the partner
-	 * database directly: 
-	 * select dbid, valid, isprimary, definedprimary from gp_configuration
-	 *   where content = 
-	 *			(select content from gp_configuration where dbid = 2)
-	 *			and dbid != 2;
-	 * but the sanity checks seem worthwhile */
-	if (snprintf(cmd, sizeof(cmd),
-				 "select content from pg_catalog.gp_configuration where dbid=CAST(%d AS SMALLINT)",
-				 dbid) >= sizeof(cmd))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: could not format command string (get dbid)")));
-	}
-
-	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: SPI_execute failed (%s)", cmd)));
-	}
-
-	if (SPI_processed != 1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: found %d rows for dbid %d", SPI_processed, dbid)));
-	}
-
-	tupdesc = SPI_tuptable->tupdesc;
-	contentid = atoi(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
-
-	if (contentid < 0)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: data mirror cannot modify qd-mirror attributes")));
-	}
-
-	if (snprintf(cmd, sizeof(cmd),
-				 "select dbid, isprimary, valid, definedprimary from pg_catalog.gp_configuration where content = %d and dbid != CAST(%d AS SMALLINT)",
-				 contentid, dbid) >= sizeof(cmd))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: could not format command string (get partners)")));
-	}
-
-	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: SPI_execute failed (%s)", cmd)));
-	}
-
-	/* again we should have exactly one row (or zero if no mirror exists) */
-	if (SPI_processed > 1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: found %d rows for content %d dbid != %d",
-						SPI_processed, contentid, dbid)));
-	}
-
-	hasmirror = SPI_processed;
-
-	if (hasmirror)
-	{
-		tupdesc = SPI_tuptable->tupdesc;
-		partnerid = atoi(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
-		if (partnerid < 1)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("FTS: invalid partner id for db %d", dbid)));
-		}
-
-		tmp = SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 2);
-		partnerisprimary = (tmp[0] == 't') ? 1 : 0;
-
-		tmp = SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 3);
-		partnervalid = (tmp[0] == 't') ? 1 : 0;
-
-		tmp = SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 4);
-		partnerdefinedprimary = (tmp[0] == 't') ? 1 : 0;
-	}
-
-	/* As a final step: we need to re-connect with privileges which
-	 * allow catalog updates */
-	if (snprintf(cmd, sizeof(cmd),
-				 "select rolname from pg_catalog.pg_roles where rolcatupdate ='t' and rolsuper = 't' order by oid limit 1;") >= sizeof(cmd))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: could not format command string (get rolname)")));
-	}
-
-	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: SPI_execute failed (%s)", cmd)));
-	}
-
-	if (SPI_processed != 1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("FTS: found %d rows with limit 1!", SPI_processed)));
-	}
-
-	tupdesc = SPI_tuptable->tupdesc;
-	user = strdup(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
-	if(!user)
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("FTS: out of memory")));
-
-	SPI_finish();
-
-	/* We now have the full row of the partner db, all of the
-	 * information that we need to update out catalog */
-
-	/* We can't use the SPI interface to update the database
-	 * persistently (we got here because a transaction is in the
-	 * middle of ABORTing.
-	 * 
-	 * The hack we use is to establish a utility mode connection to
-	 * ourselves to fix things up. */
-
-	q = getEntrySegDB(&count);
-
-	if (count > 1)
-		if (q->dbid != GpIdentity.dbid)
-			q = q + 1;
-
-	entryBuffer = createPQExpBuffer();
-
-	/*
-	 * initialize libpq connection buffer, we only need to initialize it
-	 * once.
-	 */
-	initPQConnectionBuffer(q, user, NULL, entryBuffer, true);
-
-	free(user);
-
-	if (hasmirror && !partnervalid)
-	{
-		elog(LOG, "FTS: mirror partner is already invalid.");
-		return;
-	}
-
-	/*
-	 * Call libpq to connect
-	 */
-	entryConn = PQconnectdb(entryBuffer->data);
-
-	if (PQstatus(entryConn) == CONNECTION_BAD)
-	{
-		/*
-		 * When we get an error, we strdup it here.  When the main thread
-		 * checks for errors, it makes a palloc copy of this, and frees
-		 * this.
-		 */
-		char	   *error_message = strdup(PQerrorMessage(entryConn));
-		if(!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
-
-		free(entryBuffer->data);
-		PQfinish(entryConn);
-		entryConn = NULL;
-		elog(FATAL, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
-	}
-
-	/* finally, we're ready to actually get some stuff done. */
-
-	do {
-		rs = PQexec(entryConn, "BEGIN");
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-			break;
-
-		elog(DEBUG1, "marking dbid %d as invalid for contentid %d", dbid, contentid);
-
-		/* mark failed db as 'invalid' */
-		if (snprintf(cmd, sizeof(cmd),
-					 "update gp_configuration set valid='f', isprimary='f' where dbid = CAST(%d AS SMALLINT)",
-					 dbid) >= sizeof(cmd))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("FTS: could not invalidate invalid node in config: format command string failure")));
-			break;
-		}
-
-		rs = PQexec(entryConn, cmd);
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-			break;
-
-		/* Mark mirror db 'primary' */
-		if (hasmirror && partnervalid)
-		{
-			elog(DEBUG1, "marking mirror partner (%d) as primary for contentid %d", partnerid, contentid);
-
-			if (snprintf(cmd, sizeof(cmd),
-						 "update gp_configuration set isprimary='t' where dbid = CAST(%d AS SMALLINT)",
-						 partnerid) >= sizeof(cmd))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("FTS: could not format command string")));
-				break;
-			}
-
-			rs = PQexec(entryConn, cmd);
-			if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-				break;
-		}
-
-		rs = PQexec(entryConn, "COMMIT");
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-			break;
-
-		/* No error, we're ready to go */
-
-		elog(LOG, "FTS: mark segDB %d as %s", dbid, state ? "valid" : "invalid");
-		PQclear(rs);
-		PQfinish(entryConn);
-		free(entryBuffer->data);
-		return;
-	} while (0);
-
-	/* Something horrible happened while marking our database ? */
-
-	PQclear(rs);
-	PQfinish(entryConn);
-	free(entryBuffer->data);
-
-	elog(FATAL, "FTS: setting segDB state failed");
-}
-
-/*
- * Show hook routine for "gp_role" option.
- *
- * See src/backend/util/misc/guc.c for option definition.
- */
-const char *
-show_gp_set_read_only(void)
-{
-	return *ftsReadOnlyFlag ? "TRUE" : "FALSE";
 }
 
 void
@@ -1525,36 +1055,79 @@ FtsCondSetTxnReadOnly(bool *XactFlag)
 }
 
 /*
- * Set Read only
+ * Set Read only. There are two ways we can transition to readonly: request
+ * from a super-user, or the ftsProber.
+ *
+ * There are a bunch of possibilities here:
+ * 1) asking for RO and we're already in RO
+ * 2) asking for RO and we've already asked for RO.
+ * 3) asking for RW and we're already RW.
+ * 4) asking for RW and we're "down" so we're RO.
+ * 5) asking for RW and we had asked to be RO.
+ *
+ * The ftsProber is the final arbiter of whether we're read-only or not.
+ */
+void
+FtsUpdateROStatus(bool value)
+{
+	/* Nothing to do ? */
+	if (ftsReadOnlyFlag == NULL || value == *ftsReadOnlyFlag)
+		return;
+
+	if (*ftsAction == FTS_READONLY || *ftsAdminRequestedRO)
+	{
+		/* we are going to change the value */
+		if (value || *ftsAdminRequestedRO)
+		{
+			/* ftsProber wants to mark us RO, wins every time */
+			*ftsReadOnlyFlag = true;
+		}
+		else
+		{
+			/* ftsProber wants to mark us RW, but if a user has requested RO too then we stay RO. */
+			if (!*ftsAdminRequestedRO)
+				*ftsReadOnlyFlag = false;
+		}
+	}
+
+	return;
+}
+
+/*
+ * Set Read only. This is the entry for the GUC to request we
+ * transition to readonly mode.
+ *
+ * The ftsProber is the final arbiter of whether we're read-only or not.
  */
 bool
 assign_gp_set_read_only(bool newval, bool doit, GucSource source __attribute__((unused)) )
 {
-
-#if FALSE
-	elog(DEBUG1, "gp_set_read_only: %s, doit=%s",
-		 newval, (doit ? "true" : "false"));
-#endif
-
 	if (ftsReadOnlyFlag == NULL || newval == *ftsReadOnlyFlag)
 		return true;
 
 	if (doit)
 	{
-		/* Transitioning to read-write from read-only ? */
-		if (!newval && *ftsReadOnlyFlag)
+		if (newval)
 		{
-			cdbtm_performDeferredRecovery();
+			/* we're trying to mark things RO ? */
+			*ftsAdminRequestedRO = true;
+
+			FtsNotifyProber();
 		}
-			
-		/*
-		 * Before we are allowed to update the readonly flag, we *must* make sure
-		 * that the DTM is happy.
-		 */
-		*ftsReadOnlyFlag = newval;
+		else
+		{
+			/* we're trying to mark things RW */
+			*ftsAdminRequestedRO = false;
+
+			FtsNotifyProber();
+
+			/* may have deferred work ? */
+			if (!*ftsReadOnlyFlag)
+				cdbtm_performDeferredRecovery();
+		}
 
 		/* set current transaction read only */
-		XactReadOnly = newval;
+		XactReadOnly = *ftsReadOnlyFlag;
 	}
 
 	return true;
@@ -1584,106 +1157,77 @@ convertFaultActionValue(char *action)
 bool
 verifyFtsSyncCount(void)
 {
-	bool		ret = true;
+	if (ftsProbeInfo->fts_probePid == 0)
+		return true;
 
-	/* synchronize fts */
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-
-	if (localFtsSyncCount == -1)
-		localFtsSyncCount = *ftsSyncCount;
-	else if (localFtsSyncCount != *ftsSyncCount)
-	{
-		elog(LOG, "FTS: detects re-configuration required");
-		ret = false;
-	}
-
-	LWLockRelease(ftsControlLock);
-	return ret;
+	return (local_fts_statusVersion != ftsProbeInfo->fts_statusVersion);
 }
 
 /* apply transient state to segdb state */
 CdbComponentDatabases *
 applyTransientState(CdbComponentDatabases *cdb_component_dbs)
 {
-	int			i,
-				j,
-				dbid;
-	CdbComponentDatabaseInfo *segDb;
+	int			i;
+	CdbComponentDatabaseInfo *segDbInfo;
 
-	/* do not synchronize here, it may cause sync deadlock */
-	/*
-	  LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-	*/
+	/* don't apply transient state on startup. Only when we're up and running. */
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return cdb_component_dbs;
 
-	for (i = 0; i < *ftsSegDBTransientCount; i++)
+	ftsLock();
+	if (ftsProbeInfo->fts_probePid == 0)
 	{
-		dbid = ftsSegDBTransientState[i].id;
-
-		for (j = 0; j < cdb_component_dbs->total_segment_dbs; j++)
-		{
-			segDb = cdb_component_dbs->segment_db_info + j;
-			if (segDb->dbid == dbid)
-			{
-				segDb->valid = ftsSegDBTransientState[i].valid;
-				segDb->isprimary = ftsSegDBTransientState[i].primary;
-				break;
-			}
-		}
+		ftsUnlock();
+		return cdb_component_dbs;
 	}
 
-	/*
-	  LWLockRelease(ftsControlLock);
-	*/
+	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
+	{
+		segDbInfo = &cdb_component_dbs->segment_db_info[i];
+
+		segDbInfo->valid = FTS_STATUS_ISALIVE(segDbInfo->dbid, ftsProbeInfo->fts_status);
+		segDbInfo->isprimary = FTS_STATUS_ISPRIMARY(segDbInfo->dbid, ftsProbeInfo->fts_status);
+	}
+	ftsUnlock();
+
 	return cdb_component_dbs;
 }
 
-/* re-test transient failed state */
+/*
+ * Re-test transient failed state:
+ *
+ * What this actually does is find the first segment that is down, if none are down
+ * it just resets the transient state array, it tests the first one found if it is
+ * still down, then it leaves things alone.
+ *
+ * If all segments are up, the transient state array gets cleared, and the readonly flag
+ * is set to "not read only" (read-write).
+ */
 void
 FtsEvaluateTransientState(void)
 {
-	int	i, j, dbid;
+	int			i;
 	CdbComponentDatabases *cdb_component_dbs;
 	CdbComponentDatabaseInfo *segDbInfo;
 
-	if (*ftsSegDBTransientCount <= 0 || InReConfigure)
-		return;
-
 	cdb_component_dbs = getComponentDatabases();
 
-	/* synchronize fts */
-	LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-
-	for (i = 0; i < *ftsSegDBTransientCount; i++)
+	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
-		if (!ftsSegDBTransientState[i].valid)
+		segDbInfo = &cdb_component_dbs->segment_db_info[i];
+
+		if (!FtsTestConnection(segDbInfo, false))
 		{
-			dbid = ftsSegDBTransientState[i].id;
-			for (j = 0; j < cdb_component_dbs->total_segment_dbs; j++)
-			{
-				segDbInfo = cdb_component_dbs->segment_db_info + j;
-				if (segDbInfo->dbid == dbid)
-				{
-					if (!FtsTestConnection(segDbInfo))
-					{
-						/* reconnect failed, keep current state */
-						LWLockRelease(ftsControlLock);
-						return;
-					}
-					break;
-				}
-			}
+			return;
 		}
 	}
 
-	/* retest ok, reset all states */
-	MemSet(ftsSegDBTransientState, 0, *ftsSegDBTransientCount * sizeof(struct FtsSegDBState));
-	*ftsSegDBTransientCount = 0;
-
-	incFtsSyncCount();
-	assign_gp_set_read_only(false, true, PGC_S_DEFAULT);
-	setRecoverTMOn();
-
-	LWLockRelease(ftsControlLock);
+	/* 
+	 * If things have recently been marked read-write we may have
+	 * deferred recovery work that needs doing.
+	 */
+	if (!*ftsReadOnlyFlag)
+		cdbtm_performDeferredRecovery();
 }
 
 bool
@@ -1691,6 +1235,7 @@ isFtsReadOnlySet(void)
 {
 	return *ftsReadOnlyFlag;
 }
+
 bool
 isMirrorQDConfigurationChecked(void)
 {

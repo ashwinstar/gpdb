@@ -125,6 +125,7 @@
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
+#include "postmaster/ftsprobe.h"
 #include "postmaster/walsendserver.h"
 #include "postmaster/walredoserver.h"
 #include "postmaster/ddaserver.h"
@@ -180,6 +181,7 @@ typedef enum pmsub_type
 #ifdef DO_DDA_SERV
 	DdaServerProc, 
 #endif
+	FtsProbeProc,
 	MaxPMSubType
 } PMSubType;
 
@@ -284,6 +286,9 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, WalRedoServerProc, 
 	 (PMSubStartCallback*)&walredoserver_start, 
 	 "walredoserver process", PMSUBPROC_FLAG_STANDBY},
+	{0, FtsProbeProc, 
+	 (PMSubStartCallback*)&ftsprobe_start, 
+	 "ftsprobe process", PMSUBPROC_FLAG_QD},
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc, 
 	 (PMSubStartCallback*)&ddaserver_start, 
@@ -1104,7 +1109,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * If enabled, start up syslogger collection subprocess
 	 */
-    if ( !SyncMaster )
+    if (!SyncMaster)
 	   SysLoggerPID = SysLogger_Start();
 
 	/*
@@ -1336,7 +1341,7 @@ ServerLoop(void)
 	nSockets = initMasks(&readmask);
 
     /* initialize tm sync */
-    if ( SyncMaster )
+    if (SyncMaster)
         cdb_init_log_sync();
 
 	for (;;)
@@ -1488,7 +1493,7 @@ ServerLoop(void)
 					 (long)PgStatPID);
 
 		}
-		
+
 		/* MPP: If we have lost one of our servers, try to start a new one */
 		for (s=0; s < MaxPMSubType; s++)
 		{
@@ -4112,6 +4117,23 @@ SubPostmasterMain(int argc, char *argv[])
 		CreateSharedMemoryAndSemaphores(false, 0);
 
 		SeqServerMain(argc - 2, argv + 2);
+		proc_exit(0);
+	}
+	if (strcmp(argv[1], "--forkftsprobe") == 0)
+	{
+		/* Close the postmaster's sockets */
+		ClosePostmasterPorts(false);
+
+		/* Restore basic shared memory pointers */
+		InitShmemAccess(UsedShmemSegAddr);
+
+		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
+		InitDummyProcess();
+
+		/* Attach process to shared data structures */
+		CreateSharedMemoryAndSemaphores(false, 0);
+
+		FtsProbeMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
 

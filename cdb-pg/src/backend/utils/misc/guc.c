@@ -1520,7 +1520,6 @@ static struct config_bool ConfigureNamesBool[] =
         {"gp_set_read_only", PGC_SUSET, GP_ARRAY_CONFIGURATION,
             gettext_noop("Sets the system read only"),
             NULL,
-			GUC_GPDB_ADDOPT
         },
         &gp_set_read_only,
         false, assign_gp_set_read_only, NULL
@@ -2876,6 +2875,26 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_segment_connect_timeout,
 		60, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_fts_probe_interval", PGC_POSTMASTER, GP_ARRAY_TUNING,
+			gettext_noop("A complete probe of all segments starts each time a timer with this period expires."),
+			gettext_noop("Used by the fts-probe process. "),
+			GUC_UNIT_S
+		},
+		&gp_fts_probe_interval,
+		60, 10, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_fts_probe_threadcount", PGC_POSTMASTER, GP_ARRAY_TUNING,
+			gettext_noop("Use this number of threads for probing the segments."),
+			gettext_noop("The number of threads to create at each probe interval expiration."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_fts_probe_threadcount,
+		5, 1, 128, NULL, NULL
 	},
 
 	{

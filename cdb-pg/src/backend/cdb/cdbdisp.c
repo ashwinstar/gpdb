@@ -378,6 +378,7 @@ write_log(const char *fmt,...)
 void
 cdbdisp_reconfigureFtsIfNecessary(void)
 {
+
 	/*
 	 * check fts sync count
 	 */
@@ -386,8 +387,7 @@ cdbdisp_reconfigureFtsIfNecessary(void)
 		/*
 		 * reconfig mpp connections
 		 */
-		if (!FtsReConfigureMPP())
-			elog(PANIC, "FTS: reconfigMPP failed");
+		FtsReConfigureMPP();
 	}
 }	/* cdbdisp_reconfigureFtsIfNecessary */
 
@@ -2714,8 +2714,6 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 
 	if ((*timeoutCounter)++ > 30)
 	{
-		bool		sampling = useSampling;
-
 		*timeoutCounter = 0;
 
 		for (i = 0; i < db_count; i++)
@@ -2738,7 +2736,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				write_log("testing connection %d of %d     %s stillRunning %d \n", i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
             
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info))
+			if (!FtsTestConnection(segdbDesc->segment_database_info, false))
 			{
 				/* Note the error. */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,
@@ -2755,18 +2753,6 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 
 				/* This connection is hosed. */
 				dispatchResult->stillRunning = false;
-
-				/* Better check all the others too. */
-				sampling = false;
-			}
-			else
-			{
-				/*
-				 * for performance reason, we do just sampling here for now,
-				 * the first one is picked.
-				 */
-				if (sampling)
-					break;
 			}
 		}
 	}

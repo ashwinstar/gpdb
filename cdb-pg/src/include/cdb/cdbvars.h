@@ -359,11 +359,12 @@ extern char *gp_fault_action_string;	/* Use by guc.c as user defined fault
 extern bool gp_set_read_only;
 extern bool assign_gp_set_read_only(bool newval, bool doit, GucSource source);
 extern bool assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source);
-extern const char *show_gp_set_read_only(void);
 extern const char *role_to_string(GpRoleValue role);
 
 extern int	gp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
 extern int	gp_snapshotadd_timeout; /* GUC var - timeout specifier for snapshot-creation wait */
+extern int	gp_fts_probe_interval; /* GUC var - specifies polling interval for fts-probe process */
+extern int	gp_fts_probe_threadcount; /* GUC var - specifies number of threads to use for fts-probe */
 
 /*
  * Parameter Gp_max_packet_size
