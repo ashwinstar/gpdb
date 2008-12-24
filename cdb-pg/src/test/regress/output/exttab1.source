@@ -389,10 +389,10 @@ location('gpfdist://@hostname@:7070/missing_fields2.data' )
 format 'text' ( delimiter '|' fill missing fields);
 -- also test force not null in addition to fill empty fields
 create external table ext_fill3_fnn(a text, b text, c text)
-location('gpfdist://localhost:7070/missing_fields1.data' )
+location('gpfdist://@hostname@:7070/missing_fields1.data' )
 format 'csv' ( delimiter '|' fill missing fields force not null c);
 create external table ext_fill4_fnn(a text, b text, c text)
-location('gpfdist://localhost:7070/missing_fields1.data' )
+location('gpfdist://@hostname@:7070/missing_fields1.data' )
 format 'csv' ( delimiter '|' fill missing fields force not null b,c);
 select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
  a | b | c 
