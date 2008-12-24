@@ -729,8 +729,7 @@ url_fclose(URL_FILE *file, bool failOnError)
 	enum fcurl_type_e type = file->type;
     int ret=0;/* default is good return */
 
-	char *url = palloc(strlen(file->url));
-	strcpy(url, file->url);
+	char *url = pstrdup(file->url);
 
     switch (type)
     {
