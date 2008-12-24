@@ -1547,7 +1547,7 @@ CHK_GPDB_ID () {
 				LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $LOGNAME" 1
 			fi
 		else
-			LOG_MSG "[WARN]:-Environment variable \$LOGNAME unset, will set to $GPDB_ID" 1
+			LOG_MSG "[INFO]:-Environment variable \$LOGNAME unset, will set to $GPDB_ID" 1
 			export LOGNAME=$GPDB_ID
 		fi
 	else
