@@ -115,7 +115,8 @@ static char PqRecvBuffer[PQ_BUFFER_SIZE];
 static int	PqRecvPointer;		/* Next index to read a byte from PqRecvBuffer */
 static int	PqRecvLength;		/* End of data available in PqRecvBuffer */
 
-static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
+//static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t send_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 /*
  * Message status
  */
@@ -1161,10 +1162,12 @@ internal_flush(void)
 int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
+	if (DoingCopyOut || PqCommBusy)
+		return 0;
+
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
-	if (DoingCopyOut || PqCommBusy)
-		goto end;
+
 	PqCommBusy = true;
 	if (msgtype)
 		if (internal_putbytes(&msgtype, 1))
@@ -1179,10 +1182,12 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 	}
 	if (internal_putbytes(s, len))
 		goto fail;
+
 	PqCommBusy = false;
-end:
+
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
+
 	return 0;
 
 fail:
