@@ -427,7 +427,6 @@ void FtsProbeLoop(void)
 		else
 			processing_fullscan = false;
 
-		elog(LOG, "getting new cdb-component-info");
 		cdb_component_dbs = getCdbComponentInfo();
 
 		elog(DEBUG3, "Ftsprober: starting %sscan with %d dbids with %d content-ids",
@@ -1006,7 +1005,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 		probeUpdateConfig(entryDB, changes, changeEntries);
 	}
 	else
-		elog(LOG, "did not not update config (%s)", updated_bitmap ? "bitmap updated" : "bitmap not updated");
+		elog(DEBUG2, "did not not update config (%s)", updated_bitmap ? "bitmap updated" : "bitmap not updated");
 
 	ftsUnlock();
 
