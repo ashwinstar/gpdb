@@ -71,6 +71,7 @@ static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
 static void close_external_file(FILE *dataSource, bool failOnError);
+static void parseFormatString(CopyState pstate, char *fmtstr);
 
 
 /* ----------------------------------------------------------------
@@ -789,94 +790,6 @@ filegettup(FileScanDesc scan,
 	return NULL;
 }
 
-/*
- * These macros are helpers for verifying and extracting format
- * clauses. They could eventually do assert checking instead of
- * reporting an error, since we expect to never get an error here.
- * However, leave the ereport initially for debugging purposes.
- */
-#define FILEAM_VERIFY_CLAUSE(actual, desired) \
-if (!actual)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error. expected %s", desired)));\
-}\
-if (pg_strcasecmp(actual, desired) != 0)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error. expected %s, got %s", desired, actual)));\
-}
-
-#define FILEAM_GET_CHAR(val, clause) \
-if (!val)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error for %s clause value", clause)));\
-}\
-if (strlen(val) == 3)\
-{\
-	val[2] = '\0';\
-	val++;\
-}\
-else if (strlen(val) > 3)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error. %s value %s too long", clause, val)));\
-}\
-else if (strlen(val) == 2)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error. %s value %s is not a single character", clause, val)));\
-}\
-else if (strlen(val) == 1)\
-{\
-	/* we must have a ' '. consume the second quote and set value to 'space' */\
-	val = strtok(NULL, " ");\
-	if (strcmp(val,"\'") != 0)\
-		ereport(ERROR,\
-				(errcode(ERRCODE_SYNTAX_ERROR),\
-				 errmsg("internal parse error in %s value - expected single quote", clause)));\
-	*val = ' ';\
-}\
-
-#define FILEAM_GET_STRING(val, clause) \
-len = strlen(val);\
-if (!val)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error for %s clause value", clause)));\
-}\
-if (len < 2)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error. invalid length for %s value", clause)));\
-}\
-else if (len == 2)\
-{\
-	val = "";\
-}\
-else\
-{\
-	val[len - 1] = '\0';\
-	val++;\
-}
-
-#define FILEAM_GET_LIST(val, clause) \
-if (!val)\
-{\
-	ereport(ERROR,\
-			(errcode(ERRCODE_SYNTAX_ERROR),\
-			 errmsg("internal parse error for %s clause value", clause)));\
-}\
-
-
 
 /*
  * Initialize the data parsing state.
@@ -891,9 +804,6 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 {
 	TupleDesc	tupDesc = NULL;
 	char	   *format_str = NULL;
-	char	   *clause;
-	char	   *value;
-	int			len;
 
 	pstate->fe_eof = false;
 	pstate->eol_type = EOL_UNKNOWN;
@@ -1020,156 +930,15 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	pstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(pstate->client_encoding);
 
 	/*
-	 * Now parse the format options. They will always appear
-	 * in the following order:
+	 * Now parse the data FORMAT options.
 	 *
-	 * delimiter
-	 * null
-	 * escape
-	 * quote (if csv)
-	 * header
-	 *
-	 * NOTE: Eventually when we support user defined types
-	 * the user will supply a function that will know how
-	 * to parse these parameters. For now we can hardcode
-	 * it for the 2 supported types - text and csv.
+	 * NOTE: Eventually when we support user defined types the user will supply 
+	 * a function that will know how to parse these parameters. For now we can 
+	 * hardcode it for the 2 supported types - text, csv - parseFormatString().
 	 */
 	format_str = pstrdup((char *) strVal(linitial(fmtOpts)));
-
-	/*
-	 * DELIMITER
-	 */
-	clause = strtok(format_str, " ");
-	FILEAM_VERIFY_CLAUSE(clause, "delimiter");
-
-	value = strtok(NULL, " ");
-	FILEAM_GET_CHAR(value, "delimiter");
-
-	pstate->delim = value;
-
-	/*
-	 * NULL
-	 */
-	clause = strtok(NULL, " ");
-	FILEAM_VERIFY_CLAUSE(clause, "null");
-
-	value = strtok(NULL, " ");
-	FILEAM_GET_STRING(value, "null");
-
-	pstate->null_print = value;
-	pstate->null_print_len = strlen(pstate->null_print);
-
-	/*
-	 * ESCAPE
-	 */
-	clause = strtok(NULL, " ");
-	FILEAM_VERIFY_CLAUSE(clause, "escape");
-
-	value = strtok(NULL, " ");
-	FILEAM_GET_STRING(value, "escape");
-
-	pstate->escape = value;
-
-	if (pg_strcasecmp(value, "off") == 0)
-		pstate->escape_off = true;
-
-	if (pstate->csv_mode)
-	{
-		/*
-		 * QUOTE
-		 */
-		clause = strtok(NULL, " ");
-		FILEAM_VERIFY_CLAUSE(clause, "quote");
-
-		value = strtok(NULL, " ");
-		FILEAM_GET_CHAR(value, "quote");
-
-		pstate->quote = value;
-	}
-
-	/*
-	 * Possible remaining opts:
-	 * - HEADER
-	 * - FILL MISSING FIELDS
-	 * - FORCE NOT NULL <list>
-	 *
-	 * note: this parsing logic is kinda ugly but must be done this way
-	 * until we switch from strtok's to a more high level mechanism.
-	 */
-	while(true)
-	{
-		clause = strtok(NULL, " ");
-
-		if (clause)
-		{
-			if (pg_strcasecmp(clause, "header") == 0)
-			{
-				pstate->header_line = true;
-			}
-			else if(pg_strcasecmp(clause, "fill") == 0)
-			{
-				pstate->fill_missing = true;
-
-				/* consume the rest of the related keywords */
-				clause = strtok(NULL, " ");
-				FILEAM_VERIFY_CLAUSE(clause, "missing");
-				clause = strtok(NULL, " ");
-				FILEAM_VERIFY_CLAUSE(clause, "fields");
-			}
-			else if(pg_strcasecmp(clause, "force") == 0)
-			{
-				List *temp = NIL;
-				ListCell *l;
-
-				Assert(pstate->csv_mode);
-
-				/* consume the rest of the related keywords */
-				clause = strtok(NULL, " ");
-				FILEAM_VERIFY_CLAUSE(clause, "not");
-				clause = strtok(NULL, " ");
-				FILEAM_VERIFY_CLAUSE(clause, "null");
-
-				/* get the fnn attr list */
-				value = strtok(NULL, " ");
-
-				if(!SplitIdentifierString(value, ',', &temp))
-				{
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid list syntax for \"force not null\"")));
-				}
-
-				/* wrap each string of temp inside a Value node and copy to
-				 * force_notnull so that later CopyGetAttnums could use it
-				 */
-				foreach(l, temp)
-				{
-					Value *val = makeString((char *)lfirst(l));
-					pstate->force_notnull = lappend(pstate->force_notnull, val);
-				}
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("internal parse error at end of format string. got \"%s\"", clause)));
-			}
-		}
-		else
-		{
-			break;
-		}
-	}
-
-	 // elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim,
-	 // pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line
-	 // ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : ""));
-
-	if (pstate->csv_mode)
-	{
-		if (!pstate->quote)
-			pstate->quote = "\"";
-	}
+	parseFormatString(pstate, format_str);
+	
 
 	tupDesc = RelationGetDescr(relation);
 	pstate->attr_offsets = (int *) palloc(tupDesc->natts * sizeof(int));
@@ -1440,6 +1209,7 @@ void AtAbort_ExtTables(void)
 	close_external_file(g_dataSource, false);
 	g_dataSource = NULL;
 }
+
 void
 gfile_printf_then_putc_newline(const char*format,...)
 {
@@ -1464,16 +1234,19 @@ gfile_printf_then_putc_newline(const char*format,...)
 		pfree(a);
 	}
 }
+
 void*
 gfile_malloc(size_t size)
 {
 	return palloc(size);
 }
+
 void
 gfile_free(void*a)
 {
 	pfree(a);
 }
+
 char*
 linenumber_atoi(char buffer[20],int64_t linenumber)
 {
@@ -1484,3 +1257,432 @@ linenumber_atoi(char buffer[20],int64_t linenumber)
 
 	return buffer;
 }
+
+
+/*
+ * strip_quotes
+ *
+ * (copied from bin/psql/stringutils.c - TODO: place to share FE and BE code?).
+ * 
+ * Remove quotes from the string at *source.  Leading and trailing occurrences
+ * of 'quote' are removed; embedded double occurrences of 'quote' are reduced
+ * to single occurrences; if 'escape' is not 0 then 'escape' removes special
+ * significance of next character.
+ *
+ * Note that the source string is overwritten in-place.
+ */
+static void
+strip_quotes(char *source, char quote, char escape, int encoding)
+{
+	char	   *src;
+	char	   *dst;
+
+	Assert(source);
+	Assert(quote);
+
+	src = dst = source;
+
+	if (*src && *src == quote)
+		src++;					/* skip leading quote */
+
+	while (*src)
+	{
+		char		c = *src;
+		int			i;
+
+		if (c == quote && src[1] == '\0')
+			break;				/* skip trailing quote */
+		else if (c == quote && src[1] == quote)
+			src++;				/* process doubled quote */
+		else if (c == escape && src[1] != '\0')
+			src++;				/* process escaped character */
+
+		i = pg_encoding_mblen(encoding, src);
+		while (i--)
+			*dst++ = *src++;
+	}
+
+	*dst = '\0';
+}
+
+/*
+ * strtokx2
+ * 
+ * strtokx2 is a replica of psql's strtokx (bin/psql/stringutils.c), fitted
+ * to be used in the backend for the same purpose - parsing an sql string of
+ * literals. Information follows (right now identical to strtokx):
+ * 
+ * Replacement for strtok() (a.k.a. poor man's flex)
+ *
+ * Splits a string into tokens, returning one token per call, then NULL
+ * when no more tokens exist in the given string.
+ *
+ * The calling convention is similar to that of strtok, but with more
+ * frammishes.
+ *
+ * s -			string to parse, if NULL continue parsing the last string
+ * whitespace - set of whitespace characters that separate tokens
+ * delim -		set of non-whitespace separator characters (or NULL)
+ * quote -		set of characters that can quote a token (NULL if none)
+ * escape -		character that can quote quotes (0 if none)
+ * e_strings -	if TRUE, treat E'...' syntax as a valid token
+ * del_quotes - if TRUE, strip quotes from the returned token, else return
+ *				it exactly as found in the string
+ * encoding -	the active character-set encoding
+ *
+ * Characters in 'delim', if any, will be returned as single-character
+ * tokens unless part of a quoted token.
+ *
+ * Double occurrences of the quoting character are always taken to represent
+ * a single quote character in the data.  If escape isn't 0, then escape
+ * followed by anything (except \0) is a data character too.
+ *
+ * The combination of e_strings and del_quotes both TRUE is not currently
+ * handled.  This could be fixed but it's not needed anywhere at the moment.
+ *
+ * Note that the string s is _not_ overwritten in this implementation.
+ *
+ * NB: it's okay to vary delim, quote, and escape from one call to the
+ * next on a single source string, but changing whitespace is a bad idea
+ * since you might lose data.
+ */
+static char *
+strtokx2(const char *s,
+		 const char *whitespace,
+		 const char *delim,
+		 const char *quote,
+		 char escape,
+		 bool e_strings,
+		 bool del_quotes,
+		 int encoding)
+{
+	static char *storage = NULL;/* store the local copy of the users string
+								 * here */
+	static char *string = NULL; /* pointer into storage where to continue on
+								 * next call */
+
+	/* variously abused variables: */
+	unsigned int offset;
+	char	   *start;
+	char	   *p;
+
+	if (s)
+	{
+		//pfree(storage);
+
+		/*
+		 * We may need extra space to insert delimiter nulls for adjacent
+		 * tokens.	2X the space is a gross overestimate, but it's unlikely
+		 * that this code will be used on huge strings anyway.
+		 */
+		storage = palloc(2 * strlen(s) + 1);
+		strcpy(storage, s);
+		string = storage;
+	}
+
+	if (!storage)
+		return NULL;
+
+	/* skip leading whitespace */
+	offset = strspn(string, whitespace);
+	start = &string[offset];
+
+	/* end of string reached? */
+	if (*start == '\0')
+	{
+		/* technically we don't need to free here, but we're nice */
+		pfree(storage);
+		storage = NULL;
+		string = NULL;
+		return NULL;
+	}
+
+	/* test if delimiter character */
+	if (delim && strchr(delim, *start))
+	{
+		/*
+		 * If not at end of string, we need to insert a null to terminate the
+		 * returned token.	We can just overwrite the next character if it
+		 * happens to be in the whitespace set ... otherwise move over the
+		 * rest of the string to make room.  (This is why we allocated extra
+		 * space above).
+		 */
+		p = start + 1;
+		if (*p != '\0')
+		{
+			if (!strchr(whitespace, *p))
+				memmove(p + 1, p, strlen(p) + 1);
+			*p = '\0';
+			string = p + 1;
+		}
+		else
+		{
+			/* at end of string, so no extra work */
+			string = p;
+		}
+
+		return start;
+	}
+
+	/* check for E string */
+	p = start;
+	if (e_strings &&
+		(*p == 'E' || *p == 'e') &&
+		p[1] == '\'')
+	{
+		quote = "'";
+		escape = '\\';			/* if std strings before, not any more */
+		p++;
+	}
+
+	/* test if quoting character */
+	if (quote && strchr(quote, *p))
+	{
+		/* okay, we have a quoted token, now scan for the closer */
+		char		thisquote = *p++;
+
+		for (; *p; p += pg_encoding_mblen(encoding, p))
+		{
+			if (*p == escape && p[1] != '\0')
+				p++;			/* process escaped anything */
+			else if (*p == thisquote && p[1] == thisquote)
+				p++;			/* process doubled quote */
+			else if (*p == thisquote)
+			{
+				p++;			/* skip trailing quote */
+				break;
+			}
+		}
+
+		/*
+		 * If not at end of string, we need to insert a null to terminate the
+		 * returned token.	See notes above.
+		 */
+		if (*p != '\0')
+		{
+			if (!strchr(whitespace, *p))
+				memmove(p + 1, p, strlen(p) + 1);
+			*p = '\0';
+			string = p + 1;
+		}
+		else
+		{
+			/* at end of string, so no extra work */
+			string = p;
+		}
+
+		/* Clean up the token if caller wants that */
+		if (del_quotes)
+			strip_quotes(start, thisquote, escape, encoding);
+
+		return start;
+	}
+
+	/*
+	 * Otherwise no quoting character.	Scan till next whitespace, delimiter
+	 * or quote.  NB: at this point, *start is known not to be '\0',
+	 * whitespace, delim, or quote, so we will consume at least one character.
+	 */
+	offset = strcspn(start, whitespace);
+
+	if (delim)
+	{
+		unsigned int offset2 = strcspn(start, delim);
+
+		if (offset > offset2)
+			offset = offset2;
+	}
+
+	if (quote)
+	{
+		unsigned int offset2 = strcspn(start, quote);
+
+		if (offset > offset2)
+			offset = offset2;
+	}
+
+	p = start + offset;
+
+	/*
+	 * If not at end of string, we need to insert a null to terminate the
+	 * returned token.	See notes above.
+	 */
+	if (*p != '\0')
+	{
+		if (!strchr(whitespace, *p))
+			memmove(p + 1, p, strlen(p) + 1);
+		*p = '\0';
+		string = p + 1;
+	}
+	else
+	{
+		/* at end of string, so no extra work */
+		string = p;
+	}
+
+	return start;
+}
+
+/*
+ * parseFormatString
+ * 
+ * Given a data format string (e.g: "delimiter '|' null ''"), parse it to its
+ * individual elements and store the parsed values into pstate. this routine
+ * will parse the format string for both 'text' and 'csv' data formats. the 
+ * logic here is largely borrowed from psql's parsing of '\copy' and adapted 
+ * for use in the backend, for the supported external table options only.
+ */
+static void parseFormatString(CopyState pstate, char *fmtstr)
+{
+	char	   *token;
+	const char *whitespace = " \t\n\r";
+	char		nonstd_backslash = 0; 
+	int			encoding = GetDatabaseEncoding();
+	
+	token = strtokx2(fmtstr, whitespace, NULL, NULL,
+					0, false, true, encoding);
+
+	if (token)
+	{
+
+		while (token)
+		{
+			bool		fetch_next;
+
+			fetch_next = true;
+
+			if (pg_strcasecmp(token, "header") == 0)
+				pstate->header_line = true;
+			else if (pg_strcasecmp(token, "delimiter") == 0)
+			{
+				token = strtokx2(NULL, whitespace, NULL, "'",
+								nonstd_backslash, true, true, encoding);
+				if (token)
+					pstate->delim = pstrdup(token);
+				else
+					goto error;
+			}
+			else if (pg_strcasecmp(token, "null") == 0)
+			{
+				token = strtokx2(NULL, whitespace, NULL, "'",
+								nonstd_backslash, true, true, encoding);
+				if (token)
+				{
+					pstate->null_print = pstrdup(token);
+					pstate->null_print_len = strlen(token);
+				}
+				else
+					goto error;
+			}
+			else if (pg_strcasecmp(token, "quote") == 0)
+			{
+				token = strtokx2(NULL, whitespace, NULL, "'",
+								nonstd_backslash, true, true, encoding);
+				if (token)
+					pstate->quote = pstrdup(token);
+				else
+					goto error;
+			}
+			else if (pg_strcasecmp(token, "escape") == 0)
+			{
+				token = strtokx2(NULL, whitespace, NULL, "'",
+								nonstd_backslash, true, true, encoding);
+				if (token)
+				{
+					pstate->escape = pstrdup(token);
+					
+					if (pg_strcasecmp(pstate->escape, "off") == 0)
+						pstate->escape_off = true;
+				}
+				else
+					goto error;
+			}
+			else if (pg_strcasecmp(token, "force") == 0)
+			{
+				token = strtokx2(NULL, whitespace, ",", "\"",
+								0, false, false, encoding);
+				if (pg_strcasecmp(token, "not") == 0)
+				{
+					token = strtokx2(NULL, whitespace, ",", "\"",
+									0, false, false, encoding);
+					if (pg_strcasecmp(token, "null") != 0)
+						goto error;
+					/* handle column list */
+					fetch_next = false;
+					for (;;)
+					{
+						Value *val;
+						
+						token = strtokx2(NULL, whitespace, ",", "\"",
+										0, false, false, encoding);
+						if (!token || strchr(",", token[0]))
+							goto error;
+						
+						val = makeString((char *)pstrdup(token));
+						pstate->force_notnull = lappend(pstate->force_notnull, val);
+
+						/* consume the comma if any */
+						token = strtokx2(NULL, whitespace, ",", "\"",
+										0, false, false, encoding);
+						if (!token || token[0] != ',')
+							break;						
+					}
+				}
+				else
+					goto error;
+			}
+			else if (pg_strcasecmp(token, "fill") == 0)
+			{
+				token = strtokx2(NULL, whitespace, ",", "\"",
+								0, false, false, encoding);
+				if (pg_strcasecmp(token, "missing") == 0)
+				{
+					token = strtokx2(NULL, whitespace, ",", "\"",
+									0, false, false, encoding);
+					if (pg_strcasecmp(token, "fields") == 0)
+					{
+						pstate->fill_missing = true;
+					}
+					else
+						goto error;
+				}
+				else
+					goto error;
+			}
+			else
+				goto error;
+
+			if (fetch_next)
+				token = strtokx2(NULL, whitespace, NULL, NULL,
+								0, false, false, encoding);
+		}
+	}
+
+	/* set defaults */
+	
+	if (pstate->csv_mode)
+	{
+		if (!pstate->quote)
+			pstate->quote = "\"";
+	}
+
+	/*
+	elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim,
+				 pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line
+				 ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : ""));
+	 */
+	
+	return;
+	
+error:
+	if (token)
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+						errmsg("external table internal parse error at \"%s\"", 
+								token)));
+	else
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+						errmsg("external table internal parse error at end of "
+								"line")));
+
+}
+
