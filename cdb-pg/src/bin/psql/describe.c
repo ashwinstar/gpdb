@@ -783,9 +783,9 @@ describeOneTableDetails(const char *schemaname,
 	tableinfo.hasrules = strcmp(PQgetvalue(res, 0, 4), "t") == 0;
 	tableinfo.hasoids = strcmp(PQgetvalue(res, 0, 5), "t") == 0;
 	tableinfo.tablespace = (pset.sversion >= 80000) ?
-		atooid(PQgetvalue(res, 0, 6)) : 0;
+		atooid(PQgetvalue(res, 0, 7)) : 0;
 	tableinfo.relstorage = (pset.sversion > 80206) ? 
-		*(PQgetvalue(res, 0, 7)) : 'h';
+		*(PQgetvalue(res, 0, 6)) : 'h';
 	PQclear(res);
 
 	headers[0] = _("Column");
