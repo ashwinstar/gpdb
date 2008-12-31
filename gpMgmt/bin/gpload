@@ -705,7 +705,7 @@ class gpload:
             try:
                 self.log(self.LOG, 'trying to run %s' % ' '.join(popenList))
                 cfds = True
-                if platform.system() == 'Windows': # not supported on win32
+                if platform.system() in ['Windows', 'Microsoft']: # not supported on win32
                     cfds = False
 
                 a = subprocess.Popen(popenList,stdout=subprocess.PIPE,
@@ -1254,7 +1254,7 @@ class gpload:
         signal.signal(signal.SIGINT, handle_kill)
         signal.signal(signal.SIGTERM, handle_kill)
         # win32 doesn't do SIGQUIT
-        if platform.system() != 'Windows':
+        if not platform.system() in ['Windows', 'Microsoft']:
             signal.signal(signal.SIGQUIT, handle_kill)
             signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
@@ -1283,7 +1283,7 @@ class gpload:
                 self.log(self.LOG, 'killing gpfdist')
                 for a in self.subprocesses:
                     try:
-                        if platform.system() == 'Windows':
+                        if platform.system() in ['Windows', 'Microsot']:
                             # win32 API is better but hard for us
                             # to install, so we use the crude method
                             subprocess.Popen("taskkill /F /T /PID %i" % a.pid,
