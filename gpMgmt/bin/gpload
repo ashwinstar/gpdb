@@ -880,12 +880,14 @@ class gpload:
             ct = str(row['data_type'])
             if ct=='numeric':
                 stuff = ('numeric_precision','numeric_scale')
-            elif ct=='character' or ct=='character varying':
+            elif ct=='character' or ct=='character varying' or ct == 'bpchar':
                 stuff = ('character_maximum_length',)
             elif ct == 'bigserial':
                 ct = 'bigint'
             elif ct == 'serial':
                 ct = 'int4'
+            elif ct == 'bit' or ct == 'varbit':
+                stuff = ('character_maximum_length',)
             else:
                 stuff = ()
             stuff2 = []
