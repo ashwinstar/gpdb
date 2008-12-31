@@ -155,7 +155,8 @@ def do_sysctl(res):
 
 
 def do_ulimit(res):
-    (ok, out) = run('ulimit -u && ulimit -n')
+    shell = os.getenv('SHELL', '/bin/bash')
+    (ok, out) = run('%s -c "ulimit -u && ulimit -n"' % shell)
     if ok:
         res['ulimit.nproc'] = out[0].strip()
         res['ulimit.nofile'] = out[1].strip()
