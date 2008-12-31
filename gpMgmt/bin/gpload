@@ -917,31 +917,43 @@ class gpload:
 
     def read_mapping(self):
         mapping = self.getconfig('gpload:output:mapping',dict,None)
-        if mapping==None:
-            self.log(self.DEBUG, "No mapping found")
-            self.log(self.DEBUG, "looking at into columns " + str(self.into_columns)) 
-            self.log(self.DEBUG, "from " + str(self.from_columns))
-            for a in self.into_columns:
-                if a[0] in map(lambda a:a[0],self.from_columns):
-                    self.log(self.LOG, "mapping %s to itself" % a[0])
-                    a[2] = a[0]
-                else:
-                    # There is a difference between the input columns and
-                    # the table's column layout. We do not have a mapping
-                    # from the user so give up
-                    self.log(self.ERROR, 
-                                "table column %s not found in input " % a[0] +
-                                "column schema")
-        else:
+
+        if mapping:
             for key,value in mapping.iteritems():
                 if type(key)!=str or type(value)!=str:
-                    self.log(self.ERROR,'gpload:output:mapping must be a mapping from strings to strings.')
+                    self.log(self.ERROR,'gpload:output:mapping must be a ' +
+                                        'mapping from strings to strings')
                 try:
                     i = map(lambda a:a[0],self.into_columns).index(key)
                 except ValueError:
-                    self.log(self.ERROR,'%s in mapping is not in table %s'%(key,self.table))
+                    self.log(self.ERROR,'%s in mapping is not in table %s'% \
+                                    (key, self.table))
                 self.into_columns[i][2] = value.lower()
-        self.log(self.DEBUG,'table %s columns are--'%self.table)
+
+        # Now, map anything yet to be mapped to itself, picking up on those
+        # columns which are not found in the table.
+        for x in self.from_columns:
+            i = filter(lambda a:a[2] == x[0], self.into_columns)
+            if not i:
+                i = filter(lambda a:a[0] == x[0], self.into_columns)
+                if i:
+                    i = i[0]
+                    i[2] = i[0]
+                else:
+                    self.log(self.ERROR, 'no mapping for input column ' +
+                             '"%s" to output table' % x[0])
+
+#        for a in self.from_columns:
+#                if a[0] in map(lambda a:a[0],self.into_columns):
+#                    b = filter(lambda x:x[0] == a[0], self.into_columns)
+#                    print b
+#                    b = b[0]
+#                    b[2] = b[0]
+#                    self.log(self.LOG, "mapping %s to itself" % b[0])
+#                else:
+#                    # There is a difference between the input columns and
+#                    # the table's column layout. We do not have a mapping
+#                    # from the user so give up
         for name,typ,mapto,seq in self.into_columns:
             self.log(self.DEBUG,'%s: %s = %s'%(name,typ,mapto))
 
