@@ -131,3 +131,4 @@ test: notin
 test: toast
 test: mapred
 test: gpparams
+test: upg2
