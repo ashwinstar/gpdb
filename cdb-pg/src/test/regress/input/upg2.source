@@ -1,0 +1,80 @@
+--
+-- upgrade 2
+--
+
+
+-- save the catalog info for previous revision
+-- COPY pg_attribute 
+--   to '@abs_srcdir@/data/pg_attribute32.data'  csv header;
+-- COPY pg_class 
+--   to '@abs_srcdir@/data/pg_class32.data' with oids csv header;
+-- COPY pg_type 
+--   to '@abs_srcdir@/data/pg_type32.data' with oids csv header;
+
+-- build "old" catalog tables
+
+create table old_attribute (like pg_attribute) ;
+create table old_class (like pg_class) with oids;
+create table old_type (like pg_type) with oids;
+
+-- load the "old" catalog
+COPY old_attribute 
+  from '@abs_srcdir@/data/pg_attribute32.data'  csv header;
+COPY old_class 
+  from '@abs_srcdir@/data/pg_class32.data' with oids csv header;
+COPY old_type 
+  from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
+
+
+-- begin_equivalent 
+
+-- compare old vs new catalog tables
+
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from old_attribute a,
+old_class c,
+old_type t
+where c.oid = a.attrelid and a.attnum > 0
+and t.oid = a.atttypid
+and c.oid < 16384
+and c.relkind = 'r'
+order by c.relname, a.attnum;
+
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_attribute a,
+pg_class c,
+pg_type t
+where c.oid = a.attrelid and a.attnum > 0
+and t.oid = a.atttypid
+and c.oid < 16384
+and c.relkind = 'r'
+order by c.relname, a.attnum;
+
+
+-- end_equivalent
+
+-- begin_equivalent 
+
+-- compare old vs new catalog views
+
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from old_attribute a,
+old_class c,
+old_type t
+where c.oid = a.attrelid and a.attnum > 0
+and t.oid = a.atttypid
+and c.oid < 16384
+and c.relkind = 'v'
+order by c.relname, a.attnum;
+
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_attribute a,
+pg_class c,
+pg_type t
+where c.oid = a.attrelid and a.attnum > 0
+and t.oid = a.atttypid
+and c.oid < 16384
+and c.relkind = 'v'
+order by c.relname, a.attnum;
+
+-- end_equivalent
