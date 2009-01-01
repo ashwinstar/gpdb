@@ -149,7 +149,7 @@ installcheck-parallel: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 installcheck-good: all $(srcdir)/current_good_schedule
-	cp data/pg_class32.data.in data/pg_class32.data
+	cp -f data/pg_class32.data.in data/pg_class32.data
 	gpstringsubs.pl data/pg_class32.data
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
@@ -196,6 +196,7 @@ clean distclean maintainer-clean: clean-lib
 	rm -rf testtablespace
 	rm -rf results tmp_check log
 	rm -f regression.diffs regression.out regress.out run_check.out
+	rm -f data/pg_class32.data
 ifeq ($(PORTNAME), cygwin)
 	rm -f regress.def
 endif

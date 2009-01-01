@@ -270,7 +270,7 @@ if (1)
         
     }
 
-	my $username = getlogin();
+	my $username = getpwuid($>);
 
     $psql_str = "psql ";
     
