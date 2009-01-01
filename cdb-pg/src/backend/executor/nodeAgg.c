@@ -294,7 +294,15 @@ initialize_aggregates(AggState *aggstate,
 		 * (into the transcontext) since we will pfree the transValue later.
 		 */
 		if (peraggstate->initValueIsNull)
+		{
+			/* Clear the old transition value */
+			if (!peraggstate->transtypeByVal &&
+				!pergroupstate->transValueIsNull &&
+				DatumGetPointer(pergroupstate->transValue) != NULL)
+				pfree(DatumGetPointer(pergroupstate->transValue));
 			pergroupstate->transValue = peraggstate->initValue;
+		}
+		
 		else
 		{
 			if (!peraggstate->transtypeByVal &&
