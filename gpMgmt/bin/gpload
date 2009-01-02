@@ -360,9 +360,10 @@ class gpload:
         self.options.D = False
         self.options.password = None
         self.options.d = None
-        self.DEBUG = 4
-        self.LOG = 3
-        self.INFO = 2
+        self.DEBUG = 5
+        self.LOG = 4
+        self.INFO = 3
+        self.WARN = 2
         self.ERROR = 1
         self.options.qv = self.INFO
 
@@ -496,6 +497,8 @@ class gpload:
             return "INFO"
         elif level == self.ERROR:
             return "ERROR"
+        elif level == self.WARN:
+            return "WARN"
         else:
             self.log(self.ERROR, "unknown log type %i" % level)
 
@@ -1049,10 +1052,10 @@ class gpload:
     def report_errors(self):
         errors = self.count_errors()-self.initial_errors
         if errors==1:
-            self.log(self.INFO, '1 bad row')
+            self.log(self.WARN, '1 bad row')
             self.exitValue = 1
         elif errors:
-            self.log(self.INFO, '%d bad rows'%errors)
+            self.log(self.WARN, '%d bad rows'%errors)
             self.exitValue = 1
 
     def do_insert(self,dest):
