@@ -1,0 +1,187 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
+#
+
+"""
+The gpsubprocess is a subclass of subprocess that allows for non-blocking
+processing of status and servicing of stdout and stderr.  
+
+Also the aim was to reduce the overhead associated with this servicing.
+Normal subprocess.communicate() results in up to 3 threads being created 
+(stdin,stdout,stderr) and then a blocking wait for the process and threads
+to finish.  This doesn't allow the user to be able to cancel long running
+tasks.
+
+
+"""
+import errno
+import fcntl
+import os
+import select
+import subprocess
+import time
+import logging
+
+import gplog
+
+
+logger=gplog.get_default_logger()
+
+
+
+class Popen(subprocess.Popen):
+    
+    cancelRequested=False
+
+    
+    def communicate2(self, timeout=2):
+        """ An extension to communicate() that allows for external cancels
+        to abort processing.  
+
+        All internal I/O calls are non-blocking.
+
+        The timeout is in seconds and is the max. amount of time to wait in 
+        select() for something to read from either stdout or stderr.  This 
+        then effects how responsive it will be to cancel requests.
+        """
+        terminated=False
+        
+        output = []
+        error = []
+
+        self._setupNonblocking()
+
+        while not (terminated or self.cancelRequested):
+            terminated = self._check_status(output,error)
+
+            if not terminated:
+                self._read_files(timeout,output,error)
+
+        #one last read to get the last bits.
+        output.append(self.stdout.read())
+        error.append(self.stderr.read())
+                      
+        (resout,reserr)=self._postprocess_outputs(res_output,res_error)
+
+        return (self.returncode,resout,reserr)
+
+
+    def cancel(self):
+        """Sets a flag that will cause execution to halt during the next 
+        select cycle.
+        
+        This amount of time is based on the timeout specified.
+        """
+        logger.debug("cancel is requested")
+        self.cancelRequested=True
+        
+        
+
+    
+    def _setupNonblocking(self):
+        """ sets stdout and stderr  fd's to be non-blocking.
+        The fcntl throws an IOError if these calls fail. 
+        """        
+        rv = fcntl.fcntl(self.stdout, fcntl.F_SETFL, os.O_NDELAY | os.O_NONBLOCK)
+        rv = fcntl.fcntl(self.stderr, fcntl.F_SETFL, os.O_NDELAY | os.O_NONBLOCK)
+
+                
+    def _postprocess_outputs(self,output,error):
+        # All data exchanged.  Translate lists into strings.
+        if output is not None:
+            output = ''.join(output)
+        if error is not None:
+            error = ''.join(error)
+
+        # Translate newlines, if requested.  We cannot let the file
+        # object do the translation: It is based on stdio, which is
+        # impossible to combine with select (unless forcing no
+        # buffering).
+        if self.universal_newlines and hasattr(file, 'newlines'):
+            if output:
+                output = self._translate_newlines(output)
+            if stderr:
+                error = self._translate_newlines(error)    
+        return (output,error)
+    
+    
+    def _read_files(self,timeout,output,error):
+        readList=[]
+        readList.append(self.stdout)
+        writeList = []
+        errorList=[]
+        errorList.append(self.stderr)
+        (rset,wset,eset) = self.__select(readList,writeList, errorList, timeout)
+
+        if self.stdout in rset:
+            output.append(os.read(self.stdout.fileno(),8192))
+
+        if self.stderr in eset:
+            error.append(os.read(self.stderr.fileno(),8192))
+
+
+    def _check_status(self,stdout,stderr):
+        terminated=False
+        """Another possibility for the below line would be to try and capture
+        rusage information.  Perhaps that type of call would be an external
+        method for users to check on status:        
+        (pid, status, rusage)=os.wait4(self.pid, os.WNOHANG)
+        """
+        (pid,status)=os.waitpid(self.pid, os.WNOHANG)
+        
+
+        if pid == 0:
+            #means we are still in progress
+            return
+
+        exitstatus = os.WEXITSTATUS(status)
+        if os.WIFEXITED (status):            
+            self.exitstatus = os.WEXITSTATUS(status)
+            self.signalstatus = None
+            terminated = True
+        elif os.WIFSIGNALED (status):
+            self.exitstatus = None
+            self.signalstatus = os.WTERMSIG(status)
+            terminated = True
+        elif os.WIFSTOPPED (status):
+            raise Exception('Wait was called for a child process that is stopped.\
+                             This is not supported. Is some other process attempting\
+                             job control with our child pid?')
+
+        self._handle_exitstatus(status)
+
+        return terminated
+
+
+    def __select (self, iwtd, owtd, ewtd, timeout=None):
+        """This is a wrapper around select.select() that ignores signals. 
+        
+        If select.select raises a select.error exception and errno is an EINTR
+        error then it is ignored. 
+        
+        """        
+        if timeout is not None:
+            end_time = time.time() + timeout
+           
+            
+        while True:
+            try:
+                return select.select(iwtd, owtd, ewtd, timeout)
+            except select.error, e:
+                if e[0] == errno.EINTR or e[0] ==  errno.EAGAIN:
+                    # if we loop back we have to subtract the amount of time we already waited.
+                    if timeout is not None:
+                        timeout = end_time - time.time()
+                        if timeout < 0:
+                            return ([],[],[])
+                else: # something bad caused the select.error
+                    raise
+            except IOError, e:
+                if e[0] == errno.EINTR or e[0] ==  errno.EAGAIN:
+                    if timeout is not None:
+                        timeout = end_time - time.time()
+                        if timeout < 0:
+                            return ([],[],[])
+                else:
+                    raise

@@ -67,6 +67,6 @@ def enable_gpadmin_logging(name):
     
     filename = "%s/gpAdminLogs/%s_%s.log" % (homeDir,name, now.strftime("%Y%m%d"))
     h = logging.FileHandler( filename, 'a')
-    h.setFormatter(getDefaultFormatter())
+    h.setFormatter(get_default_formatter())
     logger.addHandler(h)
     pass
