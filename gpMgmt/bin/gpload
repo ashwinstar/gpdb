@@ -982,7 +982,7 @@ class gpload:
         nullas = self.getconfig('gpload:input:null_as', str, False)
         self.log(self.DEBUG, "null as " + str(nullas))
         if nullas:
-            sql += " null as '%s' " % nullas
+            sql += " null as %s " % quote(nullas)
 
         if self.getconfig('gpload:input:header',bool,False):
             sql += "header "
@@ -1297,7 +1297,7 @@ class gpload:
                 self.log(self.LOG, 'killing gpfdist')
                 for a in self.subprocesses:
                     try:
-                        if platform.system() in ['Windows', 'Microsot']:
+                        if platform.system() in ['Windows', 'Microsoft']:
                             # win32 API is better but hard for us
                             # to install, so we use the crude method
                             subprocess.Popen("taskkill /F /T /PID %i" % a.pid,
