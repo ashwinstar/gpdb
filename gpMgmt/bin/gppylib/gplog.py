@@ -17,20 +17,21 @@ import sys
 
 #evil global
 LOGGER=None
-
+SOUT_HANDLER=None
+FILE_HANDLER=None
 
 #------------------------------- Public Interface --------------------------------
 def get_default_logger():
     """
     Return a singleton logger.
     """
-    global LOGGER
+    global LOGGER,SOUT_HANDLER
     if LOGGER is None:
         LOGGER = logging.getLogger('default')
         f = get_default_formatter()
-        h = logging.StreamHandler(sys.stdout)
-        h.setFormatter(f)
-        LOGGER.addHandler(h)
+        SOUT_HANDLER = logging.StreamHandler(sys.stdout)
+        SOUT_HANDLER.setFormatter(f)
+        LOGGER.addHandler(SOUT_HANDLER)
         LOGGER.setLevel(logging.INFO)
     return LOGGER
 
@@ -48,9 +49,13 @@ def enable_verbose_logging():
     LOGGER.setLevel(logging.DEBUG)
 
 
-def enable_quiet_logging():
-    """ reduce log level """
-    LOGGER.setLevel(logging.WARN)
+def quiet_stdout_logging():
+    """ reduce log level for stdout logging """
+    
+    #TODO:  this should ideally only quiet the stdout handler but still
+    #       log normally to the file handler.
+    global SOUT_HANDLER
+    SOUT_HANDLER.setLevel(logging.WARN)
     
     
     
@@ -60,13 +65,15 @@ def get_default_formatter():
     return logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:%(message)s","%Y%m%d:%H:%M:%S")
 
     
-def enable_gpadmin_logging(name):    
+def enable_gpadmin_logging(name):
+    global FILE_HANDLER
+        
     logger = get_default_logger()
     now = datetime.date.today()
     homeDir=os.path.expanduser("~")
     
     filename = "%s/gpAdminLogs/%s_%s.log" % (homeDir,name, now.strftime("%Y%m%d"))
-    h = logging.FileHandler( filename, 'a')
-    h.setFormatter(get_default_formatter())
-    logger.addHandler(h)
+    FILE_HANDLER = logging.FileHandler( filename, 'a')
+    FILE_HANDLER.setFormatter(get_default_formatter())
+    logger.addHandler(FILE_HANDLER)
     pass

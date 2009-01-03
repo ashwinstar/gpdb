@@ -62,7 +62,7 @@ class Popen(subprocess.Popen):
         output.append(self.stdout.read())
         error.append(self.stderr.read())
                       
-        (resout,reserr)=self._postprocess_outputs(res_output,res_error)
+        (resout,reserr)=self._postprocess_outputs(output,error)
 
         return (self.returncode,resout,reserr)
 

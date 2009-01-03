@@ -1,0 +1,255 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
+#
+# Remaining items to be done:
+# 1) impl schema only.
+# 2) testing!
+# 3) implement progress measurement
+# 4) audit of Exception handling
+# 5) fill in the __help description
+# 6) should this be named gpdbcopy since we would use this for the master as well?
+
+import os, sys
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+
+from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib.gplog import *
+from gppylib.commands.unix import *
+from gppylib.commands.base import *
+from gppylib.commands.gp import *
+
+description = (""" 
+Creates a copy of a GPDB segment.
+""")
+
+_help = ["""
+TODO: add txt for gpsegcopy!
+"""]
+
+
+EXECNAME = os.path.split(__file__)[-1]
+
+
+class SegcopyError(Exception):  pass
+
+
+#----------------------- Command line option parser ----------------------
+
+#TODO: bug related to ./gpsegcopy -? results in gpsegcopy: error: no such option: -C
+def parseargs():
+    #TODO:  integrate with the real product version
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(description.split()),
+                version="%prog 1.0")
+    parser.setHelp(_help)
+    parser.set_usage('%prog [--help] [options] srchost:srcdir dsthost:dstdir')
+    parser.remove_option('-h')
+    
+        
+    parser.add_option('-c','--clean', action='store_true',
+                        help='remove all files under the remote directory before performing the copy.')
+    parser.add_option('-d','--debug', action='store_true',
+                        help='debug output.')
+                        
+    parser.add_option('-h', '-?', '--help', action='help',
+                        help='show this help message and exit')
+    parser.add_option('-q', '--quiet', action='store_true',
+                        help='suppress status messages')
+    parser.add_option('-s', '--schema_only', action='store_true',
+                        help='copy only the schema (no data)')
+    parser.add_option('-m', '--method', type='choice', choices=['c', 'copy', 's', 'sync'],
+                      metavar='c[opy]|s[ync]', action='store', default='copy', 
+                      help=('set the method of segment copy'))
+
+    
+    parser.set_defaults(verbose=True, filters=[], slice=(None, None))
+    
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    
+    #parse positional arguments
+    if len(args) != 2:
+        parser.print_help()
+        parser.exit()
+    
+        
+    return options, args
+
+
+def parsePositionalArgs(args,logger):
+        
+    srcInfo=args[0].split(':')
+    dstInfo=args[1].split(':')
+
+    if len(srcInfo) != 2:
+        raise SegcopyError, "Invalid srcHost:srcDir specificed: '%s'" % args[0]
+    if len(dstInfo) != 2:
+        raise SegcopyError, "Invalid dstHost:dstDir specificed: '%s'" % args[1]
+
+    srcHost=srcInfo[0]
+    srcDir=srcInfo[1]
+    dstHost=dstInfo[0]
+    dstDir=dstInfo[1]
+    
+    return (srcHost,srcDir,dstHost,dstDir)
+    
+    
+#------------------------------- Real Work --------------------------------
+class gpsegcopy:
+    
+    def __init__(self,logger,srcHost,srcDir,dstHost,dstDir,clean,schema_only,method):
+        self.logger=logger
+        self.srcHost=srcHost
+        self.srcDir=srcDir
+        self.dstHost=dstHost
+        self.dstDir=dstDir
+        self.clean=clean
+        self.schema_only=schema_only
+        self.method=method        
+        
+    
+    def pre_check(self):
+        '''Perform up front checks on hosts,directories and other things that might trip us up.
+
+           throws a SegcopyError if any problems occur during validation that require aborting
+           the actual copy.
+           
+           TODO:  should gpsegcopy enforce the fact that the database should be offline? 
+                     --am currently thinking no since in the future we may support some online
+                       operations of this with some added backend features.
+        '''                
+        Ping.ping("srcPing",self.srcHost)
+        Ping.ping("dstping",self.dstHost)
+        srcDirSize=DiskUsage.get_size("srcDir",self.srcHost,self.srcDir)   
+        
+        if self.clean:
+            RemoveFiles.remove_remote("dstDir",self.dstHost,self.dstDir)
+                     
+        self.verify_remotedir("dstDir",self.dstHost,self.dstDir, srcDirSize)
+        
+        pass
+    
+    def get_status(self):
+        self.logger.critical("TODO: get_status")
+        pass
+        
+    
+    def copy(self):
+        name="segcopy"
+        srcDirSize=DiskUsage.get_size(name,self.srcHost,self.srcDir)
+        
+        self.logger.info("Starting copy from %s:%s to %s:%s of %d bytes" %\
+                         (self.srcHost,self.srcDir,self.dstHost,self.dstDir,srcDirSize))
+        
+        if self.schema_only:            
+            """ basic logic:
+            1) start src DB
+            2) interrogate schema on src DB.  
+                - heap tables -AO tables - indexes
+            3) create dummy heap,AO,index and store created file as a template.
+            4) use info from #2 and #3 to create a local copy
+            5) copy it whereever.                        
+            """
+            
+            #TODO: impl. this!
+            pass
+        
+        if self.method == 'copy':
+            #TODO:  may want to change this to either always use pysync or to use a 'tar | ssh tar'
+            scpCmd=RemoteCopy(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
+            scpCmd.run(validateAfter=True)
+            res=scpCmd.get_results()
+        else:            
+            pysyncCmd=PySync(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
+            pysyncCmd.run(validateAfter=True)
+            res=pysyncCmd.get_results()
+            
+        
+        #basic validation
+        dstDirSize=DiskUsage.get_size(name,self.dstHost,self.dstDir)
+        
+        if srcDirSize != dstDirSize:
+            raise SegcopyError, "Copy completed but byte count doesn't match!\n"\
+                  "%s:%s has: %d bytes and %s:%s has: %d bytes"\
+                    % (self.srcHost,self.srcDir,srcDirSize,self.dstHost,self.dstDir,dstDirSize)
+            
+        logger.info("Copy Complete.  %s:%s has: %d bytes and %s:%s has: %d bytes"\
+                    % (self.srcHost,self.srcDir,srcDirSize,self.dstHost,self.dstDir,dstDirSize))
+
+    
+   
+    #------------ Internal Helper Functions --------------------------------            
+
+    def verify_remotedir(self,name,host,directory,bytesRequired):        
+        remote_bytes_avail = 0
+        
+        if self.method == 'copy':
+            #shouldn't be a remote dir there.  so we'll create one and
+            #determine the amount of free disk space based on it.
+            MakeDirectory.create_remote(name,host,directory)        
+            remote_bytes_avail=DiskFree.get_size(name,host,directory)
+            RemoveDirectory.remove_remote(name,host,directory)            
+        else:
+            remote_bytes_avail=DiskFree.get_size(name,host,directory)
+            
+            
+        #TODO:  this logic isn't quite correct in the 'sync' case since we might
+        #       not need to copy anything.  
+        if remote_bytes_avail <= bytesRequired:
+            raise SegcopyError, "Not enough space on destination host: '%s' directory:"\
+                                "'%s'.  Currently %d bytes free but need %d bytes." \
+                                % (host,directory,remote_bytes_avail, bytesRequired)
+        
+    
+        logger.info("srcDir has: %d bytes in it and dstDir's filesystem has: %d available bytes" \
+                     % (bytesRequired,remote_bytes_avail))
+
+
+
+
+#------------------------------- Mainline --------------------------------
+
+try:
+    logger = get_default_logger()
+    setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
+    
+    
+    options, args = parseargs()
+    (srcHost,srcDir,dstHost,dstDir)=parsePositionalArgs(args,logger)
+    
+    
+    if options.debug:
+        enable_verbose_logging()
+    
+    if options.quiet:
+        quiet_stdout_logging()
+
+    logger.info("Starting: %s"  % ' '.join(sys.argv))
+    
+        
+    if options.clean:
+        logger.debug("clean remote directory first specified.")
+    
+    if options.schema_only:
+        logger.debug("schema_only specified.")
+    
+    
+    logger.debug("creating gpsegcopy object")    
+    segcopy = gpsegcopy(logger,srcHost,srcDir,dstHost,dstDir,options.clean,options.schema_only,options.method)
+    segcopy.pre_check()
+    segcopy.copy()
+
+
+except ExecutionError, e:
+    logger.exception("Segment copy failed. exiting...")
+    sys.exit(3)
+except SegcopyError, e:
+    logger.exception("Segment copy failed. exiting...")
+    sys.exit(2)
+except KeyboardInterrupt:
+    sys.exit('\nUser Interrupted')
+
+
