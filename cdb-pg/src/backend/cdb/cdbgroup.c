@@ -662,6 +662,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.use_hashed_grouping = group_context->use_hashed_grouping;
 	ctx.best_path = group_context->best_path;
 	ctx.cheapest_path = group_context->cheapest_path;
+	ctx.subplan = group_context->subplan;
 	ctx.input_locus = plan_1p.input_locus;
 	ctx.output_locus = plan_1p.output_locus;
 	ctx.agg_counts = agg_counts;
@@ -816,28 +817,28 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			path = best_path;
 		result_plan = create_plan(root, path);
 		current_pathkeys = path->pathkeys;
+
+		/* Instead of the flat target list produced above, use the sub_tlist
+		 * constructed in cdb_grouping_planner.  Add a Result node if the
+		 * base plan can't project. (This may be unnecessary, but, if so,
+		 * the Result node will be removed later.)
+		 */
+		result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
+
+		Assert(result_plan->flow); 
+    
+		/* Account for the cost of evaluation of the sub_tlist. */
+		cost_qual_eval(&tlist_cost, sub_tlist);
+		result_plan->startup_cost += tlist_cost.startup;
+		result_plan->total_cost +=
+			tlist_cost.startup +
+			tlist_cost.per_tuple * result_plan->plan_rows;
 	}
 	else
 	{
 		result_plan = ctx->subplan;
 		current_pathkeys = ctx->current_pathkeys;
 	}
-	
-	/* Instead of the flat target list produced above, use the sub_tlist
-	 * constructed in cdb_grouping_planner.  Add a Result node if the
-	 * base plan can't project. (This may be unnecessary, but, if so,
-	 * the Result node will be removed later.)
-	 */
-    result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
-
-    Assert(result_plan->flow); 
-    
-	/* Account for the cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, sub_tlist);
-	result_plan->startup_cost += tlist_cost.startup;
-	result_plan->total_cost +=
-		tlist_cost.startup +
-		tlist_cost.per_tuple * result_plan->plan_rows;
 
 	/* Precondition the input by adjusting its locus prior to adding
 	 * the Agg or Group node to the base plan, if needed.
@@ -1105,33 +1106,33 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	{
 		result_plan = create_plan(root, path);
 		current_pathkeys = path->pathkeys;
+
+		/* Instead of the flat target list produced by create_plan above, use
+		 * the sub_tlist constructed in cdb_grouping_planner.  This consists
+		 * of just the (levelsup==0) vars mentioned in the SELECT and HAVING
+		 * clauses plus entries for any GROUP BY expressions that are not
+		 * simple Vars.  (This is the same sub_tlist as used in 1-stage
+		 * aggregation and in normal aggregation in grouping_planner).
+		 *
+		 * If the base plan is of a type that can't project, add a Result
+		 * node to carry the new target list, else install it directly.
+		 * (Though the result node may not always be necessary, it is safe,
+		 * and superfluous Result nodes are removed later.)
+		 */
+		result_plan = plan_pushdown_tlist(result_plan, ctx->sub_tlist);
+
+		/* Account for the cost of evaluation of the sub_tlist. */
+		cost_qual_eval(&tlist_cost, ctx->sub_tlist);
+		result_plan->startup_cost += tlist_cost.startup;
+		result_plan->total_cost +=
+			tlist_cost.startup +
+			tlist_cost.per_tuple * result_plan->plan_rows;
 	}
 	else
 	{
 		result_plan = ctx->subplan;
 		current_pathkeys = ctx->current_pathkeys;
 	}
-
-	/* Instead of the flat target list produced by create_plan above, use
-	 * the sub_tlist constructed in cdb_grouping_planner.  This consists
-	 * of just the (levelsup==0) vars mentioned in the SELECT and HAVING
-	 * clauses plus entries for any GROUP BY expressions that are not
-	 * simple Vars.  (This is the same sub_tlist as used in 1-stage
-	 * aggregation and in normal aggregation in grouping_planner).
-	 *
-	 * If the base plan is of a type that can't project, add a Result
-	 * node to carry the new target list, else install it directly.
-	 * (Though the result node may not always be necessary, it is safe,
-	 * and superfluous Result nodes are removed later.)
-	 */
-	result_plan = plan_pushdown_tlist(result_plan, ctx->sub_tlist);
-	
-	/* Account for the cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, ctx->sub_tlist);
-	result_plan->startup_cost += tlist_cost.startup;
-	result_plan->total_cost +=
-		tlist_cost.startup +
-		tlist_cost.per_tuple * result_plan->plan_rows;
 	
 	/* At this point result_plan produces the input relation for two-stage
 	 * aggregation.
@@ -1491,28 +1492,28 @@ make_three_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx)
 	{
 		result_plan = create_plan(root, path);
 		current_pathkeys = path->pathkeys;
+
+		/* Instead of the flat target list produced above, use the sub_tlist
+		 * constructed in cdb_grouping_planner.  Add a Result node if the
+		 * base plan can't project. (This may be unnecessary, but, if so,
+		 * the Result node will be removed later.)
+		 */
+		result_plan = plan_pushdown_tlist(result_plan, ctx->sub_tlist);
+
+		Assert(result_plan->flow); 
+		
+		/* Account for the cost of evaluation of the sub_tlist. */
+		cost_qual_eval(&tlist_cost, ctx->sub_tlist);
+		result_plan->startup_cost += tlist_cost.startup;
+		result_plan->total_cost +=
+			tlist_cost.startup +
+			tlist_cost.per_tuple * result_plan->plan_rows;
 	}
 	else
 	{
 		result_plan = ctx->subplan;
 		current_pathkeys = ctx->current_pathkeys;
 	}
-
-	/* Instead of the flat target list produced above, use the sub_tlist
-	 * constructed in cdb_grouping_planner.  Add a Result node if the
-	 * base plan can't project. (This may be unnecessary, but, if so,
-	 * the Result node will be removed later.)
-	 */
-    result_plan = plan_pushdown_tlist(result_plan, ctx->sub_tlist);
-
-    Assert(result_plan->flow); 
-    
-	/* Account for the cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, ctx->sub_tlist);
-	result_plan->startup_cost += tlist_cost.startup;
-	result_plan->total_cost +=
-		tlist_cost.startup +
-		tlist_cost.per_tuple * result_plan->plan_rows;
 	
 	/* Use caller specified join_strategy: None, Cross, Hash, or Merge. */
 	

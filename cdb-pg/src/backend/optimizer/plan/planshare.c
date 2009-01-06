@@ -173,7 +173,12 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 		return shared_nodes;
 	}
 
-	if(IsA(common, Material))
+	if (IsA(common, ShareInputScan))
+	{
+		shared = common->lefttree;
+	}
+	
+	else if(IsA(common, Material))
 	{
 		Material *m = (Material *) common;
 
