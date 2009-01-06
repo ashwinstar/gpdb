@@ -349,7 +349,7 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 			       "Error: cannot access directory '%s'\n"
 			       "Please specify a valid directory for -d switch", opt.d));
 
-	if (0 != apr_filepath_get(&p, 0, pool))
+	if (0 != apr_filepath_get(&p, APR_FILEPATH_NATIVE, pool))
 	    usage(apr_psprintf(pool, 
 			       "Error: cannot access directory '%s'\n"
 			       "Please specify a valid directory for -d switch", opt.d));
