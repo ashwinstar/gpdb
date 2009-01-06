@@ -193,7 +193,7 @@ class Progress(threading.Thread):
                 read_bytes += a[0]
             if a[1]!=-1:
                 total_bytes += a[1]
-        self.gpload.log(self.gpload.INFO,'transferred %s of %s.' % \
+        self.gpload.log(self.gpload.INFO,'transferred %s of %s' % \
             (bytestr(read_bytes),bytestr(total_bytes)))
 
     def run(self):
@@ -456,7 +456,7 @@ class gpload:
             self.log(self.ERROR, "-q conflicts with -v and -V")
 
         if self.options.D:
-            self.log(self.INFO, 'gpload has the -D option, so it does not actually load any data.')
+            self.log(self.INFO, 'gpload has the -D option, so it does not actually load any data')
 
         try:
             f = open(configFilename,'r')
@@ -628,7 +628,7 @@ class gpload:
             self.log(self.ERROR,
                        "You need to specify your username with the -U " +
                        "option or in your configuration or in your " +
-                       "environment as PGUSER.")
+                       "environment as PGUSER")
 
         # database to connect to
         if not self.options.d:
@@ -685,7 +685,7 @@ class gpload:
                 except (IndexError,ValueError):
                     self.log(self.ERROR,
                              name+":port_range must be a sequence of " +
-                             "two integers.")
+                             "two integers")
             else:
                 startPort = self.getconfig(name+':port',int,8000)
                 endPort = self.getconfig(name+':port',int,9000)
@@ -700,7 +700,7 @@ class gpload:
             for i in file:
                 if type(i)!=str:
                     self.log(self.ERROR,
-                             name+":file must be a sequence of strings.")
+                             name+":file must be a sequence of strings")
             popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
                          '-f',' '.join(file)]
             if self.options.qv == self.LOG:
@@ -751,7 +751,7 @@ class gpload:
                 if type(l)!=str:
                     self.log(self.ERROR,
                              name + ":local_hostname must be a sequence " +
-                               "of strings.")
+                               "of strings")
                 sep = ''
                 if file[0] != '/':
                     sep = '/'
@@ -829,7 +829,7 @@ class gpload:
                 if type(d)!=dict:
                     self.log(self.ERROR,
                                "gpload:input:columns must be a sequence of " +
-                               "mappings.")
+                               "mappings")
                 key = d.keys()[0]
                 if d[key] == None:
                     self.log(self.DEBUG, 
@@ -1016,7 +1016,7 @@ class gpload:
         if force_not_null_columns:
             for i in force_not_null_columns:
                 if type(i)!=str:
-                    self.log(self.ERROR,'gpload:input:force_not_null must be a sequence of strings.')
+                    self.log(self.ERROR,'gpload:input:force_not_null must be a sequence of strings')
             # not yet, see MPP-4254
             #sql += "force not null %s "%','.join(force_not_null_columns)
             self.log(self.LOG, "ignoring FORCE NOT NULL as it is not supported")
@@ -1116,12 +1116,12 @@ class gpload:
         lis = []
         for i in self.getconfig(config,list):
             if type(i)!=str:
-                self.log(self.ERROR,'%s must be a sequence of strings.'%config)
+                self.log(self.ERROR,'%s must be a sequence of strings'%config)
             j = self.into_columns_dict.get(i.lower())
             if not j:
-                self.log(self.ERROR,'column %s in %s does not exist.'%(i,config))
+                self.log(self.ERROR,'column %s in %s does not exist'%(i,config))
             if not j[index]:
-                self.log(self.ERROR,'there is no mapping from the column %s in %s.'%(i,config))
+                self.log(self.ERROR,'there is no mapping from the column %s in %s'%(i,config))
             lis.append(format(j[0],j[index]))
         return lis
 
@@ -1203,10 +1203,10 @@ class gpload:
         match_columns = set(self.getconfig('gpload:output:match_columns', list))
         a = distkey.intersection(match_columns)
         if a != distkey:
-            self.log(self.ERROR, 'match_columns must contain all attributes in ' +
-                        'the distribution key of "%s"' % self.table +
-                        'key: %s\nmatch_columns: %s' % \
-                        (', '.join(distkey), ', '.join(match_columns)))
+            self.log(self.ERROR, 
+                    'match_columns (' + ', '.join(match_columns) + ') ' +
+                    'must contain all attributes in distribution key '+
+                    '(' + ', '.join(distkey) + ')')
 
     def do_method_update(self):
         """Load the data in and update an existing table based upon it"""
@@ -1298,7 +1298,7 @@ class gpload:
                 self.exitValue = 2
         finally:
             if self.cleanupSql:
-                self.log(self.LOG, 'removing temporary data.')
+                self.log(self.LOG, 'removing temporary data')
                 self.setup_connection()
                 for a in self.cleanupSql:
                     try:
