@@ -263,13 +263,16 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 			   float4 ignorelimit)
 {
 
-	ResQueue		queue = ResQueueHashNew(queueid);
+	ResQueue		queue;
 	int				i;
-	
+
 	/* If the new queue pointer is NULL, then we are out of queueus. */
-	if (!queue || ResScheduler->num_queues >= MaxResourceQueues)
+	if (ResScheduler->num_queues >= MaxResourceQueues)
 		return false;
 
+	queue = ResQueueHashNew(queueid);
+	Assert(queue != NULL);
+	
 	/* Set queue oid and offset in the schedular array */
 	queue->queueid = queueid;
 
