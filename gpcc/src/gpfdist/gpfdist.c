@@ -1230,7 +1230,16 @@ static void http_setup(void)
 #endif
 
     setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
+
+    /* 
+     * We cannot use SO_REUSEADDR on win32 because it results in different
+     * behaviour -- it allows multiple servers to bind to the same port,
+     * resulting in totally unpredictable behaviour. What a silly operating
+     * system.
+     */
+#ifndef WIN32
     setsockopt(f, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
+#endif
     linger.l_onoff = 1;
     linger.l_linger = 5;
     setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
