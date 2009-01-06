@@ -13,18 +13,35 @@
 
 -- build "old" catalog tables
 
-create table old_attribute (like pg_attribute) ;
-create table old_class (like pg_class) with oids;
-create table old_type (like pg_type) with oids;
+create table old_attribute_v32 (like pg_attribute) ;
+create table old_class_v32 (like pg_class) with oids;
+create table old_type_v32 (like pg_type) with oids;
 
 -- load the "old" catalog
-COPY old_attribute 
+COPY old_attribute_v32 
   from '@abs_srcdir@/data/pg_attribute32.data'  csv header;
-COPY old_class 
+COPY old_class_v32 
   from '@abs_srcdir@/data/pg_class32.data' with oids csv header;
-COPY old_type 
+COPY old_type_v32 
   from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
 
+create table toadd_class(oid Oid, relname varchar(64), relkind char);
+create table toadd_attribute(attrelid Oid, attname varchar(64), attnum int2, atttypid int, atttypmod int);
+
+create view old_class as select oid, relname, relkind::char from old_class_v32 union all select oid, relname, relkind from toadd_class;
+create view old_attribute as select attrelid, attname, attnum, atttypid, atttypmod from old_attribute_v32 union all select attrelid, attname, attnum, atttypid, atttypmod from toadd_attribute;
+create view old_type as select oid, * from old_type_v32;
+
+-- new tables and attributes. 
+-- AOCS
+insert into toadd_class values (6107, 'pg_aocs', 'r');
+insert into toadd_attribute values 
+	(6107, 'relid', 	1, 26, -1),
+	(6107, 'attnum', 	2, 21, -1),
+	(6107, 'cs_fileno', 	3, 21, -1),
+	(6107, 'cs_attnum', 	4, 21, -1),
+	(6107, 'cs_file_option',5, 23, -1),
+	(6107, 'cs_col_option', 6, 23, -1);
 
 -- begin_equivalent 
 
