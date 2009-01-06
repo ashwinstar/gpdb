@@ -1170,10 +1170,6 @@ applyTransientState(CdbComponentDatabases *cdb_component_dbs)
 	int			i;
 	CdbComponentDatabaseInfo *segDbInfo;
 
-	/* don't apply transient state on startup. Only when we're up and running. */
-	if (Gp_role != GP_ROLE_DISPATCH)
-		return cdb_component_dbs;
-
 	ftsLock();
 	if (ftsProbeInfo->fts_probePid == 0)
 	{
