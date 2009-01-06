@@ -10,6 +10,8 @@ import os
 
 from gppylib.gplog import *
 from base import *
+from unix import *
+
 
 
 logger = get_default_logger()
@@ -25,3 +27,15 @@ class PySync(Command):
 
     
       
+
+    
+def distribute_tarball(queue,list,tarball):
+        logger.debug("distributeTarBall start")        
+        for db in list:
+            (head,tail)=os.path.split(db.datadir)
+            scp_cmd=RemoteCopy("copy master",tarball,db.get_hostname(),head)            
+            queue.addCommand(scp_cmd)
+        queue.join()        
+        queue.check_results()        
+        logger.debug("distributeTarBall finished")
+        

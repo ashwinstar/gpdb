@@ -73,6 +73,22 @@ class WorkerPool:
         return True
 
 
+    def check_results(self):
+        """ goes through all items in the completed_queue and throws an exception at the
+            first one that didn't execute successfully
+            
+            throws ExecutionError
+        """        
+        try:
+            while True:
+                item=self.completed_queue.get(False)
+                if not item.get_results().wasSuccessful():
+                    raise  ExecutionError("",item)           
+        except Empty:
+            return      
+            
+        
+
     def isDone(self):
         raise "not implemented yet"
         if self.work_queue.empty() is False:
@@ -120,7 +136,7 @@ class Worker(Thread):
                     #TODO:  catch Exception (especially ExecutionException)                        
                     self.cmd.run()
                     logger.debug("[%s] finished cmd" % self.name)
-                    self.pool.addFinishedWorkItem(self.cmd.cmdStr)
+                    self.pool.addFinishedWorkItem(self.cmd)
                     self.cmd=None
                 else:
                     if self.shouldStop:
@@ -193,13 +209,13 @@ class CommandResult():
         return res
     
     def wasSuccessful(self):
-        if not self.halt:
+        if self.halt:
             return False
         if not self.completed:
             return False
         if self.rc is not 0:
             return False
-    
+        return True
         
     
 
@@ -298,6 +314,27 @@ class RMIExecutionContext(ExecutionContext):
         pass
 
 
+
+def ping_list(pingName,host_list,queue):
+                
+        logger.debug("pingHosts start")
+        for host in host_list:
+            ping_cmd=Ping("ping",host,ctxt=LOCAL,remoteHost=None)
+            queue.addCommand(ping_cmd)
+        queue.join()  
+        queue.check_results()      
+        logger.debug("pingHosts finished")
+
+
+
+# Helper commands for running commands:
+
+def run_list(queue,host_list,cmdGenerator,shouldValidate=True):
+    for cmd in cmdGenerator(host_list):
+        queue.addCommand(cmd)
+    queue.join()
+    queue.check_results()
+
     
 
 
@@ -323,6 +360,7 @@ class Command:
         if validateAfter:
             self.validate()
         pass
+    
     
     
     def set_results(self,results):

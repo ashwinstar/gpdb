@@ -119,13 +119,14 @@ class gpsegcopy:
            TODO:  should gpsegcopy enforce the fact that the database should be offline? 
                      --am currently thinking no since in the future we may support some online
                        operations of this with some added backend features.
-        '''                
-        Ping.ping("srcPing",self.srcHost)
-        Ping.ping("dstping",self.dstHost)
+        '''
+        Ping.local("srcPing",self.srcHost)
+        Ping.local("dstPing",self.dstHost)
+                      
         srcDirSize=DiskUsage.get_size("srcDir",self.srcHost,self.srcDir)   
         
         if self.clean:
-            RemoveFiles.remove_remote("dstDir",self.dstHost,self.dstDir)
+            RemoveFiles.remote("dstDir",self.dstHost,self.dstDir)
                      
         self.verify_remotedir("dstDir",self.dstHost,self.dstDir, srcDirSize)
         
@@ -188,9 +189,9 @@ class gpsegcopy:
         if self.method == 'copy':
             #shouldn't be a remote dir there.  so we'll create one and
             #determine the amount of free disk space based on it.
-            MakeDirectory.create_remote(name,host,directory)        
+            MakeDirectory.remote(name,host,directory)        
             remote_bytes_avail=DiskFree.get_size(name,host,directory)
-            RemoveDirectory.remove_remote(name,host,directory)            
+            RemoveDirectory.remote(name,host,directory)            
         else:
             remote_bytes_avail=DiskFree.get_size(name,host,directory)
             

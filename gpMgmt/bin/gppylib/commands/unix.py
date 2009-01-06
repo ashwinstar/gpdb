@@ -70,15 +70,21 @@ class Ping(Command):
         cmdStr = "%s -c 1 %s" % (findCmdInPath('ping'),hostToPing)        
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
-    @staticmethod
-    def ping(pingName,hostToPing):
-        """executes ping command from local machine
-        
-        throws a ExecutionError if the ping fails.
-        """
-        pingCmd=Ping(pingName,hostToPing)
-        pingCmd.run(validateAfter=True)
+    @staticmethod    
+    def ping_list(host_list):        
+        for host in host_list:
+            yield Ping("ping",host,ctxt=LOCAL,remoteHost=None)
     
+    @staticmethod
+    def local(name,hostToPing):        
+        p=Ping(name,hostToPing)
+        p.run(validateAfter=True)
+    
+    @staticmethod
+    def remote(name,hostToPing,hostToPingFrom):
+        p=Ping(name,hostToPing,ctxt=REMOTE,remoteHost=hostToPingFrom)
+        p.run(validateAfter=True)    
+
         
 #---------------du--------------------
 class DiskUsage(Command):    
@@ -140,14 +146,14 @@ class MakeDirectory(Command):
         self.directory=directory
         cmdStr="%s %s" % (findCmdInPath('mkdir'),directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
-        
+    
     @staticmethod
-    def create_local(name,directory):    
+    def local(name,directory):    
         mkdirCmd=MakeDirectory(name,directory)
         mkdirCmd.run(validateAfter=True)
             
     @staticmethod
-    def create_remote(name,remote_host,directory):
+    def remote(name,remote_host,directory):
         mkdirCmd=MakeDirectory(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         mkdirCmd.run(validateAfter=True)
         
@@ -161,13 +167,13 @@ class RemoveDirectory(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def remove_local(name,directory):
+    def local(name,directory):
         rmCmd=RemoveDirectory(name,directory)
         rmCmd.run(validateAfter=True) 
         
     
     @staticmethod
-    def remove_remote(name,remote_host,directory):
+    def remote(name,remote_host,directory):
         rmCmd=RemoveDirectory(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         rmCmd.run(validateAfter=True) 
         
@@ -182,7 +188,7 @@ class RemoveFiles(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
-    def remove_remote(name,remote_host,directory):
+    def remote(name,remote_host,directory):
         rmCmd=RemoveFiles(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         rmCmd.run(validateAfter=True) 
     
@@ -222,7 +228,23 @@ class ExtractTar(Command):
 
         
 
+#--------------kill ----------------------
+class Kill(Command):
+    def __init__(self,name,pid,signal,ctxt=LOCAL,remoteHost=None):
+        self.pid=pid
+        self.signal=signal
+        cmdStr="%s -s %s %s" % (findCmdInpath('kill'), signal, pid)
 
+    @staticmethod
+    def local(name,pid,signal):
+        cmd=Kill(name,pid,signal)
+        cmd.run(validateAfter=True)
+            
+    @staticmethod
+    def remote(name,pid,signal,remote_host):
+        cmd=Kill(name,pid,signal,ctxt=REMOTE,remoteHost=remote_host)        
+        cmd.run(validateAfter=True) 
+     
 
 
 
