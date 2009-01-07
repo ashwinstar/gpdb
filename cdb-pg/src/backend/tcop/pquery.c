@@ -38,7 +38,7 @@
 #include "nodes/makefuncs.h"
 #include "utils/acl.h"
 #include "catalog/catalog.h"
-
+#include "postmaster/autovacuum.h"
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
  * if there are several).
@@ -150,7 +150,11 @@ ProcessQuery(Portal portal,
 	int			operation = parsetree->commandType;
 	QueryDesc  *queryDesc;
 	Oid			truncOid = InvalidOid;
-
+	
+	/* auto-stats related */
+	Oid			relationOid = InvalidOid; 					/* relation that is modified */
+	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
+	
 	ereport(DEBUG3,
 			(errmsg_internal("ProcessQuery")));
 
@@ -336,106 +340,58 @@ ProcessQuery(Portal portal,
 		}
 	}
 	
-	/* MPP-4407. Logging number of tuples modified. */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		Oid modifiedRelationOid = -1;
 		RangeTblEntry * rte = NULL;
-		char statement_type[20];
 		switch (parsetree->commandType)
 		{
 			case CMD_SELECT:
 				if (parsetree->into != NULL)
 				{
 					/* CTAS */
-					modifiedRelationOid = parsetree->intoOidInfo.relOid;
-					snprintf(statement_type, sizeof(statement_type), "CTAS");
+					relationOid = parsetree->intoOidInfo.relOid;
+					cmdType = AUTOSTATS_CMDTYPE_CTAS;
 				}
 				break;
 			case CMD_INSERT:
 				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
-				modifiedRelationOid = rte->relid;
-				snprintf(statement_type, sizeof(statement_type), "INSERT");
+				relationOid = rte->relid;
+				cmdType = AUTOSTATS_CMDTYPE_INSERT;
 				break;
 			case CMD_UPDATE:
 				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
-				modifiedRelationOid = rte->relid;
-				snprintf(statement_type, sizeof(statement_type), "UPDATE");
+				relationOid = rte->relid;
+				cmdType = AUTOSTATS_CMDTYPE_UPDATE;
 				break;
 			case CMD_DELETE:
 				rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
-				modifiedRelationOid = rte->relid;
-				snprintf(statement_type, sizeof(statement_type), "DELETE");
+				relationOid = rte->relid;
+				cmdType = AUTOSTATS_CMDTYPE_DELETE;
 				break;
 			default:
 				break;
 		}
-
-		if (modifiedRelationOid != -1)
-		{
-			elog(LOG, "type_of_statement = %s tableoid = %d num_tuples_modified = %u", statement_type, modifiedRelationOid, (uint) queryDesc->es_processed);
-		}
 	}
 
-	/*
-	 * Fix for MPP-4082. If auto-stats is in onchange mode and the
-     * number of tuples inserted/deleted/updated is greater than
-     * threshold, this will trigger an ANALYZE.
-	 */
-	if (gp_autostats_mode == GP_AUTOSTATS_ONCHANGE) 
+	/* MPP-4407. Logging number of tuples modified. */
+	if (Gp_role == GP_ROLE_DISPATCH 
+			&& cmdType < AUTOSTATS_CMDTYPE_SENTINEL
+			&& relationOid != InvalidOid 
+			&& GetCommandLogLevel((Node *) parsetree) <= log_statement
+			)
 	{
-		if (Gp_role == GP_ROLE_DISPATCH) 
-		{
-			Oid         relationOid = -1;
-			bool        candidateForAutoStats = false;
-			RangeTblEntry * rte = NULL;
+		elog(LOG, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
+				autostats_cmdtype_to_string(cmdType), 
+				MyDatabaseId, 
+				relationOid, 
+				(uint) queryDesc->es_processed);
+	}
 
-			switch (parsetree->commandType) 
-			{
-				case CMD_SELECT: 
-					if (parsetree->into != NULL) 
-					{
-						/* Only for a SELECT INTO (equivalently, a CTAS) */
-						relationOid = parsetree->intoOidInfo.relOid;
-						candidateForAutoStats = true;
-					}
-					break;
-				case CMD_INSERT:
-				case CMD_UPDATE:
-				case CMD_DELETE:
-					rte =  rt_fetch(parsetree->resultRelation, parsetree->rtable);
-					relationOid = rte->relid;
-					candidateForAutoStats = true;
-					break;
-				default:
-					candidateForAutoStats = false;
-			}
-
-			candidateForAutoStats = candidateForAutoStats && (queryDesc->es_processed > gp_autostats_onchange_threshold);
-
-			if (candidateForAutoStats) 
-			{
-				VacuumStmt *analyzeStmt = NULL;
-				RangeVar   *relation = makeRangeVar(get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid));
-
-				elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on table=%s.%s, oid=%d",(uint) queryDesc->es_processed, (uint) gp_autostats_onchange_threshold, get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
-
-				analyzeStmt = makeNode(VacuumStmt);
-	   
-				/* Set up command parameters */
-				analyzeStmt->vacuum = false;
-				analyzeStmt->full = false;
-				analyzeStmt->analyze = true;
-				analyzeStmt->freeze_min_age = -1;
-				analyzeStmt->verbose = false;
-				analyzeStmt->relation = relation;     /* not used since we pass relids list */
-				analyzeStmt->va_cols = NIL;
-	   
-				vacuum(analyzeStmt, NIL);
-				pfree(analyzeStmt);
-				elog(LOG, "Finished ANALYZE by auto-stats.");
-			}
-		}
+    /* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
+	if (Gp_role == GP_ROLE_DISPATCH 
+			&& relationOid != InvalidOid) 
+	{
+		auto_stats(cmdType, relationOid, queryDesc->es_processed);
 	} /* end auto-stats block */
 
 

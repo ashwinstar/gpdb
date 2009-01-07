@@ -273,8 +273,8 @@ bool 		coredump_on_memerror=false;
 /* Experimental feature for MPP-4082. Please read doc before setting this guc */
 GpAutoStatsModeValue gp_autostats_mode;
 char                *gp_autostats_mode_string;
-int                  gp_autostats_onchange_threshold = 100000;
-
+int                  gp_autostats_on_change_threshold = 100000;
+bool				 log_autostats=true;
 /* --------------------------------------------------------------------------------------------------
  * Miscellaneous developer use
  */
@@ -817,8 +817,10 @@ gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source 
 	if (newval == NULL || newval[0] == 0 ||
 		!pg_strcasecmp("none", newval))
 		newtype = GP_AUTOSTATS_NONE;
-	else if (!pg_strcasecmp("onchange", newval))
-		newtype = GP_AUTOSTATS_ONCHANGE;
+	else if (!pg_strcasecmp("on_change", newval))
+		newtype = GP_AUTOSTATS_ON_CHANGE;
+	else if (!pg_strcasecmp("on_no_stats", newval))
+		newtype = GP_AUTOSTATS_ON_NO_STATS;
 	else
 		elog(ERROR, "Unknown autostats mode. (current type is '%s')", gpvars_show_gp_autostats_mode());
 
@@ -837,8 +839,10 @@ gpvars_show_gp_autostats_mode(void)
 	{
 		case GP_AUTOSTATS_NONE:
 			return "NONE";
-		case GP_AUTOSTATS_ONCHANGE:
-			return "ONCHANGE";
+		case GP_AUTOSTATS_ON_CHANGE:
+			return "ON_CHANGE";
+		case GP_AUTOSTATS_ON_NO_STATS:
+			return "ON_NO_STATS";
 		default:
 			return "NONE";
 	}

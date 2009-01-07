@@ -840,11 +840,13 @@ extern bool coredump_on_memerror;
 typedef enum
 {
 	GP_AUTOSTATS_NONE = 0,		/* Autostats is switched off */
-	GP_AUTOSTATS_ONCHANGE,		/* Autostats is enabled on change (insert/delete/update/ctas) */
+	GP_AUTOSTATS_ON_CHANGE,		/* Autostats is enabled on change (insert/delete/update/ctas) */
+	GP_AUTOSTATS_ON_NO_STATS,		/* Autostats is enabled on ctas or copy or insert if no stats are present */
 } GpAutoStatsModeValue;
 extern GpAutoStatsModeValue gp_autostats_mode;
 extern char                *gp_autostats_mode_string;
-extern int                  gp_autostats_onchange_threshold;
+extern int                  gp_autostats_on_change_threshold;
+extern bool					log_autostats;
 /* hook functions to set gp_autostats_mode */
 extern const char *gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source);
 extern const char *gpvars_show_gp_autostats_mode(void);

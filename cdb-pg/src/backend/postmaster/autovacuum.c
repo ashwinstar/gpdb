@@ -48,7 +48,10 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/syscache.h"
-
+#include "cdb/cdbvars.h"
+#include "parser/parsetree.h"
+#include "utils/lsyscache.h"
+#include "nodes/makefuncs.h"
 
 /*
  * GUC parameters
@@ -1014,3 +1017,209 @@ IsAutoVacuumProcess(void)
 {
 	return am_autovacuum;
 }
+
+
+/** Auto-stats related functions. */
+
+/**
+ * Forward declarations.
+ */
+void autostats_issue_analyze(Oid relationOid);
+bool autostats_on_change_check(AutoStatsCmdType cmdType, uint64 ntuples);
+bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid);
+const char *autostats_cmdtype_to_string(AutoStatsCmdType cmdType);
+
+/**
+ * Auto-stats employs this sub-routine to issue an analyze on a specific relation.
+ */
+void autostats_issue_analyze(Oid relationOid) 
+{
+	VacuumStmt *analyzeStmt = NULL;
+	RangeVar   *relation = makeRangeVar(get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid));
+	analyzeStmt = makeNode(VacuumStmt);
+	/* Set up command parameters */
+	analyzeStmt->vacuum = false;
+	analyzeStmt->full = false;
+	analyzeStmt->analyze = true;
+	analyzeStmt->freeze_min_age = -1;
+	analyzeStmt->verbose = false;
+	analyzeStmt->relation = relation;     /* not used since we pass relids list */
+	analyzeStmt->va_cols = NIL;
+	vacuum(analyzeStmt, NIL);
+	pfree(analyzeStmt);
+}
+
+/**
+ * Method determines if auto-stats should run as per onchange auto-stats policy. This policy
+ * enables auto-analyze if the command was a CTAS, INSERT, DELETE, UPDATE or COPY
+ * and the number of tuples is greater than a threshold.
+ */
+bool autostats_on_change_check(AutoStatsCmdType cmdType, uint64 ntuples) 
+{
+	bool result = false;
+	
+	switch (cmdType) 
+	{
+		case AUTOSTATS_CMDTYPE_CTAS:
+		case AUTOSTATS_CMDTYPE_INSERT:
+		case AUTOSTATS_CMDTYPE_DELETE:
+		case AUTOSTATS_CMDTYPE_UPDATE:
+		case AUTOSTATS_CMDTYPE_COPY:
+			result = true;
+			break;
+		default:
+			break;
+	}
+
+	result = result && (ntuples > gp_autostats_on_change_threshold);
+	return result;
+}
+
+/**
+ * Method determines if auto-stats should run as per onnostats auto-stats policy. This policy
+ * enables auto-analyze if :
+ * (1) CTAS
+ * (2) I-S or COPY if there are no statistics present
+ */
+bool autostats_on_no_stats_check(AutoStatsCmdType cmdType, Oid relationOid) 
+{
+	if (cmdType == AUTOSTATS_CMDTYPE_CTAS)
+		return true;
+		
+	if (!(cmdType == AUTOSTATS_CMDTYPE_INSERT 
+			|| cmdType == AUTOSTATS_CMDTYPE_COPY))
+		return false;
+
+	/* a relation has no stats if the corresponding row in pg_class has relpages=0, reltuples=0 */
+	{
+		HeapTuple	tuple;
+		Form_pg_class classForm;
+		bool result = false;
+		
+		/*
+		 * Must get the relation's tuple from pg_class
+		 */
+		tuple = SearchSysCache(RELOID,
+				ObjectIdGetDatum(relationOid),
+				0, 0, 0);
+		if (!HeapTupleIsValid(tuple)) 
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+							errmsg("relation with OID %u does not exist",
+									relationOid)));
+			return false;
+		}
+		classForm = (Form_pg_class) GETSTRUCT(tuple);
+		elog(DEBUG5, "Auto-stats ONNOSTATS check on tableoid %d has relpages = %d reltuples = %.0f.", 
+				relationOid, 
+				classForm->relpages, 
+				classForm->reltuples);
+
+		result = (classForm->relpages ==0 && classForm->reltuples < 1);
+		ReleaseSysCache(tuple);
+		return result;
+	}	
+	
+	/* we should not get here at all */
+}
+
+/**
+ * Convert command type to string for logging purposes.
+ */
+const char *autostats_cmdtype_to_string(AutoStatsCmdType cmdType) 
+{
+	switch(cmdType) 
+	{
+		case AUTOSTATS_CMDTYPE_CTAS:
+			return "CTAS";
+		case AUTOSTATS_CMDTYPE_INSERT:
+			return "INSERT";
+		case AUTOSTATS_CMDTYPE_DELETE:
+			return "DELETE";
+		case AUTOSTATS_CMDTYPE_UPDATE:
+			return "UPDATE";
+		case AUTOSTATS_CMDTYPE_COPY:
+			return "COPY";
+		default:
+			/* we should not reach here .. but this method should probably not throw an error */
+			break;
+	}
+	return "UNKNOWN";
+}
+
+/**
+ * This method takes a decision to run analyze based on the query and the number of modified tuples based
+ * on the policy set via gp_autostats_mode. The following modes are currently supported:
+ * none 		: 	no automatic analyzes are issued. simply return.
+ * on_change 	: 	if the number of modified tuples > gp_onchange_threshold, then an automatic analyze is issued.
+ * on_no_stats 	: 	if the operation is a ctas/insert-select and there are no stats on the modified table, 
+ * 					an automatic analyze is issued.
+ */
+void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples) 
+{
+	TimestampTz start;
+	bool policyCheck = false;
+	start = GetCurrentTimestamp();
+	
+	if (Gp_role != GP_ROLE_DISPATCH) 
+	{
+		return;
+	}
+	
+	Assert (relationOid != InvalidOid);
+	Assert (cmdType >=0 && cmdType <= AUTOSTATS_CMDTYPE_SENTINEL); /* it is a valid command as per auto-stats */
+	
+	switch(gp_autostats_mode) 
+	{
+		case GP_AUTOSTATS_ON_CHANGE:
+			policyCheck = autostats_on_change_check(cmdType, ntuples);
+			break;
+		case GP_AUTOSTATS_ON_NO_STATS:
+			policyCheck = autostats_on_no_stats_check(cmdType, relationOid);
+			break;
+		default:
+			Assert(gp_autostats_mode == GP_AUTOSTATS_NONE);
+			policyCheck = false;
+			break;
+	}
+	
+	if (!policyCheck) 
+	{
+		elog(DEBUG3, "In mode %s, command %s on (dboid,tableoid)=(%d,%d) modifying %d tuples did not issue Auto-ANALYZE.", 
+				gpvars_show_gp_autostats_mode(),
+				autostats_cmdtype_to_string(cmdType), 
+				MyDatabaseId,
+				relationOid, 
+				(uint) ntuples);
+		
+		return;
+	}
+
+	if (log_autostats) 
+	{
+		elog(LOG, "In mode %s, command %s on (dboid,tableoid)=(%d,%d) modifying %d tuples caused Auto-ANALYZE.", 
+				gpvars_show_gp_autostats_mode(),
+				autostats_cmdtype_to_string(cmdType), 
+				MyDatabaseId,
+				relationOid, 
+				(uint) ntuples);
+	}
+	
+	elog(DEBUG5, "Starting Auto-ANALYZE on table=%s.%s, oid=%d", get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
+	autostats_issue_analyze(relationOid);
+	elog(DEBUG5, "Finished Auto-ANALYZE on table=%s.%s, oid=%d", get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
+
+	if (log_duration) 
+	{
+		long		secs;
+		int			usecs;
+		int			msecs;
+
+		TimestampDifference(start, GetCurrentTimestamp(), &secs, &usecs);
+		msecs = usecs / 1000;
+		elog(LOG, "duration: %ld.%03d ms Auto-ANALYZE", secs * 1000 + msecs, usecs % 1000);
+	}
+
+} 
+

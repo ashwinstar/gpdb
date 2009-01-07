@@ -1945,7 +1945,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&coredump_on_memerror,
 		false, NULL, NULL
 	},
-
+	{
+		{"log_autostats", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Logs details of auto-stats issued ANALYZEs."),
+			NULL,
+			GUC_GPDB_ADDOPT
+		},
+		&log_autostats,
+		true, NULL, NULL
+	},
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3088,12 +3096,12 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX / 2, NULL, NULL
 	},
 	{
-		{"gp_autostats_onchange_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"gp_autostats_on_change_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Threshold for number of tuples added to table by CTAS or Insert-to to trigger autostats in onchange mode. See gp_autostats_mode."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_autostats_onchange_threshold,
+		&gp_autostats_on_change_threshold,
 		INT_MAX, 0, INT_MAX, NULL, NULL
 	},
 

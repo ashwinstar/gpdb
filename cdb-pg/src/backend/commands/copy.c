@@ -64,6 +64,7 @@
 #include "commands/vacuum.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
+#include "postmaster/autovacuum.h"
 
 /* DestReceiver for COPY (SELECT) TO */
 typedef struct
@@ -872,8 +873,7 @@ DoCopy(const CopyStmt *stmt)
 	uint64      processed;
 	bool        qe_copy_from = (is_from && (Gp_role == GP_ROLE_EXECUTE));
     /* save relationOid for auto-stats */
-	Oid         relationOid = -1; 
-
+	Oid         relationOid = InvalidOid; 
 
 	/* Allocate workspace and zero all fields */
 	cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
@@ -1519,47 +1519,26 @@ DoCopy(const CopyStmt *stmt)
 	processed = cstate->processed;
 	
     /* MPP-4407. Logging number of tuples copied */
-	if (Gp_role == GP_ROLE_DISPATCH && is_from && relationOid != -1)
+	if (Gp_role == GP_ROLE_DISPATCH 
+			&& is_from 
+			&& relationOid != InvalidOid 
+			&& GetCommandLogLevel((Node *) stmt) <= log_statement)
 	{
-		elog(LOG, "type_of_statement = COPY tableoid = %d num_tuples_modified = %u", relationOid, (uint) processed);
+		elog(LOG, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
+				autostats_cmdtype_to_string(AUTOSTATS_CMDTYPE_COPY), 
+				MyDatabaseId, 
+				relationOid, 
+				(uint) processed);
 	}
 
-    /* 	 Fix for MPP-4082. If auto-stats is in onchange mode and the number */
-    /* 	 of tuples inserted/deleted/updated is greater than */
-    /* 	 threshold, this will trigger an ANALYZE. */
-
-	if (gp_autostats_mode == GP_AUTOSTATS_ONCHANGE) 
+    /* 	 Fix for MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
+	if (Gp_role == GP_ROLE_DISPATCH 
+			&& is_from 
+			&& relationOid != InvalidOid) 
 	{
-		if (Gp_role == GP_ROLE_DISPATCH) 
-		{
-			if (is_from && relationOid != -1) 
-			{
-				if (processed > gp_autostats_onchange_threshold) 
-				{
-					VacuumStmt *analyzeStmt = NULL;
-					RangeVar   *relation = makeRangeVar(get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid));
-
-					elog(LOG, "Auto-stats enabled. Number of tuples modified (%u) is greater than threshold (%u). Starting ANALYZE on table=%s.%s, oid=%d",(uint) processed, (uint) gp_autostats_onchange_threshold, get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
-
-					analyzeStmt = makeNode(VacuumStmt);
-	   
-					/* Set up command parameters */
-					analyzeStmt->vacuum = false;
-					analyzeStmt->full = false;
-					analyzeStmt->analyze = true;
-					analyzeStmt->freeze_min_age = -1;
-					analyzeStmt->verbose = false;
-					analyzeStmt->relation = relation;     /* not used since we pass relids list */
-					analyzeStmt->va_cols = NIL;
-	   
-					vacuum(analyzeStmt, NIL);
-					pfree(analyzeStmt);
-					elog(LOG, "Finished ANALYZE by auto-stats.");
-				}
-			}
-		}
+		auto_stats(AUTOSTATS_CMDTYPE_COPY, relationOid, processed);
 	} /*end auto-stats block*/
-
+	
 	pfree(cstate->attribute_buf.data);
 	pfree(cstate->line_buf.data);
 	pfree(cstate);
