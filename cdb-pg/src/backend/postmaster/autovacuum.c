@@ -1206,9 +1206,7 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples)
 				(uint) ntuples);
 	}
 	
-	elog(DEBUG5, "Starting Auto-ANALYZE on table=%s.%s, oid=%d", get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
 	autostats_issue_analyze(relationOid);
-	elog(DEBUG5, "Finished Auto-ANALYZE on table=%s.%s, oid=%d", get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid), relationOid);  
 
 	if (log_duration) 
 	{
