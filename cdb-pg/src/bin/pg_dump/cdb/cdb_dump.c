@@ -39,6 +39,7 @@ int                     optreset;
  */
 static char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString );
 static char* addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThroughParmString );
+static char* shellEscape( const char *shellArg, PQExpBuffer escapeBuf );
 static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static void decrementFinishedLaunchCount(void);
 static bool doInitialActions(PGconn* pConn /*, const char* pszDBName*/);
@@ -192,10 +193,14 @@ addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmStr
 	{
 		if ( parmValNeedsQuotes( pszValue ) )
 		{
+			PQExpBuffer valueBuf = createPQExpBuffer();
+
 			if ( bFirstTime )
-				pszRtn = MakeString( "-%c \"%s\"", Parm, pszValue );
+				pszRtn = MakeString( "-%c \"%s\"", Parm, shellEscape(pszValue, valueBuf) );
 			else
-				pszRtn = MakeString( "%s -%c \"%s\"", pszPassThroughParmString, Parm, pszValue );
+				pszRtn = MakeString( "%s -%c \"%s\"", pszPassThroughParmString, Parm, shellEscape(pszValue, valueBuf) );
+
+			destroyPQExpBuffer(valueBuf);
 		}
 		else
 		{
@@ -231,10 +236,14 @@ addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThr
 	{
 		if ( parmValNeedsQuotes( pszValue ) )
 		{
+			PQExpBuffer valueBuf = createPQExpBuffer();
+
 			if ( bFirstTime )
-				pszRtn = MakeString( "--%s \"%s\"", Parm, pszValue );
+				pszRtn = MakeString( "--%s \"%s\"", Parm, shellEscape(pszValue, valueBuf) );
 			else
-				pszRtn = MakeString( "%s --%s \"%s\"", pszPassThroughParmString, Parm, pszValue );
+				pszRtn = MakeString( "%s --%s \"%s\"", pszPassThroughParmString, Parm, shellEscape(pszValue, valueBuf) );
+
+			destroyPQExpBuffer(valueBuf);
 		}
 		else
 		{
@@ -253,6 +262,48 @@ addPassThroughLongParm( const char *Parm, const char* pszValue, char* pszPassThr
 	}
 
 	return pszRtn;
+}
+
+/*
+ * shellEscape: Returns a string in which the shell-significant quoted-string characters are
+ * escaped.  The resulting string, if used as a SQL statement component, should be quoted
+ * using the PG $$ delimiter (or as an E-string with the '\' characters escaped again).
+ *
+ * This function escapes the following characters: '"', '$', '`', '\', '!'.
+ *
+ * The PQExpBuffer escapeBuf is used for assembling the escaped string and is reset at the
+ * start of this function.
+ *
+ * The return value of this function is the data area from excapeBuf.
+ */
+static char *
+shellEscape( const char *shellArg, PQExpBuffer escapeBuf )
+{
+	const char *s = shellArg;
+	const char escape = '\\';
+
+	resetPQExpBuffer(escapeBuf);
+
+	/*
+	 * Copy the shellArg into the escapeBuf prepending any characters requiring
+	 * an escape with the escape character.
+	 */
+	while (*s != '\0')
+	{
+		switch (*s)
+		{
+		case '"':
+		case '$':
+		case '\\':
+		case '`':
+		case '!':
+			appendPQExpBufferChar(escapeBuf, escape);
+		}
+		appendPQExpBufferChar(escapeBuf, *s);
+		s++;
+	}
+
+	return escapeBuf->data;
 }
 
 
@@ -1095,8 +1146,12 @@ void myHandler(SIGNAL_ARGS)
 /*
  * parmValNeedsQuotes: This function checks to see whether there is any whitespace in the parameter value.
  * This is used for pass thru parameters, top know whether to enclose them in quotes or not.
+ *
+ * This function considers a string containing an embedded quotation mark or a dollar sign as requiring
+ * quoting.  (This presumes that values checked by this function are being prepared as arguments to a
+ * shell command.  Another function is required to escape these characters [and others].)
  */
-bool parmValNeedsQuotes( const char* Value )
+static bool parmValNeedsQuotes( const char* Value )
 {
 	static regex_t rFinder;
 	static bool bCompiled			= false;
@@ -1105,7 +1160,7 @@ bool parmValNeedsQuotes( const char* Value )
 
 	if ( !bCompiled )
 	{
-		if ( 0 != regcomp( &rFinder, "[[:space:]]", REG_EXTENDED|REG_NOSUB ) )
+		if ( 0 != regcomp( &rFinder, "[[:space:]\"$]", REG_EXTENDED|REG_NOSUB ) )
 			bAlwaysPutQuotes = true;
 
 		bCompiled = true;
@@ -1456,8 +1511,13 @@ void* threadProc(void *arg)
 		pszPassThroughCredentials = DataToBase64( pSegDB->pszDBPswd, strlen(pSegDB->pszDBPswd) );
 
 	/* form an gp_backup_launch statement */
+	/*
+	 * Argument 4 of the gp_launch_backup function may contain escape sequences and must
+	 * either be quoted using the PG $$ quote mechanism or using an E-type constant with
+	 * embedded '\' characters doubled.
+	 */
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM gp_backup_launch('%s', '%s', '%s', '%s', '%s')",
+	appendPQExpBuffer( Qry, "SELECT * FROM gp_backup_launch('%s', '%s', '%s', $$%s$$, '%s')",
 					StringNotNull( pInputOpts->pszBackupDirectory, ""),
 					pszKey,
 					StringNotNull( pInputOpts->pszCompressionProgram, ""),
