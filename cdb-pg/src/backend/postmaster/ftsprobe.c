@@ -921,7 +921,6 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 			}
 			else
 			{
-
 				/* segment is up. if marked down in shmem, need to revert (failback to primary) */
 				if (!FTS_STATUS_ISALIVE(segInfo->dbid, ftsProbeInfo->fts_status))
 				{
@@ -929,6 +928,11 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 					 * A segment is *up* but is marked down in shmem: this
 					 * can only happen with fault-action readonly.
 					 */
+					if (*ftsAction != FTS_READONLY)
+					{
+						elog(LOG, "segment with dbid %d is up, but marked down in shmem (prober %d me %d)",
+							 segInfo->dbid, ftsProbeInfo->fts_probePid, MyProcPid);
+					}
 					Assert(*ftsAction == FTS_READONLY);
 
 					primaryChange = changeEntries;
@@ -937,6 +941,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 							repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
 					else
 						changes = (struct segmentStatusChange *)palloc(sizeof(struct segmentStatusChange));
+					changeEntries++;
 
 					segStatus = ftsProbeInfo->fts_status[segInfo->dbid];
 					changes[primaryChange].oldStatus = segStatus;
