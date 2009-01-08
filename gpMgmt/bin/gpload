@@ -59,6 +59,7 @@ valid_tokens = {
     "user": {'parse_children': True, 'parent': None}, 
     "host": {'parse_children': True, 'parent': None}, 
     "port": {'parse_children': True, 'parent': [None, "source"]},
+    "password": {'parse_children': True, 'parent': None},
     "gpload": {'parse_children': True, 'parent': None},
     "input": {'parse_children': True, 'parent': "gpload"},
     "source": {'parse_children': True, 'parent': "input"},
