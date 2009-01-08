@@ -15,7 +15,7 @@ Usage: gpdetective <option> [dbname]
 '''
 #============================================================
 import sys, os, tempfile, subprocess, re, getopt, types, traceback, datetime
-
+libdir = sys.path[0] + '/lib'
 try: 
     import pg8000
 except ImportError, e:
@@ -412,6 +412,7 @@ class GPDetective:
         path_re = re.compile('/([^/]*)$')
         m = path_re.search(self.masterdir)
         
+        #JGE: try and open the 
         myfile = open('master/%s.log' % m.group(1), 'w')
         cmd = [ sys.path[0] + '/gplogfilter' ]
         cmd.extend(['--quiet'])
