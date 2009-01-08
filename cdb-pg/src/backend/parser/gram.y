@@ -374,7 +374,7 @@ static void doNegateFloat(Value *v);
 %type <list>	constraints_set_list
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
-%type <list>    OptDistributedBy
+%type <list>    DistributedBy OptDistributedBy
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
 				tab_part_val tab_part_val_no_paran
@@ -1675,6 +1675,15 @@ alter_table_cmd:
 					n->def = (Node *) $3;
 					$$ = (Node *)n;
 				}
+			/* ALTER TABLE <name> SET DISTRIBUTED BY */
+			| SET DistributedBy
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetDistributedBy;
+					n->def = (Node *) $2;
+					$$ = (Node *)n;
+				}
+
 			| alter_table_partition_cmd
 				{
 					$$ = $1;
@@ -3087,8 +3096,11 @@ OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
+DistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 			| DISTRIBUTED RANDOMLY			{ $$ = list_make1(NULL); }
+		;
+
+OptDistributedBy:   DistributedBy			{ $$ = $1; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 

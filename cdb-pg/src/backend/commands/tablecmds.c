@@ -316,6 +316,7 @@ static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
 static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
+static void ATExecSetDistributedBy(Relation rel, Node *node);
 
 /* ALTER TABLE ... PARTITION */
 static char *
@@ -3250,6 +3251,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DisableTrigUser:
 		case AT_AddInherit:		/* INHERIT / NO INHERIT */
 		case AT_DropInherit:
+		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
 			ATSimplePermissions(rel, false);
 			/* These commands never recurse */
 			/* No command-specific prep needed */
@@ -4196,6 +4198,9 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 		case AT_DropInherit:
 			ATExecDropInherit(rel, (RangeVar *) cmd->def, false);
+			break;
+		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
+			ATExecSetDistributedBy(rel, (Node *) cmd->def);
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
@@ -8943,6 +8948,19 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 	/* keep our lock on the parent relation until commit */
 	heap_close(parent_rel, NoLock);
 }
+
+/*
+ * ALTER TABLE SET DISTRIBUTED BY
+ *
+ */
+static void
+ATExecSetDistributedBy(Relation rel, Node *node)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot SET distribution policy for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+} /* end ATExecSetDistributedBy */
 
 static char
 parttype_to_char(PartitionByType type)

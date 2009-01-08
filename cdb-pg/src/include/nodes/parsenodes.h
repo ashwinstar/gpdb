@@ -1050,6 +1050,7 @@ typedef enum AlterTableType
 	AT_DisableTrigUser,			/* DISABLE TRIGGER USER */
 	AT_AddInherit,				/* INHERIT parent */
 	AT_DropInherit,				/* NO INHERIT parent */
+	AT_SetDistributedBy,		/* SET DISTRIBUTED BY */
 	/* CDB: Partitioned Tables */
 	AT_PartAdd,					/* Add */
 	AT_PartAlter,				/* Alter */
