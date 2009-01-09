@@ -108,7 +108,7 @@ extern char *MemoryContextName(MemoryContext context, MemoryContext relativeTo,
                                char *buf, int bufsize);
 extern void MemoryContextStats(MemoryContext context);
 
-#define MemoryContextDelete(context)    (MemoryContextDeleteImpl(context, __FILE__, __func__, __LINE__))
+#define MemoryContextDelete(context)    (MemoryContextDeleteImpl(context, __FILE__, PG_FUNCNAME_MACRO, __LINE__))
 extern void MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline);
 
 #ifdef CDB_PALLOC_TAGS
