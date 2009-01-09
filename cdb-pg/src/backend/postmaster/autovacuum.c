@@ -53,6 +53,10 @@
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
 
+#ifdef WIN32
+typedef unsigned int uint;
+#endif
+
 /*
  * GUC parameters
  */
