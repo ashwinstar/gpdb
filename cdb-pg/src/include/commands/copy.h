@@ -14,6 +14,7 @@
 #ifndef COPY_H
 #define COPY_H
 
+#include "c.h"
 #include "nodes/parsenodes.h"
 #include "tcop/dest.h"
 #include "executor/executor.h"
@@ -147,7 +148,7 @@ typedef struct CopyStateData
 
 	/* these are just for error messages, see copy_in_error_callback */
 	const char *cur_relname;	/* table name for error messages */
-	int64_t			cur_lineno;		/* line number for error messages.  Negative means it isn't available. */
+	int64		cur_lineno;		/* line number for error messages.  Negative means it isn't available. */
 	const char *cur_attname;	/* current att for error messages */
 	//const char *cur_attval;		 /* current att value for error messages */
 
