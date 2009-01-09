@@ -1103,7 +1103,7 @@ class gpload:
             self.log(self.WARN, '%d bad rows'%errors)
             self.exitValue = 1
 
-    def do_insert(self,dest):
+    def do_insert(self, dest):
         """
         Handle the INSERT case
         """
@@ -1117,7 +1117,7 @@ class gpload:
 
 
         self.pg8000.NoticeReceived += notice_processor
-        sql = 'insert into %s' % self.table_quoted
+        sql = 'insert into %s' % dest
         sql += '(%s)'%','.join(map(lambda a:a[0],cols))
         sql += 'select %s '%','.join(map(lambda a:a[2],cols))
         sql += 'from ext_%s'%self.name
@@ -1156,7 +1156,7 @@ class gpload:
 
     def do_method_insert(self):
         self.create_external_table()
-        self.do_insert(self.table)
+        self.do_insert(self.table_quoted)
 
     def map_stuff(self,config,format,index):
         lis = []
@@ -1266,8 +1266,8 @@ class gpload:
             self.pg8000.execute(sql.encode('utf-8'))
 
         self.create_external_table()
-        self.do_insert('temp_%s'%self.name)
-        self.do_update('temp_%s'%self.name,0)
+        self.do_insert('temp_%s' % self.name)
+        self.do_update('temp_%s' % self.name, 0)
 
     def do_method_merge(self):
         """insert data not already in the table, update remaining items"""
@@ -1280,8 +1280,8 @@ class gpload:
             self.cleanupSql.append('drop table if exists temp_%s'%self.name)
             self.pg8000.execute(sql.encode('utf-8'))
         self.create_external_table()
-        self.do_insert('temp_%s'%self.name)
-        self.do_update('temp_%s'%self.name,0)
+        self.do_insert('temp_%s' % self.name)
+        self.do_update('temp_%s' % self.name,0)
         sql = 'insert into %s(' % self.table_quoted
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
@@ -1300,6 +1300,7 @@ class gpload:
 
     def do_method(self):
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+        print method
         if method=='insert':
             self.do_method_insert()
         elif method=='update':
