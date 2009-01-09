@@ -96,17 +96,17 @@ static inline void LTRACE_PROBE(long family,
 }
 
 #define PG_TRACE(name) \
-	LTRACE_PROBE(name, __FILE__, __func__, __LINE__, 0, 0, 0, 0, 0)
+	LTRACE_PROBE(name, __FILE__, PG_FUNCNAME_MACRO, __LINE__, 0, 0, 0, 0, 0)
 #define PG_TRACE1(name, arg1) \
-	LTRACE_PROBE(name, __FILE__, __func__, __LINE__, arg1, 0, 0, 0, 0)
+	LTRACE_PROBE(name, __FILE__, PG_FUNCNAME_MACRO, __LINE__, arg1, 0, 0, 0, 0)
 #define PG_TRACE2(name, arg1, arg2) \
-	LTRACE_PROBE(name, __FILE__, __func__, __LINE__, arg1, arg2, 0, 0, 0)
+	LTRACE_PROBE(name, __FILE__, PG_FUNCNAME_MACRO, __LINE__, arg1, arg2, 0, 0, 0)
 #define PG_TRACE3(name, arg1, arg2, arg3) \
-	LTRACE_PROBE(name, __FILE__, __func__, __LINE__, arg1, arg2, arg3, 0, 0)
+	LTRACE_PROBE(name, __FILE__, PG_FUNCNAME_MACRO, __LINE__, arg1, arg2, arg3, 0, 0)
 #define PG_TRACE4(name, arg1, arg2, arg3, arg4) \
-	LTRACE_PROBE(name, __FILE__, __func__, __LINE__, arg1, arg2, arg3, arg4, 0)
+	LTRACE_PROBE(name, __FILE__, PG_FUNCNAME_MACRO, __LINE__, arg1, arg2, arg3, arg4, 0)
 #define PG_TRACE5(name, arg1, arg2, arg3, arg4, arg5) \
-	LTRACE_PROBE(name, __FILE__, __func__, __LINE__, arg1, arg2, arg3, arg4, arg5)
+	LTRACE_PROBE(name, __FILE__, PG_FUNCNAME_MACRO, __LINE__, arg1, arg2, arg3, arg4, arg5)
 
 #else   /* No tracing */
 /*
