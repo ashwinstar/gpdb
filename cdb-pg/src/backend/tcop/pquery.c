@@ -384,7 +384,7 @@ ProcessQuery(Portal portal,
 				autostats_cmdtype_to_string(cmdType), 
 				MyDatabaseId, 
 				relationOid, 
-				(uint) queryDesc->es_processed);
+				(unsigned int) queryDesc->es_processed);
 	}
 
     /* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
