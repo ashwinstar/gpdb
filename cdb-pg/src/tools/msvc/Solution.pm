@@ -245,13 +245,13 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
 	if (IsNewer('src\include\catalog\gp_versions.h','src\include\catalog\gp_version.in'))
     {
         print "Generating gp_versions.h...\n";
-        copyFile("src\\include\\catalog\\gp_version.in src\\include\\catalog\\gp_version.h");
+        copyFile("src\\include\\catalog\\gp_version.in","src\\include\\catalog\\gp_version.h");
     }
     
-    if (IsNewer('src\include\catalog\cdb_schema.sql','src\include\catalog\cdb_schema.in'))
+    if (IsNewer('src\backend\catalog\cdb_schema.sql','src\backend\catalog\cdb_schema.in'))
     {
         print "Generating cdb_schema.sql...\n";
-        copyFile("src\\include\\catalog\\cdb_schema.in src\\include\\catalog\\cdb_schema.sql");
+        copyFile("src\\backend\\catalog\\cdb_schema.in","src\\backend\\catalog\\cdb_schema.sql");
     } 
     
     if (
