@@ -1,3 +1,4 @@
+#include "c.h"
 #include <fstream/gfile.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -276,8 +277,8 @@ int gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	fd->compressed_size = sta.st_size;
 	
 	do
-		fd->fd = open(fpath, O_RDONLY | O_BINARY); while (fd->fd < 0 && errno
-			== EINTR);
+		fd->fd = open(fpath, O_RDONLY | O_BINARY);
+	while (fd->fd < 0 && errno == EINTR);
 	
 	if (-1 == fd->fd)
 	{
@@ -290,11 +291,11 @@ int gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	fd->read = read_and_retry;
 	fd->close = nothing_close;
 	
-	if (s && strcasecmp(s, ".gz") == 0)
+	if (s && pg_strcasecmp(s, ".gz") == 0)
 		return gz_file_open(fd);
-	else if (s && strcasecmp(s, ".bz2") == 0)
+	else if (s && pg_strcasecmp(s, ".bz2") == 0)
 		return bz_file_open(fd);
-	else if (s && strcasecmp(s, ".z") == 0)
+	else if (s && pg_strcasecmp(s, ".z") == 0)
 		gfile_printf_then_putc_newline(
 				"gfile compression .z file is not supported");
 	else if (s && strcasecmp(s, ".zip") == 0)
