@@ -88,15 +88,15 @@ extern void *MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size,
 extern void *MemoryContextReallocImpl(void *pointer, Size size, const char* file, const char *func, int line);
 extern void MemoryContextFreeImpl(void *pointer, const char* file, const char *func, int sline);
 
-#define MemoryContextAlloc(ctxt, sz) MemoryContextAllocImpl((ctxt), (sz), __FILE__, __func__, __LINE__)
+#define MemoryContextAlloc(ctxt, sz) MemoryContextAllocImpl((ctxt), (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__)
 #define palloc(sz) MemoryContextAlloc(CurrentMemoryContext, (sz)) 
 #define ctxt_alloc(ctxt, sz) MemoryContextAlloc((ctxt), (sz)) 
 
-#define MemoryContextAllocZero(ctxt, sz) MemoryContextAllocZeroImpl((ctxt), (sz), __FILE__, __func__, __LINE__)
+#define MemoryContextAllocZero(ctxt, sz) MemoryContextAllocZeroImpl((ctxt), (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__)
 #define palloc0(sz) MemoryContextAllocZero(CurrentMemoryContext, (sz))
 
-#define repalloc(ptr, sz) MemoryContextReallocImpl(ptr, (sz), __FILE__, __func__, __LINE__)
-#define pfree(ptr) MemoryContextFreeImpl(ptr, __FILE__, __func__, __LINE__)
+#define repalloc(ptr, sz) MemoryContextReallocImpl(ptr, (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__)
+#define pfree(ptr) MemoryContextFreeImpl(ptr, __FILE__, PG_FUNCNAME_MACRO, __LINE__)
 
 /*
  * The result of palloc() is always word-aligned, so we can skip testing
@@ -108,8 +108,8 @@ extern void MemoryContextFreeImpl(void *pointer, const char* file, const char *f
  */
 #define palloc0fast(sz) \
 	( MemSetTest(0, (sz)) ? \
-		MemoryContextAllocZeroAlignedImpl(CurrentMemoryContext, (sz), __FILE__, __func__, __LINE__) : \
-		MemoryContextAllocZeroImpl(CurrentMemoryContext, (sz), __FILE__, __func__, __LINE__))
+		MemoryContextAllocZeroAlignedImpl(CurrentMemoryContext, (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__) : \
+		MemoryContextAllocZeroImpl(CurrentMemoryContext, (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__))
 
 /*
  * MemoryContextSwitchTo
