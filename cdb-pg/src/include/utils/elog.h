@@ -15,6 +15,7 @@
 #ifndef ELOG_H
 #define ELOG_H
 
+#include "c.h"
 #include <setjmp.h>
 
 /* Error level codes */
