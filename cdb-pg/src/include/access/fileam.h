@@ -10,6 +10,7 @@
 #ifndef FILEAM_H
 #define FILEAM_H
 
+#include "c.h"
 #include "access/htup.h"
 #include "access/relscan.h"
 #include "access/sdir.h"
@@ -30,7 +31,7 @@ extern void file_endscan(FileScanDesc scan);
 extern void file_stopscan(FileScanDesc scan);
 extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
 extern void AtAbort_ExtTables(void);
-char*linenumber_atoi(char buffer[20],int64_t linenumber);
+char*linenumber_atoi(char buffer[20],int64 linenumber);
 
 typedef enum DataLineStatus
 {
