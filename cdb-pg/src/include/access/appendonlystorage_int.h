@@ -6,6 +6,7 @@
  *
  *-------------------------------------------------------------------------
  */
+
 #ifndef APPENDONLYSTORAGE_INT_H
 #define APPENDONLYSTORAGE_INT_H
 
@@ -25,6 +26,7 @@
 /*
  * You can think of this struct as the base class for AOBlockHeader, etc.
  */
+
 typedef struct AOHeader
 {
 /*
@@ -50,7 +52,7 @@ typedef struct AOHeader
 } AOHeader;
 
 #define AOHeaderGet_reserved0(h)          ((h)->header_bytes_0_3>>31)                  // 1 bit
-#define AOHeaderGet_headerKind(h)         (((h)->header_bytes_0_3&0x70000000)>>28)    // 3 bits
+#define AOHeaderGet_headerKind(h)         (((h)->header_bytes_0_3&0x70000000)>>28)    // 3 bit
 
 typedef struct AOBlockHeader
 {
@@ -124,6 +126,7 @@ typedef struct AOBlockHeader
                                                   (h)->block_bytes_4_7|=(0xFFE00000&((e)<<21));}
 #define AOBlockHeaderInit_compressedLength(h,e)  {(h)->block_bytes_4_7|=(0x001FFFFF&(e));}
 
-
 #endif   /* APPENDONLYSTORAGE_INT_H */
+
+
 
