@@ -19,6 +19,7 @@
  *	must be included first on MS C.  Might as well do it for all WIN32's
  *	here.
  */
+#include "c.h"
 #include <io.h>
 #endif
 
