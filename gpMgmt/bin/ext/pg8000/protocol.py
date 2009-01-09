@@ -933,6 +933,8 @@ class Connection(object):
         try:
             self._send(StartupMessage(user, database=kwargs.get("database",None), options=kwargs.get("options", None)))
             msg = self._read_message()
+            if isinstance(msg, ErrorResponse):
+                raise msg.createException()
             if not isinstance(msg, AuthenticationRequest):
                 raise InternalError("StartupMessage was responded to with non-AuthenticationRequest msg %r" % msg)
             if not msg.ok(self, user, **kwargs):
