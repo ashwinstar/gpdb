@@ -9,6 +9,7 @@
 #ifndef APPENDONLYSTORAGE_H
 #define APPENDONLYSTORAGE_H
 
+#include "c.h"
 #include "utils/pg_crc.h"
 
 
