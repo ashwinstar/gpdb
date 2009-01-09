@@ -8958,41 +8958,60 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 /*
  * ALTER TABLE SET DISTRIBUTED BY
  *
+ * set distribution policy for rel
  */
 static void
 ATExecSetDistributedBy(Relation rel, Node *node)
 {
-	HeapTuple	tuple;
-	AttrNumber	attnum;
-	Relation	attr_rel;
 	List *l1;
 	ListCell   *lc;
+	GpPolicy  *policy = NULL;
 
-	/*
-	 * lookup the attribute
-	 */
-	attr_rel = heap_open(AttributeRelationId, RowExclusiveLock);
+	if (!superuser())
+		ereport(ERROR, 
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to SET DISTRIBUTION POLICY")));
 
-	Assert (IsA(node, List));
+	Assert(PointerIsValid(node));
+	Assert(IsA(node, List));
 
 	l1 = (List *)node;
 
-	/* check for case of single null value -- set distributed randomly */
-	if ((list_length(l1) == 1) && 
-		(   (list_head(l1) == NULL)
-		 || (linitial(l1) == NULL)))
-		goto L_fini_distro;		
+	if (Gp_role == GP_ROLE_UTILITY)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("SET DISTRIBUTED BY not supported in utility mode")));
+	else if (Gp_role == GP_ROLE_EXECUTE)
+		return;
 
+	if (l1 == NIL)
+		;
+
+	/* check for case of single null value -- set distributed randomly */
+	if (linitial(l1) == NULL)
+	{
+
+		Insist(list_length(l1) == 1);
+
+		policy = (GpPolicy *) palloc(sizeof(GpPolicy));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+
+		rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
+		GpPolicyReplace(RelationGetRelid(rel), policy);
+
+		return;
+	}
+
+	policy = palloc(sizeof(GpPolicy) + 
+					sizeof(policy->attrs[0]) * list_length(l1));
+	policy->ptype = POLICYTYPE_PARTITIONED;
+	policy->nattrs = 0;
 	foreach(lc, l1)
 	{
-		Node *n1 = (Node *) lfirst(lc);
-		char *colName;
-
-		Assert(n1);
-
-		colName = strVal(n1);
-
-		tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
+		char *colName = strVal((Value *)lfirst(lc));
+		HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), colName);
+		AttrNumber	attnum;
 
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
@@ -9006,18 +9025,18 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		if (attnum <= 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot alter system column \"%s\"",
+					 errmsg("cannot distribute by system column \"%s\"",
 							colName)));
+
+		policy->attrs[policy->nattrs++] = attnum;
+		ReleaseSysCache(tuple);
 	}
 
-L_fini_distro:
+	Assert(policy->nattrs > 0);
 
-	heap_close(attr_rel, RowExclusiveLock);
+	rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
+	GpPolicyReplace(RelationGetRelid(rel), policy);
 
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot SET distribution policy for relation \"%s\"",
-                    RelationGetRelationName(rel))));
 } /* end ATExecSetDistributedBy */
 
 static char
