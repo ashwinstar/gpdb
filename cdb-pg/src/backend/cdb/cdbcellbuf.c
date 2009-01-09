@@ -73,7 +73,7 @@ CdbCellBuf_Init(CdbCellBuf     *cellbuf,
 {
     Assert(cellbuf != NULL &&
            cellbytes > 0 &&
-           cellbytes < UINT16_MAX &&
+           cellbytes < (65535U) &&
            num_initial_cells >= 0 &&
            num_cells_expand >= 0);
 
