@@ -1004,7 +1004,7 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		}
 		if (type == 'L')
 		{
-			int64_t line_number;
+			int64 line_number;
 
 			if (len != 8)
 			{
@@ -1018,7 +1018,7 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 			}
 			memcpy(&line_number,curl->buf.ptr+curl->buf.bot,len);
 			line_number = local_ntohll(line_number);
-			pstate->cur_lineno = line_number?line_number-1:(int64_t)-1<<63;
+			pstate->cur_lineno = line_number?line_number-1:(int64)-1<<63;
 			curl->buf.bot += 8;
 			Assert(curl->buf.bot <= curl->buf.top);
 			continue;
