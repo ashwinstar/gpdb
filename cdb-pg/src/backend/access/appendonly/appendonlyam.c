@@ -28,8 +28,11 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
+#ifndef WIN32
 #include <sys/fcntl.h>
+#else
+#include <io.h>
+#endif 
 #include <sys/file.h>
 #include <unistd.h>
 
