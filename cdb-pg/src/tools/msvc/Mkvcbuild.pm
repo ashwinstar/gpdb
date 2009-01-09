@@ -32,7 +32,7 @@ my $contrib_extrasource = {
     'cube' => ['cubescan.l','cubeparse.y'],
     'seg' => ['segscan.l','segparse.y']
 };
-my @contrib_excludes = ('pgcrypto','uuid-ossp');
+my @contrib_excludes = ('pgcrypto','uuid-ossp','adminpack','bufferedtest');
 
 sub mkvcbuild
 {
@@ -302,9 +302,10 @@ sub mkvcbuild
     opendir($D, 'contrib') || croak "Could not opendir on contrib!\n";
     while (my $d = readdir($D))
     {
+		next if length($d)< 1;
         next if ($d =~ /^\./);
         next unless (-f "contrib/$d/Makefile");
-        next if (grep {/^$d$/} @contrib_excludes);
+        next if (grep {/^$d\s*$/} @contrib_excludes);
         AddContrib($d);
     }
     closedir($D);
@@ -314,10 +315,13 @@ sub mkvcbuild
     $mf =~ m{DIRS\s*=\s*(.*)$}m || die 'Could not match in conversion makefile' . "\n";
     foreach my $sub (split /\s+/,$1)
     {
+		next if (length($sub) == 0);
+		next if ($sub eq "euc_tw_and_big5");
         my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
         my $p = $solution->AddProject($sub, 'dll', 'conversion procs');
+        
         $p->AddFile('src\backend\utils\mb\conversion_procs\\' . $sub . '\\' . $sub . '.c');
-        if ($mf =~ m{^SRCS\s*\+=\s*(.*)$}m)
+        if ($mf =~ m{^SRCS\s*\+=\s*(.*)\s*$}m)
         {
             $p->AddFile('src\backend\utils\mb\conversion_procs\\' . $sub . '\\' . $1);
         }
@@ -407,27 +411,44 @@ sub AddSimpleFrontend
 sub AddContrib
 {
     my $n = shift;
+    if (length($n) > 1 && (substr($n,length($n)-1) eq "\r"))
+        {
+			chop $n;
+		}
     my $mf = Project::read_file('contrib\\' . $n . '\Makefile');
 
-    if ($mf =~ /^MODULE_big\s*=\s*(.*)$/mg)
+    if ($mf =~ m/^MODULE_big\s*=\s*(.*)\s*$/mg)
     {
         my $dn = $1;
+       
+			
+		if (length($dn) > 1 && (substr($dn,length($dn)-1) eq "\r"))
+        {
+			chop $dn;
+		}	
         $mf =~ s{\\\s*[\r\n]+}{}mg;
+        $dn =~ s{\\\s*[\r\n]+}{}mg;
+        
+        if (length($dn) > 1 && (substr($dn,length($dn)-1) eq "\r"))
+        {
+			chop $dn;
+		}	
+
         my $proj = $solution->AddProject($dn, 'dll', 'contrib');
-        $mf =~ /^OBJS\s*=\s*(.*)$/gm || croak "Could not find objects in MODULE_big for $n\n";
+        $mf =~ /^OBJS\s*=\s*(.*)\s*$/gm || croak "Could not find objects in MODULE_big for $n\n";
         foreach my $o (split /\s+/, $1)
         {
             $o =~ s/\.o$/.c/;
             $proj->AddFile('contrib\\' . $n . '\\' . $o);
         }
         $proj->AddReference($postgres);
-        if ($mf =~ /^SUBDIRS\s*:?=\s*(.*)$/mg)
+        if ($mf =~ /^SUBDIRS\s*:?=\s*(.*)\s*$/mg)
         {
             foreach my $d (split /\s+/, $1)
             {
                 my $mf2 = Project::read_file('contrib\\' . $n . '\\' . $d . '\Makefile');
                 $mf2 =~ s{\\\s*[\r\n]+}{}mg;
-                $mf2 =~ /^SUBOBJS\s*=\s*(.*)$/gm
+                $mf2 =~ /^SUBOBJS\s*=\s*(.*)\s*$/gm
                   || croak "Could not find objects in MODULE_big for $n, subdir $d\n";
                 foreach my $o (split /\s+/, $1)
                 {
@@ -438,7 +459,7 @@ sub AddContrib
         }
         AdjustContribProj($proj);
     }
-    elsif ($mf =~ /^MODULES\s*=\s*(.*)$/mg)
+    elsif ($mf =~ m/^MODULES\s*=\s*(.*)\s*$/mg)
     {
         foreach my $mod (split /\s+/, $1)
         {
@@ -448,10 +469,18 @@ sub AddContrib
             AdjustContribProj($proj);
         }
     }
-    elsif ($mf =~ /^PROGRAM\s*=\s*(.*)$/mg)
+    elsif ($mf =~ m/^PROGRAM\s*=\s*(.*)\s*$/mg)
     {
-        my $proj = $solution->AddProject($1, 'exe', 'contrib');
-        $mf =~ /^OBJS\s*=\s*(.*)$/gm || croak "Could not find objects in MODULE_big for $n\n";
+		my $dn = $1;
+		if (length($dn) > 1 && (substr($dn,length($dn)-1) eq "\r"))
+        {
+			chop $dn;
+		}
+		
+        $dn =~ s{\\\s*[\r\n]+}{}mg;
+
+        my $proj = $solution->AddProject($dn, 'exe', 'contrib');
+        $mf =~ /^OBJS\s*=\s*(.*)\s*$/gm || croak "Could not find objects in MODULE_big for $n\n";
         foreach my $o (split /\s+/, $1)
         {
             $o =~ s/\.o$/.c/;
@@ -472,7 +501,7 @@ sub GenerateContribSqlFiles
 {
     my $n = shift;
     my $mf = shift;
-    if ($mf =~ /^DATA_built\s*=\s*(.*)$/mg)
+    if ($mf =~ m/^DATA_built\s*=\s*(.*)\s*$/mg)
     {
         my $l = $1;
 
@@ -496,6 +525,7 @@ sub GenerateContribSqlFiles
 
         foreach my $d (split /\s+/, $l)
         {
+            next unless (length($d) > 0);
             my $in = "$d.in";
             my $out = "$d";
 
@@ -507,8 +537,8 @@ sub GenerateContribSqlFiles
                 print "Building $out from $in (contrib/$n)...\n";
                 my $cont = Project::read_file("contrib/$n/$in");
                 my $dn = $out;
-                $dn =~ s/\.sql$//;
-                if ($mf =~ /^MODULE_big\s*=\s*(.*)$/m) { $dn = $1 }
+                $dn =~ s/\.sql\s*$//;
+                if ($mf =~ /^MODULE_big\s*=\s*(.*)\s*$/m) { $dn = $mf }
                 $cont =~ s/MODULE_PATHNAME/\$libdir\/$dn/g;
                 my $o;
                 open($o,">contrib/$n/$out") || croak "Could not write to contrib/$n/$d";
@@ -531,12 +561,12 @@ sub AdjustContribProj
             $proj->AddDefine($d);
         }
     }
-    if (grep {/^$n$/} @contrib_uselibpq)
+    if (grep {/^$n\s*$/} @contrib_uselibpq)
     {
         $proj->AddIncludeDir('src\interfaces\libpq');
         $proj->AddReference($libpq);
     }
-    if (grep {/^$n$/} @contrib_uselibpgport)
+    if (grep {/^$n\s*$/} @contrib_uselibpgport)
     {
         $proj->AddReference($libpgport);
     }

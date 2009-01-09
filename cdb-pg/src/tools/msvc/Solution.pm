@@ -242,6 +242,18 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         chdir('..\..\..');
     }
 
+	if (IsNewer('src\include\catalog\gp_versions.h','src\include\catalog\gp_version.in'))
+    {
+        print "Generating gp_versions.h...\n";
+        copyFile("src\\include\\catalog\\gp_version.in src\\include\\catalog\\gp_version.h");
+    }
+    
+    if (IsNewer('src\include\catalog\cdb_schema.sql','src\include\catalog\cdb_schema.in'))
+    {
+        print "Generating cdb_schema.sql...\n";
+        copyFile("src\\include\\catalog\\cdb_schema.in src\\include\\catalog\\cdb_schema.sql");
+    } 
+    
     if (
         IsNewer(
             'src\interfaces\ecpg\include\ecpg_config.h',
@@ -284,7 +296,7 @@ EOF
 
     my $mf = Project::read_file('src\backend\catalog\Makefile');
     $mf =~ s{\\s*[\r\n]+}{}mg;
-    $mf =~ /^POSTGRES_BKI_SRCS\s*:?=[^,]+,(.*)\)$/gm
+    $mf =~ /^POSTGRES_BKI_SRCS\s*:?=[^,]+,(.*)\)\s*$/gm
       || croak "Could not find POSTGRES_BKI_SRCS in Makefile\n";
     my @allbki = split /\s+/, $1;
     foreach my $bki (@allbki)

@@ -251,7 +251,7 @@ sub AddDir
     }
 
     # Match rules that pull in source files from different directories
-    my $replace_re = qr{^([^:\n\$]+\.c)\s*:\s*(?:%\s*: )?\$(\([^\)]+\))\/(.*)\/[^\/]+$};
+    my $replace_re = qr{^([^:\n\$]+\.c)\s*:\s*(?:%\s*: )?\$(\([^\)]+\))\/(.*)\/[^\/]+\s*$}m;
     while ($mf =~ m{$replace_re}m)
     {
         my $match = $1;
@@ -338,7 +338,9 @@ sub Save
     }
 
     # Dump the project
-    open(F, ">$self->{name}.vcproj") || croak("Could not write to $self->{name}.vcproj\n");
+    my $y = $self->{name} . '.vcproj';
+  
+    open(F, ">$y") || croak("Could not write to $y\n");
     $self->WriteHeader(*F);
     $self->WriteReferences(*F);
     print F <<EOF;

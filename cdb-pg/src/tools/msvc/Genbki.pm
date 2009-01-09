@@ -36,17 +36,17 @@ sub genbki
 	# In PG 8.2, NAMEDATALEN is in postgres_ext.h.  it moves
 	# to pg_config_manual.h in PG 8.3
     my $pgext = read_file("src/include/pg_config_manual.h");
-    $pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)$/mg
+    $pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)\s*$/mg
       || die "Could not read NAMEDATALEN from pg_config_manual.h\n";
     my $namedatalen = $1;
 
     my $pgauthid = read_file("src/include/catalog/pg_authid.h");
-    $pgauthid =~ /^#define\s+BOOTSTRAP_SUPERUSERID\s+(\d+)$/mg
+    $pgauthid =~ /^#define\s+BOOTSTRAP_SUPERUSERID\s+(\d+)\s*$/mg
       || die "Could not read BOOTSTRAUP_SUPERUSERID from pg_authid.h\n";
     my $bootstrapsuperuserid = $1;
 
     my $pgnamespace = read_file("src/include/catalog/pg_namespace.h");
-    $pgnamespace =~ /^#define\s+PG_CATALOG_NAMESPACE\s+(\d+)$/mg
+    $pgnamespace =~ /^#define\s+PG_CATALOG_NAMESPACE\s+(\d+)\s*$/mg
       || die "Could not read PG_CATALOG_NAMESPACE from pg_namespace.h\n";
     my $pgcatalognamespace = $1;
 
@@ -94,7 +94,7 @@ sub genbki
 
     foreach my $line (split /\n/, $indata)
     {
-        if ($line =~ /^DATA\((.*)\)$/m)
+        if ($line =~ /^DATA\((.*)\)\s*$/m)
         {
             my $data = $1;
             my @fields = split /\s+/,$data;
@@ -109,21 +109,21 @@ sub genbki
             $data =~ s/\s{2,}/ /g;
             $bki .= $data . "\n";
         }
-        elsif ($line =~ /^DESCR\("(.*)"\)$/m)
+        elsif ($line =~ /^DESCR\("(.*)"\)\s*$/m)
         {
             if ($oid != 0)
             {
                 $desc .= sprintf("%d\t%s\t0\t%s\n", $oid, $catalog, $1);
             }
         }
-        elsif ($line =~ /^SHDESCR\("(.*)"\)$/m)
+        elsif ($line =~ /^SHDESCR\("(.*)"\)\s*$/m)
         {
             if ($oid != 0)
             {
                 $shdesc .= sprintf("%d\t%s\t%s\n", $oid, $catalog, $1);
             }
         }
-        elsif ($line =~ /^DECLARE_(UNIQUE_)?INDEX\((.*)\)$/m)
+        elsif ($line =~ /^DECLARE_(UNIQUE_)?INDEX\((.*)\)\s*$/m)
         {
             if ($reln_open)
             {
@@ -135,7 +135,7 @@ sub genbki
             $fields[2] =~ s/\s{2,}/ /g;
             $bki .= "declare$u index $fields[0] $fields[1] $fields[2]\n";
         }
-        elsif ($line =~ /^DECLARE_TOAST\((.*)\)$/m)
+        elsif ($line =~ /^DECLARE_TOAST\((.*)\)\s*$/m)
         {
             if ($reln_open)
             {
@@ -149,7 +149,7 @@ sub genbki
         {
             $bki .= "build indices\n";
         }
-        elsif ($line =~ /^CATALOG\((.*)\)(.*)$/m)
+        elsif ($line =~ /^CATALOG\((.*)\)(.*)\s*$/m)
         {
             if ($reln_open)
             {
