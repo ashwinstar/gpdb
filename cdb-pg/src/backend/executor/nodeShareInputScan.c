@@ -581,13 +581,50 @@ static void create_tmp_fifo(const char *fifoname)
 #endif
 }
 
+static int retry_read(int fd, char *buf, int rsize)
+{
+	int err;
+	Assert(rsize > 0);
+
+read_retry:
+	err = read(fd, buf, rsize);
+	if (err > 0)
+		return err;
+	else if(err == 0 || err == EINTR)
+		goto read_retry;
+	else
+		elog(ERROR, "ShareInput Wait/Notify Read Failed");
+
+	Assert(!"Never be here");
+	return 0;
+}
+
+static int retry_write(int fd, char *buf, int wsize)
+{
+	int err;
+	Assert(wsize > 0);
+
+write_retry:
+	err = write(fd, buf, wsize);
+
+	if(err > 0)
+		return err;
+	else if(err == 0 || err == EINTR)
+		goto write_retry;
+	else
+		elog(ERROR, "ShareInput Wait/Notify Write Failed");
+
+	Assert(!"Never be here");
+	return 0;
+}
+		
 void *shareinput_reader_waitready(int share_id)
 {
 	mpp_fd_set rset;
 	struct timeval tval;
 	int n;
 	char a;
-	int asize;
+	int rwsize;
 
 	ShareInput_Lk_Context *pctxt = gp_malloc(sizeof(ShareInput_Lk_Context));
 
@@ -631,11 +668,13 @@ void *shareinput_reader_waitready(int share_id)
 
 		if(n==1)
 		{
-			asize = read(pctxt->readyfd, &a, 1);
-			Assert(asize == 1 && a == 'a');
+			rwsize = retry_read(pctxt->readyfd, &a, 1);
+			Assert(rwsize == 1 && a == 'a');
 
 			elog(DEBUG1, "SISC: Wait ready get a, now write b");
-			write(pctxt->donefd, "b", 1);
+			rwsize = retry_write(pctxt->donefd, "b", 1);
+			Assert(rwsize == 1);
+
 			break;
 		}
 		else if(n==0)
@@ -658,7 +697,7 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	struct timeval tval;
 	int n;
 	char b;
-	int bsize;
+	int rwsize;
 
 	ShareInput_Lk_Context *pctxt = gp_malloc(sizeof(ShareInput_Lk_Context));
 
@@ -704,7 +743,8 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 		if(n==1)
 		{
 			elog(DEBUG1, "SISC: notify ready once, xslice = %d", xslice);
-			write(pctxt->readyfd, "a", 1);
+			rwsize = retry_write(pctxt->readyfd, "a", 1);
+			Assert(rwsize == 1);
 		}
 
 		CHECK_FOR_INTERRUPTS();
@@ -718,13 +758,14 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 
 		if(n==1)
 		{
-			bsize = read(pctxt->donefd, &b, 1);
+			rwsize = retry_read(pctxt->donefd, &b, 1);
+			Assert(rwsize == 1);
 
 			if(b == 'z')
 				++pctxt->zcnt;
 			else
 			{
-				Assert(bsize == 1 && b == 'b');
+				Assert(b == 'b');
 				--xslice;
 				elog(DEBUG1, "SISC: notify ready succeed 1, xslice remaining %d", xslice);
 			}
@@ -748,6 +789,7 @@ void shareinput_reader_notifydone(void *ctxt, int share_id)
 	mpp_fd_set wset;
 	struct timeval tval;
 	int n;
+	int rwsize;
 
 	while(1)
 	{
@@ -762,7 +804,8 @@ void shareinput_reader_notifydone(void *ctxt, int share_id)
 		if(n==1)
 		{
 			elog(DEBUG1, "SISC: notify done");
-			write(pctxt->donefd, "z", 1);
+			rwsize = retry_write(pctxt->donefd, "z", 1);
+			Assert(rwsize == 1);
 			break;
 		}
 		else if(n==0)
@@ -787,7 +830,7 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	struct timeval tval;
 	int n;
 	char z;
-	int zsize;
+	int rwsize;
 
 	nsharer_xslice -= pctxt->zcnt;
 
@@ -804,8 +847,8 @@ void shareinput_writer_waitdone(void *ctxt, int share_id, int nsharer_xslice)
 	
 		if(n==1)
 		{
-			zsize = read(pctxt->donefd, &z, 1); 
-			Assert(zsize == 1 && z == 'z');
+			rwsize = retry_read(pctxt->donefd, &z, 1); 
+			Assert(rwsize == 1 && z == 'z');
 
 			elog(DEBUG1, "SISC: wait done get 1 notification");
 			--nsharer_xslice;
