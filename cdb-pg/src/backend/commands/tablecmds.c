@@ -8956,6 +8956,58 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 static void
 ATExecSetDistributedBy(Relation rel, Node *node)
 {
+	HeapTuple	tuple;
+	AttrNumber	attnum;
+	Relation	attr_rel;
+	List *l1;
+	ListCell   *lc;
+
+	/*
+	 * lookup the attribute
+	 */
+	attr_rel = heap_open(AttributeRelationId, RowExclusiveLock);
+
+	Assert (IsA(node, List));
+
+	l1 = (List *)node;
+
+	/* check for case of single null value -- set distributed randomly */
+	if ((list_length(l1) == 1) && 
+		(   (list_head(l1) == NULL)
+		 || (linitial(l1) == NULL)))
+		goto L_fini_distro;		
+
+	foreach(lc, l1)
+	{
+		Node *n1 = (Node *) lfirst(lc);
+		char *colName;
+
+		Assert(n1);
+
+		colName = strVal(n1);
+
+		tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
+
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+							colName, RelationGetRelationName(rel))));
+
+		attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+
+		/* Prevent them from altering a system attribute */
+		if (attnum <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot alter system column \"%s\"",
+							colName)));
+	}
+
+L_fini_distro:
+
+	heap_close(attr_rel, RowExclusiveLock);
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot SET distribution policy for relation \"%s\"",
