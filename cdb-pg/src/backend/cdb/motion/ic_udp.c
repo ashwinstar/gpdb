@@ -2752,7 +2752,11 @@ dispatcherAYT(void)
 	if (MyProcPort->sock < 0)
 		return false;
 
-	ret = recv(MyProcPort->sock, &buf, 1, MSG_PEEK|MSG_DONTWAIT);
+#ifndef WIN32
+		ret = recv(MyProcPort->sock, &buf, 1, MSG_PEEK|MSG_DONTWAIT);
+#else
+		ret = recv(MyProcPort->sock, &buf, 1, MSG_PEEK|MSG_PARTIAL);
+#endif
 
 	if (ret == 0) /* socket has been closed. EOF */
 		return false;
