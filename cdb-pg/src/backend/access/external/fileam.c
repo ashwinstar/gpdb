@@ -1248,7 +1248,7 @@ gfile_free(void*a)
 }
 
 char*
-linenumber_atoi(char buffer[20],int64_t linenumber)
+linenumber_atoi(char buffer[20],int64 linenumber)
 {
 	if (linenumber < 0)
 		return "N/A";
