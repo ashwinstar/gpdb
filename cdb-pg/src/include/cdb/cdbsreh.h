@@ -13,6 +13,7 @@
 #ifndef CDBSREH_H
 #define CDBSREH_H
 
+#include "c.h"
 #include "cdb/cdbcopy.h"
 #include "utils/memutils.h"
 
@@ -68,7 +69,7 @@ typedef struct CdbSreh
 	char	*errmsg;		/* the error message for this bad data row */
 	char	*rawdata;		/* the bad data row */
 	char	*relname;		/* target relation */
-	int64_t		linenumber;		/* line number of error in original file */
+	int64		linenumber;		/* line number of error in original file */
 	uint64  processed;      /* num logical input rows processed so far */
 	bool	is_server_enc;	/* was bad row converted to server encoding? */
 	int		consec_csv_err; /* # of consecutive invalid csv errors */
