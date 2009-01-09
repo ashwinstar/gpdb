@@ -3268,7 +3268,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 			pass = AT_PASS_MISC;
 			if (Gp_role == GP_ROLE_UTILITY)
-				elog(ERROR, "EXCHANGE is not supported in utility mode");
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 						 errmsg("EXCHANGE is not supported in utility mode")));
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
@@ -3427,7 +3429,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			Relation			target = NULL;
 
 			if (Gp_role == GP_ROLE_UTILITY)
-				elog(ERROR, "MERGE is not supported in utility mode");
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 						 errmsg("MERGE is not supported in utility mode")));
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				Relation srel;
@@ -3520,7 +3524,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			Relation			target = NULL;
 
 			if (Gp_role == GP_ROLE_UTILITY)
-				elog(ERROR, "SPLIT is not supported in utility mode");
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+ 						 errmsg("SPLIT is not supported in utility mode")));
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
@@ -15610,7 +15616,11 @@ ATPExecPartSplit(Relation rel,
 					AlterPartitionId *id = (AlterPartitionId *)pc2->partid;
 
 					if (id->idtype == AT_AP_IDDefault)
-						elog(ERROR, "relation \"%s\" does not have a default partition", RelationGetRelationName(rel)); 
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("relation \"%s\" does not have a "
+										"default partition", 
+										RelationGetRelationName(rel))));
 
 					foreach(rc, prule->pNode->rules)
 					{
@@ -15686,7 +15696,11 @@ ATPExecPartSplit(Relation rel,
 					AlterPartitionId *id = (AlterPartitionId *)pc2->arg1;
 
 					if (id->idtype == AT_AP_IDDefault)
-						elog(ERROR, "no default exists"); 
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("relation \"%s\" does not have a "
+										"default partition", 
+										RelationGetRelationName(rel))));
 
 					foreach(rc, prule->pNode->rules)
 					{
@@ -16290,7 +16304,7 @@ ATPExecPartSplit(Relation rel,
 
 			ExecStoreHeapTuple(tuple, tts, InvalidBuffer, false);
 		}
-		else if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+		else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
 		{
 			MemTuple mtuple;
 
