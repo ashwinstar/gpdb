@@ -587,6 +587,7 @@ static int retry_read(int fd, char *buf, int rsize)
 	Assert(rsize > 0);
 
 read_retry:
+	CHECK_FOR_INTERRUPTS();
 	err = read(fd, buf, rsize);
 	if (err > 0)
 		return err;
@@ -605,6 +606,7 @@ static int retry_write(int fd, char *buf, int wsize)
 	Assert(wsize > 0);
 
 write_retry:
+	CHECK_FOR_INTERRUPTS();
 	err = write(fd, buf, wsize);
 
 	if(err > 0)
