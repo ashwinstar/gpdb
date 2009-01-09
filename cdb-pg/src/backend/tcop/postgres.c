@@ -3309,6 +3309,7 @@ ProcessInterrupts(void)
 void
 gp_set_thread_sigmasks(void)
 {
+#ifndef WIN32
 	sigset_t sigs;
 
 	if (pthread_equal(main_tid, pthread_self()))
@@ -3328,6 +3329,7 @@ gp_set_thread_sigmasks(void)
 	sigaddset(&sigs, SIGUSR2);
 
 	pthread_sigmask(SIG_BLOCK, &sigs, NULL);
+#endif
 
 	return;
 }
