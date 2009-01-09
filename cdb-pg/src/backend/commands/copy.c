@@ -1528,7 +1528,7 @@ DoCopy(const CopyStmt *stmt)
 				autostats_cmdtype_to_string(AUTOSTATS_CMDTYPE_COPY), 
 				MyDatabaseId, 
 				relationOid, 
-				(uint) processed);
+				(unsigned int) processed);
 	}
 
     /* 	 Fix for MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
