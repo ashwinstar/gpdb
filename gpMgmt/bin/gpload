@@ -986,7 +986,7 @@ class gpload:
                 i = filter(lambda a:a[0] == x[0], self.into_columns)
                 if i:
                     i = i[0]
-                    i[2] = i[0]
+                    if i[2] == None: i[2] = i[0]
                 else:
                     self.log(self.ERROR, 'no mapping for input column ' +
                              '"%s" to output table' % x[0])
