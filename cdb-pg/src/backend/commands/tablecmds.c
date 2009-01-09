@@ -11928,6 +11928,7 @@ atpxPart_validate_spec(
 
 						spec_tmpl->istemplate = true;
 
+						/* add entries for rules at current level */
 						foreach(lc, pNode_tmpl->rules)
 						{
 							PartitionRule *rule_tmpl = lfirst(lc);
@@ -12012,6 +12013,27 @@ atpxPart_validate_spec(
 														  el);
 						} /* end foreach */
 
+						/* MPP-4725 */
+						/* and the default partition */
+						if (pNode_tmpl->default_part)
+						{
+							PartitionRule *rule_tmpl = 
+									pNode_tmpl->default_part;
+
+							el = makeNode(PartitionElem);
+
+							if (rule_tmpl->parname && 
+								strlen(rule_tmpl->parname))
+								el->partName = 
+										(Node*)makeString(rule_tmpl->parname);
+							
+							el->isDefault = rule_tmpl->parisdefault;
+
+							spec_tmpl->partElem = lappend(spec_tmpl->partElem,
+														  el);
+
+						}
+
 						/* the PartitionElem should hang off the pby
 						 * partspec, and subsequent templates should
 						 * hang off the subspec for the prior
@@ -12020,7 +12042,7 @@ atpxPart_validate_spec(
 						
 						pBy2->partSpec 	= (Node *)spec_tmpl;
 							
-					} /* end if pnode_tmpl */
+					} /* end if pNode_tmpl */
 
 					/* fixup the pnode_tmpl to get the right parlevel */
 					if (pNode2 && (pNode2->rules || pNode2->default_part))
