@@ -1300,7 +1300,6 @@ class gpload:
 
     def do_method(self):
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
-        print method
         if method=='insert':
             self.do_method_insert()
         elif method=='update':
