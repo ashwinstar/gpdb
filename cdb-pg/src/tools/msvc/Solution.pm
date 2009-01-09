@@ -242,7 +242,7 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         chdir('..\..\..');
     }
 
-	if (IsNewer('src\include\catalog\gp_versions.h','src\include\catalog\gp_version.in'))
+	if (IsNewer('src\include\catalog\gp_version.h','src\include\catalog\gp_version.in'))
     {
         print "Generating gp_versions.h...\n";
         copyFile("src\\include\\catalog\\gp_version.in","src\\include\\catalog\\gp_version.h");
