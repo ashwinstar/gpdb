@@ -991,6 +991,8 @@ void parser_set_function(mapred_parser_t *parser, char *value)
 		case YAML_DOUBLE_QUOTED_SCALAR_STYLE:
 			parser->current_obj->u.function.lineno += 1;
 			break;			
+		default:
+			break;
 	}
 }
 
