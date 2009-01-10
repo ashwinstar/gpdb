@@ -6,6 +6,8 @@
 
 #include "extern.h"
 
+#undef REPEATABLE
+
 /*
  * Variables containing simple states.
  */
