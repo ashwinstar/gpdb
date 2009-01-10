@@ -972,6 +972,26 @@ void parser_set_function(mapred_parser_t *parser, char *value)
 		default:
 			XASSERT(false);
 	}
+
+	/* 
+	 * The "start_mark" of function body has a line number, but what that line 
+	 * number refers to is a bit finicky depending on the nature of the YAML.
+	 * So we take it and adjust it accordingly.
+	 */
+	parser->current_obj->u.function.lineno = parser->event.start_mark.line;
+	switch (parser->event.data.scalar.style)
+	{
+		case YAML_LITERAL_SCALAR_STYLE:
+		case YAML_FOLDED_SCALAR_STYLE:
+			parser->current_obj->u.function.lineno += 2;
+			break;
+
+		case YAML_PLAIN_SCALAR_STYLE:
+		case YAML_SINGLE_QUOTED_SCALAR_STYLE:
+		case YAML_DOUBLE_QUOTED_SCALAR_STYLE:
+			parser->current_obj->u.function.lineno += 1;
+			break;			
+	}
 }
 
 void parser_set_optimize(mapred_parser_t *parser, char *value)

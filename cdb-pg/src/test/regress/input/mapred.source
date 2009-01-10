@@ -148,6 +148,11 @@ SELECT execute('cat @abs_srcdir@/results/fileout_replace.out') ORDER BY 1;
 SELECT execute('cat @abs_srcdir@/results/fileout_append.out') ORDER BY 1;
 
 
+-- 
+-- Test 7) Perl syntax error lineno reporting
+--
+SELECT mapreduce('@abs_srcdir@/yml/perlerror.yml') ORDER BY 1;
+
 --
 -- Cleanup) Restore normal formatting options
 --

@@ -40,7 +40,8 @@ PG_MODULE_MAGIC;
  **********************************************************************/
 typedef struct plperl_proc_desc
 {
-	char	   *proname;
+	char	   *proname;        /* name of the sql function */
+	char       *plname;         /* name of the internal perl function */
 	TransactionId fn_xmin;
 	CommandId	fn_cmin;
 	bool		fn_readonly;
@@ -310,12 +311,12 @@ _PG_init(void)
 	"my  $user_function = sub {" 
 
 #define USER_FUNCTION_END \
-    "}; " \
+    "\n};" \
 	"my @rv = &$user_function(@_);" \
 	"return wantarray ? @rv : $rv[0] if ($#_RV < 0);" \
 	"return [@_RV] if ($#rv < 0 || $#rv == 0 && !$rv[0]);" \
 	"return [@_RV, @{$rv[0]}] if ($#rv == 0 && ref($rv[0]) eq 'ARRAY');" \
-	"elog(ERROR, 'return must return an array referece when used with return_next');"
+	"elog(ERROR, 'return must return an array reference when used with return_next');"
 
 
 /********************************************************************
@@ -620,14 +621,15 @@ strip_trailing_ws(const char *msg)
 /* Build a tuple from a hash. */
 
 static HeapTuple
-plperl_build_tuple_result(HV *perlhash, AttInMetadata *attinmeta)
+plperl_build_tuple_result(plperl_call_data *call_data, HV *perlhash)
 {
-	TupleDesc	td = attinmeta->tupdesc;
-	char	  **values;
-	SV		   *val;
-	char	   *key;
-	I32			klen;
-	HeapTuple	tup;
+	AttInMetadata *attinmeta = call_data->attinmeta;
+	TupleDesc	   td = attinmeta->tupdesc;
+	char	     **values;
+	SV		      *val;
+	char	      *key;
+	I32            klen;
+	HeapTuple	   tup;
 
 	values = (char **) palloc0(td->natts * sizeof(char *));
 
@@ -639,8 +641,9 @@ plperl_build_tuple_result(HV *perlhash, AttInMetadata *attinmeta)
 		if (attn <= 0 || td->attrs[attn - 1]->attisdropped)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("Perl hash contains nonexistent column \"%s\"",
-							key)));
+					 errmsg("Invalid return value from Perl function \"%s\"",
+							call_data->prodesc->proname),
+					 errdetail("Perl hash contains nonexistent column \"%s\"", key)));
 		if (SvOK(val))
 			values[attn - 1] = SvPV(val, PL_na);
 	}
@@ -785,7 +788,8 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 /* Set up the new tuple returned from a trigger. */
 
 static HeapTuple
-plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
+plperl_modify_tuple(plperl_proc_desc *prodesc, HV *hvTD, TriggerData *tdata, 
+					HeapTuple otup)
 {
 	SV		  **svp;
 	HV		   *hvNew;
@@ -830,8 +834,10 @@ plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 		if (attn <= 0 || tupdesc->attrs[attn - 1]->attisdropped)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("Perl hash contains nonexistent column \"%s\"",
-							key)));
+					 errmsg("Invalid return value from Perl Trigger function \"%s\"",
+							prodesc->proname),
+					 errdetail("Perl hash contains nonexistent column \"%s\"", key)));
+
 		/* XXX would be better to cache these lookups */
 		getTypeInputInfo(tupdesc->attrs[attn - 1]->atttypid,
 						 &typinput, &typioparam);
@@ -1036,8 +1042,8 @@ plperl_create_sub(char *s, bool trusted)
 		LEAVE;
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("creation of Perl function failed: %s",
-						strip_trailing_ws(SvPV(ERRSV, PL_na)))));
+				 errmsg("creation of Perl function failed"),
+				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	/*
@@ -1165,8 +1171,8 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 		LEAVE;
 		/* XXX need to find a way to assign an errcode here */
 		ereport(ERROR,
-				(errmsg("error from Perl function: %s",
-						strip_trailing_ws(SvPV(ERRSV, PL_na)))));
+				(errmsg("Perl function \"%s\" failed", desc->proname),
+				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	retval = newSVsv(POPs);
@@ -1222,8 +1228,8 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
 		LEAVE;
 		/* XXX need to find a way to assign an errcode here */
 		ereport(ERROR,
-				(errmsg("error from Perl trigger function: %s",
-						strip_trailing_ws(SvPV(ERRSV, PL_na)))));
+				(errmsg("Perl trigger function \"%s\" failed", desc->proname),
+				 errdetail(strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	retval = newSVsv(POPs);
@@ -1262,8 +1268,10 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("set-valued function called in context that "
-								"cannot accept a set")));
+						 errmsg("Unsupported Perl function \"%s\"",
+								prodesc->proname),
+						 errdetail("set-valued function called in context that "
+								   "cannot accept a set")));
 			}
 		}
 
@@ -1419,8 +1427,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 							"that cannot accept type record")));
 		}
 
-		tup = plperl_build_tuple_result((HV *) SvRV(perlret), 
-										call_data->attinmeta);
+		tup = plperl_build_tuple_result(call_data, (HV*) SvRV(perlret));
 		retval = HeapTupleGetDatum(tup);
 	}
 	else
@@ -1515,10 +1522,10 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 			TriggerData *trigdata = (TriggerData *) fcinfo->context;
 
 			if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
-				trv = plperl_modify_tuple(hvTD, trigdata,
+				trv = plperl_modify_tuple(prodesc, hvTD, trigdata,
 										  trigdata->tg_trigtuple);
 			else if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
-				trv = plperl_modify_tuple(hvTD, trigdata,
+				trv = plperl_modify_tuple(prodesc, hvTD, trigdata,
 										  trigdata->tg_newtuple);
 			else
 			{
@@ -1554,7 +1561,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 {
 	HeapTuple	procTup;
 	Form_pg_proc procStruct;
-	char		internal_proname[64];
+	char		internal_plname[64];
 	plperl_proc_desc *prodesc = NULL;
 	int			i;
 	plperl_proc_entry *hash_entry;
@@ -1572,14 +1579,14 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	 * Build our internal proc name from the function's Oid
 	 ************************************************************/
 	if (!is_trigger)
-		sprintf(internal_proname, "__PLPerl_proc_%u", fn_oid);
+		sprintf(internal_plname, "__PLPerl_proc_%u", fn_oid);
 	else
-		sprintf(internal_proname, "__PLPerl_proc_%u_trigger", fn_oid);
+		sprintf(internal_plname, "__PLPerl_proc_%u_trigger", fn_oid);
 
 	/************************************************************
 	 * Lookup the internal proc name in the hashtable
 	 ************************************************************/
-	hash_entry = hash_search(plperl_proc_hash, internal_proname, 
+	hash_entry = hash_search(plperl_proc_hash, internal_plname, 
 							 HASH_FIND, NULL);
 
 	if (hash_entry)
@@ -1600,7 +1607,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		{
 			free(prodesc); /* are we leaking memory here? */
 			prodesc = NULL;
-			hash_search(plperl_proc_hash, internal_proname,
+			hash_search(plperl_proc_hash, internal_plname,
 						HASH_REMOVE,NULL);
 		}
 	}
@@ -1632,7 +1639,8 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		MemSet(prodesc, 0, sizeof(plperl_proc_desc));
-		prodesc->proname = strdup(internal_proname);
+		prodesc->proname = strdup(NameStr(procStruct->proname));
+		prodesc->plname = strdup(internal_plname);
 		prodesc->fn_xmin = HeapTupleHeaderGetXmin(procTup->t_data);
 		prodesc->fn_cmin = HeapTupleHeaderGetCmin(procTup->t_data);
 
@@ -1649,6 +1657,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		if (!HeapTupleIsValid(langTup))
 		{
 			free(prodesc->proname);
+			free(prodesc->plname);
 			free(prodesc);
 			elog(ERROR, "cache lookup failed for language %u",
 				 procStruct->prolang);
@@ -1669,6 +1678,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 			if (!HeapTupleIsValid(typeTup))
 			{
 				free(prodesc->proname);
+				free(prodesc->plname);
 				free(prodesc);
 				elog(ERROR, "cache lookup failed for type %u",
 					 procStruct->prorettype);
@@ -1684,6 +1694,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				else if (procStruct->prorettype == TRIGGEROID)
 				{
 					free(prodesc->proname);
+					free(prodesc->plname);
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1693,6 +1704,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				else
 				{
 					free(prodesc->proname);
+					free(prodesc->plname);
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1730,6 +1742,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				if (!HeapTupleIsValid(typeTup))
 				{
 					free(prodesc->proname);
+					free(prodesc->plname);
 					free(prodesc);
 					elog(ERROR, "cache lookup failed for type %u",
 						 procStruct->proargtypes.values[i]);
@@ -1740,6 +1753,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				if (typeStruct->typtype == 'p')
 				{
 					free(prodesc->proname);
+					free(prodesc->plname);
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1786,12 +1800,13 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		if (!prodesc->reference)	/* can this happen? */
 		{
 			free(prodesc->proname);
+			free(prodesc->plname);
 			free(prodesc);
 			elog(ERROR, "could not create internal procedure \"%s\"",
-				 internal_proname);
+				 internal_plname);
 		}
 
-		hash_entry = hash_search(plperl_proc_hash, internal_proname,
+		hash_entry = hash_search(plperl_proc_hash, internal_plname,
 								 HASH_ENTER, &found);
 		hash_entry->proc_data = prodesc;
 	}

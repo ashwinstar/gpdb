@@ -43,6 +43,7 @@ setup:
 	@psql -c "create database $(DB)" template1
 	@printf "============== installing plperl/plpython             ==============\n"
 	@psql -c "create language plperl" -d $(DB) 
+	@psql -c "create language plperlu" -d $(DB) 
 	@psql -c "create language plpythonu" -d $(DB) 
 	@printf "============== running mapreduce tests                ==============\n"
 	@rm -rf $(OUTDIR)

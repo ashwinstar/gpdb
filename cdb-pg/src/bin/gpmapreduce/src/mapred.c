@@ -2140,9 +2140,21 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 				if (!strcasecmp("python", obj->u.function.language))
 					bufcat(&buffer, "u");
 
-
 				/* Handle the body of the function */
 				bufcat(&buffer, " AS\n$$\n");
+
+				/* Extra language specific wrappers */
+				if (!strncasecmp("plperl", obj->u.function.language, 6) ||
+					!strncasecmp("perl",   obj->u.function.language, 4))
+				{
+					char lineno[10];
+					snprintf(lineno, sizeof(lineno), "%d", obj->u.function.lineno);
+					bufcat(&buffer, "\n#line ");
+					bufcat(&buffer, lineno);
+					bufcat(&buffer, "\n");
+				}
+
+				/* User function definition */
 				bufcat(&buffer, obj->u.function.body);
 				if (buffer->buffer[buffer->position-1] != '\n')
 					bufcat(&buffer, "\n$$");

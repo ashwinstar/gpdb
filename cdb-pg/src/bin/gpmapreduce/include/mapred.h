@@ -158,6 +158,7 @@ typedef struct {
 #define mapred_function_strict    0x00000001
 #define mapred_function_immutable 0x00000002
 #define mapred_function_unordered 0x00000004
+	int                  lineno;
 } mapred_function_t;
 
 /* Mappers, Transitions, Combiners, and Finalizers are all just functions */
