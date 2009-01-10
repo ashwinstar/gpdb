@@ -64,6 +64,8 @@
 #include "utils/numeric.h"
 #include "cdb/cdbvars.h" /* CDB *//* gp_enable_partitioned_tables */
 
+#undef REPEATABLE
+
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
 	do { \
