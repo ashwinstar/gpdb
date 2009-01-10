@@ -276,6 +276,7 @@ int gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	memset(fd, 0, sizeof *fd);
 	fd->compressed_size = sta.st_size;
 	
+#undef open
 	do
 		fd->fd = open(fpath, O_RDONLY | O_BINARY);
 	while (fd->fd < 0 && errno == EINTR);
@@ -298,7 +299,7 @@ int gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	else if (s && pg_strcasecmp(s, ".z") == 0)
 		gfile_printf_then_putc_newline(
 				"gfile compression .z file is not supported");
-	else if (s && strcasecmp(s, ".zip") == 0)
+	else if (s && pg_strcasecmp(s, ".zip") == 0)
 		gfile_printf_then_putc_newline("gfile compression zip is not supported");
 	else
 		return 0;
