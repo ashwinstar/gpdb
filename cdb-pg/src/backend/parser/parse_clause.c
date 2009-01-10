@@ -1096,7 +1096,7 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 
 	if (funcname)
 	{
-		if (strncasecmp(funcname, GP_DIST_RANDOM_NAME, sizeof(GP_DIST_RANDOM_NAME)) == 0)
+		if (pg_strncasecmp(funcname, GP_DIST_RANDOM_NAME, sizeof(GP_DIST_RANDOM_NAME)) == 0)
 		{
 			/* OK, now we need to check the arguments and generate a RTE */
 			FuncCall *fc;
