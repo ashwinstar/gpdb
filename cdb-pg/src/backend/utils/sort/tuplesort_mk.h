@@ -89,7 +89,7 @@ static inline void *mk_get_ctxt(MKContext *mk_ctxt, int n)
 extern void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt, bool seenNull);
 static inline void mk_qsort(MKEntry* a, int n, MKContext *ctxt)
 {
-	return mk_qsort_impl(a, 0, n-1, 0, true, ctxt, false);
+	mk_qsort_impl(a, 0, n-1, 0, true, ctxt, false);
 }
 
 /* MK Heap stuff */
