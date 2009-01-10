@@ -1,3 +1,4 @@
+#include "c.h"
 #include <fstream/fstream.h>
 #include <fstream/gfile.h>
 #include <assert.h>
