@@ -1,7 +1,7 @@
 #ifndef GFILE_H
 #define GFILE_H
 
-#include "c.h"
+/*#include "c.h"*/
 #include <sys/types.h>
 #include <bzlib.h>
 #include <zlib.h>
