@@ -2,7 +2,7 @@
 #define FSTREAM_H
 
 #include <sys/types.h>
-#include "c.h"
+/*#include "c.h"*/
 
 #define FSTREAM_BLOCKSIZE	(1024*32)
 
