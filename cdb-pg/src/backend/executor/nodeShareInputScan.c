@@ -458,9 +458,12 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
  * the first thing come to mind but it turns out postgres is very picky about
  * how to use semaphore and we do not want to mess up with it.
  *
- * Here we use the fact the for FIFO (named pipe), we can make reader block till
- * writer create the FIFO.  mkfifo is Posix.1 and should be available on any
+ * Here we used FIFO (named pipe).  mkfifo is Posix.1 and should be available on any
  * reasonable Unix like system.
+ *
+ * When we open fifo, we open it with O_RDWR.  So the fifo has both reader and writer.
+ * That also means, for write, it will not block, but reader will until writer writes
+ * something.
  *
  * At first, I used postgres File to manage the FIFO.  It turns out this is not
  * correct because when postgres run out of file descriptors, it will try to close
@@ -581,17 +584,19 @@ static void create_tmp_fifo(const char *fifoname)
 #endif
 }
 
+/* 
+ * As all other read/write in postgres, we may be interrupted so retry is needed.
+ */
 static int retry_read(int fd, char *buf, int rsize)
 {
 	int err;
 	Assert(rsize > 0);
 
 read_retry:
-	CHECK_FOR_INTERRUPTS();
 	err = read(fd, buf, rsize);
 	if (err > 0)
 		return err;
-	else if(err == 0 || err == EINTR)
+	else if(err == 0 || errno == EINTR)
 		goto read_retry;
 	else
 		elog(ERROR, "ShareInput Wait/Notify Read Failed");
@@ -606,12 +611,10 @@ static int retry_write(int fd, char *buf, int wsize)
 	Assert(wsize > 0);
 
 write_retry:
-	CHECK_FOR_INTERRUPTS();
 	err = write(fd, buf, wsize);
-
 	if(err > 0)
 		return err;
-	else if(err == 0 || err == EINTR)
+	else if(err == 0 || errno == EINTR)
 		goto write_retry;
 	else
 		elog(ERROR, "ShareInput Wait/Notify Write Failed");
@@ -620,6 +623,29 @@ write_retry:
 	return 0;
 }
 		
+/* 
+ * Readiness (a) synchronization.
+ *
+ * For readiness, the shared node will write xslice of 'a' into the pipe.
+ * For each share, there is just one ready writer.  Once sharer starts write
+ * it need to write all xslice copies of 'a', even if we are interrupted, that
+ * is, we should not call CHECK_FOR_INTERRUPTS.
+ *
+ * For sharer, it need to check for ready to read (using select), because read 
+ * is blocking.  Otherwise if shared is cancelled before write, then we will be
+ * blocked here forever.  Once shared has write at least one 'a', it will write
+ * all xslice of 'a', so once select succeed, read will eventually succeed.  Once
+ * sharer got 'a', it write 'b' back to shared.
+ *
+ * Done (b and z) synchronization.
+ * For done, the shared is the only reader.  sharer will not block for writing, 
+ * but shared may block for read, therefore, we much call select before shared 
+ * calling read.  Because there is only one shared, nobody can steal char from
+ * the pipe, therefore, if select succeed, read will not block forever.
+ *
+ * One thing to note is that some 'z' may comeback before all 'b' come back.
+ * So, need to handle this in notifyready.
+ */
 void *shareinput_reader_waitready(int share_id)
 {
 	mpp_fd_set rset;
@@ -695,7 +721,6 @@ void *shareinput_reader_waitready(int share_id)
 void *shareinput_writer_notifyready(int share_id, int xslice)
 {
 	mpp_fd_set rset;
-	mpp_fd_set wset;
 	struct timeval tval;
 	int n;
 	char b;
@@ -731,24 +756,14 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	if(pctxt->donefd < 0)
 		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_done);
 
+	for(n=0; n<xslice; ++n)
+	{
+		rwsize = retry_write(pctxt->readyfd, "a", 1);
+		Assert(rwsize == 1);
+	}
+	
 	while(xslice > 0)
 	{
-		CHECK_FOR_INTERRUPTS();
-		
-		MPP_FD_ZERO(&wset);
-		MPP_FD_SET(pctxt->readyfd, &wset);
-
-		tval.tv_sec = 1;
-		tval.tv_usec = 0;
-		n = select(pctxt->readyfd+1, NULL, (fd_set *) &wset, NULL, &tval);
-
-		if(n==1)
-		{
-			elog(DEBUG1, "SISC: notify ready once, xslice = %d", xslice);
-			rwsize = retry_write(pctxt->readyfd, "a", 1);
-			Assert(rwsize == 1);
-		}
-
 		CHECK_FOR_INTERRUPTS();
 
 		MPP_FD_ZERO(&rset);
@@ -788,38 +803,10 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 void shareinput_reader_notifydone(void *ctxt, int share_id)
 {
 	ShareInput_Lk_Context *pctxt = (ShareInput_Lk_Context *) ctxt;
-	mpp_fd_set wset;
-	struct timeval tval;
-	int n;
 	int rwsize;
 
-	while(1)
-	{
-		CHECK_FOR_INTERRUPTS();
-
-		MPP_FD_ZERO(&wset);
-		MPP_FD_SET(pctxt->donefd, &wset);
-
-		tval.tv_sec = 1;
-		tval.tv_usec = 0;
-		n = select(pctxt->donefd+1, NULL, (fd_set *) &wset, NULL, &tval);
-		if(n==1)
-		{
-			elog(DEBUG1, "SISC: notify done");
-			rwsize = retry_write(pctxt->donefd, "z", 1);
-			Assert(rwsize == 1);
-			break;
-		}
-		else if(n==0)
-		{
-			elog(DEBUG1, "SISC: notify done time out once ...");
-		}
-		else
-		{
-			int save_errno = errno;
-			elog(LOG, "SISC: notify done timeout, errno %d", save_errno);
-		}
-	}
+	rwsize = retry_write(pctxt->donefd, "z", 1);
+	Assert(rwsize == 1);
 
 	shareinput_clean_lk_ctxt(pctxt);
 	UnregisterXactCallbackOnce(XCallBack_ShareInput_FIFO, (void *) ctxt);
