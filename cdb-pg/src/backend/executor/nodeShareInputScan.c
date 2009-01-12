@@ -589,14 +589,14 @@ static void create_tmp_fifo(const char *fifoname)
  */
 static int retry_read(int fd, char *buf, int rsize)
 {
-	int err;
+	int sz;
 	Assert(rsize > 0);
 
 read_retry:
-	err = read(fd, buf, rsize);
-	if (err > 0)
-		return err;
-	else if(err == 0 || errno == EINTR)
+	sz = read(fd, buf, rsize);
+	if (sz > 0)
+		return sz;
+	else if(sz == 0 || errno == EINTR)
 		goto read_retry;
 	else
 		elog(ERROR, "ShareInput Wait/Notify Read Failed");
@@ -607,14 +607,14 @@ read_retry:
 
 static int retry_write(int fd, char *buf, int wsize)
 {
-	int err;
+	int sz;
 	Assert(wsize > 0);
 
 write_retry:
-	err = write(fd, buf, wsize);
-	if(err > 0)
-		return err;
-	else if(err == 0 || errno == EINTR)
+	sz = write(fd, buf, wsize);
+	if(sz > 0)
+		return sz;
+	else if(sz == 0 || errno == EINTR)
 		goto write_retry;
 	else
 		elog(ERROR, "ShareInput Wait/Notify Write Failed");
