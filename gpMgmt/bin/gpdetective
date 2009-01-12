@@ -398,7 +398,21 @@ class GPDetective:
            SELECT * from gp_configuration
         ''')
         
-
+    def grabSegmentLog(self,segdb,seglog):
+        myfile = open('%s/%s.log' % segdb.group(1,3), 'w')
+        
+        #its possible that the master could have logrotation but not the segments
+        try:
+            segcmd="gpssh -h %s -v -e %s %s" % (segdb.group(1),sys.path[0] + '/gplogfilter --quiet',seglog)
+            subprocess.Popen(segcmd,stdout=myfile,shell=True)
+            found = True
+        except OSError,e:
+            self.log('' + str(e))
+            found = False    
+        
+        myfile.close()
+        return found
+        
 
     #------------------------------------------------------------
     def copyLogs(self):
@@ -408,24 +422,31 @@ class GPDetective:
         '''
         self.log('copyLogs')
 
+        #determine if its normal logging or log rotation.
+        if os.path.exists(self.masterdir + '.log'):
+            logrotation = False
+            master_log = self.masterdir + '.log'
+        else:
+            logrotation=True
+            master_log = self.masterdir + '/pg_log/*'
+        
         # Grab master log and postgresql.conf
         path_re = re.compile('/([^/]*)$')
         m = path_re.search(self.masterdir)
         
-        #JGE: try and open the 
         myfile = open('master/%s.log' % m.group(1), 'w')
-        cmd = [ sys.path[0] + '/gplogfilter' ]
-        cmd.extend(['--quiet'])
+        cmd = sys.path[0] + '/gplogfilter --quiet ' 
         if self.start_date:
             if self.start_date.find('-') == -1:
                 start = datetime.date.today() - datetime.timedelta(days=int(self.start_date))
-                cmd.extend(['--begin', str(start)])
+                cmd += '--begin', str(start)
             else:
-                cmd.extend(['--begin', self.start_date])
-        cmd.append(self.masterdir + '.log')
-        subprocess.Popen(cmd, stdout=myfile)
-        myfile.close()
-
+                cmd += '--begin', self.start_date
+        cmd += master_log
+        
+        subprocess.Popen(cmd, stdout=myfile,shell=True)            
+        myfile.close()        
+        
         
         self.runCmd(['scp', '%s/postgresql.conf' % self.masterdir,
                      'master/postgresql.conf'])
@@ -434,19 +455,20 @@ class GPDetective:
         self.runCmd(['scp', '%s/global/pg_auth' % self.masterdir,
                      'master/pg_pgauth'])
 
-        
         # Grab segment logs and postgresql.conf
         #                    host  : fullpath / filename
         host_rx = re.compile('(.*)\:(.*)/([^/]*)')
         for seg in self.segments:
             m = host_rx.search(seg)
             
-            myfile = open('%s/%s.log' % m.group(1,3), 'w')
+            if logrotation:
+                seglog = "%s/%s/pg_log/*" % m.group(2,3)
+            else:
+                seglog = "%s/%s.log" % m.group(2,3)
+            found = self.grabSegmentLog(m,seglog)
             
-            subprocess.Popen(['gpssh', '-h', '%s' % m.group(1),
-                              '-v', '-e', sys.path[0] + '/gplogfilter',
-                              '%s/%s.log' % m.group(2,3)], stdout=myfile)
-            myfile.close()
+            if not found:
+                self.log('Could not locate segment log file: %s:%s' % (segdb.group(1),seglog))
             
             self.runCmd(['scp', '-q',
                          '%s/postgresql.conf' % seg,
