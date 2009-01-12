@@ -634,7 +634,7 @@ class gpload:
         
         # host to connect to
         if not self.options.h:
-            self.options.h = self.getconfig('host', unicode,None)
+            self.options.h = str(self.getconfig('host', unicode,None))
         if not self.options.h:
             self.options.h = os.environ.get('PGHOST')
         if not self.options.h or len(self.options.h) == 0:
@@ -788,6 +788,7 @@ class gpload:
                     self.log(self.ERROR,
                              name + ":local_hostname must be a sequence " +
                                "of strings")
+                l = str(l)
                 sep = ''
                 if file[0] != '/':
                     sep = '/'
@@ -950,7 +951,7 @@ class gpload:
             self.into_columns.append(i)
             self.into_columns_dict[name] = i
             self.log(self.DEBUG, "found input column: " + str(i))
-        if count==0:
+        if count == 0:
             # see if it's a permissions issue or it actually doesn't exist
             sql = """select 1 from pg_class c, pg_namespace n
                         where c.relname = '%s' and 
