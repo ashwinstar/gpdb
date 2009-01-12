@@ -8963,9 +8963,10 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 static void
 ATExecSetDistributedBy(Relation rel, Node *node)
 {
-	List *l1;
+	List 	   *l1;
+	List	   *cols = NIL;
 	ListCell   *lc;
-	GpPolicy  *policy = NULL;
+	GpPolicy   *policy = NULL;
 
 	if (!superuser())
 		ereport(ERROR, 
@@ -8984,9 +8985,6 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	else if (Gp_role == GP_ROLE_EXECUTE)
 		return;
 
-	if (l1 == NIL)
-		;
-
 	/* check for case of single null value -- set distributed randomly */
 	if (linitial(l1) == NULL)
 	{
@@ -9003,16 +9001,39 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		return;
 	}
 
+	/*
+	 * Changing a table from random distribution to a specific distribution
+	 * policy is the hard bit. For that, we must do the following:
+	 *
+	 * a) Ensure that the proposed policy is sensible
+	 * b) Create and reorganise a temporary table according to our desired
+	 * distribution policy. To do this, we build a Query node which expresses
+	 * the query CREATE TABLE tmp_table_name AS SELECT * FROM cur_table
+	 * DISTRIBUTED BY (policy)
+	 * c) Execute the query across all nodes
+	 * d) Update our parse tree to include the details of the newly created
+	 * table
+	 * e) Swap the relfilenodes of the existing table and the temporary table
+	 * f) Update the policy on the QD to reflect the underlying data
+	 * g) Drop the temporary table -- and with it, the old copy of the data
+	 */
 	policy = palloc(sizeof(GpPolicy) + 
 					sizeof(policy->attrs[0]) * list_length(l1));
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
+
+	/* Step (a) */
 	foreach(lc, l1)
 	{
 		char *colName = strVal((Value *)lfirst(lc));
 		HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), colName);
 		AttrNumber	attnum;
 
+		if (list_member(cols, lfirst(lc)))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("distribution policy must be a unique set of columns"),
+					 errhint("Column \"%s\" appears more than once", colName)));
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -9030,12 +9051,18 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 
 		policy->attrs[policy->nattrs++] = attnum;
 		ReleaseSysCache(tuple);
+		cols = lappend(cols, lfirst(lc));
 	}
 
 	Assert(policy->nattrs > 0);
 
+	/* Step (f) */
+#if 0 /* not  yet */
 	rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
 	GpPolicyReplace(RelationGetRelid(rel), policy);
+#endif
+	ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("not supported yet")));
 
 } /* end ATExecSetDistributedBy */
 

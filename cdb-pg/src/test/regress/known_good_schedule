@@ -132,3 +132,4 @@ test: toast
 test: mapred
 test: gpparams
 test: upg2
+test: alter_distribution_policy
