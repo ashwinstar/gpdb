@@ -202,7 +202,7 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 				 ExecStatusType expected);
 /* START MPP ADDITION */
 static char *nextToken(register char **stringp, register const char *delim);
-static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod);
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage);
 /* END MPP ADDITION */
 
 int
@@ -3663,24 +3663,25 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			 */
 			if ( tbinfo->attisdropped[j] && forGpMigrator )
 			{
+				char *atttypname;
 				char attname[15];
 				int attlen = atoi(PQgetvalue(res, j, i_attlen));
 				int attndims = atoi(PQgetvalue(res, j, i_attndims));
 				char attbyval = PQgetvalue(res, j, i_attbyval)[0];
 				char attalign = PQgetvalue(res, j, i_attalign)[0];
 
-				tbinfo->atttypnames[j] = strdup(gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j]));
-
-				if (tbinfo->atttypnames[j] == NULL)
+				atttypname = gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j]);
+				if (atttypname == NULL)
 				{
 					/* If we can't reconstruct the type, the dump must be abandoned! */
 					write_msg(NULL, "Unable to reconstruct definition for table \"%s\" column %d:\n",
-							tbinfo->dobj.name, j);
-					write_msg(NULL, "    attlen=%d, attbyval=%c, attalign=%c, attndims=%d, atttypmod=%d\n",
-							attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j]);
+							tbinfo->dobj.name, j+1);
+					write_msg(NULL, "    attlen=%d, attbyval=%c, attalign=%c, attndims=%d, atttypmod=%d, attstorage=%c\n",
+							attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j]);
 					exit_nicely();
 				}
 
+				tbinfo->atttypnames[j] = strdup(atttypname);
 				sprintf(attname, "gp_col%06d", j);
 				tbinfo->attnames[j] = strdup(attname);
 			}
@@ -8225,19 +8226,19 @@ nextToken(register char **stringp, register const char *delim)
  * attributes are undesturbed.  This function attempts to match a set of
  * type attributes against a set of "proxy" or representative types.
  *
- * What we need is matching typbyval, attalign, attlen, so if we can choose a
- * representative datatype we should be okay.  Because there are elements in
- * the catalog that are not actually directly usable we can't simply lookup
- * a value from pg_type.  Instead we do a very gross roll your own type.
+ * What we need is matching typbyval, attalign, attlen, and attstorage, so if
+ * we choose a representative datatype we should be okay.  Because there are
+ * elements in the catalog that are not actually directly usable we can't simply
+ * lookup a value from pg_type.  Instead we do a very gross roll your own type.
  *
  * It doesn't need to be the exact type it was before... it just needs to
- * have the same size and alignment characteristics.
+ * have the same size, alignment, and storage characteristics.
  *
  * *** THIS FUNCTION SHOULD ONLY BE USED WHEN ATTEMPTING TO RECOVER A TYPE
  * *** FOR gp_migrator relfile COMPATIBILITY.  WHEN USED, THE RESULT *MUST*
  * *** BE EXAMINED TO ENSURE A TYPE IS ACTUALLY RETURNED!
  */
-static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod)
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage)
 {
 	int i;
 
@@ -8247,33 +8248,37 @@ static char *gettype(int typlen, char typbyval, char typalign, int ndims, int ty
 		int   typlen;
 		char  typbyval;
 		char  typalign;
+		char  typstorage;
 	} typinfo;
 
 	static typinfo typrecords[] =
 		{
-			{"text",      -1, 'f', 'i'},
-			{"path",      -1, 'f', 'd'},
-			{"bool",       1, 't', 'c'},
-			{"int2",       2, 't', 's'},
-			{"int4",       4, 't', 'i'},
-			{"int8",       8, 't', 'd'},
-			{"money",      4, 'f', 'i'},
-			{"tid",        6, 'f', 's'},
-			{"macaddr",    6, 'f', 's'},
-			{"tinterval", 12, 'f', 'i'},
-			{"timetz",    12, 'f', 'd'},
-			{"interval",  16, 'f', 'd'},
-			{"circle",    24, 'f', 'd'},
-			{"box",       32, 'f', 'd'},
-			{"name",      64, 'f', 'd'},
-			{0, 0, 0, 0}
+			{"text",      -1, 'f', 'i', 'x'},
+			{"numeric",   -1, 'f', 'i', 'm'},
+			{"inet",      -1, 'f', 'i', 'p'},
+			{"path",      -1, 'f', 'd', '\0'},
+			{"bool",       1, 't', 'c', '\0'},
+			{"int2",       2, 't', 's', '\0'},
+			{"int4",       4, 't', 'i', '\0'},
+			{"int8",       8, 't', 'd', '\0'},
+			{"money",      4, 'f', 'i', '\0'},
+			{"tid",        6, 'f', 's', '\0'},
+			{"macaddr",    6, 'f', 'i', '\0'},
+			{"tinterval", 12, 'f', 'i', '\0'},
+			{"timetz",    12, 'f', 'd', '\0'},
+			{"interval",  16, 'f', 'd', '\0'},
+			{"circle",    24, 'f', 'd', '\0'},
+			{"box",       32, 'f', 'd', '\0'},
+			{"name",      64, 'f', 'i', '\0'},
+			{0, 0, 0, 0, 0}
 		};
 
 	for (i = 0; typrecords[i].name; i++)
 	{
 		if (typrecords[i].typlen == typlen &&
 			typrecords[i].typbyval == typbyval &&
-			typrecords[i].typalign == typalign)
+			typrecords[i].typalign == typalign &&
+			(typrecords[i].typstorage == '\0' || typrecords[i].typstorage == typstorage))
 			return typrecords[i].name;
 	}
 
