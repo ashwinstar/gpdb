@@ -515,9 +515,11 @@ class gpload:
 
             yaml_walk(self, y.value, [])
         except yaml.scanner.ScannerError,e:
-            self.log(self.ERROR, "configuration file error: %s" % e)
+            self.log(self.ERROR, "configuration file error: %s, line %s" % \
+                (e.problem, e.problem_mark.line))
         except yaml.reader.ReaderError, e:
-            self.log(self.ERROR, "configuration file error: %s" % e)
+            self.log(self.ERROR, "configuration file error: %s, line %s" % \
+                (e.problem, e.problem_mark.line))
 
         f.close()
         self.config = dictKeyToLower(self.config)
