@@ -21,7 +21,7 @@ from Queue     import Queue
 import urllib    # for passing strings across gpssh
 
 EXECNAME = os.path.split(__file__)[-1]
-
+libdir = sys.path[0] + '/lib'
 try: 
     import pg8000
 except ImportError, e:
@@ -136,7 +136,8 @@ class Worker(Thread):
                 self.harness.queue.task_done()
 
 class Harness():
-    def __init__(self, size):
+    def __init__(self, upgrader, size):
+        self.upgrader = upgrader
         self.pool  = []
         self.queue = Queue(size*2)
         for x in range(size):
@@ -165,7 +166,7 @@ class Harness():
         # Report any errors the threads encountered
         for w in self.pool:
             for e in w.problems:
-                self.Log('FATAL', str(e))
+                self.upgrader.Log('FATAL', str(e))
                 failed = True
             w.problems = []
 
@@ -176,7 +177,7 @@ class Harness():
 #============================================================
 class GPUpgrade:
     '''
-    Greenplum Database Upgrade/Downgrade Utility
+    Greenplum Database Upgrade Utility
     '''
 
     # INTERNAL command:
@@ -312,7 +313,7 @@ class GPUpgrade:
             self.config['SEG_PREFIX'] = masterdir[:-2]
 
             # Setup the pool of worker threads
-            self.threadpool = Harness(PARALLELISM)
+            self.threadpool = Harness(self, PARALLELISM)
 
         else:
             self.oldenv = self.SetupEnv(self.oldhome, None)
@@ -592,8 +593,7 @@ class GPUpgrade:
             #sys.stdout.write(result)
             #sys.stdout.flush()
         except CmdError, e:
-            if self.debug:
-                print e.cmd
+            self.Log('DEBUG', e.cmd)
             sys.stdout.write(e.stdout)
             sys.stdout.flush()
             sys.stderr.write(e.stderr)
@@ -936,7 +936,7 @@ class GPUpgrade:
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
                                        stdout=self.logfile, 
-                                       stderr=self.logfile,
+                                       stderr=self.logfile, 
                                        close_fds=True)
             finally:
                 if os.path.exists(locked):
@@ -1195,7 +1195,7 @@ class GPUpgrade:
     #------------------------------------------------------------
     def CheckVersions(self):
         '''
-        Validates that the upgrade/downgrade from old->new is okay
+        Validates that the upgrade from old->new is okay
         '''
 
         # Log the OS type info
@@ -1276,19 +1276,20 @@ class GPUpgrade:
                 (vs[0] == 3 and vs[1] == 1 and vs[2] < 1) or
                 (vs[0] == 3 and vs[1] == 1 and vs[2] == 1 and vs[3] < 5)):
                 raise UpgradeError(
-                    "Greenplum Version '%s' not supported for upgrade/downgrade" % v)
+                    "Greenplum Version '%s' not supported for upgrade" % v)
             if ((vs[0] > 3) or (vs[0] == 3 and vs[1] > 2)):
                 raise UpgradeError(
-                    "To upgrade/downgrade from Greenplum Version '%s' use the upgrade tool "
+                    "To upgrade to Greenplum Version '%s' use the upgrade tool "
                     "shipped with that release" % v)
             
 
         checkversion(oldversion)
         checkversion(newversion)
-        if newversion == 'main' or newversion > oldversion:
+        if newversion == 'main' or newversion >= oldversion:
             self.upgrade = True
         else:
             self.upgrade = False    # Downgrade
+            raise UpgradeError("Downgrade not supported from gpmigrator")
 
         # Compare old version catalog number with the catalog in MASTER_DATA_DIRECTORY
         catalog_re = re.compile('Catalog version number: *(.*)')
@@ -2314,8 +2315,7 @@ This issue must be resolved before upgrade can complete.
             outfilename = os.path.join(self.workdir, 'gpcheckcat_%s.log' % db)
             outfile = open(outfilename, 'w')
 
-            pipe = subprocess.Popen(cmd, shell=True, stdout=outfile, stderr=outfile,
-                                    close_fds=True)
+            pipe = subprocess.Popen(cmd, shell=True, stdout=outfile, stderr=outfile,close_fds=True)
             retcode = pipe.wait()
 
             if retcode < 0:
@@ -2545,8 +2545,7 @@ This issue must be resolved before upgrade can complete.
             pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                    env=self.newenv, shell=True,
                                    stdout=self.logfile, 
-                                   stderr=self.logfile,
-                                   close_fds=True)
+                                   stderr=self.logfile, close_fds=True)
 
             # Ignore interupt requests until startup is done
             error = None
@@ -3484,16 +3483,13 @@ try:
         #    DATA_DIR/         = fully upgraded new db
         u.Log('INFO', 
 '''
---------------------------------------------
+---------------------------------------------------
 Upgrade Successful
---------------------------------------------
-To complete the environment configuration
-1. Update %s .bashrc to source the file:
-   %s/greenplum_path.sh
-2. Re-initialize standby master
---------------------------------------------
-''' 
-              % (u.user, u.newhome))
+---------------------------------------------------
+Please consult release notes for post-upgrade 
+instructions to complete environment configuration
+---------------------------------------------------
+''')
 
 
 #---------------------------------------------------------
