@@ -73,7 +73,7 @@ figleaf.write_coverage('.figleaf',append=True)
 
 
 # generate html report
-cmd = "~/project/figleaf/bin/figleaf2html -d figleaf_report .figleaf "
+cmd = "../ext/figleaf/figleaf2html -d figleaf_report .figleaf "
 print "Executing cmd: '%s'" % cmd
 result = os.system(cmd) 
 
