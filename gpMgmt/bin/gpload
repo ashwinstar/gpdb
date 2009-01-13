@@ -634,7 +634,9 @@ class gpload:
         
         # host to connect to
         if not self.options.h:
-            self.options.h = str(self.getconfig('host', unicode,None))
+            self.options.h = self.getconfig('host', unicode, None)
+            if self.options.h:
+                self.options.h = str(self.options.h)
         if not self.options.h:
             self.options.h = os.environ.get('PGHOST')
         if not self.options.h or len(self.options.h) == 0:
@@ -658,7 +660,9 @@ class gpload:
         if not self.options.U:
             self.options.U = os.environ.get('PGUSER')
         if not self.options.U:
-            self.options.U = os.environ.get('USER') or os.environ.get('LOGNAME')
+            self.options.U = os.environ.get('USER') or \
+                    os.environ.get('LOGNAME') or \
+                    os.environ.get('USERNAME')
 
         if not self.options.U or len(self.options.U) == 0:
             self.log(self.ERROR,
