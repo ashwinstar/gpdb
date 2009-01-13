@@ -438,7 +438,7 @@ class gpload:
                         argv = argv[1:]
                         seenq = True
                     elif argv[0]=='--version':
-                        sys.stderr.write("gpload version 1.0\n")
+                        sys.stderr.write("gpload version $Revision$\n")
                         sys.exit(0)
                     elif argv[0]=='-v':
                         self.options.qv = self.LOG
@@ -506,6 +506,11 @@ class gpload:
             doc = f.read()
             self.config = yaml.load(doc)
 
+            self.config = dictKeyToLower(self.config)
+            ver = self.getconfig('version', unicode, extraStuff = ' tag')
+            if ver != '1.0.0.1':
+                self.log(self.ERROR, "gpload configuration schema " +
+                    "version must be 1.0.0.1")
             # second parse, to check that the keywords are sensible
             y = yaml.compose(doc)
             # first should be MappingNode
@@ -522,7 +527,6 @@ class gpload:
                 (e.problem, e.problem_mark.line))
 
         f.close()
-        self.config = dictKeyToLower(self.config)
         self.subprocesses = []
         self.log(self.INFO,'gpload session started ' + \
                  datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
