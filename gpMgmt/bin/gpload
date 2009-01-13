@@ -984,19 +984,20 @@ class gpload:
                     self.log(self.ERROR,'%s in mapping is not in table %s'% \
                                     (key, self.table))
                 self.into_columns[i][2] = value.lower()
+        else:
 
-        # Now, map anything yet to be mapped to itself, picking up on those
-        # columns which are not found in the table.
-        for x in self.from_columns:
-            i = filter(lambda a:a[2] == x[0], self.into_columns)
-            if not i:
-                i = filter(lambda a:a[0] == x[0], self.into_columns)
-                if i:
-                    i = i[0]
-                    if i[2] == None: i[2] = i[0]
-                else:
-                    self.log(self.ERROR, 'no mapping for input column ' +
-                             '"%s" to output table' % x[0])
+            # Now, map anything yet to be mapped to itself, picking up on those
+            # columns which are not found in the table.
+            for x in self.from_columns:
+                i = filter(lambda a:a[2] == x[0], self.into_columns)
+                if not i:
+                    i = filter(lambda a:a[0] == x[0], self.into_columns)
+                    if i:
+                        i = i[0]
+                        if i[2] == None: i[2] = i[0]
+                    else:
+                        self.log(self.ERROR, 'no mapping for input column ' +
+                                 '"%s" to output table' % x[0])
 
 #        for a in self.from_columns:
 #                if a[0] in map(lambda a:a[0],self.into_columns):
