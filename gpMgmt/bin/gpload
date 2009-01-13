@@ -1185,9 +1185,12 @@ class gpload:
         UPDATE case
         """
         sql = 'update %s into_table ' % self.table_quoted
+
         sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table."%s"'%(x,y),index))
-        sql += 'from "%s" from_table '%fromname
-        match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),index)
+
+        sql += 'from "%s" from_table' % fromname
+        match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s' % (x,y), index)
+
         update_condition = self.getconfig('gpload:output:update_condition',
                             unicode, None)
         if update_condition:
