@@ -39,7 +39,32 @@ class OptParser(OptionParser):
 
     def setHelp(self,helpStr):
         self.helpStr=helpStr
-
+    
+    def print_help(self, file=None):
+        helpFileStr=self.read_helpfile()
+        if helpFileStr:
+            if file is None:
+                file = sys.stdout
+            encoding = self._get_encoding(file)
+            file.write(helpFileStr.encode(encoding, "replace"))        
+        else:
+            OptionParser.print_help(self,file)
+            
+    
+    def read_helpfile(self):
+        progname = os.path.split(sys.argv[0])[-1]
+        help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', progname + '_help')
+        f = None
+        try:
+            try:
+                f = open(help_path);
+                return f.read(-1)
+            except:
+                return None
+        finally:
+            if f: f.close()  
+              
+        
 class OptChecker(Option):
     # Teach optparse to accept types 'datetime', 'duration', 'regex', 'literal'
     def datetimeCheck(option, opt, value):
