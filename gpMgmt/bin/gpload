@@ -851,6 +851,12 @@ class gpload:
                 self.readPgpass(os.environ.get('PGPASSFILE',
                                 os.environ.get('HOME','.')+'/.pgpass'))
         try:
+            self.log(self.DEBUG, "connection string:" + 
+                     " user=" + str(self.options.U) +
+                     " host=" + str(self.options.h) +
+                     " port=" + str(self.options.p) +
+                     " database=" + str(self.options.d) +
+                     " password=" + str(self.options.password))
             self.pg8000 = pg8000.Connection(user=self.options.U,
                                             host=self.options.h,
                                             port=self.options.p,
