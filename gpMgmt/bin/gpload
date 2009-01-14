@@ -1152,7 +1152,11 @@ class gpload:
 
             except pg8000.ProgrammingError, p:
                 # See if we hit the segment reject limit
-                if p[1] == '40M00':
+                if p[1] == '42000': # invalid schema
+                    self.log(self.ERROR, 'error in schema: %s' % p[2])
+                elif p[1] == '42703':
+                    self.log(self.ERROR, '%s: likely error in mapping configuration' % p[2])
+                elif p[1] == '40M00':
                     # seems like we did
                     self.log(self.ERROR, 'error limit reached while loading ' +
                         'data')
