@@ -105,6 +105,7 @@ sub GenerateFiles
 s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY(z)\n#define PG_VERSION_STR "PostgreSQL $self->{strver} (Greenplum Database) on Windows, compiled by Visual C++ build " __STRINGIFY2(_MSC_VER)};
             print O;
         }
+        print O "#define GP_VERSION \"unknown\"\n";
         print O "#define LOCALEDIR \"/share/locale\"\n" if ($self->{options}->{nls});
         print O "/* defines added by config steps */\n";
         print O "#ifndef IGNORE_CONFIGURED_SETTINGS\n";
