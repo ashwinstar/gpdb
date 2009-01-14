@@ -1202,10 +1202,14 @@ class gpload:
         """
         sql = 'update %s into_table ' % self.table_quoted
 
-        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table."%s"'%(x,y),index))
+        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table.%s' % (build_safe_table_name(self.pg8000, x), build_safe_table_name(self.pg8000, y)),index))
 
-        sql += 'from "%s" from_table' % fromname
-        match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s' % (x,y), index)
+        sql += 'from %s from_table' % build_safe_table_name(self.pg8000, fromname)
+
+        match = self.map_stuff('gpload:output:match_columns',
+                    lambda x,y:'into_table.%s=from_table.%s' % \
+                    (build_safe_table_name(self.pg8000, x),
+                     build_safe_table_name(self.pg8000, y)), index)
 
         update_condition = self.getconfig('gpload:output:update_condition',
                             unicode, None)
@@ -1223,7 +1227,7 @@ class gpload:
             self.log(self.DEBUG, "updated update_condition to %s" %
                          update_condition)
             match.append(update_condition)
-        sql += ' where %s '%' and '.join(match)
+        sql += ' where %s' % ' and '.join(match)
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
