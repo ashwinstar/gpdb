@@ -972,7 +972,7 @@ class gpload:
                 self.log(self.ERROR, "permission denied for table %s.%s" % \
                             (tableSchema, tableName))
             else:
-               self.log(self.ERROR, 'table %s does not exist'%self.table)
+               self.log(self.ERROR, 'table %s.%s does not exist in database %s'% (tableSchema, tableName, self.options.d))
 
     def read_mapping(self):
         mapping = self.getconfig('gpload:output:mapping',dict,None)
@@ -1214,7 +1214,7 @@ class gpload:
             self.log(self.DEBUG, "updated update_condition to %s" %
                          update_condition)
             match.append(update_condition)
-        sql += 'where %s '%' and '.join(match)
+        sql += ' where %s '%' and '.join(match)
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
