@@ -1080,9 +1080,8 @@ class gpload:
             for i in force_not_null_columns:
                 if type(i) != unicode and type(i) != str:
                     self.log(self.ERROR,'gpload:input:force_not_null must be a sequence of strings')
-            # not yet, see MPP-4254
-            #sql += "force not null %s "%','.join(force_not_null_columns)
-            self.log(self.LOG, "ignoring FORCE NOT NULL as it is not supported")
+            sql += "force not null %s " % ','.join(force_not_null_columns)
+
         sql += ")"
 
         encoding = self.getconfig('gpload:input:encoding', unicode, None)
