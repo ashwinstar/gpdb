@@ -264,10 +264,13 @@ def cli_help():
 
 #============================================================
 def usage(error = None):
+    print cli_help() or __doc__
+    sys.stdout.flush()
     if error:
         sys.stderr.write('ERROR: ' + error + '\n')
         sys.stderr.write('\n')
-    print cli_help() or __doc__
+        sys.stderr.flush()
+  
     sys.exit(2)
 
 def quote(a):
