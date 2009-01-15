@@ -104,7 +104,7 @@ class PgConn:
             for row in iter:
                 rows.append(row)
             return rows
-        except:
+        except Exception, e:
             conn.close()
             raise ConnectionError('%s\nsql> %s' % (str(e), qry))
             
