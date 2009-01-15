@@ -33,5 +33,39 @@ CATALOG(gp_configuration,5000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
  
 typedef FormData_gp_configuration *Form_gp_configuration;
 
+/*
+ * Defines for gp_configuration_history table
+ * 
+ * Used by fault-management components to record a "change history" description
+ * with timestamp.
+ */
+
+/*
+ * The CATALOG definition has to refer to the type of log_time as
+ * "timestamptz" (lower case) so that bootstrap mode recognizes it.  But
+ * the C header files define this type as TimestampTz.	Since the field is
+ * potentially-null and therefore can't be accessed directly from C code,
+ * there is no particular need for the C struct definition to show the
+ * field type as TimestampTz --- instead we just make it Datum.
+ */
+#define timestamptz Datum
+
+#define GpConfigHistoryRelationName		"gp_configuration_history"
+
+#define GpConfigHistoryRelationId 5006
+
+CATALOG(gp_configuration_history,5006) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
+{
+	timestamptz	time;
+	int2		dbid;
+	text		desc;
+} FormData_gp_configuration_history;
+
+#define Natts_gp_configuration_history		3
+#define Anum_gp_configuration_history_time	1
+#define Anum_gp_configuration_history_dbid	2	
+#define Anum_gp_configuration_history_desc	3
+ 
+typedef FormData_gp_configuration_history *Form_gp_configuration_history;
 
 #endif /*_GP_CONFIGURATION_H_*/

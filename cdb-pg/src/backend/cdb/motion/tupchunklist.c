@@ -61,23 +61,14 @@ getChunkFromCache(TupleChunkListCache *cache)
 		item = cache->items;
 		cache->items = item->p_next;
 		cache->len = cache->len - 1;
-		
-		/*
-		 * 3.1.1: performance regression:
-		 * Clearing the entire data buffer isn't necessary -- and
-		 * turns out to waste a lot of time. We just need to zero-out
-		 * the top part of the structure, plus the 4-byte header of
-		 * the chunk itself.
- 
-		  MemSetAligned(item, 0, sizeof(TupleChunkListItemData) + Gp_max_tuple_chunk_size);
-		*/
-		MemSetAligned(item, 0, sizeof(TupleChunkListItemData) + 4);
 	}
 	else
 	{
 		item = (TupleChunkListItem)
-			palloc0(sizeof(TupleChunkListItemData) + Gp_max_tuple_chunk_size);
+			palloc(sizeof(TupleChunkListItemData) + Gp_max_tuple_chunk_size);
 	}
+
+	MemSetAligned(item, 0, sizeof(TupleChunkListItemData) + 4);
 
 	return item;
 }

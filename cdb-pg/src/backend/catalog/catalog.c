@@ -304,6 +304,7 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDependRelationId ||
 		relationId == TableSpaceRelationId ||
 		relationId == GpConfigurationRelationId ||
+		relationId == GpConfigHistoryRelationId ||
 		relationId == GpIdRelationId ||
 		relationId == GpVersionRelationId ||
 		relationId == ResQueueRelationId ||

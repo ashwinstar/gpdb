@@ -43,10 +43,15 @@ insert into toadd_attribute values
 	(6107, 'cs_file_option',5, 23, -1),
 	(6107, 'cs_col_option', 6, 23, -1);
 
+-- gp_configuration_history
+insert into toadd_class values (5006, 'gp_configuration_history', 'r');
+insert into toadd_attribute values 
+	(5006, 'time', 	1, 1184, -1),
+	(5006, 'dbid', 2, 21, -1),
+	(5006, 'desc', 3, 25, -1);
+
 -- begin_equivalent 
-
 -- compare old vs new catalog tables
-
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from old_attribute a,
 old_class c,

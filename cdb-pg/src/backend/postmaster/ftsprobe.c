@@ -53,7 +53,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/catalog.h"
 
-#include "executor/spi.h"
+#include "pgtime.h"
 
 /*
  * FUNCTION PROTOTYPES
@@ -137,7 +137,10 @@ struct segmentStatusChange {
 	bool persist;
 };
 
-static void probeUpdateConfig(CdbComponentDatabaseInfo *entryDB, struct segmentStatusChange *changes, int changeCount);
+static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
+static void closeSelfConn(PGconn *conn);
+static void addChangeHistory(PGconn *conn, struct segmentStatusChange *change, char *time_str);
+static void probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 /*
  * Main entry point for ftsprobe process.
@@ -849,8 +852,12 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 	struct segmentStatusChange *changes=NULL;
 	int changeEntries=0;
 
+	PGconn *entryConn = NULL;
+
 	CdbComponentDatabaseInfo *primary;
 	CdbComponentDatabaseInfo *mirror;
+
+	char timestamp_str[100];
 
 	/* collect status changes */
 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
@@ -979,13 +986,39 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 			at_least_one_failure = true;
 	}
 
-	/* Now we're going to apply the changelist we just generated. */
+	/* We're going to use these timestamps below. */
+	{
+		pg_time_t		curtime;
+		struct pg_tm	*time_tm;
+		struct timeval	tv;
 
+		gettimeofday(&tv, NULL);
+		curtime = tv.tv_sec;
+		time_tm = pg_gmtime(&curtime);
+		pg_strftime(timestamp_str, sizeof(timestamp_str), "%+", time_tm); /* "%+" is the format used by the Unix date command */
+	}
+
+	if (changes != NULL)
+	{
+		CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
+
+		if (entryDB->dbid != GpIdentity.dbid)
+		{
+			elog(LOG, "ftsProbe: advancing to second entryDB.");
+			entryDB = entryDB + 1;
+		}
+
+		entryConn = openSelfConn(entryDB);
+		Assert(entryConn != NULL);
+	}
+
+	/* Now we're going to apply the changelist we just generated. */
 	ftsLock();
 
 	/* first apply updates to shmem. */
 	for (i=0; i < changeEntries; i++)
 	{
+		addChangeHistory(entryConn, &changes[i], timestamp_str);
 		ftsProbeInfo->fts_status[changes[i].dbid] = changes[i].newStatus;
 	}
 
@@ -997,17 +1030,9 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 	/* If we're in "continue" mode, mark the heap copy persistently */
 	if (*ftsAction != FTS_READONLY && updated_bitmap)
 	{
-		CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
-
-		if (entryDB->dbid != GpIdentity.dbid)
-		{
-			elog(LOG, "ftsProbe: advancing to second entryDB.");
-			entryDB = entryDB + 1;
-		}
-
 		elog(LOG, "calling probeUpdate with changes %p entries %d", changes, changeEntries);
 
-		probeUpdateConfig(entryDB, changes, changeEntries);
+		probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
 	}
 	else
 		elog(DEBUG2, "did not not update config (%s)", updated_bitmap ? "bitmap updated" : "bitmap not updated");
@@ -1015,30 +1040,25 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 	ftsUnlock();
 
 	if (changes != NULL)
+	{
+		closeSelfConn(entryConn);
+
 		pfree(changes);
+	}
 	
 	return updated_bitmap;
 }
 
-
 /*
- * shared memory has been updated already; we'll pull the updated
- * status from the shared-memory copy.
+ * Obtains utility-mode self-connection to master-DB, and opens a transaction.
  */
-static void
-probeUpdateConfig(CdbComponentDatabaseInfo *entryDB, struct segmentStatusChange *changes, int changeCount)
+static PGconn *
+openSelfConn(CdbComponentDatabaseInfo *entryDB)
 {
-	int i;
 	PQExpBuffer entryBuffer = NULL;
 	PGconn *entryConn = NULL;
 
-	int count;
-	char cmd[200];
-
 	PGresult   *rs;
-
-	Assert(changes != NULL);
-	Assert(changeCount > 0);
 
 	entryBuffer = createPQExpBuffer();
 
@@ -1083,21 +1103,135 @@ probeUpdateConfig(CdbComponentDatabaseInfo *entryDB, struct segmentStatusChange 
 		elog(FATAL, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
 	}
 
+	rs = PQexec(entryConn, "BEGIN");
+
+	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+	{
+		/*
+		 * When we get an error, we strdup it here.  When the main thread
+		 * checks for errors, it makes a palloc copy of this, and frees
+		 * this.
+		 */
+		char	*error_message = strdup(PQerrorMessage(entryConn));
+
+		if (!error_message)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("FTS: out of memory")));
+
+		free(entryBuffer->data);
+		PQfinish(entryConn);
+		entryConn = NULL;
+
+		elog(FATAL, "FTS: error connecting to entry db, could not start transaction error: %s", error_message);
+	}
+
+	free(entryBuffer->data);
+
+	return entryConn;
+}
+
+/*
+ * Commit and close self-connection to master-DB.
+ */
+static void
+closeSelfConn(PGconn *conn)
+{
+	PGresult   *rs;
+
+	rs = PQexec(conn, "COMMIT");
+	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+	{
+		/*
+		 * When we get an error, we strdup it here.  When the main thread
+		 * checks for errors, it makes a palloc copy of this, and frees
+		 * this.
+		 */
+		char	*error_message = strdup(PQerrorMessage(conn));
+
+		if (!error_message)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("FTS: out of memory")));
+
+		PQclear(rs);
+		PQfinish(conn);
+		conn = NULL;
+
+		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+	}
+
+	/* No error, we're ready to go */
+	PQclear(rs);
+	PQfinish(conn);
+	return;
+}
+
+static void
+addChangeHistory(PGconn *entryConn, struct segmentStatusChange *change, char *time_str)
+{
+	int count;
+	char cmd[200];
+
+	PGresult   *rs;
+
+	Assert(change != NULL);
+	Assert(time_str != NULL);
+
+	count = snprintf(cmd, sizeof(cmd),
+					 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: fault mode %s marking as valid=%c isprimary=%c persist=%c')",
+					 time_str, change->dbid,
+					 (*ftsAction != FTS_READONLY) ? "\"RW\"" : "\"RO\"",
+					 FTS_STATUS_ISALIVE(change->dbid, ftsProbeInfo->fts_status) ? 't' : 'f',
+					 FTS_STATUS_ISPRIMARY(change->dbid, ftsProbeInfo->fts_status) ? 't' : 'f',
+					 change->persist ? 't' : 'f');
+
+	if (count >= sizeof(cmd))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("FTS: could not invalidate invalid node in config: format command string failure dbid %d", change->dbid)));
+	}
+
+	rs = PQexec(entryConn, cmd);
+	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+	{
+		char	*error_message = strdup(PQerrorMessage(entryConn));
+
+		if (!error_message)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("FTS: out of memory")));
+
+		PQclear(rs);
+		PQfinish(entryConn);
+		entryConn = NULL;
+
+		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+	}
+}
+
+/*
+ * shared memory has been updated already; we'll pull the updated
+ * status from the shared-memory copy.
+ */
+static void
+probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
+{
+	int i;
+
+	int count;
+	char cmd[200];
+
+	PGresult   *rs=NULL;
+
+	Assert(changes != NULL);
+	Assert(changeCount > 0);
+
 	/* finally, we're ready to actually get some stuff done. */
-	do {
-		rs = PQexec(entryConn, "BEGIN");
-
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-			break;
-
+	do
+	{
 		for (i=0; i < changeCount; i++)
 		{
-			elog(LOG, "marking dbid %d as invalid", changes[i].dbid);
-
 			if (!changes[i].persist)
 				continue;
-
-			elog(LOG, "FTS: persistently marking change %d segDB %d", i, changes[i].dbid);
 
 			count = snprintf(cmd, sizeof(cmd),
 							 "update gp_configuration set valid='%c', isprimary='%c' where dbid=CAST(%d AS SMALLINT)",
@@ -1121,21 +1255,29 @@ probeUpdateConfig(CdbComponentDatabaseInfo *entryDB, struct segmentStatusChange 
 		if (i < changeCount)
 			break;
 
-		rs = PQexec(entryConn, "COMMIT");
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-			break;
-
 		/* No error, we're ready to go */
 
 		PQclear(rs);
-		PQfinish(entryConn);
-		free(entryBuffer->data);
 		return;
 	} while (0);
 
 	/* Something horrible happened while marking our database ? */
+	{
+		/*
+		 * When we get an error, we strdup it here.  When the main thread
+		 * checks for errors, it makes a palloc copy of this, and frees
+		 * this.
+		 */
+		char	*error_message = strdup(PQerrorMessage(entryConn));
 
-	PQclear(rs);
-	PQfinish(entryConn);
-	free(entryBuffer->data);	
+		if (!error_message)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("FTS: out of memory")));
+
+		PQclear(rs);
+		PQfinish(entryConn);
+		entryConn = NULL;
+
+		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+	}
 }
