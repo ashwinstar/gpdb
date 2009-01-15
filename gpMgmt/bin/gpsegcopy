@@ -36,7 +36,6 @@ class SegcopyError(Exception):  pass
 
 #----------------------- Command line option parser ----------------------
 
-#TODO: bug related to ./gpsegcopy -? results in gpsegcopy: error: no such option: -C
 def parseargs():
     #TODO:  integrate with the real product version
     parser = OptParser(option_class=OptChecker,

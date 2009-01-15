@@ -26,11 +26,11 @@ for root,dirs,files in os.walk(path):
             if f.startswith("test") and not f.endswith(".pyc"):
                 print "Adding test %s/%s" % (root,f)
                 subdir = root.strip(path)
-                test = f.split('.')[0]
-                if subdir == '':
+                test = f.split('.')[0]                
+                if subdir == '':                   
                     testfiles.append(test)
                 else:
-                    testfiles.append(subdir + "/" + test)
+                    testfiles.append(subdir.lstrip('/').replace('/','.') + "." + test)
           
 
 
@@ -40,10 +40,17 @@ testLoader = unittest.TestLoader()
 modules = []
 for n in testfiles:
     m = __import__(n, globals(), locals())
-    modules.append(m)
+    #python import is strange with modules with '.' in them.    
+    if n.find('.') != -1:
+        components = n.split('.')
+        for comp in components[1:]:
+            mod = getattr(m, comp)            
+            modules.append(mod)
+    else:
+        modules.append(m)
+
 
             
-
 tests= []
 #poor man's cdbfast
 load = unittest.defaultTestLoader.loadTestsFromModule
