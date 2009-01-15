@@ -265,6 +265,13 @@ int gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 		return 1;
 	}
 	
+#ifdef WIN32
+#if !defined(S_ISDIR)
+#define S_IFDIR  _S_IFDIR
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#endif
+#define strcasecmp stricmp
+#endif 
 	if (S_ISDIR(sta.st_mode))
 	{
 		gfile_printf_then_putc_newline("gfile %s is a directory", fpath);
