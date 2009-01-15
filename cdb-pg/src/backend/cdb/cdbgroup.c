@@ -3413,7 +3413,7 @@ Node* finalize_split_expr_mutator(Node *node, MppGroupContext *ctx)
 		
 	if (IsA(node, Var))
 	{
-		AttrNumber attrno=(AttrNumber)NULL;
+		AttrNumber attrno=(AttrNumber)0;
 		TargetEntry *tle;
 		
 		Var *pseudoVar = (Var*)node;
