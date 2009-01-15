@@ -615,14 +615,14 @@
 #define PG_VERSION "8.2.10"
 
 /* PostgreSQL version as a number */
-#define PG_VERSION_NUM 8.2.10
+#define PG_VERSION_NUM 802010
 
 /* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "postgresql"
+#define PACKAGE_TARNAME "greenplum"
 
 /* Define to the name of the default PostgreSQL service principal in Kerberos.
    (--with-krb-srvnam=NAME) */
-#define PG_KRB_SRVNAM "postgres"
+#define PG_KRB_SRVNAM "greenplum"
 
 /* A string containing the version number, platform, and C compiler */
 #define PG_VERSION_STR "Uninitialized version string (win32)"
