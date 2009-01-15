@@ -840,6 +840,7 @@ ORDER BY nspname
                             dbid
                     #print "return code %i\n" % pipe.returncode
                     print lines
+                    error = True
 
                 os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
 
