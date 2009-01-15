@@ -1,6 +1,6 @@
 # vim: sw=4:expandtab:foldmethod=marker
 #
-# Copyright (c) 2007-2008, Mathieu Fenniak
+# Copyright (c) 2007-2009, Mathieu Fenniak
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -48,6 +48,9 @@ class DataIterator(object):
             raise StopIteration()
         return retval
 
+statement_number_lock = threading.Lock()
+statement_number = 0
+
 ##
 # This class represents a prepared statement.  A prepared statement is
 # pre-parsed on the server, which reduces the need to parse the query every
@@ -82,15 +85,22 @@ class PreparedStatement(object):
     # <p>
     # Stability: Added in v1.00, stability guaranteed for v1.xx.  It is
     # possible that implementation changes in the future could cause this
-    # parameter to be ignored.O
+    # parameter to be ignored.
     row_cache_size = 100
 
     def __init__(self, connection, statement, *types, **kwargs):
+        global statement_number
         if connection == None or connection.c == None:
             raise InterfaceError("connection not provided")
+        try:
+            statement_number_lock.acquire()
+            self._statement_number = statement_number
+            statement_number += 1
+        finally:
+            statement_number_lock.release()
         self.c = connection.c
         self._portal_name = None
-        self._statement_name = kwargs.get("statement_name", "pg8000_statement_%s_%s" % (id(self.c), id(self)))
+        self._statement_name = kwargs.get("statement_name", "pg8000_statement_%s" % self._statement_number)
         self._row_desc = None
         self._cached_rows = []
         self._ongoing_row_count = 0
@@ -98,11 +108,7 @@ class PreparedStatement(object):
         self._parse_row_desc = self.c.parse(self._statement_name, statement, types)
         self._lock = threading.RLock()
 
-    def __del__(self):
-        # This __del__ should work with garbage collection / non-instant
-        # cleanup.  It only really needs to be called right away if the same
-        # object id (and therefore the same statement name) might be reused
-        # soon, and clearly that wouldn't happen in a GC situation.
+    def close(self):
         if self._statement_name != "": # don't close unnamed statement
             self.c.close_statement(self._statement_name)
         if self._portal_name != None:
@@ -119,7 +125,7 @@ class PreparedStatement(object):
     # Run the SQL prepared statement with the given parameters.
     # <p>
     # Stability: Added in v1.00, stability guaranteed for v1.xx.
-    def execute(self, *args):
+    def execute(self, *args, **kwargs):
         self._lock.acquire()
         try:
             if not self._command_complete:
@@ -129,8 +135,8 @@ class PreparedStatement(object):
             if self._portal_name != None:
                 self.c.close_portal(self._portal_name)
             self._command_complete = False
-            self._portal_name = "pg8000_portal_%s_%s" % (id(self.c), id(self))
-            self._row_desc, cmd = self.c.bind(self._portal_name, self._statement_name, args, self._parse_row_desc)
+            self._portal_name = "pg8000_portal_%s" % self._statement_number
+            self._row_desc, cmd = self.c.bind(self._portal_name, self._statement_name, args, self._parse_row_desc, kwargs.get("stream"))
             if self._row_desc:
                 # We execute our cursor right away to fill up our cache.  This
                 # prevents the cursor from being destroyed, apparently, by a rogue
@@ -289,13 +295,13 @@ class Cursor(object):
     # <p>
     # Stability: Added in v1.00, stability guaranteed for v1.xx.
     # @param query      The SQL statement to execute.
-    def execute(self, query, *args):
+    def execute(self, query, *args, **kwargs):
         if self.connection.is_closed:
             raise ConnectionClosedError()
         self.connection._unnamed_prepared_statement_lock.acquire()
         try:
             self._stmt = PreparedStatement(self.connection, query, statement_name="", *[{"type": type(x), "value": x} for x in args])
-            self._stmt.execute(*args)
+            self._stmt.execute(*args, **kwargs)
         finally:
             self.connection._unnamed_prepared_statement_lock.release()
 
@@ -352,6 +358,29 @@ class Cursor(object):
     def iterate_dict(self):
         return self._stmt.iterate_dict()
 
+    def close(self):
+        if self._stmt != None:
+            self._stmt.close()
+            self._stmt = None
+
+
+    ##
+    # Return the fileno of the underlying socket for this cursor's connection.
+    # <p>
+    # Stability: Added in v1.07, stability guaranteed for v1.xx.
+    def fileno(self):
+        return self.connection.fileno()
+
+    ##
+    # Poll the underlying socket for this cursor and sync if there is data waiting
+    # to be read. This has the effect of flushing asynchronous messages from the
+    # backend. Returns True if messages were read, False otherwise.
+    # <p>
+    # Stability: Added in v1.07, stability guaranteed for v1.xx.
+    def isready(self):
+        return self.connection.isready()
+    
+
 ##
 # This class represents a connection to a PostgreSQL database.
 # <p>
@@ -397,7 +426,6 @@ class Cursor(object):
 #
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 class Connection(Cursor):
-    # Greenplum utility mode 
     def __init__(self, user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False, options=None):
         self._row_desc = None
         try:
@@ -491,4 +519,24 @@ class Connection(Cursor):
         self.c = None
 
     is_closed = property(lambda self: self.c == None)
+
+    def recache_record_types(self):
+        self.c._cache_record_attnames()
+
+    ##
+    # Return the fileno of the underlying socket for this connection.
+    # <p>
+    # Stability: Added in v1.07, stability guaranteed for v1.xx.
+    def fileno(self):
+        return self.c.fileno()
+
+    ##
+    # Poll the underlying socket for this connection and sync if there is data
+    # waiting to be read. This has the effect of flushing asynchronous
+    # messages from the backend. Returns True if messages were read, False
+    # otherwise.
+    # <p>
+    # Stability: Added in v1.07, stability guaranteed for v1.xx.
+    def isready(self):
+        return self.c.isready()
 

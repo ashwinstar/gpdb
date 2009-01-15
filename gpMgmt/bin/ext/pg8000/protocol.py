@@ -1,6 +1,6 @@
 # vim: sw=4:expandtab:foldmethod=marker
 #
-# Copyright (c) 2007-2008, Mathieu Fenniak
+# Copyright (c) 2007-2009, Mathieu Fenniak
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,7 @@
 __author__ = "Mathieu Fenniak"
 
 import socket
+import select
 import threading
 import struct
 import hashlib
@@ -436,8 +437,9 @@ class AuthenticationMD5Password(AuthenticationRequest):
     def ok(self, conn, user, password=None, **kwargs):
         if password == None:
             raise InterfaceError("server requesting MD5 password authentication, but no password was provided")
-        pwd = "md5" + hashlib.md5(hashlib.md5(password + user).hexdigest() + self.salt).hexdigest()
+        pwd = "md5" + + hashlib.md5(hashlib.md5(password + user).hexdigest() + self.salt).hexdigest()
         conn._send(PasswordMessage(pwd))
+        conn._flush()
 
         reader = MessageReader(conn)
         reader.add_message(AuthenticationRequest, lambda msg, reader: reader.return_value(msg.ok(conn, user)), reader)
@@ -747,7 +749,6 @@ class RowDescription(object):
         return RowDescription(fields)
     createFromData = staticmethod(createFromData)
 
-
 class CommandComplete(object):
     def __init__(self, command, rows=None, oid=None):
         self.command = command
@@ -787,6 +788,65 @@ class DataRow(object):
         return DataRow(fields)
     createFromData = staticmethod(createFromData)
 
+
+class CopyData(object):
+    # "d": CopyData,
+    def __init__(self, data):
+        self.data = data
+
+    def createFromData(data):
+        return CopyData(data)
+    createFromData = staticmethod(createFromData)
+    
+    def serialize(self):
+        return 'd' + struct.pack('!i', len(self.data) + 4) + self.data
+
+
+class CopyDone(object):
+    # Byte1('c') - Identifier.
+    # Int32(4) - Message length, including self.
+
+    def createFromData(data):
+        return CopyDone()
+
+    createFromData = staticmethod(createFromData)
+    
+    def serialize(self):
+        return 'c\x00\x00\x00\x04'
+
+class CopyOutResponse(object):
+    # Byte1('H')
+    # Int32(4) - Length of message contents in bytes, including self.
+    # Int8(1) - 0 textual, 1 binary
+    # Int16(2) - Number of columns
+    # Int16(N) - Format codes for each column (0 text, 1 binary)
+
+    def __init__(self, is_binary, column_formats):
+        self.is_binary = is_binary
+        self.column_formats = column_formats
+    
+    def createFromData(data):
+        is_binary, num_cols = struct.unpack('!bh', data[:3])
+        column_formats = struct.unpack('!' + ('h' * num_cols), data[3:])
+        return CopyOutResponse(is_binary, column_formats)
+
+    createFromData = staticmethod(createFromData)
+
+
+class CopyInResponse(object):
+    # Byte1('G')
+    # Otherwise the same as CopyOutResponse
+    
+    def __init__(self, is_binary, column_formats):
+        self.is_binary = is_binary
+        self.column_formats = column_formats
+    
+    def createFromData(data):
+        is_binary, num_cols = struct.unpack('!bh', data[:3])
+        column_formats = struct.unpack('!' + ('h' * num_cols), data[3:])
+        return CopyInResponse(is_binary, column_formats)
+
+    createFromData = staticmethod(createFromData)
 
 class SSLWrapper(object):
     def __init__(self, sslobj):
@@ -858,16 +918,24 @@ class MessageReader(object):
 def sync_on_error(fn):
     def _fn(self, *args, **kwargs):
         try:
+            self._sock_lock.acquire()
             return fn(self, *args, **kwargs)
         except:
             self._sync()
             raise
+        finally:
+            self._sock_lock.release()
     return _fn
 
 class Connection(object):
     def __init__(self, unix_sock=None, host=None, port=5432, socket_timeout=60, ssl=False):
         self._client_encoding = "ascii"
         self._integer_datetimes = False
+        self._record_field_names = {}
+        self._sock_buf = ""
+        self._sock_buf_pos = 0
+        self._send_sock_buf = []
+        self._block_size = 8192
         if unix_sock == None and host != None:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif unix_sock != None:
@@ -882,6 +950,7 @@ class Connection(object):
             self._sock.connect(unix_sock)
         if ssl:
             self._send(SSLRequest())
+            self._flush()
             resp = self._sock.recv(1)
             if resp == 'S':
                 self._sock = SSLWrapper(socket.ssl(self._sock))
@@ -905,18 +974,33 @@ class Connection(object):
             raise InternalError("connection state must be %s, is %s" % (state, self._state))
 
     def _send(self, msg):
+        assert self._sock_lock.locked()
         #print "_send(%r)" % msg
         data = msg.serialize()
-        self._sock.sendall(data)
+        self._send_sock_buf.append(data)
+    
+    def _flush(self):
+        assert self._sock_lock.locked()
+        self._sock.sendall("".join(self._send_sock_buf))
+        del self._send_sock_buf[:]
 
     def _read_bytes(self, byte_count):
-        retval = ""
-        while len(retval) < byte_count:
-            tmp = self._sock.recv(byte_count - len(retval))
-            retval += tmp
-        return retval
+        retval = []
+        bytes_read = 0
+        while bytes_read < byte_count:
+            if self._sock_buf_pos == len(self._sock_buf):
+                self._sock_buf = self._sock.recv(1024)
+                self._sock_buf_pos = 0
+            rpos = min(len(self._sock_buf), self._sock_buf_pos + (byte_count - bytes_read))
+            addt_data = self._sock_buf[self._sock_buf_pos:rpos]
+            bytes_read += (rpos - self._sock_buf_pos)
+            assert bytes_read <= byte_count
+            self._sock_buf_pos = rpos
+            retval.append(addt_data)
+        return "".join(retval)
 
     def _read_message(self):
+        assert self._sock_lock.locked()
         bytes = self._read_bytes(5)
         message_code = bytes[0]
         data_len = struct.unpack("!i", bytes[1:])[0] - 4
@@ -926,12 +1010,12 @@ class Connection(object):
         #print "_read_message() -> %r" % msg
         return msg
 
-    # Greenplum utility mode
     def authenticate(self, user, **kwargs):
         self.verifyState("noauth")
         self._sock_lock.acquire()
         try:
             self._send(StartupMessage(user, database=kwargs.get("database",None), options=kwargs.get("options", None)))
+            self._flush()
             msg = self._read_message()
             if isinstance(msg, ErrorResponse):
                 raise msg.createException()
@@ -949,6 +1033,8 @@ class Connection(object):
         finally:
             self._sock_lock.release()
 
+        self._cache_record_attnames()
+
     def _ready_for_query(self, msg):
         self._state = "ready"
         return True
@@ -956,86 +1042,131 @@ class Connection(object):
     def _receive_backend_key_data(self, msg):
         self._backend_key_data = msg
 
+    def _cache_record_attnames(self):
+        parse_retval = self.parse("",
+            """SELECT
+                pg_type.oid, attname
+            FROM
+                pg_type
+                INNER JOIN pg_attribute ON (attrelid = pg_type.typrelid)
+                                  WHERE typreceive = 'record_recv'::regproc
+            ORDER BY pg_type.oid, attnum""",
+            [])
+        row_desc, cmd = self.bind("tmp", "", (), parse_retval, None)
+        eod, rows = self.fetch_rows("tmp", 0, row_desc)
+
+        self._record_field_names = {}
+        typoid, attnames = None, []
+        for row in rows:
+            new_typoid, attname = row
+            if new_typoid != typoid and typoid != None:
+                self._record_field_names[typoid] = attnames
+                attnames = []
+            typoid = new_typoid
+            attnames.append(attname)
+        self._record_field_names[typoid] = attnames
+
     @sync_on_error
     def parse(self, statement, qs, param_types):
         self.verifyState("ready")
-        self._sock_lock.acquire()
-        try:
-            type_info = [types.pg_type_info(x) for x in param_types]
-            param_types, param_fc = [x[0] for x in type_info], [x[1] for x in type_info] # zip(*type_info) -- fails on empty arr
-            self._send(Parse(statement, qs, param_types))
-            self._send(DescribePreparedStatement(statement))
-            self._send(Flush())
 
-            reader = MessageReader(self)
+        type_info = [types.pg_type_info(x) for x in param_types]
+        param_types, param_fc = [x[0] for x in type_info], [x[1] for x in type_info] # zip(*type_info) -- fails on empty arr
+        self._send(Parse(statement, qs, param_types))
+        self._send(DescribePreparedStatement(statement))
+        self._send(Flush())
+        self._flush()
 
-            # ParseComplete is good.
-            reader.add_message(ParseComplete, lambda msg: 0)
+        reader = MessageReader(self)
 
-            # Well, we don't really care -- we're going to send whatever we
-            # want and let the database deal with it.  But thanks anyways!
-            reader.add_message(ParameterDescription, lambda msg: 0)
+        # ParseComplete is good.
+        reader.add_message(ParseComplete, lambda msg: 0)
 
-            # We're not waiting for a row description.  Return something
-            # destinctive to let bind know that there is no output.
-            reader.add_message(NoData, lambda msg: (None, param_fc))
+        # Well, we don't really care -- we're going to send whatever we
+        # want and let the database deal with it.  But thanks anyways!
+        reader.add_message(ParameterDescription, lambda msg: 0)
 
-            # Common row description response
-            reader.add_message(RowDescription, lambda msg: (msg, param_fc))
+        # We're not waiting for a row description.  Return something
+        # destinctive to let bind know that there is no output.
+        reader.add_message(NoData, lambda msg: (None, param_fc))
 
-            return reader.handle_messages()
+        # Common row description response
+        reader.add_message(RowDescription, lambda msg: (msg, param_fc))
 
-        finally:
-            self._sock_lock.release()
+        return reader.handle_messages()
 
     @sync_on_error
-    def bind(self, portal, statement, params, parse_data):
+    def bind(self, portal, statement, params, parse_data, copy_stream):
         self.verifyState("ready")
-        self._sock_lock.acquire()
-        try:
-            row_desc, param_fc = parse_data
-            if row_desc == None:
-                # no data coming out
-                output_fc = ()
-            else:
-                # We've got row_desc that allows us to identify what we're going to
-                # get back from this statement.
-                output_fc = [types.py_type_info(f) for f in row_desc.fields]
-            self._send(Bind(portal, statement, param_fc, params, output_fc, client_encoding = self._client_encoding, integer_datetimes = self._integer_datetimes))
-            # We need to describe the portal after bind, since the return
-            # format codes will be different (hopefully, always what we
-            # requested).
-            self._send(DescribePortal(portal))
-            self._send(Flush())
 
-            # Read responses from server...
-            reader = MessageReader(self)
+        row_desc, param_fc = parse_data
+        if row_desc == None:
+            # no data coming out
+            output_fc = ()
+        else:
+            # We've got row_desc that allows us to identify what we're going to
+            # get back from this statement.
+            output_fc = [types.py_type_info(f, self._record_field_names) for f in row_desc.fields]
+        self._send(Bind(portal, statement, param_fc, params, output_fc, client_encoding = self._client_encoding, integer_datetimes = self._integer_datetimes))
+        # We need to describe the portal after bind, since the return
+        # format codes will be different (hopefully, always what we
+        # requested).
+        self._send(DescribePortal(portal))
+        self._send(Flush())
+        self._flush()
 
-            # BindComplete is good -- just ignore
-            reader.add_message(BindComplete, lambda msg: 0)
+        # Read responses from server...
+        reader = MessageReader(self)
 
-            # NoData in this case means we're not executing a query.  As a
-            # result, we won't be fetching rows, so we'll never execute the
-            # portal we just created... unless we execute it right away, which
-            # we'll do.
-            reader.add_message(NoData, self._bind_nodata, portal, reader)
+        # BindComplete is good -- just ignore
+        reader.add_message(BindComplete, lambda msg: 0)
 
-            # Return the new row desc, since it will have the format types we
-            # asked the server for
-            reader.add_message(RowDescription, lambda msg: (msg, None))
+        # NoData in this case means we're not executing a query.  As a
+        # result, we won't be fetching rows, so we'll never execute the
+        # portal we just created... unless we execute it right away, which
+        # we'll do.
+        reader.add_message(NoData, self._bind_nodata, portal, reader, copy_stream)
 
-            return reader.handle_messages()
+        # Return the new row desc, since it will have the format types we
+        # asked the server for
+        reader.add_message(RowDescription, lambda msg: (msg, None))
 
-        finally:
-            self._sock_lock.release()
+        return reader.handle_messages()
 
-    def _bind_nodata(self, msg, portal, old_reader):
+    def _copy_in_response(self, copyin, fileobj, old_reader):
+        if fileobj == None:
+            raise CopyQueryWithoutStreamError()
+        while True:
+            data = fileobj.read(self._block_size)
+            if not data:
+                break
+            self._send(CopyData(data))
+            self._flush()
+        self._send(CopyDone())
+        self._send(Sync())
+        self._flush()
+
+    def _copy_out_response(self, copyout, fileobj, old_reader):
+        if fileobj == None:
+            raise CopyQueryWithoutStreamError()
+        reader = MessageReader(self)
+        reader.add_message(CopyData, self._copy_data, fileobj)
+        reader.add_message(CopyDone, lambda msg: 1)
+        reader.handle_messages()
+
+    def _copy_data(self, copydata, fileobj):
+        fileobj.write(copydata.data)
+
+    def _bind_nodata(self, msg, portal, old_reader, copy_stream):
         # Bind message returned NoData, causing us to execute the command.
         self._send(Execute(portal, 0))
         self._send(Sync())
+        self._flush()
 
         output = {}
         reader = MessageReader(self)
+        reader.add_message(CopyOutResponse, self._copy_out_response, copy_stream, reader)
+        reader.add_message(CopyInResponse, self._copy_in_response, copy_stream, reader)
         reader.add_message(CommandComplete, lambda msg, out: out.setdefault('msg', msg) and False, output)
         reader.add_message(ReadyForQuery, lambda msg: 1)
         reader.delay_raising_exception = True
@@ -1046,23 +1177,21 @@ class Connection(object):
     @sync_on_error
     def fetch_rows(self, portal, row_count, row_desc):
         self.verifyState("ready")
-        self._sock_lock.acquire()
-        try:
-            self._send(Execute(portal, row_count))
-            self._send(Flush())
-            rows = []
 
-            reader = MessageReader(self)
-            reader.add_message(DataRow, self._fetch_datarow, rows, row_desc)
-            reader.add_message(PortalSuspended, lambda msg: 1)
-            reader.add_message(CommandComplete, self._fetch_commandcomplete, portal)
-            retval = reader.handle_messages()
+        self._send(Execute(portal, row_count))
+        self._send(Flush())
+        self._flush()
+        rows = []
 
-            # retval = 2 when command complete, indicating that we've hit the
-            # end of the available data for this command
-            return (retval == 2), rows
-        finally:
-            self._sock_lock.release()
+        reader = MessageReader(self)
+        reader.add_message(DataRow, self._fetch_datarow, rows, row_desc)
+        reader.add_message(PortalSuspended, lambda msg: 1)
+        reader.add_message(CommandComplete, self._fetch_commandcomplete, portal)
+        retval = reader.handle_messages()
+
+        # retval = 2 when command complete, indicating that we've hit the
+        # end of the available data for this command
+        return (retval == 2), rows
 
     def _fetch_datarow(self, msg, rows, row_desc):
         rows.append(
@@ -1071,7 +1200,8 @@ class Connection(object):
                     msg.fields[i],
                     row_desc.fields[i],
                     client_encoding=self._client_encoding,
-                    integer_datetimes=self._integer_datetimes
+                    integer_datetimes=self._integer_datetimes,
+                    record_field_names=self._record_field_names
                 )
                 for i in range(len(msg.fields))
             ]
@@ -1080,6 +1210,7 @@ class Connection(object):
     def _fetch_commandcomplete(self, msg, portal):
         self._send(ClosePortal(portal))
         self._send(Sync())
+        self._flush()
 
         reader = MessageReader(self)
         reader.add_message(ReadyForQuery, self._fetch_commandcomplete_rfq)
@@ -1095,13 +1226,15 @@ class Connection(object):
     # Send a Sync message, then read and discard all messages until we
     # receive a ReadyForQuery message.
     def _sync(self):
+        # it is assumed _sync is called from sync_on_error, which holds
+        # a _sock_lock throughout the call
         self._send(Sync())
+        self._flush()
         reader = MessageReader(self)
         reader.ignore_unhandled_messages = True
         reader.add_message(ReadyForQuery, lambda msg: True)
         reader.handle_messages()
 
-    @sync_on_error
     def close_statement(self, statement):
         if self._state == "closed":
             return
@@ -1110,6 +1243,7 @@ class Connection(object):
         try:
             self._send(ClosePreparedStatement(statement))
             self._send(Sync())
+            self._flush()
 
             reader = MessageReader(self)
             reader.add_message(CloseComplete, lambda msg: 0)
@@ -1118,7 +1252,6 @@ class Connection(object):
         finally:
             self._sock_lock.release()
 
-    @sync_on_error
     def close_portal(self, portal):
         if self._state == "closed":
             return
@@ -1127,6 +1260,7 @@ class Connection(object):
         try:
             self._send(ClosePortal(portal))
             self._send(Sync())
+            self._flush()
 
             reader = MessageReader(self)
             reader.add_message(CloseComplete, lambda msg: 0)
@@ -1139,6 +1273,7 @@ class Connection(object):
         self._sock_lock.acquire()
         try:
             self._send(Terminate())
+            self._flush()
             self._sock.close()
             self._state = "closed"
         finally:
@@ -1159,6 +1294,22 @@ class Connection(object):
     def handleNotificationResponse(self, msg):
         self.NotificationReceived(msg)
 
+    def fileno(self):
+        # This should be safe to do without a lock
+        return self._sock.fileno()
+    
+    def isready(self):
+        self._sock_lock.acquire()
+        try:
+            rlst, _wlst, _xlst = select.select([self], [], [], 0)
+            if not rlst:
+                return False
+                
+            self._sync()
+            return True
+        finally:
+            self._sock_lock.release()
+
 message_types = {
     "N": NoticeResponse,
     "R": AuthenticationRequest,
@@ -1176,6 +1327,10 @@ message_types = {
     "n": NoData,
     "t": ParameterDescription,
     "A": NotificationResponse,
+    "c": CopyDone,
+    "d": CopyData,
+    "G": CopyInResponse,
+    "H": CopyOutResponse,
     }
 
 

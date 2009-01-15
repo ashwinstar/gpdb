@@ -1,6 +1,6 @@
 # vim: sw=4:expandtab:foldmethod=marker
 #
-# Copyright (c) 2007-2008, Mathieu Fenniak
+# Copyright (c) 2007-2009, Mathieu Fenniak
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -32,7 +32,10 @@ __author__ = "Mathieu Fenniak"
 import datetime
 import decimal
 import struct
-from errors import NotSupportedError
+import math
+from errors import (NotSupportedError, ArrayDataParseError, InternalError,
+        ArrayContentEmptyError, ArrayContentNotHomogenousError,
+        ArrayContentNotSupportedError, ArrayDimensionsNotConsistentError)
 
 try:
     from pytz import utc
@@ -51,15 +54,44 @@ class Bytea(str):
     pass
 
 class Interval(object):
-    def __init__(self, microseconds, days, months):
+    def __init__(self, microseconds=0, days=0, months=0):
         self.microseconds = microseconds
         self.days = days
         self.months = months
+
+    def _setMicroseconds(self, value):
+        if not isinstance(value, int) and not isinstance(value, long):
+            raise TypeError("microseconds must be an int or long")
+        elif not (min_int8 < value < max_int8):
+            raise OverflowError("microseconds must be representable as a 64-bit integer")
+        else:
+            self._microseconds = value
+
+    def _setDays(self, value):
+        if not isinstance(value, int) and not isinstance(value, long):
+            raise TypeError("days must be an int or long")
+        elif not (min_int4 < value < max_int4):
+            raise OverflowError("days must be representable as a 32-bit integer")
+        else:
+            self._days = value
+
+    def _setMonths(self, value):
+        if not isinstance(value, int) and not isinstance(value, long):
+            raise TypeError("months must be an int or long")
+        elif not (min_int4 < value < max_int4):
+            raise OverflowError("months must be representable as a 32-bit integer")
+        else:
+            self._months = value
+
+    microseconds = property(lambda self: self._microseconds, _setMicroseconds)
+    days = property(lambda self: self._days, _setDays)
+    months = property(lambda self: self._months, _setMonths)
 
     def __repr__(self):
         return "<Interval %s months %s days %s microseconds>" % (self.months, self.days, self.microseconds)
 
     def __cmp__(self, other):
+        if other == None: return -1
         c = cmp(self.months, other.months)
         if c != 0: return c
         c = cmp(self.days, other.days)
@@ -71,15 +103,23 @@ def pg_type_info(typ):
     if isinstance(typ, dict):
         value = typ["value"]
         typ = typ["type"]
+
     data = py_types.get(typ)
     if data == None:
         raise NotSupportedError("type %r not mapped to pg type" % typ)
-    type_oid = data.get("tid")
+
+    # permit the type data to be determined by the value, if provided
+    inspect_func = data.get("inspect")
+    if value != None and inspect_func != None:
+        data = inspect_func(value)
+
+    type_oid = data.get("typeoid")
     if type_oid == None:
         raise InternalError("type %r has no type_oid" % typ)
     elif type_oid == -1:
         # special case: NULL values
         return type_oid, 0
+
     # prefer bin, but go with whatever exists
     if data.get("bin_out"):
         format = 1
@@ -87,20 +127,24 @@ def pg_type_info(typ):
         format = 0
     else:
         raise InternalError("no conversion fuction for type %r" % typ)
-    # if a value is provided, it's a date time, and it has timezone info,
-    # then switch the type oid to timestamp w/ tz
-    if type_oid == 1114 and value != None and value.tzinfo != None:
-        type_oid = 1184
+
     return type_oid, format
 
-def pg_value(v, fc, **kwargs):
-    typ = type(v)
+def pg_value(value, fc, **kwargs):
+    typ = type(value)
     data = py_types.get(typ)
     if data == None:
         raise NotSupportedError("type %r not mapped to pg type" % typ)
-    elif data.get("tid") == -1:
-        # special case: NULL values
+
+    # permit the type conversion to be determined by the value, if provided
+    inspect_func = data.get("inspect")
+    if value != None and inspect_func != None:
+        data = inspect_func(value)
+
+    # special case: NULL values
+    if data.get("typeoid") == -1:
         return None
+
     if fc == 0:
         func = data.get("txt_out")
     elif fc == 1:
@@ -109,12 +153,16 @@ def pg_value(v, fc, **kwargs):
         raise InternalError("unrecognized format code %r" % fc)
     if func == None:
         raise NotSupportedError("type %r, format code %r not supported" % (typ, fc))
-    return func(v, **kwargs)
+    return func(value, **kwargs)
 
-def py_type_info(description):
+def py_type_info(description, record_field_names):
     type_oid = description['type_oid']
     data = pg_types.get(type_oid)
     if data == None:
+        record_data = record_field_names.get(type_oid)
+        if record_data != None:
+            # records are in bin format
+            return 1
         raise NotSupportedError("type oid %r not mapped to py type" % type_oid)
     # prefer bin, but go with whatever exists
     if data.get("bin_in"):
@@ -125,13 +173,17 @@ def py_type_info(description):
         raise InternalError("no conversion fuction for type oid %r" % type_oid)
     return format
 
-def py_value(v, description, **kwargs):
+def py_value(v, description, record_field_names, **kwargs):
     if v == None:
         # special case - NULL value
         return None
     type_oid = description['type_oid']
     format = description['format']
     data = pg_types.get(type_oid)
+    if data == None:
+        record_data = record_field_names.get(type_oid)
+        if record_data != None:
+            data = {"bin_in": record_recv(record_data)}
     if data == None:
         raise NotSupportedError("type oid %r not supported" % type_oid)
     if format == 0:
@@ -147,14 +199,31 @@ def py_value(v, description, **kwargs):
 def boolrecv(data, **kwargs):
     return data == "\x01"
 
-def boolout(v, **kwargs):
+def boolsend(v, **kwargs):
     if v:
-        return 't'
+        return "\x01"
     else:
-        return 'f'
+        return "\x00"
+
+min_int2, max_int2 = -2 ** 15, 2 ** 15
+min_int4, max_int4 = -2 ** 31, 2 ** 31
+min_int8, max_int8 = -2 ** 63, 2 ** 63
+
+def int_inspect(value):
+    if min_int2 < value < max_int2:
+        return {"typeoid": 21, "bin_out": int2send}
+    elif min_int4 < value < max_int4:
+        return {"typeoid": 23, "bin_out": int4send}
+    elif min_int8 < value < max_int8:
+        return {"typeoid": 20, "bin_out": int8send}
+    else:
+        return {"typeoid": 1700, "bin_out": numeric_send}
 
 def int2recv(data, **kwargs):
     return struct.unpack("!h", data)[0]
+
+def int2send(v, **kwargs):
+    return struct.pack("!h", v)
 
 def int4recv(data, **kwargs):
     return struct.unpack("!i", data)[0]
@@ -165,6 +234,9 @@ def int4send(v, **kwargs):
 def int8recv(data, **kwargs):
     return struct.unpack("!q", data)[0]
 
+def int8send(v, **kwargs):
+    return struct.pack("!q", v)
+
 def float4recv(data, **kwargs):
     return struct.unpack("!f", data)[0]
 
@@ -173,6 +245,14 @@ def float8recv(data, **kwargs):
 
 def float8send(v, **kwargs):
     return struct.pack("!d", v)
+
+def datetime_inspect(value):
+    if value.tzinfo != None:
+        # send as timestamptz if timezone is provided
+        return {"typeoid": 1184, "bin_out": timestamptz_send}
+    else:
+        # otherwise send as timestamp
+        return {"typeoid": 1114, "bin_out": timestamp_send}
 
 def timestamp_recv(data, integer_datetimes, **kwargs):
     if integer_datetimes:
@@ -191,12 +271,7 @@ def timestamptz_recv(data, **kwargs):
     return timestamp_recv(data, **kwargs).replace(tzinfo=utc)
 
 def timestamp_send(v, integer_datetimes, **kwargs):
-    if v.tzinfo != None:
-        # timestamps should be sent as UTC.  If they have zone info,
-        # convert them.
-        delta = v.astimezone(utc) - datetime.datetime(2000, 1, 1, tzinfo=utc)
-    else:
-        delta = v - datetime.datetime(2000, 1, 1)
+    delta = v - datetime.datetime(2000, 1, 1)
     val = delta.microseconds + (delta.seconds * 1000000) + (delta.days * 86400000000)
     if integer_datetimes:
         # data is 64-bit integer representing milliseconds since 2000-01-01
@@ -204,6 +279,11 @@ def timestamp_send(v, integer_datetimes, **kwargs):
     else:
         # data is double-precision float representing seconds since 2000-01-01
         return struct.pack("!d", val / 1000.0 / 1000.0)
+
+def timestamptz_send(v, **kwargs):
+    # timestamps should be sent as UTC.  If they have zone info,
+    # convert them.
+    return timestamp_send(v.astimezone(utc).replace(tzinfo=None), **kwargs)
 
 def date_in(data, **kwargs):
     year = int(data[0:4])
@@ -228,6 +308,37 @@ def numeric_in(data, **kwargs):
         return int(data)
     else:
         return decimal.Decimal(data)
+
+def numeric_recv(data, **kwargs):
+    num_digits, weight, sign, scale = struct.unpack("!hhhh", data[:8])
+    data = data[8:]
+    digits = struct.unpack("!" + ("h" * num_digits), data)
+    weight = decimal.Decimal(weight)
+    retval = 0
+    for d in digits:
+        d = decimal.Decimal(d)
+        retval += d * (10000 ** weight)
+        weight -= 1
+    if sign:
+        retval *= -1
+    return retval
+
+def numeric_send(v, **kwargs):
+    sign = 0
+    if v < 0:
+        sign = 16384
+        v *= -1
+    max_weight = decimal.Decimal(int(math.floor(math.log(v) / math.log(10000))))
+    weight = max_weight
+    digits = []
+    while v != 0:
+        digit = int(math.floor(v / (10000 ** weight)))
+        v = v - (digit * (10000 ** weight))
+        weight -= 1
+        digits.append(digit)
+    retval = struct.pack("!hhhh", len(digits), max_weight, sign, 0)
+    retval += struct.pack("!" + ("h" * len(digits)), *digits)
+    return retval
 
 def numeric_out(v, **kwargs):
     return str(v)
@@ -316,44 +427,254 @@ def interval_send(data, integer_datetimes, **kwargs):
     else:
         return struct.pack("!dii", data.microseconds / 1000.0 / 1000.0, data.days, data.months)
 
+def array_recv(data, **kwargs):
+    dim, hasnull, typeoid = struct.unpack("!iii", data[:12])
+    data = data[12:]
+
+    # get type conversion method for typeoid
+    conversion = pg_types[typeoid]["bin_in"]
+
+    # Read dimension info
+    dim_lengths = []
+    element_count = 1
+    for idim in range(dim):
+        dim_len, dim_lbound = struct.unpack("!ii", data[:8])
+        data = data[8:]
+        dim_lengths.append(dim_len)
+        element_count *= dim_len
+
+    # Read all array values
+    array_values = []
+    for i in range(element_count):
+        element_len, = struct.unpack("!i", data[:4])
+        data = data[4:]
+        if element_len == -1:
+            array_values.append(None)
+        else:
+            array_values.append(conversion(data[:element_len], **kwargs))
+            data = data[element_len:]
+    if data != "":
+        raise ArrayDataParseError("unexpected data left over after array read")
+
+    # at this point, {{1,2,3},{4,5,6}}::int[][] looks like [1,2,3,4,5,6].
+    # go through the dimensions and fix up the array contents to match
+    # expected dimensions
+    for dim_length in reversed(dim_lengths[1:]):
+        val = []
+        while array_values:
+            val.append(array_values[:dim_length])
+            array_values = array_values[dim_length:]
+        array_values = val
+
+    return array_values
+
+def array_inspect(value):
+    # Check if array has any values.  If not, we can't determine the proper
+    # array typeoid.
+    first_element = array_find_first_element(value)
+    if first_element == None:
+        raise ArrayContentEmptyError("array has no values")
+
+    # supported array output
+    typ = type(first_element)
+    if issubclass(typ, int) or issubclass(typ, long):
+        # special int array support -- send as smallest possible array type
+        special_int_support = True
+        int2_ok, int4_ok, int8_ok = True, True, True
+        for v in array_flatten(value):
+            if v == None:
+                continue
+            if min_int2 < v < max_int2:
+                continue
+            int2_ok = False
+            if min_int4 < v < max_int4:
+                continue
+            int4_ok = False
+            if min_int8 < v < max_int8:
+                continue
+            int8_ok = False
+        if int2_ok:
+            array_typeoid = 1005 # INT2[]
+        elif int4_ok:
+            array_typeoid = 1007 # INT4[]
+        elif int8_ok:
+            array_typeoid = 1016 # INT8[]
+        else:
+            raise ArrayContentNotSupportedError("numeric not supported as array contents")
+    else:
+        special_int_support = False
+        array_typeoid = py_array_types.get(typ)
+        if array_typeoid == None:
+            raise ArrayContentNotSupportedError("type %r not supported as array contents" % typ)
+
+    # check for homogenous array
+    for v in array_flatten(value):
+        if v != None and not (isinstance(v, typ) or (typ == long and isinstance(v, int)) or (typ == int and isinstance(v, long))):
+            raise ArrayContentNotHomogenousError("not all array elements are of type %r" % typ)
+
+    # check that all array dimensions are consistent
+    array_check_dimensions(value)
+
+    type_data = py_types[typ]
+    if special_int_support:
+        if array_typeoid == 1005:
+            type_data = {"typeoid": 21, "bin_out": int2send}
+        elif array_typeoid == 1007:
+            type_data = {"typeoid": 23, "bin_out": int4send}
+        elif array_typeoid == 1016:
+            type_data = {"typeoid": 20, "bin_out": int8send}
+    else:
+        type_data = py_types[typ]
+    return {
+        "typeoid": array_typeoid,
+        "bin_out": array_send(type_data["typeoid"], type_data["bin_out"])
+    }
+
+def array_find_first_element(arr):
+    for v in array_flatten(arr):
+        if v != None:
+            return v
+    return None
+
+def array_flatten(arr):
+    for v in arr:
+        if isinstance(v, list):
+            for v2 in array_flatten(v):
+                yield v2
+        else:
+            yield v
+
+def array_check_dimensions(arr):
+    v0 = arr[0]
+    if isinstance(v0, list):
+        req_len = len(v0)
+        req_inner_lengths = array_check_dimensions(v0)
+        for v in arr:
+            inner_lengths = array_check_dimensions(v)
+            if len(v) != req_len or inner_lengths != req_inner_lengths:
+                raise ArrayDimensionsNotConsistentError("array dimensions not consistent")
+        retval = [req_len]
+        retval.extend(req_inner_lengths)
+        return retval
+    else:
+        # make sure nothing else at this level is a list
+        for v in arr:
+            if isinstance(v, list):
+                raise ArrayDimensionsNotConsistentError("array dimensions not consistent")
+        return []
+
+def array_has_null(arr):
+    for v in array_flatten(arr):
+        if v == None:
+            return True
+    return False
+
+def array_dim_lengths(arr):
+    v0 = arr[0]
+    if isinstance(v0, list):
+        retval = [len(v0)]
+        retval.extend(array_dim_lengths(v0))
+    else:
+        return [len(arr)]
+
+class array_send(object):
+    def __init__(self, typeoid, bin_out_func):
+        self.typeoid = typeoid
+        self.bin_out_func = bin_out_func
+
+    def __call__(self, arr, **kwargs):
+        has_null = array_has_null(arr)
+        dim_lengths = array_dim_lengths(arr)
+        data = struct.pack("!iii", len(dim_lengths), has_null, self.typeoid)
+        for i in dim_lengths:
+            data += struct.pack("!ii", i, 1)
+        for v in array_flatten(arr):
+            if v == None:
+                data += struct.pack("!i", -1)
+            else:
+                inner_data = self.bin_out_func(v, **kwargs)
+                data += struct.pack("!i", len(inner_data))
+                data += inner_data
+        return data
+
+class record_recv(object):
+    def __init__(self, record_field_names):
+        self.record_field_names = record_field_names
+
+    def __call__(self, data, **kwargs):
+        num_fields, = struct.unpack("!i", data[:4])
+        data = data[4:]
+        retval = {}
+        for i in range(num_fields):
+            typeoid, size = struct.unpack("!ii", data[:8])
+            data = data[8:]
+            conversion = pg_types[typeoid]["bin_in"]
+            value = conversion(data[:size], **kwargs)
+            data = data[size:]
+            retval[self.record_field_names[i]] = value
+        return retval
+
 py_types = {
-    bool: {"tid": 16, "txt_out": boolout},
-    int: {"tid": 23, "bin_out": int4send},
-    long: {"tid": 1700, "txt_out": numeric_out},
-    str: {"tid": 25, "txt_out": textout},
-    unicode: {"tid": 25, "txt_out": textout},
-    float: {"tid": 701, "bin_out": float8send},
-    decimal.Decimal: {"tid": 1700, "txt_out": numeric_out},
-    Bytea: {"tid": 17, "bin_out": byteasend},
-    datetime.datetime: {"tid": 1114, "bin_out": timestamp_send},
-    datetime.date: {"tid": 1082, "txt_out": date_out},
-    datetime.time: {"tid": 1083, "txt_out": time_out},
-    Interval: {"tid": 1186, "bin_out": interval_send},
-    type(None): {"tid": -1},
+    bool: {"typeoid": 16, "bin_out": boolsend},
+    int: {"inspect": int_inspect},
+    long: {"inspect": int_inspect},
+    str: {"typeoid": 25, "bin_out": textout},
+    unicode: {"typeoid": 25, "bin_out": textout},
+    float: {"typeoid": 701, "bin_out": float8send},
+    decimal.Decimal: {"typeoid": 1700, "bin_out": numeric_send},
+    Bytea: {"typeoid": 17, "bin_out": byteasend},
+    datetime.datetime: {"typeoid": 1114, "bin_out": timestamp_send, "inspect": datetime_inspect},
+    datetime.date: {"typeoid": 1082, "txt_out": date_out},
+    datetime.time: {"typeoid": 1083, "txt_out": time_out},
+    Interval: {"typeoid": 1186, "bin_out": interval_send},
+    type(None): {"typeoid": -1},
+    list: {"inspect": array_inspect},
+}
+
+# py type -> pg array typeoid
+py_array_types = {
+    float: 1022,
+    bool: 1000,
+    str: 1009,      # TEXT[]
+    unicode: 1009,  # TEXT[]
+    decimal.Decimal: 1231, # NUMERIC[]
 }
 
 pg_types = {
     16: {"bin_in": boolrecv},
     17: {"bin_in": bytearecv},
     18: {"txt_in": varcharin}, # char type (Greenplum)
-    19: {"txt_in": varcharin}, # name type
+    19: {"bin_in": varcharin}, # name type
     20: {"bin_in": int8recv},
     21: {"bin_in": int2recv},
     23: {"bin_in": int4recv},
     24: {"txt_in": varcharin}, # regproc    (Greenplum)
-    25: {"txt_in": varcharin}, # TEXT type
+    25: {"bin_in": varcharin}, # TEXT type
     26: {"txt_in": numeric_in}, # oid type
     28: {"txt_in": numeric_in}, # xid type  (Greenplum)
     700: {"bin_in": float4recv},
     701: {"bin_in": float8recv},
-    1042: {"txt_in": varcharin}, # CHAR type
-    1043: {"txt_in": varcharin}, # VARCHAR type
+    829: {"txt_in": varcharin}, # MACADDR type
+    1000: {"bin_in": array_recv}, # BOOL[]
+    1003: {"bin_in": array_recv}, # NAME[]
+    1005: {"bin_in": array_recv}, # INT2[]
+    1007: {"bin_in": array_recv}, # INT4[]
+    1009: {"bin_in": array_recv}, # TEXT[]
+    1014: {"bin_in": array_recv}, # CHAR[]
+    1015: {"bin_in": array_recv}, # VARCHAR[]
+    1016: {"bin_in": array_recv}, # INT8[]
+    1021: {"bin_in": array_recv}, # FLOAT4[]
+    1022: {"bin_in": array_recv}, # FLOAT8[]
+    1042: {"bin_in": varcharin}, # CHAR type
+    1043: {"bin_in": varcharin}, # VARCHAR type
     1082: {"txt_in": date_in},
     1083: {"txt_in": time_in},
     1114: {"bin_in": timestamp_recv},
     1184: {"bin_in": timestamptz_recv}, # timestamp w/ tz
     1186: {"bin_in": interval_recv},
-    1700: {"txt_in": numeric_in},
-    2275: {"txt_in": varcharin}, # cstring
+    1231: {"bin_in": array_recv}, # NUMERIC[]
+    1263: {"bin_in": array_recv}, # cstring[]
+    1700: {"bin_in": numeric_recv},
+    2275: {"bin_in": varcharin}, # cstring
 }
 
