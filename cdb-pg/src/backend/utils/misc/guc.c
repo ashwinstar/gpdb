@@ -1409,7 +1409,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_delete_as_truncate", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable verbose check at planning time."),
+			gettext_noop("Enable conversion of 'delete from tablename' -> 'truncate tablename':"),
 			NULL,
 		},
 		&gp_enable_delete_as_truncate,

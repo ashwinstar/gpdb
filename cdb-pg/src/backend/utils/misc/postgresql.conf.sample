@@ -581,7 +581,7 @@ gp_interconnect_type=udp
 
 #gp_connections_per_thread = 4
 #gp_segment_connect_timeout = 60s
-
+#gp_enable_delete_as_truncate = off
 
 #---------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
