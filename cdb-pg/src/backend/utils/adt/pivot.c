@@ -77,14 +77,14 @@ bool array_next(array_iter *iter, Datum *value, bool *isna)
 
 	if (iter->index >= iter->max)
 	{
-		*value = (Datum) NULL;
+		*value = (Datum) 0;
 		*isna  = true;
 		return false;
 	}
 	
 	if (iter->index < 0)
 	{
-		*value = (Datum) NULL;
+		*value = (Datum) 0;
 		*isna  = true;
 		iter->index++;
 		return true;
@@ -93,7 +93,7 @@ bool array_next(array_iter *iter, Datum *value, bool *isna)
 	nulls = ARR_NULLBITMAP(iter->array);
 	if (nulls && !(nulls[iter->index / 8] & (1 << (iter->index % 8))))
 	{
-		*value = (Datum) NULL;
+		*value = (Datum) 0;
 		*isna  = true;
 		iter->index++;
 		return true;
@@ -354,7 +354,7 @@ Datum unnest(PG_FUNCTION_ARGS)
 	 * Initialization isn't necessary since array_next will set both values,
 	 * but this fixes compiler warnings.
 	 */
-	d = (Datum) NULL;
+	d = (Datum) 0;
 	isna = false;
 
 	if (array_next(fctx, &d, &isna))
