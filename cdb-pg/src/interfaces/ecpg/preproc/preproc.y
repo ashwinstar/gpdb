@@ -6,7 +6,6 @@
 
 #include "extern.h"
 
-#undef REPEATABLE
 
 /*
  * Variables containing simple states.
@@ -311,6 +310,7 @@ add_additional_variables(char *name, bool insert)
 
 	return ptr;
 }
+#undef REPEATABLE
 %}
 
 %union {
