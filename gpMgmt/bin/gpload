@@ -202,6 +202,8 @@ class Progress(threading.Thread):
         total_bytes = -1
         total_sessions = -1
         for line in f:
+            self.gpload.log(self.gpload.DEBUG, "gpfdist stat: %s" % \
+                        line.strip('\n'))
             a = line.split(' ')
             if not a:
                 continue
@@ -242,11 +244,13 @@ class Progress(threading.Thread):
                 self.condition.release()
                 self.get1()
                 if n:
+                    self.gpload.log(self.gpload.DEBUG, "gpfdist status thread told to stop")
                     self.condition.acquire()
                     self.condition.notify()
                     self.condition.release()
                     break
-            except socket.error:
+            except socket.error, e:
+                self.gpload.log(self.gpload.DEBUG, "got socket exception: %s" % e)
                 break
             time.sleep(1)
 def cli_help():
@@ -1039,7 +1043,7 @@ class gpload:
         else:
             from_cols = self.from_columns
 
-        sql += "(%s)"%','.join(map(lambda a:'%s %s'%(a[0],a[1]), from_cols))
+        sql += "(%s)"%','.join(map(lambda a:'%s %s' % (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols))
 
         sql += "location(%s)"%','.join(map(quote,self.locations))
         sql += "format%s("%quote(format)
@@ -1138,8 +1142,8 @@ class gpload:
 
         self.pg8000.NoticeReceived += notice_processor
         sql = 'insert into %s' % dest
-        sql += '(%s)'%','.join(map(lambda a:a[0],cols))
-        sql += 'select %s '%','.join(map(lambda a:a[2],cols))
+        sql += '(%s)'%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[0]),cols))
+        sql += 'select %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2]),cols))
         sql += 'from ext_%s'%self.name
         p = Progress(self,self.ports)
         p.start()
@@ -1316,7 +1320,7 @@ class gpload:
         sql = 'insert into %s(' % self.table_quoted
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
-        sql += 'select %s '%','.join(map(lambda a:'from_table.%s'%a[0],self.into_columns))
+        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % build_safe_table_name(self.pg8000, a[0]),self.into_columns))
         sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
         sql += 'from temp_%s)as from_table '%self.name
         sql += 'left outer join %s into_table ' % self.table_quoted
