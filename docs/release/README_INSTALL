@@ -26,7 +26,10 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 REQUIRED OS SYSTEM SETTINGS FOR GREENPLUM DATABASE
 ***********************************************************
 
-These must be set on all Greenplum hosts (master and segments).
+These must be set on all Greenplum hosts (master and segments). 
+Make sure you restart your system after adding or changing
+kernel parameters.
+
 
 ----------------
 MAC OS X
