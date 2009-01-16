@@ -984,6 +984,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(oidInfo.toastOid);
 	COMPARE_SCALAR_FIELD(oidInfo.toastIndexOid);
 	COMPARE_SCALAR_FIELD(relKind);
+	COMPARE_SCALAR_FIELD(is_part_child);
 
 	return true;
 }

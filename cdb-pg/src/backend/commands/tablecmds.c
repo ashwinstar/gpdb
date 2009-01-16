@@ -715,12 +715,17 @@ DefineRelation_int(CreateStmt *stmt,
 	CommandCounterIncrement();
 
 	/*
-	 * Open the new relation and acquire exclusive lock on it.	This isn't
-	 * really necessary for locking out other backends (since they can't see
-	 * the new rel anyway until we commit), but it keeps the lock manager from
-	 * complaining about deadlock risks.
+	 * Open the new relation and acquire exclusive lock on it, unless we're
+	 * doing partition.	
+	 *
+	 * This isn't even necessary in the case of normal relations since other
+	 * backends can't see the new rel anyway until we commit), but it keeps 
+	 * the lock manager from complaining about deadlock risks.
 	 */
-	rel = relation_open(relationId, AccessExclusiveLock);
+	if (stmt->is_part_child)
+		rel = relation_open(relationId, NoLock);
+	else
+		rel = relation_open(relationId, AccessExclusiveLock);
 
 	/*
 	 * Now add any newly specified column default values and CHECK constraints
@@ -1046,8 +1051,12 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 		LockRelationOid(DependRelationId, RowExclusiveLock);
 	}
 
-	/* Lock the relation to be dropped */
-	LockRelationOid(relOid, AccessExclusiveLock);
+	/* 
+	 * Lock the relation to be dropped, unless it is a partition child
+	 * in which case it is sufficiently locked.
+	 */
+	if (!rel_is_child_partition(relOid))
+		LockRelationOid(relOid, AccessExclusiveLock);
 
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(relOid),
@@ -3015,6 +3024,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ListCell	*ltab;
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
+	bool is_partition = false;
 
 	cdb_sync_oid_to_segments();
 
@@ -3023,11 +3033,17 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
 
+		if (cmd->subtype == AT_PartAddInternal)
+			is_partition = true;
+
 		ATPrepCmd(&wqueue, rel, cmd, recurse, false);
 	}
 
-	/* Close the relation, but keep lock until commit */
-	relation_close(rel, NoLock);
+	if (is_partition)
+		relation_close(rel, AccessExclusiveLock);
+	else
+		/* Close the relation, but keep lock until commit */
+		relation_close(rel, NoLock);
 	
 	if (Gp_role == GP_ROLE_DISPATCH && oidInfoCount != NULL)
 	{
@@ -4052,9 +4068,9 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 	{
 		Oid tOid = InvalidOid;
 		Oid tiOid = InvalidOid;
-		
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 		Oid	*toastComptypeOid = NULL;
+		bool is_part = rel_is_child_partition(tab->relid);
 
 		if (tab->relkind == RELKIND_RELATION &&
 			(tab->subcmds[AT_PASS_ADD_COL] ||
@@ -4105,7 +4121,8 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				toastComptypeOid = &oidInfo[m].toastComptypeOid;
 			}
 			elog(DEBUG2,"Create Toast %d with Oid %u",m,tOid);
-			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid, toastComptypeOid);
+			AlterTableCreateToastTableWithOid(tab->relid, tOid, tiOid,
+											  toastComptypeOid, is_part);
 			m++;
 			
 		}
@@ -8592,8 +8609,18 @@ ATExecAddInherit(Relation child_rel, Node *node)
 
 	inherit_parent(parent_rel, child_rel, is_partition);
 
-	/* keep our lock on the parent relation until commit */
-	heap_close(parent_rel, NoLock);
+	/* 
+	 * Keep our lock on the parent relation until commit, unless we're
+	 * doing partitioning, in which case the parent is sufficiently locked.
+	 * We want to unlock here in case we're doing deep sub partitioning. We do
+	 * not want to acquire too many locks since we're overflow the lock buffer.
+	 * An exclusive lock on the parent table is sufficient to guard against
+	 * concurrency issues.
+	 */
+	if (is_partition)
+		heap_close(parent_rel, AccessShareLock);
+	else
+		heap_close(parent_rel, NoLock);
 }
 
 /*
@@ -13937,7 +13964,7 @@ ATPExecPartDrop(Relation rel,
 								 "final partition ")));
 
 		}
-		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
+		rel2 = heap_open(prule->topRule->parchildrelid, NoLock);
 
 		elog(DEBUG5, "dropping partition oid %u", prule->topRule->parchildrelid);
 		prelname = pstrdup(RelationGetRelationName(rel2));

@@ -23,6 +23,7 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/tablecmds.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -486,8 +487,12 @@ RemoveConstraintById(Oid conId)
 			heap_close(pgrel, RowExclusiveLock);
 		}
 
-		/* Keep lock on constraint's rel until end of xact */
-		heap_close(rel, NoLock);
+		if (rel_is_child_partition(RelationGetRelid(rel)))
+			/* sufficiently locked, in the case of a partitioned table */
+			heap_close(rel, AccessExclusiveLock);
+		else
+			/* Keep lock on constraint's rel until end of xact */
+			heap_close(rel, NoLock);
 	}
 	else if (OidIsValid(con->contypid))
 	{

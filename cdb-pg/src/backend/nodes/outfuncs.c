@@ -1776,6 +1776,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
+	WRITE_BOOL_FIELD(is_part_child);
 }
 
 static void

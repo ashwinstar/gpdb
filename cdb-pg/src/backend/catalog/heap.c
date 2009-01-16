@@ -1032,6 +1032,7 @@ heap_create_with_catalog(const char *relname,
 	 * the OID of the newly created relation.
 	 */
 	heap_close(new_rel_desc, NoLock);	/* do not unlock till end of xact */
+
 	heap_close(pg_class_desc, RowExclusiveLock);
 
 	return relid;
@@ -1480,11 +1481,14 @@ heap_drop_with_catalog(Oid relid)
 	}
 
 	/*
-	 * Close relcache entry, but *keep* AccessExclusiveLock on the relation
-	 * until transaction commit.  This ensures no one else will try to do
-	 * something with the doomed relation.
+	 * Close relcache entry, but *keep* AccessExclusiveLock (unless this is
+	 * a child partition) on the relation until transaction commit.  This 
+	 * ensures no one else will try to do something with the doomed relation.
 	 */
-	relation_close(rel, NoLock);
+	if (rel_is_child_partition(RelationGetRelid(rel)))
+		relation_close(rel, AccessExclusiveLock);
+	else
+		relation_close(rel, NoLock);
 
 	/*
 	 * Forget any ON COMMIT action for the rel

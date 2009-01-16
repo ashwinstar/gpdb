@@ -6465,6 +6465,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
     child_tab_name->location = -1;
 
 	child_tab_stmt->relation = child_tab_name;
+	child_tab_stmt->is_part_child = true;
 
 	ereport(NOTICE,
 			(errmsg("%s will create partition \"%s\" for "
@@ -7305,6 +7306,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		/* we don't need this any more */
 		stmt->partitionBy = NULL;
+		stmt->is_part_child = true;
 	}
 
 } /* end transformPartitionBy */
@@ -9502,71 +9504,78 @@ transformAlterTable_all_PartitionStmt(
 					 errmsg("%s is not partitioned",
 							lrelname)));
 			
-			/* Processes nested ALTER (if it exists) */
-			while (1)
+		/* Processes nested ALTER (if it exists) */
+		while (1)
+		{
+			AlterPartitionId  	*pid2 = NULL;
+
+			if (atc1->subtype != AT_PartAlter)
 			{
-				AlterPartitionId  	*pid2 = NULL;
+				rv = makeRangeVar(
+						get_namespace_name(
+								RelationGetNamespace(rel)),
+						pstrdup(RelationGetRelationName(rel)));
+				heap_close(rel, AccessShareLock);
+				rel = NULL;
+				break;
+			}
 
-				if (atc1->subtype != AT_PartAlter)
-				{
-					rv = makeRangeVar(
-							get_namespace_name(
-									RelationGetNamespace(rel)),
-							pstrdup(RelationGetRelationName(rel)));
-					heap_close(rel, NoLock);
-					break;
-				}
-
-				pid2 = (AlterPartitionId *)pci->partid;
-					
-				if (pid2 && (pid2->idtype == AT_AP_IDValue))
-				{
-					List *vallist = (List *)pid2->partiddef;
-					pid2->partiddef = 
-							(Node *)transformExpressionList(
-									pstate, vallist);
-				}
-					
-				partDepth++;
-					
-				if (!pNode)
-					prule = NULL;
-				else
-					prule = get_part_rule1(rel,
-										   pid2,
-										   false, true,
-										   CurrentMemoryContext,
-										   NULL,
-										   pNode, 
-										   sid1.data, NULL);
-					
-				if (prule && prule->topRule && 
-					prule->topRule->children)
-				{
-					prevNode = pNode;
-					pNode = prule->topRule->children;
-					par_oid = RelationGetRelid(rel);
-					
-					heap_close(rel, NoLock);
-					rel = heap_open(prule->topRule->parchildrelid, 
-									AccessShareLock);
-					
-					appendStringInfo(&sid2, "partition%s of %s", 
-									 prule->partIdStr, sid1.data);
-					truncateStringInfo(&sid1, 0);
-					appendStringInfo(&sid1, "%s", sid2.data);
-					truncateStringInfo(&sid2, 0);
-				}
-				else
-				{
-					prevNode = pNode;
-					pNode = NULL;
-				}
-					
-				atc1 = (AlterTableCmd *)pci->arg1;
-				pci = (AlterPartitionCmd *)atc1->def;
-					
-			} /* end while */
+			pid2 = (AlterPartitionId *)pci->partid;
+				
+			if (pid2 && (pid2->idtype == AT_AP_IDValue))
+			{
+				List *vallist = (List *)pid2->partiddef;
+				pid2->partiddef = 
+						(Node *)transformExpressionList(
+								pstate, vallist);
+			}
+				
+			partDepth++;
+				
+			if (!pNode)
+				prule = NULL;
+			else
+				prule = get_part_rule1(rel,
+									   pid2,
+									   false, true,
+									   CurrentMemoryContext,
+									   NULL,
+									   pNode, 
+									   sid1.data, NULL);
+				
+			if (prule && prule->topRule && 
+				prule->topRule->children)
+			{
+				prevNode = pNode;
+				pNode = prule->topRule->children;
+				par_oid = RelationGetRelid(rel);
+				
+				/* 
+				 * Don't hold a long lock -- lock on the master is
+				 * sufficient
+				 */
+				heap_close(rel, AccessShareLock);
+				rel = heap_open(prule->topRule->parchildrelid, 
+								AccessShareLock);
+				
+				appendStringInfo(&sid2, "partition%s of %s", 
+								 prule->partIdStr, sid1.data);
+				truncateStringInfo(&sid1, 0);
+				appendStringInfo(&sid1, "%s", sid2.data);
+				truncateStringInfo(&sid2, 0);
+			}
+			else
+			{
+				prevNode = pNode;
+				pNode = NULL;
+			}
+				
+			atc1 = (AlterTableCmd *)pci->arg1;
+			pci = (AlterPartitionCmd *)atc1->def;
+		} /* end while */
+		if (rel)
+			/* No need to hold onto the lock -- see above */
+			heap_close(rel, AccessShareLock);
 	} /* end if alter */
 	
 	switch (atc1->subtype)

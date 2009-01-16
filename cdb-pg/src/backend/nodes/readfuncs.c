@@ -1865,6 +1865,7 @@ _readCreateStmt(void)
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	READ_CHAR_FIELD(relKind);
+	READ_BOOL_FIELD(is_part_child);
 	local_node->policy = NULL;
 	Assert(local_node->oidInfo.relOid == InvalidOid);
 
