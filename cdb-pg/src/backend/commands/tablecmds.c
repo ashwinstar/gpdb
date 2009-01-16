@@ -9200,7 +9200,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 			}
 			if (!diff)
 			{
-				char dist[] = palloc(list_length(l1) * (NAMEDATALEN + 1));
+				char * dist = palloc(list_length(l1) * (NAMEDATALEN + 1));
 
 				dist[0] = '\0';
 
