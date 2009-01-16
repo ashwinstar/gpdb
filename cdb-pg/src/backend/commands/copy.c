@@ -2410,6 +2410,7 @@ CopyFromDispatch(CopyState cstate)
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(cstate->attnumlist);
 	num_defaults = 0;
+	h_attnum = 0;
 
 	/*
 	 * Init original row number tracking vars
