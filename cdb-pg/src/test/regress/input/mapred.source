@@ -20,13 +20,73 @@
 create language plperlu;
 create language plpythonu;
 
--- Take a look at the installed languages, plperl should be in the list.
+-- Take a look at the installed languages, plperl and plpython should be in the list.
 --  + pg_pltemplate contains the list of languages that can be simply installed
 --  + pl_language contains the list of languages that are actually installed
 select * from pg_pltemplate;
 select lanname, lanispl, lanpltrusted from pg_language;
 
+-- Check enviornment variables that should have been set by greenplum_path.sh
+--
+-- 1) We need to check these on all segments and on the master.
+-- 2) We do this via external table rather than perl/python in case it is part
+--    of the cause of a mis-installed plperl/plpython.
+-- 3) It is normal for the master to have a slightly different enviornment from
+--    the segments (but perhaps not desirable?)
+--
+CREATE EXTERNAL WEB TABLE env_segment(var text, value text) 
+EXECUTE 'env' format 'text' (delimiter '=');
+CREATE EXTERNAL WEB TABLE env_master(var text, value text) 
+EXECUTE 'env' on master format 'text' (delimiter '=');
+CREATE VIEW env AS
+  SELECT gp_execution_segment(), * FROM env_segment
+  UNION ALL
+  SELECT gp_execution_segment(), * FROM env_master;
+
+SELECT * FROM env WHERE var in (
+	   'GPHOME', 
+	   'DYLD_LIBRARY_PATH', 
+	   'LD_LIBRARY_PATH', 
+	   'PATH'
+) ORDER BY var, gp_execution_segment;
+
 -- end_ignore
+
+--
+-- Some checks to verify what versions of perl/python we have.
+-- If everything has been configured correctly this should be constant
+-- across all our installations.
+--
+-- All of these checks should return a single row because it should produce
+-- a constant across all segments and the master.
+--
+CREATE OR REPLACE FUNCTION python_version() returns text as $$
+import sys
+return sys.version_info
+$$ language plpythonu;
+
+SELECT python_version() FROM env GROUP BY python_version;
+
+CREATE OR REPLACE FUNCTION python_path() returns text as $$
+import sys
+return sys.path[0]
+$$ language plpythonu;
+-- ignore
+SELECT python_path() FROM env GROUP BY python_path;
+
+CREATE OR REPLACE FUNCTION perl_version() returns text as $$
+return "Perl $]"
+$$ language plperlu;
+
+SELECT perl_version() FROM env GROUP BY perl_version;
+
+CREATE OR REPLACE FUNCTION perl_path() returns text as $$
+return join(':', @INC)
+$$ language plperlu;
+-- ignore
+SELECT perl_path() FROM env GROUP BY perl_path;
+
+
 --
 -- Create a harness to run shell commands and output stderr and stdout
 --
