@@ -1,7 +1,9 @@
 -- ALTER TABLE ... SET DISTRIBUTED BY
 -- This is the main interface for system expansion
+\set DATA values(1, 2), (2, 3), (3, 4)
 -- Basic sanity tests
 create table atsdb (i int, j text) distributed by (i);
+insert into atsdb :DATA;
 -- should fail
 alter table atsdb set distributed by ();
 ERROR:  syntax error at or near ")"
@@ -12,16 +14,69 @@ ERROR:  column "m" of relation "atsdb" does not exist
 alter table atsdb set distributed by (i, i);
 ERROR:  distribution policy must be a unique set of columns
 HINT:  Column "i" appears more than once
+alter table atsdb set distributed by (i, m);
+ERROR:  column "m" of relation "atsdb" does not exist
+alter table atsdb set distributed by (i);
+ERROR:  distribution policy of relation "atsdb" already set to (i)
 -- should work
 alter table atsdb set distributed randomly;
-\d atsdb
-     Table "public.atsdb"
- Column |  Type   | Modifiers 
---------+---------+-----------
- i      | integer | 
- j      | text    | 
-Distributed randomly
+select localoid::regclass, attrnums from gp_distribution_policy where localoid = 'atsdb'::regclass;
+ localoid | attrnums 
+----------+----------
+ atsdb    | 
+(1 row)
 
+-- not possible to correctly verify random distribution
 alter table atsdb set distributed by (j);
-ERROR:  not supported yet
+select localoid::regclass, attrnums from gp_distribution_policy where localoid = 'atsdb'::regclass;
+ localoid | attrnums 
+----------+----------
+ atsdb    | {2}
+(1 row)
+
+-- verify that the data is correctly redistributed by building a fresh 
+-- table with the same policy
+create table ats_test (i int, j text) distributed by (j);
+insert into ats_test :DATA;
+select gp_segment_id, * from ats_test except
+select gp_segment_id, * from atsdb;
+ gp_segment_id | i | j 
+---------------+---+---
+(0 rows)
+
+drop table ats_test;
+alter table atsdb set distributed by (i, j);
+select localoid::regclass, attrnums from gp_distribution_policy where localoid = 'atsdb'::regclass;
+ localoid | attrnums 
+----------+----------
+ atsdb    | {1,2}
+(1 row)
+
+-- verify
+create table ats_test (i int, j text) distributed by (i, j);
+insert into ats_test :DATA;
+select gp_segment_id, * from ats_test except
+select gp_segment_id, * from atsdb;
+ gp_segment_id | i | j 
+---------------+---+---
+(0 rows)
+
+drop table ats_test;
+alter table atsdb set distributed by (j, i);
+select localoid::regclass, attrnums from gp_distribution_policy where localoid = 'atsdb'::regclass;
+ localoid | attrnums 
+----------+----------
+ atsdb    | {2,1}
+(1 row)
+
+-- verify
+create table ats_test (i int, j text) distributed by (j, i);
+insert into ats_test :DATA;
+select gp_segment_id, * from ats_test except
+select gp_segment_id, * from atsdb;
+ gp_segment_id | i | j 
+---------------+---+---
+(0 rows)
+
+drop table ats_test;
 drop table atsdb;

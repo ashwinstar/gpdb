@@ -612,7 +612,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	CommandCounterIncrement();
 
 	/* Swap the physical files of the old and new heaps. */
-	swap_relation_files(tableOid, OIDNewHeap);
+	swap_relation_files(tableOid, OIDNewHeap, true);
 
 	CommandCounterIncrement();
 
@@ -890,7 +890,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
  * the main-table data. GPDB: also swap aoseg links.
  */
 void
-swap_relation_files(Oid r1, Oid r2)
+swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 {
 	Relation	relRelation;
 	HeapTuple	reltup1,
@@ -939,12 +939,13 @@ swap_relation_files(Oid r1, Oid r2)
 	/* we should not swap reltoastidxid nor relaosegidxid */
 
 	/* swap size statistics too, since new rel has freshly-updated stats */
+	if (swap_stats)
 	{
 		int4		swap_pages;
 		float4		swap_tuples;
 
 		swap_pages = relform1->relpages;
-		relform1->relpages = relform2->relpages;
+		relform1->relpages = relform1->relpages;
 		relform2->relpages = swap_pages;
 
 		swap_tuples = relform1->reltuples;

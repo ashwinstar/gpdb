@@ -57,6 +57,7 @@
 #include "nodes/relation.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
+#include "optimizer/planner.h"
 #include "optimizer/prep.h"
 #include "parser/analyze.h"
 #include "parser/gramparse.h"
@@ -4010,8 +4011,18 @@ ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			rel = relation_open(tab->relid, NoLock);
 
 			foreach(lcmd, subcmds)
+			{
+				AlterTableCmd *atc = lfirst(lcmd);
+
 				ATExecCmd(tab, rel, (AlterTableCmd *) lfirst(lcmd));
 
+				/* 
+				 * SET DISTRIBUTED BY() calls RelationForgetRelation(),
+				 * which will scribble on rel, so we must re-open it.
+				 */
+				if (atc->subtype == AT_SetDistributedBy)
+					rel = relation_open(tab->relid, NoLock);
+			}
 			/*
 			 * After the ALTER TYPE pass, do cleanup work (this is not done in
 			 * ATExecAlterColumnType since it should be done only once if
@@ -4349,7 +4360,7 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			ATRewriteTable(tab, OIDNewHeap);
 
 			/* Swap the physical files of the old and new heaps. */
-			swap_relation_files(tab->relid, OIDNewHeap);
+			swap_relation_files(tab->relid, OIDNewHeap, true);
 
 			CommandCounterIncrement();
 
@@ -8956,6 +8967,76 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 }
 
 /*
+ * Build:
+ *
+ * CREATE TABLE pg_temp_<NNNN> AS SELECT * FROM rel
+ *   DISTRIBUTED BY dist_clause
+ */
+static QueryDesc *
+build_ctas_with_dist(Relation rel, List *dist_clause)
+{
+	Query *q;
+	SelectStmt *s = makeNode(SelectStmt);
+	List		*parsetrees;
+	char tmpname[NAMEDATALEN];
+	ColumnRef	*n = makeNode(ColumnRef);
+	ResTarget	*t = makeNode(ResTarget);
+	char *nspname;
+	RangeVar *from_tbl;
+	List *rewritten;
+	Plan *plan;
+	DestReceiver *dest;
+	QueryDesc *queryDesc;
+
+	/* temporary enough */
+	snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", RelationGetRelid(rel));
+	nspname = get_namespace_name(RelationGetNamespace(rel));
+
+	n->fields = list_make1(makeString("*"));
+	t->val = (Node *)n;
+	s->targetList = list_make1(t);
+
+	from_tbl = makeRangeVar(nspname,
+							pstrdup(RelationGetRelationName(rel)));
+	s->fromClause = list_make1(from_tbl);
+	s->into = makeRangeVar(nspname, pstrdup(tmpname));
+	s->distributedBy = dist_clause;
+
+	parsetrees = parse_analyze((Node *)s, NULL, NULL, 0);
+	Assert(list_length(parsetrees) == 1);
+	q = (Query *)linitial(parsetrees);
+
+	AcquireRewriteLocks(q);
+		
+	/* Rewrite through rule system */
+	rewritten = QueryRewrite(q);
+		
+	/* We don't expect more or less than one result query */
+	Assert(list_length(rewritten) == 1);
+		
+	q = (Query *) linitial(rewritten);
+	Assert(q->commandType == CMD_SELECT);
+		
+	/* plan the query */
+	plan = planner(q, false, 0, NULL);
+		
+	/*
+	 * Update snapshot command ID to ensure this query sees results of any
+	 * previously executed queries. 
+	 */
+	//ActiveSnapshot->curcid = GetCurrentCommandId();
+		
+	/* Create dest receiver for COPY OUT */
+	dest = CreateDestReceiver(DestIntoRel, NULL);
+		
+	/* Create a QueryDesc requesting no output */
+	queryDesc = CreateQueryDesc(q, plan,
+								ActiveSnapshot, InvalidSnapshot,
+								dest, NULL, false);
+	return queryDesc;
+}
+
+/*
  * ALTER TABLE SET DISTRIBUTED BY
  *
  * set distribution policy for rel
@@ -8967,11 +9048,15 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	List	   *cols = NIL;
 	ListCell   *lc;
 	GpPolicy   *policy = NULL;
+	QueryDesc  *queryDesc;
+	RangeVar   *tmprv;
+	Oid			tmprelid;
+	Oid			tarrelid = RelationGetRelid(rel);
 
-	if (!superuser())
-		ereport(ERROR, 
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to SET DISTRIBUTION POLICY")));
+	/* Permissions checks */
+	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+					   RelationGetRelationName(rel));
 
 	Assert(PointerIsValid(node));
 	Assert(IsA(node, List));
@@ -8982,22 +9067,35 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SET DISTRIBUTED BY not supported in utility mode")));
-	else if (Gp_role == GP_ROLE_EXECUTE)
-		return;
 
 	/* check for case of single null value -- set distributed randomly */
 	if (linitial(l1) == NULL)
 	{
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			Insist(list_length(l1) == 1);
 
-		Insist(list_length(l1) == 1);
+			if (rel->rd_cdbpolicy->nattrs == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("distribution policy of relation \"%s\" "
+								"already set to DISTRIBUTED RANDOMLY",
+								RelationGetRelationName(rel))));
 
-		policy = (GpPolicy *) palloc(sizeof(GpPolicy));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = 0;
+			policy = (GpPolicy *) palloc(sizeof(GpPolicy));
+			policy->ptype = POLICYTYPE_PARTITIONED;
+			policy->nattrs = 0;
 
-		rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
-		GpPolicyReplace(RelationGetRelid(rel), policy);
+			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),
+											 policy);
+			GpPolicyReplace(RelationGetRelid(rel), policy);
+		}
 
+		/* 
+		 * caller expects ATExecSetDistributedBy() to close rel
+		 * (see the non-random distribution case below for why.
+		 */
+		heap_close(rel, NoLock);
 		return;
 	}
 
@@ -9006,7 +9104,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	 * policy is the hard bit. For that, we must do the following:
 	 *
 	 * a) Ensure that the proposed policy is sensible
-	 * b) Create and reorganise a temporary table according to our desired
+	 * b) Create a temporary table and reorganise data according to our desired
 	 * distribution policy. To do this, we build a Query node which expresses
 	 * the query CREATE TABLE tmp_table_name AS SELECT * FROM cur_table
 	 * DISTRIBUTED BY (policy)
@@ -9017,54 +9115,141 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	 * f) Update the policy on the QD to reflect the underlying data
 	 * g) Drop the temporary table -- and with it, the old copy of the data
 	 */
-	policy = palloc(sizeof(GpPolicy) + 
-					sizeof(policy->attrs[0]) * list_length(l1));
-	policy->ptype = POLICYTYPE_PARTITIONED;
-	policy->nattrs = 0;
-
-	/* Step (a) */
-	foreach(lc, l1)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		char *colName = strVal((Value *)lfirst(lc));
-		HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), colName);
-		AttrNumber	attnum;
+		policy = palloc(sizeof(GpPolicy) + 
+						sizeof(policy->attrs[0]) * list_length(l1));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+	
+		/* Step (a) */
+		foreach(lc, l1)
+		{
+			char *colName = strVal((Value *)lfirst(lc));
+			HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel),
+													colName);
+			AttrNumber	attnum;
+	
+			if (list_member(cols, lfirst(lc)))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("distribution policy must be a unique set of columns"),
+						 errhint("Column \"%s\" appears more than once", colName)));
+			if (!HeapTupleIsValid(tuple))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								colName, RelationGetRelationName(rel))));
+	
+			attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+	
+			/* Prevent them from altering a system attribute */
+			if (attnum <= 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot distribute by system column \"%s\"",
+								colName)));
+	
+			policy->attrs[policy->nattrs++] = attnum;
+			ReleaseSysCache(tuple);
+			cols = lappend(cols, lfirst(lc));
+		}
+	
+		Assert(policy->nattrs > 0);
+	
+		/* See if the the old policy is the same as the new one */
+		if (policy->nattrs == rel->rd_cdbpolicy->nattrs)
+		{
+			int i;
+			bool diff = false;
 
-		if (list_member(cols, lfirst(lc)))
-			ereport(ERROR,
-					(errcode(ERRCODE_DUPLICATE_OBJECT),
-					 errmsg("distribution policy must be a unique set of columns"),
-					 errhint("Column \"%s\" appears more than once", colName)));
-		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							colName, RelationGetRelationName(rel))));
+			for (i = 0; i < policy->nattrs; i++)
+			{
+				if (policy->attrs[i] != rel->rd_cdbpolicy->attrs[i])
+				{
+					diff = true;
+					break;
+				}
+			}
+			if (!diff)
+			{
+				char dist[list_length(l1) * (NAMEDATALEN + 1)];
 
-		attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+				dist[0] = '\0';
 
-		/* Prevent them from altering a system attribute */
-		if (attnum <= 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot distribute by system column \"%s\"",
-							colName)));
+				foreach(lc, l1)
+				{
+					if (lc != list_head(l1))
+						strcat(dist, ",");
+					strcat(dist, strVal(lfirst(lc)));
+				}
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("distribution policy of relation \"%s\" "
+								"already set to (%s)",
+								RelationGetRelationName(rel),
+								dist)));
+			}
+		}
 
-		policy->attrs[policy->nattrs++] = attnum;
-		ReleaseSysCache(tuple);
-		cols = lappend(cols, lfirst(lc));
+		/* Step (a.5) - we don't handle dropped attributes yet */
+		{
+			int i;
+	
+			for (i = 0; i < rel->rd_att->natts; i++)
+			{
+				if (rel->rd_att->attrs[i]->attisdropped)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot handle table with dropped attributes")));
+			}
+		}
+	
+		/* Step (b) - build CTAS */
+		queryDesc = build_ctas_with_dist(rel, l1);
+		tmprv = copyObject(queryDesc->parsetree->into);
+	
+		/* Step (c) - run on all nodes */
+		ExecutorStart(queryDesc, 0);
+		ExecutorRun(queryDesc, ForwardScanDirection, 0L);
+		ExecutorEnd(queryDesc);
+		FreeQueryDesc(queryDesc);
+	
+		/* 
+		 * Step (d) - tell the seg nodes about the temporary relation. This
+		 * involves stomping on the node we've been given
+		 */
+		linitial(l1) = tmprv;
 	}
+	else
+		tmprv = linitial(l1);
 
-	Assert(policy->nattrs > 0);
+	/* 
+	 * Step (e) - swap relfilenodes
+	 *
+	 * Just lookup the Oid and pass it to swap_relation_files(). To do this
+	 * we must close the rel, since it needs to be forgotten by the cache, we
+	 * keep the lock though. ATRewriteCatalogs() knows that we've closed the
+	 * relation here.
+	 */
+	heap_close(rel, NoLock);
+   	tmprelid = RangeVarGetRelid(tmprv, false);
+	swap_relation_files(tarrelid, tmprelid, false);
 
 	/* Step (f) */
-#if 0 /* not  yet */
-	rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
-	GpPolicyReplace(RelationGetRelid(rel), policy);
-#endif
-	ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("not supported yet")));
+	if (Gp_role == GP_ROLE_DISPATCH)
+		GpPolicyReplace(tarrelid, policy);
 
-} /* end ATExecSetDistributedBy */
+	/* Step (g) Drop the table */
+	{
+		ObjectAddress object;	
+		object.classId = RelationRelationId;
+		object.objectId = tmprelid;
+		object.objectSubId = 0;
+
+		performDeletion(&object, DROP_RESTRICT);
+	}	
+}
 
 static char
 parttype_to_char(PartitionByType type)
@@ -14271,7 +14456,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 	Assert(OidIsValid(newrelid));
 
 #if IF_ONLY_IT_WAS_THAT_SIMPLE
-	swap_relation_files(oldrelid, newrelid);
+	swap_relation_files(oldrelid, newrelid, false);
 	CommandCounterIncrement();
 #else
 	/*
