@@ -6,6 +6,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#ifdef WIN32
+#include <io.h>
+#endif
 #include "postgres.h"
 #include "libpq/pqsignal.h"
 #include "gpmon/gpmon.h"
@@ -41,7 +44,7 @@ void gpmon_init(void)
 
 	if (pid == gpmon.pid)
 		return;
-
+#ifndef WIN32
 	sfunc = pqsignal(SIGVTALRM, gpmon_sig_handler);
 	if (sfunc == SIG_ERR) {
 		elog(WARNING, "gpmon: unable to set signal handler for SIGVTALRM (%m)");
@@ -53,6 +56,9 @@ void gpmon_init(void)
 	else {
 		Assert(sfunc == 0);
 	}
+#else
+	elog(ERROR,"Not ported to win32 yet");
+#endif
 
 	tv.it_interval.tv_sec = gp_gpperfmon_send_interval;
 	tv.it_interval.tv_usec = 0;
@@ -65,12 +71,14 @@ void gpmon_init(void)
 	if (sock == -1) {
 		elog(WARNING, "gpmon: cannot create socket (%m)");
 	}
+#ifndef WIN32
     if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
         elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
     }
     if (fcntl(sock, F_SETFD, 1) == -1) {
         elog(WARNING, "fcntl(F_SETFD) failed");
     }
+#endif 
 	gpmon.gxsock = sock;
 	memset(&gpmon.gxaddr, 0, sizeof(gpmon.gxaddr));
 	gpmon.gxaddr.sin_family = AF_INET;
@@ -146,7 +154,7 @@ void gpmon_send(gpmon_packet_t* p)
 	
 	if (gpmon.gxsock > 0) {
 		int n = sizeof(*p);
-		if (n != sendto(gpmon.gxsock, p, n, 0, 
+		if (n != sendto(gpmon.gxsock, (const char *)p, n, 0, 
 						(struct sockaddr*) &gpmon.gxaddr, 
 						sizeof(gpmon.gxaddr))) {
 			elog(WARNING, "gpmon: cannot send (%m socket %d)", gpmon.gxsock);
