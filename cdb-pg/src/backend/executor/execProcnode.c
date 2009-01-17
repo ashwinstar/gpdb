@@ -409,6 +409,7 @@ ExecProcNode(PlanState *node)
 {
 	TupleTableSlot *result = NULL;
 
+#ifndef WIN32
 	static void *ExecJmpTbl[] = {
 		&&Exec_Jmp_Result,
 		&&Exec_Jmp_Append,
@@ -588,7 +589,151 @@ Exec_Jmp_Done:
 
 	if(node->plan)
 		PG_TRACE5(execprocnode__exit, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
+#else
 
+	CHECK_FOR_INTERRUPTS();
+
+#ifdef CDB_TRACE_EXECUTOR
+	ExecCdbTraceNode(node, true, NULL);
+#endif   /* CDB_TRACE_EXECUTOR */
+
+	if (node->chgParam != NULL) /* something changed */
+		ExecReScan(node, NULL); /* let ReScan handle this */
+
+	if (node->instrument)
+		InstrStartNode(node->instrument);
+
+	switch (nodeTag(node))
+	{
+			/*
+			 * control nodes
+			 */
+		case T_ResultState:
+			result = ExecResult((ResultState *) node);
+			break;
+
+		case T_AppendState:
+			result = ExecAppend((AppendState *) node);
+			break;
+
+			/* BitmapAndState does not yield tuples */
+
+			/* BitmapOrState does not yield tuples */
+
+			/*
+			 * scan nodes
+			 */
+		case T_SeqScanState:
+			result = ExecSeqScan((SeqScanState *) node);
+			break;
+
+		case T_IndexScanState:
+			result = ExecIndexScan((IndexScanState *) node);
+			break;
+
+		case T_ExternalScanState:
+			result = ExecExternalScan((ExternalScanState *) node);
+			break;
+			
+			/* BitmapIndexScanState does not yield tuples */
+
+		case T_BitmapHeapScanState:
+			result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
+			break;
+
+		case T_TidScanState:
+			result = ExecTidScan((TidScanState *) node);
+			break;
+
+		case T_SubqueryScanState:
+			result = ExecSubqueryScan((SubqueryScanState *) node);
+			break;
+
+		case T_FunctionScanState:
+			result = ExecFunctionScan((FunctionScanState *) node);
+			break;
+
+		case T_ValuesScanState:
+			result = ExecValuesScan((ValuesScanState *) node);
+			break;
+
+			/*
+			 * join nodes
+			 */
+		case T_AdaptiveNestLoopState:
+			result = ExecAdaptiveNestLoop((AdaptiveNestLoopState *) node);
+			break;
+		case T_NestLoopState:
+			result = ExecNestLoop((NestLoopState *) node);
+			break;
+
+		case T_MergeJoinState:
+			result = ExecMergeJoin((MergeJoinState *) node);
+			break;
+
+		case T_HashJoinState:
+			result = ExecHashJoin((HashJoinState *) node);
+			break;
+
+			/*
+			 * shareinput nodes
+			 */
+		case T_ShareInputScanState:
+			result = ExecShareInputScan((ShareInputScanState *) node);
+			break;
+
+			/*
+			 * materialization nodes
+			 */
+		case T_MaterialState:
+			result = ExecMaterial((MaterialState *) node);
+			break;
+
+		case T_SortState:
+			result = ExecSort((SortState *) node);
+			break;
+
+		case T_GroupState:
+			result = ExecGroup((GroupState *) node);
+			break;
+
+		case T_AggState:
+			result = ExecAgg((AggState *) node);
+			break;
+
+		case T_WindowState:
+			result = ExecWindow((WindowState *) node);
+			break;
+
+		case T_UniqueState:
+			result = ExecUnique((UniqueState *) node);
+			break;
+
+		case T_HashState:
+			result = ExecHash((HashState *) node);
+			break;
+
+		case T_SetOpState:
+			result = ExecSetOp((SetOpState *) node);
+			break;
+
+		case T_LimitState:
+			result = ExecLimit((LimitState *) node);
+			break;
+
+		case T_MotionState:
+			result = ExecMotion((MotionState *) node);
+			break;
+
+		default:
+			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
+			result = NULL;
+			break;
+	}
+
+	if (node->instrument)
+		InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
+#endif 
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, false, result);
 #endif   /* CDB_TRACE_EXECUTOR */
