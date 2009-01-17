@@ -10,9 +10,11 @@
 #include <stdlib.h>
 #include <math.h>
 
+#ifndef WIN32
 /* Includes from the clapack library */
 #include <f2c.h>
 #include <clapack.h>
+#endif
 
 
 void pinv(long int rows,long int columns,float8 *A,float8 *Aplus);
@@ -174,6 +176,9 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	
 	/* Need a single location in work to store the recommended value of lwork */
 	work = (float8 *)palloc(sizeof(float8)*1);
+#ifdef WIN32
+	elog(ERROR,"pseudoinverse: lanpack routine dgesdd not available on WIN32");
+#else
 	dgesdd_( &achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns, 
 			 work, &lwork, iwork, &i );
 
@@ -187,6 +192,7 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 		pfree(work);
 	}
 
+
     /*
 	 * Allocate the space needed for the work array using the value of lwork 
 	 * obtained in the first call of dgesdd_ 
@@ -194,6 +200,8 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 	work = (float8 *) palloc(sizeof(float8)*lwork);
 	dgesdd_( &achar, &rows, &columns, Atemp, &rows, S, U, &rows, Vt, &columns, 
 			 work, &lwork, iwork, &i );
+
+#endif
 
 	pfree(work);
 	pfree(iwork);
