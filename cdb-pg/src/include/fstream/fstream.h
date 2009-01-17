@@ -3,6 +3,9 @@
 
 #include <sys/types.h>
 /*#include "c.h"*/
+#ifdef WIN32
+typedef __int64 int64_t;
+#endif
 
 #define FSTREAM_BLOCKSIZE	(1024*32)
 
