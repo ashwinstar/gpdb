@@ -1,5 +1,5 @@
 /* bfz.c */
-
+#include "postgres.h"
 #include <sys/stat.h>
 #include <unistd.h>
 #include <storage/bfz.h>
@@ -76,7 +76,14 @@ bfz_create_internal(bfz_t *thiz, const char* filePrefix, int compress)
     sprintf(name,"%s/"PG_TEMP_FILES_DIR,DatabasePath);
     mkdir(name,0777);
     sprintf(name,"%s/"PG_TEMP_FILES_DIR"/%sXXXXXX",DatabasePath,filePrefix);
+#ifdef WIN32
+	{
+	char * tempFileName = tempnam( name, filePrefix );
+	thiz->fd = open(tempFileName, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR); 
+	}
+#else
     thiz->fd = mkstemp(name);
+#endif 
     if (thiz->fd == -1)
 	elog(ERROR,"bfz: mkstemp failed");
     RegisterXactCallbackOnce(bfz_close_callback,thiz);
