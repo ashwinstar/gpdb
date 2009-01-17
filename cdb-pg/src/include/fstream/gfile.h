@@ -5,6 +5,9 @@
 #include <sys/types.h>
 #include <bzlib.h>
 #include <zlib.h>
+#ifdef WIN32
+typedef long ssize_t;
+#endif
 
 /* The struct gfile_t is private.  Please do not use any of its fields. */
 typedef struct gfile_t{
