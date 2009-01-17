@@ -1,5 +1,6 @@
 /* pipe.c */
 
+#include "c.h"
 #include "storage/pipe.h"
 
 pipe_t*
