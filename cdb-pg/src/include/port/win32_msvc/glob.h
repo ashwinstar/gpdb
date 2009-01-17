@@ -38,7 +38,7 @@
 #define	_GLOB_H_
 
 /*#include <sys/cdefs.h>*/
-#include <sys/featuretest.h>
+/*#include <sys/featuretest.h>*/
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -100,9 +100,8 @@ int	glob(const char * __restrict, int,
 void	globfree(glob_t *);
 #else
 int	glob(const char * __restrict, int,
-	    int (*)(const char *, int), glob_t * __restrict)
-	__RENAME(__glob13);
-void	globfree(glob_t *) __RENAME(__globfree13);
+	    int (*)(const char *, int), glob_t * __restrict);
+void	globfree(glob_t *);
 #endif
 //__END_DECLS
 
