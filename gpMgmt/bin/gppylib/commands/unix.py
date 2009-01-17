@@ -90,7 +90,7 @@ class Ping(Command):
 class DiskUsage(Command):    
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):        
         self.directory=directory
-        cmdStr="%s -s %s" % (findCmdInPath('du'),directory)
+        cmdStr="ls -l -R %s | %s '{t+=\$5;} END{print t}'" % (directory,findCmdInPath('awk'))
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
