@@ -10,9 +10,8 @@
  *-------------------------------------------------------------------------
  */
 
-#include <stddef.h>
-
 #include "postgres.h"
+#include <stddef.h>
 #include "libpq/pqsignal.h"
 #include "cdb/cdbtimer.h"
 
