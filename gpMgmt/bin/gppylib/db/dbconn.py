@@ -17,6 +17,54 @@ except ImportError, e:
 class ConnectionError(StandardError): pass
 
 
+#TODO: find a better home for this
+gpconfig_Query = '''SELECT content, definedprimary, dbid, isprimary,
+                           valid, hostname, port, datadir
+                    FROM pg_catalog.gp_configuration
+                    ORDER BY content, definedprimary DESC '''
+
+def getConfig(conn):
+    rows = PgConn.execute(conn,gpconfig_Query)
+
+    rowList = []
+    for row in rows:
+        rowList.append(row)
+
+
+    return rowList
+
+
+def parseBool(val):
+    if val == 't':
+        return True
+    else:
+        return False
+
+
+def parseRow(row):
+    pass
+    #row['definedprimary'] = GpConfig.parseBool(row['definedprimary'])
+    #row['isprimary'] = GpConfig.parseBool(row['isprimary'])
+    #print "row valid? " + str(row['valid'])
+    #row['valid'] = GpConfig.parseBool(row['valid'])
+    #print "row valid2? " + str(row['valid'])
+
+def parseLine(line):
+    fields=line.split('|')
+    row={}
+    row['content']=int(fields[0])
+    row['definedprimary']=parseBool(fields[1])
+    row['dbid']=int(fields[2])
+    row['isprimary']=parseBool(fields[3])
+    row['valid']=parseBool(fields[4])
+    row['hostname']=fields[5]
+    row['port']=int(fields[6])
+    row['datadir']=fields[7].rstrip('\n')
+    return row
+
+
+
+
 
 class DbURL:
     """ DbURL is used to store all of the data required to get at a PG 

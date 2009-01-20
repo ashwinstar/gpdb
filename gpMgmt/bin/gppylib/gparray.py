@@ -10,8 +10,8 @@ from gppylib.commands.unix import *
 from gppylib.commands.pg import *
 from gppylib.commands.gp import *
 from gppylib.gplog import *
-from gppylib import gpconfig
-
+#from gppylib import gpconfig
+from gppylib.db import dbconn
     
 
 class GpDB:
@@ -103,9 +103,8 @@ class Segment:
 #--- factory methods for creating GpArray objects.
 def createGPDBFromDB(dbURL):
     """Constructor for building gparray from provided database URL"""    
-    conn = pgconn.PgConn.connect(dbUrl)
-    rows = gpconfig.getConfig(conn)
-    rows = gpconfig.getConfig(conn)
+    conn = dbconn.PgConn.connect(dbURL)
+    rows = dbconn.getConfig(conn)
     array =  GpArray(rows)
     conn.close()
     return array

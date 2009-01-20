@@ -233,7 +233,8 @@ class Kill(Command):
     def __init__(self,name,pid,signal,ctxt=LOCAL,remoteHost=None):
         self.pid=pid
         self.signal=signal
-        cmdStr="%s -s %s %s" % (findCmdInpath('kill'), signal, pid)
+        cmdStr="%s -s %s %s" % (findCmdInPath('kill'), signal, pid)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
     def local(name,pid,signal):
