@@ -11,8 +11,11 @@
 #ifndef _CDBGANG_H_
 #define _CDBGANG_H_
 
+#include "postgres.h"
 #include "cdb/cdbutil.h"
 #include "executor/execdesc.h"
+#include <pthread.h>
+
 
 struct Port;                    /* #include "libpq/libpq-be.h" */
 struct QueryDesc;               /* #include "executor/execdesc.h" */
@@ -129,11 +132,7 @@ extern int numDispatchAgents(void);
 extern int largestGangsize(void);
 extern struct DispatchAgentSet * getUnamedPortalDispatchAgents(void);
 
-extern int gp_pthread_create(
-#ifdef WIN32
-							 struct
-#endif
-							 pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
+extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 /*
  * cdbgang_parse_gpqeid_params
  *
