@@ -178,7 +178,7 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 			   3- I report error before seg X, and error message
 			   in seg X is thrown away.
 			*/
-			sleep(1);
+			pg_usleep(1000000);
 			elog(ERROR, "http response code %ld while %s", response_code, file->url);
 		}
 	}
@@ -1214,11 +1214,13 @@ interpretExitCode(int rc, char *buf, size_t buflen)
 		int signalCode = WTERMSIG(rc);
 		snprintf(buf, buflen, "TERMINATED by signal %s (%d)", getSignalNameFromCode(signalCode), signalCode);
 	}
+#ifndef WIN32
 	else if (WIFSTOPPED(rc))
 	{
 		int signalCode = WSTOPSIG(rc);
 		snprintf(buf, buflen, "STOPPED by signal %s (%d)", getSignalNameFromCode(signalCode), signalCode);
 	}
+#endif
 	else
 	{
 		snprintf(buf, buflen, "UNRECOGNIZED termination; rc=%#x", rc);
