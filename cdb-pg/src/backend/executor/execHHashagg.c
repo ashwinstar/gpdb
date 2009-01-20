@@ -1281,7 +1281,9 @@ writeHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 	int aggno;
 	AggStatePerAgg peragg = aggstate->peragg;
 
-	Assert(file_info != NULL && file_info->bfz != NULL);
+	Assert(file_info != NULL);
+	Assert(file_info->bfz != NULL);
+	Assert(file_info->bfz->freeable_stuff != NULL);
 
 	bfz_append(file_info->bfz, (void *)(&(entry->hashvalue)), sizeof(entry->hashvalue));
 
@@ -1309,7 +1311,8 @@ writeHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 	bfz_append(file_info->bfz, (char *)&total_size, sizeof(total_size));
 	bfz_append(file_info->bfz, entry->tuple_and_aggs, tuple_agg_size);
 	Assert(MAXALIGN(tuple_agg_size) - tuple_agg_size <= MAXIMUM_ALIGNOF);
-	bfz_append(file_info->bfz, padding_dummy, MAXALIGN(tuple_agg_size) - tuple_agg_size);
+	if (MAXALIGN(tuple_agg_size) - tuple_agg_size > 0)
+		bfz_append(file_info->bfz, padding_dummy, MAXALIGN(tuple_agg_size) - tuple_agg_size);
 
 	for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 	{
@@ -1325,7 +1328,8 @@ writeHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 			bfz_append(file_info->bfz,
 					   DatumGetPointer(pergroupstate->transValue), datum_size);
 			Assert(MAXALIGN(datum_size) - datum_size <= MAXIMUM_ALIGNOF);
-			bfz_append(file_info->bfz, padding_dummy, MAXALIGN(datum_size) - datum_size);
+			if (MAXALIGN(datum_size) - datum_size > 0)
+				bfz_append(file_info->bfz, padding_dummy, MAXALIGN(datum_size) - datum_size);
 		}
 	}
 
