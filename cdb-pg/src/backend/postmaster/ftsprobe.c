@@ -1173,15 +1173,21 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *change, char *ti
 
 	PGresult   *rs;
 
+	bool	valid;
+	bool	primary;
+
 	Assert(change != NULL);
 	Assert(time_str != NULL);
+
+	valid   = (change->newStatus & FTS_STATUS_ALIVE) ? true : false;
+	primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
 	count = snprintf(cmd, sizeof(cmd),
 					 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: fault mode %s marking as valid=%c isprimary=%c persist=%c')",
 					 time_str, change->dbid,
 					 (*ftsAction != FTS_READONLY) ? "\"RW\"" : "\"RO\"",
-					 FTS_STATUS_ISALIVE(change->dbid, ftsProbeInfo->fts_status) ? 't' : 'f',
-					 FTS_STATUS_ISPRIMARY(change->dbid, ftsProbeInfo->fts_status) ? 't' : 'f',
+					 valid ? 't' : 'f',
+					 primary ? 't' : 'f',
 					 change->persist ? 't' : 'f');
 
 	if (count >= sizeof(cmd))
@@ -1222,6 +1228,9 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 
 	PGresult   *rs=NULL;
 
+	bool	valid;
+	bool	primary;
+
 	Assert(changes != NULL);
 	Assert(changeCount > 0);
 
@@ -1233,10 +1242,13 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 			if (!changes[i].persist)
 				continue;
 
+			valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
+			primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
+
 			count = snprintf(cmd, sizeof(cmd),
 							 "update gp_configuration set valid='%c', isprimary='%c' where dbid=CAST(%d AS SMALLINT)",
-							 FTS_STATUS_ISALIVE(changes[i].dbid, ftsProbeInfo->fts_status) ? 't' : 'f',	 
-							 FTS_STATUS_ISPRIMARY(changes[i].dbid, ftsProbeInfo->fts_status) ? 't' : 'f',	 
+							 valid ? 't' : 'f',	 
+							 primary ? 't' : 'f',	 
 							 changes[i].dbid);
 
 			if (count >= sizeof(cmd))
