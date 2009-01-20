@@ -85,6 +85,7 @@ bfz_append(bfz_t * thiz, const char *buffer, int size)
 {
 	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
 
+	Assert(fs != NULL);
 	Assert(thiz->mode == BFZ_MODE_APPEND);
 	if (fs->buffer_pointer + size <= fs->buffer_end)
 	{
@@ -100,6 +101,7 @@ bfz_scan_peek(bfz_t * thiz, int size)
 {
 	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
 
+	Assert(fs != NULL);
 	Assert(thiz->mode == BFZ_MODE_SCAN);
 	if (fs->buffer_pointer + size > fs->buffer_end)
 		return NULL;
@@ -112,6 +114,7 @@ bfz_scan_next(bfz_t * thiz, char *buffer, int size)
 {
 	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
 
+	Assert(fs != NULL);
 	Assert(thiz->mode == BFZ_MODE_SCAN);
 	if (fs->buffer_pointer + size <= fs->buffer_end)
 	{
