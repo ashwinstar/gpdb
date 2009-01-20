@@ -73,12 +73,11 @@ gplogfilter -t -d2
 """]
 
 
-
-
 def parseargs():
     # Create our OptionParser object
     parser = OptParser(option_class=OptChecker,
-                       description=' '.join(description.split()))
+                       description=' '.join(description.split()), 
+                       version='%prog version $Revision$')
     parser.helpStr = _help
     parser.set_usage('%prog [--help] [options] [inputfile]...')
     parser.remove_option('-h')
