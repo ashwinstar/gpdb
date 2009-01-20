@@ -24,13 +24,15 @@ os.system('rm .figleaf')
 for root,dirs,files in os.walk(path):
         for f in files:
             if f.startswith("test") and not f.endswith(".pyc"):
-                print "Adding test %s/%s" % (root,f)
-                subdir = root.strip(path)
+                subdir = root.replace(path,'')
                 test = f.split('.')[0]                
                 if subdir == '':                   
+                    #print "Adding test: %s" % test
                     testfiles.append(test)
                 else:
-                    testfiles.append(subdir.lstrip('/').replace('/','.') + "." + test)
+                    test = subdir.lstrip('/').replace('/','.') + "." + test
+                    #print "Adding test: %s" % test
+                    testfiles.append(test)
           
 
 
@@ -39,6 +41,7 @@ testLoader = unittest.TestLoader()
 
 modules = []
 for n in testfiles:
+    #print "trying to import: " + n
     m = __import__(n, globals(), locals())
     #python import is strange with modules with '.' in them.    
     if n.find('.') != -1:
