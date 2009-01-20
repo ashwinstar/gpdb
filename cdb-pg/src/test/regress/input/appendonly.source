@@ -15,71 +15,30 @@ CREATE TABLE tenk_heap (
 	stringu1	name,
 	stringu2	name,
 	string4		name
-) with (appendonly=false);
+) with (appendonly=false) distributed by(unique1);
 
-CREATE TABLE tenk_ao1 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) with (appendonly=true, checksum=true);
-
-CREATE TABLE tenk_ao2 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) with (appendonly=true, compresslevel=0, blocksize=262144);
-
-CREATE TABLE tenk_ao3 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) with (appendonly=true, compresslevel=6, blocksize=1048576, checksum=true);
+--
+-- create few AO tables. test various reloptions combinations. use a sample
+-- of them (the first 4) for later testing.
+--
+-- valid
+CREATE TABLE tenk_ao1 (like tenk_heap) with (appendonly=true, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_ao2 (like tenk_heap) with (appendonly=true, compresslevel=0, blocksize=262144) distributed by(unique1);
+CREATE TABLE tenk_ao3 (like tenk_heap) with (appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_ao4 (like tenk_heap) with (appendonly=true, compresslevel=1, compresstype=quicklz) distributed by(unique1);
+CREATE TABLE tenk_ao5 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
+-- invalid
+CREATE TABLE tenk_ao6 (like tenk_heap) with (appendonly=false, compresslevel=6, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_ao7 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=quicklz) distributed by(unique1);
+CREATE TABLE tenk_ao8 (like tenk_heap) with (appendonly=true, blocksize=100) distributed by(unique1);
+CREATE TABLE tenk_ao9 (like tenk_heap) with (appendonly=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
 
 -------------------- 
 -- catalog checks
 --------------------
 
 -- check pg_appendonly
-SELECT c.relname, c.relkind, a.blocksize, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
 
 -------------------- 
 -- supported sql
@@ -90,30 +49,35 @@ COPY tenk_heap FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao1 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao2 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao3 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_ao4 FROM '@abs_srcdir@/data/tenk.data';
 
 -- SELECT
 SELECT count(*) FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
+SELECT count(*) FROM tenk_ao4;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
 
 -- INSERT SELECT
 INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
 INSERT INTO tenk_ao2 SELECT * FROM tenk_heap;
 INSERT INTO tenk_ao3 SELECT * FROM tenk_heap;
+INSERT INTO tenk_ao4 SELECT * FROM tenk_heap;
 
 -- mix and match some
 INSERT INTO tenk_ao1 SELECT * FROM tenk_ao1;
 INSERT INTO tenk_ao2 SELECT * FROM tenk_ao3;
 INSERT INTO tenk_ao3 SELECT * FROM tenk_ao2;
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
+INSERT INTO tenk_ao4 SELECT * FROM tenk_ao3;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
 
 -- SELECT
 SELECT count(*) FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT count(*) FROM tenk_ao4;
 
 --
 -- Test that the catalog eof entry doesn't change even if the file gets
@@ -133,10 +97,15 @@ COPY tenk_ao3 FROM STDIN;
 88888800	0	0	0	0	0	0	800	800	3800	8800	0	1	MAAAAA	AAAAAA	AAAAxx
 bad data row
 \.
+COPY tenk_ao4 FROM STDIN;
+88888800	0	0	0	0	0	0	800	800	3800	8800	0	1	MAAAAA	AAAAAA	AAAAxx
+bad data row
+\.
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
+SELECT count(*) FROM tenk_ao4;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
 
 -------------------- 
 -- transactionality
@@ -211,27 +180,33 @@ CLOSE foo4;
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
+DROP TABLE tenk_ao4;
 
 -- CTAS
 CREATE TABLE tenk_ao1 with(appendonly=true, checksum=true) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_ao2 with(appendonly=true, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_ao3 with(appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
-SELECT c.relname, c.relkind, a.blocksize, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
+CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT count(*) FROM tenk_ao4;
 
 -- VACUUM
 VACUUM tenk_ao1;
 VACUUM tenk_ao2;
 VACUUM tenk_ao3;
+VACUUM tenk_ao4;
 VACUUM FULL tenk_ao1;
 ANALYZE tenk_ao2;
+ANALYZE tenk_ao4;
 VACUUM ANALYZE tenk_ao3;
 
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
+SELECT count(*) FROM tenk_ao4;
 
 -- JOIN
 SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
@@ -289,4 +264,6 @@ DROP TABLE tenk_heap;
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
+DROP TABLE tenk_ao4;
+DROP TABLE tenk_ao5;
 DROP TABLE aowithoids;

@@ -29,12 +29,28 @@
 #include "cdb/cdbbufferedread.h"
 #include "cdb/cdbvarblock.h"
 
-#define DEFAULT_COMPRESS_LEVEL				  0
-#define MIN_APPENDONLY_BLOCK_SIZE			  8*1024
-#define DEFAULT_APPENDONLY_BLOCK_SIZE		  32*1024
-#define MAX_APPENDONLY_BLOCK_SIZE			  2*1024*1024
-#define DEFAULT_VARBLOCK_TEMPSPACE_LEN   4*1024 
-#define DEFAULT_FS_SAFE_WRITE_SIZE			  0
+#define DEFAULT_COMPRESS_LEVEL				 0
+#define MIN_APPENDONLY_BLOCK_SIZE			 8 * 1024
+#define DEFAULT_APPENDONLY_BLOCK_SIZE		32 * 1024
+#define MAX_APPENDONLY_BLOCK_SIZE			 2 * 1024 * 1024
+#define DEFAULT_VARBLOCK_TEMPSPACE_LEN   	 4 * 1024 
+#define DEFAULT_FS_SAFE_WRITE_SIZE			 0
+
+/*
+ *	Represents the compressor type used for an AO table.
+ *	Note that we treat quicklz with compression levels 1 and 3 as
+ *	two separate types of compressors, this is because we have to
+ *	compile them separately and have a separate API for each. Zlib
+ *	compression will have a compression level attached to it, checked
+ *	separately. 
+ */
+typedef enum CompressorType
+{
+	COMPTYPE_NONE,		/* no compression used */
+	COMPTYPE_ZLIB,	
+	COMPTYPE_QUICKLZ1,
+	COMPTYPE_QUICKLZ3
+} CompressorType;
 
 /*
  * AppendOnlyInsertDescData is used for inserting data into append-only
@@ -59,7 +75,8 @@ typedef struct AppendOnlyInsertDescData
 	bool			usingChecksum;
 	int32			headerLen;
 	uint8			*nonCompressedHeader;
-	int				compressLevel;  /* compression level 0-9 */
+	int				compressLevel;
+	CompressorType  compressType;
 	uint8			*tempSpace;
 	uint8			*uncompressedBuffer; /* used for compression */
 
@@ -76,6 +93,8 @@ typedef struct AppendOnlyInsertDescData
 	int32			toast_tuple_threshold;
 	int32			toast_tuple_target;
 
+	char 			*qlz_scratch;
+
 } AppendOnlyInsertDescData;
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
@@ -91,6 +110,8 @@ typedef struct AppendOnlyScanDescData
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
 	bool		aos_compressed;		/* is relation stored compressed? */
+	int			aos_compresslevel;  /* the compression level used */
+	CompressorType aos_compresstype;/* the compressor type used */
 	bool		aos_checksum;		/* is relation stored with checksums? */
 	
 	/* file segment scan state */
@@ -108,6 +129,7 @@ typedef struct AppendOnlyScanDescData
 	BufferedRead    bufferedRead;
 	VarBlockReader  varBlockReader;
 	MemoryContext	aoScanInitContext; /* mem context at init time */
+	char			*qlz_scratch;
 
 	int32			headerLen;
 	uint8			*uncompressedBuffer; /* for decompression */

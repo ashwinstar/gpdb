@@ -137,6 +137,7 @@ typedef FileScanDescData *FileScanDesc;
  * used for scan of append only relations using BufferedRead and VarBlocks
  * Defined in cdb/cdbappendonlyam.h
  */
+
 /*
   typedef AppendOnlyScanDescData *AppendOnlyScanDesc;
  */

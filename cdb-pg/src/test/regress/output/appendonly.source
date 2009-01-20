@@ -15,80 +15,39 @@ CREATE TABLE tenk_heap (
 	stringu1	name,
 	stringu2	name,
 	string4		name
-) with (appendonly=false);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE TABLE tenk_ao1 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) with (appendonly=true, checksum=true);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE TABLE tenk_ao2 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) with (appendonly=true, compresslevel=0, blocksize=262144);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE TABLE tenk_ao3 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-) with (appendonly=true, compresslevel=6, blocksize=1048576,checksum=true);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
-HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+) with (appendonly=false) distributed by(unique1);
+--
+-- create few AO tables. test various reloptions combinations. use a sample
+-- of them (the first 4) for later testing.
+--
+-- valid
+CREATE TABLE tenk_ao1 (like tenk_heap) with (appendonly=true, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_ao2 (like tenk_heap) with (appendonly=true, compresslevel=0, blocksize=262144) distributed by(unique1);
+CREATE TABLE tenk_ao3 (like tenk_heap) with (appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_ao4 (like tenk_heap) with (appendonly=true, compresslevel=1, compresstype=quicklz) distributed by(unique1);
+CREATE TABLE tenk_ao5 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
+-- invalid
+CREATE TABLE tenk_ao6 (like tenk_heap) with (appendonly=false, compresslevel=6, checksum=true) distributed by(unique1);
+ERROR:  invalid option 'compresslevel' for base relation. Only valid for Append Only relations
+CREATE TABLE tenk_ao7 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=quicklz) distributed by(unique1);
+ERROR:  compresslevel=6 is out of range for quicklz (should be 1 or 3)
+CREATE TABLE tenk_ao8 (like tenk_heap) with (appendonly=true, blocksize=100) distributed by(unique1);
+ERROR:  block size must be between 8KB and 2MB and be an 8KB multiple. Got 100
+CREATE TABLE tenk_ao9 (like tenk_heap) with (appendonly=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
+ERROR:  compresstype can't be used with compresslevel 0
 -------------------- 
 -- catalog checks
 --------------------
 -- check pg_appendonly
-SELECT c.relname, c.relkind, a.blocksize, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
- relname  | relkind | blocksize | compresslevel | checksum 
-----------+---------+-----------+---------------+----------
- tenk_ao1 | r       |     32768 |             0 | t
- tenk_ao2 | r       |    262144 |             0 | f
- tenk_ao3 | r       |   1048576 |             6 | t
-(3 rows)
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
+ relname  | blocksize | compresstype | compresslevel | checksum 
+----------+-----------+--------------+---------------+----------
+ tenk_ao1 |     32768 |              |             0 | t
+ tenk_ao2 |    262144 |              |             0 | f
+ tenk_ao3 |   1048576 | zlib         |             6 | t
+ tenk_ao4 |     32768 | quicklz      |             1 | f
+ tenk_ao5 |   1048576 | zlib         |             6 | t
+(5 rows)
 
 -------------------- 
 -- supported sql
@@ -98,6 +57,7 @@ COPY tenk_heap FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao1 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao2 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao3 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_ao4 FROM '@abs_srcdir@/data/tenk.data';
 -- SELECT
 SELECT count(*) FROM tenk_heap;
  count 
@@ -123,24 +83,32 @@ SELECT count(*) FROM tenk_ao3;
  10000
 (1 row)
 
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
- aototal | aototal | aototal 
----------+---------+---------
-   10000 |   10000 |   10000
+SELECT count(*) FROM tenk_ao4;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
+ aototal | aototal | aototal | aototal 
+---------+---------+---------+---------
+   10000 |   10000 |   10000 |   10000
 (1 row)
 
 -- INSERT SELECT
 INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
 INSERT INTO tenk_ao2 SELECT * FROM tenk_heap;
 INSERT INTO tenk_ao3 SELECT * FROM tenk_heap;
+INSERT INTO tenk_ao4 SELECT * FROM tenk_heap;
 -- mix and match some
 INSERT INTO tenk_ao1 SELECT * FROM tenk_ao1;
 INSERT INTO tenk_ao2 SELECT * FROM tenk_ao3;
 INSERT INTO tenk_ao3 SELECT * FROM tenk_ao2;
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
- aototal | aototal | aototal 
----------+---------+---------
-   40000 |   40000 |   60000
+INSERT INTO tenk_ao4 SELECT * FROM tenk_ao3;
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
+ aototal | aototal | aototal | aototal 
+---------+---------+---------+---------
+   40000 |   40000 |   60000 |   80000
 (1 row)
 
 -- SELECT
@@ -166,6 +134,12 @@ SELECT count(*) FROM tenk_ao3;
  count 
 -------
  60000
+(1 row)
+
+SELECT count(*) FROM tenk_ao4;
+ count 
+-------
+ 80000
 (1 row)
 
 --
@@ -183,6 +157,9 @@ CONTEXT:  COPY tenk_ao2, line 2: "bad data row"
 COPY tenk_ao3 FROM STDIN;
 ERROR:  missing data for column "unique2"
 CONTEXT:  COPY tenk_ao3, line 2: "bad data row"
+COPY tenk_ao4 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_ao4, line 2: "bad data row"
 SELECT count(*) FROM tenk_ao1;
  count 
 -------
@@ -201,10 +178,16 @@ SELECT count(*) FROM tenk_ao3;
  60000
 (1 row)
 
-SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3');
- aototal | aototal | aototal 
----------+---------+---------
-   40000 |   40000 |   60000
+SELECT count(*) FROM tenk_ao4;
+ count 
+-------
+ 80000
+(1 row)
+
+SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
+ aototal | aototal | aototal | aototal 
+---------+---------+---------+---------
+   40000 |   40000 |   60000 |   80000
 (1 row)
 
 -------------------- 
@@ -360,6 +343,7 @@ CLOSE foo4;
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
+DROP TABLE tenk_ao4;
 -- CTAS
 CREATE TABLE tenk_ao1 with(appendonly=true, checksum=true) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
@@ -370,13 +354,18 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 CREATE TABLE tenk_ao3 with(appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-SELECT c.relname, c.relkind, a.blocksize, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
- relname  | relkind | blocksize | compresslevel | checksum 
-----------+---------+-----------+---------------+----------
- tenk_ao1 | r       |     32768 |             0 | t
- tenk_ao2 | r       |    262144 |             0 | f
- tenk_ao3 | r       |   1048576 |             6 | t
-(3 rows)
+CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
+ relname  | blocksize | compresstype | compresslevel | checksum 
+----------+-----------+--------------+---------------+----------
+ tenk_ao1 |     32768 |              |             0 | t
+ tenk_ao2 |    262144 |              |             0 | f
+ tenk_ao3 |   1048576 | zlib         |             6 | t
+ tenk_ao4 |     32768 | quicklz      |             1 | f
+ tenk_ao5 |   1048576 | zlib         |             6 | t
+(5 rows)
 
 SELECT count(*) FROM tenk_ao1;
  count 
@@ -396,14 +385,22 @@ SELECT count(*) FROM tenk_ao3;
  10000
 (1 row)
 
+SELECT count(*) FROM tenk_ao4;
+ count 
+-------
+ 10000
+(1 row)
+
 -- VACUUM
 VACUUM tenk_ao1;
 VACUUM tenk_ao2;
 VACUUM tenk_ao3;
+VACUUM tenk_ao4;
 VACUUM FULL tenk_ao1;
 NOTICE:  'VACUUM FULL' is not safe for large tables and has been known to yield unpredictable runtimes.
 HINT:  Use 'VACUUM' instead.
 ANALYZE tenk_ao2;
+ANALYZE tenk_ao4;
 VACUUM ANALYZE tenk_ao3;
 SELECT count(*) FROM tenk_ao1;
  count 
@@ -418,6 +415,12 @@ SELECT count(*) FROM tenk_ao2;
 (1 row)
 
 SELECT count(*) FROM tenk_ao3;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao4;
  count 
 -------
  10000
@@ -513,4 +516,6 @@ DROP TABLE tenk_heap;
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
+DROP TABLE tenk_ao4;
+DROP TABLE tenk_ao5;
 DROP TABLE aowithoids;

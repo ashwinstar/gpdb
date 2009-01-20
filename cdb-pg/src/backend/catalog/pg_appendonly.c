@@ -33,7 +33,8 @@ InsertAppendOnlyEntry(Oid relid,
 					  int blocksize, 
 					  int safefswritesize, 
 					  int compresslevel,
-					  bool checksum)
+					  bool checksum,
+					  char* compresstype)
 {
 	Relation	pg_appendonly_rel;
 	HeapTuple	pg_appendonly_tuple = NULL;
@@ -59,6 +60,19 @@ InsertAppendOnlyEntry(Oid relid,
 	values[Anum_pg_appendonly_majorversion - 1] = Int32GetDatum(majorversion);
 	values[Anum_pg_appendonly_minorversion - 1] = Int32GetDatum(minorversion);
 	values[Anum_pg_appendonly_checksum - 1] = BoolGetDatum(checksum);
+	
+	if(compresstype)
+	{
+		values[Anum_pg_appendonly_compresstype - 1] = DirectFunctionCall1(textin,
+																		  CStringGetDatum(compresstype));
+					
+	}
+	else
+	{
+		Assert(compresslevel == 0);
+		nulls[Anum_pg_appendonly_compresstype - 1] = 'n';
+	}
+	
 	
 	/*
 	 * form the tuple and insert it
@@ -92,6 +106,7 @@ GetAppendOnlyEntry(Oid relid)
 	Datum		blocksize,
 				safefswritesize,
 				compresslevel,
+				compresstype,
 				majorversion,
 				minorversion;
 	bool		checksum,
@@ -188,6 +203,25 @@ GetAppendOnlyEntry(Oid relid)
 							pg_appendonly_rel->rd_att, 
 							&isNull);
 	
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid checksum value: NULL")));	
+
+	/* get the compressor type */
+	compresstype = heap_getattr(tuple, 
+								Anum_pg_appendonly_compresstype, 
+								pg_appendonly_rel->rd_att, 
+								&isNull);
+	
+	if(isNull)
+	{
+		Assert(DatumGetInt16(compresslevel) == 0);
+		aoentry->compresstype = NULL;
+	}
+	else
+		aoentry->compresstype = DatumGetCString(DirectFunctionCall1(textout, compresstype));
+	
 	aoentry->blocksize = DatumGetInt32(blocksize);
 	aoentry->safefswritesize = DatumGetInt32(safefswritesize);
 	aoentry->compresslevel = DatumGetInt16(compresslevel);
@@ -195,7 +229,7 @@ GetAppendOnlyEntry(Oid relid)
 	aoentry->minorversion = DatumGetInt16(minorversion);
 	aoentry->checksum = DatumGetBool(checksum);
 	
-	/* Finish up scan and close appendonly catalog. */
+	/* Finish up scan and close pg_appendonly catalog. */
 	systable_endscan(aoscan);
 	
 	heap_close(pg_appendonly_rel, RowExclusiveLock);

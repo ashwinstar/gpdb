@@ -921,8 +921,6 @@ static char *get_th(char *num, int type);
 static char *str_numth(char *dest, char *num, int type);
 static int	strspace_len(char *str);
 static int	strdigits_len(char *str);
-static char *str_toupper(char *buff);
-static char *str_tolower(char *buff);
 
 /* static int is_acdc(char *str, int *len); */
 static int	seq_search(char *name, char **array, int type, int max, int *len);
@@ -1503,7 +1501,7 @@ str_numth(char *dest, char *num, int type)
  * Convert string to upper case. Input string is modified in place.
  * ----------
  */
-static char *
+char *
 str_toupper(char *buff)
 {
 	char	   *p_buff = buff;
@@ -1524,7 +1522,7 @@ str_toupper(char *buff)
  * Convert string to lower case. Input string is modified in place.
  * ----------
  */
-static char *
+char *
 str_tolower(char *buff)
 {
 	char	   *p_buff = buff;

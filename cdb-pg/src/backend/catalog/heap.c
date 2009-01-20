@@ -849,6 +849,7 @@ heap_create_with_catalog(const char *relname,
 								 stdRdOptions->blocksize, 
 								 safefswritesize,
 								 stdRdOptions->compresslevel,
+								 stdRdOptions->compresstype,
 								 stdRdOptions->checksum,
 								 relkind);
 	if(appendOnlyRel)
@@ -961,7 +962,8 @@ heap_create_with_catalog(const char *relname,
 							  stdRdOptions->blocksize, 
 							  safefswritesize,
 							  stdRdOptions->compresslevel,
-							  stdRdOptions->checksum);
+							  stdRdOptions->checksum,
+							  stdRdOptions->compresstype);
 	}
 			
 	

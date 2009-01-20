@@ -599,6 +599,7 @@ order by c.relname, a.attnum;
  pg_appendonly            | majorversion                      |      5 | int2            |      2 |        -1
  pg_appendonly            | minorversion                      |      6 | int2            |      2 |        -1
  pg_appendonly            | checksum                          |      7 | bool            |      1 |        -1
+ pg_appendonly            | compresstype                      |      8 | text            |     -1 |        -1
  pg_attrdef               | adrelid                           |      1 | oid             |      4 |        -1
  pg_attrdef               | adnum                             |      2 | int2            |      2 |        -1
  pg_attrdef               | adbin                             |      3 | text            |     -1 |        -1
@@ -963,7 +964,7 @@ order by c.relname, a.attnum;
  sql_sizing_profiles      | profile_id                        |      3 | character_data  |     -1 |        -1
  sql_sizing_profiles      | required_value                    |      4 | cardinal_number |      4 |        -1
  sql_sizing_profiles      | comments                          |      5 | character_data  |     -1 |        -1
-(442 rows)
+(443 rows)
 
 -- end_equivalent
 -- begin_equivalent 

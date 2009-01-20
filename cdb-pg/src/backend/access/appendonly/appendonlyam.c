@@ -60,6 +60,8 @@
 #include "utils/syscache.h"
 #include "storage/freespace.h"
 #include "storage/smgr.h"
+#include "storage/quicklz1.h"
+#include "storage/quicklz3.h"
 #include "utils/guc.h"
 
 #ifdef HAVE_LIBZ
@@ -77,19 +79,20 @@ typedef enum AoExecutorBlockKind
 	MaxAoExecutorBlockKind /* must always be last */
 } AoExecutorBlockKind;
 
-static void doCompressAppend(
-							 AppendOnlyInsertDesc 	aoInsertDesc,
+static void doCompressAppend(AppendOnlyInsertDesc 	aoInsertDesc,
 							 uint8					*sourceData,
 							 int32			 		sourceLen,
 							 int					executorBlockKind,
-							 int			 		itemCount,
-							 int			 		compressLevel);
+							 int			 		itemCount);
+
 static void doDecompress(AppendOnlyScanDesc scan,
 							 uint8			*compressed,
 							 int32			compressedLen,
 							 uint8			*uncompressed,
 							 int32			uncompressedLen);
+
 static int32 getLimitedMaxBufferLen(int32 maxBufferLen);
+static CompressorType CompressorStrToType(const char* comp_str, int comp_level);
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
@@ -294,6 +297,27 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	 */
 	oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
 	scan->uncompressedBuffer = (uint8 *) palloc(scan->maxBufferLen * sizeof(uint8));
+	
+	/*
+	 * if quicklz compression used, prepare scratch space for decompression.
+	 */
+	switch(scan->aos_compresstype)
+	{
+		case COMPTYPE_QUICKLZ1:
+			scan->qlz_scratch = (char*) palloc(QLZ1_SCRATCH_DECOMPRESS);
+			memset(scan->qlz_scratch, 0, QLZ1_SCRATCH_DECOMPRESS);		
+			break;
+		case COMPTYPE_QUICKLZ3:
+			scan->qlz_scratch = (char*) palloc(QLZ3_SCRATCH_DECOMPRESS);
+			memset(scan->qlz_scratch, 0, QLZ3_SCRATCH_DECOMPRESS);		
+			break;
+		case COMPTYPE_ZLIB:
+		case COMPTYPE_NONE:
+			break; /* nothing to do */
+		default:
+			Insist(false);
+	}
+	
 	MemoryContextSwitchTo(oldcontext);
 	
 	/*
@@ -1281,8 +1305,7 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 					 aoInsertDesc->uncompressedBuffer, 
 					 dataLen,
 					 executorBlockKind,
-					 itemCount,
-					 aoInsertDesc->compressLevel);
+					 itemCount);
 	}
 }
 
@@ -1301,6 +1324,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 {
 	AppendOnlyScanDesc	scan;
 	AppendOnlyEntry		*aoentry;
+	char*				comptype;
 	int					complevel;
 	
 	/*
@@ -1322,6 +1346,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	 */
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
 	complevel = aoentry->compresslevel;
+	comptype = aoentry->compresstype;
 	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
 	
 	/*
@@ -1339,6 +1364,9 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	scan->largeReadLen = 2 * scan->maxBufferLen;
 	scan->aoScanInitContext = CurrentMemoryContext;
 	scan->aos_compressed = (complevel > 0 ? true : false);
+	scan->aos_compresslevel = complevel;
+	scan->aos_compresstype = CompressorStrToType(comptype, complevel);
+		
 	scan->aos_checksum = aoentry->checksum;
 			
 	scan->headerLen = AppendOnlyStorage_HeaderLenNeeded(scan->aos_checksum);
@@ -1499,7 +1527,9 @@ appendonly_insert_init(Relation rel, int segno)
 
 	aoInsertDesc->safefswritesize = aoentry->safefswritesize;
 	aoInsertDesc->compressLevel = aoentry->compresslevel;
+	aoInsertDesc->compressType = CompressorStrToType(aoentry->compresstype, aoentry->compresslevel);
 	aoInsertDesc->shouldCompress = (aoInsertDesc->compressLevel > 0 ? true : false);
+	
 	aoInsertDesc->usingChecksum = aoentry->checksum;
 
 	aoInsertDesc->maxBufferLen = getLimitedMaxBufferLen(aoentry->blocksize);
@@ -1510,18 +1540,44 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->maxBufferLen;
 
 	aoInsertDesc->nonCompressedHeader = NULL;
-	
+
 	if (aoInsertDesc->shouldCompress)
+	{
 		aoInsertDesc->uncompressedBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
+		
+		/*
+		 * if quicklz compression used, set up scratch space.
+		 */
+		switch(aoInsertDesc->compressType)
+		{
+			case COMPTYPE_QUICKLZ1:
+				aoInsertDesc->qlz_scratch = (char*) palloc(QLZ1_SCRATCH_COMPRESS);
+				memset(aoInsertDesc->qlz_scratch, 0, QLZ1_SCRATCH_COMPRESS);			
+				break;
+			case COMPTYPE_QUICKLZ3:
+				aoInsertDesc->qlz_scratch = (char*) palloc(QLZ3_SCRATCH_COMPRESS);
+				memset(aoInsertDesc->qlz_scratch, 0, QLZ3_SCRATCH_COMPRESS);			
+				break;
+			case COMPTYPE_ZLIB:
+				break; /* nothing to do */
+			case COMPTYPE_NONE:
+			default:
+				Insist(false);
+		}
+
+	}
 	else
+	{
 		aoInsertDesc->uncompressedBuffer = NULL;
+		aoInsertDesc->qlz_scratch = NULL;		
+	}
 	
 	aoInsertDesc->tempSpaceLen = aoInsertDesc->maxBufferLen / 8; /* TODO - come up with a more efficient calculation */
 	aoInsertDesc->tempSpace = (uint8 *) palloc(aoInsertDesc->tempSpaceLen * sizeof(uint8));
 	maxtupsize = aoInsertDesc->maxDataLen - VARBLOCK_HEADER_LEN - 4;
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
-	
+		
 	memoryLen = BufferedAppendMemoryLen(aoInsertDesc->maxBufferLen, aoInsertDesc->largeWriteLen);
 	memory = (uint8*)palloc(memoryLen);
 	
@@ -1751,37 +1807,92 @@ tryToCompress(
 	 uint8		*compressedBuffer,
 	 int32		maxCompressedLen,
 	 int32		*compressedLen,
-	 int		compressLevel)
+	 int		compressLevel,
+	 CompressorType  compressType,
+	 char		*qlz_scratch)
 {
-#ifndef HAVE_LIBZ
-	ereport(ERROR,
-			(errcode(ERRCODE_GP_INTERNAL_ERROR),
-			 errmsg("Don't have ZLIB on the system!")));
-	*compressedLen = 0;
-	return -1;	// Never reaches here.
-#else
-	int				zlibCompressError;
 	unsigned long 	compressedSize;
-		
-	/* 
-	 * On input, the 2nd 'destLen' parameter to compress2 is the maximum size
-	 * of the compression buffer.  On output, it is the resulting compressed
-	 * length.
-	 */
-	compressedSize = (unsigned long)maxCompressedLen; 
 	
-	zlibCompressError = compress2(
-							compressedBuffer, &compressedSize, 
-					        (Bytef *)sourceData, sourceLen, 
-					        compressLevel);
-	if (zlibCompressError != Z_OK)
-		return zlibCompressError;
+	Assert(compressLevel > 0);
+	
+	if(compressType == COMPTYPE_ZLIB)
+	{
+
+#ifndef HAVE_LIBZ
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Don't have ZLIB on the system!")));
+		*compressedLen = 0;
+		return -1;	// Never reaches here.
+#else
+		int				zlibCompressError;
+
+		/* 
+		 * On input, the 2nd 'destLen' parameter to compress2 is the maximum size
+		 * of the compression buffer.  On output, it is the resulting compressed
+		 * length.
+		 */
+		compressedSize = (unsigned long)maxCompressedLen; 
+		
+		zlibCompressError = compress2(compressedBuffer, &compressedSize, 
+									  (Bytef *)sourceData, sourceLen, 
+									  compressLevel);
+		
+		if (zlibCompressError != Z_OK)
+			return zlibCompressError;
+#endif
+	}
+	else if(compressType == COMPTYPE_QUICKLZ1)
+	{
+		Insist(compressLevel == 1);
+
+		compressedSize = qlz1_compress((const void *)sourceData, 
+									  (char *)compressedBuffer, 
+									  (size_t)sourceLen, 
+									  qlz_scratch);
+	    
+		if(compressedSize > (unsigned long)maxCompressedLen)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Quicklz level 1 compressed size larger than max "
+							"allowed size")));
+			
+		if(compressedSize > sourceLen)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Quicklz level 1 compressed size (%u) larger than "
+							"uncompressed size (%u)", (unsigned int)sourceLen, 
+							(unsigned int)compressedSize)));		
+	}
+	else /* COMPTYPE_QUICKLZ3 */
+	{
+		Insist(compressType == COMPTYPE_QUICKLZ3);
+		Insist(compressLevel == 3);
+		
+		compressedSize = qlz3_compress((const void *)sourceData, 
+									  (char *)compressedBuffer, 
+									  (size_t)sourceLen, 
+									  qlz_scratch);
+	    
+		if(compressedSize > (unsigned long)maxCompressedLen)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Quicklz level 3 compressed size larger than max "
+							"allowed size")));
+			
+		if(compressedSize > sourceLen)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Quicklz level 3 compressed size (%u) larger than "
+							"uncompressed size (%u)", (unsigned int)sourceLen, 
+							(unsigned int)compressedSize)));		
+
+	}
 	
 	Assert(compressedSize > 0);
 	*compressedLen = (int32)compressedSize;
 
 	return Z_OK;
-#endif
 }
 
 /*
@@ -1793,8 +1904,7 @@ doCompressAppend(
 	 uint8					*sourceData,
 	 int32			 		sourceLen,
 	 int					executorBlockKind,
-	 int			 		itemCount,
-	 int			 		compressLevel)
+	 int			 		itemCount)
 {
 	BufferedAppend *bufferedAppend = &aoInsertDesc->bufferedAppend;
 	uint8			*header;
@@ -1828,7 +1938,10 @@ doCompressAppend(
 					dataBuffer,
 					/* maxCompressedLen */ sourceLen,	// Limit compression to be no more than the input size.
 					&compressedLen,
-					compressLevel);
+					aoInsertDesc->compressLevel,
+					aoInsertDesc->compressType,
+					aoInsertDesc->qlz_scratch);
+	
 	if (res == Z_OK)
 	{
 		/*
@@ -1954,7 +2067,6 @@ doDecompress(AppendOnlyScanDesc scan,
 			uint8			*uncompressed,
 			int32			uncompressedLen)
 {
-	int res;
 	unsigned long compressedSize;
 	unsigned long uncompressedSize;
 
@@ -1963,48 +2075,69 @@ doDecompress(AppendOnlyScanDesc scan,
 	compressedSize = (unsigned long)compressedLen;
 	uncompressedSize = (unsigned long)uncompressedLen;
 
-#ifndef HAVE_LIBZ
-	ereport(ERROR,
-			(errcode(ERRCODE_GP_INTERNAL_ERROR),
-			 errmsg("Don't have ZLIB on the system!")));			
-#else
-	res = uncompress(uncompressed, &uncompressedSize, 
-	                 (Bytef *)compressed, compressedSize);
-
-	if (res != Z_OK)
+	if(scan->aos_compresstype == COMPTYPE_ZLIB)
 	{
-		char *detail = NULL;
+		int res;
 		
-		switch(res)
+#ifndef HAVE_LIBZ
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Don't have ZLIB on the system!")));			
+#else		
+		res = uncompress(uncompressed, &uncompressedSize, 
+						 (Bytef *)compressed, compressedSize);
+	
+		if (res != Z_OK)
 		{
-			case Z_MEM_ERROR:
-				detail = "Insufficient memory";
-				break;
-			case Z_BUF_ERROR:
-				detail = "The buffer was not large enough to hold the uncompressed data";
-				break;
-			case Z_DATA_ERROR:
-				detail = "The compressed data was corrupted";
-				break;
-			default:
-				elog(ERROR,"ZLIB uncompress failed -- reason %d unknown (output buffer length %d, compressed length %d)",
-					 res, uncompressedLen, compressedLen);
-				break;
-		}
-
-		elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d, (block count " INT64_FORMAT "))",
-			 detail, uncompressedLen, compressedLen, scan->bufferCount);
+			char *detail = NULL;
+			
+			switch(res)
+			{
+				case Z_MEM_ERROR:
+					detail = "Insufficient memory";
+					break;
+				case Z_BUF_ERROR:
+					detail = "The buffer was not large enough to hold the uncompressed data";
+					break;
+				case Z_DATA_ERROR:
+					detail = "The compressed data was corrupted";
+					break;
+				default:
+					elog(ERROR,"ZLIB uncompress failed -- reason %d unknown (output buffer length %d, compressed length %d)",
+						 res, uncompressedLen, compressedLen);
+					break;
+			}
+	
+			elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d, (block count " INT64_FORMAT "))",
+				 detail, uncompressedLen, compressedLen, scan->bufferCount);
+		}	
+#endif
 	}
+	else if(scan->aos_compresstype == COMPTYPE_QUICKLZ1)
+	{
+		uncompressedSize = qlz1_decompress((const char *)compressed, 
+										  uncompressed, 
+										  scan->qlz_scratch);
+	}
+	else
+	{
+		Insist(scan->aos_compresstype == COMPTYPE_QUICKLZ3);
 
+		uncompressedSize = qlz3_decompress((const char *)compressed, 
+										  uncompressed, 
+										  scan->qlz_scratch);
+
+	}
+	
 	resultingUncompressedLen = (int32)uncompressedSize;
 
 	if (resultingUncompressedLen != uncompressedLen)
 		elog(ERROR, 
-			 "Uncompress returned length %d which is different than the expected length %d (block count " INT64_FORMAT ")",
+			 "Uncompress returned length %d which is different than the " 
+			 "expected length %d (block count " INT64_FORMAT ")",
 			 resultingUncompressedLen,
 			 uncompressedLen,
 			 scan->bufferCount);
-#endif
 }
 
 /*
@@ -2044,4 +2177,45 @@ getLimitedMaxBufferLen(int32 maxBufferLen)
 	
 	return result;
 }
+
+static CompressorType CompressorStrToType(const char* comp_str, int comp_level)
+{
+	CompressorType comptype = COMPTYPE_NONE;
+	
+	if (!comp_str)
+	{
+		comptype = COMPTYPE_NONE;		
+	}
+	else if (pg_strcasecmp(comp_str, "zlib") == 0)
+	{
+		comptype = COMPTYPE_ZLIB;		
+	}
+	else if (pg_strcasecmp(comp_str, "quicklz") == 0)
+	{
+		switch(comp_level)
+		{
+			case 1:
+				comptype = COMPTYPE_QUICKLZ1;
+				break;
+			case 3:
+				comptype = COMPTYPE_QUICKLZ3;
+				break;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Found quicklz with unsupported compression "
+								"level %d", comp_level)));
+		}
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Found undefined compressor %s", comp_str)));
+
+	}
+	
+	return comptype;
+}
+
 
