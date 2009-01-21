@@ -35,9 +35,9 @@ select lanname, lanispl, lanpltrusted from pg_language;
 --    the segments (but perhaps not desirable?)
 --
 CREATE EXTERNAL WEB TABLE env_segment(var text, value text) 
-EXECUTE 'env' format 'text' (delimiter '=');
+EXECUTE 'env | grep -v "=.*="' format 'text' (delimiter '=');
 CREATE EXTERNAL WEB TABLE env_master(var text, value text) 
-EXECUTE 'env' on master format 'text' (delimiter '=');
+EXECUTE 'env | grep -v "=.*="' on master format 'text' (delimiter '=');
 CREATE VIEW env AS
   SELECT gp_execution_segment(), * FROM env_segment
   UNION ALL
@@ -60,6 +60,8 @@ SELECT * FROM env WHERE var in (
 -- All of these checks should return a single row because it should produce
 -- a constant across all segments and the master.
 --
+-- The current expected version is 2.5.1
+--
 CREATE OR REPLACE FUNCTION python_version() returns text as $$
 import sys
 return sys.version_info
@@ -67,25 +69,39 @@ $$ language plpythonu;
 
 SELECT python_version() FROM env GROUP BY python_version;
 
-CREATE OR REPLACE FUNCTION python_path() returns text as $$
-import sys
-return sys.path[0]
-$$ language plpythonu;
--- ignore
-SELECT python_path() FROM env GROUP BY python_path;
-
+--
+-- Same check for perl version
+--
+-- Expected version is perl 5.008xxx
+--
 CREATE OR REPLACE FUNCTION perl_version() returns text as $$
 return "Perl $]"
 $$ language plperlu;
 
+-- ignore
 SELECT perl_version() FROM env GROUP BY perl_version;
+
+
+--
+-- The following two checks need to be put into big ignore blocks
+-- because paths can be of differing lengths
+--
+-- start_ignore
+
+CREATE OR REPLACE FUNCTION python_path() returns text as $$
+import sys
+return sys.path[0]
+$$ language plpythonu;
+
+SELECT python_path() FROM env GROUP BY python_path;
 
 CREATE OR REPLACE FUNCTION perl_path() returns text as $$
 return join(':', @INC)
 $$ language plperlu;
--- ignore
+
 SELECT perl_path() FROM env GROUP BY perl_path;
 
+-- end_ignore
 
 --
 -- Create a harness to run shell commands and output stderr and stdout
@@ -195,17 +211,17 @@ SELECT mapreduce('@abs_srcdir@/yml/agebracket.yml') ORDER BY 1;
 --
 -- Test 6) File Output tests
 --
-SELECT execute('rm @abs_srcdir@/results/fileout_*.out') ORDER BY 1;
+SELECT execute('rm @abs_builddir@/results/fileout_*.out') ORDER BY 1;
 
 SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_none.out') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_replace.out') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_append.out') ORDER BY 1;
+SELECT execute('cat @abs_builddir@/results/fileout_none.out') ORDER BY 1;
+SELECT execute('cat @abs_builddir@/results/fileout_replace.out') ORDER BY 1;
+SELECT execute('cat @abs_builddir@/results/fileout_append.out') ORDER BY 1;
 
 SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_none.out') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_replace.out') ORDER BY 1;
-SELECT execute('cat @abs_srcdir@/results/fileout_append.out') ORDER BY 1;
+SELECT execute('cat @abs_builddir@/results/fileout_none.out') ORDER BY 1;
+SELECT execute('cat @abs_builddir@/results/fileout_replace.out') ORDER BY 1;
+SELECT execute('cat @abs_builddir@/results/fileout_append.out') ORDER BY 1;
 
 
 -- 

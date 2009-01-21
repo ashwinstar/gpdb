@@ -86,6 +86,8 @@ SELECT * FROM env WHERE var in (
 -- All of these checks should return a single row because it should produce
 -- a constant across all segments and the master.
 --
+-- The current expected version is 2.5.1
+--
 CREATE OR REPLACE FUNCTION python_version() returns text as $$
 import sys
 return sys.version_info
@@ -96,36 +98,46 @@ SELECT python_version() FROM env GROUP BY python_version;
  (2, 5, 1, 'final', 0)
 (1 row)
 
+--
+-- Same check for perl version
+--
+-- Expected version is perl 5.008xxx
+--
+CREATE OR REPLACE FUNCTION perl_version() returns text as $$
+return "Perl $]"
+$$ language plperlu;
+-- ignore
+SELECT perl_version() FROM env GROUP BY perl_version;
+ perl_version  
+---------------
+ Perl 5.008005
+(1 row)
+
+--
+-- The following two checks need to be put into big ignore blocks
+-- because paths can be of differing lengths
+--
+-- start_ignore
 CREATE OR REPLACE FUNCTION python_path() returns text as $$
 import sys
 return sys.path[0]
 $$ language plpythonu;
--- ignore
 SELECT python_path() FROM env GROUP BY python_path;
-                 python_path                  
-----------------------------------------------
- /Users/cwelton/greenplum-db-devel/lib/python
-(1 row)
-
-CREATE OR REPLACE FUNCTION perl_version() returns text as $$
-return "Perl $]"
-$$ language plperlu;
-SELECT perl_version() FROM env GROUP BY perl_version;
- perl_version  
----------------
- Perl 5.008008
+                 python_path                 
+---------------------------------------------
+ /home/cwelton/greenplum-db-devel/lib/python
 (1 row)
 
 CREATE OR REPLACE FUNCTION perl_path() returns text as $$
 return join(':', @INC)
 $$ language plperlu;
--- ignore
 SELECT perl_path() FROM env GROUP BY perl_path;
                                                                                                                                                                                                       perl_path                                                                                                                                                                                                      
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  /System/Library/Perl/5.8.8/darwin-thread-multi-2level:/System/Library/Perl/5.8.8:/Library/Perl/5.8.8/darwin-thread-multi-2level:/Library/Perl/5.8.8:/Library/Perl:/Network/Library/Perl/5.8.8/darwin-thread-multi-2level:/Network/Library/Perl/5.8.8:/Network/Library/Perl:/System/Library/Perl/Extras/5.8.8/darwin-thread-multi-2level:/System/Library/Perl/Extras/5.8.8:/Library/Perl/5.8.6:/Library/Perl/5.8.1:.
 (1 row)
 
+-- end_ignore
 --
 -- Create a harness to run shell commands and output stderr and stdout
 --
@@ -459,7 +471,7 @@ row 3,data 3
 -- 
 -- Test 7) Perl syntax error lineno reporting
 --
-SELECT mapreduce('@abs_builddir@/yml/perlerror.yml') ORDER BY 1;
+SELECT mapreduce('@abs_srcdir@/yml/perlerror.yml') ORDER BY 1;
 mapreduce
 ---------------------
 STDERR> ERROR:  creation of Perl function failed
