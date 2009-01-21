@@ -6,8 +6,37 @@
 
 """
 
+import dbconn
 
 class CatalogError(Exception): pass
+
+
+def getDatabaseList(conn):
+    sql = "SELECT datname FROM pg_catalog.pg_database"
+    cursor=None
+    try:
+        cursor=dbconn.execSQL(conn,sql)
+        rows=cursor.fetchall()
+        return rows
+    finally:
+        if cursor: 
+            cursor.close()
+
+def doesSchemaExist(conn,schemaname):
+    sql = "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = '%s'" % schemaname        
+    cursor=None
+    try:
+        cursor=dbconn.execSQL(conn,sql)
+        numrows = cursor.rowcount
+        if numrows == 0:
+            return False
+        elif numrows == 1:
+            return True
+        else:
+            raise CatalogError("more than one entry in pg_namespace for '%s'" % schemaname)
+    finally:
+        if cursor: 
+            cursor.close()
 
 
 class CatalogTable():
@@ -107,6 +136,7 @@ class GpVersionAtInitdbTable(CatalogTable):
     def get_update_sql(self):
         return "UPDATE pg_catalog.gp_version_at_initdb SET schemaversion = %d, "\
                " productversion = '%s' " % (self.schemaversion,self.productversion)
+
 
 
 #TODO:

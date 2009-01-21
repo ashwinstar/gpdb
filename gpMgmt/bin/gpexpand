@@ -1,0 +1,296 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
+#
+import copy
+import datetime
+import os
+import sys
+
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+
+from gppylib.commands.unix import *
+from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib.gplog import *
+from gppylib.db import dbconn
+from gppylib.db import catalog
+
+description = (""" 
+Adds additional segments to a pre-existing GPDB Array.
+""")
+
+_help = ["""
+TODO: add txt for gpexpand!
+"""]
+
+EXECNAME = os.path.split(__file__)[-1]
+
+
+
+#----------------------- Command line option parser ----------------------
+
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(description.split()),
+                version='%prog version $Revision: #12 $')
+    parser.setHelp(_help)
+    parser.set_usage('%prog [--help] [options] ')
+    parser.remove_option('-h')
+    
+    parser.add_option('-c','--clean', action='store_true',
+                        help='remove the expansion schema.')                        
+    parser.add_option('-d','--duration', type='duration', metavar='[h][:m[:s]]',
+                      help='duration from beginning to end')
+    parser.add_option('-e','--end', type='datetime', metavar='datetime',
+                       help="ending date and time")
+    parser.add_option('-h', '-?', '--help', action='help',
+                        help='show this help message and exit')
+    parser.add_option('-i','--input', dest="filename",
+                        help="input expansion configuration file", metavar="FILE")        
+    parser.add_option('-q', '--quiet', action='store_true',
+                        help='suppress status messages')
+    parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
+                        help='number of tables to expand at a time. Valid values are 1-127')
+    parser.add_option('-v','--verbose', action='store_true',
+                        help='debug output.')
+    
+    
+        
+    parser.set_defaults(verbose=True, filters=[], slice=(None, None))
+    
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    
+    #-n sanity check
+    if options.parallel > 128 or options.parallel < 1:
+        parser.print_help()
+        parser.exit()
+        
+        
+    
+        
+    return options, args
+
+
+#states
+UNINITIALIZED,SETUP,INPROGRESS,FINISHED=range(4)
+
+#expansion schema
+gpexpand_schema='gpexpand'
+
+create_schema_sql = "CREATE SCHEMA " + gpexpand_schema 
+drop_schema_sql = "drop schema %s cascade" % gpexpand_schema
+
+global_status_table='global_status'
+
+global_status_sql="""CREATE TABLE %s.%s
+                        ( status text,
+                          updated timestamp ) """ % (gpexpand_schema,global_status_table)
+
+table_entry_table='table_entry'
+table_entries_sql="""CREATE TABLE %s.%s
+                        ( dbname text,
+                          fq_name text,
+                          schema_oid oid,
+                          table_oid oid,
+                          distribution_policy smallint[],
+                          distribution_policy_names text,
+                          rank int,
+                          status text,
+                          last_updated timestamp,
+                          expansion_started timestamp,
+                          expansion_finished timestamp,
+                          source_bytes int ) """ % (gpexpand_schema, table_entry_table)
+
+
+class ExpansionError(Exception): pass
+
+class gpexpand:
+    
+    def __init__(self,logger,dburl):
+        self.logger = logger
+        self.dburl = dburl
+         
+        self.conn = dbconn.connect(self.dburl)
+        pass
+    
+    
+    def gather_state(self):
+        """Used to probe the system to determine which stage of expansion we are in. 
+        
+        get a list of databases for us to check.  There should only exist a single gpexpand
+        schema amongst any of them.  more than one is an error. zero means we haven't started yet.
+        
+        """         
+        db_list = catalog.getDatabaseList(self.conn)
+        test_url = copy.deepcopy(self.dburl)
+        expand_dbs=[]
+        for db in db_list:
+            dbname = db[0]
+            if dbname == 'template0':
+                continue
+            self.logger.debug("Probing database: '%s'" % dbname)
+            test_url.pgdb = dbname
+            c = dbconn.connect(test_url)
+            if catalog.doesSchemaExist(c,gpexpand_schema):
+                expand_dbs.append(db)
+            c.close()    
+        
+        if len(expand_dbs) == 0:
+            self.logger.debug("Could not find an expansion schema '%s' in this array.  State = UNINITIALIZED" \
+                               % gpexpand_schema )
+            return UNINITIALIZED
+        elif len(expand_dbs) == 1:
+            self.logger.debug("Found an expansion schema '%s' present in database %s" % (gpexpand_schema,expand_dbs[0]))                
+        else:
+            str="Found more than one expansion schema '%s' present in this array"\
+                " in the following databases: %s " % (gpexpand_schema,expand_dbs)
+            self.logger.error(str)
+            raise ExpansionError(str)
+        
+        #read in the global status table        
+        raise ExpansionError("TODO:  need to impl")
+        
+        #read in table entries
+        return
+    
+    
+    def add_segments(self):
+        """Adds a specified set of empty segments to the system"""
+        pass
+    
+    
+    def setup_schema(self):
+        """Used to setup the gpexpand schema"""
+        
+        #TODO: make sure this is all in a single txn
+        dbconn.execSQL(self.conn,create_schema_sql)
+        dbconn.execSQL(self.conn,global_status_sql)
+        dbconn.execSQL(self.conn,table_entries_sql)
+        
+        nowStr = datetime.datetime.now()
+        statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP', '%s' ) " % (gpexpand_schema,global_status_table,nowStr)
+        
+        dbconn.execSQL(self.conn,statusSQL)
+        
+        db_list = catalog.getDatabaseList(self.conn)
+        test_url = copy.deepcopy(self.dburl)
+        for db in db_list:
+            dbname=db[0]
+            if dbname == 'template0':
+                continue
+            test_url.pgdb = dbname
+            c = dbconn.connect(test_url)
+          
+            sql="""SELECT 
+                      n.nspname || '.' || c.relname as fq_name,
+                      n.oid as schemaoid,
+                      c.oid as tableoid,                      
+                      p.attrnums as distribution_policy,
+                      now() as last_updated                       
+                   FROM       pg_class c
+                         JOIN pg_namespace n ON (c.relnamespace=n.oid)
+                         JOIN pg_catalog.gp_distribution_policy p on (c.oid = p.localoid)
+            
+                  """ 
+            self.logger.info(sql)
+            curs = dbconn.execSQL(c,sql)
+            rows = curs.fetchall()            
+            for row in rows:
+                fqname=row[0]
+                schema_oid=row[1]
+                table_oid=row[2]             
+                logger.warning(row[3][0])   
+                dist_policy = '{' + ','.join( map( str,row[3])) + '}'
+                ts = '2009-01-21 07:52:25'  #$row[3]
+                insertSQL = """INSERT INTO %s.%s 
+                                    VALUES ('%s','%s',%s,%s,
+                                            '%s','%s',%d,'%s','%s',NULL,NULL,%d)                
+                            """ % (gpexpand_schema,table_entry_table,
+                                   dbname,fqname,schema_oid,table_oid, 
+                                   dist_policy,'todo colnames', 1, 'NOT STARTED', 
+                                   ts, 1234 )
+                self.logger.info(insertSQL)
+                dbconn.execSQL(self.conn,insertSQL)
+             
+        self.conn.commit()
+    
+    """CREATE TABLE %s.%s
+                        ( dbname text,
+                          fq_name text,
+                          schema_oid oid,
+                          table_oid oid,
+                          
+                          distribution_policy smallint[],
+                          distribution_policy_names text,
+                          rank int,
+                          status text,
+                          
+                          last_updated date,
+                          expansion_started date,
+                          expansion_finished date,
+                          source_bytes int )  % (gpexpand_schema, table_entry_table)
+                          """
+    
+    def form_dist_policy(self,dist_policy):
+        res = '{'
+        
+        
+        
+                        
+    def perform_expansion(self):
+        """Performs the actual table re-organiations"""
+        pass
+    
+    
+    def cleanup_schema(self):
+        """Removes the gpexpand schema"""
+        
+        #we should have an option to dump the contents out to a backup before we
+        # blow things away.
+        
+        #drop schema
+        self.logger.info("Removing gpexpand schema")
+        dbconn.execSQL(self.conn,drop_schema_sql) 
+        self.conn.commit()
+        pass
+
+
+
+
+#------------------------------- Mainline --------------------------------
+
+try:
+    logger = get_default_logger()
+    setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
+    
+    
+    options, args = parseargs()
+    
+    if options.verbose:
+        enable_verbose_logging()
+    
+    if options.quiet:
+        quiet_stdout_logging()
+    
+    dburl = dbconn.DbURL() 
+    gp_expand = gpexpand(logger,dburl)   
+    
+    if options.clean:
+        gp_expand.cleanup_schema()
+        logger.info('Cleanup Finished.  exiting...')
+        sys.exit(0)
+        
+    state = gp_expand.gather_state()
+    
+    if state == UNINITIALIZED:
+        gp_expand.setup_schema()
+    
+    
+except Exception, e:
+    logger.exception("gpexpand failed. exiting...")
+    sys.exit(3)
+except KeyboardInterrupt:
+    sys.exit('\nUser Interrupted')

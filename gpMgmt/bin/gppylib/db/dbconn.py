@@ -114,9 +114,33 @@ class DbURL:
 
 
 
+def connect(dburl, utility=False):
+    if utility:
+        options = '-c gp_session_role=utility'
+    else:
+        options = ''
+            
+    conn = pg8000.DBAPI.connect(host=dburl.pghost, 
+                                  user=dburl.pguser,
+                                  port=dburl.pgport,
+                                  database = dburl.pgdb,
+                                  options=options)
+    return conn 
+
+
+def execSQL(conn,sql):    
+    cursor=conn.cursor()
+    cursor.execute(sql)
+    return cursor
+
+
+
+#-=-=-=-=-=-
+
 class PgConn:
     """ PgConn is a basic connection wrapper around Pg8000 for connecting
         to a GP database (including segment dbs)
+    
     """
     
     @staticmethod    
