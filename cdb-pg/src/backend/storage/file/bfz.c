@@ -131,7 +131,7 @@ void
 bfz_append_end(bfz_t * thiz)
 {
 	struct bfz_freeable_stuff *fs = thiz->freeable_stuff;
-	off_t		tot_compressed,
+	int64		tot_compressed,
 				tot_bytes;
 
 	Assert(thiz->mode == BFZ_MODE_APPEND);

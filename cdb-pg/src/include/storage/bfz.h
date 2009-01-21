@@ -15,7 +15,7 @@ struct bfz;
 
 struct bfz_freeable_stuff
 {
-	off_t		tot_bytes;
+	int64		tot_bytes;
 	char	   *buffer_pointer;
 	char	   *buffer_end;
 
@@ -74,7 +74,7 @@ extern void bfz_close(bfz_t * thiz, bool unreg);
 extern ssize_t readAndRetry(int fd, void *buffer, size_t size);
 extern ssize_t writeAndRetry(int fd, const void *buffer, size_t size);
 
-static inline off_t
+static inline int64
 bfz_totalbytes(bfz_t * bfz)
 {
 	return bfz->freeable_stuff->tot_bytes;
