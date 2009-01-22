@@ -7,6 +7,7 @@
 // has been acquired (see http://www.quicklz.com/order.html). The commercial license 
 // does not cover derived or ported versions created by third parties under GPL.
 
+#include "c.h"
 #include "storage/quicklz1.h"
 #include "utils/elog.h"
 
