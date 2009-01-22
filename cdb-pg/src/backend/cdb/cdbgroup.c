@@ -1602,6 +1602,14 @@ make_three_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx)
 		
 		result_plan->targetlist = (List*) finalize_split_expr((Node*) ctx->fin_tlist, ctx);
 		result_plan->qual = (List*) finalize_split_expr((Node*) ctx->fin_hqual, ctx);
+
+		/*
+		 * Reconstruct the flow since the targetlist for the result_plan may have
+		 * changed.
+		 */
+		result_plan->flow = pull_up_Flow(result_plan,
+										 result_plan->lefttree,
+										 true);
 		
 		/* Need to adjust root.  Is this enuf?  I think so. */
 		root->parse->rtable = rtable;
@@ -4342,7 +4350,7 @@ void set_cost_of_join_strategies(MppGroupContext *ctx, Cost *hashjoin_cost, Cost
 	double rows;
 	int gk_width;
 	int outer_width;
-	bool try_hashed = true; /* XXX hash-joinable */
+	bool try_hashed = true;
 	AttrNumber attrno;
 	Index outer_varno = 1;
 	int i;
@@ -4360,22 +4368,28 @@ void set_cost_of_join_strategies(MppGroupContext *ctx, Cost *hashjoin_cost, Cost
 		Expr *qual;
 		Var *outer_var;
 		Var *inner_var;
-		Index attrno = ctx->groupColIdx[i];
-		Index inner_varno = 1 + attrno;
-		TargetEntry *tle = get_tle_by_resno(ctx->sub_tlist, attrno);
+		AttrNumber resno = ctx->groupColIdx[i];
+		Index inner_varno = 1 + (i + 1);
+		TargetEntry *tle = get_tle_by_resno(ctx->sub_tlist, resno);
 		
-		// XXX Assert( tle && IsA(tle->expr, Var) );
+		Assert( tle != NULL );
 		
-		outer_var = (Var*)copyObject(tle->expr);
-		outer_var->varno = outer_varno;
+		outer_var = makeVar(outer_varno, resno,
+							exprType((Node *)tle->expr),
+							exprTypmod((Node *)tle->expr), 0);
 		
-		inner_var = (Var*)copyObject(tle->expr);
-		inner_var->varno = inner_varno;
+		inner_var = makeVar(inner_varno, resno,
+							exprType((Node *)tle->expr),
+							exprTypmod((Node *)tle->expr), 0);
 		
 		/* outer should always be on the left */
 		qual = make_op(NULL, list_make1(makeString("=")), 
 					 (Node*) outer_var, 
 					 (Node*) inner_var, -1);
+
+		/* If the grouping column is not hashable, do not try hashing. */
+		if (!hash_safe_type(exprType((Node *)tle->expr)))
+			try_hashed = false;
 		
 		if ( try_hashed )
 		{

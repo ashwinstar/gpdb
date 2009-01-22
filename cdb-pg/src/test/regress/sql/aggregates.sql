@@ -230,3 +230,7 @@ CREATE VIEW mpp2687v AS
     GROUP BY gk;
 
 SELECT * FROM mpp2687v;
+
+-- MPP-4617
+select case when ten < 5 then ten else ten * 2 end, count(distinct two), count(distinct four) from tenk1 group by 1;
+select ten, ten, count(distinct two), count(distinct four) from tenk1 group by 1,2;

@@ -489,3 +489,34 @@ SELECT * FROM mpp2687v;
 ----
 (0 rows)
 
+-- MPP-4617
+select case when ten < 5 then ten else ten * 2 end, count(distinct two), count(distinct four) from tenk1 group by 1;
+ case | count | count 
+------+-------+-------
+    2 |     1 |     2
+   12 |     1 |     2
+   18 |     1 |     2
+   16 |     1 |     2
+   14 |     1 |     2
+    0 |     1 |     2
+   10 |     1 |     2
+    4 |     1 |     2
+    3 |     1 |     2
+    1 |     1 |     2
+(10 rows)
+
+select ten, ten, count(distinct two), count(distinct four) from tenk1 group by 1,2;
+ ten | ten | count | count 
+-----+-----+-------+-------
+   4 |   4 |     1 |     2
+   0 |   0 |     1 |     2
+   7 |   7 |     1 |     2
+   6 |   6 |     1 |     2
+   1 |   1 |     1 |     2
+   2 |   2 |     1 |     2
+   3 |   3 |     1 |     2
+   5 |   5 |     1 |     2
+   8 |   8 |     1 |     2
+   9 |   9 |     1 |     2
+(10 rows)
+
