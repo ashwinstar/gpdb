@@ -18,6 +18,7 @@ our $config = {
     #iconv=>'c:\prog\pgsql\depend\iconv',
     zlib=>'c:\zlib', # --with-zlib=<path> gpdb needs zlib
     curl=>'c:\zlib', # gpdb needs libcurl
+    bzlib=>'c:\pgbuild\bzlib',
     #readline=>'c:\progra~1\GnuWin32' # readline for windows?
 };
 
