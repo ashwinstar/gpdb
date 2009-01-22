@@ -70,7 +70,7 @@ static bool isTargetPortal(const char *p1, const char *p2);
 
 static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
 
-static void resetSessionForPrimaryGangLoss(void);
+extern void resetSessionForPrimaryGangLoss(void);
 
 /*
  * Points to the result of getCdbComponentDatabases()
@@ -3799,7 +3799,7 @@ CheckForResetSession(void)
 
 }
 
-static void
+extern void
 resetSessionForPrimaryGangLoss(void)
 {
 	if (ProcCanSetMppSessionId())

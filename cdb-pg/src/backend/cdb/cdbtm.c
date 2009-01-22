@@ -117,7 +117,7 @@ static void abortRMInDoubtTransactions(HTAB *htab);
 static void cleanRMResultSets(PGresult **pgresultSets);
 
 static void dumpAllDtx(void);
-// static void resolveInDoubtDtx(void);
+/* static void resolveInDoubtDtx(void); */
 static void dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff);
 
 static void summarizeParticipation(void);
@@ -142,6 +142,7 @@ static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfN
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
 static DistributedTransactionId determineSegmentMaxDistributedXid(void);
 
+extern void resetSessionForPrimaryGangLoss(void);
 extern void CheckForResetSession(void);
 
 /*=========================================================================
@@ -406,7 +407,7 @@ summarizeParticipation(void)
 		return;
 	}
 
-	// FUTURE: Collect information on whether particular segments were dirty
+	/* FUTURE: Collect information on whether particular segments were dirty */
 	currentGxact->participationSummary = DTX_PARTICIPATION_SUMMARY_MULTIPLE_SEGMENTS_DIRTY;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"summarizeParticipation participationSummary = \"%s\"",
@@ -939,7 +940,7 @@ doNotifyCommittedInDoubt(char *gid)
 	bool succeeded;
 	bool badGangs;
 
-	// UNDONE: Pass real gxid instead of InvalidDistributedTransactionId.
+	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(
 					DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, /* flags */ 0,
 					gid, InvalidDistributedTransactionId,
@@ -965,7 +966,7 @@ doAbortInDoubt(char *gid)
 	bool succeeded;
 	bool badGangs;
 
-	// UNDONE: Pass real gxid instead of InvalidDistributedTransactionId.
+	/* UNDONE: Pass real gxid instead of InvalidDistributedTransactionId. */
 	succeeded = doDispatchDtxProtocolCommand(
 					DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, /* flags */ 0,
 					gid, InvalidDistributedTransactionId,
@@ -1598,7 +1599,7 @@ ReplayRedoFromUtilityMode(void)
 	fd = open(path, O_RDONLY, 0);
 	if (fd < 0)
 	{
-		// UNDONE: Distinquish "not found" from other errors.
+		/* UNDONE: Distinquish "not found" from other errors. */
 		elog((Debug_print_full_dtm ? LOG : DEBUG3),"Could not open DTM redo file %s for reading",
 		     path);
 		return;
@@ -2301,7 +2302,7 @@ releaseGxact_UnderLocks(void)
 	 * the current one, we note its index and exclude it from the xmin
 	 * calculation.
 	 */
-	curr = *shmNumGxacts;	// A bad value we can safely test.
+	curr = *shmNumGxacts;	/* A bad value we can safely test. */
 	*shmXminAllDistributedSnapshots = InvalidDistributedTransactionId;
 	for (i = 0; i < *shmNumGxacts; i++)
 	{
@@ -2447,12 +2448,12 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 		gxact_checkpoint->segmentCount = 0;
 		*result = (char*)gxact_checkpoint;
 
-		getTmLock();	// Return withh lock held.
+		getTmLock();	/* Return withh lock held. */
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "DTM not started so no DTM checkpoint information.");
 		return;
 	}
 
-	getTmLock();	// We will return with lock held below.
+	getTmLock();	/* We will return with lock held below. */
 	n = *shmNumGxacts;
 	
 	gxact_checkpoint = palloc(TMGXACT_CHECKPOINT_BYTES(n));
@@ -2522,16 +2523,15 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 	}
 	
 	gxact_checkpoint->committedCount = actual;
-	gxact_checkpoint->segmentCount = 0;		// UNDONE: Not used yet.
+	gxact_checkpoint->segmentCount = 0;		/* UNDONE: Not used yet. */
 
 	*result = (char*)gxact_checkpoint;
 	*result_size = TMGXACT_CHECKPOINT_BYTES(actual);
 
-	// Return with lock held.
+	/* Return with lock held. */
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Filled in DTM checkpoint information (count = %d).",
 	      actual);
-	
 }
 
 void 
@@ -2659,8 +2659,12 @@ cdbtm_performDeferredRecovery(void)
 			recoverInDoubtTransactions();
 
 			*shmDtmRecoveryDeferred = false;
+			elog(NOTICE,"Releasing gangs for deferred recovery.");
+			disconnectAndDestroyAllGangs();
+			resetSessionForPrimaryGangLoss();
 		}
 		releaseTmLock();
+		CheckForResetSession();
 	}
 }
 
@@ -2671,34 +2675,53 @@ cdbtm_performDeferredRecovery(void)
 static bool
 recoverInDoubtTransactions(void)
 {
+	int i;
 	HTAB *htab;
+	TMGXACT *saved_currentGxact;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG3),"recover in-doubt distributed transactions");
+	elog((Debug_print_full_dtm ? LOG : DEBUG3), "recover in-doubt distributed transactions");
 
 	ReplayRedoFromUtilityMode();
-	
+
 	/*
 	 * For each committed transaction found in the redo pass that was not
 	 * matched by a forget committed record, change its state indicating
 	 * committed notification needed.  Attempt a notification.
 	 */
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"Going to retry commit notification for distributed transactions (count = %d)",
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "Going to retry commit notification for distributed transactions (count = %d)",
 	     *shmNumGxacts);
 	dumpAllDtx();
-	
-	while (*shmNumGxacts > 0)
+
+	saved_currentGxact = currentGxact;
+
+	for (i = 0; i < *shmNumGxacts; i++)
 	{
-		TMGXACT *gxact = shmGxactArray[0];
+		TMGXACT *gxact = shmGxactArray[i];
+
+		/*
+		 * MPP-4867: if we are running deferred, skip any transaction we're already inside.
+		 */
+		if (saved_currentGxact != NULL && gxact == saved_currentGxact)
+		{
+			continue;
+		}
+		else if (gxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
+		{
+			/* should take care of other sessions. */
+			continue;
+		}
 
 		if (gxact->state != DTX_STATE_CRASH_COMMITTED)
 		{
 			dumpAllDtx();
-			elog(PANIC, "recoverInDoubtTransactions found transaction in '%s' state and was expecting it to be in '%s' state",
+			elog(PANIC, 
+				 "recoverInDoubtTransactions found transaction in '%s' state and was expecting it to be in '%s' state",
 				 DtxStateToString(gxact->state), DtxStateToString(DTX_STATE_CRASH_COMMITTED));
 		}
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"Recovering committed distributed transaction gid = %s",
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),
+			 "Recovering committed distributed transaction gid = %s",
 		     gxact->gid);
 
 		/*
@@ -2721,12 +2744,16 @@ recoverInDoubtTransactions(void)
 		releaseTmLock();
 		
 		LWLockRelease(ProcArrayLock);
-	}
 
+	}
+	
+	currentGxact = saved_currentGxact;
 	dumpAllDtx();
 
-	// UNDONE: Thus, any in-doubt transctions found will be for aborted transactions.
-	// UNDONE: Gather in-boubt transactions and issue aborts.
+	/*
+	 * UNDONE: Thus, any in-doubt transctions found will be for aborted transactions.
+	 * UNDONE: Gather in-boubt transactions and issue aborts.
+	 */
 	htab = gatherRMInDoubtTransactions();
 
 	/*
@@ -2743,7 +2770,6 @@ recoverInDoubtTransactions(void)
 
 	/* yes... we are paranoid and will double check */
 	htab = gatherRMInDoubtTransactions();
-
 
 	/*
 	 * Hmm.  we still have some remaining indoubt transactions.  For now we
@@ -2764,14 +2790,14 @@ recoverInDoubtTransactions(void)
 		dumpRMOnlyDtx(htab, &indoubtBuff);
 
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			   errmsg("DTM Log recovery failed.  There are still unresolved "
-					  "in-doubt transactions on some of the segment databaes "
-				"that were not able to be resolved for an unknown reason. "),
-		errdetail("Here is a list of in-doubt transactions in the system: %s",
-				  indoubtBuff.data),
-			errhint("Try restarting the Greenplum Database array.  If the problem persists "
-				 " an Administrator will need to resolve these transactions "
-					" manually.")));
+						errmsg("DTM Log recovery failed.  There are still unresolved "
+							   "in-doubt transactions on some of the segment databaes "
+							   "that were not able to be resolved for an unknown reason. "),
+						errdetail("Here is a list of in-doubt transactions in the system: %s",
+								  indoubtBuff.data),
+						errhint("Try restarting the Greenplum Database array.  If the problem persists "
+								" an Administrator will need to resolve these transactions "
+								" manually.")));
 
 	}
 
@@ -3171,7 +3197,7 @@ doQEDistributedExplicitBegin(int txnOptions)
 	 */
 	StartTransactionCommand();
 
-	// Here is the explicit BEGIN.
+	/* Here is the explicit BEGIN. */
 	BeginTransactionBlock();
 
 	unpackMppTxnOptions(txnOptions,
@@ -3216,10 +3242,10 @@ setupRegularDtxContext(void)
 	switch(DistributedTransactionContext)
 	{
 		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-			// Continue in this context.  Do not touch QEDtxContextInfo, etc.
+			/* Continue in this context.  Do not touch QEDtxContextInfo, etc. */
 			/* fallthrough */
 		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-			// Allow this for copy...???  Do not touch QEDtxContextInfo, etc.
+			/* Allow this for copy...???  Do not touch QEDtxContextInfo, etc. */
 			break;
 
 		default:
@@ -3462,8 +3488,10 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 			break;
 
 		case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-//		elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...",
-//			 DtxContextToString(DistributedTransactionContext));
+/*
+		elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...",
+			 DtxContextToString(DistributedTransactionContext));
+*/
 			Assert (IsTransactionOrTransactionBlock());
 		
 			if (explicitBegin)
@@ -3528,7 +3556,7 @@ finishDistributedTransactionContext (char* debugCaller, bool aborted)
 	   (currentGxact->state != DTX_STATE_RETRY_COMMIT_PREPARED &&
 	    currentGxact->state != DTX_STATE_RETRY_ABORT_PREPARED))
 	{
-//		PleaseDebugMe("finishDistributedTransactionContext currentGxact == NULL");
+/*		PleaseDebugMe("finishDistributedTransactionContext currentGxact == NULL"); */
 	
 		elog(FATAL, "Expected currentGxact to be NULL at this point.  Found gid =%s, gxid = %u (state = %s, caller = %s)",
 			currentGxact->gid, currentGxact->gxid, DtxStateToString(currentGxact->state), debugCaller);
