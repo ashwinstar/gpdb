@@ -32,7 +32,7 @@ my $contrib_extrasource = {
     'cube' => ['cubescan.l','cubeparse.y'],
     'seg' => ['segscan.l','segparse.y']
 };
-my @contrib_excludes = ('pgcrypto','uuid-ossp','bufferedtest');
+my @contrib_excludes = ('pgcrypto','uuid-ossp','bufferedtest', 'varblocktest', 'gp_filedump');
 
 sub mkvcbuild
 {
