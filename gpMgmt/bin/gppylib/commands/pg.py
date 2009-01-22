@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
+#
+
+"""
+TODO: docs
+
+"""
+from gppylib.gplog import *
+from gppylib.gparray import *
+from base import *
+from unix import *
+
+logger = get_default_logger()
+
+
+
+
+
+def checkPostgresBinaryVersion():
+    #TODO:
+    pass
+
+
+
+#----------------------- postgresql.conf ----------------------
+#TODO:  what functions?
+
+
+
+
+#----------------------- pg_hba.conf ----------------------
+#TODO:  set of functions related to pg_hba.conf including:
+#  - reading it in
+#  - writing it out
+#  - appending to it.
+
+
+
+
+#----------------------- Basic PG maintenance ----------------------
+
+#TODO: set of functions related to basic pg maintenance:
+#  - initdb
+#  - pg_ctl
+#  - pg_config
+#  - pg_controldata
+
+#-------------initdb---------------------
+class InitDB(Command):
+    def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
+        self.db=db
+        self.cmdStr="%s %s" % ('initdb', db.get_datadir()) 
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def local(name,db):
+        cmd=InitDB(name,db)
+        cmd.run(validateAfter=True)
+                
+    @staticmethod
+    def remote(name,db,host):
+        cmd=InitDB(name,db,ctxt=REMOTE,remoteHost=host)
+        cmd.run(validateAfter=True) 
+
+        
+
+
+
+
+def getProcWithParent(host,targetParentPID,procname):    
+    """ returns (parentPID,procPID) tuple for the procname with the specified parent """
+    cmdStr="ps -ef | grep '%s' | grep -v grep" % (procname)
+    cmd=Command("ps",cmdStr,ctxt=REMOTE,remoteHost=host)
+    cmd.run(validateAfter=True)
+    
+    sout=cmd.get_results().stdout
+    
+    logger.info(cmd.get_results().printResult())
+    
+    if sout is None:
+        return (0,0)
+    
+    lines=sout.split('\n')
+        
+    for line in lines:
+        if line == '':
+            continue
+        fields=line.lstrip(' ').split()
+        if len(fields) < 3:
+            logger.info("not enough fields line: '%s'" %  line)
+            return (0,0)
+            
+        procPID=int(line.split()[1])
+        parentPID=int(line.split()[2])
+        if parentPID == targetParentPID:
+            return (parentPID,procPID)
+    
+    logger.info("couldn't find process with name: %s which is a child of PID: %s" % (procname,targetParentPID))
+    return (0,0)
+
+
+
+def getPostmasterPID(db):
+    cmdStr="ps -ef | grep 'postgres -D %s' | grep -v grep" % (db.datadir)
+    name="get postmaster"
+    cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=db.hostname)
+    cmd.run(validateAfter=True)
+    logger.critical(cmd.cmdStr)
+    logger.critical(cmd.get_results().printResult())
+    sout=cmd.get_results().stdout.lstrip(' ')
+    return int(sout.split()[1])
+
+def killPostmaster(host,pid,signal):
+    killPgProc(db,"postmaster",signal)
+    
+
+def getSeqServerPID(db):
+    postmaster_pid=getPostmasterPID(db)    
+    return getProcWithParent(db.hostname,postmaster_pid,"seqserver")
+    
+def killSeqServer(db,signal):
+    return killPgProc(db,"seqserver",signal)
+
+
+def getBgWriterPID(db):
+    postmaster_pid=getPostmasterPID(db)    
+    return getProcWithParent(db.hostname,postmaster_pid,"postgres: writer process")
+        
+def killBgWriter(db,signal):
+    return killPgProc(db, "postgres: writer process",signal)
+
+    
+def getStatsCollectorPID(db):
+    postmaster_pid=getPostmasterPID(db)    
+    return getProcWithParent(db.hostname,postmaster_pid,"postgres: stats collector")
+    
+def killStatsCollector(db,signal):
+    return killPgProc(db,"postgres: stats collector",signal)
+
+def getWALSendServerPID(db):
+    postmaster_pid=getPostmasterPID(db)    
+    return getProcWithParent(db.hostname,postmaster_pid,"postgres: WAL Send Server")
+
+def killWALSendServer(db,signal):
+    return killPgProc(db,"postgres: WAL Send Server",signal)
+
+
+def killPgProc(db,procname,signal):
+    postmasterPID=getPostmasterPID(db)
+    (parentPID,procPID)=getProcWithParent(db.hostname,postmasterPID,procname)
+    if procPID == 0:
+        raise Exception("Invalid PID: '0' to kill.  parent postmaster PID: %s" % postmasterPID)    
+    cmd=Kill.remote("kill seqserver",procPID,signal,db.hostname)
+    return (parentPID,procPID)
+    
+
+
+    
