@@ -1455,7 +1455,9 @@ int gp_pthread_create(pthread_t *thread,
 	 * So far, we know we need to do this for getpwuid_r (See MPP-1971,
 	 * glibc getpwuid_r is not thread safe).
 	 */
+#ifndef WIN32
 	get_gp_passwdptr();
+#endif
 
 	/* save ourselves some memory: the defaults for thread stack
 	 * size are large (1M+) */
