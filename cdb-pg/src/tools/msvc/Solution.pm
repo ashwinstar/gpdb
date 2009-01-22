@@ -17,6 +17,7 @@ sub new
     my $options = shift;
     die "Pthreads is required by Greenplum DB.\n" unless $options->{pthread};
     die "zlib is required by Greenplum DB.\n" unless $options->{zlib};
+    die "b2zlib is required by Greenplum DB.\n" unless $options->{bzlib};
     my $self = {
         projects => {},
         options  => $options,
@@ -357,6 +358,11 @@ sub AddProject
         $proj->AddIncludeDir($self->{options}->{zlib} . '\include');
         $proj->AddLibrary($self->{options}->{zlib} . '\lib\zlib.lib');
 	$proj->AddLibrary($self->{options}->{zlib} . '\lib\libcurl.lib');
+    }
+	if ($self->{options}->{bzlib})
+    {
+        $proj->AddIncludeDir($self->{options}->{bzlib} . '\include');
+        $proj->AddLibrary($self->{options}->{bzlib} . '\lib\libbz2.lib');
     }
     if ($self->{options}->{openssl})
     {
