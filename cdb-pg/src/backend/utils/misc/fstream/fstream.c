@@ -1,4 +1,10 @@
 /*#include "c.h"*/
+#ifdef WIN32
+#define _WINSOCKAPI_
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 #include <fstream/fstream.h>
 #include <fstream/gfile.h>
 #include <assert.h>
