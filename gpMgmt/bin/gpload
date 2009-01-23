@@ -1053,7 +1053,7 @@ class gpload:
 
         nullas = self.getconfig('gpload:input:null_as', unicode, False)
         self.log(self.DEBUG, "null as " + unicode(nullas))
-        if nullas:
+        if nullas != False: # could be empty string
             sql += " null as %s " % quote(nullas)
 
         if self.getconfig('gpload:input:header',bool,False):
