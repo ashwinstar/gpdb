@@ -271,8 +271,12 @@ extern ExprContext *CreateStandaloneExprContext(void);
 extern void FreeExprContext(ExprContext *econtext);
 extern void ReScanExprContext(ExprContext *econtext);
 
-#define ResetExprContext(econtext) \
-	MemoryContextReset((econtext)->ecxt_per_tuple_memory)
+static inline void ResetExprContext(ExprContext *econtext)
+{
+	MemoryContext memctxt = econtext->ecxt_per_tuple_memory;
+	if(memctxt->allBytesAlloc - memctxt->allBytesFreed > 50000)
+		MemoryContextReset(memctxt);
+}
 
 extern ExprContext *MakePerTupleExprContext(EState *estate);
 
@@ -287,10 +291,10 @@ extern ExprContext *MakePerTupleExprContext(EState *estate);
 
 /* Reset an EState's per-output-tuple exprcontext, if one's been created */
 #define ResetPerTupleExprContext(estate) \
-	do { \
-		if ((estate)->es_per_tuple_exprcontext) \
+	if ((estate)->es_per_tuple_exprcontext) { \
 			ResetExprContext((estate)->es_per_tuple_exprcontext); \
-	} while (0)
+	} \
+	else (void) 0
 
 extern void ExecAssignExprContext(EState *estate, PlanState *planstate);
 extern void ExecAssignResultType(PlanState *planstate, TupleDesc tupDesc);

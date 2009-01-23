@@ -41,6 +41,7 @@
 
 #include "access/heapam.h"
 #include "access/nbtree.h"
+#include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"
 #include "commands/typecmds.h"
@@ -2000,6 +2001,336 @@ ExecEvalDistinct(FuncExprState *fcache,
 	return result;
 }
 
+static inline void ExecEvalFPStrict2Arg(FuncExprState *expr, ExprContext *econtext, bool *isNull, ExprDoneCond *isDone)
+{ 
+	ExprDoneCond argDone[2];
+
+	Assert(expr->fp_arg[0] && expr->fp_arg[1]);
+	if(isDone)
+		*isDone = ExprSingleResult;
+	
+	expr->fp_datum[0] = ExecEvalExpr(expr->fp_arg[0], econtext, &expr->fp_null[0], &argDone[0]);
+	expr->fp_datum[1] = ExecEvalExpr(expr->fp_arg[1], econtext, &expr->fp_null[1], &argDone[1]);
+
+	*isNull = expr->fp_null[0] || expr->fp_null[1];
+}
+
+static Datum ExecEvalFPStrict2_Int2Eq(FuncExprState *fstate, ExprContext *ctxt, bool *isNull, ExprDoneCond *isDone)
+{
+	ExecEvalFPStrict2Arg(fstate, ctxt, isNull, isDone);
+	return BoolGetDatum(
+			DatumGetInt16(fstate->fp_datum[0]) == DatumGetInt16(fstate->fp_datum[1])
+			);
+}
+
+static Datum ExecEvalFPStrict2_Int4Eq(FuncExprState *fstate, ExprContext *ctxt, bool *isNull, ExprDoneCond *isDone)
+{
+
+	ExecEvalFPStrict2Arg(fstate, ctxt, isNull, isDone);
+	return BoolGetDatum(
+			DatumGetInt32(fstate->fp_datum[0]) == DatumGetInt32(fstate->fp_datum[1])
+			);
+}
+
+static Datum ExecEvalFPStrict2_Int8Eq(FuncExprState *fstate, ExprContext *ctxt, bool *isNull, ExprDoneCond *isDone)
+{
+	ExecEvalFPStrict2Arg(fstate, ctxt, isNull, isDone);
+	return BoolGetDatum(fstate->fp_datum[0] == fstate->fp_datum[1]);
+}
+
+/* Some Oids that we want to fast path.  See pg_proc.h */
+#define INT2EQ_OID 63
+#define INT4EQ_OID 65
+#define TEXTEQ_OID 67
+#define INT8EQ_OID 467
+#define BPCHAREQ_OID 1048
+#define DATE_EQ_OID 1086
+
+/* Optimize x op y if op has no side effect.  Almost all our functions are
+ * strict, 2 args.  
+ * 
+ * NOTE: You need to implement the ExecEvalFPStrict2_FUNC FAITHFULLY.  
+ * For example, before you fast path int4add, make sure your implementation 
+ * is the same as the old int4add, that is, you need to handle under/over flow etc.
+ */
+static void FastPathStrict2Func(Oid funcoid, FuncExprState *fstate)
+{
+	static Oid strict2oid[] = {
+		INT2EQ_OID,
+		INT4EQ_OID,
+		DATE_EQ_OID,
+		INT8EQ_OID,
+	};
+	static ExprStateEvalFunc strict2func[] = {
+		(ExprStateEvalFunc) ExecEvalFPStrict2_Int2Eq,
+		(ExprStateEvalFunc) ExecEvalFPStrict2_Int4Eq,
+		(ExprStateEvalFunc) ExecEvalFPStrict2_Int4Eq, /* date_eq is int4 eq */
+		(ExprStateEvalFunc) ExecEvalFPStrict2_Int8Eq,
+	};
+
+	int i;
+
+	COMPILE_ASSERT(ARRAY_SIZE(strict2oid) == ARRAY_SIZE(strict2func));
+
+	for(i=0; i<ARRAY_SIZE(strict2oid); ++i)
+	{
+		if (strict2oid[i] == funcoid)
+		{
+			fstate->xprstate.evalfunc = strict2func[i];
+			fstate->fp_arg[0] = linitial(fstate->args);
+			fstate->fp_arg[1] = lsecond(fstate->args);
+			return;
+		}
+	}
+}
+
+static Datum
+ExecEvalFPScalarArrayInt(ScalarArrayOpExprState *sstate,
+					  ExprContext *econtext,
+					  bool *isNull, ExprDoneCond *isDone)
+{
+	ScalarArrayOpExpr *opexpr = (ScalarArrayOpExpr *) sstate->fxprstate.xprstate.expr;
+	Oid fnoid = opexpr->opfuncid;
+	ExprState *arg = linitial(sstate->fxprstate.args);
+
+	ExprDoneCond argDone;
+	Datum d;
+	bool isnull;
+
+	int i;
+
+	d = ExecEvalExpr(arg, econtext, &isnull, &argDone);
+	Assert(argDone == ExprSingleResult);
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+		
+	if (isnull)
+	{
+		*isNull = true;
+		return 0;
+	}
+
+	*isNull = false;
+	if (fnoid == INT4EQ_OID)
+		d = Int32GetDatum(DatumGetInt32(d));
+	else if (fnoid != INT8EQ_OID)
+	{
+		Assert(fnoid == INT2EQ_OID);
+		d = Int16GetDatum(DatumGetInt16(d));
+	}
+
+	for(i=0; i<sstate->fp_n; ++i)
+	{
+		if(d == sstate->fp_datum[i])
+			return BoolGetDatum(true);
+	}
+
+	return BoolGetDatum(false);
+}
+
+static Datum
+ExecEvalFPScalarArrayStr(ScalarArrayOpExprState *sstate,
+					  ExprContext *econtext,
+					  bool *isNull, ExprDoneCond *isDone)
+{
+	ScalarArrayOpExpr *opexpr = (ScalarArrayOpExpr *) sstate->fxprstate.xprstate.expr;
+	Oid fnoid = opexpr->opfuncid;
+	ExprState *arg = linitial(sstate->fxprstate.args);
+
+	ExprDoneCond argDone;
+	Datum d;
+	bool isnull;
+	Datum ret;
+
+	char *p; void *tofree; int len;
+
+	int i;
+
+	d = ExecEvalExpr(arg, econtext, &isnull, &argDone);
+	Assert(argDone == ExprSingleResult);
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+		
+	if (isnull)
+	{
+		*isNull = true;
+		return 0;
+	}
+
+	*isNull = false;
+
+	ret = BoolGetDatum(false);
+
+	varattrib_untoast_ptr_len(d, &p, &len, &tofree);
+
+	/* bpchareq, rid of trailing white space.  see bpeq and bcTruelen */
+	if(fnoid == BPCHAREQ_OID)
+	{
+		while(len > 0 && p[len-1] == ' ')
+			--len;
+	}
+
+	for(i=0; i<sstate->fp_n; ++i)
+	{
+		if(sstate->fp_len[i] != len)
+			continue;
+		if(memcmp(p, DatumGetPointer(sstate->fp_datum[i]), sstate->fp_len[i]) == 0)
+		{
+			ret = BoolGetDatum(true);
+			break;
+		}
+	}
+
+	if(tofree)
+		pfree(tofree);
+
+	return ret;
+}
+
+/* Optimize x in ('A', 'B', 'C') */
+static void FastPathScalarArrayOp(ScalarArrayOpExpr *opexpr, ScalarArrayOpExprState *sstate)
+{
+	ExprState *argstate;
+	Const *argconst;
+	ArrayType *arr;
+
+	char *s;
+	bits8 *bitmap;
+	int bitmask;
+
+	int16		typlen;
+	bool		typbyval;
+	char		typalign;
+
+	Oid fnoid = InvalidOid;
+
+	static int4 optimize_func_oid[] = {
+		INT2EQ_OID,
+		INT4EQ_OID,
+		TEXTEQ_OID,
+		INT8EQ_OID,
+		BPCHAREQ_OID,
+		DATE_EQ_OID,
+	};
+
+	int i;
+		
+	/* IN will be evaluated as OR */
+	if (!opexpr->useOr)
+		return;
+
+	/* Check if we optimize these types */
+	for (i=0; i<ARRAY_SIZE(optimize_func_oid); ++i)
+	{
+		if (optimize_func_oid[i] == opexpr->opfuncid)
+		{
+			fnoid = opexpr->opfuncid;
+			break;
+		}
+	}
+
+	if(fnoid == InvalidOid)
+		return;
+
+	/* Better to have just two args */
+	Assert(list_length(sstate->fxprstate.args) == 2);
+	
+	/* only if the second args are const */
+	argstate = (ExprState *) lsecond(sstate->fxprstate.args);
+	if (argstate->evalfunc != ExecEvalConst)
+		return;
+
+	argconst = (Const *) argstate->expr;
+
+	/* We do not handle null */
+	if (argconst->constisnull)
+		return;
+
+	arr = DatumGetArrayTypeP(argconst->constvalue);
+	sstate->fp_n = ArrayGetNItems(ARR_NDIM(arr), ARR_DIMS(arr));
+
+	/* We do not handle this case */
+	if (sstate->fp_n <= 0)
+		return;
+
+	sstate->fp_len = (int *) palloc(sizeof(int) * sstate->fp_n);
+	sstate->fp_datum = (Datum *) palloc(sizeof(Datum) * sstate->fp_n);
+
+	/* Type stuff */
+	if (sstate->element_type != ARR_ELEMTYPE(arr))
+	{
+		get_typlenbyvalalign(ARR_ELEMTYPE(arr),
+				&sstate->typlen,
+				&sstate->typbyval,
+				&sstate->typalign);
+		sstate->element_type = ARR_ELEMTYPE(arr);
+	}
+	typlen = sstate->typlen;
+	typbyval = sstate->typbyval;
+	typalign = sstate->typalign;
+
+	/* Loop over the array elements */
+	s = (char *) ARR_DATA_PTR(arr);
+	bitmap = ARR_NULLBITMAP(arr);
+	bitmask = 1;
+
+	for (i = 0; i < sstate->fp_n; i++)
+	{
+		Datum elt;
+		
+		/* Do not deal with null yet */
+		if (bitmap && (*bitmap & bitmask) == 0)
+			return;
+		
+		elt = fetch_att(s, typbyval, typlen);
+		s = att_addlength(s, typlen, PointerGetDatum(s));
+		s = (char *) att_align(s, typalign);
+
+		/* int type */
+		if (fnoid == INT2EQ_OID)
+			sstate->fp_datum[i] = Int16GetDatum(DatumGetInt16(elt));
+		else if (fnoid == INT4EQ_OID || fnoid == DATE_EQ_OID)
+			sstate->fp_datum[i] = Int32GetDatum(DatumGetInt32(elt));
+		else if (fnoid == INT8EQ_OID)
+			sstate->fp_datum[i] = elt;
+		else if (fnoid == TEXTEQ_OID || fnoid == BPCHAREQ_OID)
+		{
+			char *p; void *tofree; int len;
+			char *pdest;
+
+			varattrib_untoast_ptr_len(elt, &p, &len, &tofree);
+
+			/* bpchareq, rid of trailing white space.  see bpeq and bcTruelen */
+			if(fnoid == BPCHAREQ_OID)
+			{
+				while(len > 0 && p[len-1] == ' ')
+					--len;
+			}
+
+			sstate->fp_len[i] = len;
+			pdest = palloc(len);
+			sstate->fp_datum[i] = PointerGetDatum(pdest);
+
+			memcpy(pdest, p, len);
+
+			if(tofree)
+				pfree(tofree);
+		}
+		else
+			Assert(!"Wrong optimize_funcoid");
+	}
+
+	/* Now we are sure we can fast path this */
+	if (fnoid == INT2EQ_OID || fnoid == INT4EQ_OID || fnoid == INT8EQ_OID || fnoid == DATE_EQ_OID)
+		sstate->fxprstate.xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalFPScalarArrayInt;
+	else if (fnoid == TEXTEQ_OID || fnoid == BPCHAREQ_OID) 
+		sstate->fxprstate.xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalFPScalarArrayStr; 
+	else
+		Assert(!"Wrong optimize_funcoid");
+}
+	
 /*
  * ExecEvalScalarArrayOp
  *
@@ -2008,10 +2339,10 @@ ExecEvalDistinct(FuncExprState *fcache,
  * (for ANY and ALL respectively).	Of course we short-circuit as soon as
  * the result is known.
  */
-static Datum
+	static Datum
 ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
-					  ExprContext *econtext,
-					  bool *isNull, ExprDoneCond *isDone)
+		ExprContext *econtext,
+		bool *isNull, ExprDoneCond *isDone)
 {
 	ScalarArrayOpExpr *opexpr = (ScalarArrayOpExpr *) sstate->fxprstate.xprstate.expr;
 	bool		useOr = opexpr->useOr;
@@ -2040,7 +2371,7 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 	if (sstate->fxprstate.func.fn_oid == InvalidOid)
 	{
 		init_fcache(opexpr->opfuncid, &sstate->fxprstate,
-					econtext->ecxt_per_query_memory);
+				econtext->ecxt_per_query_memory);
 		Assert(!sstate->fxprstate.func.fn_retset);
 	}
 
@@ -2050,7 +2381,7 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 	if (argDone != ExprSingleResult)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-			   errmsg("op ANY/ALL (array) does not support set arguments")));
+				 errmsg("op ANY/ALL (array) does not support set arguments")));
 	Assert(fcinfo.nargs == 2);
 
 	/*
@@ -2092,9 +2423,9 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 	if (sstate->element_type != ARR_ELEMTYPE(arr))
 	{
 		get_typlenbyvalalign(ARR_ELEMTYPE(arr),
-							 &sstate->typlen,
-							 &sstate->typbyval,
-							 &sstate->typalign);
+				&sstate->typlen,
+				&sstate->typbyval,
+				&sstate->typalign);
 		sstate->element_type = ARR_ELEMTYPE(arr);
 	}
 	typlen = sstate->typlen;
@@ -3720,6 +4051,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				fstate->args = (List *)
 					ExecInitExpr((Expr *) funcexpr->args, parent);
 				fstate->func.fn_oid = InvalidOid;		/* not initialized */
+				FastPathStrict2Func(funcexpr->funcid, fstate);
 				state = (ExprState *) fstate;
 			}
 			break;
@@ -3732,6 +4064,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				fstate->args = (List *)
 					ExecInitExpr((Expr *) opexpr->args, parent);
 				fstate->func.fn_oid = InvalidOid;		/* not initialized */
+				FastPathStrict2Func(opexpr->opfuncid, fstate);
 				state = (ExprState *) fstate;
 			}
 			break;
@@ -3757,7 +4090,10 @@ ExecInitExpr(Expr *node, PlanState *parent)
 					ExecInitExpr((Expr *) opexpr->args, parent);
 				sstate->fxprstate.func.fn_oid = InvalidOid;		/* not initialized */
 				sstate->element_type = InvalidOid;		/* ditto */
+
+				FastPathScalarArrayOp(opexpr, sstate);
 				state = (ExprState *) sstate;
+
 			}
 			break;
 		case T_BoolExpr:

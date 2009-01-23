@@ -962,7 +962,7 @@ ExecHashGetBucketAndBatch(HashJoinTable hashtable,
  */
 HashJoinTuple
 ExecScanHashBucket(HashJoinState *hjstate,
-				   ExprContext *econtext)
+		ExprContext *econtext)
 {
 	List	   *hjclauses = hjstate->hashqualclauses;
 	HashJoinTable hashtable = hjstate->hj_HashTable;

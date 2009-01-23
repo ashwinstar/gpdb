@@ -813,6 +813,11 @@ typedef struct FuncExprState
 	 * only if setArgsValid is true.
 	 */
 	FunctionCallInfoData setArgs;
+
+	/* Fast Path */
+	ExprState *fp_arg[2];
+	Datum 	   fp_datum[2];
+	bool 	   fp_null[2];
 } FuncExprState;
 
 /* ----------------
@@ -829,6 +834,11 @@ typedef struct ScalarArrayOpExprState
 	int16		typlen;
 	bool		typbyval;
 	char		typalign;
+
+	/* Fast path x in ('A', 'B', 'C') */
+	int 	fp_n;
+	int 	*fp_len;
+	Datum 	*fp_datum;
 } ScalarArrayOpExprState;
 
 /* ----------------
