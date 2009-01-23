@@ -108,12 +108,12 @@ class Host:
 		   'touch .ssh/authorized_keys; ' +
 		   'chmod 0600 .ssh/auth* .ssh/id_*; ' +
 		   'chmod 0644 .ssh/id*pub config')
-	    if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	    if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_host, cmd)
 	    (cin, cout, cerr) = p.exec_command(cmd)
 	    cin.close(); cout.close(); cerr.close()
 
 	    cmd = 'echo %s >> .ssh/authorized_keys && echo ok ok ok' % ID
-	    if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	    if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_host, cmd)
 	    (cin, cout, cerr) = p.exec_command(cmd)
 	    cin.close()
 	    line = cout.readline()
@@ -129,7 +129,7 @@ class Host:
     def popen(self, cmd):
 	'Run a command and save popen handle in this Host instance.'
 	if self.m_popen: self.m_popen.close()
-	if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_name, cmd)
+	if GV.opt['-v']: print '[INFO %s]: %s' % (self.m_host, cmd)
 	self.m_popen = os.popen(cmd)
 	self.m_popen_cmd = cmd
 	return self.m_popen
