@@ -36,6 +36,9 @@ try:
 except ImportError:
     sys.stderr.write("gpload needs pg8000")
     sys.exit(2)
+except Exception, e:
+    sys.stderr.write("could not import pg8000");
+    sys.exit(2)
  
 import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
 import platform
@@ -100,7 +103,7 @@ _abbrevs = [
 
 received_kill = False
 
-def build_safe_table_name(conn, tab):
+def build_safe_table_name(conn, tab, into_cols = None):
     """
     quote any multibyte, capitalised or keyword table names. Break
     up schema.table too.
@@ -110,6 +113,18 @@ def build_safe_table_name(conn, tab):
     if tab[0] == '"':
         # user did it for us
         return tab
+
+    if into_cols and re.search("\W", tab):
+        # Before proceeding, see if this is just an expression 
+        # such as orderkey + 1. To do so, we see if there's a reference
+        # to an into column in the clause
+        for colname, type, map, a in into_cols:
+            reg = "(?<=[^\w])%s(?=[^\w])" % colname
+            stab = " %s " % tab
+            r = re.compile(reg)
+            if re.search(reg, stab):
+                return tab
+
     i = tab.find('.')
     if i >= 0:
         to_quote.append(tab[:i])
@@ -1143,7 +1158,7 @@ class gpload:
         self.pg8000.NoticeReceived += notice_processor
         sql = 'insert into %s' % dest
         sql += '(%s)'%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[0]),cols))
-        sql += 'select %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2]),cols))
+        sql += 'select %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2], self.from_columns), cols))
         sql += 'from ext_%s'%self.name
         p = Progress(self,self.ports)
         p.start()
