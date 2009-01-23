@@ -952,7 +952,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		float4		swap_tuples;
 
 		swap_pages = relform1->relpages;
-		relform1->relpages = relform1->relpages;
+		relform1->relpages = relform2->relpages;
 		relform2->relpages = swap_pages;
 
 		swap_tuples = relform1->reltuples;
