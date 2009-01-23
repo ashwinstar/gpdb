@@ -7042,6 +7042,13 @@ ExplainableStmt:
 			| DeclareCursorStmt
 			| ExecuteStmt					/* by default all are $$=$1 */
 			| CreateAsStmt
+			| CreateStmt
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot EXPLAIN CREATE TABLE without AS "
+							 		"clause")));
+				}
 		;
 
 opt_analyze:
