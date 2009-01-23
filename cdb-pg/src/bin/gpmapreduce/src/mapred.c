@@ -2153,6 +2153,19 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 					bufcat(&buffer, lineno);
 					bufcat(&buffer, "\n");
 				}
+				else if (!strncasecmp("plpython", obj->u.function.language, 8) ||
+						 !strncasecmp("python",   obj->u.function.language, 6))
+				{
+					/*
+					 * Python very stuborn about not letting you manually 
+					 * adjust line number.  So instead we take the stupid route
+					 * and just insert N newlines. 
+					*/
+					int i;
+					for (i = 1; i < obj->u.function.lineno-2; i++)
+						bufcat(&buffer, "\n");
+				}
+
 
 				/* User function definition */
 				bufcat(&buffer, obj->u.function.body);

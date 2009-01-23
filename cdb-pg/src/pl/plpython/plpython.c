@@ -19,6 +19,12 @@
 #include <Python.h>
 #endif
 
+/* Python header files beyond the basic Python.h */
+#include <compile.h>
+#include <eval.h>
+#include <frameobject.h>
+#include <traceback.h>
+
 /*
  * Py_ssize_t compat for Python <= 2.4
  */
@@ -50,9 +56,6 @@ typedef int Py_ssize_t;
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
-
-#include <compile.h>
-#include <eval.h>
 
 PG_MODULE_MAGIC;
 
@@ -841,9 +844,9 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure * proc)
 				PLy_function_delete_args(proc);
 
 				if (has_error)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATA_EXCEPTION),
-						  errmsg("error fetching next item from iterator")));
+					PLy_elog(ERROR, 
+							 "function \"%s\" error fetching next item from iterator", 
+						proc->proname);
 
 				fcinfo->isnull = true;
 				return (Datum) NULL;
@@ -909,7 +912,8 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure * proc)
 			fcinfo->isnull = false;
 			plrv_so = PyObject_Str(plrv);
 			if (!plrv_so)
-				PLy_elog(ERROR, "function \"%s\" could not create return value", proc->proname);
+				PLy_elog(ERROR, "function \"%s\" could not create return value", 
+						 proc->proname);
 			plrv_sc = PyString_AsString(plrv_so);
 			rv = InputFunctionCall(&proc->result.out.d.typfunc,
 								   plrv_sc,
@@ -1321,8 +1325,11 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 static void
 PLy_procedure_compile(PLyProcedure * proc, const char *src)
 {
+	PyObject   *code = NULL;
 	PyObject   *crv = NULL;
 	char	   *msrc;
+	int			clen;
+	char		call[NAMEDATALEN + 256];
 
 	proc->globals = PyDict_Copy(PLy_interp_globals);
 
@@ -1337,29 +1344,47 @@ PLy_procedure_compile(PLyProcedure * proc, const char *src)
 	 * insert the function code into the interpreter
 	 */
 	msrc = PLy_procedure_munge_source(proc->pyname, src);
-	crv = PyRun_String(msrc, Py_file_input, proc->globals, NULL);
+
+	/*
+	 * Replace single call to run_string with double calls to
+	 * Compile/Eval this enables us to declare a name for the
+	 * "file" other than string - here using the function name.
+	 * It also opens the way to mucking with the compiled code to
+	 * get around the indentation bugs introduced in munge_source
+	 * above.
+	 *
+	 * Original code:
+	 *   crv = PyRun_String(msrc, Py_file_input, proc->globals, NULL);
+	 *   free(msrc);
+	 */
+	code = Py_CompileString(msrc, proc->proname, Py_file_input);
 	free(msrc);
+	if (code == NULL || PyErr_Occurred())
+		goto error;
 
-	if (crv != NULL && (!PyErr_Occurred()))
-	{
-		int			clen;
-		char		call[NAMEDATALEN + 256];
+	crv = PyEval_EvalCode((PyCodeObject*) code, proc->globals, NULL);
+	if (crv == NULL || PyErr_Occurred())
+		goto error;
 
-		Py_DECREF(crv);
+	Py_DECREF(code);
+	Py_DECREF(crv);
 
-		/*
-		 * compile a call to the function
-		 */
-		clen = snprintf(call, sizeof(call), "%s()", proc->pyname);
-		if (clen < 0 || clen >= sizeof(call))
-			elog(ERROR, "string would overflow buffer");
-		proc->code = Py_CompileString(call, "<string>", Py_eval_input);
-		if (proc->code != NULL && (!PyErr_Occurred()))
-			return;
-	}
-	else
-		Py_XDECREF(crv);
+	/*
+	 * compile a call to the function
+	 */
+	clen = snprintf(call, sizeof(call), "%s()", proc->pyname);
+	if (clen < 0 || clen >= sizeof(call))
+		elog(ERROR, "string would overflow buffer");
+	proc->code = Py_CompileString(call, proc->proname, Py_eval_input);
+	if (proc->code == NULL || PyErr_Occurred())
+		goto error;
 
+	/* All good */
+	return;
+		
+error:
+    Py_XDECREF(code);
+    Py_XDECREF(crv);
 	PLy_elog(ERROR, "could not compile function \"%s\"", proc->proname);
 }
 
@@ -1398,7 +1423,6 @@ PLy_procedure_munge_source(const char *name, const char *src)
 		else
 			*mp++ = *sp++;
 	}
-	*mp++ = '\n';
 	*mp++ = '\n';
 	*mp = '\0';
 
@@ -2938,9 +2962,8 @@ PLy_elog(int elevel, const char *fmt,...)
 static char *
 PLy_traceback(int *xlevel)
 {
-	PyObject   *e,
-			   *v,
-			   *tb;
+	PyObject   *e, *v;
+	PyTracebackObject *tb;
 	PyObject   *eob,
 			   *vob = NULL;
 	char	   *vstr,
@@ -2950,7 +2973,7 @@ PLy_traceback(int *xlevel)
 	/*
 	 * get the current exception
 	 */
-	PyErr_Fetch(&e, &v, &tb);
+	PyErr_Fetch(&e, &v, (PyObject **)&tb);
 
 	/*
 	 * oops, no exception, return
@@ -2961,8 +2984,7 @@ PLy_traceback(int *xlevel)
 		return NULL;
 	}
 
-	PyErr_NormalizeException(&e, &v, &tb);
-	Py_XDECREF(tb);
+	PyErr_NormalizeException(&e, &v, (PyObject**) &tb);
 
 	eob = PyObject_Str(e);
 	if (v && ((vob = PyObject_Str(v)) != NULL))
@@ -2979,8 +3001,13 @@ PLy_traceback(int *xlevel)
 	estr = eob ? PyString_AsString(eob) : "Unknown Exception";
 	initStringInfo(&xstr);
 	appendStringInfo(&xstr, "%s: %s", estr, vstr);
+	if (tb)
+		appendStringInfo(&xstr, " (%s, line %d)",
+						 tb->tb_frame->f_code->co_filename,
+						 tb->tb_lineno);
 
 	Py_DECREF(eob);
+	Py_XDECREF(tb);
 	Py_XDECREF(vob);
 	Py_XDECREF(v);
 
