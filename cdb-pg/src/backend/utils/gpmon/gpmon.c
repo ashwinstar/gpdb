@@ -38,7 +38,9 @@ void gpmon_sig_handler(int sig)
 void gpmon_init(void)
 {
 	struct itimerval tv;
+#ifndef WIN32
 	pqsigfunc sfunc;
+#endif
 	pid_t pid = getpid();
 	int sock;
 
