@@ -230,7 +230,7 @@ fill_buffer(URL_FILE *file,int want)
 
         if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout)))
 		{
-			//CHECK_FOR_INTERRUPTS();
+			CHECK_FOR_INTERRUPTS();
 
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
