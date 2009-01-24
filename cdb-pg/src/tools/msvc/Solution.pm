@@ -25,6 +25,15 @@ sub new
         strver   => '',
     };
     bless $self;
+    	# integer_datetimes is now the default
+	$options->{integer_datetimes} = 1 
+		unless exists $options->{integer_datetimes};
+    $options->{float4byval} = 1
+        unless exists $options->{float4byval};
+    $options->{float8byval} = 1
+        unless exists $options->{float8byval};
+
+
     if ($options->{xml})
     {
         if (!($options->{xslt} && $options->{iconv}))
@@ -32,6 +41,24 @@ sub new
             die "XML requires both XSLT and ICONV\n";
         }
     }
+    $options->{blocksize} = 32
+		unless $options->{blocksize}; # undef or 0 means default
+	die "Bad blocksize $options->{blocksize}"
+		unless grep {$_ == $options->{blocksize}} (1,2,4,8,16,32);
+	$options->{segsize} = 1
+		unless $options->{segsize}; # undef or 0 means default
+	# only allow segsize 1 for now, as we can't do large files yet in windows
+	die "Bad segsize $options->{segsize}"
+		unless $options->{segsize} == 1;
+	$options->{wal_blocksize} = 8
+		unless $options->{wal_blocksize}; # undef or 0 means default
+	die "Bad wal_blocksize $options->{wal_blocksize}"
+		unless grep {$_ == $options->{wal_blocksize}} (1,2,4,8,16,32,64);
+	$options->{wal_segsize} = 16
+		unless $options->{wal_segsize}; # undef or 0 means default
+	die "Bad wal_segsize $options->{wal_segsize}"
+		unless grep {$_ == $options->{wal_segsize}} (1,2,4,8,16,32,64);
+
     return $self;
 }
 
@@ -103,10 +130,11 @@ sub GenerateFiles
         {
             s{PG_VERSION "[^"]+"}{PG_VERSION "$self->{strver}"};
             s{PG_VERSION_NUM \d+}{PG_VERSION_NUM $self->{numver}};
-s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY(z)\n#define PG_VERSION_STR "PostgreSQL $self->{strver} (Greenplum Database) on Windows, compiled by Visual C++ build " __STRINGIFY2(_MSC_VER)};
+s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY(z)\n#define PG_VERSION_STR "PostgreSQL $self->{strver} (Greenplum Database) on Windows, compiled by Visual C++ build " __STRINGIFY2(_MSC_VER) ", 32-bit"};
             print O;
         }
         print O "#define GP_VERSION \"unknown\"\n";
+        print O "#define PG_MAJORVERSION \"$self->{majorver}\"\n";
         print O "#define LOCALEDIR \"/share/locale\"\n" if ($self->{options}->{nls});
         print O "/* defines added by config steps */\n";
         print O "#ifndef IGNORE_CONFIGURED_SETTINGS\n";
@@ -116,6 +144,40 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         print O "#define HAVE_LIBZ 1\n" if ($self->{options}->{zlib});
         print O "#define USE_SSL 1\n" if ($self->{options}->{openssl});
         print O "#define ENABLE_NLS 1\n" if ($self->{options}->{nls});
+        
+        print O "#define BLCKSZ ",1024 * $self->{options}->{blocksize},"\n";
+	#	print O "#define RELSEG_SIZE ",
+	#		(1024 / $self->{options}->{blocksize}) * 
+	#			$self->{options}->{segsize} * 1024, "\n";
+	#	print O "#define XLOG_BLCKSZ ",
+	#		1024 * $self->{options}->{wal_blocksize},"\n";
+		#print O "#define XLOG_SEG_SIZE (",
+		#	$self->{options}->{wal_segsize}," * 1024 * 1024)\n";
+        
+        if ($self->{options}->{float4byval}) 
+        {
+            print O "#define USE_FLOAT4_BYVAL 1\n";
+            print O "#define FLOAT4PASSBYVAL true\n";
+        }
+        else
+        {
+            print O "#define FLOAT4PASSBYVAL false\n";
+        }
+        if ($self->{options}->{float8byval})
+        {
+            print O "#define USE_FLOAT8_BYVAL 1\n";
+            print O "#define FLOAT8PASSBYVAL true\n";
+        }
+        else
+        {
+            print O "#define FLOAT8PASSBYVAL false\n";
+        }
+
+        if ($self->{options}->{uuid})
+        {
+            print O "#define HAVE_UUID_H\n";
+        }
+
 
         if ($self->{options}->{xml})
         {
@@ -487,6 +549,7 @@ sub GetFakeConfigure
     $cfg .= ' --with-ldap' if ($self->{options}->{ldap});
     $cfg .= ' --without-zlib' unless ($self->{options}->{zlib});
     $cfg .= ' --with-openssl' if ($self->{options}->{ssl});
+    $cfg .= ' --with-ossp-uuid' if ($self->{options}->{uuid});
     $cfg .= ' --with-libxml' if ($self->{options}->{xml});
     $cfg .= ' --with-libxslt' if ($self->{options}->{xslt});
     $cfg .= ' --with-krb5' if ($self->{options}->{krb5});
