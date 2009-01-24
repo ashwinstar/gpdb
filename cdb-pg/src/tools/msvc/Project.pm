@@ -123,6 +123,11 @@ sub AddReference
 sub AddLibrary
 {
     my ($self, $lib, $dbgsuffix) = @_;
+    
+    if ($lib =~ m/\s/)
+    {
+    	$lib = '&quot;' . $lib . "&quot;";
+    }
 
     push @{$self->{libraries}}, $lib;
     if ($dbgsuffix)
@@ -193,6 +198,10 @@ sub AddDir
         {
             next
               if $subdir eq "\$(top_builddir)/src/timezone"; #special case for non-standard include
+            next
+              if $reldir . "\\" . $subdir eq "src\\backend\\port\\darwin";
+
+
             $self->AddDir($reldir . "\\" . $subdir);
         }
     }
