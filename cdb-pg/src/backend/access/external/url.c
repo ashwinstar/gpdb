@@ -230,6 +230,8 @@ fill_buffer(URL_FILE *file,int want)
 
         if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout)))
 		{
+			//CHECK_FOR_INTERRUPTS();
+
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
 			elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)",
