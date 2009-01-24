@@ -32,7 +32,7 @@ my $contrib_extrasource = {
     'cube' => ['cubescan.l','cubeparse.y'],
     'seg' => ['segscan.l','segparse.y']
 };
-my @contrib_excludes = ('pgcrypto','uuid-ossp','bufferedtest', 'varblocktest', 'gp_filedump');
+my @contrib_excludes = ('pgcrypto','uuid-ossp','bufferedtest', 'varblocktest', 'gp_filedump', 'tsearch2');
 
 sub mkvcbuild
 {
@@ -58,8 +58,10 @@ sub mkvcbuild
 
     $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
     $libpq->AddDefine('FRONTEND');
+    $libpq->AddDefine('UNSAFE_STAT_OK');
     $libpq->AddIncludeDir('src\port');
-    $libpq->AddLibrary('wsock32.lib ws2_32.lib');
+    $libpq->AddLibrary('wsock32.lib');
+    $libpq->AddLibrary('ws2_32.lib');
     $libpq->AddLibrary('secur32.lib');
     $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
     
@@ -93,7 +95,9 @@ sub mkvcbuild
     $postgres->AddReference($libpq);
     
     $postgres->AddDefine('BUILDING_DLL');
-    $postgres->AddLibrary('wsock32.lib ws2_32.lib secur32.lib');
+    $postgres->AddLibrary('wsock32.lib');
+    $postgres->AddLibrary('ws2_32.lib');
+    $postgres->AddLibrary('secur32.lib');
     $postgres->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
     
     # GPDB actually requires pthreads, can't run without.
@@ -108,7 +112,8 @@ sub mkvcbuild
     #in GPDB, plpgsql calls libpq, so include references to it.
     $plpgsql->AddIncludeDir('src\interfaces\libpq');
     $plpgsql->AddReference($libpq,$libpgport);
-    $plpgsql->AddLibrary('wsock32.lib ws2_32.lib');
+    $plpgsql->AddLibrary('wsock32.lib');
+    $plpgsql->AddLibrary('ws2_32.lib');
 
     if ($solution->{options}->{perl})
     {
@@ -184,6 +189,7 @@ sub mkvcbuild
     $ecpg->AddDefine('MAJOR_VERSION=4');
     $ecpg->AddDefine('MINOR_VERSION=2');
     $ecpg->AddDefine('PATCHLEVEL=1');
+    $ecpg->AddDefine('ECPG_COMPILE');
     $ecpg->AddReference($libpgport);
 
     #my $pgregress_ecpg = $solution->AddProject('pg_regress_ecpg','exe','misc');
@@ -196,10 +202,13 @@ sub mkvcbuild
     #$pgregress_ecpg->AddReference($libpgport);
 
     # src/bin
-    my $initdb = AddSimpleFrontend('initdb', 1);
+    my $initdb = AddSimpleFrontend('initdb');
     $initdb->AddIncludeDir('src\interfaces\libpq');
     $initdb->AddDefine('FRONTEND');
-    $initdb->AddLibrary('wsock32.lib ws2_32.lib');
+    $initdb->AddLibrary('wsock32.lib'); 
+    $initdb->AddLibrary('ws2_32.lib');
+    $initdb->AddReference($libpgport);
+    $initdb->AddReference($libpq);
 
     my $pgconfig = AddSimpleFrontend('pg_config');
 
@@ -270,6 +279,17 @@ sub mkvcbuild
     {
         push @contrib_excludes,'sslinfo';
     }
+
+    if ($solution->{options}->{uuid})
+    {
+       $contrib_extraincludes->{'uuid-ossp'} = [ $solution->{options}->{uuid} . '\include' ];
+       $contrib_extralibs->{'uuid-ossp'} = [ $solution->{options}->{uuid} . '\lib\uuid.lib' ];
+    }
+	 else
+    {
+       push @contrib_excludes,'uuid-ossp';
+    }
+
 
     # Pgcrypto makefile too complex to parse....
     my $pgcrypto = $solution->AddProject('pgcrypto','dll','crypto');
@@ -370,7 +390,8 @@ sub mkvcbuild
     # Regression DLL and EXE
     my $regress = $solution->AddProject('regress','dll','misc');
     $regress->AddFile('src\test\regress\regress.c');
-    $regress->AddLibrary('wsock32.lib ws2_32.lib');
+    $regress->AddLibrary('wsock32.lib');
+    $regress->AddLibrary('ws2_32.lib');
     $regress->AddReference($postgres);
 
     my $pgregress = $solution->AddProject('pg_regress','exe','misc');
@@ -379,7 +400,8 @@ sub mkvcbuild
     $pgregress->AddIncludeDir('src\port');
     $pgregress->AddDefine('HOST_TUPLE="i686-pc-win32vc"');
     $pgregress->AddDefine('FRONTEND');
-    $pgregress->AddLibrary('wsock32.lib ws2_32.lib');
+    $pgregress->AddLibrary('wsock32.lib');
+    $pgregress->AddLibrary('ws2_32.lib');
     $pgregress->AddReference($libpgport);
 
     $solution->Save();
@@ -588,7 +610,8 @@ sub AdjustContribProj
     {
         $proj->AddFiles('contrib\\' . $n, @{$contrib_extrasource->{$n}});
     }
-    $proj->AddLibrary('wsock32.lib ws2_32.lib');
+    $proj->AddLibrary('wsock32.lib');
+    $proj->AddLibrary('ws2_32.lib');
 }
 
 1;
