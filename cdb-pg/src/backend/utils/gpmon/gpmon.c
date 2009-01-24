@@ -58,16 +58,16 @@ void gpmon_init(void)
 	else {
 		Assert(sfunc == 0);
 	}
-#else
-	elog(ERROR,"Not ported to win32 yet");
 #endif
 
 	tv.it_interval.tv_sec = gp_gpperfmon_send_interval;
 	tv.it_interval.tv_usec = 0;
 	tv.it_value = tv.it_interval;
+#ifndef WIN32
 	if (-1 == setitimer(ITIMER_VIRTUAL, &tv, 0)) {
 		elog(WARNING, "gpmon: unable to start timer (%m)");
 	}
+#endif 
 
 	sock = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock == -1) {
