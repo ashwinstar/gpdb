@@ -336,7 +336,6 @@ sub mkvcbuild
     foreach my $sub (split /\s+/,$1)
     {
 		next if (length($sub) == 0);
-		next if ($sub eq "euc_tw_and_big5");
         my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
         my $p = $solution->AddProject($sub, 'dll', 'conversion procs');
         
