@@ -3444,6 +3444,17 @@ CopyFrom(CopyState cstate)
 		 */
 		if (bytesread > 0 || !cstate->fe_eof)
 		{
+			/* handle HEADER, but only if we're in utility mode */
+			if (cstate->header_line)
+			{
+				cstate->line_done = cstate->csv_mode ?
+					CopyReadLineCSV(cstate, bytesread) :
+					CopyReadLineText(cstate, bytesread);
+				cstate->cur_lineno++;
+				cstate->header_line = false;
+
+				RESET_LINEBUF;
+			}
 
 			while (!cstate->raw_buf_done)
 			{
