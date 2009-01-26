@@ -1965,14 +1965,6 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		cdbdisp_sumRejectedRows(pr);
 		
 		/* sum up inserted rows into any AO relation */
-		/* TODO (Gavin): 
-		 * 1) unlike in COPY (end of CopyFromDispatch) where the QD has access
-		 * to *all* the result relations that are a part of a partitioned table,
-		 * in here the QD only has 1 - the result rel of the master. So, since
-		 * es_num_result_relations=1 ExecUpdateAOtupCount only updates the master
-		 * partition table
-		 * 1) passing es_processed is wrong. we need to find the per
-		 * partition totals inside of ExecUpdateAOtupCount and update each */
 		if (aocounts)
 		{
 			ListCell *lc;
