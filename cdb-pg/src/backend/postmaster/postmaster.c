@@ -149,8 +149,9 @@
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
-void
-SeqServerMain(int argc, char *argv[]);
+void SeqServerMain(int argc, char *argv[]);
+
+void FtsProbeMain(int argc, char *argv[]);
 #endif
 
 
