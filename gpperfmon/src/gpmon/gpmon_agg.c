@@ -596,10 +596,8 @@ static void delete_old_files(bloom_t* bloom)
     strncpy(findDir, GPMON_DIR, 255);
     if (findDir[strlen(findDir) -1] == '/')
     	findDir[strlen(findDir) - 1] = '\0';
-	TR2(("Find dir: %s\n", findDir));
 
     snprintf(findCmd, 512, "find %s -name \"q*-*.txt\" 2> /dev/null", findDir);
-	TR2(("Find cmd: %s\n", findCmd));
     fp = popen(findCmd, "r");
 
     if (fp)
