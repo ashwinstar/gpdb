@@ -81,7 +81,7 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
     if (node) {
 	node->qlog = *qlog;
 	if (0 != strcmp(qlog->db, GPMON_DB)) {
-	    TR2(("agg_put: found %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, 
+	    TR2(("agg_put: found %d.%d.%d generation %d recorded %d\n", qlog->key.tmid,
 		qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
 	}
     }
@@ -95,7 +95,7 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 	node->qenode_list = 0;
 	apr_hash_set(agg->qtab, &node->qlog.key, sizeof(node->qlog.key), node);
 	if (0 != strcmp(qlog->db, GPMON_DB)) {
-	    TR2(("agg_put: new %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, 
+	    TR2(("agg_put: new %d.%d.%d generation %d recorded %d\n", qlog->key.tmid,
 		qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
 	}
     }
@@ -136,7 +136,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
     for (ep = dp->qenode_list, epp = &dp->qenode_list; ep; epp = &ep->next, ep = ep->next) {
 	if (0 == (diff = ep->qexec.key.segid - qexec->key.segid))
 	    diff = ep->qexec.key.nid - qexec->key.nid;
-	if (diff >= 0) 
+	if (diff >= 0)
 	    break;
     }
 
@@ -172,7 +172,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 }
 
 
-apr_status_t agg_create(agg_t** retagg, apr_int64_t generation, 
+apr_status_t agg_create(agg_t** retagg, apr_int64_t generation,
 			apr_pool_t* parent_pool)
 {
     int e;
@@ -236,9 +236,9 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
             && status != GPMON_QLOG_STATUS_SUBMIT
             && status != GPMON_QLOG_STATUS_START) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
-		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
+		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n",
 		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
-		    (int) dp->last_updated_generation, 
+		    (int) dp->last_updated_generation,
 		    (int) newagg->generation, dp->recorded));
 	    }
 	    continue;
@@ -249,8 +249,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 		dp->qlog.status = status;
 
 	if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
-	    TR2(("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n", 
-		 dp->qlog.key.tmid, dp->qlog.key.ssid, 
+	    TR2(("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n",
+		 dp->qlog.key.tmid, dp->qlog.key.ssid,
 		dp->qlog.key.ccnt, dp->last_updated_generation, dp->recorded));
 	}
 
@@ -262,7 +262,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	*newdp = *dp;
 	newdp->qenode_list = 0;
 	apr_hash_set(newagg->qtab, &newdp->qlog.key, sizeof(newdp->qlog.key), newdp);
-	
+
 	/* dup all qexec entries hanging off dp */
 	cnt = 0;
 	tail = &newdp->qenode_list;
@@ -278,8 +278,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	    *tail = x;
 	    tail = &x->next;
 
-	    TR2(("\t    %d: (%d, %d) op %s\n", ++cnt, 
-		 x->qexec.key.segid, 
+	    TR2(("\t    %d: (%d, %d) op %s\n", ++cnt,
+		 x->qexec.key.segid,
 		 x->qexec.key.nid,
 		 x->qexec.ntype));
 	}
@@ -302,7 +302,7 @@ apr_status_t agg_put(agg_t* agg, const gpmon_packet_t* pkt)
 {
     if (pkt->pkttype == GPMON_PKTTYPE_METRICS)
 	return agg_put_metrics(agg, &pkt->u.metrics);
-    if (pkt->pkttype == GPMON_PKTTYPE_QLOG) 
+    if (pkt->pkttype == GPMON_PKTTYPE_QLOG)
 	return agg_put_qlog(agg, &pkt->u.qlog, agg->generation);
     if (pkt->pkttype == GPMON_PKTTYPE_QEXEC)
 	return agg_put_qexec(agg, &pkt->u.qexec, agg->generation);
@@ -341,24 +341,24 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
 	    qexec->key.tmid,
 	    qexec->key.ssid,
 	    qexec->key.ccnt,
-	    qexec->key.segid, 
+	    qexec->key.segid,
 	    qexec->key.pid,
 	    qexec->key.nid);
     sprintf(p += strlen(p), "|%d", qexec->pnid);
     sprintf(p += strlen(p), "|%s", qexec->_hname);
     sprintf(p += strlen(p), "|%s|%s", qexec->ntype, qexec->nstatus);
-    sprintf(p += strlen(p), "|%s|%d", 
-	    gpmon_datetime(apr_time_from_sec(qexec->tstart), qexec_tstamp), 
+    sprintf(p += strlen(p), "|%s|%d",
+	    gpmon_datetime(apr_time_from_sec(qexec->tstart), qexec_tstamp),
 	    qexec->tduration);
-    sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64, 
+    sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64,
 	    qexec->p_mem, qexec->p_memmax);
     sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64,
-	    qexec->_p_metrics.mem.size, 
-	    qexec->_p_metrics.mem.resident, 
+	    qexec->_p_metrics.mem.size,
+	    qexec->_p_metrics.mem.resident,
 	    qexec->_p_metrics.mem.share);
-    sprintf(p += strlen(p), "|%" FMT64 "|%.2f", 
+    sprintf(p += strlen(p), "|%" FMT64 "|%.2f",
 	    qenode->cpu_elapsed,
-	    qexec->_p_metrics.cpu_pct);   
+	    qexec->_p_metrics.cpu_pct);
     sprintf(p += strlen(p), "|%s", qexec->phase);
     sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64, qexec->rowsout, qexec->rowsout_est);
     for (i = 0; i < sizeof(qexec->m) / sizeof(qexec->m[0]); i++) {
@@ -368,7 +368,7 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
         }
         else
         {
-            sprintf(p += strlen(p), "|%s|%s", qexec->m[i].name, 
+            sprintf(p += strlen(p), "|%s|%s", qexec->m[i].name,
                     qexec->m[i].unit);
             sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64,
                     qexec->m[i].value, qexec->m[i].valuemax);
@@ -409,8 +409,8 @@ apr_status_t agg_dump(agg_t* agg)
 
     bloom_init(&bloom);
 
-    /* we never delete system_tail/ system_now/ 
-       queries_tail/ queries_now/ 
+    /* we never delete system_tail/ system_now/
+       queries_tail/ queries_now/
        iterators_tail/ iterators_now/ files */
     bloom_set(&bloom, GPMON_DIR "system_now.dat");
     bloom_set(&bloom, GPMON_DIR "system_tail.dat");
@@ -424,7 +424,7 @@ apr_status_t agg_dump(agg_t* agg)
     bloom_set(&bloom, GPMON_DIR "database_now.dat");
     bloom_set(&bloom, GPMON_DIR "database_tail.dat");
     bloom_set(&bloom, GPMON_DIR "_database_tail.dat");
-    
+
     if (gpmmon_harvest_status() != APR_SUCCESS)
     {
         TR0(("Harvest failure.  Buffering metrics\n"));
@@ -455,12 +455,12 @@ apr_status_t agg_dump(agg_t* agg)
 	apr_hash_this(hi, 0, 0, &vptr);
 	qdnode = vptr;
 	if (qdnode->qlog.status == GPMON_QLOG_STATUS_DONE || qdnode->qlog.status == GPMON_QLOG_STATUS_ERROR) {
-	    if (!qdnode->recorded 
+	    if (!qdnode->recorded
 		&& qdnode->qlog.tfin - qdnode->qlog.tstart >= min_query_time) {
-		TR1(("queries_tail: %x add query %d.%d.%d, status %d, generation %d, recorded %d\n", 
+		TR1(("queries_tail: %x add query %d.%d.%d, status %d, generation %d, recorded %d\n",
 		    agg->qtab,
 		    qdnode->qlog.key.tmid, qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt, qdnode->qlog.status,
-		    qdnode->last_updated_generation, 
+		    qdnode->last_updated_generation,
 		    qdnode->recorded));
                 if (write_tail_files)
                     bytes_written += write_qlog_full(fp_queries_tail, qdnode, nowstr);
@@ -490,7 +490,7 @@ apr_status_t agg_dump(agg_t* agg)
 
     /* dump dbmetrics */
     bytes_written += write_dbmetrics(&dbmetrics, nowstr, write_tail_files);
-    
+
     /* dump query list data */
     if (! (fp_queries_now = fopen(GPMON_DIR "_queries_now.dat", "w"))) {
         e = APR_FROM_OS_ERROR(errno);
@@ -528,7 +528,7 @@ apr_status_t agg_dump(agg_t* agg)
 
         /* not interesting */
 	/* CK: keep this for now
-        if (qdnode->qenode_list == 0) 
+        if (qdnode->qenode_list == 0)
             continue;
 	*/
 
@@ -547,7 +547,7 @@ apr_status_t agg_dump(agg_t* agg)
             write_qenode_row(fp_iters_now, ep, nowstr);
 	}
 
-	if (qdnode->recorded && !qdnode->qenode_recorded && 
+	if (qdnode->recorded && !qdnode->qenode_recorded &&
             qdnode->qlog.tfin - qdnode->qlog.tstart >= min_detailed_query_time) {
 	    for (ep = qdnode->qenode_list; ep; ep = ep->next) {
                 if (write_tail_files)
@@ -570,7 +570,7 @@ apr_status_t agg_dump(agg_t* agg)
 
     /* clean up ... delete all old files by checking our bloom filter */
     delete_old_files(&bloom);
-    
+
     return 0;
 
     bail:
@@ -585,11 +585,26 @@ extern int gpmmon_quantum(void);
 
 static void delete_old_files(bloom_t* bloom)
 {
-    FILE* fp = popen("ls -1 " GPMON_DIR "q*-*.txt 2> /dev/null", "r");
+	char findDir[256] = {0};
+	char findCmd[512] = {0};
+	FILE* fp = NULL;
     time_t cutoff = time(0) - gpmmon_quantum() * 3;
-    if (fp) 
+
+    /* Need to remove trailing / in dir so find results are consistent
+     * between platforms
+     */
+    strncpy(findDir, GPMON_DIR, 255);
+    if (findDir[strlen(findDir) -1] == '/')
+    	findDir[strlen(findDir) - 1] = '\0';
+	TR2(("Find dir: %s\n", findDir));
+
+    snprintf(findCmd, 512, "find %s -name \"q*-*.txt\" 2> /dev/null", findDir);
+	TR2(("Find cmd: %s\n", findCmd));
+    fp = popen(findCmd, "r");
+
+    if (fp)
 	{
-		for (;;) 
+		for (;;)
 		{
 		    char line[1024];
 		    char* p;
@@ -597,15 +612,15 @@ static void delete_old_files(bloom_t* bloom)
 			apr_int32_t status;
 
 		    line[sizeof(line) - 1] = 0;
-		    if (! (p = fgets(line, sizeof(line), fp))) 
+		    if (! (p = fgets(line, sizeof(line), fp)))
 				break;
-		    if (line[sizeof(line) - 1]) 
+		    if (line[sizeof(line) - 1])
 				continue; 	/* fname too long */
-	    
+
 		    p = gpmon_trim(p);
 		    TR2(("Checking file %s\n", p));
 
-		    if (0 == stat(p, &stbuf)) 
+		    if (0 == stat(p, &stbuf))
 			{
 #if defined(sun) || defined(linux)
 				int expired = stbuf.st_mtime < cutoff;
@@ -613,7 +628,7 @@ static void delete_old_files(bloom_t* bloom)
 				int expired = stbuf.st_mtimespec.tv_sec < cutoff;
 #endif
 				TR2(("File %s expired: %d\n", p, expired));
-				if (expired) 
+				if (expired)
 				{
 					apr_int32_t tmid = 0, ssid = 0, ccnt = 0;
 					if (bloom_isset(bloom, p))
@@ -640,6 +655,10 @@ static void delete_old_files(bloom_t* bloom)
 		    }
 		}
 		pclose(fp);
+    }
+    else
+    {
+    	gpmon_warning(FLINE, "Failed to get a list of query text files.\n");
     }
 }
 
@@ -696,28 +715,28 @@ static apr_uint32_t write_system(agg_t* agg, const char* nowstr, apr_uint32_t wr
 	mp = (gpmon_metrics_t*) valptr;
 
 	p = line; line[0] = 0;
-	sprintf(p += strlen(p), "%s|%s", 
+	sprintf(p += strlen(p), "%s|%s",
 		nowstr, mp->hname);
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
 		mp->mem.total, mp->mem.used, mp->mem.actual_used, mp->mem.actual_free);
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
 		mp->swap.total, mp->swap.used,
-                (apr_int64_t)ceil((double)mp->swap.page_in / (double)quantum), 
+                (apr_int64_t)ceil((double)mp->swap.page_in / (double)quantum),
                 (apr_int64_t)ceil((double)mp->swap.page_out / (double)quantum));
-	sprintf(p += strlen(p), "|%.2f|%.2f|%.2f", 
+	sprintf(p += strlen(p), "|%.2f|%.2f|%.2f",
 		mp->cpu.user_pct, mp->cpu.sys_pct, mp->cpu.idle_pct);
 	sprintf(p += strlen(p), "|%.4f|%.4f|%.4f",
 		mp->load_avg.value[0], mp->load_avg.value[1], mp->load_avg.value[2]);
-        sprintf(p += strlen(p), "|%d", quantum); 
+        sprintf(p += strlen(p), "|%d", quantum);
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
-		(apr_int64_t)ceil((double)mp->disk.rcount / (double)quantum), 
-                (apr_int64_t)ceil((double)mp->disk.wcount / (double)quantum), 
-                (apr_int64_t)ceil((double)mp->disk.rbytes / (double)quantum), 
+		(apr_int64_t)ceil((double)mp->disk.rcount / (double)quantum),
+                (apr_int64_t)ceil((double)mp->disk.wcount / (double)quantum),
+                (apr_int64_t)ceil((double)mp->disk.rbytes / (double)quantum),
                 (apr_int64_t)ceil((double)mp->disk.wbytes / (double)quantum));
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
-		(apr_int64_t)ceil((double)mp->net.rcount / (double)quantum), 
-                (apr_int64_t)ceil((double)mp->net.wcount / (double)quantum), 
-                (apr_int64_t)ceil((double)mp->net.rbytes / (double)quantum), 
+		(apr_int64_t)ceil((double)mp->net.rcount / (double)quantum),
+                (apr_int64_t)ceil((double)mp->net.wcount / (double)quantum),
+                (apr_int64_t)ceil((double)mp->net.rbytes / (double)quantum),
                 (apr_int64_t)ceil((double)mp->net.wbytes / (double)quantum));
         if (write_tail_files)
             fprintf(fp, "%s\n", line);
@@ -733,7 +752,7 @@ static apr_int64_t get_total_cpu_elapsed(qdnode_t* qdnode)
 {
     qenode_t* pqe = NULL;
     apr_int64_t total_cpu_elapsed = 0;
-    
+
     for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
         total_cpu_elapsed += pqe->cpu_elapsed;
 
@@ -744,7 +763,7 @@ static apr_int64_t get_rowsout(qdnode_t* qdnode)
 {
     qenode_t* pqe = NULL;
     apr_int64_t rowsout = 0;
-    
+
     for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
         if (pqe->qexec.key.segid == -1 && pqe->qexec.key.nid == 1)
         {
@@ -781,10 +800,10 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
     segtab = apr_hash_make(tmp_pool);
     if (!segtab)
         gpmon_fatal(FLINE, "Out of memory");
- 
+
     segpidtab = apr_hash_make(tmp_pool);
     if (!segpidtab)
-        gpmon_fatal(FLINE, "Out of memory"); 
+        gpmon_fatal(FLINE, "Out of memory");
 
     /* Calc mean per segment */
     for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
@@ -794,11 +813,11 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
             continue;
 
         memset(key, 0, 32);
-        snprintf(key, 32, "%d-%d", pqe->qexec.key.segid, pqe->qexec.key.pid); 
+        snprintf(key, 32, "%d-%d", pqe->qexec.key.segid, pqe->qexec.key.pid);
 
         seg_cpu_current = apr_hash_get(segpidtab, key, sizeof(key));
-        
-        if (!seg_cpu_current) 
+
+        if (!seg_cpu_current)
         {
             seg_cpu_current = apr_palloc(tmp_pool, sizeof(float));
             *seg_cpu_current = pqe->qexec._p_metrics.cpu_pct;
@@ -808,7 +827,7 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
             if (valptr == NULL)
             {
                 segcnt++;
-                apr_hash_set(segtab, &pqe->qexec.key.segid, 
+                apr_hash_set(segtab, &pqe->qexec.key.segid,
                              sizeof(pqe->qexec.key.segid), &dummyval);
             }
         }
@@ -820,7 +839,7 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
         seg_cpu_current = (float*) valptr;
         cpu_avg += *seg_cpu_current;
     }
-    
+
     if (!segcnt) {
         TR2(("No segments for CPU current calculation\n"));
         apr_pool_destroy(tmp_pool);
@@ -830,7 +849,7 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
     cpu_avg = cpu_avg / (float)segcnt;
 
     apr_pool_destroy(tmp_pool);
-    
+
     return cpu_avg;
 }
 
@@ -859,7 +878,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
 
     segtab = apr_hash_make(tmp_pool);
     if (!segtab)
-        gpmon_fatal(FLINE, "Out of memory"); 
+        gpmon_fatal(FLINE, "Out of memory");
 
     /* Calc mean per segment */
     for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
@@ -867,10 +886,10 @@ static double get_cpu_skew(qdnode_t* qdnode)
         /* Skip QD */
         if (pqe->qexec.key.segid == -1)
             continue;
-        
+
         seg_cpu_sum = apr_hash_get(segtab, &pqe->qexec.key.segid,
                                    sizeof(pqe->qexec.key.segid));
-        
+
         if (!seg_cpu_sum) {
             seg_cpu_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
             *seg_cpu_sum = 0;
@@ -879,7 +898,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
         *seg_cpu_sum += pqe->cpu_elapsed;
         TR2(("(SKEW) Iterator data for seg %d.  CPU Elapsed: %" FMT64 "\n",
              pqe->qexec.key.segid, pqe->cpu_elapsed));
-        apr_hash_set(segtab, &pqe->qexec.key.segid, 
+        apr_hash_set(segtab, &pqe->qexec.key.segid,
                      sizeof(pqe->qexec.key.segid), seg_cpu_sum);
     }
 
@@ -892,7 +911,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
         TR2(("(SKEW) Segment rusage: %d\n", *seg_cpu_sum));
         segcnt++;
     }
-    
+
     if (!segcnt) {
         TR2(("No segments for CPU skew calculation\n"));
         apr_pool_destroy(tmp_pool);
@@ -910,12 +929,12 @@ static double get_cpu_skew(qdnode_t* qdnode)
         apr_hash_this(hi, NULL, NULL, &valptr);
 	seg_cpu_sum = (apr_int64_t*) valptr;
         dev = *seg_cpu_sum - cpu_avg;
-        TR2(("(SKEW) Deviation: %d\n", dev)); 
+        TR2(("(SKEW) Deviation: %d\n", dev));
         var += dev * dev;
     }
-  
+
     var = sqrt(var / (double)segcnt);
-  
+
     TR2(("(SKEW) CPU variance: %f\n", var));
 
     /* Skew calc */
@@ -951,7 +970,7 @@ static double get_row_skew(qdnode_t* qdnode)
 
     segtab = apr_hash_make(tmp_pool);
     if (!segtab)
-        gpmon_fatal(FLINE, "Out of memory"); 
+        gpmon_fatal(FLINE, "Out of memory");
 
     /* Calc rows in sum per segment */
     for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
@@ -959,10 +978,10 @@ static double get_row_skew(qdnode_t* qdnode)
         /* Skip QD */
         if (pqe->qexec.key.segid == -1)
             continue;
-        
+
         seg_row_out_sum = apr_hash_get(segtab, &pqe->qexec.key.segid,
                                    sizeof(pqe->qexec.key.segid));
-        
+
         if (!seg_row_out_sum) {
             seg_row_out_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
             *seg_row_out_sum = 0;
@@ -971,7 +990,7 @@ static double get_row_skew(qdnode_t* qdnode)
         *seg_row_out_sum += pqe->qexec.m[GPMON_QEXEC_M_ROWSIN].value;
         TR2(("(SKEW) Iterator data for seg %d.  Rows out: %" FMT64 "\n",
              pqe->qexec.key.segid, pqe->qexec.rowsout));
-        apr_hash_set(segtab, &pqe->qexec.key.segid, 
+        apr_hash_set(segtab, &pqe->qexec.key.segid,
                      sizeof(pqe->qexec.key.segid), seg_row_out_sum);
     }
 
@@ -1002,12 +1021,12 @@ static double get_row_skew(qdnode_t* qdnode)
         apr_hash_this(hi, NULL, NULL, &valptr);
 	seg_row_out_sum = (apr_int64_t*) valptr;
         dev = *seg_row_out_sum - row_out_avg;
-        TR2(("(SKEW) Deviation: %d\n", dev)); 
+        TR2(("(SKEW) Deviation: %d\n", dev));
         var += dev * dev;
     }
 
     var = sqrt(var / (double)segcnt);
-    
+
     TR2(("(SKEW) Rows in variance: %f\n", var));
 
     /* Skew calc */
@@ -1030,35 +1049,35 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr, apr_uint
 
     *p = 0;
     sprintf(p += strlen(p), "%s", nowstr);
-    sprintf(p += strlen(p), "|%d|%d|%d", qdnode->qlog.key.tmid, 
+    sprintf(p += strlen(p), "|%d|%d|%d", qdnode->qlog.key.tmid,
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
-    sprintf(p += strlen(p), "|%s|%s", qdnode->qlog.user, 
+    sprintf(p += strlen(p), "|%s|%s", qdnode->qlog.user,
             qdnode->qlog.db);
     sprintf(p += strlen(p), "|%d", qdnode->qlog.cost);
-    sprintf(p += strlen(p), "|%s", 
-            gpmon_datetime(apr_time_from_sec(qdnode->qlog.tsubmit), 
+    sprintf(p += strlen(p), "|%s",
+            gpmon_datetime(apr_time_from_sec(qdnode->qlog.tsubmit),
                              tmstr));
 	if (qdnode->qlog.tstart == 0)
 		sprintf(p += strlen(p), "|null");
 	else
-    	sprintf(p += strlen(p), "|%s", 
-            	gpmon_datetime(apr_time_from_sec(qdnode->qlog.tstart), 
+    	sprintf(p += strlen(p), "|%s",
+            	gpmon_datetime(apr_time_from_sec(qdnode->qlog.tstart),
                              tmstr));
     if (done)
-        sprintf(p += strlen(p), "|%s", 
-                gpmon_datetime(apr_time_from_sec(qdnode->qlog.tfin), 
+        sprintf(p += strlen(p), "|%s",
+                gpmon_datetime(apr_time_from_sec(qdnode->qlog.tfin),
                                tmstr));
     else
         sprintf(p += strlen(p), "|%s", "null");
-        
-    sprintf(p += strlen(p), "|%s", 
+
+    sprintf(p += strlen(p), "|%s",
             gpmon_qlog_status_string(qdnode->qlog.status));
     rowsout = get_rowsout(qdnode);
     sprintf(p += strlen(p), "|%" FMT64, rowsout);
     cpu_elapsed = get_total_cpu_elapsed(qdnode);
     if (!done)
         cpu_current = get_cpu_current_perc(qdnode);
-    sprintf(p += strlen(p), "|%" FMT64 "|%.4f", 
+    sprintf(p += strlen(p), "|%" FMT64 "|%.4f",
             cpu_elapsed, cpu_current);
 
     cpu_skew = get_cpu_skew(qdnode);
@@ -1095,7 +1114,7 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
     bytes_written += strlen(line);
     fprintf(fp, "|");
     bytes_written++;
-    sprintf(qfname, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid, 
+    sprintf(qfname, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid,
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
     qfptr = fopen(qfname, "r");
     if (qfptr) {
@@ -1154,7 +1173,7 @@ static void bloom_init(bloom_t* bloom)
 static void bloom_set(bloom_t* bloom, const char* name)
 {
     apr_ssize_t namelen = strlen(name);
-    const unsigned int hashval = 
+    const unsigned int hashval =
 	apr_hashfunc_default(name, &namelen) % (8 * sizeof(bloom->map));
     const int idx = hashval / 8;
     const int off = hashval % 8;
@@ -1165,7 +1184,7 @@ static void bloom_set(bloom_t* bloom, const char* name)
 static int bloom_isset(bloom_t* bloom, const char* name)
 {
     apr_ssize_t namelen = strlen(name);
-    const unsigned int hashval = 
+    const unsigned int hashval =
 	apr_hashfunc_default(name, &namelen) % (8 * sizeof(bloom->map));
     const int idx = hashval / 8;
     const int off = hashval % 8;
