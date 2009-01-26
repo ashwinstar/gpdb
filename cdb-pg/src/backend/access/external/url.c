@@ -211,8 +211,10 @@ fill_buffer(URL_FILE *file,int want)
         FD_ZERO(&fdwrite);
         FD_ZERO(&fdexcep);
 
+		CHECK_FOR_INTERRUPTS();
+
         /* set a suitable timeout to fail on */
-        timeout.tv_sec = 60; /* 1 minute */
+        timeout.tv_sec = 5;
         timeout.tv_usec = 0;
 
         /* get file descriptors from the transfers */
@@ -230,8 +232,6 @@ fill_buffer(URL_FILE *file,int want)
 
         if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout)))
 		{
-			CHECK_FOR_INTERRUPTS();
-
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
 			elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)",
