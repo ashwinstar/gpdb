@@ -6,8 +6,8 @@
  * gram.y
  *	  POSTGRES SQL YACC rules/actions
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -34,7 +34,7 @@
  *			SET SQL_inheritance TO off; SELECT * FROM foo;
  *	  because the entire string is parsed by gram.y before the SET gets
  *	  executed.  Anything that depends on the database or changeable state
- *	  should be handled inside parse_analyze() so that it happens at the
+ *	  should be handled during parse analysis so that it happens at the
  *	  right time not the wrong time.  The handling of SQL_inheritance is
  *	  a good example.
  *
@@ -81,6 +81,17 @@
  */
 #define base_yylex filtered_base_yylex
 
+/*
+ * Bison doesn't allocate anything that needs to live across parser calls,
+ * so we can easily have it use palloc instead of malloc.  This prevents
+ * memory leaks if we error out during parsing.  Note this only works with
+ * bison >= 2.0.  However, in bison 1.875 the default is to use alloca()
+ * if possible, so there's not really much problem anyhow, at least if
+ * you're building with gcc.
+ */
+#define YYMALLOC palloc
+#define YYFREE   pfree
+
 extern List *parsetree;			/* final parse result is delivered here */
 
 static bool QueryIsRule = FALSE;
@@ -113,6 +124,7 @@ static Node *doNegate(Node *n, int location);
 static void doNegateFloat(Value *v);
 %}
 
+%expect 0
 %name-prefix="base_yy"
 %locations
 
@@ -358,11 +370,12 @@ static void doNegateFloat(Value *v);
 %type <str>		RoleId opt_granted_by opt_boolean ColId_or_Sconst
 %type <str>		QueueId
 %type <list>	var_list var_list_or_default
-%type <str>		ColId ColLabel var_name type_name param_name
+%type <str>		ColId ColLabel ColLabelNoAs var_name type_name param_name
 %type <node>	var_value zone_value
 
 %type <keyword> unreserved_keyword func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
+%type <keyword> keywords_ok_in_alias_no_as
 
 %type <node>	TableConstraint TableLikeClause 
 %type <list>	TableLikeOptionList
@@ -537,6 +550,296 @@ static void doNegateFloat(Value *v);
  * postfix-operator problems.
  */
 %nonassoc	IDENT PARTITION RANGE ROWS
+/*
+ * This is a bit ugly... To allow these to be column aliases without
+ * the "AS" keyword, and not conflict with PostgreSQL's non-standard
+ * suffix operators, we need to give these a precidence.
+ */
+%nonassoc   ABORT_P
+			%nonassoc ABSOLUTE_P
+			%nonassoc ACCESS
+			%nonassoc ACTION
+			%nonassoc ACTIVE
+			%nonassoc ADD_P
+			%nonassoc ADMIN
+			%nonassoc AFTER
+			%nonassoc AGGREGATE
+			%nonassoc ALSO
+			%nonassoc ALTER
+			%nonassoc ASSERTION
+			%nonassoc ASSIGNMENT
+			%nonassoc BACKWARD
+			%nonassoc BEFORE
+			%nonassoc BEGIN_P
+			%nonassoc BY
+			%nonassoc CACHE
+			%nonassoc CALLED
+			%nonassoc CASCADE
+			%nonassoc CASCADED
+			%nonassoc CHAIN
+			%nonassoc CHARACTERISTICS
+			%nonassoc CHECKPOINT
+			%nonassoc CLASS
+			%nonassoc CLOSE
+			%nonassoc CLUSTER
+			%nonassoc COMMENT
+			%nonassoc COMMIT
+			%nonassoc COMMITTED
+			%nonassoc CONCURRENTLY
+			%nonassoc CONNECTION
+			%nonassoc CONSTRAINTS
+			%nonassoc CONVERSION_P
+			%nonassoc COPY
+			%nonassoc COST
+			%nonassoc CREATEDB
+			%nonassoc CREATEROLE
+			%nonassoc CREATEUSER
+			%nonassoc CSV
+			%nonassoc CURRENT
+			%nonassoc CURSOR
+			%nonassoc CYCLE
+			%nonassoc DATABASE
+			%nonassoc DAY_P
+			%nonassoc DEALLOCATE
+			%nonassoc DECLARE
+			%nonassoc DEFAULTS
+			%nonassoc DEFERRED
+			%nonassoc DEFINER
+			%nonassoc DELETE_P
+			%nonassoc DELIMITER
+			%nonassoc DELIMITERS
+			%nonassoc DISABLE_P
+			%nonassoc DOMAIN_P
+			%nonassoc DOUBLE_P
+			%nonassoc DROP
+			%nonassoc EACH
+			%nonassoc ENABLE_P
+			%nonassoc ENCODING
+			%nonassoc ENCRYPTED
+			%nonassoc ERRORS
+			%nonassoc EVERY
+			%nonassoc EXCHANGE
+			%nonassoc EXCLUDING
+			%nonassoc EXCLUSIVE
+			%nonassoc EXECUTE
+			%nonassoc EXPLAIN
+			%nonassoc EXTERNAL
+			%nonassoc FETCH
+			%nonassoc FIELDS
+			%nonassoc FILL
+			%nonassoc FIRST_P
+			%nonassoc FORCE
+			%nonassoc FORMAT
+			%nonassoc FORWARD
+			%nonassoc FUNCTION
+			%nonassoc GLOBAL
+			%nonassoc GRANTED
+			%nonassoc HANDLER
+			%nonassoc HASH
+			%nonassoc HEADER_P
+			%nonassoc HOLD
+			%nonassoc HOST
+			%nonassoc HOUR_P
+			%nonassoc IF_P
+			%nonassoc IMMEDIATE
+			%nonassoc IMMUTABLE
+			%nonassoc IMPLICIT_P
+			%nonassoc INCLUDING
+			%nonassoc INCLUSIVE
+			%nonassoc INCREMENT
+			%nonassoc INDEX
+			%nonassoc INDEXES
+			%nonassoc INHERIT
+			%nonassoc INHERITS
+			%nonassoc INPUT_P
+			%nonassoc INSENSITIVE
+			%nonassoc INSERT
+			%nonassoc INSTEAD
+			%nonassoc INVOKER
+			%nonassoc ISOLATION
+			%nonassoc KEY
+			%nonassoc LANCOMPILER
+			%nonassoc LANGUAGE
+			%nonassoc LARGE_P
+			%nonassoc LAST_P
+			%nonassoc LEVEL
+			%nonassoc LIST
+			%nonassoc LISTEN
+			%nonassoc LOAD
+			%nonassoc LOCAL
+			%nonassoc LOCATION
+			%nonassoc LOCK_P
+			%nonassoc LOGIN_P
+			%nonassoc MASTER
+			%nonassoc MATCH
+			%nonassoc MAXVALUE
+			%nonassoc MERGE
+			%nonassoc MINUTE_P
+			%nonassoc MINVALUE
+			%nonassoc MIRROR
+			%nonassoc MISSING
+			%nonassoc MODE
+			%nonassoc MODIFY
+			%nonassoc MONTH_P
+			%nonassoc MOVE
+			%nonassoc NAMES
+			%nonassoc NEXT
+			%nonassoc NO
+			%nonassoc NOCREATEDB
+			%nonassoc NOCREATEROLE
+			%nonassoc NOCREATEUSER
+			%nonassoc NOINHERIT
+			%nonassoc NOLOGIN_P
+			%nonassoc NOOVERCOMMIT
+			%nonassoc NOSUPERUSER
+			%nonassoc NOTHING
+			%nonassoc NOTIFY
+			%nonassoc NOWAIT
+			%nonassoc OBJECT_P
+			%nonassoc OF
+			%nonassoc OIDS
+			%nonassoc OPTION
+			%nonassoc OTHERS
+			%nonassoc OVER
+			%nonassoc OVERCOMMIT
+			%nonassoc OWNED
+			%nonassoc OWNER
+			%nonassoc PARTIAL
+			%nonassoc PARTITIONS
+			%nonassoc PASSWORD
+			%nonassoc PERCENT
+			%nonassoc PREPARE
+			%nonassoc PREPARED
+			%nonassoc PRESERVE
+			%nonassoc PRIOR
+			%nonassoc PRIVILEGES
+			%nonassoc PROCEDURAL
+			%nonassoc PROCEDURE
+			%nonassoc QUEUE
+			%nonassoc QUOTE
+			%nonassoc READ
+			%nonassoc REASSIGN
+			%nonassoc RECHECK
+			%nonassoc REINDEX
+			%nonassoc RELATIVE_P
+			%nonassoc RELEASE
+			%nonassoc RENAME
+			%nonassoc REPEATABLE
+			%nonassoc REPLACE
+			%nonassoc RESET
+			%nonassoc RESOURCE
+			%nonassoc RESTART
+			%nonassoc RESTRICT
+			%nonassoc RETURNS
+			%nonassoc REVOKE
+			%nonassoc ROLE
+			%nonassoc ROLLBACK
+			%nonassoc RULE
+			%nonassoc SAVEPOINT
+			%nonassoc SCHEMA
+			%nonassoc SCROLL
+			%nonassoc SECOND_P
+			%nonassoc SECURITY
+			%nonassoc SEGMENT
+			%nonassoc SEQUENCE
+			%nonassoc SERIALIZABLE
+			%nonassoc SESSION
+			%nonassoc SHARE
+			%nonassoc SHOW
+			%nonassoc SIMPLE
+			%nonassoc SPLIT
+			%nonassoc STABLE
+			%nonassoc START
+			%nonassoc STATEMENT
+			%nonassoc STATISTICS
+			%nonassoc STDIN
+			%nonassoc STDOUT
+			%nonassoc STORAGE
+			%nonassoc SUBPARTITION
+			%nonassoc SUBPARTITIONS
+			%nonassoc SUPERUSER_P
+			%nonassoc SYSID
+			%nonassoc SYSTEM_P
+			%nonassoc STRICT_P
+			%nonassoc TABLESPACE
+			%nonassoc TEMP
+			%nonassoc TEMPLATE
+			%nonassoc TEMPORARY
+			%nonassoc THRESHOLD
+			%nonassoc TIES
+			%nonassoc TRANSACTION
+			%nonassoc TRIGGER
+			%nonassoc TRUNCATE
+			%nonassoc TRUSTED
+			%nonassoc TYPE_P
+			%nonassoc UNCOMMITTED
+			%nonassoc UNENCRYPTED
+			%nonassoc UNLISTEN
+			%nonassoc UNTIL
+			%nonassoc UPDATE
+			%nonassoc VACUUM
+			%nonassoc VALID
+			%nonassoc VALIDATOR
+			%nonassoc VARYING
+			%nonassoc VIEW
+			%nonassoc VOLATILE
+			%nonassoc WITH
+			%nonassoc WITHOUT
+			%nonassoc WORK
+			%nonassoc WRITE
+			%nonassoc YEAR_P
+			%nonassoc BIGINT
+			%nonassoc BIT
+			%nonassoc BOOLEAN_P
+			%nonassoc CHAR_P
+			%nonassoc CHARACTER
+			%nonassoc COALESCE
+			%nonassoc CONVERT
+			%nonassoc CUBE
+			%nonassoc DEC
+			%nonassoc DECIMAL_P
+			%nonassoc EXISTS
+			%nonassoc EXTRACT
+			%nonassoc FLOAT_P
+			%nonassoc GREATEST
+			%nonassoc GROUP_ID
+			%nonassoc GROUPING
+			%nonassoc INOUT
+			%nonassoc INT_P
+			%nonassoc INTEGER
+			%nonassoc INTERVAL
+			%nonassoc LEAST
+			%nonassoc NATIONAL
+			%nonassoc NCHAR
+			%nonassoc NONE
+			%nonassoc NULLIF
+			%nonassoc NUMERIC
+			%nonassoc OUT_P
+			%nonassoc OVERLAY
+			%nonassoc POSITION
+			%nonassoc PRECISION
+			%nonassoc REAL
+			%nonassoc ROLLUP
+			%nonassoc ROW
+			%nonassoc SETOF
+			%nonassoc SETS
+			%nonassoc SMALLINT
+			%nonassoc SUBSTRING
+			%nonassoc TIME
+			%nonassoc TIMESTAMP
+			%nonassoc TREAT
+			%nonassoc TRIM
+			%nonassoc VALUES
+			%nonassoc VARCHAR
+			%nonassoc AUTHORIZATION
+			%nonassoc BINARY
+			%nonassoc FREEZE
+			%nonassoc LOG_P
+			%nonassoc OUTER_P
+			%nonassoc VERBOSE
+
+
+
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %nonassoc	NOTNULL
 %nonassoc	ISNULL
@@ -10332,7 +10635,6 @@ target_list:
 			| target_list ',' target_el				{ $$ = lappend($1, $3); }
 		;
 
-/* AS is not optional because shift/red conflict with unary ops */
 target_el:	a_expr AS ColLabel
 				{
 					$$ = makeNode(ResTarget);
@@ -10342,14 +10644,27 @@ target_el:	a_expr AS ColLabel
 					$$->location = @1;
 				}
 			/*
-			 * We support omitting AS only for column labels that aren't
+			 * PostgreSQL supports omitting AS only for column labels that aren't
 			 * any known keyword.  There is an ambiguity against postfix
 			 * operators: is "a ! b" an infix expression, or a postfix
 			 * expression and a column label?  We prefer to resolve this
 			 * as an infix expression, which we accomplish by assigning
 			 * IDENT a precedence higher than POSTFIXOP.
+			 *
+			 * In GPDB, we extent this to allow most unreserved_keywords by
+			 * also assigning them a precedence.  There are certain keywords that
+			 * can't work without the as:  reserved_keywords, the date modifier 
+			 * suffixes (DAY, MONTH, YEAR, etc) and a few other obscure cases.
 			 */
 			| a_expr IDENT
+				{
+					$$ = makeNode(ResTarget);
+					$$->name = $2;
+					$$->indirection = NIL;
+					$$->val = (Node *)$1;
+					$$->location = @1;
+				}
+			| a_expr ColLabelNoAs
 				{
 					$$ = makeNode(ResTarget);
 					$$->name = $2;
@@ -10889,8 +11204,300 @@ unreserved_keyword:
 			| WRITE
 			| YEAR_P
 			| ZONE
+
 		;
 
+/*
+ * ColLabelNoAs is used for SELECT element aliases that don't have the AS keyword.
+ * We always allow IDENT, so anything in double-quotes is also OK.  Beyond that,
+ * any keywords listed here can be a column alias even when you omit the AS keyword.
+ *
+ * We could add some of the reserved_keywords to this list, but I'm reluctant to do so
+ * because it might restrict future enhancements to the grammar.
+ */
+
+ColLabelNoAs:   keywords_ok_in_alias_no_as   { $$=pstrdup($1); }
+				;
+keywords_ok_in_alias_no_as:
+			  ABORT_P
+			| ABSOLUTE_P
+			| ACCESS
+			| ACTION
+			| ACTIVE
+			| ADD_P
+			| ADMIN
+			| AFTER
+			| AGGREGATE
+			| ALSO
+			| ALTER
+			| ASSERTION
+			| ASSIGNMENT
+			| AT
+			| BACKWARD
+			| BEFORE
+			| BEGIN_P
+			| BY
+			| CACHE
+			| CALLED
+			| CASCADE
+			| CASCADED
+			| CHAIN
+			| CHARACTERISTICS
+			| CHECKPOINT
+			| CLASS
+			| CLOSE
+			| CLUSTER
+			| COMMENT
+			| COMMIT
+			| COMMITTED
+			| CONCURRENTLY
+			| CONNECTION
+			| CONSTRAINTS
+			| CONVERSION_P
+			| COPY
+			| COST
+			| CREATEDB
+			| CREATEROLE
+			| CREATEUSER
+			| CSV
+			| CURRENT
+			| CURSOR
+			| CYCLE
+			| DATABASE
+			| DEALLOCATE
+			| DECLARE
+			| DEFAULTS
+			| DEFERRED
+			| DEFINER
+			| DELETE_P
+			| DELIMITER
+			| DELIMITERS
+			| DISABLE_P
+			| DOMAIN_P
+			| DOUBLE_P
+			| DROP
+			| EACH
+			| ENABLE_P
+			| ENCODING
+			| ENCRYPTED
+			| ERRORS
+			| ESCAPE
+			| EVERY
+			| EXCHANGE
+			| EXCLUDING
+			| EXCLUSIVE
+			| EXECUTE
+			| EXPLAIN
+			| EXTERNAL
+			| FETCH
+			| FIELDS
+			| FILL
+			| FIRST_P
+			| FORCE
+			| FORMAT
+			| FORWARD
+			| FUNCTION
+			| GLOBAL
+			| GRANTED
+			| HANDLER
+			| HASH
+			| HEADER_P
+			| HOLD
+			| HOST
+			| IF_P
+			| IMMEDIATE
+			| IMMUTABLE
+			| IMPLICIT_P
+			| INCLUDING
+			| INCLUSIVE
+			| INCREMENT
+			| INDEX
+			| INDEXES
+			| INHERIT
+			| INHERITS
+			| INPUT_P
+			| INSENSITIVE
+			| INSERT
+			| INSTEAD
+			| INVOKER
+			| ISOLATION
+			| KEY
+			| LANCOMPILER
+			| LANGUAGE
+			| LARGE_P
+			| LAST_P
+			| LEVEL
+			| LIST
+			| LISTEN
+			| LOAD
+			| LOCAL
+			| LOCATION
+			| LOCK_P
+			| LOGIN_P
+			| MASTER
+			| MATCH
+			| MAXVALUE
+			| MERGE
+			| MINVALUE
+			| MIRROR
+			| MISSING
+			| MODE
+			| MODIFY
+			| MOVE
+			| NAMES
+			| NEXT
+			| NO
+			| NOCREATEDB
+			| NOCREATEROLE
+			| NOCREATEUSER
+			| NOINHERIT
+			| NOLOGIN_P
+			| NOOVERCOMMIT
+			| NOSUPERUSER
+			| NOTHING
+			| NOTIFY
+			| NOWAIT
+			| OBJECT_P
+			| OF
+			| OIDS
+			| OPERATOR
+			| OPTION
+			| OTHERS
+			| OVERCOMMIT
+			| OWNED
+			| OWNER
+			| PARTIAL
+			| PARTITIONS
+			| PASSWORD
+			| PERCENT
+			| PREPARE
+			| PREPARED
+			| PRESERVE
+			| PRIOR
+			| PRIVILEGES
+			| PROCEDURAL
+			| PROCEDURE
+			| QUEUE
+			| QUOTE
+			| READ
+			| REASSIGN
+			| RECHECK
+			| REINDEX
+			| RELATIVE_P
+			| RELEASE
+			| RENAME
+			| REPEATABLE
+			| REPLACE
+			| RESET
+			| RESOURCE
+			| RESTART
+			| RESTRICT
+			| RETURNS
+			| REVOKE
+			| ROLE
+			| ROLLBACK
+			| RULE
+			| SAVEPOINT
+			| SCHEMA
+			| SCROLL
+			| SECURITY
+			| SEGMENT
+			| SEQUENCE
+			| SERIALIZABLE
+			| SESSION
+			| SET
+			| SHARE
+			| SHOW
+			| SIMPLE
+			| SPLIT
+			| STABLE
+			| START
+			| STATEMENT
+			| STATISTICS
+			| STDIN
+			| STDOUT
+			| STORAGE
+			| SUBPARTITION
+			| SUBPARTITIONS
+			| SUPERUSER_P
+			| SYSID
+			| SYSTEM_P
+			| STRICT_P
+			| TABLESPACE
+			| TEMP
+			| TEMPLATE
+			| TEMPORARY
+			| THRESHOLD
+			| TIES
+			| TRANSACTION
+			| TRIGGER
+			| TRUNCATE
+			| TRUSTED
+			| TYPE_P
+			| UNCOMMITTED
+			| UNENCRYPTED
+			| UNKNOWN
+			| UNLISTEN
+			| UNTIL
+			| UPDATE
+			| VACUUM
+			| VALID
+			| VALIDATOR
+			| VIEW
+			| VOLATILE
+			| WORK
+			| WRITE
+			| ZONE
+			| BIGINT
+			| BIT
+			| BOOLEAN_P
+			| COALESCE
+			| CONVERT
+			| CUBE
+			| DEC
+			| DECIMAL_P
+			| EXISTS
+			| EXTRACT
+			| FLOAT_P
+			| GREATEST
+			| GROUP_ID
+			| GROUPING
+			| INOUT
+			| INT_P
+			| INTEGER
+			| INTERVAL
+			| LEAST
+			| NATIONAL
+			| NCHAR
+			| NONE
+			| NULLIF
+			| NUMERIC
+			| OUT_P
+			| OVERLAY
+			| POSITION
+			| PRECISION
+			| REAL
+			| ROLLUP
+			| ROW
+			| SETOF
+			| SETS
+			| SMALLINT
+			| SUBSTRING
+			| TIME
+			| TIMESTAMP
+			| TREAT
+			| TRIM
+			| VALUES
+			| VARCHAR
+			| AUTHORIZATION
+			| BINARY
+			| FREEZE
+			| LOG_P
+			| OUTER_P
+			| VERBOSE
+			 
+			
+			;
 /* Column identifier --- keywords that can be column, table, etc names.
  *
  * Many of these keywords will in fact be recognized as type or function
@@ -10900,6 +11507,7 @@ unreserved_keyword:
  * The type names appearing here are not usable as function names
  * because they can be followed by '(' in typename productions, which
  * looks too much like a function call for an LR(1) parser.
+ * 
  */
 col_name_keyword:
 			  BIGINT
