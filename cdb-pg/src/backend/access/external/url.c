@@ -72,6 +72,22 @@ header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 	int i;
 	char buf[20];
 
+	Assert(size == 1);
+
+	if (url->u.curl.http_response == 0) {
+		int n = nmemb;
+		char* p;
+		if (n > 0 && 0 != (p = palloc(n+1))) {
+			memcpy(p, ptr, n);
+			p[n] = 0;
+			if (n > 0 && (p[n-1] == '\r' || p[n-1] == '\n'))
+				p[--n] = 0;
+			if (n > 0 && (p[n-1] == '\r' || p[n-1] == '\n'))
+				p[--n] = 0;
+			url->u.curl.http_response = p;
+		}
+	}
+
 	if (len > 10 && *ptr == 'X' && 0 == strncmp("X-GP-PROTO", ptr, 10))
 	{
 		ptr += 10, len -= 10;
@@ -174,12 +190,14 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 		{
 			/* we need to sleep 1 sec to avoid this condition:
 			   1- seg X gets an error message from gpfdist
-			   2- I gets a 500 error
-			   3- I report error before seg X, and error message
+			   2- seg Y gets a 500 error
+			   3- seg Y report error before seg X, and error message
 			   in seg X is thrown away.
 			*/
 			pg_usleep(1000000);
-			elog(ERROR, "http response code %ld while %s", response_code, file->url);
+			elog(ERROR, "http response code %ld while %s, line %s", 
+				 response_code, file->url,
+				 file->u.curl.http_response ? file->u.curl.http_response : "?");
 		}
 	}
 

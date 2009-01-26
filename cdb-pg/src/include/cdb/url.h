@@ -54,6 +54,7 @@ typedef struct curlctl_t {
 	int still_running;          /* Is background url fetch still in progress */
 	int error, eof;				/* error & eof flags */
 	int gp_proto;
+	char *http_response;
 	struct {
 		int   datalen;  /* remaining datablock length */
 	} block;

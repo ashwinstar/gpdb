@@ -106,9 +106,10 @@ static struct
 	const char* l; /* log filename */
 	const char*f; /* forced filename */
 	int g; /* gp_proto (0 or 1) (internal, not documented) */
+	int t; /* timeout in seconds */
 	int b;
 } opt =
-{ 8080, 8080, 0, 0, ".", 0, 0, -1, 0 };
+{ 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -270,6 +271,7 @@ static void usage(const char* msg)
 					"        -p port   : port to serve HTTP, default is 8080\n"
 					"        -d dir    : serve files under the specified directory,  default is '.'\n"
 					"        -l logfn  : log filename\n"
+				    "        -t tm     : timeout in seconds \n"
 					"        --version : print version information\n\n");
 	}
 
@@ -314,6 +316,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'x', 0, "gone" },
 	{ NULL, 'h', 0, "gone" },
 	{ NULL, 'l', 1, "log filename" },
+	{ NULL, 't', 5, "timeout in seconds" },
 	{ NULL, 'g', 1, "internal - gp_proto number" },
 	{ "version", 256, 0, "print version number" },
 	{ 0 } };
@@ -358,6 +361,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'l':
 			opt.l = arg;
 			break;
+		case 't':
+			opt.t = atoi(arg);
+			break;
 		case 'g':
 			opt.g = atoi(arg);
 			break;
@@ -381,6 +387,11 @@ static void parse_command_line(int argc, const char* const argv[],
 		if (!(0 == opt.g || 1 == opt.g))
 			usage(
 					"Error: please specify 0 or 1 for -g switch (note: this is internal)");
+	}
+
+	if (! (2 <= opt.t && opt.t <= 30)) 
+	{
+		usage("Error:-t tmout must be between 2 and 30");
 	}
 
 	/* validate opt.d */
@@ -1348,7 +1359,7 @@ static int setup_read(request_t* r)
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
-	r->tm.tv_sec = 2;
+	r->tm.tv_sec = opt.t;
 	r->tm.tv_usec = 0;
 	return (event_add(&r->ev, &r->tm));
 }
