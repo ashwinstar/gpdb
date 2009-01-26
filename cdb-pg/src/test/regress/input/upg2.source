@@ -2,7 +2,12 @@
 -- upgrade 2
 --
 
+--
+-- Load in data which represents the difference between the 3.2 catalog
+-- and 3.3 catalog
+--
 
+--
 -- save the catalog info for previous revision
 -- COPY pg_attribute 
 --   to '@abs_srcdir@/data/pg_attribute32.data'  csv header;
@@ -10,6 +15,7 @@
 --   to '@abs_srcdir@/data/pg_class32.data' with oids csv header;
 -- COPY pg_type 
 --   to '@abs_srcdir@/data/pg_type32.data' with oids csv header;
+--
 
 -- build "old" catalog tables
 
@@ -25,30 +31,53 @@ COPY old_class_v32
 COPY old_type_v32 
   from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
 
-create table toadd_class(oid Oid, relname varchar(64), relkind char);
-create table toadd_attribute(attrelid Oid, attname varchar(64), attnum int2, atttypid int, atttypmod int);
 
-create view old_class as select oid, relname, relkind::char from old_class_v32 union all select oid, relname, relkind from toadd_class;
-create view old_attribute as select attrelid, attname, attnum, atttypid, atttypmod from old_attribute_v32 union all select attrelid, attname, attnum, atttypid, atttypmod from toadd_attribute;
-create view old_type as select oid, * from old_type_v32;
+create table toadd_class(like pg_class) with oids;
+create table toadd_attribute(like pg_attribute);
+create table toadd_type(like pg_type) with oids;
+
+create view old_class as
+select oid, relname, relnamespace, reltype, relowner,
+	   relam, relfilenode, reltablespace,
+	   /* relpages, reltuples, -- these can differ */
+	   reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid,
+	   relhasindex, relisshared, relkind, relstorage, relnatts, relchecks,
+	   reltriggers, relukeys, relfkeys, relrefs, relhasoids, relhaspkey,
+	   relhasrules, relhassubclass, /* relfrozenxid -- different */
+	   relacl, reloptions from old_class_v32
+union all
+select oid, relname, relnamespace, reltype, relowner,
+	   relam, relfilenode, reltablespace,
+	   /* relpages, reltuples, -- these can differ */
+	   reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid,
+	   relhasindex, relisshared, relkind, relstorage, relnatts, relchecks,
+	   reltriggers, relukeys, relfkeys, relrefs, relhasoids, relhaspkey,
+	   relhasrules, relhassubclass, /* relfrozenxid -- different */
+	   relacl, reloptions from toadd_class;
+
+create view old_attribute as 
+select attrelid, attname, atttypid, /* attstattarget, -- can differ */ 
+	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
+	   attalign, attnotnull,
+	   atthasdef, attisdropped, attislocal, attinhcount from old_attribute_v32
+union all
+select  attrelid, attname, atttypid, /* attstattarget, -- can differ */
+	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
+	   attalign, attnotnull,
+	   atthasdef, attisdropped, attislocal, attinhcount from toadd_attribute;
+
+create view old_type as select oid, * from old_type_v32 union all
+select oid, * from toadd_type;
 
 -- new tables and attributes. 
 -- AOCS
-insert into toadd_class values (6107, 'pg_aocs', 'r');
-insert into toadd_attribute values 
-	(6107, 'relid', 	1, 26, -1),
-	(6107, 'attnum', 	2, 21, -1),
-	(6107, 'cs_fileno', 	3, 21, -1),
-	(6107, 'cs_attnum', 	4, 21, -1),
-	(6107, 'cs_file_option',5, 23, -1),
-	(6107, 'cs_col_option', 6, 23, -1);
+COPY toadd_class 
+  from '@abs_srcdir@/data/upg2_pg_class_toadd.data' oids csv  
+  header delimiter '|';
 
--- gp_configuration_history
-insert into toadd_class values (5006, 'gp_configuration_history', 'r');
-insert into toadd_attribute values 
-	(5006, 'time', 	1, 1184, -1),
-	(5006, 'dbid', 2, 21, -1),
-	(5006, 'desc', 3, 25, -1);
+COPY toadd_attribute
+  from '@abs_srcdir@/data/upg2_pg_attribute_toadd.data' csv
+  header delimiter '|';
 
 -- begin_equivalent 
 -- compare old vs new catalog tables
@@ -100,3 +129,7 @@ and c.relkind = 'v'
 order by c.relname, a.attnum;
 
 -- end_equivalent
+
+
+drop view old_class, old_type, old_attribute;
+drop table toadd_class, toadd_attribute, toadd_type;

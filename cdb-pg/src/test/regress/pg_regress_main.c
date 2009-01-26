@@ -33,6 +33,11 @@ psql_start_test(const char *testname,
 	char		outfile[MAXPGPATH];
 	char		expectfile[MAXPGPATH];
 	char		psql_cmd[MAXPGPATH * 3];
+	char		use_utility_mode = 0;
+
+	/* generalise later */
+	if (strcmp(testname, "upg2") == 0)
+		use_utility_mode = 1;
 
 	snprintf(infile, sizeof(infile), "%s/sql/%s.sql",
 			 inputdir, testname);
@@ -45,7 +50,8 @@ psql_start_test(const char *testname,
 	add_stringlist_item(expectfiles, expectfile);
 
 	snprintf(psql_cmd, sizeof(psql_cmd),
-			 SYSTEMQUOTE "\"%s%spsql\" -X -a -q -d \"%s\" < \"%s\" > \"%s\" 2>&1" SYSTEMQUOTE,
+			 "%s " SYSTEMQUOTE "\"%s%spsql\" -X -a -q -d \"%s\" < \"%s\" > \"%s\" 2>&1" SYSTEMQUOTE,
+			 use_utility_mode ? "env PGOPTIONS='-c gp_session_role=utility'" : "",
 			 psqldir ? psqldir : "",
 			 psqldir ? "/" : "",
 			 dblist->str,
