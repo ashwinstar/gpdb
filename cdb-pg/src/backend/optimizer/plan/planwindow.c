@@ -917,10 +917,16 @@ static void inventory_window_specs(List *window_specs, WindowContext *context)
 			WindowFrame * frame = NULL;
 			SpecInfo *xinfo = sinfo;
 			
+			/* Add a new "extra" SpecInfo for the specially framed window
+			 * reference.  Note that we could be better by recognizing a
+			 * previously added "extra" that meets our needs, but we
+			 * don't do that yet.
+			 */
 			sindex = nspec++;
 			sinfo = &specinfos[sindex];
 			memcpy(sinfo, xinfo, sizeof(SpecInfo));
 			sinfo->specindex = sindex;
+			sinfo->refset = NULL; /* MPP-4836 */
 			
 			Assert( sinfo->frame == NULL );
 			

@@ -1339,3 +1339,43 @@ select cn, first_value(NULL) over (partition by cn order by case when 1=1 then p
 select cn, first_value(NULL) over (partition by cn order by case when 1=1 then pn || ' ' else 'test' end)
 	from sale order by first_value(NULL) over (
 	partition by cn order by case when 1=1 then (pn || ' ') else 'test' end); --mvd 1->2
+
+-- MPP-4836
+select pcolor, pname, pn,
+    row_number() over (w) as n,
+    lag(pn+0) over (w) as l0,
+    lag(pn+1) over (w) as l1,
+    lag(pn+2) over (w) as l2,
+    lag(pn+3) over (w) as l3,
+    lag(pn+4) over (w) as l4,
+    lag(pn+5) over (w) as l5,
+    lag(pn+6) over (w) as l6,
+    lag(pn+7) over (w) as l7,
+    lag(pn+8) over (w) as l8,
+    lag(pn+9) over (w) as l9,
+    lag(pn+10) over (w) as l10,
+    lag(pn+11) over (w) as l11,
+    lag(pn+12) over (w) as l12,
+    lag(pn+13) over (w) as l13,
+    lag(pn+14) over (w) as l14,
+    lag(pn+15) over (w) as l15,
+    lag(pn+16) over (w) as l16,
+    lag(pn+17) over (w) as l17,
+    lag(pn+18) over (w) as l18,
+    lag(pn+19) over (w) as l19,
+    lag(pn+20) over (w) as l20,
+    lag(pn+21) over (w) as l21,
+    lag(pn+22) over (w) as l22,
+    lag(pn+23) over (w) as l23,
+    lag(pn+24) over (w) as l24,
+    lag(pn+25) over (w) as l25,
+    lag(pn+26) over (w) as l26,
+    lag(pn+27) over (w) as l27,
+    lag(pn+28) over (w) as l28,
+    lag(pn+29) over (w) as l29,
+    lag(pn+30) over (w) as l30,
+    lag(pn+31) over (w) as l31,
+    lag(pn+32) over (w) as l32
+from product
+window w as (partition by pcolor order by pname)
+order by 1,2,3;
