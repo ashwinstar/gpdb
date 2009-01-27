@@ -62,7 +62,11 @@ static const char *getSignalNameFromCode(int signo);
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
 
-/* curl calls this routine to return HTTP header from server */
+/* 
+ * header_callback
+ * 
+ * curl calls this routine to return HTTP header from server 
+ */
 static size_t
 header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 {
@@ -74,6 +78,14 @@ header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 
 	Assert(size == 1);
 
+	/*
+	 * parse the http response line (code and message) from
+	 * the http header that we get. Basically it's the whole
+	 * first line (e.g: "HTTP/1.0 400 time out"). We do this
+	 * in order to capture any error message that comes from
+	 * gpfdist, and later use it to report the error string in
+	 * check_response() to the database user.
+	 */
 	if (url->u.curl.http_response == 0) {
 		int n = nmemb;
 		char* p;
@@ -88,6 +100,9 @@ header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 		}
 	}
 
+	/*
+	 * extract the GP-PROTO value from the HTTP header.
+	 */
 	if (len > 10 && *ptr == 'X' && 0 == strncmp("X-GP-PROTO", ptr, 10))
 	{
 		ptr += 10, len -= 10;
@@ -159,7 +174,12 @@ write_callback(char *buffer,
 	return nbytes;
 }
 
-
+/*
+ * check_response
+ * 
+ * If got an HTTP response with an error code from the server (gpfidst), report 
+ * the error code and message it to the database user and abort operation.
+ */
 static int
 check_response(URL_FILE *file, int *rc, const char **response_string)
 {
