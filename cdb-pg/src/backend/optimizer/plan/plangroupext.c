@@ -1658,7 +1658,14 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 		foreach (lc, tlist)
 		{
 			orig_tle = (TargetEntry *)lfirst(lc);
-			if (equal(orig_tle->expr, tle->expr))
+			/*
+			 * We only care about the grouping columns. Note that
+			 * a non-grouping column may have the same expression as
+			 * a grouping column. We should ignore those target
+			 * entries. See MPP-4894.
+			 */
+			if (orig_tle->ressortgroupref > 0 &&
+				equal(orig_tle->expr, tle->expr))
 				break;
 		}
 		if (lc == NULL)
