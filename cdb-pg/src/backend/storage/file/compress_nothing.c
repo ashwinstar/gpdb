@@ -1,5 +1,5 @@
 /* compress_nothing.c */
-
+#include "c.h"
 #include <unistd.h>
 #include <storage/bfz.h>
 

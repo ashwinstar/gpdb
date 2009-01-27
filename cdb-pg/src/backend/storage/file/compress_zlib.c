@@ -1,5 +1,5 @@
 /* compress_zlib.c */
-
+#include "c.h"
 #include "storage/bfz.h"
 #include <zlib.h>
 

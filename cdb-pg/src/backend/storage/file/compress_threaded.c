@@ -1,6 +1,6 @@
 /* compress_threaded.c */
-
-#include <storage/bfz.h>
+#include "c.h"
+#include "storage/bfz.h"
 
 static void
 bfz_threaded_close_ex(bfz_t * thiz)
