@@ -19,6 +19,8 @@
 #include "cdb/cdbtm.h"
 #include <pthread.h>
 
+#define CDB_MOTION_LOST_CONTACT_STRING "Interconnect error master lost contact with segment."
+
 struct CdbDispatchResult;           /* #include "cdb/cdbdispatchresult.h" */
 struct CdbDispatchResults;          /* #include "cdb/cdbdispatchresult.h" */
 struct pg_result;                   /* #include "libpq-fe.h" */

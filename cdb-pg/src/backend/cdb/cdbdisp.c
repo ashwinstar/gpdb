@@ -1555,6 +1555,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
     bool    useQeError = false;
 
     qderrcode = elog_geterrcode();
+	
 
     /* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
     if (!primaryResults &&
@@ -1578,14 +1579,26 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
      */
     if (qderrcode == ERRCODE_GP_INTERCONNECTION_ERROR)
     {
-        if (primaryResults &&
-			primaryResults->errcode &&
-            primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
-            useQeError = true;
-        else if (mirrorResults &&
-				 mirrorResults->errcode &&
-				 mirrorResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
-            useQeError = true;
+		bool qd_lost_flag = false;
+		char *qderrtext = elog_message();
+
+		if (qderrtext && strcmp(qderrtext, CDB_MOTION_LOST_CONTACT_STRING) == 0)
+			qd_lost_flag = true;
+
+        if (primaryResults && primaryResults->errcode)
+		{
+            if (qd_lost_flag && primaryResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
+				useQeError = true;
+            else if (primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
+				useQeError = true;
+		}
+		else if (mirrorResults && mirrorResults->errcode)
+		{
+			if (qd_lost_flag && mirrorResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
+				useQeError = true;
+			else if (mirrorResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
+				useQeError = true;
+		}
     }
 
     if (useQeError)
@@ -1614,7 +1627,6 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
         cdbdisp_destroyDispatchResults(primaryResults);
         cdbdisp_destroyDispatchResults(mirrorResults);
 		cdbdisp_destroyDispatchThreads(dispatchThreads);
-
     }
 }                               /* cdbdisp_handleError */
 
@@ -3341,9 +3353,9 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	
 	if (sliceTbl && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
 	{
-		Assert(rootIdx == 0
-			   || (rootIdx > sliceTbl->nMotions
-				   && rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
+		Assert(rootIdx == 0 ||
+			   (rootIdx > sliceTbl->nMotions &&
+				rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
 	
 		/*
 		 * Keep old value so we can restore it.  We use this field as a parameter.

@@ -1960,7 +1960,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 				pthread_mutex_unlock(&rx_thread_mutex);
 
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error master lost contact with segment.")));
+								errmsg(CDB_MOTION_LOST_CONTACT_STRING)));
 
 				/* not reached */
 				return NULL;
