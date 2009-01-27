@@ -2850,3 +2850,38 @@ partition by range(a)
 partition aa start ('2006') end ('2009'), partition bb start ('2007') end
 ('2008')
 );
+
+
+-- MPP-4892 SET SUBPARTITION TEMPLATE
+create table mpp4892 (a char, b int, d char)
+partition by range (b)
+subpartition by list (d)
+subpartition template (
+ subpartition sp1 values ('a'),
+ subpartition sp2 values ('b'))
+(
+start (1) end (10) every (1)
+);
+
+-- works
+alter table mpp4892 add partition p1 end (11);
+
+-- complain about existing template
+alter table mpp4892 add partition p3 end (13) (subpartition sp3 values ('c'));
+
+-- remove template
+alter table mpp4892 set	subpartition template ();
+
+-- should work (because the template is gone)
+alter table mpp4892 add partition p3 end (13) (subpartition sp3 values ('c'));
+
+-- complain because the template is already gone
+alter table mpp4892 set	subpartition template ();
+
+-- this still doesn't work
+alter table mpp4892 set subpartition template (subpartition sp3 values ('c'));
+
+-- won't work (until the prior set subpartition template works)
+alter table mpp4892 add partition p4 end (15);
+
+drop table mpp4892

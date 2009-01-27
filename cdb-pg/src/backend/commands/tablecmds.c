@@ -9477,6 +9477,111 @@ get_part_oid(Oid rootrelid, int16 parlevel, bool istemplate)
 	return paroid;
 }
 
+/* delete the template for a partition */
+static int
+del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
+{
+	bool istemplate = true;
+	HeapTuple tuple;
+	Oid paroid = InvalidOid;
+	ScanKeyData key[3];
+	SysScanDesc scan;
+	Relation rel = heap_open(PartitionRelationId, RowExclusiveLock);
+	int ii = 0;
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(rootrelid));
+	ScanKeyInit(&key[1],
+				Anum_pg_partition_parlevel,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(parlevel));
+	ScanKeyInit(&key[2],
+				Anum_pg_partition_paristemplate,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				Int16GetDatum(istemplate));
+
+	scan = systable_beginscan(rel,
+							  PartitionParrelidParlevelParistemplateIndexId,
+							  true, SnapshotAny, 3, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			paroid = HeapTupleGetOid(tuple);
+			ii++;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+
+	/* should only be one matching template per level */
+	if (ii != 1)
+		return ii;
+
+	rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_rule_paroid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(paroid));
+	ScanKeyInit(&key[1],
+				Anum_pg_partition_rule_parparentrule,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(parent));
+
+	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+							  true, SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			simple_heap_delete(rel, &tuple->t_self);
+			ii++;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+
+	/* now delete the pg_partition entry */
+	rel = heap_open(PartitionRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(rootrelid));
+	ScanKeyInit(&key[1],
+				Anum_pg_partition_parlevel,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(parlevel));
+	ScanKeyInit(&key[2],
+				Anum_pg_partition_paristemplate,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				Int16GetDatum(istemplate));
+
+	scan = systable_beginscan(rel,
+							  PartitionParrelidParlevelParistemplateIndexId,
+							  true, SnapshotAny, 3, key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		if (HeapTupleIsValid(tuple))
+		{
+			paroid = HeapTupleGetOid(tuple);
+
+			simple_heap_delete(rel, &tuple->t_self);
+			ii++;
+		}
+	}
+	systable_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+
+	return 1;
+} /* end del_part_template */
+
 static void
 add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 {
@@ -15737,28 +15842,80 @@ static void
 ATPExecPartSetTemplate(Relation rel,
                        AlterPartitionCmd *pc)
 {
-/*	AlterPartitionId *pid = (AlterPartitionId *)pc->partid; 
-	PgPartRule   *prule = NULL;
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid; 
+	PgPartRule   *prule = NULL; 
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
+	/* set template for top level table */
+	if (!pid)
+	{
+		if (!pc->arg1) /* null template spec - clear it*/
+		{
+			/* relid, level 1, no parent */
+			switch (del_part_template(RelationGetRelid(rel), 1, 0))
+			{
+				case 0:
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("relation \"%s\" does not have a "
+										"level %d "
+										"subpartition template specification", 
+										RelationGetRelationName(rel),
+										 1)));
 
+						break;
+				case 1: 
+						ereport(NOTICE,
+								(errmsg("dropped "
+										"level %d "
+										"subpartition template specification "
+										"for relation \"%s\"",
+										1,
+										RelationGetRelationName(rel))));
 
-	if (prule)
-    {
-    }
+						break;
+				default: 
+						elog(ERROR, 
+							 "could not drop "
+							 "level %d "
+							 "subpartition template specification "
+							 "for relation \"%s\"",
+							 1,
+							 RelationGetRelationName(rel));
+						break;
+			}
 
+		}
+		else /* cannot set it yet... */
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot SET SUBPARTITION TEMPLATE "
+							"for relation \"%s\"",
+							RelationGetRelationName(rel))));
+		
+	}
+	else
+	{
+		prule = 
+			get_part_rule(rel, pid, true, true, 
+						  CurrentMemoryContext, NULL, false);
 
-*/
+		if (prule)
+		{
+		}
 
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot SET SUBPARTITION TEMPLATE for relation \"%s\"",
+             errmsg("cannot SET SUBPARTITION TEMPLATE "
+					"for relation \"%s\"",
                     RelationGetRelationName(rel))));
 
-}
+
+	}
+
+} /* end ATPExecPartSetTemplate */
 
 static bool
 partrule_walker(Node *node, void *context)

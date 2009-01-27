@@ -2566,11 +2566,6 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    if (!gp_enable_hash_partitioned_tables)
-                    {
-                        yyerror("syntax error");
-                    }
-
                     pc->partid = NULL; 
                     pc->arg1 = (Node *)$5;
                     pc->arg2 = NULL;
@@ -2585,11 +2580,6 @@ alter_table_partition_cmd:
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
-
-                    if (!gp_enable_hash_partitioned_tables)
-                    {
-                        yyerror("syntax error");
-                    }
 
                     pc->partid = NULL; 
                     pc->arg1 = NULL;
@@ -10644,17 +10634,20 @@ target_el:	a_expr AS ColLabel
 					$$->location = @1;
 				}
 			/*
-			 * PostgreSQL supports omitting AS only for column labels that aren't
-			 * any known keyword.  There is an ambiguity against postfix
-			 * operators: is "a ! b" an infix expression, or a postfix
-			 * expression and a column label?  We prefer to resolve this
-			 * as an infix expression, which we accomplish by assigning
-			 * IDENT a precedence higher than POSTFIXOP.
+			 * PostgreSQL supports omitting AS only for column labels
+			 * that aren't any known keyword.  There is an ambiguity
+			 * against postfix operators: is "a ! b" an infix
+			 * expression, or a postfix expression and a column label?
+			 * We prefer to resolve this as an infix expression, which
+			 * we accomplish by assigning IDENT a precedence higher
+			 * than POSTFIXOP.
 			 *
-			 * In GPDB, we extent this to allow most unreserved_keywords by
-			 * also assigning them a precedence.  There are certain keywords that
-			 * can't work without the as:  reserved_keywords, the date modifier 
-			 * suffixes (DAY, MONTH, YEAR, etc) and a few other obscure cases.
+			 * In GPDB, we extent this to allow most
+			 * unreserved_keywords by also assigning them a
+			 * precedence.  There are certain keywords that can't work
+			 * without the as: reserved_keywords, the date modifier
+			 * suffixes (DAY, MONTH, YEAR, etc) and a few other
+			 * obscure cases.
 			 */
 			| a_expr IDENT
 				{
@@ -11208,12 +11201,14 @@ unreserved_keyword:
 		;
 
 /*
- * ColLabelNoAs is used for SELECT element aliases that don't have the AS keyword.
- * We always allow IDENT, so anything in double-quotes is also OK.  Beyond that,
- * any keywords listed here can be a column alias even when you omit the AS keyword.
+ * ColLabelNoAs is used for SELECT element aliases that don't have the
+ * AS keyword.  We always allow IDENT, so anything in double-quotes is
+ * also OK.  Beyond that, any keywords listed here can be a column
+ * alias even when you omit the AS keyword.
  *
- * We could add some of the reserved_keywords to this list, but I'm reluctant to do so
- * because it might restrict future enhancements to the grammar.
+ * We could add some of the reserved_keywords to this list, but I'm
+ * reluctant to do so because it might restrict future enhancements to
+ * the grammar.
  */
 
 ColLabelNoAs:   keywords_ok_in_alias_no_as   { $$=pstrdup($1); }
