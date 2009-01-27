@@ -9579,6 +9579,9 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 	systable_endscan(scan);
 	heap_close(rel, RowExclusiveLock);
 
+	/* make visible */
+	CommandCounterIncrement();
+
 	return 1;
 } /* end del_part_template */
 
@@ -15842,78 +15845,68 @@ static void
 ATPExecPartSetTemplate(Relation rel,
                        AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid; 
-	PgPartRule   *prule = NULL; 
+	AlterPartitionId	*pid   = (AlterPartitionId *)pc->partid; 
+/*	PgPartRule			*prule = NULL; */
+	int					 lvl   = 1;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	/* set template for top level table */
-	if (!pid)
+	if (pid)
 	{
-		if (!pc->arg1) /* null template spec - clear it*/
+		Assert((pid->idtype == AT_AP_IDRule) && IsA(pid->partiddef, List));
+
+		lvl = list_length((List *)pid->partiddef);
+
+		Assert (lvl > 1);
+	}
+
+	if (!pc->arg1) /* null template spec - clear it*/
+	{
+		/* relid, level, no parent */
+		switch (del_part_template(RelationGetRelid(rel), lvl, 0))
 		{
-			/* relid, level 1, no parent */
-			switch (del_part_template(RelationGetRelid(rel), 1, 0))
-			{
-				case 0:
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("relation \"%s\" does not have a "
-										"level %d "
-										"subpartition template specification", 
-										RelationGetRelationName(rel),
-										 1)));
+			case 0:
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("relation \"%s\" does not have a "
+								"level %d "
+								"subpartition template specification", 
+								RelationGetRelationName(rel),
+								lvl)));
 
-						break;
-				case 1: 
-						ereport(NOTICE,
-								(errmsg("dropped "
-										"level %d "
-										"subpartition template specification "
-										"for relation \"%s\"",
-										1,
-										RelationGetRelationName(rel))));
+				break;
+			case 1: 
+				ereport(NOTICE,
+						(errmsg("dropped "
+								"level %d "
+								"subpartition template specification "
+								"for relation \"%s\"",
+								lvl,
+								RelationGetRelationName(rel))));
 
-						break;
-				default: 
-						elog(ERROR, 
-							 "could not drop "
-							 "level %d "
-							 "subpartition template specification "
-							 "for relation \"%s\"",
-							 1,
-							 RelationGetRelationName(rel));
-						break;
-			}
-
+				break;
+			default: 
+					elog(ERROR, 
+						 "could not drop "
+						 "level %d "
+						 "subpartition template specification "
+						 "for relation \"%s\"",
+						 lvl,
+						 RelationGetRelationName(rel));
+					break;
 		}
-		else /* cannot set it yet... */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot SET SUBPARTITION TEMPLATE "
-							"for relation \"%s\"",
-							RelationGetRelationName(rel))));
+
+	}
+	else /* cannot set it yet... */
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot SET SUBPARTITION TEMPLATE "
+						"for relation \"%s\"",
+						RelationGetRelationName(rel))));
 		
-	}
-	else
-	{
-		prule = 
-			get_part_rule(rel, pid, true, true, 
-						  CurrentMemoryContext, NULL, false);
 
-		if (prule)
-		{
-		}
-
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot SET SUBPARTITION TEMPLATE "
-					"for relation \"%s\"",
-                    RelationGetRelationName(rel))));
-
-
-	}
 
 } /* end ATPExecPartSetTemplate */
 
