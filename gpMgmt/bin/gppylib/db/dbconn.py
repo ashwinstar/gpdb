@@ -9,9 +9,14 @@ import os
 
 
 try: 
-    import pg8000
+    #import pg8000
+    import pgdb
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
+
+from gppylib import gplog
+
+logger = gplog.get_default_logger()
 
 
 class ConnectionError(StandardError): pass
@@ -108,10 +113,8 @@ class DbURL:
         
     
     def __str__(self):
-        return "%s:%d/%s?user=%s?pass=%s" % \
+        return "%s:%d:%s:%s:%s" % \
             (self.pghost,self.pgport,self.pgdb,self.pguser,self.pgpass)    
-
-
 
 
 def connect(dburl, utility=False):
@@ -119,12 +122,9 @@ def connect(dburl, utility=False):
         options = '-c gp_session_role=utility'
     else:
         options = ''
-            
-    conn = pg8000.DBAPI.connect(host=dburl.pghost, 
-                                  user=dburl.pguser,
-                                  port=dburl.pgport,
-                                  database = dburl.pgdb,
-                                  options=options)
+    
+    dsn_str = "" + str(dburl) + ": " + options + ":1"
+    conn = pgdb.connect(dsn=dsn_str)
     return conn 
 
 

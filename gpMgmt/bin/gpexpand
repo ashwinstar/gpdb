@@ -68,8 +68,6 @@ def parseargs():
         parser.exit()
         
         
-    
-        
     return options, args
 
 
@@ -78,39 +76,37 @@ UNINITIALIZED,SETUP,INPROGRESS,FINISHED=range(4)
 
 #expansion schema
 gpexpand_schema='gpexpand'
-
 create_schema_sql = "CREATE SCHEMA " + gpexpand_schema 
 drop_schema_sql = "drop schema %s cascade" % gpexpand_schema
 
-global_status_table='global_status'
-
-global_status_sql="""CREATE TABLE %s.%s
+status_table='status'
+status_table_sql="""CREATE TABLE %s.%s
                         ( status text,
-                          updated timestamp ) """ % (gpexpand_schema,global_status_table)
+                          updated timestamp ) """ % (gpexpand_schema,status_table)
 
-table_entry_table='table_entry'
-table_entries_sql="""CREATE TABLE %s.%s
+status_detail_table='status_detail'
+status_detail_table_sql="""CREATE TABLE %s.%s
                         ( dbname text,
                           fq_name text,
                           schema_oid oid,
                           table_oid oid,
                           distribution_policy smallint[],
-                          distribution_policy_names text,
+                          distribution_policy_names varchar,
                           rank int,
                           status text,
-                          last_updated timestamp,
                           expansion_started timestamp,
                           expansion_finished timestamp,
-                          source_bytes int ) """ % (gpexpand_schema, table_entry_table)
+                          source_bytes int ) """ % (gpexpand_schema, status_detail_table)
 
 
 class ExpansionError(Exception): pass
 
 class gpexpand:
     
-    def __init__(self,logger,dburl):
+    def __init__(self,logger,dburl,parallel=1):
         self.logger = logger
         self.dburl = dburl
+        self.numworkers=parallel
          
         self.conn = dbconn.connect(self.dburl)
         pass
@@ -150,10 +146,10 @@ class gpexpand:
             raise ExpansionError(str)
         
         #read in the global status table        
-        raise ExpansionError("TODO:  need to impl")
+        #raise ExpansionError("TODO:  need to impl")
         
         #read in table entries
-        return
+        return SETUP
     
     
     def add_segments(self):
@@ -166,22 +162,21 @@ class gpexpand:
         
         #TODO: make sure this is all in a single txn
         dbconn.execSQL(self.conn,create_schema_sql)
-        dbconn.execSQL(self.conn,global_status_sql)
-        dbconn.execSQL(self.conn,table_entries_sql)
+        dbconn.execSQL(self.conn,status_table_sql)
+        dbconn.execSQL(self.conn,status_detail_table_sql)
         
         nowStr = datetime.datetime.now()
-        statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP', '%s' ) " % (gpexpand_schema,global_status_table,nowStr)
+        statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP', '%s' ) " % (gpexpand_schema,status_table,nowStr)
         
         dbconn.execSQL(self.conn,statusSQL)
         
         db_list = catalog.getDatabaseList(self.conn)
-        test_url = copy.deepcopy(self.dburl)
+        
         for db in db_list:
             dbname=db[0]
             if dbname == 'template0':
                 continue
-            test_url.pgdb = dbname
-            c = dbconn.connect(test_url)
+            c = self.connect_database(dbname)
           
             sql="""SELECT 
                       n.nspname || '.' || c.relname as fq_name,
@@ -201,47 +196,95 @@ class gpexpand:
                 fqname=row[0]
                 schema_oid=row[1]
                 table_oid=row[2]             
-                logger.warning(row[3][0])   
-                dist_policy = '{' + ','.join( map( str,row[3])) + '}'
-                ts = '2009-01-21 07:52:25'  #$row[3]
+                logger.warning("dist policy raw: %s " % row[3])   
+                dist_policy = row[3]
+                dist_policy_name = self.form_dist_policy_name(c,row[3],table_oid)
+                ts = datetime.datetime.now()
+                
+                logger.info("dist_policy: %s" % dist_policy)
+                logger.info("dist_policy_name: %s" % dist_policy_name)
+                
+                if dist_policy is None:
+                    dist_policy = 'NULL'
+                else:
+                    dist_policy = "'" + dist_policy + "'"
+                
                 insertSQL = """INSERT INTO %s.%s 
                                     VALUES ('%s','%s',%s,%s,
-                                            '%s','%s',%d,'%s','%s',NULL,NULL,%d)                
-                            """ % (gpexpand_schema,table_entry_table,
+                                            %s,'%s' , %d, '%s', NULL, NULL, %d)                
+                            """ % (gpexpand_schema,status_detail_table,
                                    dbname,fqname,schema_oid,table_oid, 
-                                   dist_policy,'todo colnames', 1, 'NOT STARTED', 
-                                   ts, 1234 )
+                                   dist_policy,dist_policy_name, 1, 'NOT STARTED', 
+                                   1234 )
+                            
                 self.logger.info(insertSQL)
                 dbconn.execSQL(self.conn,insertSQL)
+            
+            #null out distrib policies
+            #TODO:  badness... we aren't quite transactional anymore. 
+            sql = """UPDATE pg_catalog.gp_distribution_policy SET attrnums = NULL"""
+            self.logger.debug(sql)
+            dbconn.execSQL(c,sql)
+            c.commit()
+            c.close()
              
         self.conn.commit()
+        return SETUP
     
-    """CREATE TABLE %s.%s
-                        ( dbname text,
-                          fq_name text,
-                          schema_oid oid,
-                          table_oid oid,
-                          
-                          distribution_policy smallint[],
-                          distribution_policy_names text,
-                          rank int,
-                          status text,
-                          
-                          last_updated date,
-                          expansion_started date,
-                          expansion_finished date,
-                          source_bytes int )  % (gpexpand_schema, table_entry_table)
-                          """
     
-    def form_dist_policy(self,dist_policy):
-        res = '{'
+    def form_dist_policy_name(self,conn,rs_val,table_oid):        
+        if rs_val is None:
+            return ""
+        rs_val=rs_val.lstrip('{').rstrip('}').strip()
+        
+        dict={}
+        sql = "select attnum, attname from pg_attribute where attrelid =  %s and attnum > 0" % table_oid
+        cursor = dbconn.execSQL(conn,sql)
+        for row in cursor:            
+            dict[row[0]] = row[1]
+        
+        list=[]
+        
+        if rs_val != "":
+            rs_list=rs_val.split(',')            
+
+            for colnum in rs_list:                
+                list.append(dict[int(colnum)])
+        
+        return ' , '.join(list)
+        
+        
+        
+        
         
         
         
                         
     def perform_expansion(self):
         """Performs the actual table re-organiations"""
-        pass
+        
+        #setup a threadpool
+        self.queue=WorkerPool(numWorkers=self.numworkers)
+        
+        #read schema and queue up commands
+        sql="SELECT * FROM %s.%s ORDER BY rank" % (gpexpand_schema,status_detail_table)
+        cursor = dbconn.execSQL(self.conn,sql)
+        
+        for row in cursor:
+            self.logger.info(row)
+            name = "name"            
+            tbl = ExpandTable(row)            
+            cmd = ExpandCommand(name,self.dburl,tbl)
+            self.queue.addCommand(cmd)
+            
+        #wait till done.
+        while not self.queue.isDone():
+            logger.info("woke up.  queue: %d finished %d  " % (self.queue.num_assigned,self.queue.completed_queue.qsize()))            
+            time.sleep(5)
+            
+        logger.info("EXPANSION COMPLETE")
+        self.queue.haltWork()    
+        
     
     
     def cleanup_schema(self):
@@ -256,9 +299,158 @@ class gpexpand:
         self.conn.commit()
         pass
 
+    
+    def connect_database(self,dbname):
+        test_url = copy.deepcopy(self.dburl)
+        test_url.pgdb = dbname
+        c = dbconn.connect(test_url)
+        return c
 
 
+undone_status = "NOT STARTED"
+start_status = "IN PROGRESS"
+done_statue = "COMPLETED"
 
+#-----------------------------------------------
+class ExpandTable():
+    
+    def __init__(self,row=None):
+        if row is not None:
+            self.dbname=row[0]
+            self.fq_name=row[1]
+            self.schema_oid=row[2]
+            self.table_oid=row[3]
+            self.distrib_policy=row[4]
+            self.distrib_policy_names=row[5]
+            self.rank=row[6]
+            self.status=row[7]
+            self.expansion_started=row[8]
+            self.expansion_finished=row[9]
+            self.source_bytes=row[10]
+    
+    
+    def add_table(self,conn):
+        insertSQL = """INSERT INTO %s.%s 
+                            VALUES ('%s','%s',%s,%s,
+                                    '%s','%s',%d,'%s','%s','%s',%d)                
+                    """ % (gpexpand_schema,status_detail_table,
+                           self.dbname,self.fq_name,self.schema_oid,self.table_oid, 
+                           self.dist_policy,self.dist_policy_names,self.rank,
+                           self.status,
+                           self.expansion_started,self.expansion_finished,
+                           self.source_bytes )
+        logger.info(insertSQL)
+        dbconn.execSQL(conn,insertSQL)
+               
+               
+               
+    def mark_started(self,status_conn,table_conn):
+        
+        sql = "SELECT pg_relation_size('%s')" % self.fq_name         
+        cursor = dbconn.execSQL(table_conn,sql)
+        row = cursor.fetchone()
+        src_bytes = int(row[0])
+        logger.info(" Table: %s has %d bytes" % (self.fq_name, src_bytes))
+         
+
+        
+        time_str = datetime.datetime.now()       
+        sql = """UPDATE %s.%s 
+                  SET status = '%s', expansion_started='%s',
+                      source_bytes = %d
+                  WHERE dbname = '%s' AND schema_oid = %s 
+                        AND table_oid = %s """ % (gpexpand_schema,status_detail_table,
+                  start_status,time_str,
+                  src_bytes, self.dbname,
+                  self.schema_oid,self.table_oid) 
+         
+
+        logger.info("Mark Started: " + sql)
+        dbconn.execSQL(status_conn,sql) 
+        status_conn.commit()
+        
+        
+    def expand(self,table_conn):
+        foo = self.distrib_policy_names.strip()
+        logger.info("foo '%s'" % foo)
+        if foo == "":
+            sql = "ALTER TABLE %s SET DISTRIBUTED RANDOMLY" % (self.fq_name)
+            logger.warning("FOR NOW WE CANT SUPPORT THESE")
+            return
+        else:
+            sql = " ALTER TABLE %s SET DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
+        logger.info("Expand SQL: %s" % sql)    
+        dbconn.execSQL(table_conn,sql)
+    
+    
+    def mark_finished(self,status_conn,table_conn,finish_time):
+        sql = """UPDATE %s.%s
+                  SET status = '%s', expansion_finished='%s'
+                  WHERE dbname = '%s' AND schema_oid = %s 
+                  AND table_oid = %s """ % (gpexpand_schema,status_detail_table,
+                                            done_statue,finish_time,
+                                            self.dbname,self.schema_oid,self.table_oid) 
+        logger.info(sql)
+        dbconn.execSQL(status_conn,sql)
+        status_conn.commit()
+        
+                
+#-----------------------------------------------
+class ExpandCommand(SQLCommand):
+    
+    def __init__(self,name,status_url,table):        
+        self.status_url=status_url
+        self.table=table
+        self.cmdStr="Expand %s.%s" % (table.dbname,table.fq_name)
+        self.table_url = copy.deepcopy(status_url)
+        self.table_url.pgdb = table.dbname
+        
+        SQLCommand.__init__(self,name)        
+        pass        
+    
+     
+    def run(self,validateAfter=False):
+        #connect.
+        status_conn=dbconn.connect(self.status_url)
+        table_conn=dbconn.connect(self.table_url)        
+        
+        #mark start of expansion
+        logger.info("Starting Expansion")
+        self.table.mark_started(status_conn,table_conn)
+        
+        #expand
+        logger.info("Expanding...")
+        self.table.expand(table_conn)
+        end_time = datetime.datetime.now()
+        
+        
+        #update metadata        
+        logger.info("Finished Expanding...updating metadata")
+        self.table.mark_finished(status_conn,table_conn,end_time)
+        
+        #disconnect
+        status_conn.close()
+        table_conn.close()
+        
+        
+    
+    def set_results(self,results):
+        raise ExecutionError("TODO:  must implement")
+    
+    def get_results(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def cancel(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def was_successful(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def validate(self):
+        raise ExecutionError("TODO:  must implement")        
+        
+        
+        
 #------------------------------- Mainline --------------------------------
 
 try:
@@ -275,8 +467,9 @@ try:
     if options.quiet:
         quiet_stdout_logging()
     
+    
     dburl = dbconn.DbURL() 
-    gp_expand = gpexpand(logger,dburl)   
+    gp_expand = gpexpand(logger,dburl,parallel=options.parallel)   
     
     if options.clean:
         gp_expand.cleanup_schema()
@@ -286,7 +479,10 @@ try:
     state = gp_expand.gather_state()
     
     if state == UNINITIALIZED:
-        gp_expand.setup_schema()
+        state = gp_expand.setup_schema()
+        
+    if state == SETUP:
+        gp_expand.perform_expansion()
     
     
 except Exception, e:

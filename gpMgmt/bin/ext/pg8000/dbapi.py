@@ -67,6 +67,10 @@ def convert_paramstyle(src_style, query, args):
     #  1 -- inside single-quote string '...'
     #  2 -- inside quoted identifier   "..."
     #  3 -- inside escaped single-quote string, E'...'
+    
+    if args is None:
+        return  query, args
+    
     state = 0
     output_query = ""
     output_args = []

@@ -7,12 +7,12 @@
 """
 import unittest
 
-from gppylib.dbconn import *
+from gppylib.db.dbconn import *
  
 class TestDbURL(unittest.TestCase):
     """UnitTest class for DbURL class"""
     
-    def setup(self):
+    def setUp(self):
         pass
         
     def testConstructorHost(self):

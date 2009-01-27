@@ -42,10 +42,11 @@ class WorkerPool:
         self.workers=[]
         self.work_queue=Queue()
         self.completed_queue=Queue()
-        
+        self.num_assigned=0
         if items is not None:
-            for item in items:
+            for item in items:                
                 self.work_queue.put(item)
+                self.num_assigned += 1
             
         for i in range(0,numWorkers):
             w = Worker("worker%d" % i,self)
@@ -66,6 +67,7 @@ class WorkerPool:
     def addCommand(self,cmd):   
         logger.debug("Adding cmd to work_queue: %s" % str(cmd.cmdStr)) 
         self.work_queue.put(cmd)
+        self.num_assigned += 1
     
     
     def join(self):
@@ -90,15 +92,9 @@ class WorkerPool:
         
 
     def isDone(self):
-        raise "not implemented yet"
-        if self.work_queue.empty() is False:
-            return False
+        #TODO: not sure that qsize() is safe
+        return (self.num_assigned == self.completed_queue.qsize())
         
-        
-        #TODO:  check workers
-        #for w in workers:
-        
-        return True
     
     def haltWork(self):
         logger.debug("WorkerPool haltWork()")
@@ -337,7 +333,6 @@ def run_list(queue,host_list,cmdGenerator,shouldValidate=True):
 
     
 
-
 class Command:
     """ TODO: 
     """
@@ -387,4 +382,28 @@ class Command:
         if self.results.rc != 0:
             raise ExecutionError("non-zero rc: %d" % self.results.rc, self)            
         
+
+class SQLCommand(Command):
+    
+    def __init__(self,name):
+        self.name=name
+    
+    def run(self,validateAfter=False):
+        raise ExecutionError("programmer error.  implementors of SQLCommand must implement run()")
+    
+    def set_results(self,results):
+        raise ExecutionError("TODO:  must implement")
+    
+    def get_results(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def cancel(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def was_successful(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def validate(self):
+        raise ExecutionError("TODO:  must implement")
+    
     
