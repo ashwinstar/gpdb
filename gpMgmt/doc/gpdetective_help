@@ -36,7 +36,8 @@ And secures the following information:
 
 * The master and segment postgresql.conf configuration file
 
-* The master and segment server log files
+* The master and segment server log files (provided that the 
+  log files are located in the default location)
 
 * Core files (if any)
 
