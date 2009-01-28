@@ -92,7 +92,7 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * 1. Consider mergejoin paths where both relations must be explicitly
 	 * sorted.
 	 */
-    if (enable_mergejoin ||
+	if (enable_mergejoin ||
         mpp_trying_fallback_plan ||
         jointype == JOIN_FULL)
 	    sort_inner_and_outer(root, joinrel, outerrel, innerrel,
@@ -197,6 +197,7 @@ sort_inner_and_outer(PlannerInfo *root,
 	{
 		case JOIN_INNER:
 		case JOIN_LEFT:
+		case JOIN_LASJ:
 			useallclauses = false;
 			break;
 		case JOIN_RIGHT:
@@ -378,6 +379,7 @@ match_unsorted_outer(PlannerInfo *root,
 	{
 		case JOIN_INNER:
 		case JOIN_LEFT:
+		case JOIN_LASJ:
 			nestjoinOK = true;
 			useallclauses = false;
 			break;
@@ -719,6 +721,7 @@ hashclauses_for_join(List *restrictlist,
 			isouterjoin = false;
 			break;
 		case JOIN_LEFT:
+		case JOIN_LASJ:
 			isouterjoin = true;
 			break;
 		default:
@@ -792,9 +795,9 @@ hash_inner_and_outer(PlannerInfo *root,
     HashPath   *hjpath;
 
 	/*
-	 * Hashjoin only supports inner and left joins.
+	 * Hashjoin only supports inner, left  and anti joins.
 	 */
-    Assert(jointype == JOIN_INNER || jointype == JOIN_LEFT);
+    Assert(jointype == JOIN_INNER || jointype == JOIN_LEFT || jointype == JOIN_LASJ);
     Assert(hashclause_list);
 
     /*

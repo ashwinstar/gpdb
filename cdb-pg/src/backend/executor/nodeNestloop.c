@@ -242,7 +242,8 @@ ExecNestLoop(NestLoopState *node)
 			node->nl_NeedNewOuter = true;
 
 			if (!node->nl_MatchedOuter &&
-				node->js.jointype == JOIN_LEFT)
+				(node->js.jointype == JOIN_LEFT || 
+				 node->js.jointype == JOIN_LASJ))
 			{
 				/*
 				 * We are doing an outer join and there were no join matches
@@ -297,6 +298,13 @@ ExecNestLoop(NestLoopState *node)
 		if (ExecQual(joinqual, econtext, false))
 		{
 			node->nl_MatchedOuter = true;
+
+			/* In an antijoin, we never return a matched tuple */
+			if (node->js.jointype == JOIN_LASJ) 
+			{
+				node->nl_NeedNewOuter = true;
+				continue;		/* return to top of loop */
+			}
 
 			if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 			{
@@ -429,6 +437,7 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 		case JOIN_IN:
 			break;
 		case JOIN_LEFT:
+		case JOIN_LASJ:
 			nlstate->nl_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
 								 ExecGetResultType(innerPlanState(nlstate)));
@@ -479,6 +488,9 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 				break;
 			case JOIN_LEFT:
 				iname = "Nested Loop Left Join";
+				break;
+			case JOIN_LASJ:
+				iname = "Nested Loop Left Anti Semi Join";
 				break;
 			case JOIN_FULL:
 				iname = "Nested Loop Full Join";

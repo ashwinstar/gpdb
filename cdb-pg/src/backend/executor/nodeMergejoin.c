@@ -950,6 +950,12 @@ ExecMergeJoin(MergeJoinState *node)
 					node->mj_MatchedOuter = true;
 					node->mj_MatchedInner = true;
 
+					/* In an antijoin, we never return a matched tuple */
+					if (node->js.jointype == JOIN_LASJ) 
+					{
+						node->mj_JoinState = EXEC_MJ_NEXTOUTER;
+						break;
+					}
 					qualResult = (otherqual == NIL ||
 								  ExecQual(otherqual, econtext, false));
 					MJ_DEBUG_QUAL(otherqual, qualResult);
@@ -1724,6 +1730,7 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 			mergestate->mj_FillInner = false;
 			break;
 		case JOIN_LEFT:
+		case JOIN_LASJ:
 			mergestate->mj_FillOuter = true;
 			mergestate->mj_FillInner = false;
 			mergestate->mj_NullInnerTupleSlot =
@@ -1813,6 +1820,9 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 				break;
 			case JOIN_LEFT:
 				iname = "Merge Left Join";
+				break;
+			case JOIN_LASJ:
+				iname = "Merge Left Anti Semi Join";
 				break;
 			case JOIN_FULL:
 				iname = "Merge Full Join";

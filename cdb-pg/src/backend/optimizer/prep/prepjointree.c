@@ -173,6 +173,7 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 											 below_outer_join, false);
 				break;
 			case JOIN_LEFT:
+			case JOIN_LASJ:
 				j->larg = pull_up_subqueries(root, j->larg,
 											 below_outer_join, false);
 				j->rarg = pull_up_subqueries(root, j->rarg,

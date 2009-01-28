@@ -562,7 +562,9 @@ typedef enum JoinType
 	JOIN_IN,					/* at most one result per outer row */
 	JOIN_REVERSE_IN,			/* at most one result per inner row */
 	JOIN_UNIQUE_OUTER,			/* outer path must be made unique */
-	JOIN_UNIQUE_INNER			/* inner path must be made unique */
+	JOIN_UNIQUE_INNER,			/* inner path must be made unique */
+	JOIN_LASJ					/* Left Anti Semi Join: 
+								   one copy of outer row with no match in inner */
 
 	/*
 	 * We might need additional join types someday.
@@ -572,7 +574,8 @@ typedef enum JoinType
 #define IS_OUTER_JOIN(jointype) \
 	((jointype) == JOIN_LEFT || \
 	 (jointype) == JOIN_FULL || \
-	 (jointype) == JOIN_RIGHT)
+	 (jointype) == JOIN_RIGHT) 
+
 
 
 /*

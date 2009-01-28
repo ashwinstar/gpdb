@@ -292,6 +292,7 @@ subquery_planner(Query *parse, double tuple_fraction,
 	if (parse->hasSubLinks)
         cdbsubselect_flatten_sublinks(root, (Node *)parse);
 
+
 	/*
 	 * Check to see if any subqueries in the rangetable can be merged into
 	 * this query.

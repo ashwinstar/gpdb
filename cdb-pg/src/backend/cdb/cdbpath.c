@@ -719,6 +719,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
             break;
         case JOIN_IN:
         case JOIN_LEFT:
+        case JOIN_LASJ:
             outer.ok_to_replicate = false;
             break;
         case JOIN_RIGHT:

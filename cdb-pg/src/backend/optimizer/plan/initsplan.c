@@ -47,7 +47,7 @@ static List *deconstruct_recurse(PlannerInfo *root, Node *jtnode,
 static OuterJoinInfo *make_outerjoininfo(PlannerInfo *root,
 				   Relids left_rels, Relids right_rels,
 				   Relids inner_join_rels,
-				   bool is_full_join, Node *clause);
+				   JoinType join_type, Node *clause);
 static void distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 						bool is_deduced,
 						bool below_outer_join,
@@ -366,6 +366,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 				nonnullable_rels = NULL;
 				break;
 			case JOIN_LEFT:
+			case JOIN_LASJ:
 				leftjoinlist = deconstruct_recurse(root, j->larg,
 												   below_outer_join,
 												   &leftids, &left_inners);
@@ -457,7 +458,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
 			ojinfo = make_outerjoininfo(root,
 										leftids, rightids,
 										*inner_join_rels,
-										(j->jointype == JOIN_FULL),
+										j->jointype,
 										j->quals);
 			ojscope = bms_union(ojinfo->min_lefthand, ojinfo->min_righthand);
 		}
@@ -528,7 +529,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
  *	left_rels: the base Relids syntactically on outer side of join
  *	right_rels: the base Relids syntactically on inner side of join
  *	inner_join_rels: base Relids participating in inner joins below this one
- *	is_full_join: what it says
+ *	join_type: what it says
  *	clause: the outer join's join condition
  *
  * If the join is a RIGHT JOIN, left_rels and right_rels are switched by
@@ -546,7 +547,7 @@ static OuterJoinInfo *
 make_outerjoininfo(PlannerInfo *root,
 				   Relids left_rels, Relids right_rels,
 				   Relids inner_join_rels,
-				   bool is_full_join, Node *clause)
+				   JoinType join_type, Node *clause)
 {
 	OuterJoinInfo *ojinfo = makeNode(OuterJoinInfo);
 	Relids		clause_relids;
@@ -572,7 +573,7 @@ make_outerjoininfo(PlannerInfo *root,
 		RowMarkClause *rc = (RowMarkClause *) lfirst(l);
 
 		if (bms_is_member(rc->rti, right_rels) ||
-			(is_full_join && bms_is_member(rc->rti, left_rels)))
+			(join_type == JOIN_FULL && bms_is_member(rc->rti, left_rels)))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to the nullable side of an outer join")));
@@ -584,8 +585,8 @@ make_outerjoininfo(PlannerInfo *root,
 	/* If it's a full join, no need to be very smart */
 	ojinfo->syn_lefthand = left_rels;
 	ojinfo->syn_righthand = right_rels;
-	ojinfo->is_full_join = is_full_join;
-	if (is_full_join)
+	ojinfo->join_type = join_type;
+	if (join_type == JOIN_FULL)
 	{
 		ojinfo->min_lefthand = left_rels;
 		ojinfo->min_righthand = right_rels;
@@ -625,7 +626,7 @@ make_outerjoininfo(PlannerInfo *root,
 		OuterJoinInfo *otherinfo = (OuterJoinInfo *) lfirst(l);
 
 		/* ignore full joins --- other mechanisms preserve their ordering */
-		if (otherinfo->is_full_join)
+		if (otherinfo->join_type == JOIN_FULL)
 			continue;
 
 		/*
@@ -933,7 +934,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 
 				/* do we have any nullable rels of this OJ? */
 				if (bms_overlap(relids, ojinfo->min_righthand) ||
-					(ojinfo->is_full_join &&
+					(ojinfo->join_type == JOIN_FULL &&
 					 bms_overlap(relids, ojinfo->min_lefthand)))
 				{
 					/* yes; do we have all its rels? */
@@ -950,7 +951,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 						found_some = true;
 					}
 					/* set delay_upper_joins if needed */
-					if (!ojinfo->is_full_join &&
+					if (ojinfo->join_type != JOIN_FULL &&
 						bms_overlap(relids, ojinfo->min_lefthand))
 						ojinfo->delay_upper_joins = true;
 				}

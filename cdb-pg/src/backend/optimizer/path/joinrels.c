@@ -410,14 +410,18 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 		{
 			if (jointype != JOIN_INNER)
 				return false;			/* invalid join path */
-			jointype = ojinfo->is_full_join ? JOIN_FULL : JOIN_LEFT;
+			jointype = ojinfo->join_type;
+			if (jointype != JOIN_FULL && jointype != JOIN_LASJ) 
+				jointype = JOIN_LEFT;
 		}
 		else if (bms_is_subset(ojinfo->min_lefthand, rel2->relids) &&
 				 bms_is_subset(ojinfo->min_righthand, rel1->relids))
 		{
 			if (jointype != JOIN_INNER)
 				return false;			/* invalid join path */
-			jointype = ojinfo->is_full_join ? JOIN_FULL : JOIN_RIGHT;
+			jointype = ojinfo->join_type;
+			if (jointype != JOIN_FULL && jointype != JOIN_LASJ) 
+				jointype = JOIN_RIGHT;
 		}
 		else
 		{
@@ -538,6 +542,13 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
                                     swapjointype,
                                     restrictlist);
 
+    /*
+	 * For antijoins, the outer and inner rel are fixed.
+	 */
+	else if (jointype == JOIN_LASJ)
+	{
+        add_paths_to_joinrel(root, joinrel, rel1, rel2, jointype, restrictlist);
+	}
     /*
 	 * Consider paths using each rel as both outer and inner.
 	 */
@@ -694,7 +705,7 @@ have_join_order_restriction(PlannerInfo *root,
 		OuterJoinInfo *ojinfo = (OuterJoinInfo *) lfirst(l);
 
 		/* ignore full joins --- other mechanisms handle them */
-		if (ojinfo->is_full_join)
+		if (ojinfo->join_type == JOIN_FULL)
 			continue;
 
 		/* Can we perform the OJ with these rels? */
@@ -796,7 +807,7 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 		OuterJoinInfo *ojinfo = (OuterJoinInfo *) lfirst(l);
 
 		/* ignore full joins --- other mechanisms preserve their ordering */
-		if (ojinfo->is_full_join)
+		if (ojinfo->join_type == JOIN_FULL)
 			continue;
 
 		/* ignore if OJ is already contained in rel */

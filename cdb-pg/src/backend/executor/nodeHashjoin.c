@@ -128,7 +128,7 @@ ExecHashJoin(HashJoinState *node)
 			 * outer plan node.  If we succeed, we have to stash it away for later
 			 * consumption by ExecHashJoinOuterGetTuple.
 			 */
-			if (node->js.jointype == JOIN_LEFT ||
+			if ((node->js.jointype == JOIN_LEFT) || (node->js.jointype == JOIN_LASJ) || 
 				(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
 				 !node->hj_OuterNotEmpty))
 			{
@@ -175,6 +175,7 @@ ExecHashJoin(HashJoinState *node)
         if (estate->es_instrument)
             ExecHashTableExplainInit(node, hashtable);
 
+
 		/*
 		 * execute the Hash node, to build the hash table
 		 */
@@ -185,7 +186,7 @@ ExecHashJoin(HashJoinState *node)
 		 * If the inner relation is completely empty, and we're not doing an
 		 * outer join, we can quit without scanning the outer relation.
 		 */
-		if (node->js.jointype != JOIN_LEFT)
+		if (node->js.jointype != JOIN_LEFT && node->js.jointype != JOIN_LASJ)
         {
             int         i;
 
@@ -306,6 +307,13 @@ ExecHashJoin(HashJoinState *node)
 			{
 				node->hj_MatchedOuter = true;
 
+				/* In an antijoin, we never return a matched tuple */
+				if (node->js.jointype == JOIN_LASJ) 
+				{
+					node->hj_NeedNewOuter = true;
+					break;		/* out of loop over hash bucket */
+				}
+
 				if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 				{
 					Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node));
@@ -332,7 +340,8 @@ ExecHashJoin(HashJoinState *node)
 		node->hj_NeedNewOuter = true;
 
 		if (!node->hj_MatchedOuter &&
-			node->js.jointype == JOIN_LEFT)
+			(node->js.jointype == JOIN_LEFT ||
+			node->js.jointype == JOIN_LASJ))
 		{
 			/*
 			 * We are doing an outer join and there were no join matches for
@@ -341,7 +350,7 @@ ExecHashJoin(HashJoinState *node)
 			 */
 			econtext->ecxt_innertuple = node->hj_NullInnerTupleSlot;
 
-			if (ExecQual(otherqual, econtext, false))
+			if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 			{
 				Gpmon_M_Incr_Rows_Out(GpmonPktFromHashJoinState(node));
 				CheckSendPlanStateGpmonPkt(&node->js.ps);
@@ -465,6 +474,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 		case JOIN_IN:
 			break;
 		case JOIN_LEFT:
+		case JOIN_LASJ:
 			hjstate->hj_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
 								 ExecGetResultType(innerPlanState(hjstate)));
@@ -561,6 +571,9 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 				break;
 			case JOIN_LEFT:
 				iname = "Hash Left Join";
+				break;
+			case JOIN_LASJ:
+				iname = "Hash Left Anti Semi Join";
 				break;
 			case JOIN_FULL:
 				iname = "Hash Full Join";
@@ -691,7 +704,9 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			econtext->ecxt_outertuple = slot;
 			if (ExecHashGetHashValue(hashtable, econtext,
 						hjstate->hj_OuterHashKeys,
-						(hjstate->js.jointype == JOIN_LEFT) || hjstate->hj_nonequijoin,
+						(hjstate->js.jointype == JOIN_LEFT) || 
+						(hjstate->js.jointype == JOIN_LASJ) || 
+						hjstate->hj_nonequijoin,
 						hashvalue))
 			{
 				/* remember outer relation is not empty for possible rescan */
@@ -818,7 +833,8 @@ start_over:
 #else
 			batch->outerside.bufFile &&
 #endif
-			hjstate->js.jointype == JOIN_LEFT)
+			((hjstate->js.jointype == JOIN_LEFT) || 
+			(hjstate->js.jointype == JOIN_LASJ)))
 			break;				/* must process due to rule 1 */
 		if (
 #ifdef HJ_USE_BFZ 

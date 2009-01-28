@@ -485,7 +485,8 @@ set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel)
     /* CDB: If cheapest path is NJ, consider adaptive NJ/HJ. */
     if (IsA(cheapest_total_path, NestPath) &&
         ((NestPath *)cheapest_total_path)->alternate == NULL &&
-        (enable_adaptive_nestloop || mpp_trying_fallback_plan))
+        (enable_adaptive_nestloop || mpp_trying_fallback_plan) && 
+		((JoinPath *)cheapest_total_path)->jointype != JOIN_LASJ)
     {
         Path   *new_path = create_adaptive_join_path(root, cheapest_total_path);
 

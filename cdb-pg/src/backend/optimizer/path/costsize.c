@@ -1522,7 +1522,8 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 			outerscansel = firstclause->right_mergescansel;
 			innerscansel = firstclause->left_mergescansel;
 		}
-		if (path->jpath.jointype == JOIN_LEFT)
+		if (path->jpath.jointype == JOIN_LEFT || 
+			path->jpath.jointype == JOIN_LASJ)
 			outerscansel = 1.0;
 		else if (path->jpath.jointype == JOIN_RIGHT)
 			innerscansel = 1.0;
@@ -2324,6 +2325,10 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 			if (nrows < inner_rel->rows)
 				nrows = inner_rel->rows;
 			nrows *= pselec;
+			break;
+		case JOIN_LASJ:
+			nrows = outer_rel->rows * jselec;
+			Assert (0.0 == pselec);
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d", (int) jointype);

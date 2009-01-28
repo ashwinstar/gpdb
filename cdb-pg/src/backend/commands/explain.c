@@ -833,6 +833,9 @@ explain_outNode(StringInfo str,
 				case JOIN_IN:
 					pname = "Nested Loop EXISTS Join";
 					break;
+				case JOIN_LASJ:
+					pname = "Nested Loop Left Anti Semi Join";
+					break;
 				default:
 					pname = "Nested Loop ??? Join";
 					break;
@@ -856,6 +859,9 @@ explain_outNode(StringInfo str,
 				case JOIN_IN:
 					pname = "Merge EXISTS Join";
 					break;
+				case JOIN_LASJ:
+					pname = "Merge Left Anti Semi Join";
+					break;
 				default:
 					pname = "Merge ??? Join";
 					break;
@@ -878,6 +884,9 @@ explain_outNode(StringInfo str,
 					break;
 				case JOIN_IN:
 					pname = "Hash EXISTS Join";
+					break;
+				case JOIN_LASJ:
+					pname = "Hash Left Anti Semi Join";
 					break;
 				default:
 					pname = "Hash ??? Join";

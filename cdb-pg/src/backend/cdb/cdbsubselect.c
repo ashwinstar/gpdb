@@ -13,6 +13,7 @@
 
 #include "catalog/pg_type.h"            /* INT8OID */
 #include "nodes/makefuncs.h"
+#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/subselect.h"        /* convert_testexpr() */
 #include "optimizer/var.h"              /* contain_vars_of_level_or_above() */
@@ -789,22 +790,30 @@ remove_fromlist_item(List *fromlist, Node *delnode)
 
 /* Create a null test. */
 static Expr *
-make_notin_quals(List *rtable, int j_rtindex)
+make_notin_quals(List *rtable, int j_rtindex, JoinType join_type)
 {
-	RangeTblEntry *j_rte;
-	Var		   *dummy;
-	NullTest   *null_test;
-	List	   *j_colnames,
-			   *j_colvars;
+	NullTest   *null_test = NULL;
+	
+	if(join_type == JOIN_LEFT) 
+	{
+		RangeTblEntry *j_rte;
+		Var		   *dummy;
+		List	   *j_colnames,
+				   *j_colvars;
 
-	j_rte = rt_fetch(j_rtindex, rtable);
-	expandRTE(j_rte, j_rtindex, 0, false,
-			  &j_colnames, &j_colvars);
+		j_rte = rt_fetch(j_rtindex, rtable);
+		expandRTE(j_rte, j_rtindex, 0, false,
+				  &j_colnames, &j_colvars);
 
-	null_test = makeNode(NullTest);
-	null_test->nulltesttype = IS_NULL;
-	dummy = (Var *) list_nth(j_colvars, list_length(j_colvars) - 1);
-	null_test->arg = (Expr *) dummy;
+		null_test = makeNode(NullTest);
+		null_test->nulltesttype = IS_NULL;
+		dummy = (Var *) list_nth(j_colvars, list_length(j_colvars) - 1);
+		null_test->arg = (Expr *) dummy;
+	}
+	else if (join_type == JOIN_LASJ) 
+	{
+		null_test = NULL;
+	}
 
 	return (Expr *) null_test;
 }
@@ -831,7 +840,7 @@ convert_IN_to_antijoin(PlannerInfo * root, SubLink * sublink)
 	Expr	   *quals = make_notclause((Expr *) sublink);
 	Query	   *parse = root->parse;
 	Query	   *subselect = (Query *) sublink->subselect;
-	int			join_type = JOIN_LEFT;
+	int			join_type = JOIN_LASJ;
 
 	if (safe_to_convert_NOTIN(sublink))
 	{
@@ -853,7 +862,7 @@ convert_IN_to_antijoin(PlannerInfo * root, SubLink * sublink)
 			parse->jointree->fromlist = lappend(parse->jointree->fromlist, join_expr);
 			parse->jointree->fromlist = remove_fromlist_item(parse->jointree->fromlist, larg);
 
-			quals = make_notin_quals(parse->rtable, join_indx);
+			quals = make_notin_quals(parse->rtable, join_indx, join_type);
 		}
 	}
 
