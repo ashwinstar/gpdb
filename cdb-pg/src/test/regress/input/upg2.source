@@ -22,6 +22,7 @@
 create table old_attribute_v32 (like pg_attribute) ;
 create table old_class_v32 (like pg_class) with oids;
 create table old_type_v32 (like pg_type) with oids;
+create table old_index_v32 (like pg_index);
 
 -- load the "old" catalog
 COPY old_attribute_v32 
@@ -30,11 +31,13 @@ COPY old_class_v32
   from '@abs_srcdir@/data/pg_class32.data' with oids csv header;
 COPY old_type_v32 
   from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
+COPY old_index_v32
+  from '@abs_srcdir@/data/pg_index32.data' csv header;
 
-
-create table toadd_class(like pg_class) with oids;
-create table toadd_attribute(like pg_attribute);
-create table toadd_type(like pg_type) with oids;
+create table public.pg_class(like pg_catalog.pg_class) with oids;
+create table public.pg_attribute(like pg_catalog.pg_attribute);
+create table public.pg_type(like pg_catalog.pg_type) with oids;
+create table public.pg_index(like pg_catalog.pg_index);
 
 create view old_class as
 select oid, relname, relnamespace, reltype, relowner,
@@ -53,7 +56,7 @@ select oid, relname, relnamespace, reltype, relowner,
 	   relhasindex, relisshared, relkind, relstorage, relnatts, relchecks,
 	   reltriggers, relukeys, relfkeys, relrefs, relhasoids, relhaspkey,
 	   relhasrules, relhassubclass, /* relfrozenxid -- different */
-	   relacl, reloptions from toadd_class;
+	   relacl, reloptions from public.pg_class;
 
 create view old_attribute as 
 select attrelid, attname, atttypid, /* attstattarget, -- can differ */ 
@@ -64,20 +67,20 @@ union all
 select  attrelid, attname, atttypid, /* attstattarget, -- can differ */
 	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
 	   attalign, attnotnull,
-	   atthasdef, attisdropped, attislocal, attinhcount from toadd_attribute;
+	   atthasdef, attisdropped, attislocal, attinhcount from public.pg_attribute;
 
 create view old_type as select oid, * from old_type_v32 union all
-select oid, * from toadd_type;
+select oid, * from public.pg_type;
+
+create view old_index as select * from old_index_v32 union all
+select * from public.pg_index;
 
 -- new tables and attributes. 
 -- AOCS
-COPY toadd_class 
-  from '@abs_srcdir@/data/upg2_pg_class_toadd.data' oids csv  
-  header delimiter '|';
-
-COPY toadd_attribute
-  from '@abs_srcdir@/data/upg2_pg_attribute_toadd.data' csv
-  header delimiter '|';
+\i @abs_srcdir@/data/upg2_pg_class_toadd.data
+\i @abs_srcdir@/data/upg2_pg_attribute_toadd.data
+\i @abs_srcdir@/data/upg2_pg_type_toadd.data
+\i @abs_srcdir@/data/upg2_pg_index_toadd.data
 
 -- begin_equivalent 
 -- compare old vs new catalog tables
@@ -119,9 +122,10 @@ and c.relkind = 'v'
 order by c.relname, a.attnum;
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_attribute a,
-pg_class c,
-pg_type t
+from 
+pg_catalog.pg_attribute a,
+pg_catalog.pg_class c,
+pg_catalog.pg_type t
 where c.oid = a.attrelid and a.attnum > 0
 and t.oid = a.atttypid
 and c.oid < 16384
@@ -130,6 +134,14 @@ order by c.relname, a.attnum;
 
 -- end_equivalent
 
+-- begin_equivalent
+-- compare old and new pg_index
+select * from old_index where indexrelid < 16384 order by indexrelid, indrelid;
 
-drop view old_class, old_type, old_attribute;
-drop table toadd_class, toadd_attribute, toadd_type;
+select * from pg_catalog.pg_index where indexrelid < 16384 order by indexrelid,
+	   indrelid;
+
+-- end_equivalent
+
+drop view old_class, old_type, old_attribute, old_index;
+drop table public.pg_class, public.pg_attribute, public.pg_type, public.pg_index;

@@ -1,3 +1,4 @@
+copy public.pg_attribute from stdin csv delimiter '|' header;
 attrelid|attname|atttypid|attstattarget|attlen|attnum|attndims|attcacheoff|atttypmod|attbyval|attstorage|attalign|attnotnull|atthasdef|attisdropped|attislocal|attinhcount
 6107|relid|26|-1|4|1|0|-1|-1|t|p|i|t|f|f|t|0
 6107|attnum|21|-1|2|2|0|-1|-1|t|p|s|t|f|f|t|0
@@ -22,3 +23,6 @@ attrelid|attname|atttypid|attstattarget|attlen|attnum|attndims|attcacheoff|attty
 5006|cmax|29|0|4|-6|0|-1|-1|t|p|i|t|f|f|t|0
 5006|tableoid|26|0|4|-7|0|-1|-1|t|p|i|t|f|f|t|0
 5006|gp_segment_id|23|0|4|-8|0|-1|-1|t|p|i|t|f|f|t|0
+5009|relid|26|-1|4|1|0|-1|-1|t|p|i|f|f|f|t|0
+5009|attnum|21|-1|2|2|0|-1|-1|t|p|s|f|f|f|t|0
+\.

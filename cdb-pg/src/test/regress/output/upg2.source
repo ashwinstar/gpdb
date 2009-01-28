@@ -18,6 +18,7 @@
 create table old_attribute_v32 (like pg_attribute) ;
 create table old_class_v32 (like pg_class) with oids;
 create table old_type_v32 (like pg_type) with oids;
+create table old_index_v32 (like pg_index);
 -- load the "old" catalog
 COPY old_attribute_v32 
   from '@abs_srcdir@/data/pg_attribute32.data'  csv header;
@@ -25,9 +26,12 @@ COPY old_class_v32
   from '@abs_srcdir@/data/pg_class32.data' with oids csv header;
 COPY old_type_v32 
   from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
-create table toadd_class(like pg_class) with oids;
-create table toadd_attribute(like pg_attribute);
-create table toadd_type(like pg_type) with oids;
+COPY old_index_v32
+  from '@abs_srcdir@/data/pg_index32.data' csv header;
+create table public.pg_class(like pg_catalog.pg_class) with oids;
+create table public.pg_attribute(like pg_catalog.pg_attribute);
+create table public.pg_type(like pg_catalog.pg_type) with oids;
+create table public.pg_index(like pg_catalog.pg_index);
 create view old_class as
 select oid, relname, relnamespace, reltype, relowner,
 	   relam, relfilenode, reltablespace,
@@ -45,7 +49,7 @@ select oid, relname, relnamespace, reltype, relowner,
 	   relhasindex, relisshared, relkind, relstorage, relnatts, relchecks,
 	   reltriggers, relukeys, relfkeys, relrefs, relhasoids, relhaspkey,
 	   relhasrules, relhassubclass, /* relfrozenxid -- different */
-	   relacl, reloptions from toadd_class;
+	   relacl, reloptions from public.pg_class;
 create view old_attribute as 
 select attrelid, attname, atttypid, /* attstattarget, -- can differ */ 
 	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
@@ -55,17 +59,22 @@ union all
 select  attrelid, attname, atttypid, /* attstattarget, -- can differ */
 	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
 	   attalign, attnotnull,
-	   atthasdef, attisdropped, attislocal, attinhcount from toadd_attribute;
+	   atthasdef, attisdropped, attislocal, attinhcount from public.pg_attribute;
 create view old_type as select oid, * from old_type_v32 union all
-select oid, * from toadd_type;
+select oid, * from public.pg_type;
+create view old_index as select * from old_index_v32 union all
+select * from public.pg_index;
 -- new tables and attributes. 
 -- AOCS
-COPY toadd_class 
-  from '@abs_srcdir@/data/upg2_pg_class_toadd.data' oids csv  
-  header delimiter '|';
-COPY toadd_attribute
-  from '@abs_srcdir@/data/upg2_pg_attribute_toadd.data' csv
-  header delimiter '|';
+\i @abs_srcdir@/data/upg2_pg_class_toadd.data
+copy public.pg_class from stdin oids null E'\\N' csv delimiter '|' header;
+reindex table pg_aocs;
+\i @abs_srcdir@/data/upg2_pg_attribute_toadd.data
+copy public.pg_attribute from stdin csv delimiter '|' header;
+\i @abs_srcdir@/data/upg2_pg_type_toadd.data
+copy public.pg_type from stdin csv delimiter '|' header;
+\i @abs_srcdir@/data/upg2_pg_index_toadd.data
+copy public.pg_index from stdin null as E'\\N' csv delimiter '|' header;
 -- begin_equivalent 
 -- compare old vs new catalog tables
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
@@ -1818,9 +1827,10 @@ order by c.relname, a.attnum;
 (822 rows)
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_attribute a,
-pg_class c,
-pg_type t
+from 
+pg_catalog.pg_attribute a,
+pg_catalog.pg_class c,
+pg_catalog.pg_type t
 where c.oid = a.attrelid and a.attnum > 0
 and t.oid = a.atttypid
 and c.oid < 16384
@@ -2653,5 +2663,205 @@ order by c.relname, a.attnum;
 (822 rows)
 
 -- end_equivalent
-drop view old_class, old_type, old_attribute;
-drop table toadd_class, toadd_attribute, toadd_type;
+-- begin_equivalent
+-- compare old and new pg_index
+select * from old_index where indexrelid < 16384 order by indexrelid, indrelid;
+ indexrelid | indrelid | indnatts | indisunique | indisprimary | indisclustered | indisvalid |  indkey  |      indclass       | indexprs | indpred 
+------------+----------+----------+-------------+--------------+----------------+------------+----------+---------------------+----------+---------
+       1137 |     1136 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       1232 |     1214 |        3 | f           | f            | f              | t          | 1 2 3    | 1989 1989 1989      |          | 
+       1233 |     1214 |        2 | f           | f            | f              | t          | 4 5      | 1989 1989           |          | 
+       1250 |     1248 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       2397 |     2396 |        2 | t           | f            | f              | t          | 1 2      | 1989 1989           |          | 
+       2650 |     2600 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       2651 |     2601 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2652 |     2601 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2653 |     2602 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1989 1976      |          | 
+       2654 |     2602 |        2 | t           | f            | f              | t          | 5 1      | 1989 1989           |          | 
+       2655 |     2603 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1989 1976      |          | 
+       2656 |     2604 |        2 | t           | f            | f              | t          | 1 2      | 1989 1976           |          | 
+       2657 |     2604 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2658 |     1249 |        2 | t           | f            | f              | t          | 1 2      | 1989 1986           |          | 
+       2659 |     1249 |        2 | t           | f            | f              | t          | 1 6      | 1989 1976           |          | 
+       2660 |     2605 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2661 |     2605 |        2 | t           | f            | f              | t          | 1 2      | 1989 1989           |          | 
+       2662 |     1259 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2663 |     1259 |        2 | t           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2664 |     2606 |        2 | f           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2665 |     2606 |        1 | f           | f            | f              | t          | 6        | 1989                |          | 
+       2666 |     2606 |        1 | f           | f            | f              | t          | 7        | 1989                |          | 
+       2667 |     2606 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2668 |     2607 |        4 | t           | f            | f              | t          | 2 4 5 -2 | 1989 1978 1978 1989 |          | 
+       2669 |     2607 |        2 | t           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2670 |     2607 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2671 |     1262 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2672 |     1262 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2673 |     2608 |        3 | f           | f            | f              | t          | 1 2 3    | 1989 1989 1978      |          | 
+       2674 |     2608 |        3 | f           | f            | f              | t          | 4 5 6    | 1989 1989 1978      |          | 
+       2675 |     2609 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1989 1978      |          | 
+       2676 |     1260 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2677 |     1260 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2678 |     2610 |        1 | f           | f            | f              | t          | 2        | 1989                |          | 
+       2679 |     2610 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       2680 |     2611 |        2 | t           | f            | f              | t          | 1 3      | 1989 1978           |          | 
+       2681 |     2612 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2682 |     2612 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2683 |     2613 |        2 | t           | f            | f              | t          | 1 2      | 1989 1978           |          | 
+       2684 |     2615 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2685 |     2615 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2686 |     2616 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1986 1989      |          | 
+       2687 |     2616 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2688 |     2617 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2689 |     2617 |        4 | t           | f            | f              | t          | 1 6 7 2  | 1986 1989 1989 1989 |          | 
+       2690 |     1255 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2691 |     1255 |        3 | t           | f            | f              | t          | 1 13 2   | 1986 1991 1989      |          | 
+       2692 |     2618 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2693 |     2618 |        2 | t           | f            | f              | t          | 2 1      | 1989 1986           |          | 
+       2694 |     1261 |        2 | t           | f            | f              | t          | 1 2      | 1989 1989           |          | 
+       2695 |     1261 |        2 | t           | f            | f              | t          | 2 1      | 1989 1989           |          | 
+       2696 |     2619 |        2 | t           | f            | f              | t          | 1 2      | 1989 1976           |          | 
+       2697 |     1213 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2698 |     1213 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2699 |     2620 |        1 | f           | f            | f              | t          | 7        | 1986                |          | 
+       2700 |     2620 |        1 | f           | f            | f              | t          | 8        | 1989                |          | 
+       2701 |     2620 |        2 | t           | f            | f              | t          | 1 2      | 1989 1986           |          | 
+       2702 |     2620 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2703 |     1247 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2704 |     1247 |        2 | t           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2831 |     2830 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2833 |     2832 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2835 |     2834 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2837 |     2836 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2839 |     2838 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2841 |     2840 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2843 |     2842 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2845 |     2844 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2847 |     2846 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       5005 |     5004 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       5007 |     6105 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       5009 |     6107 |        2 | t           | f            | f              | t          | 1 2      | 1989 1976           |          | 
+       5012 |     5010 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       5013 |     5010 |        1 | f           | f            | f              | t          | 1        | 1989                |          | 
+       5014 |     5011 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       5015 |     5011 |        3 | f           | f            | f              | t          | 2 3 6    | 1989 1989 1976      |          | 
+       5016 |     5011 |        1 | f           | f            | f              | t          | 2        | 1989                |          | 
+       5017 |     5010 |        3 | f           | f            | f              | t          | 1 3 4    | 1989 1976 424       |          | 
+       5026 |     5011 |        3 | f           | f            | f              | t          | 1 3 6    | 1989 1989 1976      |          | 
+       6027 |     6026 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       6028 |     6026 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       6029 |     1260 |        1 | f           | f            | f              | t          | 12       | 1989                |          | 
+       6041 |     6040 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       6101 |     5000 |        2 | t           | f            | f              | t          | 1 2      | 1976 424            |          | 
+       6102 |     5000 |        1 | t           | f            | f              | t          | 3        | 1976                |          | 
+       6103 |     5002 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+      10749 |    10747 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10754 |    10752 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10759 |    10757 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10764 |    10762 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10769 |    10767 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10774 |    10772 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10779 |    10777 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+(93 rows)
+
+select * from pg_catalog.pg_index where indexrelid < 16384 order by indexrelid,
+	   indrelid;
+ indexrelid | indrelid | indnatts | indisunique | indisprimary | indisclustered | indisvalid |  indkey  |      indclass       | indexprs | indpred 
+------------+----------+----------+-------------+--------------+----------------+------------+----------+---------------------+----------+---------
+       1137 |     1136 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       1232 |     1214 |        3 | f           | f            | f              | t          | 1 2 3    | 1989 1989 1989      |          | 
+       1233 |     1214 |        2 | f           | f            | f              | t          | 4 5      | 1989 1989           |          | 
+       1250 |     1248 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       2397 |     2396 |        2 | t           | f            | f              | t          | 1 2      | 1989 1989           |          | 
+       2650 |     2600 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       2651 |     2601 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2652 |     2601 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2653 |     2602 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1989 1976      |          | 
+       2654 |     2602 |        2 | t           | f            | f              | t          | 5 1      | 1989 1989           |          | 
+       2655 |     2603 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1989 1976      |          | 
+       2656 |     2604 |        2 | t           | f            | f              | t          | 1 2      | 1989 1976           |          | 
+       2657 |     2604 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2658 |     1249 |        2 | t           | f            | f              | t          | 1 2      | 1989 1986           |          | 
+       2659 |     1249 |        2 | t           | f            | f              | t          | 1 6      | 1989 1976           |          | 
+       2660 |     2605 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2661 |     2605 |        2 | t           | f            | f              | t          | 1 2      | 1989 1989           |          | 
+       2662 |     1259 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2663 |     1259 |        2 | t           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2664 |     2606 |        2 | f           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2665 |     2606 |        1 | f           | f            | f              | t          | 6        | 1989                |          | 
+       2666 |     2606 |        1 | f           | f            | f              | t          | 7        | 1989                |          | 
+       2667 |     2606 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2668 |     2607 |        4 | t           | f            | f              | t          | 2 4 5 -2 | 1989 1978 1978 1989 |          | 
+       2669 |     2607 |        2 | t           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2670 |     2607 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2671 |     1262 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2672 |     1262 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2673 |     2608 |        3 | f           | f            | f              | t          | 1 2 3    | 1989 1989 1978      |          | 
+       2674 |     2608 |        3 | f           | f            | f              | t          | 4 5 6    | 1989 1989 1978      |          | 
+       2675 |     2609 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1989 1978      |          | 
+       2676 |     1260 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2677 |     1260 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2678 |     2610 |        1 | f           | f            | f              | t          | 2        | 1989                |          | 
+       2679 |     2610 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       2680 |     2611 |        2 | t           | f            | f              | t          | 1 3      | 1989 1978           |          | 
+       2681 |     2612 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2682 |     2612 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2683 |     2613 |        2 | t           | f            | f              | t          | 1 2      | 1989 1978           |          | 
+       2684 |     2615 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2685 |     2615 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2686 |     2616 |        3 | t           | f            | f              | t          | 1 2 3    | 1989 1986 1989      |          | 
+       2687 |     2616 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2688 |     2617 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2689 |     2617 |        4 | t           | f            | f              | t          | 1 6 7 2  | 1986 1989 1989 1989 |          | 
+       2690 |     1255 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2691 |     1255 |        3 | t           | f            | f              | t          | 1 13 2   | 1986 1991 1989      |          | 
+       2692 |     2618 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2693 |     2618 |        2 | t           | f            | f              | t          | 2 1      | 1989 1986           |          | 
+       2694 |     1261 |        2 | t           | f            | f              | t          | 1 2      | 1989 1989           |          | 
+       2695 |     1261 |        2 | t           | f            | f              | t          | 2 1      | 1989 1989           |          | 
+       2696 |     2619 |        2 | t           | f            | f              | t          | 1 2      | 1989 1976           |          | 
+       2697 |     1213 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2698 |     1213 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       2699 |     2620 |        1 | f           | f            | f              | t          | 7        | 1986                |          | 
+       2700 |     2620 |        1 | f           | f            | f              | t          | 8        | 1989                |          | 
+       2701 |     2620 |        2 | t           | f            | f              | t          | 1 2      | 1989 1986           |          | 
+       2702 |     2620 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2703 |     1247 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       2704 |     1247 |        2 | t           | f            | f              | t          | 1 2      | 1986 1989           |          | 
+       2831 |     2830 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2833 |     2832 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2835 |     2834 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2837 |     2836 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2839 |     2838 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2841 |     2840 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2843 |     2842 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2845 |     2844 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       2847 |     2846 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+       5005 |     5004 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       5007 |     6105 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       5009 |     6107 |        2 | t           | f            | f              | t          | 1 2      | 1989 1976           |          | 
+       5012 |     5010 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       5013 |     5010 |        1 | f           | f            | f              | t          | 1        | 1989                |          | 
+       5014 |     5011 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       5015 |     5011 |        3 | f           | f            | f              | t          | 2 3 6    | 1989 1989 1976      |          | 
+       5016 |     5011 |        1 | f           | f            | f              | t          | 2        | 1989                |          | 
+       5017 |     5010 |        3 | f           | f            | f              | t          | 1 3 4    | 1989 1976 424       |          | 
+       5026 |     5011 |        3 | f           | f            | f              | t          | 1 3 6    | 1989 1989 1976      |          | 
+       6027 |     6026 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
+       6028 |     6026 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
+       6029 |     1260 |        1 | f           | f            | f              | t          | 12       | 1989                |          | 
+       6041 |     6040 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+       6101 |     5000 |        2 | t           | f            | f              | t          | 1 2      | 1976 424            |          | 
+       6102 |     5000 |        1 | t           | f            | f              | t          | 3        | 1976                |          | 
+       6103 |     5002 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
+      10749 |    10747 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10754 |    10752 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10759 |    10757 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10764 |    10762 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10769 |    10767 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10774 |    10772 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+      10779 |    10777 |        2 | t           | t            | f              | t          | 1 2      | 1989 1978           |          | 
+(93 rows)
+
+-- end_equivalent
+drop view old_class, old_type, old_attribute, old_index;
+drop table public.pg_class, public.pg_attribute, public.pg_type, public.pg_index;
