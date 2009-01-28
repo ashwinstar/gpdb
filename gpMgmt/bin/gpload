@@ -1125,16 +1125,16 @@ class gpload:
         except Exception, e:
             self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
 
-        self.initial_errors = self.count_errors()
-
     def count_errors(self):
         if self.error_table and not self.options.D:
-            self.pg8000.execute('select count(*) from %s'%self.error_table)
+            # make sure we only get errors for our own instance
+            self.pg8000.execute('select count(*) from ' + self.error_table +
+                                " WHERE relname = 'ext_%s'" % self.name)
             return self.pg8000.iterate_dict().next()['count']
         return NUM_WARN_ROWS
 
     def report_errors(self):
-        errors = self.count_errors()-self.initial_errors
+        errors = self.count_errors()
         if errors==1:
             self.log(self.WARN, '1 bad row')
             self.exitValue = 1
