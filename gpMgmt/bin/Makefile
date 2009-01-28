@@ -16,7 +16,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: paramiko pycrypto pygresql stream netperf
+all: paramiko pycrypto stream netperf
 
 #
 # Python Libraries
