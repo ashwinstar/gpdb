@@ -16,7 +16,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: paramiko pycrypto stream netperf
+all: paramiko pycrypto pygresql stream netperf
 
 #
 # Python Libraries
@@ -53,7 +53,7 @@ pygresql:
 	else \
 		(cd $(PYLIB_SRC)/ && tar -xzf $(PYGRESQL_DIR).tar.gz);\
 	fi
-	@(cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build > /dev/null 2>&1 )
+	@(. $(INSTLOC)/greenplum_path.sh && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build > /dev/null 2>&1 )
 	@cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/ $(PYLIB_DIR)/
 
 #

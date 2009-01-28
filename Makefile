@@ -203,13 +203,13 @@ devel : CONFIGFLAGS+= --enable-cassert --enable-debug
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) groupSession
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
+	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mkgpperfmon INSTLOC=$(GPPERFMONINSTLOC)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
@@ -218,13 +218,13 @@ devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinj
 devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) groupSession
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
+	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mkgpperfmon INSTLOC=$(GPPERFMONINSTLOC)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 #---------------------------------------------------------------------
 # Release builds
@@ -236,14 +236,14 @@ dist : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) groupSession
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
+	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mkgpperfmon INSTLOC=$(GPPERFMONINSTLOC)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
 dist_prof : INSTLOC=$(DISTPATH)
@@ -252,14 +252,14 @@ dist_prof : CONFIGFLAGS+= --enable-faultinjection
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) groupSession
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
+	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mkgpperfmon INSTLOC=$(GPPERFMONINSTLOC)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 #---------------------------------------------------------------------
 # Platform Verification Kit (PVK)
