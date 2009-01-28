@@ -159,7 +159,7 @@ using gpstate. Use this option with care!
 -T <timeout_in_seconds>
 
 Increases the allowed time to complete a segment recovery operation. 
-The default value is 1800 seconds.
+The default value is 86400 seconds (24 hours).
 
 
 -z <seg_data_dir>:<seg_hostname> (force recovery of a valid primary)
