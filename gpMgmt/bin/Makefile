@@ -16,7 +16,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: paramiko pycrypto stream netperf
+all: paramiko pycrypto pygresql stream netperf
 
 #
 # Python Libraries
@@ -40,6 +40,21 @@ stream:
 	@echo "--- stream"
 	@cd $(STREAM_DIR) ; NO_M64=TRUE gcc  stream.c -o stream; cd ../../
 	@cp $(STREAM_DIR)/stream lib/stream 
+
+#
+# PyGreSQL
+#
+PYGRESQL_VERSION=4.0
+PYGRESQL_DIR=PyGreSQL-$(PYGRESQL_VERSION)
+pygresql:
+	@echo "--- PyGreSQL"
+	@if [ `uname -s` = 'SunOS' ] ; then \
+		(cd $(PYLIB_SRC)/ && gtar -xzf $(PYGRESQL_DIR).tar.gz)\
+	else \
+		(cd $(PYLIB_SRC)/ && tar -xzf $(PYGRESQL_DIR).tar.gz);\
+	fi
+	@(cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build > /dev/null 2>&1 )
+	@cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/ $(PYLIB_DIR)/
 
 #
 # PARAMIKO
@@ -81,6 +96,7 @@ solarisTest:
 clean :
 	@rm -rf $(PYLIB_SRC)/$(PARAMIKO_DIR)
 	@rm -rf $(PYLIB_SRC)/$(PYCRYPTO_DIR)
+	@rm -rf $(PYLIB_SRC)/$(PYGRESQL_DIR)
 	@rm -rf $(STREAM_DIR)/stream lib/stream  
 	@if [ -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
 		(cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE) clean) \
