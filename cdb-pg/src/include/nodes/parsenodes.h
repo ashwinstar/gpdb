@@ -1076,9 +1076,6 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 								 * index, constraint, or parent table */
 	Node	   *transform;		/* transformation expr for ALTER TYPE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
-	List	   *attlist;		/* List of column names (as Strings)
-								 * for fully inherited columns or NIL
-								 * (no columns fully inherited) */
 } AlterTableCmd;
 
 typedef enum AlterPartitionIdType

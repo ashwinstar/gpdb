@@ -315,7 +315,7 @@ static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace);
 static void ATExecSetRelOptions(Relation rel, List *defList, bool isReset);
 static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
-static void ATExecAddInherit(Relation rel, Node *node, List *inhAttrNameList);
+static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
 static void ATExecSetDistributedBy(Relation rel, Node *node);
 
@@ -4228,7 +4228,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecEnableDisableTrigger(rel, NULL, false, true);
 			break;
 		case AT_AddInherit:
-			ATExecAddInherit(rel, (Node *) cmd->def, cmd->attlist);
+			ATExecAddInherit(rel, (Node *) cmd->def);
 			break;
 		case AT_DropInherit:
 			ATExecDropInherit(rel, (RangeVar *) cmd->def, false);
@@ -8569,11 +8569,14 @@ inherit_parent(Relation parent_rel, Relation child_rel, bool is_partition, List 
  * same data types and expressions.
  */
 static void
-ATExecAddInherit(Relation child_rel, Node *node, List *inhAttrNameList)
+ATExecAddInherit(Relation child_rel, Node *node)
 {
 	Relation	parent_rel;
 	bool		is_partition;
 	RangeVar   *parent;
+	List	   *inhAttrNameList = NIL;
+
+	Assert(PointerIsValid(node));
 
 	if (IsA(node, InheritPartitionCmd))
 	{
@@ -8582,8 +8585,16 @@ ATExecAddInherit(Relation child_rel, Node *node, List *inhAttrNameList)
 	}
 	else
 	{
-		Assert(IsA(node, RangeVar));
-		parent = (RangeVar *)node;
+		List *inhParms;
+		Assert(IsA(node, List));
+		inhParms = (List *)node;
+
+		Insist(list_length(inhParms) == 2);
+		Assert(IsA(linitial(inhParms), RangeVar));
+		Assert(lsecond(inhParms) == NIL || IsA(lsecond(inhParms), List));
+
+		parent = (RangeVar *)linitial(inhParms);
+		inhAttrNameList = (List *)lsecond(inhParms);
 		is_partition = false;
 	}
 
@@ -8607,7 +8618,7 @@ ATExecAddInherit(Relation child_rel, Node *node, List *inhAttrNameList)
 				 errmsg("cannot inherit from temporary relation \"%s\"",
 						RelationGetRelationName(parent_rel))));
 
-	inherit_parent(parent_rel, child_rel, is_partition, ( is_partition ? NIL : inhAttrNameList ));
+	inherit_parent(parent_rel, child_rel, is_partition, inhAttrNameList);
 
 	/*
 	 * Keep our lock on the parent relation until commit, unless we're

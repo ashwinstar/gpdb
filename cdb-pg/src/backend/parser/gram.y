@@ -1975,13 +1975,12 @@ alter_table_cmd:
 					n->subtype = AT_DisableTrigUser;
 					$$ = (Node *)n;
 				}
-			/* ALTER TABLE <name> INHERIT <parent> */
+			/* ALTER TABLE <name> INHERIT <parent> [( column_list )] */
 			| INHERIT qualified_name opt_column_list
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddInherit;
-					n->def = (Node *) $2;
-					n->attlist = $3;
+					n->def = (Node *)list_make2($2, $3);
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> NO INHERIT <parent> */

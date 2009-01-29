@@ -6598,7 +6598,6 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 		atc->subtype = AT_AddInherit;
 		ipc->parent = parent_tab_name;
 		atc->def = (Node *)ipc;
-		atc->attlist = NIL;
 		ats->relation = child_tab_name;
 		ats->cmds 	  = list_make1((Node *)atc);
 		ats->relkind  = OBJECT_TABLE;
