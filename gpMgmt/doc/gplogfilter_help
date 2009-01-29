@@ -10,7 +10,7 @@ SYNOPSIS
 gplogfilter [<timestamp_options>] [<pattern_options>] 
 [<output_options>] [<input_options>] [<input_file>] 
 
-gplogfilter --help
+gplogfilter --help | --version
 
 *****************************************************
 DESCRIPTION
@@ -160,6 +160,14 @@ use a dash (-) as the input file name.
 
 Uncompress the input file using gunzip. If the input 
 file name ends in .gz, it will be uncompressed by default.
+
+
+--help
+Displays the online help.
+
+
+--version
+Displays the version of this utility.
 
 
 *****************************************************
