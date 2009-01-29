@@ -152,9 +152,13 @@ installcheck-good: all $(srcdir)/current_good_schedule
 	cp -f data/pg_class32.data.in data/pg_class32.data
 	cp -f data/upg2_pg_class_toadd.data.in data/upg2_pg_class_toadd.data
 	cp -f data/upg2_pg_attribute_toadd.data.in data/upg2_pg_attribute_toadd.data
+	cp -f data/upg2_pg_type_toadd.data.in data/upg2_pg_type_toadd.data
+	cp -f data/upg2_pg_index_toadd.data.in data/upg2_pg_index_toadd.data
 	gpstringsubs.pl data/pg_class32.data
 	gpstringsubs.pl data/upg2_pg_class_toadd.data
 	gpstringsubs.pl data/upg2_pg_attribute_toadd.data
+	gpstringsubs.pl data/upg2_pg_type_toadd.data
+	gpstringsubs.pl data/upg2_pg_index_toadd.data
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 .PHONY: $(srcdir)/current_good_schedule
