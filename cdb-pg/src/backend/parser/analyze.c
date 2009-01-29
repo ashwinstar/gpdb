@@ -171,7 +171,7 @@ static void transformIndexConstraints(ParseState *pstate,
 static void transformDistributedBy(ParseState *pstate,
 		   CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policy, List *likeDistributedBy);
 static void transformPartitionBy(ParseState *pstate,
-		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 CreateStmtContext *cxt, CreateStmt *stmt,
 		 Node *partitionBy, GpPolicy *policy);
 
 static void transformFKConstraints(ParseState *pstate,
@@ -196,7 +196,7 @@ static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContex
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
 static int partition_range_compare(ParseState *pstate,
-								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   CreateStmtContext *cxt, CreateStmt *stmt,
 								   PartitionBy *pBy,
 								   char	   *at_depth,
 								   int		partNumber,
@@ -205,11 +205,11 @@ static int partition_range_compare(ParseState *pstate,
 								   PartitionRangeItem *pRI2);
 
 static int partition_range_every(ParseState *pstate,
-								 PartitionBy *partitionBy, 	
+								 PartitionBy *partitionBy,
 								 List *coltypes,
 								 char *at_depth,
 								 partValidationState *vstate);
-static Datum eval_basic_opexpr(ParseState *pstate, List *oprname, 
+static Datum eval_basic_opexpr(ParseState *pstate, List *oprname,
 							   Node *leftarg, Node *rightarg,
 							   bool *typbyval, int16 *typlen,
 							   Oid *restypid,
@@ -220,7 +220,7 @@ static Node *make_prule_catalog(ParseState *pstate,
 		 Node *partitionBy, PartitionElem *pElem,
  		 char *at_depth, char *child_name_str,
 		 char *exprBuf,
-		 Node *pWhere							
+		 Node *pWhere
 		);
 
 static Node *make_prule_rulestmt(ParseState *pstate,
@@ -228,7 +228,7 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 Node *partitionBy, PartitionElem *pElem,
  		 char *at_depth, char *child_name_str,
 		 char *exprBuf,
-		 Node *pWhere							
+		 Node *pWhere
 		);
 
 /*
@@ -332,7 +332,7 @@ alter_cmp(const void *a, const void *b)
 	PartitionBy *pbyb = NULL;
 	int len1, len2;
 	ListCell *lc;
-	
+
 	Assert(IsA(stmta, AlterTableStmt));
 	Assert(IsA(stmtb, AlterTableStmt));
 
@@ -423,7 +423,7 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 	foreach(l, extras_after)
 		tmp = list_concat(tmp, parse_sub_analyze(lfirst(l), pstate));
 
-	/* 
+	/*
 	 * If this is the top level query and it is a CreateStmt and it
 	 * has a partition by clause, reorder the expanded extras_after so
 	 * that AlterTable is able to build the partitioning hierarchy
@@ -434,11 +434,11 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 	 *
 	 * nefarious: special KeepMe case in tablecmds.c:atpxPart_validate_spec
 	 */
-	if (pstate->parentParseState == NULL && query->utilityStmt && 
-		IsA(query->utilityStmt, CreateStmt) && 
+	if (pstate->parentParseState == NULL && query->utilityStmt &&
+		IsA(query->utilityStmt, CreateStmt) &&
 		((CreateStmt *)query->utilityStmt)->partitionBy)
 	{
-		/* 
+		/*
 		 * We just break the statements into two lists: alter statements and
 		 * other statements.
 		 */
@@ -462,7 +462,7 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 
 		Assert(list_length(alters));
 
-		/* 
+		/*
 		 * Now, sort the ALTER statements so that the deeper partition members
 		 * are processed last.
 		 */
@@ -624,21 +624,21 @@ transformStmt(ParseState *pstate, Node *parseTree,
 				CopyStmt   *n = (CopyStmt *) parseTree;
 
 				/*
-				 * Check if we need to create an error table. If so, add it to the 
+				 * Check if we need to create an error table. If so, add it to the
 				 * before list.
 				 */
 				if(n->sreh && ((SingleRowErrorDesc *)n->sreh)->errtable)
-				{					
+				{
 					CreateStmtContext cxt;
 					cxt.blist = NIL;
 					cxt.alist = NIL;
 
-					
+
 					transformSingleRowErrorHandling(pstate, &cxt,
 													(SingleRowErrorDesc *)n->sreh);
 					*extras_before = list_concat(*extras_before, cxt.blist);
 				}
-				
+
 				result = makeNode(Query);
 				result->commandType = CMD_UTILITY;
 				if (n->query)
@@ -1281,25 +1281,25 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 										 (InhRelation *) element, false);
 
 					/*
-					 * For Greenplum Database distributed tables, default to 
-					 * the same distribution as the first LIKE table, unless 
+					 * For Greenplum Database distributed tables, default to
+					 * the same distribution as the first LIKE table, unless
 					 * we also have INHERITS
 					 */
-					if (Gp_role == GP_ROLE_DISPATCH && 
-						stmt->distributedBy == NIL && 
-						stmt->inhRelations == NIL && isBeginning && 
+					if (Gp_role == GP_ROLE_DISPATCH &&
+						stmt->distributedBy == NIL &&
+						stmt->inhRelations == NIL && isBeginning &&
 						stmt->policy == NULL)
 					{
 						InhRelation *e = (InhRelation *) element;
 						Oid	relId = RangeVarGetRelid(e->relation, false);
-						GpPolicy  *oldTablePolicy = 
+						GpPolicy  *oldTablePolicy =
 							GpPolicyFetch(CurrentMemoryContext, relId);
 
-						if (oldTablePolicy != NULL && 
+						if (oldTablePolicy != NULL &&
 							oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 						{
 							int ia;
-						
+
 							if (oldTablePolicy->nattrs > 0)
 							{
 								for (ia=0;ia<oldTablePolicy->nattrs;ia++)
@@ -1379,7 +1379,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	CreateStmtContext cxt;
 	Query	   *q;
 	ListCell   *elements;
-	
+
 	cxt.stmtType = "CREATE EXTERNAL TABLE";
 	cxt.relation = stmt->relation;
 	cxt.inhRelations = NIL;
@@ -1389,7 +1389,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
-	
+
 	cxt.blist = NIL;
 	cxt.alist = NIL;
 
@@ -1400,46 +1400,46 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	foreach(elements, stmt->tableElts)
 	{
 		Node	   *element = lfirst(elements);
-		
+
 		switch (nodeTag(element))
 		{
 			case T_ColumnDef:
 				transformColumnDefinition(pstate, &cxt,
 										  (ColumnDef *) element);
 				break;
-				
+
 			case T_Constraint:
 			case T_FkConstraint:
 				/* should never happen. If it does fix gram.y */
 				elog(ERROR, "node type %d not supported for external tables",
 					 (int) nodeTag(element));
 				break;
-				
+
 			case T_InhRelation:
 				/* LIKE */
 				transformInhRelation(pstate, &cxt,
 									 (InhRelation *) element, true);
 				break;
-				
+
 			default:
 				elog(ERROR, "unrecognized node type: %d",
 					 (int) nodeTag(element));
 				break;
 		}
 	}
-	
+
 	/*
-	 * Check if we need to create an error table. If so, add it to the 
+	 * Check if we need to create an error table. If so, add it to the
 	 * before list.
 	 */
 	if(stmt->sreh && ((SingleRowErrorDesc *)stmt->sreh)->errtable)
 		transformSingleRowErrorHandling(pstate, &cxt,
 										(SingleRowErrorDesc *) stmt->sreh);
-	
+
 	Assert(cxt.ckconstraints == NIL);
 	Assert(cxt.fkconstraints == NIL);
 	Assert(cxt.ixconstraints == NIL);
-	
+
 	/*
 	 * Output results.
 	 */
@@ -1449,7 +1449,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	stmt->tableElts = cxt.columns;
 	*extras_before = list_concat(*extras_before, cxt.blist);
 	*extras_after = list_concat(cxt.alist, *extras_after);
-	
+
 	return q;
 }
 
@@ -1535,7 +1535,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		seqstmt->sequence = makeRangeVar(snamespace, sname);
 		seqstmt->sequence->istemp = cxt->relation->istemp;
 		seqstmt->options = NIL;
-		
+
 
 		cxt->blist = lappend(cxt->blist, seqstmt);
 
@@ -1790,7 +1790,7 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("LIKE INCLUDING may not be used with this kind of relation")));
-		
+
 	/*
 	 * Insert the copied attributes into the cxt for the new table
 	 * definition.
@@ -2130,7 +2130,7 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 
 /****************stmt->policy*********************/
 static void
-transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, 
+transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					   List *distributedBy, GpPolicy **policyp,
 					   List *likeDistributedBy)
 {
@@ -2155,46 +2155,46 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
 	policy->attrs[0] = 1;
-	
+
 	/*
-	 * If distributedBy is NIL, the user did not explicitly say what he 
+	 * If distributedBy is NIL, the user did not explicitly say what he
 	 * wanted for a distribution policy.  So, we need to assign one.
 	 */
 	if (distributedBy == NIL && cxt && cxt->pkey != NULL)
 	{
 		/*
-		 * We have a PRIMARY KEY, so let's assign the default distribution 
+		 * We have a PRIMARY KEY, so let's assign the default distribution
 		 * to be the key
 		 */
-	
+
 		IndexStmt  *index = cxt->pkey;
 		List	   *indexParams;
 		ListCell   *ip = NULL;
 
 		Assert(index->indexParams != NULL);
 		indexParams = index->indexParams;
-	
+
 		foreach(ip, indexParams)
 		{
 			IndexElem  *iparam = lfirst(ip);
-	
+
 			if (iparam && iparam->name != 0)
 			{
-	
+
 				if (distributedBy)
 					distributedBy = lappend(distributedBy,
 											(Node *) makeString(iparam->name));
 				else
 					distributedBy = list_make1((Node *) makeString(iparam->name));
-	
+
 			}
 		}
 	}
-	
+
 	if (cxt && cxt->ixconstraints != NULL)
 	{
 		ListCell   *lc = NULL;
-	
+
 		foreach(lc, cxt->ixconstraints)
 		{
 			Constraint *cons = lfirst(lc);
@@ -2221,7 +2221,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					 errmsg("Greenplum Database does not allow having multiple UNIQUE contraints")));
 		}
 	}
-	
+
 	if (distributedBy == NIL && cxt && cxt->ixconstraints != NULL &&
 		numUniqueIndexes > 0)
 	{
@@ -2230,7 +2230,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 * If there is a UNIQUE clause, let's use that
 		 */
 		ListCell   *lc = NULL;
-	
+
 		foreach(lc, cxt->ixconstraints)
 		{
 
@@ -2258,21 +2258,21 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				}
 			}
 		}
-		
+
 	}
-		
+
 	/*
 	 * If new table INHERITS from one or more parent tables, check parents.
 	 */
 	if (cxt->inhRelations != NIL)
 	{
 		ListCell   *entry;
-		
+
 		foreach(entry, cxt->inhRelations)
 		{
 			RangeVar   *parent = (RangeVar *) lfirst(entry);
 			Oid			relId = RangeVarGetRelid(parent, false);
-			GpPolicy  *oldTablePolicy = 
+			GpPolicy  *oldTablePolicy =
 				GpPolicyFetch(CurrentMemoryContext, relId);
 
 			/* Partitioned child must have partitioned parents. */
@@ -2288,22 +2288,22 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 								  "non-distributed tables.")));
 			}
 			/*
-			 * If we still don't know what distribution to use, and this 
-			 * is an inherited table, set the distribution based on the 
+			 * If we still don't know what distribution to use, and this
+			 * is an inherited table, set the distribution based on the
 			 * parent (or one of the parents)
 			 */
 			if (distributedBy == NIL && oldTablePolicy->nattrs >= 0)
 			{
 				int ia;
-				
+
 				if (oldTablePolicy->nattrs > 0)
 				{
 					for (ia=0; ia<oldTablePolicy->nattrs; ia++)
 					{
-						char *attname = 
+						char *attname =
 							get_attname(relId, oldTablePolicy->attrs[ia]);
 
-						distributedBy = lappend(distributedBy, 
+						distributedBy = lappend(distributedBy,
 												(Node *) makeString(attname));
 					}
 				}
@@ -2318,14 +2318,14 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			pfree(oldTablePolicy);
 		}
 	}
-	
+
 	if (distributedBy == NIL && likeDistributedBy != NIL)
 	{
 		distributedBy = likeDistributedBy;
 		elog(NOTICE, "Table doesn't have 'distributed by' clause, "
 			 "defaulting to distribution columns from LIKE table");
 	}
-	
+
 	if (distributedBy == NIL)
 	{
 		/*
@@ -2339,10 +2339,10 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 * key. pick a default one. the winner is the first attribute that is
 		 * an Greenplum Database-hashable data type.
 		 */
-		
+
 		ListCell   *columns;
 		ColumnDef  *column = NULL;
-		
+
 		/* If we have no attributes, make sure that we don't create a bogus policy! */
 		if (cxt && list_length(cxt->columns) == 0 && !cxt->inhRelations)
 		{
@@ -2353,9 +2353,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		/* we will distribute on at most one column */
 		policy->nattrs = 1;
-		
+
 		colindex = 0;
-		
+
 		if (cxt->inhRelations)
 		{
 			bool		found = false;
@@ -2380,7 +2380,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					Form_pg_attribute inhattr = rel->rd_att->attrs[count];
 					Oid typeOid = inhattr->atttypid;
 					bool isArray = inhattr->attndims > 0;
-											
+
 					if (inhattr->attisdropped)
 						continue;
 					colindex++;
@@ -2391,14 +2391,14 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						assignedDefault = true;
 						ereport(NOTICE,
 								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column "
 										"named '%s' from parent table as the Greenplum Database data distribution key for this "
 										"table. ", inhname),
 								 errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
 								 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
 						found = true;
 						break;
-					}			
+					}
 				}
 				heap_close(rel, NoLock);
 
@@ -2407,10 +2407,10 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			}
 
 		}
-			 
-			
-			
-		 
+
+
+
+
 		if (!assignedDefault)
 			foreach(columns, cxt->columns)
 			{
@@ -2422,7 +2422,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 				typeOid = typenameTypeId(NULL, column->typname);
 				isArray = (column->typname->arrayBounds == NIL ? false : true);
-					
+
 				/*
 				 * if we can hash on this type, or if it's an array type (which
 				 * we can always hash) this column with be our default key.
@@ -2433,16 +2433,16 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					assignedDefault = true;
 					ereport(NOTICE,
 							(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-							 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+							 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column "
 									"named '%s' as the Greenplum Database data distribution key for this "
 									"table. ", column->colname),
 							 errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
 							 		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
 					break;
-				}			
-				
+				}
+
 			}
-			
+
 		if(!assignedDefault)
 		{
 			/*
@@ -2453,9 +2453,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			policy->nattrs = 0;
 			elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
 		}
-		
+
 	}
-	else 
+	else
 	{
 		/*
 		 * We have a DISTRIBUTED BY column list, either specified by the user
@@ -2464,7 +2464,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 */
 		policy->nattrs = 0;
 		if (!(distributedBy->length == 1 && linitial(distributedBy) == NULL))
-		{ 
+		{
 			foreach(keys, distributedBy)
 		{
 			char	   *key = strVal(lfirst(keys));
@@ -2473,7 +2473,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			ListCell   *columns;
 
 			colindex = 0;
-			
+
 			if (cxt->inhRelations)
 			{
 				/* try inherited tables */
@@ -2517,7 +2517,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 				}
 			}
-			
+
 			if (!found)
 			{
 			foreach(columns, cxt->columns)
@@ -2530,7 +2530,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				{
 					Oid typeOid = typenameTypeId(NULL, column->typname);
 					bool isArray = (column->typname->arrayBounds == NIL ? false : true);
-											
+
 					/*
 					 * To be a part of a distribution key, this type must be supported
 					 * for hashing internally in Greenplum Database. We check if the base type is
@@ -2542,9 +2542,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typname->names)))));						
+										strVal(linitial(column->typname->names)))));
 					}
-					
+
 					found = true;
 					break;
 				}
@@ -2565,7 +2565,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				found = true;
 			}
 #endif
-			
+
 
 			/*
 			* In the ALTER TABLE case, don't complain about index keys
@@ -2589,9 +2589,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 
-	*policyp = policy;	
- 
-	
+	*policyp = policy;
+
+
 	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
 								 * distribution columns match */
 	{
@@ -2615,18 +2615,18 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				ListCell   *columns;
 
 				colindex = 0;
-				
+
 				if (cxt->inhRelations)
 				{
 					/* try inherited tables */
 					ListCell   *inher;
-	
+
 					foreach(inher, cxt->inhRelations)
 					{
 						RangeVar   *inh = (RangeVar *) lfirst(inher);
 						Relation	rel;
 						int			count;
-	
+
 						Assert(IsA(inh, RangeVar));
 						rel = heap_openrv(inh, AccessShareLock);
 						if (rel->rd_rel->relkind != RELKIND_RELATION)
@@ -2638,11 +2638,11 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						{
 							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
 							char	   *inhname = NameStr(inhattr->attname);
-	
+
 							if (inhattr->attisdropped)
 								continue;
 							colindex++;
-	
+
 							if (strcmp(iparam->name, inhname) == 0)
 							{
 								found = true;
@@ -2650,18 +2650,18 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 							}
 						}
 						heap_close(rel, NoLock);
-						
+
 						if (found)
 							elog(DEBUG1, "'distributed by' clause refers to "
 								 "columns of inherited table");
-	
+
 						if (found)
 							break;
 					}
 				}
-				
+
 				if (!found)
-				{		
+				{
 					foreach(columns, cxt->columns)
 					{
 						column = (ColumnDef *) lfirst(columns);
@@ -2713,18 +2713,18 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				ListCell   *columns;
 
 				colindex = 0;
-				
+
 				if (cxt->inhRelations)
 				{
 					/* try inherited tables */
 					ListCell   *inher;
-	
+
 					foreach(inher, cxt->inhRelations)
 					{
 						RangeVar   *inh = (RangeVar *) lfirst(inher);
 						Relation	rel;
 						int			count;
-	
+
 						Assert(IsA(inh, RangeVar));
 						rel = heap_openrv(inh, AccessShareLock);
 						if (rel->rd_rel->relkind != RELKIND_RELATION)
@@ -2736,27 +2736,27 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						{
 							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
 							char	   *inhname = NameStr(inhattr->attname);
-	
+
 							if (inhattr->attisdropped)
 								continue;
 							colindex++;
-	
+
 							if (strcmp(iparam->name, inhname) == 0)
 							{
 								found = true;
-	
+
 								break;
 							}
 						}
 						heap_close(rel, NoLock);
 						if (found)
 							elog(NOTICE, "'distributed by' clause refers to columns of inherited table");
-	
+
 						if (found)
 							break;
 					}
 				}
-				
+
 				if (!found)
 				foreach(columns, cxt->columns)
 				{
@@ -2787,7 +2787,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 }
 
-static int 
+static int
 deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 {
 	if (!pNode)
@@ -2829,7 +2829,7 @@ deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 			for (; lc; lc = lnext(lc)) /* for all cols */
 			{
 				Node *pCol = lfirst(lc);
-				char	 leftBuf[10000];			
+				char	 leftBuf[10000];
 
 				if (!deparse_partition_rule(pCol, leftBuf, sizeof(leftBuf)))
 						return 0;
@@ -2851,15 +2851,15 @@ deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 			break;
 		}
 		case T_String:
-				snprintf(outbuf, outsize, "%s", 
+				snprintf(outbuf, outsize, "%s",
 						 strVal(pNode));
 			break;
 		case T_Integer:
-				snprintf(outbuf, outsize, "%ld", 
+				snprintf(outbuf, outsize, "%ld",
 						 intVal(pNode));
 			break;
 		case T_Float:
-				snprintf(outbuf, outsize, "%f", 
+				snprintf(outbuf, outsize, "%f",
 						 floatVal(pNode));
 			break;
 		case T_A_Const:
@@ -2870,32 +2870,32 @@ deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 			{
 				if (acs->typname) /* deal with explicit types */
 				{
-					/* XXX XXX: simple types only -- need to 
+					/* XXX XXX: simple types only -- need to
 					 * handle Interval, etc */
 
-					snprintf(outbuf, outsize, "\'%s\'::%s", 
-							 acs->val.val.str, 
+					snprintf(outbuf, outsize, "\'%s\'::%s",
+							 acs->val.val.str,
 							 TypeNameToString(acs->typname));
 				}
 				else
 				{
-					snprintf(outbuf, outsize, "\'%s\'", 
+					snprintf(outbuf, outsize, "\'%s\'",
 							 acs->val.val.str);
 				}
 
 				return 1;
 			}
-			return (deparse_partition_rule((Node *)&(acs->val), 
+			return (deparse_partition_rule((Node *)&(acs->val),
 										   outbuf, outsize));
 		}
 			break;
 		case T_A_Expr:
 		{
 			A_Expr	*ax = (A_Expr *)pNode;
-			char	 leftBuf[10000];			
-			char	 rightBuf[10000];			
+			char	 leftBuf[10000];
+			char	 rightBuf[10000];
 			char    *infix_op;
-			
+
 			switch (ax->kind)
 			{
 				case AEXPR_OP:			/* normal operator */
@@ -2950,7 +2950,7 @@ make_a_const(A_Const *pValConst, char *val_str)
 	pNewValConst->val.type = pValConst->val.type;
 	pNewValConst->typname = pValConst->typname;
     pNewValConst->location = pValConst->location;
-	
+
 	switch (pValConst->val.type)
 	{
 		case T_Integer:
@@ -2979,7 +2979,7 @@ make_a_const(A_Const *pValConst, char *val_str)
 				 errmsg("unknown type or operator: %s",
 						val_str)));
 	}
-	
+
 	return (pNewValConst);
 } /* end make_a_const */
 #endif
@@ -2990,7 +2990,7 @@ make_prule_catalog(ParseState *pstate,
 		 Node *partitionBy, PartitionElem *pElem,
  		 char *at_depth, char *child_name_str,
 		 char *exprBuf,
-		 Node *pWhere							
+		 Node *pWhere
 		 )
 {
 	Node				*pResult = NULL;
@@ -3080,7 +3080,7 @@ make_prule_catalog(ParseState *pstate,
 		acs->val.val.str = pstrdup(child_name_str);
 		acs->typname = SystemTypeName("text");
         acs->location = -1;
-		
+
 		vl1 = lappend(vl1, acs);
 
 		acs = makeNode(A_Const);
@@ -3098,7 +3098,7 @@ make_prule_catalog(ParseState *pstate,
         acs->location = -1;
 
 		vl1 = lappend(vl1, acs);
-				
+
 		pIns->selectStmt = (Node *)makeNode(SelectStmt);
 		((SelectStmt *)pIns->selectStmt)->valuesLists =
 				list_make1(vl1);
@@ -3114,7 +3114,7 @@ make_prule_rulestmt(ParseState *pstate,
 		 Node *partitionBy, PartitionElem *pElem,
  		 char *at_depth, char *child_name_str,
 		 char *exprBuf,
-		 Node *pWhere							
+		 Node *pWhere
 		 )
 {
 	Node				*pResult = NULL;
@@ -3186,7 +3186,7 @@ make_prule_rulestmt(ParseState *pstate,
 
 			vl1 = lappend(vl1, pCRef);
 		}
-				
+
 		pIns->selectStmt = (Node *)makeNode(SelectStmt);
 		((SelectStmt *)pIns->selectStmt)->valuesLists =
 				list_make1(vl1);
@@ -3212,11 +3212,11 @@ make_partition_rules(ParseState *pstate,
 	Node				*pRule  = NULL;
 	List				*allRules  = NULL;
 
-	if (pBy->partType != PARTTYP_HASH)	
+	if (pBy->partType != PARTTYP_HASH)
 	{
 		Assert(pElem);
 	}
-	if (pBy->partType == PARTTYP_HASH)	
+	if (pBy->partType == PARTTYP_HASH)
 	{
 		List			*colElts = pBy->keys;
 		ListCell		*lc      = NULL;
@@ -3376,7 +3376,7 @@ make_partition_rules(ParseState *pstate,
 
 	} /* end if HASH */
 
-	if (pBy->partType == PARTTYP_LIST)	
+	if (pBy->partType == PARTTYP_LIST)
 	{
 		Node			*pIndAND = NULL;
 		Node			*pIndOR  = NULL;
@@ -3474,7 +3474,7 @@ make_partition_rules(ParseState *pstate,
 				}
 				else
 					/* equality expression: column = value */
-					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, 
+					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP,
 													"=",
 													(Node *)pCRef,
 													(Node *)pValConst,
@@ -3491,7 +3491,7 @@ make_partition_rules(ParseState *pstate,
 							 parser_errposition(pstate, spec->location)));
 
 				}
-				
+
 				/* for multiple cols - AND the matches eg:
 				   (col = value) AND (col = value)
 				*/
@@ -3523,11 +3523,11 @@ make_partition_rules(ParseState *pstate,
 
 			/* if more VALUES than columns, then multiple matching
 			   conditions, so OR them eg:
-			
+
 			   ((col = value) AND (col = value)) OR
 			   ((col = value) AND (col = value)) OR
 			   ((col = value) AND (col = value))
-			
+
 			*/
 
 			if (pIndOR)
@@ -3600,7 +3600,7 @@ make_partition_rules(ParseState *pstate,
 								  (as opposed to A_Const's).
 	*/
 
-	if (pBy->partType == PARTTYP_RANGE)	
+	if (pBy->partType == PARTTYP_RANGE)
 	{
 		Node			*pIndAND = NULL;
 		Node			*pIndOR  = NULL;
@@ -3631,7 +3631,7 @@ make_partition_rules(ParseState *pstate,
 		if (pRI)
 			valElts = pRI->partRangeVal;
 		else
-			valElts = NULL;						
+			valElts = NULL;
 
 		if (maxEveryOffset > 1) /* if have an EVERY clause */
 		{
@@ -3674,7 +3674,7 @@ make_partition_rules(ParseState *pstate,
 				if (pRI)
 					valElts = pRI->partRangeVal;
 				else
-					valElts = NULL;						
+					valElts = NULL;
 
 				expr_op = "<";
 
@@ -3784,7 +3784,7 @@ make_partition_rules(ParseState *pstate,
 								 errmsg("unknown type or operator%s",
 										at_depth),
 								 parser_errposition(pstate, pBSpec->location)));
-						
+
 					}
 
 
@@ -3958,7 +3958,7 @@ L_redoLoop:
 		 * real compare using eval .
 		 */
 		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL, NULL, NULL, -1);
-		
+
 		if (DatumGetBool(res) && strcmp("=", compare_op) == 0)
 		{
 			/* surprise! they were equal after all.  So keep going... */
@@ -4009,7 +4009,7 @@ part_el_cmp(void *a, void *b, void *arg)
 	List *start1 = NIL, *start2 = NIL;
 	ListCell *lc1, *lc2;
 
-	/* 
+	/*
 	 * We call this function from all over the place so don't assume that
 	 * things are valid.
 	 */
@@ -4061,7 +4061,7 @@ part_el_cmp(void *a, void *b, void *arg)
 				/* use < */
 				RegProcedure sortFunction = sortfuncs[0][i++];
 
-				if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue, 
+				if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue,
 												  c2->constvalue)))
 					return -1; /* a < b */
 				if (DatumGetBool(OidFunctionCall2(sortFunction, c2->constvalue,
@@ -4074,9 +4074,9 @@ part_el_cmp(void *a, void *b, void *arg)
 	}
 	else if (!start1 && start2)
 	{
-		/* 
+		/*
 		 * compare end1 to start2. Whether the end and start are inclusive
-		 * or exclusive is very important here. For example, if 
+		 * or exclusive is very important here. For example, if
 		 * end1 is exclusive and start2 is inclusive, their being equal means
 		 * that end1 finishes *before* start2.
 		 */
@@ -4096,11 +4096,11 @@ part_el_cmp(void *a, void *b, void *arg)
 			Const *c1 = lfirst(lc1);
 			Const *c2 = lfirst(lc2);
 			RegProcedure sortFunction;
-		   
+
 			sortFunction = sortfuncs[0][i];
 
 			/* try < first */
-			if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue, 
+			if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue,
 											  c2->constvalue)))
 				return -1;
 
@@ -4147,7 +4147,7 @@ part_el_cmp(void *a, void *b, void *arg)
 			/* use < */
 			RegProcedure sortFunction = sortfuncs[0][i];
 
-			if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue, 
+			if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue,
 											  c2->constvalue)))
 				return -1; /* a < b */
 
@@ -4158,7 +4158,7 @@ part_el_cmp(void *a, void *b, void *arg)
 				if (pe1 == PART_EDGE_INCLUSIVE &&
 					pe2 == PART_EDGE_EXCLUSIVE)
 					return -1; /* actually, it was < */
-				else if (pe1 == PART_EDGE_EXCLUSIVE && 
+				else if (pe1 == PART_EDGE_EXCLUSIVE &&
 						 pe2 == PART_EDGE_INCLUSIVE)
 					return 1;
 
@@ -4196,7 +4196,7 @@ sort_range_elems(List *opclasses, List *elems)
 									   BTLessStrategyNumber);
 
 		/* < first */
-		sortfuncs[0][i] = get_opcode(opoid); 
+		sortfuncs[0][i] = get_opcode(opoid);
 
 		opoid = get_opclass_member(opclass, InvalidOid,
 									   BTEqualStrategyNumber);
@@ -4263,7 +4263,7 @@ preprocess_range_spec(partValidationState *vstate)
 	partition_range_every(pstate, vstate->pBy, coltypes, vstate->at_depth,
 						  vstate);
 
-	/* 
+	/*
 	 * Iterate over the elements in a given partition specification and
 	 * expand any EVERY clauses into raw elements.
 	 */
@@ -4281,7 +4281,7 @@ preprocess_range_spec(partValidationState *vstate)
 		}
 
 		pbs = (PartitionBoundSpec *)transformExpr(pstate, (Node *)pbs);
-		
+
 		if (pbs->partEvery)
 		{
 			/* the start expression might come from a previous end expression */
@@ -4289,7 +4289,7 @@ preprocess_range_spec(partValidationState *vstate)
 			List *curstart = NIL;
 			List *end = ((PartitionRangeItem *)pbs->partEnd)->partRangeVal;
 			List *newend = NIL;
-			List *every = 
+			List *every =
 				(List *)((PartitionRangeItem *)pbs->partEvery)->partRangeVal;
 			List *everyinc;
 			bool lessthan = true;
@@ -4298,7 +4298,7 @@ preprocess_range_spec(partValidationState *vstate)
 			bool first = true;
 			List *everytypes = NIL;
 			int i;
-			
+
 			Assert(pbs->partStart);
 			Assert(pbs->partEnd);
 			Assert(IsA(end, List));
@@ -4317,8 +4317,8 @@ preprocess_range_spec(partValidationState *vstate)
 				ListCell *lctypes, *lceveryinc;
 				ListCell *lcstart, *lcend, *lcevery, *lccol, *lclastend;
 				List *lastend = NIL;
-				
-				/* 
+
+				/*
 				 * Other parts of the parser want to know how many clauses
 				 * we expanded here.
 				 */
@@ -4356,14 +4356,14 @@ preprocess_range_spec(partValidationState *vstate)
 					{
 						TypeName *typ = lfirst(lccol);
 						HeapTuple optup;
-						List *opname = list_make2(makeString("pg_catalog"), 
+						List *opname = list_make2(makeString("pg_catalog"),
 												  makeString("+"));
 						Node *e = lfirst(lcevery);
 						Oid rtypeId = exprType(e);
 						Oid newrtypeId;
 
 						/* first, make sure we can build up an operator */
-						optup = oper(pstate, opname, typ->typid, rtypeId, 
+						optup = oper(pstate, opname, typ->typid, rtypeId,
 									 true, -1);
 						if (!HeapTupleIsValid(optup))
 							ereport(ERROR,
@@ -4380,7 +4380,7 @@ preprocess_range_spec(partValidationState *vstate)
 						if (rtypeId != newrtypeId)
 						{
 							Type newetyp = typeidType(newrtypeId);
-							int4 typmod = 
+							int4 typmod =
 								((Form_pg_type)GETSTRUCT(newetyp))->typtypmod;
 
 							ReleaseSysCache(newetyp);
@@ -4390,7 +4390,7 @@ preprocess_range_spec(partValidationState *vstate)
 													   newrtypeId,
 													   typmod,
 													   PARTTYP_RANGE);
-					
+
 							lfirst(lcevery) = e;
 							rtypeId = newrtypeId;
 						}
@@ -4425,7 +4425,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 					clauseevery = lfirst(lcevery);
 					clauseend = lfirst(lcend);
-				
+
 					/* add the every value to the start */
 					res = eval_basic_opexpr(pstate, plusop, (Node *)mystart,
 											(Node *)clauseevery,
@@ -4498,13 +4498,13 @@ preprocess_range_spec(partValidationState *vstate)
 				newbs = makeNode(PartitionBoundSpec);
 
 				newel->boundSpec = (Node *)newbs;
-				
+
 				/* start */
 				newri = makeNode(PartitionRangeItem);
 
 				/* modifier only relevant on the first iteration */
 				if (everycount == 1)
-					newri->partedge = 
+					newri->partedge =
 						((PartitionRangeItem *)pbs->partStart)->partedge;
 				else
 					newri->partedge = PART_EDGE_INCLUSIVE;
@@ -4513,7 +4513,7 @@ preprocess_range_spec(partValidationState *vstate)
 					((PartitionRangeItem *)pbs->partStart)->location;
 				newri->partRangeVal = curstart;
 				newbs->partStart = (Node *)newri;
-				
+
 				/* end */
 				newri = makeNode(PartitionRangeItem);
 				newri->partedge = PART_EDGE_EXCLUSIVE;
@@ -4526,14 +4526,14 @@ preprocess_range_spec(partValidationState *vstate)
 				newbs->partEvery = (Node *)copyObject(pbs->partEvery);
 				newbs->location = pbs->location;
 				newbs->everyGenList = pbs->everyGenList;
-				
+
 				everyelts = lappend(everyelts, newel);
 
 				if (first)
 					first = false;
 			}
 
-			/* 
+			/*
 			 * Update the final PartitionElem's partEnd modifier if it isn't
 			 * the default
 			 */
@@ -4557,7 +4557,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 				ri->everycount = everycount;
 
-				/* 
+				/*
 				 * Generate the new name, which is parname + every count
 				 * but only if every expands to more than one partition.
 				*/
@@ -4640,7 +4640,7 @@ preprocess_range_spec(partValidationState *vstate)
 	spec->partElem = sort_range_elems(vstate->pBy->keyopclass, newelts);
 }
 
-/* 
+/*
  * Basic partition validation:
  * Check that PARTITIONS matches specification (for HASH). Perform basic error
  * checking on boundary specifications.
@@ -4651,7 +4651,7 @@ validate_range_partition(partValidationState *vstate)
 	bool bAppendRange = false;
 	PartitionBoundSpec *prevBSpec = NULL;
 	PartitionBoundSpec *spec = (PartitionBoundSpec *)vstate->spec;
-	
+
 
 	vstate->spec = (Node *)spec;
 
@@ -4668,7 +4668,7 @@ validate_range_partition(partValidationState *vstate)
 							"specification in partition clause",
 							specTName),
 						 /* MPP-4249: use value spec location if have one */
-			 parser_errposition(vstate->pstate, 
+			 parser_errposition(vstate->pstate,
 								((PartitionValuesSpec*)spec)->location)));
 		}
 	}
@@ -4678,7 +4678,7 @@ validate_range_partition(partValidationState *vstate)
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("missing boundary specification"),
 				 parser_errposition(vstate->pstate, vstate->pElem->location)));
-		
+
 	}
 
 	{
@@ -4689,7 +4689,7 @@ validate_range_partition(partValidationState *vstate)
 		 */
 
 		/* must have a valid RANGE pBSpec now or else
-		 * would have error'd out... 
+		 * would have error'd out...
 		 */
 		int currStartEnd = 0;
 
@@ -4717,7 +4717,7 @@ validate_range_partition(partValidationState *vstate)
 							"unnamed RANGE boundary "
 							"specifications%s",
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 
 		}
@@ -4727,8 +4727,8 @@ validate_range_partition(partValidationState *vstate)
 
 	vstate->prevHadName  = !!(vstate->pElem->partName); /* bool t/f */
 
-	/* 
-	 * Fixup boundaries for previous partition ending if necessary 
+	/*
+	 * Fixup boundaries for previous partition ending if necessary
 	 */
 	if (!vstate->prevElem)
 	{
@@ -4754,19 +4754,19 @@ validate_range_partition(partValidationState *vstate)
 		if (!prevBSpec->partEnd)
 		{
 			PartitionRangeItem *pRI = (PartitionRangeItem *)(spec->partStart);
-			PartitionRangeItem *prevRI = makeNode(PartitionRangeItem); 
-				
+			PartitionRangeItem *prevRI = makeNode(PartitionRangeItem);
+
 			if (prevBSpec->partStart)
 			{
 				int				 compareRc = 0;
-				PartitionRangeItem *pRI1 = 
+				PartitionRangeItem *pRI1 =
 						(PartitionRangeItem *)spec->partStart;
-				PartitionRangeItem *pRI2 = 
+				PartitionRangeItem *pRI2 =
 						(PartitionRangeItem *)prevBSpec->partStart;
 
-				
+
 				compareRc = partition_range_compare(vstate->pstate,
-													vstate->cxt, vstate->stmt, 
+													vstate->cxt, vstate->stmt,
 													vstate->pBy,
 													vstate->at_depth,
 													vstate->partNumber,
@@ -4781,21 +4781,21 @@ validate_range_partition(partValidationState *vstate)
 									"than START of previous%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 
 				}
 
 			}
 
-			prevRI->partEveryNum  = NULL; 
+			prevRI->partEveryNum  = NULL;
 			prevRI->location  = pRI->location;
 
 			prevRI->partRangeVal  = list_copy(pRI->partRangeVal);
 
 			/* invert sense of inclusiveness */
-			prevRI->partedge = 
-					(PART_EDGE_INCLUSIVE == pRI->partedge) ? 
+			prevRI->partedge =
+					(PART_EDGE_INCLUSIVE == pRI->partedge) ?
 					 PART_EDGE_EXCLUSIVE : PART_EDGE_INCLUSIVE;
 
 			prevBSpec->partEnd = (Node *)prevRI;
@@ -4812,11 +4812,11 @@ validate_range_partition(partValidationState *vstate)
 						 errmsg("start of partition%s overlaps previous%s",
 								vstate->namBuf,
 								vstate->at_depth),
-						 parser_errposition(vstate->pstate, 
+						 parser_errposition(vstate->pstate,
 											spec->location)));
-				
+
 		}
-		
+
 	} /* end if current partStart */
 	else /* no start, so use END of previous */
 	{
@@ -4829,28 +4829,28 @@ validate_range_partition(partValidationState *vstate)
 							"previous%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
-			
+
 		}
 		else /* build ri for current */
 		{
 			PartitionRangeItem *pRI =
-					makeNode(PartitionRangeItem); 
-			PartitionRangeItem *prevRI = 
+					makeNode(PartitionRangeItem);
+			PartitionRangeItem *prevRI =
 					(PartitionRangeItem *)
 					(prevBSpec->partEnd);
-			
-			pRI->partEveryNum  = NULL; 
-			pRI->location  = 
+
+			pRI->partEveryNum  = NULL;
+			pRI->location  =
 					prevRI->location;
-			
-			pRI->partRangeVal  = 
+
+			pRI->partRangeVal  =
 					list_copy(prevRI->partRangeVal);
 
 			/* invert sense of inclusiveness */
-			pRI->partedge = 
-					(PART_EDGE_INCLUSIVE == prevRI->partedge) ? 
+			pRI->partedge =
+					(PART_EDGE_INCLUSIVE == prevRI->partedge) ?
 					PART_EDGE_EXCLUSIVE : PART_EDGE_INCLUSIVE;
 
 			spec->partStart = (Node *)pRI;
@@ -4862,7 +4862,7 @@ validate_range_partition(partValidationState *vstate)
 
 L_setprevElem:
 
-	/* check for overlap, 
+	/* check for overlap,
 	 * then add new partitions to sorted list
 	 */
 
@@ -4870,14 +4870,14 @@ L_setprevElem:
 		spec->partEnd)
 	{
 		int				 compareRc = 0;
-		PartitionRangeItem *pRI1 = 
+		PartitionRangeItem *pRI1 =
 				(PartitionRangeItem *)spec->partStart;
-		PartitionRangeItem *pRI2 = 
+		PartitionRangeItem *pRI2 =
 				(PartitionRangeItem *)spec->partEnd;
 
-		compareRc = 
+		compareRc =
 				partition_range_compare(vstate->pstate,
-										vstate->cxt, vstate->stmt, 
+										vstate->cxt, vstate->stmt,
 										vstate->pBy,
 										vstate->at_depth,
 										vstate->partNumber,
@@ -4892,13 +4892,13 @@ L_setprevElem:
 					 errmsg("START greater than END for partition%s%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 
 		}
-		compareRc = 
+		compareRc =
 				partition_range_compare(vstate->pstate,
-										vstate->cxt, vstate->stmt, 
+										vstate->cxt, vstate->stmt,
 										vstate->pBy,
 										vstate->at_depth,
 										vstate->partNumber,
@@ -4913,13 +4913,13 @@ L_setprevElem:
 					 errmsg("START equal to END for partition%s%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 
 		}
 
 	}
-	
+
 	if (NIL == vstate->allRangeVals)
 		bAppendRange = true;
 
@@ -4930,13 +4930,13 @@ L_setprevElem:
 		 prevBSpec->partEnd))
 	{/* compare to last */
 		int				 compareRc = 0;
-		PartitionRangeItem *pRI1 = 
+		PartitionRangeItem *pRI1 =
 				(PartitionRangeItem *)spec->partStart;
-		PartitionRangeItem *pRI2 = 
+		PartitionRangeItem *pRI2 =
 				(PartitionRangeItem *)prevBSpec->partEnd;
 
 		compareRc = partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt, 
+											vstate->cxt, vstate->stmt,
 											vstate->pBy,
 											vstate->at_depth,
 											vstate->partNumber,
@@ -4954,7 +4954,7 @@ L_setprevElem:
 							"overlaps previous range%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 
 		}
@@ -4962,9 +4962,9 @@ L_setprevElem:
 		/* if values are equal, but not inclusive to both,
 		 * then append is possible */
 		if (1 != compareRc)
-			compareRc = 
+			compareRc =
 				partition_range_compare(vstate->pstate,
-										vstate->cxt, vstate->stmt, 
+										vstate->cxt, vstate->stmt,
 										vstate->pBy,
 										vstate->at_depth,
 										vstate->partNumber,
@@ -4987,7 +4987,7 @@ L_setprevElem:
 							"overlaps previous range%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 		}
 
@@ -5009,11 +5009,11 @@ L_setprevElem:
 		/* linear search sorted list of range specs:
 
 		   While the current start key is >= loop val
-		   start key advance.  
+		   start key advance.
 
 		   If current start key < loop val start key,
 		   then see if curr start key < *previous* loop
-		   val end key, ie falls in previous range. 
+		   val end key, ie falls in previous range.
 
 		   If so, error out, else splice current range in
 		   after previous.
@@ -5022,20 +5022,20 @@ L_setprevElem:
 
 		for ( ; lc_all ; lc_all = lnext(lc_all)) /* for lc_all */
 		{
-			PartitionBoundSpec *lcBSpec = 
+			PartitionBoundSpec *lcBSpec =
 					(PartitionBoundSpec *) lfirst(lc_all);
-			PartitionRangeItem *pRI1 = 
+			PartitionRangeItem *pRI1 =
 					(PartitionRangeItem *)spec->partStart;
-			PartitionRangeItem *pRI2 = 
+			PartitionRangeItem *pRI2 =
 					(PartitionRangeItem *)lcBSpec->partStart;
 
 			Assert(spec->partStart);
 
 			if (lcBSpec->partStart)
 			{
-				compareRc = 
+				compareRc =
 					partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt, 
+											vstate->cxt, vstate->stmt,
 											vstate->pBy,
 											vstate->at_depth,
 											vstate->partNumber,
@@ -5056,9 +5056,9 @@ L_setprevElem:
 					break;
 				}
 
-				compareRc = 
+				compareRc =
 					partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt, 
+											vstate->cxt, vstate->stmt,
 											vstate->pBy,
 											vstate->at_depth,
 											vstate->partNumber,
@@ -5068,9 +5068,9 @@ L_setprevElem:
 
 			}
 			else
-				/* if first range spec has no start 
+				/* if first range spec has no start
 				 * (ie start=MINVALUE) then current start
-				 * must be after it 
+				 * must be after it
 				 */
 				compareRc = 0; /* current > MINVALUE */
 
@@ -5101,14 +5101,14 @@ L_setprevElem:
 
 				compareRc =
 					partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt, 
+											vstate->cxt, vstate->stmt,
 											vstate->pBy,
 											vstate->at_depth,
 											vstate->partNumber,
 											"=",
 											pRI2,
 											pRI1);
-				
+
 				if (-1 == compareRc)
 					break;
 
@@ -5124,7 +5124,7 @@ L_setprevElem:
 				}
 
 				compareRc = partition_range_compare(vstate->pstate,
-													vstate->cxt, vstate->stmt, 
+													vstate->cxt, vstate->stmt,
 													vstate->pBy,
 													vstate->at_depth,
 													vstate->partNumber,
@@ -5142,23 +5142,23 @@ L_setprevElem:
 					compareRc = -2;
 					break;
 				}
-			
+
 				/* if current is less than loop val and no
 				 * previous, then append vstate->allRangeVals to
-				 * the current, instead of vice versa 
+				 * the current, instead of vice versa
 				 */
 				if (!lc_allPrev)
 					break;
 
-				lcBSpec = 
+				lcBSpec =
 					(PartitionBoundSpec *) lfirst(lc_allPrev);
 
-				pRI2 = 
+				pRI2 =
 					(PartitionRangeItem *)lcBSpec->partEnd;
 
-				compareRc = 
+				compareRc =
 						partition_range_compare(vstate->pstate,
-												vstate->cxt, vstate->stmt, 
+												vstate->cxt, vstate->stmt,
 												vstate->pBy,
 												vstate->at_depth,
 												vstate->partNumber,
@@ -5180,9 +5180,9 @@ L_setprevElem:
 					break;
 				}
 
-				compareRc = 
+				compareRc =
 						partition_range_compare(vstate->pstate,
-												vstate->cxt, vstate->stmt, 
+												vstate->cxt, vstate->stmt,
 												vstate->pBy,
 												vstate->at_depth,
 												vstate->partNumber,
@@ -5212,7 +5212,7 @@ L_setprevElem:
 					 errmsg("invalid range comparison for partition%s%s",
 							vstate->namBuf,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 
 		}
@@ -5226,15 +5226,15 @@ L_setprevElem:
 							vstate->namBuf,
 							otherPartPos,
 							vstate->at_depth),
-					 parser_errposition(vstate->pstate, 
+					 parser_errposition(vstate->pstate,
 										spec->location)));
 		}
 
 		if (lc_allPrev)
 		{
 			/* append cell returns new cell, not list */
-			lappend_cell(vstate->allRangeVals, 
-						 lc_allPrev, 
+			lappend_cell(vstate->allRangeVals,
+						 lc_allPrev,
 						 spec);
 		}
 		else /* no previous, so current is start */
@@ -5261,13 +5261,13 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 			return node;
 		}
 	}
-	
+
 	/*
 	 * We want to cast things directly to the table type. We do
 	 * not want to have to store a node which coerces this, it's
 	 * unnecessarily expensive to do it every time.
 	 */
-	out = coerce_to_target_type(NULL, node, exprType(node), 
+	out = coerce_to_target_type(NULL, node, exprType(node),
 								typid, typmod,
 								COERCION_EXPLICIT,
 								COERCE_IMPLICIT_CAST);
@@ -5290,11 +5290,11 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 		ReleaseSysCache(typ);
 		out = (Node *)c;
 
-		/* 
+		/*
 		 * coerce again for typmod: if we can't coerce the type mod, we'll error
 		 * out
 		 */
-		out = coerce_to_target_type(NULL, out, exprType(out), 
+		out = coerce_to_target_type(NULL, out, exprType(out),
 									typid, typmod,
 									COERCION_EXPLICIT,
 									COERCE_IMPLICIT_CAST);
@@ -5345,7 +5345,7 @@ validate_list_partition(partValidationState *vstate)
 		Assert(found);
 		coltypes = lappend(coltypes, typname);
 	}
-	
+
 	if (!PointerIsValid(n))
 	{
 		ereport(ERROR,
@@ -5433,7 +5433,7 @@ validate_list_partition(partValidationState *vstate)
 					List *item = lfirst(lc2);
 					List *diff;
 
-					/* 
+					/*
 					 * See the difference between the two lists -- yes, this is
 					 * starting to look like Lisp.
 					 */
@@ -5457,7 +5457,7 @@ validate_list_partition(partValidationState *vstate)
 
 		{ /* check for dups in same spec */
 			ListCell		*lc_val  = NULL;
-			foreach(lc_val, newvals) 
+			foreach(lc_val, newvals)
 			{
 				List *already = lfirst(lc_val);
 				ListCell *rest;
@@ -5467,7 +5467,7 @@ validate_list_partition(partValidationState *vstate)
 					List  *restdef = lfirst(rest);
 					List *diff;
 
-					/* 
+					/*
 					 * See the difference between the two lists -- yes, this is
 					 * starting to look like Lisp.
 					 */
@@ -5492,7 +5492,7 @@ validate_list_partition(partValidationState *vstate)
 } /* end validate_list_partition */
 
 int
-validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt, 
+validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 						CreateStmt *stmt, PartitionBy *pBy,
 						char *at_depth, int	partNumber)
 {
@@ -5517,7 +5517,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	Assert(pBy);
 	pSpec = (PartitionSpec *)pBy->partSpec;
 
-	/* 
+	/*
 	 * Find number of partitions in the specification, and match it up
 	 * with the PARTITIONS clause if partitioned by HASH, and
 	 * determine the subpartition specifications.  Perform basic error
@@ -5526,7 +5526,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 
 	/* NOTE: a top-level PartitionSpec never has a subSpec, but a
 	 * PartitionSpec derived from an inline SubPartition
-	 * specification might have one  
+	 * specification might have one
 	 */
 
 
@@ -5545,12 +5545,12 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	Warn user if they do this, since they probably wanted
 	1. named aa, starting at 2007, 1 and ending at 2008, 2
 	2. named bb, starting at 2008, 2 and ending at 2009, 3
-		   
+
 	The extra comma between the start and end is the problem.
-		   
+
 	*/
 
-	if (pBy->partType == PARTTYP_RANGE)	
+	if (pBy->partType == PARTTYP_RANGE)
 		preprocess_range_spec(vstate);
 
 	partElts = pSpec->partElem;
@@ -5558,10 +5558,10 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		PartitionElem *pElem = (PartitionElem *)lfirst(lc);
 		PartitionBoundSpec *pBSpec = NULL;
-		
+
 		vstate->pElem = pElem;
 
-		/* 
+		/*
 		 * We've done all possible expansions so now number the
 		 * partition elements so that we can set the position when
 		 * adding the configuration to the catalog.
@@ -5584,7 +5584,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 			if (pElem->isDefault)
 			{
 				Assert(pElem->partName);  /* default partn must have a name */
-				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"",
 						 strVal(pElem->partName));
 
 				if (pDefaultElem)
@@ -5599,7 +5599,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 
 				pDefaultElem = pElem; /* save the default */
 
-				if (PARTTYP_HASH == pBy->partType)	
+				if (PARTTYP_HASH == pBy->partType)
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -5629,7 +5629,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 			{
 				bool doit = true;
 
-				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"",
 						 strVal(pElem->partName));
 				/*
 				 * We might have expanded an EVERY clause here. If so, just
@@ -5637,7 +5637,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				 */
 				if (doit)
 				{
-					if (allPartNames && 
+					if (allPartNames &&
 						list_member(allPartNames, pElem->partName))
 					{
 						ereport(ERROR,
@@ -5679,7 +5679,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				if (vstate->spec)
 				{
 					char *specTName = "RANGE";
-					
+
 					if (IsA(vstate->spec, PartitionValuesSpec))
 						specTName = "LIST";
 
@@ -5692,11 +5692,11 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 									vstate->at_depth),
 						 /* MPP-4249: use value spec location if have one */
 						 ((IsA(vstate->spec, PartitionValuesSpec)) ?
-			  parser_errposition(pstate, 
+			  parser_errposition(pstate,
 							 ((PartitionValuesSpec*)vstate->spec)->location) :
 						  /* else use boundspec */
-			  parser_errposition(pstate, 
-							 ((PartitionBoundSpec*)vstate->spec)->location) 
+			  parser_errposition(pstate,
+							 ((PartitionBoundSpec*)vstate->spec)->location)
 								 )));
 				}
 				break;
@@ -5716,7 +5716,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 								pBy->partType, at_depth),
 						 parser_errposition(pstate, pBy->location)));
 				break;
-				
+
 		}
 	} /* end foreach(lc, partElts) */
 
@@ -5771,7 +5771,7 @@ flatten_partition_val(Node *node, Oid target_type)
 			if (!PointerIsValid(node))
 				elog(ERROR, "could not coerce partitioning parameter");
 		}
-		
+
 		res = partition_arg_get_val(node, &isnull);
 		c = makeConst(target_type, typlen, res, isnull, typbyval);
 
@@ -5780,7 +5780,7 @@ flatten_partition_val(Node *node, Oid target_type)
 
 }
 
-/* 
+/*
  * Get the actual value from the expression. There are only a limited range
  * of cases we must cover because the parser guarantees constant input.
  */
@@ -5799,7 +5799,7 @@ partition_arg_get_val(Node *node, bool *isnull)
 				{
 					case 1:
 						{
-							Datum d1 = 
+							Datum d1 =
 								partition_arg_get_val(linitial(fe->args), isnull);
 
 							if (!*isnull)
@@ -5848,7 +5848,7 @@ partition_arg_get_val(Node *node, bool *isnull)
 
 				switch (list_length(op->args))
 				{
-					case 1: 
+					case 1:
 						{
 							Datum d1 = partition_arg_get_val(linitial(op->args), isnull);
 							if (!*isnull)
@@ -5875,7 +5875,7 @@ partition_arg_get_val(Node *node, bool *isnull)
 		case T_RelabelType:
 			{
 				RelabelType *n = (RelabelType *)node;
-				
+
 				return partition_arg_get_val((Node *)n->arg, isnull);
 			}
 			break;
@@ -5898,12 +5898,12 @@ partition_arg_get_val(Node *node, bool *isnull)
  * a coercion function. The underlying value will be a simple constant,
  * however.
  *
- * If restypid is non-NULL and *restypid is set to InvalidOid, we tell the 
- * caller what the return type of the operator is. If it is anything but 
+ * If restypid is non-NULL and *restypid is set to InvalidOid, we tell the
+ * caller what the return type of the operator is. If it is anything but
  * InvalidOid, coerce the operation's result to that type.
  */
 static Datum
-eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg, 
+eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				  Node *rightarg, bool *typbyval, int16 *typlen,
 				  Oid *restypid, int location)
 {
@@ -5916,7 +5916,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 	int16 len;
 	bool need_typ_info = (PointerIsValid(restypid) && *restypid == InvalidOid);
 	bool isnull;
-	
+
 	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, location);
 	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
 						   0, 0, 0);
@@ -5946,7 +5946,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				Type typ = typeidType(opexpr->opresulttype);
 				int32 typmod;
 				Const *c;
-	
+
 				c = makeConst(opexpr->opresulttype, typeLen(typ), res,
 							  isnull, typeByVal(typ));
 				ReleaseSysCache(typ);
@@ -5959,7 +5959,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 										*restypid, typmod,
 										COERCION_EXPLICIT,
 										COERCE_IMPLICIT_CAST);
-			
+
 				res = partition_arg_get_val((Node *)e, &isnull);
 			}
 		}
@@ -5994,7 +5994,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 		byval = *typbyval;
 		len = *typlen;
 	}
-	
+
 	res = datumCopy(res, byval, len);
 	return res;
 }
@@ -6002,7 +6002,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 /*
  * XXX: this is awful, rewrite
  */
-static int 
+static int
 partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					  char *at_depth, partValidationState *vstate)
 {
@@ -6012,7 +6012,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 	List			*partElts;
 	ListCell		*lc = NULL;
 	ListCell		*lc_prev = NULL;
-		
+
 	Assert(pBy);
 	Assert(pBy->partType == PARTTYP_RANGE);
 
@@ -6044,7 +6044,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 		bool do_every_param_test = true;
 
 		pBSpec = NULL;
-		
+
 		numElts++;
 
 		if (!pElem)
@@ -6058,12 +6058,12 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 			if (pElem->partName)
 			{
-				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"",
 						 strVal(pElem->partName));
 			}
 			else
 			{
-				snprintf(namBuf, sizeof(namBuf), " number %d", 
+				snprintf(namBuf, sizeof(namBuf), " number %d",
 						 numElts);
 			}
 
@@ -6078,10 +6078,10 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 								at_depth),
 						 /* MPP-4249: use value spec location if have one */
 						 ((IsA(pBSpec, PartitionValuesSpec)) ?
-			  parser_errposition(pstate, 
+			  parser_errposition(pstate,
 								 ((PartitionValuesSpec*)pBSpec)->location) :
 						  /* else use invalid parsestate/postition */
-						  parser_errposition(NULL, 0) 
+						  parser_errposition(NULL, 0)
 								 )
 								));
 			}
@@ -6129,7 +6129,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 		}
 
-		/* XXX XXX: need to save prev value of 
+		/* XXX XXX: need to save prev value of
 		   every_num * (every_cnt * n3t) for first column only
 		*/
 
@@ -6174,7 +6174,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				oprplus = lappend(NIL, makeString("+"));
 				oprcompare = lappend(NIL, makeString(compare_op));
 				ltop = lappend(NIL, makeString("<"));
-				
+
 				n1t = transformExpr(pstate, n1);
 				n1t = coerce_type(NULL, n1t, exprType(n1t), coltypid,
 								  type->typmod,
@@ -6195,7 +6195,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				Assert(IsA(n1t, Const));
 
 				/* formula is n1t + (every_cnt * every_num * n3t) [<|<=] n2t */
-				
+
 				/* every_cnt * n3t */
 				restypid = InvalidOid;
 				res = eval_basic_opexpr(pstate, oprmul, (Node *)everyCnt, n3t,
@@ -6205,12 +6205,12 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				c = makeConst(restypid, typeLen(typ), res, false,
 							  typeByVal(typ));
 				ReleaseSysCache(typ);
-				
+
 				/* every_num * (every_cnt * n3t) */
 				if (pRI_Every->partEveryNum)
 				{
 					Node *et = transformExpr(pstate, pRI_Every->partEveryNum);
-					
+
 					restypid = InvalidOid;
 					res = eval_basic_opexpr(pstate, oprmul, (Node *)c,
 											et, NULL, NULL, &restypid,
@@ -6221,16 +6221,16 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 								  typeByVal(typ));
 					ReleaseSysCache(typ);
 				}
-				
-				/* 
-				 * n1t + (...) 
+
+				/*
+				 * n1t + (...)
 				 * NOTE: order is important because several useful operators,
 				 * like date + interval, only have a built in function when
 				 * the order is this way (the reverse is implemented using
 				 * an SQL function which we cannot evaluate at the moment).
 				 */
 				restypid = exprType(n1t);
-				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
+				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c,
 										NULL, NULL,
 										&restypid,
 										((A_Const *)n1)->location);
@@ -6239,8 +6239,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 								   typeByVal(typ));
 				ReleaseSysCache(typ);
 
-				/* 
-				 * Now we must detect a few conditions. 
+				/*
+				 * Now we must detect a few conditions.
 				 *
 				 * We must reject every() parameters which do not significantly
 				 * increment the starting value. For example:
@@ -6278,13 +6278,13 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 						Const *tmpconst;
 						Oid test_typid = InvalidOid;
 
-						uncast = eval_basic_opexpr(pstate, oprplus, n1t, 
+						uncast = eval_basic_opexpr(pstate, oprplus, n1t,
 												   (Node *)c, NULL, NULL,
 												   &test_typid,
 												   ((A_Const *)n1)->location);
 
 						typ = typeidType(test_typid);
-						tmpconst = makeConst(test_typid, typeLen(typ), uncast, 
+						tmpconst = makeConst(test_typid, typeLen(typ), uncast,
 											 false, typeByVal(typ));
 						ReleaseSysCache(typ);
 
@@ -6298,16 +6298,16 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 									 errmsg("EVERY parameter produces ambiguous partition rule"),
 									 parser_errposition(pstate,
 													((A_Const *)n3)->location)));
-					
+
 					}
-		
+
 				if (lclastval)
 				{
 					Datum res2;
 					Oid tmptyp = InvalidOid;
 
-					/* 
-					 * now test for case 2 and 3 above: ensure that 
+					/*
+					 * now test for case 2 and 3 above: ensure that
 					 * the cast value is equal to the uncast value.
 					 */
 
@@ -6320,7 +6320,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 					if (!DatumGetBool(res2))
 					{
-						/* 
+						/*
 						 * Second iteration: parameter hasn't increased the
 						 * current end from the old end.
 						 */
@@ -6334,7 +6334,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 						}
 						else
 						{
-							/* 
+							/*
 							 * We got a smaller value but later than we thought
 							 * so it must be an overflow.
 							 */
@@ -6355,13 +6355,13 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					Oid ooutput;
 					bool isvarlena;
 					FmgrInfo finfo;
- 
+
 					getTypeOutputInfo(restypid, &ooutput, &isvarlena);
 					fmgr_info(ooutput, &finfo);
- 
+
 					if (isvarlena)
 						res = PointerGetDatum(PG_DETOAST_DATUM(res));
- 
+
 					outputstr = OutputFunctionCall(&finfo, res);
 				}
 
@@ -6374,10 +6374,10 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 										&restypid,
 									   	((A_Const *)n2)->location);
 
-				/* XXX XXX: also check stop flag.  
+				/* XXX XXX: also check stop flag.
 				   and free up prev if stop is true or current > end.
 				 */
-				
+
 				if (!DatumGetBool(res))
 				{
 					if (outputstr)
@@ -6426,7 +6426,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 			lastval = curval;
 		} /* end loop until exceed end */
 
-	l_EveryLoopEnd:		
+	l_EveryLoopEnd:
 
 		if (allNewPartns)
 			Assert(pBSpec); /* check for default partitions... */
@@ -6458,7 +6458,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	parent_tab_name->schemaname  = cxt->relation->schemaname;
 	parent_tab_name->relname     = cxt->relation->relname;
     parent_tab_name->location    = -1;
-	
+
 	child_tab_name->catalogname = cxt->relation->catalogname;
 	child_tab_name->schemaname  = cxt->relation->schemaname;
 	child_tab_name->relname = relname;
@@ -6476,7 +6476,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	/* set the "Post Create" rule if it exists */
 	child_tab_stmt->postCreate = pPostCreate;
 
-	/* 
+	/*
 	 * Deep copy the parent's table elements. We must deep copy to handle
 	 * issues with constraints and foreign keys.
 	 */
@@ -6494,7 +6494,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 			{
 				Constraint *c = (Constraint *)n;
 
-				/* 
+				/*
 				 * Only do it for table constraints which generate pg_class
 				 * entries.
 				 */
@@ -6502,7 +6502,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 								c->contype == CONSTR_UNIQUE))
 				{
 					/* extra 1 char for _ */
-					int len = (strlen(c->name) + strlen(prtstr) + 1 + 1) * 
+					int len = (strlen(c->name) + strlen(prtstr) + 1 + 1) *
 								sizeof(char);
 					char *buf = palloc(len);
 
@@ -6517,18 +6517,18 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	if (pConstraint && ((enable_partition_rules &&
 						 curPby->partType == PARTTYP_HASH) ||
 						 curPby->partType != PARTTYP_HASH))
-		child_tab_stmt->tableElts = 
+		child_tab_stmt->tableElts =
 				lappend(child_tab_stmt->tableElts,
 						pConstraint);
 
-	/* 
+	/*
 	 * XXX XXX: inheriting the parent causes a headache in
 	 * transformDistributedBy, since it assumes the parent exists
 	 * already.  Just add an "ALTER TABLE...INHERIT parent" after
 	 * the create child table
 	 */
 	/*child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
-	child_tab_stmt->inhRelations = list_copy(stmt->inhRelations); 
+	child_tab_stmt->inhRelations = list_copy(stmt->inhRelations);
 
 	child_tab_stmt->constraints = copyObject(stmt->constraints);
 	child_tab_stmt->options = stmt->options;
@@ -6544,15 +6544,15 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->tablespacename = stmt->tablespacename;
 	child_tab_stmt->distributedBy = stmt->distributedBy;
 
-	/* use the newSub as the partitionBy if the current 
-	 * partition elem had an inline subpartition declaration 
+	/* use the newSub as the partitionBy if the current
+	 * partition elem had an inline subpartition declaration
 	 */
 	child_tab_stmt->partitionBy = (Node *)newSub;
 
 	child_tab_stmt->relKind = RELKIND_RELATION;
 
 #if 0
-	/* 
+	/*
 	 * XXX XXX: it would be nice to copy the parent table's
 	 * distribution policy if it has one.  Otherwise,
 	 * transformDistributedBy will get annoyed that the parent
@@ -6568,7 +6568,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 		int			maxattrs  = 200;
 		int			ii_attrs  = 0;
 
-		newpolicy = 
+		newpolicy =
 			(GpPolicy *) palloc(
 				sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
 		newpolicy->ptype  = policy->ptype;
@@ -6584,8 +6584,8 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 #endif
 	cxt->alist = lappend(cxt->alist, child_tab_stmt);
 
-	/* 
-	 * ALTER TABLE for inheritance after CREATE TABLE ... 
+	/*
+	 * ALTER TABLE for inheritance after CREATE TABLE ...
 	 * XXX: Think of a better way.
 	 */
 	if (1)
@@ -6597,7 +6597,8 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 		/* alter table child inherits parent */
 		atc->subtype = AT_AddInherit;
 		ipc->parent = parent_tab_name;
-		atc->def = (Node *)ipc; 
+		atc->def = (Node *)ipc;
+		atc->attlist = NIL;
 		ats->relation = child_tab_name;
 		ats->cmds 	  = list_make1((Node *)atc);
 		ats->relkind  = OBJECT_TABLE;
@@ -6606,7 +6607,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 		if (1)
 		{
 			AlterTableCmd  *atc2 = makeNode(AlterTableCmd);
-			
+
 			/* alter table add child to partition set */
 			atc2->subtype = AT_PartAddInternal;
 			atc2->def = (Node *)curPby;
@@ -6706,8 +6707,8 @@ partition_col_walker(Node *node, void *context)
  *
  * An example clause:
  *
- * PARTITION BY col1 
- *   SUBPTN  BY col2 SUBTEMPLATE (Spec2), 
+ * PARTITION BY col1
+ *   SUBPTN  BY col2 SUBTEMPLATE (Spec2),
  *   SUBPTN  BY col3 SUBTEMPLATE (Spec3)
  * (Spec1)
  *
@@ -6723,16 +6724,16 @@ partition_col_walker(Node *node, void *context)
  *
  * This struct is easy to process recursively.  However, for the syntax:
  *
- * PARTITION BY col1 
- *   SUBPTN  BY col2 
- *   SUBPTN  BY col3 
+ * PARTITION BY col1
+ *   SUBPTN  BY col2
+ *   SUBPTN  BY col3
  * (
  * PTN AA (SUB CCC (SUB EE, SUB FF), SUB DDD (SUB EE, SUB FF))
  * PTN BB (SUB CCC (SUB EE, SUB FF), SUB DDD (SUB EE, SUB FF))
  * )
- * 
+ *
  * the struct is more like:
- * 
+ *
  *   pBy -> (col1, spec1, spec2->spec3)
  *    |
  *    v
@@ -6743,26 +6744,26 @@ partition_col_walker(Node *node, void *context)
  *
  *
  * We need to move the subpartition specifications to the correct spots.
- * 
+ *
  */
-static void 
-transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt, 
+static void
+transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					 CreateStmt *stmt, Node *partitionBy, GpPolicy *policy)
 {
 	Oid			snamespaceid;
 	char	   *snamespace;
-	int		  	partDepth;	/* depth (starting at zero, but display at 1) */  
+	int		  	partDepth;	/* depth (starting at zero, but display at 1) */
 	char	  	depthstr[NAMEDATALEN];
 	char	   *at_depth = "";
 	char	  	at_buf[NAMEDATALEN];
-	int		  	partNumber = -1;	
+	int		  	partNumber = -1;
 	int		  	partno = 1;
 	int			everyno = 0;
 	List	   *partElts = NIL;
 	ListCell   *lc = NULL;
 	PartitionBy		*pBy;				/* the current partitioning clause */
 	PartitionBy		*psubBy  = NULL;	/* child of current */
-	char	  	 prtstr[NAMEDATALEN];			
+	char	  	 prtstr[NAMEDATALEN];
 	Oid 		accessMethodId = InvalidOid;
 	bool		lookup_opclass;
 	Node	   *prevEvery;
@@ -6781,11 +6782,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 	if (pBy->partDepth != 0)
 	{
-		/* 
+		/*
 		 * Only mention the depth 2 and greater to aid in debugging
 		 * subpartitions
 		 */
-		snprintf(at_buf, sizeof(at_buf), 
+		snprintf(at_buf, sizeof(at_buf),
 				 " (at depth %d)", partDepth);
 		at_depth = at_buf;
 	}
@@ -6798,11 +6799,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		psubBy = (PartitionBy *)pBy->subPart;
 		psubBy->partDepth = partDepth;
 		if (((PartitionBy *)pBy->subPart)->parentRel == NULL)
-			((PartitionBy *)pBy->subPart)->parentRel = 
+			((PartitionBy *)pBy->subPart)->parentRel =
 					copyObject(pBy->parentRel);
 	}
 
-	/* 
+	/*
 	 * Derive the number of partitions from the PARTITIONS clause.
 	 */
 	if (pBy->partNum)
@@ -6832,7 +6833,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	}
 
-	/* 
+	/*
 	 * The recursive nature of this code means that if we're processing a
 	 * sub partition rule, the opclass may have been looked up already.
 	 */
@@ -6858,7 +6859,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		Oid typeid = InvalidOid;
 		Oid opclass = InvalidOid;
 		int i = 0;
-		
+
 		foreach(columns, cxt->columns)
 		{
 			ColumnDef *column = (ColumnDef *) lfirst(columns);
@@ -6877,13 +6878,13 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 									colname),
 					 parser_errposition(pstate, pBy->location)));
 
-	
+
 				key_attnums = lappend_int(key_attnums, i);
 
 				if (lookup_opclass)
 				{
 					typeid = column->typname->typid;
-				
+
 					if (!OidIsValid(typeid))
 					{
 						Type type = typenameType(pstate, column->typname);
@@ -6894,7 +6895,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				break;
 			}
 		}
-	
+
 		if (!found)
 		{
 			ereport(ERROR,
@@ -6947,7 +6948,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 								"or partition specification"),
 				 		 parser_errposition(pstate, pBy->location)));
 
-			/* 
+			/*
 			 * Users don't have to specify a partition specification
 			 * for HASH.  If they didn't, create one so that the rest
 			 * of the code can generate some valid partition children.
@@ -6957,7 +6958,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 	if (pBy->partSpec)
-		partNumber = validate_partition_spec(pstate, cxt, stmt, pBy, at_depth, 
+		partNumber = validate_partition_spec(pstate, cxt, stmt, pBy, at_depth,
 											 partNumber);
 
 	/*
@@ -6985,9 +6986,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	if (pBy->partSpec)
 	{
 		PartitionSpec	*pSpec   = (PartitionSpec *)pBy->partSpec;
-		PartitionSpec	*subSpec = (PartitionSpec *)pSpec->subSpec; 
+		PartitionSpec	*subSpec = (PartitionSpec *)pSpec->subSpec;
 
-		/* 
+		/*
 		 * If the current specification has a subSpec, then that is
 		 * the specification for the child, so we'd better have a
 		 * SUBPARTITION BY clause for the child. The sub specification
@@ -7019,7 +7020,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 	Assert(partNumber > 0);
 
-	/* 
+	/*
 	 * We must iterate through the elements in this way to support HASH
 	 * partitioning, which likely has no partitioning elements.
 	 */
@@ -7030,7 +7031,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	for (partno = 0; partno < partNumber; partno++)
 	{
 		PartitionBy	*newSub = NULL;
-		PartitionElem *pElem = lc ? (PartitionElem *)lfirst(lc) : NULL; 
+		PartitionElem *pElem = lc ? (PartitionElem *)lfirst(lc) : NULL;
 		Node		*pRuleCatalog  = NULL;
 		Node		*pPostCreate = NULL;
 		Node		*pConstraint  = NULL;
@@ -7039,7 +7040,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		PartitionBoundSpec	*pBSpec = NULL;
 		Node 		*every = NULL;
 		PartitionBy *curPby = NULL;
-	
+
 		if (pElem)
 		{
 			pStoreAttr = pElem->storeAttr;
@@ -7048,7 +7049,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			{
 				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
 				every = pBSpec->partEvery;
-	
+
 				if (prevEvery && every)
 				{
 					if (equal(prevEvery, every))
@@ -7074,7 +7075,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 			if (pElem->partName)
 			{
-				/* 
+				/*
 				 * Use the partition name as part of the child
 				 * table name
 				 */
@@ -7084,21 +7085,21 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			}
 			else
 			{
-				/* 
+				/*
 				 * For the case where we don't have a partition name,
 				 * don't worry about EVERY.
 				 */
 				if (pElem->rrand)
 					/* make a random name for ALTER TABLE ... ADD PARTITION */
-					snprintf(prtstr, sizeof(prtstr), "prt_r%lu", 
+					snprintf(prtstr, sizeof(prtstr), "prt_r%lu",
 							 pElem->rrand + partno + 1);
 				else
 					snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
 			}
-	
+
 			if (pElem->subSpec)
 			{
-				/* 
+				/*
 				 * If the current partition element has a subspec,
 				 * then that is the spec for the child.  So we'd
 				 * better have a SUBPARTITION BY clause for the child,
@@ -7123,7 +7124,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 									at_depth),
 							 parser_errposition(pstate, pElem->location)));
 				}
-		
+
 				if (psubBy && psubBy->partSpec)
 				{
 					Assert(((PartitionSpec *)psubBy->partSpec)->istemplate);
@@ -7134,25 +7135,25 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 									"with subpartition template"),
 							 parser_errposition(pstate, psubBy->location)));
 				}
-		
+
 				newSub = makeNode(PartitionBy);
-		
+
 				newSub->partType  = psubBy->partType;
 				newSub->keys 	  = psubBy->keys;
 				newSub->partNum	  = psubBy->partNum;
 				newSub->subPart	  = psubBy->subPart;
 				newSub->partSpec  = pElem->subSpec; /* use the subspec */
 				newSub->partDepth = psubBy->partDepth;
-		
+
 				if (pElem->subSpec) /* get a good location for error msg */
 				{
 					/* use subspec location */
-					newSub->location  = 
-							((PartitionSpec *)pElem->subSpec)->location; 
+					newSub->location  =
+							((PartitionSpec *)pElem->subSpec)->location;
 				}
 				else
 				{
-					newSub->location = pElem->location; 
+					newSub->location = pElem->location;
 				}
 			}
 		}
@@ -7170,7 +7171,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		if (!(pElem && pElem->isDefault))
 		{
 			ListCell *lc_rule = NULL;
-			int everycount = every ? 
+			int everycount = every ?
 					((PartitionRangeItem *)every)->everycount : 0;
 			List *allRules =
 					make_partition_rules(pstate,
@@ -7233,11 +7234,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					pL1 = list_make1(relname); /* rule name */
 					pL1 = lappend(pL1, pInt1);     /* partition position */
 					pL1 = lappend(pL1, pInt2);     /* every position */
-	
+
 					if (pElem && pElem->partName)
 					{
 						char *pName = strVal(pElem->partName);
-					
+
 						pL1 = lappend(pL1, pName);
 					}
 					else
@@ -7245,7 +7246,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 					pL1 = lappend(pL1, relname);  /* child name */
 					pL1 = lappend(pL1, cxt->relation->relname); /* parent name */
-	
+
 					if (enable_partition_rules)
 						pPostCreate = (Node *)list_make2(lfirst(lc_rule), pL1);
 					else
@@ -7270,7 +7271,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			if (pElem)
 			{
 				tmppspec->partElem = list_make1(copyObject(pElem));
-				tmppspec->istemplate = 
+				tmppspec->istemplate =
 					((PartitionSpec *)pBy->partSpec)->istemplate;
 			}
 
@@ -7278,10 +7279,10 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			curPby->partDepth = pBy->partDepth;
 			curPby->parentRel = copyObject(pBy->parentRel);
 		}
-			
+
 		if (!newSub)
 			newSub = copyObject(psubBy);
-				
+
 		if (newSub)
 			newSub->parentRel = copyObject(pBy->parentRel);
 
@@ -7386,9 +7387,9 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 	qry = makeNode(Query);
 	qry->commandType = CMD_UTILITY;
 
-	/* 
+	/*
 	 * If the table already exists (i.e., this isn't a create table time
-	 * expansion of primary key() or unique()) and we're the ultimate parent 
+	 * expansion of primary key() or unique()) and we're the ultimate parent
 	 * of a partitioned table, cascade to all children. We don't do this
 	 * at create table time because transformPartitionBy() automatically
 	 * creates the indexes on the child tables for us.
@@ -7399,13 +7400,13 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 
 		if (RelationBuildPartitionDesc(rel, false))
 			stmt->do_part = true;
-	
+
 		if (stmt->do_part && Gp_role != GP_ROLE_EXECUTE)
 		{
 			List *children;
-		
+
 			children = find_inheritance_children(RelationGetRelid(rel));
-	
+
 			foreach(l, children)
 			{
 				Oid relid = lfirst_oid(l);
@@ -7421,23 +7422,23 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				NameData name;
 				Oid paroid;
 				char idxname[1024];
-	
+
 				chidx = (IndexStmt *)copyObject((Node *)stmt);
-	
+
 				/* now just update the relation and index name fields */
-				chidx->relation = 
+				chidx->relation =
 					makeRangeVar(get_namespace_name(RelationGetNamespace(crel)),
 								 RelationGetRelationName(crel));
-	
+
 				elog(NOTICE, "building index for child partition \"%s\"",
 					 RelationGetRelationName(crel));
-				/* 
+				/*
 				 * We want the index name to resemble our partition table name
 				 * with the master index name on the front. This means, we
 				 * append to the indexname the parname, position, and depth
 				 * as we do in transformPartitionBy().
 				 *
-				 * So, firstly we must retrieve from pg_partition_rule the 
+				 * So, firstly we must retrieve from pg_partition_rule the
 				 * partition descriptor for the current relid. This gives us
 				 * partition name and position. With paroid, we can get the
 				 * partition level descriptor from pg_partition and therefore
@@ -7451,21 +7452,21 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				scan = systable_beginscan(partrel,
 										  PartitionRuleParchildrelidIndexId,
 										  true, SnapshotNow, 1, &key);
-	
+
 				tuple = systable_getnext(scan);
-	
+
 				Assert(HeapTupleIsValid(tuple));
-	
+
 				name = ((Form_pg_partition_rule)GETSTRUCT(tuple))->parname;
 				parname = pstrdup(NameStr(name));
 				position = ((Form_pg_partition_rule)GETSTRUCT(tuple))->parruleord;
 				paroid = ((Form_pg_partition_rule)GETSTRUCT(tuple))->paroid;
-	
+
 				systable_endscan(scan);
 				heap_close(partrel, NoLock);
-	
+
 				partrel = heap_open(PartitionRelationId, AccessShareLock);
-				
+
 				ScanKeyInit(&key,
 							ObjectIdAttributeNumber,
 							BTEqualStrategyNumber, F_OIDEQ,
@@ -7473,28 +7474,28 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 				scan = systable_beginscan(partrel,
 										  PartitionOidIndexId,
 										  true, SnapshotNow, 1, &key);
-	
+
 				tuple = systable_getnext(scan);
-	
+
 				Assert(HeapTupleIsValid(tuple));
-	
+
 				depth = ((Form_pg_partition)GETSTRUCT(tuple))->parlevel + 1;
-	
+
 				systable_endscan(scan);
 				heap_close(partrel, NoLock);
-	
+
 				heap_close(crel, NoLock);
-	
+
 				/* now, build the piece to append */
 				if (strlen(parname) == 0)
-					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%d", 
+					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%d",
 							 stmt->idxname, depth, position);
 				else
 					snprintf(idxname, sizeof(idxname), "%s_%d_prt_%s",
 							 stmt->idxname, depth, parname);
-	
+
 				chidx->idxname = pstrdup(idxname);
-	
+
 				*extras_after = lappend(*extras_after, chidx);
 			}
 		}
@@ -7836,15 +7837,15 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
  * to
  * 		SELECT i, win(var) over(...) FROM (select i, agg(j) as var ...)
  *
- * We perform a complex 3-step mutation on the target list: 
+ * We perform a complex 3-step mutation on the target list:
  *
- * Step1: 
+ * Step1:
  *     If a TargetEntry is for a grouping column but not an
  *     Aggref/GroupingFunc/GroupId, we replace it
  *     with a new Var, and push this TargetEntry down to the subquery.
  *     We save a list of such grouping columns for the Step3.
  *     Note that after this step, some Var nodes inside
- *     Aggref/GroupingFunc/GroupId may have Vars looking the same 
+ *     Aggref/GroupingFunc/GroupId may have Vars looking the same
  *     the new Vars we generate here, but they are actually different.
  *     This is okay, since in the Step2, we consider
  *     Aggref/GroupingFunc/GroupId as one *single* entity. All vars
@@ -7852,8 +7853,8 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
  *
  * Step2:
  *     If we have encounter Aggrefs in the target list, we must replace
- *        them with Var references to the Aggref in the subquery. 
- *        To do this, we create and save a TargetEntry representing the 
+ *        them with Var references to the Aggref in the subquery.
+ *        To do this, we create and save a TargetEntry representing the
  *        Aggref in the context variable and replace the Aggref with a Var.
  *
  * Step3:
@@ -7891,17 +7892,17 @@ wingroupmutator(Node *node, void *context)
 		{
 			Node *arg = lfirst(arg_lc);
 			Node *new_arg;
-					
+
 			new_arg = wingroupmutator(arg, context);
 			new_args = lappend(new_args, new_arg);
 		}
-			
+
 		list_free(wref->args);
 		wref->args = new_args;
 
 		/* Walk through the frame clause as well. */
 		spec = (WindowSpec *)list_nth(ctx->query->windowClause, wref->winspec);
-			
+
 		if (spec->frame)
 		{
 			if (spec->frame->trail)
@@ -7959,7 +7960,7 @@ wingroupmutator(Node *node, void *context)
 				Assert (attno < name_len - 4);
 				snprintf(subte->resname, name_len, "att_%d", attno);
 			}
-			
+
 			te = makeTargetEntry((Expr *)new_var,
 								 subte->resno,
 								 subte->resname,
@@ -7987,7 +7988,7 @@ wingroupmutator(Node *node, void *context)
 		{
 			Index ressortgroupref = te->ressortgroupref;
 			Assert(IsA(result, Var));
-			
+
 			te = makeTargetEntry((Expr *)result,
 								 te->resno,
 								 te->resname,
@@ -8040,11 +8041,11 @@ wingroupmutator(Node *node, void *context)
 		attno = list_length(ctx->subtlist) + 1;
 		Assert (attno < name_len - 4);
 		snprintf(colname, name_len, "att_%d", attno);
-		
+
 		te = makeTargetEntry((Expr *)node, attno, colname, false);
 		/* seems like we should see if we need to update sort group settings */
 		ctx->subtlist = lappend(ctx->subtlist, te);
-		
+
 		v = makeVar(1, attno, exprType(node), exprTypmod(node), 0);
 		ctx->vars_for_aggrefs = lappend(ctx->vars_for_aggrefs, v);
 
@@ -8060,7 +8061,7 @@ wingroupmutator(Node *node, void *context)
 		ListCell *grp_lc = NULL;
 		ListCell *grp_vars_lc = NULL;
 		Var *grp_var;
-		
+
 		forboth (grp_lc, ctx->groupcols, grp_vars_lc, ctx->vars_for_groupcols)
 		{
 			Node *groupcol = lfirst(grp_lc);
@@ -8072,7 +8073,7 @@ wingroupmutator(Node *node, void *context)
 		{
 			grp_var = (Var *)lfirst(grp_vars_lc);
 			Assert(grp_var != NULL && IsA(grp_var, Var));
-		
+
 			return (Node *)makeVar(1, grp_var->varattno, exprType((Node *)grp_var),
 								   exprTypmod((Node *)grp_var), 0);
 		}
@@ -8089,7 +8090,7 @@ record_sortrefs_walker(Node *node, void *context)
 
 	if (node == NULL)
 		return false;
-	
+
 #define RECORD(ref) \
 do \
 { \
@@ -8105,7 +8106,7 @@ do \
 	ctx->sortref[ref] = ref; \
 } \
 while(0)
-	
+
 	if (IsA(node, SortClause))
 	{
 		Index ref = ((SortClause *)node)->tleSortGroupRef;
@@ -8114,19 +8115,19 @@ while(0)
 	}
 	else if (IsA(node, GroupClause))
 	{
-		/* 
+		/*
 		 * Could be okay to just cast this to SortClause in the above block
 		 * as GroupClause is just an alias for SortClause. But, this might
 		 * not always be so!
 		 */
 		Index ref = ((GroupClause *)node)->tleSortGroupRef;
 		RECORD(ref);
-		return false;	
+		return false;
 	}
 	else if(IsA(node, GroupingClause))
 	{
 		GroupingClause *g = (GroupingClause *)node;
-			
+
 		return expression_tree_walker((Node *)g->groupsets,
 									  record_sortrefs_walker,
 								   	  context);
@@ -8137,15 +8138,15 @@ while(0)
 static bool
 rewrite_sortrefs_walker(Node *node, void *context)
 {
-	sortref_ctx *ctx = (sortref_ctx *)context; 
-	
+	sortref_ctx *ctx = (sortref_ctx *)context;
+
 	if (node == NULL)
 		return false;
 	else if(IsA(node, GroupingClause))
 	{
 		GroupingClause *g = (GroupingClause *)node;
-			
-		return expression_tree_walker((Node *)g->groupsets, 
+
+		return expression_tree_walker((Node *)g->groupsets,
 								      rewrite_sortrefs_walker,
 								      context);
 	}
@@ -8183,25 +8184,25 @@ rewrite_sortrefs(Query *qry)
 {
 	/*
 	 * We must build up a mapping of sort refs from the old values to
-	 * contiguous values. To do this, we build an array of the refs 
+	 * contiguous values. To do this, we build an array of the refs
 	 * registered in the relevant sort clauses in the query and then we map
 	 * them to new references, from 1..N. Then we rewrite the target list
 	 * using this.
 	 */
 	sortref_ctx ctx;
 	Index max, i;
-	
+
 	ctx.size = 8; /* seems like this would cover most cases */
 	ctx.sortref = (Index *)palloc0(ctx.size * sizeof(Index));
 	ctx.levelsup = 1;
 	ctx.level = 0;
-	
-	if (expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker, 
+
+	if (expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker,
 							   &ctx))
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("error in building sortref mapping for sortClause")));
-	
+
 	if (expression_tree_walker((Node *)qry->distinctClause, record_sortrefs_walker,
 							   &ctx))
 		ereport(ERROR,
@@ -8233,7 +8234,7 @@ rewrite_sortrefs(Query *qry)
  * ANSI SQL allows users to specify a query of the form:
  *    SELECT deptno, sum(max(salary)) OVER (order by deptno) FROM employees
  *    GROUP BY deptno;
- * 
+ *
  * This is pretty hard for the planner to make sense of, so we rewrite it,
  * putting the grouped portion of the query in a subquery in the range table:
  *
@@ -8242,8 +8243,8 @@ rewrite_sortrefs(Query *qry)
  *
  * This means moving stuff from qry into a new Query node subq and
  * making that new node a sub query in the range table of qry. We move
- * 
- */ 
+ *
+ */
 static void
 transformGroupedWindows(Query *qry)
 {
@@ -8256,7 +8257,7 @@ transformGroupedWindows(Query *qry)
 	ListCell *tmp;
 	Index *sortrefmap;
 	Index mapsize;
-	
+
 	Assert(qry->commandType == CMD_SELECT);
 	subq->commandType = qry->commandType;
 	subq->canSetTag = qry->canSetTag;
@@ -8288,7 +8289,7 @@ transformGroupedWindows(Query *qry)
 	if (checkExprHasWindFuncs((Node *)subq->jointree))
 		subq->hasWindFuncs = true;
 
-	/* 
+	/*
 	 * Rewrite the top level target list to point to the correct var nos
 	 * in the sub query. Be very careful to update the arguments to
 	 * window functions as well.
@@ -8296,8 +8297,8 @@ transformGroupedWindows(Query *qry)
 	 * The sub query must contain all columns referenced in the original
 	 * target list. So:
 	 *
-	 *      SELECT DISTINCT a , avg(b), 
-	 *      	row_number() over (partition by sum(c)), 
+	 *      SELECT DISTINCT a , avg(b),
+	 *      	row_number() over (partition by sum(c)),
 	 *      	ntile(d) over (order by e)
 	 *          FROM r WHERE f < 10
 	 *          GROUP BY a,d,e
@@ -8307,7 +8308,7 @@ transformGroupedWindows(Query *qry)
 	 *
 	 *   gets "rewritten" as
 	 *
-	 *      SELECT DISTINCT v1, v4, row_number() over (partition by v5),  
+	 *      SELECT DISTINCT v1, v4, row_number() over (partition by v5),
 	 *          ntile(v2) over (order by v3)
 	 *          FROM (
 	 *            SELECT a, d, e, avg(b), sum(c)
@@ -8324,13 +8325,13 @@ transformGroupedWindows(Query *qry)
 	ctx.vars_for_groupcols = NIL;
 	ctx.step = 1;
 	ctx.query = qry;
-	newtl = (List *)expression_tree_mutator((Node *)qry->targetList, 
+	newtl = (List *)expression_tree_mutator((Node *)qry->targetList,
 											wingroupmutator, &ctx);
 	ctx.step = 2;
-	newtl = (List *)expression_tree_mutator((Node *)newtl, 
+	newtl = (List *)expression_tree_mutator((Node *)newtl,
 											wingroupmutator, &ctx);
 	ctx.step = 3;
-	newtl = (List *)expression_tree_mutator((Node *)newtl, 
+	newtl = (List *)expression_tree_mutator((Node *)newtl,
 											wingroupmutator, &ctx);
 
 
@@ -8345,7 +8346,7 @@ transformGroupedWindows(Query *qry)
 	rte->subquery = subq;
 	rte->inFromCl = true;
 	rte->requiredPerms |= ACL_SELECT;
-	
+
 	/* do aliases */
 	a = makeNode(Alias);
 	a->aliasname = pstrdup("Window");
@@ -8358,7 +8359,7 @@ transformGroupedWindows(Query *qry)
 	{
 		TargetEntry *te = (TargetEntry *)lfirst(tmp);
 		char *resname;
-		
+
 		Assert(IsA(te, TargetEntry));
 
 		/*
@@ -8368,8 +8369,8 @@ transformGroupedWindows(Query *qry)
 		if (checkExprHasAggs((Node *)te->expr))
 			subq->hasAggs = true;
 
-		/* 
-	 	 * TEs generated for the purpose of sorting (PARTITION BY and 
+		/*
+	 	 * TEs generated for the purpose of sorting (PARTITION BY and
 		 * ORDER BY) will have resjunk = false. This is fine in the top query
 		 * but not in the sub query. Change them while we're looping.
 		 *
@@ -8382,7 +8383,7 @@ transformGroupedWindows(Query *qry)
 			{
 				ListCell *tmp3;
 				WindowSpec *s = lfirst(tmp2);
-				
+
 				foreach(tmp3, s->partition)
 				{
 					SortClause *sc = lfirst(tmp3);
@@ -8393,10 +8394,10 @@ transformGroupedWindows(Query *qry)
 						break;
 					}
 				}
-				
+
 				if (!te->resjunk)
 					break;
-				
+
 				foreach(tmp3, s->order)
 				{
 					SortClause *sc = lfirst(tmp3);
@@ -8418,7 +8419,7 @@ transformGroupedWindows(Query *qry)
 	}
 	rte->alias = a;
 	rte->eref = a;
-	
+
 	/* we forget the old rtable by overwriting it with this new RTE */
 	qry->rtable = list_make1(rte);
 
@@ -8430,10 +8431,10 @@ transformGroupedWindows(Query *qry)
 	qry->hasSubLinks = false;
 
 	/* we can also forget about grouping in the top level query */
-	qry->groupClause = NIL; 
+	qry->groupClause = NIL;
 	qry->havingQual = NULL;
 	qry->hasAggs = false;
-	
+
 	rewrite_sortrefs(subq);
 	rewrite_sortrefs(qry);
 }
@@ -8456,7 +8457,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	/* make FOR UPDATE/FOR SHARE info available to addRangeTableEntry */
 	pstate->p_locking_clause = stmt->lockingClause;
 
-	/* 
+	/*
 	 * Put WINDOW clause data into pstate so that window references know
 	 * about them.
 	 */
@@ -8507,7 +8508,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->havingQual = pstate->having_qual;
 	pstate->having_qual = NULL;
 
-	/* 
+	/*
 	 * Process WINDOW clause.
 	 */
 	transformWindowClause(pstate, qry);
@@ -8537,7 +8538,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 /* XXX XXX:		qry->partitionBy = stmt->partitionBy; */
 	}
 
-	/* 
+	/*
 	 * Generally, we'll only have a distributedBy clause if stmt->into is set,
 	 * with the exception of set op queries, since transformSetOperationStmt()
 	 * sets stmt->into to NULL to avoid complications elsewhere.
@@ -8556,7 +8557,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->hasWindFuncs = pstate->p_hasWindFuncs;
 	if (pstate->p_hasWindFuncs)
 		parseProcessWindFuncs(pstate, qry);
-	
+
 
 	foreach(l, stmt->lockingClause)
 	{
@@ -8720,7 +8721,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES")));
-		
+
 	if (stmt->distributedBy && Gp_role == GP_ROLE_DISPATCH)
 		setQryDistributionPolicy(stmt, qry);
 
@@ -9464,7 +9465,7 @@ transformReturningList(ParseState *pstate, List *returningList)
  */
 static AlterTableCmd *
 transformAlterTable_all_PartitionStmt(
-		ParseState *pstate, 
+		ParseState *pstate,
 		AlterTableStmt *stmt,
 		CreateStmtContext *pCxt,
 		AlterTableCmd *cmd,
@@ -9487,23 +9488,23 @@ transformAlterTable_all_PartitionStmt(
 		PgPartRule* 	 prule = NULL;
 		char 			*lrelname;
 		Relation 		 rel   = heap_openrv(rv, AccessShareLock);
-		
+
 		initStringInfo(&sid1);
 		initStringInfo(&sid2);
-		
-		appendStringInfo(&sid1, "relation \"%s\"", 
+
+		appendStringInfo(&sid1, "relation \"%s\"",
 						 RelationGetRelationName(rel));
-		
+
 		lrelname = sid1.data;
-		
+
 		pNode = RelationBuildPartitionDesc(rel, false);
-		
+
 		if (!pNode)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("%s is not partitioned",
 							lrelname)));
-			
+
 		/* Processes nested ALTER (if it exists) */
 		while (1)
 		{
@@ -9521,17 +9522,17 @@ transformAlterTable_all_PartitionStmt(
 			}
 
 			pid2 = (AlterPartitionId *)pci->partid;
-				
+
 			if (pid2 && (pid2->idtype == AT_AP_IDValue))
 			{
 				List *vallist = (List *)pid2->partiddef;
-				pid2->partiddef = 
+				pid2->partiddef =
 						(Node *)transformExpressionList(
 								pstate, vallist);
 			}
-				
+
 			partDepth++;
-				
+
 			if (!pNode)
 				prule = NULL;
 			else
@@ -9540,25 +9541,25 @@ transformAlterTable_all_PartitionStmt(
 									   false, true,
 									   CurrentMemoryContext,
 									   NULL,
-									   pNode, 
+									   pNode,
 									   sid1.data, NULL);
-				
-			if (prule && prule->topRule && 
+
+			if (prule && prule->topRule &&
 				prule->topRule->children)
 			{
 				prevNode = pNode;
 				pNode = prule->topRule->children;
 				par_oid = RelationGetRelid(rel);
-				
-				/* 
+
+				/*
 				 * Don't hold a long lock -- lock on the master is
 				 * sufficient
 				 */
 				heap_close(rel, AccessShareLock);
-				rel = heap_open(prule->topRule->parchildrelid, 
+				rel = heap_open(prule->topRule->parchildrelid,
 								AccessShareLock);
-				
-				appendStringInfo(&sid2, "partition%s of %s", 
+
+				appendStringInfo(&sid2, "partition%s of %s",
 								 prule->partIdStr, sid1.data);
 				truncateStringInfo(&sid1, 0);
 				appendStringInfo(&sid1, "%s", sid2.data);
@@ -9569,7 +9570,7 @@ transformAlterTable_all_PartitionStmt(
 				prevNode = pNode;
 				pNode = NULL;
 			}
-				
+
 			atc1 = (AlterTableCmd *)pci->arg1;
 			pci = (AlterPartitionCmd *)atc1->def;
 		} /* end while */
@@ -9577,7 +9578,7 @@ transformAlterTable_all_PartitionStmt(
 			/* No need to hold onto the lock -- see above */
 			heap_close(rel, AccessShareLock);
 	} /* end if alter */
-	
+
 	switch (atc1->subtype)
 	{
 		case AT_PartAdd:				/* Add */
@@ -9586,32 +9587,32 @@ transformAlterTable_all_PartitionStmt(
 				CreateStmt 			*ct;
 				InhRelation			*inh = makeNode(InhRelation);
 				List				*cl  = NIL;
-						
+
 				Assert(IsA(pc2->arg2, List));
 				ct = (CreateStmt *)linitial((List *)pc2->arg2);
-						
+
 				inh->relation = copyObject(rv);
 				inh->options = list_make2_int(
 						CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
 						CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
-				/* 
-				 * NOTE: 
+				/*
+				 * NOTE:
 				 *
 				 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
-				 * implemented...  :-( 
+				 * implemented...  :-(
 				 *
 				 * XXX: available in 8.3, gotta merge it.
 				 */
-				
-				/* 
+
+				/*
 				 * fill in remaining fields from parse time (gram.y):
 				 * the new partition is LIKE the parent and it
-				 * inherits from it 
+				 * inherits from it
 				 */
 				ct->tableElts = list_make1(inh);
-				
+
 				cl = list_make1(ct);
-						
+
 				pc2->arg2 = (Node *)cl;
 			}
 		case AT_PartCoalesce:			/* Coalesce */
@@ -9628,7 +9629,7 @@ transformAlterTable_all_PartitionStmt(
 			if (pid && (pid->idtype == AT_AP_IDValue))
 			{
 				List *vallist = (List *)pid->partiddef;
-				pid->partiddef = 
+				pid->partiddef =
 						(Node *)transformExpressionList(
 								pstate, vallist);
 			}
@@ -9686,7 +9687,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 					ColumnDef  *def = (ColumnDef *) cmd->def;
 
 					Assert(IsA(cmd->def, ColumnDef));
-					
+
 					/*
 					 * Disallow adding a column with primary key constraint
 					 */
@@ -9702,10 +9703,10 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 							if(cons->contype == CONSTR_UNIQUE)
 								elog(ERROR, "Cannot add column with unique "
 									 "constraint");
-							
+
 						}
 					}
-					
+
 					transformColumnDefinition(pstate, &cxt,
 											  (ColumnDef *) cmd->def);
 
@@ -9787,7 +9788,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
             case AT_PartTruncate:			/* Truncate */
 			{
 				cmd = transformAlterTable_all_PartitionStmt(
-						pstate, 
+						pstate,
 						stmt,
 						&cxt,
 						cmd,
@@ -10116,7 +10117,7 @@ transformLockingClause(Query *qry, LockingClause *lc)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables")));
-					
+
 					applyLockingClause(qry, i, lc->forUpdate, lc->noWait);
 					rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
 					break;
@@ -10156,7 +10157,7 @@ transformLockingClause(Query *qry, LockingClause *lc)
 								ereport(ERROR,
 										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 										 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables")));
-							
+
 							applyLockingClause(qry, i,
 											   lc->forUpdate, lc->noWait);
 							rte->requiredPerms |= ACL_SELECT_FOR_UPDATE;
@@ -10468,13 +10469,13 @@ analyzeCreateSchemaStmt(CreateSchemaStmt *stmt)
 			case T_CreateExternalStmt:
 				{
 					CreateExternalStmt *elp = (CreateExternalStmt *) element;
-					
+
 					setSchemaName(cxt.schemaname, &elp->relation->schemaname);
-					
+
 					cxt.tables = lappend(cxt.tables, element);
 				}
 				break;
-				
+
 			case T_ViewStmt:
 				{
 					ViewStmt   *elp = (ViewStmt *) element;
@@ -10592,12 +10593,12 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		 * We have a DISTRIBUTED BY column list specified by the user
 		 * Process it now and set the distribution policy.
 		 */
-		 
+
 		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = 0;
 		policy->attrs[0] = 1;
-		 
+
 		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
 		{
 			/* distributed randomly */
@@ -10608,12 +10609,12 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		{
 			char	   *key = strVal(lfirst(keys));
 			bool		found = false;
-		 
+
 			AttrNumber	n;
 
 			for(n=1;n<=list_length(qry->targetList);n++)
 			{
-								 
+
 				TargetEntry *target = get_tle_by_resno(qry->targetList, n);
 				colindex = n;
 
@@ -10622,7 +10623,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 #if 0
 					Oid typeOid = typenameTypeId(target->typname);
 					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
-															
+
 					/*
 					 * To be a part of a distribution key, this type must be supported
 					 * for hashing internally in Greenplum Database. We check if the base type is
@@ -10634,26 +10635,26 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typname->names)))));						
+										strVal(linitial(column->typname->names)))));
 					}
-#endif 
+#endif
 
 					found = true;
-					
+
 				} /*if*/
-				
+
 				if (found)
 					break;
-					
+
 			} /*for*/
-			
+
 			if (!found)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 						 errmsg("column \"%s\" named in DISTRIBUTED BY "
 								"clause does not exist",
 								key)));
-		
+
 			policy->attrs[policy->nattrs++] = colindex;
 
 		} /*foreach */
@@ -10676,63 +10677,63 @@ static void
 transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 								SingleRowErrorDesc *sreh)
 {
-	
+
 	/* check if error relation exists already */
 	Oid errreloid = RangeVarGetRelid(sreh->errtable, true);
 	bool errrelexists = OidIsValid(errreloid);
-	
+
 	/*
 	 * auto-generate a new error table or verify an existing one
 	 */
 	if(errrelexists)
 	{
-		/* 
-		 * this table already exists in the database. Verify that specified 
-		 * table is a valid error table 
+		/*
+		 * this table already exists in the database. Verify that specified
+		 * table is a valid error table
 		 */
-		
+
 		Relation rel;
-				
+
 		rel = heap_openrv(sreh->errtable, AccessShareLock);
 		ValidateErrorTableMetaData(rel);
 		relation_close(rel, AccessShareLock);
-		
+
 		sreh->reusing_existing_errtable = true;
 	}
 	else
 	{
-		/* 
-		 * no such table. auto create it by adding a CREATE TABLE <errortable> 
-		 * to the before list 
+		/*
+		 * no such table. auto create it by adding a CREATE TABLE <errortable>
+		 * to the before list
 		 */
 
 		CreateStmt *createStmt;
 		List	   *attrList;
 		int			i = 0;
 
-		ereport(NOTICE, 
+		ereport(NOTICE,
 				(errmsg("Error table \"%s\" does not exist. Auto generating an "
 						"error table with the same name", sreh->errtable->relname)));
 		createStmt = makeNode(CreateStmt);
-		
+
 		/*
 		 * create a list of ColumnDef nodes based on the names and types of the
 		 * per-defined error table columns
 		 */
 		attrList = NIL;
-		
-		
+
+
 		for (i = 1; i <= NUM_ERRORTABLE_ATTR; i++)
 		{
 			ColumnDef  *coldef = makeNode(ColumnDef);
-			
+
 			coldef->inhcount = 0;
 			coldef->is_local = true;
 			coldef->is_not_null = false;
 			coldef->raw_default = NULL;
 			coldef->cooked_default = NULL;
 			coldef->constraints = NIL;
-			
+
 			switch (i)
 			{
 				case errtable_cmdtime:
@@ -10770,7 +10771,7 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 			}
 			attrList = lappend(attrList, coldef);
 		}
-		
+
 		createStmt->relation = sreh->errtable;
 		createStmt->tableElts = attrList;
 		createStmt->inhRelations = NIL;
@@ -10780,13 +10781,13 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 		createStmt->tablespacename = NULL;
 		createStmt->relKind = RELKIND_RELATION;
 		createStmt->distributedBy = list_make1(NULL); /* DISTRIBUTED RANDOMLY */
-		
-		
+
+
 		cxt->blist = lappend(cxt->blist, createStmt);
-		
+
 		sreh->reusing_existing_errtable = false;
-		
+
 	}
-	
+
 }
 

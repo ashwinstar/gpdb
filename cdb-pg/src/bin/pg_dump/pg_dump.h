@@ -432,6 +432,8 @@ extern void sortDumpableObjects(DumpableObject **objs, int numObjs);
 extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
 extern void sortDumpableObjectsByTypeOid(DumpableObject **objs, int numObjs);
 
+extern int strInArray(const char *pattern, char **arr, int arr_size);
+
 /*
  * version specific routines
  */

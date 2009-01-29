@@ -39,14 +39,14 @@ typedef enum QuerySource
 typedef struct TableOidInfo
 {
 	Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
-	Oid         comptypeOid;	
+	Oid         comptypeOid;
 	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
 	Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
 	Oid			toastComptypeOid;
 	Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
 	Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
 	Oid			aosegComptypeOid;
-	
+
 } TableOidInfo;
 
 /* What to do at commit time for temporary relations */
@@ -174,7 +174,7 @@ typedef struct Query
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 	PartitionNode *result_partitions;
 	List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
-	
+
 	/*
 	 * If the query has a returningList then the planner will store a list of
 	 * processed targetlists (one per result relation) here.  We must have a
@@ -187,9 +187,9 @@ typedef struct Query
 	 * plan node, not in the Query.
 	 */
 	List	   *returningLists; /* list of lists of TargetEntry, or NIL */
-	
+
 	TableOidInfo	intoOidInfo;  /* MPP */
-	 
+
 	struct GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
 } Query;
 
@@ -613,7 +613,7 @@ typedef struct RangeTblEntry
 	 * Fields valid for a subquery RTE (else NULL):
 	 */
 	Query	   *subquery;		/* the sub-query */
-	
+
 	/* These are for pre-planned sub-queries only.  They are internal to
 	 * window planning.
 	 */
@@ -884,7 +884,7 @@ typedef struct SelectStmt
 	struct SelectStmt *larg;	/* left child */
 	struct SelectStmt *rarg;	/* right child */
 	/* Eventually add fields for CORRESPONDING spec here */
-	
+
 	List       *distributedBy;   /* MPP. what columns we distribute the data by for SELECT INTO or CTAS */
 /*	XXX XXX: Node       *partitionBy; */    /* MPP. what columns we partition the data by */
 } SelectStmt;
@@ -910,7 +910,7 @@ typedef struct WindowSpecParse
 	char *name;
 	List *elems;
 } WindowSpecParse;
-	
+
 
 /* ----------------------
  *
@@ -1076,6 +1076,9 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 								 * index, constraint, or parent table */
 	Node	   *transform;		/* transformation expr for ALTER TYPE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
+	List	   *attlist;		/* List of column names (as Strings)
+								 * for fully inherited columns or NIL
+								 * (no columns fully inherited) */
 } AlterTableCmd;
 
 typedef enum AlterPartitionIdType
@@ -1310,7 +1313,7 @@ typedef struct CreateExternalStmt
 	List	   *formatOpts;		/* List of DefElem nodes for data format */
 	bool		isweb;
 	Node	   *sreh;			/* Single row error handling info */
-	List	   *encoding;		/* List (size 1 max) of DefElem nodes for 
+	List	   *encoding;		/* List (size 1 max) of DefElem nodes for
 								   data encoding */
 } CreateExternalStmt;
 
@@ -1427,9 +1430,9 @@ typedef struct PartitionBy			/* the Partition By clause */
 	List			   *keyopclass;	/* opclass for each key */
 	Node			   *partNum;	/* partitionS (constant number)*/
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
-	Node			   *partSpec;	/* specification or template */  
+	Node			   *partSpec;	/* specification or template */
 	Node			   *partDefault;/* DEFAULT partition (if exists) */
-	int				    partDepth;	/* depth (starting at zero) */  
+	int				    partDepth;	/* depth (starting at zero) */
 	RangeVar		   *parentRel;	/* parent relation */
 	bool				bKeepMe;    /* keep the top-level pby [nefarious] */
 	int					location;	/* token location, or -1 if unknown */
@@ -1443,10 +1446,10 @@ typedef struct PartitionElem
 {
 	NodeTag				type;
 	Node			   *partName;	/* partition name (optional) */
-	Node			   *boundSpec;	/* boundary specification */  
+	Node			   *boundSpec;	/* boundary specification */
 	Node			   *subSpec;	/* subpartition spec */
 	bool                isDefault;	/* TRUE if default partition declaration */
-	Node			   *storeAttr;	/* storage clause attributes */		
+	Node			   *storeAttr;	/* storage clause attributes */
 	char			   *AddPartDesc;/* set by tablecmds.c:atpxAddPart */
 	int					partno;		/* number of the partition element */
 	long				rrand;		/* if not zero, "random" id for relname */
@@ -1475,7 +1478,7 @@ typedef struct PartitionRangeItem
 /* partition boundary specification */
 typedef struct PartitionBoundSpec
 {
-	NodeTag				type;			
+	NodeTag				type;
 	Node			   *partStart;		/* start of range */
 	Node			   *partEnd;		/* end */
 	Node 			   *partEvery;		/* every specification */
@@ -1493,7 +1496,7 @@ typedef struct PartitionValuesSpec
 
 typedef struct PartitionSpec			/* a Partition Specification */
 {
-	NodeTag				type;			
+	NodeTag				type;
 	List			   *partElem;		/* partition element list */
 	Node			   *subSpec;		/* subpartition spec */
 	bool				istemplate;
@@ -1857,7 +1860,7 @@ typedef struct IndexStmt
 	bool		primary;		/* is index on primary key? */
 	bool		isconstraint;	/* is it from a CONSTRAINT clause? */
 	bool		concurrent;		/* should this be a concurrent index build? */
-	List		*idxOids;		/* For MPP. We use List here because the 
+	List		*idxOids;		/* For MPP. We use List here because the
 								 * bitmap index needs 3 additional oids. */
 	bool		do_part;		/* build indexes for child partitions */
 } IndexStmt;

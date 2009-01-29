@@ -6560,7 +6560,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         actual_atts = 0;
         for (j = 0; j < tbinfo->numatts; j++)
         {
-            /* Is this one of the table's own attrs, and not dropped ? */
+            /*
+             * Is this one of the table's own attrs, and not dropped?
+             * (Since EXTERNAL tables aren't relfile-based, dropped columns
+             * processing isn't required for --gp-migrator.
+             */
             if (!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j])
             {
                 /* Format properly if not first attr */
@@ -6706,10 +6710,14 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 			/*
 			 * Is this one of the table's own attrs, and not dropped ?
-			 * (Dropped columns are recovered [and later DROPed] when the --gp-migrator
-			 * option is specified.)
+			 * (For --gp-migrator, all columns are recovered -- inherited and
+			 * dropped alike.  Dropped columns are later DROPed and inheritance
+			 * relationships omitted from CREATE TABLE and established with
+			 * ALTER TABLE following table schema processing.  This is done to
+			 * preserve relfile content which is sensitive to dropped columns and
+			 * their attributes.)
 			 */
-			if (!tbinfo->inhAttrs[j] && ( !tbinfo->attisdropped[j] || forGpMigrator ))
+			if ((!tbinfo->inhAttrs[j] && !tbinfo->attisdropped[j]) || forGpMigrator )
 			{
 				/* Format properly if not first attr */
 				if (actual_atts > 0)
@@ -6766,7 +6774,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(q, "\n)");
 
-		if (numParents > 0)
+		/*
+		 * Emit the INHERITS clause if this table has parents *UNLESS*
+		 * dumping with --gp-migrator.  Use of the --gp-migrator option
+		 * postpones inheritance specification to after table creation.
+		 */
+		if (numParents > 0 && !forGpMigrator)
 		{
 			appendPQExpBuffer(q, "\nINHERITS (");
 			for (k = 0; k < numParents; k++)
@@ -6880,7 +6893,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		if(numParents > 0)
 			DetectChildConstraintDropped(tbinfo, q);
 
-		/* Loop dumping statistics and storage statements */
+		/*
+		 * Loop dumping statistics and storage statements and, for
+		 * --gp-migrator, ALTER TABLE ... DROP COLUMN, statements
+		 * for re-constituted dropped columns.
+		 *
+		 */
 		for (j = 0; j < tbinfo->numatts; j++)
 		{
 			/*
@@ -6905,7 +6923,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			 * Dump per-column storage information.  The statement is only
 			 * dumped if the storage has been changed from the type's default.
 			 * (When the --gp-migrator option is specified, dropped column
-			 * storage information is restored.)
+			 * storage information is restored.)  An inherited column can have its
+			 * storage type changed independently from the parent specification.
 			 */
 			if (( !tbinfo->attisdropped[j] || forGpMigrator )
 					&& tbinfo->attstorage[j] != tbinfo->typstorage[j])
@@ -6951,6 +6970,60 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, "ALTER TABLE ONLY %s ", fmtId(tbinfo->dobj.name));
 				appendPQExpBuffer(q, "DROP COLUMN %s;\n", fmtId(tbinfo->attnames[j]));
 			}
+		}
+
+		/*
+		 * When operating under the --gp-migrator option, the INHERITS clause is
+		 * suppressed.  Table inheritance for --gp-migrator is re-introduced here
+		 * as an ALTER TABLE ... INHERIT ... statement.
+		 */
+		if ( forGpMigrator && numParents > 0 )
+		{
+			int inhAttrs;
+			appendPQExpBuffer(q, "ALTER TABLE %s ", fmtId(tbinfo->dobj.name));
+			for (k = 0; k < numParents; k++)
+			{
+				TableInfo *parentRel = parents[k];
+
+				if (k > 0)
+					appendPQExpBuffer(q, ",\n        ");
+				appendPQExpBuffer(q, "INHERIT ");
+				if (parentRel->dobj.namespace != tbinfo->dobj.namespace)
+					appendPQExpBuffer(q, "%s.",
+									  fmtId(parentRel->dobj.namespace->dobj.name));
+				appendPQExpBuffer(q, "%s", fmtId(parentRel->dobj.name));
+
+				/*
+				 * Now append the list of (non-dropped) INHERITED columns for this parent.
+				 */
+				inhAttrs = 0;
+				for (j = 0; j < parentRel->numatts; j++)
+				{
+					if (!parentRel->attisdropped[j])
+					{
+						/*
+						 * Find the matching child column and add name if attislocal == false
+						 */
+						int inhAttrNdx;
+						inhAttrNdx = strInArray(parentRel->attnames[j],
+												tbinfo->attnames,
+												tbinfo->numatts);
+						if (inhAttrNdx != -1 && !tbinfo->attislocal[inhAttrNdx])
+						{
+							if (inhAttrs > 0)
+								appendPQExpBuffer(q, ", ");
+							else
+								appendPQExpBuffer(q, " (");
+							appendPQExpBuffer(q, "%s",
+									fmtId(tbinfo->attnames[inhAttrNdx]));
+							inhAttrs++;
+						}
+					}
+				}
+				if (inhAttrs > 0)
+					appendPQExpBuffer(q, ")");
+			}
+			appendPQExpBuffer(q, ";\n");
 		}
 	}
 
