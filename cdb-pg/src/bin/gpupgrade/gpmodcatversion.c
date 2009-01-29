@@ -1,5 +1,5 @@
 /*
- * gp_controldata_mod
+ * gpmodcatversion
  *
  * Reads and modifies pg_control data.
  *
@@ -19,27 +19,34 @@
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 
-#define CATVERSION_3_0 200703112
-#define VERSION_3_0 "3.0"
-#define CATVERSION_3_1 CATALOG_VERSION_NO
-#define VERSION_3_1 "3.1"
+struct verarray
+{
+	char *gpversion;
+	uint32 vernum;
+};
 
-uint32 tover = 0;
-uint32 oldver = 0;
+static struct verarray versions[] =
+{
+	{"3.0", 200703112},
+	{"3.1", 200712072},
+	{"3.2", 200808253},
+	{"3.3", CATALOG_VERSION_NO},
+	{NULL, 0}
+};
 
 static void
 usage(const char *progname)
 {
 	printf(_("%s modifies control information of a PostgreSQL database cluster.\n\n"), progname);
 	printf(_("WARNING! This tool should only be used to upgrade/downgrade \n"
-			 "Greenplum 3.0 and 3.1 systems!\n\n"));
+			 "Greenplum 3.0, 3.1, 3.2 and 3.3 systems!\n\n"));
 	printf
 		(
 		 _(
 		   "Usage:\n"
 		   "  %s [OPTION] [DATADIR]\n\n"
 		   "Options:\n"
-		   "  --catversion [3.0 | 3.1]  replace catalog version with <version>\n"
+		   "  --catversion [3.0 | 3.1 | 3.2 | 3.3]  replace catalog version with <version>\n"
 		   "  --help                    show this help, then exit\n"
 		   "  --version                 output version information, then exit\n"
 		   ),
@@ -82,8 +89,10 @@ main(int argc, char *argv[])
 	pg_crc32	crc;
 	const char *progname;
 	int argno = 1;
+	int targetversion = -1;
+	uint32 tover;
 
-	set_pglocale_pgservice(argv[0], "gp_controldata_mod");
+	set_pglocale_pgservice(argv[0], "gpmodcatversion");
 
 	progname = get_progname(argv[0]);
 
@@ -98,7 +107,7 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("gp_controldata_mod (Greenplum Database) " PG_VERSION);
+			puts("gpmodcatversion (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
 		if (strcmp(argv[1], "--catversion") == 0)
@@ -112,17 +121,20 @@ main(int argc, char *argv[])
 			}
 			else
 			{
-				if (strcmp(argv[2], VERSION_3_0) == 0)
+				char found = 0;
+
+				for (targetversion = 0;
+					 versions[targetversion].gpversion;
+					 targetversion++)
 				{
-					tover = CATVERSION_3_0;
-					oldver = CATVERSION_3_1;
+					if (strcmp(argv[2], versions[targetversion].gpversion) == 0)
+					{
+						found = 1;
+						break;
+					}
 				}
-				else if (strcmp(argv[2], VERSION_3_1) == 0)
-				{
-					tover = CATVERSION_3_1;
-					oldver = CATVERSION_3_0;
-				}
-				else
+				
+				if (!found)
 				{
 					printf(_("\n\"%s\" is not a valid version to "
 							 "upgrade/downgrade to.\n\n"), argv[2]);
@@ -179,6 +191,8 @@ main(int argc, char *argv[])
 	printf(_("\nCatalog version number: %u\n"),
 		   ControlFile.catalog_version_no);
 
+	tover = versions[targetversion].vernum;
+
 	if (tover)
 	{
 		if (ControlFile.state != DB_SHUTDOWNED)
@@ -197,16 +211,6 @@ main(int argc, char *argv[])
 			printf(_("\nFATAL ERROR\n\n"
 					 "Catalog version number is already set to %u\n\n"),
 				   tover);
-			close(fd);
-			exit(1);
-		}
-		else if (ControlFile.catalog_version_no != oldver)
-		{
-			/* must be something wrong if we want to do this */
-			printf(_("\nFATAL ERROR\n\n"
-					 "Catalog version number is invalid for control file"
-					 "upgrade. Got %u, expected %u\n\n"),
-				   ControlFile.catalog_version_no, tover);
 			close(fd);
 			exit(1);
 		}
