@@ -437,7 +437,7 @@ class AuthenticationMD5Password(AuthenticationRequest):
     def ok(self, conn, user, password=None, **kwargs):
         if password == None:
             raise InterfaceError("server requesting MD5 password authentication, but no password was provided")
-        pwd = "md5" + + hashlib.md5(hashlib.md5(password + user).hexdigest() + self.salt).hexdigest()
+        pwd = "md5" + hashlib.md5(hashlib.md5(password + user).hexdigest() + self.salt).hexdigest()
         conn._send(PasswordMessage(pwd))
         conn._flush()
 
