@@ -161,7 +161,7 @@ static List *generate_list_subplans(PlannerInfo *root,
 static List *add_grouping_groupid(List *tlist);
 static void append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 						  int *grping_pos, Bitmapset *bms, AttrNumber *grpColIdx,
-						  Index *sortrefs_new_to_orig);
+						  Index *sortrefs_to_resnos, int max_sortgroupref);
 static Plan *plan_list_rollup_plans(PlannerInfo *root,
 									GroupExtContext *context,
 									Plan *lefttree);
@@ -208,7 +208,6 @@ plan_grouping_extension(PlannerInfo *root,
 {
 	GroupExtContext context;
 	Plan *result_plan;
-	ListCell *lc;
 	List *tlist = copyObject(*p_tlist);
 
 	context.path = path;
@@ -231,23 +230,6 @@ plan_grouping_extension(PlannerInfo *root,
 	context.need_repeat_node = false;
 	context.querynode_changed = false;
 	context.canonical_rollups = NIL;
-
-	/*
-	 * Set ressortgroupref in all target entries in sub_tlist solely
-	 * based on existing grpColIdx.
-	 */
-	foreach (lc, context.sub_tlist)
-	{
-		int group_no;
-		TargetEntry *tle = (TargetEntry *)lfirst(lc);
-		for (group_no=0; group_no<context.numGroupCols; group_no++)
-		{
-			if (tle->resno == context.grpColIdx[group_no])
-			{
-				tle->ressortgroupref = group_no + 1;
-			}
-		}
-	}
 
 	/*
 	 * Convert a list of grouping sets into multiple rollups.
@@ -1092,6 +1074,36 @@ generate_dqa_plan(PlannerInfo *root,
 	else 
 	{
 		/*
+		 * Remove entries in the flow->hashExpr that do not appear in
+		 * the target list. These entries should be those replaced grouping
+		 * columns. In the other words, they should appear in the original
+		 * target list.
+		 */
+		if (agg_plan->flow != NULL &&
+			agg_plan->flow->hashExpr != NULL)
+		{
+			ListCell *hashexpr_lc;
+			List *new_hashExpr = NIL;
+			
+			foreach (hashexpr_lc, agg_plan->flow->hashExpr)
+			{
+				Node *hashexpr = lfirst(hashexpr_lc);
+				
+				if (tlist_member(hashexpr, agg_plan->targetlist))
+				{
+					new_hashExpr = lappend(new_hashExpr, hashexpr);
+				}
+				else
+				{
+					Assert(tlist_member(hashexpr, context->tlist));
+				}
+			}
+
+			list_free(agg_plan->flow->hashExpr);
+			agg_plan->flow->hashExpr = new_hashExpr;
+		}
+
+		/*
 		 * Add Repeat node if needed. Note that if the agg_plan is not
 		 * an Agg node, and its target list or qual contains GroupingFunc,
 		 * we have to compute GroupingFunc inside the Repeat node. So tell
@@ -1626,9 +1638,11 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 {
 	bool *used;
 	bool more = true;
-	Index *sortrefs_new_to_orig = (Index *)
-		palloc0(numGroupCols * sizeof(Index));
+	Index *sortrefs_to_resnos;
 	ListCell *sub_lc;
+	ListCell *lc;
+	int max_sortgroupref = 0;
+	int no;
 
 	if (canonical_grpsets == NULL ||
 		canonical_grpsets->ngrpsets == 0)
@@ -1638,43 +1652,68 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 
 	/* In canonical grouping sets, we use tleSortGroupRef to represent
 	 * a grouping column. These tleSortGroupRefs are also computed
-	 * based on both GROUP BY and ORDER BY clauses. However, for
-	 * sub_tlist, only GROUP BY clause is considered, so that
-	 * tleSortGroupRefs may be different. Here, we construct a mapping
-	 * from new ressortgrouprefs to original tleSortGroupRefs -- the array
-	 * indexes representing new ressortgrouprefs, while the array
-	 * elements representing orginal tleSortGroupRefs.
+	 * based on both GROUP BY and ORDER BY clauses. However, grpColIdx
+	 * stores the resno in the sub_tlist. Here, we construct a 
+	 * mapping from the ressortgrouprefs to the resno in the sub_tlist,
+	 * so that we could easily construct the grouping column index
+	 * for each rollup later. The mapping array indexes represent
+	 * the ressortgrouprefs, while the array elements represent the
+	 * resno in the sub_tlist.
 	 */
+	foreach (lc, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(lc);
+		if (tle->ressortgroupref > max_sortgroupref)
+			max_sortgroupref = tle->ressortgroupref;
+	}
+	
+	sortrefs_to_resnos = (Index *)palloc0(max_sortgroupref * sizeof(Index));
+	
 	foreach (sub_lc, sub_tlist)
 	{
 		TargetEntry *tle = (TargetEntry *)lfirst(sub_lc);
-		TargetEntry *orig_tle = NULL;
-		ListCell *lc = NULL;
+		if (tle->ressortgroupref > 0)
+		{
+			sortrefs_to_resnos[tle->ressortgroupref - 1] = tle->resno;
+		}
+	}
 
-		if (tle->ressortgroupref == 0)
+	/*
+	 * In sortrefs_to_resnos, if there are any entries that are not set,
+	 * it means that it is a sort key or it is a duplicate grouping key.
+	 * We find its target entry in the tlist that has such a ressortgroupref
+	 * value, and find its corresponding target entry in the sub_tlist, which
+	 * resno is what we need.
+	 */
+	for (no = 0; no < max_sortgroupref; no++)
+	{
+		TargetEntry *tle = NULL;
+		
+		if (sortrefs_to_resnos[no] > 0)
 			continue;
-
-		/* find tle in tlist */
+		/*
+		 * Find the target entry in tlist whose ressortgroupref is equal to (no+1),
+		 * and find the corresponding target entry in sub_tlist. Fill in the
+		 * resno.
+		 */
 		foreach (lc, tlist)
 		{
-			orig_tle = (TargetEntry *)lfirst(lc);
-			/*
-			 * We only care about the grouping columns. Note that
-			 * a non-grouping column may have the same expression as
-			 * a grouping column. We should ignore those target
-			 * entries. See MPP-4894.
-			 */
-			if (orig_tle->ressortgroupref > 0 &&
-				equal(orig_tle->expr, tle->expr))
+			tle = (TargetEntry *)lfirst(lc);
+			if (tle->ressortgroupref == no + 1)
 				break;
 		}
-		if (lc == NULL)
-			ereport(ERROR, (
-						errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("can find the entry in tlist")));
-
-		sortrefs_new_to_orig[tle->ressortgroupref-1] =
-			orig_tle->ressortgroupref;
+		Assert(lc != NULL);
+		foreach (sub_lc, sub_tlist)
+		{
+			TargetEntry *sub_tle = (TargetEntry *)lfirst(sub_lc);
+			if (equal(sub_tle->expr, tle->expr))
+			{
+				Assert(tle->ressortgroupref - 1 == no);
+				sortrefs_to_resnos[tle->ressortgroupref - 1] = sub_tle->resno;
+				break;
+			}
+			Assert(sub_tle != NULL);
+		}
 	}
 
 	/*
@@ -1742,7 +1781,7 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 			{
 				append_colIdx(rollup->colIdx, rollup->numcols, colno,
 							  rollup->grping_pos, canonical_grpsets->grpsets[grpsetno],
-							  grpColIdx, sortrefs_new_to_orig);
+							  grpColIdx, sortrefs_to_resnos, max_sortgroupref);
 				prev_grpsetno = grpsetno;
 				colno += bms_num_members(canonical_grpsets->grpsets[grpsetno]);
 			}
@@ -1753,7 +1792,8 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 					bms_difference(canonical_grpsets->grpsets[grpsetno],
 								   canonical_grpsets->grpsets[prev_grpsetno]);
 				append_colIdx(rollup->colIdx, rollup->numcols, colno,
-							  rollup->grping_pos, bms_diff, grpColIdx, sortrefs_new_to_orig);
+							  rollup->grping_pos, bms_diff, grpColIdx,
+							  sortrefs_to_resnos, max_sortgroupref);
 				colno += bms_num_members(bms_diff);
 				prev_grpsetno = grpsetno;
 							  
@@ -1765,33 +1805,47 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 		 */
 		if (colno < rollup->numcols)
 		{
-			int grpcol_no;
+			/*
+			 * Record the index positions in grpColIdx in which the corresponding
+			 * grouping columns are used.
+			 */
+			Bitmapset *used_poses = NULL;
 			
-			for (grpcol_no=0; grpcol_no<rollup->numcols && colno < rollup->numcols; grpcol_no++)
+			int rollup_colno;
+			int grpcol_no;
+			for(rollup_colno = 0; rollup_colno < colno; rollup_colno++)
 			{
-				int rollup_colno;
-				for (rollup_colno=0; rollup_colno<colno; rollup_colno++)
+				for (grpcol_no = 0; grpcol_no < rollup->numcols; grpcol_no++)
 				{
-					if (grpColIdx[grpcol_no] == rollup->colIdx[rollup_colno])
+					if (grpColIdx[grpcol_no] == rollup->colIdx[rollup_colno] &&
+						!bms_is_member(grpcol_no, used_poses))
 					{
-						rollup->grping_pos[rollup_colno] = rollup->numcols - 1 - grpcol_no;
+						used_poses = bms_add_member(used_poses, grpcol_no);
 						break;
 					}
 				}
-				
-				if (rollup_colno == colno)
-				{
-					rollup->colIdx[colno] = grpColIdx[grpcol_no];
-					rollup->grping_pos[colno] = rollup->numcols - 1 - grpcol_no;
-					colno++;
-				}
+				Assert(grpcol_no < rollup->numcols);
 			}
+			
+			for (grpcol_no = 0; grpcol_no < rollup->numcols; grpcol_no++)
+			{
+				if (bms_is_member(grpcol_no, used_poses))
+					continue;
+				rollup->colIdx[colno] = grpColIdx[grpcol_no];
+				rollup->grping_pos[colno] = rollup->numcols - 1 - grpcol_no;
+				colno++;
+
+				used_poses = bms_add_member(used_poses, grpcol_no);
+			}
+			Assert(colno == rollup->numcols);
+
+			bms_free(used_poses);
 		}
 
 		canonical_rollups = lappend(canonical_rollups, rollup);
 	}
 
-	pfree(sortrefs_new_to_orig);
+	pfree(sortrefs_to_resnos);
 
 	return canonical_rollups;
 }
@@ -1803,7 +1857,7 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 static void
 append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 			  int *grping_pos, Bitmapset *bms, AttrNumber *grpColIdx,
-			  Index *sortrefs_new_to_orig)
+			  Index *sortrefs_to_resnos, int max_sortgroupref)
 {
 	int x;
 	int pos;
@@ -1813,18 +1867,19 @@ append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 	x = bms_first_from(bms, 0);
 	while (x >= 0)
 	{
-		Assert(x > 0);
+		Assert(x > 0 && x <= max_sortgroupref);
 
-		/* Find x in sortrefs_new_to_orig */
-		for (pos=0; pos<numcols; pos++)
+		/* Find the index position in grpColIdx for
+		 * sortrefs_to_resnos[x - 1].
+		 */
+		for (pos = 0; pos < numcols; pos++)
 		{
-			if (sortrefs_new_to_orig[pos] == x)
+			if (sortrefs_to_resnos[x - 1] == grpColIdx[pos])
 				break;
 		}
-
 		Assert(pos < numcols);
 
-		colIdx[colno] = grpColIdx[pos];
+		colIdx[colno] = sortrefs_to_resnos[x - 1];
 		grping_pos[colno] = numcols - 1 - pos;
 		colno++;
 		x = bms_first_from(bms, x + 1);
