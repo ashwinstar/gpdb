@@ -89,6 +89,10 @@ The tokens are:
 
  Replace @gpcurusername@ with the username of the user executing the script.
 
+=item gpupgradeschemaname
+
+ Replace @gpupgradeschemaname@ with public.
+
 =over 12
 
 =item Mac OSX intel: i386
@@ -298,6 +302,7 @@ if (1)
     my $hostexp = '\\@hostname\\@';
     my $psexp   = '\\@ps_pidfirst\\@';
 	my $unexp = '\\@gpcurusername\\@';
+	my $schema = '\\@gpupgradeschemaname\\@';
 
     my $locps   = 'ps axww';
     if ($^O !~ /darwin|mac|osx/i)
@@ -338,7 +343,7 @@ if (1)
     my $gpuname_all = `grep uname_ $filnam`;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm \' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; \' $filnam\n";
 
     # replace all "which" expressions with binary
     if (defined($gpwhich_all) && length($gpwhich_all))

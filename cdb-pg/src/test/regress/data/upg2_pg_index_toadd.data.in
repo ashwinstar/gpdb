@@ -1,4 +1,4 @@
-copy public.pg_index from stdin null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_index from stdin null as E'\\N' csv delimiter '|' header;
 indexrelid|indrelid|indnatts|indisunique|indisprimary|indisclustered|indisvalid|indkey|indclass|indexprs|indpred
 5009|6107|2|t|f|f|t|1 2|1989 1976|\N|\N
 \.
