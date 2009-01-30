@@ -28,6 +28,7 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
+#include "utils/numeric.h"
 
 
 
@@ -73,7 +74,8 @@ InsertInitialSegnoEntry(Relation parentrel,
 	values[Anum_pg_aoseg_eof - 1] = Float8GetDatum(0);
 	values[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(0);
 	values[Anum_pg_aoseg_varblockcount - 1] = Float8GetDatum(0);
-	
+	values[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum(0);
+
 	/*
 	 * form the tuple and insert it
 	 */
@@ -112,7 +114,7 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 	HeapTupleData 	tupdata;
 	ScanKeyData		key;
 	IndexScanDesc	aoscan;
-	Datum			eof, tupcount, varbcount;
+	Datum			eof, eof_uncompressed, tupcount, varbcount;
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
 	LOCKMODE		lockmode = (forupdate ? RowExclusiveLock : AccessShareLock);
@@ -287,6 +289,22 @@ lmark:	;
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid varblockcount value: NULL")));	
 	
+	/* get the uncompressed eof */
+	eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
+	
+	if(isNull)
+	{
+		/* 
+		 * NULL is allowed. Tables that were created before the release of the
+		 * eof_uncompressed catalog column will have a NULL instead of a value.
+		 */
+		fsinfo->eof_uncompressed = InvalidUncompressedEof;
+	}
+	else
+	{
+		fsinfo->eof_uncompressed = DatumGetFloat8(eof_uncompressed);
+	}
+
 	fsinfo->segno = segno;
 	fsinfo->eof = DatumGetFloat8(eof);
 	fsinfo->tupcount = DatumGetFloat8(tupcount);
@@ -325,6 +343,7 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *total
 	FileSegInfo		*oneseginfo;	
 	Datum			segno,
 					eof,
+					eof_uncompressed,
 					tupcount,
 					varblockcount;
 	bool			isNull;
@@ -367,15 +386,24 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *total
 	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
 	{	
 		segno = fastgetattr(tuple, Anum_pg_aoseg_segno, pg_aoseg_dsc, &isNull);
-		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
-		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
-		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
-		
 		oneseginfo->segno = DatumGetInt32(segno);
-		oneseginfo->eof += DatumGetFloat8(eof);
-		oneseginfo->tupcount += DatumGetFloat8(tupcount);
-		oneseginfo->varblockcount += DatumGetFloat8(varblockcount);
 		
+		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
+		oneseginfo->eof += DatumGetFloat8(eof);
+
+		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
+		oneseginfo->tupcount += DatumGetFloat8(tupcount);
+
+		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);		
+		oneseginfo->varblockcount += DatumGetFloat8(varblockcount);
+
+		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
+		
+		if(isNull)
+			oneseginfo->eof_uncompressed = InvalidUncompressedEof;
+		else
+			oneseginfo->eof_uncompressed += DatumGetFloat8(eof);
+			
 		if (Debug_appendonly_print_scan)
 			elog(LOG,"Append-only found existing segno %d with eof " INT64_FORMAT " for table '%s' out of total %d segs",
 				 oneseginfo->segno,
@@ -400,7 +428,8 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *total
 void
 UpdateFileSegInfo(Relation parentrel,
 				  int segno,
-				  int64 eof, 
+				  int64 eof,
+				  int64 eof_uncompressed,
 				  float8 tuples_added, 
 				  float8 varblocks_added)
 {
@@ -502,7 +531,10 @@ UpdateFileSegInfo(Relation parentrel,
 	
 	new_record[Anum_pg_aoseg_varblockcount - 1] = new_varblock_count;
 	new_record_repl[Anum_pg_aoseg_varblockcount - 1] = 'r';
-	
+
+	new_record[Anum_pg_aoseg_eofuncompressed - 1] = Float8GetDatum((float8)eof_uncompressed);
+	new_record_repl[Anum_pg_aoseg_eofuncompressed - 1] = 'r';
+
 	/*
 	 * update the tuple in the pg_aoseg table
 	 */
@@ -536,6 +568,7 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
 	HeapScanDesc	aoscan;
 	FileSegTotals  *result;
 	Datum			eof,
+					eof_uncompressed,
 					tupcount,
 					varblockcount;
 	bool			isNull;
@@ -552,7 +585,13 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
 		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
 		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
 		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
+		eof_uncompressed = fastgetattr(tuple, Anum_pg_aoseg_eofuncompressed, pg_aoseg_dsc, &isNull);
 		
+		if(isNull)
+			result->totalbytesuncompressed = InvalidUncompressedEof;
+		else
+			result->totalbytesuncompressed += DatumGetFloat8(eof_uncompressed);
+			
 		result->totalbytes += DatumGetFloat8(eof);
 		result->totaltuples += DatumGetFloat8(tupcount);
 		result->totalvarblocks += DatumGetFloat8(varblockcount);
@@ -723,7 +762,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 					 * QD tup count !=  QE tup count. update QD count by 
 					 * passing in the diff (may be negative sometimes).
 					 */
-					UpdateFileSegInfo(parentrel, qe_segno, 0, diff, 0);
+					UpdateFileSegInfo(parentrel, qe_segno, 0, 0, diff, 0);
 				}
 				else
 					elog(DEBUG3, "gp_update_ao_master_stats: no need to " 
@@ -974,4 +1013,174 @@ get_ao_distribution__(PG_FUNCTION_ARGS)
 	
 	SRF_RETURN_DONE(funcctx);
 }
+
+/*
+ * get_ao_compression_ratio
+ *
+ * using the same input as the functions above (schema, table) calculate
+ * the effective compression ratio for this append only table stored data.
+ */
+PG_FUNCTION_INFO_V1(get_ao_compression_ratio__);
+Datum
+get_ao_compression_ratio__(PG_FUNCTION_ARGS)
+{
+	StringInfoData 	sqlstmt;
+	RangeVar		*parentrv;	
+	Relation		parentrel;
+	Relation		aosegrel;
+	bool 			connected = false;
+	char			aoseg_relname[32];
+	char			*namespace = NULL;
+	char			*relname = NULL;
+	char			relstorage;
+    short			nargs = PG_NARGS();
+	int 			proc;
+    int 			ret;
+	Numeric			compress_ratio;
+	int32 			not_available = -1;
+
+	MemoryContext 	oldcontext = CurrentMemoryContext;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	
+	compress_ratio = DatumGetNumeric(DirectFunctionCall1(int4_numeric, 
+														 not_available));
+
+	/* this check may be redundant. error is caught beforehand */
+	if(nargs != 2)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("get_ao_compression_ratio called with %d arguments", 
+						nargs),
+				 errhint("arguments should be (schemaname, tablename)")));
+	}
+	
+	if (!PG_ARGISNULL(0))
+		namespace = GET_STR(PG_GETARG_TEXT_P(0));
+	
+	if (PG_ARGISNULL(1))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("get_ao_compression_ratio called with NULL relname")));
+	
+	relname = GET_STR(PG_GETARG_TEXT_P(1));
+	
+	parentrv = makeRangeVar(namespace, relname);
+	
+	/*
+	 * get the relid of the parent (main) relation
+	 */
+	parentrel = heap_openrv(parentrv, RowExclusiveLock);
+	
+	relstorage = parentrel->rd_rel->relstorage;
+	if(relstorage != RELSTORAGE_AO)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("get_ao_compression_ratio called with non append "
+						"only relation (rel '%s', storage '%c')", 
+						relname, relstorage)));
+	
+	/*
+	 * get the name of the aoseg relation
+	 */
+	aosegrel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	sprintf(aoseg_relname, "%s", RelationGetRelationName(aosegrel));
+	heap_close(aosegrel, AccessShareLock);
+	
+	/*
+	 * assemble our query string
+	 */
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt, "select sum(eof), sum(eofuncompressed) " 
+							   "from gp_dist_random('pg_aoseg.%s')",
+								aoseg_relname);
+	
+	
+	PG_TRY();
+	{
+		
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unable to obtain AO relation information from segment databases."),
+							errdetail("SPI_connect failed in get_ao_compression_ratio")));
+		}
+		connected = true;
+		
+		/* Do the query. */
+		ret = SPI_execute(sqlstmt.data, false, 0);
+		proc = SPI_processed;
+		
+		
+	    if (ret > 0 && SPI_tuptable != NULL)
+	    {
+	        TupleDesc 		tupdesc = SPI_tuptable->tupdesc;
+	        SPITupleTable*	tuptable = SPI_tuptable;	        
+			HeapTuple 		tuple = tuptable->vals[0];
+			char*			val_eof;
+			char*			val_eof_uncomp;
+			MemoryContext 	cxt_save;
+
+	        /* we expect only 1 tuple */
+	        Assert(proc == 1);
+
+	        /* use our own context so that SPI won't free our stuff later */
+	        cxt_save = MemoryContextSwitchTo(oldcontext);
+	        
+			/* Get totals from QE's */
+	        val_eof = SPI_getvalue(tuple, tupdesc, 1);
+			val_eof_uncomp = SPI_getvalue(tuple, tupdesc, 2);
+			
+
+			/* 
+			 * Calculate the compression ratio. but do it only if the uncomp
+			 * value is not NULL. In older tables, that were created before
+			 * GPDB 3.3 the upgrade process will leave a NULL in new aoseg
+			 * table eofuncompressed column, and in that case we return -1
+			 * to indicate "ratio N/A" (set by default at declare time). 
+			 */
+			if(val_eof_uncomp)
+			{
+				int32 	precision = 2;
+	            Numeric eof = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(val_eof), ObjectIdGetDatum(0), Int32GetDatum(-1)));
+	            Numeric eof_uncomp = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(val_eof_uncomp), ObjectIdGetDatum(0), Int32GetDatum(-1)));
+
+	            /* calculate the compression ratio */
+				Numeric compress_ratio_raw = DatumGetNumeric(DirectFunctionCall2(numeric_div, 
+																				 NumericGetDatum(eof_uncomp),
+																				 NumericGetDatum(eof)));																	
+				
+				/* format to 2 digit decimal precision */
+				compress_ratio = DatumGetNumeric(DirectFunctionCall2(numeric_trunc, 
+																	 NumericGetDatum(compress_ratio_raw),
+																	 Int32GetDatum(precision)));
+			}
+			
+			MemoryContextSwitchTo(cxt_save);
+
+	    }
+		
+		connected = false;
+		SPI_finish();
+	}
+	
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+		
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	
+	
+	pfree(sqlstmt.data);
+	heap_close(parentrel, RowExclusiveLock);
+	
+	PG_RETURN_NUMERIC(compress_ratio);
+}
+
 

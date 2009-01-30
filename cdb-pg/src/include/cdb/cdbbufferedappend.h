@@ -44,6 +44,7 @@ typedef struct BufferedAppend
 	File 				 file;
     char				 *filePathName;
     int64                fileLen;
+    int64				 fileLen_uncompressed; /* for calculating compress ratio */
 } BufferedAppend;
 
 /*
@@ -75,7 +76,8 @@ extern void BufferedAppendSetFile(
     BufferedAppend       *bufferedAppend,
     File 				 file,
     char				 *filePathName,
-    int64				 eof);
+    int64				 eof,
+    int64				 eof_uncompressed);
 
 /*
  * Return the position of the current write buffer in bytes.
@@ -119,7 +121,8 @@ extern void BufferedAppendCancelLastBuffer(
  */
 extern void BufferedAppendFinishBuffer(
     BufferedAppend       *bufferedAppend,
-    int32                usedLen);
+    int32                usedLen,
+    int32				 usedLen_uncompressed);
 
 /*
  * Finish the current buffer and get the next
@@ -130,7 +133,8 @@ extern void BufferedAppendFinishBuffer(
  */
 extern uint8 *BufferedAppendMoveToNextBuffer(
     BufferedAppend       *bufferedAppend,
-    int32                usedLen);
+    int32                usedLen,
+    int32				 usedLen_uncompressed);
 
 
 /*
@@ -142,11 +146,11 @@ extern int64 BufferedAppendFileLen(
 /*
  * Flushes the current file for append.  Caller is resposible for closing
  * the file afterwards.
- *
- * Returns the file length.
  */
-extern int64 BufferedAppendCompleteFile(
-    BufferedAppend       *bufferedAppend);
+extern void BufferedAppendCompleteFile(
+    BufferedAppend	*bufferedAppend,
+    int64 			*fileLen,
+    int64 			*fileLen_uncompressed);
 
 
 /*

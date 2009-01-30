@@ -664,7 +664,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 	/*
 	 * Update the master AO segment info table with correct tuple count total
 	 */
-	UpdateFileSegInfo(parentrel, segno, 0, tupcount_float8, 0);
+	UpdateFileSegInfo(parentrel, segno, 0, 0, tupcount_float8, 0);
 	pfree(fsinfo);
 
 	/*

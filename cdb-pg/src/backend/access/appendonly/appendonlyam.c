@@ -184,7 +184,9 @@ doPadOutRemainder(AppendOnlyInsertDesc aoInsertDesc,
 		}
 		
 		memset(buffer, 0, safeWriteRemainder);
-		BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, safeWriteRemainder);
+		BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, 
+								   safeWriteRemainder, 
+								   safeWriteRemainder);
 		
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert zero padded safeWriteRemainder for table '%s' (nextWritePosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
@@ -421,8 +423,9 @@ static void
 SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 {
 	FileSegInfo		*fsinfo;
-	int64			eof;
-	int64			result;
+	int64			eof,
+					eof_uncompressed,
+					result;
 
 	/* Open the 'segment' file */
 	OpenAOSegmentFile(aoInsertDesc->aoi_rel, 
@@ -439,6 +442,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	
 	Assert(fsinfo);
 	eof = (int64)fsinfo->eof;
+	eof_uncompressed = (int64)fsinfo->eof_uncompressed;
 	pfree(fsinfo);
 	fsinfo = NULL;
 			
@@ -458,11 +462,11 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
              			strerror((int)result))));
 	}
 
-	BufferedAppendSetFile(
-				&aoInsertDesc->bufferedAppend, 
-				aoInsertDesc->appendFile, 
-				aoInsertDesc->appendFilePathName, 
-				eof);
+	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, 
+						  aoInsertDesc->appendFile, 
+						  aoInsertDesc->appendFilePathName, 
+						  eof,
+						  eof_uncompressed);
 
 	/* reset counts */
 	aoInsertDesc->insertCount = 0;
@@ -511,6 +515,7 @@ static void
 CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 {
 	int64	fileLen;
+	int64	fileLen_uncompressed;
 	
 	/*
 	 * We pad out append commands to the page boundary.
@@ -520,14 +525,17 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 	/* 
 	 * Have the BufferedAppend module let go, but this does not close the file.
 	 */
-	fileLen = BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);
+	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend, 
+							   &fileLen, 
+							   &fileLen_uncompressed);
 
 	/* 
 	 * Update the AO segment info table with our new eof
 	 */
 	UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
 					  aoInsertDesc->cur_segno,
-					  fileLen, 
+					  fileLen,
+					  fileLen_uncompressed,
 					  aoInsertDesc->insertCount,
 					  aoInsertDesc->varblockCount);
 	
@@ -1234,7 +1242,9 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 		uint8 	*nonCompressedHeader;
 		uint8	*nonCompressedData;
 		int32 	dataRoundedUpLen;
-
+		int32	totallen;
+		int32 	uncompressedlen;
+		
 		nonCompressedHeader = aoInsertDesc->nonCompressedHeader;
 
 			
@@ -1275,9 +1285,13 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 								nonCompressedHeader,
 								aoInsertDesc->usingChecksum);
 		
+		totallen = aoInsertDesc->headerLen + dataRoundedUpLen;
+		uncompressedlen = totallen; /* since there's no compression.. */
+
 		BufferedAppendFinishBuffer(
 					&aoInsertDesc->bufferedAppend, 
-					aoInsertDesc->headerLen + dataRoundedUpLen);
+					totallen,
+					uncompressedlen);
 		
 		if (Debug_appendonly_print_insert)
 			elog(LOG,
@@ -1936,7 +1950,7 @@ doCompressAppend(
 					sourceData,
 					sourceLen,
 					dataBuffer,
-					/* maxCompressedLen */ sourceLen,	// Limit compression to be no more than the input size.
+					sourceLen,	// Limit compression to be no more than the input size.
 					&compressedLen,
 					aoInsertDesc->compressLevel,
 					aoInsertDesc->compressType,
@@ -2056,7 +2070,8 @@ doCompressAppend(
 
 	BufferedAppendFinishBuffer(
 						bufferedAppend,
-						aoInsertDesc->headerLen + dataRoundedUpLen);
+						aoInsertDesc->headerLen + dataRoundedUpLen, /* compressed size */
+						aoInsertDesc->headerLen + AOStorage_RoundUp(sourceLen) /* non-compressed size */);
 
 }
 

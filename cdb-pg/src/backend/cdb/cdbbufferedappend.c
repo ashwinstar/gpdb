@@ -84,12 +84,17 @@ void BufferedAppendInit(
 
 /*
  * Takes an open file handle for the next file.
+ * 
+ * Note that eof_uncompressed is used only for storing the
+ * uncompressed file size in the catalog, so that the compression
+ * ratio could be calculated at the user's request.
  */
 void BufferedAppendSetFile(
     BufferedAppend       *bufferedAppend,
     File 				 file,
     char				 *filePathName,
-    int64				 eof)
+    int64				 eof,
+	int64				 eof_uncompressed)
 {
 	Assert(bufferedAppend != NULL);
     Assert(bufferedAppend->position == 0);
@@ -97,6 +102,7 @@ void BufferedAppendSetFile(
     Assert(bufferedAppend->bufferLen == 0);
 	Assert(bufferedAppend->file == -1);
 	Assert(bufferedAppend->fileLen == 0);
+	Assert(bufferedAppend->fileLen_uncompressed == 0);
 
 	Assert(file >= 0);
 	Assert(eof >= 0);
@@ -105,6 +111,7 @@ void BufferedAppendSetFile(
 	bufferedAppend->file = file;
 	bufferedAppend->filePathName = filePathName;
 	bufferedAppend->fileLen = eof;
+	bufferedAppend->fileLen_uncompressed = eof_uncompressed;
 }
 
 
@@ -163,8 +170,6 @@ static void BufferedAppendWrite(
 	
 	bufferedAppend->position += bufferedAppend->len;
 	bufferedAppend->len = 0;
-
-	bufferedAppend->fileLen += bufferedAppend->len;
 
 }
 
@@ -257,7 +262,8 @@ void BufferedAppendCancelLastBuffer(
  */
 void BufferedAppendFinishBuffer(
     BufferedAppend       *bufferedAppend,
-    int32                usedLen)
+    int32                usedLen,
+    int32				 usedLen_uncompressed)
 {
 	int32 newLen;
 	
@@ -316,6 +322,7 @@ void BufferedAppendFinishBuffer(
 	}
 
 	bufferedAppend->fileLen += usedLen;
+	bufferedAppend->fileLen_uncompressed += usedLen_uncompressed;
 }
 
 /*
@@ -327,20 +334,22 @@ void BufferedAppendFinishBuffer(
  */
 uint8 *BufferedAppendMoveToNextBuffer(
     BufferedAppend       *bufferedAppend,
-    int32                usedLen)
+    int32                usedLen,
+    int32				 usedLen_uncompressed)
 {
 	Assert(bufferedAppend != NULL);
 	
 	BufferedAppendFinishBuffer(
 			    		bufferedAppend,
-			    		usedLen);
+			    		usedLen,
+			    		usedLen_uncompressed);
 	
 	return BufferedAppendGetMaxBuffer(bufferedAppend);
 }
 
 
 /*
- * Returns the current file’s length.
+ * Returns the current file length.
  */
 int64 BufferedAppendFileLen(
     BufferedAppend *bufferedAppend)
@@ -358,10 +367,11 @@ int64 BufferedAppendFileLen(
  *
  * Returns the file length.
  */
-int64 BufferedAppendCompleteFile(
-    BufferedAppend       *bufferedAppend)
+void BufferedAppendCompleteFile(
+    BufferedAppend	*bufferedAppend,
+    int64 			*fileLen,
+    int64 			*fileLen_uncompressed)
 {
-	int64 fileLen;
 	
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
@@ -369,7 +379,8 @@ int64 BufferedAppendCompleteFile(
 	if (bufferedAppend->len > 0)
 		BufferedAppendWrite(bufferedAppend);
 
-	fileLen = bufferedAppend->fileLen;
+	*fileLen = bufferedAppend->fileLen;
+	*fileLen_uncompressed = bufferedAppend->fileLen_uncompressed;
 
 	bufferedAppend->position = 0;
 	bufferedAppend->len = 0;
@@ -377,10 +388,9 @@ int64 BufferedAppendCompleteFile(
 	bufferedAppend->bufferLen = 0;
 	
 	bufferedAppend->fileLen = 0;
+	bufferedAppend->fileLen_uncompressed = 0;
 	bufferedAppend->file = -1;
 	bufferedAppend->filePathName = NULL;
-
-	return fileLen;
 }
 
 /*
@@ -395,5 +405,6 @@ void BufferedAppendFinish(
 	Assert(bufferedAppend->file == -1);
     Assert(bufferedAppend->bufferLen == 0);
 	Assert(bufferedAppend->fileLen == 0);
+	Assert(bufferedAppend->fileLen_uncompressed == 0);
 
 }

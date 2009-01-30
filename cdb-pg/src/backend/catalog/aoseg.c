@@ -123,9 +123,6 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	if (!needs_aoseg_table(rel))
 		return false;
 
-	/* can aoseg ever be created during bootstrap? don't think so */
-	Assert(!IsBootstrapProcessingMode());
-
 	/*
 	 * Create the aoseg table and its index
 	 */
@@ -135,7 +132,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 			 "pg_aoseg_%u_index", relOid);
 
 	/* this is pretty painful...  need a tuple descriptor */
-	tupdesc = CreateTemplateTupleDesc(4, false);
+	tupdesc = CreateTemplateTupleDesc(5, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 					   "segno",
 					   INT4OID,
@@ -152,7 +149,12 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 					   "varblockcount",
 					   FLOAT8OID,
 					   -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+					   "eofuncompressed",
+					   FLOAT8OID,
+					   -1, 0);
 
+	
 	/*
 	 * Note: the aoseg relation is placed in the regular pg_aoseg namespace
 	 * even if its master relation is a temp table.  There cannot be any

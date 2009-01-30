@@ -193,6 +193,9 @@ SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
 SELECT count(*) FROM tenk_ao4;
 
+-- test get_ao_compression_ratio. use uncompressed table, so result is always 1.
+SELECT get_ao_compression_ratio('public','tenk_ao2');
+
 -- VACUUM
 VACUUM tenk_ao1;
 VACUUM tenk_ao2;
