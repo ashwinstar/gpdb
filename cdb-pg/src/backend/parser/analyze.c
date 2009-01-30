@@ -5272,8 +5272,64 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 								COERCION_EXPLICIT,
 								COERCE_IMPLICIT_CAST);
 
+
+	/* MPP-3626: better error message */
 	if (!out)
-		elog(ERROR, "cannot coerce partition parameter to column type");
+	{
+		char	 exprBuf[10000];
+		char	*specTName = "";
+		char	*pparam	   = "";
+		StringInfoData   sid;
+
+/*		elog(ERROR, "cannot coerce partition parameter to column type"); */
+
+		switch (partype)
+		{
+			case PARTTYP_HASH:
+						specTName = "HASH ";
+						break;
+			case PARTTYP_LIST:
+						specTName = "LIST ";
+						break;
+			case PARTTYP_RANGE:
+						specTName = "RANGE ";
+						break;					
+				default:
+						break;
+		}
+
+		/* try to build a printable string of the node value */
+		pparam = deparse_expression(node,
+									deparse_context_for("partition",
+														InvalidOid),
+														false, false);
+		if (pparam)
+		{
+			initStringInfo(&sid);
+			appendStringInfo(&sid, "(");
+			appendStringInfo(&sid, pparam);
+			appendStringInfo(&sid, ") ");
+
+			pfree(pparam);
+
+			exprBuf[0] = '\0';
+			snprintf(exprBuf, sizeof(exprBuf), "%s", sid.data);
+			pfree(sid.data);
+
+			pparam = exprBuf;
+		}
+		else
+			pparam = "";
+
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("cannot coerce %spartition parameter %s"
+						"to column type (%s)",
+						specTName,
+						pparam,
+						format_type_be(typid))));
+	}
+
 
 	/* explicit coerce */
 	if (IsA(out, FuncExpr) || IsA(out, OpExpr))
@@ -5290,9 +5346,9 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 		ReleaseSysCache(typ);
 		out = (Node *)c;
 
-		/*
-		 * coerce again for typmod: if we can't coerce the type mod, we'll error
-		 * out
+		/* 
+		 * coerce again for typmod: if we can't coerce the type mod,
+		 * we'll error out
 		 */
 		out = coerce_to_target_type(NULL, out, exprType(out),
 									typid, typmod,
