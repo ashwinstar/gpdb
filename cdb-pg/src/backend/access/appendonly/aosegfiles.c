@@ -874,7 +874,7 @@ get_ao_distribution__(PG_FUNCTION_ARGS)
 		/*
 		 * get the relid of the parent (main) relation
 		 */
-		parentrel = heap_openrv(parentrv, RowExclusiveLock);
+		parentrel = heap_openrv(parentrv, AccessShareLock);
 		
 		/*
 		 * check permission to SELECT from this table (this function
@@ -960,7 +960,7 @@ get_ao_distribution__(PG_FUNCTION_ARGS)
 		PG_END_TRY();
 		
 		pfree(sqlstmt.data);
-		heap_close(parentrel, RowExclusiveLock);
+		heap_close(parentrel, AccessShareLock);
 	}
 	
 	/*
@@ -1033,9 +1033,9 @@ get_ao_compression_ratio__(PG_FUNCTION_ARGS)
 	char			*namespace = NULL;
 	char			*relname = NULL;
 	char			relstorage;
-    short			nargs = PG_NARGS();
+	short			nargs = PG_NARGS();
 	int 			proc;
-    int 			ret;
+	int 			ret;
 	Numeric			compress_ratio;
 	int32 			not_available = -1;
 
@@ -1071,7 +1071,7 @@ get_ao_compression_ratio__(PG_FUNCTION_ARGS)
 	/*
 	 * get the relid of the parent (main) relation
 	 */
-	parentrel = heap_openrv(parentrv, RowExclusiveLock);
+	parentrel = heap_openrv(parentrv, AccessShareLock);
 	
 	relstorage = parentrel->rd_rel->relstorage;
 	if(relstorage != RELSTORAGE_AO)
@@ -1125,14 +1125,13 @@ get_ao_compression_ratio__(PG_FUNCTION_ARGS)
 	        /* we expect only 1 tuple */
 	        Assert(proc == 1);
 
-	        /* use our own context so that SPI won't free our stuff later */
-	        cxt_save = MemoryContextSwitchTo(oldcontext);
-	        
 			/* Get totals from QE's */
 	        val_eof = SPI_getvalue(tuple, tupdesc, 1);
 			val_eof_uncomp = SPI_getvalue(tuple, tupdesc, 2);
 			
-
+	        /* use our own context so that SPI won't free our stuff later */
+	        cxt_save = MemoryContextSwitchTo(oldcontext);
+	        
 			/* 
 			 * Calculate the compression ratio. but do it only if the uncomp
 			 * value is not NULL. In older tables, that were created before
@@ -1143,14 +1142,14 @@ get_ao_compression_ratio__(PG_FUNCTION_ARGS)
 			if(val_eof_uncomp)
 			{
 				int32 	precision = 2;
-	            Numeric eof = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(val_eof), ObjectIdGetDatum(0), Int32GetDatum(-1)));
-	            Numeric eof_uncomp = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(val_eof_uncomp), ObjectIdGetDatum(0), Int32GetDatum(-1)));
+				Numeric eof = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(val_eof), ObjectIdGetDatum(0), Int32GetDatum(-1)));
+				Numeric eof_uncomp = DatumGetNumeric(DirectFunctionCall3(numeric_in, CStringGetDatum(val_eof_uncomp), ObjectIdGetDatum(0), Int32GetDatum(-1)));
 
-	            /* calculate the compression ratio */
+				/* calculate the compression ratio */
 				Numeric compress_ratio_raw = DatumGetNumeric(DirectFunctionCall2(numeric_div, 
 																				 NumericGetDatum(eof_uncomp),
 																				 NumericGetDatum(eof)));																	
-				
+
 				/* format to 2 digit decimal precision */
 				compress_ratio = DatumGetNumeric(DirectFunctionCall2(numeric_trunc, 
 																	 NumericGetDatum(compress_ratio_raw),
@@ -1160,7 +1159,7 @@ get_ao_compression_ratio__(PG_FUNCTION_ARGS)
 			MemoryContextSwitchTo(cxt_save);
 
 	    }
-		
+
 		connected = false;
 		SPI_finish();
 	}
@@ -1178,7 +1177,7 @@ get_ao_compression_ratio__(PG_FUNCTION_ARGS)
 	
 	
 	pfree(sqlstmt.data);
-	heap_close(parentrel, RowExclusiveLock);
+	heap_close(parentrel, AccessShareLock);
 	
 	PG_RETURN_NUMERIC(compress_ratio);
 }
