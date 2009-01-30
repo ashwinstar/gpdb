@@ -1327,6 +1327,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 	uint64 grouping = 0;
 	int num_subplans = 0;
 	int subplan_no = 0;
+	double orig_numGroups = *context->p_dNumGroups;
+	double new_numGroups = 0;
 
 	context->grpColIdx = context->current_rollup->colIdx;
 
@@ -1363,6 +1365,14 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 		if (context->current_rollup->grpset_counts[group_no] <= 0)
 			continue;
 
+		/* Estimate the number of groups for this rollup level. */
+		*context->p_dNumGroups =
+			(((double)(context->current_rollup->numcols + 1 - group_no)) /
+			 ((double)(context->current_rollup->numcols + 1))) *
+			orig_numGroups;
+		if (*context->p_dNumGroups == 0)
+			*context->p_dNumGroups = 1;
+
 		root->parse = copyObject(orig_query);
 
 		agg_plan = generate_dqa_plan(root, context, group_no, grouping, subplans, subplan_no);
@@ -1371,6 +1381,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 		if (agg_plan == NULL)
 			continue;
 		
+		new_numGroups += *context->p_dNumGroups;
+
 		/*
 		 * Since the range table for each rollup plan may be different,
 		 * we build a new range table to include all range table entries.
@@ -1421,6 +1433,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 
 		agg_plans = lappend(agg_plans, agg_plan);
 	}
+
+	*context->p_dNumGroups = new_numGroups;
 
 	/* Update the original Query node */
 	root->parse = orig_query;
@@ -1899,6 +1913,8 @@ plan_list_rollup_plans(PlannerInfo *root,
 	List *orig_tlist = context->tlist;
 	AttrNumber *orig_grpColIdx = context->grpColIdx;
 	int orig_numGroupCols = context->numGroupCols;
+	double orig_numGroups = *context->p_dNumGroups;
+	double new_numGroups = 0;
 	Query *orig_query = root->parse;
 	Query *final_query = NULL;
 	List *pathkeys = NIL;
@@ -1986,9 +2002,12 @@ plan_list_rollup_plans(PlannerInfo *root,
 			(AttrNumber *)palloc0(context->numGroupCols * sizeof(AttrNumber));
 		memcpy(context->grpColIdx, orig_grpColIdx,
 			   context->numGroupCols * sizeof(AttrNumber));
+		*context->p_dNumGroups = orig_numGroups;
 		root->parse = copyObject(orig_query);
 
 		rollup_plan = make_aggs_for_rollup(root, context, subplan);
+
+		new_numGroups += *context->p_dNumGroups;
 
 		if (rollup_no > 0 && list_length(context->canonical_rollups) > 1)
 		{
@@ -2059,6 +2078,8 @@ plan_list_rollup_plans(PlannerInfo *root,
 		Assert (list_length(rollup_plans) == 1);
 		result_plan = (Plan *)linitial(rollup_plans);
 	}
+
+	*context->p_dNumGroups = new_numGroups;
 
 	/* Update the original Query node */
 	root->parse = orig_query;
