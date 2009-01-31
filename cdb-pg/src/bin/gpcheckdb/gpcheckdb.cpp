@@ -22,6 +22,8 @@
 #include "getopt.h"
 #endif
 
+#include <string.h>
+
 // Get Chuck's really ugly but really simple and lightweight wrapper around libpq
 #include "libpq_wrapper.h"
 
