@@ -1379,3 +1379,6 @@ select pcolor, pname, pn,
 from product
 window w as (partition by pcolor order by pname)
 order by 1,2,3;
+
+-- MPP-4840
+explain select n from ( select row_number() over () from (values (0)) as t(x) ) as r(n) group by n;

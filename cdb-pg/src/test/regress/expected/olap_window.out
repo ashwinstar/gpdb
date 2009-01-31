@@ -7770,3 +7770,15 @@ order by 1,2,3;
  Plain     | Donuts    | 500 | 1 |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |     |    
 (8 rows)
 
+-- MPP-4840
+explain select n from ( select row_number() over () from (values (0)) as t(x) ) as r(n) group by n;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ HashAggregate  (cost=0.03..0.04 rows=1 width=8)
+   Group By: n
+   ->  Subquery Scan r  (cost=0.00..0.02 rows=2 width=8)
+         ->  Window  (cost=0.00..0.01 rows=1 width=0)
+               ->  Values Scan on "*VALUES*"  (cost=0.00..0.01 rows=1 width=0)
+ Settings:  gp_enable_sequential_window_plans=off
+(6 rows)
+

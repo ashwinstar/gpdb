@@ -753,7 +753,8 @@ set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context* ctxt)
  *		Detect whether a SubqueryScan can be deleted from the plan tree.
  *
  * We can delete it if it has no qual to check and the targetlist just
- * regurgitates the output of the child plan.
+ * regurgitates the output of the child plan and the child isn't a Window
+ * node.
  */
 static bool
 trivial_subqueryscan(SubqueryScan *plan)
@@ -768,6 +769,9 @@ trivial_subqueryscan(SubqueryScan *plan)
 	if (list_length(plan->scan.plan.targetlist) !=
 		list_length(plan->subplan->targetlist))
 		return false;			/* tlists not same length */
+	
+	if ( IsA(plan->subplan, Window) )
+		return false;
 
 	attrno = 1;
 	forboth(lp, plan->scan.plan.targetlist, lc, plan->subplan->targetlist)
