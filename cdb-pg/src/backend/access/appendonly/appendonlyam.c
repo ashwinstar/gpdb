@@ -1865,18 +1865,20 @@ tryToCompress(
 									  (size_t)sourceLen, 
 									  qlz_scratch);
 	    
-		if(compressedSize > (unsigned long)maxCompressedLen)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Quicklz level 1 compressed size larger than max "
-							"allowed size")));
+		/*
+		 * Since qlz1_compress never returns an error (unlike zlib) if there was 
+		 * not enough room in the output buffer (compressed size is larger than
+		 * uncompressed size), so return an explicit error here, so that the
+		 * caller will handle it by storing an uncompressed block. For now we
+		 * use the zlib error code Z_BUF_ERROR, but we could make up our own
+		 * instead too.
+		 */
+		if ((compressedSize > (unsigned long)maxCompressedLen) ||
+			(compressedSize > sourceLen))
+		{
+			return Z_BUF_ERROR;
+		}
 			
-		if(compressedSize > sourceLen)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Quicklz level 1 compressed size (%u) larger than "
-							"uncompressed size (%u)", (unsigned int)sourceLen, 
-							(unsigned int)compressedSize)));		
 	}
 	else /* COMPTYPE_QUICKLZ3 */
 	{
@@ -1888,18 +1890,14 @@ tryToCompress(
 									  (size_t)sourceLen, 
 									  qlz_scratch);
 	    
-		if(compressedSize > (unsigned long)maxCompressedLen)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Quicklz level 3 compressed size larger than max "
-							"allowed size")));
-			
-		if(compressedSize > sourceLen)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Quicklz level 3 compressed size (%u) larger than "
-							"uncompressed size (%u)", (unsigned int)sourceLen, 
-							(unsigned int)compressedSize)));		
+		/*
+		 * see comment above below qlz1_compress.
+		 */
+		if ((compressedSize > (unsigned long)maxCompressedLen) ||
+			(compressedSize > sourceLen))
+		{
+			return Z_BUF_ERROR;
+		}
 
 	}
 	
