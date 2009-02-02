@@ -16,7 +16,8 @@ import os.path
 import re
 import sys
 
-from logfilter import MatchRegex, NoMatchRegex
+from logfilter import MatchRegex, NoMatchRegex, filterize
+from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
 
 
 
@@ -123,6 +124,7 @@ class OptChecker(Option):
             except Exception:
                 parser.rargs.insert(0, nextarg)
         setattr(values, dest, (value, value2))
+    
         
         
     def take_action(self, action, dest, opt, value, values, parser):
@@ -143,4 +145,7 @@ class OptChecker(Option):
     TYPED_ACTIONS = Option.TYPED_ACTIONS + _addactionnames
 
 _case = 'respect'
+
+
+
 
