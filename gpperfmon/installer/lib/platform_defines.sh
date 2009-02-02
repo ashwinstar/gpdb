@@ -68,21 +68,26 @@ if [ ${PLAT} = "SunOS" ]; then
 fi
 #Linux i386 or x86_64
 if [ ${PLAT} = "Linux" ]; then
+    OS_RELEASE="Undefined linux OS"
     OS_VERSION_MAJOR=4
     if [ -r /etc/redhat-release ] ; then
         OS_RELEASE=`cat /etc/redhat-release` 
+        MPP_ARCH_BASE="RHEL"
         #Check for CentOS or Red Hat
         if grep 'Red Hat' /etc/redhat-release > /dev/null 2>&1 ; then
             OS_VERSION_MAJOR=`echo $OS_RELEASE | awk ' { print $7}' | awk -F "." '{print $1}'`
         else
             OS_VERSION_MAJOR=`echo $OS_RELEASE | awk ' { print $3}' | awk -F "." ' { print $1}'`
         fi
-    else
-        OS_RELEASE="Undefined linux OS"
+    fi
+    if [ -r /etc/SuSE-release ]; then
+        OS_RELEASE=`head -1 /etc/SuSE-release`
+        MPP_ARCH_BASE="SuSE"
+        OS_VERSION_MAJOR=`head -2 /etc/SuSE-release | tail -1 | awk '{print $3}'`
     fi
     CPU=`uname -p`
     if [ ${CPU} = "i686" ]; then
-        MPP_ARCH="RHEL4-i386"
+        MPP_ARCH="${MPP_ARCH_BASE}4-i386"
         BIZGRES_ARCH="Redhat32"
         CDBUNIT_ARCH="Linux32"
         TEST_ARCH="Linux-i386"
@@ -90,11 +95,11 @@ if [ ${PLAT} = "Linux" ]; then
         PDW_HW="i386"
     fi
     if [ ${CPU} = "x86_64" ]; then
-        MPP_ARCH="RHEL${OS_VERSION_MAJOR}-x86_64"
+        MPP_ARCH="${MPP_ARCH_BASE}${OS_VERSION_MAJOR}-x86_64"
         BIZGRES_ARCH="Redhat64"
         CDBUNIT_ARCH="Linux64"
-        TEST_ARCH="Linux-x86_64"
-        #TEST_ARCH="${MPP_ARCH}"
+        #TEST_ARCH="Linux-x86_64"
+        TEST_ARCH="${MPP_ARCH}"
         if [ "${OS_VERSION_MAJOR}" = "4" ]; then
             PLATFORM_ID="6"
         else
