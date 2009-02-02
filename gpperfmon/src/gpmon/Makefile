@@ -7,7 +7,11 @@ include $(BLD_TOP)/Makefile.thirdparty
 EXT_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/
 LIBPQ_DIR=$(BLD_TOP)/cdb-pg/src/interfaces/libpq/
 
+COPT=
 OPT=-g -O3 -Wall
+ifneq ($(CUSTOM_COPT),)
+	COPT=$(CUSTOM_COPT)
+endif
 
 GPPERFMON_VERSION=$$(< $(BLD_TOP)/gpperfmon/VERSION)
 
@@ -32,13 +36,13 @@ endif
 GPSMON_LIBS+= -lm -lsigar
 
 gpsmon: $(GPSMON_OBJS)
-	$(CC) -o gpsmon $(GPSMON_OBJS) $(LIBS) $(GPSMON_LIBS)
+	$(CC) -o gpsmon $(COPT) $(GPSMON_OBJS) $(LIBS) $(GPSMON_LIBS)
 
 gpmmon: $(GPMMON_OBJS)
-	$(CC) -o gpmmon $(GPMMON_OBJS) $(LIBS) $(GPMMON_LIBS)
+	$(CC) -o gpmmon $(COPT) $(GPMMON_OBJS) $(LIBS) $(GPMMON_LIBS)
 
 %.o: %.c
-	$(CC) $(INCS) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
+	$(CC) $(INCS) $(CPPFLAGS) $(CFLAGS) $(COPT) -o $@ -c $<
 
 clean:
 	rm -rf *.o gpmmon gpsmon
