@@ -144,7 +144,7 @@ class MakeDirectory(Command):
     
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):        
         self.directory=directory
-        cmdStr="%s %s" % (findCmdInPath('mkdir'),directory)
+        cmdStr="%s -p %s" % (findCmdInPath('mkdir'),directory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -222,8 +222,13 @@ class CreateTar(Command):
 class ExtractTar(Command):
     def __init__(self,name,srcTarFile,dstDirectory,ctxt=LOCAL,remoteHost=None):        
         self.srcTarFile=srcTarFile
-        self.dstDirectory=dstDirectory        
-        cmdStr="%s -C %s -xf %s" % (findCmdInPath('tar'), dstDirectory, srcTarFile)
+        self.dstDirectory=dstDirectory
+        tarCmd = None
+        try:
+            tarCmd = findCmdInPath('gtar')
+        except CommandNotFoundException:
+            tarCmd = findCmdInPath('tar')        
+        cmdStr="%s -C %s -xf %s" % (tarCmd, dstDirectory, srcTarFile)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
         
@@ -247,9 +252,18 @@ class Kill(Command):
         cmd.run(validateAfter=True) 
      
 
+#--------------hostname ----------------------
+class Hostname(Command):
+    def __init__(self, name, ctxt=LOCAL, remoteHost=None):
+        Command.__init__(self, name, findCmdInPath('hostname'), ctxt, remoteHost)
 
+    def get_hostname(self):
+        if not self.results:
+            raise Exception, 'Command not yet executed'
+        return self.results.stdout.strip()
 
-
-
-
-
+#--------------hostname ----------------------
+class Chmod(Command):
+    def __init__(self, name, dir, perm, ctxt=LOCAL, remoteHost=None):
+        cmdStr = '%s %s %s' % (findCmdInPath('chmod'), perm, dir)
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)

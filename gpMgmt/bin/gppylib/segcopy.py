@@ -2,10 +2,13 @@
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
 
+import os
+
 from gppylib.gplog import *
 from gppylib.commands.unix import *
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
+from gppylib.db import dbconn
 
 class SegcopyError(Exception):  pass
 
@@ -19,7 +22,8 @@ class GpSegCopy:
         self.dstDir=dstDir
         self.clean=clean
         self.schema_only=schema_only
-        self.method=method        
+        self.method=method
+        self.masterDataDir = os.getenv("MASTER_DATA_DIRECTORY")        
         
     
     def pre_check(self):
@@ -56,18 +60,12 @@ class GpSegCopy:
         self.logger.info("Starting copy from %s:%s to %s:%s" %\
                          (self.srcHost,self.srcDir,self.dstHost,self.dstDir))
         
-        if self.schema_only:            
-            """ basic logic:
-            1) start src DB
-            2) interrogate schema on src DB.  
-                - heap tables -AO tables - indexes
-            3) create dummy heap,AO,index and store created file as a template.
-            4) use info from #2 and #3 to create a local copy
-            5) copy it whereever.                        
-            """
-            
-            #TODO: impl. this!
-            pass
+        # schema_only sanity check
+        if self.schema_only:
+            if not self.masterDataDir:
+                raise SegcopyError, "Schema only copy requires MASTER_DATA_DIRECTORY environment variable to be set"
+            if self.masterDataDir != self.srcDir:
+                raise SegcopyError, "Schema only copy requires source directory be master data directory"
         
         if self.method == 'copy':
             #TODO:  may want to change this to either always use pysync or to use a 'tar | ssh tar'
@@ -79,9 +77,7 @@ class GpSegCopy:
             pysyncCmd.run(validateAfter=True)
             res=pysyncCmd.get_results()
             
-        
         #basic validation
-        #TODO: Fix up this validation.  du returns blocks, not bytes.
         dstDirSize=DiskUsage.get_size(name,self.dstHost,self.dstDir)
         
         if srcDirSize != dstDirSize:
@@ -92,7 +88,37 @@ class GpSegCopy:
         logger.info("Copy Complete.  %s:%s has: %d bytes and %s:%s has: %d bytes"\
                     % (self.srcHost,self.srcDir,srcDirSize,self.dstHost,self.dstDir,dstDirSize))
         logger.info("Copy complete.")
-    
+
+        if self.schema_only:
+            logger.info("Cleaning up catalog for schema only copy on destination")
+            #TODO: what to do about port...???
+            startCmd=SegmentStart(name,self.dstDir, 5432, True, ctxt=REMOTE, remoteHost=self.dstHost)
+            stopCmd=SegmentStop(name, self.dstDir, ctxt=REMOTE, remoteHost=self.dstHost)
+            
+            startCmd.run(validateAfter=True)
+            res=startCmd.get_results()
+            dburl = dbconn.DbURL(hostname=self.dstHost,port=5432)
+            conn = dbconn.connect(dburl, True)
+            
+            # TODO: add other catalog tables
+            table_names = [
+                           'pg_catalog.gp_configuration', 
+                           'pg_catalog.gp_distribution_policy',
+                           #'pg_catalog.gp_id',
+                           'pg_catalog.gp_master_mirroring',
+                           ]
+            # Can't truncate system catalog table
+            q = 'DELETE FROM %s'
+            for table in table_names:
+                logger.info("Cleaning up %s" % table)
+                dbconn.execSQL(conn, q % table)
+            conn.commit()
+            conn.close()
+            
+            stopCmd.run(validateAfter=True)
+            res=stopCmd.get_results()
+            
+            logger.info("Schema only copy cleanup complete")
    
     #------------ Internal Helper Functions --------------------------------            
 

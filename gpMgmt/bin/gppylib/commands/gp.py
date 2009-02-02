@@ -26,8 +26,48 @@ class PySync(Command):
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
     
-      
+class SegmentStart(Command):      
+    def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
+        if utilityMode:
+            self.cmdStr='pg_ctl -w -D %s -l %s.log -o \'-i -p %d -c gp_role=utility\' start 2>&1' % \
+                (dataDir, dataDir, port)
+        else:
+            raise Exception, "Not implemented: SegmentStart in non-utility mode"
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
+        
+class SegmentStop(Command):
+    def __init__(self, name, dataDir, ctxt=LOCAL, remoteHost=None):
+        self.cmdStr='pg_ctl stop -D %s' % dataDir
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+
+        
+class Psql(Command):
+    def __init__(self, name, query, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
+        env = ''
+        if utilityMode:
+            env = 'PGOPTIONS="-c gp_session_role=utility"'
+        cmdStr = '%s psql -c "%s" %s' % (env, query, database)
+        # Need to escape " for REMOTE or it'll interfere with ssh 
+        if ctxt == REMOTE:
+            cmdStr = cmdStr.replace('"', '\\"')
+        self.cmdStr=cmdStr
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
+
+
+class ModifyPostgresqlConfSetting(Command):
+    def __init__(self, name, file, optName, optVal, optType='string', ctxt=LOCAL, remoteHost=None):
+        cmdStr = None
+        if optType == 'number':
+#            cmdStr = 'perl -p -i.bak -e \'s/^%s[ ]*=[ ]*\\d+/%s=%d/\' %s' % (optName, optName, optVal, file)
+            cmdStr = "perl -p -i.bak -e 's/^%s[ ]*=[ ]*\\d+/%s=%d/' %s" % (optName, optName, optVal, file)
+        elif optType == 'string':
+            cmdStr = "perl -i -p -e \"s/^%s[ ]*=[ ]*'[^']*'/%s='%s'/\" %s" % (optName, optName, optVal, file)
+        else:
+            raise Exception, "Invalid optType for ModifyPostgresqlConfSetting"
+        self.cmdStr = cmdStr
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
+    
     
 def distribute_tarball(queue,list,tarball):
         logger.debug("distributeTarBall start")        

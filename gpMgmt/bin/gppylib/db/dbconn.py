@@ -11,6 +11,7 @@ import os
 try: 
     #import pg8000
     import pgdb
+    import pg
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -117,14 +118,18 @@ class DbURL:
             (self.pghost,self.pgport,self.pgdb,self.pguser,self.pgpass)    
 
 
-def connect(dburl, utility=False):
+def connect(dburl, utility=False, usePg=False):
     if utility:
         options = '-c gp_session_role=utility'
     else:
         options = ''
     
     dsn_str = "" + str(dburl) + ": " + options + ":1"
-    conn = pgdb.connect(dsn=dsn_str)
+    if usePg:
+        conn = pg.connect(dburl.pgdb, dburl.pghost, dburl.pgport, options,
+                          None, dburl.pguser, dburl.pgpass)
+    else:
+        conn = pgdb.connect(dsn=dsn_str)
     return conn 
 
 

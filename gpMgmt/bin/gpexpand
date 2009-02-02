@@ -6,14 +6,17 @@ import copy
 import datetime
 import os
 import sys
+import socket
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 from gppylib.commands.unix import *
+from gppylib.commands.gp import Psql, ModifyPostgresqlConfSetting, SegmentStart, SegmentStop
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.gplog import *
 from gppylib.db import dbconn
 from gppylib.db import catalog
+from gppylib.segcopy import GpSegCopy, SegcopyError
 
 description = (""" 
 Adds additional segments to a pre-existing GPDB Array.
@@ -38,7 +41,9 @@ def parseargs():
     parser.remove_option('-h')
     
     parser.add_option('-c','--clean', action='store_true',
-                        help='remove the expansion schema.')                        
+                        help='remove the expansion schema.')
+    parser.add_option('-V', '--vacuum', action='store_true',
+                      help='Vacuum catalog tables before creating schema copy')                        
     parser.add_option('-d','--duration', type='duration', metavar='[h][:m[:s]]',
                       help='duration from beginning to end')
     parser.add_option('-e','--end', type='datetime', metavar='datetime',
@@ -53,6 +58,9 @@ def parseargs():
                         help='number of tables to expand at a time. Valid values are 1-127')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')
+    parser.add_option('-m', '--master_data_directory', action='store_true',
+                        default=os.getenv("MASTER_DATA_DIRECTORY"),
+                        help='master data directory used for schema only copy')
     
     
         
@@ -67,7 +75,9 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
-        
+    if not options.master_data_directory:
+        parser.print_help()
+        parser.exit()
     return options, args
 
 
@@ -96,10 +106,295 @@ status_detail_table_sql="""CREATE TABLE %s.%s
                           status text,
                           expansion_started timestamp,
                           expansion_finished timestamp,
-                          source_bytes int ) """ % (gpexpand_schema, status_detail_table)
+                          source_bytes numeric ) """ % (gpexpand_schema, status_detail_table)
 
 
 class ExpansionError(Exception): pass
+class SegmentTemplateError(Exception): pass
+
+class SegmentTemplate:
+    
+    # SQL
+    segment_src_sql = """
+        SELECT hostname, datadir FROM pg_catalog.gp_configuration
+        WHERE content > -1 AND definedprimary='t' AND valid = 't'
+        LIMIT 1
+    """
+    max_dbid_sql = """ SELECT max(dbid) FROM gp_configuration """
+    num_segments_sql = """SELECT numsegments FROM pg_catalog.gp_id"""
+    get_catalog_tables_sql = """
+                             SELECT schemaname || '.' ||  tablename 
+                             FROM pg_tables 
+                             WHERE schemaname = 'pg_catalog'
+                             """
+    vacuum_full_sql = 'VACUUM FULL %s'
+    update_new_seg_gpid_sql = """UPDATE pg_catalog.gp_id 
+                                 SET numsegments=%d, dbid=%d, content=%d"""
+    
+    
+    def __init__(self, logger, newSegments, masterDataDirectory, 
+                 dbUrl, vacuumCatalog, tempDir, schemaTarFile='gpexpand_schema.tar'):
+        self.logger = logger
+        self.newSegments = newSegments
+        self.vacuumCatalog = vacuumCatalog
+        self.tempDir = tempDir
+        self.dbUrl = dbUrl
+        self.masterDataDirectory = masterDataDirectory
+        self.schema_tar_file = schemaTarFile
+    
+        
+    def create_new_segments(self):
+        """Creates, cleans up and deploys new segments"""
+        self._create_template()
+        self._fixup_template()
+        self._tar_template()
+        self._distribute_template()
+        self._configure_new_segments()
+        pass
+    
+        
+    def _create_template(self):
+        """Creates the schema template that is used by new segments"""
+        self.logger.info('Creating segment template')
+        if self.vacuumCatalog:
+            self._vacuum_catalog()
+
+        os.mkdir(self.tempDir)
+
+        conn = dbconn.connect(dburl)
+        srcSeg = dbconn.execSQL(conn, self.segment_src_sql).fetchall()
+        if len(srcSeg) != 1:
+            raise SegmentTemplateError, "Unable to find a valid segment to use as a source"
+        
+        self.srcSegHostname = srcSeg[0][0]
+        self.srcSegDataDir = srcSeg[0][1]
+
+        maxDbId = dbconn.execSQL(conn, self.max_dbid_sql).fetchall()
+        if len(maxDbId) != 1:
+            raise SegmentTemplateError, 'Failed to retrieve maximum dbid from catalog'
+        self.maxDbId = maxDbId[0][0]
+
+        oldSegCount = dbconn.execSQL(conn, self.num_segments_sql).fetchall()
+        if len(oldSegCount) != 1:
+            raise SegmentTemplateError, 'Failed to retrieve current segment count'
+        self.oldSegCount = oldSegCount[0][0]
+
+        conn.commit()
+        conn.close()
+        
+        rv = os.system('gpstop -fa')
+        if rv != 0:
+            raise SegmentTemplateError, "Failed to stop gpdb"
+
+        try:    
+            gp_segcopy = GpSegCopy(self.logger, '127.0.0.1', self.masterDataDirectory,
+                                   '127.0.0.1', self.tempDir, True, True, 'sync')
+            gp_segcopy.copy()
+        except SegcopyError, msg:
+            raise SegmentTemplateError, msg
+                
+    
+    def _vacuum_catalog(self):
+        """Vacuums all catalog tables"""
+        
+        self.logger.info('Vacuuming catalog tables')
+        # Need to use pg, not pgdb, so we don't auto wrap in transaction
+        vac_conn = dbconn.connect(self.dbUrl, usePg=True)
+        conn = dbconn.connect(self.dbUrl)
+        catalog_tables = dbconn.execSQL(conn, self.get_catalog_tables_sql).fetchall()
+        conn.commit()
+        conn.close()
+            
+        for table in catalog_tables:
+                self.logger.info('Vacuuming %s' % table[0])
+                vac_conn.query(self.vacuum_full_sql % table[0])
+                
+        vac_conn.close()
+
+    
+    def _distribute_template(self):
+        """Distributes the template tar file to the new segments and expands it"""
+        self.logger.info('Distributing template tar file to new hosts')
+        # Reduce multiple interfaces to common hostname
+        self.hosts = []
+        for seg in self.newSegments:
+            hostnameCmd = Hostname('gpexpand', ctxt=REMOTE, remoteHost=seg['hostname'])
+            hostnameCmd.run(validateAfter=True)
+            res = hostnameCmd.get_results()
+            if not res.wasSuccessful():
+                self.logger.warn('Failed to execute \'hostname %s\': %s' % (seg['hostname'], res.printResults()))
+            elif not hostnameCmd.get_hostname() in self.hosts:
+                self.logger.info('Adding %s to host list' % hostnameCmd.get_hostname())
+                self.hosts.append(hostnameCmd.get_hostname())
+        
+        pool = WorkerPool()
+        for host in self.hosts:
+            cpCmd = RemoteCopy('gpexpand', self.schema_tar_file, host, '.')
+            pool.addCommand(cpCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise SegmentTemplateError, 'Failed to distribute tar file to all new hosts'
+        
+        self.logger.info('Extracting template tar file to new segment data directories')
+        for seg in self.newSegments:
+            extractTarCmd = ExtractTar('gpexpand', self.schema_tar_file,
+                                       seg['dataDir'], ctxt=REMOTE, 
+                                       remoteHost=seg['hostname'])
+            pool.addCommand(extractTarCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise SegmentTemplateError, 'Failed to extract tar file to all new hosts'
+        pool.haltWork()
+    
+    
+    def _configure_new_segments(self):
+        """Configures new segments.  This includes modifying the postgresql.conf file
+        and setting up the gp_id table"""
+        
+        self.logger.info('Configuring new segments')
+        pool = WorkerPool()
+        
+        for seg in self.newSegments:
+            modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('gpexpand',
+                                                                  seg['dataDir'] + '/postgresql.conf',
+                                                                  'port',
+                                                                  seg['port'],
+                                                                  optType='number',
+                                                                  ctxt=REMOTE,
+                                                                  remoteHost=seg['hostname'])
+            chmodCmd = Chmod('gpexpand', seg['dataDir'], '0700', 
+                             ctxt=REMOTE, remoteHost=seg['hostname'])
+            self.logger.info('Updating %s:%s/postgresql.conf' % (seg['hostname'], seg['dataDir']))
+            pool.addCommand(modifyPostgresqlConfCmd)
+            self.logger.info('Changing permissions on %s:%s' % (seg['hostname'], seg['dataDir']))
+            pool.addCommand(chmodCmd)
+
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise SegmentTemplateError, 'Failed to modify new segments'
+
+
+        for seg in self.newSegments:
+            startCmd = SegmentStart('gpexpand', seg['dataDir'], seg['port'], utilityMode=True,
+                                    ctxt=REMOTE, remoteHost=seg['hostname'])
+            pool.addCommand(startCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise SegmentTemplateError, 'Failed to start new segment in utility mode'
+
+        newSegCount = len(self.newSegments) + self.oldSegCount
+        newDbId = self.maxDbId + 1
+        for seg in self.newSegments:
+            dbUrl = dbconn.DbURL(hostname=seg['hostname'], port=seg['port'])
+            conn = dbconn.connect(dbUrl, utility=True)
+            seg['dbId'] = newDbId
+            query =  self.update_new_seg_gpid_sql % (newSegCount, seg['dbId'], seg['contentId'])
+            dbconn.execSQL(conn, query)
+            newDbId += 1
+            conn.commit()
+            conn.close()
+
+        self.logger.info('Stopping new segments')
+        for seg in self.newSegments:
+            stopCmd = SegmentStop('gpexpand', seg['dataDir'], ctxt=REMOTE, remoteHost=seg['hostname'])
+            pool.addCommand(stopCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise SegmentTemplateError, 'Failed to stop new segments'
+
+        pool.haltWork()
+    
+    
+    def _fixup_template(self):
+        """Copies postgresql.conf and pg_hba.conf files from a valid segment on the system.
+        Then modifies the template copy of pg_hba.conf"""
+        
+        self.logger.info('Copying postgresql.conf from existing segment into template')
+        cpCmd = RemoteCopy('gpexpand', self.srcSegDataDir + '/postgresql.conf', '127.0.0.1', 
+                           self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
+        cpCmd.run(validateAfter=True)
+        res = cpCmd.get_results()
+        if not res.wasSuccessful():
+            raise SegmentTemplateError, 'Failed to copy %s:%s/postgresql.conf: %s' % (self.srcSegHostname, self.srcSegDataDir, res.printResults())
+        
+        self.logger.info('Copying pg_hba.conf from existing segment into template')
+        cpCmd = RemoteCopy('gpexpand', self.srcSegDataDir + '/pg_hba.conf', '127.0.0.1', 
+                           self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
+        cpCmd.run(validateAfter=True)
+        res = cpCmd.get_results()
+        if not res.wasSuccessful():
+            raise SegmentTemplateError, 'Failed to copy %s:%s/pg_hba.conf: %s' % (self.srcSegHostname, self.srcSegDataDir, res.printResults())
+        
+        rmCmd = RemoveFiles('gpexpand', self.tempDir + '/gpperfmon/data')
+        rmCmd.run(validateAfter=True)
+        res = rmCmd.get_results()
+        if not res.wasSuccessful():
+            # Can ignore this, gpperfmon probably not installed
+            pass
+        
+        self.logger.info('Adding new segments into template pg_hba.conf')
+        try:
+            fp = open(self.tempDir + '/pg_hba.conf', 'a')
+            try:
+                for newSeg in self.newSegments:
+                    (hostname, aliaslist, ipaddrlist) = socket.gethostbyname_ex(newSeg['hostname'])
+                    fp.write('# %s\n' % newSeg['hostname'])
+                    for addr in ipaddrlist:
+                        fp.write('host\tall\tall\t%s/32\ttrust\n' % addr)
+            finally:
+                fp.close()
+        except IOError, msg:
+            raise SegmentTemplateError, 'Failed to open %s/pg_hba.conf' % self.tempDir
+        except Exception, msg:
+            raise SegmentTemplateError, 'Failed to add new segments to template pg_hba.conf: %' % msg
+    
+    def _tar_template(self):
+        """Tars up the template files"""
+        
+        self.logger.info('Creating template tar file')
+        tarCmd = CreateTar('gpexpand', self.tempDir, self.schema_tar_file)
+        tarCmd.run(validateAfter=True)
+        res = tarCmd.get_results()
+        if not res.wasSuccessful():
+            raise SegmentTemplateError, 'Failed to tar segment template: %s' % res.printResult()
+
+    
+    def cleanup(self):
+        """Cleans up temporary files from the local system and new segment hosts"""
+        self.logger.info('Cleaning up temporary template files')
+        pool = WorkerPool()
+        
+        rmCmd = RemoveFiles('gpexpand', self.tempDir)
+        pool.addCommand(rmCmd)
+        
+        rmCmd = RemoveFiles('gpexpand', self.schema_tar_file)
+        pool.addCommand(rmCmd)
+
+        for host in self.hosts:
+            rmCmd = RemoveFiles('gpexpand', self.schema_tar_file, ctxt=REMOTE, remoteHost=host)
+            pool.addCommand(rmCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise SegmentTemplateError, 'Failed to delete template tar file on segments'
+        pool.haltWork()
+       
 
 class gpexpand:
     
@@ -151,11 +446,137 @@ class gpexpand:
         #read in table entries
         return SETUP
     
-    
+    def read_input_file(self):
+        if not options.filename:
+            raise ExpansionError, 'Missing input file'
+        
+        self.new_segments = []
+        
+        try:
+            f = open(options.filename, 'r')
+            line = 1
+            try:
+                while 1:
+                    l = f.readline()
+                    if not l:
+                        break
+                    hostname, dataDir, port, contentId = l.split(':')
+                    seg = dict(zip(['hostname', 'dataDir', 'port', 'contentId'], [hostname, dataDir, int(port), int(contentId)]))
+                    self.new_segments.append(seg)
+                    line += 1
+            except ValueError:
+                raise ExpansionError, "Invalid input file on line %d" % line
+            finally:
+                f.close()
+        except IOError:
+            raise ExpansionError, "Input file %s not found" % options.filename
+        
+        
     def add_segments(self):
-        """Adds a specified set of empty segments to the system"""
-        pass
-    
+        tempDir = '%s/gpexpand_%d_%s' % (os.getcwd(), os.getpid(), 
+                                         datetime.datetime.now().strftime('%m%d%Y'))
+        self.old_segments = []
+        
+        # We need to get the current segment information before we start shutting
+        # down the array. 
+        rows = dbconn.execSQL(self.conn, 'SELECT hostname, datadir, port, content FROM pg_catalog.gp_configuration')
+        for row in rows:
+            seg = dict(zip(['hostname', 'dataDir', 'port', 'contentId'], row))
+            seg['port'] = int(seg['port'])
+            seg['contentId'] = int(seg['contentId'])
+            self.old_segments.append(seg)
+        
+        self.conn.commit()
+        self.conn.close()
+
+        pool = WorkerPool()
+        
+        # Create, distribute and configure the new segments.
+        try:
+            segTemplate = SegmentTemplate(self.logger, self.new_segments, 
+                                          options.master_data_directory, 
+                                          self.dburl, False, tempDir)
+            segTemplate.create_new_segments()
+
+            self.logger.info('Copying new pg_hba.conf file to original segments')
+            for seg in self.old_segments:
+                if seg['contentId'] == -1:
+                    continue
+                cpCmd = RemoteCopy('gpexpand', tempDir + '/pg_hba.conf', seg['hostname'], 
+                                   seg['dataDir'])
+                pool.addCommand(cpCmd)
+            pool.join()
+        
+            try:
+                pool.check_results()
+            except ExecutionError:
+                raise ExpansionError, 'Failed to copy new pg_hba.conf file to original segments.'
+            
+            segTemplate.cleanup()
+        except SegmentTemplateError, msg:
+            # Expansion failed, but the array can still start up without the
+            # new segments.
+            raise ExpansionError, msg
+
+
+        for seg in self.old_segments:
+            startCmd = SegmentStart('gpexpand', seg['dataDir'], seg['port'], utilityMode=True,
+                                    ctxt=REMOTE, remoteHost=seg['hostname'])
+            pool.addCommand(startCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            raise ExpansionError, 'Failed to start original segments in utility mode'
+        
+        # THIS IS THE POINT OF NO RETURN.  AFTER WE START CHANGING THE OLD SEGMENTS
+        # THE ARRAY WILL ONLY START IF WE COMPLETE EVERYTHING SUCCESSFULLY
+        # TODO: We need to be able to roll back on error beyond this point.
+        
+        # Update the number of segments in each QE's gp_id table
+        query = 'UPDATE pg_catalog.gp_id SET numsegments=%d' % (len(self.new_segments) + len(self.old_segments) - 1)
+        for seg in self.old_segments:
+            dbUrl = dbconn.DbURL(hostname=seg['hostname'], port=seg['port'])
+            conn = dbconn.connect(dbUrl, utility=True)
+            dbconn.execSQL(conn, query)
+            conn.commit()
+            conn.close()
+            
+        # Update gp_configuration on the master
+        self.conn = dbconn.connect(self.dburl, utility=True)
+        for seg in self.new_segments:
+            # TODO: mirrors.  Right now sets everything primary.
+            query = 'INSERT INTO pg_catalog.gp_configuration(content, definedprimary, dbid, isprimary, valid, hostname, port, datadir) VALUES (%d, \'t\', %d, \'t\', \'t\', \'%s\', %d, \'%s\')' % (seg['contentId'], seg['dbId'], seg['hostname'], seg['port'], seg['dataDir'])
+            dbconn.execSQL(self.conn, query)
+            
+        self.conn.commit()
+        self.conn.close()
+        
+        # Stop all the segments, we are ready to start up in normal mode
+        for seg in self.old_segments:
+            stopCmd = SegmentStop('gpexpand', seg['dataDir'], ctxt=REMOTE, remoteHost=seg['hostname'])
+            pool.addCommand(stopCmd)
+            
+        pool.join()
+        try:
+            pool.check_results()
+        except ExecutionError:
+            # We had some problems stopping the segments.  We should be able to start up
+            # properly if they are shut down.  All the catalog updates were successful 
+            # by this point.  For now, throw the exception.
+            # TODO: what do we do on failure here?
+            raise ExpansionError, 'Failed to stop original segments'
+        
+        pool.haltWork()
+        
+        rv = os.system('gpstart -a')
+        if rv != 0:
+            raise ExpansionError, 'Failed to restart the array'
+        
+        # Need to restore the connection used by the expansion
+        self.conn = dbconn.connect(self.dburl)
+        
     
     def setup_schema(self):
         """Used to setup the gpexpand schema"""
@@ -276,7 +697,7 @@ class gpexpand:
             tbl = ExpandTable(row)            
             cmd = ExpandCommand(name,self.dburl,tbl)
             self.queue.addCommand(cmd)
-            
+         
         #wait till done.
         while not self.queue.isDone():
             logger.info("woke up.  queue: %d finished %d  " % (self.queue.num_assigned,self.queue.completed_queue.qsize()))            
@@ -381,6 +802,7 @@ class ExpandTable():
             sql = " ALTER TABLE %s SET DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
         logger.info("Expand SQL: %s" % sql)    
         dbconn.execSQL(table_conn,sql)
+        table_conn.commit()
     
     
     def mark_finished(self,status_conn,table_conn,finish_time):
@@ -480,6 +902,14 @@ try:
     
     if state == UNINITIALIZED:
         state = gp_expand.setup_schema()
+        gp_expand.read_input_file()
+        gp_expand.add_segments()
+        # We should probably stop here and give the user a chance
+        # to modify tables in the gpexpand schema
+        logger.info('Initialization of the system expansion complete.')
+        logger.info('To begin table expansion onto the new segments')
+        logger.info('rerun gpexpand')
+        sys.exit(0)
         
     if state == SETUP:
         gp_expand.perform_expansion()
