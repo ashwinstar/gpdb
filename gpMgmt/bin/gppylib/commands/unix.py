@@ -18,14 +18,28 @@ from gppylib.commands.base import *
 
 logger = gplog.get_default_logger()
 
-
+#---------------platforms--------------------
+#global variable for our platform
 SYSTEM="unknown"
 
 SUNOS="sunos"
 LINUX="linux"
 DARWIN="darwin"
 FREEBSD="freebsd"
+platform_list = [SUNOS,LINUX,DARWIN,FREEBSD]
 
+curr_platform = platform.uname()[0].lower()
+
+
+
+#---------------command path--------------------
+CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/usr/local/bin', '/bin', 
+               '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin')
+
+CMD_CACHE = {}
+
+
+#----------------------------------
 
 class CommandNotFoundException(Exception):
     def __init__(self,cmd,paths):
@@ -36,23 +50,25 @@ class CommandNotFoundException(Exception):
     
     
 
-#TODO: worth caching in a dict?
 def findCmdInPath(cmd):
-    CMDPATH = ('/usr/kerberos/bin', '/usr/sfw/bin', '/opt/sfw/bin', '/usr/local/bin', '/bin', 
-               '/usr/bin', '/sbin', '/usr/sbin', '/usr/ucb', '/sw/bin')
+    global CMD_CACHE
 
-    for p in CMDPATH:
-        f = os.path.join(p, cmd)
-        if os.path.exists(f):
-            return f
-    logger.critical('Command %s not found' % cmd)
-    raise CommandNotFoundException(cmd,CMDPATH)
-
-def setup():
-    global SYSTEM
-    plat = platform.uname()
-    self.SYSTEM = plat[0].lower()    
+    if cmd not in CMD_CACHE:
+        for p in CMDPATH:
+            f = os.path.join(p, cmd)
+            if os.path.exists(f):
+                CMD_CACHE[cmd] = f
+                return f
+        logger.critical('Command %s not found' % cmd)
+        raise CommandNotFoundException(cmd,CMDPATH)
+    else:
+        return CMD_CACHE[cmd]
     
+    
+
+
+    
+#For now we'll leave some generic functions outside of the Platform framework    
 def getLocalHostname():
     return socket.gethostname().split('.')[0]
 
@@ -61,7 +77,123 @@ def getUserName():
 
 
 
+#---------------Platform Framework--------------------
+
+""" The following platform framework is used to handle any differences between
+    the platform's we support.  The GenericPlatform class is the base class
+    that a supported platform extends from and overrides any of the methods
+    as necessary.
+    
+    TODO:  should the platform stuff be broken out to separate module?
+"""
+class GenericPlatform():
+
+
+    def getName(self):
+        "unsupported"
+        
+    
+    def getDefaultLocale(self):
+        return 'en_US.utf-8'
+    
+    
+    def get_machine_arch_cmd(self):
+        return 'uname -i'
+    
+    def getPingOnceCmd(self):
+        pass
       
+        
+class LinuxPlatform(GenericPlatform):
+    
+    def __init__(self):
+        pass
+    
+    def getName(self):
+        return "linux"
+    
+    def getDefaultLocale(self):
+        return 'en_US.utf8'
+            
+
+class SolarisPlatform(GenericPlatform):
+    
+    def __init__(self):
+        pass
+    
+    def getName(self):
+        return "sunos"
+
+    def getDefaultLocale(self):
+        return 'en_US.UTF-8'
+    
+
+class DarwinPlatform(GenericPlatform):
+    
+    def __init__(self):
+        pass
+    
+    def getName(self):
+        return "darwin"
+    
+    def get_machine_arch_cmd(self):
+        return 'uname -m'
+    
+    
+class FreeBsdPlatform(GenericPlatform):
+
+    def __init__(self):
+        pass
+    
+    def getName(self):
+        return "freebsd"
+    
+    def get_machine_arch_cmd(self):
+        return 'uname -m'
+    
+
+
+    
+        
+""" if self.SYSTEM == 'sunos':
+            self.IFCONFIG_TXT='-a inet'
+            self.PS_TXT='ef'
+            self.LIB_TYPE='LD_LIBRARY_PATH'
+            self.ZCAT='gzcat'
+            self.PG_METHOD='trust'
+            self.NOLINE_ECHO='/usr/bin/echo'
+            self.MAIL='/bin/mailx'
+            self.PING_TIME='1'
+            self.DF=findCmdInPath('df')
+            self.DU_TXT='-s'
+        elif self.SYSTEM == 'linux':
+            self.IFCONFIG_TXT=''
+            self.PS_TXT='ax'
+            self.LIB_TYPE='LD_LIBRARY_PATH'
+            self.PG_METHOD='ident sameuser'
+            self.NOLINE_ECHO='%s -e' % self.ECHO
+            self.PING_TIME='-c 1'
+            self.DF='%s -P' % findCmdInPath('df')
+            self.DU_TXT='c'
+        elif self.SYSTEM == 'darwin':
+            self.IFCONFIG_TXT=''
+            self.PS_TXT='ax'
+            self.LIB_TYPE='DYLD_LIBRARY_PATH'
+            self.PG_METHOD='ident sameuser'
+            self.NOLINE_ECHO= self.ECHO
+            self.PING_TIME='-c 1'
+            self.DF='%s -P' % findCmdInPath('df')
+            self.DU_TXT='-c'
+        elif self.SYSTEM == 'freebsd':
+            self.IFCONFIG_TXT=''
+            self.PS_TXT='ax'
+            self.LIB_TYPE='LD_LIBRARY_PATH'
+            self.PG_METHOD='ident sameuser'
+            self.NOLINE_ECHO='%s -e' % self.ECHO
+            self.PING_TIME='-c 1'
+            self.DF='%s -P' % findCmdInPath('df')
+            self.DU_TXT='-c'
+"""
         
 #---------------ping--------------------
 class Ping(Command):
@@ -102,7 +234,11 @@ class DiskUsage(Command):
                         
     def get_bytes_used(self):   
 
-        rawIn=self.results.stdout.split('\t')[0]
+        rawIn=self.results.stdout.split('\t')[0].strip()
+
+        #TODO: revisit this idea of parsing '' and making it a 0. seems dangerous.
+        if rawIn == '':
+            return 0
 
         if rawIn[0] == 'd':
             raise UnixOperationError, "du command could not find directory: cmd: %s"\
@@ -222,7 +358,7 @@ class CreateTar(Command):
 class ExtractTar(Command):
     def __init__(self,name,srcTarFile,dstDirectory,ctxt=LOCAL,remoteHost=None):        
         self.srcTarFile=srcTarFile
-        self.dstDirectory=dstDirectory
+        self.dstDirectory=dstDirectory        
         tarCmd = None
         try:
             tarCmd = findCmdInPath('gtar')
@@ -262,8 +398,19 @@ class Hostname(Command):
             raise Exception, 'Command not yet executed'
         return self.results.stdout.strip()
 
-#--------------hostname ----------------------
-class Chmod(Command):
-    def __init__(self, name, dir, perm, ctxt=LOCAL, remoteHost=None):
-        cmdStr = '%s %s %s' % (findCmdInPath('chmod'), perm, dir)
-        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
+
+
+#--------------global variable initialization ----------------------
+
+if curr_platform == SUNOS:
+    SYSTEM = SolarisPlatform()
+elif curr_platform == LINUX:
+    SYSTEM = LinuxPlatform()
+elif curr_platform == DARWIN:
+    SYSTEM = DarwinPlatform()
+elif curr_platform == FREEBSD:
+    SYSTEM = FreeBsdPlatform()
+else:
+    raise Exception("Platform %s is not supported.  Supported platforms are:"\
+                    " %s", SYSTEM, str(platform_list))

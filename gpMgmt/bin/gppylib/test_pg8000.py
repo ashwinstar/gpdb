@@ -26,34 +26,44 @@ class pg8000TestCase(unittest.TestCase):
 
     
     
+    
     def test_connect(self):
-        #def connect(user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False, options=None):
-        dburl = DbURL()        
-        self.failUnlessRaises(TypeError,DBAPI.connect)        
-        self.failUnlessRaises(ProgrammingError,DBAPI.connect,dburl.pguser)        
-        conn=DBAPI.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
-        conn.close()
+        conn=None        
+        try:
+            #def connect(user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False, options=None):
+            dburl = DbURL()        
+            self.failUnlessRaises(TypeError,DBAPI.connect)        
+            self.failUnlessRaises(ProgrammingError,DBAPI.connect,dburl.pguser)        
+            conn=DBAPI.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
+        finally:
+            if conn: conn.close()
         
     
     def test_nonexist_objects(self):
-        dburl=DbURL()
-        conn=DBAPI.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
-        curs=conn.cursor()
-        curs.execute("DROP TABLE notable")
+        conn=None
+        try:
+            dburl=DbURL()
+            conn=DBAPI.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
+            curs=conn.cursor()
+            self.assertRaises(ProgrammingError,curs.execute,"DROP TABLE notable")
+        finally:
+            if conn: conn.close()
+         
         
         
     def test_datatypes(self):
-        #
-        dburl=DbURL()
-        conn=DBAPI.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
-        curs=conn.cursor()
-        curs.execute("CREATE TABLE tab1 ( a int )")
-        curs.execute("INSERT INTO tab1 VALUES 1")
-        curs.execute("INSERT INTO tab1 VALUES 100")
-        curs.execute("INSERT INTO tab1 VALUES -10000")
-        curs.execute("DROP TABLE tab1)")
-        curs.commit()
-    
+        conn=None
+        try:
+            
+            dburl=DbURL()
+            conn=DBAPI.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
+            curs=conn.cursor()
+            curs.execute("CREATE TABLE tab1 ( a int )")
+            self.assertRaises(ProgrammingError,curs.execute,"INSERT INTO tqb1 VALUES 1")
+            self.assertRaises(ProgrammingError,curs.execute,"DROP TABLE tab1")
+            self.assertRaises(ProgrammingError,conn.commit)
+        finally:
+            if conn: conn.close()
     
             
 

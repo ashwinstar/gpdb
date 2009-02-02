@@ -48,10 +48,12 @@ class pygresqlTestCase(unittest.TestCase):
         logger.info("test_dbi_connect")
         dburl = DbURL()        
         db = pgdb.connect(dburl.pguser,host=dburl.pghost,database=dburl.pgdb)
-        curs = db.cursor()
+        curs = db.cursor()        
+        curs.execute("COMMIT")
         curs.execute("BEGIN")
         curs.execute("DROP TABLE IF EXISTS jge ")
         curs.execute("CREATE TABLE jge ( a int )")
+        curs.execute("DROP TABLE jge")
         db.commit()  
 
     def test_utilitymode(self):

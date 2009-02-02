@@ -7,7 +7,6 @@
 
 import unittest
 
-import pg8000
 
 
 import gppylib.gplog
@@ -18,12 +17,8 @@ class catalogTestCase(unittest.TestCase):
     
     def setUp(self):
         dburl=dbconn.DbURL()
-        self.conn = pg8000.DBAPI.connect(host=dburl.pghost, 
-                                  user=dburl.pguser,
-                                  port=dburl.pgport,
-                                  database = dburl.pgdb,
-                                  options=None)        
-        pass
+        self.conn = dbconn.connect(dburl)
+        
     
     def tearDown(self):
         pass

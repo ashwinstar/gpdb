@@ -25,6 +25,8 @@ class PySync(Command):
         self.cmdStr="%s %s %s:%s" % (psync_executable,srcDir,dstHost,dstDir)        
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
+
+    
     
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
@@ -67,8 +69,35 @@ class ModifyPostgresqlConfSetting(Command):
             raise Exception, "Invalid optType for ModifyPostgresqlConfSetting"
         self.cmdStr = cmdStr
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
+        
+      
+
+class GpVersion(Command):
+    def __init__(self,name,ctxt=LOCAL,remoteHost=None):
+        self.cmdStr="$GPHOME/bin/postgres --gp-version"
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
+    def get_version(self):
+        return self.results.stdout
+
+
+class PassiveStandbyCheck(Command):    
+    def __init__(self,name,ctxt=LOCAL,remoteHost=None):
+        grepCmd = findCmdInPath('grep')
+        self.cmdStr=""
+        raise Exception("TODO: impl this!")
     
+    @staticmethod
+    def local(name):
+        cmd=PassiveStandbyCheck(name)
+        cmd.run(validateAfter=True)
+            
+    @staticmethod
+    def remote(name,remote_host):
+        cmd=Kill(name,ctxt=REMOTE,remoteHost=remote_host)        
+        cmd.run(validateAfter=True) 
+            
+        
 def distribute_tarball(queue,list,tarball):
         logger.debug("distributeTarBall start")        
         for db in list:

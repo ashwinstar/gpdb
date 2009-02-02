@@ -103,7 +103,7 @@ class Segment:
 #--- factory methods for creating GpArray objects.
 def createGPDBFromDB(dbURL):
     """Constructor for building gparray from provided database URL"""    
-    conn = dbconn.PgConn.connect(dbURL)
+    conn = dbconn.connect(dbURL)
     rows = dbconn.getConfig(conn)
     array =  GpArray(rows)
     conn.close()
@@ -128,6 +128,13 @@ def createFromGpInitFile(intputFile):
     raise Exception,"TODO: implement createFromGpInitFile"
 
 
+
+def parseTrueFalse(value):
+    if value.lower() == 'f':
+        return False
+    else:
+        return True
+
     
 class GpArray:
     """ TODO: 
@@ -146,31 +153,40 @@ class GpArray:
         self.arrayName=''
         self.segments=[]
         
-        for row in rows:
-            if self.master is None and row['content'] is not -1:
+        for row in rows:            
+            content=row[0]
+            definedprimary=row[1]
+            dbid=int(row[2])
+            isprimary=row[3]
+            valid=row[4]
+            hostname=row[5]
+            port=int(row[6])
+            datadir=row[7]
+            
+            
+            if self.master is None and content is not -1:
                 logger.error("FATAL - no master dbs defined!")
                 sys.exit(1)
                 
             #TODO: what about dbids???
             
-            if row['content'] is -1:
-                if row['definedprimary'] is True:
-                    self.master = GpDB(-1,row['definedprimary'],row['dbid'],row['isprimary'],row['valid'],
-                                           row['hostname'],row['port'],row['datadir'])
+            if content is -1:
+                if definedprimary is True:
+                    self.master = GpDB(-1,definedprimary,dbid,isprimary,valid,
+                                           hostname,port,datadir)
                 else:
-                    self.standbyMaster = GpDB(-1,row['definedprimary'],row['dbid'],row['isprimary'],row['valid'],
-                                                  row['hostname'],row['port'],row['datadir'])
+                    self.standbyMaster = GpDB(-1,definedprimary,dbid,isprimary,valid,
+                                                  hostname,port,datadir)
             else:
-                segdb = GpDB(row['content'],row['definedprimary'],row['dbid'],
-                                row['isprimary'],row['valid'],
-                                row['hostname'],row['port'],row['datadir'])
+                segdb = GpDB(content,definedprimary,dbid,
+                             isprimary,valid,hostname,port,datadir)
 
                 
-                if len(self.segments) <= row['content']:
-                    self.segments.insert(row['content'], Segment())
+                if len(self.segments) <= content:
+                    self.segments.insert(content, Segment())
                 
-                seg = self.segments[row['content']]                
-                if row['definedprimary'] is True:                    
+                seg = self.segments[content]                
+                if definedprimary is True:                    
                     seg.addPrimary(segdb)
                 else:             
                     seg.addMirror(segdb)
