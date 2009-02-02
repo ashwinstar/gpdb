@@ -262,6 +262,7 @@ static void doNegateFloat(Value *v);
 				cdb_string_list
 				opt_mirror_location
 				opt_column_list columnList opt_name_list
+				opt_inherited_column_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list
@@ -1976,7 +1977,7 @@ alter_table_cmd:
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> INHERIT <parent> [( column_list )] */
-			| INHERIT qualified_name opt_column_list
+			| INHERIT qualified_name opt_inherited_column_list
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddInherit;
@@ -3308,6 +3309,19 @@ ConstraintElem:
 
 opt_column_list:
 			'(' columnList ')'						{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NIL; }
+		;
+		
+opt_inherited_column_list:
+			'('
+				{
+					/* Allowed only when gp_enable_alter_table_inherit_cols is true */
+					if (!gp_enable_alter_table_inherit_cols)
+					{
+						yyerror("syntax error");
+					}
+				}
+				columnList ')'						{ $$ = $3; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 

@@ -754,6 +754,7 @@ main(int argc, char **argv)
 		ropt->disable_triggers = disable_triggers;
 		ropt->use_setsessauth = use_setsessauth;
 		ropt->dataOnly = dataOnly;
+		ropt->for_gp_migrator = forGpMigrator;
 
 		if (compressLevel == -1)
 			ropt->compression = 0;

@@ -120,6 +120,8 @@ typedef struct _restoreOptions
 										 * to stderr */
 	bool		single_txn;
 
+	bool		for_gp_migrator;		/* gpmigrator/internal use */
+
 	bool	   *idWanted;		/* array showing which dump IDs to emit */
 } RestoreOptions;
 

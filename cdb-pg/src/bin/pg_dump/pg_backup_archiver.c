@@ -131,7 +131,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	TocEntry   *te;
 	teReqs		reqs;
-	OutputContext sav = 
+	OutputContext sav =
 		{
 		NULL, /*	OF */
 		0, /* gzOut */
@@ -602,7 +602,7 @@ PrintTOCSummary(Archive *AHX, RestoreOptions *ropt)
 {
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	TocEntry   *te = AH->toc->next;
-	OutputContext sav = 
+	OutputContext sav =
 		{
 		NULL, /* OF */
 		0, /* gzOut */
@@ -2123,6 +2123,10 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	ahprintf(AH, "SET client_min_messages = warning;\n");
 	if (!AH->public.std_strings)
 		ahprintf(AH, "SET escape_string_warning = off;\n");
+
+	/* Enable extended ALTER TABLE child INHERIT parent syntax for gp_migrator */
+	if (AH->ropt->for_gp_migrator)
+		ahprintf(AH, "SET gp_enable_alter_table_inherit_cols = true;\n");
 
 	ahprintf(AH, "\n");
 }

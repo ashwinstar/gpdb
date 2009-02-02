@@ -1347,7 +1347,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_sort_limit", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable LIMIT operation to be performed while sorting."),
+            gettext_noop("Enable LIMIT operation to be performed while sorting."),
 			gettext_noop("Sort more efficiently when plan requires the first <n> rows at most.")
 		},
 		&gp_enable_sort_limit,
@@ -1356,8 +1356,8 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_sort_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable duplicate removal to be performed while sorting."),
-			gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows.")
+            gettext_noop("Enable duplicate removal to be performed while sorting."),
+            gettext_noop("Reduces data handling when plan calls for removing duplicates from sorted rows.")
 		},
 		&gp_enable_sort_distinct,
 		true, NULL, NULL
@@ -1401,7 +1401,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_enable_motion_deadlock_sanity", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable verbose check at planning time."),
 			NULL,
-			GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_motion_deadlock_sanity,
 		false, NULL, NULL
@@ -1927,6 +1927,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_alter_table_inherit_cols", PGC_USERSET, UNGROUPED,
+			gettext_noop("Enable extended 'ALTER TABLE child INHERIT parent' syntax."),
+			gettext_noop("The extended syntax adds an optional '( column_list )' identifying columns "
+					"to be marked as fully-inherited from parent."),
+			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&gp_enable_alter_table_inherit_cols,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_mapreduce_define", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Prepare mapreduce object creation"),  /* turn off statement logging */
 		 NULL,
@@ -1945,15 +1956,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&coredump_on_memerror,
 		false, NULL, NULL
 	},
-	{
+    {
 		{"log_autostats", PGC_SUSET, LOGGING_WHAT,
-			gettext_noop("Logs details of auto-stats issued ANALYZEs."),
-			NULL,
-			GUC_GPDB_ADDOPT
+		 gettext_noop("Logs details of auto-stats issued ANALYZEs."),
+		 NULL,
+		             GUC_GPDB_ADDOPT
 		},
 		&log_autostats,
 		true, NULL, NULL
-	},
+	},	
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3034,7 +3045,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_gpperfmon_send_interval,
 		1, 1, 3600, gpvars_assign_gp_gpperfmon_send_interval, NULL
 	},
-
+		
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),
@@ -3223,7 +3234,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_UNIT_KB | GUC_NO_SHOW_ALL
 		},
 		&gp_process_memory_cutoff,
-		0, 0, SIZE_MAX/2/1024, NULL, NULL,
+		0, 0, SIZE_MAX/2/1024, NULL, NULL, 
 	},
 
 	{

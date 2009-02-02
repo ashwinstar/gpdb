@@ -229,6 +229,9 @@ int 		gp_motion_slice_noop = 0;
 int 		gp_ltrace_flag = 0;
 #endif
 
+/* Internal Features */
+bool		gp_enable_alter_table_inherit_cols = false;
+
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = true;
 bool		gp_enable_dqa_pruning = true;
