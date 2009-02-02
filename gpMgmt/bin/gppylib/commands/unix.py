@@ -399,6 +399,12 @@ class Hostname(Command):
         return self.results.stdout.strip()
 
 
+#--------------chmod ----------------------
+class Chmod(Command):
+    def __init__(self, name, dir, perm, ctxt=LOCAL, remoteHost=None):
+        cmdStr = '%s %s %s' % (findCmdInPath('chmod'), perm, dir)
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+
 
 
 #--------------global variable initialization ----------------------
