@@ -278,3 +278,70 @@ select c1 from t1 where 49 not in (select c3 from t3);
 --
 select c1 from t1 where c1 not in (select c2 from t2 order by c2 limit 3) order by c1;
 
+--quantified/correlated subqueries
+--
+--q32
+--
+select c1 from t1 where c1 =all (select c2 from t2 where c2 > -1 and c2 <= 1);
+
+--
+--q33
+--
+select c1 from t1 where c1 <>all (select c2 from t2);
+
+--
+--q34
+--
+select c1 from t1 where c1 <=all (select c2 from t2 where c2 not in (select c1n from t1n));
+
+--
+--q35
+--
+select c1 from t1 where not c1 =all (select c2 from t2 where not c2 >all (select c3 from t3));
+
+--
+--q36
+--
+select c1 from t1 where not c1 <>all (select c1n from t1n where c1n <all (select c3 from t3 where c3 = c1n));
+
+--
+--q37
+--
+select c1 from t1 where not c1 >=all (select c2 from t2 where c2 = c1);
+
+--
+--q38
+--
+select c1 from t1 where not exists (select c2 from t2 where c2 = c1);
+
+--
+--q39
+--
+select c1 from t1 where not exists (select c2 from t2 where c2 not in (select c3 from t3) and c2 = c1);
+
+--
+--q40
+--
+select c1 from t1 where not exists (select c2 from t2 where exists (select c3 from t3) and c2 <>all (select c3 from t3) and c2 = c1);
+
+--
+--q41
+--
+select c1 from t1 where c1 not in (select c2 from t2) or c1 = 49;
+
+--
+--q42
+--
+select c1 from t1 where not not not c1 in (select c2 from t2);
+
+
+--
+--q43
+--
+select c1 from t1 where c1 not in (select c2 from t2 where c2 > 4) and c1 is not null;
+
+--
+--q44
+--
+select c1 from t1 where c1 not in (select c2 from t2 where c2 > 4) and c1 > 2;
+

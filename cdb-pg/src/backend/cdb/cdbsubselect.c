@@ -13,9 +13,9 @@
 
 #include "catalog/pg_type.h"            /* INT8OID */
 #include "nodes/makefuncs.h"
-#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/subselect.h"        /* convert_testexpr() */
+#include "optimizer/prep.h"              /* canonicalize_qual() */
 #include "optimizer/var.h"              /* contain_vars_of_level_or_above() */
 #include "parser/parse_oper.h"          /* make_op() */
 #include "parser/parse_relation.h"      /* addRangeTableEntryForSubquery() */
@@ -28,6 +28,8 @@
 static Node *
 pull_up_IN_clauses(PlannerInfo *root, List** rtrlist_inout, Node *node);
 
+static Node *
+convert_IN_to_antijoin(PlannerInfo * root, List** rtrlist_inout, SubLink * sublink);
 
 /*
  * cdbsubselect_flatten_sublinks
@@ -445,8 +447,7 @@ convert_sublink_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublin
             break;
 
         case ALL_SUBLINK:
-            cdbsubselect_drop_orderby(subselect);
-            cdbsubselect_drop_distinct(subselect);
+			result = convert_IN_to_antijoin(root, rtrlist_inout, sublink);
             break;
 
         case ANY_SUBLINK:
@@ -482,11 +483,6 @@ safe_to_convert_NOTIN(SubLink * sublink)
 
 	/* ARRAY sublinks have empty test expressions */
 	if (sublink->testexpr == NULL)
-		return false;
-
-	/* OR expressions are not handled */
-	if (!IsA(sublink->testexpr, OpExpr) &&
-		!and_clause(sublink->testexpr))
 		return false;
 
 	/* No volatile functions in the subquery */
@@ -547,6 +543,7 @@ get_fromlist_item(Node *jtnode, int rtindx)
 		{
 			Node	   *l_match = get_fromlist_item(jexpr->larg, rtindx);
 			Node	   *r_match = get_fromlist_item(jexpr->rarg, rtindx);
+
 			if (l_match || r_match)
 				match = jtnode;
 		}
@@ -597,7 +594,7 @@ add_dummy_const(List *tlist)
 	dummy = makeTargetEntry((Expr *) zconst,
 							resno,
 							"zero",
-							false /* resjunk */);
+							false /* resjunk */ );
 
 	if (tlist == NIL)
 		tlist = list_make1(dummy);
@@ -660,10 +657,10 @@ add_notin_subquery_rte(Query * parse, Query * subselect)
 	int			subq_indx;
 
 	subselect->targetList = mutate_targetlist(subselect->targetList);
-	subq_rte = addRangeTableEntryForSubquery(NULL, /* pstate */
+	subq_rte = addRangeTableEntryForSubquery(NULL,		/* pstate */
 											 subselect,
 											 makeAlias("NotIn_SUBQUERY", NIL),
-											 false /* inFromClause */);
+											 false /* inFromClause */ );
 	parse->rtable = lappend(parse->rtable, subq_rte);
 
 	/* assume new rte is at end */
@@ -703,7 +700,7 @@ add_join_rte(Query * parse, int l_rtindex, int r_rtindex, int join_type)
 	j_colnames = list_concat(l_colnames, r_colnames);
 	j_colvars = list_concat(l_colvars, r_colvars);
 
-	join_rte = addRangeTableEntryForJoin(NULL, /* pstate */
+	join_rte = addRangeTableEntryForJoin(NULL,	/* pstate */
 										 j_colnames,
 										 join_type,
 										 j_colvars,
@@ -747,7 +744,6 @@ make_join_expr(Node *larg, int r_rtindex, int j_rtindex, int join_type)
 static Node *
 make_join_on_quals(SubLink * sublink, int subquery_indx)
 {
-	BooleanTest *btest;
 	Expr	   *join_pred;
 	Query	   *subselect = (Query *) sublink->subselect;
 	List	   *subtlist = NIL;
@@ -756,15 +752,28 @@ make_join_on_quals(SubLink * sublink, int subquery_indx)
 										  subquery_indx,
 										  &subtlist,
 										  subselect->targetList);
+
+	join_pred = canonicalize_qual(make_notclause(join_pred));
+
 	Assert(join_pred != NULL);
+	return (Node *) join_pred;
+}
+
+/* add IS NOT FALSE clause on top of the clause */
+static Node *
+add_null_match_clause(Node *clause)
+{
+	BooleanTest *btest;
+
+	Assert(clause != NULL);
 	btest = makeNode(BooleanTest);
-	btest->arg = join_pred;
+	btest->arg = (Expr *) clause;
 	btest->booltesttype = IS_NOT_FALSE;
 	return (Node *) btest;
 }
 
-
-/* Go through a jointree's fromlist entries and delete an entry
+/* 
+ * Go through a jointree's fromlist entries and delete an entry
  * that matches the supplied delnode. This can only be a
  * RangeTblRef or a JoinExpr. See also resolvenew_in_jointree()
  */
@@ -788,13 +797,90 @@ remove_fromlist_item(List *fromlist, Node *delnode)
 	return fromlist;
 }
 
+/* 
+ * verify whether the output columns produced by the given query is 
+ * all non-nullable 
+ */
+static bool
+is_inner_nonnullable (Query *subq)
+{
+	ListCell   *l;
+	Node *quals = subq->jointree->quals;
+
+	/* 
+	 * a quick first check is to see if there are any non-nullable rels
+	 * at all present in the query expression 
+	 */
+		
+	Node *inner_qual = (Node *)make_ands_implicit ((Expr *)quals); 
+	Relids nonnullable = find_nonnullable_rels (inner_qual);
+
+	if (nonnullable == NULL || 
+		bms_num_members(nonnullable) != list_length(subq->rtable))
+		return false;
+
+	/* 
+	 * we now know some nonnullable rels exist, but still need to ensure
+	 * if the attributes involved in the subq are nonnullable 
+	 */
+	foreach(l, subq->targetList)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(l);
+		Node *node = (Node *) tle->expr;
+
+		if (tle->resjunk)	/* ignore resjunk columns */
+			continue;
+
+		if (IsA (node, Var)) {	
+			Var *var = (Var *) node;
+			if (var->varlevelsup == 0 && 
+				contain_var_reference (quals, var->varno, var->varattno, var->varlevelsup)) 
+				return true;
+		}
+	}
+	return false;
+}
+
+/* 
+ * verify whether the attributes of the query that are referenced 
+ * in the testexpr is all non-nullable
+ */
+static bool 
+is_outer_nonnullable (Query *outer, Node *testexpr) {
+
+	Node *quals = outer->jointree->quals;
+	Node *outer_qual = (Node *)make_ands_implicit ((Expr *)quals);
+	Relids		outer_rels = find_nonnullable_rels(outer_qual);
+	Relids		left_varnos = pull_varnos(testexpr);
+
+	if (outer_rels == NULL || 
+		(!bms_is_subset(left_varnos, outer_rels))) 
+		return false;
+	else 
+	{
+		List *vars;
+		ListCell *vl; 
+		vars = pull_var_clause (testexpr, false); 
+							
+		foreach (vl, vars)  
+		{
+			Var *var = (Var *)lfirst (vl);
+			if (var->varlevelsup == 0 && 
+				contain_var_reference (quals, var->varno, var->varattno, var->varlevelsup)) 
+				return true;
+		}
+		return false;
+	}
+	return false;
+}
+
 /* Create a null test. */
 static Expr *
 make_notin_quals(List *rtable, int j_rtindex, JoinType join_type)
 {
 	NullTest   *null_test = NULL;
-	
-	if(join_type == JOIN_LEFT) 
+
+	if (join_type == JOIN_LEFT)
 	{
 		RangeTblEntry *j_rte;
 		Var		   *dummy;
@@ -810,17 +896,15 @@ make_notin_quals(List *rtable, int j_rtindex, JoinType join_type)
 		dummy = (Var *) list_nth(j_colvars, list_length(j_colvars) - 1);
 		null_test->arg = (Expr *) dummy;
 	}
-	else if (join_type == JOIN_LASJ) 
-	{
+	else if (join_type == JOIN_LASJ)
 		null_test = NULL;
-	}
 
 	return (Expr *) null_test;
 }
 
 /*
- * convert_NOIN_to_join: can we convert an NOT IN SubLink to join style?
- * If not appropriate to process this SubLink in join style, return NULL.
+ * convert_IN_to_antijoin: can we convert an ALL SubLink to join style?
+ * If not appropriate to process this SubLink, return it as it is.
  * Side effects of a successful conversion include adding the SubLink's
  * subselect to the top-level rangetable, adding a JOIN RTE linking the outer
  * query with the subselect and setting up the qualifiers correctly.
@@ -835,9 +919,9 @@ make_notin_quals(List *rtable, int j_rtindex, JoinType join_type)
  * from the subselect upstream.
  */
 static Node *
-convert_IN_to_antijoin(PlannerInfo * root, SubLink * sublink)
+convert_IN_to_antijoin(PlannerInfo * root, List **rtrlist_inout, SubLink * sublink)
 {
-	Expr	   *quals = make_notclause((Expr *) sublink);
+	Expr	   *quals = (Expr *) sublink;
 	Query	   *parse = root->parse;
 	Query	   *subselect = (Query *) sublink->subselect;
 	int			join_type = JOIN_LASJ;
@@ -854,10 +938,15 @@ convert_IN_to_antijoin(PlannerInfo * root, SubLink * sublink)
 		{
 			int			subq_indx = add_notin_subquery_rte(parse, subselect);
 			int			join_indx = add_join_rte(parse, larg_indx, subq_indx, join_type);
+			bool		nonnullable = is_outer_nonnullable (parse, sublink->testexpr) && 
+										is_inner_nonnullable(subselect);
 
 			JoinExpr   *join_expr = make_join_expr(larg, subq_indx, join_indx, join_type);
 
 			join_expr->quals = make_join_on_quals(sublink, subq_indx);
+
+			if (nonnullable == false)
+					join_expr->quals = add_null_match_clause(join_expr->quals);
 
 			parse->jointree->fromlist = lappend(parse->jointree->fromlist, join_expr);
 			parse->jointree->fromlist = remove_fromlist_item(parse->jointree->fromlist, larg);
@@ -868,52 +957,6 @@ convert_IN_to_antijoin(PlannerInfo * root, SubLink * sublink)
 
 	return (Node *) quals;
 }
-
-/*
- * convert_sublink_to_antijoin
- * The caller is passing us a sublink that appeared under a NOT operator.
- * See if the sublink can be flattened to an antijoin. If not, return
- * the negated version of the sublink (Note: This is keeping in line with
- * how NOTs are handled in other parts of the code base see push_nots for
- * instance)
- */
-static Node *
-convert_sublink_to_antijoin(PlannerInfo * root, SubLink * sublink)
-{
-	Node	   *result = (Node *) make_notclause((Expr *) sublink);
-	Query	   *subselect = (Query *) sublink->subselect;
-
-	Assert(IsA(sublink, SubLink) &&
-		   IsA(subselect, Query));
-
-	switch (sublink->subLinkType)
-	{
-		case EXISTS_SUBLINK:
-			break;
-
-		case ALL_SUBLINK:
-			break;
-
-		case ANY_SUBLINK:
-			cdbsubselect_drop_orderby(subselect);
-			result = convert_IN_to_antijoin(root, sublink);
-			break;
-
-		case ROWCOMPARE_SUBLINK:
-		case EXPR_SUBLINK:
-			break;
-
-		case ARRAY_SUBLINK:
-			break;
-
-		default:
-			Insist(0);
-	}
-	return result;
-}
-
-/* NOTIN -end */
-
 
 /*
  * pull_up_IN_clauses
@@ -938,9 +981,9 @@ convert_sublink_to_antijoin(PlannerInfo * root, SubLink * sublink)
  * This function was formerly in prepjointree.c.
  */
 Node *
-pull_up_IN_clauses(PlannerInfo *root, List** rtrlist_inout, Node *node)
+pull_up_IN_clauses(PlannerInfo * root, List **rtrlist_inout, Node *node)
 {
-    if (node == NULL)
+	if (node == NULL)
 		return NULL;
 	if (IsA(node, SubLink))
 	{
@@ -959,25 +1002,47 @@ pull_up_IN_clauses(PlannerInfo *root, List** rtrlist_inout, Node *node)
 		foreach(l, ((BoolExpr *) node)->args)
 		{
 			Node	   *oldclause = (Node *) lfirst(l);
-            Node       *newclause = pull_up_IN_clauses(root, rtrlist_inout, oldclause);
+			Node	   *newclause = pull_up_IN_clauses(root, rtrlist_inout, oldclause);
 
 			if (newclause)
-                newclauses = lappend(newclauses, newclause);
+				newclauses = lappend(newclauses, newclause);
 		}
-		return (Node *)make_ands_explicit(newclauses);
+		return (Node *) make_ands_explicit(newclauses);
 	}
 	if (not_clause(node))
 	{
-		Node	   *notin = (Node *) get_notclausearg((Expr *) node);
+		Node	   *arg = (Node *) get_notclausearg((Expr *) node);
 
-		if (IsA(notin, SubLink))
+		/*
+		 *	 We normalize NOT subqueries using the following axioms:
+		 *
+		 *		 val NOT IN (subq)		 =>  val <> ALL (subq)
+		 *		 NOT val op ANY (subq)	 =>  val op' ALL (subq)
+		 *		 NOT val op ALL (subq)	 =>  val op' ANY (subq)
+		 */
+
+		if (IsA(arg, SubLink))
 		{
-			SubLink    *sublink = (SubLink *) notin;
-			Node	   *subst;
+			SubLink    *sublink = (SubLink *) arg;
 
-			/* Is it a convertible NOT IN clause?  If not, return the negated sublink.*/
-			subst = convert_sublink_to_antijoin(root, sublink);
-			return subst;
+			if (sublink->subLinkType == ANY_SUBLINK)
+				sublink->subLinkType = ALL_SUBLINK;
+			else if (sublink->subLinkType == ALL_SUBLINK)
+				sublink->subLinkType = ANY_SUBLINK;
+			else
+				return node;	/* do nothing for other sublinks */
+
+			sublink->testexpr = (Node *) canonicalize_qual(
+								 make_notclause((Expr *) sublink->testexpr));
+
+			return (Node *) pull_up_IN_clauses(root, rtrlist_inout, (Node *) sublink);
+
+		}
+		else if (not_clause(arg))
+		{
+			/* NOT NOT (expr) => (expr)  */
+			return (Node *) pull_up_IN_clauses(root, rtrlist_inout,
+									(Node *) get_notclausearg((Expr *) arg));
 		}
 	}
 	/* Stop if not an AND */
