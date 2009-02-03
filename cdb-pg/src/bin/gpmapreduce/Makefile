@@ -11,7 +11,7 @@ INCDIR= include
 SRCDIR= src
 endif
 
-override CPPFLAGS += -DFRONTEND -D_REENTRANT -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir)  -Wno-error=unused-function
+override CPPFLAGS += -DFRONTEND -D_REENTRANT -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir)
 override LDFLAGS  += -lyaml
 
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
