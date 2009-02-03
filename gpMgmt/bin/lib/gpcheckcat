@@ -779,8 +779,9 @@ FROM pg_catalog.pg_type x
      LEFT OUTER JOIN pg_catalog.pg_namespace n on (typnamespace = n.oid)
      LEFT OUTER JOIN pg_catalog.pg_class c on (typrelid = c.oid)
      LEFT OUTER JOIN pg_catalog.pg_user u on (typowner = usesysid)
+WHERE (nspname is null or n.nspname !~ '%s')
 ORDER BY nspname, typname
-''' % (oids),
+''' % (oids, nspexclude),
 
                 'pg_namespace': '''
 SELECT nspname, usename, nspacl %s
