@@ -15,7 +15,7 @@ include $(top_builddir)/src/Makefile.global
 SUBDIRS     := fstream
 SUBDIROBJS  := $(SUBDIRS:%=%/SUBSYS.o)
 
-override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
+override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)  -Wno-error=unused-function
 
 OBJS = guc.o help_config.o pg_rusage.o ps_status.o superuser.o tzparser.o uriparser.o
 
