@@ -15,7 +15,7 @@ NAME= plpgsql
 SO_MAJOR_VERSION= 1
 SO_MINOR_VERSION= 0
 
-override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
+override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)  -Wno-error=unused-function
 SHLIB_LINK = $(filter -lintl, $(LIBS)) $(BE_DLLLIBS)
 rpath :=
 
