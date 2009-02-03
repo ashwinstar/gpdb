@@ -79,4 +79,78 @@ select gp_segment_id, * from atsdb;
 (0 rows)
 
 drop table ats_test;
+-- Now make sure indexes work.
+create index atsdb_i_idx on atsdb(i);
+set enable_seqscan to off;
+explain select * from atsdb where i = 1;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1)  (cost=0.00..200.27 rows=1 width=36)
+   ->  Index Scan using atsdb_i_idx on atsdb  (cost=0.00..200.27 rows=1 width=36)
+         Index Cond: i = 1
+ Settings:  enable_seqscan=off
+(4 rows)
+
+select * from atsdb where i = 1;
+ i | j 
+---+---
+ 1 | 2
+(1 row)
+
+alter table atsdb set distributed by (i);
+explain select * from atsdb where i = 1;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1)  (cost=0.00..200.27 rows=1 width=36)
+   ->  Index Scan using atsdb_i_idx on atsdb  (cost=0.00..200.27 rows=1 width=36)
+         Index Cond: i = 1
+ Settings:  enable_seqscan=off
+(4 rows)
+
+select * from atsdb where i = 1;
+ i | j 
+---+---
+ 1 | 2
+(1 row)
+
 drop table atsdb;
+-- Now try AO
+create table atsdb_ao (i int, j text) distributed by (i);
+insert into atsdb_ao select i, (i+1)::text from generate_series(1, 100) i;
+insert into atsdb_ao select i, (i+1)::text from generate_series(1, 100) i;
+-- check that we're an AO table
+explain select count(*) from atsdb_ao;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Aggregate  (cost=7.26..7.27 rows=1 width=0)
+   ->  Gather Motion 2:1  (slice1)  (cost=7.20..7.24 rows=1 width=0)
+         ->  Aggregate  (cost=7.20..7.21 rows=1 width=0)
+               ->  Seq Scan on atsdb_ao  (cost=0.00..5.96 rows=496 width=0)
+ Settings:  enable_seqscan=off
+(5 rows)
+
+select count(*) from atsdb_ao;
+ count 
+-------
+   200
+(1 row)
+
+alter table atsdb_ao set distributed by (j);
+-- Still AO?
+explain select count(*) from atsdb_ao;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Aggregate  (cost=7.26..7.27 rows=1 width=0)
+   ->  Gather Motion 2:1  (slice1)  (cost=7.20..7.24 rows=1 width=0)
+         ->  Aggregate  (cost=7.20..7.21 rows=1 width=0)
+               ->  Seq Scan on atsdb_ao  (cost=0.00..5.96 rows=496 width=0)
+ Settings:  enable_seqscan=off
+(5 rows)
+
+select count(*) from atsdb_ao;
+ count 
+-------
+   200
+(1 row)
+
+drop table atsdb_ao;

@@ -9073,6 +9073,8 @@ build_ctas_with_dist(Relation rel, List *dist_clause)
 	Plan *plan;
 	DestReceiver *dest;
 	QueryDesc *queryDesc;
+	List *wo = NIL;
+	StdRdOptions *opts = (StdRdOptions *)rel->rd_options;
 
 	/* temporary enough */
 	snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", RelationGetRelid(rel));
@@ -9086,6 +9088,33 @@ build_ctas_with_dist(Relation rel, List *dist_clause)
 							pstrdup(RelationGetRelationName(rel)));
 	s->fromClause = list_make1(from_tbl);
 	s->into = makeRangeVar(nspname, pstrdup(tmpname));
+
+	/* WITH options */
+	if (rel->rd_rel->relhasoids)
+		wo = lappend(wo, defWithOids(true));
+	if (opts)
+	{
+		if (opts->fillfactor)
+			wo = lappend(wo, makeDefElem("fillfactor",
+										 (Node *)makeInteger(opts->fillfactor)));
+		if (opts->appendonly)
+			wo = lappend(wo, makeDefElem("appendonly",
+										 (Node *)makeString("true")));
+		if (opts->blocksize)
+			wo = lappend(wo, makeDefElem("blocksize",
+										 (Node *)makeInteger(opts->blocksize)));
+		if (opts->compresslevel)
+			wo = lappend(wo, makeDefElem("compresslevel",
+										 (Node *)makeInteger(opts->compresslevel)));
+		if (opts->compresstype)
+			wo = lappend(wo, makeDefElem("compresstype",
+										 (Node *)makeString(pstrdup(opts->compresstype))));
+		if (opts->checksum)
+			wo = lappend(wo, makeDefElem("checksum",
+										 (Node *)makeString("yes")));
+	}
+
+	s->intoOptions = wo;
 	s->distributedBy = dist_clause;
 
 	parsetrees = parse_analyze((Node *)s, NULL, NULL, 0);
@@ -9138,6 +9167,8 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	RangeVar   *tmprv;
 	Oid			tmprelid;
 	Oid			tarrelid = RelationGetRelid(rel);
+	List	   *oid_map = NIL;
+	List	   *qe_data = NIL; /* data to pass to QEs */
 
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
@@ -9305,10 +9336,14 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		 * Step (d) - tell the seg nodes about the temporary relation. This
 		 * involves stomping on the node we've been given
 		 */
-		linitial(l1) = tmprv;
+		qe_data = lappend(qe_data, tmprv);
 	}
 	else
-		tmprv = linitial(l1);
+	{
+		qe_data = linitial(l1);
+		tmprv = linitial(qe_data);
+		oid_map = lsecond(qe_data);
+	}
 
 	/*
 	 * Step (e) - swap relfilenodes
@@ -9321,10 +9356,18 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	heap_close(rel, NoLock);
    	tmprelid = RangeVarGetRelid(tmprv, false);
 	swap_relation_files(tarrelid, tmprelid, false);
+	
+	/* now, reindex */
+	reindex_relation(tarrelid, false, false /* ao_segs ? */,
+					 &oid_map, Gp_role == GP_ROLE_DISPATCH);
 
 	/* Step (f) */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
 		GpPolicyReplace(tarrelid, policy);
+		qe_data = lappend(qe_data, oid_map);
+		linitial(l1) = qe_data;
+	}
 
 	/* Step (g) Drop the table */
 	{
