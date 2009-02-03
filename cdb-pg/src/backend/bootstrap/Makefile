@@ -10,7 +10,7 @@ subdir = src/backend/bootstrap
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
+override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)  -Wno-error=unused-function
 
 OBJS= bootparse.o bootstrap.o 
 
