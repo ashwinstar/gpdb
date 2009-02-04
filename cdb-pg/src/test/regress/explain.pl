@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2006, 2007 
+# copyright (c) 2006, 2007, 2008, 2009 
 # Author: Jeffrey I Cohen
 #
 #
@@ -239,7 +239,7 @@ correctly identify the left and right children.
 
 Jeffrey I Cohen
 
-Copyright (c) 2006, 2007 GreenPlum.  All rights reserved.  
+Copyright (c) 2006, 2007, 2008, 2009 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -293,7 +293,7 @@ Address bug reports and comments to: jcohen@greenplum.com
 #  This routine applies a function over the entire parse tree
 #
 # OLAP fixups:
-#  OLAP queries have duplicate ShareInputScan and Multi Slice Motion nodes.
+#  OLAP queries have duplicate Shared Scan and Multi Slice Motion nodes.
 #  explain.pl only fixes them up for dot output, but not for yaml, perl, etc.
 #  The rationale is that dot handle digraphs nicely, but yaml and perl are
 #  more suitable for tree output.
@@ -1631,7 +1631,7 @@ sub prune_heavily
 }
 
 # identify the slice for each node
-# and find ShareInputScanPrimary
+# and find Shared Scan "Primary"
 # and find MultiSliceMotion
 sub pre_slice
 {
@@ -1653,19 +1653,24 @@ sub pre_slice
 
         # olap stuff
 
-        if ($node->{short} =~ m/^ShareInputScan/)
+        if ($node->{short} =~ m/^Shared Scan/)
         {
-            # if the ShareInputScan has a child it is the "primary"
+            # if the Shared Scan has a child it is the "primary"
             if (exists($node->{child}))
             {
-                if (!exists($ctx->{share_input_h}->{$node->{short}}))
+				my $share_short_fixup = $node->{short};
+
+				# remove the slice number from the "short"
+				$share_short_fixup =~ s/(\d+)\:/\:/g;
+
+                if (!exists($ctx->{share_input_h}->{$share_short_fixup}))
                 {
-                    $ctx->{share_input_h}->{$node->{short}} = $node; 
+                    $ctx->{share_input_h}->{$share_short_fixup} = $node; 
                 }
             }
             else # not the primary, mark as a duplicate node
             {
-                $node->{ShareInputScanDuplicate} = 1;
+                $node->{SharedScanDuplicate} = 1;
             }
         }
         if ($node->{short} =~ m/^Multi Slice Motion/)
@@ -1713,17 +1718,22 @@ sub post_slice
 
 }
 
-# make all duplicate shareinputscan node point back to primary
-sub shareinputscan_fixup
+# make all duplicate sharedscan nodes point back to primary
+sub sharedscan_fixup
 {
     my ($node, $ctx) = @_;
 
-    if (exists($node->{ShareInputScanDuplicate}))
+    if (exists($node->{SharedScanDuplicate}))
     {
-        $node->{ShareInputScanDuplicate} =
-            $ctx->{share_input_h}->{$node->{short}};
+		my $share_short_fixup = $node->{short};
+
+		# remove the slice number from the "short"
+		$share_short_fixup =~ s/(\d+)\:/\:/g;
+
+        $node->{SharedScanDuplicate} =
+            $ctx->{share_input_h}->{$share_short_fixup};
 #        $node->{id} = 
-#            $node->{ShareInputScanDuplicate}->{id};
+#            $node->{SharedScanDuplicate}->{id};
     }
 
     if (exists($node->{MultiSliceMotionDuplicate}))
@@ -2020,7 +2030,7 @@ sub dodotfile
     calc_color_rank($ctx);
 
     treeMap($plantree, 
-            'shareinputscan_fixup($node, $ctx); ',
+            'sharedscan_fixup($node, $ctx); ',
             undef,
             $ctx);
 
@@ -2053,11 +2063,11 @@ sub dotkid
     return
         if (exists($node->{MultiSliceMotionDuplicate}));
 
-    # XXX XXX: olap fixup - have children of primary shareinputscan
+    # XXX XXX: olap fixup - have children of primary sharedscan
     # point to this node
-    if (exists($node->{ShareInputScanDuplicate}))
+    if (exists($node->{SharedScanDuplicate}))
     {
-        for my $kid (@{$node->{ShareInputScanDuplicate}->{child}})
+        for my $kid (@{$node->{SharedScanDuplicate}->{child}})
         {
             print '"' . $kid->{id} . '" -> "' . $node->{id} . '"' . ";\n";
         }
@@ -2285,7 +2295,7 @@ sub makedotfile
     if ($do_timeline && scalar(@{$time_list}))
     {
         print "   ranksep=.75; size = \"7.5,7.5\";\n\n \n";
-        print "   {\n node [shape=plaintext, fonsize=16];\n";
+        print "   {\n node [shape=plaintext, fontsize=16];\n";
         print "/* the time-line graph */\n";
         
         print join(' -> ', @{$time_list} ), ";\n";
