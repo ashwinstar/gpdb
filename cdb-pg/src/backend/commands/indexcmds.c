@@ -304,13 +304,13 @@ DefineIndex(RangeVar *heapRelation,
 	if (unique && !accessMethodForm->amcanunique)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			   errmsg("access method \"%s\" does not support unique indexes",
-					  accessMethodName)));
+				 errmsg("access method \"%s\" does not support unique indexes",
+						accessMethodName)));
 	if (numberOfAttributes > 1 && !accessMethodForm->amcanmulticol)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		  errmsg("access method \"%s\" does not support multicolumn indexes",
-				 accessMethodName)));
+				 errmsg("access method \"%s\" does not support multicolumn indexes",
+						accessMethodName)));
 
 	amoptions = accessMethodForm->amoptions;
 
@@ -353,8 +353,8 @@ DefineIndex(RangeVar *heapRelation,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			 errmsg("multiple primary keys for table \"%s\" are not allowed",
-					RelationGetRelationName(rel))));
+					 errmsg("multiple primary keys for table \"%s\" are not allowed",
+							RelationGetRelationName(rel))));
 		}
 
 		/*
@@ -445,7 +445,6 @@ DefineIndex(RangeVar *heapRelation,
 	ComputeIndexAttrs(indexInfo, classObjectId, attributeList,
 					  relationId, accessMethodName, accessMethodId,
 					  isconstraint);
-					  
 	
 	if (shouldDispatch)
 	{
@@ -459,12 +458,12 @@ DefineIndex(RangeVar *heapRelation,
 
 		if ((primary || unique) && rel->rd_cdbpolicy)
 			checkPolicyForUniqueIndex(rel, 
-									 indexInfo->ii_KeyAttrNumbers,
-									 indexInfo->ii_NumIndexAttrs,
-									 primary, 
-									 list_length(indexInfo->ii_Expressions),
-									 relationHasPrimaryKey(rel),
-									 relationHasUniqueIndex(rel));
+									  indexInfo->ii_KeyAttrNumbers,
+									  indexInfo->ii_NumIndexAttrs,
+									  primary, 
+									  list_length(indexInfo->ii_Expressions),
+									  relationHasPrimaryKey(rel),
+									  relationHasUniqueIndex(rel));
 
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
@@ -498,11 +497,11 @@ DefineIndex(RangeVar *heapRelation,
 	 */
 	if (isconstraint && !quiet)
 		if (Gp_role != GP_ROLE_EXECUTE)
-		ereport(NOTICE,
-		  (errmsg("%s %s will create implicit index \"%s\" for table \"%s\"",
-				  is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /",
-				  primary ? "PRIMARY KEY" : "UNIQUE",
-				  indexRelationName, RelationGetRelationName(rel))));
+			ereport(NOTICE,
+					(errmsg("%s %s will create implicit index \"%s\" for table \"%s\"",
+							is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /",
+							primary ? "PRIMARY KEY" : "UNIQUE",
+							indexRelationName, RelationGetRelationName(rel))));
 
 
    	if (shouldDispatch)
@@ -542,13 +541,34 @@ DefineIndex(RangeVar *heapRelation,
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->heapOid);
 			stmt->idxOids = lappend_oid(stmt->idxOids, iiopaque->indexOid);
 		}
-		
+
 		/*
 		 * Lock the index relation exclusively on the QD, before dispatching,
 		 * otherwise we could get a deadlock between QEs trying to do this same work.
+		 *
+		 * MPP-4889
+		 * NOTE: we also have to do the local create before dispatching, otherwise
+		 * competing attempts to create the same index deadlock.
 		 */
 		LockRelationOid(indexRelationId, AccessExclusiveLock);
-		
+
+		/*
+		 * Mark the DTX as distributed and reconfigure the cluster if needed.
+		 *
+		 * We defer the dispatch of the utility command until after
+		 * index_create(), because that call will *wait*
+		 * for any other transactions touching this new relation,
+		 * which can cause a non-local deadlock if we've already
+		 * dispatched 
+		 */
+		cdbdisp_reconfigureFtsIfNecessary();
+
+		indexRelationId =
+			index_create(relationId, indexRelationName, indexRelationId,
+						 indexInfo, accessMethodId, tablespaceId, classObjectId,
+						 reloptions, primary, isconstraint,
+						 allowSystemTableMods, skip_build, concurrent);
+
         /*
          * Dispatch the command to all primary and mirror segment dbs.
          * Start a global transaction and reconfigure cluster if needed.
@@ -582,11 +602,14 @@ DefineIndex(RangeVar *heapRelation,
 	heaprelid = rel->rd_lockInfo.lockRelId;
 	heap_close(rel, NoLock);
 
-	indexRelationId =
-		index_create(relationId, indexRelationName, indexRelationId,
-					 indexInfo, accessMethodId, tablespaceId, classObjectId,
-					 reloptions, primary, isconstraint,
-					 allowSystemTableMods, skip_build, concurrent);
+	if (!shouldDispatch)
+	{
+		indexRelationId =
+			index_create(relationId, indexRelationName, indexRelationId,
+						 indexInfo, accessMethodId, tablespaceId, classObjectId,
+						 reloptions, primary, isconstraint,
+						 allowSystemTableMods, skip_build, concurrent);
+	}
 
 	if (!concurrent)
 		return;					/* We're done, in the standard case */
@@ -1239,8 +1262,25 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	Oid			indOid;
 	char		relkind;
 	ObjectAddress object;
+	HeapTuple tuple;
 
 	indOid = RangeVarGetRelid(relation, false);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		LockRelationOid(RelationRelationId, RowExclusiveLock);
+	}
+
+	/* Lock the relation to be dropped */
+	LockRelationOid(indOid, AccessExclusiveLock);
+
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(indOid),
+						   0, 0, 0);
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "index \"%s\" does not exist", relation->relname);
+
 	relkind = get_rel_relkind(indOid);
 	if (relkind != RELKIND_INDEX)
 		ereport(ERROR,
@@ -1251,6 +1291,8 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	object.classId = RelationRelationId;
 	object.objectId = indOid;
 	object.objectSubId = 0;
+
+	ReleaseSysCache(tuple);
 
 	performDeletion(&object, behavior);
 }
