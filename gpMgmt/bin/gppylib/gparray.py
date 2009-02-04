@@ -219,6 +219,18 @@ class GpArray:
         logger.debug("finished cleanup")
    
    
+    def get_max_dbid(self):
+        dbid = 0
+        
+        for db in self.getDbList():
+            if db.dbid > dbid:
+                dbid = db.dbid
+        
+        return dbid
+   
+    def get_segment_count(self):
+        return len(self.segments)
+        
     
     def untarSegments(self,queue,filename):        
         logger.debug("untarSegments start")

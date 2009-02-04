@@ -93,13 +93,26 @@ class pygresqlTestCase(unittest.TestCase):
         
         
     def test_createdb(self):
-        db = self.setupConnection("test_createdb")
-        curs=db.cursor()        
+        try:
+            db = self.setupConnection("test_createdb")
+            curs=db.cursor()        
+        
+            curs.execute("COMMIT")
+            curs.execute("CREATE DATABASE test")
+            curs.execute("DROP DATABASE test")
+        finally:
+            db.close()
+            
+
+    def test_vacuum(self):
+        db = self.setupConnection("test_vacuumdb")
+        curs = db.cursor()
         
         curs.execute("COMMIT")
-        curs.execute("CREATE DATABASE test")
-        curs.execute("DROP DATABASE test")
-            
+        curs.execute("VACUUM FULL pg_catalog.pg_class")
+        db.close()
+        
+        
     #------------------------------- non-test helper --------------------------------
     def setupConnection(self,name):
         logger.info(name)

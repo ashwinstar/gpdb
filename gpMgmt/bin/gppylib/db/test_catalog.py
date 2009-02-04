@@ -9,22 +9,28 @@ import unittest
 
 
 
-import gppylib.gplog
+from gppylib import gplog
 import dbconn
 import catalog
+
+
+logger=gplog.get_default_logger()
+
 
 class catalogTestCase(unittest.TestCase):
     
     def setUp(self):
-        dburl=dbconn.DbURL()
-        self.conn = dbconn.connect(dburl)
+        self.dburl=dbconn.DbURL()
+        self.conn = dbconn.connect(self.dburl)
         
     
     def tearDown(self):
+        self.conn.close()
         pass
     
     
     def test_gpid(self):
+        logger.info("test_gpid")
         orig_gpid_table = catalog.GpIdTable(self.conn)        
         self.assertEquals(orig_gpid_table.content,-1)
         
@@ -46,6 +52,7 @@ class catalogTestCase(unittest.TestCase):
         pass
 
     def test_versionatinitdb(self):
+        logger.info("test_versionatinitdb")
         orig_table = catalog.GpVersionAtInitdbTable(self.conn)
         test_table = catalog.GpVersionAtInitdbTable(self.conn)
         
@@ -60,7 +67,12 @@ class catalogTestCase(unittest.TestCase):
         
         new_table = catalog.GpVersionAtInitdbTable(self.conn)        
         self.validate_versionatinitdb_table(orig_table,new_table)
-        
+    
+    
+    def test_vacuumcatalog(self):
+        logger.info("test_vacuumcatalog")
+        catalog.vacuum_catalog(self.dburl,self.conn)
+        catalog.vacuum_catalog(self.dburl,self.conn,full=True)
     
 
 #------------------------------- Helper --------------------------------

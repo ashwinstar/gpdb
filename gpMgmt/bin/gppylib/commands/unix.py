@@ -102,7 +102,9 @@ class GenericPlatform():
     
     def getPingOnceCmd(self):
         pass
-      
+    
+    def getDiskFreeCmd(self):
+        return findCmdInPath('df') + " -k"  
         
 class LinuxPlatform(GenericPlatform):
     
@@ -127,6 +129,9 @@ class SolarisPlatform(GenericPlatform):
     def getDefaultLocale(self):
         return 'en_US.UTF-8'
     
+    def getDiskFreeCmd(self):
+        return findCmdInPath('df') + " -b"
+
 
 class DarwinPlatform(GenericPlatform):
     
@@ -139,6 +144,8 @@ class DarwinPlatform(GenericPlatform):
     def get_machine_arch_cmd(self):
         return 'uname -m'
     
+    
+
     
 class FreeBsdPlatform(GenericPlatform):
 
@@ -253,7 +260,7 @@ class DiskFree(Command):
     
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):        
         self.directory=directory
-        cmdStr="%s %s" % (findCmdInPath('df'),directory) 
+        cmdStr="%s %s" % (SYSTEM.getDiskFreeCmd(),directory) 
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -270,7 +277,7 @@ class DiskFree(Command):
            /dev/disk0s2  194699744 158681544  35506200    82%    /
         '''
         rawIn=self.results.stdout.split('\n')[1]
-        bytesFree=int(rawIn.split()[3])
+        bytesFree=int(rawIn.split()[3])*1024
         return bytesFree
 
    
@@ -390,7 +397,7 @@ class Kill(Command):
 
 #--------------hostname ----------------------
 class Hostname(Command):
-    def __init__(self, name, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, ctxt=LOCAL, remoteHost=None):        
         Command.__init__(self, name, findCmdInPath('hostname'), ctxt, remoteHost)
 
     def get_hostname(self):
@@ -399,14 +406,28 @@ class Hostname(Command):
         return self.results.stdout.strip()
 
 
+class FileContainsTerm(Command):    
+    def __init__(self, name, search_term, file, ctxt=LOCAL, remoteHost=None):
+        self.search_term=search_term
+        self.file=file
+        cmdStr="%s -c %s %s" % (findCmdInPath('grep'),search_term,file)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+    def contains_term(self):
+        if not self.results:
+            raise Exception, 'Command not yet executed'
+        count=int(self.results.stdout.strip())
+        if count == 0:
+            return False
+        else:
+            return True
+
 #--------------chmod ----------------------
 class Chmod(Command):
     def __init__(self, name, dir, perm, ctxt=LOCAL, remoteHost=None):
         cmdStr = '%s %s %s' % (findCmdInPath('chmod'), perm, dir)
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
-
-
-
+        
 #--------------global variable initialization ----------------------
 
 if curr_platform == SUNOS:

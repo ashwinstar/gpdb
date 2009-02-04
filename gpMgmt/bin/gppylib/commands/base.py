@@ -122,9 +122,13 @@ class Worker(Thread):
         """ 
             TODO:  ERROR HANDLING SILLY!
         """
+        try_count = 0
         while True:
             try:
-                logger.debug("[%s] try and get work from queue..." % self.name)
+                if try_count == 5:
+                    logger.debug("[%s] try and get work from queue..." % self.name)
+                    try_count = 0
+                    
                 self.cmd = self.pool.getNextWorkItem(timeout=self.timeout)
                 
                 if self.cmd is not None:
@@ -134,7 +138,9 @@ class Worker(Thread):
                     logger.debug("[%s] finished cmd" % self.name)
                     self.pool.addFinishedWorkItem(self.cmd)
                     self.cmd=None
+                    try_count = 0
                 else:
+                    try_count += 1
                     if self.shouldStop:
                         logger.debug("[%s] stopping" % self.name)
                         return

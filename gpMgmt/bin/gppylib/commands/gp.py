@@ -19,6 +19,23 @@ logger = get_default_logger()
 #TODO:  need a better way of managing environment variables.
 GPHOME=os.environ.get('GPHOME')
 
+
+def check_passive_standby(name,dir):
+    cmd=FileContainsTerm(name,'gpsync',"%s/postmaster.opts" % dir)
+    cmd.run(validateAfter=True)
+    return cmd.contains_term()
+
+def get_max_dbid(name,conn):
+    try:
+        curs=conn.cursor()
+        curs.execute("SELECT max(dbid) FROM gp_configuration")
+        rows = curs.fetchall()
+        if len(rows) != 1:
+            raise Exception, 'Failed to retrieve maximum dbid from catalog'
+        return rows[0][0]
+    finally:
+        curs.close()
+        
 class PySync(Command):
     def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None):
         psync_executable=GPHOME + "/bin/lib/pysync.py"
@@ -26,8 +43,7 @@ class PySync(Command):
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
-    
-    
+        
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
         if utilityMode:
@@ -43,6 +59,32 @@ class SegmentStop(Command):
         self.cmdStr='pg_ctl stop -D %s' % dataDir
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
+
+
+class GpStart(Command):
+    def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
+        cmdStr="gpstart -a"
+        if masterOnly:
+            cmdStr += " -m"
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def local(name,masterOnly=False):
+        cmd=GpStart(name,masterOnly)
+        cmd.run(validateAfter=True)
+       
+           
+class GpStop(Command):
+    def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
+        cmdStr="gpstop -af"
+        if masterOnly:
+            cmdStr += " -m"
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    @staticmethod
+    def local(name,masterOnly=False):
+        cmd=GpStop(name,masterOnly)
+        cmd.run(validateAfter=True)
+        
         
 class Psql(Command):
     def __init__(self, name, query, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
@@ -80,23 +122,6 @@ class GpVersion(Command):
     def get_version(self):
         return self.results.stdout
 
-
-class PassiveStandbyCheck(Command):    
-    def __init__(self,name,ctxt=LOCAL,remoteHost=None):
-        grepCmd = findCmdInPath('grep')
-        self.cmdStr=""
-        raise Exception("TODO: impl this!")
-    
-    @staticmethod
-    def local(name):
-        cmd=PassiveStandbyCheck(name)
-        cmd.run(validateAfter=True)
-            
-    @staticmethod
-    def remote(name,remote_host):
-        cmd=Kill(name,ctxt=REMOTE,remoteHost=remote_host)        
-        cmd.run(validateAfter=True) 
-            
         
 def distribute_tarball(queue,list,tarball):
         logger.debug("distributeTarBall start")        
