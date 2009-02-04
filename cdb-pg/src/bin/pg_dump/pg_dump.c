@@ -6734,19 +6734,19 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 								  tbinfo->atttypnames[j]);
 
 				/*
-				 * Default value --- suppress if inherited or to be printed
-				 * separately.
+				 * Default value --- suppress if inherited and not running with
+				 * --gp-migrator or to be printed separately.
 				 */
 				if (tbinfo->attrdefs[j] != NULL &&
-					!tbinfo->inhAttrDef[j] &&
+					(!tbinfo->inhAttrDef[j] || forGpMigrator) &&
 					!tbinfo->attrdefs[j]->separate)
 					appendPQExpBuffer(q, " DEFAULT %s",
 									  tbinfo->attrdefs[j]->adef_expr);
 
 				/*
-				 * Not Null constraint --- suppress if inherited
+				 * Not Null constraint --- suppress if inherited and not for --gp-migrator
 				 */
-				if (tbinfo->notnull[j] && !tbinfo->inhNotNull[j])
+				if (tbinfo->notnull[j] && (!tbinfo->inhNotNull[j] || forGpMigrator))
 					appendPQExpBuffer(q, " NOT NULL");
 
 				actual_atts++;
@@ -6754,13 +6754,14 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
 		/*
-		 * Add non-inherited CHECK constraints, if any.
+		 * Add non-inherited CHECK constraints, if any.  When running with
+		 * --gp-migrator, inherited CHECK constraints are included.
 		 */
 		for (j = 0; j < tbinfo->ncheck; j++)
 		{
 			ConstraintInfo *constr = &(tbinfo->checkexprs[j]);
 
-			if (constr->coninherited || constr->separate)
+			if ((constr->coninherited && !forGpMigrator) || constr->separate)
 				continue;
 
 			if (actual_atts > 0)
@@ -6890,10 +6891,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(q, ";\n");
 
-		/* MPP-1890 */
-		if(numParents > 0)
-			DetectChildConstraintDropped(tbinfo, q);
-
 		/*
 		 * Loop dumping statistics and storage statements and, for
 		 * --gp-migrator, ALTER TABLE ... DROP COLUMN, statements
@@ -6976,11 +6973,73 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		/*
 		 * When operating under the --gp-migrator option, the INHERITS clause is
 		 * suppressed.  Table inheritance for --gp-migrator is re-introduced here
-		 * as an ALTER TABLE ... INHERIT ... statement.
+		 * as an ALTER TABLE ... INHERIT ... statement.  This includes restoring
+		 * any dropped inherited CHECK constraints.  (This behavior is arguably
+		 * erroneous -- inherited constraints should not be droppable as this
+		 * breaks the inheritance contract with the parent.)
 		 */
 		if ( forGpMigrator && numParents > 0 )
 		{
 			int inhAttrs;
+			int l;
+			bool haveRestoredConstraints = false;
+
+			/*
+			 * Restore any dropped inherited CHECK constraints; they'll
+			 * be re-dropped shortly.
+			 */
+			for (k = 0; k < tbinfo->numParents; k++)
+			{
+				/*
+				 * Test all CHECK constraints on this parent.
+				 */
+				for (l = 0; l < parents[k]->ncheck; l++)
+				{
+					ConstraintInfo *pconstr = &(parents[k]->checkexprs[l]);
+					bool constr_on_child = false;
+
+					/*
+					 * Compare with CHECK constraints known to child
+					 */
+					for (j = 0; j < tbinfo->ncheck; j++)
+					{
+						if (strcmp(pconstr->dobj.name, tbinfo->checkexprs[j].dobj.name) == 0)
+						{
+							constr_on_child = true;
+							break;
+						}
+					}
+
+					/*
+					 * If the parent constraint isn't on the child, it must be
+					 * restored on the child for ALTER TABLE INHERIT to work.
+					 */
+					if (!constr_on_child)
+					{
+						if (haveRestoredConstraints)
+						{
+							appendPQExpBuffer(q, ",\n        ");
+						}
+						else
+						{
+							haveRestoredConstraints = true;
+							appendPQExpBuffer(q, "ALTER TABLE %s ",
+									fmtId(tbinfo->dobj.name));
+						}
+						appendPQExpBuffer(q, "ADD CONSTRAINT %s ",
+								fmtId(pconstr->dobj.name));
+						appendPQExpBuffer(q, "%s", pconstr->condef);
+					}
+				}
+
+				if (haveRestoredConstraints)
+					appendPQExpBuffer(q, ";\n");
+			}
+
+			/*
+			 * Now that dropped inherited constraints have been restored,
+			 * re-establish the inheritance relationship with the parents.
+			 */
 			appendPQExpBuffer(q, "ALTER TABLE %s ", fmtId(tbinfo->dobj.name));
 			for (k = 0; k < numParents; k++)
 			{
@@ -7026,6 +7085,25 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			appendPQExpBuffer(q, ";\n");
 		}
+
+		/* MPP-1890 */
+		/*
+		 * An inherited constraint may be dropped from a child table.  While
+		 * this arguably severs the inheritance contract between the child
+		 * and the parent, the current pg_constraint content doesn't track
+		 * inherited/shared/disjoint constraints of a child.  When not
+		 * using the --gp-migrator option, the INHERITS clause is used on
+		 * a CREATE TABLE statement to re-establish the inheritance
+		 * relationship and "recovers" the dropped constraint(s).  When
+		 * using the --gp-migrator option, the dropped constraints are
+		 * explicitly recovered to allow successful operation of the
+		 * ALTER TABLE child INHERIT parent statement used to re-establish
+		 * inheritance.  The DetectChildConstraintDropped routine adds
+		 * ALTER TABLE DROP CONSTRAINT statements for each discarded child
+		 * constraint.
+		 */
+		if(numParents > 0)
+			DetectChildConstraintDropped(tbinfo, q);
 	}
 
 	ArchiveEntry(fout, tbinfo->dobj.catId, tbinfo->dobj.dumpId,
@@ -7046,7 +7124,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	{
 		ConstraintInfo *constr = &(tbinfo->checkexprs[j]);
 
-		if (constr->coninherited || constr->separate)
+		if ((constr->coninherited && !forGpMigrator) || constr->separate)
 			continue;
 
 		dumpTableConstraintComment(fout, constr);
@@ -7072,8 +7150,8 @@ dumpAttrDef(Archive *fout, AttrDefInfo *adinfo)
 	if (!tbinfo->dobj.dump || !adinfo->separate || dataOnly)
 		return;
 
-	/* Don't print inherited defaults, either */
-	if (tbinfo->inhAttrDef[adnum - 1])
+	/* Don't print inherited defaults, either, unless using --gp-migrator */
+	if (tbinfo->inhAttrDef[adnum - 1] && !forGpMigrator)
 		return;
 
 	q = createPQExpBuffer();
