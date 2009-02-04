@@ -198,13 +198,30 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 	StringInfoData buffer;
 	Cdbanalyze_Ctx ctx;
 	const char	*relname;
+	const char  *quoted_relname;
 	Oid			namespace;
-
+	const char  *namespace_name;
+	
 	*pages = 0;
 	*tuples = 0;
 
-	relname = quote_literal_internal(RelationGetRelationName(rel));
+	relname = RelationGetRelationName(rel);
 	namespace = RelationGetNamespace(rel);
+	namespace_name = get_namespace_name(namespace);
+
+	if (relname == NULL) 
+	{
+		elog(ERROR, "Unable to collect rel stats from segment databases. Relation probably does not exist.");
+		return;
+	}
+
+	if (namespace_name == NULL) 
+	{
+		elog(ERROR, "Unable to collect rel stats from segment databases. Schema probably does not exist.");
+		return;
+	}
+
+	quoted_relname = quote_literal_internal(relname);
 
 	/*
 	 * First, create a select statement
@@ -212,7 +229,7 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 	initStringInfo(&buffer);
 	appendStringInfo(&buffer, "select max(reltuples), max(relpages)");
 	appendStringInfo(&buffer, " from pg_class join pg_namespace on relnamespace=pg_namespace.oid");
-	appendStringInfo(&buffer, " where relname=%s and nspname='%s'", relname, get_namespace_name(namespace));
+	appendStringInfo(&buffer, " where relname=%s and nspname='%s'", quoted_relname, namespace_name);
 
 	/*
 	 * Next, use SPI to execute it.
@@ -560,7 +577,9 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	StringInfoData buffer;
 	Cdbanalyze_columns_Ctx ctx;
 	const char	*relname;
+	const char  *quoted_relname;
 	Oid			namespace;
+	const char  *namespace_name;
 	
 	Assert(stats != NULL);
 	
@@ -569,9 +588,24 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	
 	ctx.stats = stats;
 
-	relname = quote_literal_internal(RelationGetRelationName(rel));
+	relname = RelationGetRelationName(rel);
 	namespace = RelationGetNamespace(rel);
+	namespace_name = get_namespace_name(namespace);
 
+	if (relname == NULL) 
+	{
+		elog(ERROR, "Unable to collect column stats from segment databases. Relation probably does not exist.");
+		return;
+	}
+	
+	if (namespace_name == NULL) 
+	{
+		elog(ERROR, "Unable to collect column stats from segment databases. Schema probably does not exist.");
+		return;
+	}
+
+	quoted_relname = quote_literal_internal(relname);
+	
 	/*
 	 * First, create a select statement
 	 */
@@ -584,10 +618,8 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 
 	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON pg_class.oid=pg_statistic.starelid ");
 	appendStringInfo(&buffer, " JOIN pg_namespace ON relnamespace=pg_namespace.oid ");
-	appendStringInfo(&buffer, " where relname=%s and nspname='%s' and staattnum=%hd", relname, get_namespace_name(namespace), (stats->attr->attnum));
-
+	appendStringInfo(&buffer, " where relname=%s and nspname='%s' and staattnum=%hd", quoted_relname, namespace_name, (stats->attr->attnum));
 	
-
 	/*
 	 * Next, use SPI to execute it.
 	 * (If unsuccessful, throws an error and does not return here.)
@@ -598,4 +630,3 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	
 
 }	/* cdbanalyze_get_columnstats */
-
