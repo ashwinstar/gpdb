@@ -146,6 +146,13 @@ def getWALSendServerPID(db):
 def killWALSendServer(db,signal):
     return killPgProc(db,"postgres: WAL Send Server",signal)
 
+def getFTSProbePID(db):
+    postmaster_pid=getPostmasterPID(db)    
+    return getProcWithParent(db.hostname,postmaster_pid,"postgres: ftsprobe process")
+
+def killFTSProbe(db,signal):
+    return killPgProc(db,"postgres: ftsprobe process",signal)
+
 
 def killPgProc(db,procname,signal):
     postmasterPID=getPostmasterPID(db)
