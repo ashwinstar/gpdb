@@ -60,8 +60,7 @@ DESCRIPTION
 *****************************************************
 
 The gpmigrator utility upgrades an existing Greenplum Database 
-3.1.1.5 -3.1.1.12 system to 3.2. It can also be used to downgrade 
-a 3.2 system back to 3.1.1.x. This utility updates the system catalog 
+3.1.1.5 -3.1.1.12 system to 3.2. This utility updates the system catalog 
 and internal version number, but not the actual software binaries.
 
 During the migration process, all client connections to the master 
