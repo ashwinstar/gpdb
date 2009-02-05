@@ -1911,7 +1911,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 				
 				wstate->mem_manager.manager = wstate->transcontext;
 				funcstate->final_aggTransValue =
-					invoke_agg_trans_func(*fmgr_info,
+					invoke_agg_trans_func(fmgr_info,
 										  fmgr_info->fn_nargs - 1,
 										  funcstate->final_aggTransValue,
 										  &funcstate->final_aggNoTransValue,
@@ -1963,7 +1963,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 
 					wstate->mem_manager.manager = wstate->transcontext;
 					funcstate->final_aggTransValue =
-						invoke_agg_trans_func(funcstate->prelimfn,
+						invoke_agg_trans_func(&(funcstate->prelimfn),
 											  funcstate->prelimfn.fn_nargs - 1,
 											  funcstate->final_aggTransValue,
 											  &funcstate->final_aggNoTransValue,
@@ -2205,7 +2205,7 @@ computeFrameValue(WindowStatePerLevel level_state,
 				{
 					wstate->mem_manager.manager = wstate->transcontext;
 					funcstate->final_aggTransValue =
-						invoke_agg_trans_func(funcstate->invprelimfn,
+						invoke_agg_trans_func(&(funcstate->invprelimfn),
 											  funcstate->invprelimfn.fn_nargs - 1,
 											  funcstate->final_aggTransValue,
 											  &funcstate->final_aggNoTransValue,
@@ -3137,7 +3137,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 	{
 		wstate->mem_manager.manager = wstate->transcontext;
 		funcstate->aggTransValue =
-			invoke_agg_trans_func(funcstate->transfn,
+			invoke_agg_trans_func(&(funcstate->transfn),
 								  funcstate->numargs,
 								  funcstate->aggTransValue,
 								  &(funcstate->aggNoTransValue),

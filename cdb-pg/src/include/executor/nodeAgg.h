@@ -153,7 +153,7 @@ extern Oid resolve_polymorphic_transtype(Oid aggtranstype, Oid aggfnoid,
 
 extern Datum GetAggInitVal(Datum textInitVal, Oid transtype);
 
-extern Datum invoke_agg_trans_func(FmgrInfo transfn, int numargs, 
+extern Datum invoke_agg_trans_func(FmgrInfo *transfn, int numargs, 
 								   Datum transValue, bool *noTransvalue, 
 								   bool *transValueIsNull, bool transtypeByVal,
 								   int16 transtypeLen,

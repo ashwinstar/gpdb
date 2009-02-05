@@ -352,7 +352,7 @@ advance_transition_function(AggState *aggstate,
 							MemoryManagerContainer *mem_manager)
 {
 	pergroupstate->transValue = 
-		invoke_agg_trans_func(peraggstate->transfn, 
+		invoke_agg_trans_func(&(peraggstate->transfn), 
 							  peraggstate->numArguments,
 							  pergroupstate->transValue,
 							  &(pergroupstate->noTransValue),
@@ -365,7 +365,7 @@ advance_transition_function(AggState *aggstate,
 }
 
 Datum
-invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
+invoke_agg_trans_func(FmgrInfo *transfn, int numargs, Datum transValue,
 					  bool *noTransvalue, bool *transValueIsNull,
 					  bool transtypeByVal, int16 transtypeLen, 
 					  FunctionCallInfoData *fcinfo, void *funcctx,
@@ -376,7 +376,7 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
 	Datum		newVal;
 	int			i;
 
-	if (transfn.fn_strict)
+	if (transfn->fn_strict)
 	{
 		/*
 		 * For a strict transfn, nothing happens when there's a NULL input; we
@@ -425,7 +425,7 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
 	/*
 	 * OK to call the transition function
 	 */
-	InitFunctionCallInfoData(*fcinfo, &transfn,
+	InitFunctionCallInfoData(*fcinfo, transfn,
 							 numargs + 1,
 							 (void *) funcctx, NULL);
 	fcinfo->arg[0] = transValue;
@@ -1847,7 +1847,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 								&prelimfnexpr,
 								NULL,
 								NULL);
-
+		
 		fmgr_info(transfn_oid, &peraggstate->transfn);
 		peraggstate->transfn.fn_expr = (Node *) transfnexpr;
 
@@ -1856,13 +1856,13 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			fmgr_info(finalfn_oid, &peraggstate->finalfn);
 			peraggstate->finalfn.fn_expr = (Node *) finalfnexpr;
 		}
-
+		
 		if (OidIsValid(peraggstate->prelimfn_oid))
 		{
 			fmgr_info(peraggstate->prelimfn_oid, &peraggstate->prelimfn);
 			peraggstate->prelimfn.fn_expr = (Node *) prelimfnexpr;
 		}
-
+		
 		get_typlenbyval(aggref->aggtype,
 						&peraggstate->resulttypeLen,
 						&peraggstate->resulttypeByVal);

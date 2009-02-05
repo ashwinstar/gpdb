@@ -1602,7 +1602,7 @@ agg_hash_reload(AggState *aggstate)
 				fcinfo.argnull[1] = input_pergroupstate[aggno].transValueIsNull;
 
 				pergroupstate->transValue =
-				  invoke_agg_trans_func(peraggstate->prelimfn,
+					invoke_agg_trans_func(&(peraggstate->prelimfn),
 							peraggstate->prelimfn.fn_nargs - 1,
 							pergroupstate->transValue,
 							&(pergroupstate->noTransValue),
