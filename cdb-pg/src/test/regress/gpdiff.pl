@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# Copyright (c) 2007 GreenPlum.  All rights reserved.  
+# Copyright (c) 2007, 2008, 2009 GreenPlum.  All rights reserved.  
 # Author: Jeffrey I Cohen
 #
 #
@@ -27,9 +27,10 @@ Normally, gpdiff takes the standard "diff" options and passes them
 directly to the diff program.  Try `diff --help' for more information
 on the standard options.  The following options are specific to gpdiff:
 
-    -help            brief help message
-    -man             full documentation
-    -version         print gpdiff version and underlying diff version
+    -help                 brief help message
+    -man                  full documentation
+    -version              print gpdiff version and underlying diff version
+    -gpd_ignore_headers   ignore header lines in query output
 
 =head1 OPTIONS
 
@@ -46,6 +47,17 @@ on the standard options.  The following options are specific to gpdiff:
 =item B<-version>
 
     Prints the gpdiff version and underlying diff version
+
+=item B<-gpd_ignore_headers> 
+
+    gpdiff/atmsort expect Postgresql "psql-style" output for SELECT
+    statements, with a two line header composed of the column names,
+    separated by vertical bars (|), and a "separator" line of dashes
+    and pluses beneath, followed by the row output.  The psql utility
+    performs some formatting to adjust the column widths to match the
+    size of the row output.  Setting this parameter causes gpdiff to
+    ignore any differences in the column naming and format widths
+    globally.
 
 =back
 
@@ -82,7 +94,7 @@ potential erroneous comparison.
 
 Jeffrey I Cohen
 
-Copyright (c) 2007 GreenPlum.  All rights reserved.  
+Copyright (c) 2007, 2008, 2009 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -91,6 +103,8 @@ Address bug reports and comments to: jcohen@greenplum.com
 
 our $ATMSORT;
 our $ATMDIFF = "diff";
+
+my $glob_ignore_headers;
 
 # assume atmsort.pl in same directory
 BEGIN 
@@ -150,6 +164,8 @@ sub gpdiff_files
     }
 
     my $args = join(" ", @ARGV, $newf1, $newf2);
+
+#	print "args: $args\n";
 
     my $outi =`$ATMDIFF $args`;
 
@@ -306,31 +322,53 @@ sub filefunc
 
 if (1)
 {
-    my $man  = 0;
-    my $help = 0;
-    my $verzion = 0;
-    my $pmsg = "";
+    my $man			= 0;
+    my $help		= 0;
+    my $verzion		= 0;
+    my $pmsg		= "";
+	my @arg2;              # arg list for diff
 
 #    getatm();
 
     # check for man or help args
     if (scalar(@ARGV))
     {
-        if ($ARGV[0] =~ m/^\-(\-)*(v|version)$/)
-        {
-            $verzion = 1;
-        }
-        if ($ARGV[0] =~ m/^\-(\-)*(man|help|\?)$/i)
-        {
-            if ($ARGV[0] =~ m/man/i)
-            {
-                $man = 1;
-            }
-            else
-            {
-                $help = 1;
-            }
-        }
+		for my $arg (@ARGV)
+		{
+			unless ($arg =~ m/^\-/)
+			{
+				# even if no dash, might be a value for a dash arg...
+				push @arg2, $arg;
+				next;
+			}
+			
+			if ($arg =~ m/^\-(\-)*(gpd\_ignore\_headers|gpd\_ign.*)$/i)
+			{
+				$glob_ignore_headers = 1;
+				next;
+			}
+			if ($arg =~ m/^\-(\-)*(v|version)$/)
+			{
+				$verzion = 1;
+				next;
+			}
+			if ($arg =~ m/^\-(\-)*(man|help|\?)$/i)
+			{
+				if ($arg =~ m/man/i)
+				{
+					$man = 1;
+				}
+				else
+				{
+					$help = 1;
+				}
+				next;
+			}
+
+			# put all "dash" args on separate list for diff
+			push @arg2, $arg;
+
+		} # end for
     }
     else
     {
@@ -368,7 +406,6 @@ if (1)
         exit(1);
     }
 
-
     pod2usage(-msg => $pmsg, -exitstatus => 1) if $help;
     pod2usage(-msg => $pmsg, -exitstatus => 0, -verbose => 2) if $man;
 
@@ -384,6 +421,21 @@ if (1)
     }
     exit(2)
         unless ((-e $f1) && (-e $f2));
+
+	# use the "stripped" arg list for diff
+	@ARGV = ();
+
+	# remove the filenames
+	pop @arg2;
+	pop @arg2;
+
+	push(@ARGV, @arg2);
+
+	# ENGINF-180: tell atmsort to ignore header formatting (globally)
+	if ($glob_ignore_headers)
+	{
+		$ATMSORT .= " --ignore_headers ";
+	}
 
     exit(filefunc($f1, $f2));
 }

@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2007
+# copyright (c) 2007, 2008, 2009
 # Author: Jeffrey I Cohen
 #
 #
@@ -24,6 +24,7 @@ Options:
 
     -help            brief help message
     -man             full documentation
+    -ignore_headers  ignore header lines in query output
     -do_equiv        construct or compare equivalent query regions
 
 =head1 OPTIONS
@@ -37,6 +38,17 @@ Options:
 =item B<-man>
     
     Prints the manual page and exits.
+
+=item B<-ignore_headers> 
+
+    gpdiff/atmsort expect Postgresql "psql-style" output for SELECT
+    statements, with a two line header composed of the column names,
+    separated by vertical bars (|), and a "separator" line of dashes
+    and pluses beneath, followed by the row output.  The psql utility
+    performs some formatting to adjust the column widths to match the
+    size of the row output.  Setting this parameter causes gpdiff to
+    ignore any differences in the column naming and format widths
+    globally.
 
 =item B<-do_equiv>
     
@@ -273,7 +285,7 @@ potential erroneous comparison.
 
 Jeffrey I Cohen
 
-Copyright (c) 2007, 2008 GreenPlum.  All rights reserved.  
+Copyright (c) 2007, 2008, 2009 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -295,14 +307,16 @@ my $dpref = '';
 
 my $glob_compare_equiv;
 my $glob_make_equiv_expected;
+my $glob_ignore_headers;
 
 # array of "expected" rows from first query of equiv region
 my $equiv_expected_rows;
 
 BEGIN
 { 
-    $glob_compare_equiv = 0;
+    $glob_compare_equiv		  = 0;
     $glob_make_equiv_expected = 0;
+	$glob_ignore_headers	  = 0;
 }
 
 BEGIN {
@@ -311,9 +325,11 @@ BEGIN {
     my $compare_equiv = 0;
     my $make_equiv_expected = 0;
     my $do_equiv;
+	my $ignore_headers;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
+		       'gpd_ignore_headers|ignore_headers' => \$ignore_headers,
                'do_equiv:s' => \$do_equiv
                )
         or pod2usage(2);
@@ -345,8 +361,9 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
-    $glob_compare_equiv = $compare_equiv;
+    $glob_compare_equiv		  = $compare_equiv;
     $glob_make_equiv_expected = $make_equiv_expected;
+	$glob_ignore_headers	  = $ignore_headers;
 
 }
 
@@ -1525,11 +1542,26 @@ EOF_formatfix
 
                 $getstatement = 0;
 
+                # ENGINF-180: ignore header formatting
+                # the last line of the outarr is the first line of the header
+                if ($glob_ignore_headers && $outarr[-1])
+                {
+                    $outarr[-1] = "GP_IGNORE:" . $outarr[-1];
+                }
+
                 for my $line (@outarr)
                 {
                     print $apref, $line;
                 }
                 @outarr = ();
+
+                # ENGINF-180: ignore header formatting
+                # the current line is the last line of the header
+                if ($glob_ignore_headers
+                    && ($ini =~ m/^\s*((\-\-)(\-)+(\+(\-)+)*)+\s*$/))
+                {
+                    $ini = "GP_IGNORE:" . $ini;
+                }
                 
                 print $apref, $ini;
 
