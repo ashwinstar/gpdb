@@ -342,7 +342,10 @@ if (1)
 				next;
 			}
 			
-			if ($arg =~ m/^\-(\-)*(gpd\_ignore\_headers|gpd\_ign.*)$/i)
+    		# ENGINF-180: ignore header formatting
+			# allow gpd or gp_ignore for poor spellers
+			if ($arg =~ 
+				m/^\-(\-)*(gpd\_ignore\_headers|gpd\_ign.*|gp\_ign.*)$/i)
 			{
 				$glob_ignore_headers = 1;
 				next;
