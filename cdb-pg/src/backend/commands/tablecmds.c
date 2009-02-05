@@ -11988,9 +11988,9 @@ wack_pid_relname(AlterPartitionId 		 *pid,
 
 	if (AT_AP_IDRule == locPid->idtype)
 	{
-		List 			*l1    = (List *)pid->partiddef;
-		ListCell 		*lc;
-		PgPartRule 			*par_prule = NULL;
+		List 		*l1		   = (List *)pid->partiddef;
+		ListCell 	*lc;
+		PgPartRule 	*par_prule = NULL;
 
 		lc = list_head(l1);
 		*ppar_prule = (PgPartRule*) lfirst(lc);
@@ -16002,12 +16002,20 @@ ATPExecPartSetTemplate(Relation rel,
 
 	}
 	else /* cannot set it yet... */
+	{
+/*		PartitionSpec		*ps	 = (PartitionSpec *)pc->arg1;
+		PartitionBy			*pBy = makeNode(PartitionBy); */
+		CreateStmtContext	 cxt;
+
+		MemSet(&cxt, 0, sizeof(cxt));
+
+
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot SET SUBPARTITION TEMPLATE "
 						"for relation \"%s\"",
 						RelationGetRelationName(rel))));
-
+	}
 
 
 } /* end ATPExecPartSetTemplate */

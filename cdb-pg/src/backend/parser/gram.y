@@ -2564,13 +2564,40 @@ alter_table_partition_cmd:
 			| SET SUBPARTITION TEMPLATE
             '(' TabSubPartitionElemList ')' 
 				{
-					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
-					AlterTableCmd *n = makeNode(AlterTableCmd);
+					AlterPartitionCmd	*pc = makeNode(AlterPartitionCmd);
+					AlterTableCmd		*n	= makeNode(AlterTableCmd);
+					PartitionSpec		*ps = makeNode(PartitionSpec); 
+
+					ps->partElem   = $5;
+					ps->subSpec	   = NULL;
+					ps->istemplate = true;
+					ps->location   = @4;
 
                     pc->partid = NULL; 
-                    pc->arg1 = (Node *)$5;
+                    pc->arg1 = (Node *)ps;
                     pc->arg2 = NULL;
                     pc->location = @5;
+
+					/* a little (temporary?) syntax check on templates */
+					if (ps->partElem)
+					{
+						List *elems;
+						ListCell *lc;
+						Assert(IsA(ps->partElem, List));
+
+						elems = (List *)ps->partElem;
+						foreach(lc, elems)
+						{
+							PartitionElem *e = lfirst(lc);
+
+							if (e->subSpec)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("template cannot contain "
+												"specification for child "
+												"partition")));
+						}
+					}
 
 					n->subtype = AT_PartSetTemplate;
 					n->def = (Node *)pc;
@@ -3315,7 +3342,9 @@ opt_column_list:
 opt_inherited_column_list:
 			'('
 				{
-					/* Allowed only when gp_enable_alter_table_inherit_cols is true */
+					/* Allowed only when
+					 * gp_enable_alter_table_inherit_cols is true 
+					 */
 					if (!gp_enable_alter_table_inherit_cols)
 					{
 						yyerror("syntax error");
