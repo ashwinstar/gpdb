@@ -392,10 +392,10 @@ SELECT count(*) FROM tenk_ao4;
 (1 row)
 
 -- test get_ao_compression_ratio. use uncompressed table, so result is always 1.
-SELECT get_ao_compression_ratio('public','tenk_ao2');
+SELECT get_ao_compression_ratio('tenk_ao2');
  get_ao_compression_ratio 
 --------------------------
-                     1.00
+                        1
 (1 row)
 
 -- VACUUM

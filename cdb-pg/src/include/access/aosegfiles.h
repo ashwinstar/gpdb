@@ -80,10 +80,16 @@ GetSegFilesTotals(Relation parentrel);
 extern int 
 gp_update_ao_master_stats__(PG_FUNCTION_ARGS);
 
-extern int 
-get_ao_distribution__(PG_FUNCTION_ARGS);
+extern Datum 
+get_ao_distribution_name(PG_FUNCTION_ARGS);
+
+extern Datum
+get_ao_distribution_oid(PG_FUNCTION_ARGS);
 
 extern Datum 
-get_ao_compression_ratio__(PG_FUNCTION_ARGS);
+get_ao_compression_ratio_name(PG_FUNCTION_ARGS);
+
+extern Datum 
+get_ao_compression_ratio_oid(PG_FUNCTION_ARGS);
 
 #endif   /* AOSEGFILES_H */
