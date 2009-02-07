@@ -91,7 +91,7 @@ static void doDecompress(AppendOnlyScanDesc scan,
 							 uint8			*uncompressed,
 							 int32			uncompressedLen);
 
-static int32 getLimitedMaxBufferLen(int32 maxBufferLen);
+static int32 getUsableBlockSize(int32 configBlockSize);
 static CompressorType CompressorStrToType(const char* comp_str, int comp_level);
 
 /* ----------------
@@ -298,7 +298,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	 * so that is won't go away on us later.
 	 */
 	oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
-	scan->uncompressedBuffer = (uint8 *) palloc(scan->maxBufferLen * sizeof(uint8));
+	scan->uncompressedBuffer = (uint8 *) palloc(scan->usableBlockSize * sizeof(uint8));
 	
 	/*
 	 * if quicklz compression used, prepare scratch space for decompression.
@@ -331,7 +331,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		int32	memoryLen;
 		uint8	*memory;
 		
-		memoryLen = BufferedReadMemoryLen(scan->maxBufferLen, scan->largeReadLen);
+		memoryLen = BufferedReadMemoryLen(scan->usableBlockSize, scan->largeReadLen);
 
 		/* step away from per tuple context */
 		oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
@@ -343,7 +343,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		BufferedReadInit(&scan->bufferedRead,
 						 memory,
 						 memoryLen,
-						 scan->maxBufferLen,
+						 scan->usableBlockSize,
 						 scan->largeReadLen);
 		
 		/* return to per tuple context */
@@ -410,7 +410,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 			 NameStr(scan->aos_rd->rd_rel->relname),
 			 segno,
 			 (scan->aos_compressed ? "true" : "false"),
-		     scan->maxBufferLen,
+		     scan->usableBlockSize,
 		     scan->largeReadLen);
 
 	return true;
@@ -678,10 +678,10 @@ getNextStorageBlockInFile(
 	 */
 	fileRemainderLen = scan->bufferedRead.fileLen -
 		               *headerOffsetInFile;
-	if (scan->maxBufferLen > fileRemainderLen)
+	if (scan->usableBlockSize > fileRemainderLen)
 		blockLimitLen = (int32)fileRemainderLen;
 	else
-		blockLimitLen = scan->maxBufferLen;
+		blockLimitLen = scan->usableBlockSize;
 
 	/*
 	 * Proceed carefully:
@@ -1054,7 +1054,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 	int			executorBlockKind;
 
 	Assert(ScanDirectionIsForward(dir));
-	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
+	Assert(scan->usableBlockSize > 0);
+	Assert(scan->largeReadLen == scan->usableBlockSize * 2);
 	
 	for(;;)
 	{
@@ -1370,12 +1371,12 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 	scan->aos_filenamepath_maxlen = AOSegmentFilePathNameLen(relation) + 1;
 	scan->aos_filenamepath = (char*)palloc(scan->aos_filenamepath_maxlen);
 	scan->aos_filenamepath[0] = '\0';
-	scan->maxBufferLen = getLimitedMaxBufferLen(aoentry->blocksize);
+	scan->usableBlockSize = getUsableBlockSize(aoentry->blocksize);
 	scan->safefswritesize = aoentry->safefswritesize;
 	scan->aos_bufread_inited = false;
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
-	scan->largeReadLen = 2 * scan->maxBufferLen;
+	scan->largeReadLen = 2 * scan->usableBlockSize;
 	scan->aoScanInitContext = CurrentMemoryContext;
 	scan->aos_compressed = (complevel > 0 ? true : false);
 	scan->aos_compresslevel = complevel;
@@ -1385,7 +1386,7 @@ appendonly_beginscan(Relation relation, Snapshot snapshot, int nkeys, ScanKey ke
 			
 	scan->headerLen = AppendOnlyStorage_HeaderLenNeeded(scan->aos_checksum);
 	scan->maxDataLen = 
-					scan->maxBufferLen -
+					scan->usableBlockSize -
 	 				scan->headerLen;
 	scan->uncompressedBuffer = NULL;
 	scan->singleRow = NULL;
@@ -1513,6 +1514,7 @@ appendonly_insert_init(Relation rel, int segno)
 	uint8					*memory;
 	int32					memoryLen;
 	int						maxtupsize;
+	int32					maxOverrun;
 		
 	/*
 	 * Get the pg_appendonly information for this table
@@ -1546,18 +1548,18 @@ appendonly_insert_init(Relation rel, int segno)
 	
 	aoInsertDesc->usingChecksum = aoentry->checksum;
 
-	aoInsertDesc->maxBufferLen = getLimitedMaxBufferLen(aoentry->blocksize);
+	aoInsertDesc->usableBlockSize = getUsableBlockSize(aoentry->blocksize);
 	aoInsertDesc->headerLen = AppendOnlyStorage_HeaderLenNeeded(aoInsertDesc->usingChecksum);
 	aoInsertDesc->maxDataLen = 
-						aoInsertDesc->maxBufferLen -
+						aoInsertDesc->usableBlockSize -
 		 				aoInsertDesc->headerLen;
-	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->maxBufferLen;
 
 	aoInsertDesc->nonCompressedHeader = NULL;
 
+	maxOverrun = 0;		// Assume none.
 	if (aoInsertDesc->shouldCompress)
 	{
-		aoInsertDesc->uncompressedBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
+		aoInsertDesc->uncompressedBuffer = (uint8 *) palloc(aoInsertDesc->usableBlockSize * sizeof(uint8));
 		
 		/*
 		 * if quicklz compression used, set up scratch space.
@@ -1579,6 +1581,16 @@ appendonly_insert_init(Relation rel, int segno)
 				Insist(false);
 		}
 
+		if (aoInsertDesc->compressType == COMPTYPE_QUICKLZ1 ||
+			aoInsertDesc->compressType == COMPTYPE_QUICKLZ3)
+		{
+			/* 
+			  * QuickLZ has compression overrun issues.  It can generate compressed output beyond the
+			  * original source length!
+			  */
+	    	maxOverrun += MAX_OVERRUN_QUICKLZ;
+		}
+
 	}
 	else
 	{
@@ -1586,13 +1598,21 @@ appendonly_insert_init(Relation rel, int segno)
 		aoInsertDesc->qlz_scratch = NULL;		
 	}
 	
-	aoInsertDesc->tempSpaceLen = aoInsertDesc->maxBufferLen / 8; /* TODO - come up with a more efficient calculation */
+	aoInsertDesc->maxBufferWithOverrrunLen = aoInsertDesc->usableBlockSize + maxOverrun;
+
+	/*
+	 * Even though we've bumbed up the buffer length with overrun bytes, still base the
+	 * large write size on the blocksize.
+	 */
+	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->usableBlockSize;
+	
+	aoInsertDesc->tempSpaceLen = aoInsertDesc->usableBlockSize / 8; /* TODO - come up with a more efficient calculation */
 	aoInsertDesc->tempSpace = (uint8 *) palloc(aoInsertDesc->tempSpaceLen * sizeof(uint8));
 	maxtupsize = aoInsertDesc->maxDataLen - VARBLOCK_HEADER_LEN - 4;
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
 		
-	memoryLen = BufferedAppendMemoryLen(aoInsertDesc->maxBufferLen, aoInsertDesc->largeWriteLen);
+	memoryLen = BufferedAppendMemoryLen(aoInsertDesc->maxBufferWithOverrrunLen, aoInsertDesc->largeWriteLen);
 	memory = (uint8*)palloc(memoryLen);
 	
 	/* 
@@ -1601,7 +1621,7 @@ appendonly_insert_init(Relation rel, int segno)
 	BufferedAppendInit(&aoInsertDesc->bufferedAppend, 
 					   memory,
 					   memoryLen, 
-					   aoInsertDesc->maxBufferLen, 
+					   aoInsertDesc->maxBufferWithOverrrunLen, 
 					   aoInsertDesc->largeWriteLen);
 				
 	if (Debug_appendonly_print_insert)
@@ -1611,7 +1631,7 @@ appendonly_insert_init(Relation rel, int segno)
 		     aoInsertDesc->cur_segno,
 		     (aoInsertDesc->shouldCompress ? "true" : "false"),
 		     aoInsertDesc->compressLevel,
-		     aoInsertDesc->maxBufferLen,
+		     aoInsertDesc->maxBufferWithOverrrunLen,
 		     aoInsertDesc->largeWriteLen);
 	
 	/* open our current relation file segment for write */
@@ -1651,8 +1671,9 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	Oid 			retOid;
 	bool			need_toast;
 
-	Assert(aoInsertDesc->maxBufferLen > 0 && aoInsertDesc->tempSpaceLen > 0);
-    Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
+	Assert(aoInsertDesc->usableBlockSize > 0 && aoInsertDesc->tempSpaceLen > 0);
+	Assert(aoInsertDesc->maxBufferWithOverrrunLen > 0);
+    Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->usableBlockSize * 2);
 	Assert(aoInsertDesc->toast_tuple_threshold > 0 && aoInsertDesc->toast_tuple_target > 0);
 
 	Insist(relation->rd_rel->relstorage == RELSTORAGE_AO);
@@ -1819,7 +1840,8 @@ tryToCompress(
 	 uint8		*sourceData,
 	 int32		sourceLen,
 	 uint8		*compressedBuffer,
-	 int32		maxCompressedLen,
+	 int32		compressedBufferWithOverrrunLen,
+	 int32		maxCompressedLen,	// The largest compressed result we would like to see.
 	 int32		*compressedLen,
 	 int		compressLevel,
 	 CompressorType  compressType,
@@ -1873,6 +1895,12 @@ tryToCompress(
 		 * use the zlib error code Z_BUF_ERROR, but we could make up our own
 		 * instead too.
 		 */
+
+		if (compressedSize > compressedBufferWithOverrrunLen)
+			elog(FATAL, 
+			     "QuickLZ qlz1_compress overran extra buffer space (max buffer length %d, compressed length %d)",
+			     compressedBufferWithOverrrunLen, (int)compressedSize);
+		
 		if ((compressedSize > (unsigned long)maxCompressedLen) ||
 			(compressedSize > sourceLen))
 		{
@@ -1893,6 +1921,11 @@ tryToCompress(
 		/*
 		 * see comment above below qlz1_compress.
 		 */
+		if (compressedSize > compressedBufferWithOverrrunLen)
+			elog(FATAL, 
+				 "QuickLZ qlz3_compress overran extra buffer space (max buffer length %d, compressed length %d)",
+				 compressedBufferWithOverrrunLen, (int)compressedSize);
+			
 		if ((compressedSize > (unsigned long)maxCompressedLen) ||
 			(compressedSize > sourceLen))
 		{
@@ -1924,9 +1957,10 @@ doCompressAppend(
 	int 	 		res;
 	int32			compressedLen;
 	int32 			dataRoundedUpLen = 0;	// Shutup compiler.
+	int32			dataBufferWithOverrrunLen;
 		
-	Assert(aoInsertDesc->maxBufferLen > 0 && 
-		   aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
+	Assert(aoInsertDesc->usableBlockSize > 0); 
+	Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->usableBlockSize * 2);
 
 	header = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
 	if (header == NULL)
@@ -1935,6 +1969,7 @@ doCompressAppend(
 				 errmsg("We do not expect files to be have a maximum length")));
 	
 	dataBuffer = &header[aoInsertDesc->headerLen];
+	dataBufferWithOverrrunLen = aoInsertDesc->maxBufferWithOverrrunLen - aoInsertDesc->headerLen;
 
 	// UNDONE: Here is a point where we could look at the sourceLen and
 	// UNDONE: and decide it is too small to compress and go directly
@@ -1948,6 +1983,7 @@ doCompressAppend(
 					sourceData,
 					sourceLen,
 					dataBuffer,
+					dataBufferWithOverrrunLen,
 					sourceLen,	// Limit compression to be no more than the input size.
 					&compressedLen,
 					aoInsertDesc->compressLevel,
@@ -2171,17 +2207,17 @@ RelationGuessNumberOfBlocks(double totalbytes)
 }
 
 int32 
-getLimitedMaxBufferLen(int32 maxBufferLen)
+getUsableBlockSize(int32 configBlockSize)
 {
 	int32 result;
 
 	/*
 	 * UNDONE: Need to fix parser to use new lower blocksize limit.
 	 */
-	if (maxBufferLen > AOBlockHeader_MaxLength)
+	if (configBlockSize > AOBlockHeader_MaxLength)
 		result = AOBlockHeader_MaxLength;
 	else
-		result = maxBufferLen;
+		result = configBlockSize;
 
 	/*
 	 * Round down to 32-bit boundary.

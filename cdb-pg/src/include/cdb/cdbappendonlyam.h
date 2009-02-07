@@ -36,6 +36,9 @@
 #define DEFAULT_VARBLOCK_TEMPSPACE_LEN   	 4 * 1024 
 #define DEFAULT_FS_SAFE_WRITE_SIZE			 0
 
+// UNDONE: Is there a QLZ DEFINE for this?
+#define MAX_OVERRUN_QUICKLZ 400
+
 /*
  *	Represents the compressor type used for an AO table.
  *	Note that we treat quicklz with compression levels 1 and 3 as
@@ -80,9 +83,10 @@ typedef struct AppendOnlyInsertDescData
 	uint8			*tempSpace;
 	uint8			*uncompressedBuffer; /* used for compression */
 
-	int32			maxBufferLen;
+	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			tempSpaceLen;
+	int32			maxBufferWithOverrrunLen;
 	int32			largeWriteLen;
 	int32			safefswritesize;
 	
@@ -133,7 +137,7 @@ typedef struct AppendOnlyScanDescData
 
 	int32			headerLen;
 	uint8			*uncompressedBuffer; /* for decompression */
-	int32			maxBufferLen;
+	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			largeReadLen;
 	int32			safefswritesize;
