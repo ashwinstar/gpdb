@@ -578,6 +578,13 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 			break;
 		}
 
+		if (strstr(errorMsg, "Out of memory") != NULL)
+		{
+			/* don't consider this a failure, essentially we want to force a retry here */
+			ret = true;
+			break;
+		}
+
 		/* This is a real failure for which a reconfigure may be warranted */
 		if (LOG >= log_min_messages)
 			write_log("FTS: test connection failed, dbid %d dbname %s error message %s",
