@@ -39,6 +39,7 @@
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbmutate.h"
+#include "optimizer/tlist.h"
 
 #define ARRAYCOPY(to, from, sz) \
 	do { \
@@ -103,6 +104,7 @@ adjustPlanFlow(Plan        *plan,
                List        *hashExpr);
 
 static void motion_sanity_check(Plan *plan);
+static bool loci_compatible(List *hashExpr1, List *hashExpr2);
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.
@@ -753,6 +755,38 @@ broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
 }
 
 
+/**
+ * This method is used to determine if motion nodes may be avoided for certain insert-select
+ * statements. To do this it determines if the loci are compatible (ignoring relabeling).
+ */
+
+static bool loci_compatible(List *hashExpr1, List *hashExpr2) 
+{
+	ListCell *cell1 = NULL;
+	ListCell *cell2 = NULL;
+	if (list_length(hashExpr1) != list_length(hashExpr2))
+	{
+		return false;
+	}
+
+	forboth (cell1, hashExpr1, cell2, hashExpr2) {
+		Expr *var1;
+		Expr *var2;
+		var1 = (Expr *) lfirst(cell1);
+		var2 = (Expr *) lfirst(cell2);
+
+		/* right side variable may be encapsulated by a relabel node. motion, however, does not care about relabel nodes. */
+		if (IsA(var2, RelabelType))
+			var2 = ((RelabelType *)var2)->arg;
+		
+		if (!equal(var1, var2))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 /*
  * Function: repartitionPlan
  */
@@ -760,18 +794,29 @@ bool
 repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr)
 {
     Movement    req_move = MOVEMENT_REPARTITION;
-
+    
+    
     Assert(plan->flow); 
     Assert(plan->flow->flotype == FLOW_PARTITIONED ||
            plan->flow->flotype == FLOW_SINGLETON);
 
     /* Already partitioned on the given hashExpr?  Do nothing. */
-    if (hashExpr &&
-        equal(hashExpr, plan->flow->hashExpr))
-        return true;
+    if (hashExpr) 
+    {
+    	if (equal(hashExpr, plan->flow->hashExpr))
+    		return true;
 
+    	/* MPP-4922: The earlier check is very conservative and may result in unnecessary motion nodes.
+    	 * Adding another check to avoid motion nodes, if possible.
+    	 */
+    	 if (loci_compatible(hashExpr, plan->flow->hashExpr)) 
+		   return true;
+    }
+    
     return adjustPlanFlow(plan, live, stable, rescannable, req_move, hashExpr);
 }
+
+
 
 
 /*
