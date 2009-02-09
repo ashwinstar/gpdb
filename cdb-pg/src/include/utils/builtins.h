@@ -404,6 +404,10 @@ extern Datum pg_size_pretty(PG_FUNCTION_ARGS);
 extern Datum pg_stat_file(PG_FUNCTION_ARGS);
 extern Datum pg_read_file(PG_FUNCTION_ARGS);
 extern Datum pg_ls_dir(PG_FUNCTION_ARGS);
+extern Datum pg_file_write(PG_FUNCTION_ARGS);
+extern Datum pg_file_rename(PG_FUNCTION_ARGS);
+extern Datum pg_file_unlink(PG_FUNCTION_ARGS);
+extern Datum pg_logdir_ls(PG_FUNCTION_ARGS);
 
 /* misc.c */
 extern Datum nullvalue(PG_FUNCTION_ARGS);

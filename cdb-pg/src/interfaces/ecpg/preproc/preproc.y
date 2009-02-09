@@ -2,9 +2,11 @@
 
 /* Copyright comment */
 %{
+#undef REPEATABLE
 #include "postgres_fe.h"
 
 #include "extern.h"
+#undef REPEATABLE
 
 
 /*
@@ -310,7 +312,6 @@ add_additional_variables(char *name, bool insert)
 
 	return ptr;
 }
-#undef REPEATABLE
 %}
 
 %union {

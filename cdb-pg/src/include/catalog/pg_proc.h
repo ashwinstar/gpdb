@@ -3216,6 +3216,22 @@ DATA(insert OID = 2626 ( pg_sleep			PGNSP PGUID 12 f f t f v 1 2278 f "701" _nul
 DESCR("Sleep for the specified time in seconds");
 DATA(insert OID = 6030 (  pg_resqueue_status   PGNSP PGUID 12 f f t t v 0 2249 f "" _null_ _null_ _null_ pg_resqueue_status - _null_ ));
 DESCR("Return resource queue information");
+DATA(insert OID = 6045 ( pg_file_read		PGNSP PGUID 12 f f t f v 3 25 f "25 20 20" _null_ _null_ _null_ pg_read_file - _null_ ));
+DESCR("Read text from a file");
+DATA(insert OID = 6046 ( pg_logfile_rotate		PGNSP PGUID 12 f f t f v 0 16 f "" _null_ _null_ _null_ pg_rotate_logfile - _null_ ));
+DESCR("Rotate log file");
+DATA(insert OID = 6047 ( pg_file_write		PGNSP PGUID 12 f f t f v 3 20 f "25 25 16" _null_ _null_ _null_ pg_file_write - _null_ ));
+DESCR("Write text to a file");
+DATA(insert OID = 6048 ( pg_file_rename		PGNSP PGUID 12 f f f f v 3 16 f "25 25 25" _null_ _null_ _null_ pg_file_rename - _null_ ));
+DESCR("Rename a file");
+DATA(insert OID = 6049 ( pg_file_unlink		PGNSP PGUID 12 f f t f v 1 16 f "25" _null_ _null_ _null_ pg_file_unlink - _null_ ));
+DESCR("Delete (unlink) a file");
+DATA(insert OID = 6050 ( pg_logdir_ls		PGNSP PGUID 12 f f t t v 0 2249 f "" _null_ _null_ _null_ pg_logdir_ls - _null_ ));
+DESCR("ls the log dir");
+
+
+
+
 
 
 /* Aggregates (moved here from pg_aggregate for 7.3) */
