@@ -127,7 +127,78 @@ def createFromGpInitFile(intputFile):
     """TODO: """
     raise Exception,"TODO: implement createFromGpInitFile"
 
-
+def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase):
+    rows=[]
+    
+    dbid = 0
+    content = 0
+    #primaries
+    for host in hostlist:
+        isprimary='t'
+        port=primary_portbase        
+        for dir in primary_list:                                
+            rows.append( (content,isprimary,dbid,isprimary,'t',host,port,dir) )
+            port += 1
+            content += 1
+            dbid += 1
+    
+    #mirrors
+    if mirror_type is None:
+        return rows
+    elif mirror_type.lower().strip() == 'spread':
+        #TODO: must be sure to put mirrors on a different subnet than primary.
+        #      this is a general problem for GPDB these days. perhaps we should
+        #      add something to gpdetective to be able to detect this and fix it.
+        #      best to have the interface mapping stuff 1st.
+        content=0
+        isprimary='f'
+        num_hosts = len(hostlist)
+        num_dirs=len(primary_list)
+        if num_hosts <= num_dirs:
+            raise Exception("Not enough hosts for spread mirroring.  You must have more hosts then primary segments per host")
+        
+        for host in hostlist:
+            port = mirror_portbase
+            mirror_host_offset=1
+            for dir in mirror_list:
+                mirror_host = hostlist[mirror_host_offset % num_hosts]
+                if mirror_host == host:
+                    mirror_host_offset += 1
+                    mirror_host = hostlist[mirror_host_offset % num_hosts]
+                    
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,dir) )
+                port += 1
+                content += 1
+                dbid += 1
+                mirror_host_offset += 1
+                
+        
+    elif mirror_type.lower().strip() == 'grouped':
+        content = 0
+        num_hosts = len(hostlist)
+        
+        if num_hosts < 2:
+            raise Exception("Not enough hosts for grouped mirroring.  You must have at least 2")
+        
+        #we'll pick our mirror host to be 1 host "ahead" of the primary.
+        mirror_host_offset = 1
+        
+        isprimary='f'
+        for host in hostlist:            
+            mirror_host = hostlist[mirror_host_offset % num_hosts]
+            mirror_host_offset += 1
+            port = mirror_portbase
+            
+            for dir in mirror_list:
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,dir) )
+                port += 1
+                content += 1
+                dbid += 1
+        
+    else:
+        raise Exception("Invalid mirror type specified: %s" % mirror_type)
+    
+    return rows
 
 def parseTrueFalse(value):
     if value.lower() == 'f':
@@ -153,7 +224,7 @@ class GpArray:
         self.arrayName=''
         self.segments=[]
         
-        for row in rows:            
+        for row in rows:         
             content=row[0]
             definedprimary=row[1]
             dbid=int(row[2])

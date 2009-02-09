@@ -7,6 +7,7 @@ import datetime
 import os
 import sys
 import socket
+from time import strftime
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
@@ -18,6 +19,8 @@ from gppylib.gplog import *
 from gppylib.db import dbconn
 from gppylib.db import catalog
 from gppylib.segcopy import GpSegCopy, SegcopyError
+from gppylib.userinput import *
+
 
 description = (""" 
 Adds additional segments to a pre-existing GPDB Array.
@@ -27,7 +30,7 @@ _help = ["""
 Tne input file should be be a plain text file with a line for each segment
 to add with the format:
 
-  <hostname>:<dataDir>:<port>:<contentId>
+  <dbid>:<content>:<definedprimary>:<hostname>:<port>:<datadir>
 
 """,
 """
@@ -128,15 +131,16 @@ class SegmentTemplate:
                                  SET numsegments=%d, dbid=%d, content=%d"""
     
     
-    def __init__(self, logger, newSegments, masterDataDirectory, 
+    def __init__(self, logger, gparray,newSegments, masterDataDirectory, 
                  dbUrl, vacuumCatalog, tempDir, schemaTarFile='gpexpand_schema.tar'):
         self.logger = logger
+        self.gparray = gparray
         self.newSegments = newSegments
         self.vacuumCatalog = vacuumCatalog
         self.tempDir = tempDir
         self.dbUrl = dbUrl
         self.conn=dbconn.connect(self.dbUrl)
-        self.gparray = createGPDBFromDB(self.dbUrl)
+        self.gparray = gparray
         self.masterDataDirectory = masterDataDirectory
         self.schema_tar_file = schemaTarFile
     
@@ -290,7 +294,7 @@ class SegmentTemplate:
             
             gpid_tbl = catalog.GpIdTable(conn)
             seg['dbId'] = newDbId
-            gpid_tbl.set(dbid=newDbId,content=seg['contentId'],numsegments=newSegCount)
+            gpid_tbl.set(dbid=newDbId,content=int(seg['contentId']),numsegments=newSegCount)
             
             dbconn.execSQL(conn,gpid_tbl.get_update_sql())
             
@@ -381,10 +385,11 @@ class gpexpand:
     def __init__(self,logger,dburl,parallel=1):
         self.logger = logger
         self.dburl = dburl
-        self.numworkers=parallel
-         
+        self.numworkers=parallel         
         self.conn = dbconn.connect(self.dburl)
+        self.gparray = createGPDBFromDB(self.dburl)
         pass
+    
     
     
     def gather_state(self):
@@ -426,6 +431,32 @@ class gpexpand:
         #read in table entries
         return SETUP
     
+    def generate_inputfile(self,hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase):
+        """        
+        File format is:
+        dbid:content:definedprimary:hostname:port:datadir
+        
+        """
+        maxDbId = self.gparray.get_max_dbid()        
+        oldSegCount = self.gparray.get_segment_count()
+        outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
+        outfile = open(outputfile, 'w')
+        
+        logger.info("Generating input file...")
+        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase)
+        
+        
+        for r in rows:              
+            (content,defprim,dbid,isprim,valid,hostname,port,datadir)=r
+            new_dbid = maxDbId + dbid
+            new_content = oldSegCount + content
+            outfile.write("%d:%d:%s:%s:%d:%s\n" % (new_dbid,new_content,isprim,hostname,port,datadir) )           
+        
+        
+        outfile.close()
+        
+        return outputfile
+
     def read_input_file(self):
         if not options.filename:
             raise ExpansionError, 'Missing input file'
@@ -439,9 +470,11 @@ class gpexpand:
                 while 1:
                     l = f.readline()
                     if not l:
-                        break
-                    hostname, dataDir, port, contentId = l.split(':')
-                    seg = dict(zip(['hostname', 'dataDir', 'port', 'contentId'], [hostname, dataDir, int(port), int(contentId)]))
+                        break                    
+                    dbid,contentId,definedprimary,hostname,port,datadir = l.split(':')
+                    
+                    seg = dict(zip(['dbid','contentId','definedprimary','hostname', 'port', 'dataDir'], 
+                                   [int(dbid),int(contentId),definedprimary,hostname, int(port), datadir.strip()]))
                     self.new_segments.append(seg)
                     line += 1
             except ValueError:
@@ -459,9 +492,9 @@ class gpexpand:
         
         # We need to get the current segment information before we start shutting
         # down the array. 
-        rows = dbconn.execSQL(self.conn, 'SELECT hostname, datadir, port, content FROM pg_catalog.gp_configuration')
+        rows = dbconn.execSQL(self.conn, 'SELECT dbid,content,definedprimary,hostname, port, datadir FROM pg_catalog.gp_configuration')
         for row in rows:
-            seg = dict(zip(['hostname', 'dataDir', 'port', 'contentId'], row))
+            seg = dict(zip(['dbid','contentId','definedprimary','hostname', 'port', 'dataDir'],row))            
             seg['port'] = int(seg['port'])
             seg['contentId'] = int(seg['contentId'])
             self.old_segments.append(seg)
@@ -473,7 +506,7 @@ class gpexpand:
         
         # Create, distribute and configure the new segments.
         try:
-            segTemplate = SegmentTemplate(self.logger, self.new_segments, 
+            segTemplate = SegmentTemplate(self.logger, self.gparray, self.new_segments, 
                                           options.master_data_directory, 
                                           self.dburl, False, tempDir)
             segTemplate.create_new_segments()
@@ -523,8 +556,11 @@ class gpexpand:
         # Update gp_configuration on the master
         self.conn = dbconn.connect(self.dburl, utility=True)
         for seg in self.new_segments:
-            # TODO: mirrors.  Right now sets everything primary.
-            query = 'INSERT INTO pg_catalog.gp_configuration(content, definedprimary, dbid, isprimary, valid, hostname, port, datadir) VALUES (%d, \'t\', %d, \'t\', \'t\', \'%s\', %d, \'%s\')' % (seg['contentId'], seg['dbId'], seg['hostname'], seg['port'], seg['dataDir'])
+            # TODO: mirrors.  Right now sets everything primary.            
+            query = "INSERT INTO pg_catalog.gp_configuration(content, definedprimary, dbid, isprimary, valid, hostname, port, datadir)"\
+                        "VALUES (%d, \'t\', %d, \'t\', \'t\', \'%s\', %d, \'%s\')"\
+                        % (seg['contentId'], seg['dbId'], seg['hostname'], seg['port'], seg['dataDir'])
+                        
             dbconn.execSQL(self.conn, query)
             
         self.conn.commit()
@@ -849,8 +885,74 @@ class ExpandCommand(SQLCommand):
         raise ExecutionError("TODO:  must implement")        
         
         
-        
+
+#------------------------------- UI Help --------------------------------
+def interview_setup(default_primary_port_est,default_mirror_port_est):
+    help="""
+System Expansion is used to add segments to an existing GPDB array.
+gpexpand did not detect a System Expansion that is in progress.  
+            
+Before initiating a System Expansion, you need to provision and burn-in 
+the new hardware.  Please be sure to run gpcheckperf/gpcheckos to make
+sure the new hardware is working properly.
+                        
+Please refer to the Admin Guide <TODO: chapter?> for more information."""
+            
+    if not ask_yesno(help,"Would you like to initiate a new System Expansion",'N'):                            
+        logger.info("User Aborted. Exiting...")
+        sys.exit(0)
+         
+    help="""
+This utility can handle some expansion scenarios by asking a few questions.
+More complex expansions can be done by providing an input file with 
+the --input <file>.  Please see the docs for the format of this file.  
+            
+We'll now ask you a few questions to try and build this file for you.  
+You'll have the opportunity to save this file and inspect it/modify it 
+before continuing by re-running this utility and providing the input file. """
+            
+    hostlist=ask_list(help,"Please enter a comma seperated list of hostnames that you'd like to add\n" \
+                      "or press Enter if you are not adding any hosts",'')    
+            
+    primary_datadirs=ask_list(None,"\nPlease enter a comma separated list of data directories to put new\n"\
+                              "primary segment databases on",None)
+            
+    primary_portbase=ask_int(None,"\nPlease provide a base port number to use for the new\n"\
+                             " primary segdbs?",
+                             None,5500,1024,65536)
+
+            
+    mirror_datadirs=None
+    mirror_portbase=None
+    mirror_type=ask_string("\nYou must now specify a mirroring strategy for the new hosts.  Spread mirroring places\n"\
+                           "a given hosts mirrored segments each on a separate host.  You must be \n"\
+                           "adding more hosts than the number of segments per host to use this. \n"\
+                           "Grouped mirroring places all of a given hosts segments on a single \n"\
+                           "mirrored host.  You must be adding at least 2 hosts in order to use this.\n\n",
+                           "What type of mirroring strategy would you like?",
+                           'grouped', ['spread','grouped','none'])
+            
+    if mirror_type.lower().strip() != 'none':                
+        mirror_datadirs=ask_list(None,
+                                 "\nPlease enter a comma separated list of data directories to put new\n"\
+                                 "mirror segment databases on ",None) 
+        mirror_portbase=ask_int(None,"Please provide a base port number to use for the new \n"\
+                                "mirror segdbs?",
+                                None,5600,1024,65536)
+            
+            
+    print "\nGenerating configuration file...\n"
+            
+            
+    outfile=gp_expand.generate_inputfile(hostlist,primary_datadirs,primary_portbase,mirror_type,mirror_datadirs,mirror_portbase)
+    print """\nInput configuration file was written to:
+'%s'.  Please review the file and make sure that its correct then re-run 
+with: gpexpand -i %s
+                """ % (outfile,outfile)
+    
+            
 #------------------------------- Mainline --------------------------------
+
 
 try:
     logger = get_default_logger()
@@ -878,6 +980,17 @@ try:
     state = gp_expand.gather_state()
     
     if state == UNINITIALIZED:
+        
+        if options.filename is None: 
+            #TODO: add func to gpexpand to try and guess a default set of portbases
+            #      for primaries and mirrors.
+            default_primary_port_est=5500
+            default_mirror_port_est=5600
+            interview_setup(default_primary_port_est,default_mirror_port_est)            
+            logger.info("Exiting...")           
+            sys.exit(0)
+        
+            
         state = gp_expand.setup_schema()
         gp_expand.read_input_file()
         gp_expand.add_segments()
@@ -886,7 +999,6 @@ try:
         logger.info('Initialization of the system expansion complete.')
         logger.info('To begin table expansion onto the new segments')
         logger.info('rerun gpexpand')
-        sys.exit(0)
         
     if state == SETUP:
         gp_expand.perform_expansion()
