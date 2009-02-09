@@ -13,13 +13,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-3.2.1.0-<PLATFORM>.bin 
+   /bin/bash greenplum-db-3.3.0.0-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-3.2.1.0
+   /usr/local/greenplum-db-3.3.0.0
 
 
 ***********************************************************
@@ -144,7 +144,7 @@ ABOUT YOUR INSTALLATION
 The Greenplum Database installer installs the following files and 
 directories:
 
-* greenplum_path.sh  Greenplum Database 3.1 environment variables.
+* greenplum_path.sh  Greenplum Database environment variables.
 
 * bin - Greenplum Database server programs, client programs, and 
         management tools.
@@ -153,7 +153,7 @@ directories:
 
 * docs  Greenplum Database documentation.
 
-* ext - Bundled programs (such as python) used by some 
+* ext - Bundled programs (such as Python) used by some 
         Greenplum Database utilies.
 
 * include  Greenplum Database and PostgreSQL header files.
