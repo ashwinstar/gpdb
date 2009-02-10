@@ -1395,6 +1395,7 @@ ExecStopMotion(MotionState * node)
 
 	motion = (Motion *) node->ps.plan;
 	node->stopRequested = true;
+	node->ps.state->active_recv_id = -1;
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
 		return;
