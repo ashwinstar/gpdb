@@ -371,7 +371,7 @@ static void StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid);
 static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
-static Datum transformFormatOpts(char formattype, List *formatOpts);
+static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols);
 static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
 							  struct CdbDispatchResults **pPrimaryResults,
 							  struct CdbDispatchResults **pMirrorResults,
@@ -9356,7 +9356,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	heap_close(rel, NoLock);
    	tmprelid = RangeVarGetRelid(tmprv, false);
 	swap_relation_files(tarrelid, tmprelid, false);
-	
+
 	/* now, reindex */
 	reindex_relation(tarrelid, false, false /* ao_segs ? */,
 					 &oid_map, Gp_role == GP_ROLE_DISPATCH);
@@ -10413,7 +10413,7 @@ partition_get_policies_attrs(PartitionNode *pn, GpPolicy *master_policy,
 	{
 		ListCell *lc;
 
-		/* 
+		/*
 		 * We use master_policy as a fast path. The assumption is that most
 		 * child partitions look like the master so we don't want to enter
 		 * the O(N^2) loop below if we can avoid it. Firstly, though, we must
@@ -10440,9 +10440,9 @@ partition_get_policies_attrs(PartitionNode *pn, GpPolicy *master_policy,
 
 				for (attno = 0; attno < rel->rd_cdbpolicy->nattrs; attno++)
 				{
-					if (!list_member_int(*cols, 
+					if (!list_member_int(*cols,
 										 rel->rd_cdbpolicy->attrs[attno]))
-						*cols = lappend_int(*cols, 
+						*cols = lappend_int(*cols,
 											rel->rd_cdbpolicy->attrs[attno]);
 				}
 			}
@@ -17737,7 +17737,9 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 	 * Parse and validate FORMAT clause.
 	 */
 	formattype = transformFormatType(stmt->format);
-	formatOptStr = transformFormatOpts(formattype, stmt->formatOpts);
+	formatOptStr = transformFormatOpts(formattype,
+									   stmt->formatOpts,
+									   list_length(stmt->tableElts));
 
 	/*
 	 * Parse single row error handling info if available
@@ -18177,7 +18179,7 @@ static char transformFormatType(char *formatname)
  *
  * The result is a text field that includes the format string.
  */
-static Datum transformFormatOpts(char formattype, List *formatOpts)
+static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 {
 	ListCell   *option;
 	Datum		result;
@@ -18315,21 +18317,22 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 						 escape,
 						 NIL, /* not yet supported */
 						 force_notnull,
-						 header_line);
+						 header_line,
+						 numcols);
 
 	/*
 	 * build the format option string that will get stored in the catalog.
 	 */
 
-	len =	9 + 1 + 3 +							/* "delimiter 'x'"		*/
-		1 +										/* space				*/
-		4 + 1 + 1 + strlen(null_print) + 1 +	/* "null 'str'"			*/
-		1 +										/* space				*/
-		6 + 1 + 1 + strlen(escape) + 1;			/* "escape 'c' or 'off' */
+	len = 9 + 1 + 1 + strlen(delim) + 1 +		/* "delimiter 'x' of 'off'" */
+		  1 +									/* space					*/
+		  4 + 1 + 1 + strlen(null_print) + 1 +	/* "null 'str'"				*/
+		  1 +									/* space					*/
+		  6 + 1 + 1 + strlen(escape) + 1;		/* "escape 'c' or 'off' 	*/
 
 	if (formattype == 'c')
-		len +=	1 +								/* space			*/
-			5 + 1 + 3							/* "quote 'x'"		*/;
+		len +=	1 +								/* space					*/
+				5 + 1 + 3;						/* "quote 'x'"				*/
 
 	len += header_line ? strlen(" header") : 0;
 	len += fill_missing ? strlen(" fill missing fields") : 0;

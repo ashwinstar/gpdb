@@ -932,13 +932,13 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	/*
 	 * Now parse the data FORMAT options.
 	 *
-	 * NOTE: Eventually when we support user defined types the user will supply 
-	 * a function that will know how to parse these parameters. For now we can 
+	 * NOTE: Eventually when we support user defined types the user will supply
+	 * a function that will know how to parse these parameters. For now we can
 	 * hardcode it for the 2 supported types - text, csv - parseFormatString().
 	 */
 	format_str = pstrdup((char *) strVal(linitial(fmtOpts)));
 	parseFormatString(pstate, format_str);
-	
+
 
 	tupDesc = RelationGetDescr(relation);
 	pstate->attr_offsets = (int *) palloc(tupDesc->natts * sizeof(int));
@@ -1263,7 +1263,7 @@ linenumber_atoi(char buffer[20],int64 linenumber)
  * strip_quotes
  *
  * (copied from bin/psql/stringutils.c - TODO: place to share FE and BE code?).
- * 
+ *
  * Remove quotes from the string at *source.  Leading and trailing occurrences
  * of 'quote' are removed; embedded double occurrences of 'quote' are reduced
  * to single occurrences; if 'escape' is not 0 then 'escape' removes special
@@ -1307,11 +1307,11 @@ strip_quotes(char *source, char quote, char escape, int encoding)
 
 /*
  * strtokx2
- * 
+ *
  * strtokx2 is a replica of psql's strtokx (bin/psql/stringutils.c), fitted
  * to be used in the backend for the same purpose - parsing an sql string of
  * literals. Information follows (right now identical to strtokx):
- * 
+ *
  * Replacement for strtok() (a.k.a. poor man's flex)
  *
  * Splits a string into tokens, returning one token per call, then NULL
@@ -1525,20 +1525,20 @@ strtokx2(const char *s,
 
 /*
  * parseFormatString
- * 
+ *
  * Given a data format string (e.g: "delimiter '|' null ''"), parse it to its
  * individual elements and store the parsed values into pstate. this routine
- * will parse the format string for both 'text' and 'csv' data formats. the 
- * logic here is largely borrowed from psql's parsing of '\copy' and adapted 
+ * will parse the format string for both 'text' and 'csv' data formats. the
+ * logic here is largely borrowed from psql's parsing of '\copy' and adapted
  * for use in the backend, for the supported external table options only.
  */
 static void parseFormatString(CopyState pstate, char *fmtstr)
 {
 	char	   *token;
 	const char *whitespace = " \t\n\r";
-	char		nonstd_backslash = 0; 
+	char		nonstd_backslash = 0;
 	int			encoding = GetDatabaseEncoding();
-	
+
 	token = strtokx2(fmtstr, whitespace, NULL, NULL,
 					0, false, true, encoding);
 
@@ -1558,7 +1558,12 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 				token = strtokx2(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, true, encoding);
 				if (token)
+				{
 					pstate->delim = pstrdup(token);
+
+					if (pg_strcasecmp(pstate->delim, "off") == 0)
+						pstate->delimiter_off = true;
+				}
 				else
 					goto error;
 			}
@@ -1590,7 +1595,7 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 				if (token)
 				{
 					pstate->escape = pstrdup(token);
-					
+
 					if (pg_strcasecmp(pstate->escape, "off") == 0)
 						pstate->escape_off = true;
 				}
@@ -1612,12 +1617,12 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 					for (;;)
 					{
 						Value *val;
-						
+
 						token = strtokx2(NULL, whitespace, ",", "\"",
 										0, false, false, encoding);
 						if (!token || strchr(",", token[0]))
 							goto error;
-						
+
 						val = makeString((char *)pstrdup(token));
 						pstate->force_notnull = lappend(pstate->force_notnull, val);
 
@@ -1625,7 +1630,7 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 						token = strtokx2(NULL, whitespace, ",", "\"",
 										0, false, false, encoding);
 						if (!token || token[0] != ',')
-							break;						
+							break;
 					}
 				}
 				else
@@ -1659,7 +1664,7 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 	}
 
 	/* set defaults */
-	
+
 	if (pstate->csv_mode)
 	{
 		if (!pstate->quote)
@@ -1671,13 +1676,13 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 				 pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line
 				 ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : ""));
 	 */
-	
+
 	return;
-	
+
 error:
 	if (token)
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("external table internal parse error at \"%s\"", 
+						errmsg("external table internal parse error at \"%s\"",
 								token)));
 	else
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),

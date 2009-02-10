@@ -43,29 +43,29 @@ typedef enum EolType
 } EolType;
 
 /*
- * There are several ways to know the input row number where an error happened, 
+ * There are several ways to know the input row number where an error happened,
  * in order to report it reliably.
  *
  * ROWNUM_ORIGINAL - Used when the error happens in the same place that the
- * *whole* file or data is read, and input row numbers can be tracked reliably. 
- * So, if an error happens in the n'th data row read, it's actually the n'th row 
+ * *whole* file or data is read, and input row numbers can be tracked reliably.
+ * So, if an error happens in the n'th data row read, it's actually the n'th row
  * of the file (or data stream).
- * Using this type are - COPY in dispatch mode, COPY in utility mode, External 
+ * Using this type are - COPY in dispatch mode, COPY in utility mode, External
  * tables with 'file', and external web tables.
- * 
+ *
  * ROWNUM_EMBEDDED - Used when the error happens in a place where a random
- * part of the file is read (given to us) and therefore the row numbers of the 
- * original data are unknown. 
- * So, If an error happens in the n'th row read it can actually be the (n+m)'th 
- * row of the original file. 
+ * part of the file is read (given to us) and therefore the row numbers of the
+ * original data are unknown.
+ * So, If an error happens in the n'th row read it can actually be the (n+m)'th
+ * row of the original file.
  * Using this type are - COPY in execute mode, and External tables getting data
  * from a gpfdist process in a CSV Format (gpfdist only parses CSV row by row,
  * while text format is parsed in chucks).
- * In this case we do some extra work to retrieve the original row number - the 
+ * In this case we do some extra work to retrieve the original row number - the
  * distributor (COPY dispatcher, or gpfdist) embeds the original row number in
  * the beginning of each data row, and this number is extracted later on.
  *
- * BYTENUM_EMBEDDED - Original row isn't even known to the distributor, only 
+ * BYTENUM_EMBEDDED - Original row isn't even known to the distributor, only
  * the byte offset of each chunk it sends. We report errors in byte offset
  * number, not row number. We keep track of byte counts. This is currently
  * only used by external tables with gpfdist in 'text' format.
@@ -200,6 +200,7 @@ typedef struct CopyStateData
 	bool		is_copy_in;		/* copy in or out? */
 	char		eol_ch[2];		/* The byte values of the 1 or 2 eol bytes */
 	bool		escape_off;		/* treat backslashes as non-special? */
+	bool		delimiter_off;  /* no delimiter. 1-column external tabs only */
 	int			last_hash_field;
 	bool		line_done;		/* finished processing the whole line or
 								 * stopped in the middle */
@@ -214,7 +215,7 @@ typedef struct CopyStateData
 	/* for CSV format */
 	bool		in_quote;
 	bool		last_was_esc;
-	
+
 	/* for TEXT format */
 	bool		esc_in_prevbuf; /* escape was last character of the data input
 								 * buffer */
@@ -223,8 +224,8 @@ typedef struct CopyStateData
 
 	/* Original row number tracking variables */
 #define ORIGINAL_LINENO_DELIM '^'
-	ErrLocType  err_loc_type;   /* see enum def for description */	
-	
+	ErrLocType  err_loc_type;   /* see enum def for description */
+
 	/* Error handling options */
 	CopyErrMode	errMode;
 	struct CdbSreh		*cdbsreh; /* single row error handler */
@@ -243,10 +244,10 @@ typedef CopyStateData *CopyState;
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
 
-extern void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim, 
+extern void ValidateControlChars(bool copy, bool load, bool csv_mode, char *delim,
 								 char *null_print, char *quote, char *escape,
 								 List *force_quote, List *force_notnull,
-								 bool header_line);
+								 bool header_line, int numcols);
 extern uint64 DoCopy(const CopyStmt *stmt);
 
 extern DestReceiver *CreateCopyDestReceiver(void);
