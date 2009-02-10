@@ -5,11 +5,12 @@
 """
 TODO: module docs
 """
+import sys
 import os
 
 
 try: 
-    import pgdb
+    from pygresql import pgdb
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 

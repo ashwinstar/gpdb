@@ -12,7 +12,7 @@ from time import strftime
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 from gppylib.commands.unix import *
-from gppylib.commands.gp import Psql, ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, GpStop, GpStart
+from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, GpStop, GpStart
 from gppylib.gparray import *
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.gplog import *
@@ -20,6 +20,7 @@ from gppylib.db import dbconn
 from gppylib.db import catalog
 from gppylib.segcopy import GpSegCopy, SegcopyError
 from gppylib.userinput import *
+from pygresql.pgdb import DatabaseError
 
 
 description = (""" 
@@ -69,11 +70,7 @@ def parseargs():
                         help='number of tables to expand at a time. Valid values are 1-127')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')
-    parser.add_option('-m', '--master_data_directory', action='store_true',
-                        default=os.getenv("MASTER_DATA_DIRECTORY"),
-                        help='master data directory used for schema only copy')
-    
-    
+  
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
     
@@ -81,14 +78,15 @@ def parseargs():
     # Parse the command line arguments
     (options, args) = parser.parse_args()
     
-    
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:
+        logger.error('Invalid argument.  parallel value must be >= 1 and <= 128')
         parser.print_help()
         parser.exit()
         
+    options.master_data_directory = os.getenv('MASTER_DATA_DIRECTORY', None)
     if not options.master_data_directory:
-        parser.print_help()
+        logger.error('MASTER_DATA_DIRECTORY environment variable not set')
         parser.exit()
     return options, args
 
@@ -177,7 +175,7 @@ class SegmentTemplate:
                                    '127.0.0.1', self.tempDir, True, True, 'sync')
             gp_segcopy.copy()
         except SegcopyError, msg:
-            raise SegmentTemplateError, msg
+            raise SegmentTemplateError(msg)
 
     
     def _select_src_segment(self):            
@@ -345,9 +343,9 @@ class SegmentTemplate:
             finally:
                 fp.close()
         except IOError, msg:
-            raise SegmentTemplateError, 'Failed to open %s/pg_hba.conf' % self.tempDir
+            raise SegmentTemplateError('Failed to open %s/pg_hba.conf' % self.tempDir)
         except Exception, msg:
-            raise SegmentTemplateError, 'Failed to add new segments to template pg_hba.conf: %' % msg
+            raise SegmentTemplateError('Failed to add new segments to template pg_hba.conf: %' % msg)
     
     
     def _tar_template(self):
@@ -459,7 +457,7 @@ class gpexpand:
 
     def read_input_file(self):
         if not options.filename:
-            raise ExpansionError, 'Missing input file'
+            raise ExpansionError('Missing input file')
         
         self.new_segments = []
         
@@ -478,16 +476,16 @@ class gpexpand:
                     self.new_segments.append(seg)
                     line += 1
             except ValueError:
-                raise ExpansionError, "Invalid input file on line %d" % line
+                raise ExpansionError('Invalid input file on line %d' % line)
             finally:
                 f.close()
         except IOError:
-            raise ExpansionError, "Input file %s not found" % options.filename
+            raise ExpansionError('Input file %s not found' % options.filename)
         
         
     def add_segments(self):
-        tempDir = '%s/gpexpand_%d_%s' % (os.getcwd(), os.getpid(), 
-                                         datetime.datetime.now().strftime('%m%d%Y'))
+        tempDir = '%s/gpexpand_%s_%d' % (os.getcwd(), 
+                                         datetime.datetime.now().strftime('%m%d%Y'), os.getpid()) 
         self.old_segments = []
         
         # We need to get the current segment information before we start shutting
@@ -526,7 +524,7 @@ class gpexpand:
             # Expansion failed, but the array can still start up without the
             # new segments.
             logger.exception("SegmentTemplateError ")
-            raise ExpansionError, msg
+            raise ExpansionError(msg)
 
 
         for seg in self.old_segments:
@@ -538,7 +536,7 @@ class gpexpand:
         try:
             pool.check_results()
         except ExecutionError:
-            raise ExpansionError, 'Failed to start original segments in utility mode'
+            raise ExpansionError('Failed to start original segments in utility mode')
         
         # THIS IS THE POINT OF NO RETURN.  AFTER WE START CHANGING THE OLD SEGMENTS
         # THE ARRAY WILL ONLY START IF WE COMPLETE EVERYTHING SUCCESSFULLY
@@ -555,11 +553,11 @@ class gpexpand:
             
         # Update gp_configuration on the master
         self.conn = dbconn.connect(self.dburl, utility=True)
-        for seg in self.new_segments:
-            # TODO: mirrors.  Right now sets everything primary.            
+        for seg in self.new_segments:          
             query = "INSERT INTO pg_catalog.gp_configuration(content, definedprimary, dbid, isprimary, valid, hostname, port, datadir)"\
-                        "VALUES (%d, \'t\', %d, \'t\', \'t\', \'%s\', %d, \'%s\')"\
-                        % (seg['contentId'], seg['dbId'], seg['hostname'], seg['port'], seg['dataDir'])
+                        "VALUES (%d, \'%s\', %d, \'%s\', \'t\', \'%s\', %d, \'%s\')"\
+                        % (seg['contentId'], seg['definedprimary'], seg['dbId'], seg['definedprimary'], 
+                           seg['hostname'], seg['port'], seg['dataDir'])
                         
             dbconn.execSQL(self.conn, query)
             
@@ -579,13 +577,13 @@ class gpexpand:
             # properly if they are shut down.  All the catalog updates were successful 
             # by this point.  For now, throw the exception.
             # TODO: what do we do on failure here?
-            raise ExpansionError, 'Failed to stop original segments'
+            raise ExpansionError('Failed to stop original segments')
         
         pool.haltWork()
         
         rv = os.system('gpstart -a')
         if rv != 0:
-            raise ExpansionError, 'Failed to restart the array'
+            raise ExpansionError('Failed to restart the array')
         
         # Need to restore the connection used by the expansion
         self.conn = dbconn.connect(self.dburl)
@@ -697,11 +695,13 @@ class gpexpand:
     def perform_expansion(self):
         """Performs the actual table re-organiations"""
         
+        expansionStart = datetime.datetime.now()
+        
         #setup a threadpool
         self.queue=WorkerPool(numWorkers=self.numworkers)
         
         #read schema and queue up commands
-        sql="SELECT * FROM %s.%s ORDER BY rank" % (gpexpand_schema,status_detail_table)
+        sql="SELECT * FROM %s.%s WHERE status = 'NOT STARTED' ORDER BY rank" % (gpexpand_schema,status_detail_table)
         cursor = dbconn.execSQL(self.conn,sql)
         
         for row in cursor:
@@ -710,16 +710,29 @@ class gpexpand:
             tbl = ExpandTable(row)            
             cmd = ExpandCommand(name,self.dburl,tbl)
             self.queue.addCommand(cmd)
-         
+        
+        stopTime = None
+        stoppedEarly = False
+        if options.end:
+            stopTime = options.end
+        elif options.duration:
+            stopTime = expansionStart + options.duration
+        
         #wait till done.
         while not self.queue.isDone():
-            logger.info("woke up.  queue: %d finished %d  " % (self.queue.num_assigned,self.queue.completed_queue.qsize()))            
+            logger.debug("woke up.  queue: %d finished %d  " % (self.queue.num_assigned,self.queue.completed_queue.qsize()))            
             time.sleep(5)
-            
-        logger.info("EXPANSION COMPLETE")
-        self.queue.haltWork()    
-        
-    
+            if stopTime and datetime.datetime.now() >= stopTime:
+                stoppedEarly = True
+                break
+
+        if stoppedEarly:
+            logger.info('End time reached.  Stopping expansion.')
+        else:
+            logger.info("EXPANSION COMPLETE")
+
+        self.queue.haltWork()                
+                
     
     def cleanup_schema(self):
         """Removes the gpexpand schema"""
@@ -804,6 +817,20 @@ class ExpandTable():
         status_conn.commit()
         
         
+    def reset_started(self, status_conn):
+        sql = """UPDATE %s.%s 
+                 SET status = 'NOT STARTED', expansion_started=NULL
+                 WHERE dbname = '%s' AND schema_oid = %s 
+                 AND table_oid = %s """ % (gpexpand_schema,status_detail_table,
+                                           self.dbname, self.schema_oid,self.table_oid) 
+         
+
+        logger.info("Undo started: " + sql)
+        dbconn.execSQL(status_conn,sql) 
+        status_conn.commit()
+        
+        
+        
     def expand(self,table_conn):
         foo = self.distrib_policy_names.strip()
         logger.info("foo '%s'" % foo)
@@ -847,7 +874,10 @@ class ExpandCommand(SQLCommand):
     def run(self,validateAfter=False):
         #connect.
         status_conn=dbconn.connect(self.status_url)
-        table_conn=dbconn.connect(self.table_url)        
+        table_conn=dbconn.connect(self.table_url)
+        
+        # Set conn for  cancel
+        self.conn = table_conn     
         
         #mark start of expansion
         logger.info("Starting Expansion")
@@ -855,13 +885,22 @@ class ExpandCommand(SQLCommand):
         
         #expand
         logger.info("Expanding...")
-        self.table.expand(table_conn)
-        end_time = datetime.datetime.now()
-        
-        
-        #update metadata        
-        logger.info("Finished Expanding...updating metadata")
-        self.table.mark_finished(status_conn,table_conn,end_time)
+        canceled = False
+        try:
+            self.table.expand(table_conn)
+        except DatabaseError, ex:
+            if ex.__str__().find('canceling statement due to user request') == -1:
+                raise
+            else:
+                canceled = True
+                
+        if not canceled:
+            end_time = datetime.datetime.now()
+            #update metadata        
+            logger.info("Finished Expanding...updating metadata")
+            self.table.mark_finished(status_conn,table_conn,end_time)
+        else:
+            self.table.reset_started(status_conn)
         
         #disconnect
         status_conn.close()
@@ -873,9 +912,6 @@ class ExpandCommand(SQLCommand):
         raise ExecutionError("TODO:  must implement")
     
     def get_results(self):
-        raise ExecutionError("TODO:  must implement")
-    
-    def cancel(self):
         raise ExecutionError("TODO:  must implement")
     
     def was_successful(self):

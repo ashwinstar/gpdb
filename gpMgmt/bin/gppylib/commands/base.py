@@ -29,6 +29,7 @@ import unittest
 
 from gppylib import gplog
 from gppylib import gpsubprocess
+from pygresql.pg import DB
 
 
 logger=gplog.get_default_logger()
@@ -128,6 +129,10 @@ class Worker(Thread):
                 if try_count == 5:
                     logger.debug("[%s] try and get work from queue..." % self.name)
                     try_count = 0
+                
+                if self.shouldStop:
+                    logger.debug('[%s] stopping' % self.name)
+                    return
                     
                 self.cmd = self.pool.getNextWorkItem(timeout=self.timeout)
                 
@@ -393,6 +398,8 @@ class SQLCommand(Command):
     
     def __init__(self,name):
         self.name=name
+        self.conn = None
+
     
     def run(self,validateAfter=False):
         raise ExecutionError("programmer error.  implementors of SQLCommand must implement run()")
@@ -403,8 +410,16 @@ class SQLCommand(Command):
     def get_results(self):
         raise ExecutionError("TODO:  must implement")
     
+    def interrupt(self):
+        # No execution context for SQLCommands
+        pass
+    
     def cancel(self):
-        raise ExecutionError("TODO:  must implement")
+        if self.conn:
+            DB(self.conn).cancel()
+        else:
+            raise ExecutionError("programmer error.  must set self.conn before calling cancel")
+
     
     def was_successful(self):
         raise ExecutionError("TODO:  must implement")
