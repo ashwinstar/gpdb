@@ -3228,6 +3228,8 @@ DATA(insert OID = 6049 ( pg_file_unlink		PGNSP PGUID 12 f f t f v 1 16 f "25" _n
 DESCR("Delete (unlink) a file");
 DATA(insert OID = 6050 ( pg_logdir_ls		PGNSP PGUID 12 f f t t v 0 2249 f "" _null_ _null_ _null_ pg_logdir_ls - _null_ ));
 DESCR("ls the log dir");
+DATA(insert OID = 6051 ( pg_file_length		PGNSP PGUID 12 f f t f v 1 20 f "25" _null_ _null_ _null_ pg_file_length - _null_ ));
+DESCR("Get the length of a file (via stat)");
 
 
 

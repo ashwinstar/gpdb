@@ -570,3 +570,21 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
 	SRF_RETURN_DONE(funcctx);
 }
 
+Datum
+pg_file_length(PG_FUNCTION_ARGS)
+{
+	text	   *filename_t = PG_GETARG_TEXT_P(0);
+	char	   *filename;
+	struct stat fst;
+
+	requireSuperuser();
+
+	filename = convert_and_check_filename(filename_t);
+
+	if (stat(filename, &fst) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not stat file \"%s\": %m", filename)));
+
+	PG_RETURN_INT64((int64) fst.st_size);
+}
