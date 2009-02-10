@@ -154,3 +154,40 @@ select count(*) from atsdb_ao;
 (1 row)
 
 drop table atsdb_ao;
+-- Check divergent distribution policies for partitioning.
+create table atsdb (i int, j int, k int) partition by range(k)
+(start(1) end(4) every(1));
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_1" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_2" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_3" for table "atsdb"
+alter table atsdb_1_prt_2 set distributed by (j);
+alter table atsdb_1_prt_3 set distributed randomly;
+-- test COPY
+copy atsdb from stdin delimiter '|';
+select count(*) from atsdb;
+ count 
+-------
+    18
+(1 row)
+
+-- compare distribution: we create a table, identical to the partitioned table,
+-- and compare how the tuples have been distributed.
+create table atsdb_1 (like atsdb_1_prt_1);
+copy atsdb_1 from stdin delimiter '|';
+select gp_segment_id, * from atsdb where k = 1 except 
+select gp_segment_id, * from atsdb_1;
+ gp_segment_id | i | j | k 
+---------------+---+---+---
+(0 rows)
+
+create table atsdb_2 (like atsdb_1_prt_2);
+copy atsdb_2 from stdin delimiter '|';
+select gp_segment_id, * from atsdb where k = 2 except
+select gp_segment_id, * from atsdb_2;
+ gp_segment_id | i | j | k 
+---------------+---+---+---
+(0 rows)
+
+-- Can't test randomly distributed
+-- Can't test INSERT (yet)
+drop table atsdb, atsdb_1, atsdb_2;

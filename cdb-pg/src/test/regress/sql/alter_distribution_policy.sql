@@ -69,3 +69,64 @@ alter table atsdb_ao set distributed by (j);
 explain select count(*) from atsdb_ao;
 select count(*) from atsdb_ao;
 drop table atsdb_ao;
+
+-- Check divergent distribution policies for partitioning.
+create table atsdb (i int, j int, k int) partition by range(k)
+(start(1) end(4) every(1));
+alter table atsdb_1_prt_2 set distributed by (j);
+alter table atsdb_1_prt_3 set distributed randomly;
+-- test COPY
+copy atsdb from stdin delimiter '|';
+1|1|1
+2|1|1
+2|2|1
+3|1|1
+3|2|1
+3|3|1
+1|1|2
+2|1|2
+2|2|2
+3|1|2
+3|2|2
+3|3|2
+1|1|3
+2|1|3
+2|2|3
+3|1|3
+3|2|3
+3|3|3
+\.
+
+select count(*) from atsdb;
+
+-- compare distribution: we create a table, identical to the partitioned table,
+-- and compare how the tuples have been distributed.
+create table atsdb_1 (like atsdb_1_prt_1);
+copy atsdb_1 from stdin delimiter '|';
+1|1|1
+2|1|1
+2|2|1
+3|1|1
+3|2|1
+3|3|1
+\.
+select gp_segment_id, * from atsdb where k = 1 except 
+select gp_segment_id, * from atsdb_1;
+
+create table atsdb_2 (like atsdb_1_prt_2);
+copy atsdb_2 from stdin delimiter '|';
+1|1|2
+2|1|2
+2|2|2
+3|1|2
+3|2|2
+3|3|2
+\.
+select gp_segment_id, * from atsdb where k = 2 except
+select gp_segment_id, * from atsdb_2;
+
+-- Can't test randomly distributed
+
+-- Can't test INSERT (yet)
+
+drop table atsdb, atsdb_1, atsdb_2;

@@ -2379,7 +2379,7 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * Variables for cdbpolicy
 	 */
-	GpPolicy  *policy;			/* the partitioning policy for this table */
+	GpPolicy  *policy; /* the partitioning policy for this table */
 	AttrNumber	p_nattrs; /* num of attributes in the distribution policy */
 	Oid       *p_attr_types;	/* types for each policy attribute */
 
@@ -2400,7 +2400,25 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * Variables for cdbhash
 	 */
-	CdbHash    *cdbHash;		/* a CdbHash API object		 */
+
+	/* 
+	 * In the case of partitioned tables with children that have different
+	 * distribution policies, we maintain a hash table of CdbHashs and
+	 * GpPolicies for each child table. We lazily add them to the hash -- 
+	 * when a partition is returned which we haven't seen before, we makeCdbHash
+	 * and copy the policy over.
+	 */
+	typedef struct
+	{
+		Oid			relid;
+		CdbHash    *cdbHash;		/* a CdbHash API object		 */
+		GpPolicy   *policy;			/* policy for this cdb hash */
+	} cdbhashdata;
+
+	/* The actually hash table. Only initialised if we need it. */
+	HTAB *hashmap = NULL;
+
+	CdbHash *cdbHash = NULL;
 	AttrNumber	h_attnum;		/* hash key attribute number */
 	Datum		h_key;			/* hash key value			 */
 	unsigned int target_seg = 0;	/* result segment of cdbhash */
@@ -2492,7 +2510,6 @@ CopyFromDispatch(CopyState cstate)
 				num_defaults++;
 			}
 		}
-
 	}
 
 	/*
@@ -2511,34 +2528,74 @@ CopyFromDispatch(CopyState cstate)
 
 	CopyInitPartitioningState(estate);
 	
-	if(list_length(cstate->ao_segnos) > 0)
+	if (list_length(cstate->ao_segnos) > 0)
 		cdbCopy->ao_segnos = cstate->ao_segnos;
 	
 	/* add cdbCopy reference to cdbSreh (if needed) */
-	if(cstate->errMode != ALL_OR_NOTHING)
+	if (cstate->errMode != ALL_OR_NOTHING)
 		cstate->cdbsreh->cdbcopy = cdbCopy;
 	
 	/* get the CDB policy for this table and prepare for hashing */
-	policy = GpPolicyCopy(CurrentMemoryContext, cstate->rel->rd_cdbpolicy);
-	
-	/* policy should be PARTITIONED (normal tables) or ENTRY (no column tables) */
-	Insist(Gp_role == GP_ROLE_DISPATCHAGENT || (policy &&
-												policy->ptype != POLICYTYPE_UNDEFINED));
-	
-	if (policy)
-		p_nattrs = policy->nattrs;	/* number of partitioning keys */
+	if (estate->es_result_partitions && 
+		!partition_policies_equal(cstate->rel->rd_cdbpolicy, 
+								  estate->es_result_partitions))
+	{
+		/* 
+		 * This is a partitioned table that has multiple, different 
+		 * distribution policies.
+		 *
+		 * We build up a fake policy comprising the set of all columns used 
+		 * to distribute all children in the partition configuration. That way
+		 * we're sure to parse all necessary columns in the input data and we
+		 * have all column types handy.
+		 */
+		List *cols = NIL;
+		ListCell *lc;
+		HASHCTL hash_ctl;
+
+		partition_get_policies_attrs(estate->es_result_partitions,
+									 cstate->rel->rd_cdbpolicy,
+									 &cols);
+        MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+        hash_ctl.keysize = sizeof(Oid);
+        hash_ctl.entrysize = sizeof(cdbhashdata);
+        hash_ctl.hash = oid_hash;
+        hash_ctl.hcxt = CurrentMemoryContext;
+
+        hashmap = hash_create("partition cdb hash map",
+                              100 /* XXX: need a better value, but what? */,
+                              &hash_ctl,
+                              HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+		p_nattrs = list_length(cols);
+		policy = palloc(sizeof(GpPolicy) + sizeof(AttrNumber) * p_nattrs);
+		i = 0;
+		foreach(lc, cols)
+			policy->attrs[i++] = lfirst_int(lc);
+
+	}
 	else
-		p_nattrs = 0;
+	{
+		policy = GpPolicyCopy(CurrentMemoryContext, cstate->rel->rd_cdbpolicy);
 	
-	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);	/* Create hash API reference */
+		if (policy)
+			p_nattrs = policy->nattrs;	/* number of partitioning keys */
+		else
+			p_nattrs = 0;
+		/* Create hash API reference */
+		cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);
+	}
+	
 
 	/*
 	 * Extract types for each partition key from the tuple descriptor,
 	 * and convert them when necessary. We don't want to do this
 	 * for each tuple since get_typtype() is quite expensive when called
 	 * lots of times.
+	 *
+	 * The array key for p_attr_types is the attribute number of the attribute
+	 * in question.
 	 */
-	p_attr_types = (Oid *)palloc(p_nattrs * sizeof(Oid));
+	p_attr_types = (Oid *)palloc0(num_phys_attrs * sizeof(Oid));
 	for (i = 0; i < p_nattrs; i++)
 	{
 		h_attnum = policy->attrs[i];
@@ -2547,14 +2604,15 @@ CopyFromDispatch(CopyState cstate)
 		 * get the data type of this attribute. If it's an
 		 * array type use anyarray, or else just use as is.
 		 */
-		if(attr[h_attnum - 1]->attndims > 0)
-			p_attr_types[i] = ANYARRAYOID;
+		if (attr[h_attnum - 1]->attndims > 0)
+			p_attr_types[h_attnum - 1] = ANYARRAYOID;
 		else
 		{
 			/* If this type is a domain type, get its base type. */
-			p_attr_types[i] = attr[h_attnum - 1]->atttypid;
-			if (get_typtype(p_attr_types[i]) == 'd')
-			    p_attr_types[i] = getBaseType(p_attr_types[i]);
+			p_attr_types[h_attnum - 1] = attr[h_attnum - 1]->atttypid;
+			if (get_typtype(p_attr_types[h_attnum - 1]) == 'd')
+			    p_attr_types[h_attnum - 1] = 
+					getBaseType(p_attr_types[h_attnum - 1]);
 		}
 	}
 	
@@ -2765,6 +2823,9 @@ CopyFromDispatch(CopyState cstate)
 			while (!cstate->raw_buf_done)
 			{
 				Oid			loaded_oid = InvalidOid;
+				GpPolicy   *part_policy = NULL; /* policy for specific part */
+				AttrNumber	part_p_nattrs = 0; /* partition policy max attno */
+				CdbHash	   *part_hash = NULL; /* hash for the part policy */
 
 				if (QueryCancelPending)
 				{
@@ -3036,7 +3097,66 @@ CopyFromDispatch(CopyState cstate)
 															 tupDesc, estate);
 
 						MemoryContextSwitchTo(cxt_save);
+
+						/* 
+						 * If we a partition set with differing policies,
+						 * get the policy for this particular child partition.
+						 */
+						if (hashmap)
+						{
+							bool found;
+							cdbhashdata *d;
+							Oid relid = resultRelInfo->ri_RelationDesc->rd_id;
+
+							d = hash_search(hashmap, &(relid), HASH_ENTER,
+											&found);
+							if (found)
+							{
+								part_policy = d->policy;
+								part_p_nattrs = part_policy->nattrs;
+								part_hash = d->cdbHash;
+							}
+							else
+							{
+								Relation rel = heap_open(relid, NoLock);
+								MemoryContext save_cxt;
+
+								/* 
+								 * Make sure this all persists the current
+								 * iteration.
+								 */
+								save_cxt = MemoryContextSwitchTo(oldcontext);
+								d->relid = relid;
+								part_hash = d->cdbHash = 
+									makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);
+								part_policy = d->policy = 
+									GpPolicyCopy(oldcontext,
+												 rel->rd_cdbpolicy);
+								part_p_nattrs = part_policy->nattrs;
+								heap_close(rel, NoLock);
+								MemoryContextSwitchTo(save_cxt);
+							}
+						}
 					}
+
+					/* 
+					 * The the usual case or a partitioned table
+					 * with non-divergent child table policies.
+					 */
+					if (!part_hash)
+					{
+						part_hash = cdbHash;
+						part_policy = policy;
+						part_p_nattrs = p_nattrs;
+					}
+
+					/* 
+					 * policy should be PARTITIONED (normal tables) or 
+					 * ENTRY
+					 */
+					Insist(Gp_role == GP_ROLE_DISPATCHAGENT ||
+						   (part_policy && part_policy->ptype != 
+							POLICYTYPE_UNDEFINED));
 				}
 				PG_CATCH();
 				{
@@ -3060,18 +3180,20 @@ CopyFromDispatch(CopyState cstate)
 				 * key columns). Send COPY data line to the target segment
 				 * database executors. Data row will not be inserted locally.
 				 */
-				cdbhashinit(cdbHash);
+				Assert(PointerIsValid(part_hash));
+				cdbhashinit(part_hash);
 
-				for (i = 0; i < p_nattrs; i++)
+				for (i = 0; i < part_p_nattrs; i++)
 				{
-					h_attnum = policy->attrs[i];		/* current att num from
-														 * cdb policy */
-					h_key = values[h_attnum - 1];		/* value of this attr			   */
+					/* current attno from the policy */
+					h_attnum = part_policy->attrs[i];
+												
+					h_key = values[h_attnum - 1];	/* value of this attr */
 					
 					if (!nulls[h_attnum - 1])
-						cdbhash(cdbHash, h_key, p_attr_types[i]);
+						cdbhash(part_hash, h_key, p_attr_types[h_attnum - 1]);
 					else
-						cdbhashnull(cdbHash);
+						cdbhashnull(part_hash);
 				}
 
 				/*
@@ -3079,10 +3201,10 @@ CopyFromDispatch(CopyState cstate)
 				 * hash key to use, therefore use cdbhashnokey() to pick a 
 				 * hash value for us.
 				 */
-				if(p_nattrs == 0)
-					cdbhashnokey(cdbHash);
+				if (part_p_nattrs == 0)
+					cdbhashnokey(part_hash);
 
-				target_seg = cdbhashreduce(cdbHash);	/* hash result segment */
+				target_seg = cdbhashreduce(part_hash);	/* hash result segment */
 
 
 				/*
@@ -3261,7 +3383,8 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * free all resources besides ones that are needed for error reporting
 	 */
-	pfree(cdbHash);
+	if (cdbHash)
+		pfree(cdbHash);
 	pfree(values);
 	pfree(nulls);
 	pfree(attr_offsets);
@@ -3276,9 +3399,15 @@ CopyFromDispatch(CopyState cstate)
 	pfree(line_buf_with_lineno.data);
 	pfree(cdbCopy);
 	
-	if(policy)
+	if (policy)
 		pfree(policy);
 	
+	/* 
+	 * Don't worry about the partition table hash map, that will be
+	 * freed when our current memory context is freed. And that will be
+	 * quite soon.
+	 */
+
 	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
@@ -3418,7 +3547,8 @@ CopyFrom(CopyState cstate)
 	errcontext.arg = (void *) cstate;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
-	if(Gp_role == GP_ROLE_EXECUTE)
+
+	if (Gp_role == GP_ROLE_EXECUTE)
 		cstate->err_loc_type = ROWNUM_EMBEDDED; /* get original row num from QD COPY */
 	else
 		cstate->err_loc_type = ROWNUM_ORIGINAL; /* we can count rows by ourselves */

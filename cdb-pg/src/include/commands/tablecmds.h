@@ -14,6 +14,8 @@
 #ifndef TABLECMDS_H
 #define TABLECMDS_H
 
+#include "access/attnum.h"
+#include "catalog/gp_policy.h"
 #include "executor/tuptable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
@@ -105,5 +107,8 @@ extern PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
 								 MemoryContext mcxt, int *pSearch,
 								 bool inctemplate);
 extern bool rel_is_child_partition(Oid relid);
-
+extern bool partition_policies_equal(GpPolicy *p, PartitionNode *pn);
+extern void partition_get_policies_attrs(PartitionNode *pn,
+										 GpPolicy *master_policy,
+							             List **cols);
 #endif   /* TABLECMDS_H */
