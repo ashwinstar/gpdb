@@ -143,7 +143,7 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
             dbid += 1
     
     #mirrors
-    if mirror_type is None:
+    if mirror_type is None or mirror_type == 'none':
         return rows
     elif mirror_type.lower().strip() == 'spread':
         #TODO: must be sure to put mirrors on a different subnet than primary.
