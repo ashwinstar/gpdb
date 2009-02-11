@@ -35,7 +35,51 @@ to add with the format:
 
 """,
 """
-TODO: add txt for gpexpand!
+
+Remaining TODO items:
+====================
+* support for mirrors  (Chris)
+* re-order initial events. (Chris)
+* group per segment items into a single script. (Chris)
+* support for --clean to cover all of setup. (Chris)
+* ability to pick up where you left off during setup. (Chris)
+    - able to reverse the last in progress item.
+
+* ability to specify storage options. (John)
+    - verify with jeff that alter table ... set distribution will support.
+
+* state tracking during setup.
+
+* support for partitioned tables.
+    - NEED work from Jeff's team.
+    - immediately convert all non-leaf partitions.  this allows
+        new partitions to "do the right thing"
+    - order leaf partitions on 'rank' that is in pg_partitions.
+
+* handle case of dropped tables.
+    - some tables may be dropped by the time expansion gets
+        around to them.
+
+* smarter heuristics on setting ranks.
+
+* disallow use of template1 for expansion schema.
+
+* how to measure progress.
+
+* don't try and update downed segments.
+
+* make sure system isn't in "readonly mode" during setup.
+
+* at initial connection, reset any "IN PROGRESS" left around
+    from before.
+
+* make sure no other gpexpand's are running.
+
+* need a startup validation where we check the status detail
+    with gp_distribution_policy and make sure that our book
+    keeping matches reality. we don't have a perfect transactional
+    model since the tables can be in a different database from
+    where the gpexpand schema is kept.
 """]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -611,15 +655,17 @@ class gpexpand:
             c = self.connect_database(dbname)
           
             sql="""SELECT 
-                      n.nspname || '.' || c.relname as fq_name,
-                      n.oid as schemaoid,
-                      c.oid as tableoid,                      
-                      p.attrnums as distribution_policy,
-                      now() as last_updated                       
-                   FROM       pg_class c
-                         JOIN pg_namespace n ON (c.relnamespace=n.oid)
-                         JOIN pg_catalog.gp_distribution_policy p on (c.oid = p.localoid)
-            
+    n.nspname || '.' || c.relname as fq_name,
+    n.oid as schemaoid,
+    c.oid as tableoid,                      
+    p.attrnums as distribution_policy,
+    now() as last_updated,
+    pg_relation_size(n.nspname || '.' || c.relname)
+FROM 
+            pg_class c
+    JOIN pg_namespace n ON (c.relnamespace=n.oid)
+    JOIN pg_catalog.gp_distribution_policy p on (c.oid = p.localoid);
+
                   """ 
             self.logger.info(sql)
             curs = dbconn.execSQL(c,sql)
@@ -632,9 +678,7 @@ class gpexpand:
                 dist_policy = row[3]
                 dist_policy_name = self.form_dist_policy_name(c,row[3],table_oid)
                 ts = datetime.datetime.now()
-                
-                logger.info("dist_policy: %s" % dist_policy)
-                logger.info("dist_policy_name: %s" % dist_policy_name)
+                rel_bytes = row[5]
                 
                 if dist_policy is None:
                     dist_policy = 'NULL'
@@ -647,7 +691,7 @@ class gpexpand:
                             """ % (gpexpand_schema,status_detail_table,
                                    dbname,fqname,schema_oid,table_oid, 
                                    dist_policy,dist_policy_name, 1, 'NOT STARTED', 
-                                   1234 )
+                                   rel_bytes )
                             
                 self.logger.info(insertSQL)
                 dbconn.execSQL(self.conn,insertSQL)
@@ -732,7 +776,14 @@ class gpexpand:
             logger.info("EXPANSION COMPLETE")
 
         self.queue.haltWork()                
-                
+    
+    def cleanup(self):
+        """used if the script is closed abrubtly"""
+        if self.queue is not None:
+            self.queue.haltWork()  
+        if self.conn is not None:
+            self.conn.close()          
+    
     
     def cleanup_schema(self):
         """Removes the gpexpand schema"""
@@ -763,17 +814,10 @@ class ExpandTable():
     
     def __init__(self,row=None):
         if row is not None:
-            self.dbname=row[0]
-            self.fq_name=row[1]
-            self.schema_oid=row[2]
-            self.table_oid=row[3]
-            self.distrib_policy=row[4]
-            self.distrib_policy_names=row[5]
-            self.rank=row[6]
-            self.status=row[7]
-            self.expansion_started=row[8]
-            self.expansion_finished=row[9]
-            self.source_bytes=row[10]
+            (self.dbname,self.fq_name,self.schema_oid,self.table_oid,
+             self.distrib_policy,self.distrib_policy_names,self.rank,
+             self.status,self.expansion_started,
+             self.expansion_finished,self.source_bytes) = row
     
     
     def add_table(self,conn):
@@ -817,7 +861,7 @@ class ExpandTable():
         status_conn.commit()
         
         
-    def reset_started(self, status_conn):
+    def reset_started(self, status_conn):        
         sql = """UPDATE %s.%s 
                  SET status = 'NOT STARTED', expansion_started=NULL
                  WHERE dbname = '%s' AND schema_oid = %s 
@@ -833,7 +877,7 @@ class ExpandTable():
         
     def expand(self,table_conn):
         foo = self.distrib_policy_names.strip()
-        logger.info("foo '%s'" % foo)
+        
         if foo == "":
             sql = "ALTER TABLE %s SET DISTRIBUTED RANDOMLY" % (self.fq_name)
             logger.warning("FOR NOW WE CANT SUPPORT THESE")
@@ -879,11 +923,9 @@ class ExpandCommand(SQLCommand):
         # Set conn for  cancel
         self.conn = table_conn     
         
-        #mark start of expansion
         logger.info("Starting Expansion")
         self.table.mark_started(status_conn,table_conn)
         
-        #expand
         logger.info("Expanding...")
         canceled = False
         try:
@@ -1013,6 +1055,7 @@ try:
         logger.info('Cleanup Finished.  exiting...')
         sys.exit(0)
         
+        
     state = gp_expand.gather_state()
     
     if state == UNINITIALIZED:
@@ -1042,6 +1085,10 @@ try:
     
 except Exception, e:
     logger.exception("gpexpand failed. exiting...")
+    if gp_expand is not None:
+        gp_expand.cleanup()
     sys.exit(3)
 except KeyboardInterrupt:
+    if gp_expand is not None:
+        gp_expand.cleanup()
     sys.exit('\nUser Interrupted')
