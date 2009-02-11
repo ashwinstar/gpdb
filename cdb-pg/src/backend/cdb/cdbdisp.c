@@ -1551,23 +1551,22 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 				    struct CdbDispatchResults  *mirrorResults,
 					struct CdbDispatchCmdThreads *dispatchThreads)
 {
-    int     qderrcode;
-    bool    useQeError = false;
+	int     qderrcode;
+	bool    useQeError = false;
 
-    qderrcode = elog_geterrcode();
-	
+	qderrcode = elog_geterrcode();
 
-    /* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
-    if (!primaryResults &&
-        !mirrorResults)
-        return;
+	/* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
+	if (!primaryResults &&
+		!mirrorResults)
+		return;
 
-    /*
-     * Request any remaining commands executing on qExecs to stop.
-     * We need to wait for the threads to finish.  This allows for proper
-     * cleanup of the results from the async command executions.
-     */
-    CdbCheckDispatchResult(dispatchThreads, true);   /* cancel any QEs still running */
+	/*
+	 * Request any remaining commands executing on qExecs to stop.
+	 * We need to wait for the threads to finish.  This allows for proper
+	 * cleanup of the results from the async command executions.
+	 */
+	CdbCheckDispatchResult(dispatchThreads, true);   /* cancel any QEs still running */
 
     /*
      * When a QE stops executing a command due to an error, as a
@@ -1577,19 +1576,19 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
      * an interconnect error, and a QE hit a more interesting error,
      * we'll let the QE's error report take precedence.
      */
-    if (qderrcode == ERRCODE_GP_INTERCONNECTION_ERROR)
-    {
+	if (qderrcode == ERRCODE_GP_INTERCONNECTION_ERROR)
+	{
 		bool qd_lost_flag = false;
 		char *qderrtext = elog_message();
 
 		if (qderrtext && strcmp(qderrtext, CDB_MOTION_LOST_CONTACT_STRING) == 0)
 			qd_lost_flag = true;
 
-        if (primaryResults && primaryResults->errcode)
+		if (primaryResults && primaryResults->errcode)
 		{
-            if (qd_lost_flag && primaryResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
+			if (qd_lost_flag && primaryResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
-            else if (primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
+			else if (primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
 		}
 		else if (mirrorResults && mirrorResults->errcode)
@@ -1599,35 +1598,35 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 			else if (mirrorResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
 		}
-    }
+	}
 
-    if (useQeError)
-    {
-        /*
-         * Throw the QE's error, catch it, and fall thru to return
-         * normally so caller can finish cleaning up.  Afterwards
-         * caller must exit via PG_RE_THROW().
-         */
-        PG_TRY();
-        {
-            cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
-        }
-        PG_CATCH();
-        {}                      /* nop; fall thru */
-        PG_END_TRY();
-    }
-    else
-    {
-        /*
-         * Discard any remaining results from QEs; don't confuse matters by
-         * throwing a new error.  Any results of interest presumably should
-         * have been examined before raising the error that the caller is
-         * currently handling.
-         */
-        cdbdisp_destroyDispatchResults(primaryResults);
-        cdbdisp_destroyDispatchResults(mirrorResults);
+	if (useQeError)
+	{
+		/*
+		 * Throw the QE's error, catch it, and fall thru to return
+		 * normally so caller can finish cleaning up.  Afterwards
+		 * caller must exit via PG_RE_THROW().
+		 */
+		PG_TRY();
+		{
+			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+		}
+		PG_CATCH();
+		{}                      /* nop; fall thru */
+		PG_END_TRY();
+	}
+	else
+	{
+		/*
+		 * Discard any remaining results from QEs; don't confuse matters by
+		 * throwing a new error.  Any results of interest presumably should
+		 * have been examined before raising the error that the caller is
+		 * currently handling.
+		 */
+		cdbdisp_destroyDispatchResults(primaryResults);
+		cdbdisp_destroyDispatchResults(mirrorResults);
 		cdbdisp_destroyDispatchThreads(dispatchThreads);
-    }
+	}
 }                               /* cdbdisp_handleError */
 
 bool
@@ -1658,20 +1657,20 @@ cdbdisp_check_estate_for_cancel(EState *estate)
 
 void
 cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
-						char				   		*serializedQuerytree,
-						int							serializedQuerytreelen,
-						char 		   				*serializedPlantree,
-						int							serializedPlantreelen,
-                        bool                        cancelOnError,
-                        bool						needTwoPhase,
-                        struct CdbDispatchResults **pPrimaryResults,    /* OUT */
-                        struct CdbDispatchResults **pMirrorResults,     /* OUT */
-						struct CdbDispatchCmdThreads **pDispatchThreads)   /* OUT */
+								  char				   		*serializedQuerytree,
+								  int							serializedQuerytreelen,
+								  char 		   				*serializedPlantree,
+								  int							serializedPlantreelen,
+								  bool                        cancelOnError,
+								  bool						needTwoPhase,
+								  struct CdbDispatchResults **pPrimaryResults,    /* OUT */
+								  struct CdbDispatchResults **pMirrorResults,     /* OUT */
+								  struct CdbDispatchCmdThreads **pDispatchThreads)   /* OUT */
 {
 	DispatchCommandQueryParms queryParms;
 	
 	Gang		*primaryGang,
-				*mirrorGang;
+		*mirrorGang;
     List		*readerGangs;
     ListCell	*le;
 
@@ -1709,7 +1708,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 
 	/* serialized a version of our snapshot */
 	queryParms.serializedDtxContextInfo = 
-			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommandToAllGangs");
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* withSnapshot */, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommandToAllGangs");
 	
 	readerGangs = getAllReaderGangs();
 	
@@ -1719,9 +1718,9 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	gangCount = 1 + list_length(readerGangs);
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
     cdbdisp_dispatchToGang(pDispatchThreads, 
-		GP_DISPATCH_COMMAND_TYPE_QUERY,
-	    &queryParms,
-	    primaryGang, *pPrimaryResults, -1, gangCount);
+						   GP_DISPATCH_COMMAND_TYPE_QUERY,
+						   &queryParms,
+						   primaryGang, *pPrimaryResults, -1, gangCount);
 
     /*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
@@ -1731,9 +1730,9 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(pDispatchThreads, 
-			GP_DISPATCH_COMMAND_TYPE_QUERY,
-	    	&queryParms,
-	    	mirrorGang, *pMirrorResults, -1, gangCount);
+							   GP_DISPATCH_COMMAND_TYPE_QUERY,
+							   &queryParms,
+							   mirrorGang, *pMirrorResults, -1, gangCount);
     }
 	
 	/*
@@ -1742,16 +1741,14 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	 */
 
 	if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
-    foreach(le, readerGangs)
-    {
-    	Gang  *rg = lfirst(le);
-    	cdbdisp_dispatchToGang(pDispatchThreads, 
-			GP_DISPATCH_COMMAND_TYPE_QUERY,
-	    	&queryParms,
-	    	rg, *pPrimaryResults, -1, gangCount);
-    }
-
-
+		foreach(le, readerGangs)
+		{
+			Gang  *rg = lfirst(le);
+			cdbdisp_dispatchToGang(pDispatchThreads, 
+								   GP_DISPATCH_COMMAND_TYPE_QUERY,
+								   &queryParms,
+								   rg, *pPrimaryResults, -1, gangCount);
+		}
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
 
@@ -2178,7 +2175,6 @@ thread_DispatchWait(DispatchCommandParms		*pParms)
 	}							/* some QEs running */
 	
 }
-
 
 static void
 thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
@@ -2636,6 +2632,36 @@ handleSelectError(DispatchCommandParms *pParms,
 	/* No point in trying to cancel the other QEs with select() broken. */
 }	/* handleSelectError */
 
+static void
+cdbdisp_issueCancel(SegmentDatabaseDescriptor *segdbDesc, bool *requestFlag)
+{
+	char errbuf[256];
+	PGcancel * cn = PQgetCancel(segdbDesc->conn);
+
+	/* PQcancel uses some strcpy/strcat functions; let's
+	 * clear this for safety */
+	MemSet(errbuf, 0, sizeof(errbuf));
+
+	if (DEBUG4 >= log_min_messages)
+		write_log("Calling PQcancel for %s\n",
+				  segdbDesc->whoami);
+
+	/*
+	 * Block here until segment postmaster replies that it has
+	 * carried out the cancellation request, which means signaling
+	 * SIGINT to the QE process, something like: pid =
+	 * PQbackendPID(segdbDesc->conn); kill(pid, SIGINT);
+	 */
+	if (requestFlag != NULL)
+		*requestFlag = true;
+				
+	if (PQcancel(cn, errbuf, 256) == 0)
+	{	
+		if (LOG >= log_min_messages)
+			write_log("Unable to cancel: %s\n", errbuf);
+	}
+	PQfreeCancel(cn);
+}
 
 /* Helper function to thread_DispatchCommand that handles timeouts that occur
  * during the select() call.
@@ -2689,39 +2715,14 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				segdbDesc->conn &&
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
-				
-				char errbuf[256];
-				PGcancel * cn = PQgetCancel(segdbDesc->conn);
-
-				/* PQcancel uses some strcpy/strcat functions; let's
-				 * clear this for safety */
-				MemSet(errbuf, 0, sizeof(errbuf));
-
-				if (DEBUG4 >= log_min_messages)
-					write_log("Calling PQcancel for %s\n",
-							     segdbDesc->whoami);
-
-				/*
-				 * Block here until segment postmaster replies that it has
-				 * carried out the cancellation request, which means signaling
-				 * SIGINT to the QE process, something like: pid =
-				 * PQbackendPID(segdbDesc->conn); kill(pid, SIGINT);
-				 */
-				dispatchResult->requestedCancel = true;
-				
-				if (PQcancel(cn, errbuf, 256) == 0)
-				{	
-					if (LOG >= log_min_messages)
-						write_log("Unable to cancel: %s\n", errbuf);
-				}
-				PQfreeCancel(cn);
+				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel);
 			}
 		}
 	}
 
 	/*
 	 * check the connection still valid, set 1 min time interval
-	  * this may affect performance, should turn it off if required.
+	 * this may affect performance, should turn it off if required.
 	 */
 
 	if ((*timeoutCounter)++ > 30)
@@ -2740,13 +2741,33 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 			if (!dispatchResult->stillRunning)
 				continue;
 
-            /* Skip the entry db. */
-            if (segdbDesc->segindex < 0)
-                continue;
+			/*
+			 * MPP-5012:
+			 * There is a potential race between dispatch and
+			 * query-cancel for large queries -- and the cancel code
+			 * above only will attempt a single cancellation.
+			 *
+			 * If we hit the timeout, and the query has already been
+			 * cancelled we'll try to re-cancel here.
+			 *
+			 * The race is:
+			 *   QD cancels before QE has started work, QE 'cancels'
+			 * from idle_state -> idle_state and then starts work.
+			 */
+			if (dispatchResult->stillRunning &&
+				dispatchResult->requestedCancel &&
+				segdbDesc->conn &&
+				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
+			{
+				cdbdisp_issueCancel(segdbDesc, &dispatchResult->requestedCancel);
+			}
 
-            if (DEBUG5 >= log_min_messages)
+			/* Skip the entry db. */
+			if (segdbDesc->segindex < 0)
+				continue;
+
+			if (DEBUG5 >= log_min_messages)
 				write_log("testing connection %d of %d     %s stillRunning %d \n", i+1,db_count,segdbDesc->whoami,dispatchResult->stillRunning);
-            
 
 			if (!FtsTestConnection(segdbDesc->segment_database_info, false))
 			{
