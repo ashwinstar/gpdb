@@ -54,6 +54,7 @@ pygresql:
 		(cd $(PYLIB_SRC)/ && tar -xzf $(PYGRESQL_DIR).tar.gz);\
 	fi
 	@(. $(INSTLOC)/greenplum_path.sh && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build > /dev/null 2>&1 )
+	@mkdir $(PYLIB_DIR)/pygresql
 	@cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/* $(PYLIB_DIR)/pygresql
 	@touch $(PYLIB_DIR)/__init__.py
 
