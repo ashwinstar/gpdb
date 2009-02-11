@@ -55,7 +55,7 @@ pygresql:
 	fi
 	@(. $(INSTLOC)/greenplum_path.sh && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build > /dev/null 2>&1 )
 	@if [ ! -d $(PYLIB_DIR)/pygresql ]; then \
-		@mkdir $(PYLIB_DIR)/pygresql; \
+		mkdir $(PYLIB_DIR)/pygresql; \
 	fi
 	@cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/* $(PYLIB_DIR)/pygresql
 	@touch $(PYLIB_DIR)/__init__.py
