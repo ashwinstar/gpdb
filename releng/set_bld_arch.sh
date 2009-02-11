@@ -12,14 +12,23 @@ case "`uname -s`" in
     ;;
 
     Linux)
-    case "`cat /etc/redhat-release`" in
-        "Red Hat Enterprise Linux WS release 3 (Taroon Update 4)")
-        BLD_ARCH_HOST=rhel4_x86_32
-        ;;
-        *)
-        BLD_ARCH_HOST="rhel`cat /etc/redhat-release | sed -e 's/Red Hat Enterprise Linux/RedHat/' -e 's/WS//' -e 's/Server//' -e 's/Client//' | awk '{print $3}' | awk -F. '{print $1}'`_`uname -p | sed -e s/i686/x86_32/`"
-        ;;
-    esac
+    if [ -f /etc/redhat-release ]; then
+        case "`cat /etc/redhat-release`" in
+            "Red Hat Enterprise Linux WS release 3 (Taroon Update 4)")
+            BLD_ARCH_HOST=rhel4_x86_32
+            ;;
+            *)
+            BLD_ARCH_HOST="rhel`cat /etc/redhat-release | sed -e 's/Red Hat Enterprise Linux/RedHat/' -e 's/WS//' -e 's/Server//' -e 's/Client//' | awk '{print $3}' | awk -F. '{print $1}'`_`uname -p | sed -e s/i686/x86_32/`"
+            ;;
+        esac
+    fi
+    if [ -f /etc/SuSE-release ]; then
+        case "`cat /etc/SuSE-release`" in
+            *)
+            BLD_ARCH_HOST="suse`head -1 /etc/SuSE-release | sed -e 's/SUSE Linux Enterprise Server/SuSE/' | awk '{print $2}'`_`uname -p | sed -e s/i686/x86_32/`"
+            ;;
+        esac
+    fi
     ;;
 
     SunOS)
