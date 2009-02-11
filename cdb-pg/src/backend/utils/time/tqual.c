@@ -2010,7 +2010,7 @@ CopySnapshot(Snapshot snapshot)
 			    	sizeof(DistributedSnapshotMapEntry));
 	}
 	else
-		snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray = NULL;
+		newsnap->distribSnapshotWithLocalMapping.inProgressEntryArray = NULL;
 	return newsnap;
 }
 
