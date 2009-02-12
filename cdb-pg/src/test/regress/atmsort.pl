@@ -25,6 +25,7 @@ Options:
     -help            brief help message
     -man             full documentation
     -ignore_headers  ignore header lines in query output
+    -init <file>     load initialization file
     -do_equiv        construct or compare equivalent query regions
 
 =head1 OPTIONS
@@ -41,14 +42,18 @@ Options:
 
 =item B<-ignore_headers> 
 
-    gpdiff/atmsort expect Postgresql "psql-style" output for SELECT
-    statements, with a two line header composed of the column names,
-    separated by vertical bars (|), and a "separator" line of dashes
-    and pluses beneath, followed by the row output.  The psql utility
-    performs some formatting to adjust the column widths to match the
-    size of the row output.  Setting this parameter causes gpdiff to
-    ignore any differences in the column naming and format widths
-    globally.
+gpdiff/atmsort expect Postgresql "psql-style" output for SELECT
+statements, with a two line header composed of the column names,
+separated by vertical bars (|), and a "separator" line of dashes and
+pluses beneath, followed by the row output.  The psql utility performs
+some formatting to adjust the column widths to match the size of the
+row output.  Setting this parameter causes gpdiff to ignore any
+differences in the column naming and format widths globally.
+
+=item B<-init> <file>
+
+Specify an initialization file containing a series of directives
+(mainly for match_subs) that get applied to the input files.
 
 =item B<-do_equiv>
     
@@ -62,12 +67,15 @@ Options:
 
 =item make:  
 
-replace the query output of all queries in a start_equiv/end_equiv block with the output of the first query, processed according to any formatting directives for each query.
+replace the query output of all queries in a start_equiv/end_equiv
+block with the output of the first query, processed according to any
+formatting directives for each query.
 
 
 =item compare:  
 
-process the query output of all queries in a start_equiv/end_equiv block (versus prefixing the entire block with GP_IGNORE).
+process the query output of all queries in a start_equiv/end_equiv
+block (versus prefixing the entire block with GP_IGNORE).
 
 =back
 
@@ -115,7 +123,7 @@ perl structure.  For example, for the following plan:
 explain analyze select * from customer;
 
                                      QUERY PLAN                              
------------------------------------------------------------------------------
+------------------------------------------------------------------------
  Gather Motion 2:1  (slice1)  (cost=0.00..698.88 rows=25088 width=550)
    Rows out:  150000 rows at destination with 0.230 ms to first row, 
    386 ms to end, start offset by 8.254 ms.
@@ -132,7 +140,7 @@ explain analyze select * from customer;
 atmsort reduces the plan to:
 
                                      QUERY PLAN                              
------------------------------------------------------------------------------
+------------------------------------------------------------------------
 {
   'child' => [
               {
@@ -180,24 +188,21 @@ The supported commands are:
 
 =item -- ignore
 
-  The ignore directive prefixes the SELECT output 
-  with GP_IGNORE.  The diff command can use the -I flag 
-  to ignore lines with this prefix.
+The ignore directive prefixes the SELECT output with GP_IGNORE.  The
+diff command can use the -I flag to ignore lines with this prefix.
 
 =item -- mvd colnum[, colnum...] -> colnum[, colnum...] [; <additional specs>]
 
-  mvd is designed to support Multi-Value Dependencies for 
-  OLAP queries.  The syntax "col1,col2->col3,col4" indicates
-  that the col1 and col2 values determine the col3, col4 
-  result order.
+mvd is designed to support Multi-Value Dependencies for OLAP queries.
+The syntax "col1,col2->col3,col4" indicates that the col1 and col2
+values determine the col3, col4 result order.
 
 =item -- start_ignore
 
-  Ignore all results until the next "end_ignore" directive.
-  The start_ignore directive prefixes all subsequent output 
-  with GP_IGNORE, and all other formatting directives are 
-  ignored as well.  The diff command can use the -I flag 
-  to ignore lines with this prefix.
+Ignore all results until the next "end_ignore" directive.  The
+start_ignore directive prefixes all subsequent output with GP_IGNORE,
+and all other formatting directives are ignored as well.  The diff
+command can use the -I flag to ignore lines with this prefix.
 
 =item -- end_ignore
 
@@ -205,12 +210,12 @@ The supported commands are:
 
 =item -- start_equiv
 
-  Begin an "equivalent" region, and treat contents according to the
-  specified --do_equiv option.  Normally, the results are ignored.
-  The "--do_equiv=make" option replaces the contents of all queries in
-  the equivalent region with the results of the first query.  If
-  "--do_equiv=compare" option is specified, the region is processed
-  according to the stanard query formatting rules.
+Begin an "equivalent" region, and treat contents according to the
+specified --do_equiv option.  Normally, the results are ignored.  The
+"--do_equiv=make" option replaces the contents of all queries in the
+equivalent region with the results of the first query.  If
+"--do_equiv=compare" option is specified, the region is processed
+according to the stanard query formatting rules.
 
 =item -- end_equiv
 
@@ -218,10 +223,10 @@ The supported commands are:
 
 =item -- start_matchsubs
 
-  Starts a list of match/substitution expressions, where the match and
-  substitution are specified as perl "m" and "s" operators for a single
-  line of input.  atmsort will compile the expressions and use them to
-  process the current input file.  The format is:
+Starts a list of match/substitution expressions, where the match and
+substitution are specified as perl "m" and "s" operators for a single
+line of input.  atmsort will compile the expressions and use them to
+process the current input file.  The format is:
 
     -- start_matchsubs
     --
@@ -248,11 +253,11 @@ The supported commands are:
 
 =item -- start_matchignore
 
-  Similar to matchsubs, starts a list of match/ignore expressions as a
-  set of perl match operators.  Each line that matches one of the
-  specified expressions is elided from the atmsort output.  Note that
-  there isn't an "ignore" expression -- just a list of individual match
-  operators.  
+Similar to matchsubs, starts a list of match/ignore expressions as a
+set of perl match operators.  Each line that matches one of the
+specified expressions is elided from the atmsort output.  Note that
+there isn't an "ignore" expression -- just a list of individual match
+operators.
 
 =item -- end_matchignore
 
@@ -260,11 +265,11 @@ The supported commands are:
 
 =item -- force_explain
 
-  Normally, atmsort can detect that a SQL query is being EXPLAINed,
-  and the expain processing will happen automatically.  However, if
-  the query is complex, you may need to tag it with a comment to force
-  the explain.  Using this command for non-EXPLAIN statements is
-  inadvisable.
+Normally, atmsort can detect that a SQL query is being EXPLAINed, and
+the expain processing will happen automatically.  However, if the
+query is complex, you may need to tag it with a comment to force the
+explain.  Using this command for non-EXPLAIN statements is
+inadvisable.
 
 =back
 
@@ -308,15 +313,17 @@ my $dpref = '';
 my $glob_compare_equiv;
 my $glob_make_equiv_expected;
 my $glob_ignore_headers;
+my $glob_init;
 
 # array of "expected" rows from first query of equiv region
 my $equiv_expected_rows;
 
 BEGIN
 { 
-    $glob_compare_equiv		  = 0;
+    $glob_compare_equiv       = 0;
     $glob_make_equiv_expected = 0;
-	$glob_ignore_headers	  = 0;
+    $glob_ignore_headers      = 0;
+    $glob_init                = 0;
 }
 
 BEGIN {
@@ -325,11 +332,13 @@ BEGIN {
     my $compare_equiv = 0;
     my $make_equiv_expected = 0;
     my $do_equiv;
-	my $ignore_headers;
+    my $ignore_headers;
+    my $init_file;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
-		       'gpd_ignore_headers|ignore_headers' => \$ignore_headers,
+               'gpd_ignore_headers|gp_ignore_headers|ignore_headers' => \$ignore_headers,
+               'gpd_init|gp_init|init:s' => \$init_file,
                'do_equiv:s' => \$do_equiv
                )
         or pod2usage(2);
@@ -361,9 +370,10 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
-    $glob_compare_equiv		  = $compare_equiv;
+    $glob_compare_equiv       = $compare_equiv;
     $glob_make_equiv_expected = $make_equiv_expected;
-	$glob_ignore_headers	  = $ignore_headers;
+    $glob_ignore_headers      = $ignore_headers;
+    $glob_init      		  = $init_file;
 
 }
 
@@ -1232,7 +1242,7 @@ sub format_query_output
 }
 
 
-if (1)
+sub bigloop
 {
     my $sql_statement = "";
     my @outarr;
@@ -1296,7 +1306,7 @@ EOF_formatfix
             my $doc1 = $foo[1];
 
             # strip off leading comment characters
-            $doc1 =~ s/^\-\-//gm;
+            $doc1 =~ s/^\s*\-\-//gm;
 
             if ($foo[0] =~ m/subs/)
             {
@@ -1636,6 +1646,43 @@ L_push_outarr:
     {
         print $cpref, $line;
     }
+} # end bigloop
+
+if (1)
+{
+	if (defined($glob_init))
+	{
+		die "no such file: $glob_init"
+			unless (-e $glob_init);
+
+		# redirect stdin and stdout to perform initialization from
+		# the glob_init file
+
+		open my $oldout, ">&STDOUT"     or die "Can't dup STDOUT: $!";
+		
+		close STDOUT;
+		open (STDOUT, "> /dev/null" ) or die "can't open STDOUT: $!";
+ 
+		open my $oldin, "<&STDIN"     or die "Can't dup STDIN: $!";
+		close STDIN;
+		open STDIN, "< $glob_init" or die "could not open $glob_init: $!";
+
+		# run the standard loop
+
+		bigloop();
+
+		# reset stdin, stdout
+		
+		close STDIN;
+		open STDIN, "<&", $oldin or die "Can't dup \$oldin: $!";
+
+		close STDOUT;
+		open STDOUT, ">&", $oldout or die "Can't dup \$oldout: $!";
+	}
+
+	# loop over existing stdin
+	bigloop();
 }
+
 
 exit();

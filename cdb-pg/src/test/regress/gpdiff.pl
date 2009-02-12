@@ -31,6 +31,7 @@ on the standard options.  The following options are specific to gpdiff:
     -man                  full documentation
     -version              print gpdiff version and underlying diff version
     -gpd_ignore_headers   ignore header lines in query output
+    -gpd_init <file>      load initialization file
 
 =head1 OPTIONS
 
@@ -50,14 +51,18 @@ on the standard options.  The following options are specific to gpdiff:
 
 =item B<-gpd_ignore_headers> 
 
-    gpdiff/atmsort expect Postgresql "psql-style" output for SELECT
-    statements, with a two line header composed of the column names,
-    separated by vertical bars (|), and a "separator" line of dashes
-    and pluses beneath, followed by the row output.  The psql utility
-    performs some formatting to adjust the column widths to match the
-    size of the row output.  Setting this parameter causes gpdiff to
-    ignore any differences in the column naming and format widths
-    globally.
+gpdiff/atmsort expect Postgresql "psql-style" output for SELECT
+statements, with a two line header composed of the column names,
+separated by vertical bars (|), and a "separator" line of dashes and
+pluses beneath, followed by the row output.  The psql utility performs
+some formatting to adjust the column widths to match the size of the
+row output.  Setting this parameter causes gpdiff to ignore any
+differences in the column naming and format widths globally.
+
+=item B<-gpd_init> <file>
+
+Specify an initialization file containing a series of directives
+(mainly for match_subs) that get applied to the input files.
 
 =back
 
@@ -105,6 +110,7 @@ our $ATMSORT;
 our $ATMDIFF = "diff";
 
 my $glob_ignore_headers;
+my $glob_init_file;
 
 # assume atmsort.pl in same directory
 BEGIN 
@@ -333,8 +339,14 @@ if (1)
     # check for man or help args
     if (scalar(@ARGV))
     {
-		for my $arg (@ARGV)
+		my $argc = -1;
+		my $maxarg = scalar(@ARGV);
+
+		while (($argc+1) < $maxarg)
 		{
+			$argc++;
+			my $arg = $ARGV[$argc];
+
 			unless ($arg =~ m/^\-/)
 			{
 				# even if no dash, might be a value for a dash arg...
@@ -348,6 +360,30 @@ if (1)
 				m/^\-(\-)*(gpd\_ignore\_headers|gpd\_ign.*|gp\_ign.*)$/i)
 			{
 				$glob_ignore_headers = 1;
+				next;
+			}
+			if ($arg =~ 
+				m/^\-(\-)*(gpd\_init|gp\_init)(\=)*(.*)$/i)
+			{
+				if ($arg =~ m/\=/) # check if "=filename"
+				{
+					my @foo = split (/\=/, $arg, 2);
+
+					die "no init file"
+						unless (2 == scalar(@foo));
+
+					$glob_init_file = pop @foo;
+
+				}
+				else # next arg must be init file
+				{
+					$argc++;
+					$glob_init_file = $ARGV[$argc];
+
+					die "no init file"
+						unless (defined($ARGV[$argc]));
+
+				}
 				next;
 			}
 			if ($arg =~ m/^\-(\-)*(v|version)$/)
@@ -438,6 +474,10 @@ if (1)
 	if ($glob_ignore_headers)
 	{
 		$ATMSORT .= " --ignore_headers ";
+	}
+	if ($glob_init_file)
+	{
+		$ATMSORT .= " --init=" . $glob_init_file . " ";
 	}
 
     exit(filefunc($f1, $f2));
