@@ -524,7 +524,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 			{
 				/* Don't use elog, it's not thread-safe */
 				write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
-							 dbInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
+						  dbInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
 			}
 			ret = true;
 			break;
@@ -540,7 +540,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		if (DEBUG3 >= log_min_messages)
 			write_log("FtsTestConnection: connection failed with message (%s)", errorMsg);
 
-		/* If we get a network error (do we really need a
+		/*
+		 * If we get a network error (do we really need a
 		 * comprehensive list here ?) or a "FATAL" database error,
 		 * then it is a real error, otherwise it isn't. See
 		 * fe-connect.c for the details: all fatal network error start
@@ -560,13 +561,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 			/* non-fatal connection errors are ignored */
 			if (DEBUG3 >= log_min_messages)
 				write_log("FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
-			ret = true;
-			break;
-		}
 
-		if (strstr(errorMsg, "too many clients already") != NULL)
-		{
-			/* don't consider this a failure, essentially we want to force a retry here */
 			ret = true;
 			break;
 		}
@@ -578,7 +573,13 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 			break;
 		}
 
-		if (strstr(errorMsg, "Out of memory") != NULL)
+		/*
+		 * MPP-4980 (and others): These are just indications that the
+		 * system is busy, not that we're down.
+		 */
+		if (strstr(errorMsg, "Out of memory") != NULL ||
+			strstr(errorMsg, "connection limit exceeded for non-superusers") != NULL ||
+			strstr(errorMsg, "too many clients already") != NULL)
 		{
 			/* don't consider this a failure, essentially we want to force a retry here */
 			ret = true;
@@ -588,7 +589,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		/* This is a real failure for which a reconfigure may be warranted */
 		if (LOG >= log_min_messages)
 			write_log("FTS: test connection failed, dbid %d dbname %s error message %s",
-						 dbInfo->dbid, dbName, PQerrorMessage(conn));
+					  dbInfo->dbid, dbName, PQerrorMessage(conn));
+
 		ret = false;
 	} while (0);
 
