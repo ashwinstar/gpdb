@@ -9606,7 +9606,7 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 
 	scan = systable_beginscan(rel,
 							  PartitionParrelidParlevelParistemplateIndexId,
-							  true, SnapshotAny, 3, key);
+							  true, SnapshotNow, 3, key);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
@@ -9666,7 +9666,7 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 
 	scan = systable_beginscan(rel,
 							  PartitionParrelidParlevelParistemplateIndexId,
-							  true, SnapshotAny, 3, key);
+							  true, SnapshotNow, 3, key);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
