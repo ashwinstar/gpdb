@@ -21,7 +21,7 @@ Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d m
           -o        : <output_config> output configuration file
 
           Recovery options:
-          -T        : <timeout> in second [default: 86400 seconds]
+          -T        : <timeout> in second [default: 259200 seconds]
           -l        : <log directory> alternative log file directory [optional]
           -p        : <hostname> recover to spare pool node
                           the pool host must have the following characteristics:
@@ -86,7 +86,7 @@ opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
 opt['-S'] = 0
-opt['-T'] = 86400
+opt['-T'] = 259200
 opt['-F'] = False
 
 arg = {}

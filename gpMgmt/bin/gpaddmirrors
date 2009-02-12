@@ -15,7 +15,7 @@ Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-
           -D        : set logging output to debug level
           -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
           -a        : non-interactive mode [default: interactive mode]
-          -T        : <timeout> in second [default: 1800 seconds]
+          -T        : <timeout> in second [default: 259200 seconds]
           -d        : master data directory
           -l        : <log directory> alternative log file directory [optional]
           -o        : file to output configuration
@@ -69,7 +69,7 @@ opt['-o'] = None
 opt['-p'] = 1000
 opt['-l'] = None
 opt['-D'] = False
-opt['-T'] = 1800
+opt['-T'] = 259200
 
 arg = {}
 arg['exit'] = 0
