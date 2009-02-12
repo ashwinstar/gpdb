@@ -241,6 +241,10 @@ parseRelOptions(Datum options, int numkeywords, const char *const * keywords,
 
 /*
  * Parse reloptions for anything using StdRdOptions
+ *
+ * 'warn' is only used for issuing an AO backward compatibility warning.
+ * all callers besides AO code should pass false so that we don't issue
+ * this warning 3 times when creating a single table.
  */
 bytea *
 default_reloptions(Datum reloptions, bool validate,
@@ -365,6 +369,36 @@ default_reloptions(Datum reloptions, bool validate,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("compresstype can\'t be used with compresslevel 0")));
+
+		/*
+		 * Release 3.2.1.6 introduced quicklz by compresslevels 10 and 11, which
+		 * are normally illegal values. This was done in order to not make
+		 * catalog changes by adding the compresstype column. Therefore we need
+		 * to still support this scenario, but we also issue a WARNING to inform
+		 * the user of the "new" way of declaring things.
+		 */
+		if (compresslevel == 10 || compresslevel == 11)
+		{
+			/*
+			 * If user used 'compresstype' then he is aware of the "new" syntax
+			 * and used an illegal compresslevel. Do nothing, and error out
+			 * later. Otherwise, handle backward compatibility.
+			 */
+			if (!compresstype)
+			{
+				compresslevel = (compresslevel == 10 ? 1 : 3);
+				defaultCompressor = pstrdup("quicklz");
+
+				if (validate && Gp_role == GP_ROLE_DISPATCH)
+					ereport(WARNING,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("compresslevel 10 and 11 are deprecated. For "
+									"quicklz compression use compresstype=quicklz "
+									"and compresslevel=1 or 3")));
+			}
+		}
+
+		/* done with backward compatibility check. back to normal procesing */
 
 		if (compresslevel < 0 || compresslevel > 9)
 		{
