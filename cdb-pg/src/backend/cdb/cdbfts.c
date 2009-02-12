@@ -129,11 +129,9 @@ FtsShmemInit(void)
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			shared->ftsAction = convertFaultActionValue(gp_fault_action_string);
-			elog(DEBUG1, "FTS: Fault Tolerance Action is set to : %s", gp_fault_action_string);
 		}
 		shared->ftsEnabled = (*ftsAction != FTS_NONE);
 	}
-	elog(LOG, "ftsenabled %d", shared->ftsEnabled);
 }
 
 void

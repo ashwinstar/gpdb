@@ -62,6 +62,9 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
+LOG_FILENAME_TXT="log_filename"
+LOG_ROTATION_AGE_TXT="log_rotation_age"
+REDIRECT_STDERR_TXT="redirect_stderr"
 INIT_STANDBY_PROG=$GPINITSTANDBY
 START_SYNC="-1"
 QE_MIRROR_ARRAY=""
@@ -1044,6 +1047,13 @@ CREATE_QD_DB () {
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${GP_DIR}/$PG_CONF" 1
 		LOG_MSG "[INFO]:-Setting Master instance stats string to on"
 		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_STATS_TXT" "stats_command_string=on" 0
+		LOG_MSG "[INFO]:-Enabling log rotation with ${REDIRECT_STDERR_TXT}=on"
+		ED_FILE ${GP_DIR}/$PG_CONF "$REDIRECT_STDERR_TXT" "redirect_stderr=on" 0		
+		LOG_MSG "[INFO]:-Updating Master instance log_filename to ${SEG_PREFIX}-%Y-%m-%d.log"
+		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_FILENAME_TXT" "log_filename='${SEG_PREFIX}-1-%Y-%m-%d.log'"	0
+		LOG_MSG "[INFO]:-Setting log rotation age to 1 day with ${LOG_ROTATION_AGE_TXT}=1440"
+		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_ROTATION_AGE_TXT" "log_rotation_age=1440" 0
+		
 		ERROR_CHK $? "set stats_command_string to on" 1
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
@@ -1171,6 +1181,7 @@ CREATE_QES_PRIMARY () {
 				export CHECK_POINT_SEGMENTS
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
+				export SEG_PREFIX
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 				FLAG=""
 				if [ x"" != x"$PG_CONF_ADD_FILE" ] ; then
@@ -1219,6 +1230,7 @@ CREATE_QES_MIRROR () {
 				export QE_MAX_CONNECT
 				export QE_SHARED_BUFFERS
 				export CHECK_POINT_SEGMENTS
+				export SEG_PREFIX
 				if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 				FLAG=""
 				if [ x"" != x"$PG_CONF_ADD_FILE" ] ; then

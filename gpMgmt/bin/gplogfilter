@@ -320,16 +320,18 @@ try:
     if len(args) == 0:
         s = os.getenv('MASTER_DATA_DIRECTORY')
         if s:
-            #try and find the log file in the old place.  otherwise
-            # we'll try for pg_log/* within the datadir.
+            #we'll search in the top level dir as well as in pg_logs.
+            # we do both since its possible that some messages can be
+            # logged to the top level log file before we can setup the
+            # log rotation.
             if os.path.exists(s + ".log"):
                 args.append(s)
+            
+            if os.path.exists(s + "/pg_log"):
+                for logfile in os.listdir(s + "/pg_log"):
+                    args.append(s + "/pg_log/" + logfile)
             else:
-                if os.path.exists(s + "/pg_log"):
-                    for logfile in os.listdir(s + "/pg_log"):
-                        args.append(s + "/pg_log/" + logfile)
-                else:
-                    raise IOError('specify input file or "-" for standard input')
+                raise IOError('specify input file or "-" for standard input')
         else:
             raise IOError('specify input file or "-" for standard input')
 

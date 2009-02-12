@@ -114,6 +114,14 @@ PROCESS_QE () {
 		PARA_EXIT $RETVAL "Update listen address"
 		ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
 		PARA_EXIT $RETVAL "Update checkpoint segments"
+
+		ED_FILE ${GP_DIR}/$PG_CONF "redirect_stderr =" "redirect_stderr = on" 0 $GP_HOSTNAME		
+		PARA_EXIT $RETVAL "Enabling log rotation with redirect_stderr=on"
+		ED_FILE ${GP_DIR}/$PG_CONF "log_filename" "log_filename='${SEG_PREFIX}${GP_CONTENT}-%Y-%m-%d.log'" 0 $GP_HOSTNAME
+		PARA_EXIT $RETVAL "setting log rotation filenames to log_filename='${SEG_PREFIX}-%Y-%m-%d.log'"
+		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_age" "log_rotation_age=1440"  0 $GP_HOSTNAME
+		PARA_EXIT $RETVAL "setting log rotation age to 1 day with log_rotation_age=1440"
+		
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
