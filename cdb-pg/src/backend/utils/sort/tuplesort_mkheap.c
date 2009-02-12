@@ -63,43 +63,32 @@ static inline bool ISRIGHT(int n)
  *	4. Smaller run is always smaller.  Why we do this after 2. and 3.?  
  *		When a entry is inserted, we don't know this entry belongs to
  *		current run on the next run yet.
- *	5. Same run, same level, then we compare the datum.
+ *	5. Same run, same level, then we compare the null flag.  Pg 8.2 (that is,
+ *         what we are using, always use null last.)   We do have a null first bit
+ *         reseved.
+ *      6. Compare non null datum.
  *		
  * These rules guarantee the heap top is minimal of current run.  However, at
  * deeper level, mkheap_compare return 0 does not mean the two entry are really
  * equal.  They are just equal to cerntain level.
+ *
+ * Step 1 - 5 are captured in compflags.  
  */
-static inline int mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b) 
+static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b) 
 {
-	int ret;
+	int32 ret = a->compflags - b->compflags;
 
-	/* First, empty entry is always bigger */
-	if(mke_test_flag(b, MKE_Empty))
-	{
-		if(mke_test_flag(a, MKE_Empty))
-			return 0;
-		return -1;
-	}
+        bool needcmp = (ret == 0);
+        needcmp = needcmp && (!mke_is_null(a));
+        if (needcmp)
+        {
+                int32 lv = mke_get_lv(a);
+                int32 limitmask = heap->mkctxt->limitmask;
+                ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
+                ret = (ret & (~limitmask)) + ((-ret) & limitmask);
+        }
 
-	if(mke_test_flag(a, MKE_Empty))
-		return 1;
-
-	/* Now test lvs, deeper level is smaller */
-	if(a->lv != b->lv)
-	{
-		Assert(a->lv <= heap->p[0].lv);
-		Assert(b->lv <= heap->p[0].lv);
-
-		return (a->lv < b->lv) ? 1 : -1;
-	}
-
-	/* Now test runs. prev run is smaller */
-	if(a->run != b->run)
-		return (a->run < b->run) ? -1 : 1;
-
-	/* Same run.  Invoke comparison, and reverse if reverse. */
-	ret = (heap->mkctxt->comp[a->lv])(a, b, mk_get_ctxt(heap->mkctxt, a->lv));
-	return heap->mkctxt->limit == 0 ? ret : (-ret);
+        return ret;
 }
 
 #ifdef USE_ASSERT_CHECKING
@@ -140,8 +129,8 @@ MKHeap *mkheap_from_array(MKEntry *entries, int alloc_sz, int cnt, MKContext *mk
 		int i;
 		for(i=0; i<cnt; ++i)
 		{
-			Assert(entries->lv == 0);
-			Assert(entries->reader == 0);
+			Assert(mke_get_lv(entries+i) == 0);
+			Assert(mke_get_reader(entries+i) == 0);
 		}
 	}
 #endif
@@ -180,7 +169,7 @@ MKHeap *mkheap_from_reader(MKHeapReader *readers, int nreader, MKContext *ctxt)
 
 		if(fOK)
 		{
-			e->reader = i;
+                        mke_set_reader(e, i); 
 			++j;
 		}
 	}
@@ -209,119 +198,67 @@ void mkheap_destroy(MKHeap *mkheap)
 	pfree(mkheap);
 }
 
-/* 
- * Choose a child to sift down a hole (empty entry)
- */
-static int mkheap_siftdown_choosecld(MKHeap *heap, int hole, int run)
-{
-	int left = LEFT(hole);
-	int right = RIGHT(hole);
-	int c;
-
-	/* 
-	 * Left will be a choice only if
-	 * 	1. There is a left (not >= maxentry).
-	 *	2. Left is not a hole itself.
-	 *	3. We don't put a hole down into next run (because we 
-	 *		will sift up an entry later in this run.)
-	 */
-	if(left >= heap->maxentry 
-		  || mke_test_flag(heap->p+left, MKE_Empty)
-		  || heap->p[left].run > run 
-	  )
-		left = 0;
-
-	/* Same for right */
-	if(right >= heap->maxentry 
-		  || mke_test_flag(heap->p+right, MKE_Empty)
-		  || heap->p[right].run > run 
-	  )
-		right = 0;
-
-	if(!left)
-		return right;
-	if(!right)
-		return left;
-
-	/* Return smaller of two child */
-	c =  mkheap_compare(heap, heap->p+left, heap->p+right);
-
-	if(c <= 0)
-		return left;
-	return right;
-}
-
 /*
- * MKHeap siftdown a hole.  Return the hole position.
+ * MKHeap siftdown an entry, starting with a hole.  
  */
-static void mkheap_siftdown(MKHeap *heap, MKEntry *e)
+static void mkheap_siftdown(MKHeap *heap, int hole, MKEntry *e)
 {
-	int hole = 0;
-	int cld;
 	int c;
+        int left;
+        int right;  
+        int child;
+        
+        static int roundrobin = 0;
 
-	while(1)
-	{
-		cld = mkheap_siftdown_choosecld(heap, hole, e->run);
-		
-		/* Reached bottom, stop */
-		if(cld == 0)
-			break;
+        Assert(hole >= 0 && hole < heap->maxentry);
 
-		c = mkheap_compare(heap, e, heap->p+cld);
-		if(c <= 0)
-			break;
+        while(1)
+        {
+                left = LEFT(hole);
+                right = RIGHT(hole);
+                child = left;
 
-		heap->p[hole] = heap->p[cld]; 
-		hole = cld;
-	}
+                if (right < heap->maxentry)
+                {
+                        c = mkheap_compare(heap, heap->p+left, heap->p+right);
 
-	heap->p[hole] = *e;
-}
+                        if (c==0)
+                                child = left + ((roundrobin++) & 1);
+                        else if(c > 0)
+                                child = right;
+                }
 
-/* Sift up */
-static int mkheap_siftup(MKHeap *heap, int cur, MKEntry *e)
-{
-	int c, p;
+                if (child < heap->maxentry)
+                {
+                        c = mkheap_compare(heap, e, heap->p+child);
 
-	while(1) 
-	{
-		/* Root, cannot go any higher. */
-		if(cur == 0)
-		{
-			heap->p[0] = *e;
-			return 0;
-		}
+                        if(c > 0)
+                        {
+                                heap->p[hole] = heap->p[child];
+                                hole = child;
+                                continue;
+                        }
+                }
 
-		p = PARENT(cur);
-		c = mkheap_compare(heap, heap->p+p, e); 
+                /* We are in right position */
+                heap->p[hole] = *e;
+                return;
+        }
 
-		/* We are in pos */
-		if(c <= 0)
-		{
-			heap->p[cur] = *e;
-			return cur;
-		}
-
-		heap->p[cur] = heap->p[p];
-		cur = p;
-	}
-
-	Assert(!"Not here");
-	return -1;
+        Assert(!"Never here");
 }
 
 /* 
  * Prepare heap (expand lv) at postion cur.  Return how deep (max) into the heap we expand.
  */
-static int mkheap_prep_lv(MKHeap *mkheap, int lv, int cur, MKPrepare prep, void *ctxt) 
+static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKPrepare prep, void *ctxt) 
 {
-	int n;
-	int max = cur;
+        bool expchild = false;
 
 	int c;
 
 	Assert(cur < mkheap->maxentry);
+        Assert(cur >= 0);
 
 	/* If necessary, expand right */
 	if(RIGHT(cur) < mkheap->maxentry)
@@ -329,9 +266,8 @@ static int mkheap_prep_lv(MKHeap *mkheap, int lv, int cur, MKPrepare prep, void 
 		c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+RIGHT(cur));
 		if(c==0)
 		{
-			n = mkheap_prep_lv(mkheap, lv, RIGHT(cur), prep, ctxt);
-			if(n>max)
-				max = n;
+		        mkheap_prep_siftdown_lv(mkheap, lv, RIGHT(cur), prep, ctxt);
+                        expchild = true; 
 		}
 	}
 	
@@ -341,25 +277,25 @@ static int mkheap_prep_lv(MKHeap *mkheap, int lv, int cur, MKPrepare prep, void 
 		c = mkheap_compare(mkheap, mkheap->p+cur, mkheap->p+LEFT(cur));
 		if(c==0)
 		{
-			n = mkheap_prep_lv(mkheap, lv, LEFT(cur), prep, ctxt);
-			if(n>max)
-				max = n;
+		        mkheap_prep_siftdown_lv(mkheap, lv, LEFT(cur), prep, ctxt);
+                        expchild = true;
 		}
 	}
 
-	Assert(mkheap->p[cur].lv == lv-1);
-	if(prep && max > 0)
-	{
-		(prep)(mkheap->p+cur, ctxt);
-		mkheap->p[cur].lv = lv;
-	}
+	Assert(mke_get_lv(mkheap->p+cur) == lv-1);
+        (prep)(mkheap->p+cur, ctxt);
+        mke_set_lv(mkheap->p+cur, lv); 
 
-	return max;
+        if(expchild)
+        {
+                MKEntry tmp = mkheap->p[cur];
+                mkheap_siftdown(mkheap, cur, &tmp);
+        }
 }
 
 static void mkheap_save_lvtop(MKHeap *mkheap)
 {
-	int lv = mkheap->p[0].lv;
+	int lv = mke_get_lv(mkheap->p);
 	MKContext_LvCommon *ctxt = (MKContext_LvCommon *) mk_get_ctxt(mkheap->mkctxt, lv);
 	
 	Assert(mkheap->count > 0);
@@ -369,44 +305,47 @@ static void mkheap_save_lvtop(MKHeap *mkheap)
 	(*mkheap->mkctxt->cpfr)(mkheap->lvtops + lv, mkheap->p, ctxt);
 }
 
+static inline bool mkheap_need_heapify(MKHeap *mkheap)
+{
+        return (
+                /* More than one entry */
+                mkheap_cnt(mkheap) > 1 && 
+                /* Not fully expanded */
+                mke_get_lv(mkheap->p) < mkheap->mkctxt->total_lv-1 &&
+                /* Cannot determine by comp flag */
+                (
+                 mkheap->p[0].compflags == mkheap->p[1].compflags 
+                 ||
+                 mkheap->p[0].compflags == mkheap->p[2].compflags 
+                )
+               );
+}
+
 static void mkheap_heapify(MKHeap *mkheap, bool doLv0) 
 {
 	int i;
 	MKEntry tmp;
 
 	/* Build heap, expanded already at lv 0 */
-
 	if(doLv0)
 	{
-		for(i=1; i<mkheap->maxentry; ++i)
+		for(i=PARENT(mkheap->maxentry); i >= 0; --i)
 		{
 			tmp = mkheap->p[i];
-			mkheap_siftup(mkheap, i, &tmp);
+			mkheap_siftdown(mkheap, i, &tmp);
 		}
 	}
 
 	/* Populate deeper levels */
-	while(mkheap->p[0].lv < mkheap->mkctxt->total_lv - 1)
+	while(mke_get_lv(mkheap->p) < mkheap->mkctxt->total_lv - 1)
 	{
-		int i;
-		int lv = mkheap->p[0].lv;
-		MKPrepare prep = mkheap->mkctxt->prep[lv+1];
-		void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, lv+1);
-		int last;
+		int nlv = mke_get_lv(mkheap->p) + 1;
+		MKPrepare prep = mkheap->mkctxt->prep[nlv];
+		void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, nlv); 
 		
 		mkheap_save_lvtop(mkheap);
-		last = mkheap_prep_lv(mkheap, lv+1, 0, prep, ctxtnext);
-
-		if(last == 0)
-			break;
-
-		/* Heapify, and looping for expand next level j*/
-		for(i=1; i<=last; ++i)
-		{
-			tmp = mkheap->p[i];
-			mkheap_siftup(mkheap, i, &tmp);
-		}
-	}
+		mkheap_prep_siftdown_lv(mkheap, nlv, 0, prep, ctxtnext);
+        }
 
 #ifdef USE_ASSERT_CHECKING
 	if(gp_mk_sort_check)
@@ -431,9 +370,9 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 
 	Assert(mkheap->count > 0);
 
-	if(mke_test_flag(e, MKE_Empty))
+	if(mke_is_empty(e)) 
 		--mkheap->count;
-	else if (e->run != mkheap->p[0].run)
+	else if (mke_get_run(e) != mke_get_run(mkheap->p))
 	{
 		/* Not same run, at least prep lv 0 */
 
@@ -441,29 +380,33 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 		 * If different run, it must went through at least one "prep".
 		 * If lv is 0, reuse last prep
 		 */
-		if(e->lv != 0)
+		if(mke_get_lv(e) != 0)
 		{
 			if(mkheap->mkctxt->prep[0])
 				(mkheap->mkctxt->prep[0])(e, mk_get_ctxt(mkheap->mkctxt, 0));
-			e->lv = 0;
+                        mke_set_lv(e, 0);
 		}
 	}
  	else
 	{
-		toplv = mkheap->p[0].lv;
+                int lv = 0;
 
-		for(e->lv = 0; e->lv < toplv; ++e->lv)
-		{
-			/* Compare with heaptop of current level */
-			prep = mkheap->mkctxt->prep[e->lv];
-			ctxt = mk_get_ctxt(mkheap->mkctxt, e->lv);
+		toplv = mke_get_lv(mkheap->p); 
+                mke_set_lv(e, lv);
+
+                while (lv < toplv)
+                {
+			prep = mkheap->mkctxt->prep[lv];
+			ctxt = mk_get_ctxt(mkheap->mkctxt, lv);
 
 			if(prep)
 				(prep)(e, ctxt);
 
-			c = mkheap_compare(mkheap, e, mkheap->lvtops+e->lv); 
+			c = mkheap_compare(mkheap, e, mkheap->lvtops+lv); 
 			if(c!=0)
 				break;
+
+                        mke_set_lv(e, ++lv);
 		}
 
 		/* Smaller than top */
@@ -471,10 +414,11 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 			return -1;
 
 		/* We have not done e->lv == toplv yet */
-		if(e->lv == toplv)
+                Assert(mke_get_lv(e) == lv);
+		if(lv == toplv)
 		{
-			prep = mkheap->mkctxt->prep[e->lv];
-			ctxt = mk_get_ctxt(mkheap->mkctxt, e->lv);
+			prep = mkheap->mkctxt->prep[lv];
+			ctxt = mk_get_ctxt(mkheap->mkctxt, lv);
 
 			if(prep)
 				(prep)(e, ctxt);
@@ -490,15 +434,14 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 			 * Eq and at top level.
 			 * This means, e is smaller/eq to any entry except the heap top.
 			 */
-
-			Assert(e->lv == mkheap->p[0].lv);
+                        Assert(mke_get_lv(e) == lv);
+			Assert(lv == mke_get_lv(mkheap->p));
 
 			/* First find out if e is <, ==, or > than the heap top.  Do 
 			 * expansion as necessary 
 			 */
-			while(e->lv < mkheap->mkctxt->total_lv - 1)
+			while(lv < mkheap->mkctxt->total_lv - 1)
 			{
-				int lv = mkheap->p[0].lv;
 				MKPrepare prep = mkheap->mkctxt->prep[lv+1];
 				void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, lv+1);
 
@@ -508,8 +451,10 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 				{
 					(prep)(mkheap->p, ctxtnext);
 					(prep)(e, ctxtnext);
-					++mkheap->p[0].lv;
-					++e->lv;
+
+                                        ++lv;
+                                        mke_set_lv(mkheap->p, lv);
+                                        mke_set_lv(e, lv);
 				}
 
 				c = mkheap_compare(mkheap, e, mkheap->p);
@@ -536,11 +481,10 @@ static int mkheap_puget_impl(MKHeap *mkheap, MKEntry *e)
 	*e = mkheap->p[0];
 
 	/* Sift down a hole to bottom of (current or next) run, depends on tmp.run */
-	mkheap_siftdown(mkheap, &tmp);
-	
-	/* Heapify if needed */
-	if(!mkheap_empty(mkheap) && mkheap->p[0].lv < mkheap->mkctxt->total_lv-1)
-		mkheap_heapify(mkheap, false);
+	mkheap_siftdown(mkheap, 0, &tmp);
+
+        if(mkheap_need_heapify(mkheap))
+                mkheap_heapify(mkheap, false);
 	
 #ifdef USE_ASSERT_CHECKING
 	if(gp_mk_sort_check)
@@ -571,8 +515,8 @@ int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
 {
 	int ins;
 
-	Assert(!mke_test_flag(e, MKE_Empty));
-	e->run = run;
+	Assert(!mke_is_empty(e));
+        mke_set_run(e, run);
 	ins = mkheap_puget_impl(mkheap, e); 
 
 	/* Greater than or Equal. */
@@ -587,7 +531,7 @@ int mkheap_puget_run(MKHeap *mkheap, MKEntry *e, int16 run)
 		return ins;
 	}
 
-	++e->run;
+        mke_set_run(e, run+1);
 	ins = mkheap_puget_impl(mkheap, e); 
 
 	Assert(ins > 0);
@@ -603,23 +547,23 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
 
 	if(!e)
 	{
-		out->flags = MKE_Empty;
+                mke_set_empty(out);
 		return -1;
 	}
 
-	Assert(!mke_test_flag(e, MKE_Empty));
-	Assert(e->run == 0);
+	Assert(!mke_is_empty(e));
+	Assert(mke_get_run(e) == 0);
 
-	n = e->reader;
+	n = mke_get_reader(e); 
 	Assert(n>=0 && n<mkheap->nreader);
 
 	fOK = mkheap->readers[n].reader(mkheap->readers[n].mkhr_ctxt, out); 
-	if(!fOK)
-		out->flags = MKE_Empty;
-	else
-		out->reader = n;
+	if(fOK)
+                mke_set_reader(out, n);
+        else
+                mke_set_empty(out); 
 
-	Assert(out->run == 0);
+	Assert(mke_get_run(out) == 0);
 
 	ins = mkheap_puget_impl(mkheap, out);
 	if(mkheap->mkctxt->enforceUnique && ins == 0)
@@ -630,8 +574,8 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
 	}
 
 	Assert(ins >= 0);
-	Assert(out->reader == n);
-	Assert(!mke_test_flag(out, MKE_Empty));
+	Assert(mke_get_reader(out) == n);
+	Assert(!mke_is_empty(out));
 
 	return ins;
 }
@@ -649,7 +593,7 @@ MKEntry *mkheap_peek(MKHeap *mkheap)
 	if(mkheap->count == 0)
 		return NULL;
 
-	Assert(!mke_test_flag(mkheap->p, MKE_Empty));
+	Assert(!mke_is_empty(mkheap->p));
 	return mkheap->p;
 }
 
@@ -669,11 +613,11 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 	Assert(heap->maxentry <= heap->alloc_size);
 
 	e = heap->p[0];
-	e.lv = 0;
-	e.flags = 0;
+        mke_set_lv(&e, 0);
+        mke_clear_refc_copied(&e);
 
 	/* Checking for lvtops */
-	for(i=0; i<heap->p[0].lv; ++i)
+	for(i=0; i<mke_get_lv(heap->p); ++i)
 	{
 		MKPrepare prep = heap->mkctxt->prep[i];
 		void *ctxt = mk_get_ctxt(heap->mkctxt, i);
@@ -686,7 +630,7 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 		*/
 			if(prep)
 			{
-				e.lv = i;
+                                mke_set_lv(&e, i);
 				(prep) (&e, ctxt);
 			}
 
@@ -704,7 +648,7 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 		int right = RIGHT(i);
 		int cl, cr;
 
-		if(mke_test_flag(heap->p+i, MKE_Empty)) 
+		if(mke_is_empty(heap->p+i))
 			++empty_cnt;
 
 		if(left >= heap->maxentry)
@@ -713,7 +657,7 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 		cl = mkheap_compare(heap, heap->p+i, heap->p+left); 
 		Assert(cl<=0);
 		if(i==0 && cl==0)
-			Assert(heap->p[0].lv == heap->mkctxt->total_lv-1);
+			Assert(mke_get_lv(heap->p) == heap->mkctxt->total_lv-1);
 
 		if(right >= heap->maxentry)
 			continue;
@@ -721,7 +665,7 @@ void mkheap_verify_heap(MKHeap *heap, int top)
 		cr = mkheap_compare(heap, heap->p+i, heap->p+right); 
 		Assert(cr<=0);
 		if(i==0 && cr==0)
-			Assert(heap->p[0].lv == heap->mkctxt->total_lv-1);
+			Assert(mke_get_lv(heap->p) == heap->mkctxt->total_lv-1);
 	}
 }
 #endif

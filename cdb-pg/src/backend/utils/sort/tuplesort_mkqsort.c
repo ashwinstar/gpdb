@@ -14,7 +14,7 @@
 #include "tuplesort_mk.h"
 
 #ifdef USE_ASSERT_CHECKING
-	extern void mkqsort_verify(MKEntry *a, int l, int r, MKContext *mkctxt);
+extern void mkqsort_verify(MKEntry *a, int l, int r, MKContext *mkctxt);
 #endif
 
 static inline void mkqs_swap(MKEntry *a, int i, int j)
@@ -27,11 +27,23 @@ static inline void mkqs_swap(MKEntry *a, int i, int j)
 	}
 }
 
+static inline int32 mkqs_comp(MKCompare comp, MKEntry *a, MKEntry *b, void *ctxt)
+{
+        int ret = a->compflags - b->compflags;
+
+        if (ret == 0 && !mke_is_null(a))
+                ret = (comp)(a, b, ctxt);
+
+        return ret;
+}
+        
 static inline MKEntry *mkqs_med3(MKEntry *a, MKEntry *b, MKEntry *c, MKCompare comp, void *ctxt) 
 {
-	return (comp)(a, b, ctxt) < 0 ? 
-				((comp)(b, c, ctxt) < 0 ? b : comp(a, c, ctxt) < 0 ? c : a)
-			   :((comp)(b, c, ctxt) > 0 ? b : comp(a, c, ctxt) > 0 ? c : a);
+	return mkqs_comp(comp, a, b, ctxt) < 0 ? 
+                        (mkqs_comp(comp, b, c, ctxt) < 0 ? b : mkqs_comp(comp, a, c, ctxt) < 0 ? c : a )
+                        :
+                        (mkqs_comp(comp, b, c, ctxt) > 0 ? b : mkqs_comp(comp, a, c, ctxt) > 0 ? c : a )
+                        ;
 }
 
 static inline MKEntry *mkqs_choose_pivot(MKEntry *a, int left, int right, int lv, MKCompare comp, void *ctxt)
@@ -93,7 +105,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 	/* Save pivot in v */ 
 	/* Hacking a ref count */
-	if(mke_test_flag(pv, MKE_RefCnt))
+	if(mke_is_refc(pv))
 		mkqs_ctxt->cpfr(&v, pv, ctxt);
 	else 
 		v = *pv;
@@ -106,7 +118,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 		while(1)
 		{
-			while(++(*i) < (*j) && (c1 = (comp)(a+(*i), &v, ctxt)) < 0) 
+			while(++(*i) < (*j) && (c1 = mkqs_comp(comp, a+(*i), &v, ctxt)) < 0) 
 			{
 				Assert(*i >= left && *i<= right);
 				Assert(*j >= left && *j<= right+1);
@@ -130,7 +142,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 
 		while(1)
 		{
-			while(--(*j) > tmpi && (c2 = (comp)(&v, a+(*j), ctxt)) < 0)
+			while(--(*j) > tmpi && (c2 = mkqs_comp(comp, &v, a+(*j), ctxt)) < 0)
 			{
 				Assert(tmpi >= left-1 && tmpi<= right);
 				Assert(*j >= left && *j<= right);
@@ -181,7 +193,7 @@ static void mk_qsort_part3(MKEntry *a, int left, int right, int lv, MKContext *m
 	Assert(*j >= *i+2);
 
 	/* Hack ref count */
-	if(mke_test_flag(&v, MKE_RefCnt))
+	if(mke_is_refc(&v))
 		mkqs_ctxt->cpfr(&v, NULL, ctxt);
 
 }
@@ -213,7 +225,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 
 	mk_qsort_part3(a, left, right, lv, ctxt, &i, &j);
 
-#ifdef USE_ASSERT_CHECKING 
+#if 0 
 	/* Check that the partiton is done right. */
 	{
 		MKCompare comp = ctxt->comp[lv];
@@ -226,7 +238,7 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 
 		for(x=left; x<=i; ++x)
 		{
-			c = (comp)(a+x, pv, cmpctxt);
+			c = mkqs_comp(comp, a+x, pv, cmpctxt);
 			Assert(c < 0);
 		}
 
@@ -234,14 +246,14 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		{
 			if(a+x != pv)
 			{
-				c = (comp)(a+x, pv, cmpctxt);
+				c = mkqs_comp(comp, a+x, pv, cmpctxt);
 				Assert(c == 0);
 			}
 		}
 
 		for(x=j; x<=right; ++x)
 		{
-			c = (comp)(a+x, pv, cmpctxt);
+			c = mkqs_comp(comp, a+x, pv, cmpctxt);
 			Assert(c > 0);
 		}
 	}
@@ -252,10 +264,10 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 
 
 	if(lv < ctxt->total_lv-1)
-		mk_qsort_impl(a, i+1, j-1, lv+1, true, ctxt, seenNull || mke_test_flag(a+i+1, MKE_NullFlag));
+		mk_qsort_impl(a, i+1, j-1, lv+1, true, ctxt, seenNull || mke_is_null(a+i+1));
 	else
 	{
-		if(ctxt->enforceUnique && j-1 > i+1 && !seenNull && !mke_test_flag(a+i+1, MKE_NullFlag))
+		if(ctxt->enforceUnique && j-1 > i+1 && !seenNull && !mke_is_null(a+i+1))
 			ereport(ERROR, (errcode(ERRCODE_UNIQUE_VIOLATION),
 					errmsg("could not create unique index"),
 					errdetail("Table contains duplicate values.")));
@@ -276,8 +288,8 @@ static int mkqsort_comp_entry_all_lv(MKEntry *a, MKEntry *b, MKContext *mkctxt)
 	MKEntry aa = {0, }; 
 	MKEntry bb = {0, }; 
 
-	(*mkctxt->cpfr)(&aa, a, mk_get_ctxt(mkctxt, a->lv));
-	(*mkctxt->cpfr)(&bb, b, mk_get_ctxt(mkctxt, b->lv));
+	(*mkctxt->cpfr)(&aa, a, mk_get_ctxt(mkctxt, mke_get_lv(a)));
+	(*mkctxt->cpfr)(&bb, b, mk_get_ctxt(mkctxt, mke_get_lv(b)));
 
 	for(i=0; i<mkctxt->total_lv; ++i)
 	{
@@ -291,7 +303,16 @@ static int mkqsort_comp_entry_all_lv(MKEntry *a, MKEntry *b, MKContext *mkctxt)
 			(prep)(&bb, ctxt);
 		}
 
-		c = (comp)(&aa, &bb, ctxt);
+                if (mke_is_null(&aa) && mke_is_null(&bb))
+                        continue;
+
+                if (mke_is_null(&aa))
+                        return 1;
+
+                if (mke_is_null(&bb))
+                        return -1;
+
+                c = (comp)(&aa, &bb, ctxt);
 		if(c!=0)
 			return c;
 	}
