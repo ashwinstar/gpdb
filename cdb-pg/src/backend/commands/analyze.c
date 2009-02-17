@@ -26,6 +26,8 @@
 #include "cdb/cdbappendonlyam.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
+#include "lib/stringinfo.h"
+#include "libpq/pqformat.h"             /* pq_beginmessage() etc. */
 #include "miscadmin.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
@@ -93,7 +95,8 @@ static double random_fract(void);
 static double init_selection_state(int n);
 static double get_next_S(double t, int n, double *stateptr);
 static int	compare_rows(const void *a, const void *b);
-static void update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats);
+static void update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
+							List *updated_stats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 
@@ -104,9 +107,8 @@ static bool std_typanalyze(VacAttrStats *stats);
  *	analyze_rel() -- analyze one relation
  */
 void
-analyze_rel(Oid relid, VacuumStmt *vacstmt)
+analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_context)
 {
-	Relation	onerel;
 	int			attr_cnt,
 				tcnt,
 				i,
@@ -148,78 +150,13 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 */
 	anl_context = CurrentMemoryContext;
 
+	is_appendonly = (onerel->rd_rel->relstorage == RELSTORAGE_AO ? true : false);
+
 	/*
 	 * Check for user-requested abort.	Note we want this to be inside a
 	 * transaction, so xact.c doesn't issue useless WARNING.
 	 */
 	CHECK_FOR_INTERRUPTS();
-
-	/*
-	 * Open the relation, getting ShareUpdateExclusiveLock to ensure that two
-	 * ANALYZEs don't run on it concurrently.  (This also locks out a
-	 * concurrent VACUUM, which doesn't matter much at the moment but might
-	 * matter if we ever try to accumulate stats on dead tuples.) If the rel
-	 * has been dropped since we last saw it, we don't need to process it.
-	 */
-	onerel = try_relation_open(relid, ShareUpdateExclusiveLock);
-	if (!onerel)
-		return;
-
-	is_appendonly = (onerel->rd_rel->relstorage == RELSTORAGE_AO ? true : false);
-
-	/*
-	 * Check permissions --- this should match vacuum's check!
-	 */
-	if (!(pg_class_ownercheck(RelationGetRelid(onerel), GetUserId()) ||
-		  (pg_database_ownercheck(MyDatabaseId, GetUserId()) && !onerel->rd_rel->relisshared)))
-	{
-		/* No need for a WARNING if we already complained during VACUUM */
-		if (!vacstmt->vacuum)
-			if (Gp_role != GP_ROLE_EXECUTE)
-				ereport(WARNING,
-						(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
-								RelationGetRelationName(onerel))));
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	/*
-	 * Check that it's a plain table; we used to do this in get_rel_oids() but
-	 * seems safer to check after we've locked the relation.
-	 */
-	if (onerel->rd_rel->relkind != RELKIND_RELATION && !is_appendonly)
-	{
-		/* No need for a WARNING if we already complained during VACUUM */
-		if (!vacstmt->vacuum)
-			if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(WARNING,
-					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, "
-							"external tables or special system tables",
-							RelationGetRelationName(onerel))));
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	/*
-	 * Silently ignore tables that are temp tables of other backends ---
-	 * trying to analyze these is rather pointless, since their contents are
-	 * probably not up-to-date on disk.  (We don't throw a warning here; it
-	 * would just lead to chatter during a database-wide ANALYZE.)
-	 */
-	if (isOtherTempNamespace(RelationGetNamespace(onerel)))
-	{
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
-
-	/*
-	 * We can ANALYZE any table except pg_statistic. See update_attstats
-	 */
-	if (RelationGetRelid(onerel) == StatisticRelationId)
-	{
-		relation_close(onerel, ShareUpdateExclusiveLock);
-		return;
-	}
 
 	ereport(elevel,
 			(errmsg("analyzing \"%s.%s\"",
@@ -275,6 +212,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		}
 		attr_cnt = tcnt;
 	}
+
+	stats_context->vac_stats = vacattrstats;
 
 	/*
 	 * Open all indexes of the relation, and see if there are any analyzable
@@ -443,14 +382,15 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		 * previous statistics for the target columns.	(If there are stats in
 		 * pg_statistic for columns we didn't process, we leave them alone.)
 		 */
-		update_attstats(onerel, attr_cnt, vacattrstats);
+		update_attstats(onerel, attr_cnt, vacattrstats, stats_context->updated_stats);
 
 		for (ind = 0; ind < nindexes; ind++)
 		{
 			AnlIndexData *thisdata = &indexdata[ind];
 
 			update_attstats(Irel[ind],
-							thisdata->attr_cnt, thisdata->vacattrstats);
+							thisdata->attr_cnt, thisdata->vacattrstats,
+							stats_context->updated_stats);
 		}
 	}
 
@@ -470,7 +410,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		vac_update_relstats(onerel,
 							numblocks,
 							totalrows, hasindex,
-							InvalidTransactionId);
+							InvalidTransactionId,
+							stats_context->updated_stats);
 
 		for (ind = 0; ind < nindexes; ind++)
 		{
@@ -481,7 +422,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			vac_update_relstats(Irel[ind],
 								RelationGetNumberOfBlocks(Irel[ind]),
 								totalindexrows, false,
-								InvalidTransactionId);
+								InvalidTransactionId,
+								stats_context->updated_stats);
 		}
 
 		/* report results to the stats collector, too */
@@ -495,14 +437,6 @@ cleanup:
 
 	/* Done with indexes */
 	vac_close_indexes(nindexes, Irel, NoLock);
-
-	/*
-	 * Close source relation now, but keep lock so that no one deletes it
-	 * before we commit.  (If someone did, they'd fail to clean up the entries
-	 * we made in pg_statistic.  Also, releasing the lock before commit would
-	 * expose us to concurrent-update failures in update_attstats.)
-	 */
-	relation_close(onerel, NoLock);
 
 	/* Restore userid */
 	SetUserIdAndContext(save_userid, save_secdefcxt);
@@ -1295,7 +1229,8 @@ compare_rows(const void *a, const void *b)
  *		by taking a self-exclusive lock on the relation in analyze_rel().
  */
 static void
-update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
+update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
+				List *updated_stats)
 {
 	Relation	sd;
 	int			attno;
@@ -1309,6 +1244,9 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 	for (attno = 0; attno < natts; attno++)
 	{
 		VacAttrStats *stats = vacattrstats[attno];
+		VPgStatisticStats *pgstat_stats;
+		PgStatistic *pgstat = &(stats->pgstat);
+		
 		HeapTuple	stup,
 					oldtup;
 		int			i,
@@ -1318,14 +1256,37 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 		char		nulls[Natts_pg_statistic];
 		char		replaces[Natts_pg_statistic];
 		
+		/*
+		 * If this is QD, use the stats collected from QE instead of the
+		 * one provided in vacattrstats[attno].
+		 */
 		if (Gp_role == GP_ROLE_DISPATCH && relid >= FirstNormalObjectId)
 		{
-			Assert(stats != NULL);
-			cdbanalyze_get_columnstats(rel, stats);
+			ListCell *lc = NULL;
+
+			foreach (lc, updated_stats)
+			{
+				VUpdatedStats *tmp_stats = (VUpdatedStats *)lfirst(lc);
+				if (tmp_stats->relid == relid &&
+					tmp_stats->type == PG_STATISTIC_STATS)
+				{
+					pgstat_stats = (VPgStatisticStats *)tmp_stats;
+
+					if (pgstat_stats->attno - 1 == attno)
+					{
+						pgstat = &(pgstat_stats->pgstat);
+						break;
+					}
+				}
+			}
+
+			/* If we didn't find the stats in updated_stats, ignore this attribute. */
+			if (lc == NULL)
+				continue;
 		}
 
 		/* Ignore attr if we weren't able to collect stats */
-		if (!stats->stats_valid)
+		if (!pgstat->stats_valid)
 			continue;
 
 		/*
@@ -1340,20 +1301,21 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 		i = 0;
 		values[i++] = ObjectIdGetDatum(relid);	/* starelid */
 		values[i++] = Int16GetDatum(stats->attr->attnum);		/* staattnum */
-		values[i++] = Float4GetDatum(stats->stanullfrac);		/* stanullfrac */
-		values[i++] = Int32GetDatum(stats->stawidth);	/* stawidth */
-		values[i++] = Float4GetDatum(stats->stadistinct);		/* stadistinct */
+		values[i++] = Float4GetDatum(pgstat->stanullfrac);		/* stanullfrac */
+		values[i++] = Int32GetDatum(pgstat->stawidth);	/* stawidth */
+		values[i++] = Float4GetDatum(pgstat->stadistinct);		/* stadistinct */
+
 		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
 		{
-			values[i++] = Int16GetDatum(stats->stakind[k]);		/* stakindN */
+			values[i++] = Int16GetDatum(pgstat->stakind[k]);		/* stakindN */
 		}
 		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
 		{
-			values[i++] = ObjectIdGetDatum(stats->staop[k]);	/* staopN */
+			values[i++] = ObjectIdGetDatum(pgstat->staop[k]);	/* staopN */
 		}
 		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
 		{
-			int			nnum = stats->numnumbers[k];
+			int			nnum = pgstat->numnumbers[k];
 
 			if (nnum > 0)
 			{
@@ -1361,7 +1323,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 				ArrayType  *arry;
 
 				for (n = 0; n < nnum; n++)
-					numdatums[n] = Float4GetDatum(stats->stanumbers[k][n]);
+					numdatums[n] = Float4GetDatum(pgstat->stanumbers[k][n]);
 				/* XXX knows more than it should about type float4: */
 				arry = construct_array(numdatums, nnum,
 									   FLOAT4OID,
@@ -1376,12 +1338,12 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 		}
 		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
 		{
-			if (stats->numvalues[k] > 0)
+			if (pgstat->numvalues[k] > 0)
 			{
 				ArrayType  *arry;
 
-				arry = construct_array(stats->stavalues[k],
-									   stats->numvalues[k],
+				arry = construct_array(pgstat->stavalues[k],
+									   pgstat->numvalues[k],
 									   stats->attr->atttypid,
 									   stats->attrtype->typlen,
 									   stats->attrtype->typbyval,
@@ -1421,6 +1383,31 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 
 		/* update indexes too */
 		CatalogUpdateIndexes(sd, stup);
+
+		/*
+		 * If this is in QE, send out the new stats tuple to QD so that
+		 * QD will compute the final stats for the relation.
+		 */
+		if (Gp_role == GP_ROLE_EXECUTE)
+		{
+			VUpdatedStats tmp_stats;
+			StringInfoData buf;
+			
+			tmp_stats.type = PG_STATISTIC_STATS;
+			tmp_stats.relid = relid;
+
+			pq_beginmessage(&buf, 'y');
+			pq_sendstring(&buf, "ANALYZE");
+			pq_sendint(&buf,
+					   sizeof(VUpdatedStats) + sizeof(int) + heaptuple_get_size(stup),
+					   sizeof(int));
+			pq_sendbytes(&buf, (char *)(&tmp_stats), sizeof(VUpdatedStats));
+			/* XXX attnum is 16-bit */
+			pq_sendbytes(&buf, (char *)&(stats->attr->attnum), sizeof(int));
+			pq_sendbytes(&buf, (char *)stup, HEAPTUPLESIZE);
+			pq_sendbytes(&buf, (char *)(stup->t_data), stup->t_len);
+			pq_endmessage(&buf);
+		}
 
 		heap_freetuple(stup);
 	}
@@ -1772,13 +1759,13 @@ compute_minimal_stats(VacAttrStatsP stats,
 		int			nmultiple,
 					summultiple;
 
-		stats->stats_valid = true;
+		stats->pgstat.stats_valid = true;
 		/* Do the simple null-frac and width stats */
-		stats->stanullfrac = (double) null_cnt / (double) samplerows;
+		stats->pgstat.stanullfrac = (double) null_cnt / (double) samplerows;
 		if (is_varwidth)
-			stats->stawidth = total_width / (double) nonnull_cnt;
+			stats->pgstat.stawidth = total_width / (double) nonnull_cnt;
 		else
-			stats->stawidth = stats->attrtype->typlen;
+			stats->pgstat.stawidth = stats->attrtype->typlen;
 
 		/* Count the number of values we found multiple times */
 		summultiple = 0;
@@ -1792,7 +1779,7 @@ compute_minimal_stats(VacAttrStatsP stats,
 		if (nmultiple == 0)
 		{
 			/* If we found no repeated values, assume it's a unique column */
-			stats->stadistinct = -1.0;
+			stats->pgstat.stadistinct = -1.0;
 		}
 		else if (track_cnt < track_max && toowide_cnt == 0 &&
 				 nmultiple == track_cnt)
@@ -1802,7 +1789,7 @@ compute_minimal_stats(VacAttrStatsP stats,
 			 * value appeared more than once.  Assume the column has just
 			 * these values.
 			 */
-			stats->stadistinct = track_cnt;
+			stats->pgstat.stadistinct = track_cnt;
 		}
 		else
 		{
@@ -1841,7 +1828,7 @@ compute_minimal_stats(VacAttrStatsP stats,
 				stadistinct = (double) d;
 			if (stadistinct > totalrows)
 				stadistinct = totalrows;
-			stats->stadistinct = floor(stadistinct + 0.5);
+			stats->pgstat.stadistinct = floor(stadistinct + 0.5);
 		}
 
 		/*
@@ -1850,8 +1837,8 @@ compute_minimal_stats(VacAttrStatsP stats,
 		 * stadistinct should scale with the row count rather than be a fixed
 		 * value.
 		 */
-		if (stats->stadistinct > 0.1 * totalrows)
-			stats->stadistinct = -(stats->stadistinct / totalrows);
+		if (stats->pgstat.stadistinct > 0.1 * totalrows)
+			stats->pgstat.stadistinct = -(stats->pgstat.stadistinct / totalrows);
 
 		/*
 		 * Decide how many values are worth storing as most-common values. If
@@ -1863,7 +1850,7 @@ compute_minimal_stats(VacAttrStatsP stats,
 		 * least 2 instances in the sample.
 		 */
 		if (track_cnt < track_max && toowide_cnt == 0 &&
-			stats->stadistinct > 0 &&
+			stats->pgstat.stadistinct > 0 &&
 			track_cnt <= num_mcv)
 		{
 			/* Track list includes all values seen, and all will fit */
@@ -1871,7 +1858,7 @@ compute_minimal_stats(VacAttrStatsP stats,
 		}
 		else
 		{
-			double		ndistinct = stats->stadistinct;
+			double		ndistinct = stats->pgstat.stadistinct;
 			double		avgcount,
 						mincount;
 
@@ -1915,24 +1902,24 @@ compute_minimal_stats(VacAttrStatsP stats,
 			}
 			MemoryContextSwitchTo(old_context);
 
-			stats->stakind[0] = STATISTIC_KIND_MCV;
-			stats->staop[0] = mystats->eqopr;
-			stats->stanumbers[0] = mcv_freqs;
-			stats->numnumbers[0] = num_mcv;
-			stats->stavalues[0] = mcv_values;
-			stats->numvalues[0] = num_mcv;
+			stats->pgstat.stakind[0] = STATISTIC_KIND_MCV;
+			stats->pgstat.staop[0] = mystats->eqopr;
+			stats->pgstat.stanumbers[0] = mcv_freqs;
+			stats->pgstat.numnumbers[0] = num_mcv;
+			stats->pgstat.stavalues[0] = mcv_values;
+			stats->pgstat.numvalues[0] = num_mcv;
 		}
 	}
 	else if (null_cnt > 0)
 	{
 		/* We found only nulls; assume the column is entirely null */
-		stats->stats_valid = true;
-		stats->stanullfrac = 1.0;
+		stats->pgstat.stats_valid = true;
+		stats->pgstat.stanullfrac = 1.0;
 		if (is_varwidth)
-			stats->stawidth = 0;	/* "unknown" */
+			stats->pgstat.stawidth = 0;	/* "unknown" */
 		else
-			stats->stawidth = stats->attrtype->typlen;
-		stats->stadistinct = 0.0;		/* "unknown" */
+			stats->pgstat.stawidth = stats->attrtype->typlen;
+		stats->pgstat.stadistinct = 0.0;		/* "unknown" */
 	}
 
 	/* We don't need to bother cleaning up any of our temporary palloc's */
@@ -2196,18 +2183,18 @@ compute_scalar_stats(VacAttrStatsP stats,
 			}
 		}
 
-		stats->stats_valid = true;
+		stats->pgstat.stats_valid = true;
 		/* Do the simple null-frac and width stats */
-		stats->stanullfrac = (double) null_cnt / (double) samplerows;
+		stats->pgstat.stanullfrac = (double) null_cnt / (double) samplerows;
 		if (is_varwidth)
-			stats->stawidth = total_width / (double) nonnull_cnt;
+			stats->pgstat.stawidth = total_width / (double) nonnull_cnt;
 		else
-			stats->stawidth = stats->attrtype->typlen;
+			stats->pgstat.stawidth = stats->attrtype->typlen;
 
 		if (nmultiple == 0)
 		{
 			/* If we found no repeated values, assume it's a unique column */
-			stats->stadistinct = -1.0;
+			stats->pgstat.stadistinct = -1.0;
 		}
 		else if (toowide_cnt == 0 && nmultiple == ndistinct)
 		{
@@ -2215,7 +2202,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 			 * Every value in the sample appeared more than once.  Assume the
 			 * column has just these values.
 			 */
-			stats->stadistinct = ndistinct;
+			stats->pgstat.stadistinct = ndistinct;
 		}
 		else
 		{
@@ -2250,7 +2237,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 				stadistinct = (double) d;
 			if (stadistinct > totalrows)
 				stadistinct = totalrows;
-			stats->stadistinct = floor(stadistinct + 0.5);
+			stats->pgstat.stadistinct = floor(stadistinct + 0.5);
 		}
 
 		/*
@@ -2259,8 +2246,8 @@ compute_scalar_stats(VacAttrStatsP stats,
 		 * stadistinct should scale with the row count rather than be a fixed
 		 * value.
 		 */
-		if (stats->stadistinct > 0.1 * totalrows)
-			stats->stadistinct = -(stats->stadistinct / totalrows);
+		if (stats->pgstat.stadistinct > 0.1 * totalrows)
+			stats->pgstat.stadistinct = -(stats->pgstat.stadistinct / totalrows);
 
 		/*
 		 * Decide how many values are worth storing as most-common values. If
@@ -2275,7 +2262,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		 * emit duplicate histogram bin boundaries.
 		 */
 		if (track_cnt == ndistinct && toowide_cnt == 0 &&
-			stats->stadistinct > 0 &&
+			stats->pgstat.stadistinct > 0 &&
 			track_cnt <= num_mcv)
 		{
 			/* Track list includes all values seen, and all will fit */
@@ -2283,7 +2270,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		}
 		else
 		{
-			double		ndistinct = stats->stadistinct;
+			double		ndistinct = stats->pgstat.stadistinct;
 			double		avgcount,
 						mincount,
 						maxmincount;
@@ -2332,12 +2319,12 @@ compute_scalar_stats(VacAttrStatsP stats,
 			}
 			MemoryContextSwitchTo(old_context);
 
-			stats->stakind[slot_idx] = STATISTIC_KIND_MCV;
-			stats->staop[slot_idx] = mystats->eqopr;
-			stats->stanumbers[slot_idx] = mcv_freqs;
-			stats->numnumbers[slot_idx] = num_mcv;
-			stats->stavalues[slot_idx] = mcv_values;
-			stats->numvalues[slot_idx] = num_mcv;
+			stats->pgstat.stakind[slot_idx] = STATISTIC_KIND_MCV;
+			stats->pgstat.staop[slot_idx] = mystats->eqopr;
+			stats->pgstat.stanumbers[slot_idx] = mcv_freqs;
+			stats->pgstat.numnumbers[slot_idx] = num_mcv;
+			stats->pgstat.stavalues[slot_idx] = mcv_values;
+			stats->pgstat.numvalues[slot_idx] = num_mcv;
 			slot_idx++;
 		}
 
@@ -2418,10 +2405,10 @@ compute_scalar_stats(VacAttrStatsP stats,
 			}
 			MemoryContextSwitchTo(old_context);
 
-			stats->stakind[slot_idx] = STATISTIC_KIND_HISTOGRAM;
-			stats->staop[slot_idx] = mystats->ltopr;
-			stats->stavalues[slot_idx] = hist_values;
-			stats->numvalues[slot_idx] = num_hist;
+			stats->pgstat.stakind[slot_idx] = STATISTIC_KIND_HISTOGRAM;
+			stats->pgstat.staop[slot_idx] = mystats->ltopr;
+			stats->pgstat.stavalues[slot_idx] = hist_values;
+			stats->pgstat.numvalues[slot_idx] = num_hist;
 			slot_idx++;
 		}
 
@@ -2456,23 +2443,23 @@ compute_scalar_stats(VacAttrStatsP stats,
 			corrs[0] = (values_cnt * corr_xysum - corr_xsum * corr_xsum) /
 				(values_cnt * corr_x2sum - corr_xsum * corr_xsum);
 
-			stats->stakind[slot_idx] = STATISTIC_KIND_CORRELATION;
-			stats->staop[slot_idx] = mystats->ltopr;
-			stats->stanumbers[slot_idx] = corrs;
-			stats->numnumbers[slot_idx] = 1;
+			stats->pgstat.stakind[slot_idx] = STATISTIC_KIND_CORRELATION;
+			stats->pgstat.staop[slot_idx] = mystats->ltopr;
+			stats->pgstat.stanumbers[slot_idx] = corrs;
+			stats->pgstat.numnumbers[slot_idx] = 1;
 			slot_idx++;
 		}
 	}
 	else if (nonnull_cnt == 0 && null_cnt > 0)
 	{
 		/* We found only nulls; assume the column is entirely null */
-		stats->stats_valid = true;
-		stats->stanullfrac = 1.0;
+		stats->pgstat.stats_valid = true;
+		stats->pgstat.stanullfrac = 1.0;
 		if (is_varwidth)
-			stats->stawidth = 0;	/* "unknown" */
+			stats->pgstat.stawidth = 0;	/* "unknown" */
 		else
-			stats->stawidth = stats->attrtype->typlen;
-		stats->stadistinct = 0.0;		/* "unknown" */
+			stats->pgstat.stawidth = stats->attrtype->typlen;
+		stats->pgstat.stadistinct = 0.0;		/* "unknown" */
 	}
 
 	/* We don't need to bother cleaning up any of our temporary palloc's */

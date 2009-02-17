@@ -43,7 +43,8 @@
  */
 #define VALID_LONG_MESSAGE_TYPE(id) \
 	((id) == 'T' || (id) == 'D' || (id) == 'd' || (id) == 'V' || \
-	 (id) == 'E' || (id) == 'N' || (id) == 'A' || (id) == 'Y')
+	 (id) == 'E' || (id) == 'N' || (id) == 'A' || (id) == 'Y' || \
+	 (id) == 'y')
 
 
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
@@ -490,7 +491,7 @@ pqParseInput3(PGconn *conn)
                                        msgLength);
                     conn->inCursor += msgLength;
                     break;
-                case 'y':       
+                case 'y':
                 	if (pqGets(&conn->workBuffer, conn))
 						return;
 					if (conn->result == NULL)

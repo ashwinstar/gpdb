@@ -55,6 +55,8 @@
 #include "cdb/cdbrelsize.h"
 #include "libpq-fe.h"
 #include "libpq/libpq-be.h"
+#include "commands/vacuum.h" /* VUpdatedStats */
+#include "cdb/cdbanalyze.h"  /* cdbanalyze_get_columnstats */
 //#undef socket
 //#undef accept
 //#undef connect
@@ -1476,7 +1478,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 void
 cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 					  struct CdbDispatchResults * mirrorResults,
-					  struct CdbDispatchCmdThreads * dispatchThreads)
+					  struct CdbDispatchCmdThreads * dispatchThreads,
+					  void (*handle_results_callback)(CdbDispatchResults *primaryResults,
+													  CdbDispatchResults *mirrorResults,
+													  void *ctx),
+					  void *ctx)
 {
 	StringInfoData buf;
 	int			errorcode = 0;
@@ -1497,6 +1503,10 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 
 	if (!errorcode)
 	{
+		/* Call the callback function to handle the results */
+		if (handle_results_callback != NULL)
+			handle_results_callback(primaryResults, mirrorResults, ctx);
+
 		cdbdisp_destroyDispatchResults(primaryResults);
 		cdbdisp_destroyDispatchResults(mirrorResults);
 		cdbdisp_destroyDispatchThreads(dispatchThreads);
@@ -1600,33 +1610,33 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 		}
 	}
 
-	if (useQeError)
-	{
-		/*
-		 * Throw the QE's error, catch it, and fall thru to return
-		 * normally so caller can finish cleaning up.  Afterwards
-		 * caller must exit via PG_RE_THROW().
-		 */
-		PG_TRY();
-		{
-			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
-		}
-		PG_CATCH();
-		{}                      /* nop; fall thru */
-		PG_END_TRY();
-	}
-	else
-	{
-		/*
-		 * Discard any remaining results from QEs; don't confuse matters by
-		 * throwing a new error.  Any results of interest presumably should
-		 * have been examined before raising the error that the caller is
-		 * currently handling.
-		 */
-		cdbdisp_destroyDispatchResults(primaryResults);
-		cdbdisp_destroyDispatchResults(mirrorResults);
+    if (useQeError)
+    {
+        /*
+         * Throw the QE's error, catch it, and fall thru to return
+         * normally so caller can finish cleaning up.  Afterwards
+         * caller must exit via PG_RE_THROW().
+         */
+        PG_TRY();
+        {
+            cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
+        }
+        PG_CATCH();
+        {}                      /* nop; fall thru */
+        PG_END_TRY();
+    }
+    else
+    {
+        /*
+         * Discard any remaining results from QEs; don't confuse matters by
+         * throwing a new error.  Any results of interest presumably should
+         * have been examined before raising the error that the caller is
+         * currently handling.
+         */
+        cdbdisp_destroyDispatchResults(primaryResults);
+        cdbdisp_destroyDispatchResults(mirrorResults);
 		cdbdisp_destroyDispatchThreads(dispatchThreads);
-	}
+    }
 }                               /* cdbdisp_handleError */
 
 bool
@@ -3036,7 +3046,7 @@ CdbDoCommand(const char *strCommand,
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 
 }	/* CdbDoCommandNoTxn */
 
@@ -3070,7 +3080,7 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 
 }	
 
@@ -3654,7 +3664,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		if (mr)
 			*pMirrorResults = NULL;
 		*pDispatchThreads = NULL;
-		cdbdisp_finishCommand(pr, mr, dThreads);
+		cdbdisp_finishCommand(pr, mr, dThreads, NULL, NULL);
 
 		/* Wasn't an error, must have been an interrupt. */
 		CHECK_FOR_INTERRUPTS();
@@ -4219,7 +4229,7 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 
 
 	/* Wait for all QEs to finish.	Throw up if error. */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 
 
 }	/* CdbDispatchUtilityStatement */
@@ -4523,4 +4533,3 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		
 	pfree(dThreads);
 }                               /* cdbdisp_destroyDispatchThreads */
-

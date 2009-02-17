@@ -429,7 +429,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 
     return reloid;
 }
@@ -975,7 +975,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * qExecs, if dispatched.  This waits for them to all finish, and exits
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 
 
 }
@@ -2892,14 +2892,14 @@ CheckTableNotInUse(Relation rel, const char *stmt)
 	expected_refcnt = rel->rd_isnailed ? 2 : 1;
 
 	/*
-	 * XXX For a bitmap index, since vacuum is currently done through
-	 * reindex_index, the reference count could be 2. We set it
+	 * XXX For a bitmap index, since vacuum (or vacuum full) is currently done through
+	 * reindex_index, the reference count could be 2 (or 3). We set it
 	 * here until vacuum is done properly.
 	 */
 	if (expected_refcnt == 1 &&
 		rel->rd_rel->relam == BITMAP_AM_OID &&
-		rel->rd_refcnt == 2)
-		expected_refcnt = 2;
+		(rel->rd_refcnt == 2 || rel->rd_refcnt == 3))
+		expected_refcnt = rel->rd_refcnt;
 
 	if (rel->rd_refcnt != expected_refcnt)
 		ereport(ERROR,

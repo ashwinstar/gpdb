@@ -116,7 +116,7 @@ createdb(CreatedbStmt *stmt)
 	 */
 	PG_TRY();
 	{
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 	}
 	PG_CATCH();
 	{
@@ -164,7 +164,7 @@ gp_cleanup_createdb(const char *dbname)
 	 * "forgiving" form of DROP DATABASE.
 	 */
 	if ( ! cleanup_error )
-		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 }
 
 static void

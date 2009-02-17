@@ -1243,7 +1243,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * exit to our error handler (below) via PG_THROW.
              */
 			queryDesc->estate->primaryResults = NULL;
-            cdbdisp_finishCommand(pr, NULL, dThreads);
+            cdbdisp_finishCommand(pr, NULL, dThreads, NULL, NULL);
         }
 
 		/* teardown the sequence server */

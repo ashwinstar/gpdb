@@ -411,8 +411,6 @@ TransactionIdIsActive(TransactionId xid)
  * If allDbs is TRUE then all backends are considered; if allDbs is FALSE
  * then only backends running in my own database are considered.
  *
- * If ignoreVacuum is TRUE then backends with inVacuum set are ignored.
- *
  * This is used by VACUUM to decide which deleted tuples must be preserved
  * in a table.	allDbs = TRUE is needed for shared relations, but allDbs =
  * FALSE is sufficient for non-shared relations, since only backends in my
@@ -428,7 +426,7 @@ TransactionIdIsActive(TransactionId xid)
  * when it does set the snapshot it cannot set xmin less than what we compute.
  */
 TransactionId
-GetOldestXmin(bool allDbs, bool ignoreVacuum)
+GetOldestXmin(bool allDbs)
 {
 	ProcArrayStruct *arrayP = procArray;
 	TransactionId result;
@@ -451,9 +449,6 @@ GetOldestXmin(bool allDbs, bool ignoreVacuum)
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
 		PGPROC	   *proc = arrayP->procs[index];
-
-		if (ignoreVacuum && proc->inVacuum)
-			continue;
 
 		if (allDbs || proc->databaseId == MyDatabaseId)
 		{
@@ -1182,7 +1177,6 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		if (proc == MyProc ||
 			!TransactionIdIsNormal(xid) ||
 			TransactionIdFollowsOrEquals(xid, xmax) ||
-			proc->inVacuum ||
 			proc->mppIsDispatchAgent)
 			continue;
 

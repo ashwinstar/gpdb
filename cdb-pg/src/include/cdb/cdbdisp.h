@@ -333,7 +333,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 void
 cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
                       struct CdbDispatchResults    *mirrorResults,
-					  struct CdbDispatchCmdThreads *dispatchThreads);
+					  struct CdbDispatchCmdThreads *dispatchThreads,
+					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults,
+													  struct CdbDispatchResults *mirrorResults,
+													  void *ctx),
+					  void *ctx);
 
 /*
  * cdbdisp_handleError

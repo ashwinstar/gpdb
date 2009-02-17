@@ -592,7 +592,7 @@ DefineIndex(RangeVar *heapRelation,
 											 &dispatchThreads,
 											 "DefineIndex");
 			/* Wait for all QEs to finish.	Throw up if error. */
-			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
         }
         else
         	CdbDispatchUtilityStatement((Node *)stmt, "DefineIndex");

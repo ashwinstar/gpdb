@@ -2007,7 +2007,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		estate->primaryResults = NULL;
 		estate->mirrorResults = NULL;
 		estate->dispatchThreads = NULL;
-		cdbdisp_finishCommand(pr, mr, dThreads);
+		cdbdisp_finishCommand(pr, mr, dThreads, NULL, NULL);
 	}
 
 	/* Teardown the Sequence Server */

@@ -119,14 +119,15 @@ static TransactionId FreezeLimit;
 
 /* non-export function prototypes */
 static void lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
-			   Relation *Irel, int nindexes);
+			   Relation *Irel, int nindexes, List *updated_stats);
 static void lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats);
 static void lazy_vacuum_index(Relation indrel,
 				  IndexBulkDeleteResult **stats,
 				  LVRelStats *vacrelstats);
 static void lazy_cleanup_index(Relation indrel,
-				   IndexBulkDeleteResult *stats,
-				   LVRelStats *vacrelstats);
+							   IndexBulkDeleteResult *stats,
+							   LVRelStats *vacrelstats,
+							   List *updated_stats);
 static int lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 				 int tupindex, LVRelStats *vacrelstats);
 static void lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats);
@@ -153,7 +154,7 @@ static int	vac_cmp_page_spaces(const void *left, const void *right);
  *		and locked the relation.
  */
 void
-lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
+lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 {
 	LVRelStats *vacrelstats;
 	Relation   *Irel;
@@ -189,7 +190,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 		vacrelstats->hasindex = (nindexes > 0);
 
 		/* Do the vacuuming */
-		lazy_scan_heap(onerel, vacrelstats, Irel, nindexes);
+		lazy_scan_heap(onerel, vacrelstats, Irel, nindexes, updated_stats);
 
 		/* Done with indexes */
 		vac_close_indexes(nindexes, Irel, NoLock);
@@ -220,7 +221,8 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 						vacrelstats->rel_pages,
 						vacrelstats->rel_tuples,
 						vacrelstats->hasindex, 
-						FreezeLimit);
+						FreezeLimit,
+						updated_stats);
 
 	/* report results to the stats collector, too */
 	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared,
@@ -241,7 +243,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
  */
 static void
 lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
-			   Relation *Irel, int nindexes)
+			   Relation *Irel, int nindexes, List *updated_stats)
 {
 	BlockNumber nblocks,
 				blkno;
@@ -519,7 +521,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 
 	/* Do post-vacuum cleanup and statistics update for each index */
 	for (i = 0; i < nindexes; i++)
-		lazy_cleanup_index(Irel[i], indstats[i], vacrelstats);
+		lazy_cleanup_index(Irel[i], indstats[i], vacrelstats, updated_stats);
 
 	/* If no indexes, make log report that lazy_vacuum_heap would've made */
 	if (vacuumed_pages)
@@ -699,7 +701,8 @@ lazy_vacuum_index(Relation indrel,
 static void
 lazy_cleanup_index(Relation indrel,
 				   IndexBulkDeleteResult *stats,
-				   LVRelStats *vacrelstats)
+				   LVRelStats *vacrelstats,
+				   List *updated_stats)
 {
 	IndexVacuumInfo ivinfo;
 	PGRUsage	ru0;
@@ -721,7 +724,8 @@ lazy_cleanup_index(Relation indrel,
 						stats->num_pages,
 						stats->num_index_tuples,
 						false,
-						InvalidTransactionId);
+						InvalidTransactionId,
+						updated_stats);
 
 	ereport(elevel,
 			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",

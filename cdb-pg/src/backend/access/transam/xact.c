@@ -43,6 +43,7 @@
 #include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "storage/smgr.h"
+#include "storage/freespace.h"
 #include "utils/combocid.h"
 #include "utils/flatfiles.h"
 #include "utils/guc.h"
@@ -2496,6 +2497,9 @@ CommitTransaction(void)
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
 						 true, true);
 
+	/* All relations that are in the vacuum process are being commited now. */
+	ResetVacuumRels();
+
 	/* Check we've released all buffer pins */
 	AtEOXact_Buffers(true);
 
@@ -2889,6 +2893,12 @@ AbortTransaction(void)
 	 * take care of rolling them back if need be.)
 	 */
 	SetUserIdAndContext(s->prevUser, s->prevSecDefCxt);
+
+	/*
+	 * Clear the freespace map entries for any relations that
+	 * are in the vacuum process.
+	 */
+	ClearFreeSpaceForVacuumRels();
 
 	/*
 	 * do abort processing

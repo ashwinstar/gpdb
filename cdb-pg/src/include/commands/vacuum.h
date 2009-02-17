@@ -55,6 +55,21 @@ typedef struct VacAttrStats *VacAttrStatsP;
 typedef Datum (*AnalyzeAttrFetchFunc) (VacAttrStatsP stats, int rownum,
 												   bool *isNull);
 
+typedef struct PgStatistic
+{
+	bool		stats_valid;
+	float4		stanullfrac;	/* fraction of entries that are NULL */
+	int4		stawidth;		/* average width of column values */
+	float4		stadistinct;	/* # distinct values */
+	int2		stakind[STATISTIC_NUM_SLOTS];
+	Oid			staop[STATISTIC_NUM_SLOTS];
+	int			numnumbers[STATISTIC_NUM_SLOTS];
+	float4	   *stanumbers[STATISTIC_NUM_SLOTS];
+	int			numvalues[STATISTIC_NUM_SLOTS];
+	Datum	   *stavalues[STATISTIC_NUM_SLOTS];
+	
+} PgStatistic;
+
 typedef struct VacAttrStats
 {
 	/*
@@ -80,17 +95,8 @@ typedef struct VacAttrStats
 	 * These fields are to be filled in by the compute_stats routine. (They
 	 * are initialized to zero when the struct is created.)
 	 */
-	bool		stats_valid;
-	float4		stanullfrac;	/* fraction of entries that are NULL */
-	int4		stawidth;		/* average width of column values */
-	float4		stadistinct;	/* # distinct values */
-	int2		stakind[STATISTIC_NUM_SLOTS];
-	Oid			staop[STATISTIC_NUM_SLOTS];
-	int			numnumbers[STATISTIC_NUM_SLOTS];
-	float4	   *stanumbers[STATISTIC_NUM_SLOTS];
-	int			numvalues[STATISTIC_NUM_SLOTS];
-	Datum	   *stavalues[STATISTIC_NUM_SLOTS];
-
+	PgStatistic pgstat;
+	
 	/*
 	 * These fields are private to the main ANALYZE code and should not be
 	 * looked at by type-specific functions.
@@ -142,6 +148,51 @@ typedef struct VRelStats
 	VTupleLink	vtlinks;
 } VRelStats;
 
+typedef struct VacuumStatsContext
+{
+	MemoryContext ctx;
+	Relation onerel;
+	List *updated_stats;
+	VacAttrStats **vac_stats;
+} VacuumStatsContext;
+
+typedef enum VacuumStatsType
+{
+	PG_CLASS_STATS,
+	PG_STATISTIC_STATS
+} VacuumStatsType;
+
+/*
+ * VUpdatedStats represents the base structure for the stats info for
+ * both pg_class and pg_statistic. This is used to store the stats collected from
+ * QE.
+ *
+ * Depending on the value for 'type', the object represents either VPgClassStats
+ * or VPgStatisticStats.
+ */
+typedef struct VUpdatedStats
+{
+	VacuumStatsType type;
+	Oid relid;
+} VUpdatedStats;
+
+typedef struct VPgClassStats
+{
+	VUpdatedStats metadata;
+	BlockNumber rel_pages;
+	double rel_tuples;
+	double total_rel_tuples;
+} VPgClassStats;
+
+typedef struct VPgStatisticStats
+{
+	VUpdatedStats metadata;
+	
+	/* Represent tuples in pg_statistic table from QEs */
+	List *tuples;
+	int16 attno;
+	PgStatistic pgstat;
+} VPgStatisticStats;
 
 /* GUC parameters */
 extern DLLIMPORT int default_statistics_target; /* DLLIMPORT for PostGIS */
@@ -155,10 +206,11 @@ extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 				 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
 extern void vac_update_relstats(Relation rel,
-					BlockNumber num_pages,
-					double num_tuples,
-					bool hasindex,
-					TransactionId frozenxid);
+								BlockNumber num_pages,
+								double num_tuples,
+								bool hasindex,
+								TransactionId frozenxid,
+								List *updated_stats);
 extern void vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
 					  TransactionId *oldestXmin,
 					  TransactionId *freezeLimit);
@@ -167,11 +219,11 @@ extern bool vac_is_partial_index(Relation indrel);
 extern void vacuum_delay_point(void);
 
 /* in commands/vacuumlazy.c */
-extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt);
+extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
 extern void vacuum_appendonly_rel(Relation aorel, void *vacrelstats,
 								  bool isVacFull);
 
 /* in commands/analyze.c */
-extern void analyze_rel(Oid relid, VacuumStmt *vacstmt);
+extern void analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_context);
 
 #endif   /* VACUUM_H */

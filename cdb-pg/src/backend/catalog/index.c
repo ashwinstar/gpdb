@@ -1560,7 +1560,7 @@ IndexBuildHeapScan(Relation heapRelation,
 	{
 		snapshot = SnapshotAny;
 		/* okay to ignore lazy VACUUMs here */
-		OldestXmin = GetOldestXmin(heapRelation->rd_rel->relisshared, true);
+		OldestXmin = GetOldestXmin(heapRelation->rd_rel->relisshared);
 	}
 
 	scan = heap_beginscan(heapRelation, /* relation */
@@ -1644,11 +1644,14 @@ IndexBuildHeapScan(Relation heapRelation,
 					 * exception occurs when reindexing a system catalog,
 					 * because we often release lock on system catalogs before
 					 * committing.
+					 *
+					 * XXX we also skip the check for any bitmap indexes.
 					 */
 					Assert(!(heapTuple->t_data->t_infomask & HEAP_XMAX_IS_MULTI));
 					if (!TransactionIdIsCurrentTransactionId(
 								   HeapTupleHeaderGetXmax(heapTuple->t_data))
-						&& !IsSystemRelation(heapRelation))
+						&& !IsSystemRelation(heapRelation)
+						&& (indexRelation->rd_rel->relam != BITMAP_AM_OID))
 						elog(ERROR, "concurrent delete in progress");
 					indexIt = true;
 					tupleIsAlive = false;

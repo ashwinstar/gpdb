@@ -20,6 +20,8 @@
 #include "catalog/pg_statistic.h"
 #include "utils/lsyscache.h"
 #include "fmgr.h"
+#include "libpq-fe.h"
+#include "libpq-int.h"
 
 /*
  * cdbanalyze_query_local_catalogs
@@ -198,10 +200,10 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 	StringInfoData buffer;
 	Cdbanalyze_Ctx ctx;
 	const char	*relname;
-	const char  *quoted_relname;
+	const char *quoted_relname;
 	Oid			namespace;
-	const char  *namespace_name;
-	
+	const char *namespace_name;
+
 	*pages = 0;
 	*tuples = 0;
 
@@ -214,15 +216,15 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 		elog(ERROR, "Unable to collect rel stats from segment databases. Relation probably does not exist.");
 		return;
 	}
-
+ 	 	
 	if (namespace_name == NULL) 
 	{
 		elog(ERROR, "Unable to collect rel stats from segment databases. Schema probably does not exist.");
 		return;
 	}
-
+	
 	quoted_relname = quote_literal_internal(relname);
-
+	
 	/*
 	 * First, create a select statement
 	 */
@@ -271,18 +273,19 @@ extern bool get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 				 Datum **values, int *nvalues,
 				 float4 **numbers, int *nnumbers);
 
-static void
-cdbanalyze_columns_callback(StringInfo sqlstmt,
-					int spiresult,
-					void *context)
+/*
+ * Compute pg_statistic for columns that are accumulated from all
+ * QEs.
+ */
+void
+cdbanalyze_get_columnstats(VPgStatisticStats *stats,
+						   TupleDesc tupdesc,
+						   double totalrows,
+						   MemoryContext ctx,
+						   Relation onerel)
 {
-	HeapTuple	tup;
-	TupleDesc	tupdesc;
-
-	bool		isnull;
-	Datum		dat;
-	int 		i;
-	
+	ListCell *lc;
+	int 		tuple_no = 0;
 	float		nullfrac = 0.0;
 	float		distinct = 0.0;
 	int			avgwidth = 0;
@@ -294,81 +297,44 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	Datum		*histogram_values = 0;
 	int			histogram_nvalues = 0;
 	float 		tuples_this_segdb = 0.0;
-	float		totalrows = 0.0;
 	bool		special_stadistinct_handling = false;
+	MemoryContext old_context;
 	
-	
-	Cdbanalyze_columns_Ctx *ctx = (Cdbanalyze_columns_Ctx *) context;
-	
-	
-	Assert(ctx != NULL);
-	Assert(ctx->stats != NULL);
+	if (stats == NULL)
+		return;
+	Assert(stats->tuples != NULL);
+	Assert(OidIsValid(stats->metadata.relid));
 
-	/* Did the query succeed? */
-	if (spiresult != SPI_OK_SELECT)
-		goto fail;
-		
-	if (SPI_processed < 1)
-		return;		/* no columns stats exist on QEs (empty table?) */
-
-
-	/* Grab the results of the query and stuff them into the context. */
-	tupdesc = SPI_tuptable->tupdesc;
-	if (!tupdesc)
-		goto fail;
-		
-		
-	for (i=0;i<SPI_processed;i++)
+	old_context = MemoryContextSwitchTo(ctx);
+	
+	foreach (lc, stats->tuples)
 	{
-		tup = SPI_tuptable->vals[i];
-		if (!tup)
-			goto fail;
-	
+		HeapTuple tuple = (HeapTuple)lfirst(lc);
+		Datum *att_values = palloc(sizeof(Datum) * tupdesc->natts);
+		bool *isnull = palloc(sizeof(bool) * tupdesc->natts);
 
-	
-		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stanullfrac, &isnull);
-		if (SPI_result != 0)
-			goto fail;
-			
-		if (isnull)
+		heap_deform_tuple(tuple, tupdesc, att_values, isnull);
+
+		if (isnull[Anum_pg_statistic_stanullfrac - 1])
 			ereport(NOTICE, (errcode(ERRCODE_GP_COMMAND_ERROR),
-				   errmsg("NULL returned instead of column statistics from segment databases."),
-						  errdetail("Segment db catalog query : %s",
-									sqlstmt->data )));
-			
-		if (!isnull)
-			nullfrac +=  DatumGetFloat4(dat);
-			
-		
-		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stavalues4 + 1, &isnull);
-		if (SPI_result != 0)
-			goto fail;
-			
-		tuples_this_segdb = DatumGetFloat4(dat);
-		totalrows += tuples_this_segdb;
-			 
-		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stawidth, &isnull);
-		if (SPI_result != 0)
-			goto fail;
+				   errmsg("NULL returned instead of column statistics from segment databases.")));
+		else			
+			nullfrac +=  DatumGetFloat4(att_values[Anum_pg_statistic_stanullfrac - 1]);
 			
 		// Average width of the column (width of pointer if toasted).
 			
-		if (!isnull)
-			avgwidth +=  (int)DatumGetInt16(dat);
-			
-			
-		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stadistinct, &isnull);
-		if (SPI_result != 0)
-			goto fail;
-		
+		if (!isnull[Anum_pg_statistic_stawidth - 1])
+			avgwidth +=  (int)DatumGetInt16(att_values[Anum_pg_statistic_stawidth - 1]);
 			
 		/*
 		 *  stadistinct can be negative, zero, or positive.
 		 * So, we really shouldn't just average it, given that it might be negative on some nodes, positive on others
 		 */
 			
-		if (!isnull)
+		if (!isnull[Anum_pg_statistic_stadistinct - 1])
 		{
+			Datum dat = att_values[Anum_pg_statistic_stadistinct - 1];
+			
 			if ((DatumGetFloat4(dat) > 0 && distinct < 0) ||
 				(DatumGetFloat4(dat) < 0 && distinct > 0))
 				{
@@ -376,7 +342,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 					if (distinct < 0.0)
 					{
 						// Turn back into # of disinct values, rather than percent
-						distinct  = -(distinct * (totalrows/(float)(i+1)));
+						distinct  = -(distinct * (totalrows/(float)(tuple_no + 1)));
 					}
 				}
 			
@@ -389,6 +355,11 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 			else
 				distinct +=  DatumGetFloat4(dat);
 		}
+
+		tuple_no++;
+
+		pfree(att_values);
+		pfree(isnull);
 		
 		/*
 		 * Now get the statistic "slots" from the record.  One big issue is: What's a good way to combine the
@@ -404,17 +375,15 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		 */
 		
 		{
-			MemoryContext old_context;
 			bool found;
 			Datum	   *values;
 			int			nvalues;
 			float4	   *numbers;
 			int			nnumbers;
+			Form_pg_attribute attr = onerel->rd_att->attrs[stats->attno - 1];
 			
-			old_context = MemoryContextSwitchTo(ctx->stats->anl_context);
-			
-			found = get_attstatsslot_desc(tupdesc, tup,
-				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
+			found = get_attstatsslot_desc(tupdesc, tuple,
+				 attr->atttypid, attr->atttypmod,
 				 STATISTIC_KIND_MCV, InvalidOid,
 				 &values, &nvalues,
 				 &numbers, &nnumbers);
@@ -442,8 +411,8 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 
 			}
 			
-			found = get_attstatsslot_desc(tupdesc, tup,
-				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
+			found = get_attstatsslot_desc(tupdesc, tuple,
+				 attr->atttypid, attr->atttypmod,
 				 STATISTIC_KIND_HISTOGRAM, InvalidOid,
 				 &values, &nvalues,
 				 NULL, NULL);
@@ -457,8 +426,8 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 
 			}
 			
-			found = get_attstatsslot_desc(tupdesc, tup,
-				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
+			found = get_attstatsslot_desc(tupdesc, tuple,
+				 attr->atttypid, attr->atttypmod,
 				 STATISTIC_KIND_CORRELATION, InvalidOid,
 				 NULL, NULL,
 				 &numbers, &nnumbers);
@@ -471,8 +440,6 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 				correlationcount++;
 			}
 			
-			MemoryContextSwitchTo(old_context);
-		
 		}
 
 	}
@@ -483,13 +450,13 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	
 	correlation /= (float)correlationcount;
 	
-	totalrows /= (float)SPI_processed;		// actually, the average per segDB
+	totalrows /= (float)list_length(stats->tuples);		// actually, the average per segDB
 	
-	ctx->stats->stanullfrac = nullfrac/(float)SPI_processed;
+	stats->pgstat.stanullfrac = nullfrac/(float)list_length(stats->tuples);
 	
-	ctx->stats->stawidth = (short)(avgwidth/SPI_processed);
+	stats->pgstat.stawidth = (short)(avgwidth/list_length(stats->tuples));
 	
-	ctx->stats->stadistinct = distinct/(float)SPI_processed;
+	stats->pgstat.stadistinct = distinct/(float)list_length(stats->tuples);
 	
 	/*
 	 * If we estimated the number of distinct values at more than 10% of
@@ -498,8 +465,8 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	 * value.
 	 */
 	if (special_stadistinct_handling && totalrows > 0.0)
-	if (ctx->stats->stadistinct > 0.1 * totalrows)
-		ctx->stats->stadistinct = -(ctx->stats->stadistinct / totalrows);
+	if (stats->pgstat.stadistinct > 0.1 * totalrows)
+		stats->pgstat.stadistinct = -(stats->pgstat.stadistinct / totalrows);
 	
 	/*
 	 * Fill in the slots with info gathered above.  We can't do this at the same
@@ -508,21 +475,17 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	 */
 	
 	{
-		MemoryContext old_context;
-
 		int slot = 0;
-		
-		old_context = MemoryContextSwitchTo(ctx->stats->anl_context);
 		
 		if (mcv_nvalues > 0)
 		{
 			
-			ctx->stats->stakind[slot] = STATISTIC_KIND_MCV;
+			stats->pgstat.stakind[slot] = STATISTIC_KIND_MCV;
 			
-			ctx->stats->numvalues[slot]=mcv_nvalues;
-			ctx->stats->numnumbers[slot]=mcv_nvalues;
-			ctx->stats->stavalues[slot] = mcv_values;
-			ctx->stats->stanumbers[slot] = mcv_numbers;
+			stats->pgstat.numvalues[slot]=mcv_nvalues;
+			stats->pgstat.numnumbers[slot]=mcv_nvalues;
+			stats->pgstat.stavalues[slot] = mcv_values;
+			stats->pgstat.stanumbers[slot] = mcv_numbers;
 				
 			slot++;
 		}
@@ -531,10 +494,10 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		if (histogram_nvalues > 0)
 		{
 
-			ctx->stats->stakind[slot] = STATISTIC_KIND_HISTOGRAM;
-			ctx->stats->numvalues[slot] = histogram_nvalues;
-			ctx->stats->stavalues[slot] = histogram_values;
-			ctx->stats->numnumbers[slot] = 0;
+			stats->pgstat.stakind[slot] = STATISTIC_KIND_HISTOGRAM;
+			stats->pgstat.numvalues[slot] = histogram_nvalues;
+			stats->pgstat.stavalues[slot] = histogram_values;
+			stats->pgstat.numnumbers[slot] = 0;
 			
 			slot++;
 		}
@@ -542,91 +505,233 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		if (correlationcount > 0)
 		{
 
-			ctx->stats->stakind[slot] = STATISTIC_KIND_CORRELATION;
-			ctx->stats->numnumbers[slot]=1;
-			ctx->stats->stanumbers[slot]=palloc(sizeof(float));
-			ctx->stats->stanumbers[slot][0] = correlation;
-			ctx->stats->numvalues[slot]=0;
+			stats->pgstat.stakind[slot] = STATISTIC_KIND_CORRELATION;
+			stats->pgstat.numnumbers[slot]=1;
+			stats->pgstat.stanumbers[slot]=palloc(sizeof(float));
+			stats->pgstat.stanumbers[slot][0] = correlation;
+			stats->pgstat.numvalues[slot]=0;
 			
 			slot++;
 		}
-		
-		MemoryContextSwitchTo(old_context);
-		
 	}
 	
 	
 	elog(DEBUG3, "Final cdbanalyze oid=%d attnum=%d nullfrac=%f width=%d distinct %f correlation %f",
-		 ctx->relid, ctx->stats->attr->attnum, ctx->stats->stanullfrac, ctx->stats->stawidth, ctx->stats->stadistinct, correlation);
+		 stats->metadata.relid, onerel->rd_att->attrs[stats->attno - 1]->attnum,
+		 stats->pgstat.stanullfrac, stats->pgstat.stawidth,
+		 stats->pgstat.stadistinct, correlation);
 	
-	ctx->stats->stats_valid = true;
+	stats->pgstat.stats_valid = true;
 	
-	return;
-
-fail:
-	ereport(WARNING, (errcode(ERRCODE_GP_COMMAND_ERROR),
-			   errmsg("Unable to obtain column statistics from segment databases."),
-					  errdetail("Segment db catalog query failed: %s  %d   %d",
-								sqlstmt->data, spiresult, SPI_result )));
-}	/* cdbanalyze_callback */
-
-
-void
-cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
-{
-	StringInfoData buffer;
-	Cdbanalyze_columns_Ctx ctx;
-	const char	*relname;
-	const char  *quoted_relname;
-	Oid			namespace;
-	const char  *namespace_name;
-	
-	Assert(stats != NULL);
-	
-	if (stats == NULL)
-		return;
-	
-	ctx.stats = stats;
-
-	relname = RelationGetRelationName(rel);
-	namespace = RelationGetNamespace(rel);
-	namespace_name = get_namespace_name(namespace);
-
-	if (relname == NULL) 
-	{
-		elog(ERROR, "Unable to collect column stats from segment databases. Relation probably does not exist.");
-		return;
-	}
-	
-	if (namespace_name == NULL) 
-	{
-		elog(ERROR, "Unable to collect column stats from segment databases. Schema probably does not exist.");
-		return;
-	}
-
-	quoted_relname = quote_literal_internal(relname);
-	
-	/*
-	 * First, create a select statement
-	 */
-	initStringInfo(&buffer);
-	appendStringInfo(&buffer, "select starelid,staattnum,stanullfrac,stawidth,stadistinct,");
-	appendStringInfo(&buffer, "stakind1,stakind2,stakind3,stakind4, staop1,staop2,staop3,staop4,");
-	appendStringInfo(&buffer, "stanumbers1,stanumbers2,stanumbers3,stanumbers4 ");
-	appendStringInfo(&buffer, ",stavalues1, stavalues2, stavalues3,stavalues4 ");
-	appendStringInfo(&buffer, ",reltuples ");
-
-	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON pg_class.oid=pg_statistic.starelid ");
-	appendStringInfo(&buffer, " JOIN pg_namespace ON relnamespace=pg_namespace.oid ");
-	appendStringInfo(&buffer, " where relname=%s and nspname='%s' and staattnum=%hd", quoted_relname, namespace_name, (stats->attr->attnum));
-	
-	/*
-	 * Next, use SPI to execute it.
-	 * (If unsuccessful, throws an error and does not return here.)
-	 */
-	ctx.relid = RelationGetRelid(rel);
-
-	cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_columns_callback, &ctx);
-	
-
+	MemoryContextSwitchTo(old_context);
 }	/* cdbanalyze_get_columnstats */
+
+/*
+ * cdbanalyze_combine_stats
+ * This function combine the stats information sent by QEs to generate
+ * the final stats for QD relations.
+ *
+ * Note that the mirrorResults is ignored by this function.
+ */
+void
+cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
+						 CdbDispatchResults *mirrorResults,
+						 void *ctx)
+{
+	int result_no;
+	bool has_pgstat_stats = false;
+	VacuumStatsContext *stats_context = (VacuumStatsContext *)ctx;
+
+	/* Store stats info from QEs, one for each attribute. */
+	VPgStatisticStats **pgstat_stats_array = NULL;
+		
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	if (primaryResults == NULL)
+		return;
+
+	/*
+	 * Process the dispatch results from the primary. Note that the QE
+	 * processes also send back the new stats info, such as stats on
+	 * pg_class and/or pg_statistic, for the relevant table and its
+	 * indexes. We parse this information, and compute the final stats
+	 * for the QD.
+	 *
+	 * For pg_class stats, we compute the maximum number of tuples and
+	 * maximum number of pages after processing the stats from each QE.
+	 *
+	 * For pg_statistic stats, we group them first based on the attribute,
+	 * and then compute the final stats for each attribute.
+	 */
+	for(result_no = 0; result_no < primaryResults->resultCount; result_no++)
+	{
+		CdbDispatchResult *result = &(primaryResults->resultArray[result_no]);
+		int num_pgresults = cdbdisp_numPGresult(result);
+		int pgresult_no;
+		VPgClassStats *pgclass_stats = NULL;
+		
+		for (pgresult_no = 0; pgresult_no < num_pgresults; pgresult_no++)
+		{
+			struct pg_result *pgresult = cdbdisp_getPGresult(result, pgresult_no);
+			int type;
+			
+			if (pgresult->extras == NULL)
+				continue;
+			
+			Assert(pgresult->extraslen > sizeof(int));
+			
+			/* Check for the type of stats that are received */
+			memcpy(&type, pgresult->extras, sizeof(int));
+			Assert(type == PG_CLASS_STATS || type == PG_STATISTIC_STATS);
+			
+			/*
+			 * Process the stats for pg_class. We simple compute the maximum
+			 * number of rel_tuples and rel_pages.
+			 */
+			if (type == PG_CLASS_STATS)
+			{
+				ListCell *lc = NULL;
+				pgclass_stats = (VPgClassStats *)pgresult->extras;
+				foreach (lc, stats_context->updated_stats)
+				{
+					VUpdatedStats *tmp_stats = (VUpdatedStats *)lfirst(lc);
+					if (tmp_stats->relid == pgclass_stats->metadata.relid &&
+						tmp_stats->type == PG_CLASS_STATS)
+					{
+						VPgClassStats *tmp_pgclass_stats = (VPgClassStats *)tmp_stats;
+						
+						tmp_pgclass_stats->rel_pages =
+							Max(tmp_pgclass_stats->rel_pages, pgclass_stats->rel_pages);
+						tmp_pgclass_stats->rel_tuples =
+							Max(tmp_pgclass_stats->rel_tuples, pgclass_stats->rel_tuples);
+						tmp_pgclass_stats->total_rel_tuples +=
+							pgclass_stats->rel_tuples;
+						
+						break;
+					}
+				}
+
+				if (lc == NULL)
+				{
+					Assert(pgresult->extraslen == sizeof(VPgClassStats));
+
+					pgclass_stats = palloc(sizeof(VPgClassStats));
+					memcpy(pgclass_stats, pgresult->extras, pgresult->extraslen);
+
+					pgclass_stats->total_rel_tuples = pgclass_stats->rel_tuples;
+					
+					stats_context->updated_stats =
+						lappend(stats_context->updated_stats, pgclass_stats);
+				}
+			}
+				
+			else if (type == PG_STATISTIC_STATS)
+			{
+				VUpdatedStats *new_stats = (VUpdatedStats *)pgresult->extras;
+				int16 new_attno;
+				memcpy(&new_attno, (char *)new_stats + sizeof(VUpdatedStats),
+					   sizeof(int16));
+				Assert(new_stats->relid == RelationGetRelid(stats_context->onerel));
+
+				Assert(new_attno <= stats_context->onerel->rd_att->natts);
+				
+				if (!has_pgstat_stats)
+				{
+					Assert(stats_context->onerel->rd_att != NULL);
+					
+					pgstat_stats_array = palloc0(stats_context->onerel->rd_att->natts *
+												 sizeof(VPgStatisticStats *));
+					has_pgstat_stats = true;
+				}
+
+				if (pgstat_stats_array[new_attno - 1] != NULL)
+				{
+					HeapTuple tuple;
+					VPgStatisticStats *tmp_pgstat_stats = pgstat_stats_array[new_attno - 1];
+					Assert(tmp_pgstat_stats->metadata.relid == new_stats->relid);
+					
+					tuple = (HeapTuple)(((char *)new_stats) +
+										sizeof(VUpdatedStats) + sizeof(int));
+					/* Reset tuple->t_data */
+					tuple->t_data = (HeapTupleHeader)(((char *)tuple) + HEAPTUPLESIZE);
+					
+					tmp_pgstat_stats->tuples =
+						lappend(tmp_pgstat_stats->tuples, tuple);
+				}
+
+				else
+				{
+					HeapTuple tuple;
+					int len;
+					VPgStatisticStats *pgstat_stats;
+
+					Assert(pgresult->extraslen > sizeof(VUpdatedStats));
+					len = sizeof(VUpdatedStats);
+					pgstat_stats = (VPgStatisticStats *)palloc0(sizeof(VPgStatisticStats));
+					pgstat_stats->attno = new_attno;
+					len += sizeof(int);
+					
+					tuple = (HeapTuple)((char *)new_stats + len);
+					Assert(pgresult->extraslen == len + heaptuple_get_size(tuple));
+
+					/* Reset tuple->t_data */
+					tuple->t_data = (HeapTupleHeader)(((char *)tuple) + HEAPTUPLESIZE);
+
+					pgstat_stats->metadata = *(new_stats);
+					pgstat_stats->tuples = NIL;
+					pgstat_stats->tuples = lappend(pgstat_stats->tuples, tuple);
+
+					pgstat_stats_array[new_attno - 1] = pgstat_stats;
+				}
+			}
+
+			else
+			{
+				Assert(type != PG_CLASS_STATS && type != PG_STATISTIC_STATS);
+			}
+		}
+	}
+
+	if (has_pgstat_stats)
+	{
+		int attno;
+		
+		Relation stat_rel = heap_open(StatisticRelationId, RowExclusiveLock);
+		TupleDesc tupdesc = RelationGetDescr(stat_rel);
+		
+		/* Compute the final stats for each relation. */
+		for(attno = 0; attno < stats_context->onerel->rd_att->natts; attno++)
+		{
+			ListCell *pgclass_lc;
+			VPgStatisticStats *tmp_stats = pgstat_stats_array[attno];
+			double totalrows = 0;
+
+			if (tmp_stats == NULL)
+				continue;
+			
+			Assert(RelationGetRelid(stats_context->onerel) == tmp_stats->metadata.relid);
+				
+			/* Find the totalrows from PG_CLASS_STATS */
+			foreach (pgclass_lc, stats_context->updated_stats)
+			{
+				VUpdatedStats *pgclass_stats = (VUpdatedStats *)lfirst(pgclass_lc);
+				if (pgclass_stats->type == PG_CLASS_STATS &&
+					pgclass_stats->relid == tmp_stats->metadata.relid)
+				{
+					totalrows = ((VPgClassStats *)pgclass_stats)->total_rel_tuples;
+					break;
+				}
+			}
+
+			cdbanalyze_get_columnstats(tmp_stats, tupdesc, totalrows,
+									   stats_context->ctx, stats_context->onerel);
+			stats_context->updated_stats =
+				lappend(stats_context->updated_stats, tmp_stats);
+			
+		}
+
+		heap_close(stat_rel, RowExclusiveLock);
+
+		pfree(pgstat_stats_array);
+	}
+}

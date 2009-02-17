@@ -208,7 +208,11 @@ struct pg_result
     /* CDB: List of statistical response messages ('Y') from qExec. */
     pgCdbStatCell  *cdbstats;   /* ordered from newest to oldest */
     
-    void * extras;				/* used for gang management commands */
+	/*
+	 * Used for gang management commands and stats collected from QEs for
+	 * Vacuum and Analyze commands.
+	 */
+    void * extras;
     int	   extraslen;
 
 	/* GPDB: number of rows rejected in SREH (protocol message 'j') */

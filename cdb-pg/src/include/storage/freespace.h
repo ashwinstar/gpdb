@@ -16,6 +16,8 @@
 
 #include "storage/relfilenode.h"
 #include "storage/itemptr.h"
+#include "nodes/pg_list.h"
+#include "utils/rel.h"
 
 
 /*
@@ -160,6 +162,10 @@ extern void PrintFreeSpaceMapStatistics(int elevel);
 
 extern void DumpFreeSpaceMap(int code, Datum arg);
 extern void LoadFreeSpaceMap(void);
+
+extern List *AppendRelToVacuumRels(Relation rel);
+extern void ResetVacuumRels(void);
+extern void ClearFreeSpaceForVacuumRels(void);
 
 #ifdef FREESPACE_DEBUG
 extern void DumpFreeSpace(void);

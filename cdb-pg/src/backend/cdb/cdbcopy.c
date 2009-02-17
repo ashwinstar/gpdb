@@ -267,7 +267,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
 	 */
-	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads);
+	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 	
 	
 	/* fill in CdbCopy structure */
