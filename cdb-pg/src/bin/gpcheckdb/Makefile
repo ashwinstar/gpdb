@@ -11,14 +11,13 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -g $(CPPFLAGS) 
 
-CC=g++
 
 OBJS= gpcheckdb.o
 
 all: submake-libpq submake-libpgport gpcheckdb
 
-gpcheckdb: $(OBJS) $(libpq_builddir)/libpq.a
-	$(CC) $(CFLAGS) $(OBJS) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
+gpcheckdb: $(OBJS) $(libpq_builddir)/libpq.a 
+	$(CXX) $(CFLAGS) $(OBJS) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
 
 install: all installdirs
