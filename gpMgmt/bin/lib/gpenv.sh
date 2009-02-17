@@ -19,6 +19,10 @@ export GPHOME
 PATH=$GPHOME/bin:$GPHOME/ext/python/bin:$PATH
 export PATH
 
+# Set PYTHONPATH
+PYTHONPATH=$GPHOME/lib/python
+export PYTHONPATH
+
 # Add in library paths apropriate for this system
 case `uname` in
   Darwin) 
