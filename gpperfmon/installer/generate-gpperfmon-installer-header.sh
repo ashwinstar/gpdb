@@ -101,7 +101,7 @@ else
 fi
 EOF_HEADER
 fi
-if [ "${MPP_ARCH}" = "RHEL4-x86_64" -o "${MPP_ARCH}" = "SuSE10-x86_64" ] ; then
+if [ "${MPP_ARCH}" = "RHEL4-x86_64" -o "${MPP_ARCH}" = "SuSE10-x86_64" -o "${MPP_ARCH}" = "SuSE11-x86_64" -o "${MPP_ARCH}" = "SuSE11.1-x86_64" ] ; then
 cat << EOF_HEADER
 platform=Linux
 arch=x86_64
