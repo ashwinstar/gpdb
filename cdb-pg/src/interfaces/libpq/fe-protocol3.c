@@ -492,6 +492,10 @@ pqParseInput3(PGconn *conn)
                     conn->inCursor += msgLength;
                     break;
                 case 'y':
+					/*
+					 * CDB: for gang management and stats collection for Vacuum/Analyze
+					 * commands.
+					 */
                 	if (pqGets(&conn->workBuffer, conn))
 						return;
 					if (conn->result == NULL)

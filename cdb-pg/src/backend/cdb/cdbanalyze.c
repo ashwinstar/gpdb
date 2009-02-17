@@ -684,11 +684,6 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 					pgstat_stats_array[new_attno - 1] = pgstat_stats;
 				}
 			}
-
-			else
-			{
-				Assert(type != PG_CLASS_STATS && type != PG_STATISTIC_STATS);
-			}
 		}
 	}
 

@@ -436,7 +436,10 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			}
 
 			/*
-			 * Modify the Vacuum statement to vacuum an individual relation.
+			 * Modify the Vacuum statement to vacuum an individual relation. This
+			 * ensures that only one relation will be locked for vacuum, when the user
+			 * issues a "vacuum <db>" command, or a "vacuum <parent_partition_table>"
+			 * command.
 			 */
 			if (list_length(relations) > 1)
 			{
