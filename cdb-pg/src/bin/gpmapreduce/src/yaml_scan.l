@@ -1,5 +1,5 @@
 %option outfile="yaml_scan.c"
-%option 8bit never-interactive nodefault nounput noyywrap
+%option 8bit never-interactive nodefault nounput noyywrap noinput
 %option prefix="yaml_scalar_yy"
 
 
@@ -37,7 +37,6 @@ void  yaml_scalar_yyset_debug(int);
 int     yaml_scalar_yylex_destroy(void);
 
 %}
-
    /* 
     * States:
     *  INITIAL = default state
