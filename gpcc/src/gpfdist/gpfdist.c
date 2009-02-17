@@ -46,6 +46,34 @@ struct block_t
 
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
 
+/*
+ * borrow the postgresql definition of bool type, from c.h
+ */
+#ifndef __cplusplus
+
+#ifndef bool
+typedef char bool;
+#endif
+
+#ifndef true
+#define true	((bool) 1)
+#endif
+
+#ifndef false
+#define false	((bool) 0)
+#endif
+#endif   /* not C++ */
+
+typedef bool *BoolPtr;
+
+#ifndef TRUE
+#define TRUE	1
+#endif
+
+#ifndef FALSE
+#define FALSE	0
+#endif
+
 int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
@@ -129,7 +157,7 @@ static void block_fill_header(block_t*b,
 	apr_int64_t len8;
 	char*p = h->hbyte;
 	int fname_len = strlen(fos->fname);
-	
+
 	h->hbot = 0;
 	/* 'F' + len + fname */
 	*p++ = 'F';
@@ -236,43 +264,46 @@ static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
 
 /* Print usage */
-static void usage(const char* msg)
+static void usage_error(const char* msg, bool print_usage)
 {
-	char* GPHOME = 0;
-	FILE* fp = 0;
-
-	if (gcb.pool && apr_env_get(&GPHOME, "GPHOME", gcb.pool))
-		GPHOME = 0;
-
-	if (GPHOME)
+	if (print_usage)
 	{
-		char* path = apr_psprintf(gcb.pool, "%s/docs/cli_help/gpfdist_help",
-				GPHOME);
-		if (path)
-			fp = fopen(path, "r");
-	}
+		char* GPHOME = 0;
+		FILE* fp = 0;
 
-	if (fp)
-	{
-		int i;
-		while ((i = getc(fp)) != EOF)
-			putchar(i);
-		fclose(fp);
-	}
-	else
-	{
-		fprintf(stderr,
-				"gpfdist -- file distribution web server\n\n"
-					"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v | -V]\n\n"
-					"       gpfdist -? | --version\n\n"
-					"        -?        : print this screen\n"
-					"        -v        : verbose mode\n"
-					"        -V        : more verbose\n"
-					"        -p port   : port to serve HTTP, default is 8080\n"
-					"        -d dir    : serve files under the specified directory,  default is '.'\n"
-					"        -l logfn  : log filename\n"
-				    "        -t tm     : timeout in seconds \n"
-					"        --version : print version information\n\n");
+		if (gcb.pool && apr_env_get(&GPHOME, "GPHOME", gcb.pool))
+			GPHOME = 0;
+
+		if (GPHOME)
+		{
+			char* path = apr_psprintf(gcb.pool, "%s/docs/cli_help/gpfdist_help",
+					GPHOME);
+			if (path)
+				fp = fopen(path, "r");
+		}
+
+		if (fp)
+		{
+			int i;
+			while ((i = getc(fp)) != EOF)
+				putchar(i);
+			fclose(fp);
+		}
+		else
+		{
+			fprintf(stderr,
+					"gpfdist -- file distribution web server\n\n"
+						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v | -V]\n\n"
+						"       gpfdist -? | --version\n\n"
+						"        -?        : print this screen\n"
+						"        -v        : verbose mode\n"
+						"        -V        : more verbose\n"
+						"        -p port   : port to serve HTTP, default is 8080\n"
+						"        -d dir    : serve files under the specified directory,  default is '.'\n"
+						"        -l logfn  : log filename\n"
+					    "        -t tm     : timeout in seconds \n"
+						"        --version : print version information\n\n");
+		}
 	}
 
 	if (msg)
@@ -329,7 +360,7 @@ static void parse_command_line(int argc, const char* const argv[],
 		switch (ch)
 		{
 		case '?':
-			usage(0);
+			usage_error(0, true);
 			break;
 		case 'v':
 			opt.v = 1;
@@ -375,23 +406,22 @@ static void parse_command_line(int argc, const char* const argv[],
 			break;
 		}
 	}
-	
+
 	if (e != APR_EOF)
-		usage("Error: illegal arguments");
+		usage_error("Error: illegal arguments", true);
 
 	if (!(0 < opt.p && opt.p < (1 << 16)))
-		usage("Error: please specify a valid port number for -p switch");
+		usage_error("Error: please specify a valid port number for -p switch", false);
 
 	if (-1 != opt.g)
 	{
 		if (!(0 == opt.g || 1 == opt.g))
-			usage(
-					"Error: please specify 0 or 1 for -g switch (note: this is internal)");
+			usage_error("Error: please specify 0 or 1 for -g switch (note: this is internal)", false);
 	}
 
-	if (! (2 <= opt.t && opt.t <= 30)) 
+	if (! (2 <= opt.t && opt.t <= 30))
 	{
-		usage("Error:-t tmout must be between 2 and 30");
+		usage_error("Error:-t tmout must be between 2 and 30", false);
 	}
 
 	/* validate opt.d */
@@ -404,7 +434,7 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage("Security Error: cannot run under root (/) directory");
+			usage_error("Security Error: cannot run under root (/) directory", false);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -416,12 +446,12 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* check that the dir exists */
 		if (0 != apr_filepath_set(opt.d, pool))
-			usage(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
-				"Please specify a valid directory for -d switch", opt.d));
+			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
+				"Please specify a valid directory for -d switch", opt.d), false);
 
 		if (0 != apr_filepath_get(&p, APR_FILEPATH_NATIVE, pool))
-			usage(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
-				"Please specify a valid directory for -d switch", opt.d));
+			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
+				"Please specify a valid directory for -d switch", opt.d), false);
 		opt.d = p;
 	}
 
@@ -438,7 +468,8 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage("Security Error: cannot run under root (/) directory");
+			usage_error("Security Error: cannot run under root (/) directory",
+						false);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -460,7 +491,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 	/* there should not be any more args left */
 	if (os->ind != argc)
-		usage("Error: illegal arguments");
+		usage_error("Error: illegal arguments", true);
 }
 
 
@@ -547,12 +578,12 @@ static apr_status_t send_gpfdist_status(request_t*r)
 	return 0;
 }
 
-/* 
+/*
  * request_end
- * 
- * Finished a request. Close socket and cleanup. 
+ *
+ * Finished a request. Close socket and cleanup.
  * Note: ending a request does not mean that the session is ended.
- * Maybe there is a request out there (of the same session), that still 
+ * Maybe there is a request out there (of the same session), that still
  * has a block to send out.
  */
 static void request_end(request_t* r, int error, const char* errmsg)
@@ -648,36 +679,36 @@ session_get_block(session_t* s, block_t* retblock)
 	int size;
 	struct fstream_filename_and_offset fos;
 	retblock->bot = retblock->top = 0;
-	
+
 	if (s->is_error || 0 == s->fstream)
 	{
 		session_end(s, 0);
 		return 0;
 	}
-	
+
 	gcb.read_bytes -= fstream_get_compressed_position(s->fstream);
 	size = fstream_read(s->fstream, retblock->byte, sizeof retblock->byte,
 			&fos, 1);
-	
+
 	if (size == 0)
 	{
 		gcb.read_bytes += fstream_get_compressed_size(s->fstream);
 		session_end(s, 0);
 		return 0;
 	}
-	
+
 	gcb.read_bytes += fstream_get_compressed_position(s->fstream);
-	
+
 	if (size < 0)
 	{
 		const char*ferror = fstream_get_error(s->fstream);
 		session_end(s, 1);
 		return ferror;
 	}
-	
+
 	retblock->top = size;
 	block_fill_header(retblock, &fos);
-	
+
 	return 0;
 }
 
@@ -803,20 +834,20 @@ static void session_attach(request_t* r)
 			request_end(r, 1, 0);
 			return;
 		}
-		
+
 		/* parse csvopt header */
 		memset(&fstream_options, 0, sizeof fstream_options);
 		fstream_options.verbose = opt.v;
 		{
 			int quote = 0;
 			int escape = 0;
-			
+
 			sscanf(r->csvopt, "m%dx%dq%dh%d", &fstream_options.is_csv, &escape,
 					&quote, &fstream_options.header);
 			fstream_options.quote = quote;
 			fstream_options.escape = escape;
 		}
-		
+
 		/* try opening the fstream */
 		fstream = fstream_open(r->path, &fstream_options, &response_code,
 				&response_string);
@@ -831,7 +862,7 @@ static void session_attach(request_t* r)
 		}
 		gcb.total_sessions++;
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
-		
+
 		/* allocate session */
 		if (0 == (s = apr_palloc(pool, sizeof(session_t))))
 			gfatal(FLINE, "out of memory");
@@ -891,10 +922,10 @@ static void session_attach(request_t* r)
 		request_end(r, 1, 0);
 }
 
-/* 
+/*
  * do_write
- * 
- * Callback when the socket is ready to be written 
+ *
+ * Callback when the socket is ready to be written
  */
 static void do_write(int fd, short event, void* arg)
 {
@@ -951,21 +982,21 @@ static void do_write(int fd, short event, void* arg)
 		/* write out the block */
 		n = b->top - b->bot;
 		/*
-		 if (n == 0) 
+		 if (n == 0)
 		 gfatal(FLINE, "internal error: 0 bytes");
 		 */
 
 		n = local_send(fd, b->byte + b->bot, n);
 		if (n < 0)
 		{
-			/* 
-			 * EPIPE (or ECONNRESET some computers) indicates remote socket 
-			 * intentionally shut down half of the pipe.  If this was because 
-			 * of something like "select ... limit 10;", then it is fine that 
-			 * we couldn't transmit all the data--the segment didn't want it 
-			 * anyway.  If it is because the segment crashed or something like 
-			 * that, hopefully we would find out about that in some other way 
-			 * anyway, so it is okay if we don't poison the session. 
+			/*
+			 * EPIPE (or ECONNRESET some computers) indicates remote socket
+			 * intentionally shut down half of the pipe.  If this was because
+			 * of something like "select ... limit 10;", then it is fine that
+			 * we couldn't transmit all the data--the segment didn't want it
+			 * anyway.  If it is because the segment crashed or something like
+			 * that, hopefully we would find out about that in some other way
+			 * anyway, so it is okay if we don't poison the session.
 			 */
 			if (errno == EPIPE || errno == ECONNRESET)
 				r->out.bot = r->out.top;
@@ -988,10 +1019,10 @@ static void do_write(int fd, short event, void* arg)
 		request_end(r, 1, 0);
 }
 
-/* 
+/*
  * do_read
- * 
- * Callback when a socket is ready to be read. Read the 
+ *
+ * Callback when a socket is ready to be read. Read the
  * socket for a complete HTTP request.
  */
 static void do_read(int fd, short event, void* arg)
@@ -1183,7 +1214,7 @@ static void do_read(int fd, short event, void* arg)
 			}
 			path = p;
 		} while (path);
-		
+
 		if (!r->path)
 		{
 			http_error(r, 400, "invalid request");
@@ -1191,7 +1222,7 @@ static void do_read(int fd, short event, void* arg)
 			return;
 		}
 	}
-	
+
 	/* Extract X-GP-TID value from HTTP headers */
 	{
 		const char* xid = 0;
@@ -1215,9 +1246,9 @@ static void do_read(int fd, short event, void* arg)
 			if (r->in.req->hname[i][0] == 'X')
 				TR(("%s: %s\n", r->in.req->hname[i], r->in.req->hvalue[i]));
 		}
-		
+
 		r->gp_proto = strtol(gp_proto, 0, 0);
-		
+
 		if (r->gp_proto != 0 && r->gp_proto != 1)
 		{
 			gwarning(
@@ -1315,7 +1346,7 @@ static void do_accept(int fd, short event, void* arg)
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 
 	addr = ntohl(a.sin_addr.s_addr);
-	r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d", (addr >> 24) & 0xff, 
+	r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d", (addr >> 24) & 0xff,
 						  (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 
 	/* set up for callback when socket ready for reading */
@@ -1333,7 +1364,7 @@ failure: gwarning(FLINE, "accept failed");
 
 /*
  * setup_read
- * 
+ *
  * setup the write event to write data to the socket. It uses
  * the callback function 'do_write'.
  */
@@ -1348,7 +1379,7 @@ static int setup_write(request_t* r)
 
 /*
  * setup_read
- * 
+ *
  * setup the read event to read data from a socket. It uses
  * the callback function 'do_read'.
  */
@@ -1382,7 +1413,7 @@ static void http_setup(void)
 		gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
 
 	/* For the Windows case, we could use SetHandleInformation to remove
-	 the HANDLE_INHERIT property from fd.  
+	 the HANDLE_INHERIT property from fd.
 	 But for our purposes this does not matter,
 	 as by default handles are *not* inherited. */
 
@@ -1390,7 +1421,7 @@ static void http_setup(void)
 
 	setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
 
-	/* 
+	/*
 	 * We cannot use SO_REUSEADDR on win32 because it results in different
 	 * behaviour -- it allows multiple servers to bind to the same port,
 	 * resulting in totally unpredictable behaviour. What a silly operating
@@ -1499,15 +1530,15 @@ static gnet_request_t *gnet_parse_request(const char* buf, int* len,
 
 	/* for first line */
 	line = apr_strtok(line, "\n", &last);
-	
+
 	if (!line)
 		line = apr_pstrdup(pool, "");
-	
+
 	line = gstring_trim(line);
-	
+
 	if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
 		return req;
-	
+
 	while (req->argv[req->argc])
 		req->argc++;
 
@@ -1519,11 +1550,11 @@ static gnet_request_t *gnet_parse_request(const char* buf, int* len,
 			/* continuation */
 			if (req->hc == 0) /* illegal - missing first header */
 				break;
-			
+
 			line = gstring_trim(line);
 			if (*line == 0) /* empty line */
 				break;
-			
+
 			/* add to previous hvalue */
 			req->hvalue[req->hc - 1] = gstring_trim(apr_pstrcat(pool,
 					req->hvalue[req->hc - 1], " ", line, 0));
@@ -1631,7 +1662,7 @@ void gfile_free(void *a)
 
 /*
  * gpfdist main
- * 
+ *
  * 1) get command line options from user
  * 2) setup internal memory pool, and signal handlers
  * 3) init event handler (libevent)
