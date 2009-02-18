@@ -232,6 +232,7 @@ ProcessQuery(Portal portal,
 		queryDesc->plantree->dispatch == DISPATCH_PARALLEL &&
 		queryDesc->operation == CMD_DELETE &&
 		queryDesc->parsetree->resultRelation == 1 &&
+		list_length(queryDesc->parsetree->rtable) == 1 /* not partitioned */ && 
 		queryDesc->plantree != NULL)
 	{
 		RangeTblEntry *rte;
