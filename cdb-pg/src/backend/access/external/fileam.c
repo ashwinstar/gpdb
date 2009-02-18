@@ -260,8 +260,15 @@ void
 file_rescan(FileScanDesc scan)
 {
 
-	/* seek to beginning of data source so we can start over */
-	url_rewind((URL_FILE*)scan->fs_file);
+	if (!scan->fs_noop)
+	{
+		/* may need to open file since beginscan doens't do it for us */
+		if (!scan->fs_file)
+			open_external_file(scan);
+
+		/* seek to beginning of data source so we can start over */
+		url_rewind((URL_FILE*)scan->fs_file);
+	}
 
 	/* reset some parse state variables */
 	scan->fs_pstate->fe_eof = false;
