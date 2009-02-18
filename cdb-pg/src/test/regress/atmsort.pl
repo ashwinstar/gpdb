@@ -313,6 +313,7 @@ my $dpref = '';
 my $glob_compare_equiv;
 my $glob_make_equiv_expected;
 my $glob_ignore_headers;
+my $glob_ignore_whitespace;
 my $glob_init;
 
 # array of "expected" rows from first query of equiv region
@@ -323,6 +324,7 @@ BEGIN
     $glob_compare_equiv       = 0;
     $glob_make_equiv_expected = 0;
     $glob_ignore_headers      = 0;
+    $glob_ignore_whitespace   = 0;
     $glob_init                = 0;
 }
 
@@ -373,6 +375,9 @@ BEGIN {
     $glob_compare_equiv       = $compare_equiv;
     $glob_make_equiv_expected = $make_equiv_expected;
     $glob_ignore_headers      = $ignore_headers;
+
+    $glob_ignore_whitespace   = $ignore_headers; # XXX XXX: for now
+
     $glob_init      		  = $init_file;
 
 }
@@ -1232,6 +1237,27 @@ sub format_query_output
     else
     {
         my @ggg= sort @{$outarr};
+
+        if ($glob_ignore_whitespace)
+        {
+           my @ggg2;
+
+           for my $line (@ggg)
+           {
+              # remove all leading, trailing whitespace (changes sorting)
+              # and whitespace around column separators
+              $line =~ s/^\s+//;
+              $line =~ s/\s+$//;
+              $line =~ s/\|\s+/\|/gm;
+              $line =~ s/\s+\|/\|/gm;
+
+              $line .= "\n" # replace linefeed if necessary
+                unless ($line =~ m/\n$/);
+
+              push @ggg2, $line;
+           } 
+           @ggg= sort @ggg2;
+        }
         for my $line (@ggg)
         {
             print $bpref, $prefix, $line;
