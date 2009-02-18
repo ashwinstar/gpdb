@@ -9059,7 +9059,8 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
  *   DISTRIBUTED BY dist_clause
  */
 static QueryDesc *
-build_ctas_with_dist(Relation rel, List *dist_clause)
+build_ctas_with_dist(Relation rel, List *dist_clause,
+					 StdRdOptions *newopts)
 {
 	Query *q;
 	SelectStmt *s = makeNode(SelectStmt);
@@ -9074,7 +9075,8 @@ build_ctas_with_dist(Relation rel, List *dist_clause)
 	DestReceiver *dest;
 	QueryDesc *queryDesc;
 	List *wo = NIL;
-	StdRdOptions *opts = (StdRdOptions *)rel->rd_options;
+	StdRdOptions *opts = newopts ? newopts : 
+			(StdRdOptions *)rel->rd_options;
 
 	/* temporary enough */
 	snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", RelationGetRelid(rel));
@@ -9094,24 +9096,31 @@ build_ctas_with_dist(Relation rel, List *dist_clause)
 		wo = lappend(wo, defWithOids(true));
 	if (opts)
 	{
-		if (opts->fillfactor)
-			wo = lappend(wo, makeDefElem("fillfactor",
-										 (Node *)makeInteger(opts->fillfactor)));
+		if (!opts->appendonly)
+		{
+			if (opts->fillfactor)
+					wo = lappend(wo, makeDefElem("fillfactor",
+												 (Node *)makeInteger(opts->fillfactor)));
+
+		}
 		if (opts->appendonly)
+		{
 			wo = lappend(wo, makeDefElem("appendonly",
 										 (Node *)makeString("true")));
-		if (opts->blocksize)
-			wo = lappend(wo, makeDefElem("blocksize",
-										 (Node *)makeInteger(opts->blocksize)));
-		if (opts->compresslevel)
-			wo = lappend(wo, makeDefElem("compresslevel",
-										 (Node *)makeInteger(opts->compresslevel)));
-		if (opts->compresstype)
-			wo = lappend(wo, makeDefElem("compresstype",
-										 (Node *)makeString(pstrdup(opts->compresstype))));
-		if (opts->checksum)
-			wo = lappend(wo, makeDefElem("checksum",
-										 (Node *)makeString("yes")));
+			if (opts->blocksize)
+				wo = lappend(wo, makeDefElem("blocksize",
+											 (Node *)makeInteger(opts->blocksize)));
+			if (opts->compresslevel)
+				wo = lappend(wo, makeDefElem("compresslevel",
+											 (Node *)makeInteger(opts->compresslevel)));
+			if (opts->compresstype)
+				wo = lappend(wo, makeDefElem("compresstype",
+											 (Node *)makeString(pstrdup(opts->compresstype))));
+
+			if (opts->checksum)
+				wo = lappend(wo, makeDefElem("checksum",
+											 (Node *)makeString("yes")));
+		}
 	}
 
 	s->intoOptions = wo;
@@ -9159,7 +9168,8 @@ build_ctas_with_dist(Relation rel, List *dist_clause)
 static void
 ATExecSetDistributedBy(Relation rel, Node *node)
 {
-	List 	   *l1;
+	List 	   *lprime;
+	List 	   *lwith, *ldistro;
 	List	   *cols = NIL;
 	ListCell   *lc;
 	GpPolicy   *policy = NULL;
@@ -9169,6 +9179,13 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	Oid			tarrelid = RelationGetRelid(rel);
 	List	   *oid_map = NIL;
 	List	   *qe_data = NIL; /* data to pass to QEs */
+	bool        bRandom = false;
+
+	Relation	pgclass;
+	HeapTuple	optsTuple;
+	Datum		newOptions;
+
+	StdRdOptions *newopts = NULL;
 
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
@@ -9178,7 +9195,64 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	Assert(PointerIsValid(node));
 	Assert(IsA(node, List));
 
-	l1 = (List *)node;
+	/* linitial is WITH definition, lsecond is distro */
+	lprime = (List *)node; 
+
+	Insist(2 == list_length(lprime));
+	lwith   = (List *)linitial(lprime);
+	ldistro = (List *)lsecond(lprime);
+
+	if (lwith && (Gp_role == GP_ROLE_DISPATCH))
+	{
+		Oid			relid;
+		Datum		datum;
+		bool		isnull;
+		bool		isReset = false;
+
+		pgclass = heap_open(RelationRelationId, RowExclusiveLock);
+
+		/* Get the old reloptions */
+		relid = RelationGetRelid(rel);
+		optsTuple = SearchSysCache(RELOID,
+								   ObjectIdGetDatum(relid),
+								   0, 0, 0);
+		if (!HeapTupleIsValid(optsTuple))
+				elog(ERROR, "cache lookup failed for relation %u", relid);
+
+		datum = SysCacheGetAttr(RELOID, optsTuple, Anum_pg_class_reloptions, 
+								&isnull);
+
+		/* Generate new proposed reloptions (text array) */
+		newOptions = transformRelOptions(isnull ? (Datum) 0 : datum,
+										 lwith, false, isReset);
+
+		newopts = 
+				(StdRdOptions *) heap_reloptions(rel->rd_rel->relkind, 
+												 newOptions, true);
+
+		/* just cleanup early if not newopts.  will cleanup later if
+		 * need to rebuild table 
+		 */		
+		if (1 || !newopts) 
+		{
+			ReleaseSysCache(optsTuple);
+			heap_close(pgclass, RowExclusiveLock);
+		}
+
+		if (ldistro)
+		{
+			ereport(NOTICE,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("SET WITH ignored")));
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("SET WITH not supported")));
+	}
+
+	if (!ldistro)
+		return;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
@@ -9186,34 +9260,50 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 				 errmsg("SET DISTRIBUTED BY not supported in utility mode")));
 
 	/* check for case of single null value -- set distributed randomly */
-	if (linitial(l1) == NULL)
+	if (linitial(ldistro) == NULL)
 	{
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			Insist(list_length(l1) == 1);
+			Insist(list_length(ldistro) == 1);
 
-			if (rel->rd_cdbpolicy->nattrs == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("distribution policy of relation \"%s\" "
-								"already set to DISTRIBUTED RANDOMLY",
-								RelationGetRelationName(rel))));
+			bRandom = true;
 
-			policy = (GpPolicy *) palloc(sizeof(GpPolicy));
-			policy->ptype = POLICYTYPE_PARTITIONED;
-			policy->nattrs = 0;
+			/* need to rebuild if have new storage options */
+			if (!newopts)
+			{
+				if (rel->rd_cdbpolicy->nattrs == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("distribution policy of relation \"%s\" "
+									"already set to DISTRIBUTED RANDOMLY",
+									RelationGetRelationName(rel))));
 
-			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),
+				policy = (GpPolicy *) palloc(sizeof(GpPolicy));
+				policy->ptype = POLICYTYPE_PARTITIONED;
+				policy->nattrs = 0;
+
+				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),
 											 policy);
-			GpPolicyReplace(RelationGetRelid(rel), policy);
+				GpPolicyReplace(RelationGetRelid(rel), policy);
+			}
+
 		}
 
 		/*
 		 * caller expects ATExecSetDistributedBy() to close rel
 		 * (see the non-random distribution case below for why.
 		 */
-		heap_close(rel, NoLock);
-		return;
+
+		if (!newopts)
+		{
+			heap_close(rel, NoLock);
+			return;
+		}
+		else /* need to fix this up on the QEs */
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("SET WITH not supported for RANDOM")));
+		
 	}
 
 	/*
@@ -9235,33 +9325,40 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		policy = palloc(sizeof(GpPolicy) +
-						sizeof(policy->attrs[0]) * list_length(l1));
+						sizeof(policy->attrs[0]) * list_length(ldistro));
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = 0;
 
 		/* Step (a) */
-		foreach(lc, l1)
+
+		if (!bRandom)
 		{
-			char *colName = strVal((Value *)lfirst(lc));
-			HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel),
-													colName);
-			AttrNumber	attnum;
+			foreach(lc, ldistro)
+			{
+				char *colName = strVal((Value *)lfirst(lc));
+				HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel),
+														colName);
+				AttrNumber	attnum;
 
-			if (list_member(cols, lfirst(lc)))
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("distribution policy must be a unique set of columns"),
-						 errhint("Column \"%s\" appears more than once", colName)));
-			if (!HeapTupleIsValid(tuple))
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("column \"%s\" of relation \"%s\" does not exist",
-								colName, RelationGetRelationName(rel))));
+				if (list_member(cols, lfirst(lc)))
+						ereport(ERROR,
+								(errcode(ERRCODE_DUPLICATE_OBJECT),
+								 errmsg("distribution policy must be a "
+										"unique set of columns"),
+								 errhint("Column \"%s\" appears "
+										 "more than once", colName)));
+				if (!HeapTupleIsValid(tuple))
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_COLUMN),
+								 errmsg("column \"%s\" of "
+										"relation \"%s\" does not exist",
+										colName, 
+										RelationGetRelationName(rel))));
 
-			attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+				attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
 
-			/* Prevent them from altering a system attribute */
-			if (attnum <= 0)
+				/* Prevent them from altering a system attribute */
+				if (attnum <= 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot distribute by system column \"%s\"",
@@ -9270,12 +9367,15 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 			policy->attrs[policy->nattrs++] = attnum;
 			ReleaseSysCache(tuple);
 			cols = lappend(cols, lfirst(lc));
-		}
+			} /* end foreach */
 
-		Assert(policy->nattrs > 0);
+			Assert(policy->nattrs > 0);
+		} /* end if not bRandom */
 
 		/* See if the the old policy is the same as the new one */
-		if (policy->nattrs == rel->rd_cdbpolicy->nattrs)
+		/* (need to rebuild if have new storage options) */
+		if (!newopts && 
+			(policy->nattrs == rel->rd_cdbpolicy->nattrs))
 		{
 			int i;
 			bool diff = false;
@@ -9290,13 +9390,13 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 			}
 			if (!diff)
 			{
-				char * dist = palloc(list_length(l1) * (NAMEDATALEN + 1));
+				char * dist = palloc(list_length(ldistro) * (NAMEDATALEN + 1));
 
 				dist[0] = '\0';
 
-				foreach(lc, l1)
+				foreach(lc, ldistro)
 				{
-					if (lc != list_head(l1))
+					if (lc != list_head(ldistro))
 						strcat(dist, ",");
 					strcat(dist, strVal(lfirst(lc)));
 				}
@@ -9323,7 +9423,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		}
 
 		/* Step (b) - build CTAS */
-		queryDesc = build_ctas_with_dist(rel, l1);
+		queryDesc = build_ctas_with_dist(rel, ldistro, newopts);
 		tmprv = copyObject(queryDesc->parsetree->into);
 
 		/* Step (c) - run on all nodes */
@@ -9340,10 +9440,55 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	}
 	else
 	{
-		qe_data = linitial(l1);
+		qe_data = linitial(ldistro);
 		tmprv = linitial(qe_data);
 		oid_map = lsecond(qe_data);
 	}
+
+	if (0 && newopts)
+	{
+		Datum		repl_val[Natts_pg_class];
+		char		repl_null[Natts_pg_class];
+		char		repl_repl[Natts_pg_class];
+		HeapTuple	newOptsTuple;
+
+		/*
+		 * All we need do here is update the pg_class row; the new
+		 * options will be propagated into relcaches during
+		 * post-commit cache inval.
+		 */
+
+		memset(repl_val, 0, sizeof(repl_val));
+		memset(repl_null, ' ', sizeof(repl_null));
+		memset(repl_repl, ' ', sizeof(repl_repl));
+
+		if (newOptions != (Datum) 0)
+			repl_val[Anum_pg_class_reloptions - 1] = newOptions;
+		else
+			repl_null[Anum_pg_class_reloptions - 1] = 'n';
+
+		repl_repl[Anum_pg_class_reloptions - 1] = 'r';
+
+		newOptsTuple = heap_modifytuple(optsTuple, RelationGetDescr(pgclass),
+									repl_val, repl_null, repl_repl);
+
+		simple_heap_update(pgclass, &newOptsTuple->t_self, newOptsTuple);
+
+		CatalogUpdateIndexes(pgclass, newOptsTuple);
+
+		heap_freetuple(newOptsTuple);
+
+		ReleaseSysCache(optsTuple);
+
+		heap_close(pgclass, RowExclusiveLock);
+
+		/* Increment cmd counter to make updates visible; this is
+		 * needed because the same tuple has to be updated again
+		 */
+		CommandCounterIncrement();
+		
+	}
+
 
 	/*
 	 * Step (e) - swap relfilenodes
@@ -9366,7 +9511,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	{
 		GpPolicyReplace(tarrelid, policy);
 		qe_data = lappend(qe_data, oid_map);
-		linitial(l1) = qe_data;
+		linitial(ldistro) = qe_data;
 	}
 
 	/* Step (g) Drop the table */

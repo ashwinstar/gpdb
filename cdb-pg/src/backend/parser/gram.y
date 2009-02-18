@@ -1992,12 +1992,29 @@ alter_table_cmd:
 					n->def = (Node *) $3;
 					$$ = (Node *)n;
 				}
-			/* ALTER TABLE <name> SET DISTRIBUTED BY */
+			/* ALTER TABLE <name> SET [WITH] [DISTRIBUTED BY] */
+			/* distro only */
 			| SET DistributedBy
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetDistributedBy;
-					n->def = (Node *) $2;
+					n->def = (Node *) list_make2(NULL, $2);
+					$$ = (Node *)n;
+				}
+			/* storage and distro */
+			| SET WITH definition DistributedBy
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetDistributedBy;
+					n->def = (Node *) list_make2($3, $4);
+					$$ = (Node *)n;
+				}
+			/* storage only */
+			| SET WITH definition
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SetDistributedBy;
+					n->def = (Node *) list_make2($3, NULL);
 					$$ = (Node *)n;
 				}
 
@@ -3952,17 +3969,17 @@ OptTabPartitionBy:
 			opt_list_subparts
             OptTabPartitionSpec						
 				{
-                        PartitionBy *n = makeNode(PartitionBy); 
-
-                        n->partType = $3;
-                        n->keys     = $5; 
-                        n->partNum  = $7;
-                        n->subPart  = $8;
-                        n->partSpec = $9;
-                        n->partDepth = 0;
-                        n->location  = @3;
-                        n->partDefault = NULL;
-                        $$ = (Node *)n;
+					PartitionBy *n = makeNode(PartitionBy); 
+						
+					n->partType = $3;
+					n->keys     = $5; 
+					n->partNum  = $7;
+					n->subPart  = $8;
+					n->partSpec = $9;
+					n->partDepth = 0;
+					n->location  = @3;
+					n->partDefault = NULL;
+					$$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
@@ -3971,34 +3988,34 @@ TabSubPartitionTemplate:
 			SUBPARTITION TEMPLATE 
             '(' TabSubPartitionElemList ')' 
 				{
-                        PartitionSpec *n = makeNode(PartitionSpec); 
-                        n->partElem  = $4;
-                        n->subSpec   = NULL;
-						n->istemplate  = true;
-                        n->location  = @3;
-                        $$ = (Node *)n;
+					PartitionSpec *n = makeNode(PartitionSpec); 
+					n->partElem  = $4;
+					n->subSpec   = NULL;
+					n->istemplate  = true;
+					n->location  = @3;
+					$$ = (Node *)n;
 
-						/* a little (temporary?) syntax check on templates */
-						if (n->partElem)
+					/* a little (temporary?) syntax check on templates */
+					if (n->partElem)
+					{
+						List *elems;
+						ListCell *lc;
+						Assert(IsA(n->partElem, List));
+
+						elems = (List *)n->partElem;
+						foreach(lc, elems)
 						{
-							List *elems;
-							ListCell *lc;
-							Assert(IsA(n->partElem, List));
-
-							elems = (List *)n->partElem;
-							foreach(lc, elems)
-							{
-								PartitionElem *e = lfirst(lc);
-
-								if (e->subSpec)
-									ereport(ERROR,
-											(errcode(ERRCODE_SYNTAX_ERROR),
-											errmsg("template cannot contain "
-												   "specification for child "
-												   "partition")));
-							}
-
+							PartitionElem *e = lfirst(lc);
+							
+							if (e->subSpec)
+								ereport(ERROR,
+										(errcode(ERRCODE_SYNTAX_ERROR),
+										 errmsg("template cannot contain "
+												"specification for child "
+												"partition")));
 						}
+
+					}
 				}
 		;
 
