@@ -5,7 +5,6 @@ top_builddir = ..
 include $(top_builddir)/src/Makefile.global
 
 WANTED_DIRS = \
-		adminpack	\
 		dblink		\
 		tsearch2	\
 		gp_filedump \
