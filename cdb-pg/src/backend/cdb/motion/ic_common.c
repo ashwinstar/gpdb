@@ -408,8 +408,127 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 	return (i < pEntry->numConns);
 }
 
-/* DeregisterReadInterest is called on receiving nodes when they
- * believe that they're done with the receiver */
+/*
+ * The fetches a direct pointer into our transmit buffers, along with
+ * an indication as to how much data can be safely shoved into the
+ * buffer (started at the pointed location).
+ *
+ * This works a lot like SendTupleChunkToAMS().
+ */
+void
+getTransportDirectBuffer(ChunkTransportState *transportStates,
+						 int16 motNodeID, 
+						 int16 targetRoute, 
+						 struct directTransportBuffer *b)
+{
+	ChunkTransportStateEntry *pEntry = NULL;
+	MotionConn *conn;
+
+	Insist(transportStates);
+	Insist(transportStates->activated);
+	Insist(targetRoute != BROADCAST_SEGIDX);
+
+	Assert(b != NULL);
+
+	do
+	{
+		getChunkTransportState(transportStates, motNodeID, &pEntry);
+
+		/* handle pt-to-pt message. Primary */
+		conn = pEntry->conns + targetRoute;
+		/* only send to interested connections */
+		if (!conn->stillActive)
+		{
+			break;
+		}
+
+		b->pri = conn->pBuff + conn->msgSize;
+		b->prilen = Gp_max_packet_size - conn->msgSize;
+
+		/* handle pt-to-pt message. Mirror */
+		if (pEntry->numConns > pEntry->numPrimaryConns)
+		{
+			conn = pEntry->conns + targetRoute + pEntry->numPrimaryConns;
+			/* only send to interested connections */
+			if (!conn->stillActive)
+			{
+				break;
+			}
+
+			b->hasMirrors = true;
+			b->mir = conn->pBuff + conn->msgSize;
+			b->mirlen = Gp_max_packet_size - conn->msgSize;
+		}
+		else
+		{
+			b->hasMirrors = false;
+			b->mir = NULL;
+			b->mirlen = 0;
+		}
+
+		/* got both buffers. */
+		return;
+	}
+	while (0);
+
+	/* buffer is missing ? */
+
+	b->pri = NULL;
+	b->mir = NULL;
+
+	return;
+}
+
+/*
+ * The fetches a direct pointer into our transmit buffers, along with
+ * an indication as to how much data can be safely shoved into the
+ * buffer (started at the pointed location).
+ *
+ * This works a lot like SendTupleChunkToAMS().
+ */
+void
+putTransportDirectBuffer(ChunkTransportState *transportStates,
+						 int16 motNodeID,
+						 int16 targetRoute, int length)
+{
+	ChunkTransportStateEntry *pEntry = NULL;
+	MotionConn *conn;
+
+	Insist(transportStates);
+	Insist(transportStates->activated);
+	Insist(targetRoute != BROADCAST_SEGIDX);
+
+	getChunkTransportState(transportStates, motNodeID, &pEntry);
+
+	/* handle pt-to-pt message. Primary */
+	conn = pEntry->conns + targetRoute;
+	/* only send to interested connections */
+	if (conn->stillActive)
+	{
+		conn->msgSize += length;
+		conn->tupleCount++;
+	}
+
+	/* handle pt-to-pt message. Mirror */
+	if (pEntry->numConns > pEntry->numPrimaryConns)
+	{
+		conn = pEntry->conns + targetRoute + pEntry->numPrimaryConns;
+		/* only send to interested connections */
+		if (conn->stillActive)
+		{
+			conn->msgSize += length;
+			conn->tupleCount++;
+		}
+	}
+
+	/* got both buffers. */
+	return;
+}
+
+/*
+ * DeregisterReadInterest is called on receiving nodes when they
+ * believe that they're done with the receiver
+ */
 void
 DeregisterReadInterest(ChunkTransportState *transportStates,
                        int		motNodeID,

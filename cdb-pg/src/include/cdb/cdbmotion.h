@@ -35,6 +35,21 @@ typedef enum ReceiveReturnCode
 	END_OF_STREAM
 }	ReceiveReturnCode;
 
+/*
+ * Struct describing the two direct transmit buffers see
+ * getTransportDirectBuffer() (in ic_common.c) and
+ * SerializeTupleDirect() (in cdbmotion.c).
+ *
+ * I believe that the lengths should always be the same.
+ */
+struct directTransportBuffer {
+	unsigned char		*pri;
+	int					prilen;
+
+	bool				hasMirrors;
+	unsigned char		*mir;
+	int					mirlen;
+};
 
 /* Max message size */
 extern int Gp_max_tuple_chunk_size;

@@ -13,6 +13,9 @@
 #include "cdb/tupchunklist.h"
 #include "access/htup.h"
 #include "cdb/htupfifo.h"
+
+struct directTransportBuffer;
+
 #include "cdb/tupser.h"
 #include "cdb/tupchunk.h"
 #include "cdb/tupchunklist.h"

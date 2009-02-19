@@ -431,6 +431,36 @@ SendTuple(MotionLayerState *mlStates,
 	elog(DEBUG5, "Serializing HeapTuple for sending.");
 #endif
 
+	if (gp_enable_direct_serialization && targetRoute != BROADCAST_SEGIDX)
+	{
+		struct directTransportBuffer b;
+
+		getTransportDirectBuffer(transportStates, motNodeID, targetRoute, &b);
+
+		Assert (!b.hasMirrors || b.prilen == b.mirlen); /* is there any case where these can be different ? */
+
+		if (b.pri != NULL && b.prilen > TUPLE_CHUNK_HEADER_SIZE)
+		{
+			int sent = 0;
+
+			sent = SerializeTupleDirect(tuple, &pMNEntry->ser_tup_info, &b);
+			if (sent > 0)
+			{
+				putTransportDirectBuffer(transportStates, motNodeID, targetRoute, sent);
+
+				/* fill-in tcList fields to update stats */
+				tcList.num_chunks = 1;
+				tcList.serialized_data_length = sent;
+			
+				/* update stats */
+				statSendTuple(mlStates, pMNEntry, &tcList);
+
+				return SEND_COMPLETE;
+			}
+		}
+		/* Otherwise fall-through */
+	}
+
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
 
@@ -1120,6 +1150,10 @@ addChunkToSorter(MotionLayerState *mlStates,
 
 /*
  * STATISTICS HELPER-FUNCTIONS
+ *
+ * NOTE: the only fields that are required to be valid are
+ * tcList->num_chunks and tcList->serialized_data_length, and
+ * SerializeTupleDirect() only fills those fields out.
  */
 static void
 statSendTuple(MotionLayerState *mlStates, MotionNodeEntry * pMNEntry, TupleChunkList tcList)

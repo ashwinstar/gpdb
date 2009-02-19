@@ -1467,6 +1467,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_direct_serialization", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable direct transmit-buffer serialization where possible."),
+			NULL,
+            GUC_NO_RESET_ALL | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_enable_direct_serialization,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_select_invisible", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Use dummy snapshot for MVCC visibility calculation."),
 		 NULL,

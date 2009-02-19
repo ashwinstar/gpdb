@@ -57,16 +57,16 @@ static void addByteStringToChunkList(TupleChunkList tcList, char *data, int data
 
 
 static inline void
-addPadding(TupleChunkList tcList,TupleChunkListCache*cache,int size)
+addPadding(TupleChunkList tcList, TupleChunkListCache *cache, int size)
 {
-    while (size++&(TUPLE_CHUNK_ALIGN-1))
-	addCharToChunkList(tcList,0,cache);
+	while (size++ & (TUPLE_CHUNK_ALIGN-1))
+		addCharToChunkList(tcList,0,cache);
 }
 
 static inline void
 skipPadding(StringInfo serialTup)
 {
-    serialTup->cursor = TYPEALIGN(TUPLE_CHUNK_ALIGN,serialTup->cursor);
+	serialTup->cursor = TYPEALIGN(TUPLE_CHUNK_ALIGN,serialTup->cursor);
 }
 
 /*
@@ -357,8 +357,9 @@ typedef struct TupSerHeader
 	uint16		infomask;		/* various flag bits */
 } TupSerHeader;
 
-/* Convert a HeapTuple into a byte-sequence, and store it directly into
- * a chunklist for transmission.
+/*
+ * Convert a HeapTuple into a byte-sequence, and store it directly
+ * into a chunklist for transmission.
  *
  * This code is based on the printtup_internal_20() function in printtup.c.
  */
@@ -394,7 +395,8 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
 							errmsg("Could not allocate space for first chunk item in new chunk list.")));
 		}
-		/* assume that we'll take a single chunk */
+
+		/* TC_EMTPY is just one chunk */
 		SetChunkType(tcItem->chunk_data, TC_EMPTY);
 		tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
 		appendChunkToTCList(tcList, tcItem);
@@ -408,6 +410,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
 						errmsg("Could not allocate space for first chunk item in new chunk list.")));
 	}
+
 	/* assume that we'll take a single chunk */
 	SetChunkType(tcItem->chunk_data, TC_WHOLE);
 	tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
@@ -415,10 +418,10 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 
 	AssertState(s_tupSerMemCtxt != NULL);
 
-	if(is_heaptuple_memtuple(tuple))
+	if (is_heaptuple_memtuple(tuple))
 	{
-		addByteStringToChunkList(tcList, (char *)tuple, memtuple_get_size((MemTuple) tuple, NULL), &pSerInfo->chunkCache);
-		addPadding(tcList,&pSerInfo->chunkCache,memtuple_get_size((MemTuple) tuple, NULL));
+		addByteStringToChunkList(tcList, (char *)tuple, memtuple_get_size((MemTuple)tuple, NULL), &pSerInfo->chunkCache);
+		addPadding(tcList, &pSerInfo->chunkCache, memtuple_get_size((MemTuple)tuple, NULL));
 	}
 	else
 	{
@@ -673,7 +676,128 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 	return;
 }
 
-/* Deserialize a HeapTuple's data from a byte-array.
+/*
+ * Serialize a tuple directly into a buffer.
+ *
+ * We're called with at least enough space for a tuple-chunk-header.
+ */
+int
+SerializeTupleDirect(HeapTuple tuple, SerTupInfo * pSerInfo, struct directTransportBuffer *b)
+{
+	int natts;
+	int dataSize = TUPLE_CHUNK_HEADER_SIZE;
+	TupleDesc	tupdesc;
+
+	AssertArg(tuple != NULL);
+	AssertArg(pSerInfo != NULL);
+	AssertArg(b != NULL);
+
+	Assert(!b->hasMirrors || b->mir != NULL);
+
+	tupdesc = pSerInfo->tupdesc;
+	natts = tupdesc->natts;
+
+	do
+	{
+		if (natts == 0)
+		{
+			/* TC_EMTPY is just one chunk */
+			SetChunkType(b->pri, TC_EMPTY);
+			SetChunkDataSize(b->pri, 0);
+
+			break;
+		}
+
+		/* easy case */
+		if (is_heaptuple_memtuple(tuple))
+		{
+			int tupleSize;
+			int paddedSize;
+
+			tupleSize = memtuple_get_size((MemTuple)tuple, NULL);
+			paddedSize = TYPEALIGN(TUPLE_CHUNK_ALIGN, tupleSize);
+
+			if (paddedSize + TUPLE_CHUNK_HEADER_SIZE > b->prilen)
+				return 0;
+
+			/* will fit. */
+			memcpy(b->pri + TUPLE_CHUNK_HEADER_SIZE, tuple, tupleSize);
+			memset(b->pri + TUPLE_CHUNK_HEADER_SIZE + tupleSize, 0, paddedSize - tupleSize);
+
+			dataSize += paddedSize;
+
+			SetChunkType(b->pri, TC_WHOLE);
+			SetChunkDataSize(b->pri, dataSize - TUPLE_CHUNK_HEADER_SIZE);
+			break;
+		}
+		else
+		{
+			TupSerHeader tsh;
+
+			unsigned int	datalen;
+			unsigned int	nullslen;
+
+			HeapTupleHeader t_data = tuple->t_data;
+
+			unsigned char *pos;
+
+			datalen = tuple->t_len - t_data->t_hoff;
+			if (HeapTupleHasNulls(tuple))
+				nullslen = BITMAPLEN(HeapTupleHeaderGetNatts(t_data));
+			else
+				nullslen = 0;
+
+			tsh.tuplen = sizeof(TupSerHeader) + TYPEALIGN(TUPLE_CHUNK_ALIGN, nullslen) + TYPEALIGN(TUPLE_CHUNK_ALIGN, datalen);
+			tsh.natts = HeapTupleHeaderGetNatts(t_data);
+			tsh.infomask = t_data->t_infomask;
+
+			if (dataSize + tsh.tuplen > b->prilen ||
+				(tsh.infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) != 0)
+				return 0;
+
+			pos = b->pri + TUPLE_CHUNK_HEADER_SIZE;
+
+			memcpy(pos, (char *)&tsh, sizeof(TupSerHeader));
+			pos += sizeof(TupSerHeader);
+
+			if (nullslen)
+			{
+				memcpy(pos, (char *)t_data->t_bits, nullslen);
+				pos += nullslen;
+				memset(pos, 0, TYPEALIGN(TUPLE_CHUNK_ALIGN, nullslen) - nullslen);
+				pos += TYPEALIGN(TUPLE_CHUNK_ALIGN, nullslen) - nullslen;
+			}
+
+			memcpy(pos,  (char *)t_data + t_data->t_hoff, datalen);
+			pos += datalen;
+			memset(pos, 0, TYPEALIGN(TUPLE_CHUNK_ALIGN, datalen) - datalen);
+			pos += TYPEALIGN(TUPLE_CHUNK_ALIGN, datalen) - datalen;
+
+			dataSize += tsh.tuplen;
+
+			SetChunkType(b->pri, TC_WHOLE);
+			SetChunkDataSize(b->pri, dataSize - TUPLE_CHUNK_HEADER_SIZE);
+
+			break;
+		}
+
+		/* tuple that we can't handle here (big ?) -- do the older "out-of-line" serialization */
+		return 0;
+	}
+	while (0);
+
+	if (b->hasMirrors)
+	{
+		Assert(dataSize <= b->mirlen);
+
+		memcpy(b->mir, b->pri, dataSize);
+	}
+
+	return dataSize;   
+}
+
+/*
+ * Deserialize a HeapTuple's data from a byte-array.
  *
  * This code is based on the binary input handling functions in copy.c.
  */
@@ -743,114 +867,114 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 			case INT2VECTOROID: /* postgres serialization logic broken, use our own */
 			case OIDVECTOROID: /* postgres serialization logic broken, use our own */
 			case ANYARRAYOID:
-				{
-					text	   *pText;
-					int			textSize;
+			{
+				text	   *pText;
+				int			textSize;
 
-					textSize = stringInfoGetInt32(serialTup);
+				textSize = stringInfoGetInt32(serialTup);
 
 #ifdef TUPSER_SCRATCH_SPACE
-					if (textSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
-						pText = (text *) attrInfo->pv_varlen_scratch;
-					else
-						pText = (text *) palloc(textSize + VARHDRSZ);
-#else
+				if (textSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
+					pText = (text *) attrInfo->pv_varlen_scratch;
+				else
 					pText = (text *) palloc(textSize + VARHDRSZ);
+#else
+				pText = (text *) palloc(textSize + VARHDRSZ);
 #endif
 
-					SET_VARSIZE(pText, textSize + VARHDRSZ);
-					pq_copymsgbytes(serialTup, VARDATA(pText), textSize);
-					skipPadding(serialTup);
-					pSerInfo->values[i] = PointerGetDatum(pText);
-					break;
-				}
+				SET_VARSIZE(pText, textSize + VARHDRSZ);
+				pq_copymsgbytes(serialTup, VARDATA(pText), textSize);
+				skipPadding(serialTup);
+				pSerInfo->values[i] = PointerGetDatum(pText);
+				break;
+			}
 
 			case DATEOID:
-				{
-					/*
-					 * TODO:  I would LIKE to do something more efficient, but
-					 * DateADT is not strictly limited to 4 bytes by its
-					 * definition.
-					 */
-					DateADT date;
+			{
+				/*
+				 * TODO:  I would LIKE to do something more efficient, but
+				 * DateADT is not strictly limited to 4 bytes by its
+				 * definition.
+				 */
+				DateADT date;
 
-					pq_copymsgbytes(serialTup, (char *) &date, sizeof(DateADT));
-					skipPadding(serialTup);
-					pSerInfo->values[i] = DateADTGetDatum(date);
-					break;
-				}
+				pq_copymsgbytes(serialTup, (char *) &date, sizeof(DateADT));
+				skipPadding(serialTup);
+				pSerInfo->values[i] = DateADTGetDatum(date);
+				break;
+			}
 
 			case NUMERICOID:
-				{
-					/*
-					 * Treat the numeric as a varlena variable, and just push
-					 * the whole shebang to the output-buffer.	We don't care
-					 * about the guts of the numeric.
-					 */
-					Numeric		num;
-					int			numSize;
+			{
+				/*
+				 * Treat the numeric as a varlena variable, and just push
+				 * the whole shebang to the output-buffer.	We don't care
+				 * about the guts of the numeric.
+				 */
+				Numeric		num;
+				int			numSize;
 
-					numSize = stringInfoGetInt32(serialTup);
+				numSize = stringInfoGetInt32(serialTup);
 
 #ifdef TUPSER_SCRATCH_SPACE
-					if (numSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
-						num = (Numeric) attrInfo->pv_varlen_scratch;
-					else
-						num = (Numeric) palloc(numSize + VARHDRSZ);
-#else
+				if (numSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
+					num = (Numeric) attrInfo->pv_varlen_scratch;
+				else
 					num = (Numeric) palloc(numSize + VARHDRSZ);
+#else
+				num = (Numeric) palloc(numSize + VARHDRSZ);
 #endif
 
-					SET_VARSIZE(num, numSize + VARHDRSZ);
-					pq_copymsgbytes(serialTup, VARDATA(num), numSize);
-					skipPadding(serialTup);
-					pSerInfo->values[i] = NumericGetDatum(num);
-					break;
-				}
+				SET_VARSIZE(num, numSize + VARHDRSZ);
+				pq_copymsgbytes(serialTup, VARDATA(num), numSize);
+				skipPadding(serialTup);
+				pSerInfo->values[i] = NumericGetDatum(num);
+				break;
+			}
 
 			case ACLITEMOID:
-				{
-					int		aclSize, k, cnt;
-					char		*inputstring, *starsfree;
+			{
+				int		aclSize, k, cnt;
+				char		*inputstring, *starsfree;
 
-					aclSize = stringInfoGetInt32(serialTup);
-					inputstring = (char*) palloc(aclSize  + 1);
-					starsfree = (char*) palloc(aclSize  + 1);
-					cnt = 0;
+				aclSize = stringInfoGetInt32(serialTup);
+				inputstring = (char*) palloc(aclSize  + 1);
+				starsfree = (char*) palloc(aclSize  + 1);
+				cnt = 0;
 	
 
-					pq_copymsgbytes(serialTup, inputstring, aclSize);
-					skipPadding(serialTup);
-					inputstring[aclSize] = '\0';
-					for(k=0; k<aclSize; k++)
-					{					
-						if( inputstring[k] != '*')
-						{
-							starsfree[cnt] = inputstring[k];
-							cnt++;
-						}
+				pq_copymsgbytes(serialTup, inputstring, aclSize);
+				skipPadding(serialTup);
+				inputstring[aclSize] = '\0';
+				for(k=0; k<aclSize; k++)
+				{					
+					if( inputstring[k] != '*')
+					{
+						starsfree[cnt] = inputstring[k];
+						cnt++;
 					}
-					starsfree[cnt] = '\0';
-
-					pSerInfo->values[i] = DirectFunctionCall1(aclitemin, CStringGetDatum(starsfree));
-					pfree(inputstring);
-					break;
 				}
+				starsfree[cnt] = '\0';
+
+				pSerInfo->values[i] = DirectFunctionCall1(aclitemin, CStringGetDatum(starsfree));
+				pfree(inputstring);
+				break;
+			}
 
 			case 210:
-				{
-					int 		strsize;
-					char		*smgrstr;
+			{
+				int 		strsize;
+				char		*smgrstr;
 
-					strsize = stringInfoGetInt32(serialTup);
-					smgrstr = (char*) palloc(strsize + 1);
-					pq_copymsgbytes(serialTup, smgrstr, strsize);
-					skipPadding(serialTup);
-					smgrstr[strsize] = '\0';
+				strsize = stringInfoGetInt32(serialTup);
+				smgrstr = (char*) palloc(strsize + 1);
+				pq_copymsgbytes(serialTup, smgrstr, strsize);
+				skipPadding(serialTup);
+				smgrstr[strsize] = '\0';
 
-					pSerInfo->values[i] = DirectFunctionCall1(smgrin, CStringGetDatum(smgrstr));
-					break;
-				}
+				pSerInfo->values[i] = DirectFunctionCall1(smgrin, CStringGetDatum(smgrstr));
+				break;
+			}
 			default:
 				fHandled = false;
 		}
@@ -867,22 +991,22 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 		attr_data.cursor = 0;
 
 		appendBinaryStringInfo(&attr_data,
-							pq_getmsgbytes(serialTup, attr_size), attr_size);
+							   pq_getmsgbytes(serialTup, attr_size), attr_size);
 		skipPadding(serialTup);
 
 		/* Call the attribute type's binary input converter. */
 		if (attrInfo->recv_finfo.fn_nargs == 1)
 			pSerInfo->values[i] = FunctionCall1(&attrInfo->recv_finfo,
-											PointerGetDatum(&attr_data));
+												PointerGetDatum(&attr_data));
 		else if (attrInfo->recv_finfo.fn_nargs == 2)
 			pSerInfo->values[i] = FunctionCall2(&attrInfo->recv_finfo,
-											PointerGetDatum(&attr_data),
-							   ObjectIdGetDatum(attrInfo->recv_typio_param));
-	    else if (attrInfo->recv_finfo.fn_nargs == 3)
-	    	pSerInfo->values[i] = FunctionCall3(&attrInfo->recv_finfo,
-											PointerGetDatum(&attr_data),
-							   ObjectIdGetDatum(attrInfo->recv_typio_param),
-							   Int32GetDatum(tupdesc->attrs[i]->atttypmod) );  
+												PointerGetDatum(&attr_data),
+												ObjectIdGetDatum(attrInfo->recv_typio_param));
+		else if (attrInfo->recv_finfo.fn_nargs == 3)
+			pSerInfo->values[i] = FunctionCall3(&attrInfo->recv_finfo,
+												PointerGetDatum(&attr_data),
+												ObjectIdGetDatum(attrInfo->recv_typio_param),
+												Int32GetDatum(tupdesc->attrs[i]->atttypmod) );  
 		else
 		{
 			ereport(ERROR,
@@ -1031,7 +1155,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 
 		tshp = (TupSerHeader *)pos;
 
-		if((tshp->tuplen & MEMTUP_LEAD_BIT) != 0)
+		if ((tshp->tuplen & MEMTUP_LEAD_BIT) != 0)
 		{
 			uint32 tuplen = memtuple_size_from_uint32(tshp->tuplen);
 			htup = (HeapTuple) palloc(tuplen);
@@ -1063,14 +1187,14 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 
 			if (tshp->tuplen < sizeof(TupSerHeader) + nullslen)
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect error: cannot convert chunks to a  heap tuple."),
-							errdetail("tuple len %d < nullslen %d + headersize (%d)",
-								tshp->tuplen, nullslen, (int)sizeof(TupSerHeader))));
+								errmsg("Interconnect error: cannot convert chunks to a  heap tuple."),
+								errdetail("tuple len %d < nullslen %d + headersize (%d)",
+										  tshp->tuplen, nullslen, (int)sizeof(TupSerHeader))));
 
-			datalen = tshp->tuplen - sizeof(TupSerHeader) - TYPEALIGN(TUPLE_CHUNK_ALIGN,nullslen);
+			datalen = tshp->tuplen - sizeof(TupSerHeader) - TYPEALIGN(TUPLE_CHUNK_ALIGN, nullslen);
 
 			/* determine overhead size of tuple (should match heap_form_tuple) */
-			hoff = offsetof(HeapTupleHeaderData, t_bits) + TYPEALIGN(TUPLE_CHUNK_ALIGN,nullslen);
+			hoff = offsetof(HeapTupleHeaderData, t_bits) + TYPEALIGN(TUPLE_CHUNK_ALIGN, nullslen);
 			if (tshp->infomask & HEAP_HASOID)
 				hoff += sizeof(Oid);
 			hoff = MAXALIGN(hoff);

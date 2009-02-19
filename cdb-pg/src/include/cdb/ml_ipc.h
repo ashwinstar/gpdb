@@ -242,6 +242,22 @@ extern void  ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeI
 #define ML_CHECK_FOR_INTERRUPTS(teardownActive) \
 		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
 
+/*
+ * Return a direct pointer to a transmit buffer. This is actually two pointers
+ * with accompanying lengths since we have separate xmit buffers for primary and mirror
+ * segments.
+ */
+extern void getTransportDirectBuffer(ChunkTransportState *transportStates,
+									 int16 motNodeID, 
+									 int16 targetRoute, 
+									 struct directTransportBuffer *b);
+
+/*
+ * Advance direct buffer beyond the message we just added.
+ */
+extern void putTransportDirectBuffer(ChunkTransportState *transportStates,
+									 int16 motNodeID,
+									 int16 targetRoute, int serializedLength);
 
 /* doBroadcast() is used to send a TupleChunk to all recipients.
  *

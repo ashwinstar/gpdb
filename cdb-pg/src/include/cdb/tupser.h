@@ -82,13 +82,16 @@ typedef struct SerTupInfo
 /* Populate a SerTupInfo struct with information looked up from the specified
  * tuple-descriptor.
  */
-extern void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo);
+extern void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo);
 
 /* Free up storage in a previously initialized SerTupInfo struct. */
-extern void CleanupSerTupInfo(SerTupInfo * pSerInfo);
+extern void CleanupSerTupInfo(SerTupInfo *pSerInfo);
 
 /* Convert a HeapTuple into chunks ready to send out, in one pass */
-extern void SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList tcList);
+extern void SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, TupleChunkList tcList);
+
+/* Convert a HeapTuple into chunks directly in a set of transport buffers */
+extern int SerializeTupleDirect(HeapTuple tuple, SerTupInfo *pSerInfo, struct directTransportBuffer *b);
 
 /* Deserialize a HeapTuple's data from a byte-array. */
 extern HeapTuple DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup);
