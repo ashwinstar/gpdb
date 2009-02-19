@@ -120,7 +120,9 @@ PROCESS_QE () {
 		ED_FILE ${GP_DIR}/$PG_CONF "log_filename" "log_filename='${SEG_PREFIX}${GP_CONTENT}-%Y-%m-%d.log'" 0 $GP_HOSTNAME
 		PARA_EXIT $RETVAL "setting log rotation filenames to log_filename='${SEG_PREFIX}-%Y-%m-%d.log'"
 		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_age" "log_rotation_age=1440"  0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "setting log rotation age to 1 day with log_rotation_age=1440"
+		PARA_EXIT $RETVAL "setting log rotation age to 1 day with log_rotation_age=1440"				
+		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_size" "log_rotation_size=0" 0 $GP_HOSTNAME
+		PARA_EXIT $RETVAL "setting log_rotation_size to unlimited with log_rotation_size=0"
 		
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"

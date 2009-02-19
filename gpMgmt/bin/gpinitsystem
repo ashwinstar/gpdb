@@ -1053,6 +1053,8 @@ CREATE_QD_DB () {
 		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_FILENAME_TXT" "log_filename='${SEG_PREFIX}-1-%Y-%m-%d.log'"	0
 		LOG_MSG "[INFO]:-Setting log rotation age to 1 day with ${LOG_ROTATION_AGE_TXT}=1440"
 		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_ROTATION_AGE_TXT" "log_rotation_age=1440" 0
+		LOG_MSG "[INFO]:-Setting log rotation size to unlimited with log_rotation_size=0"
+		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_size" "log_rotation_size=0" 0
 		
 		ERROR_CHK $? "set stats_command_string to on" 1
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
