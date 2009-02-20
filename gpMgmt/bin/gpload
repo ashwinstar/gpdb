@@ -1115,6 +1115,8 @@ class gpload:
             sql += "log errors into %s " % self.error_table
 
         if limit:
+            if limit < 2:
+                self.log(self.ERROR, "error_limit must be 2 or higher")
             sql += "segment reject limit %s "%limit
         self.log(self.LOG, sql)
 
