@@ -877,8 +877,7 @@ class gpload:
                      " user=" + str(self.options.U) +
                      " host=" + str(self.options.h) +
                      " port=" + str(self.options.p) +
-                     " database=" + str(self.options.d) +
-                     " password=" + str(self.options.password))
+                     " database=" + str(self.options.d))
             self.pg8000 = pg8000.Connection(user=self.options.U,
                                             host=self.options.h,
                                             port=self.options.p,
