@@ -181,7 +181,6 @@ typedef struct VPgClassStats
 	VUpdatedStats metadata;
 	BlockNumber rel_pages;
 	double rel_tuples;
-	double total_rel_tuples;
 } VPgClassStats;
 
 typedef struct VPgStatisticStats
@@ -190,6 +189,11 @@ typedef struct VPgStatisticStats
 	
 	/* Represent tuples in pg_statistic table from QEs */
 	List *tuples;
+
+	/* The number of tuples corresponding each tuple in 'tuples'.  */
+	List *reltuples;
+
+	/* The corresponing attribute index */
 	int16 attno;
 	PgStatistic pgstat;
 } VPgStatisticStats;

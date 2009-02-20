@@ -96,7 +96,7 @@ static double init_selection_state(int n);
 static double get_next_S(double t, int n, double *stateptr);
 static int	compare_rows(const void *a, const void *b);
 static void update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
-							List *updated_stats);
+							double reltuples, List *updated_stats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 
@@ -382,7 +382,8 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 		 * previous statistics for the target columns.	(If there are stats in
 		 * pg_statistic for columns we didn't process, we leave them alone.)
 		 */
-		update_attstats(onerel, attr_cnt, vacattrstats, stats_context->updated_stats);
+		update_attstats(onerel, attr_cnt, vacattrstats,
+						totalrows, stats_context->updated_stats);
 
 		for (ind = 0; ind < nindexes; ind++)
 		{
@@ -390,6 +391,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 
 			update_attstats(Irel[ind],
 							thisdata->attr_cnt, thisdata->vacattrstats,
+							ceil(thisdata->tupleFract * totalrows),
 							stats_context->updated_stats);
 		}
 	}
@@ -1230,7 +1232,7 @@ compare_rows(const void *a, const void *b)
  */
 static void
 update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
-				List *updated_stats)
+				double reltuples, List *updated_stats)
 {
 	Relation	sd;
 	int			attno;
@@ -1399,9 +1401,11 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 			pq_beginmessage(&buf, 'y');
 			pq_sendstring(&buf, "ANALYZE");
 			pq_sendint(&buf,
-					   sizeof(VUpdatedStats) + sizeof(int) + heaptuple_get_size(stup),
+					   sizeof(VUpdatedStats) + sizeof(double) +
+					       sizeof(int) + heaptuple_get_size(stup),
 					   sizeof(int));
 			pq_sendbytes(&buf, (char *)(&tmp_stats), sizeof(VUpdatedStats));
+			pq_sendbytes(&buf, (char *)&reltuples, sizeof(double));
 			/* XXX attnum is 16-bit */
 			pq_sendbytes(&buf, (char *)&(stats->attr->attnum), sizeof(int));
 			pq_sendbytes(&buf, (char *)stup, HEAPTUPLESIZE);

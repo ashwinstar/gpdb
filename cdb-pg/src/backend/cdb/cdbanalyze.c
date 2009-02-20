@@ -280,11 +280,10 @@ extern bool get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 void
 cdbanalyze_get_columnstats(VPgStatisticStats *stats,
 						   TupleDesc tupdesc,
-						   double totalrows,
 						   MemoryContext ctx,
 						   Relation onerel)
 {
-	ListCell *lc;
+	ListCell *lc, *reltuples_lc;
 	int 		tuple_no = 0;
 	float		nullfrac = 0.0;
 	float		distinct = 0.0;
@@ -296,7 +295,8 @@ cdbanalyze_get_columnstats(VPgStatisticStats *stats,
 	int			mcv_nvalues = 0;
 	Datum		*histogram_values = 0;
 	int			histogram_nvalues = 0;
-	float 		tuples_this_segdb = 0.0;
+	double 		tuples_this_segdb = 0.0;
+	double      totalrows = 0.0;
 	bool		special_stadistinct_handling = false;
 	MemoryContext old_context;
 	
@@ -307,11 +307,14 @@ cdbanalyze_get_columnstats(VPgStatisticStats *stats,
 
 	old_context = MemoryContextSwitchTo(ctx);
 	
-	foreach (lc, stats->tuples)
+	forboth (reltuples_lc, stats->reltuples, lc, stats->tuples)
 	{
 		HeapTuple tuple = (HeapTuple)lfirst(lc);
 		Datum *att_values = palloc(sizeof(Datum) * tupdesc->natts);
 		bool *isnull = palloc(sizeof(bool) * tupdesc->natts);
+
+		tuples_this_segdb = *((double*)lfirst(reltuples_lc));
+		totalrows += tuples_this_segdb;
 
 		heap_deform_tuple(tuple, tupdesc, att_values, isnull);
 
@@ -604,8 +607,6 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 							Max(tmp_pgclass_stats->rel_pages, pgclass_stats->rel_pages);
 						tmp_pgclass_stats->rel_tuples =
 							Max(tmp_pgclass_stats->rel_tuples, pgclass_stats->rel_tuples);
-						tmp_pgclass_stats->total_rel_tuples +=
-							pgclass_stats->rel_tuples;
 						
 						break;
 					}
@@ -618,8 +619,6 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 					pgclass_stats = palloc(sizeof(VPgClassStats));
 					memcpy(pgclass_stats, pgresult->extras, pgresult->extraslen);
 
-					pgclass_stats->total_rel_tuples = pgclass_stats->rel_tuples;
-					
 					stats_context->updated_stats =
 						lappend(stats_context->updated_stats, pgclass_stats);
 				}
@@ -628,9 +627,16 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 			else if (type == PG_STATISTIC_STATS)
 			{
 				VUpdatedStats *new_stats = (VUpdatedStats *)pgresult->extras;
+				double *reltuples;
 				int16 new_attno;
-				memcpy(&new_attno, (char *)new_stats + sizeof(VUpdatedStats),
-					   sizeof(int16));
+				int len = sizeof(VUpdatedStats);
+
+				reltuples = (double *)((char *)new_stats + len);
+				len += sizeof(double);
+				
+				memcpy(&new_attno, (char *)new_stats + len, sizeof(int16));
+				len += sizeof(int);
+				
 				Assert(new_stats->relid == RelationGetRelid(stats_context->onerel));
 
 				Assert(new_attno <= stats_context->onerel->rd_att->natts);
@@ -650,27 +656,25 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 					VPgStatisticStats *tmp_pgstat_stats = pgstat_stats_array[new_attno - 1];
 					Assert(tmp_pgstat_stats->metadata.relid == new_stats->relid);
 					
-					tuple = (HeapTuple)(((char *)new_stats) +
-										sizeof(VUpdatedStats) + sizeof(int));
+					tuple = (HeapTuple)(((char *)new_stats) + len);
 					/* Reset tuple->t_data */
 					tuple->t_data = (HeapTupleHeader)(((char *)tuple) + HEAPTUPLESIZE);
 					
 					tmp_pgstat_stats->tuples =
 						lappend(tmp_pgstat_stats->tuples, tuple);
+					tmp_pgstat_stats->reltuples =
+						lappend(tmp_pgstat_stats->reltuples, reltuples);
 				}
 
 				else
 				{
 					HeapTuple tuple;
-					int len;
 					VPgStatisticStats *pgstat_stats;
 
 					Assert(pgresult->extraslen > sizeof(VUpdatedStats));
-					len = sizeof(VUpdatedStats);
 					pgstat_stats = (VPgStatisticStats *)palloc0(sizeof(VPgStatisticStats));
 					pgstat_stats->attno = new_attno;
-					len += sizeof(int);
-					
+
 					tuple = (HeapTuple)((char *)new_stats + len);
 					Assert(pgresult->extraslen == len + heaptuple_get_size(tuple));
 
@@ -679,7 +683,9 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 
 					pgstat_stats->metadata = *(new_stats);
 					pgstat_stats->tuples = NIL;
+					pgstat_stats->reltuples = NIL;
 					pgstat_stats->tuples = lappend(pgstat_stats->tuples, tuple);
+					pgstat_stats->reltuples = lappend(pgstat_stats->reltuples, reltuples);
 
 					pgstat_stats_array[new_attno - 1] = pgstat_stats;
 				}
@@ -697,29 +703,21 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 		/* Compute the final stats for each relation. */
 		for(attno = 0; attno < stats_context->onerel->rd_att->natts; attno++)
 		{
-			ListCell *pgclass_lc;
 			VPgStatisticStats *tmp_stats = pgstat_stats_array[attno];
-			double totalrows = 0;
 
 			if (tmp_stats == NULL)
 				continue;
 			
 			Assert(RelationGetRelid(stats_context->onerel) == tmp_stats->metadata.relid);
 				
-			/* Find the totalrows from PG_CLASS_STATS */
-			foreach (pgclass_lc, stats_context->updated_stats)
-			{
-				VUpdatedStats *pgclass_stats = (VUpdatedStats *)lfirst(pgclass_lc);
-				if (pgclass_stats->type == PG_CLASS_STATS &&
-					pgclass_stats->relid == tmp_stats->metadata.relid)
-				{
-					totalrows = ((VPgClassStats *)pgclass_stats)->total_rel_tuples;
-					break;
-				}
-			}
-
-			cdbanalyze_get_columnstats(tmp_stats, tupdesc, totalrows,
+			cdbanalyze_get_columnstats(tmp_stats, tupdesc,
 									   stats_context->ctx, stats_context->onerel);
+			/* We could safely free the space for tuples and reltuples */
+			list_free(tmp_stats->tuples);
+			list_free(tmp_stats->reltuples);
+			tmp_stats->tuples = NIL;
+			tmp_stats->reltuples = NIL;
+
 			stats_context->updated_stats =
 				lappend(stats_context->updated_stats, tmp_stats);
 			

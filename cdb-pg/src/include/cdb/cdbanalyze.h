@@ -26,7 +26,6 @@ extern void cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tu
 
 extern void cdbanalyze_get_columnstats(VPgStatisticStats *stats,
 									   TupleDesc tupdesc,
-									   double totalrows,
 									   MemoryContext ctx,
 									   Relation onerel);
 /*

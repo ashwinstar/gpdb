@@ -843,7 +843,6 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 		stats.metadata.relid = relid;
 		stats.rel_pages = num_pages;
 		stats.rel_tuples = num_tuples;
-		stats.total_rel_tuples = 0;
 		pq_sendint(&buf, sizeof(VPgClassStats), sizeof(int));
 		pq_sendbytes(&buf, (char*)(&stats), sizeof(VPgClassStats));
 		pq_endmessage(&buf);
