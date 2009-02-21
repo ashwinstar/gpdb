@@ -595,7 +595,10 @@ printtup_20(TupleTableSlot *slot, DestReceiver *self)
 	k = 1 << 7;
 	for (i = 0; i < natts; ++i)
 	{
-		if (slot_attisnull(slot, i+1)) 
+        bool 		orignull;
+		slot_getattr(slot, i+1, &orignull);
+
+		if (!orignull) 
 			j |= k;				/* set bit if not null */
 		k >>= 1;
 		if (k == 0)				/* end of byte? */
@@ -797,7 +800,9 @@ printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 	k = 1 << 7;
 	for (i = 0; i < natts; ++i)
 	{
-		if (slot_attisnull(slot, i+1)); 
+        bool 		orignull;
+		slot_getattr(slot, i+1, &orignull);
+		if (!orignull)
 			j |= k;				/* set bit if not null */
 		k >>= 1;
 		if (k == 0)				/* end of byte? */
