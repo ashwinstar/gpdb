@@ -43,7 +43,6 @@ fi
 # Script Specific Variables
 #******************************************************************************
 VERBOSE=1
-unset TAIL_LOGS
 PROG_NAME=`$BASENAME $0`
 PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
@@ -51,7 +50,6 @@ TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 QD_NAME=`hostname`
 EXIT_STATUS=0
-TLINES=10
 WAIT_LIMIT=600
 PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
 TMP_SORT_FILE=/tmp/gpstate_parallel_tmp_sort.$$
@@ -91,13 +89,6 @@ USAGE () {
 		$ECHO "      -m, List mirror segments of Greenplum database"
 		$ECHO "      -c, List primary/mirror segment instance mapping of Greenplum database"
 		$ECHO "      -p, List Greenplum instance ports"
-		$ECHO "      -n, List instance log file names"
-		$ECHO "      -e, Display end of each segment instance log file"
-		$ECHO "          Additional log display options"
-		$ECHO "          -r, <number> Recall <number> of lines of log, with -e option"
-		$ECHO "          default is to display $TLINES lines from log to screen"
-		$ECHO "          -g, <string> Search for <string> in log, enclose space separated words within \" \""
-		$ECHO "          To seach for multiple words, separate each with a pipe (|) symbol"
 		$ECHO "      -b, Display a brief Greenplum instance status summary [default]"
 		$ECHO "      -Q, Display a quick Greenplum instance status summary, will obtain state from Master instance"
 		$ECHO "          only, will not pole the segment instance databases"
@@ -837,36 +828,6 @@ LIST_GP_PORTS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-LIST_MPP_LOGS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		LOG_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c "select hostname, datadir from $CONFIG_TABLE where content<>-1 ;" 2>|/dev/null`)
-		ERROR_CHK $? "obtain log assignments" 2
-		LOG_MSG "[INFO]:-Master segment instance $MASTER_DATA_DIRECTORY logfile ${MASTER_DATA_DIRECTORY}.log" 1
-		LOG_MSG "[INFO]:-Segment instance database logfiles" 1
-		LOG_MSG "[INFO]:-----------------------------------" 1
-		for LOGCHK in "${LOG_ARRAY[@]}"
-				do
-				HOST=`$ECHO $LOGCHK|$CUT -d"|" -f1`
-				DIR=`$ECHO $LOGCHK|$CUT -d"|" -f2`
-				if [ $TAIL_LOGS ]; then
-					LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
-					LOG_MSG "[INFO]:----------START----------------------" 1
-#					$ECHO "$HOST Logfile name ${DIR}.log" | $TEE -a $LOG_FILE
-					if [ x"" == x"$GREP_STRING" ];then
-						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log"|$TEE -a $LOG_FILE
-					else
-						$TRUSTED_SHELL $HOST "$TAIL -$TLINES ${DIR}.log|$EGREP '$GREP_STRING'"|$TEE -a $LOG_FILE
-					fi
-#						$ECHO
-						LOG_MSG "[INFO]:-$HOST $DIR log file tail" 1
-					LOG_MSG "[INFO]:-----------END-----------------------" 1
-				else
-						LOG_MSG "[INFO]:-$HOST $DIR logfile ${DIR}.log" 1
-				fi
-		done	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
 
 STANDBY_HOST_DETAILS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -954,17 +915,12 @@ if [ $# -ne 0 ]; then
 						s ) SELECT=1 ;;
 						m ) SELECT=2 ;;
 						c ) SELECT=3 ;;
-						p ) SELECT=4 ;; 
-						n ) SELECT=5 ;;
+						p ) SELECT=4 ;; 					
 						b ) SELECT=6 ;;
 						i ) SELECT=7 ;;
 						f ) SELECT=8 ;;
-						Q ) SELECT=9 ;;
-						e ) TAIL_LOGS=1 
-						    SELECT=5 ;;
-						r ) TLINES=$OPTARG ;;
-						l ) LOG_DIR=$OPTARG ;;
-						g ) GREP_STRING=$OPTARG ;;
+						Q ) SELECT=9 ;;					
+						l ) LOG_DIR=$OPTARG ;;					
 						D ) DEBUG_LEVEL=1 ;;
 						B ) BATCH_DEFAULT=$OPTARG ;;
 						* ) UNKNOWN_OPTION ;;
@@ -1000,7 +956,6 @@ case $SELECT in
 		2 ) MIRROR_LIST ;;
 		3 ) CLUSTER_CONFIG ;;
 		4 ) LIST_GP_PORTS ;;
-		5 ) LIST_MPP_LOGS ;;
 		6 ) GET_STATUS_INFORMATION ;;
 		7 ) VERSION_INFO ;;
 		8 ) STANDBY_HOST_DETAILS ;;

@@ -167,7 +167,7 @@ CREATE_TEMP_DB () {
 	LOG_MSG "[INFO]:-Configuring Master $PG_HBA" 1
 	BUILD_MASTER_PG_HBA_FILE $TEMP_DATA_DIRECTORY/parsetemp $DEFAULT_IP_ALLOW
 	LOG_MSG "[INFO]:-Starting temporary database" 1
-	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -l ${TEMP_DATA_DIRECTORY}/parsetemp.log -o "-i -p $TEMP_PORT" start  >/dev/null 2>&1
+	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -o "-i -p $TEMP_PORT" start  >/dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		$RM -Rf ${TEMP_DATA_DIRECTORY}/parsetemp
@@ -594,7 +594,7 @@ DUMP_CONFIG_FILES () {
 DELETE_TEMP_DB () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Stopping temporary database" 1
-	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -l ${TEMP_DATA_DIRECTORY}/parsetemp.log -o "-i -p $TEMP_PORT" stop 
+	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -o "-i -p $TEMP_PORT" stop 
 	ERROR_CHK $? "shutdown of temporary database on port $TEMP_PORT data directory $TEMP_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Removing temporary database directory" 1
 	$RM -Rf ${TEMP_DATA_DIRECTORY}/parsetemp

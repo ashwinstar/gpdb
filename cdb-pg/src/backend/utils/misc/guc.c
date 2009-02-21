@@ -1089,7 +1089,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&Redirect_stderr,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"log_truncate_on_rotation", PGC_SIGHUP, LOGGING_WHERE,
@@ -1377,7 +1377,7 @@ static struct config_bool ConfigureNamesBool[] =
 #ifdef USE_ASSERT_CHECKING
 	{
 		{"gp_mk_sort_check", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Extensive check mk_sort"), 
+			gettext_noop("Extensive check mk_sort"),
 			gettext_noop("Expensive debug checking"),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
@@ -1958,7 +1958,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"coredump_on_memerror", PGC_SUSET, DEVELOPER_OPTIONS, 
+		{"coredump_on_memerror", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Generate core dump on memory error."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
@@ -1974,7 +1974,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&log_autostats,
 		true, NULL, NULL
-	},	
+	},
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -2560,7 +2560,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&Log_RotationSize,
-		10 * 1024, 0, INT_MAX / 1024, NULL, NULL
+		0, 0, INT_MAX / 1024, NULL, NULL
 	},
 
 	{
@@ -3055,7 +3055,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_gpperfmon_send_interval,
 		1, 1, 3600, gpvars_assign_gp_gpperfmon_send_interval, NULL
 	},
-		
+
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),
@@ -3244,7 +3244,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_UNIT_KB | GUC_NO_SHOW_ALL
 		},
 		&gp_process_memory_cutoff,
-		0, 0, SIZE_MAX/2/1024, NULL, NULL, 
+		0, 0, SIZE_MAX/2/1024, NULL, NULL,
 	},
 
 	{
@@ -3648,7 +3648,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_SUPERUSER_ONLY
 		},
 		&Log_filename,
-		"postgresql-%Y-%m-%d_%H%M%S.log", NULL, NULL
+		"gpdb-%Y-%m-%d.log", NULL, NULL
 	},
 
 #ifdef HAVE_SYSLOG
@@ -7486,7 +7486,7 @@ is_newvalue_equal(struct config_generic * record, const char *newvalue)
 				struct config_bool *conf = (struct config_bool *) record;
 				bool		newval;
 
-				return parse_bool(newvalue, &newval) && 
+				return parse_bool(newvalue, &newval) &&
 					*conf->variable == newval;
 			}
 		case PGC_INT:
@@ -7494,7 +7494,7 @@ is_newvalue_equal(struct config_generic * record, const char *newvalue)
 				struct config_int *conf = (struct config_int *) record;
 				int			newval;
 
-				return parse_int(newvalue, &newval, record->flags, NULL) 
+				return parse_int(newvalue, &newval, record->flags, NULL)
 					&& *conf->variable == newval;
 			}
 		case PGC_REAL:
@@ -7502,7 +7502,7 @@ is_newvalue_equal(struct config_generic * record, const char *newvalue)
 				struct config_real *conf = (struct config_real *) record;
 				double		newval;
 
-				return parse_real(newvalue, &newval, record->flags) 
+				return parse_real(newvalue, &newval, record->flags)
 					&& *conf->variable == newval;
 			}
 		case PGC_STRING:

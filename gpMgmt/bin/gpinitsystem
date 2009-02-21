@@ -62,9 +62,6 @@ LOG_STATEMENT_TXT="#log_statement ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
 LOG_STATS_TXT="stats_command_string="
-LOG_FILENAME_TXT="log_filename"
-LOG_ROTATION_AGE_TXT="log_rotation_age"
-REDIRECT_STDERR_TXT="redirect_stderr"
 INIT_STANDBY_PROG=$GPINITSTANDBY
 START_SYNC="-1"
 QE_MIRROR_ARRAY=""
@@ -1047,14 +1044,6 @@ CREATE_QD_DB () {
 		ERROR_CHK $? "set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${GP_DIR}/$PG_CONF" 1
 		LOG_MSG "[INFO]:-Setting Master instance stats string to on"
 		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_STATS_TXT" "stats_command_string=on" 0
-		LOG_MSG "[INFO]:-Enabling log rotation with ${REDIRECT_STDERR_TXT}=on"
-		ED_FILE ${GP_DIR}/$PG_CONF "$REDIRECT_STDERR_TXT" "redirect_stderr=on" 0		
-		LOG_MSG "[INFO]:-Updating Master instance log_filename to ${SEG_PREFIX}-%Y-%m-%d.log"
-		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_FILENAME_TXT" "log_filename='${SEG_PREFIX}-1-%Y-%m-%d.log'"	0
-		LOG_MSG "[INFO]:-Setting log rotation age to 1 day with ${LOG_ROTATION_AGE_TXT}=1440"
-		ED_FILE ${GP_DIR}/$PG_CONF "$LOG_ROTATION_AGE_TXT" "log_rotation_age=1440" 0
-		LOG_MSG "[INFO]:-Setting log rotation size to unlimited with log_rotation_size=0"
-		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_size" "log_rotation_size=0" 0
 		
 		ERROR_CHK $? "set stats_command_string to on" 1
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
@@ -1070,7 +1059,7 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Adding gp_dumpall access to $PG_HBA for master host"
 		BUILD_MASTER_PG_HBA_FILE $GP_DIR 
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
-		export PGPORT=$GP_PORT;$PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o "-i -p $GP_PORT" start
+		export PGPORT=$GP_PORT;$PG_CTL -w -D $GP_DIR -o "-i -p $GP_PORT" start
 		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
@@ -1303,16 +1292,16 @@ PROCESS_QE () {
 			fi
 		done
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${GP_HOSTNAME}" 1
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" start"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" start"
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"if [ -d $GP_DIR ]; then ${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop; fi\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"if [ -d $GP_DIR ]; then ${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop; fi\""
 			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"if [ -d $GP_DIR ]; then ${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop; fi\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"if [ -d $GP_DIR ]; then ${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop; fi\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
 }
 
@@ -1353,7 +1342,7 @@ CREATE_STANDBY_QD () {
 		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"if [ -d $GP_DIR ]; then ${EXPORT_LIB_PATH};export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}-1.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop; fi\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"if [ -d $GP_DIR ]; then ${EXPORT_LIB_PATH};export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}-1 -o \"-i -p ${MASTER_PORT}\" -m immediate  stop; fi\""
 		BACKOUT_COMMAND "$ECHO \"Stopping standby instance on $STANDBY_HOSTNAME\""
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

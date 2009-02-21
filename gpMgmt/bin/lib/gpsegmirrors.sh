@@ -108,7 +108,7 @@ PROCESS_MIRROR () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Setting port to $QE_MIR_PORT on ${QE_MIR_NAME}"
 	ED_FILE ${QE_MIR_BASE_DIR}/$PG_CONF "port=" "port=${QE_MIR_PORT}" 0 $QE_MIR_NAME 
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting mirror database in admin mode on ${QE_MIR_NAME} for directory ${QE_MIR_BASE_DIR}"
-	$TRUSTED_SHELL $QE_MIR_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $QE_MIR_BASE_DIR -l ${QE_MIR_BASE_DIR}.log -o \"-i -p $QE_MIR_PORT \" start" >> $LOG_FILE 2>&1
+	$TRUSTED_SHELL $QE_MIR_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $QE_MIR_BASE_DIR -o \"-i -p $QE_MIR_PORT \" start" >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		$ECHO "FAILED:${QE_LINE}:ADMIN_START" >> $PARALLEL_STATUS_FILE
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed to start $QE_MIR_NAME database for directory $QE_MIR_BASE_DIR" 1
@@ -126,13 +126,13 @@ PROCESS_MIRROR () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Completed update $GP_ID_TABLE set dbid=${QE_MIR_DBID} where dbid<>${QE_MIR_DBID}"
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Closing down ${QE_MIR_NAME} for directory ${QE_MIR_BASE_DIR} database from admin mode"
-	$TRUSTED_SHELL $QE_MIR_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w stop -D $QE_MIR_BASE_DIR -m smart -l ${QE_MIR_BASE_DIR}.log" >> $LOG_FILE 2>&1
+	$TRUSTED_SHELL $QE_MIR_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w stop -D $QE_MIR_BASE_DIR -m smart " >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		$ECHO "FAILED:${QE_LINE}:ADMIN_SHUTDOWN" >> $PARALLEL_STATUS_FILE
-		LOG_MSG "[FATAL][$INST_COUNT]:-Failed $PG_CTL -w stop -D $QE_MIR_BASE_DIR -m smart -l ${QE_MIR_BASE_DIR}.log" 1
+		LOG_MSG "[FATAL][$INST_COUNT]:-Failed $PG_CTL -w stop -D $QE_MIR_BASE_DIR -m smart " 1
 		ERROR_EXIT "[FATAL][$INST_COUNT]:-Exiting, unable to continue" 2
 	else
-		LOG_MSG "[INFO][$INST_COUNT]:-Completed $PG_CTL -w stop -D $QE_MIR_BASE_DIR -m smart -l ${QE_MIR_BASE_DIR}.log"
+		LOG_MSG "[INFO][$INST_COUNT]:-Completed $PG_CTL -w stop -D $QE_MIR_BASE_DIR -m smart "
 	fi	
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }

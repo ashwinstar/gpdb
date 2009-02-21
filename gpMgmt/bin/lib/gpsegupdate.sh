@@ -100,12 +100,12 @@ START_SEG () {
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start >/dev/null 2>&1"
+	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start >/dev/null 2>&1"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Startup request returned error code $RETVAL" 1
 		LOG_MSG "[INFO][$INST_COUNT]:-Command string called which resulted in error" 1
-		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start"  1
+		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start"  1
 		LOG_MSG "[INFO][$INST_COUNT]:-Tail'ing Segment instance log file" 1
 		$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
@@ -124,7 +124,7 @@ START_SEG () {
 		exit 2
 	else
 		LOG_MSG "[INFO][$INST_COUNT]:-Completed pg_ctl start $QE_HOST $DE_DIR $QE_PORT"
-            BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"${EXPORT_LIB_PATH};export PGPORT=${QE_PORT}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" stop\""
+            BACKOUT_COMMAND "$TRUSTED_SHELL $QE_NAME \"${EXPORT_LIB_PATH};export PGPORT=${QE_PORT}; $PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT}\" stop\""
             BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $QE_NAME\"
 "
 	fi

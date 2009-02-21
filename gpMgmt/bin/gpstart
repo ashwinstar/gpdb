@@ -212,7 +212,7 @@ GET_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
-		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c gp_role=utility"  start >> $LOG_FILE 2>&1
+		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility"  start >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
 			LOG_MSG "[FATAL]:-Failed to start Master instance in admin mode" 1
@@ -277,7 +277,7 @@ START_ADMIN () {
 		fi
 		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
-		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c gp_role=utility " start
+		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility " start
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
@@ -520,7 +520,7 @@ PROCESS_STARTUP () {
 	else 
 	    MASTER_MIRRORING_ADMINISTRATOR_DISABLE=""
 	fi
-	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "$RESTRICTED_MODE_CONNS $MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "$RESTRICTED_MODE_CONNS $MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
 	ERROR_CHK $? "startup Master instance" 2
 	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`

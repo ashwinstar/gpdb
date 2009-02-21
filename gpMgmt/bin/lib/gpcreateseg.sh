@@ -115,14 +115,6 @@ PROCESS_QE () {
 		ED_FILE ${GP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $GP_HOSTNAME
 		PARA_EXIT $RETVAL "Update checkpoint segments"
 
-		ED_FILE ${GP_DIR}/$PG_CONF "redirect_stderr =" "redirect_stderr = on" 0 $GP_HOSTNAME		
-		PARA_EXIT $RETVAL "Enabling log rotation with redirect_stderr=on"
-		ED_FILE ${GP_DIR}/$PG_CONF "log_filename" "log_filename='${SEG_PREFIX}${GP_CONTENT}-%Y-%m-%d.log'" 0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "setting log rotation filenames to log_filename='${SEG_PREFIX}-%Y-%m-%d.log'"
-		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_age" "log_rotation_age=1440"  0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "setting log rotation age to 1 day with log_rotation_age=1440"				
-		ED_FILE ${GP_DIR}/$PG_CONF "log_rotation_size" "log_rotation_size=0" 0 $GP_HOSTNAME
-		PARA_EXIT $RETVAL "setting log_rotation_size to unlimited with log_rotation_size=0"
 		
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO][$INST_COUNT]:-Processing additional configuration parameters"
@@ -154,19 +146,19 @@ PROCESS_QE () {
 				PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
 		done
 		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" start" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" start >/dev/null 2>&1"
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 			BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
 			BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
 			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}.log "|$TEE -a $LOG_FILE
 			PARA_EXIT $RETVAL "Start segment Mirror instance database"
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${GP_HOSTNAME} \"$RM -f ${GP_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${GP_DIR}.log on segment $GP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
 		LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTNAME"
 		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTNAME

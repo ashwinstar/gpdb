@@ -318,7 +318,7 @@ PROCESS_SHUTDOWN () {
 		LOG_MSG "[INFO]:-Master segment instance directory=$MASTER_DATA_DIRECTORY" 1
 		case $MODE in 
 			smart )
-				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE >/dev/null 2>&1
 				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
 			fast )
 				if [ $CONNECTED -gt 0 ];then
@@ -326,17 +326,17 @@ PROCESS_SHUTDOWN () {
 					LOG_MSG "[INFO]:-Switching to WAIT mode" 1
 					LOG_MSG "[INFO]:-Will wait for shutdown to complete, this may take some time if there are" 1
 					LOG_MSG "[INFO]:-a large number of active complex transactions, please wait..." 1	
-					$PG_CTL -W stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+					$PG_CTL -W stop -D $MASTER_DATA_DIRECTORY -m $MODE  >/dev/null 2>&1
 					wait
 					ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 
 				else
 					LOG_MSG "[INFO]:-Detected $CONNECTED connection(s) to database" 1
 					LOG_MSG "[INFO]:-Using standard WAIT mode of 60 seconds" 1
-					$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+					$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE  >/dev/null 2>&1
 					ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 
 				fi ;;
 			immediate )
-				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE  >/dev/null 2>&1
 				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
 		esac
 		if [ x"" != x"$STOP_SYNC" ];then
