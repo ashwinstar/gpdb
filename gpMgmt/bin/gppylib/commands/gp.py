@@ -112,7 +112,15 @@ class ModifyPostgresqlConfSetting(Command):
         self.cmdStr = cmdStr
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
         
-      
+class ConfigExpansionSeg(Command):
+    def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, ctxt=LOCAL, remoteHost=None):
+        cmdStr = '$GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (dataDir, numSegs, contentId, dbId)
+        if port:
+            cmdStr += ' -p %s' % port
+        if newSegment:
+            cmdStr += ' -n'
+            
+        Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
 class GpVersion(Command):
     def __init__(self,name,ctxt=LOCAL,remoteHost=None):

@@ -223,6 +223,7 @@ class GpArray:
         
         self.arrayName=''
         self.segments=[]
+        self.numPrimarySegments = 0
         
         for row in rows:         
             content=row[0]
@@ -259,6 +260,7 @@ class GpArray:
                 seg = self.segments[content]                
                 if definedprimary is True:                    
                     seg.addPrimary(segdb)
+                    self.numPrimarySegments += 1
                 else:             
                     seg.addMirror(segdb)
         self.numSegments=len(self.segments)
@@ -301,6 +303,9 @@ class GpArray:
    
     def get_segment_count(self):
         return len(self.segments)
+    
+    def get_primary_count(self):
+        return self.numPrimarySegments
         
     
     def untarSegments(self,queue,filename):        

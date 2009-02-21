@@ -1,0 +1,98 @@
+#!/usr/bin/env python
+
+import sys
+import os
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+
+from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, Chmod
+from gppylib.db import dbconn
+from gppylib.db import catalog
+
+description = (""" 
+Adds additional segments to a pre-existing GPDB Array.
+""")
+
+EXECNAME = os.path.split(__file__)[-1]
+
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(description.split()),
+                version='%prog version $Revision: $')
+    parser.set_usage('%prog is a utility script used by gpexpand and not intended to be run separately.')
+    parser.remove_option('-h')
+    
+    parser.add_option('-p','--port', type='int')
+    parser.add_option('-d', '--datadir', type='string')                        
+    parser.add_option('-s','--numsegs', type='int')
+    parser.add_option('-c', '--content', type='int')
+    parser.add_option('-i', '--dbid', type='int')
+    parser.add_option('-n', '--newsegment', action='store_true')
+  
+        
+    parser.set_defaults(verbose=False,filters=[], slice=(None, None))
+    
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    
+    #-n sanity check
+    if options.numsegs <= 0:
+        raise Exception('Invalid numsegs arg')
+        
+    if options.content < 0:
+        raise Exception('Invalid contentid arg')
+        
+    if options.dbid <= 0:
+        raise Exception('Invalid dbid arg')
+
+    if options.port and options.port < 1024:
+        raise Exception('Invalid port arg')
+
+    if not options.datadir:
+        raise Exception('Invalid datadir arg')
+
+    return options, args
+
+
+try:
+    (options, args) = parseargs()
+    # update postgresql.conf
+    if options.newsegment:
+        modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % options.datadir,
+                                                              options.datadir + '/postgresql.conf',
+                                                              'port', options.port, optType='number')
+        modifyPostgresqlConfCmd.run(validateAfter=True)
+
+        # need 700 permissions on datadir
+        chmodCmd = Chmod('Changing permissions on %s' % options.datadir, options.datadir, '0700')
+        chmodCmd.run(validateAfter=True)
+    
+    # stop up segment in utility
+    try:
+        startCmd = SegmentStart('Start expansion segment', 
+                                options.datadir, options.port, utilityMode=True)
+        startCmd.run(validateAfter=True)
+    except ExecutionException:
+        # We'll ignore this here in case we are cleaning up a previous failed run
+        pass
+    
+    # update gp_id
+    dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=options.port)
+    conn = dbconn.connect(dbUrl, utility=True)
+            
+    gpid_tbl = catalog.GpIdTable(conn)
+    gpid_tbl.set(dbid=options.dbid,content=int(options.content),numsegments=options.numsegs)
+    dbconn.execSQL(conn,gpid_tbl.get_update_sql())
+            
+    conn.commit()
+    conn.close()
+
+    # stop segment
+    stopCmd = SegmentStop('Stop expansion segment', options.datadir)
+    stopCmd.run(validateAfter=True)
+
+
+except Exception, msg:
+    print msg
+    sys.exit(1)
