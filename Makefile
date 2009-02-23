@@ -385,8 +385,6 @@ mgmtcopy :
 	@rm -rf $(INSTLOC)/bin/lib/.p4ignore
 	@rm -rf $(INSTLOC)/bin/src
 	@rm -rf $(INSTLOC)/bin/gppylib
-	@echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
-	rm -f $(INSTLOC)/bin/gpexpandsystem
 
 pkgplr:
 	@if [ ! -z "$(PLRDIR)" ]; then \
