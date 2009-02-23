@@ -35,12 +35,12 @@ CREATE TABLE tenk_ao8 (like tenk_heap) with (appendonly=true, blocksize=100) dis
 ERROR:  block size must be between 8KB and 2MB and be an 8KB multiple. Got 100
 CREATE TABLE tenk_ao9 (like tenk_heap) with (appendonly=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
 ERROR:  compresstype can't be used with compresslevel 0
---------------------
+-------------------- 
 -- catalog checks
 --------------------
 -- check pg_appendonly
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
- relname  | blocksize | compresstype | compresslevel | checksum
+ relname  | blocksize | compresstype | compresslevel | checksum 
 ----------+-----------+--------------+---------------+----------
  tenk_ao1 |     32768 |              |             0 | t
  tenk_ao2 |    262144 |              |             0 | f
@@ -49,7 +49,7 @@ SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM 
  tenk_ao5 |   1048576 | zlib         |             6 | t
 (5 rows)
 
---------------------
+-------------------- 
 -- supported sql
 --------------------
 -- COPY
@@ -60,37 +60,37 @@ COPY tenk_ao3 FROM '@abs_srcdir@/data/tenk.data';
 COPY tenk_ao4 FROM '@abs_srcdir@/data/tenk.data';
 -- SELECT
 SELECT count(*) FROM tenk_heap;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao1;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao2;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao3;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao4;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
- aototal | aototal | aototal | aototal
+ aototal | aototal | aototal | aototal 
 ---------+---------+---------+---------
    10000 |   10000 |   10000 |   10000
 (1 row)
@@ -106,46 +106,46 @@ INSERT INTO tenk_ao2 SELECT * FROM tenk_ao3;
 INSERT INTO tenk_ao3 SELECT * FROM tenk_ao2;
 INSERT INTO tenk_ao4 SELECT * FROM tenk_ao3;
 SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
- aototal | aototal | aototal | aototal
+ aototal | aototal | aototal | aototal 
 ---------+---------+---------+---------
    40000 |   40000 |   60000 |   80000
 (1 row)
 
 -- SELECT
 SELECT count(*) FROM tenk_heap;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao1;
- count
+ count 
 -------
  40000
 (1 row)
 
 SELECT count(*) FROM tenk_ao2;
- count
+ count 
 -------
  40000
 (1 row)
 
 SELECT count(*) FROM tenk_ao3;
- count
+ count 
 -------
  60000
 (1 row)
 
 SELECT count(*) FROM tenk_ao4;
- count
+ count 
 -------
  80000
 (1 row)
 
 --
 -- Test that the catalog eof entry doesn't change even if the file gets
--- larger due to bad data that isn't cleaned up until the next VACUUM.
--- make sure the SELECT stops at eof (count is the same).
+-- larger due to bad data that isn't cleaned up until the next VACUUM. 
+-- make sure the SELECT stops at eof (count is the same). 
 -- The first row is good (so it grows the file), the second is bad.
 --
 COPY tenk_ao1 FROM STDIN;
@@ -161,56 +161,56 @@ COPY tenk_ao4 FROM STDIN;
 ERROR:  missing data for column "unique2"
 CONTEXT:  COPY tenk_ao4, line 2: "bad data row"
 SELECT count(*) FROM tenk_ao1;
- count
+ count 
 -------
  40000
 (1 row)
 
 SELECT count(*) FROM tenk_ao2;
- count
+ count 
 -------
  40000
 (1 row)
 
 SELECT count(*) FROM tenk_ao3;
- count
+ count 
 -------
  60000
 (1 row)
 
 SELECT count(*) FROM tenk_ao4;
- count
+ count 
 -------
  80000
 (1 row)
 
 SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
- aototal | aototal | aototal | aototal
+ aototal | aototal | aototal | aototal 
 ---------+---------+---------+---------
    40000 |   40000 |   60000 |   80000
 (1 row)
 
---------------------
+-------------------- 
 -- transactionality
 --------------------
 -- rollback
 BEGIN;
 INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1; -- should show new count
- count
+ count 
 -------
  50000
 (1 row)
 
 ROLLBACK;
 SELECT count(*) FROM tenk_ao1; -- should show previous count
- count
+ count 
 -------
  40000
 (1 row)
 
 SELECT aototal('tenk_ao1');
- aototal
+ aototal 
 ---------
    40000
 (1 row)
@@ -219,20 +219,20 @@ SELECT aototal('tenk_ao1');
 BEGIN;
 INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
 SELECT count(*) FROM tenk_ao1; -- should show new count
- count
+ count 
 -------
  50000
 (1 row)
 
 COMMIT;
 SELECT count(*) FROM tenk_ao1; -- should show new count
- count
+ count 
 -------
  50000
 (1 row)
 
 SELECT aototal('tenk_ao1');
- aototal
+ aototal 
 ---------
    50000
 (1 row)
@@ -253,13 +253,13 @@ INSERT INTO tenk_ao1(unique1) VALUES(87654321);
 INSERT INTO tenk_ao1(unique1) VALUES(87654321);
 COMMIT;
 SELECT count(*) FROM tenk_ao1 WHERE unique1 = 12345678; -- should be 0
- count
+ count 
 -------
      0
 (1 row)
 
 SELECT count(*) FROM tenk_ao1 WHERE unique1 = 87654321; -- should be 5
- count
+ count 
 -------
      5
 (1 row)
@@ -271,26 +271,26 @@ BEGIN;
 DECLARE foo1 CURSOR FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
 DECLARE foo2 CURSOR FOR SELECT * FROM tenk_ao2 ORDER BY 1,2,3,4;
 FETCH 1 in foo1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (1 row)
 
 FETCH 2 in foo2;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (2 rows)
 
 FETCH 1 in foo1;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (1 row)
 
 FETCH 2 in foo2;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
@@ -302,7 +302,7 @@ END;
 BEGIN;
 DECLARE foo3 NO SCROLL CURSOR FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
 FETCH 1 FROM foo3;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (1 row)
@@ -314,26 +314,26 @@ END;
 BEGIN;
 DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
 FETCH FROM foo4;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (1 row)
 
 FETCH FROM foo4;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (1 row)
 
 COMMIT;
 FETCH FROM foo4;
- unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
        0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
 (1 row)
 
 SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
- name |                                 statement                                  | is_holdable | is_binary | is_scrollable
+ name |                                 statement                                  | is_holdable | is_binary | is_scrollable 
 ------+----------------------------------------------------------------------------+-------------+-----------+---------------
  foo4 | DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4; | t           | f         | f
 (1 row)
@@ -358,7 +358,7 @@ CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=quickl
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
- relname  | blocksize | compresstype | compresslevel | checksum
+ relname  | blocksize | compresstype | compresslevel | checksum 
 ----------+-----------+--------------+---------------+----------
  tenk_ao1 |     32768 |              |             0 | t
  tenk_ao2 |    262144 |              |             0 | f
@@ -368,32 +368,32 @@ SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM 
 (5 rows)
 
 SELECT count(*) FROM tenk_ao1;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao2;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao3;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao4;
- count
+ count 
 -------
  10000
 (1 row)
 
 -- test get_ao_compression_ratio. use uncompressed table, so result is always 1.
 SELECT get_ao_compression_ratio('tenk_ao2');
- get_ao_compression_ratio
+ get_ao_compression_ratio 
 --------------------------
                         1
 (1 row)
@@ -410,50 +410,50 @@ ANALYZE tenk_ao2;
 ANALYZE tenk_ao4;
 VACUUM ANALYZE tenk_ao3;
 SELECT count(*) FROM tenk_ao1;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao2;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao3;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao4;
- count
+ count 
 -------
  10000
 (1 row)
 
 -- JOIN
 SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
- count
+ count 
 -------
  10000
 (1 row)
 
 SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
- count
+ count 
 -------
  10000
 (1 row)
 
 -- EXCEPT
 SELECT unique1 FROM tenk_ao1 EXCEPT SELECT unique1 FROM tenk_ao1;
- unique1
+ unique1 
 ---------
 (0 rows)
 
 SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_ao3;
- unique1
+ unique1 
 ---------
 (0 rows)
 
@@ -463,21 +463,21 @@ TRUNCATE tenk_ao2;
 CREATE TABLE aowithoids(a int, b int) WITH (appendonly=true,oids=true);
 COPY aowithoids FROM STDIN;
 SELECT * FROM aowithoids ORDER BY a; -- this should show a,b only
- a | b
+ a | b 
 ---+---
  1 | 1
  2 | 2
 (2 rows)
 
 SELECT oideq(oid,-1) FROM aowithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
- oideq
+ oideq 
 -------
  f
  f
 (2 rows)
 
---------------------
--- unsupported sql
+-------------------- 
+-- unsupported sql 
 --------------------
 -- DELETE (not supported)
 DELETE FROM tenk_ao1 WHERE unique1 = 1;
@@ -496,7 +496,7 @@ ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
 ERROR:  ADD COLUMN with no default value in append-only tables is not yet supported.
 HINT:  Use a DEFAULT value, or use INSERT...SELECT to movedata to a newly created table with the new column.
 SELECT count(*) FROM tenk_renamed;
- count
+ count 
 -------
  10000
 (1 row)
@@ -510,14 +510,14 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
-    ctid
+    ctid     
 -------------
  (4194304,1)
 (1 row)
 
 DROP TABLE syscoltest;
---------------------
--- supported sql
+-------------------- 
+-- supported sql 
 --------------------
 DROP TABLE tenk_heap;
 DROP TABLE tenk_ao1;
@@ -526,21 +526,3 @@ DROP TABLE tenk_ao3;
 DROP TABLE tenk_ao4;
 DROP TABLE tenk_ao5;
 DROP TABLE aowithoids;
-----------------------------------------
--- backward compatibility with 3.2.1.6+
-----------------------------------------
-CREATE TABLE ao1 (a int) with (appendonly=true, compresslevel=10) distributed by(a); -- should WARN and failover to quicklz1
-WARNING:  compresslevel 10 and 11 are deprecated. For quicklz compression use compresstype=quicklz and compresslevel=1 or 3
-CREATE TABLE ao2 (a int) with (appendonly=true, compresslevel=11) distributed by(a); -- should WARN and failover to quicklz3
-WARNING:  compresslevel 10 and 11 are deprecated. For quicklz compression use compresstype=quicklz and compresslevel=1 or 3
-CREATE TABLE ao3 (a int) with (appendonly=true, compresslevel=10, compresstype=quicklz) distributed by(a); -- should FAIL
-ERROR:  compresslevel=10 is out of range (should be between 0 and 9)
-SELECT c.relname, a.compresstype, a.compresslevel FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'ao%' AND c.oid=a.relid ORDER BY c.relname;
- relname | compresstype | compresslevel
----------+--------------+---------------
- ao1     | quicklz      |             1
- ao2     | quicklz      |             3
-(2 rows)
-
-DROP TABLE ao1;
-DROP TABLE ao2;

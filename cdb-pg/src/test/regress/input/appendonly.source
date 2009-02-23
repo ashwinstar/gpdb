@@ -33,14 +33,14 @@ CREATE TABLE tenk_ao7 (like tenk_heap) with (appendonly=true, compresslevel=6, c
 CREATE TABLE tenk_ao8 (like tenk_heap) with (appendonly=true, blocksize=100) distributed by(unique1);
 CREATE TABLE tenk_ao9 (like tenk_heap) with (appendonly=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
 
---------------------
+-------------------- 
 -- catalog checks
 --------------------
 
 -- check pg_appendonly
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
 
---------------------
+-------------------- 
 -- supported sql
 --------------------
 
@@ -81,8 +81,8 @@ SELECT count(*) FROM tenk_ao4;
 
 --
 -- Test that the catalog eof entry doesn't change even if the file gets
--- larger due to bad data that isn't cleaned up until the next VACUUM.
--- make sure the SELECT stops at eof (count is the same).
+-- larger due to bad data that isn't cleaned up until the next VACUUM. 
+-- make sure the SELECT stops at eof (count is the same). 
 -- The first row is good (so it grows the file), the second is bad.
 --
 COPY tenk_ao1 FROM STDIN;
@@ -107,7 +107,7 @@ SELECT count(*) FROM tenk_ao3;
 SELECT count(*) FROM tenk_ao4;
 SELECT aototal('tenk_ao1'), aototal('tenk_ao2'), aototal('tenk_ao3'), aototal('tenk_ao4');
 
---------------------
+-------------------- 
 -- transactionality
 --------------------
 
@@ -231,8 +231,8 @@ COPY aowithoids FROM STDIN;
 SELECT * FROM aowithoids ORDER BY a; -- this should show a,b only
 SELECT oideq(oid,-1) FROM aowithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
 
---------------------
--- unsupported sql
+-------------------- 
+-- unsupported sql 
 --------------------
 
 -- DELETE (not supported)
@@ -260,8 +260,8 @@ INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
 DROP TABLE syscoltest;
 
---------------------
--- supported sql
+-------------------- 
+-- supported sql 
 --------------------
 DROP TABLE tenk_heap;
 DROP TABLE tenk_ao1;
@@ -270,14 +270,3 @@ DROP TABLE tenk_ao3;
 DROP TABLE tenk_ao4;
 DROP TABLE tenk_ao5;
 DROP TABLE aowithoids;
-
-----------------------------------------
--- backward compatibility with 3.2.1.6+
-----------------------------------------
-CREATE TABLE ao1 (a int) with (appendonly=true, compresslevel=10) distributed by(a); -- should WARN and failover to quicklz1
-CREATE TABLE ao2 (a int) with (appendonly=true, compresslevel=11) distributed by(a); -- should WARN and failover to quicklz3
-CREATE TABLE ao3 (a int) with (appendonly=true, compresslevel=10, compresstype=quicklz) distributed by(a); -- should FAIL
-SELECT c.relname, a.compresstype, a.compresslevel FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'ao%' AND c.oid=a.relid ORDER BY c.relname;
-DROP TABLE ao1;
-DROP TABLE ao2;
-
