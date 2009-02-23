@@ -212,7 +212,6 @@ class Progress(threading.Thread):
         s.connect(('127.0.0.1',port))
         s.sendall('GET gpfdist/status HTTP/1.0\r\n\r\n')
         f = s.makefile()
-        s.close()
         read_bytes = -1
         total_bytes = -1
         total_sessions = -1
@@ -228,6 +227,7 @@ class Progress(threading.Thread):
                 total_bytes = int(a[1])
             elif a[0]=='total_sessions':
                 total_sessions = int(a[1])
+        s.close()
         f.close()
         return read_bytes,total_bytes,total_sessions
 
