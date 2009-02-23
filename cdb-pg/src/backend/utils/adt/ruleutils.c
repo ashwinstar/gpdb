@@ -6112,12 +6112,18 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 		if (pn->rules && strlen(body->buf->data))
 			appendStringInfoChar(body->buf, ',');
 
+		if (PRETTY_INDENT(body))
+		{
+			appendStringInfoChar(body->buf, '\n');
+			appendStringInfoSpaces(body->buf, 
+								   Max(body->indentLevel, 0) + 2);
+		}
 		str = partition_rule_def_worker(pn->default_part, pn->part,
 										body->prettyFlags);
 
-		appendStringInfoString(body->buf, " ");
 		appendStringInfoString(body->buf, str);
 		pfree(str);
+		get_partition_recursive(pn->default_part->children, head, body, leveldone);
 	}
 
 #if 0
