@@ -124,7 +124,7 @@ FORCE_CLEAR () {
 STOP_SEG () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO][$INST_COUNT]:-Stopping Segment Instance $QE_NAME directory $QE_DIR"
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL -w stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log >/dev/null 2>&1"
+	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL -w stop -D $QE_DIR -m $MODE >/dev/null 2>&1"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] && [ $STOP_INVALID -eq 1 ];then
 		FORCE_CLEAR
