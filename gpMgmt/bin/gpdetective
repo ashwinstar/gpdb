@@ -463,11 +463,6 @@ class GPDetective:
         hostname=m.group(1)
         
         
-        logfile= self.masterdir + '.log'
-        dst_file = 'master/%s.log' % hostname
-        if not self.grabMasterLog(logfile,dst_file,time_opt):
-            os.remove(dst_file)
-
         logfile= self.masterdir + '/pg_log/*'        
         dst_file = 'master/%s_rotated.log' % hostname
         if not self.grabMasterLog(logfile,dst_file,time_opt):
@@ -486,13 +481,7 @@ class GPDetective:
         for seg in self.segments:
             m = host_rx.search(seg)
             
-            out_name='%s/%s.log' % (m.group(1,3))
-            seglog = "%s/%s.log" % m.group(2,3)
             hostname = m.group(1)            
-            
-            if not self.grabSegmentLog(hostname,seg,seglog,out_name):
-                os.remove(out_name)
-
             out_name='%s/%s_rotated.log' % (m.group(1,3))            
             seglog = "%s/%s/pg_log/*" % m.group(2,3)
             if not self.grabSegmentLog(hostname,seg,seglog,out_name):
