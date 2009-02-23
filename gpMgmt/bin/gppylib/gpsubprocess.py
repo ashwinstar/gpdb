@@ -35,7 +35,7 @@ class Popen(subprocess.Popen):
     cancelRequested=False
 
     
-    def communicate2(self, timeout=2):
+    def communicate2(self, timeout=2,input=None):
         """ An extension to communicate() that allows for external cancels
         to abort processing.  
 
@@ -52,6 +52,11 @@ class Popen(subprocess.Popen):
 
         self._setupNonblocking()
 
+        if self.stdin:
+            if input:
+                self.stdin.write(input)
+                self.stdin.close()
+                
         while not (terminated or self.cancelRequested):
             terminated = self._check_status(output,error)
 
@@ -59,8 +64,7 @@ class Popen(subprocess.Popen):
                 self._read_files(timeout,output,error)
 
         #one last read to get the last bits.
-        output.append(self.stdout.read())
-        error.append(self.stderr.read())
+        self._read_files(timeout,output,error)
                       
         (resout,reserr)=self._postprocess_outputs(output,error)
 

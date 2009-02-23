@@ -43,13 +43,7 @@ Remaining TODO items:
 * ability to specify storage options. (John)
     - verify with jeff that alter table ... set distribution will support.
 
-* state tracking during setup.
 
-* support for partitioned tables.
-    - NEED work from Jeff's team.
-    - immediately convert all non-leaf partitions.  this allows
-        new partitions to "do the right thing"
-    - order leaf partitions on 'rank' that is in pg_partitions.
 
 * handle case of dropped tables.
     - some tables may be dropped by the time expansion gets
@@ -150,7 +144,9 @@ status_detail_table_sql="""CREATE TABLE %s.%s
                           schema_oid oid,
                           table_oid oid,
                           distribution_policy smallint[],
-                          distribution_policy_names varchar,
+                          distribution_policy_names text,
+                          distribution_policy_coloids text,
+                          storage_options text,
                           rank int,
                           status text,
                           expansion_started timestamp,
@@ -161,7 +157,8 @@ class InvalidStatusError(Exception): pass
 
 class GpExpandStatus():
     """Class that manages gpexpand status file."""
-    def __init__(self, master_data_directory, master_mirror_hostname=None):
+    def __init__(self, logger, master_data_directory, master_mirror_hostname=None):
+        self.logger=logger
         self._status_values = { 'UNINITIALIZED': 1,
                                 'EXPANSION_PREPARE_STARTED': 2,
                                 'SETUP_EXPANSION_SCHEMA_STARTED': 3,
@@ -229,6 +226,8 @@ class GpExpandStatus():
         """Sets the current status.  gpexpand status must be set in
            proper order.  Any out of order status result in an
            InvalidStatusError exception"""
+        self.logger.info("Transitioning from %s to %s" % (self._status,status))
+        
         if not self._fp:
             raise InvalidStatusError('The status file is invalid and cannot be written to')
         if not self._status_values.has_key(status):
@@ -286,7 +285,7 @@ class SegmentTemplate:
         self.gparray = gparray
         self.masterDataDirectory = masterDataDirectory
         self.schema_tar_file = schemaTarFile
-        
+        self.maxDbId = self.gparray.get_max_dbid()
         # Reduce multiple interfaces to common hostname
         self.hosts = []
         for seg in self.newSegments:
@@ -349,7 +348,6 @@ class SegmentTemplate:
                 
         self._select_src_segment()
 
-        self.maxDbId = self.gparray.get_max_dbid()        
         self.oldSegCount = self.gparray.get_segment_count()
              
         GpStop.local('stop GPDB')
@@ -876,8 +874,22 @@ class gpexpand:
             if dbname == 'template0':
                 continue
             c = self.connect_database(dbname)
-          
-            sql="""SELECT 
+            self._populate_regular_tables(dbname,c)
+            self._populate_partitioned_tables(dbname,c)            
+            c.commit()
+            c.close()
+             
+        self.conn.commit()
+        self.statusLogger.set_status('PREPARE_EXPANSION_SCHEMA_DONE')
+        return SETUP
+    
+    
+    def _populate_regular_tables(self,dbname,table_conn):
+        """ we don't do 3.2+ style partitioned tables here, but we do 
+            all other table types.
+        """
+        
+        sql="""SELECT 
     n.nspname || '.' || c.relname as fq_name,
     n.oid as schemaoid,
     c.oid as tableoid,                      
@@ -887,73 +899,170 @@ class gpexpand:
 FROM 
             pg_class c
     JOIN pg_namespace n ON (c.relnamespace=n.oid)
-    JOIN pg_catalog.gp_distribution_policy p on (c.oid = p.localoid);
+    JOIN pg_catalog.gp_distribution_policy p on (c.oid = p.localoid)
+WHERE
+    c.oid NOT IN ( SELECT parrelid as oid FROM pg_partition
+                    UNION
+                   SELECT parchildrelid as oid FROM pg_partition_rule
+                 )
+    AND n.nspname != 'gpexpand';
 
                   """ 
-            self.logger.info(sql)
-            curs = dbconn.execSQL(c,sql)
-            rows = curs.fetchall()            
-            for row in rows:
-                fqname=row[0]
-                schema_oid=row[1]
-                table_oid=row[2]             
-                logger.warning("dist policy raw: %s " % row[3])   
-                dist_policy = row[3]
-                dist_policy_name = self.form_dist_policy_name(c,row[3],table_oid)
-                ts = datetime.datetime.now()
-                rel_bytes = row[5]
-                
-                if dist_policy is None:
-                    dist_policy = 'NULL'
-                else:
-                    dist_policy = "'" + dist_policy + "'"
-                
-                insertSQL = """INSERT INTO %s.%s 
-                                    VALUES ('%s','%s',%s,%s,
-                                            %s,'%s' , %d, '%s', NULL, NULL, %d)                
-                            """ % (gpexpand_schema,status_detail_table,
-                                   dbname,fqname,schema_oid,table_oid, 
-                                   dist_policy,dist_policy_name, 1, 'NOT STARTED', 
-                                   rel_bytes )
-                            
-                self.logger.info(insertSQL)
-                dbconn.execSQL(self.conn,insertSQL)
+        self.logger.info(sql)
+        curs = dbconn.execSQL(table_conn, sql)
+        rows = curs.fetchall()            
+        for row in rows:
+            fqname = row[0]
+            schema_oid = row[1]
+            table_oid = row[2]             
+            logger.warning("dist policy raw: %s " % row[3])   
+            dist_policy = row[3]
+            (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
+            ts = datetime.datetime.now()
+            rel_bytes = int(row[5])
             
-            #null out distrib policies
-            #TODO:  badness... we aren't quite transactional anymore. 
-            sql = """UPDATE pg_catalog.gp_distribution_policy SET attrnums = NULL"""
-            self.logger.debug(sql)
-            dbconn.execSQL(c,sql)
-            c.commit()
-            c.close()
-             
-        self.conn.commit()
+            if dist_policy is None:
+                dist_policy = 'NULL'
+            else:
+                dist_policy = "'" + dist_policy + "'"
+            
+                       
+            insertSQL = """INSERT INTO %s.%s 
+                                VALUES ('%s','%s',%s,%s,
+                                        %s,'%s', '%s', NULL , %d, '%s', NULL, NULL, %d)                
+                        """ % (gpexpand_schema,status_detail_table,
+                               dbname,fqname,schema_oid,table_oid, 
+                               dist_policy,policy_name,policy_oids, 1, 'NOT STARTED', 
+                               rel_bytes )
+                        
+            self.logger.info(insertSQL)
+            dbconn.execSQL(self.conn,insertSQL)    
         
-        self.statusLogger.set_status('PREPARE_EXPANSION_SCHEMA_DONE')
-        
-        return SETUP
+        #null out the dist policies
+        sql = """
+UPDATE  gp_distribution_policy 
+  SET attrnums = NULL 
+FROM pg_class c
+    JOIN pg_namespace n ON (c.relnamespace=n.oid)    
+WHERE
+    localoid = c.oid
+    AND c.oid NOT IN ( SELECT parrelid as oid FROM pg_partition
+                    UNION
+                   SELECT parchildrelid as oid FROM pg_partition_rule
+                 )
+    AND n.nspname != 'gpexpand';
+        """
+      
+        self.logger.info(sql)
+        dbconn.execSQL(table_conn,sql)
+        pass
     
+    
+    def _populate_partitioned_tables(self,dbname,table_conn):
+        """population of status_detail for partitioned tables. """
+        sql="""
+SELECT 
+    p.partitionschemaname || '.' || p.partitiontablename as fq_name,
+    n.oid as schemaoid,
+    c2.oid as tableoid,
+    d.attrnums as distributed_policy,
+    now() as last_updated,
+    pg_relation_size(p.partitionschemaname || '.' || p.partitiontablename),    
+    partitiontype,partitionlevel,partitionrank,partitionposition,
+    partitionrangestart
+FROM 
+    pg_partitions p,
+    pg_class c,
+    pg_class c2,
+    pg_namespace n,
+    pg_namespace n2,
+    gp_distribution_policy d
+WHERE 
+    p.tablename = c.relname
+    AND    d.localoid = c2.oid
+    AND p.schemaname = n.nspname
+    AND c.relnamespace = n.oid
+    AND p.partitionlevel = (select max(parlevel) FROM pg_partition WHERE parrelid = c.oid)                                
+    AND p.partitionschemaname = n2.nspname
+    AND p.partitiontablename = c2.relname
+ORDER BY tablename, c2.oid desc;
+                  """
+        self.logger.info(sql)
+        curs = dbconn.execSQL(table_conn, sql)
+        rows = curs.fetchall()            
+        for row in rows:            
+            fqname = row[0]
+            schema_oid = row[1]
+            table_oid = row[2]             
+            logger.warning("dist policy raw: %s " % row[3])   
+            dist_policy = row[3]
+            (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
+            ts = datetime.datetime.now()
+            rel_bytes = int(row[5])
+            
+            if dist_policy is None:
+                dist_policy = 'NULL'
+            else:
+                dist_policy = "'" + dist_policy + "'"
+                       
+            insertSQL = """INSERT INTO %s.%s 
+                                VALUES ('%s','%s',%s,%s,
+                                        %s,'%s', '%s', NULL , %d, '%s', NULL, NULL, %d)                
+                        """ % (gpexpand_schema,status_detail_table,
+                               dbname,fqname,schema_oid,table_oid, 
+                               dist_policy,policy_name,policy_oids, 1, 'NOT STARTED', 
+                               rel_bytes )
+                        
+            self.logger.info(insertSQL)
+            dbconn.execSQL(self.conn,insertSQL)
+        
+        sql = """
+UPDATE gp_distribution_policy
+    SET attrnums = NULL 
+    FROM 
+        ( SELECT pp.parrelid AS tableoid, 
+                 n2.nspname AS partitionschemaname, cl2.relname AS partitiontablename, 
+                 cl2.oid AS partitiontableoid, pr1.parname AS partitionname, cl3.relname AS parentpartitiontablename, pr2.parname AS parentpartitioname, 
+                    pp.parlevel AS partitionlevel, pr1.parruleord AS partitionposition                        
+               FROM pg_namespace n, pg_namespace n2, pg_class cl, pg_class cl2, pg_partition pp, pg_partition_rule pr1
+          LEFT JOIN pg_partition_rule pr2 ON pr1.parparentrule = pr2.oid
+       LEFT JOIN pg_class cl3 ON pr2.parchildrelid = cl3.oid
+      WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid
+    ) p1
+    WHERE
+    localoid = p1.partitiontableoid
+    AND p1.partitionlevel = (select max(parlevel) FROM pg_partition WHERE parrelid = p1.tableoid);
+
+"""        
+        self.logger.info(sql)
+        dbconn.execSQL(table_conn,sql)
+        pass
+ 
     
     def form_dist_policy_name(self,conn,rs_val,table_oid):        
         if rs_val is None:
-            return ""
+            return (None,None)
         rs_val=rs_val.lstrip('{').rstrip('}').strip()
         
-        dict={}
-        sql = "select attnum, attname from pg_attribute where attrelid =  %s and attnum > 0" % table_oid
+        namedict={}
+        oiddict={}
+        sql = "select attnum, attname, attrelid from pg_attribute where attrelid =  %s and attnum > 0" % table_oid
         cursor = dbconn.execSQL(conn,sql)
         for row in cursor:            
-            dict[row[0]] = row[1]
+            namedict[row[0]] = row[1]
+            oiddict[row[0]] = row[2]
         
-        list=[]
+        name_list=[]
+        oid_list=[]
         
         if rs_val != "":
             rs_list=rs_val.split(',')            
 
             for colnum in rs_list:                
-                list.append(dict[int(colnum)])
+                name_list.append(namedict[int(colnum)])
+                oid_list.append(str(oiddict[int(colnum)]))
         
-        return ' , '.join(list)
+        return (' , '.join(name_list),' , '.join(oid_list))
         
         
         
@@ -1046,19 +1155,20 @@ class ExpandTable():
     def __init__(self,row=None):
         if row is not None:
             (self.dbname,self.fq_name,self.schema_oid,self.table_oid,
-             self.distrib_policy,self.distrib_policy_names,self.rank,
-             self.status,self.expansion_started,
-             self.expansion_finished,self.source_bytes) = row
+             self.distrib_policy,self.distrib_policy_names,self.distrib_policy_coloids,
+             self.storage_options,self.rank,self.status,
+             self.expansion_started,self.expansion_finished,
+             self.source_bytes) = row
     
     
     def add_table(self,conn):
         insertSQL = """INSERT INTO %s.%s 
                             VALUES ('%s','%s',%s,%s,
-                                    '%s','%s',%d,'%s','%s','%s',%d)                
+                                    '%s','%s','%s','%s',%d,'%s','%s','%s',%d)                
                     """ % (gpexpand_schema,status_detail_table,
                            self.dbname,self.fq_name,self.schema_oid,self.table_oid, 
-                           self.dist_policy,self.dist_policy_names,self.rank,
-                           self.status,
+                           self.dist_policy,self.dist_policy_names,self.distrib_policy_coloids,
+                           self.storage_options,self.rank,self.status,
                            self.expansion_started,self.expansion_finished,
                            self.source_bytes )
         logger.info(insertSQL)
@@ -1109,12 +1219,11 @@ class ExpandTable():
     def expand(self,table_conn):
         foo = self.distrib_policy_names.strip()
         
-        if foo == "":
-            sql = "ALTER TABLE %s SET DISTRIBUTED RANDOMLY" % (self.fq_name)
-            logger.warning("FOR NOW WE CANT SUPPORT THESE")
-            return
+        logger.info("distrib policy for table: %s is '%s' " % (self.fq_name,foo))
+        if foo == "" or foo == "None" or foo is None:
+            sql = "ALTER TABLE ONLY %s SET DISTRIBUTED RANDOMLY" % (self.fq_name)                        
         else:
-            sql = " ALTER TABLE %s SET DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
+            sql = " ALTER TABLE ONLY %s SET DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
         logger.info("Expand SQL: %s" % sql)    
         dbconn.execSQL(table_conn,sql)
         table_conn.commit()
@@ -1288,7 +1397,7 @@ try:
         logger.error('gexpand ' + ' '.join(sys.argv[1:]))
         sys.exit(1)
         
-    statusLogger = GpExpandStatus(options.master_data_directory, gparray.standbyMaster)
+    statusLogger = GpExpandStatus(logger, options.master_data_directory, gparray.standbyMaster)
     
     gp_expand = gpexpand(logger,statusLogger,dburl,parallel=options.parallel)   
     
