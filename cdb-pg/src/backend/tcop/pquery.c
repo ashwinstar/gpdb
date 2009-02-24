@@ -313,37 +313,38 @@ ProcessQuery(Portal portal,
 		}
 	}
 
-	/*
-	 * MPP-4145: truncate using saved Oid from earlier.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH && OidIsValid(truncOid))
-	{
-		TruncateStmt *truncStmt = NULL;
-		RangeVar   *truncRel;
-		char	*schemaName;
-		char	*relName;
-
-		truncStmt = makeNode(TruncateStmt);
-		truncStmt->behavior = DROP_RESTRICT; /* don't cascade */
-		truncStmt->relations = NIL;
-
-		schemaName = get_namespace_name(get_rel_namespace(truncOid));
-		relName = get_rel_name(truncOid);
-		if (schemaName != NULL && relName != NULL)
-		{
-			elog(DEBUG1, "converting delete into truncate on %s.%s", schemaName, relName);
-
-			/* we need a list of RangeVars */
-			truncRel = makeRangeVar(get_namespace_name(get_rel_namespace(truncOid)), get_rel_name(truncOid));
-			truncStmt->relations = lappend(truncStmt->relations, truncRel);
-
-			ExecuteTruncate(truncStmt);
-		}
-	}
-	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		RangeTblEntry * rte = NULL;
+
+		/*
+		 * MPP-4145: truncate using saved Oid from earlier.
+		 */
+		if (OidIsValid(truncOid))
+		{
+			TruncateStmt *truncStmt = NULL;
+			RangeVar   *truncRel;
+			char	*schemaName;
+			char	*relName;
+
+			truncStmt = makeNode(TruncateStmt);
+			truncStmt->behavior = DROP_RESTRICT; /* don't cascade */
+			truncStmt->relations = NIL;
+
+			schemaName = get_namespace_name(get_rel_namespace(truncOid));
+			relName = get_rel_name(truncOid);
+			if (schemaName != NULL && relName != NULL)
+			{
+				elog(DEBUG1, "converting delete into truncate on %s.%s", schemaName, relName);
+
+				/* we need a list of RangeVars */
+				truncRel = makeRangeVar(get_namespace_name(get_rel_namespace(truncOid)), get_rel_name(truncOid));
+				truncStmt->relations = lappend(truncStmt->relations, truncRel);
+
+				ExecuteTruncate(truncStmt);
+			}
+		}
+	
 		switch (parsetree->commandType)
 		{
 			case CMD_SELECT:
@@ -372,29 +373,24 @@ ProcessQuery(Portal portal,
 			default:
 				break;
 		}
+
+		/* MPP-4407. Logging number of tuples modified. */
+		if (relationOid != InvalidOid)
+		{
+			if (cmdType < AUTOSTATS_CMDTYPE_SENTINEL &&			
+				GetCommandLogLevel((Node *) parsetree) <= log_statement)
+			{
+				elog(LOG, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
+					 autostats_cmdtype_to_string(cmdType), 
+					 MyDatabaseId, 
+					 relationOid, 
+					 (unsigned int) queryDesc->es_processed);
+			}
+
+			/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
+			auto_stats(cmdType, relationOid, queryDesc->es_processed);
+		}
 	}
-
-	/* MPP-4407. Logging number of tuples modified. */
-	if (Gp_role == GP_ROLE_DISPATCH 
-			&& cmdType < AUTOSTATS_CMDTYPE_SENTINEL
-			&& relationOid != InvalidOid 
-			&& GetCommandLogLevel((Node *) parsetree) <= log_statement
-			)
-	{
-		elog(LOG, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
-				autostats_cmdtype_to_string(cmdType), 
-				MyDatabaseId, 
-				relationOid, 
-				(unsigned int) queryDesc->es_processed);
-	}
-
-    /* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
-	if (Gp_role == GP_ROLE_DISPATCH 
-			&& relationOid != InvalidOid) 
-	{
-		auto_stats(cmdType, relationOid, queryDesc->es_processed);
-	} /* end auto-stats block */
-
 
 	FreeQueryDesc(queryDesc);
 
