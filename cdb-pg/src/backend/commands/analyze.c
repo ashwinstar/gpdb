@@ -1274,7 +1274,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 				{
 					pgstat_stats = (VPgStatisticStats *)tmp_stats;
 
-					if (pgstat_stats->attno - 1 == attno)
+					if (pgstat_stats->attno == stats->attr->attnum)
 					{
 						pgstat = &(pgstat_stats->pgstat);
 						break;
