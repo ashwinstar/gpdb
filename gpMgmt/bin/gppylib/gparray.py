@@ -270,8 +270,11 @@ class GpArray:
         """Return a list of all GpDb objects that make up the array"""
         list=[]
         list.append(self.master)
-        if self.standbyMaster is not None:
-            list.append(self.standbyMaster)
+        list.extend(self.getSegDbList())        
+        return list
+    
+    def getSegDbList(self):
+        list=[]
         for seg in self.segments:
             list.extend(seg.get_dbs())
         return list

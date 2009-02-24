@@ -38,7 +38,7 @@ def parseargs():
     
     #-n sanity check
     if options.numsegs <= 0:
-        raise Exception('Invalid numsegs arg')
+        raise Exception("Invalid numsegs arg: '%s'" % options.numsegs)
         
     if options.content < 0:
         raise Exception('Invalid contentid arg')

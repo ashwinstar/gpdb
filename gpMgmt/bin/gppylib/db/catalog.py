@@ -219,6 +219,44 @@ class GpVersionAtInitdbTable(CatalogTable):
 
 
 
+class GpConfigurationTable(CatalogTable):
+    """pg_catalog.gp_configuration
+    
+template1=# \d gp_configuration
+  Table "pg_catalog.gp_configuration"
+     Column     |   Type   | Modifiers 
+----------------+----------+-----------
+ content        | smallint | not null
+ definedprimary | boolean  | not null
+ dbid           | smallint | not null
+ isprimary      | boolean  | not null
+ valid          | boolean  | not null
+ hostname       | name     | not null
+ port           | integer  | not null
+ datadir        | text     | 
+Indexes:
+    "gp_configuration_content_definedprimary_index" UNIQUE, btree (content, definedprimary), tablespace "pg_global"
+    "gp_configuration_dbid_index" UNIQUE, btree (dbid), tablespace "pg_global"
+Tablespace: "pg_global"
+
+    """
+    
+    
+    @staticmethod
+    def addRows(conn,segments):
+        try:
+            cursor=conn.cursor()
+            
+            for seg in segments:
+                sql = """INSERT INTO pg_catalog.gp_configuration(content, definedprimary, dbid, isprimary,                 
+                                                                valid, hostname, port, datadir)
+                         VALUES (%d, \'%s\', %d, \'%s\', \'t\', \'%s\', %d, \'%s\')
+                """ % (seg.content, seg.definedprimary,seg.dbid, seg.isprimary,seg.hostname,
+                       seg.port, seg.datadir)
+                cursor.execute(sql)
+            conn.commit()
+        finally:
+            if cursor: cursor.close()        
 #TODO:
 class GpMasterMirroring(CatalogTable):  pass
 class GpDistributionPolicy(CatalogTable): pass
