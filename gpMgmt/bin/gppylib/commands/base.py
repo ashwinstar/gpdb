@@ -86,10 +86,13 @@ class WorkerPool:
             while True:
                 item=self.completed_queue.get(False)
                 if not item.get_results().wasSuccessful():
-                    raise  ExecutionError("",item)           
+                    raise  ExecutionError("Error",item)           
         except Empty:
             return      
-            
+    
+    def empty_completed_items(self):
+        while not self.completed_queue.empty():
+            self.completed_queue.get(False)         
         
 
     def isDone(self):
@@ -245,13 +248,13 @@ REMOTE=2
 RMI=3
 
         
-def createExecutionContext(execution_context_id,remoteHost):
+def createExecutionContext(execution_context_id,remoteHost,stdin):
         if execution_context_id == LOCAL:
-            return LocalExecutionContext()
+            return LocalExecutionContext(stdin)
         elif execution_context_id == REMOTE:
             if remoteHost is None:
                 raise Exception("Programmer Error.  Specified REMOTE execution context but didn't provide a remoteHost")
-            return RemoteExecutionContext(remoteHost)
+            return RemoteExecutionContext(remoteHost,stdin)
         elif execution_context+id == RMI:
             return RMIExecutionContext()
         
@@ -279,14 +282,18 @@ class LocalExecutionContext(ExecutionContext):
     halt=False
     completed=False
     
-    def __init__(self):
+    def __init__(self,stdin):
+        self.stdin = stdin
         pass
     
     def execute(self,cmd):
-        self.proc = gpsubprocess.Popen(cmd.cmdStr, env=None, shell=True, stderr=subprocess.PIPE, 
+        
+        self.proc = gpsubprocess.Popen(cmd.cmdStr, env=None, shell=True, 
+                                       stdin=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, 
                                        stdout=subprocess.PIPE, close_fds=True)
         
-        (rc,stdout_value,stderr_value)=self.proc.communicate2()
+        (rc,stdout_value,stderr_value)=self.proc.communicate2(input=self.stdin)
         self.completed=True
          
         cmd.set_results(CommandResult(rc,"".join(stdout_value),"".join(stderr_value),self.completed,self.halt))
@@ -304,8 +311,9 @@ class LocalExecutionContext(ExecutionContext):
     
 class RemoteExecutionContext(LocalExecutionContext):
     
-    def __init__(self,targetHost):
+    def __init__(self,targetHost,stdin):
         self.targetHost=targetHost
+        self.stdin = stdin
         pass
     
     def execute(self,cmd):
@@ -353,10 +361,10 @@ class Command:
     exec_context=None
     
     
-    def __init__(self,name,cmdStr,ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,cmdStr,ctxt=LOCAL,remoteHost=None,stdin=None):
         self.name=name
         self.cmdStr=cmdStr        
-        self.exec_context=createExecutionContext(ctxt,remoteHost)
+        self.exec_context=createExecutionContext(ctxt,remoteHost,stdin=stdin)
         self.remoteHost=remoteHost
         
 

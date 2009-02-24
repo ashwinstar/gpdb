@@ -18,10 +18,6 @@ logger = get_default_logger()
 
 
 
-def checkPostgresBinaryVersion():
-    #TODO:
-    pass
-
 
 
 #----------------------- postgresql.conf ----------------------
@@ -64,7 +60,43 @@ class InitDB(Command):
         cmd=InitDB(name,db,ctxt=REMOTE,remoteHost=host)
         cmd.run(validateAfter=True) 
 
+
+
+
+
+class ReadPostmasterTempFile(Command):
+    def __init__(self,name,port,ctxt=LOCAL,remoteHost=None):
+        self.port=port
+        self.cmdStr="cat /tmp/.s.PGSQL.%s.lock" % port
+        print self.cmdStr
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)        
+    
+    def validate(self):
+        if not self.results.completed or self.results.halt:
+            raise ExecutionError("Command did not complete successfully rc: %d" % self.results.rc, self)   
+    
+    def getResults(self):
+        if self.results.stderr.find("No such file or directory") != -1:
+            return (False,-1,None)
         
+        PID=int(self.results.stdout.split()[0])
+        datadir = self.results.stdout.split()[1]
+        
+        return (True,PID,datadir)
+    
+
+    @staticmethod
+    def local(name,db):
+        cmd=ReadPostmasterTempFile(name,db)
+        cmd.run(validateAfter=True)
+        return cmd
+        
+                
+    @staticmethod
+    def remote(name,db,host):
+        cmd=ReadPostmasterTempFile(name,db,ctxt=REMOTE,remoteHost=host)
+        cmd.run(validateAfter=True)
+ 
 
 
 

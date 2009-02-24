@@ -22,8 +22,9 @@ GPHOME=os.environ.get('GPHOME')
 
 def check_passive_standby(name,dir):
     cmd=FileContainsTerm(name,'gpsync',"%s/postmaster.opts" % dir)
-    cmd.run(validateAfter=True)
+    cmd.run(validateAfter=False)
     return cmd.contains_term()
+
 
 def get_max_dbid(name,conn):
     try:
@@ -43,6 +44,22 @@ class PySync(Command):
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
+
+class MasterStart(Command):
+    def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
+        self.dataDir=dataDir
+        self.port=port
+        self.utilityMode=utilityMode
+        if utilityMode:
+            cmdStr="%s -w -D %s -l %s.log -o \"-i -p %s \" start" % ("pg_ctl",dataDir,dataDir,port)
+        else:
+            cmdStr="%s -w -D %s -l %s.log -o \"-i -p %s -c gp_role=utility\" start" % ("pg_ctl",dataDir,dataDir,port)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def local(name,dataDir,port,utilityMode=False):
+        cmd=MasterStart(name,datadir,port,utilityMode)        
+        cmd.run(validateAfter=True)
         
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
@@ -60,13 +77,28 @@ class SegmentStop(Command):
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
+class GpInitSystem(Command):
+    def __init__(self,name,configFile,hostsFile, ctxt=LOCAL, remoteHost=None):
+        self.configFile=configFile
+        self.hostsFile=hostsFile
+        self.cmdStr="gpinitsystem -a -c %s -h %s" % (configFile,hostsFile)
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
+
+
+class GpDeleteSystem():
+    def __init__(self,name,datadir, ctxt=LOCAL, remoteHost=None):
+        self.datadir=datadir
+        self.input="y\ny\n"
+        self.cmdStr="gpdeletesystem -d %s -f " % (datadir)
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost,stdin=self.input)
+
 
 class GpStart(Command):
     def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
-        cmdStr="gpstart -a"
+        self.cmdStr="gpstart -a"
         if masterOnly:
-            cmdStr += " -m"
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+            self.cmdStr += " -m"
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
     def local(name,masterOnly=False):
@@ -76,10 +108,10 @@ class GpStart(Command):
            
 class GpStop(Command):
     def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
-        cmdStr="gpstop -af"
+        self.cmdStr="gpstop -af"
         if masterOnly:
-            cmdStr += " -m"
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+            self.cmdStr += " -m"
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     @staticmethod
     def local(name,masterOnly=False):
         cmd=GpStop(name,masterOnly)
@@ -140,4 +172,71 @@ def distribute_tarball(queue,list,tarball):
         queue.join()        
         queue.check_results()        
         logger.debug("distributeTarBall finished")
+
+
+
+#=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
+# these match names from gp_bash_functions.sh
+def chk_gpdb_id():
+    
+    #TODO: make sure that our user is the same one that owns the GP binaries.
+    #TODO: make sure that our group is the same group that owns the GP binaries
+    
+    #TODO:  that the USER variable is set.
+    
+    
+    pass        
+
+def chk_local_db_running(datadir,port):
+    """Perform a few checks to see if the db is running.  We 1st look at:
+       1) /tmp/.s.PGSQL.<PORT> and /tmp/.s.PGSQL.<PORT>.lock
+       2) DATADIR/postmaster.pid
+       3) netstat 
        
+       - if all 3 are negative we say no.       
+       - if all 3 are positive we say yes.       
+       - if they don't all agree then we throw an Error
+    
+    """    
+    cmd=unix.FileDirExists('check for master PID file',datadir + '/postmaster.pid')
+    cmd.run(validate=True)    
+    master_pid_exists = cmd.filedir_exists()
+    
+    cmd=unix.FileDirExists('check for /tmp/.s.PGSQL file file',"/tmp/.s.PGSQL.%s" % port)
+    cmd.run(validate=True)    
+    tmpfile_exists = cmd.filedir_exists()
+        
+    netstat_port_active = unix.PgPortIsActive.local('check netstat for master port',"/tmp/s.PGSQL.%s" % port, port)
+
+    
+    if master_pid_exists and tmpfile_exists and netstat_port_active:
+        return True
+    if not master_pid_exists and not tmpfile_exists and not netstat_port_active:
+        return False
+    
+    msg="Not sure if database is running in datadir %s on port %s.\n" % (datadir,port)
+    
+    if master_pid_exists:
+        msg += "Found a PID file in %s/postmaster.pid\n" % datadir
+    else:
+        msg += "Did not find a PID file in %s/postmaster.pid\n" % datadir
+    
+    if tmpfile_exists:
+        msg += "Found a tmpfile in /tmp/.s.PGSQL.%s" % port
+    else:
+        msg += "Did not find a tmpfile in /tmp/.s.PGSQL.%s" % port
+        
+    if netstat_port_active:
+        msg += "Found a netstat entry for .s.PGSQL.%s" % port
+    else:
+        msg += "Did not find a netstat entry for .s.PGSQL.%s" % port
+        
+    raise Error(msg)
+                
+
+    
+
+            
+    
+    
+    

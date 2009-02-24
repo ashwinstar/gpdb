@@ -334,8 +334,58 @@ class RemoveFiles(Command):
     def remote(name,remote_host,directory):
         rmCmd=RemoveFiles(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         rmCmd.run(validateAfter=True) 
-    
 
+
+#-------------file and dir existence -------------
+class PathIsDirectory(Command):
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
+        self.directory=directory
+        self.cmdStr="""python -c "import os; print os.path.isdir('%s')" """ % directory
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def remote(name,remote_host,directory):
+        cmd=PathIsDirectory(name,directory,ctxt=REMOTE,remoteHost=remote_host)
+        cmd.run(validateAfter=True) 
+        return cmd.isDir() 
+        
+    def isDir(self):
+        return bool (self.results.stdout.strip())
+
+
+
+class FileDirExists(Command):
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
+        self.directory=directory
+        cmdStr="""python -c import os; return os.path.exists('%s') """ % directory
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def remote(name,remote_host,directory):
+        cmd=FileDirExists(name,directory,ctxt=REMOTE,remoteHost=remote_host)
+        cmd.run(validateAfter=True)
+        return cmd.filedir_exists()
+    
+    def filedir_exists(self):
+        return bool (self.results.stdout.strip())
+    
+        
+class DirectoryIsEmpty(Command):
+    def __init(self,name,directory,ctxt=LOCAL,remoteHost=None):
+        self.directory=directory
+        self.cmdStr="""python -c "import os; for root, dirs, files in os.walk('%s'); return (len(dirs) != 0 or len(files) != 0) """ % self.directory
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def remote(name,remote_host,directory):
+        cmd=DirectoryIsEmpty(name,directory,ctxt=REMOTE,remoteHost=remote_host)
+        cmd.run(validateAfter=True)
+        return cmd.isEmpty()
+    
+    def isEmpty(self):
+        return bool (self.results.stdout.strip())    
+             
+        
 #-------------scp------------------
 class RemoteCopy(Command):
     def __init__(self,name,srcDirectory,dstHost,dstDirectory,ctxt=LOCAL,remoteHost=None):
@@ -421,7 +471,41 @@ class FileContainsTerm(Command):
             return False
         else:
             return True
-
+#--------------tcp port is active -----------------------
+class PgPortIsActive(Command):
+    def __init__(self,name,port,file,ctxt=LOCAL, remoteHost=None):
+        cmdStr="%s -an 2>/dev/null | %s %s | %s '{print $NF}'" % (findCmdInPath('netstat'),file,findCmdInPath('grep'),findCmdInPath('awk'))
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost) 
+    
+    def contains_port(self):
+        rows=self.results.stdout.strip().split()
+        
+        if len(rows) == 0:
+            return False
+        
+        for r in rows:
+            val = r.split('.')
+            netstatport = int(val[ len(val) - 1 ])
+            
+            if netstatport == port:
+                return True
+            
+        return False
+            
+    @staticmethod
+    def local(name,file,port):
+        cmd=PgPortIsActive(name,name)
+        cmd.run(validateAfter=True)
+        return cmd.contains_port()
+            
+    @staticmethod
+    def remote(name,file,port):
+        cmd=PgPortIsActive(name,name,ctxt=REMOTE,remoteHost=remote_host)        
+        cmd.run(validateAfter=True)
+        return cmd.contains_port()
+        
+        
+    
 #--------------chmod ----------------------
 class Chmod(Command):
     def __init__(self, name, dir, perm, ctxt=LOCAL, remoteHost=None):
