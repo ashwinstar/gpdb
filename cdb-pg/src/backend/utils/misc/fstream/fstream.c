@@ -15,36 +15,46 @@
 
 typedef struct
 {
-	int gl_pathc;
-	char **gl_pathv;
+	int 	gl_pathc;
+	char**	gl_pathv;
 } glob_and_copy_t;
 
 struct fstream_t
 {
 	glob_and_copy_t glob;
-	gfile_t fd;
-	int fidx; /* current index in ffd[] */
-	int64_t foff; /* current offset in ffd[fidx] */
-	int64_t line_number;
-	int64_t compressed_size;
-	int64_t compressed_position;
-	int fskip; /* skip first line */
-	const char *ferror; /* error string */
+	gfile_t 		fd;
+	int 			fidx; /* current index in ffd[] */
+	int64_t 		foff; /* current offset in ffd[fidx] */
+	int64_t 		line_number;
+	int64_t 		compressed_size;
+	int64_t 		compressed_position;
+	int 			skip_header_line;
+	int 			buffer_size;
+	const char*		ferror; /* error string */
 	struct fstream_options options;
-	int buffer_size;
-	char buffer[FSTREAM_BLOCKSIZE];
+	char 			buffer[FSTREAM_BLOCKSIZE];
 };
 
+/*
+ * glob_and_copy
+ *
+ * Given a pattern, glob it and populate pglob with the results that match it.
+ * For example, if 'pattern' equals '/somedir/<asterisk>.txt' and the filesystem has
+ * 2 .txt files inside of somedir, namely 1.txt and 2.txt, then the result is:
+ * g.gl_pathc = 2
+ * g.gl_pathv[0] =  '/somedir/1.txt'
+ * g.gl_pathv[1] =  '/somedir/2.txt'
+ */
 static int glob_and_copy(const char *pattern, int flags, int(*errfunc)(
 						 const char *epath, int eerno), glob_and_copy_t *pglob)
 {
 	glob_t 	g;
 	int 	i = glob(pattern, flags, errfunc, &g), j;
-	
+
 	if (!i)
 	{
 		char **a = gfile_malloc(sizeof *a * (pglob->gl_pathc + g.gl_pathc));
-		
+
 		if (!a)
 			i = GLOB_NOSPACE;
 		else
@@ -67,21 +77,26 @@ static int glob_and_copy(const char *pattern, int flags, int(*errfunc)(
 				pglob->gl_pathc++;
 			}
 		}
-		
+
 		globfree(&g);
 	}
 	return i;
 }
 
+/*
+ * glob_and_copyfree
+ *
+ * free memory allocated in pglob.
+ */
 static void glob_and_copyfree(glob_and_copy_t *pglob)
 {
 	if (pglob->gl_pathv)
 	{
 		int i;
-		
+
 		for (i = 0; i < pglob->gl_pathc; i++)
 			gfile_free(pglob->gl_pathv[i]);
-		
+
 		gfile_free(pglob->gl_pathv);
 		pglob->gl_pathc = 0;
 		pglob->gl_pathv = 0;
@@ -94,21 +109,36 @@ fstream_get_error(fstream_t*fs)
 	return fs->ferror;
 }
 
-/* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
+/*
+ * scan_csv_records
+ *
+ * Scan the data in [p, q) according to the csv parsing rules. Return as many
+ * complete csv records as possible. However, if 'one' was passed in, return the
+ * first complete record only.
+ *
+ * We need this function for gpfdist because until 'text' format we can't just
+ * peek at the line newline in the buffer and send the whole data chunk to the
+ * server. That is because it may be inside a quote. We have to carefully parse
+ * the data from the start in order to find the last unquoted newline.
+ *
+ */
 static char*
-scan_rec(char *p, char *q, int one, fstream_t *fs)
+scan_csv_records(char *p, char *q, int one, fstream_t *fs)
 {
-	int 	in_quote = 0, last_was_esc = 0;
-	char	*last_complete = 0;
+	int 	in_quote = 0;
+	int 	last_was_esc = 0;
 	int 	qc = fs->options.quote;
 	int 	xc = fs->options.escape;
+	char*	last_record_loc = 0;
 	int64_t line_number = fs->line_number;
-	
+
 	while (p < q)
 	{
 		int ch = *p++;
+
 		if (ch == '\n')
 			line_number++;
+
 		if (in_quote)
 		{
 			if (!last_was_esc)
@@ -123,7 +153,7 @@ scan_rec(char *p, char *q, int one, fstream_t *fs)
 		}
 		else if (ch == '\n')
 		{
-			last_complete = p;
+			last_record_loc = p;
 			fs->line_number = line_number;
 			if (one)
 				break;
@@ -131,7 +161,8 @@ scan_rec(char *p, char *q, int one, fstream_t *fs)
 		else if (ch == qc)
 			in_quote = 1;
 	}
-	return last_complete;
+
+	return last_record_loc;
 }
 
 /* close the file stream */
@@ -145,11 +176,11 @@ void fstream_close(fstream_t* fs)
 static int fpath_all_directories(const glob_and_copy_t *glob)
 {
 	int i;
-	
+
 	for (i = 0; i < glob->gl_pathc; i++)
 	{
 		const char	*a = glob->gl_pathv[i];
-		
+
 		if (!*a || a[strlen(a) - 1] != '/')
 			return 0;
 	}
@@ -160,33 +191,33 @@ static int expand_directories(fstream_t *fs)
 {
 	glob_and_copy_t g;
 	int 			i, j;
-	
+
 	memset(&g, 0, sizeof g);
-	
+
 	for (i = 0; i < fs->glob.gl_pathc; i++)
 	{
-		const char*a = fs->glob.gl_pathv[i];
-		char*b = gfile_malloc(2 * strlen(a) + 2), *c;
-		
+		const char* a = fs->glob.gl_pathv[i];
+		char* b = gfile_malloc(2 * strlen(a) + 2), *c;
+
 		if (!b)
 		{
 			gfile_printf_then_putc_newline("fstream out of memory");
 			glob_and_copyfree(&g);
 			return 1;
 		}
-		
-		for (c = b; *a; a++)
+
+		for (c = b ; *a ; a++)
 		{
 			if (*a == '?' || *a == '*' || *a == '[')
 				*c++ = '\\';
 			*c++ = *a;
 		}
-		
+
 		*c++ = '*';
 		*c++ = 0;
 		j = glob_and_copy(b, 0, 0, &g);
 		gfile_free(b);
-		
+
 		if (j == GLOB_NOMATCH)
 			gfile_printf_then_putc_newline("fstream %s is empty directory",
 					fs->glob.gl_pathv[i]);
@@ -197,7 +228,7 @@ static int expand_directories(fstream_t *fs)
 			return 1;
 		}
 	}
-	
+
 	glob_and_copyfree(&fs->glob);
 	fs->glob = g;
 	return 0;
@@ -206,70 +237,95 @@ static int expand_directories(fstream_t *fs)
 static int glob_path(fstream_t *fs, const char *path)
 {
 	char	*path2 = gfile_malloc(strlen(path) + 1);
-	
+
 	if (!path2)
 	{
 		gfile_printf_then_putc_newline("fstream out of memory");
 		return 1;
 	}
-	
+
 	path = strcpy(path2, path);
-	
+
 	do
 	{
-		char*p;
+		char*	p;
+
 		while (*path == ' ')
 			path++;
+
 		p = strchr(path, ' ');
+
 		if (p)
 			*p++ = 0;
-		if (*path
-				&& glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
+
+		if (*path &&
+			glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
 		{
 			gfile_printf_then_putc_newline("fstream glob failed");
 			return 1;
 		}
 		path = p;
 	} while (path);
-	
+
 	gfile_free(path2);
-	
+
 	return 0;
 }
 
-/* alloc a new file stream */
+/*
+ * fstream_open
+ *
+ * Allocate a new file stream given a path (a url). in case of wildcards,
+ * expand them here. we end up with a final list of files and include them
+ * in our filestream that we return.
+ *
+ * In case of errors we set the proper http response code to send to the client.
+ */
 fstream_t*
 fstream_open(const char *path, const struct fstream_options *options,
 			 int *response_code, const char **response_string)
 {
 	int i;
-	fstream_t*fs;
-	
+	fstream_t* fs;
+
 	*response_code = 500;
 	*response_string = "Internal Server Error";
-	
+
 	if (0 == (fs = gfile_malloc(sizeof *fs)))
 	{
 		gfile_printf_then_putc_newline("fstream out of memory");
 		return 0;
 	}
-	
+
 	memset(fs, 0, sizeof *fs);
 	fs->options = *options;
-	
+
+	/*
+	 * get a list of all files that were requested to be read and include them
+	 * in our fstream. This includes any wildcard pattern matching.
+	 */
 	if (glob_path(fs, path))
 	{
 		fstream_close(fs);
 		return 0;
 	}
-	
+
+	/*
+	 * If the list of files in our filestrem includes a directory name, expand
+	 * the directory and add all the files inside of it.
+	 */
 	if (fpath_all_directories(&fs->glob))
+	{
 		if (expand_directories(fs))
 		{
 			fstream_close(fs);
 			return 0;
 		}
-	
+	}
+
+	/*
+	 * check if we don't have any matching files
+	 */
 	if (fs->glob.gl_pathc == 0)
 	{
 		gfile_printf_then_putc_newline("fstream bad path: %s", path);
@@ -278,11 +334,15 @@ fstream_open(const char *path, const struct fstream_options *options,
 		*response_string = "Not Found";
 		return 0;
 	}
-	
+
+	/*
+	 * check READ access right for all files, and then close them. Leave the
+	 * first file opened
+	 */
 	for (i = fs->glob.gl_pathc; --i >= 0;)
 	{
 		gfile_close(&fs->fd);
-		/* check READ access right */
+
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], response_code,
 				response_string))
 		{
@@ -291,17 +351,22 @@ fstream_open(const char *path, const struct fstream_options *options,
 			fstream_close(fs);
 			return 0;
 		}
+
 		fs->compressed_size += gfile_get_compressed_size(&fs->fd);
-		/* leave the first file opened */
 	}
-	
+
 	fs->line_number = 1;
-	fs->fskip = options->header;
-	
+	fs->skip_header_line = options->header;
+
 	return fs;
 }
 
-static void fillFo(fstream_t*fs, struct fstream_filename_and_offset*fo)
+/*
+ * Updates the currently used filename and line number and offset. Since we
+ * may be reading from more than 1 file, we need to be up to date all the time.
+ */
+static void updateCurFileState(fstream_t* fs,
+							   struct fstream_filename_and_offset* fo)
 {
 	if (fo)
 	{
@@ -312,20 +377,29 @@ static void fillFo(fstream_t*fs, struct fstream_filename_and_offset*fo)
 	}
 }
 
+/*
+ * nextFile
+ *
+ * open the next source file, if any.
+ *
+ * return 1 if could not open the next file.
+ * return 0 otherwise.
+ */
 static int nextFile(fstream_t*fs)
 {
 	int response_code;
 	const char	*response_string;
-	
+
 	fs->compressed_position += gfile_get_compressed_size(&fs->fd);
 	gfile_close(&fs->fd);
 	fs->foff = 0;
 	fs->line_number = 1;
 	fs->fidx++;
-	
+
 	if (fs->fidx < fs->glob.gl_pathc)
 	{
-		fs->fskip = fs->options.header;
+		fs->skip_header_line = fs->options.header;
+
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], &response_code,
 				&response_string))
 		{
@@ -335,48 +409,73 @@ static int nextFile(fstream_t*fs)
 			return 1;
 		}
 	}
-	
+
 	return 0;
 }
 
+/*
+ * fstream_read
+ *
+ * Read 'size' bytes of data from the filestream into 'buffer'.
+ * If 'read_whole_lines' is specified then read up to the last logical row
+ * in the source buffer. 'fo' keeps the state (name, offset, etc) of the current
+ * filestream file we are reading from.
+ */
 int fstream_read(fstream_t *fs, void *buffer, int size,
 				 struct fstream_filename_and_offset *fo, int read_whole_lines)
 {
 	if (fs->ferror)
 		return -1;
-	
+
 	for (;;)
 	{
 		ssize_t s, t;
-		
+
 		if (!size || fs->fidx == fs->glob.gl_pathc)
 			return 0;
-		
-		if (fs->fskip)
+
+		/*
+		 * If data source has a header, we consume it now and in order to
+		 * move on to real data that follows it.
+		 */
+		if (fs->skip_header_line)
 		{
-			char*p = fs->buffer, *q = p + fs->buffer_size;
+			char* 	p = fs->buffer;
+			char* 	q = p + fs->buffer_size;
+			size_t 	len = 0;
+
 			assert(fs->buffer_size < sizeof fs->buffer);
-			s = gfile_read(&fs->fd, q, sizeof fs->buffer - fs->buffer_size);
-			
+
+			/*
+			 * read data from the source file and fill up the file stream buffer
+			 */
+			len = sizeof fs->buffer - fs->buffer_size;
+			s = gfile_read(&fs->fd, q, len);
+
 			if (s < 0)
 			{
 				fs->ferror = "cannot read file";
 				return -1;
 			}
-			
+
+			/* update the buffer size according to new byte count we just read */
 			fs->buffer_size += s;
 			q += s;
-			
+
 			if (fs->options.is_csv)
-				p = scan_rec(p, q, 1, fs);
+			{
+				/* csv header */
+				p = scan_csv_records(p, q, 1, fs);
+			}
 			else
 			{
+				/* text header */
 				for (; p < q && *p != '\n'; p++)
 					;
 				p = p < q ? p + 1 : 0;
 				fs->line_number++;
 			}
-			
+
 			if (!p)
 			{
 				if (fs->buffer_size == sizeof fs->buffer)
@@ -389,65 +488,107 @@ int fstream_read(fstream_t *fs, void *buffer, int size,
 				}
 				p = q;
 			}
-			
+
+			/*
+			 * update the filestream buffer offset to past last line read and
+			 * copy the end of the buffer (past header data) to the beginning.
+			 * we now bypassed the header data and can continue to real data.
+			 */
 			fs->foff += p - fs->buffer;
-			memmove(fs->buffer, p, fs->buffer_size = q - p);
-			fs->fskip = 0;
+			fs->buffer_size = q - p;
+			memmove(fs->buffer, p, fs->buffer_size);
+			fs->skip_header_line = 0;
 		}
-		
+
+		/*
+		 * If we need to read all the data up to the last *complete* logical
+		 * line in the data buffer (like gpfdist for example) - we choose this
+		 * path. We grab the bigger chunk we can get that includes whole lines.
+		 * Otherwise, if we just want the whole buffer we skip.
+		 */
 		if (read_whole_lines)
 		{
 			char	*p;
-			
-			assert(size>=FSTREAM_BLOCKSIZE);
+
+			assert(size >= FSTREAM_BLOCKSIZE);
+
 			s = fs->buffer_size;
-			
+
 			if (s)
 			{
+				/*
+				 * source buffer is not empty. copy the data from the beginning
+				 * up to the current length before moving on to reading more
+				 */
 				fs->buffer_size = 0;
-				fillFo(fs, fo);
+				updateCurFileState(fs, fo);
 				memcpy(buffer, fs->buffer, s);
 			}
-			
+
+			/* read more data from source file into destination buffer */
 			t = gfile_read(&fs->fd, (char*) buffer + s, size - s);
-			
+
 			if (t < 0)
 			{
 				fs->ferror = "cannot read file";
 				return -1;
 			}
-			
+
 			if (t < size - s)
 			{
+				/*
+				 * We didn't read as much as we asked for. Check why.
+				 * We could be done reading data, we may need to move
+				 * on the reading the next data file (if any).
+				 */
+
 				if (s == 0)
 				{
 					if (t == 0)
 					{
 						if (nextFile(fs))
-							return -1;
+							return -1; /* found next file but failed to open */
 						continue;
 					}
-					fillFo(fs, fo);
+					updateCurFileState(fs, fo);
 				}
+
+				/*
+				 * try to open the next file if any, and return the number of
+				 * bytes read to buffer earlier, if next file was found but
+				 * could not open return -1
+				 */
 				return nextFile(fs) ? -1 : s + t;
 			}
-			
-			fillFo(fs, fo);
-			
+
+			updateCurFileState(fs, fo);
+
+			/*
+			 * Now that we have enough data in our buffer, get a chunk of
+			 * whole rows and copy it into our filestream buffer to be sent
+			 * out later.
+			 */
 			if (fs->options.is_csv)
-				/* go slow, scan byte-by-byte for record boundary */
-				p = scan_rec(buffer, (char*) buffer + size, 0, fs);
+			{
+				/* CSV: go slow, scan byte-by-byte for record boundary */
+				p = scan_csv_records(buffer, (char*) buffer + size, 0, fs);
+			}
 			else
 			{
-				/* go fast, scan for \n for record boundary */
-				/* find the last \n from the back */
+				/*
+				 * TEXT: go fast, scan for \n for record boundary
+				 * find the last \n from the back
+				 */
 				for (p = (char*) buffer + size; (char*) buffer <= --p && *p
 						!= '\n';)
 					;
 				p = (char*) buffer <= p ? p + 1 : 0;
 				fs->line_number = 0;
 			}
-			
+
+			/*
+			 * could we not find even one complete row in this buffer? error.
+			 */
 			if (!p || (char*) buffer + size >= p + FSTREAM_BLOCKSIZE)
 			{
 				gfile_printf_then_putc_newline(
@@ -456,44 +597,55 @@ int fstream_read(fstream_t *fs, void *buffer, int size,
 				fs->ferror = "line too long in file";
 				return -1;
 			}
-			
-			memcpy(fs->buffer, p, fs->buffer_size = (char*) buffer + size - p);
+
+			/* copy the result chunk of data into our buffer and we're done */
+			fs->buffer_size = (char*) buffer + size - p;
+			memcpy(fs->buffer, p, fs->buffer_size);
 			fs->foff += p - (char*) buffer;
-			
+
 			return p - (char*) buffer;
 		}
-		
+
+		/*
+		 * if we're here it means that we just want chunks of data and don't
+		 * care if it includes whole rows or not (for example, backend url_read
+		 * code - a segdb that reads all the data that gpfdist sent to it,
+		 * buffer by buffer and then parses the lines internally).
+		 */
+
 		if (fs->buffer_size)
 		{
-			fillFo(fs, fo);
+			updateCurFileState(fs, fo);
 			s = fs->buffer_size;
 			if (s > size)
 				s = size;
-			
+
 			memcpy(buffer, fs->buffer, s);
-			memmove(fs->buffer, fs->buffer + s, fs->buffer_size -= s);
+			fs->buffer_size -= s;
+			memmove(fs->buffer, fs->buffer + s, fs->buffer_size);
+
 			fs->foff += s;
 			fs->line_number = 0;
-			
+
 			return s;
 		}
-		
+
 		s = gfile_read(&fs->fd, buffer, size);
-		
+
 		if (s < 0)
 		{
 			fs->ferror = "cannot read file";
 			return -1;
 		}
-		
+
 		if (s)
 		{
-			fillFo(fs, fo);
+			updateCurFileState(fs, fo);
 			fs->foff += s;
 			fs->line_number = 0;
 			return s;
 		}
-		
+
 		if (nextFile(fs))
 			return -1;
 	}
@@ -517,20 +669,27 @@ int64_t fstream_get_compressed_position(fstream_t *fs)
 	return p;
 }
 
+/*
+ * fstream_rewind
+ *
+ * close the currently open file. open the first file in the file stream
+ * chain, reset state and start from scratch.
+ */
 int fstream_rewind(fstream_t *fs)
 {
-	int response_code;
-	const char	*response_string;
-	
+	int 		response_code;
+	const char*	response_string;
+
 	fs->fidx = 0;
 	fs->foff = 0;
 	fs->line_number = 1;
 	fs->ferror = 0;
-	fs->fskip = fs->options.header;
+	fs->skip_header_line = fs->options.header;
 	fs->buffer_size = 0;
 	fs->compressed_position = 0;
+
 	gfile_close(&fs->fd);
-	
+
 	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], &response_code,
 			&response_string))
 	{
