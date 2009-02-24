@@ -6244,7 +6244,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				n2t = (Node *)flatten_partition_val(n2t, coltypid);
 
 				n3t = transformExpr(pstate, n3);
-				n3t = (Node *)flatten_partition_val(n3t, InvalidOid);
+				n3t = (Node *)flatten_partition_val(n3t, exprType(n3t));
 
 				Assert(IsA(n3t, Const));
 				Assert(IsA(n2t, Const));
