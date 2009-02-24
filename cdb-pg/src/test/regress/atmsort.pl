@@ -1229,7 +1229,30 @@ sub format_query_output
 
     if ($has_order)
     {
-        for my $line (@{$outarr})
+        my @ggg= @{$outarr};
+
+        if ($glob_ignore_whitespace)
+        {
+           my @ggg2;
+
+           for my $line (@ggg)
+           {
+              # remove all leading, trailing whitespace (changes sorting)
+              # and whitespace around column separators
+              $line =~ s/^\s+//;
+              $line =~ s/\s+$//;
+              $line =~ s/\|\s+/\|/gm;
+              $line =~ s/\s+\|/\|/gm;
+
+              $line .= "\n" # replace linefeed if necessary
+                unless ($line =~ m/\n$/);
+
+              push @ggg2, $line;
+           } 
+           @ggg= @ggg2;
+        }
+
+        for my $line (@ggg)
         {
             print $dpref, $prefix, $line;
         }
@@ -1499,7 +1522,7 @@ EOF_formatfix
                 $ini =~ s/\s+\(seg.*pid.*\)//;
 
 				# also remove line numbers from errors
-				$ini =~ s/\s+\(.*\.[ch]:\d+\)/ (SOMEFILE:SOMEFUNC)/;
+				$ini =~ s/\s+\(\w+\.[ch]:\d+\)/ (SOMEFILE:SOMEFUNC)/;
                 my $outsize = scalar(@outarr);
 
                 my $lastguy = -1;
@@ -1574,6 +1597,11 @@ EOF_formatfix
                    # ENGINF-88: fixup explain headers
                    $outarr[-1] = "QUERY PLAN\n";
                    $ini = ("_" x length($outarr[-1])) . "\n";
+
+                   if ($glob_ignore_headers)
+                   {
+                      $ini = "GP_IGNORE:" . $ini;
+                   }
                 }
 
                 $getstatement = 0;
