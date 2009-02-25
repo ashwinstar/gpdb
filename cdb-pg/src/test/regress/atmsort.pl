@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2007, 2008, 2009
+# copyright (c) 2007, 2008, 2009 GreenPlum.  All rights reserved.  
 # Author: Jeffrey I Cohen
 #
 #
@@ -316,6 +316,8 @@ my $glob_ignore_headers;
 my $glob_ignore_whitespace;
 my $glob_init;
 
+my $glob_verbose;
+
 # array of "expected" rows from first query of equiv region
 my $equiv_expected_rows;
 
@@ -326,6 +328,8 @@ BEGIN
     $glob_ignore_headers      = 0;
     $glob_ignore_whitespace   = 0;
     $glob_init                = 0;
+
+	$glob_verbose             = 0;
 }
 
 BEGIN {
@@ -336,12 +340,14 @@ BEGIN {
     my $do_equiv;
     my $ignore_headers;
     my $init_file;
+    my $verbose;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
                'gpd_ignore_headers|gp_ignore_headers|ignore_headers' => \$ignore_headers,
                'gpd_init|gp_init|init:s' => \$init_file,
-               'do_equiv:s' => \$do_equiv
+               'do_equiv:s' => \$do_equiv,
+		        'verbose' => \$verbose
                )
         or pod2usage(2);
 
@@ -379,6 +385,8 @@ BEGIN {
     $glob_ignore_whitespace   = $ignore_headers; # XXX XXX: for now
 
     $glob_init      		  = $init_file;
+
+    $glob_verbose      		  = $verbose;
 
 }
 
@@ -468,7 +476,13 @@ sub _build_match_subs
 
             # store the function pointer and the text of the function
             # definition
-            push @{$glob_match_then_sub_fnlist}, [$fn1, $bigdef, $cmt];
+            push @{$glob_match_then_sub_fnlist}, 
+			[$fn1, $bigdef, $cmt, $defi->[0], $defi->[1]];
+
+			if ($glob_verbose)
+			{
+				print "GP_IGNORE: Defined $cmt\t$defi->[0]\t$defi->[1]\n"
+			}
         }
         else
         {
@@ -499,8 +513,8 @@ BEGIN
     $here_matchsubs = << 'EOF_matchsubs';
 
 # some cleanup of greenplum-specific messages
-m/\s+\(seg.*pid.*\)/
-s/\s+\(seg.*pid.*\)//
+m/\s+(\W)?(\W)?\(seg.*pid.*\)/
+s/\s+(\W)?(\W)?\(seg.*pid.*\)//
 
 m/WARNING:\s+foreign key constraint \".*\" will require costly sequential scans/
 s/\".*\"/\"dummy key\"/
@@ -548,9 +562,26 @@ sub match_then_subs
 
     for my $ff (@{$glob_match_then_sub_fnlist})
     {
+
         # get the function and execute it
         my $fn1 = $ff->[0];
-        $ini = &$fn1($ini);
+		if (!$glob_verbose)
+		{
+			$ini = &$fn1($ini);
+		}
+		else
+		{
+			my $subs = &$fn1($ini);
+
+			unless ($subs eq $ini)
+			{
+				print "GP_IGNORE: was: $ini";				
+				print "GP_IGNORE: matched $ff->[-3]\t$ff->[-2]\t$ff->[-1]\n"
+			}
+
+			$ini = &$fn1($ini);
+		}
+
     }
     return $ini;
 }
@@ -607,7 +638,13 @@ sub _build_match_ignores
 
             # store the function pointer and the text of the function
             # definition
-            push @{$glob_match_then_ignore_fnlist}, [$fn1, $bigdef, $cmt];
+            push @{$glob_match_then_ignore_fnlist}, 
+			[$fn1, $bigdef, $cmt, $defi, "(ignore)"];
+			if ($glob_verbose)
+			{
+				print "GP_IGNORE: Defined $cmt\t$defi\n"
+			}
+
         }
         else
         {
@@ -684,8 +721,14 @@ sub match_then_ignore
         # get the function and execute it
         my $fn1 = $ff->[0];
 
-        return 1 # matched
-            if (&$fn1($ini));
+		if (&$fn1($ini))
+		{
+			if ($glob_verbose)
+			{
+				print "GP_IGNORE: matched $ff->[-3]\t$ff->[-2]\t$ff->[-1]\n"
+			}
+			return 1; # matched
+		}
     }
     return 0; # no match
 }
@@ -1370,7 +1413,7 @@ EOF_formatfix
             {
                 my $outi = $stat->[1];
 
-                # 
+                # print a message showing the error
                 $outi =~ s/^(.*)/GP_IGNORE: ($1)/gm;
                 $ini .= $outi;
             }
@@ -1519,10 +1562,10 @@ EOF_formatfix
 #            if ($ini =~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:.*\s+\(seg.*pid.*\)/)
             if ($ini =~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:/)
             {
-                $ini =~ s/\s+\(seg.*pid.*\)//;
+                $ini =~ s/\s+(\W)?(\W)?\(seg.*pid.*\)//;
 
 				# also remove line numbers from errors
-				$ini =~ s/\s+\(\w+\.[ch]:\d+\)/ (SOMEFILE:SOMEFUNC)/;
+				$ini =~ s/\s+(\W)?(\W)?\(\w+\.[ch]:\d+\)/ (SOMEFILE:SOMEFUNC)/;
                 my $outsize = scalar(@outarr);
 
                 my $lastguy = -1;
@@ -1663,6 +1706,10 @@ EOF_formatfix
             $ini =~ s/External table .*line (\d)+.*/External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION/;
               $ini =~ s/\s+/ /;
              # MPP-1557,AUTO-3: horrific ERROR DETAIL External Table trifecta
+			if ($glob_verbose)
+			{
+				print "GP_IGNORE: External Table ERROR DETAIL fixup\n";
+			}
              if ($ini !~ m/^DETAIL/)
              {
                 # find a "blank" DETAIL tag preceding current line
