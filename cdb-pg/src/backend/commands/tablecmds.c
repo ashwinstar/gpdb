@@ -5952,10 +5952,12 @@ ATExecDropColumn(Relation rel, const char *colName,
 			{
 				/*
 				 * If the child column has other definition sources, just
-				 * decrement its inheritance count; if not, recurse to delete
+				 * decrement its inheritance count; if not or if this is part of
+				 * a partition configuration, recurse to delete
 				 * it.
 				 */
-				if (childatt->attinhcount == 1 && !childatt->attislocal)
+				if ((childatt->attinhcount == 1 && !childatt->attislocal) ||
+					pn)
 				{
 					/* Time to delete this child column, too */
 					ATExecDropColumn(childrel, colName, behavior, true, true);
@@ -8618,6 +8620,16 @@ ATExecAddInherit(Relation child_rel, Node *node)
 				 errmsg("cannot inherit from temporary relation \"%s\"",
 						RelationGetRelationName(parent_rel))));
 
+	if (is_partition)
+	{
+		/* lookup all attrs */
+		int attno;
+
+		for (attno = 0; attno < parent_rel->rd_att->natts; attno++)
+			inhAttrNameList = lappend(inhAttrNameList,
+									  makeString(NameStr(parent_rel->rd_att->attrs[attno]->attname)));
+
+	}
 	inherit_parent(parent_rel, child_rel, is_partition, inhAttrNameList);
 
 	/*
