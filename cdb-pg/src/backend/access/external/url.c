@@ -62,19 +62,22 @@ static const char *getSignalNameFromCode(int signo);
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
 
-/* 
+/*
  * header_callback
- * 
- * curl calls this routine to return HTTP header from server 
+ *
+ * when a header arrives from the server curl calls this routine. In here we
+ * extract the information we are interested in from the header, and store it
+ * in the passed in callback argument (URL_FILE *) which lives in our
+ * application.
  */
 static size_t
 header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 {
-    URL_FILE *url = (URL_FILE *)userp;
-	char *ptr = ptr_;
-	int len = size * nmemb;
-	int i;
-	char buf[20];
+    URL_FILE*	url = (URL_FILE *)userp;
+	char*		ptr = ptr_;
+	int 		len = size * nmemb;
+	int 		i;
+	char 		buf[20];
 
 	Assert(size == 1);
 
@@ -86,16 +89,22 @@ header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 	 * gpfdist, and later use it to report the error string in
 	 * check_response() to the database user.
 	 */
-	if (url->u.curl.http_response == 0) {
-		int n = nmemb;
-		char* p;
-		if (n > 0 && 0 != (p = palloc(n+1))) {
+	if (url->u.curl.http_response == 0)
+	{
+		int 	n = nmemb;
+		char* 	p;
+
+		if (n > 0 && 0 != (p = palloc(n+1)))
+		{
 			memcpy(p, ptr, n);
 			p[n] = 0;
+
 			if (n > 0 && (p[n-1] == '\r' || p[n-1] == '\n'))
 				p[--n] = 0;
+
 			if (n > 0 && (p[n-1] == '\r' || p[n-1] == '\n'))
 				p[--n] = 0;
+
 			url->u.curl.http_response = p;
 		}
 	}
@@ -105,42 +114,65 @@ header_callback(void *ptr_, size_t size, size_t nmemb, void *userp)
 	 */
 	if (len > 10 && *ptr == 'X' && 0 == strncmp("X-GP-PROTO", ptr, 10))
 	{
-		ptr += 10, len -= 10;
+		ptr += 10;
+		len -= 10;
+
 		while (len > 0 && (*ptr == ' ' || *ptr == '\t'))
-			ptr++, len--;
+		{
+			ptr++;
+			len--;
+		}
 
 		if (len > 0 && *ptr == ':')
 		{
-			ptr++, len--;
+			ptr++;
+			len--;
+
 			while (len > 0 && (*ptr == ' ' || *ptr == '\t'))
-				ptr++, len--;
+			{
+				ptr++;
+				len--;
+			}
+
 			for (i = 0; i < sizeof(buf) - 1 && i < len; i++)
 				buf[i] = ptr[i];
+
 			buf[i] = 0;
 			url->u.curl.gp_proto = strtol(buf, 0, 0);
+
 			// elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto);
 		}
 	}
 
-	return size*nmemb;
+	return size * nmemb;
 }
 
 
-/* curl calls this routine to get more data */
+/*
+ * write_callback
+ *
+ * when data arrives from gpfdist server curl calls this routine to get it and
+ * store it in the application variable (URL_FILE *)file which is the passed in
+ * in the forth argument as a part of the callback settings.
+ *
+ * we return the number of bytes added to the application buffer
+ */
 static size_t
 write_callback(char *buffer,
                size_t size,
                size_t nitems,
                void *userp)
 {
-    URL_FILE *file = (URL_FILE *)userp;
-	curlctl_t *curl = &file->u.curl;
-	const int nbytes = size * nitems;
-	int n;
+    URL_FILE*	file = (URL_FILE *)userp;
+	curlctl_t*	curl = &file->u.curl;
+	const int 	nbytes = size * nitems;
+	int 		n;
 
 	// elog(NOTICE, "write_callback %d", nbytes);
 
-	/* if insufficient space in buffer ... */
+	/*
+	 * if insufficient space in buffer make more space
+	 */
 	if (curl->buf.top + nbytes >= curl->buf.max)
 	{
 		/* compact ? */
@@ -151,6 +183,7 @@ write_callback(char *buffer,
 			curl->buf.bot = 0;
 			curl->buf.top = n;
 		}
+
 		/* if still insufficient space in buffer, then do realloc */
 		if (curl->buf.top + nbytes >= curl->buf.max)
 		{
@@ -158,26 +191,31 @@ write_callback(char *buffer,
 
 			n = curl->buf.top - curl->buf.bot + nbytes + 1024;
 			newbuf = realloc(curl->buf.ptr, n);
+
 			if (!newbuf)
 			{
-				elog(ERROR, "out of memory");
+				elog(ERROR, "out of memory (curl write_callback)");
 			}
+
 			curl->buf.ptr = newbuf;
 			curl->buf.max = n;
 			// elog(NOTICE, "max now at %d", n);
+
 			Assert(curl->buf.top + nbytes < curl->buf.max);
 		}
 	}
+
 	/* enough space. copy buffer into curl->buf */
 	memcpy(curl->buf.ptr + curl->buf.top, buffer, nbytes);
 	curl->buf.top += nbytes;
+
 	return nbytes;
 }
 
 /*
  * check_response
- * 
- * If got an HTTP response with an error code from the server (gpfidst), report 
+ *
+ * If got an HTTP response with an error code from the server (gpfdist), report
  * the error code and message it to the database user and abort operation.
  */
 static int
@@ -215,7 +253,7 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 			   in seg X is thrown away.
 			*/
 			pg_usleep(1000000);
-			elog(ERROR, "http response code %ld while %s, line %s", 
+			elog(ERROR, "http response code %ld while %s, line %s",
 				 response_code, file->url,
 				 file->u.curl.http_response ? file->u.curl.http_response : "?");
 		}
@@ -225,17 +263,21 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 }
 
 
-/* use to attempt to fill the read buffer up to requested number of bytes */
-/* return 0 if successful; raises ERROR otherwise */
+/*
+ * fill_buffer
+ *
+ * Attempt to fill the read buffer up to requested number of bytes.
+ * return 0 if successful; raises ERROR otherwise
+ */
 static int
-fill_buffer(URL_FILE *file,int want)
+fill_buffer(URL_FILE *file, int want)
 {
-    fd_set fdread;
-    fd_set fdwrite;
-    fd_set fdexcep;
-    int maxfd;
-    struct timeval timeout;
-    int nfds, e;
+    fd_set 	fdread;
+    fd_set 	fdwrite;
+    fd_set 	fdexcep;
+    int 	maxfd;
+    struct 	timeval timeout;
+    int 	nfds, e;
 	curlctl_t* curl = &file->u.curl;
 
 	/* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d",
@@ -259,7 +301,7 @@ fill_buffer(URL_FILE *file,int want)
         if (0 != (e = curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd)))
 		{
 			elog(ERROR, "internal error: curl_multi_fdset failed (%d - %s)",
-				 e, curl_easy_strerror(e));
+						e, curl_easy_strerror(e));
 		}
 
 		if (maxfd <= 0)
@@ -284,6 +326,7 @@ fill_buffer(URL_FILE *file,int want)
              * but that gets messy */
 			while (CURLM_CALL_MULTI_PERFORM ==
 				   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
+
 			if (e != 0)
 			{
 				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
@@ -295,6 +338,7 @@ fill_buffer(URL_FILE *file,int want)
 		   file->u.curl.still_running, curl->buf.bot, curl->buf.top, want);
 		*/
     }
+
     return 0;
 }
 
@@ -309,6 +353,7 @@ set_httpheader(URL_FILE *fcurl, const char *name, const char *value)
 	{
 		elog(ERROR, "set_httpheader name/value is too long. name = %s, value=%s", name, value);
 	}
+
 	sprintf(tmp, "%s: %s", name, value);
 	fcurl->u.curl.x_httpheader = curl_slist_append(fcurl->u.curl.x_httpheader, tmp);
 
@@ -505,21 +550,21 @@ make_url(const char *url, extvar_t *ev, char *buf)
 	return p - buf;
 }
 
+/*
+ * url_fopen
+ *
+ * checks for URLs or types in the 'url' and basically use the real fopen() for
+ * standard files, or if the url happens to be a command to execute it uses
+ * popen to execute it.
+ */
 URL_FILE *
 url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string)
 {
-    /* this code checks for URLs or types in the 'url' and
-     * basicly use the real fopen() for standard files, or
-	 * if the url happens to be a command to execute it uses
-	 * popen to execute it.
-	 */
 
 	/* an EXECUTE string will always be prefixed like this */
-	const char *exec_prefix = "execute:";
-
-	/*char  sessionIDBuf[80];*/
-	URL_FILE *file;
-	int e;
+	const char*	exec_prefix = "execute:";
+	URL_FILE*	file;
+	int 		e;
     (void)operation;
 
 
@@ -527,6 +572,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 	{
 		elog(ERROR, "out of memory");
 	}
+
     memset(file, 0, sizeof(URL_FILE));
 
 	file->url = ((char *) file) + sizeof(URL_FILE);
@@ -538,13 +584,14 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 	 */
 	if (pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
 	{
-		int save_errno;
-		struct itimers savetimers;
-		pqsigfunc save_SIGPIPE;
+		int 			save_errno;
+		struct itimers 	savetimers;
+		pqsigfunc 		save_SIGPIPE;
 
-		char *cmd = url + strlen(exec_prefix);
-		int sz = make_command(cmd, ev, 0);
-		char *shexec = palloc(sz);
+		char*	cmd = url + strlen(exec_prefix);
+		int 	sz = make_command(cmd, ev, 0);
+		char*	shexec = palloc(sz);
+
 		make_command(cmd, ev, shexec);
 
 		file->type = CFTYPE_EXEC; /* marked as a EXEC */
@@ -582,22 +629,32 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 	}
     else if (IS_FILE_URI(url))
     {
-		char *path = strchr(url + strlen(PROTOCOL_FILE), '/');
+		char*	path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		struct fstream_options fo;
-		memset(&fo,0,sizeof fo);
+
+		memset(&fo, 0, sizeof fo);
+
 		if (!path)
 		{
 			free(file);
-			elog(ERROR, "External Table error opening file: '%s'", url);
+			elog(ERROR, "External Table error opening file: '%s', invalid "
+						"file path", url);
 		}
 
 		file->type = CFTYPE_FILE; /* marked as local FILE */
 		fo.is_csv = pstate->csv_mode;
-		fo.quote = pstate->quote?*pstate->quote:0;
-		fo.escape = pstate->escape?*pstate->escape:0;
+		fo.quote = pstate->quote ? *pstate->quote : 0;
+		fo.escape = pstate->escape ? *pstate->escape : 0;
 		fo.header = pstate->header_line;
 		pstate->header_line = 0;
-		file->u.file.fp = fstream_open(path,&fo,response_code,response_string);
+
+		/*
+		 * Open the file stream. This includes opening the first file to be read
+		 * and finding and preparing any other files to be opened later (if a
+		 * wildcard or directory is used). In addition we check ahead of time
+		 * that all the involved files exists and have proper read permissions.
+		 */
+		file->u.file.fp = fstream_open(path, &fo, response_code, response_string);
 
 		/* couldn't open local file. return NULL to display proper error */
 		if (!file->u.file.fp)
@@ -611,6 +668,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		int sz = make_url(file->url, ev, 0);
 
         file->type = CFTYPE_CURL; /* marked as URL */
+
 		if (sz < 0)
 		{
 			url_fclose(file, false);
@@ -619,6 +677,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		file->u.curl.curl_url = palloc(sz);
 		make_url(file->url, ev, file->u.curl.curl_url);
+
 		if (IS_GPFDIST_URI(file->u.curl.curl_url))
 		{
 			/* replace gpfdist:// with http:// */
@@ -627,6 +686,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			pstate->header_line = 0;
 		}
 
+		/* initialize a curl session and get a libcurl handle for it */
         if (! (file->u.curl.handle = curl_easy_init()))
 		{
 			url_fclose(file, false);
@@ -655,7 +715,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
-		/* file gets passed to header_callback */
+		/* 'file' is the application variable that gets passed to header_callback */
 		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEHEADER, file)))
 		{
 			url_fclose(file, false);
@@ -669,7 +729,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
-		/* file gets passed to write_callback */
+		/* 'file' is the application variable that gets passed to write_callback */
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
 		{
 			url_fclose(file, false);
@@ -683,6 +743,9 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 				 e, curl_easy_strerror(e));
 		}
 
+		/*
+		 * set up a linked list of http headers
+		 */
 		file->u.curl.x_httpheader = NULL;
 		if (set_httpheader(file, "X-GP-MASTER_HOST", ev->GP_MASTER_HOST) ||
 			set_httpheader(file, "X-GP-MASTER_PORT", ev->GP_MASTER_PORT) ||
@@ -745,7 +808,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		fill_buffer(file, 1);
 
 		/* check the connection */
-		if (check_response(file,response_code,response_string))
+		if (check_response(file, response_code, response_string))
 		{
 			url_fclose(file, false);
 			return NULL;
@@ -906,11 +969,16 @@ int url_ferror(URL_FILE *file)
 	return ret;
 }
 
-
+/*
+ * gp_proto0_read
+ *
+ * get data from the server and handle it according to PROTO 0. In PROTO 0 we
+ * expect the content of the file without any kind of meta info. Simple.
+ */
 static size_t gp_proto0_read(char *buf, int bufsz, URL_FILE* file)
 {
-	int n = 0;
-	curlctl_t* curl = &file->u.curl;
+	int 		n = 0;
+	curlctl_t* 	curl = &file->u.curl;
 
 	fill_buffer(file, bufsz);
 
@@ -927,26 +995,42 @@ static size_t gp_proto0_read(char *buf, int bufsz, URL_FILE* file)
 	/* xfer data to caller */
 	memcpy(buf, curl->buf.ptr, n);
 	curl->buf.bot += n;
+
 	return n;
 }
 
-
+/*
+ * gp_proto1_read
+ *
+ * get data from the server and handle it according to PROTO 1. In this protocol
+ * each data block is tagged by meta info like this:
+ * byte 0: type (can be 'F'ilename, 'O'ffset, 'D'ata, 'E'rror, 'L'inenumber)
+ * byte 1-4: length. # bytes of following data block. in network-order.
+ * byte 5-X: the block itself.
+ */
 static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pstate, char *buf2)
 {
 	char type;
 	int  n, len;
 	curlctl_t* curl = &file->u.curl;
 
-	while (curl->block.datalen == 0 && !curl->eof) {
-
+	/*
+	 * Loop through and get all types of messages, until we get actual data,
+	 * or until there's no more data. Then quit the loop to process it and
+	 * return it.
+	 */
+	while (curl->block.datalen == 0 && !curl->eof)
+	{
 		/* need 5 bytes, 1 byte type + 4 bytes length */
 		fill_buffer(file, 5);
 		n = curl->buf.top - curl->buf.bot;
+
 		if (n == 0)
 		{
 			elog(ERROR, "gpfdist error: server closed connection.\n");
 			return -1;
 		}
+
 		if (n < 5)
 		{
 			elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n);
@@ -960,6 +1044,7 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		memcpy(&len, &curl->buf.ptr[curl->buf.bot], 4);
 		len = ntohl(len);		/* change order */
 		curl->buf.bot += 4;
+
 		if (len < 0)
 		{
 			elog(ERROR, "gpfdist error: bad packet type %d len %d",
@@ -971,12 +1056,15 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 		   curl->buf.bot, curl->buf.top);
 		*/
 
+		/* Error */
 		if (type == 'E')
 		{
 			fill_buffer(file, len);
 			n = curl->buf.top - curl->buf.bot;
+
 			if (n > len)
 				n = len;
+
 			if (n > 0)
 			{
 				/*
@@ -990,11 +1078,13 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 
 				return -1;
 			}
+
 			elog(ERROR, "gpfdist error: please check gpfdist log messages.");
 
 			return -1;
 		}
 
+		/* Filename */
 		if (type == 'F')
 		{
 			if (buf != buf2)
@@ -1013,19 +1103,27 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 				return -1;
 			}
 
+			/*
+			 * If SREH is used we now update it with the actual file that the
+			 * gpfdist server is reading. This is because SREH (or the client
+			 * in general) doesn't know which file gpfdist is reading, since
+			 * the original URL may include a wildcard or a directory listing.
+			 */
 			if (pstate->cdbsreh)
 			{
 				char fname[257];
 
-				memcpy(fname,curl->buf.ptr+curl->buf.bot,len);
+				memcpy(fname, curl->buf.ptr + curl->buf.bot, len);
 				fname[len] = 0;
-				snprintf(pstate->cdbsreh->filename,sizeof pstate->cdbsreh->filename,"%s [%s]",pstate->filename,fname);
+				snprintf(pstate->cdbsreh->filename, sizeof pstate->cdbsreh->filename,"%s [%s]", pstate->filename, fname);
 			}
+
 			curl->buf.bot += len;
 			Assert(curl->buf.bot <= curl->buf.top);
 			continue;
 		}
 
+		/* Offset */
 		if (type == 'O')
 		{
 			if (len != 8)
@@ -1038,10 +1136,13 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
+
 			curl->buf.bot += 8;
 			Assert(curl->buf.bot <= curl->buf.top);
 			continue;
 		}
+
+		/* Line number */
 		if (type == 'L')
 		{
 			int64 line_number;
@@ -1056,14 +1157,21 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
-			memcpy(&line_number,curl->buf.ptr+curl->buf.bot,len);
+
+			/*
+			 * update the line number of the first line we're about to get from
+			 * gpfdist. pstate will update the following lines when processing
+			 * the data
+			 */
+			memcpy(&line_number, curl->buf.ptr + curl->buf.bot, len);
 			line_number = local_ntohll(line_number);
-			pstate->cur_lineno = line_number?line_number-1:(int64)-1<<63;
+			pstate->cur_lineno = line_number ? line_number - 1 : (int64) - 1 << 63;
 			curl->buf.bot += 8;
 			Assert(curl->buf.bot <= curl->buf.top);
 			continue;
 		}
 
+		/* Data */
 		if (type == 'D')
 		{
 			curl->block.datalen = len;
@@ -1092,6 +1200,7 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 
 	if (n > bufsz)
 		n = bufsz;
+
 	memcpy(buf, curl->buf.ptr + curl->buf.bot, n);
 	curl->buf.bot += n;
 	curl->block.datalen -= n;
@@ -1100,13 +1209,13 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 }
 
 
-static size_t curl_fread(char *buf, int bufsz, URL_FILE* file,CopyState pstate)
+static size_t curl_fread(char *buf, int bufsz, URL_FILE* file, CopyState pstate)
 {
-	curlctl_t *curl = &file->u.curl;
-	char *p = buf;
-	char *q = buf + bufsz;
-	int n;
-	const int gp_proto = curl->gp_proto;
+	curlctl_t*	curl = &file->u.curl;
+	char*		p = buf;
+	char*		q = buf + bufsz;
+	int 		n;
+	const int 	gp_proto = curl->gp_proto;
 
 	if (gp_proto != 0 && gp_proto != 1)
 	{
@@ -1119,13 +1228,14 @@ static size_t curl_fread(char *buf, int bufsz, URL_FILE* file,CopyState pstate)
 		if (gp_proto == 0)
 			n = gp_proto0_read(p, q - p, file);
 		else
-			n = gp_proto1_read(p, q - p, file,pstate,buf);
+			n = gp_proto1_read(p, q - p, file, pstate, buf);
 
 		//elog(NOTICE, "curl_fread %d bytes", n);
 
 		if (n <= 0)
 			break;
 	}
+
 	return p - buf;
 }
 
@@ -1133,24 +1243,31 @@ static size_t curl_fread(char *buf, int bufsz, URL_FILE* file,CopyState pstate)
 size_t
 url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate)
 {
-    size_t want;
-	int n;
+    size_t 	want;
+	int 	n;
 
     switch (file->type)
     {
 		case CFTYPE_FILE:
 		{
 			struct fstream_filename_and_offset fo;
+			const int whole_rows = 0; /* get as much data as possible */
 
-			assert(size==1);
-			n = fstream_read(file->u.file.fp,ptr,nmemb,&fo,0);
+			assert(size == 1);
+
+			n = fstream_read(file->u.file.fp, ptr, nmemb, &fo, whole_rows);
 			want = n > 0 ? n : 0;
+
 			if (n > 0 && fo.line_number)
 			{
-				pstate->cur_lineno = fo.line_number-1;
+				pstate->cur_lineno = fo.line_number - 1;
+
 				if (pstate->cdbsreh)
-					snprintf(pstate->cdbsreh->filename,sizeof pstate->cdbsreh->filename,"%s [%s]",pstate->filename,fo.fname);
+					snprintf(pstate->cdbsreh->filename,
+							 sizeof pstate->cdbsreh->filename,
+							 "%s [%s]", pstate->filename, fo.fname);
 			}
+
 			break;
 		}
 		case CFTYPE_EXEC:
@@ -1159,9 +1276,10 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 
 		case CFTYPE_CURL:
 
-			n = curl_fread(ptr, nmemb * size, file,pstate);
-			/* number of items - nb correct op - checked
-			 * with glibc code*/
+			/* get data (up to nmemb * size) from the http/gpfdist server */
+			n = curl_fread(ptr, nmemb * size, file, pstate);
+
+			/* number of items - nb correct op - checked with glibc code*/
 			want = n / size;
 
 			/*printf("(fread) return %d bytes %d left\n", want,file->u.curl.buffer_pos);*/

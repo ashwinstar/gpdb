@@ -93,7 +93,7 @@ int gwarning(const char* fline, const char* fmt, ...);
 
  X-GP-PROTO = 1
  each data block is tagged by meta info like this:
- byte 0: type (can be 'F'ilename, 'O'ffset, 'D'ata, 'E'rror)
+ byte 0: type (can be 'F'ilename, 'O'ffset, 'D'ata, 'E'rror, 'L'inenumber)
  byte 1-4: length. # bytes of following data block. in network-order.
  byte 5-X: the block itself.
 
@@ -113,9 +113,10 @@ struct gnet_request_t
 	char* hvalue[50];
 };
 
-static gnet_request_t*gnet_parse_request(const char* buf, int* len,
-		apr_pool_t* pool);
-static char*gstring_trim(char* s);
+static gnet_request_t* gnet_parse_request(const char* buf, int* len,
+										  apr_pool_t* pool);
+static char* gstring_trim(char* s);
+static void percent_encoding_to_char(char* p, char* pp, char* path);
 
 #ifndef GP_VERSION
 #define GP_VERSION unknown
@@ -147,27 +148,38 @@ static struct
 #define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
 #endif
 
+/* if VERBOSE mode, print log information */
 #define TR(x)  while (opt.V){printf x;break;}
 
-static void block_fill_header(block_t*b,
-		const struct fstream_filename_and_offset*fos)
+/*
+ * block_fill_header
+ *
+ * Prepare a block header for sending to the client. It includes various meta
+ * data information such as filename, initial linenumber, etc. This will only
+ * get used in PROTO-1. We store this header in block_t->hdr (a blockhdr_t)
+ * and PROTO-0 never uses it.
+ */
+static void block_fill_header(block_t* b,
+							  const struct fstream_filename_and_offset* fos)
 {
-	blockhdr_t*h = &b->hdr;
-	apr_int32_t len;
-	apr_int64_t len8;
-	char*p = h->hbyte;
-	int fname_len = strlen(fos->fname);
+	blockhdr_t*		h = &b->hdr;
+	apr_int32_t 	len;
+	apr_int64_t 	len8;
+	char*			p = h->hbyte;
+	int 			fname_len = strlen(fos->fname);
 
 	h->hbot = 0;
-	/* 'F' + len + fname */
+
+	/* FILENAME: 'F' + len + fname */
 	*p++ = 'F';
 	len = htonl(fname_len);
 	memcpy(p, &len, 4);
 	p += 4;
 	memcpy(p, fos->fname, fname_len);
 	p += fname_len;
-	TR(("F %d %s\n",ntohl(len),fos->fname));
-	/* 'O' + len + foff */
+	TR(("F %d %s\n", ntohl(len), fos->fname));
+
+	/* OFFSET: 'O' + len + foff */
 	*p++ = 'O';
 	len = htonl(8);
 	len8 = local_htonll(fos->foff);
@@ -175,15 +187,18 @@ static void block_fill_header(block_t*b,
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("O %d\n",(int)local_ntohll(len8)));
+	TR(("O %d\n", (int)local_ntohll(len8)));
+
+	/* LINENUMBER: 'L' + len + linenumber */
 	*p++ = 'L';
 	len8 = local_htonll(fos->line_number);
 	memcpy(p, &len, 4);
 	p += 4;
 	memcpy(p, &len8, 8);
 	p += 8;
-	TR(("L %d\n",(int)local_ntohll(len8)));
-	/* 'D' + len */
+	TR(("L %d\n", (int)local_ntohll(len8)));
+
+	/* DATA: 'D' + len */
 	*p++ = 'D';
 	len = htonl(b->top-b->bot);
 	memcpy(p, &len, 4);
@@ -553,7 +568,7 @@ static apr_status_t http_ok(request_t* r)
 	return 0;
 }
 
-static apr_status_t send_gpfdist_status(request_t*r)
+static apr_status_t send_gpfdist_status(request_t* r)
 {
 	char buf[1024];
 	int m, n;
@@ -649,22 +664,44 @@ static int local_sendall(int fd, const char* buf, int buflen)
 	return oldlen;
 }
 
+/*
+ * gp1_send_header
+ *
+ * In PROTO-1 we can send all kinds of data blocks to the client. each data
+ * block is tagged by meta info like this:
+ * byte 0: type (can be 'F'ilename, 'O'ffset, 'D'ata, 'E'rror, 'L'inenumber)
+ * byte 1-4: length. # bytes of following data block. in network-order.
+ * byte 5-X: the block itself.
+ *
+ * this function creates and sends the meta info according to the passed in
+ * arguments. It does not send the block itself (bytes 5-X).
+ */
 static int gp1_send_header(request_t*r, char letter, int length)
 {
-	char hdr[5];
-	const char*p = hdr;
+	char 		hdr[5];
+	const char*	p = hdr;
+
 	hdr[0] = letter;
 	length = htonl(length);
+
 	memcpy(hdr + 1, &length, 4);
+
 	return local_sendall(r->sock, p, 5) < 0 ? -1 : 0;
 }
 
+/*
+ * Send a message to the client to indicate EOF - no more data. This is done
+ * by sending a 'D' message type (Data) with length 0.
+ */
 static void gp1_send_eof(request_t* r)
 {
 	if (!gp1_send_header(r, 'D', 0))
 		TR(("[%d] sent EOF\n", r->sock));
 }
 
+/*
+ * Send an error message to the client, using the 'E' message type.
+ */
 static void gp1_send_errmsg(request_t* r, const char* errmsg)
 {
 	apr_int32_t len = strlen(errmsg);
@@ -672,12 +709,19 @@ static void gp1_send_errmsg(request_t* r, const char* errmsg)
 		local_sendall(r->sock, errmsg, len);
 }
 
-/* Get a block out of the session. return error string. */
+/*
+ * session_get_block
+ *
+ * Get a block out of the session. return error string. This includes a block
+ * header (metadata for client such as filename, etc) and the data itself.
+ */
 static const char*
 session_get_block(session_t* s, block_t* retblock)
 {
-	int size;
+	int 		size;
+	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
 	struct fstream_filename_and_offset fos;
+
 	retblock->bot = retblock->top = 0;
 
 	if (s->is_error || 0 == s->fstream)
@@ -687,8 +731,10 @@ session_get_block(session_t* s, block_t* retblock)
 	}
 
 	gcb.read_bytes -= fstream_get_compressed_position(s->fstream);
+
+	/* read data from our filestream as a chunk with whole data rows */
 	size = fstream_read(s->fstream, retblock->byte, sizeof retblock->byte,
-			&fos, 1);
+						&fos, whole_rows);
 
 	if (size == 0)
 	{
@@ -701,12 +747,14 @@ session_get_block(session_t* s, block_t* retblock)
 
 	if (size < 0)
 	{
-		const char*ferror = fstream_get_error(s->fstream);
+		const char* ferror = fstream_get_error(s->fstream);
 		session_end(s, 1);
 		return ferror;
 	}
 
 	retblock->top = size;
+
+	/* fill the block header with meta data for the client to parse and use */
 	block_fill_header(retblock, &fos);
 
 	return 0;
@@ -807,7 +855,7 @@ static void session_attach(request_t* r)
 
 	/* create the key */
 	if (sizeof(key) - 1 == apr_snprintf(key, sizeof(key), "%s:%s", r->tid,
-			r->path))
+										r->path))
 	{
 		http_error(r, 400, "path too long");
 		request_end(r, 1, 0);
@@ -929,9 +977,9 @@ static void session_attach(request_t* r)
  */
 static void do_write(int fd, short event, void* arg)
 {
-	request_t* r = (request_t*) arg;
-	int n, i;
-	block_t* b;
+	request_t* 	r = (request_t*) arg;
+	int 		n, i;
+	block_t* 	b;
 
 	if (fd != r->sock)
 		gfatal(FLINE, "assert failed");
@@ -943,6 +991,7 @@ static void do_write(int fd, short event, void* arg)
 		if (r->out.top == r->out.bot)
 		{
 			const char* ferror = session_get_block(r->session, &r->out);
+
 			if (ferror)
 			{
 				request_end(r, 1, ferror);
@@ -956,9 +1005,14 @@ static void do_write(int fd, short event, void* arg)
 		}
 
 		b = &r->out;
+
+		/*
+		 * If PROTO-1: first write out the block header (metadata).
+		 */
 		if (r->gp_proto == 1)
 		{
 			n = b->hdr.htop - b->hdr.hbot;
+
 			if (n > 0)
 			{
 				n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
@@ -971,7 +1025,7 @@ static void do_write(int fd, short event, void* arg)
 				}
 
 				TR(("[%d] send header bytes %d .. %d (top %d)\n",
-								fd, b->hdr.hbot, b->hdr.hbot + n, b->hdr.htop));
+					fd, b->hdr.hbot, b->hdr.hbot + n, b->hdr.htop));
 
 				b->hdr.hbot += n;
 				n = b->hdr.htop - b->hdr.hbot;
@@ -979,13 +1033,14 @@ static void do_write(int fd, short event, void* arg)
 					break; /* network chocked */
 			}
 		}
-		/* write out the block */
-		n = b->top - b->bot;
-		/*
-		 if (n == 0)
-		 gfatal(FLINE, "internal error: 0 bytes");
-		 */
 
+		/*
+		 * write out the block data
+		 */
+		n = b->top - b->bot;
+		/* if (n == 0)
+		   gfatal(FLINE, "internal error: 0 bytes");
+		 */
 		n = local_send(fd, b->byte + b->bot, n);
 		if (n < 0)
 		{
@@ -1003,8 +1058,10 @@ static void do_write(int fd, short event, void* arg)
 			request_end(r, 1, 0);
 			return;
 		}
+
 		TR(("[%d] send data bytes off buf %d .. %d (top %d)\n",
-						fd, b->bot, b->bot + n, b->top));
+			fd, b->bot, b->bot + n, b->top));
+
 		b->bot += n;
 
 		if (b->top != b->bot)
@@ -1027,9 +1084,11 @@ static void do_write(int fd, short event, void* arg)
  */
 static void do_read(int fd, short event, void* arg)
 {
-	request_t* r = (request_t*) arg;
-	int n, i;
-	char*p, *pp, *path;
+	request_t* 	r = (request_t*) arg;
+	int 		n, i;
+	char*		p = NULL;
+	char*		pp = NULL;
+	char*		path = NULL;
 
 	/* If we timeout, close the request. */
 	if (event & EV_TIMEOUT)
@@ -1050,6 +1109,7 @@ static void do_read(int fd, short event, void* arg)
 
 	/* read into header buf */
 	n = recv(r->sock, r->in.hbuf + r->in.hbuftop, n, 0);
+
 	if (n < 0)
 	{
 #ifdef WIN32
@@ -1105,12 +1165,13 @@ static void do_read(int fd, short event, void* arg)
 	/* we don't need to read from the socket anymore */
 	shutdown(r->sock, SHUT_RD);
 
+	/* print the complete request to the log if in verbose mode */
 	if (opt.V)
 	{
-		gprint("request");
+		gprint("got a request:");
 		for (i = 0; i < r->in.req->argc; i++)
-			gprint(" %s", r->in.req->argv[i]);
-		gprint("\n");
+			TR((" %s", r->in.req->argv[i]));
+		TR(("\n"));
 	}
 
 	/* parse the HTTP request. Expect "GET /path HTTP/1.X" */
@@ -1141,46 +1202,16 @@ static void do_read(int fd, short event, void* arg)
 	/* make a copy of the path */
 	path = apr_pstrdup(r->pool, r->in.req->argv[1]);
 
-	/*   - decode %xx to char */
-	for (p = pp = path; *pp; p++, pp++)
-	{
-		if ('%' == (*p = *pp))
-		{
-			if (pp[1] && pp[2])
-			{
-				int x = pp[1], y = pp[2];
-				if ('0' <= x && x <= '9')
-					x -= '0';
-				else if ('a' <= x && x <= 'f')
-					x = x - 'a' + 10;
-				else if ('A' <= x && x <= 'F')
-					x = x - 'A' + 10;
-				else
-					x = -1;
-				if ('0' <= y && y <= '9')
-					y -= '0';
-				else if ('a' <= y && y <= 'f')
-					y = y - 'a' + 10;
-				else if ('A' <= y && y <= 'F')
-					y = y - 'A' + 10;
-				else
-					y = -1;
-				if (x >= 0 && y >= 0)
-				{
-					x = (x << 4) + y;
-					*p = (char) x;
-					pp++, pp++;
-				}
-			}
-		}
-	}
-	*p = 0;
+	/* decode %xx to char */
+	percent_encoding_to_char(p, pp, path);
+
 	if (!strcmp(path, "gpfdist/status"))
 	{
 		send_gpfdist_status(r);
 		request_end(r, 0, 0);
 		return;
 	}
+
 	if (opt.f)
 		r->path = opt.f;
 	else
@@ -1188,27 +1219,35 @@ static void do_read(int fd, short event, void* arg)
 		if (strstr(path, ".."))
 		{
 			gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
-					r->in.req->argv[0], r->in.req->argv[1]);
+							 r->in.req->argv[0], r->in.req->argv[1]);
 			http_error(r, 400, "invalid request");
 			request_end(r, 1, 0);
 			return;
 		}
+
 		r->path = 0;
+
+		/*
+		 * make the new path relative to the user's specified dir (opt.d)
+		 */
 		do
 		{
 			while (*path == ' ')
 				path++;
+
 			p = strchr(path, ' ');
+
 			if (p)
 				*p++ = 0;
+
 			while (*path == '/')
 				path++;
-			/*   - make the new path relative to opt.d */
+
 			if (*path)
 			{
 				if (r->path)
 					r->path = apr_psprintf(r->pool, "%s %s/%s", r->path, opt.d,
-							path);
+										   path);
 				else
 					r->path = apr_psprintf(r->pool, "%s/%s", opt.d, path);
 			}
@@ -1223,13 +1262,18 @@ static void do_read(int fd, short event, void* arg)
 		}
 	}
 
-	/* Extract X-GP-TID value from HTTP headers */
+	/*
+	 * Extract all X-GP-* variables from the HTTP headers.
+	 * Create a unique X-GP-TID value from it.
+	 */
 	{
 		const char* xid = 0;
 		const char* cid = 0;
 		const char* sn = 0;
 		const char* gp_proto = "0";
+
 		r->csvopt = "";
+
 		for (i = 0; i < r->in.req->hc; i++)
 		{
 			if (0 == strcmp("X-GP-XID", r->in.req->hname[i]))
@@ -1251,20 +1295,21 @@ static void do_read(int fd, short event, void* arg)
 
 		if (r->gp_proto != 0 && r->gp_proto != 1)
 		{
-			gwarning(
-					FLINE,
+			gwarning(FLINE,
 					"reject invalid request from %s [%s %s] - X-GP-PROTO invalid '%s'",
 					r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
 			http_error(r, 400, "invalid request");
 			request_end(r, 1, 0);
 			return;
 		}
+
 		if (opt.g != -1) /* override?  */
 			r->gp_proto = opt.g;
+
 		if (xid && cid && sn)
 		{
 			r->tid = apr_psprintf(r->pool, "%s.%s.%s.%d", xid, cid, sn,
-					r->gp_proto);
+								  r->gp_proto);
 		}
 		else if (xid || cid || sn)
 		{
@@ -1598,17 +1643,21 @@ static char *gstring_trim(char* s)
 
 static char* datetime(void)
 {
-	static char buf[100];
-	apr_time_exp_t t;
+	static char 	buf[100];
+	apr_time_exp_t 	t;
+
 	apr_time_exp_lt(&t, apr_time_now());
+
 	sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", 1900 + t.tm_year, 1
 			+ t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+
 	return buf;
 }
 
 int gprint(const char *fmt, ...)
 {
 	va_list ap;
+
 	if (opt.v)
 	{
 		va_start(ap, fmt);
@@ -1622,28 +1671,33 @@ int gprint(const char *fmt, ...)
 void gfatal(const char* fline, const char *fmt, ...)
 {
 	va_list ap;
+
 	va_start(ap, fmt);
 	printf("[%s] [INTERNAL ERROR %s] ", datetime(), fline);
 	vprintf(fmt, ap);
 	va_end(ap);
 	printf("\n          ... exiting\n");
+
 	exit(1);
 }
 
 int gwarning(const char* fline, const char *fmt, ...)
 {
 	va_list ap;
+
 	va_start(ap, fmt);
 	printf("[%s] [WRN %s] ", datetime(), fline);
 	vprintf(fmt, ap);
 	va_end(ap);
 	printf("\n");
+
 	return 0;
 }
 
 void gfile_printf_then_putc_newline(const char *format, ...)
 {
 	va_list va;
+
 	va_start(va,format);
 	vprintf(format, va);
 	va_end(va);
@@ -1658,6 +1712,55 @@ void *gfile_malloc(size_t size)
 void gfile_free(void *a)
 {
 	free(a);
+}
+
+/*
+ * percent_encoding_to_char
+ *
+ * decode any percent encoded characters that may be included in the http
+ * request into normal characters ascii characters.
+ */
+void percent_encoding_to_char(char* p, char* pp, char* path)
+{
+	/*   - decode %xx to char */
+	for (p = pp = path; *pp; p++, pp++)
+	{
+		if ('%' == (*p = *pp))
+		{
+			if (pp[1] && pp[2])
+			{
+				int x = pp[1];
+				int y = pp[2];
+
+				if ('0' <= x && x <= '9')
+					x -= '0';
+				else if ('a' <= x && x <= 'f')
+					x = x - 'a' + 10;
+				else if ('A' <= x && x <= 'F')
+					x = x - 'A' + 10;
+				else
+					x = -1;
+
+				if ('0' <= y && y <= '9')
+					y -= '0';
+				else if ('a' <= y && y <= 'f')
+					y = y - 'a' + 10;
+				else if ('A' <= y && y <= 'F')
+					y = y - 'A' + 10;
+				else
+					y = -1;
+
+				if (x >= 0 && y >= 0)
+				{
+					x = (x << 4) + y;
+					*p = (char) x;
+					pp++, pp++;
+				}
+			}
+		}
+	}
+
+	*p = 0;
 }
 
 /*

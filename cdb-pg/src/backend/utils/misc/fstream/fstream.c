@@ -421,8 +421,11 @@ static int nextFile(fstream_t*fs)
  * in the source buffer. 'fo' keeps the state (name, offset, etc) of the current
  * filestream file we are reading from.
  */
-int fstream_read(fstream_t *fs, void *buffer, int size,
-				 struct fstream_filename_and_offset *fo, int read_whole_lines)
+int fstream_read(fstream_t *fs,
+				 void *buffer,
+				 int size,
+				 struct fstream_filename_and_offset *fo,
+				 const int read_whole_lines)
 {
 	if (fs->ferror)
 		return -1;
