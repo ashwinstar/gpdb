@@ -9226,9 +9226,8 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		newOptions = transformRelOptions(isnull ? (Datum) 0 : datum,
 										 lwith, false, isReset);
 
-		newopts = 
-				(StdRdOptions *) heap_reloptions(rel->rd_rel->relkind, 
-												 newOptions, true);
+		newopts = (StdRdOptions *) heap_reloptions(rel->rd_rel->relkind, 
+												   newOptions, true);
 
 		/* just cleanup early if not newopts.  will cleanup later if
 		 * need to rebuild table 
