@@ -175,7 +175,7 @@ GPLOAD:
            - <field_name>: <data_type>
     - FORMAT: text | csv
     - DELIMITER: <delimiter_character>
-    - ESCAPE: <escape_character>
+    - ESCAPE: <escape_character> | 'OFF'
     - NULL_AS: <null_string>
     - QUOTE: <csv_quote_character>
     - HEADER: true | false
@@ -301,7 +301,10 @@ ESCAPE - Optional. Specifies the single character that is used for C
          delimiters. Make sure to choose an escape character that is not 
          used anywhere in your actual column data. The default escape 
          character is a \ (backslash), however it is possible to specify 
-         any other character to represent an escape. 
+         any other character to represent an escape. It is also possible 
+         to disable escaping by specifying the value 'OFF' as the escape 
+         value. This is very useful for data such as web log data that 
+         has many embedded backslashes that are not intended to be escapes.
 
 NULL_AS - Optional. Specifies the string that represents a null value. The 
           default is \N (backslash-N) in TEXT mode, and an empty value with 
