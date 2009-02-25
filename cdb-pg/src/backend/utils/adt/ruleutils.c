@@ -5937,7 +5937,7 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 	{
 		appendStringInfo(&str, "DEFAULT %sPARTITION %s ",
 						 part->parlevel > 0 ? "SUB" : "",
-						 rule->parname);
+						 quote_identifier(rule->parname));
 
 		if (reloptions)
 			appendStringInfo(&str, " WITH (%s)", reloptions);
@@ -5948,7 +5948,7 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 	if (rule->parname && rule->parname[0] != '\0')
 		appendStringInfo(&str, "%sPARTITION %s ",
 						 part->parlevel > 0 ? "SUB" : "",
-						 rule->parname);
+						 quote_identifier(rule->parname));
 			
 	switch (part->parkind)
 	{
