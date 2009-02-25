@@ -125,13 +125,17 @@ Specifies the block size to be used for disk I/O test. The
 default is 32KB, which is the same as the Greenplum Database 
 page size. You can specify sizing in KB, MB, or GB.
 
+
 -S <file_size>
 
-Specifies the file size to be used for disk I/O test. The 
-default is calculated at two times the total RAM on the host. 
-This ensures that the test is truly testing disk I/O 
-and not using the memory cache. You can specify sizing 
-in KB, MB, or GB.
+Specifies the total file size to be used for the disk I/O test 
+for all directories specified with -d. file_size should equal 
+two times total RAM on the host. If not specified, the default 
+is calculated at two times the total RAM on the host where 
+gpcheckperf is executed. This ensures that the test is truly 
+testing disk I/O and not using the memory cache. You can specify 
+sizing in KB, MB, or GB.
+
 
 -D (display per-host results)
 
