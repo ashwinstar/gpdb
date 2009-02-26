@@ -2,16 +2,16 @@ from __future__ import with_statement
 import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
-try:
-    import cmd, signal, atexit, threading
-    import pxssh, pexpect
-except ImportError, e:
-    raise Session.SessionError('Error: unable to import module: ' + str(e))
+import cmd, signal, atexit, threading
+import pxssh, pexpect
 
 progname = os.path.split(sys.argv[0])[-1]
 
+class VersionError(Exception):
+    pass
+
 if sys.version_info < (2, 5, 0):
-    raise Session.SessionError(
+    raise VersionError(
 '''Error: %s is supported on Python versions 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
