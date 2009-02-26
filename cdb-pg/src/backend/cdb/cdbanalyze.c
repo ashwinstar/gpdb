@@ -542,11 +542,14 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 						 void *ctx)
 {
 	int result_no;
-	bool has_pgstat_stats = false;
 	VacuumStatsContext *stats_context = (VacuumStatsContext *)ctx;
 
-	/* Store stats info from QEs, one for each attribute. */
-	VPgStatisticStats **pgstat_stats_array = NULL;
+	/*
+	 * Store stats info from QEs, one for each relation. Each entry
+	 * contains an array of VPgStatisticStats, one for each attribute.
+	 */
+	List *pgstat_stats_list = NIL;
+	List *pgstat_stats_max_attnum = NIL;
 		
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
@@ -628,26 +631,42 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 			{
 				VUpdatedStats *new_stats = (VUpdatedStats *)pgresult->extras;
 				double *reltuples;
+				int *new_max_attnum;
 				int16 new_attno;
+				int *old_max_attnum;
+				ListCell *lc = NULL;
+				ListCell *max_attnum_lc = NULL;
 				int len = sizeof(VUpdatedStats);
+				VPgStatisticStats **pgstat_stats_array = NULL;
 
 				reltuples = (double *)((char *)new_stats + len);
 				len += sizeof(double);
 				
+				new_max_attnum = (int *)((char*)new_stats + len);
+				len += sizeof(int);
+				
 				memcpy(&new_attno, (char *)new_stats + len, sizeof(int16));
 				len += sizeof(int);
 				
-				Assert(new_stats->relid == RelationGetRelid(stats_context->onerel));
-
-				Assert(new_attno <= stats_context->onerel->rd_att->natts);
-				
-				if (!has_pgstat_stats)
+				forboth (lc, pgstat_stats_list, max_attnum_lc, pgstat_stats_max_attnum)
 				{
-					Assert(stats_context->onerel->rd_att != NULL);
+					old_max_attnum = (int *)lfirst(max_attnum_lc);
+					pgstat_stats_array = (VPgStatisticStats **)lfirst(lc);
 					
-					pgstat_stats_array = palloc0(stats_context->onerel->rd_att->natts *
-												 sizeof(VPgStatisticStats *));
-					has_pgstat_stats = true;
+					if (pgstat_stats_array[0]->metadata.relid == new_stats->relid)
+						break;
+				}
+				
+				if (lc != NULL)
+				{
+					Assert(*new_max_attnum == *old_max_attnum);
+				}
+				else
+				{
+					pgstat_stats_array = palloc0(*new_max_attnum * sizeof(VPgStatisticStats *));
+					pgstat_stats_list = lappend(pgstat_stats_list, pgstat_stats_array);
+					pgstat_stats_max_attnum = lappend(pgstat_stats_max_attnum, new_max_attnum);
+					Assert(new_attno <= *new_max_attnum);
 				}
 
 				if (pgstat_stats_array[new_attno - 1] != NULL)
@@ -693,38 +712,62 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 		}
 	}
 
-	if (has_pgstat_stats)
+	if (list_length(pgstat_stats_list) > 0)
 	{
-		int attno;
+		ListCell *lc;
+		ListCell *max_attnum_lc;
 		
 		Relation stat_rel = heap_open(StatisticRelationId, RowExclusiveLock);
 		TupleDesc tupdesc = RelationGetDescr(stat_rel);
 		
 		/* Compute the final stats for each relation. */
-		for(attno = 0; attno < stats_context->onerel->rd_att->natts; attno++)
+		forboth (lc, pgstat_stats_list, max_attnum_lc, pgstat_stats_max_attnum)
 		{
-			VPgStatisticStats *tmp_stats = pgstat_stats_array[attno];
+			VPgStatisticStats **pgstat_stats_array = (VPgStatisticStats **)lfirst(lc);
+			int *max_attnum = (int *)lfirst(max_attnum_lc);
+			int attno;
 
-			if (tmp_stats == NULL)
-				continue;
+			for(attno = 0; attno < *max_attnum; attno++)
+			{
+				VPgStatisticStats *tmp_stats = pgstat_stats_array[attno];
+				Relation rel;
+
+				if (tmp_stats == NULL)
+					continue;
+
+				/*
+				 * If this relation is the one stored in stats_context, use it directly.
+				 * Otherwise, we have to open it.
+				 */
+				if (RelationGetRelid(stats_context->onerel) == tmp_stats->metadata.relid)
+				{
+					rel = stats_context->onerel;
+				}
+
+				else
+				{
+					rel = relation_open(tmp_stats->metadata.relid, AccessShareLock);
+				}
 			
-			Assert(RelationGetRelid(stats_context->onerel) == tmp_stats->metadata.relid);
+				cdbanalyze_get_columnstats(tmp_stats, tupdesc,
+										   stats_context->ctx, rel);
+				/* We could safely free the space for tuples and reltuples */
+				list_free(tmp_stats->tuples);
+				list_free(tmp_stats->reltuples);
+				tmp_stats->tuples = NIL;
+				tmp_stats->reltuples = NIL;
 				
-			cdbanalyze_get_columnstats(tmp_stats, tupdesc,
-									   stats_context->ctx, stats_context->onerel);
-			/* We could safely free the space for tuples and reltuples */
-			list_free(tmp_stats->tuples);
-			list_free(tmp_stats->reltuples);
-			tmp_stats->tuples = NIL;
-			tmp_stats->reltuples = NIL;
+				stats_context->updated_stats =
+					lappend(stats_context->updated_stats, tmp_stats);
 
-			stats_context->updated_stats =
-				lappend(stats_context->updated_stats, tmp_stats);
-			
+				if (rel != stats_context->onerel)
+					relation_close(rel, AccessShareLock);
+			}
 		}
 
 		heap_close(stat_rel, RowExclusiveLock);
 
-		pfree(pgstat_stats_array);
+		list_free_deep(pgstat_stats_list);
+		list_free(pgstat_stats_max_attnum);
 	}
 }

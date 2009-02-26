@@ -545,6 +545,8 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 			if (list_length(relations) > 1)
 			{
+				pfree(vacstmt->relation->schemaname);
+				pfree(vacstmt->relation->relname);
 				pfree(vacstmt->relation);
 				vacstmt->relation = NULL;
 			}

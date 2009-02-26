@@ -1236,12 +1236,20 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 {
 	Relation	sd;
 	int			attno;
+	int         max_attnum = 0;
 	Oid relid = RelationGetRelid(rel);
 
 	if (natts <= 0)
 		return;					/* nothing to do */
 
 	sd = heap_open(StatisticRelationId, RowExclusiveLock);
+
+	/* Find max_attnum */
+	for(attno = 0; attno < natts; attno++)
+	{
+		if (max_attnum < vacattrstats[attno]->attr->attnum)
+			max_attnum = vacattrstats[attno]->attr->attnum;
+	}
 
 	for (attno = 0; attno < natts; attno++)
 	{
@@ -1401,11 +1409,12 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 			pq_beginmessage(&buf, 'y');
 			pq_sendstring(&buf, "ANALYZE");
 			pq_sendint(&buf,
-					   sizeof(VUpdatedStats) + sizeof(double) +
+					   sizeof(VUpdatedStats) + sizeof(double) + sizeof(int) +
 					       sizeof(int) + heaptuple_get_size(stup),
 					   sizeof(int));
 			pq_sendbytes(&buf, (char *)(&tmp_stats), sizeof(VUpdatedStats));
 			pq_sendbytes(&buf, (char *)&reltuples, sizeof(double));
+			pq_sendbytes(&buf, (char*)&max_attnum, sizeof(int));
 			/* XXX attnum is 16-bit */
 			pq_sendbytes(&buf, (char *)&(stats->attr->attnum), sizeof(int));
 			pq_sendbytes(&buf, (char *)stup, HEAPTUPLESIZE);
