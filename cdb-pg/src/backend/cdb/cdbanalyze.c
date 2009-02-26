@@ -650,10 +650,22 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 				
 				forboth (lc, pgstat_stats_list, max_attnum_lc, pgstat_stats_max_attnum)
 				{
+					int attno = 0;
+					
 					old_max_attnum = (int *)lfirst(max_attnum_lc);
 					pgstat_stats_array = (VPgStatisticStats **)lfirst(lc);
 					
-					if (pgstat_stats_array[0]->metadata.relid == new_stats->relid)
+					/* Find the first non-null pgstat_stats_array */
+					for(attno = 0; attno < *old_max_attnum; attno++)
+					{
+						if (pgstat_stats_array[attno] != NULL)
+							break;
+					}
+
+					Assert(attno < *old_max_attnum);
+
+					if (attno < *old_max_attnum &&
+						pgstat_stats_array[attno]->metadata.relid == new_stats->relid)
 						break;
 				}
 				

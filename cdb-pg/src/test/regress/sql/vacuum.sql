@@ -74,6 +74,9 @@ insert into vactst select i, (i%123 > 50), (i/11) || '', '2008/10/12'::date + (i
 from generate_series(0, 99) i;
 alter table vactst drop column b;
 vacuum analyze vactst;
+
+alter table vactst drop column i;
+vacuum analyze vactst;
 drop table vactst;
 
 -- vacuum analyze a table whose index has pg_statistic stats
