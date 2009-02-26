@@ -4928,14 +4928,15 @@ L_setprevElem:
 		(spec->partStart &&
 		 prevBSpec &&
 		 prevBSpec->partEnd))
-	{/* compare to last */
-		int				 compareRc = 0;
+	{
+		/* compare to last */
+		int				 rc = 0;
 		PartitionRangeItem *pRI1 =
 				(PartitionRangeItem *)spec->partStart;
 		PartitionRangeItem *pRI2 =
 				(PartitionRangeItem *)prevBSpec->partEnd;
 
-		compareRc = partition_range_compare(vstate->pstate,
+		rc = partition_range_compare(vstate->pstate,
 											vstate->cxt, vstate->stmt,
 											vstate->pBy,
 											vstate->at_depth,
@@ -4946,7 +4947,7 @@ L_setprevElem:
 
 		if ((pRI2->partedge == PART_EDGE_INCLUSIVE) &&
 			(pRI1->partedge == PART_EDGE_INCLUSIVE) &&
-			(1 == compareRc))
+			(1 == rc))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -4959,27 +4960,24 @@ L_setprevElem:
 
 		}
 
-		/* if values are equal, but not inclusive to both,
-		 * then append is possible */
-		if (1 != compareRc)
-			compareRc =
-				partition_range_compare(vstate->pstate,
-										vstate->cxt, vstate->stmt,
-										vstate->pBy,
-										vstate->at_depth,
-										vstate->partNumber,
-										">",
-										pRI1,
-										pRI2);
+		/* 
+		 * If values are equal, but not inclusive to both,
+		 * then append is possible
+		 */
+		if (1 != rc)
+			rc = partition_range_compare(vstate->pstate,
+										 vstate->cxt, vstate->stmt,
+										 vstate->pBy,
+										 vstate->at_depth,
+										 vstate->partNumber,
+										 ">",
+										 pRI1,
+										 pRI2);
 
-		if (1 == compareRc)
+		if (1 == rc)
 			bAppendRange = 1;
 
-
-		/* else could be start out of sequence, so must
-		 * search entire sorted list */
-
-		if (0)
+		if (rc != 1)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -4992,6 +4990,87 @@ L_setprevElem:
 		}
 
 	} /* end compare to last */
+
+#if 0
+	/* 
+	 * XXX: this would be a nice test to add in, perhaps we enable it when
+	 * cassert is enabled?
+	 */
+	{
+		/* 
+		 * Better make sure the current boundary specification doesn't overlap
+		 * an existing one. It's not enough to just do the previous spec as they
+		 * might be out of order.
+		 */
+		ListCell *lc;
+		PartitionRangeItem *ri_start = (PartitionRangeItem *)spec->partStart;
+
+		foreach(lc, vstate->allRangeVals)
+		{
+			PartitionBoundSpec *s = lfirst(lc);
+			PartitionRangeItem *s_start = (PartitionRangeItem *)s->partStart;
+			PartitionRangeItem *s_end = (PartitionRangeItem *)s->partEnd;
+			int rc;
+
+			rc = partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt,
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											"=",
+											ri_start,
+											s_start);
+
+			if (rc == 1 &&
+				ri_start->partedge == PART_EDGE_INCLUSIVE &&
+				s_start->partedge == PART_EDGE_INCLUSIVE)
+			{
+				elog(ERROR, "overlapping");
+			}
+
+			rc = partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt,
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											">",
+											ri_start,
+											s_start);
+
+			/* ri_start > s_start */
+			if (rc == 1)
+			{
+				/* see if ri_start < s_end */
+				rc = partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt,
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											"<",
+											ri_start,
+											s_end);
+				if (rc == 1)
+					elog(ERROR, "overlapping 2");
+
+				rc = partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt,
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											"=",
+											ri_start,
+											s_end);
+
+				if (rc == 1 &&
+					ri_start->partedge == PART_EDGE_INCLUSIVE &&
+					s_end->partedge == PART_EDGE_INCLUSIVE)
+				{
+					elog(ERROR, "overlapping");
+				}
+			}
+		}
+	}
+#endif
 
 	if (bAppendRange)
 	{

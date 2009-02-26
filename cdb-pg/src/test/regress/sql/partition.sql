@@ -2884,4 +2884,33 @@ alter table mpp4892 set subpartition template (subpartition sp3 values ('c'));
 -- won't work (until the prior set subpartition template works)
 alter table mpp4892 add partition p4 end (15);
 
-drop table mpp4892
+drop table mpp4892;
+
+-- make sure we do not allow overlapping range intervals
+-- should fail
+-- unordered elems
+create table ttt (t int) partition by range(t) (
+partition a start (1) end(10) inclusive,
+partition c start(11) end(14),
+partition b start(5) end(15)
+);
+
+-- should fail, this time it's ordered
+create table ttt (t int) partition by range(t) (
+partition a start (1) end(10) inclusive,
+partition b start(5) end(15),
+partition c start(11) end(14)
+);
+
+-- should fail
+create table ttt (t date) partition by range(t) (
+partition a start ('2005-01-01') end('2006-01-01') inclusive,
+partition b start('2005-05-01') end('2005-06-11'),
+partition c start('2006-01-01') exclusive end('2006-01-10')
+);
+
+-- should fail
+create table ttt (t char) partition by range(t) (
+partition a start('a') end('f'),
+partition b start('e') end('g')
+);

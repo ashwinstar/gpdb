@@ -6434,4 +6434,41 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 NOTICE:  CREATE TABLE will create partition "mpp4892_1_prt_p4" for table "mpp4892"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 ERROR:  no partitions specified at depth 2
-drop table mpp4892
+drop table mpp4892;
+-- make sure we do not allow overlapping range intervals
+-- should fail
+-- unordered elems
+create table ttt (t int) partition by range(t) (
+partition a start (1) end(10) inclusive,
+partition c start(11) end(14),
+partition b start(5) end(15)
+);
+ERROR:  starting value of partition "b" overlaps previous range
+LINE 4: partition b start(5) end(15)
+                    ^
+-- should fail, this time it's ordered
+create table ttt (t int) partition by range(t) (
+partition a start (1) end(10) inclusive,
+partition b start(5) end(15),
+partition c start(11) end(14)
+);
+ERROR:  starting value of partition "b" overlaps previous range
+LINE 3: partition b start(5) end(15),
+                    ^
+-- should fail
+create table ttt (t date) partition by range(t) (
+partition a start ('2005-01-01') end('2006-01-01') inclusive,
+partition b start('2005-05-01') end('2005-06-11'),
+partition c start('2006-01-01') exclusive end('2006-01-10')
+);
+ERROR:  starting value of partition "b" overlaps previous range
+LINE 3: partition b start('2005-05-01') end('2005-06-11'),
+                    ^
+-- should fail
+create table ttt (t char) partition by range(t) (
+partition a start('a') end('f'),
+partition b start('e') end('g')
+);
+ERROR:  starting value of partition "b" overlaps previous range
+LINE 3: partition b start('e') end('g')
+                    ^
