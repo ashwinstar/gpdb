@@ -813,6 +813,9 @@ doNotifyingAbort(void)
 	LWLockRelease(ProcArrayLock);
 }
 
+/*
+ * Attempt to retry DTM messaging.
+ */
 void
 doDtxPhase2Retry(void)
 {

@@ -4883,7 +4883,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 			/*
 			 * Let's see if the DTM has phase 2 retry work.
 			 */
-			doDtxPhase2Retry();
+			if (Gp_role == GP_ROLE_DISPATCH)
+				doDtxPhase2Retry();
 		}
 
 		/*
