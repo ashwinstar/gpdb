@@ -43,6 +43,8 @@
 #include "miscadmin.h"
 #include "parser/parsetree.h"
 
+#include "cdb/cdbvars.h" /* gp_select_invisible */
+
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static void bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres);
 
@@ -527,8 +529,11 @@ ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 	/*
 	 * Assert caller didn't ask for an unsafe snapshot --- see comments at
 	 * head of file.
+	 *
+	 * MPP-4703: the MVCC-snapshot restriction is required for correct results.
+	 * our test-mode may deliberately return incorrect results, but that's OK.
 	 */
-	Assert(IsMVCCSnapshot(estate->es_snapshot));
+	Assert(IsMVCCSnapshot(estate->es_snapshot) || gp_select_invisible);
 
 	/*
 	 * create state structure
