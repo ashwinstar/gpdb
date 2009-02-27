@@ -902,7 +902,29 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 					changes[primaryChange].dbid = segInfo->dbid;
 					changes[primaryChange].oldStatus = segStatus;
 					changes[primaryChange].newStatus = segStatus & ~FTS_STATUS_ALIVE;
-					changes[primaryChange].persist = true;
+
+					if (*ftsAction == FTS_READONLY)
+					{
+						/*
+						 * In readonly mode, we never persistently mark segments down
+						 */
+						changes[primaryChange].persist = false;
+					}
+					else
+					{
+						/*
+						 * MPP-5135, MPP-1601: we don't want to mark the segment down if:
+						 *   1) there is no mirror
+						 *   2) there is a mirror, but the mirror is already marked down.
+						 */
+						if (mirror != NULL &&
+							FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+						{
+							changes[primaryChange].persist = true;
+						}
+						else
+							changes[primaryChange].persist = false;
+					}
 
 					if (mirror != NULL &&
 						segStatus & FTS_STATUS_PRIMARY &&
@@ -924,7 +946,13 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 							changes[mirrorChange].dbid = mirror->dbid;
 							changes[mirrorChange].oldStatus = segStatus;
 							changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
-							changes[mirrorChange].persist = true;
+
+							if (*ftsAction == FTS_READONLY)
+								changes[mirrorChange].persist = false;
+							else
+							{
+								changes[mirrorChange].persist = true;
+							}
 
 							/* update primary */
 							changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
