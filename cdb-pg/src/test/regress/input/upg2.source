@@ -90,7 +90,7 @@ old_class c,
 old_type t
 where c.oid = a.attrelid and a.attnum > 0
 and t.oid = a.atttypid
-and c.oid < 16384
+and c.oid < 10000
 and c.relkind = 'r'
 order by c.relname, a.attnum;
 
@@ -100,7 +100,7 @@ pg_class c,
 pg_type t
 where c.oid = a.attrelid and a.attnum > 0
 and t.oid = a.atttypid
-and c.oid < 16384
+and c.oid < 10000
 and c.relkind = 'r'
 order by c.relname, a.attnum;
 
@@ -117,7 +117,7 @@ old_class c,
 old_type t
 where c.oid = a.attrelid and a.attnum > 0
 and t.oid = a.atttypid
-and c.oid < 16384
+and c.oid < 10000
 and c.relkind = 'v'
 order by c.relname, a.attnum;
 
@@ -128,7 +128,7 @@ pg_catalog.pg_class c,
 pg_catalog.pg_type t
 where c.oid = a.attrelid and a.attnum > 0
 and t.oid = a.atttypid
-and c.oid < 16384
+and c.oid < 10000
 and c.relkind = 'v'
 order by c.relname, a.attnum;
 
@@ -136,9 +136,9 @@ order by c.relname, a.attnum;
 
 -- begin_equivalent
 -- compare old and new pg_index
-select * from old_index where indexrelid < 16384 order by indexrelid, indrelid;
+select * from old_index where indexrelid < 10000 order by indexrelid, indrelid;
 
-select * from pg_catalog.pg_index where indexrelid < 16384 order by indexrelid,
+select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
 	   indrelid;
 
 -- end_equivalent
