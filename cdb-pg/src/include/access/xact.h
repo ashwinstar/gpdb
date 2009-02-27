@@ -141,7 +141,7 @@ typedef struct xl_xact_distributed_forget
 
 /*
  * Maximum number of subtransactions per transaction allowed under MPP until
- * we can move away from a static length SharedSnaphot structure.
+ * we can move away from a static length SharedSnapshot structure.
  */
 #define MaxGpSavePoints 100
 

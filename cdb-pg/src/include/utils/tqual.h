@@ -299,11 +299,10 @@ extern bool WatchVisibilityAllZeros(void);
 extern Size SharedSnapshotShmemSize(void);
 extern void CreateSharedSnapshotArray(void);
 extern char *SharedSnapshotDump(void);
-extern SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
-extern SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
+
 extern void SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creatorDescription);
-extern void addSharedSnaphot(char *creatorDescription, int id);
-extern void lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id);
+extern void addSharedSnapshot(char *creatorDescription, int id);
+extern void lookupSharedSnapshot(char *lookerDescription, char *creatorDescription, int id);
 
 extern bool HeapTupleSatisfiesItself(HeapTupleHeader tuple, Buffer buffer);
 extern bool HeapTupleSatisfiesNow(HeapTupleHeader tuple, Buffer buffer);

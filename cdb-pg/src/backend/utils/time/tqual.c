@@ -62,6 +62,9 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
+static SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
+static SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
+
 /*
  * These SnapshotData structs are static to simplify memory allocation
  * (see the hack in GetSnapshotData to avoid repeated malloc/free).
@@ -196,7 +199,8 @@ CreateSharedSnapshotArray(void)
 
 /* used to dump the internal state of the shared slots for debugging.
  */
-char *SharedSnapshotDump(void)
+char *
+SharedSnapshotDump(void)
 {
 	StringInfoData str;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
@@ -236,7 +240,8 @@ char *SharedSnapshotDump(void)
  * will need to be communicated to the "reader" qExecs so that they can find
  * this slot.
  */
-SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
+static SharedSnapshotSlot *
+SharedSnapshotAdd(int4 slotId)
 {
 	SharedSnapshotSlot *slot;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
@@ -351,7 +356,8 @@ GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots)
  * slot unless something unexpected.  If the slot is not found, then NULL is 
  * returned.
  */
-SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
+static SharedSnapshotSlot *
+SharedSnapshotLookup(int4 slotId)
 {
 	SharedSnapshotSlot *slot = NULL;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
@@ -426,7 +432,7 @@ SharedSnapshotRemove(volatile SharedSnapshotSlot *slot,
 }
 
 void
-addSharedSnaphot(char *creatorDescription, int id)
+addSharedSnapshot(char *creatorDescription, int id)
 {
 	SharedSnapshotSlot *slot;
 	
@@ -448,7 +454,7 @@ addSharedSnaphot(char *creatorDescription, int id)
 }
 
 void
-lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id)
+lookupSharedSnapshot(char *lookerDescription, char *creatorDescription, int id)
 {
 	
 	SharedSnapshotSlot *slot;
@@ -478,7 +484,7 @@ lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id)
  */
 static inline void markDirty(Buffer buffer, bool disabled)
 {
-	if (! disabled)
+	if (!disabled)
 		SetBufferCommitInfoNeedsSave(buffer);
 }
 
@@ -2390,7 +2396,7 @@ WatchVisibilityInActionString(
 		else if (snapshot == SerializableSnapshot)
 			snapshotStr = "SerializableSnapshot";
 		else
-			snapshotStr = "OtherSnaphot";
+			snapshotStr = "OtherSnapshot";
 
 		snapshotCurcid = snapshot->curcid;
 		snapshotXmin = snapshot->xmin;

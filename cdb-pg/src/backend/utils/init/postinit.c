@@ -432,7 +432,7 @@ InitPostgres(const char *dbname, const char *username)
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist",
 							dbname),
-			   errdetail("It seems to have just been dropped or renamed.")));
+					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
 	/*
@@ -448,8 +448,8 @@ InitPostgres(const char *dbname, const char *username)
 						(errcode(ERRCODE_UNDEFINED_DATABASE),
 						 errmsg("database \"%s\" does not exist",
 								dbname),
-					errdetail("The database subdirectory \"%s\" is missing.",
-							  fullpath)));
+						 errdetail("The database subdirectory \"%s\" is missing.",
+								   fullpath)));
 			else
 				ereport(FATAL,
 						(errcode_for_file_access(),
@@ -552,7 +552,7 @@ InitPostgres(const char *dbname, const char *username)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		addSharedSnaphot("Query Dispatcher", gp_session_id);
+		addSharedSnapshot("Query Dispatcher", gp_session_id);
 	}
 	else if (Gp_role == GP_ROLE_DISPATCHAGENT)
 	{
@@ -564,21 +564,22 @@ InitPostgres(const char *dbname, const char *username)
 		 * Entry db singleton QE is a user of the shared snapshot -- not a creator.
 		 * The lookup will occur once the distributed snapshot has been received.
 		 */	
-		lookupSharedSnaphot("Entry DB Singleton", "Query Dispatcher", gp_session_id);
+		lookupSharedSnapshot("Entry DB Singleton", "Query Dispatcher", gp_session_id);
     }
     else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		if (Gp_is_writer)
 		{
-			addSharedSnaphot("Writer qExec", gp_session_id);
+			addSharedSnapshot("Writer qExec", gp_session_id);
 		}
 		else
 		{
-			/* NOTE: This assumes that the Slot has already been allocated by
-			 *       the writer.  Need to make sure we always allocate the 
-			 *		 writer qExec first.
+			/*
+			 * NOTE: This assumes that the Slot has already been
+			 *       allocated by the writer.  Need to make sure we
+			 *       always allocate the writer qExec first.
 			 */			 			
-			lookupSharedSnaphot("Reader qExec", "Writer qExec", gp_session_id);
+			lookupSharedSnapshot("Reader qExec", "Writer qExec", gp_session_id);
 		}
 	}
 
