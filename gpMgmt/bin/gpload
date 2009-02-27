@@ -554,8 +554,8 @@ class gpload:
                 es = "unacceptable character #x%04x at byte %d: %s"    \
                     % (ord(e.character), e.position, e.reason)
             self.log(self.ERROR, es)
-        except yaml.reader.MarkedYAMLError, e:
-            self.log(self.ERROR, "configuration file error: , line %s" % \
+        except yaml.error.MarkedYAMLError, e:
+            self.log(self.ERROR, "configuration file error: %s, line %s" % \
                 (e.problem, e.problem_mark.line))
 
         f.close()
