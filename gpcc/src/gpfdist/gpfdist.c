@@ -46,34 +46,6 @@ struct block_t
 
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
 
-/*
- * borrow the postgresql definition of bool type, from c.h
- */
-#ifndef __cplusplus
-
-#ifndef bool
-typedef char bool;
-#endif
-
-#ifndef true
-#define true	((bool) 1)
-#endif
-
-#ifndef false
-#define false	((bool) 0)
-#endif
-#endif   /* not C++ */
-
-typedef bool *BoolPtr;
-
-#ifndef TRUE
-#define TRUE	1
-#endif
-
-#ifndef FALSE
-#define FALSE	0
-#endif
-
 int gprint(const char* fmt, ...);
 void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
@@ -106,11 +78,11 @@ int gwarning(const char* fline, const char* fmt, ...);
 typedef struct gnet_request_t gnet_request_t;
 struct gnet_request_t
 {
-	int argc;
-	char** argv;
-	int hc;
-	char* hname[50];
-	char* hvalue[50];
+	int 	argc;
+	char** 	argv;
+	int 	hc;
+	char* 	hname[50];
+	char* 	hvalue[50];
 };
 
 static gnet_request_t* gnet_parse_request(const char* buf, int* len,
@@ -127,16 +99,16 @@ static void percent_encoding_to_char(char* p, char* pp, char* path);
 /*  Struct of command line options */
 static struct
 {
-	int p; /* port */
-	int last_port;
-	int v; /* verbose */
-	int V; /* very verbose */
+	int 		p; /* port */
+	int 		last_port;
+	int 		v; /* verbose */
+	int 		V; /* very verbose */
 	const char* d; /* directory */
 	const char* l; /* log filename */
-	const char*f; /* forced filename */
-	int g; /* gp_proto (0 or 1) (internal, not documented) */
-	int t; /* timeout in seconds */
-	int b;
+	const char*	f; /* forced filename */
+	int 		g; /* gp_proto (0 or 1) (internal, not documented) */
+	int 		t; /* timeout in seconds */
+	int 		b;
 } opt =
 { 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0 };
 
@@ -214,53 +186,53 @@ static void block_fill_header(block_t* b,
 /*  Global constrol block */
 static struct
 {
-	apr_pool_t* pool;
-	SOCKET listen_sock;
-	struct event listen_event;
+	apr_pool_t* 	pool;
+	SOCKET 			listen_sock;
+	struct event 	listen_event;
 	struct
 	{
-		int gen;
+		int 		gen;
 		apr_hash_t* tab;
 	} session;
-	apr_int64_t read_bytes;
-	apr_int64_t total_bytes;
-	int total_sessions;
+	apr_int64_t 	read_bytes;
+	apr_int64_t 	total_bytes;
+	int 			total_sessions;
 } gcb;
 
 /*  A session */
 typedef struct session_t session_t;
 struct session_t
 {
-	apr_pool_t* pool;
-	const char* key;
-	const char* tid;
-	const char* path;
-	fstream_t* fstream;
-	int is_error; /* error flag */
-	int nrequest; /* # requests attached to this session */
-	apr_time_t mtime; /* time when nrequest was modified */
+	apr_pool_t* 	pool;
+	const char* 	key;
+	const char* 	tid;
+	const char* 	path;		/* path requeested */
+	fstream_t* 		fstream;
+	int 			is_error;	/* error flag */
+	int 			nrequest;	/* # requests attached to this session */
+	apr_time_t		mtime; 		/* time when nrequest was modified */
 };
 
-/*  A http request */
+/*  An http request */
 typedef struct request_t request_t;
 struct request_t
 {
-	SOCKET sock; /* the socket */
-	apr_pool_t* pool; /* memory pool container */
-	struct timeval tm; /* timeout for struct event */
-	struct event ev; /* event we are watching for this request */
-	const char* peer; /* peer IP:port string */
-	const char* path; /* path to file */
-	const char* tid; /* transaction id */
-	const char* csvopt; /* options for csv file */
-	session_t* session; /* the session this request is attached to */
-	int gp_proto;
+	SOCKET 			sock; 		/* the socket */
+	apr_pool_t* 	pool; 		/* memory pool container */
+	struct timeval 	tm; 		/* timeout for struct event */
+	struct event 	ev; 		/* event we are watching for this request */
+	const char* 	peer; 		/* peer IP:port string */
+	const char* 	path; 		/* path to file */
+	const char* 	tid; 		/* transaction id */
+	const char* 	csvopt; 	/* options for csv file */
+	session_t* 		session; 	/* the session this request is attached to */
+	int 			gp_proto; 	/* the protocol to use, sent from client */
 
 	struct
 	{
-		char* hbuf; /* buffer for raw incoming HTTP request */
-		int hbuftop; /* # bytes used in hbuf */
-		int hbufmax; /* size of hbuf[] */
+		char* 	hbuf; 		/* buffer for raw incoming HTTP request */
+		int 	hbuftop; 	/* # bytes used in hbuf */
+		int 	hbufmax; 	/* size of hbuf[] */
 		gnet_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
 	} in;
 
@@ -279,7 +251,7 @@ static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
 
 /* Print usage */
-static void usage_error(const char* msg, bool print_usage)
+static void usage_error(const char* msg, int print_usage)
 {
 	if (print_usage)
 	{
@@ -344,10 +316,11 @@ static void print_q_x_h_are_gone(void)
 static void parse_command_line(int argc, const char* const argv[],
 		apr_pool_t* pool)
 {
-	apr_getopt_t* os;
-	int ch;
-	const char* arg;
-	int e;
+	apr_getopt_t* 	os;
+	const char* 	arg;
+	int 			ch;
+	int 			e;
+
 	static const apr_getopt_option_t option[] =
 	{
 	{ NULL, '?', 0, "print help screen" },
@@ -375,7 +348,7 @@ static void parse_command_line(int argc, const char* const argv[],
 		switch (ch)
 		{
 		case '?':
-			usage_error(0, true);
+			usage_error(0, 1);
 			break;
 		case 'v':
 			opt.v = 1;
@@ -423,20 +396,20 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 
 	if (e != APR_EOF)
-		usage_error("Error: illegal arguments", true);
+		usage_error("Error: illegal arguments", 1);
 
 	if (!(0 < opt.p && opt.p < (1 << 16)))
-		usage_error("Error: please specify a valid port number for -p switch", false);
+		usage_error("Error: please specify a valid port number for -p switch", 0);
 
 	if (-1 != opt.g)
 	{
 		if (!(0 == opt.g || 1 == opt.g))
-			usage_error("Error: please specify 0 or 1 for -g switch (note: this is internal)", false);
+			usage_error("Error: please specify 0 or 1 for -g switch (note: this is internal)", 0);
 	}
 
 	if (! (2 <= opt.t && opt.t <= 30))
 	{
-		usage_error("Error:-t tmout must be between 2 and 30", false);
+		usage_error("Error:-t tmout must be between 2 and 30", 0);
 	}
 
 	/* validate opt.d */
@@ -449,7 +422,7 @@ static void parse_command_line(int argc, const char* const argv[],
 
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
-			usage_error("Security Error: cannot run under root (/) directory", false);
+			usage_error("Security Error: cannot run under root (/) directory", 0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -462,11 +435,11 @@ static void parse_command_line(int argc, const char* const argv[],
 		/* check that the dir exists */
 		if (0 != apr_filepath_set(opt.d, pool))
 			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
-				"Please specify a valid directory for -d switch", opt.d), false);
+				"Please specify a valid directory for -d switch", opt.d), 0);
 
 		if (0 != apr_filepath_get(&p, APR_FILEPATH_NATIVE, pool))
 			usage_error(apr_psprintf(pool, "Error: cannot access directory '%s'\n"
-				"Please specify a valid directory for -d switch", opt.d), false);
+				"Please specify a valid directory for -d switch", opt.d), 0);
 		opt.d = p;
 	}
 
@@ -484,7 +457,7 @@ static void parse_command_line(int argc, const char* const argv[],
 		/* disallow / */
 		if (0 == strcmp(p, "/"))
 			usage_error("Security Error: cannot run under root (/) directory",
-						false);
+						0);
 
 		/* strip ending / */
 		while (p[0] && p[strlen(p) - 1] == '/')
@@ -506,7 +479,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 	/* there should not be any more args left */
 	if (os->ind != argc)
-		usage_error("Error: illegal arguments", true);
+		usage_error("Error: illegal arguments", 1);
 }
 
 
@@ -568,28 +541,43 @@ static apr_status_t http_ok(request_t* r)
 	return 0;
 }
 
+/*
+ * send_gpfdist_status
+ *
+ * send some server status back to the client. This is a debug utility and is
+ * not normally used in normal production environment unless triggered for
+ * debugging purposes. For more information see do_read, search for
+ * 'gpfdist/status'.
+ */
 static apr_status_t send_gpfdist_status(request_t* r)
 {
-	char buf[1024];
-	int m, n;
-	n = apr_snprintf(buf, sizeof(buf), "HTTP/1.0 200 ok\r\n"
-		"Content-type: text/plain\r\n"
-		"Expires: 0\r\n"
-		"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
-		"Cache-Control: no-cache\r\n"
-		"Connection: close\r\n\r\n"
-		"read_bytes %"APR_INT64_T_FMT"\r\n"
-		"total_bytes %"APR_INT64_T_FMT"\r\n"
-		"total_sessions %d\r\n", gcb.read_bytes, gcb.total_bytes,
-			gcb.total_sessions);
+	char	buf[1024];
+	int 	m, n;
+
+	n = apr_snprintf(buf, sizeof(buf),	"HTTP/1.0 200 ok\r\n"
+										"Content-type: text/plain\r\n"
+										"Expires: 0\r\n"
+										"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
+										"Cache-Control: no-cache\r\n"
+										"Connection: close\r\n\r\n"
+										"read_bytes %"APR_INT64_T_FMT"\r\n"
+										"total_bytes %"APR_INT64_T_FMT"\r\n"
+										"total_sessions %d\r\n",
+										gcb.read_bytes,
+										gcb.total_bytes,
+										gcb.total_sessions);
+
 	if (n >= sizeof buf - 1)
 		gfatal(FLINE, "internal error - buffer overflow");
+
 	m = send(r->sock, buf, n, 0);
+
 	if (m != n)
 	{
 		gprint("%s - socket error\n", r->peer);
 		return APR_EGENERAL;
 	}
+
 	return 0;
 }
 
@@ -624,8 +612,10 @@ static void request_end(request_t* r, int error, const char* errmsg)
 	}
 	else
 	{
+		/* detach this request from its session */
 		session_detach(r);
 	}
+
 	event_del(&r->ev);
 	shutdown(r->sock, SHUT_WR | SHUT_RD);
 	closesocket(r->sock);
@@ -636,6 +626,7 @@ static void request_end(request_t* r, int error, const char* errmsg)
 static int local_send(int fd, const char* buf, int buflen)
 {
 	int n = send(fd, buf, buflen, 0);
+
 	if (n < 0)
 	{
 #ifdef WIN32
@@ -647,20 +638,25 @@ static int local_send(int fd, const char* buf, int buflen)
 #endif
 		return ok ? 0 : -1;
 	}
+
 	return n;
 }
 
 static int local_sendall(int fd, const char* buf, int buflen)
 {
 	int oldlen = buflen;
+
 	while (buflen)
 	{
 		int i = local_send(fd, buf, buflen);
+
 		if (i < 0)
 			return i;
+
 		buf += i;
 		buflen -= i;
 	}
+
 	return oldlen;
 }
 
@@ -792,11 +788,14 @@ static void session_free(session_t* s)
 static void session_detach(request_t* r)
 {
 	session_t* s = r->session;
+
 	r->session = 0;
+
 	if (s)
 	{
 		if (s->nrequest <= 0)
 			gfatal(FLINE, "assert failed");
+
 		s->nrequest--;
 		s->mtime = apr_time_now();
 
@@ -813,24 +812,28 @@ static void session_detach(request_t* r)
 
 static void sessions_cleanup(void)
 {
-	apr_hash_index_t *hi;
-	int i, n = 0;
-	void* entry;
-	session_t **session, *s;
-	int nses;
+	apr_hash_index_t*	hi;
+	int 				i, n = 0;
+	void* 				entry;
+	session_t**			session;
+	session_t*			s;
+	int 				numses;
 
-	nses = apr_hash_count(gcb.session.tab);
-	if (nses == 0)
+	numses = apr_hash_count(gcb.session.tab);
+
+	if (numses == 0)
 		return;
 
-	if (!(session = malloc(sizeof(session_t *) * nses)))
+	if (!(session = malloc(sizeof(session_t *) * numses)))
 		gfatal(FLINE, "out of memory");
 
 	hi = apr_hash_first(gcb.pool, gcb.session.tab);
-	for (i = 0; hi && i < nses; i++, hi = apr_hash_next(hi))
+
+	for (i = 0; hi && i < numses; i++, hi = apr_hash_next(hi))
 	{
 		apr_hash_this(hi, 0, 0, &entry);
 		s = (session_t*) entry;
+
 		if (s->nrequest == 0 && (s->mtime < apr_time_now() - 300
 				* APR_USEC_PER_SEC))
 		{
@@ -848,30 +851,40 @@ static void sessions_cleanup(void)
 	free(session);
 }
 
+/*
+ * session_attach
+ *
+ * attach a request to a session (create the session if not already exists).
+ */
 static void session_attach(request_t* r)
 {
 	char key[1024];
 	session_t* s = 0;
 
-	/* create the key */
-	if (sizeof(key) - 1 == apr_snprintf(key, sizeof(key), "%s:%s", r->tid,
-										r->path))
+	/*
+	 * create the session key (tid:path)
+	 */
+	if (sizeof(key) - 1 == apr_snprintf(key, sizeof(key), "%s:%s",
+										r->tid, r->path))
 	{
 		http_error(r, 400, "path too long");
 		request_end(r, 1, 0);
 		return;
 	}
 
-	/* check in session hashtable */
+	/* check if such session already exists in hashtable */
 	s = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
+
 	if (!s)
 	{
 		/* not in hashtable - create new session */
-		fstream_t* fstream = 0;
+
+		fstream_t* 	fstream = 0;
 		apr_pool_t* pool;
+		int 		response_code;
+		const char*	response_string;
 		struct fstream_options fstream_options;
-		int response_code;
-		const char*response_string;
+
 		/* remove any outdated sessions*/
 		sessions_cleanup();
 
@@ -886,6 +899,7 @@ static void session_attach(request_t* r)
 		/* parse csvopt header */
 		memset(&fstream_options, 0, sizeof fstream_options);
 		fstream_options.verbose = opt.v;
+
 		{
 			int quote = 0;
 			int escape = 0;
@@ -898,7 +912,7 @@ static void session_attach(request_t* r)
 
 		/* try opening the fstream */
 		fstream = fstream_open(r->path, &fstream_options, &response_code,
-				&response_string);
+							   &response_string);
 		if (!fstream)
 		{
 			gwarning(FLINE, "reject request from %s, path %s\n", r->peer,
@@ -912,19 +926,24 @@ static void session_attach(request_t* r)
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
 
 		/* allocate session */
-		if (0 == (s = apr_palloc(pool, sizeof(session_t))))
+		s = apr_palloc(pool, sizeof(session_t));
+
+		if (s == 0)
 			gfatal(FLINE, "out of memory");
+
 		memset(s, 0, sizeof(*s));
 
-		if (0 == (s->tid = apr_pstrdup(pool, r->tid)) || 0 == (s->path
-				= apr_pstrdup(pool, r->path)) || 0 == (s->key = apr_pstrdup(
-				pool, key)))
+		/* initialize session values */
+		s->tid = apr_pstrdup(pool, r->tid);
+		s->path = apr_pstrdup(pool, r->path);
+		s->key = apr_pstrdup(pool, key);
+		s->fstream = fstream;
+		s->pool = pool;
+
+		if (s->tid == 0 || s->path == 0 || s->key == 0)
 		{
 			gfatal(FLINE, "out of memory");
 		}
-
-		s->fstream = fstream;
-		s->pool = pool;
 
 		/* insert into hashtable */
 		apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
@@ -1205,7 +1224,12 @@ static void do_read(int fd, short event, void* arg)
 	/* decode %xx to char */
 	percent_encoding_to_char(p, pp, path);
 
-	if (!strcmp(path, "gpfdist/status"))
+	/*
+	 * This is a debug hook. We'll get here By creating an external table with
+	 * name(a text) location('gpfdist://<host>:<port>/gpfdist/status').
+	 * Show some state of gpfdist (num sessions, num bytes).
+	 */
+	if (!strcmp(path, "/gpfdist/status"))
 	{
 		send_gpfdist_status(r);
 		request_end(r, 0, 0);
@@ -1213,15 +1237,28 @@ static void do_read(int fd, short event, void* arg)
 	}
 
 	if (opt.f)
+	{
+		/* we forced in a filename with the hidden -f option. use it */
 		r->path = opt.f;
+
+		/* TODO: find out why this option exists. it's hidden */
+	}
 	else
 	{
+		/*
+		 * disallow using a relative path in the request
+		 */
 		if (strstr(path, ".."))
 		{
-			gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
-							 r->in.req->argv[0], r->in.req->argv[1]);
-			http_error(r, 400, "invalid request");
+			gwarning(FLINE, "reject invalid request from %s [%s %s] - request "
+							"is using a relative path",
+							r->peer,
+							r->in.req->argv[0],
+							r->in.req->argv[1]);
+
+			http_error(r, 400, "invalid request due to relative path");
 			request_end(r, 1, 0);
+
 			return;
 		}
 
@@ -1251,12 +1288,15 @@ static void do_read(int fd, short event, void* arg)
 				else
 					r->path = apr_psprintf(r->pool, "%s/%s", opt.d, path);
 			}
+
 			path = p;
+
 		} while (path);
+
 
 		if (!r->path)
 		{
-			http_error(r, 400, "invalid request");
+			http_error(r, 400, "invalid request (unable to set path)");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1296,9 +1336,10 @@ static void do_read(int fd, short event, void* arg)
 		if (r->gp_proto != 0 && r->gp_proto != 1)
 		{
 			gwarning(FLINE,
-					"reject invalid request from %s [%s %s] - X-GP-PROTO invalid '%s'",
+					"reject invalid request from %s [%s %s] - X-GP-PROTO "
+					"invalid '%s'",
 					r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
-			http_error(r, 400, "invalid request");
+			http_error(r, 400, "invalid request (invalid gp-proto)");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1313,11 +1354,11 @@ static void do_read(int fd, short event, void* arg)
 		}
 		else if (xid || cid || sn)
 		{
-			gwarning(
-					FLINE,
-					"reject invalid request from %s [%s %s] - missing X-GP-* header",
-					r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-			http_error(r, 400, "invalid request");
+			gwarning(FLINE,
+					 "reject invalid request from %s [%s %s] - missing X-GP-* "
+					 "header",
+					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+			http_error(r, 400, "invalid request (missing X-GP-* header)");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1334,14 +1375,14 @@ static void do_read(int fd, short event, void* arg)
 /* Callback when the listen socket is ready to accept connections. */
 static void do_accept(int fd, short event, void* arg)
 {
-	struct sockaddr_in a;
-	socklen_t len = sizeof(a);
-	SOCKET sock;
-	request_t* r;
-	apr_pool_t* pool;
-	int addr;
-	int on = 1;
-	struct linger linger;
+	struct sockaddr_in 	a;
+	socklen_t 			len = sizeof(a);
+	SOCKET 				sock;
+	request_t* 			r;
+	apr_pool_t* 		pool;
+	int 				addr;
+	int 				on = 1;
+	struct linger		linger;
 
 	/* do the accept */
 	if ((sock = accept(fd, (void*) &a, &len)) < 0)
@@ -1432,11 +1473,13 @@ static int setup_read(request_t* r)
 {
 	if (r->sock < 0)
 		gfatal(FLINE, "assert failed");
+
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
 	r->tm.tv_sec = opt.t;
 	r->tm.tv_usec = 0;
+
 	return (event_add(&r->ev, &r->tm));
 }
 
@@ -1482,15 +1525,19 @@ static void http_setup(void)
 	for (;;)
 	{
 		struct sockaddr_in a;
+
 		memset(&a, 0, sizeof a);
 		a.sin_family = AF_INET;
 		a.sin_port = htons(opt.p);
 		a.sin_addr.s_addr = htonl(opt.b);
+
 		/* bind */
 		if (!bind(f, (void*) &a, sizeof(a)))
 			break;
+
 		if (opt.p >= opt.last_port)
 			gfatal(FLINE, "cannot create socket on port %d", opt.p);
+
 		opt.p++;
 	}
 
