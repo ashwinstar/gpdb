@@ -108,7 +108,6 @@ def build_safe_table_name(conn, tab, into_cols = None):
     quote any multibyte, capitalised or keyword table names. Break
     up schema.table too.
     """
-
     to_quote = []
     if tab[0] == '"':
         # user did it for us
@@ -118,12 +117,15 @@ def build_safe_table_name(conn, tab, into_cols = None):
         # Before proceeding, see if this is just an expression 
         # such as orderkey + 1. To do so, we see if there's a reference
         # to an into column in the clause
-        for colname, type, map, a in into_cols:
-            reg = "(?<=[^\w])%s(?=[^\w])" % colname
-            stab = " %s " % tab
-            r = re.compile(reg)
-            if re.search(reg, stab):
-                return tab
+        # only do it if this isn't an exact known col name
+        f = filter(lambda x:x[0] == tab, into_cols)
+        if not f:
+            for colname, type, map, a in into_cols:
+                reg = "(?<=[^\w])%s(?=[^\w])" % colname
+                stab = " %s " % tab
+                r = re.compile(reg)
+                if re.search(reg, stab):
+                    return tab
 
     i = tab.find('.')
     if i >= 0:
