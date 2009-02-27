@@ -664,10 +664,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
 
-	if (rel_is_child_partition(OIDOldHeap))
-		is_part = true;
-	else
-		is_part = false;
+	is_part = !rel_needs_long_lock(OIDOldHeap);
 
 	if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
 	{

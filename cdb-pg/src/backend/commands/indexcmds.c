@@ -142,6 +142,8 @@ DefineIndex(RangeVar *heapRelation,
 	Relation	pg_index;
 	HeapTuple	indexTuple;
 	Form_pg_index indexForm;
+	LOCKMODE	heap_lockmode;
+	bool		need_longlock = true;
 
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
@@ -167,8 +169,8 @@ DefineIndex(RangeVar *heapRelation,
 	 * index build; but for concurrent builds we allow INSERT/UPDATE/DELETE
 	 * (but not VACUUM).
 	 */
-	rel = heap_openrv(heapRelation,
-					  (concurrent ? ShareUpdateExclusiveLock : ShareLock));
+	heap_lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	rel = heap_openrv(heapRelation, heap_lockmode);
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
@@ -503,6 +505,11 @@ DefineIndex(RangeVar *heapRelation,
 							primary ? "PRIMARY KEY" : "UNIQUE",
 							indexRelationName, RelationGetRelationName(rel))));
 
+	if (rel_needs_long_lock(RelationGetRelid(rel)))
+		need_longlock = true;
+	else
+		/* if this is a concurrent build, we must lock you long time */
+		need_longlock = (false || concurrent);
 
    	if (shouldDispatch)
 	{
@@ -549,8 +556,11 @@ DefineIndex(RangeVar *heapRelation,
 		 * MPP-4889
 		 * NOTE: we also have to do the local create before dispatching, otherwise
 		 * competing attempts to create the same index deadlock.
+		 *
+		 * Don't do this for partition children.
 		 */
-		LockRelationOid(indexRelationId, AccessExclusiveLock);
+		if (need_longlock)
+			LockRelationOid(indexRelationId, AccessExclusiveLock);
 
 		/*
 		 * Mark the DTX as distributed and reconfigure the cluster if needed.
@@ -600,7 +610,10 @@ DefineIndex(RangeVar *heapRelation,
 
 	/* save lockrelid for below, then close rel */
 	heaprelid = rel->rd_lockInfo.lockRelId;
-	heap_close(rel, NoLock);
+	if (need_longlock)
+		heap_close(rel, NoLock);
+	else
+		heap_close(rel, heap_lockmode);
 
 	if (!shouldDispatch)
 	{

@@ -7544,7 +7544,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 			foreach(l, children)
 			{
 				Oid relid = lfirst_oid(l);
-				Relation crel = heap_open(relid, AccessShareLock);
+				Relation crel = heap_open(relid, NoLock); /* lock on master is enough */
 				IndexStmt *chidx;
 				Relation partrel;
 				ScanKeyData key;

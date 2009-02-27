@@ -484,6 +484,7 @@ index_create(Oid heapRelationId,
 	bool		shared_relation;
 	Oid			namespaceId;
 	int			i;
+	LOCKMODE	heap_lockmode;
 
 	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
 
@@ -492,8 +493,9 @@ index_create(Oid heapRelationId,
 	 * index build; but for concurrent builds we allow INSERT/UPDATE/DELETE
 	 * (but not VACUUM).
 	 */
-	heapRelation = heap_open(heapRelationId,
-						(concurrent ? ShareUpdateExclusiveLock : ShareLock));
+	heap_lockmode = (concurrent ? ShareUpdateExclusiveLock : ShareLock);
+	heapRelation = heap_open(heapRelationId, heap_lockmode);
+						
 
 	/*
 	 * The index will be in the same namespace as its parent table, and is
@@ -841,10 +843,19 @@ index_create(Oid heapRelationId,
 
 	/*
 	 * Close the heap and index; but we keep the locks that we acquired above
-	 * until end of transaction.
+	 * until end of transaction unless we're dealing with a child of a partition
+	 * table, in which case the lock on the master is sufficient.
 	 */
-	index_close(indexRelation, NoLock);
-	heap_close(heapRelation, NoLock);
+	if (rel_needs_long_lock(RelationGetRelid(heapRelation)))
+	{
+		index_close(indexRelation, NoLock);
+		heap_close(heapRelation, NoLock);
+	}
+	else
+	{
+		index_close(indexRelation, AccessExclusiveLock);
+		heap_close(heapRelation, heap_lockmode);
+	}
 
 	return indexRelationId;
 }
@@ -864,6 +875,7 @@ index_drop(Oid indexId)
 	Relation	indexRelation;
 	HeapTuple	tuple;
 	bool		hasexprs;
+	bool		need_long_lock;
 
 	/*
 	 * To drop an index safely, we must grab exclusive lock on its parent
@@ -893,7 +905,11 @@ index_drop(Oid indexId)
 	 * try to rebuild it while we're deleting catalog entries. We keep the
 	 * lock though.
 	 */
-	index_close(userIndexRelation, NoLock);
+	need_long_lock = rel_needs_long_lock(RelationGetRelid(userIndexRelation));
+	if (need_long_lock)
+		index_close(userIndexRelation, NoLock);
+	else
+		index_close(userIndexRelation, AccessExclusiveLock);
 
 	RelationForgetRelation(indexId);
 
@@ -944,7 +960,7 @@ index_drop(Oid indexId)
 	/*
 	 * Close owning rel, but keep lock
 	 */
-	heap_close(userHeapRelation, NoLock);
+	heap_close(userHeapRelation, need_long_lock ? NoLock : AccessExclusiveLock);
 }
 
 /* ----------------------------------------------------------------

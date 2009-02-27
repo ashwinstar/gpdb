@@ -1451,6 +1451,7 @@ heap_drop_with_catalog(Oid relid)
 	bool		removePolicy = false;
 	bool		is_appendonly_table = false;
 	bool 		is_ext_table;
+	bool		is_part_child = false;
 
 	/*
 	 * Open and lock the relation.
@@ -1487,7 +1488,8 @@ heap_drop_with_catalog(Oid relid)
 	 * a child partition) on the relation until transaction commit.  This 
 	 * ensures no one else will try to do something with the doomed relation.
 	 */
-	if (rel_is_child_partition(RelationGetRelid(rel)))
+	is_part_child = !rel_needs_long_lock(RelationGetRelid(rel));
+	if (is_part_child)
 		relation_close(rel, AccessExclusiveLock);
 	else
 		relation_close(rel, NoLock);

@@ -50,7 +50,7 @@ void
 AlterTableCreateToastTable(Oid relOid)
 {
 	Relation	rel;
-	bool is_part_child = rel_is_child_partition(relOid);
+	bool is_part_child = !rel_needs_long_lock(relOid);
 
 	/*
 	 * Grab an exclusive lock on the target table, which we will NOT release

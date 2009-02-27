@@ -1051,12 +1051,7 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 		LockRelationOid(DependRelationId, RowExclusiveLock);
 	}
 
-	/*
-	 * Lock the relation to be dropped, unless it is a partition child
-	 * in which case it is sufficiently locked.
-	 */
-	if (!rel_is_child_partition(relOid))
-		LockRelationOid(relOid, AccessExclusiveLock);
+	LockRelationOid(relOid, AccessExclusiveLock);
 
 	tuple = SearchSysCache(RELOID,
 						   ObjectIdGetDatum(relOid),
@@ -1086,7 +1081,6 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 	ReleaseSysCache(tuple);
 
 	/* if we got here then we should proceed. */
-
 	performDeletion(&object, behavior);
 }
 
@@ -4070,7 +4064,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 		Oid tiOid = InvalidOid;
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 		Oid	*toastComptypeOid = NULL;
-		bool is_part = rel_is_child_partition(tab->relid);
+		bool is_part = !rel_needs_long_lock(tab->relid); 
 
 		if (tab->relkind == RELKIND_RELATION &&
 			(tab->subcmds[AT_PASS_ADD_COL] ||
@@ -10810,6 +10804,109 @@ rel_partition_get_master(Oid relid)
 
 	return masteroid;
 
+}
+
+/*
+ * rel could be a toast table, toast table index or index on a
+ * table. Get that table's OID.
+ */
+static Oid
+rel_get_table_oid(Relation rel)
+{
+	Oid toid = RelationGetRelid(rel);
+	Relation thisrel = NULL;
+
+	if (rel->rd_rel->relkind == RELKIND_INDEX)
+	{
+		HeapTuple tuple = SearchSysCache(INDEXRELID, ObjectIdGetDatum(toid),
+										 0, 0, 0);
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failure: cannot find pg_index entry for OID %u",
+				 toid);
+		toid = ((Form_pg_index)GETSTRUCT(tuple))->indrelid;
+		ReleaseSysCache(tuple);
+
+		thisrel = relation_open(toid, NoLock);
+		toid = rel_get_table_oid(thisrel);
+		relation_close(thisrel, NoLock);
+		return toid;
+	}
+	else if (rel->rd_rel->relkind == RELKIND_AOSEGMENTS ||
+			 rel->rd_rel->relkind == RELKIND_TOASTVALUE)
+	{
+		/* use pg_depend to find parent */
+		ScanKeyData key[2];
+		HeapTuple tup;
+		SysScanDesc scan;
+		Relation depRel = heap_open(DependRelationId, ShareLock);
+
+		ScanKeyInit(&key[0],
+					Anum_pg_depend_classid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(RelationRelationId));
+		ScanKeyInit(&key[1],
+					Anum_pg_depend_objid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(toid));
+
+		/* 
+		 * We use SnapshotAny because the ordering of the dependency code means
+		 * that some times we've already deleted the pg_depend tuple. So, we do
+		 * an extra test below to see that, if this tuple is deleted, it was
+		 * done so by our xid, otherwise we overlook it.
+		 */
+		scan = systable_beginscan(depRel, DependDependerIndexId, true,
+							  SnapshotAny, 2, key);
+
+		while (HeapTupleIsValid(tup = systable_getnext(scan)))
+		{
+			Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+			HeapTupleHeader htup = tup->t_data;
+
+			if (!TransactionIdIsNormal(HeapTupleHeaderGetXmax(htup)) ||
+				TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(htup)))
+			{
+				if (foundDep->deptype == DEPENDENCY_INTERNAL)
+				{
+					toid = foundDep->refobjid;
+					break;
+				}
+			}
+		}
+		systable_endscan(scan);
+		heap_close(depRel, ShareLock);
+	}
+	return toid;
+}
+
+/*
+ * partition children, toast tables and indexes, and indexes on partition
+ * children do not long lived locks because the lock on the partition master
+ * protects us.
+ */
+bool
+rel_needs_long_lock(Oid relid)
+{
+	bool needs_lock = true;
+	Relation rel = relation_open(relid, NoLock);
+
+	relid = rel_get_table_oid(rel);
+	
+	relation_close(rel, NoLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		needs_lock = !rel_is_child_partition(relid);
+	else
+	{
+		HeapTuple tup = SearchSysCache(INHRELID, ObjectIdGetDatum(relid),
+									   Int32GetDatum(1), 0, 0);
+		if (HeapTupleIsValid(tup))
+		{
+			needs_lock = false;
+			ReleaseSysCache(tup);
+		}
+	}
+	return needs_lock;
 }
 
 bool

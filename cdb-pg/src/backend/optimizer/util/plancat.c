@@ -25,6 +25,7 @@
 #include "catalog/pg_exttable.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_type.h"
+#include "commands/tablecmds.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
@@ -109,6 +110,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	Relation	relation;
 	bool		hasindex;
 	List	   *indexinfos = NIL;
+	bool		needs_longlock;
 
 	/*
 	 * We need not lock the relation since it was already locked, either by
@@ -116,6 +118,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	 * rangetable.
 	 */
 	relation = heap_open(relationObjectId, NoLock);
+	needs_longlock = rel_needs_long_lock(relationObjectId);
 
 	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;
 	rel->max_attr = RelationGetNumberOfAttributes(relation);
@@ -286,7 +289,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
                 !rel->cdb_default_stats_used)
                 cdb_default_stats_warning_for_index(relation->rd_id, indexoid);
 
-			index_close(indexRelation, NoLock);
+			index_close(indexRelation, needs_longlock ? NoLock : lmode);
 
 			indexinfos = lcons(info, indexinfos);
 		}

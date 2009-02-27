@@ -111,4 +111,6 @@ extern bool partition_policies_equal(GpPolicy *p, PartitionNode *pn);
 extern void partition_get_policies_attrs(PartitionNode *pn,
 										 GpPolicy *master_policy,
 							             List **cols);
+extern bool rel_needs_long_lock(Oid relid);
+
 #endif   /* TABLECMDS_H */

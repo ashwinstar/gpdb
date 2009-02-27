@@ -6472,3 +6472,281 @@ partition b start('e') end('g')
 ERROR:  starting value of partition "b" overlaps previous range
 LINE 3: partition b start('e') end('g')
                     ^
+-- Test locking behaviour. When creating, dropping, querying or adding indexes
+-- partitioned tables, we want to lock only the master, not the children.
+create view locktest as
+select coalesce(
+  case when relname like 'pg_toast%index' then 'toast index'
+  	   when relname like 'pg_toast%' then 'toast table'
+	   else relname end, 'dropped table'), 
+mode from 
+pg_locks l left outer join pg_class c on (l.relation = c.oid),
+pg_database d where relation is not null and l.database = d.oid and 
+d.datname = current_database() order by 1, 2;
+-- Partitioned table with toast table
+begin;
+-- creation
+create table g (i int, t text) partition by range(i)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "g_1_prt_1" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_2" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_3" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_4" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_5" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_6" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_7" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_8" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_9" for table "g"
+select * from locktest;
+          coalesce          |        mode         
+----------------------------+---------------------
+ g                          | AccessExclusiveLock
+ gp_distribution_policy     | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class                   | RowExclusiveLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_depend                  | RowExclusiveLock
+ pg_locks                   | AccessShareLock
+ pg_namespace               | AccessShareLock
+ pg_namespace_nspname_index | AccessShareLock
+ pg_namespace_oid_index     | AccessShareLock
+ pg_partition               | AccessShareLock
+ pg_partition               | RowExclusiveLock
+ pg_partition_rule          | RowExclusiveLock
+ pg_type                    | RowExclusiveLock
+ toast index                | AccessExclusiveLock
+ toast table                | ShareLock
+(18 rows)
+
+commit;
+-- drop
+begin;
+drop table g;
+select * from locktest;
+          coalesce          |        mode         
+----------------------------+---------------------
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ gp_distribution_policy     | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class                   | RowExclusiveLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_depend                  | RowExclusiveLock
+ pg_locks                   | AccessShareLock
+ pg_partition               | RowExclusiveLock
+ pg_partition_rule          | RowExclusiveLock
+ pg_type                    | RowExclusiveLock
+(14 rows)
+
+commit;
+-- AO table (ao segments)
+begin;
+-- creation
+create table g (i int, t text, n numeric)
+with (appendonly = true)
+partition by list(i)
+(values(1), values(2), values(3));
+NOTICE:  CREATE TABLE will create partition "g_1_prt_1" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_2" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_3" for table "g"
+select * from locktest;
+          coalesce          |        mode         
+----------------------------+---------------------
+ g                          | AccessExclusiveLock
+ gp_distribution_policy     | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_appendonly              | RowExclusiveLock
+ pg_class                   | AccessShareLock
+ pg_class                   | RowExclusiveLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_depend                  | RowExclusiveLock
+ pg_locks                   | AccessShareLock
+ pg_namespace               | AccessShareLock
+ pg_namespace_nspname_index | AccessShareLock
+ pg_namespace_oid_index     | AccessShareLock
+ pg_partition               | AccessShareLock
+ pg_partition               | RowExclusiveLock
+ pg_partition_rule          | RowExclusiveLock
+ pg_type                    | RowExclusiveLock
+ toast index                | AccessExclusiveLock
+ toast table                | ShareLock
+(19 rows)
+
+commit;
+begin;
+-- add a little data
+insert into g values(1), (2), (3);
+insert into g values(1), (2), (3);
+insert into g values(1), (2), (3);
+insert into g values(1), (2), (3);
+insert into g values(1), (2), (3);
+select * from locktest;
+          coalesce          |       mode       
+----------------------------+------------------
+ g                          | AccessShareLock
+ g                          | RowExclusiveLock
+ g_1_prt_1                  | AccessShareLock
+ g_1_prt_2                  | AccessShareLock
+ g_1_prt_3                  | AccessShareLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_locks                   | AccessShareLock
+(10 rows)
+
+commit;
+-- drop
+begin;
+drop table g;
+select * from locktest;
+          coalesce          |        mode         
+----------------------------+---------------------
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ gp_distribution_policy     | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_appendonly              | RowExclusiveLock
+ pg_class                   | AccessShareLock
+ pg_class                   | RowExclusiveLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_depend                  | RowExclusiveLock
+ pg_locks                   | AccessShareLock
+ pg_partition               | RowExclusiveLock
+ pg_partition_rule          | RowExclusiveLock
+ pg_type                    | RowExclusiveLock
+(17 rows)
+
+commit;
+-- Indexing
+create table g (i int, t text) partition by range(i)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "g_1_prt_1" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_2" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_3" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_4" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_5" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_6" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_7" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_8" for table "g"
+NOTICE:  CREATE TABLE will create partition "g_1_prt_9" for table "g"
+begin;
+create index g_idx on g(i);
+NOTICE:  building index for child partition "g_1_prt_1"
+NOTICE:  building index for child partition "g_1_prt_2"
+NOTICE:  building index for child partition "g_1_prt_3"
+NOTICE:  building index for child partition "g_1_prt_4"
+NOTICE:  building index for child partition "g_1_prt_5"
+NOTICE:  building index for child partition "g_1_prt_6"
+NOTICE:  building index for child partition "g_1_prt_7"
+NOTICE:  building index for child partition "g_1_prt_8"
+NOTICE:  building index for child partition "g_1_prt_9"
+select * from locktest;
+          coalesce          |        mode         
+----------------------------+---------------------
+ g                          | ShareLock
+ g_idx                      | AccessExclusiveLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class                   | RowExclusiveLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_locks                   | AccessShareLock
+ pg_namespace               | AccessShareLock
+ pg_namespace_nspname_index | AccessShareLock
+ pg_namespace_oid_index     | AccessShareLock
+ pg_partition               | AccessShareLock
+ pg_partition_rule          | AccessShareLock
+ pg_type                    | RowExclusiveLock
+(14 rows)
+
+commit;
+-- test select locking
+begin;
+select * from g where i = 1;
+ i | t 
+---+---
+(0 rows)
+
+select * from locktest;
+          coalesce          |      mode       
+----------------------------+-----------------
+ g                          | AccessShareLock
+ g_1_prt_1                  | AccessShareLock
+ g_idx                      | AccessShareLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_locks                   | AccessShareLock
+(8 rows)
+
+commit;
+begin;
+-- insert locking
+insert into g values(3, 'f');
+select * from locktest;
+          coalesce          |       mode       
+----------------------------+------------------
+ g                          | AccessShareLock
+ g                          | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_locks                   | AccessShareLock
+(7 rows)
+
+commit;
+-- delete locking
+begin;
+delete from g where i = 4;
+select * from locktest;
+          coalesce          |       mode       
+----------------------------+------------------
+ g                          | AccessShareLock
+ g                          | ExclusiveLock
+ g_1_prt_4                  | ExclusiveLock
+ g_idx                      | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_locks                   | AccessShareLock
+(9 rows)
+
+commit;
+-- drop index
+begin;
+drop table g;
+select * from locktest;
+          coalesce          |        mode         
+----------------------------+---------------------
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ dropped table              | AccessExclusiveLock
+ gp_distribution_policy     | RowExclusiveLock
+ locktest                   | AccessShareLock
+ pg_class                   | AccessShareLock
+ pg_class                   | RowExclusiveLock
+ pg_class_oid_index         | AccessShareLock
+ pg_class_relname_nsp_index | AccessShareLock
+ pg_depend                  | RowExclusiveLock
+ pg_locks                   | AccessShareLock
+ pg_partition               | RowExclusiveLock
+ pg_partition_rule          | RowExclusiveLock
+ pg_type                    | RowExclusiveLock
+(15 rows)
+
+commit;
