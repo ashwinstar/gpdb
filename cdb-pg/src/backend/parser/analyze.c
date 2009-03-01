@@ -7527,8 +7527,10 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 	 * of a partitioned table, cascade to all children. We don't do this
 	 * at create table time because transformPartitionBy() automatically
 	 * creates the indexes on the child tables for us.
+	 *
+	 * If this is a CREATE INDEX statement, idxname should already exist.
 	 */
-	if (OidIsValid(RangeVarGetRelid(stmt->relation, true)))
+	if (OidIsValid(RangeVarGetRelid(stmt->relation, true)) && stmt->idxname)
 	{
 		Relation rel = heap_openrv(stmt->relation, AccessShareLock);
 
