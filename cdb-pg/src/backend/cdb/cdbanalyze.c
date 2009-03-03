@@ -633,7 +633,7 @@ cdbanalyze_combine_stats(CdbDispatchResults *primaryResults,
 				double *reltuples;
 				int *new_max_attnum;
 				int16 new_attno;
-				int *old_max_attnum;
+				int *old_max_attnum = NULL;
 				ListCell *lc = NULL;
 				ListCell *max_attnum_lc = NULL;
 				int len = sizeof(VUpdatedStats);
