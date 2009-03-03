@@ -4998,9 +4998,9 @@ L_setprevElem:
 	 */
 	{
 		/* 
-		 * Better make sure the current boundary specification doesn't overlap
-		 * an existing one. It's not enough to just do the previous spec as they
-		 * might be out of order.
+		 * Better make sure the current boundary specification doesn't
+		 * overlap an existing one. It's not enough to just do the
+		 * previous spec as they might be out of order.
 		 */
 		ListCell *lc;
 		PartitionRangeItem *ri_start = (PartitionRangeItem *)spec->partStart;
@@ -7546,7 +7546,8 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 			foreach(l, children)
 			{
 				Oid relid = lfirst_oid(l);
-				Relation crel = heap_open(relid, NoLock); /* lock on master is enough */
+				Relation crel = heap_open(relid, NoLock); /* lock on master
+															 is enough */
 				IndexStmt *chidx;
 				Relation partrel;
 				ScanKeyData key;
@@ -9718,6 +9719,9 @@ transformAlterTable_all_PartitionStmt(
 	switch (atc1->subtype)
 	{
 		case AT_PartAdd:				/* Add */
+		case AT_PartSetTemplate:		/* Set Subpartn Template */
+
+			if (pci->arg2) /* could be null for settemplate... */
 			{
 				AlterPartitionCmd 	*pc2 = (AlterPartitionCmd *) pci->arg2;
 				CreateStmt 			*ct;
@@ -9757,7 +9761,6 @@ transformAlterTable_all_PartitionStmt(
 		case AT_PartMerge:				/* Merge */
 		case AT_PartModify:				/* Modify */
 		case AT_PartRename:				/* Rename */
-		case AT_PartSetTemplate:		/* Set Subpartn Template */
 		case AT_PartTruncate:			/* Truncate */
 		case AT_PartSplit:				/* Split */
 			/* MPP-4011: get right pid for FOR(value) */

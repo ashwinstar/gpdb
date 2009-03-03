@@ -2878,13 +2878,14 @@ alter table mpp4892 add partition p3 end (13) (subpartition sp3 values ('c'));
 -- complain because the template is already gone
 alter table mpp4892 set	subpartition template ();
 
--- this still doesn't work
+-- should work
 alter table mpp4892 set subpartition template (subpartition sp3 values ('c'));
 
--- won't work (until the prior set subpartition template works)
+-- should work
 alter table mpp4892 add partition p4 end (15);
 
 drop table mpp4892;
+
 
 -- make sure we do not allow overlapping range intervals
 -- should fail

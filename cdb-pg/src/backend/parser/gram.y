@@ -2300,7 +2300,8 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
 					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
 					AlterTableCmd     *n     = makeNode(AlterTableCmd);
-                    Node              *ct    = makeAddPartitionCreateStmt($5, $6);
+                    Node              *ct    = makeAddPartitionCreateStmt($5, 
+																		  $6);
                     PartitionElem     *pelem = makeNode(PartitionElem); 
 
                     if (pid->idtype != AT_AP_IDName)
@@ -2581,19 +2582,42 @@ alter_table_partition_cmd:
 			| SET SUBPARTITION TEMPLATE
             '(' TabSubPartitionElemList ')' 
 				{
-					AlterPartitionCmd	*pc = makeNode(AlterPartitionCmd);
-					AlterTableCmd		*n	= makeNode(AlterTableCmd);
-					PartitionSpec		*ps = makeNode(PartitionSpec); 
+					AlterPartitionId  *pid   = makeNode(AlterPartitionId);
+					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+                    Node              *ct    = NULL;
+                    PartitionElem     *pelem = makeNode(PartitionElem); 
+					PartitionSpec	  *ps    = makeNode(PartitionSpec); 
 
-					ps->partElem   = $5;
+					/* treat this case as similar to ADD PARTITION */
+
+                    pid->idtype    = AT_AP_IDName;
+                    pid->location  = @3;
+                    pid->partiddef = 
+						(Node *)makeString("subpartition template");
+
+                    pc->partid = (Node *)pid;
+
+					/* build a subpartition spec and add it to CREATE TABLE */
+					ps->partElem   = $5; 
 					ps->subSpec	   = NULL;
 					ps->istemplate = true;
 					ps->location   = @4;
 
-                    pc->partid = NULL; 
-                    pc->arg1 = (Node *)ps;
-                    pc->arg2 = NULL;
-                    pc->location = @5;
+					ct = makeAddPartitionCreateStmt(NULL,
+													(Node *)ps);
+
+                    pelem->partName  = NULL;
+                    pelem->boundSpec = NULL;
+                    pelem->subSpec   = (Node *)ps;
+                    pelem->location  = @4;
+					/*
+                    pelem->isDefault = false;
+					*/
+                    pelem->isDefault = true;
+                    pelem->storeAttr = NULL;
+                    pelem->AddPartDesc = NULL;
 
 					/* a little (temporary?) syntax check on templates */
 					if (ps->partElem)
@@ -2615,6 +2639,17 @@ alter_table_partition_cmd:
 												"partition")));
 						}
 					}
+
+                    pc2->arg1 = (Node *)pelem;
+                    pc2->arg2 = (Node *)list_make1(ct);
+                    pc2->location = @5;
+
+					/*
+                    pc->arg1 = (Node *)makeInteger(false);
+					*/
+                    pc->arg1 = (Node *)makeInteger(true);
+                    pc->arg2 = (Node *)pc2;
+                    pc->location = @5;
 
 					n->subtype = AT_PartSetTemplate;
 					n->def = (Node *)pc;

@@ -331,11 +331,13 @@ static Node *atpxPartAddList(AlteredTableInfo *tab,
 							 PartitionElem *pelem,
 							 PartitionByType part_type,
 							 PgPartRule* par_prule,
-							 char *lrelname);
+							 char *lrelname,
+							 bool bSetTemplate);
 
 static void ATPExecPartAdd(AlteredTableInfo *tab,
 						   Relation rel,
-                           AlterPartitionCmd *pc);			/* Add */
+                           AlterPartitionCmd *pc,
+						   AlterTableType att);				/* Add */
 static void ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
                              AlterPartitionCmd *pc);		/* Alter */
 static void ATPExecPartCoalesce(Relation rel,
@@ -351,10 +353,10 @@ static void ATPExecPartModify(Relation rel,
                               AlterPartitionCmd *pc);		/* Modify */
 static void ATPExecPartRename(Relation rel,
                               AlterPartitionCmd *pc);		/* Rename */
-static void ATPExecPartSetTemplate(Relation rel,
-                                   AlterPartitionCmd *pc);	/* Set
-                                                               Subpartition
-                                                               Template */
+
+static void ATPExecPartSetTemplate(AlteredTableInfo *tab,   /* Set */
+								   Relation rel,            /* Subpartition */
+                                   AlterPartitionCmd *pc);	/* Template */
 static void ATPExecPartSplit(Relation rel,
                              AlterPartitionCmd *pc);		/* Split */
 static List *
@@ -4232,7 +4234,8 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
-            ATPExecPartAdd(tab, rel, (AlterPartitionCmd *) cmd->def);
+			ATPExecPartAdd(tab, rel, (AlterPartitionCmd *) cmd->def,
+						   cmd->subtype);
             break;
 		case AT_PartAlter:				/* Alter */
             ATPExecPartAlter(tab, rel, (AlterPartitionCmd *) cmd->def);
@@ -4256,7 +4259,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
             ATPExecPartRename(rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
-            ATPExecPartSetTemplate(rel, (AlterPartitionCmd *) cmd->def);
+			ATPExecPartSetTemplate(tab, rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartSplit:				/* Split */
             ATPExecPartSplit(rel, (AlterPartitionCmd *) cmd->def);
@@ -9837,8 +9840,18 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 	return 1;
 } /* end del_part_template */
 
+/*
+ * add_part_to_catalog() - add a partition to the catalog
+ *
+ *
+
+ * NOTE: If bTemplate_Only = false, add both actual partitions and the
+ * template definitions (if specified).  However, if bTemplate_Only =
+ * true, then only treat the partition spec as a template.
+ */
 static void
-add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
+add_part_to_catalog(Oid relid, PartitionBy *pby, 
+					bool bTemplate_Only /* = false */)
 {
 	char pt = parttype_to_char(pby->partType);
 	ListCell *lc;
@@ -9850,7 +9863,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 	Relation rel;
 	SysScanDesc scan;
 	Oid parttemplid = InvalidOid;
-	bool add_temp = false;
+	bool add_temp = bTemplate_Only; /* normally false */
 
 	/* only create partition catalog entries on the master */
 	if (Gp_role == GP_ROLE_EXECUTE)
@@ -9860,7 +9873,8 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 	 * Get the partitioned table relid.
 	 */
 	rootrelid = RangeVarGetRelid(pby->parentRel, false);
-	paroid = get_part_oid(rootrelid, pby->partDepth, false);
+	paroid = get_part_oid(rootrelid, pby->partDepth, 
+						  bTemplate_Only /* = false */);
 
 	/* create a partition for this level, if one doesn't exist */
 	if (!OidIsValid(paroid))
@@ -9913,8 +9927,13 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 		{
 			add_temp = true;
 			parttemplid = part->partid;
-			part->paristemplate = false;
-			add_partition(part);
+
+			/* if only building a template, don't add "real" entries */
+			if (!bTemplate_Only)
+			{
+				part->paristemplate = false;
+				add_partition(part);
+			}
 		}
 		paroid = part->partid;
 	}
@@ -9942,8 +9961,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 
 		el = linitial(spec->partElem);
 
-		/* fix the order if called from atpxPartAddList */
-		parruleord = (pMaxpartno) ? *pMaxpartno : el->partno;
+		parruleord = el->partno;
 
 		if (el->partName)
 			parname = strVal(el->partName);
@@ -10007,7 +10025,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 		}
 
 		/* Find our parent */
-		if (pby->partDepth != 0)
+		if (!bTemplate_Only && (pby->partDepth != 0))
 		{
 			Form_pg_inherits inh;
 			Oid inhoid;
@@ -10096,7 +10114,8 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 		rule->parrangeevery = rangeevery;
 		rule->parlistvalues = (List *)listvalues;
 
-		add_partition_rule(rule);
+		if (!bTemplate_Only)
+			add_partition_rule(rule);
 
 		if (OidIsValid(parttemplid) && add_temp)
 		{
@@ -10125,7 +10144,7 @@ static void
 ATExecPartAddInternal(Relation rel, Node *def)
 {
 	PartitionBy *part = (PartitionBy *)def;
-	add_part_to_catalog(RelationGetRelid(rel), part, NULL);
+	add_part_to_catalog(RelationGetRelid(rel), part, false);
 }
 
 /*
@@ -12371,7 +12390,8 @@ wack_pid_relname(AlterPartitionId 		 *pid,
 static void
 ATPExecPartAdd(AlteredTableInfo *tab,
 			   Relation rel,
-               AlterPartitionCmd *pc)
+               AlterPartitionCmd *pc,
+			   AlterTableType att)
 {
 	AlterPartitionId 	*pid 		= (AlterPartitionId *)pc->partid;
 	PgPartRule   		*prule 		= NULL;
@@ -12381,10 +12401,11 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	AlterPartitionId 	*locPid 	= pid;	/* local pid if IDRule */
 	PgPartRule* 		 par_prule 	= NULL;	/* prule for parent if IDRule */
 	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
-	char 				*lrelname=NULL;
+	char 				*lrelname   = NULL;
 	Node 				*pSubSpec 	= NULL;
 	AlterPartitionCmd   *pc2;
-	bool				is_split = false;
+	bool				 is_split = false;
+	bool				 bSetTemplate = (att == AT_PartSetTemplate);
 
 	pc2 = (AlterPartitionCmd *)pc->arg2;
 
@@ -12453,10 +12474,12 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 						lrelname),
 					 errhint("use a named partition")));
 
-	if (!is_split)
+	/* don't check if splitting or setting a subpartition template */
+	if (!is_split && !bSetTemplate)
 		/* We complain if partition already exists, so prule should be NULL */
-		prule = get_part_rule(rel, pid, true, false, CurrentMemoryContext, NULL,
-						  false);
+		prule = get_part_rule(rel, pid, true, false, 
+							  CurrentMemoryContext, NULL,
+							  false);
 
 	if (!prule)
 	{
@@ -12520,7 +12543,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 							isDefault, (PartitionElem *) pc2->arg1,
 							PARTTYP_RANGE,
 							par_prule,
-							lrelname);
+							lrelname,
+							bSetTemplate);
 
 		}
 		else if ('l' == pNode->part->parkind)
@@ -12533,7 +12557,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 							isDefault, (PartitionElem *) pc2->arg1,
 							PARTTYP_LIST,
 							par_prule,
-							lrelname);
+							lrelname,
+							bSetTemplate);
 		}
 
 	}
@@ -12886,7 +12911,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 				PartitionElem *pelem,
 				PartitionByType part_type,
 				PgPartRule* par_prule,
-				char *lrelname)
+				char *lrelname,
+				bool bSetTemplate)
 {
 	CreateStmt 			*ct    	   = NULL;
 	DestReceiver 		*dest  	   = None_Receiver;
@@ -13979,10 +14005,12 @@ atpxPartAddList(AlteredTableInfo *tab,
 	}
 
 	{
-		List *l1;
-		ListCell *lc;
-		int 			 ii = 0;
-		bool bFixFirstATS = true;
+		List			*l1;
+		ListCell		*lc;
+		int 			 ii					 = 0;
+		bool			 bFixFirstATS		 = true;
+		bool			 bFirst_TemplateOnly = true;
+
 
 		ct->partitionBy = (Node *)pBy;
 
@@ -14117,17 +14145,60 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 				}
 
-			}
+			} /* end first alter table fixup */
 
-			ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+			/* normal case - add partitions using CREATE statements
+			 * that get dispatched to the segments
+			 */
+			if (!bSetTemplate) 
+				ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+			else
+			{ /* setting subpartition template only */
+
+				/* find all the alter table statements that contain
+				 * partaddinternal, and extract the definitions.  Only
+				 * build the catalog entries for subpartition
+				 * templates, not "real" table entries.
+				 */
+				if (q && q->utilityStmt
+					&& IsA(q->utilityStmt, AlterTableStmt))
+				{
+					AlterTableStmt *at2 = (AlterTableStmt *)q->utilityStmt;
+					List *l2 = at2->cmds;
+					ListCell *lc2;
+
+					foreach(lc2, l2)
+					{
+						AlterTableCmd *ac2 = (AlterTableCmd *) lfirst(lc2);
+
+						if (ac2->subtype == AT_PartAddInternal)
+						{
+							/* skip the first one because it's the
+							 * fake parent partition definition for
+							 * the subpartition template entries
+							 */
+							if (bFirst_TemplateOnly)
+								bFirst_TemplateOnly = false;
+							else
+								add_part_to_catalog(RelationGetRelid(rel),
+													(PartitionBy *)ac2->def,
+													 true);
+								
+							if (0)
+								ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("cannot SET SUBPARTITION TEMPLATE "
+											"for relation \"%s\"",
+											RelationGetRelationName(rel))));
+						}
+					} /* end foreach lc2 l2 */
+				}
+			} /* end else setting subpartition templates only */
+
 			ii++;
 		} /* end for each cell */
 
 	}
-
-	/* handle permissions */
-	{
-}
 
 	if (par_prule && par_prule->topRule)
 		heap_close(par_rel, NoLock);
@@ -14198,7 +14269,8 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		pid2->partiddef = (Node *)pidlst;
 		pid2->location  = -1;
 
-		prule = get_part_rule(rel, pid2, true, true, CurrentMemoryContext, NULL,
+		prule = get_part_rule(rel, pid2, true, true, 
+							  CurrentMemoryContext, NULL,
 							  false);
 
 		if (!prule)
@@ -16291,7 +16363,8 @@ ATPExecPartRename(Relation rel,
 
 /* ALTER TABLE ... SET SUBPARTITION TEMPLATE  */
 static void
-ATPExecPartSetTemplate(Relation rel,
+ATPExecPartSetTemplate(AlteredTableInfo *tab,
+					   Relation rel,
                        AlterPartitionCmd *pc)
 {
 	AlterPartitionId	*pid   = (AlterPartitionId *)pc->partid;
@@ -16302,7 +16375,8 @@ ATPExecPartSetTemplate(Relation rel,
 		return;
 
 	/* set template for top level table */
-	if (pid)
+/*	if (pid && (pid->idtype != AT_AP_IDNone)) */
+	if (pid && (pid->idtype != AT_AP_IDName)) 
 	{
 		Assert((pid->idtype == AT_AP_IDRule) && IsA(pid->partiddef, List));
 
@@ -16348,20 +16422,10 @@ ATPExecPartSetTemplate(Relation rel,
 		}
 
 	}
-	else /* cannot set it yet... */
+	else 
 	{
-/*		PartitionSpec		*ps	 = (PartitionSpec *)pc->arg1;
-		PartitionBy			*pBy = makeNode(PartitionBy); */
-		CreateStmtContext	 cxt;
-
-		MemSet(&cxt, 0, sizeof(cxt));
-
-
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot SET SUBPARTITION TEMPLATE "
-						"for relation \"%s\"",
-						RelationGetRelationName(rel))));
+		del_part_template(RelationGetRelid(rel), lvl, 0);
+		ATPExecPartAdd(tab, rel, pc, AT_PartSetTemplate);
 	}
 
 
