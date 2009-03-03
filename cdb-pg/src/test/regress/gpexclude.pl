@@ -46,7 +46,7 @@ Options:
 
     psql connect string, e.g:
 
-    -connect '-p 11000 template1'
+    -connect '-p 11000 -d template1'
 
     If the connect string is not defined gpexclude calls gpstringsubs
     which uses PGPORT and template1.  If the PGPORT is undefined then

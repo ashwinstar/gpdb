@@ -157,7 +157,7 @@ BEGIN {
     $porti = 5432                 # 11000
         unless (defined($porti));
 
-    $glob_connect = "-p $porti template1"
+    $glob_connect = "-p $porti -d template1"
         unless (defined($glob_connect));
 
 #    print "loading...\n" ;                                                     
@@ -249,7 +249,7 @@ if (1)
 
     $psql_str .= " -c \'select * from gp_configuration \'";
 
-#    print $psql_str, "\n";
+    print $psql_str, "\n";
 
     my $tabdef = `$psql_str`;
 

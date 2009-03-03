@@ -51,7 +51,7 @@ Options:
     
     psql connect string, e.g:
 
-    -connect '-p 11000 template1'
+    -connect '-p 11000 -d template1'
     
 =item B<-sqlfile>
 
@@ -321,7 +321,7 @@ BEGIN {
 
     $GH{connect} = $conn;
 
-    $GH{connect} = '-p 11000 template1'
+    $GH{connect} = '-p 11000 -d template1'
         unless (defined($GH{connect}));
 
     {  # check for bad connection
