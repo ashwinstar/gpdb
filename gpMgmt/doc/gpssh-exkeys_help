@@ -19,37 +19,32 @@ DESCRIPTION
 *****************************************************
 
 The gpssh-exkeys utility exchanges SSH authentication files between the
-current host and the specified hosts.
+specified hosts. This allows SSH connections between hosts without a 
+password prompt. The utility is used to initially prepare a Greenplum 
+Database system for password-free SSH access, and also to add hosts to 
+an existing Greenplum Database system. 
 
-This exchange is accomplished by preparing several SSH authentication
-files (authorized_keys, known_hosts, and id_rsa/id_rsa.pub) for the
-current user on the current host and replicating those files to the
-current user on each specified host.  Assuming every host in a Greenplum
-Database system is specified, the result of the authentication file
-exchange is to enable the current user SSH login between any two hosts
-in the Greenplum Database system (including the host on which the
-gpssh-exkeys command is run) without a password.
+To specify the hosts involved in an initial SSH key exchange, use the 
+-f option to specify a file containing a list of host names (recommended), 
+or use the -h option to name single host names on the command-line. At 
+least one host name (-h) or a host file is required. Note that the current 
+host is included in the key exchange by default.
 
-The gpssh-exkeys utility may be used in two ways: (a) to initially
-prepare a Greenplum Database system for password-less SSH access and
-(b) to add hosts to an existing, previously prepared Greenplum Database
-system.
+To specify the hosts involved in a system expansion SSH key exchange in 
+an existing Greenplum Database system, use the -e and -x options. 
+The -e option specifies a file containing a list of existing hosts in 
+the system that already have SSH keys. The -x option specifies a file 
+containing a list of new hosts that need to participate in the SSH 
+key exchange. 
 
-To perform the initial key exchange, specify the hosts to be set up for
-password-less SSH access using either the -f option (recommended) one or
-more -h options -- at least one of these options must be provided.  The
-SSH authentication files for the current user are replicated to the
-current user on each host.  The authentication files for the current
-user on each host are REPLACED with those from the current host.
-
-To add hosts to an existing Greenplum Database system, use the -e option
-to specify the existing hosts in the system and the -x option to specify
-the hosts to be added to the system -- both options must be provided.
-The current user's SSH authentication files are updated as required to
-ensure the current user on each existing host (identified with the -e
-option) continues to have SSH login access to every identified host
-without a password.  The current user's authentication files are
-replicated to each new host as with the initial setup above.
+If a user name is not specified in the host file, keys will be 
+exchanged as the currently logged in user. Greenplum recommends 
+performing the key exchange process twice: once as root and once as 
+the gpadmin user (the user designated to own your Greenplum Database 
+installation). The Greenplum Database management utilities require 
+that the same non-root user be created on all hosts in the 
+Greenplum Database system, and the utilities must be able to connect 
+as that user to all hosts without a password prompt.
 
 The gpssh-exkeys utility performs key exchange using the following 
 steps:
@@ -62,7 +57,7 @@ steps:
        -x options is obtained using ssh-keyscan.  These keys are added
        to the current user's known_hosts file.
 
-    3) Each host is accessed using SSH to (a) setup password-less SSH
+    3) Access each host using SSH to (a) setup password-less SSH
        access for the current user from the current host and (b) obtain
        the authorized_keys, known_hosts, and id_rsa.pub files from each
        host specified using the -e option.  This access may require
@@ -74,16 +69,9 @@ steps:
 
     5) For each host specified using the -h, -f, and -x options, push
        the current user's authorized_keys, known_hosts, and
-       id_rsa/id_rsa.pub files to the host replacing existing versions
+       id_rsa/id_rsa.pub files to the host, replacing existing versions
        of those files, if any.  For each host specified using the -e
        option, merge the current user's authorized_keys and known_hosts
-
-Greenplum recommends performing the key exchange process twice: 
-once as root and once as the gpadmin user (the user designated 
-to own your Greenplum Database installation). The Greenplum Database 
-management scripts require that the same non-root user be created on 
-all hosts in the Greenplum Database system, and the scripts must 
-be able to connect as that user to all hosts without a password prompt.
 
 
 *****************************************************
@@ -94,41 +82,31 @@ OPTIONS
 
 Specifies the name of a file containing a list of hosts participating in
 initial SSH key exchange.  Each line of the file must contain a single
-host name -- the username@hostname:ssh_port format is not accepted.
-Blank lines and lines beginning with '#' are considered comments and
-ignored.  References to the local host are ignored with a warning.
+host name.
 
 
 -h <hostname>
 
 Specifies a single host name that will participate in the SSH key
 exchange.  You can use the -h option multiple times to specify multiple
-host names.  References to the local host are ignored with a warning.
+host names. 
 
 
 -e <host_file>
 
 Specifies the name of a file containing a list of hosts participating in
 an expansion SSH key exchange.  Each host is presumed an existing host
-(one previously prepared using gpssh-exkeys).  Each line of the file
-must contain a single host name -- the username@hostname:ssh_port format
-is not accepted.  Blank lines and lines beginning with '#' are
-considered comments and ignored.  Hosts specified in this file may not
-also be specified in the -x host_file.  References to the local host are
-ignored with a warning.
-
+previously prepared using gpssh-exkeys.  Each line of the file
+must contain a single host name. Hosts specified in this file can not
+be specified in the -x host_file. 
 
 -x <host_file>
 
-Specifies the name of a file containing a list of hosts participating in
-an expansion SSH key exchange.  Each host is considered a new host (one
-not previously prepared using gpssh-exkeys).  Each line of the file must
-contain a single host name -- the username@hostname:ssh_port format is
-not accepted.  Blank lines and lines beginning with '#' are considered
-comments and ignored.  Hosts specified in this file may not also be
-specified in the -e host_file.  References to the local host are ignored
-with a warning.
-
+Specifies the name of a file containing a list of new hosts participating in
+an expansion SSH key exchange.  Each host is considered a new host that was
+not previously prepared using gpssh-exkeys.  Each line of the file must
+contain a single host name. Hosts specified in this file may not also be
+specified in the -e host_file. 
 
 -? (help)
 
@@ -148,25 +126,24 @@ Exchange SSH keys between all hosts listed in the file host_file:
 gpssh-exkeys -f host_file
 
 
-Exchange SSH keys between the hosts thumper0, thumper1, and 
-thumper2:
+Exchange SSH keys between the hosts sdw1, sdw2, and sdw3:
 
-gpssh-exkeys -h thumper0 -h thumper1 -h thumper2
+gpssh-exkeys -h sdw1 -h sdw2 -h sdw3
 
 
-Exchange SSH keys with existing hosts thumper0, thumper1, and
-thumper2 adding hosts thumper3 and thumper4:
+Exchange SSH keys between existing hosts sdw1, sdw2 and sdw3, and new
+hosts sdw4 and sdw5 as part of a system expansion operation:
 
-cat - >existing.hosts
-thumper0
-thumper1
-thumper2
+cat - >existing_hosts_file
+sdw1
+sdw2
+sdw3
 ^D
-cat - >new.hosts
-thumper3
-thumper4
+cat - >new_hosts_file
+sdw4
+sdw5
 ^D
-gpssh-exkeys -e existing.hosts -x new.hosts
+gpssh-exkeys -e existing_hosts_file -x new_hosts_file
 
 
 *****************************************************
