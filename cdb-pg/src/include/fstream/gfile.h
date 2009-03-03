@@ -3,21 +3,44 @@
 
 /*#include "c.h"*/
 #include <sys/types.h>
+#ifndef WIN32
 #include <bzlib.h>
 #include <zlib.h>
+#endif
+
+#ifdef WIN32
+#include <windows.h>
+#endif
 #ifdef WIN32
 typedef long ssize_t;
 #endif
 
 /* The struct gfile_t is private.  Please do not use any of its fields. */
-typedef struct gfile_t{
+typedef struct gfile_t
+{
     ssize_t(*read)(struct gfile_t*,void*,size_t);
     int(*close)(struct gfile_t*);
     off_t compressed_size,compressed_position;
-    int fd;
-    union{
+#ifdef WIN32
+    BOOL is_win_pipe;
+#else
+    char is_win_pipe;
+#endif
+    union
+    {
+    	int filefd;
+#ifdef WIN32
+	HANDLE pipefd;
+#endif
+    } fd;
+
+    union
+    {
+	int txt;
+#ifndef WIN32
 	struct zlib_stuff*z;
 	struct bzlib_stuff*bz;
+#endif
     }u;
 }gfile_t;
 

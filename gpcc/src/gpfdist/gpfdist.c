@@ -1,6 +1,6 @@
+#include <apr_getopt.h>
 #include <apr_env.h>
 #include <apr_file_info.h>
-#include <apr_getopt.h>
 #include <apr_hash.h>
 #include <apr_pools.h>
 #include <apr_signal.h>
@@ -12,12 +12,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#include <fstream/fstream.h>
+
 #ifndef WIN32
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #define SOCKET int
+#ifndef closesocket
 #define closesocket(x)   close(x)
+#endif
 #else
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
@@ -25,8 +29,12 @@
 #include <io.h>
 #define SHUT_WR SD_SEND
 #define SHUT_RD SD_RECEIVE
+#define socklen_t int
+#ifndef ECONNRESET
+#define ECONNRESET   WSAECONNRESET
 #endif
-#include <fstream/fstream.h>
+
+#endif
 
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
@@ -1642,7 +1650,7 @@ static gnet_request_t *gnet_parse_request(const char* buf, int* len,
 			/* continuation */
 			if (req->hc == 0) /* illegal - missing first header */
 				break;
-
+			
 			line = gstring_trim(line);
 			if (*line == 0) /* empty line */
 				break;
@@ -1835,8 +1843,10 @@ int main(int argc, const char* const argv[])
 
 	parse_command_line(argc, argv, gcb.pool);
 
+#ifndef WIN32
 #ifdef SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
+#endif
 #endif
 	/*
 	 apr_signal(SIGINT, process_signal);

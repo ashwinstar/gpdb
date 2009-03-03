@@ -12,6 +12,10 @@ typedef __int64 int64_t;
 /* A file stream - data may come from several files */
 typedef struct fstream_t fstream_t;
 
+#ifdef WIN32
+typedef long long int int64_t;
+#endif
+
 struct fstream_options{
     int header;
     int is_csv;
