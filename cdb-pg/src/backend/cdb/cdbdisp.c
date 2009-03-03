@@ -2784,7 +2784,7 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				/* Note the error. */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,
 									  ERRCODE_GP_INTERCONNECTION_ERROR,
-									  "Segment db no longer connected: %s\n",
+									  "Lost connection to one or more segments - fault detector checking for segment failures. (%s)\n",
 									  segdbDesc->whoami);
 
 				/*
