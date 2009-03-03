@@ -168,9 +168,9 @@ checkSegmentDown(const char *strCommand, int nsegdb,
 		{
 			if (strncmp(strCommand, MPPEXEC_CAP_STR, sizeof(MPPEXEC_CAP_STR) - 1) == 0 ||
 				strncmp(strCommand, MPPEXEC_STR, sizeof(MPPEXEC_STR) - 1) == 0)
-				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
+				elog(NOTICE, "Segment failures detected in system - normal query processing continuing with mirror segments.");
 			else
-				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
+				elog(NOTICE, "Segment failures detected in system - normal query processing continuing with mirror segments (%.50s).", strCommand);
 		}
 	}
 }
