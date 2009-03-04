@@ -41,35 +41,47 @@ to add with the format:
 
 Remaining TODO items:
 ====================
-* support for --clean to cover all of setup. (Chris)
+""",
+"""* support for --clean to cover all of setup. (Chris)""",
+"""* ability to specify storage options. (John)
+    - verify with jeff that alter table ... set distribution will support.""",
 
-* ability to specify storage options. (John)
-    - verify with jeff that alter table ... set distribution will support.
-
-* handle case of dropped tables.
+"""* handle case of dropped tables.
     - some tables may be dropped by the time expansion gets
-        around to them.
+        around to them. """,
 
-* smarter heuristics on setting ranks.
+"""* smarter heuristics on setting ranks. """,
 
-* how to measure progress.
+"""* how to measure progress. """,
 
-* don't try and update downed segments.
+"""* don't try and update downed segments. """,
 
-* update gpexpand.status table during expansion
+"""* update gpexpand.status table during expansion """,
 
-* create a view to measure progress
+"""* create a view to measure progress """,
 
-* make sure system isn't in "readonly mode" during setup.
+"""* make sure system isn't in "readonly mode" during setup. """,
 
-* make sure no other gpexpand's are running.
+"""* make sure no other gpexpand's are running. """,
 
-* need a startup validation where we check the status detail
+"""* need a startup validation where we check the status detail
     with gp_distribution_policy and make sure that our book
     keeping matches reality. we don't have a perfect transactional
     model since the tables can be in a different database from
-    where the gpexpand schema is kept.
-"""]
+    where the gpexpand schema is kept. """,
+
+"""* gpexpand interview should auto-determine data directory and not
+     force the user to specify the directories all the way down to the seg8 level.""",
+
+"""* during initial setup we ssh to 127.0.0.1.  This is not guaranteed to have passwordless
+     ssh setup for it.  we should use the hostname from gp_configuration""",
+
+"""* running --clean requires you to have your database started.  often times you run
+     this when the database is stopped and possibly can't be started fully.""",
+     
+"""* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
+     the system.  should get rid of this requirement. """
+]
 
 EXECNAME = os.path.split(__file__)[-1]
 
@@ -1409,7 +1421,8 @@ except Exception, e:
     if options.verbose:
         logger.exception("gpexpand failed. exiting...")
     else:
-        logger.error("gpexpand failed: %s \n\nExiting...", e.args[0])
+        #TODO:  need a way of printing more user friendly error messages
+        logger.error("gpexpand failed: %s \n\nExiting...", e)
     if gp_expand is not None:
         gp_expand.shutdown()
     sys.exit(3)
