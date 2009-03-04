@@ -238,9 +238,9 @@ GET_DETAILS () {
 		fi
 		#See if we have any invalid segment instance databases
 		GET_MAX_LEN
-		INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE where valid='f' and content<>-1;"|$WC -l` 
+		INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE where valid='f' and content<>-1;"|$WC -l` 
 		#Get the gp_fault_action setting
-		FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show gp_fault_action;"`
+		FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"show gp_fault_action;"`
 		if [ $FAULT_ACTION == "continue" ] && [ $INVALID_COUNT -gt 0 ];then
 			DISPLAY_ERROR=1
 		else
@@ -248,19 +248,19 @@ GET_DETAILS () {
 				LOG_MSG "[INFO]:-No segments marked as invalid" 1
 			fi
 		fi
-		BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from $GP_PG_VIEW as _gp_pg_view where valid ='t' and content<>-1;"|$WC -l`
+		BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from $GP_PG_VIEW as _gp_pg_view where valid ='t' and content<>-1;"|$WC -l`
 		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
 		#Gather locale information MPP-972
-		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_collate;"`
+		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"show lc_collate;"`
 		ERROR_CHK $? "obtain lc_collate info" 1
 		LOG_MSG "[INFO]:-Master lc_collate=$LC_COLLATE"
-		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_monetary;"`
+		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"show lc_monetary;"`
 		ERROR_CHK $? "obtain lc_monetary info" 1
 		LOG_MSG "[INFO]:-Master lc_monetary=$LC_MONETARY"
-		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_numeric;"`	
+		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"show lc_numeric;"`	
 		ERROR_CHK $? "obtain lc_numeric info" 1
 		LOG_MSG "[INFO]:-Master lc_numeric=$LC_NUMERIC"
-		MAX_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show max_connections;"`
+		MAX_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"show max_connections;"`
 		ERROR_CHK $? "obtain max_connections info" 1
 		LOG_MSG "[INFO]:-Master max_connections=$MAX_CONNECTIONS"
 		#Shutdown the QD database
@@ -530,7 +530,7 @@ PROCESS_STARTUP () {
 	else
 		LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active" 1
 	fi
-	${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
+	${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d $DEFAULTDB -c"\l" >/dev/null 2>&1
 	if [ $DUMP_STAT -ne 1 ] && [ $EXIT_STATUS -eq 0 ];then
 		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
 	else

@@ -129,14 +129,14 @@ DISPLAY_PARAM () {
 
 GET_FAIL_SETTING () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	FAIL_TYPE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$QD_DBNAME" -R" " -A -t -c"show gp_fault_action;"`
+	FAIL_TYPE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$QD_DBNAME" -R" " -A -t -c"show gp_fault_action;"`
 	ERROR_CHK $? "obtain fault action setting" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_STANDBY_SETTING () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_STANDBY_HOSTNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$QD_DBNAME" -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1;"`
+	MASTER_STANDBY_HOSTNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$QD_DBNAME" -R" " -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1;"`
 	ERROR_CHK $? "Obtain standby hostname" 1
 	if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
 		STANDBY_CONFIGURED="No master standby configured"
@@ -162,17 +162,17 @@ QUICK_DATABASE_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	INVALID_PG_COUNT=0
 	INVALID_CONFIG=0
-	FAULT_ACTION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"show gp_fault_action;"`
+	FAULT_ACTION=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"show gp_fault_action;"`
 	ERROR_CHK $? "obtain gp_fault_action value" 2
 	if [ $FAULT_ACTION == "readonly" ];then
-		VALID_PG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from gp_pgdatabase where valid='t' and content<>-1;"`
+		VALID_PG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(*) from gp_pgdatabase where valid='t' and content<>-1;"`
 		ERROR_CHK $? "obtain valid count" 2
-		INVALID_PG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_configuration a, gp_pgdatabase b where a.dbid=b.dbid and b.valid='f' and b.content<>-1;"`)
+		INVALID_PG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_configuration a, gp_pgdatabase b where a.dbid=b.dbid and b.valid='f' and b.content<>-1;"`)
 		ERROR_CHK $? "obtain invalid count" 2
 	else
-		VALID_CONFIG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(*) from gp_configuration where valid='t' and content<>-1;"`
+		VALID_CONFIG_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(*) from gp_configuration where valid='t' and content<>-1;"`
 		ERROR_CHK $? "obtain valid count" 2
-		INVALID_CONFIG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_configuration where valid='f' and content<>-1;"`)
+		INVALID_CONFIG_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, datadir from gp_configuration where valid='f' and content<>-1;"`)
 		ERROR_CHK $? "obtain invalid count" 2
 	fi
 	LOG_MSG "[INFO]:-Quick Greenplum database status from Master instance only" 1
@@ -228,14 +228,14 @@ DATABASE_STATUS () {
 		GET_GP_VERSION
 		GET_FAIL_SETTING
 		GET_STANDBY_SETTING
-		QD_PG_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"show server_version;"`
+		QD_PG_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"show server_version;"`
 		ERROR_CHK $? "obtain postgres version" 1
-		QD_ROLE=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"show gp_session_role;" 2> /dev/null`
+		QD_ROLE=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"show gp_session_role;" 2> /dev/null`
 		if [ $? -ne 0 ];then
-			  QD_ROLE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"show gp_session_role;"`
+			  QD_ROLE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"show gp_session_role;"`
 			  ERROR_CHK $? "obtain master current role" 1
 		fi
-		MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;" 2> /dev/null `
+		MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;" 2> /dev/null `
 		ERROR_CHK $? "obtain mirror count" 1
 		if [ x"" == x"$MIRROR_COUNT" ];then
 			MIRROR_CONFIG=ERROR
@@ -383,11 +383,11 @@ LOG_MSG "[INFO]:-End Function $FUNCNAME"
 VERSION_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QE_DETAILS
-	MASTER_POSTGRES_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c"show server_version;"`
+	MASTER_POSTGRES_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c"show server_version;"`
 	ERROR_CHK $? "obtain master postgres server version" 1
-	MASTER_INITDB_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c"select productversion from $GP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
+	MASTER_INITDB_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c"select productversion from $GP_INITDB_VER_TABLE limit 1;"|$TR '$' ' '|$TR -s ' '`
 	ERROR_CHK $? "obtain master initdb version" 1
-	MASTER_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c"select version();" `
+	MASTER_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c"select version();" `
 	ERROR_CHK $? "obtain master current version" 1
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for TNODE in "${QE_ARRAY[@]}"
@@ -809,7 +809,7 @@ CLUSTER_CONFIG () {
 LIST_GP_PORTS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_MAX_LEN
-		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1 order by hostname, port asc;" `)
+		PORT_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select hostname, port, datadir from $CONFIG_TABLE where content<>-1 order by hostname, port asc;" `)
 		ERROR_CHK $? "obtain port assignments" 2
 		LOG_MSG "[INFO]:-Master segment instance  $MASTER_DATA_DIRECTORY  port = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Segment instance port assignments" 1
@@ -859,7 +859,7 @@ STANDBY_HOST_DETAILS () {
 
 		LOG_MSG "[INFO]:-------------------------------------------------------------" 1
 	fi
-	GP_MASTER_MIRRORING=`${EXPORT_LIB_PATH};env PGOPTIOINS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c "select * from gp_master_mirroring;"` > /dev/null 2>&1
+	GP_MASTER_MIRRORING=`${EXPORT_LIB_PATH};env PGOPTIOINS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c "select * from gp_master_mirroring;"` > /dev/null 2>&1
 	
 	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
 	LOG_MSG "[INFO]:-gp_master_mirroring table" 1
@@ -880,9 +880,9 @@ STANDBY_HOST_DETAILS () {
 
 GET_GP_VERSION () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		GP_INIT_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
+		GP_INIT_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c "select * from gp_version_at_initdb limit 1;" 2>/dev/null`
 		ERROR_CHK $? "obtain Greenplum initdb version information" 2
-		GP_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c "select version();" 2>/dev/null`
+		GP_VERSION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c "select version();" 2>/dev/null`
 		ERROR_CHK $? "obtain Greenplum version information" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

@@ -210,7 +210,7 @@ START_SEG () {
 	#*************************************************************************************************************
 	# Start of segment configuration check section
 	#*************************************************************************************************************
-	QD_LC_COLLATE=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT \"$QD_DBNAME\" -A -t -c\"show lc_collate;\""`
+	QD_LC_COLLATE=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c\"show lc_collate;\""`
 	if [ $? -ne 0 ];then
 		 LOG_MSG "[WARN][$INST_COUNT]:-Failed to obtain lc_collate value $QE_NAME $QE_DIR" 1
 	fi
@@ -218,7 +218,7 @@ START_SEG () {
 		QD_LINE="${QD_LINE}:LC_ERROR"
 		LOG_MSG "[WARN][$INST_COUNT]:-lc_collate mismatch on $QE_NAME $QE_DIR" 1
 	fi
-	QD_LC_MONETARY=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT \"$QD_DBNAME\" -A -t -c\"show lc_monetary;\""`
+	QD_LC_MONETARY=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c\"show lc_monetary;\""`
 	if [ $? -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Failed to obtain lc_monetary value $QE_NAME $QE_DIR" 1
 	fi
@@ -226,7 +226,7 @@ START_SEG () {
 		QD_LINE="${QD_LINE}:LC_ERROR"
 		LOG_MSG "[WARN][$INST_COUNT]:-lc_monetary mismatch on $QE_NAME $QE_DIR" 1
 	fi
-	QD_LC_NUMERIC=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT \"$QD_DBNAME\" -A -t -c\"show lc_numeric;\""`
+	QD_LC_NUMERIC=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c\"show lc_numeric;\""`
 	if [ $? -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Failed to obtain lc_numeric value $QE_NAME $QE_DIR" 1
 	fi

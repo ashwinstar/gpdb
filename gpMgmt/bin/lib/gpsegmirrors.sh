@@ -117,7 +117,7 @@ PROCESS_MIRROR () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Completed start $QE_MIR_NAME database for directory $QE_MIR_BASE_DIR"
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Updating $GP_ID_TABLE $QE_MIR_NAME database for directory $QE_MIR_BASE_DIR"
-	$TRUSTED_SHELL $QE_MIR_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_MIR_PORT $DEFAULTDB -c \"update $GP_ID_TABLE set dbid=${QE_MIR_DBID} where dbid<>${QE_MIR_DBID};\"" >> $LOG_FILE 2>&1
+	$TRUSTED_SHELL $QE_MIR_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_MIR_PORT -d $DEFAULTDB -c \"update $GP_ID_TABLE set dbid=${QE_MIR_DBID} where dbid<>${QE_MIR_DBID};\"" >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		$ECHO "FAILED:${QE_LINE}:UPDATE_ID_TABLE" >> $PARALLEL_STATUS_FILE
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed update $GP_ID_TABLE set dbid=${QE_MIR_DBID} where dbid<>${QE_MIR_DBID}" 1

@@ -44,7 +44,7 @@ Options:
     
     psql connect string, e.g:
 
-    -connect '-p 11000 template1'
+    -connect '-p 11000 -d template1'
 
 =item B<-sql>
     
@@ -118,7 +118,7 @@ BEGIN {
 
     $glob_connect = $conn;
 
-    $glob_connect = '-p 11000 template1'
+    $glob_connect = '-p 11000 -d template1'
         unless (defined($glob_connect));
 
     if (defined($dosql))

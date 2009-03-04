@@ -64,7 +64,73 @@ CHK_CALL () {
 
 INSERT_REC () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $CHILD_TARGET select * from $SECURE_TABLE_NAME where $SELECT_CLAUSE ;" > $TMP_COUNT_FILE 2>&1
+#!/bin/bash
+#	Filename:-		gpsepartw.sh
+#	Version:-		$Revision$
+#	Updated:-		$Date$	
+#	Status:-		Released	
+#	Author:-		G Coombe	
+#	Contact:-		gcoombe@greenplum.com
+#	Release date:-		Dec 2006
+#	Release stat:-		Released
+#                               Copyright (c) Metapa 2005. All Rights Reserved.
+#                               Copyright (c) 2007 Greenplum Inc
+#******************************************************************************
+# Update History
+#******************************************************************************
+# Ver	Date		Who		Update
+#******************************************************************************
+# Detailed Description
+#******************************************************************************
+#******************************************************************************
+# Prep Code
+
+WORKDIR=`dirname $0`
+
+# Source required functions file, this required for script to run
+# exit if cannot locate this file. Change location of FUNCTIONS variable
+# as required.
+FUNCTIONS=$WORKDIR/gp_bash_functions.sh
+if [ -f $FUNCTIONS ]; then
+		. $FUNCTIONS
+else
+		echo "[FATAL]:-Cannot source $FUNCTIONS file Script Exits!"
+		exit 2
+fi
+#******************************************************************************
+# Script Specific Variables
+#******************************************************************************
+# Log file that will record script actions
+CUR_DATE=`$DATE +%Y%m%d`
+TIME=`$DATE +%H%M%S`
+PROG_NAME=`$BASENAME $0`
+# Level of script feedback 0=small 1=verbose
+unset VERBOSE
+GP_USER=$USER_NAME
+EXIT_STATUS=0
+TMP_COUNT_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_COUNT_FILE_OUT.$$
+#******************************************************************************
+# Functions
+#******************************************************************************
+USAGE () {
+		$ECHO
+		$ECHO "      `basename $0`"
+		$ECHO
+		$ECHO "      Script called by gpcreatepart, this should not be run directly"
+		exit $EXIT_STATUS
+}
+
+CHK_CALL () {
+	FILE_PREFIX=`$ECHO $PARALLEL_STATUS_FILE|$CUT -d"." -f1`
+	if [ ! -f ${FILE_PREFIX}.$PARENT_PID ];then
+		$ECHO "[FATAL]:-Not called from from correct parent program" 
+		exit 2
+	fi
+}
+
+INSERT_REC () {
+	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t -d $QD_DBNAME -c "insert into $CHILD_TARGET select * from $SECURE_TABLE_NAME where $SELECT_CLAUSE ;" > $TMP_COUNT_FILE 2>&1
 	if [ $? -ne 0 ];then
 		$ECHO "FAILED:${QE_LINE}:0:INSERT_FAILED" >> $PARALLEL_STATUS_FILE
 		$CAT $TMP_COUNT_FILE >> $LOG_FILE

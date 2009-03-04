@@ -369,7 +369,7 @@ ERROR_EXIT () {
 
 READ_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	NROWS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT "$DEFAULTDB" -c" select * from $CONFIG_TABLE where port<0;"`
+	NROWS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT -d "$DEFAULTDB" -c" select * from $CONFIG_TABLE where port<0;"`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		READ_COUNT=0
@@ -527,7 +527,7 @@ fi
 
 CHK_EXTERNAL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	EXTERNAL=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from $EXTERNAL_TABLE where reloid in (select oid from $CLASS_TABLE where relname='$TABLENAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME'));"|$WC -l`
+	EXTERNAL=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from $EXTERNAL_TABLE where reloid in (select oid from $CLASS_TABLE where relname='$TABLENAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME'));"|$WC -l`
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -538,28 +538,28 @@ CHK_EXISTS_TABLE () {
 	QD_DBNAME=$3
 	if [ $# -ne 3 ];then
 		ERROR_EXIT "[FATAL]:-Incorrect number of parameters passed expected 3 got $#" 2;fi
-	DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DEFAULTDB" -c"select 1 from pg_database where datname='$QD_DBNAME';" |$WC -l`
+	DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$DEFAULTDB" -c"select 1 from pg_database where datname='$QD_DBNAME';" |$WC -l`
 	if [ $DB_THERE -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2;fi
 	LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
 	if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
 		SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
                 TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
-		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
+		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
 		if [ $TAB_COUNT -eq 1 ];then
 			LOG_MSG "[INFO]:-Found table ${SCHEMA_NAME}.$TABLENAME in database $QD_DBNAME"
 			CHK_EXTERNAL
-			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		fi
 	else
-		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';" |$WC -l`
+		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';" |$WC -l`
 		if [ $TAB_COUNT -eq 1 ];then
-			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
-			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
+			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
+			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
 			CHK_EXTERNAL
 		fi
 	fi
-#		$EXPORT_LIB_PATH;$PSQL -q -p  $MASTER_PORT "$QD_DBNAME" -c"\d $TABLENAME;" -o /dev/null
+#		$EXPORT_LIB_PATH;$PSQL -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"\d $TABLENAME;" -o /dev/null
 	if [ $TAB_COUNT -eq 0 ] || [ $TAB_COUNT -gt 1 ];then
 		EXISTS=1
 	else
@@ -644,7 +644,7 @@ GET_MAX_LEN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Formatting output, please wait..." 1
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-	LEN_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -F" " -A -t -q -p  $MASTER_PORT "$DEFAULTDB" -c"select max(length(hostname))+1, max(length(port))+1, max(length(datadir))+1, max(length(content))+1, max(length(dbid)) from $CONFIG_TABLE where content<>-1;"`)
+	LEN_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -F" " -A -t -q -p  $MASTER_PORT -d "$DEFAULTDB" -c"select max(length(hostname))+1, max(length(port))+1, max(length(datadir))+1, max(length(content))+1, max(length(dbid)) from $CONFIG_TABLE where content<>-1;"`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -753,7 +753,7 @@ GET_DISTRIB_COLS () {
 	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
 		T_NAME=`$ECHO $1|$CUT -d"." -f2`
 		S_NAME=`$ECHO $1|$CUT -d"." -f1`
-		DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 "$3" -A -t -c"select attrnums from  $DISTRIB_TABLE  where localoid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
+		DISTRIB_COLS=`${EXPORT_LIB_PATH};$PSQL -p $2 -d "$3" -A -t -c"select attrnums from  $DISTRIB_TABLE  where localoid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"`
 		if [ x"" == x"$DISTRIB_COLS" ];then
 			DISTRIB_COLS='';fi
 	else
@@ -771,10 +771,10 @@ GET_TABLE_TYPE () {
 	if [ `$ECHO $1|$GREP -c "\."` -eq 1 ];then
 		T_NAME=`$ECHO $1|$CUT -d"." -f2`
 		S_NAME=`$ECHO $1|$CUT -d"." -f1`
-		TAB_TYPE=`${EXPORT_LIB_PATH};$PSQL -p $2 "$3" -A -t -c"select 1 from pg_depend where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"|$WC -l`
+		TAB_TYPE=`${EXPORT_LIB_PATH};$PSQL -p $2 -d "$3" -A -t -c"select 1 from pg_depend where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}'));"|$WC -l`
 		if [ $TAB_TYPE -eq 1 ];then
 			TAB_TYPE_TXT="Child table"
-			TAB_PARENT_NAME=(`${EXPORT_LIB_PATH};$PSQL -p $2 "$3" -R" " -A -t -c"select relname from pg_class where oid in (select refobjid from pg_depend  where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')));"`)
+			TAB_PARENT_NAME=(`${EXPORT_LIB_PATH};$PSQL -p $2 -d "$3" -R" " -A -t -c"select relname from pg_class where oid in (select refobjid from pg_depend  where objid in (select oid from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')) and refobjid not in (select relnamespace from pg_class where relname='${T_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${S_NAME}')));"`)
 		else
 			TAB_TYPE_TXT="Not child table"
 		fi
@@ -933,7 +933,7 @@ CHK_DB_RUNNING () {
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-		export $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"SELECT d.datname as \"Name\",
+		export $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"SELECT d.datname as \"Name\",
        r.rolname as \"Owner\",
        pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\"
 FROM pg_catalog.pg_database d
@@ -948,7 +948,7 @@ ORDER BY 1;" >> $LOG_FILE 2>&1
 		fi
 		if [ $CHK_DISPATCH_ACCESS -eq 1 ];then
 			#Check if in admin mode
-			export $EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"\l" >> $LOG_FILE 2>&1
+			export $EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"\l" >> $LOG_FILE 2>&1
 			if [ $? -ne 0 ];then
 				LOG_MSG "[WARN]:-Can access the Master instance in admin mode, but dispatch access failed" 1
 				LOG_MSG "[INFO]:-This could mean that the Master instance is in admin mode only" 1
@@ -969,7 +969,7 @@ GET_QD_DB_NAME () {
 		#Check if we have PGDATABASE environment variable set, if so see if that database exists
 		if [ x"" != x"$PGDATABASE" ];then
 			LOG_MSG "[INFO]:-PGDATABASE set, checking for this database"
-			QD_DBNAME_THERE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select 1 from pg_database where datname='${PGDATABASE}';"|$WC -l`
+			QD_DBNAME_THERE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select 1 from pg_database where datname='${PGDATABASE}';"|$WC -l`
 			ERROR_CHK $? "check for $PGDATABASE" 2
 			if [ $QD_DBNAME_THERE -eq 1 ];then
 				QD_DBNAME=$PGDATABASE
@@ -979,10 +979,10 @@ GET_QD_DB_NAME () {
 		fi
 		if [ x"" = x"$QD_DBNAME_THERE" ];then
 			LOG_MSG "[INFO]:-Checking for a non-system database"
-			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"$GPLISTDATABASEQTY " 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
+			QD_DBNAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"$GPLISTDATABASEQTY " 2>/dev/null|$GREP -v postgres|$GREP -v template0|$HEAD -1|$CUT -d"|" -f1`
 			ERROR_CHK $? "obtain database name" 2
 		fi
-		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select 1 from ${CONFIG_TABLE};"|$WC -l`
+		MASTER_DIR_CHK=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select 1 from ${CONFIG_TABLE};"|$WC -l`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
@@ -995,7 +995,7 @@ GET_QD_DB_NAME () {
 GET_STANDBY_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE where content=-1 and dbid<>1 ;"|$WC -l`
+	STANDBY_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE where content=-1 and dbid<>1 ;"|$WC -l`
 	ERROR_CHK $? "obtain standby master host count" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1003,7 +1003,7 @@ GET_STANDBY_COUNT () {
 GET_STANDBY_DETAILS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select hostname, datadir, port, valid, definedprimary from $CONFIG_TABLE where content=-1 and dbid<>1"`) > /dev/null 2>&1
+	STANDBY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select hostname, datadir, port, valid, definedprimary from $CONFIG_TABLE where content=-1 and dbid<>1"`) > /dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned" 1
@@ -1014,7 +1014,7 @@ GET_STANDBY_DETAILS () {
 
 GET_TRANS_READ () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TRANS_STATE=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show transaction_read_only;"|$AWK '{print $NF}'`
+	TRANS_STATE=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"show transaction_read_only;"|$AWK '{print $NF}'`
 	ERROR_CHK $? "obtain transaction state" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1029,9 +1029,9 @@ GET_QE_DETAILS () {
 		fi
 		
 		if [ $# -eq 0 ];then
-			QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -U $DBUSER "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by b.dbid;"`) > /dev/null 2>&1
+			QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -U $DBUSER -d "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by b.dbid;"`) > /dev/null 2>&1
 		else
-			QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -U $DBUSER "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by a.port;"`) > /dev/null 2>&1
+			QE_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -U $DBUSER -d "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.definedprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 order by a.port;"`) > /dev/null 2>&1
 		fi
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -1045,13 +1045,13 @@ GET_QE_DETAILS () {
 GET_DB_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-	DB_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select datname from pg_database where datname not in ('template1', 'template0', 'postgres');"`)
+	DB_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select datname from pg_database where datname not in ('template1', 'template0', 'postgres');"`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;"`
+	MIRROR_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(dbid)/count(distinct(content)) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
 	LOG_MSG "[INFO]:-Obtained $MIRROR_COUNT as check value"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1063,16 +1063,16 @@ GET_MIRROR_TYPE () {
 	if [ $MIRROR_COUNT -eq 1 ];then
 		MIR_TYPE="No Mirror";MIR_TYPE_NUM=0
 	else
-		SEP_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(distinct hostname)/(select count(distinct hostname) from $CONFIG_TABLE where definedprimary='t' and content<>-1) from $CONFIG_TABLE where content<>-1;"`
+		SEP_COUNT=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(distinct hostname)/(select count(distinct hostname) from $CONFIG_TABLE where definedprimary='t' and content<>-1) from $CONFIG_TABLE where content<>-1;"`
 		if [ $SEP_COUNT -eq 2 ];then
 			SEP_TEXT="[Separate array]"
 		else
 			SEP_TEXT="[Shared array]"
 		fi
 		#Get number of primary hosts
-		NUM_SEG_HOSTS=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1;"`
+		NUM_SEG_HOSTS=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select count(distinct(hostname)) from $CONFIG_TABLE where content<>-1;"`
 		#Get the primary and mirror hostnames for the first segment instance host
-		FIRST_PRI_MIR_ARRAY=(`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, content from $CONFIG_TABLE where content>-1 and content<(select max(port)-min(port)+1 from $CONFIG_TABLE where content<>-1 and definedprimary='t') order by content,dbid;"|$TR '\n' ' '`)
+		FIRST_PRI_MIR_ARRAY=(`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname, content from $CONFIG_TABLE where content>-1 and content<(select max(port)-min(port)+1 from $CONFIG_TABLE where content<>-1 and definedprimary='t') order by content,dbid;"|$TR '\n' ' '`)
 		((SEG_PER_HOST=${#FIRST_PRI_MIR_ARRAY[@]}/2))
 		CHK_MULTI_HOME
 		if [ $MULTI_HOME -eq 0 ];then
@@ -1089,7 +1089,7 @@ GET_MIRROR_TYPE () {
 				MIR_HOST=`$ECHO ${FIRST_PRI_MIR_ARRAY[@]}|$TR ' ' '\n'|$GREP "|${J}$"|$AWK -F"|" '{print $1}'|$TAIL -1`
 				PRI_HOST=`$ECHO ${FIRST_PRI_MIR_ARRAY[@]}|$TR ' ' '\n'|$GREP "|${J}$"|$AWK -F"|" '{print $1}'|$HEAD -1`
 				#MIR_H_HOST=`$ECHO ${MULTI_ARRAY[@]}|$TR ' ' '\n'|$GREP "${MIR_HOST}:"|$SORT -u|$AWK -F":" '{print $2}'`
-				MIR_H_CONFIG_HOST=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where hostname<>'${PRI_HOST}' and content=${J};"`
+				MIR_H_CONFIG_HOST=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where hostname<>'${PRI_HOST}' and content=${J};"`
 				MIR_H_HOST=`$TRUSTED_SHELL $MIR_H_CONFIG_HOST "$HOSTNAME"|$AWK '{print $1}'`
 				#MIR_HOST_VAL=`$TRUSTED_SHELL $MIR_HOST "$HOSTNAME"`
 				MIR_H_NAME_ARRAY=(${MIR_H_NAME_ARRAY[@]} $MIR_H_HOST)
@@ -1110,7 +1110,7 @@ GET_MIRROR_TYPE () {
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.definedprimary='t' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and  a.definedprimary='t' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -1123,7 +1123,7 @@ GET_QE_PRIMARY_DETAILS () {
 GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_MIRROR_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and a.definedprimary='f' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select a.hostname, a.datadir, a.port, b.valid, b.isprimary from $CONFIG_TABLE a, $GP_PG_VIEW b where a.dbid=b.dbid and a.content<>-1 and a.definedprimary='f' order by a.content;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -1316,12 +1316,12 @@ STANDBY_CATALOG_UPDATE () {
 	MASTER_STANDBY_HOSTNAME=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
 	MASTER_STANDBY_PORT=$1
-	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select distinct hostname from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}';"|$WC -l`
+	STANDBY_HOST_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select distinct hostname from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}';"|$WC -l`
 	ERROR_CHK $? "obtain standby host count" 2
         LOG_MSG "[INFO]:-Creating new $CONFIG_TABLE record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select max(dbid)+1 from $CONFIG_TABLE;"`
+        MAX_DB_ID=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"select max(dbid)+1 from $CONFIG_TABLE;"`
 	ERROR_CHK $? "obtain max dbid from $CONFIG_TABLE" 2
-        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"insert into $CONFIG_TABLE (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
+        $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -d "$QD_DBNAME" -c"insert into $CONFIG_TABLE (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
         ERROR_CHK $? "add standby host $CONFIG_TABLE record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

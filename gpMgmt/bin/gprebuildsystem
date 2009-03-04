@@ -175,7 +175,7 @@ CREATE_TEMP_DB () {
 	fi
 	LOG_MSG "[INFO]:-Loading Greenplum Database metadata" 1
 	DUMP_DIR=`$DIRNAME $SQL_FILE`
-	env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -f $SQL_FILE >/dev/null 2>&1
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -f $SQL_FILE >/dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		DELETE_TEMP_DB
@@ -223,7 +223,7 @@ UPDATE_SEG_DETAILS () {
 	REPLY="L"
 	while [ $REPLY != "q" ]
 	do
-		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -F'	' -A -c"select dbid, hostname, datadir, port, definedprimary from $CONFIG_TABLE order by dbid;"
+		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -F'	' -A -c"select dbid, hostname, datadir, port, definedprimary from $CONFIG_TABLE order by dbid;"
 		$ECHO "Enter DBID# to change or q to exit >"
 		read REPLY
 		if [ x"" == x"$REPLY" ]|| [ $REPLY == "q" ];then break;fi
@@ -235,19 +235,19 @@ UPDATE_SEG_DETAILS () {
 		$ECHO "Enter new hostname     >"
 		read NEW_DATA
 		if [ x"" != x"$NEW_DATA" ]|| [ $NEW_DATA != "q" ];then
-		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='${NEW_DATA}' where dbid=${REPLY};" 
+		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='${NEW_DATA}' where dbid=${REPLY};" 
 		fi ;;
 		p)
 		$ECHO "Enter new port #       >"
 		read NEW_DATA
 		if [ x"" != x"$NEW_DATA" ]|| [ $NEW_DATA != "q" ];then
-		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set port=${NEW_DATA} where dbid=${REPLY};"
+		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"update $CONFIG_TABLE set port=${NEW_DATA} where dbid=${REPLY};"
 		fi ;;
 		d )
 		$ECHO "Enter new datadir      >"
 		read NEW_DATA
 		if [ x"" != x"$NEW_DATA" ]|| [ $NEW_DATA != "q" ];then
-		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set datadir='${NEW_DATA}' where dbid=${REPLY};"
+		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"update $CONFIG_TABLE set datadir='${NEW_DATA}' where dbid=${REPLY};"
 		fi ;;
 		*) break ;;
 		esac
@@ -258,38 +258,38 @@ UPDATE_SEG_DETAILS () {
 PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Processing $SQL_FILE to obtain re-build parameters"
-	ARRAY_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select gpname from $GP_ID_TABLE;"`
+	ARRAY_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select gpname from $GP_ID_TABLE;"`
 	LOG_MSG "[INFO]:-Obtained Array Name $ARRAY_NAME"
-	SEG_PREFIX=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where dbid=1 and content=-1;"|$AWK -F"/" '{print $NF}'|$SED -e s/-1//g`
+	SEG_PREFIX=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where dbid=1 and content=-1;"|$AWK -F"/" '{print $NF}'|$SED -e s/-1//g`
 	LOG_MSG "[INFO]:-Obtained Segment Prefix $SEG_PREFIX"
-	PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='t' and content<>-1;"`
+	PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='t' and content<>-1;"`
 	LOG_MSG "[INFO]:-Obtained Primary port base $PORT_BASE"
-	PRIMARY_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"|tr '\n' ' '`
+	PRIMARY_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='t' order by hostname;"|tr '\n' ' '`
 	LOG_MSG "[INFO]:-Obtained Primary hostname list ${PRIMARY_HOST_ARRAY[@]}" 
-	SEG_PER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
+	SEG_PER_HOST=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select count(distinct port) from $CONFIG_TABLE where content<>-1 and definedprimary='t';"`
 	LOG_MSG "[INFO]:-Obtained number of segments per host as $SEG_PER_HOST"
-	DATA_DIRECTORY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`)
-	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
+	DATA_DIRECTORY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='t';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`)
+	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	LOG_MSG "[INFO]:-Obtained Master hostname $MASTER_HOSTNAME"
-	MASTER_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=-1 and dbid=1;"|$SED -e s/\\\/${SEG_PREFIX}-1//g`
+	MASTER_DIRECTORY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content=-1 and dbid=1;"|$SED -e s/\\\/${SEG_PREFIX}-1//g`
 	LOG_MSG "[INFO]:-Obtained Master datadir $MASTER_DIRECTORY"
-	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where content=-1 and dbid=1;"`
+	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where content=-1 and dbid=1;"`
 	LOG_MSG "[INFO]:-Obtained Master port $MASTER_PORT"
-	ENCODING=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"show server_encoding;"`
+	ENCODING=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"show server_encoding;"`
 	LOG_MSG "[INFO]:-Obtained Server encoding $ENCODING"
-	MASTER_MAX_CONNECT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"show max_connections;"`
+	MASTER_MAX_CONNECT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"show max_connections;"`
 	LOG_MSG "[INFO]:-Obtained Max connections $MASTER_MAX_CONNECT"	
 	#Check to see if we have mirrors configured
-	MIR_NUM=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
+	MIR_NUM=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
 	SEP_HOSTS=0
 	if [ $MIR_NUM -ne 0 ];then
 		#Have mirrors configured
-		#DDD MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$TR '\n' ' '`
-		MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"|$TR '\n' ' '`
+		#DDD MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$TR '\n' ' '`
+		MIRROR_HOST_ARRAY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select distinct(hostname) from $CONFIG_TABLE where content<>-1 and definedprimary='f' order by hostname;"|$TR '\n' ' '`
 		LOG_MSG "[INFO]:-Obtained Mirror host list ${MIRROR_HOST_ARRAY[@]}"
-		MIRROR_DATA_DIRECTORY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`)
+		MIRROR_DATA_DIRECTORY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select datadir from $CONFIG_TABLE where content<>-1 and definedprimary='f';"|$SED -e s/\\\/${SEG_PREFIX}[0-9][0-9]*//g|$SORT -u|$TR '\n' ' '`)
 		#Get the mirror port base	
-		MIRROR_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
+		MIRROR_PORT_BASE=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select min(port)-1 from $CONFIG_TABLE where definedprimary='f' and content<>-1;"`
 		LOG_MSG "[INFO]:-Obtained Mirror port base $MIRROR_PORT_BASE"
 		#See if we have mirroring on separate hosts
 		#Check to see if we have a primary hostname which appears in the mirror array
@@ -300,7 +300,7 @@ PARSE_SQL_FILE () {
 				((MATCH=$MATCH+1))
 			fi
 		done
-		 ##SEP_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select count(distinct hostname)/(select count(distinct hostname) from $CONFIG_TABLE where definedprimary='t' and content<>-1) from $CONFIG_TABLE where content<>-1;"`
+		 ##SEP_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select count(distinct hostname)/(select count(distinct hostname) from $CONFIG_TABLE where definedprimary='t' and content<>-1) from $CONFIG_TABLE where content<>-1;"`
 		if [ $MATCH -eq `$ECHO ${PRIMARY_HOST_ARRAY[@]}|$TR ' ' '\n'|$WC -l` ];then
 			LOG_MSG "[INFO]:-Mirror type is shared array"
 			TYPE_TXT="Shared array"
@@ -311,10 +311,10 @@ PARSE_SQL_FILE () {
 			SEP_HOSTS=1
 		fi
 	fi
-	LOCALE_SETTING=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"show lc_ctype;"`
+	LOCALE_SETTING=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"show lc_ctype;"`
 	LOG_MSG "[INFO]:-Obtained Locale type $LOCALE_SETTING"
 	#Check for a warm master standby server
-	STANDBY_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and definedprimary='f';"`
+	STANDBY_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $TEMP_PORT -d $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and definedprimary='f';"`
 	if [ $NOCREATEDB -eq 0 ];then
 		if [ -f ${DUMP_DIR}/gp_cdatabase*$REBUILD_KEY ];then
 			DATABASE=`$GREP "CREATE DATABASE" ${DUMP_DIR}/gp_cdatabase*$REBUILD_KEY|$AWK '{print $3}'`

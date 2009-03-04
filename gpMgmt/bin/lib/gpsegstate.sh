@@ -134,8 +134,8 @@ GET_SEGMENT_STATUS () {
 		#*************************************
 		#Process status mirror segment
 		#*************************************
-		QE_MIRROR_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
-		QE_MIRROR_PRIMARY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select isprimary from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
+		QE_MIRROR_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
+		QE_MIRROR_PRIMARY=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select isprimary from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
 		if [ "$QE_MIRROR_PRIMARY" == "t" ]; then
 			LOG_MSG "[WARN][$INST_COUNT]:-Mirror $QE_DIR $QE_PORT on $QE_NAME is active"
 			QE_MIRROR_ACTIVE=1
@@ -154,7 +154,7 @@ GET_SEGMENT_STATUS () {
 		#Process status primary segment
 		#*************************************
 		#This is a primary segment 
-		QE_PRIMARY_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
+		QE_PRIMARY_VALID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d $DEFAULTDB  -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid in (select dbid from $CONFIG_TABLE where port=$QE_PORT and datadir='${QE_DIR}');"`
 		if [ "$QE_PRIMARY_VALID" == "f" ];then
 			LOG_MSG "[WARN][$INST_COUNT]:-Primary $QE_DIR $QE_PORT on $QE_NAME is marked as failed"
 			QE_PRIMARY_FAILED=1
@@ -170,19 +170,19 @@ GET_SEGMENT_STATUS () {
 
 GET_VERSION_INFO () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start  Function $FUNCNAME"
-	POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"show server_version;\"" 2>/dev/null`
+	POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT -d $DEFAULTDB -c\"show server_version;\"" 2>/dev/null`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		POSTGRES_VERSION="Failed"
 	fi
-	QE_INITDB_VERSION_STRING=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select productversion from $GP_INITDB_VER_TABLE;\"" 2>/dev/null`
+	QE_INITDB_VERSION_STRING=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT -d $DEFAULTDB -c\"select productversion from $GP_INITDB_VER_TABLE;\"" 2>/dev/null`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] || [ x"" == x"QE_INITDB_VERSION" ];then
 		QE_INITDB_VERSION="Failed"
 	else
 		QE_INITDB_VERSION=`$ECHO $QE_INITDB_VERSION_STRING|$TR '$' ' '|$TR -s ' '`	
 	fi
-	QE_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select version();\"" 2>/dev/null`
+	QE_VERSION=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -A -t -p $QE_PORT -d $DEFAULTDB -c\"select version();\"" 2>/dev/null`
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		QE_VERSION="Failed"

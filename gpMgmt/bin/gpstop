@@ -160,7 +160,7 @@ CANCEL_BACKEND () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Expects a PROCPID value to cancel
 	LOG_MSG "[INFO]:-Calling pg_cancel_backend on procpid $1" 1
-	${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select pg_cancel_backend($1);" >> $LOG_FILE 2>&1	
+	${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select pg_cancel_backend($1);" >> $LOG_FILE 2>&1	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -171,8 +171,8 @@ STOP_ADMIN () {
 		fi
 		GET_QD_DB_NAME
 		#Check to see if we have any connections to the database at this stage
-		#ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select procpid from $ACTIVITY_TABLE where procpid != pg_backend_pid() and current_query<>'idle';"`)
-		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from ($CONNECTED_BACKEND_QUERY) connected WHERE current_query<>'<IDLE>';"`)
+		#ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select procpid from $ACTIVITY_TABLE where procpid != pg_backend_pid() and current_query<>'idle';"`)
+		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select * from ($CONNECTED_BACKEND_QUERY) connected WHERE current_query<>'<IDLE>';"`)
 		if [ ${#ACTIVE_CONNECTIONS[@]} -ne 0 ] && [ $CANCEL_ACTIVE -eq 0 ];then
 			LOG_MSG "[FATAL]:-There are ${#ACTIVE_CONNECTIONS[@]} active connections to the database" 1
 			LOG_MSG "[FATAL]:-Option -C not supplied to cancel backend processes" 1
@@ -184,7 +184,7 @@ STOP_ADMIN () {
 				CANCEL_BACKEND $PROCPID
 			done
 		fi
-		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from ($CONNECTED_BACKEND_QUERY) connected  where procpid != pg_backend_pid();"|$WC -l`
+		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from ($CONNECTED_BACKEND_QUERY) connected  where procpid != pg_backend_pid();"|$WC -l`
 		if [ $TOTAL_CONNECTIONS -ne 0 ];then
 			LOG_MSG "[INFO]:-There are $TOTAL_CONNECTIONS connections to the database" 1
 			LOG_MSG "[INFO]:-Setting shutdown mode to immediate" 1
@@ -298,10 +298,10 @@ PROCESS_SHUTDOWN () {
 		if [ $STOP_INVALID -eq 1 ];then
 			BATCH_LIMIT=$QE_ARRAY_COUNT
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from $GP_PG_VIEW as _gp_pg_view where valid ='t' and content<>-1;" | wc -l`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$QD_DBNAME" -A -t -c"select 1 from $GP_PG_VIEW as _gp_pg_view where valid ='t' and content<>-1;" | wc -l`
 		fi
 #		count connected processes, but don't count ourself.
-		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c "select 1 from ($CONNECTED_BACKEND_QUERY) connected"|$WC -l`
+		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c "select 1 from ($CONNECTED_BACKEND_QUERY) connected"|$WC -l`
 		if [ $MODE == "smart" ]; then
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
