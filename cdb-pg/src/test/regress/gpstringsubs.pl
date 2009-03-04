@@ -249,7 +249,7 @@ if (1)
 
     $psql_str .= " -c \'select * from gp_configuration \'";
 
-    print $psql_str, "\n";
+#    print $psql_str, "\n";
 
     my $tabdef = `$psql_str`;
 
