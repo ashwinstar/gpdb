@@ -1620,7 +1620,7 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	else
 	{
-		int32	compressedLen;
+		int32	compressedLen = 0;
 		
 		if (itemCount == 1)
 		{
