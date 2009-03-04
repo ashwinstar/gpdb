@@ -102,6 +102,12 @@ extern uint8 *BufferedAppendGetBuffer(
     int32				 bufferLen);
 
 /*
+ * Get the address of the current buffer space being used appending.
+ */
+extern uint8 *BufferedAppendGetCurrentBuffer(
+    BufferedAppend       *bufferedAppend);
+
+/*
  * Get the next maximum length buffer space for appending.
  *
  * Returns NULL when the current file does not have enough

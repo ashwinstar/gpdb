@@ -121,6 +121,18 @@ uint8 *BufferedReadGrowBuffer(
     int32              *growBufferLen);
 
 /*
+ * Return the address of the current read buffer.
+ */
+uint8 *BufferedReadGetCurrentBuffer(
+    BufferedRead       *bufferedRead);
+
+/*
+ * Return the current buffer's start position.
+ */
+int64 BufferedReadCurrentPosition(
+    BufferedRead       *bufferedRead);
+
+/*
  * Finishes the current file for reading.  Caller is resposible for closing
  * the file afterwards.
  */

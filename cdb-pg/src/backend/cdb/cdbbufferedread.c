@@ -451,6 +451,30 @@ uint8 *BufferedReadGrowBuffer(
 }
 
 /*
+ * Return the address of the current read buffer.
+ */
+uint8 *BufferedReadGetCurrentBuffer(
+    BufferedRead       *bufferedRead)
+{
+	Assert(bufferedRead != NULL);
+	Assert(bufferedRead->file >= 0);
+	
+	return &bufferedRead->largeReadMemory[bufferedRead->bufferOffset];
+}
+
+/*
+ * Return the current buffer's start position.
+ */
+int64 BufferedReadCurrentPosition(
+    BufferedRead       *bufferedRead)
+{
+	Assert(bufferedRead != NULL);
+	Assert(bufferedRead->file >= 0);
+
+	return bufferedRead->position + bufferedRead->bufferOffset;
+}
+
+/*
  * Flushes the current file for append.  Caller is resposible for closing
  * the file afterwards.
  *

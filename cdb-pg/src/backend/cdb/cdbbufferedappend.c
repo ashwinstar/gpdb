@@ -232,6 +232,18 @@ uint8 *BufferedAppendGetBuffer(
 }
 
 /*
+ * Get the address of the current buffer space being used appending.
+ */
+uint8 *BufferedAppendGetCurrentBuffer(
+    BufferedAppend       *bufferedAppend)
+{
+	Assert(bufferedAppend != NULL);
+	Assert(bufferedAppend->file >= 0);
+
+	return &bufferedAppend->largeWriteMemory[bufferedAppend->len];
+}
+
+/*
  * Get the next maximum length buffer space for appending.
  *
  * Returns NULL when the current file does not have enough

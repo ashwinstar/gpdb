@@ -83,16 +83,62 @@ static void doCompressAppend(AppendOnlyInsertDesc 	aoInsertDesc,
 							 uint8					*sourceData,
 							 int32			 		sourceLen,
 							 int					executorBlockKind,
-							 int			 		itemCount);
+							 int			 		itemCount,
+							 int32				    *compressedLen,
+							 int32					*bufferLen);
 
-static void doDecompress(AppendOnlyScanDesc scan,
+static void doDecompress(
 							 uint8			*compressed,
 							 int32			compressedLen,
 							 uint8			*uncompressed,
-							 int32			uncompressedLen);
+							 int32			uncompressedLen,
+							 CompressorType compresstype,   /* the compressor type used */
+							 char		    *qlz_scratch,
+							 int64		    bufferCount);
 
 static int32 getUsableBlockSize(int32 configBlockSize);
 static CompressorType CompressorStrToType(const char* comp_str, int comp_level);
+
+/*
+ * errcontext_appendonly_scan_block
+ *
+ * Add an errcontext() line showing the table, segment file, offset in file, block count of the block being scanned.
+ */
+static int
+errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
+{
+	int64	headerOffsetInFile;
+
+	headerOffsetInFile = BufferedReadCurrentPosition(&scan->bufferedRead);
+	
+	errcontext( 
+		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 NameStr(scan->aos_rd->rd_rel->relname),
+		 SCANNED_SEGNO,
+		 headerOffsetInFile,
+		 scan->bufferCount);
+
+	return 0;
+}
+
+/*
+ * errdetail_appendonly_scan_block_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage block header for the block being scanned.
+ */
+static int
+errdetail_appendonly_scan_block_header(AppendOnlyScanDesc scan)
+{
+	uint8	*header;
+
+	bool 	usingChecksum;
+
+	header = BufferedReadGetCurrentBuffer(&scan->bufferedRead);
+
+	usingChecksum = scan->aos_checksum;
+	
+	return errdetail_appendonly_block_header(header, usingChecksum);
+}
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
@@ -417,6 +463,47 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 }
 
 /*
+ * errcontext_appendonly_insert_block
+ *
+ * Add an errcontext() line showing the table, segment file, offset in file, block count of the block being inserted.
+ */
+static int
+errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
+{
+	int64	headerOffsetInFile;
+
+	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend);
+	
+	errcontext( 
+		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+		 aoInsertDesc->cur_segno,
+		 headerOffsetInFile,
+		 aoInsertDesc->bufferCount);
+
+	return 0;
+}
+
+/*
+ * errdetail_appendonly_insert_block_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage block header for the block being inserted.
+ */
+static int
+errdetail_appendonly_insert_block_header(AppendOnlyInsertDesc aoInsertDesc)
+{
+	uint8	*header;
+
+	bool 	usingChecksum;
+
+	header = BufferedAppendGetCurrentBuffer(&aoInsertDesc->bufferedAppend);
+
+	usingChecksum = aoInsertDesc->usingChecksum;
+	
+	return errdetail_appendonly_block_header(header, usingChecksum);
+}
+
+/*
  * Open the next file segment for write.
  */
 static void
@@ -696,16 +783,13 @@ getNextStorageBlockInFile(
 												header,
 												&storedChecksum,
 												&computedChecksum))
-			elog(ERROR, 
-			     "Header checksum does not match in table %s.  Expected 0x%X and found 0x%X "
-			     "(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-			     NameStr(scan->aos_rd->rd_rel->relname),
-			     storedChecksum,
-			     computedChecksum,
-			     SCANNED_SEGNO,
-			     *headerOffsetInFile,
-			     scan->bufferCount);
-		}
+			ereport(ERROR, 
+			        (errmsg("Header checksum does not match.  Expected 0x%X and found 0x%X ",
+			     		    storedChecksum,
+			        		computedChecksum),
+			         errdetail_appendonly_scan_block_header(scan),
+			         errcontext_appendonly_scan_block(scan)));
+	}
 
 	/*
 	 * Check the (basic) header information.
@@ -715,15 +799,12 @@ getNextStorageBlockInFile(
 											scan->headerLen,
 											&headerKind);
 	if (checkError != AOHeaderCheckOk)
-		elog(ERROR, "Bad append-only storage header in table %s "
-		            "(AO header check error %d, detail '%s', "
-				    "segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-					NameStr(scan->aos_rd->rd_rel->relname),
-					(int)checkError,
-					AppendOnlyStorage_GetHeaderCheckErrorStr(),
-				    SCANNED_SEGNO,
-					*headerOffsetInFile,
-					scan->bufferCount);		
+		ereport(ERROR, 
+		 		(errmsg("Bad append-only storage header.  Header check error %d, detail '%s'",
+						(int)checkError,
+						AppendOnlyStorage_GetHeaderCheckErrorStr()),
+				 errdetail_appendonly_scan_block_header(scan),
+				 errcontext_appendonly_scan_block(scan)));
 
 	/*
 	 * For now, we only have Block headers.
@@ -745,15 +826,12 @@ getNextStorageBlockInFile(
 											rowCount,
 											&isCompressed);
 	if (checkError != AOHeaderCheckOk)
-		elog(ERROR, "Bad append-only storage block header in table %s "
-			 "(AO header check error %d, detail '%s', "
-			 "segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-			 NameStr(scan->aos_rd->rd_rel->relname),
-			 (int)checkError,
-			 AppendOnlyStorage_GetHeaderCheckErrorStr(),
-			 SCANNED_SEGNO,
-			 *headerOffsetInFile,
-			 scan->bufferCount);			
+		ereport(ERROR, 
+				(errmsg("Bad append-only storage block header. Header check error %d, detail '%s'",
+						(int)checkError,
+						AppendOnlyStorage_GetHeaderCheckErrorStr()),
+				 errdetail_appendonly_scan_block_header(scan),
+				 errcontext_appendonly_scan_block(scan)));
 	
 	/*
 	 * Grow the buffer to the full block length to avoid any
@@ -771,14 +849,11 @@ getNextStorageBlockInFile(
 	if (overallBlockLen != availableLen)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Wrong buffer length in table %s.  Eexpected %d byte length buffer and got %d "
-				        "(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-					    NameStr(scan->aos_rd->rd_rel->relname),
+				 errmsg("Wrong buffer length.  Eexpected %d byte length buffer and got %d ",
 						overallBlockLen,
-						availableLen,
-						SCANNED_SEGNO,
-					    *headerOffsetInFile,
-						scan->bufferCount)));
+						availableLen),
+				 errdetail_appendonly_scan_block_header(scan),
+				 errcontext_appendonly_scan_block(scan)));
 
 
 	if (scan->aos_checksum &&
@@ -793,15 +868,12 @@ getNextStorageBlockInFile(
 												overallBlockLen,
 												&storedChecksum,
 												&computedChecksum))
-			elog(ERROR, 
-			     "Block checksum does not match in table %s.  Expected 0x%X and found 0x%X "
-			     "(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-			     NameStr(scan->aos_rd->rd_rel->relname),
-			     storedChecksum,
-			     computedChecksum,
-			     SCANNED_SEGNO,
-			     *headerOffsetInFile,
-			     scan->bufferCount);
+			ereport(ERROR, 
+			     	(errmsg("Block checksum does not match.  Expected 0x%X and found 0x%X",
+						     storedChecksum,
+						     computedChecksum),
+					 errdetail_appendonly_scan_block_header(scan),
+					 errcontext_appendonly_scan_block(scan)));
 	}
 
 	if (Debug_appendonly_print_storage_headers)
@@ -835,11 +907,13 @@ getNextStorageBlockInFile(
 		uncompressedLen = AppendOnlyStorage_GetUncompressedLen(header);
 		
 		doDecompress(
-					scan,
 					&header[offset],			// Compressed data in block.
 					length,						// Interpret as compressed data length.
 					scan->uncompressedBuffer,	// Temporary buffer to hold uncompressed data.
-					uncompressedLen);
+					uncompressedLen,
+					scan->aos_compresstype,
+					scan->qlz_scratch,
+					scan->bufferCount);
 
 		*dataBuffer = 		scan->uncompressedBuffer;
 		*dataLen = 			uncompressedLen;
@@ -911,14 +985,13 @@ getNextBlock(
 		if (varBlockCheckError != VarBlockCheckOk)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("VarBlock  is not valid "
-					        "(valid block check error %d, detail '%s', segment file #%d, "
-					        "header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
+					 errmsg("VarBlock  is not valid. "
+					        "Valid block check error %d, detail '%s'",
 							varBlockCheckError,
-							VarBlockGetCheckErrorStr(),
-							SCANNED_SEGNO,
-							headerOffsetInFile,
-							scan->bufferCount)));				
+							VarBlockGetCheckErrorStr()),
+					 errdetail_appendonly_scan_block_header(scan),
+					 errcontext_appendonly_scan_block(scan)));
+		
 		/*
 		 * Now use the VarBlock module to extract the items out.
 		 */
@@ -933,13 +1006,11 @@ getNextBlock(
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Row count %d in append-only storage header does not match VarBlock item count %d "
-					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
+					 errmsg("Row count %d in append-only storage header does not match VarBlock item count %d",
 							rowCount,
-							scan->readerItemCount,
-							SCANNED_SEGNO,
-							headerOffsetInFile,
-							scan->bufferCount)));				
+							scan->readerItemCount),
+					 errdetail_appendonly_scan_block_header(scan),
+					 errcontext_appendonly_scan_block(scan)));
 		}
 
 		if (Debug_appendonly_print_scan)
@@ -956,12 +1027,10 @@ getNextBlock(
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Row count %d in append-only storage header is not 1 for single row "
-					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
-							rowCount,
-							SCANNED_SEGNO,
-							headerOffsetInFile,
-							scan->bufferCount)));				
+					 errmsg("Row count %d in append-only storage header is not 1 for single row",
+							rowCount),
+					 errdetail_appendonly_scan_block_header(scan),
+					 errcontext_appendonly_scan_block(scan)));
 		}
 		scan->singleRow = buffer;
 		scan->singleRowLen = bufferLen;
@@ -1168,6 +1237,233 @@ appendonlygettup(AppendOnlyScanDesc scan,
 	
 }
 
+static void verifyWriteBlock(
+	AppendOnlyInsertDesc 	aoInsertDesc,
+	int64					headerOffsetInFile,
+	int32 					bufferLen,
+	int32					expectedDataLen,
+	int32					expectedCompressedLen,
+	int						expectedExecutorBlockKind,
+	int						expectedRowCount)
+{
+	uint8	*header;
+	uint8   *data;
+	
+	AOHeaderCheckError	checkError;
+	AoHeaderKind	    headerKind;
+	int32				offset;
+	int32				length;
+	bool				isCompressed;
+	int32				overallBlockLen;
+	int32				dataLen;
+	int32				compressedLen;
+	int					executorBlockKind;
+	int					rowCount;
+	pg_crc32			storedChecksum;
+	pg_crc32			computedChecksum;
+
+	if (aoInsertDesc->shouldCompress && aoInsertDesc->verifyWriteBuffer == NULL)
+		return;		// GUC must have been turned on mid-transaction.
+
+	header = BufferedAppendGetCurrentBuffer(&aoInsertDesc->bufferedAppend);
+
+	/*
+	 * Code is similar to that in getNextStorageBlockInFile routine.
+	 */
+
+	/*
+	 * Proceed carefully:
+	 * [ 1. Verify header checksum ]
+	 *	 2. Examine (basic) header.
+	 *	 3. Examine specific header.
+	 * [ 4. Verify the block checksum ]
+	 */ 
+	if (aoInsertDesc->usingChecksum)
+	{
+		if (!AppendOnlyStorage_VerifyHeaderChecksum(
+												header,
+												&storedChecksum,
+												&computedChecksum))
+			ereport(ERROR, 
+				    (errmsg("Verify block during write found header checksum does not match.  Expected 0x%X and found 0x%X",
+						    storedChecksum,
+						    computedChecksum),
+					 errdetail_appendonly_insert_block_header(aoInsertDesc),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		}
+
+	/*
+	 * Check the (basic) header information.
+	 */
+	checkError = AppendOnlyStorage_GetHeaderInfo(
+											header,
+											aoInsertDesc->headerLen,
+											&headerKind);
+	if (checkError != AOHeaderCheckOk)
+		ereport(ERROR, 
+				(errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'",
+						 (int)checkError,
+						 AppendOnlyStorage_GetHeaderCheckErrorStr()),
+				 errdetail_appendonly_insert_block_header(aoInsertDesc),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
+
+	/*
+	 * For now, we only have Block headers.
+	 */
+	Assert(headerKind == AoHeaderKind_Block);
+
+	/*
+	 * Check the Block header information.
+	 */
+	checkError = AppendOnlyStorage_GetBlockHeaderInfo(
+											header,
+											aoInsertDesc->headerLen,
+											aoInsertDesc->usingChecksum,
+											bufferLen,
+											&overallBlockLen,
+											&offset,	// Offset to data.
+											&length,
+											&executorBlockKind,
+											&rowCount,
+											&isCompressed);
+	if (checkError != AOHeaderCheckOk)
+		ereport(ERROR, 
+		        (errmsg("Verify block during write found bad append-only storage block header. "
+ 					    "Header check error %d, detail '%s'",
+			 			(int)checkError,
+			 			AppendOnlyStorage_GetHeaderCheckErrorStr()),
+				 errdetail_appendonly_insert_block_header(aoInsertDesc),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
+
+	if (isCompressed)
+	{
+		dataLen = AppendOnlyStorage_GetUncompressedLen(header);
+		compressedLen = length;
+	}
+	else
+	{
+		dataLen = length;
+		compressedLen = 0;
+	}
+	
+	if (dataLen != expectedDataLen)
+		ereport(ERROR, 
+			    (errmsg("Verify block during write found append-only storage block header. "
+			            "DataLen %d does not equal expected length %d, ",
+ 					    dataLen,
+ 					    expectedDataLen),
+				 errdetail_appendonly_insert_block_header(aoInsertDesc),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
+
+	
+	if (compressedLen != expectedCompressedLen)
+		ereport(ERROR, 
+				(errmsg("Verify block during write found append-only storage block header. "
+					    "CompressedLen %d does not equal expected length %d",
+					    compressedLen,
+					    expectedCompressedLen),
+				 errdetail_appendonly_insert_block_header(aoInsertDesc),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
+
+	/*
+	 * Now verify the executor portion of the block.
+	 */
+
+	if (executorBlockKind != expectedExecutorBlockKind)
+		ereport(ERROR, 
+				(errmsg("Verify block during write found append-only storage block header. "
+			 			"ExecutorBlockKind %d does not equal expected value %d.",
+					    executorBlockKind,
+					    expectedExecutorBlockKind),
+				 errdetail_appendonly_insert_block_header(aoInsertDesc),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	
+	if (rowCount != expectedRowCount)
+		ereport(ERROR, 
+				(errmsg("Verify block during write found append-only storage block header. "
+			 			"RowCount %d does not equal expected value %d",
+					    rowCount,
+					    expectedRowCount),
+				 errdetail_appendonly_insert_block_header(aoInsertDesc),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
+
+	if (Debug_appendonly_print_verify_write_block)
+		AppendOnlyStorage_LogBlockHeader(
+							NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+							aoInsertDesc->cur_segno,
+							headerOffsetInFile,
+							header,
+							aoInsertDesc->usingChecksum);
+	
+
+	if (isCompressed)
+	{
+		int test;
+		
+		doDecompress(
+					&header[offset],			// Compressed data in block.
+					compressedLen,
+					aoInsertDesc->verifyWriteBuffer,	// Temporary buffer to hold uncompressed data.
+					dataLen,
+					aoInsertDesc->compressType,
+					aoInsertDesc->qlz_scratch_decompress,
+					aoInsertDesc->bufferCount);
+		
+		data = aoInsertDesc->verifyWriteBuffer;
+
+		/*
+		 * Compare.
+		 */
+		test = memcmp(aoInsertDesc->uncompressedBuffer, data, dataLen);
+		if (test != 0)
+			ereport(ERROR, 
+					(errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! "
+					        "Memcmp result %d",
+							test),
+					 errdetail_appendonly_insert_block_header(aoInsertDesc),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		
+	}
+	else
+		data = &header[offset];
+	
+	if (executorBlockKind == AoExecutorBlockKind_VarBlock)
+	{
+		VarBlockCheckError varBlockCheckError;
+		VarBlockReader varBlockReader;
+		int readerItemCount;
+		
+		varBlockCheckError = VarBlockIsValid(data, dataLen);
+		if (varBlockCheckError != VarBlockCheckOk)
+			ereport(ERROR,
+					(errmsg("Verify block during write found VarBlock is not valid "
+					        "Valid block check error %d, detail '%s'",
+							varBlockCheckError,
+							VarBlockGetCheckErrorStr()),
+					 errdetail_appendonly_insert_block_header(aoInsertDesc),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		
+		/*
+		 * Now use the VarBlock module to extract the items out.
+		 */
+		VarBlockReaderInit(&varBlockReader, 
+						   data, 
+						   dataLen);
+		
+		readerItemCount = VarBlockReaderItemCount(&varBlockReader);	
+
+		if (rowCount != readerItemCount)
+		{
+			ereport(ERROR,
+					(errmsg("Verify block during write found row count %d in append-only storage header does not match VarBlock item count %d",
+							rowCount,
+							readerItemCount),
+					 errdetail_appendonly_insert_block_header(aoInsertDesc),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		}
+	}
+}
+
 static void
 setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 {
@@ -1182,7 +1478,8 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 		if (header == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("We do not expect files to be have a maximum length")));						
+					 errmsg("We do not expect files to be have a maximum length"),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));						
 
 		/* 
 		 * Prepare our VarBlock for items.  Leave room for the Append-Only
@@ -1218,9 +1515,13 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 static void
 finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 {
+	int64	headerOffsetInFile;
 	int		executorBlockKind;
 	int		itemCount;
 	int32 	dataLen;
+	int32	bufferLen;
+
+	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend);
 
 	executorBlockKind = AoExecutorBlockKind_VarBlock;	// Assume.
 	
@@ -1243,7 +1544,6 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 		uint8 	*nonCompressedHeader;
 		uint8	*nonCompressedData;
 		int32 	dataRoundedUpLen;
-		int32	totallen;
 		int32 	uncompressedlen;
 		
 		nonCompressedHeader = aoInsertDesc->nonCompressedHeader;
@@ -1285,13 +1585,27 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 								BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend),
 								nonCompressedHeader,
 								aoInsertDesc->usingChecksum);
-		
-		totallen = aoInsertDesc->headerLen + dataRoundedUpLen;
-		uncompressedlen = totallen; /* since there's no compression.. */
+
+
+		bufferLen = aoInsertDesc->headerLen + dataRoundedUpLen;
+		uncompressedlen = bufferLen; /* since there's no compression.. */
+
+		/*
+		  * Just before finishing the AO Storage buffer with our non-compressed content, let's verify it.
+		  */
+		if (gp_appendonly_verify_write_block)
+			verifyWriteBlock(
+					aoInsertDesc,
+					headerOffsetInFile,
+					bufferLen, 
+					dataLen,
+					/* compressedLen */ 0,
+					executorBlockKind,
+					itemCount);
 
 		BufferedAppendFinishBuffer(
-					&aoInsertDesc->bufferedAppend, 
-					totallen,
+					&aoInsertDesc->bufferedAppend,
+					bufferLen,
 					uncompressedlen);
 		
 		if (Debug_appendonly_print_insert)
@@ -1306,6 +1620,8 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	else
 	{
+		int32	compressedLen;
+		
 		if (itemCount == 1)
 		{
 			dataLen = VarBlockCollapseToSingleItem(
@@ -1314,13 +1630,59 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 						       /* sourceLen */ dataLen);
 			executorBlockKind = AoExecutorBlockKind_SingleRow;
 		}
+		else
+		{
+			Assert(executorBlockKind == AoExecutorBlockKind_VarBlock);
+		
+			/*
+			  * Just before finishing the attempting to compress the VarBlock, let's verify the VarBlock has integrity, honor, etc.
+			  */
+			if (gp_appendonly_verify_write_block)
+			{
+				VarBlockCheckError varBlockCheckError;
+				
+				varBlockCheckError = VarBlockIsValid(aoInsertDesc->uncompressedBuffer, dataLen);
+				if (varBlockCheckError != VarBlockCheckOk)
+					ereport(ERROR,
+							(errcode(ERRCODE_GP_INTERNAL_ERROR),
+							 errmsg("Verify block during write found VarBlock is not valid. "
+									"Valid block check error %d, detail '%s'",
+									varBlockCheckError,
+									VarBlockGetCheckErrorStr()),
+							 errdetail_appendonly_insert_block_header(aoInsertDesc),
+							 errcontext_appendonly_insert_block(aoInsertDesc)));
+			}
+		}
 
 		doCompressAppend(
 					 aoInsertDesc, 
 					 aoInsertDesc->uncompressedBuffer, 
 					 dataLen,
 					 executorBlockKind,
-					 itemCount);
+					 itemCount,
+					 &compressedLen,
+					 &bufferLen);
+		
+		/*
+		  * Just before finishing the AO Storage buffer with our non-compressed content, let's verify it.
+		  */
+		if (gp_appendonly_verify_write_block)
+			verifyWriteBlock(
+					aoInsertDesc,
+					headerOffsetInFile,
+					bufferLen, 
+					dataLen,
+					compressedLen,
+					executorBlockKind,
+					itemCount);
+		
+		/*
+		 * Finish the current buffer by specifying the used length.
+		 */
+		BufferedAppendFinishBuffer(
+							&aoInsertDesc->bufferedAppend,
+							bufferLen,
+							aoInsertDesc->headerLen + AOStorage_RoundUp(dataLen) /* non-compressed size */);
 	}
 }
 
@@ -1567,12 +1929,12 @@ appendonly_insert_init(Relation rel, int segno)
 		switch(aoInsertDesc->compressType)
 		{
 			case COMPTYPE_QUICKLZ1:
-				aoInsertDesc->qlz_scratch = (char*) palloc(QLZ1_SCRATCH_COMPRESS);
-				memset(aoInsertDesc->qlz_scratch, 0, QLZ1_SCRATCH_COMPRESS);			
+				aoInsertDesc->qlz_scratch_compress = (char*) palloc(QLZ1_SCRATCH_COMPRESS);
+				memset(aoInsertDesc->qlz_scratch_compress, 0, QLZ1_SCRATCH_COMPRESS);			
 				break;
 			case COMPTYPE_QUICKLZ3:
-				aoInsertDesc->qlz_scratch = (char*) palloc(QLZ3_SCRATCH_COMPRESS);
-				memset(aoInsertDesc->qlz_scratch, 0, QLZ3_SCRATCH_COMPRESS);			
+				aoInsertDesc->qlz_scratch_compress = (char*) palloc(QLZ3_SCRATCH_COMPRESS);
+				memset(aoInsertDesc->qlz_scratch_compress, 0, QLZ3_SCRATCH_COMPRESS);			
 				break;
 			case COMPTYPE_ZLIB:
 				break; /* nothing to do */
@@ -1595,7 +1957,38 @@ appendonly_insert_init(Relation rel, int segno)
 	else
 	{
 		aoInsertDesc->uncompressedBuffer = NULL;
-		aoInsertDesc->qlz_scratch = NULL;		
+		aoInsertDesc->qlz_scratch_compress = NULL;		
+	}
+
+	if (gp_appendonly_verify_write_block && aoInsertDesc->shouldCompress)
+	{
+		aoInsertDesc->verifyWriteBuffer = (uint8 *) palloc(aoInsertDesc->usableBlockSize * sizeof(uint8));
+		
+		/*
+		 * if quicklz compression used, prepare scratch space for decompression.
+		 */
+		aoInsertDesc->qlz_scratch_decompress = NULL;
+		switch(aoInsertDesc->compressType)
+		{
+			case COMPTYPE_QUICKLZ1:
+				aoInsertDesc->qlz_scratch_decompress = (char*) palloc(QLZ1_SCRATCH_DECOMPRESS);
+				memset(aoInsertDesc->qlz_scratch_decompress, 0, QLZ1_SCRATCH_DECOMPRESS);		
+				break;
+			case COMPTYPE_QUICKLZ3:
+				aoInsertDesc->qlz_scratch_decompress = (char*) palloc(QLZ3_SCRATCH_DECOMPRESS);
+				memset(aoInsertDesc->qlz_scratch_decompress, 0, QLZ3_SCRATCH_DECOMPRESS);		
+				break;
+			case COMPTYPE_ZLIB:
+			case COMPTYPE_NONE:
+				break; /* nothing to do */
+			default:
+				Insist(false);
+		}
+	}
+	else
+	{
+		aoInsertDesc->verifyWriteBuffer = NULL;
+		aoInsertDesc->qlz_scratch_decompress = NULL;
 	}
 	
 	aoInsertDesc->maxBufferWithOverrrunLen = aoInsertDesc->usableBlockSize + maxOverrun;
@@ -1739,7 +2132,8 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Item too long (#1): length %d, maxBufferLen %d", 
-					        itemLen, aoInsertDesc->varBlockMaker.maxBufferLen)));
+					        itemLen, aoInsertDesc->varBlockMaker.maxBufferLen),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));
 
 		finishWriteBlock(aoInsertDesc);
 		
@@ -1751,7 +2145,8 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Item too long (#2): length %d, maxBufferLen %d", 
-					        itemLen, aoInsertDesc->varBlockMaker.maxBufferLen)));			
+					        itemLen, aoInsertDesc->varBlockMaker.maxBufferLen),
+					 errcontext_appendonly_insert_block(aoInsertDesc)));			
 
 	}
 		
@@ -1845,7 +2240,7 @@ tryToCompress(
 	 int32		*compressedLen,
 	 int		compressLevel,
 	 CompressorType  compressType,
-	 char		*qlz_scratch)
+	 char		*qlz_scratch_compress)
 {
 	unsigned long 	compressedSize;
 	
@@ -1885,7 +2280,7 @@ tryToCompress(
 		compressedSize = qlz1_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
-									  qlz_scratch);
+									  qlz_scratch_compress);
 	    
 		/*
 		 * Since qlz1_compress never returns an error (unlike zlib) if there was 
@@ -1916,7 +2311,7 @@ tryToCompress(
 		compressedSize = qlz3_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
-									  qlz_scratch);
+									  qlz_scratch_compress);
 	    
 		/*
 		 * see comment above below qlz1_compress.
@@ -1949,13 +2344,13 @@ doCompressAppend(
 	 uint8					*sourceData,
 	 int32			 		sourceLen,
 	 int					executorBlockKind,
-	 int			 		itemCount)
+	 int			 		itemCount,
+	 int32					*compressedLen,
+	 int32					*bufferLen)
 {
-	BufferedAppend *bufferedAppend = &aoInsertDesc->bufferedAppend;
 	uint8			*header;
 	uint8 			*dataBuffer;
 	int 	 		res;
-	int32			compressedLen;
 	int32 			dataRoundedUpLen = 0;	// Shutup compiler.
 	int32			dataBufferWithOverrrunLen;
 		
@@ -1966,7 +2361,8 @@ doCompressAppend(
 	if (header == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("We do not expect files to be have a maximum length")));
+				 errmsg("We do not expect files to be have a maximum length"),
+				 errcontext_appendonly_insert_block(aoInsertDesc)));
 	
 	dataBuffer = &header[aoInsertDesc->headerLen];
 	dataBufferWithOverrrunLen = aoInsertDesc->maxBufferWithOverrrunLen - aoInsertDesc->headerLen;
@@ -1985,21 +2381,21 @@ doCompressAppend(
 					dataBuffer,
 					dataBufferWithOverrrunLen,
 					sourceLen,	// Limit compression to be no more than the input size.
-					&compressedLen,
+					compressedLen,
 					aoInsertDesc->compressLevel,
 					aoInsertDesc->compressType,
-					aoInsertDesc->qlz_scratch);
+					aoInsertDesc->qlz_scratch_compress);
 	
 	if (res == Z_OK)
 	{
 		/*
 		 * Compression successful.
 		 */
-		dataRoundedUpLen = AOStorage_RoundUp(compressedLen);
+		dataRoundedUpLen = AOStorage_RoundUp(*compressedLen);
 
 		AOStorage_ZeroPad(
 					dataBuffer,
-					compressedLen,
+					*compressedLen,
 					dataRoundedUpLen);	
 		
 		/*
@@ -2011,7 +2407,7 @@ doCompressAppend(
 									executorBlockKind,
 									itemCount,
 									sourceLen,
-									compressedLen);
+									*compressedLen);
 		
 		if (Debug_appendonly_print_storage_headers)
 			AppendOnlyStorage_LogBlockHeader(
@@ -2029,13 +2425,9 @@ doCompressAppend(
 			     aoInsertDesc->cur_segno,
 			     BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend),
 			     sourceLen,
-			     compressedLen,
+			     *compressedLen,
 			     itemCount,
 			     aoInsertDesc->bufferCount);
-		
-		/*
-		 * Fall below to finish the BufferedAppend buffer.
-		 */
 	}
 	else if (res == Z_BUF_ERROR)
 	{
@@ -2046,6 +2438,8 @@ doCompressAppend(
 		 * Solution: Indicate in the header we are storing an non-compressed
 		 * block.
 		 */
+		*compressedLen = 0;
+		
 		dataRoundedUpLen = AOStorage_RoundUp(sourceLen);
 
 		overallBlockLen = aoInsertDesc->headerLen + dataRoundedUpLen;
@@ -2069,7 +2463,7 @@ doCompressAppend(
 								executorBlockKind,
 								itemCount,
 								sourceLen,
-								/* compressedLength */ 0);
+								/* compressedLen */ 0);
 
 		if (Debug_appendonly_print_storage_headers)
 			AppendOnlyStorage_LogBlockHeader(
@@ -2089,10 +2483,6 @@ doCompressAppend(
 			     sourceLen,
 			     itemCount,
 			     aoInsertDesc->bufferCount);
-
-		/*
-		 * Fall below to finish the BufferedAppend buffer.
-		 */
 	}
 	else
 		/*
@@ -2102,19 +2492,19 @@ doCompressAppend(
 						res,
 						sourceLen);
 
-	BufferedAppendFinishBuffer(
-						bufferedAppend,
-						aoInsertDesc->headerLen + dataRoundedUpLen, /* compressed size */
-						aoInsertDesc->headerLen + AOStorage_RoundUp(sourceLen) /* non-compressed size */);
+	*bufferLen = aoInsertDesc->headerLen + dataRoundedUpLen;
 
 }
 
 static void
-doDecompress(AppendOnlyScanDesc scan,
+doDecompress(
 			uint8			*compressed,
 			int32			compressedLen,
 			uint8			*uncompressed,
-			int32			uncompressedLen)
+			int32			uncompressedLen,
+			CompressorType	compresstype,	/* the compressor type used */
+			char			*qlz_scratch,
+			int64			bufferCount)
 {
 	unsigned long compressedSize;
 	unsigned long uncompressedSize;
@@ -2124,7 +2514,7 @@ doDecompress(AppendOnlyScanDesc scan,
 	compressedSize = (unsigned long)compressedLen;
 	uncompressedSize = (unsigned long)uncompressedLen;
 
-	if(scan->aos_compresstype == COMPTYPE_ZLIB)
+	if(compresstype == COMPTYPE_ZLIB)
 	{
 		int res;
 		
@@ -2158,23 +2548,23 @@ doDecompress(AppendOnlyScanDesc scan,
 			}
 	
 			elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d, (block count " INT64_FORMAT "))",
-				 detail, uncompressedLen, compressedLen, scan->bufferCount);
+				 detail, uncompressedLen, compressedLen, bufferCount);
 		}	
 #endif
 	}
-	else if(scan->aos_compresstype == COMPTYPE_QUICKLZ1)
+	else if(compresstype == COMPTYPE_QUICKLZ1)
 	{
 		uncompressedSize = qlz1_decompress((const char *)compressed, 
 										  uncompressed, 
-										  scan->qlz_scratch);
+										  qlz_scratch);
 	}
 	else
 	{
-		Insist(scan->aos_compresstype == COMPTYPE_QUICKLZ3);
+		Insist(compresstype == COMPTYPE_QUICKLZ3);
 
 		uncompressedSize = qlz3_decompress((const char *)compressed, 
 										  uncompressed, 
-										  scan->qlz_scratch);
+										  qlz_scratch);
 
 	}
 	
@@ -2186,7 +2576,7 @@ doDecompress(AppendOnlyScanDesc scan,
 			 "expected length %d (block count " INT64_FORMAT ")",
 			 resultingUncompressedLen,
 			 uncompressedLen,
-			 scan->bufferCount);
+			 bufferCount);
 }
 
 /*

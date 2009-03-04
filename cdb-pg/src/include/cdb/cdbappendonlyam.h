@@ -83,6 +83,10 @@ typedef struct AppendOnlyInsertDescData
 	uint8			*tempSpace;
 	uint8			*uncompressedBuffer; /* used for compression */
 
+	/* used for gp_appendonly_verify_write_block GUC */
+	uint8			*verifyWriteBuffer;
+	char			*qlz_scratch_decompress;
+
 	int32			usableBlockSize;
 	int32			maxDataLen;
 	int32			tempSpaceLen;
@@ -97,7 +101,7 @@ typedef struct AppendOnlyInsertDescData
 	int32			toast_tuple_threshold;
 	int32			toast_tuple_target;
 
-	char 			*qlz_scratch;
+	char 			*qlz_scratch_compress;
 
 } AppendOnlyInsertDescData;
 

@@ -116,6 +116,10 @@ extern void AppendOnlyStorage_LogBlockHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums);
 
+extern int errdetail_appendonly_block_header(
+	uint8	*header,
+	bool	usingChecksum);
+
 extern char *AppendOnlyStorage_GetHeaderCheckErrorStr(void);
 
 extern AOHeaderCheckError AppendOnlyStorage_GetHeaderInfo(

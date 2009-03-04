@@ -256,6 +256,87 @@ AppendOnlyStorage_LogBlockHeader(
 		 overallBlockLen);
 }
 
+
+/*
+ * errdetail_appendonly_block_header
+ *
+ * Add an errdetail() line showing the Append-Only Storage block header.
+ */
+int
+errdetail_appendonly_block_header(
+	uint8	*header,
+	bool	usingChecksum)
+{
+	AOBlockHeader 	*blockHeader;
+	int32			headerLen;
+	int32			wholeHeaderLen;
+
+	int			executorBlockKind;
+	int			rowCount;
+	int32		dataLength;
+	int32		compressedLength;
+	int32		overallBlockLen;
+
+	pg_crc32	*blockChecksumPtr = NULL;
+	pg_crc32	blockChecksum;
+	pg_crc32	*headerChecksumPtr = NULL;
+	pg_crc32	headerChecksum;
+
+	blockHeader = (AOBlockHeader*)header;
+
+	headerLen = AO_HEADER_LEN;
+
+	executorBlockKind  = 	AOBlockHeaderGet_executorBlockKind(blockHeader);
+	rowCount = 				AOBlockHeaderGet_rowCount(blockHeader);
+	
+	wholeHeaderLen =		headerLen + 
+							(usingChecksum ? 2 * sizeof(pg_crc32) : 0);
+	
+	dataLength =			AOBlockHeaderGet_dataLength(blockHeader);
+	
+	compressedLength =		AOBlockHeaderGet_compressedLength(blockHeader);
+
+	overallBlockLen =		wholeHeaderLen +
+	                        AOStorage_RoundUp(
+	                        	(compressedLength == 0 ? dataLength : compressedLength));
+
+	if (usingChecksum)
+	{
+		blockChecksumPtr = (pg_crc32*)&header[headerLen];
+		blockChecksum = *blockChecksumPtr;
+		
+		headerLen += sizeof(pg_crc32);
+		
+		headerChecksumPtr = (pg_crc32*)&header[headerLen];
+		headerChecksum = *headerChecksumPtr;
+	}
+	else
+	{
+		blockChecksum = 0;
+		headerChecksum = 0;
+	}
+
+	errdetail( 
+		 "Append-Only storage header: "
+		 "block_bytes_0_3 0x%X, block_bytes_4_7 0x%X, "
+		 "executorBlockKind = %d, "
+		 "rowCount = %d, usingChecksums = %s, header checksum 0x%X, block checksum 0x%X, "
+		 "dataLength %d, compressedLength %d, overallBlockLen %d",
+		 blockHeader->block_bytes_0_3,
+		 blockHeader->block_bytes_4_7,
+		 executorBlockKind,
+		 rowCount,
+		 (usingChecksum ? "true" : "false"),
+		 headerChecksum,
+		 blockChecksum,
+		 dataLength,
+		 compressedLength,
+		 overallBlockLen);	
+
+	return 0;
+}
+
+
 #define MAX_AOHEADER_CHECK_ERROR_STR 200
 static char AoHeaderCheckErrorStr[MAX_AOHEADER_CHECK_ERROR_STR] = "\0";
 
