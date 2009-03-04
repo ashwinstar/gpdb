@@ -348,7 +348,7 @@ class PathIsDirectory(Command):
         cmd=PathIsDirectory(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         cmd.run(validateAfter=True) 
         return cmd.isDir() 
-        
+
     def isDir(self):
         return bool (self.results.stdout.strip())
 
@@ -357,7 +357,7 @@ class PathIsDirectory(Command):
 class FileDirExists(Command):
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        cmdStr="""python -c import os; return os.path.exists('%s') """ % directory
+        cmdStr="""python -c "import os; print os.path.exists('%s')" """ % directory
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -367,13 +367,13 @@ class FileDirExists(Command):
         return cmd.filedir_exists()
     
     def filedir_exists(self):
-        return bool (self.results.stdout.strip())
+        return self.results.stdout.strip().upper()=='TRUE'
     
         
 class DirectoryIsEmpty(Command):
     def __init(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        self.cmdStr="""python -c "import os; for root, dirs, files in os.walk('%s'); return (len(dirs) != 0 or len(files) != 0) """ % self.directory
+        self.cmdStr="""python -c "import os; for root, dirs, files in os.walk('%s'); print (len(dirs) != 0 or len(files) != 0) """ % self.directory
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -447,7 +447,8 @@ class Kill(Command):
 
 #--------------hostname ----------------------
 class Hostname(Command):
-    def __init__(self, name, ctxt=LOCAL, remoteHost=None):        
+    def __init__(self, name, ctxt=LOCAL, remoteHost=None):
+        self.remotehost=remoteHost        
         Command.__init__(self, name, findCmdInPath('hostname'), ctxt, remoteHost)
 
     def get_hostname(self):
@@ -455,6 +456,7 @@ class Hostname(Command):
             raise Exception, 'Command not yet executed'
         return self.results.stdout.strip()
 
+    
 
 class FileContainsTerm(Command):    
     def __init__(self, name, search_term, file, ctxt=LOCAL, remoteHost=None):
@@ -474,7 +476,9 @@ class FileContainsTerm(Command):
 #--------------tcp port is active -----------------------
 class PgPortIsActive(Command):
     def __init__(self,name,port,file,ctxt=LOCAL, remoteHost=None):
-        cmdStr="%s -an 2>/dev/null | %s %s | %s '{print $NF}'" % (findCmdInPath('netstat'),file,findCmdInPath('grep'),findCmdInPath('awk'))
+        self.port=port
+        cmdStr="%s -an 2>/dev/null | %s %s | %s '{print $NF}'" %\
+                (findCmdInPath('netstat'),findCmdInPath('grep'),file,findCmdInPath('awk'))
         Command.__init__(self,name,cmdStr,ctxt,remoteHost) 
     
     def contains_port(self):
@@ -486,21 +490,20 @@ class PgPortIsActive(Command):
         for r in rows:
             val = r.split('.')
             netstatport = int(val[ len(val) - 1 ])
-            
-            if netstatport == port:
+            if netstatport == self.port:
                 return True
             
         return False
             
     @staticmethod
     def local(name,file,port):
-        cmd=PgPortIsActive(name,name)
+        cmd=PgPortIsActive(name,port,file)
         cmd.run(validateAfter=True)
         return cmd.contains_port()
             
     @staticmethod
     def remote(name,file,port):
-        cmd=PgPortIsActive(name,name,ctxt=REMOTE,remoteHost=remote_host)        
+        cmd=PgPortIsActive(name,port,file,ctxt=REMOTE,remoteHost=remote_host)        
         cmd.run(validateAfter=True)
         return cmd.contains_port()
         

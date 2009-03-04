@@ -78,6 +78,13 @@ class ReadPostmasterTempFile(Command):
     def getResults(self):
         if self.results.stderr.find("No such file or directory") != -1:
             return (False,-1,None)
+        if self.results.stdout is None:
+            return (False,-2,None)
+        
+        lines = self.results.stdout.split()
+        
+        if len(lines) < 2:
+            return (False,-3,None)
         
         PID=int(self.results.stdout.split()[0])
         datadir = self.results.stdout.split()[1]

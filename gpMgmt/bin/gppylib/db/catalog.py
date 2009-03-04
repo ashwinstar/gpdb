@@ -16,19 +16,38 @@ logger=gplog.get_default_logger()
 
 class CatalogError(Exception): pass
 
-
-def getDatabaseList(conn):
-    sql = "SELECT datname FROM pg_catalog.pg_database"
+def basicSQLExec(conn,sql):
     cursor=None
     try:
         cursor=dbconn.execSQL(conn,sql)
         rows=cursor.fetchall()
         return rows
     finally:
-        if cursor: 
+        if cursor:
             cursor.close()
 
 
+def getSessionGUC(conn,gucname):
+    sql = "SHOW %s" % gucname
+    return basicSQLExec(conn,sql)[0][0]            
+
+def getDatabaseList(conn):
+    sql = "SELECT datname FROM pg_catalog.pg_database"
+    return basicSQLExec(conn,sql)
+
+    
+    
+def getCollationSettings(conn):
+    sql = """ 
+    SELECT current_setting('lc_collate') as lc_collate,
+           current_setting('lc_monetary') as lc_monetary,
+           current_setting('lc_numeric') as lc_numeric;        
+    """
+    rows = basicSQLExec(conn,sql)
+    
+    return (rows[0][0],rows[0][1],rows[0][2])
+
+        
 def doesSchemaExist(conn,schemaname):
     sql = "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = '%s'" % schemaname        
     cursor=None

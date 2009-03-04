@@ -279,6 +279,29 @@ class GpArray:
             list.extend(seg.get_dbs())
         return list
     
+    def get_invalid_segdbs(self):
+        list=[]
+        for seg in self.segments:
+            segdb = seg.primaryDB
+            if not segdb.valid:
+                list.append(segdb)
+            for db in seg.mirrorDBs:
+                if not db.valid:
+                    list.append(db)
+        return list
+    
+    def get_valid_segdbs(self):
+        list=[]
+        for seg in self.segments:
+            db = seg.primaryDB
+            if db.valid:
+                list.append(db)
+            for db in seg.mirrorDBs:
+                if db.valid:
+                    list.append(db)
+        return list
+        
+        
     def get_hostlist(self):
         list=[]
         list.append(self.master.hostname)

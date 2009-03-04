@@ -75,6 +75,17 @@ class WorkerPool:
         self.work_queue.join()
         return True
 
+    def getCompletedItems(self):
+        list=[]
+        try:
+            while True:
+                item=self.completed_queue.get(False)
+                if item is not None:
+                    list.append(item)                           
+        except Empty:
+            return list
+        return list  #just to be sure
+    
 
     def check_results(self):
         """ goes through all items in the completed_queue and throws an exception at the
@@ -86,7 +97,7 @@ class WorkerPool:
             while True:
                 item=self.completed_queue.get(False)
                 if not item.get_results().wasSuccessful():
-                    raise  ExecutionError("Error",item)           
+                    raise  ExecutionError("Error Executing Command: ",item)           
         except Empty:
             return      
     
@@ -226,6 +237,9 @@ class CommandResult():
         if self.rc is not 0:
             return False
         return True
+
+    def __str__(self):
+        return self.printResult()
         
     
 

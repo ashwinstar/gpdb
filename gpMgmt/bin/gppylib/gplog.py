@@ -78,7 +78,7 @@ def set_file_logging(filename):
     LOGGER.addHandler(FILE_HANDLER)
 
 def get_default_formatter():
-    return logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:%(message)s","%Y%m%d:%H:%M:%S")
+    return logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s","%Y%m%d:%H:%M:%S")
 
     
 def enable_gpadmin_logging(name):

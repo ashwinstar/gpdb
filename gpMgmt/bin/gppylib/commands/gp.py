@@ -36,7 +36,8 @@ def get_max_dbid(name,conn):
         return rows[0][0]
     finally:
         curs.close()
-        
+
+#-----------------------------------------------        
 class PySync(Command):
     def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None):
         psync_executable=GPHOME + "/bin/lib/pysync.py"
@@ -44,39 +45,90 @@ class PySync(Command):
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
-
+#-----------------------------------------------
 class MasterStart(Command):
-    def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, dataDir, port, restrictedMode=False,max_connections=1,
+                 disableMasterMirror=False,utilityMode=False, ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
         self.port=port
         self.utilityMode=utilityMode
+        cmdfrags=["%s/bin/%s -w -D %s -o \" -i -p %s" % (GPHOME,"pg_ctl",dataDir,port)]
+        
         if utilityMode:
-            cmdStr="%s -w -D %s -l %s.log -o \"-i -p %s \" start" % ("pg_ctl",dataDir,dataDir,port)
-        else:
-            cmdStr="%s -w -D %s -l %s.log -o \"-i -p %s -c gp_role=utility\" start" % ("pg_ctl",dataDir,dataDir,port)
+            cmdfrags.append(" -c gp_role=utility ")
+        
+        if restrictedMode:
+            #TODO:  set it to max connections!
+            cmdfrags.append(" -c superuser_reserved_connections=%s " % max_connections)
+        
+        if disableMasterMirror:
+            cmdfrags.append(" -y ")    
+        
+        cmdfrags.append("\" start ")    
+        
+        cmdStr=" ".join(cmdfrags)
+        
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
-    def local(name,dataDir,port,utilityMode=False):
-        cmd=MasterStart(name,datadir,port,utilityMode)        
+    def local(name,dataDir,port,restrictedMode=False,max_connections=1,
+                 disableMasterMirror=False,utilityMode=False):
+        cmd=MasterStart(name,dataDir,port,restrictedMode,max_connections,disableMasterMirror,utilityMode)        
+        cmd.run(validateAfter=True)
+
+#-----------------------------------------------
+class MasterStop(Command):
+    def __init__(self,name,dataDir,ctxt=LOCAL,remoteHost=None):
+        self.dataDir=dataDir
+        cmdStr="%s/bin/%s -w -D %s stop" % (GPHOME,"pg_ctl",dataDir)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def local(name,dataDir):
+        cmd=MasterStop(name,dataDir)
         cmd.run(validateAfter=True)
         
-class SegmentStart(Command):      
-    def __init__(self, name, dataDir, port, utilityMode=False, ctxt=LOCAL, remoteHost=None):
-        if utilityMode:
-            self.cmdStr='pg_ctl -w -D %s -l %s.log -o \'-i -p %d -c gp_role=utility\' start 2>&1' % \
-                (dataDir, dataDir, port)
-        else:
-            raise Exception, "Not implemented: SegmentStart in non-utility mode"
-        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
-
         
+#-----------------------------------------------        
+class SegmentStart(Command):      
+    def __init__(self, name, dataDir, utilityMode=False, nowait=False,ctxt=LOCAL, remoteHost=None):
+        cmdfrags=['pg_ctl -D %s' % dataDir]
+        if not nowait:
+            cmdfrags.append('-w')
+        if utilityMode:
+            cmdfrags.append("-o '-i -c gp_role=utility' start 2>&1")
+        else:
+            cmdfrags.append("-o '-i' start 2>&1")
+        self.cmdStr=' '.join(cmdfrags)
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def local(name,dataDir,utilityMode=False,nowait=False):
+        cmd=SegmentStart(name,dataDir,utilityMode)
+        cmd.run(validateAfter=True)
+    
+    @staticmethod
+    def remote(name,remoteHost,dataDir,utilityMode=False,nowait=False):
+        cmd.SegmentStart(name,dataDir,utilityMode,ctxt=REMOTE, remoteHost=remoteHost)
+        cmd.run(validateAfter=True)
+
+#-----------------------------------------------        
 class SegmentStop(Command):
     def __init__(self, name, dataDir, ctxt=LOCAL, remoteHost=None):
         self.cmdStr='pg_ctl stop -D %s' % dataDir
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
-
+#-----------------------------------------------
+class GpSegStartCmd(Command):
+    def __init__(self, name, gphome, dirlist, collatelist, gpversion,ctxt=LOCAL, remoteHost=None):
+        self.gphome=gphome
+        self.dirlist=dirlist
+        dirstr=" -D ".join(dirlist)        
+        colstr=":".join(collatelist)
+        self.cmdStr="%s/sbin/gpsegstart.py -D %s -C %s -V '%s'" % (gphome,dirstr,colstr,gpversion)
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+        
+#-----------------------------------------------
 class GpInitSystem(Command):
     def __init__(self,name,configFile,hostsFile, ctxt=LOCAL, remoteHost=None):
         self.configFile=configFile
@@ -84,7 +136,7 @@ class GpInitSystem(Command):
         self.cmdStr="gpinitsystem -a -c %s -h %s" % (configFile,hostsFile)
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
-
+#-----------------------------------------------
 class GpDeleteSystem():
     def __init__(self,name,datadir, ctxt=LOCAL, remoteHost=None):
         self.datadir=datadir
@@ -92,7 +144,7 @@ class GpDeleteSystem():
         self.cmdStr="gpdeletesystem -d %s -f " % (datadir)
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost,stdin=self.input)
 
-
+#-----------------------------------------------
 class GpStart(Command):
     def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
         self.cmdStr="gpstart -a"
@@ -105,19 +157,21 @@ class GpStart(Command):
         cmd=GpStart(name,masterOnly)
         cmd.run(validateAfter=True)
        
-           
+#-----------------------------------------------           
 class GpStop(Command):
-    def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, masterOnly=False, restart=False, ctxt=LOCAL, remoteHost=None):
         self.cmdStr="gpstop -af"
         if masterOnly:
             self.cmdStr += " -m"
+        if restart:
+            self.cmdStr += " -r"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     @staticmethod
-    def local(name,masterOnly=False):
+    def local(name,masterOnly=False,restart=False):
         cmd=GpStop(name,masterOnly)
         cmd.run(validateAfter=True)
         
-        
+#-----------------------------------------------        
 class Psql(Command):
     def __init__(self, name, query, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
         env = ''
@@ -130,7 +184,7 @@ class Psql(Command):
         self.cmdStr=cmdStr
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
-
+#-----------------------------------------------
 class ModifyPostgresqlConfSetting(Command):
     def __init__(self, name, file, optName, optVal, optType='string', ctxt=LOCAL, remoteHost=None):
         cmdStr = None
@@ -143,7 +197,8 @@ class ModifyPostgresqlConfSetting(Command):
             raise Exception, "Invalid optType for ModifyPostgresqlConfSetting"
         self.cmdStr = cmdStr
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
-        
+
+#-----------------------------------------------        
 class ConfigExpansionSeg(Command):
     def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, ctxt=LOCAL, remoteHost=None):
         cmdStr = '$GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (dataDir, numSegs, contentId, dbId)
@@ -154,14 +209,23 @@ class ConfigExpansionSeg(Command):
             
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
+#-----------------------------------------------
 class GpVersion(Command):
-    def __init__(self,name,ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,gphome,ctxt=LOCAL,remoteHost=None):
+        self.gphome=gphome
         self.cmdStr="$GPHOME/bin/postgres --gp-version"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     def get_version(self):
-        return self.results.stdout
+        return self.results.stdout.strip()
 
+    @staticmethod
+    def local(name,gphome):
+        cmd=GpVersion(name,gphome)
+        cmd.run(validateAfter=True)
+        return cmd.get_version()
+    
+    
         
 def distribute_tarball(queue,list,tarball):
         logger.debug("distributeTarBall start")        
@@ -176,6 +240,15 @@ def distribute_tarball(queue,list,tarball):
 
 
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
+
+def start_standbymaster(host,datadir,port):
+    #TODO: check if there is already a process running
+    
+    #start the syncmaster
+    
+    #make sure its started.
+    pass
+
 # these match names from gp_bash_functions.sh
 def chk_gpdb_id():
     
@@ -198,16 +271,20 @@ def chk_local_db_running(datadir,port):
        - if they don't all agree then we throw an Error
     
     """    
-    cmd=unix.FileDirExists('check for master PID file',datadir + '/postmaster.pid')
-    cmd.run(validate=True)    
+    cmd=FileDirExists('check for master PID file',datadir + '/postmaster.pid')
+    cmd.run(validateAfter=True)    
     master_pid_exists = cmd.filedir_exists()
     
-    cmd=unix.FileDirExists('check for /tmp/.s.PGSQL file file',"/tmp/.s.PGSQL.%s" % port)
-    cmd.run(validate=True)    
+    
+    cmd=FileDirExists('check for /tmp/.s.PGSQL file file',"/tmp/.s.PGSQL.%s" % port)
+    cmd.run(validateAfter=True)    
     tmpfile_exists = cmd.filedir_exists()
         
-    netstat_port_active = unix.PgPortIsActive.local('check netstat for master port',"/tmp/s.PGSQL.%s" % port, port)
+        
+    netstat_port_active = PgPortIsActive.local('check netstat for master port',"/tmp/.s.PGSQL.%s" % port, port)
 
+    logger.debug("master_pid_exists: %s tmpfile_exists: %s netstat port: %s" %\
+                (master_pid_exists,tmpfile_exists,netstat_port_active))
     
     if master_pid_exists and tmpfile_exists and netstat_port_active:
         return True
@@ -222,19 +299,17 @@ def chk_local_db_running(datadir,port):
         msg += "Did not find a PID file in %s/postmaster.pid\n" % datadir
     
     if tmpfile_exists:
-        msg += "Found a tmpfile in /tmp/.s.PGSQL.%s" % port
+        msg += "Found a tmpfile in /tmp/.s.PGSQL.%s\n" % port
     else:
-        msg += "Did not find a tmpfile in /tmp/.s.PGSQL.%s" % port
+        msg += "Did not find a tmpfile in /tmp/.s.PGSQL.%s\n" % port
         
     if netstat_port_active:
         msg += "Found a netstat entry for .s.PGSQL.%s" % port
     else:
         msg += "Did not find a netstat entry for .s.PGSQL.%s" % port
         
-    raise Error(msg)
+    raise Exception(msg)
                 
-
-    
 
             
     

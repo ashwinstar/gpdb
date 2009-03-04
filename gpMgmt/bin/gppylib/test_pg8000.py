@@ -18,7 +18,7 @@ except ImportError, e:
 import gplog
 from db.dbconn import *
 
-logger=gplog.get_default_logger()
+logger=gplog.get_unittest_logger()
 gplog.enable_verbose_logging()
 
 
