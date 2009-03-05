@@ -95,7 +95,7 @@ def parseCommandLine():
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
-        if switch == '?': usage(0)
+        if switch == '-?': usage(0)
         elif switch[1] in 'vcrdif': GV.opt[switch] = True
         
     if 1 == reduce(lambda x,y: x+y, [GV.opt['-'+s] and 1 or 0 for s in "crdi"]):
