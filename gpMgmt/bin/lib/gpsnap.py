@@ -3,14 +3,16 @@
 '''
 gpsnap -- snapshot a gpdb array
 
-Usage: gpsnap [-vf?] {-c|-r|-d|-i} snapshot_name
+Usage: gpsnap [-vlf?] {-c|-r|-d|-i} snapshot_name
 
 	-c: create a snapshot
         -r: restore a snapshot
         -d: delete a snapshot
         -i: show information on snapshot
 
+        -l: list snapshots
         -v: verbose
+        -V: very verbose
         -f: force
         -?: print help
 
@@ -35,11 +37,13 @@ if not MASTER_DATA_DIRECTORY:
 class __globals__:
     opt = {}
     opt['-v'] = False
+    opt['-V'] = False
     opt['-c'] = False
     opt['-r'] = False
     opt['-d'] = False
     opt['-i'] = False
     opt['-f'] = False
+    opt['-l'] = False
     snapname = ''
 
 
@@ -72,6 +76,12 @@ def tstamp():
 def msg(s):
     print '%s %s' % (tstamp(), s)
 
+def vmsg(s):
+    if GV.opt['-v']: msg(s)
+
+def vvmsg(s):
+    if GV.opt['-V']: msg(s)
+
 ############
 def die(s):
     sys.exit('%s ERROR: %s' % (tstamp(), s))
@@ -80,23 +90,26 @@ def die(s):
 ############
 def confirm(s):
     if not GV.opt['-f'] and sys.stdin.isatty():
-        ok = raw_input('%s. Confirm? ' % s)
+        ok = raw_input('%s\n ... proceed (y/n)? ' % s)
+        print
         ok = ok.strip().lower()
-        if ok == '' or ok[0] != 'y':
-            die("Aborted")
+        return ok and ok[0] == 'y'
     return True
 
 ############
 def parseCommandLine():
     import getopt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vcrdif')
+        (options, args) = getopt.getopt(sys.argv[1:], '?Vvlcrdif')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?': usage(0)
-        elif switch[1] in 'vcrdif': GV.opt[switch] = True
+        elif switch[1] in 'Vvlcrdif': GV.opt[switch] = True
+
+    if GV.opt['-l']:
+        return
         
     if 1 == reduce(lambda x,y: x+y, [GV.opt['-'+s] and 1 or 0 for s in "crdi"]):
         pass
@@ -105,6 +118,10 @@ def parseCommandLine():
     
     if 1 == len(args):
         GV.snapname = args[0]
+        import re
+        if not re.match('\A[a-zA-Z0-9][a-zA-Z0-9\-\_\:]*\Z', GV.snapname):
+            usage("\n".join(["Error: invalid snapshot name",
+                             "Hint: valid name like 'thursday_2009-03_19:00'"]))
     else:
         usage('Error: missing snapshot_name')
 
@@ -112,11 +129,11 @@ def parseCommandLine():
     
 ############
 def run(cmd):
-    if GV.opt['-v']: msg(cmd)
+    vvmsg(cmd)
     p = os.popen(cmd)
     out = p.readlines()
-    if GV.opt['-v']: 
-        for line in out: msg(line[:-1])
+    if GV.opt['-V']:
+        for line in out: vvmsg(line[:-1])
     rc = p.close()
     return (rc, out)
 
@@ -124,7 +141,7 @@ def run(cmd):
 ############
 def psql(sql, quiet=True):
     sql = sql.strip()
-    if GV.opt['-v']: msg('SQL: ' + sql)
+    vvmsg('SQL: ' + sql)
     cmd = ['psql']
     if quiet: cmd.append('-q')
     cmd = cmd + ['-At', '-c', sql]
@@ -136,9 +153,10 @@ def psql(sql, quiet=True):
     if rc:
         die('PSQL ERROR\nSQL: ' + sql)
 
-    if GV.opt['-v']: 
-        msg('ELAPSED: ' + str(etime - stime))
+    if GV.opt['-V']:
+        for line in out: vvmsg(line[:-1])
 
+    vvmsg('ELAPSED: ' + str(etime - stime))
     return out
 
 ############
@@ -146,7 +164,7 @@ class SnapshotName:
     def __init__(self, datadir, name):
         (self.m_topdir, self.m_dbdir) = os.path.split(datadir)
         self.m_name = name
-        self.m_prefix = '%s-%s' % (self.m_dbdir, self.m_name)
+        self.m_prefix = '%s@%s' % (self.m_dbdir, self.m_name)
 
     def topdir(self): return self.m_topdir
     def dbdir(self):  return self.m_dbdir
@@ -182,11 +200,11 @@ class Segment:
                + ('((rm -f %s; rm -f %s) 2> /dev/null || true) && ' % (sname.tgzname(), sname.ctlname()))
                + ('(gtar cfz %s %s 2> /dev/null || tar cfz %s %s)' % (sname.tgzname(), sname.dbdir(), 
                                                                       sname.tgzname(), sname.dbdir()))]
-        if GV.opt['-v']: msg(" ".join(cmd))
+        vvmsg("  - " + " ".join(cmd))
         p = subprocess.Popen(cmd)
         rc = p.wait()
         if rc: 
-            # some errors occurred ... clean up, ignore error
+            # some errors occurred ... clean up
             self.deleteSnapshot(name)
         else:
             msg('Created snapshot %s:%s' % (self.hostname, 
@@ -199,9 +217,8 @@ class Segment:
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                'rm -f %s %s 2> /dev/null || true' 
                % (sname.tgzpath(), sname.ctlpath())]
-        if GV.opt['-v']: msg(" ".join(cmd))
-        p = subprocess.Popen(cmd)
-        return p.wait()
+        vvmsg("  - " + " ".join(cmd))
+        return subprocess.Popen(cmd).wait()
 
 
     def checkSnapshot(self, name):
@@ -210,9 +227,8 @@ class Segment:
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                '(gtar tfz %s || tar tfz %s) > /dev/null'
                % (sname.tgzpath(), sname.tgzpath())]
-        if GV.opt['-v']: msg(" ".join(cmd))
-        p = subprocess.Popen(cmd)
-        return p.wait()
+        vvmsg("  - " + " ".join(cmd))
+        return subprocess.Popen(cmd).wait()
         
 
     def restoreSnapshot(self, name):
@@ -221,9 +237,8 @@ class Segment:
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                'rm -rf %s 2> /dev/null; cd %s && (gtar xfz %s || tar xfz %s) 2> /dev/null' 
                % (self.datadir, sname.topdir(), sname.tgzname(), sname.tgzname())]
-        if GV.opt['-v']: msg(" ".join(cmd))
-        p = subprocess.Popen(cmd)
-        return p.wait()
+        vvmsg("  - " + " ".join(cmd))
+        return subprocess.Popen(cmd).wait()
         
 
     @staticmethod
@@ -252,13 +267,13 @@ def pmap(func, jlist, numThreads = 10):
         except Queue.Empty: pass
         except:
             outq.put((sys.exc_info()[0], None))
+            # drain 
+            try:
+                while True: inq.get_nowait()
+            except Queue.Empty: pass
 
-    thread = []
-    for i in xrange(numThreads):
-        t = threading.Thread(target=work)
-        t.start()
-        thread.append(t)
-
+    thread = [threading.Thread(target=work) for i in xrange(numThreads)]
+    for t in thread: t.start()
     for t in thread: t.join()
     
     ret = []
@@ -268,8 +283,7 @@ def pmap(func, jlist, numThreads = 10):
             if ex: 
                 raise ex
             ret.append(result)
-    except Queue.Empty: 
-        pass
+    except Queue.Empty: pass
     return ret
 
 
@@ -295,6 +309,20 @@ def check_psql():
 class ControlInfo:
     def __init__(self, name, segments, stime, etime):
         (self.name, self.segments, self.stime, self.etime) = (name, segments, stime, etime)
+        self.etime = self.etime.replace(microsecond=0)
+
+    def delete(self, master):
+        fpath = master.ctlpath(self.name)
+        if not fpath:
+            return
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', master.hostname,
+               'rm -f %s' % fpath]
+        vmsg(" ".join(cmd))
+        p = subprocess.Popen(cmd, stdin = subprocess.PIPE)
+        p.stdin.write(pickle.dumps(self))
+        p.stdin.close()
+        p.wait()
+            
 
     def write(self, master):
         fpath = master.ctlpath(self.name)
@@ -303,7 +331,7 @@ class ControlInfo:
 
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', master.hostname,
                'cat > %s' % fpath]
-        if GV.opt['-v']: msg(" ".join(cmd))
+        vvmsg(" ".join(cmd))
         p = subprocess.Popen(cmd, stdin = subprocess.PIPE)
         p.stdin.write(pickle.dumps(self))
         p.stdin.close()
@@ -321,44 +349,64 @@ class ControlInfo:
             return pickle.load(f)
         except IOError:
             return None
-        finally:
-            if f: f.close()
+        finally: f and f.close()
     
-
+    @staticmethod
+    def list():
+        fpath = os.path.join(MASTER_DATA_DIRECTORY, '..', '*@*.snap')
+        p = os.popen('ls -1 %s 2> /dev/null' % fpath)
+        out = p.readlines()
+        p.close()
+        
+        ret = []
+        for fpath in out:
+            fpath = fpath.strip()
+            f = None
+            try:
+                f = open(fpath)
+                ret.append(pickle.load(f))
+            except IOError: pass
+            finally: f and f.close()
+        
+        return ret
+            
+        
 
 ############
 def createSnapshot(name):
     ctlInfo = ControlInfo.read(name)
     if ctlInfo:
         die("Snapshot '%s' exists." % name)
-    confirm('Create a snapshot. Proceed to shutdown the database')
+    
+    if not confirm('Create a snapshot. \nThis will shutdown the database.'):
+        die("Aborted by user.")
 
     # need gp_configuration
     stime = datetime.datetime.now()
+    vmsg("Starting masters in utility mode ...")
     run('gpstart -m')
+    vmsg("Checking psql connectivity ...")
     check_psql()
     segments = Segment.select()
     
     # shut it down
+    vmsg("Stopping masters ...")
     run('gpstop -af')
 
-
     # shuffle the segments so we spread work across the array
-    slist = segments[:]
-    random.shuffle(slist)
+    segments = segments[:]
+    random.shuffle(segments)
 
     # take the snapshot in parallel
-    emsg = []
-    out = pmap(lambda s: (s, s.createSnapshot(name)), slist)
-    for (s, rc) in out:
-        if rc: 
-            emsg.append("    snapshot failed for segment %s:%s" % (s.hostname, s.datadir))
-    
+    erows = filter(lambda (s, rc): rc,
+                   pmap(lambda s: (s, s.createSnapshot(name)), segments))
     # if error -> rollback
-    if emsg:
+    if erows:
+        emsg = (["Create failed:"] +
+                ["  unable to create %s:%s@%s" 
+                 % (s.hostname, s.datadir) for (s, rc) in erows])
         # delete the snapshots
-        pmap(lambda j: (j, j.deleteSnapshot(name)), slist)
-        emsg = "\n".join(["Failed to take snapshot '%s'" % name] + emsg)
+        pmap(lambda s: (s, s.deleteSnapshot(name)), segments)
         die(emsg)
 
     # create control file
@@ -367,15 +415,16 @@ def createSnapshot(name):
 
     # write the control file to the masters
     masters = filter(lambda s: s.content == '-1', segments)
-    for (m, rc) in map(lambda m: (m, ctlInfo.write(m)), masters):
-        if rc:
-            emsg.append("   cannot create control file %s:%s" % (m.hostname, m.getControlFilePath))
-    
+    erows = filter(lambda (m, rc): rc, 
+                   map(lambda m: (m, ctlInfo.write(m)), masters))
     # if error -> rollback
-    if emsg:
+    if erows:
+        emsg = (["Create failed:"] +
+                ["  cannot create control file %s:%s"
+                 % (m.hostname, m.ctlpath(name)) for (m, rc) in erows])
         # delete the snapshots
-        pmap(lambda j: (j, j.deleteSnapshot(name)), slist)
-        emsg = "\n".join(["Failed to take snapshot"] + emsg)
+        pmap(lambda s: (s, s.deleteSnapshot(name)), segments)
+        pmap(lambda m: (m, ctlInfo.delete(m)), masters)
         die(emsg)
         
     msg("Created. Elapsed %s." % humantime(etime - stime))
@@ -386,36 +435,35 @@ def restoreSnapshot(name):
     if not ctlInfo:
         die("Unable to find snapshot '%s'" % name)
     
-    confirm("Restore snapshot '%s'. Proceed to shutdown database" % name)
+    if not confirm("Restore snapshot '%s'.\nThis will shutdown the database." % name):
+        die("Aborted by user.")
 
     stime = datetime.datetime.now()
 
     # shut it down
     run('gpstop -af')
 
-    slist = ctlInfo.segments[:]
-    random.shuffle(slist)
+    segments = ctlInfo.segments[:]
+    random.shuffle(segments)
 
-    emsg = []
-    out = pmap(lambda s: (s, s.checkSnapshot(name)), slist)
-    for (s, rc) in out:
-        if rc:
-            emsg.append("Bad or missing snapshot of %s:%s" % (s.hostname, s.datadir))
-    
-    if emsg:
-        emsg = "\n".join(["Snapshot failure"] + emsg)
-        die(emsg)
+    erows = filter(lambda (s,rc): rc,
+                   pmap(lambda s: (s, s.checkSnapshot(name)), segments))
+    if erows:
+        emsg = (["Snapshot failure"] +
+                ["  Bad/missing snapshot of %s:%s" 
+                 % (s.hostname, s.datadir) for (s, rc) in erows])
+        die("\n".join(emsg))
 
-    confirm("Proceed to delete DB and restore snapshot")
+    if not confirm("Continue to *delete* database and restore snapshot.\nThis is the point of no return."):
+        die("Aborted by user.")
 
-    out = pmap(lambda s: (s, s.restoreSnapshot(name)), slist)
-    for (s, rc) in out:
-        if rc:
-            emsg.append("  Unable to restore %s:%s" % (s.hostname, s.datadir))
-
-    if emsg:
-        emsg = "\n".join(["Failed to restore some segments"] + emsg)
-        die(emsg)
+    erows = filter(lambda (s,rc): rc, 
+                   pmap(lambda s: (s, s.restoreSnapshot(name)), segments))
+    if erows:
+        emsg = (["Restore failed:"] +
+                ["  unable to restore %s:%s" 
+                 % (s.hostname, s.datadir) for (s, rc) in erows])
+        die("\n".join(emsg))
 
     etime = datetime.datetime.now()
     msg("Restored. Elapsed %s." % humantime(etime - stime))
@@ -440,26 +488,34 @@ def deleteSnapshot(name):
         msg("Snapshot '%s' does not exist" % name)
         return                  # assume there isn't any snapshots available
 
-    confirm("Delete snapshot '%s'" % name)
+    if not confirm("Delete snapshot '%s'" % name):
+        msg("Aborted by user.")
 
     stime = datetime.datetime.now()
-    slist = ctlInfo.segments[:]
-    random.shuffle(slist)
+    segments = ctlInfo.segments[:]
+    random.shuffle(segments)
 
-    emsg = []
-    out = pmap(lambda s: (s, s.deleteSnapshot(name)), slist)
-    for (s, rc) in out:
-        if rc: 
-            emsg.append("   unable to delete snapshot of %s:%s" % (s.hostname, s.datadir))
-
-    if emsg:
-        emsg = "\n".join(["Unable to delete snapshot '%s'" % name] + emsg)
-        die(emsg)
+    erows = filter(lambda (s,rc): rc,
+                   pmap(lambda s: (s, s.deleteSnapshot(name)), segments))
+    if erows:
+        emsg = (["Delete failed:"] +
+                ["  unable to delete %s:%s@%s" 
+                 % (s.hostname, s.datadir, name) for (s, rc) in erows])
+        die("\n".join(emsg))
 
     etime = datetime.datetime.now()
     msg("Deleted. Elapsed %s." % humantime(etime - stime))
 
 
+############
+def listSnapshots():
+    ctlInfoList = ControlInfo.list()
+    if not ctlInfoList:
+        msg("No snapshot exists")
+        return
+    ctlInfoList.sort(lambda x,y: x.etime > y.etime)
+    for i in ctlInfoList:
+        print '%s | %s' % (i.name, str(i.etime))
 
 
 ############
@@ -473,6 +529,8 @@ def main():
         deleteSnapshot(GV.snapname)
     elif GV.opt['-i']:
         infoSnapshot(GV.snapname)
+    elif GV.opt['-l']:
+        listSnapshots()
     else:
         usage('Error: invalid flags and/or arguments')
 
