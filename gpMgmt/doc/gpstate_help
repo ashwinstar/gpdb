@@ -2,16 +2,15 @@ COMMAND NAME: gpstate
 
 Shows the status of a running Greenplum Database system.
 
+
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 gpstate [-d <master_data_directory>] [-B <parallel_processes>] 
-            [-s | -b | -Q] [-m] [-c] [-p] [-n] 
-            {[-e] [-r <number>] [-g "<search_string>" [| "<search_string>"]]} 
-            [-i] [-f] [-q] [-l <log_directory>] [-D] 
+        [-s | -b | Q] [-m] [-c] [-p] [-i] [-f] [-q] [-l <log_directory>] [-D] 
 
-gpstate [-t | -? | -v]
+gpstate -t | -? | -v
 
 
 *****************************************************
@@ -30,8 +29,6 @@ additional status information for a Greenplum Database system, such as:
 
 * The ports used by the system.
 
-* Segment log files.
-
 * A mapping of primary segments to their corresponding mirror segments.
 
 
@@ -39,10 +36,10 @@ additional status information for a Greenplum Database system, such as:
 OPTIONS
 *****************************************************
 
--d <master_data_directory>
+-b (brief status)
 
-Optional. The master data directory. If not specified, the value set for 
-$MASTER_DATA_DIRECTORY will be used.
+Optional. Display a brief summary of the state of the Greenplum Database 
+system. This is the default option.
 
 
 -B <parallel_processes>
@@ -52,16 +49,52 @@ will start up to 60 parallel processes depending on how many segment
 instances it needs to check.
 
 
--s (status)
+-c (show primary to mirror mappings)
 
-Optional. Displays detailed status information for the Greenplum Database 
-system.
+Optional. Display mapping of primary segments to their corresponding 
+mirror segments.
 
 
--b (brief status)
+-d <master_data_directory>
 
-Optional. Display a brief summary of the state of the Greenplum Database 
-system. This is the default option.
+Optional. The master data directory. If not specified, the value set for 
+$MASTER_DATA_DIRECTORY will be used.
+
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-f (show standby master details)
+
+Display details of the standby master host if configured.
+
+
+-i (show Greenplum Database version)
+
+Display the Greenplum Database software version information.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-m (list mirrors)
+
+Optional. List the mirror segment instances in the system.
+
+
+-p (show ports)
+
+List the port numbers used throughout the Greenplum Database system.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen, but is still 
+written to the log file.
 
 
 -Q (quick status)
@@ -70,76 +103,21 @@ Optional. Checks segment status in the system catalog on the master host.
 Does not poll the segments for status.
 
 
--m (list mirrors)
+-s (detailed status)
 
-Optional. List the mirror segment instances in the system.
-
-
--c (show primary to mirror mappings)
-
-Optional. Display mapping of primary segments to their corresponding mirror 
-segments.
-
-
--p (show ports)
-
-List the port numbers used throughout the Greenplum Database system.
-
-
--n (show log file names)
-
-List the log file names for the master instance and each segment instance.
-
-
--e (show last lines of segment logs)
-
-Display the end of the log file for the master instance and each segment 
-instance.
-
-
--r <number_of_log_lines>
-
-Used in combination with the -e option, retrieves the specified number of 
-log lines. The default is to retrieve the last 10 lines of the log files.
-
-
--g <log_search_string>
-
-Used in combination with the -e option, retrieves the log lines that match 
-the specified search string. If a search string has spaces, enclose in quotes.
-Use a pipe (|) to separate multiple search strings.
-
-
--i (show Greenplum Database version)
-
-Display the Greenplum Database software version information.
-
-
--f (show standby master details)
-
-Display details of the standby master host if configured.
-
-
--q (no screen output)
-
-Run in quiet mode. Command output is not displayed on the screen, but is 
-still written to the log file.
-
-
--l <logfile_directory>
-
-The directory to write the log file. Defaults to ~/gpAdminLogs.
-
-
--D (debug)
-
-Sets logging level to debug.
+Optional. Displays detailed status information for the Greenplum 
+Database system.
 
 
 -t (show default utility settings)
 
-Display the default settings used by the gpstate utility such as the 
-master data directory and port.
+Display the default settings used by the gpstate utility such as 
+the master data directory and port.
+
+
+-v (show utility version)
+
+Displays the version of this utility.
 
 
 -? (help)
@@ -147,16 +125,11 @@ master data directory and port.
 Displays the online help.
 
 
--v (show utility version)
-
-Displays the version, status, last updated date, and check sum of this utility.
-
-
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Show the complete status information of a Greenplum Database system:
+Show detailed status information of a Greenplum Database system:
 
 gpstate -s
 
@@ -176,11 +149,6 @@ Show information about the standby master configuration:
 gpstate -f
 
 
-Show the last 5 lines of each segment instance log file:
-
-gpstate -e -r 5
-
-
 Display the Greenplum software version information:
 
 gpstate -i
@@ -190,5 +158,4 @@ gpstate -i
 SEE ALSO
 *****************************************************
 
-gpstart, gpskew, gpsizecalc
-
+gpstart, gpskew, gpsizecalc, gplogfilter
