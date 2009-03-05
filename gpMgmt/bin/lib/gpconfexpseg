@@ -68,7 +68,7 @@ try:
         
         if os.path.exists(options.datadir):
             #it better be empty
-            if len(os.listdir(work_path)) == 0:
+            if len(os.listdir(options.datadir)) == 0:
                 os.chmod(options.datadir,0700)
             else:
                 raise Exception('Segment directory %s exists but is not empty!' % options.datadir)

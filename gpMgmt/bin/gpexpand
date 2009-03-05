@@ -10,7 +10,7 @@ import socket
 from time import strftime
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-
+from subprocess import Popen, PIPE
 
 from gppylib.commands.unix import *
 from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, GpStop, GpStart, ConfigExpansionSeg
@@ -62,8 +62,6 @@ Remaining TODO items:
 
 """* make sure system isn't in "readonly mode" during setup. """,
 
-"""* make sure no other gpexpand's are running. """,
-
 """* need a startup validation where we check the status detail
     with gp_distribution_policy and make sure that our book
     keeping matches reality. we don't have a perfect transactional
@@ -79,7 +77,10 @@ Remaining TODO items:
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
      the system.  should get rid of this requirement. """,
      
-"""* gpexpand doesn't log to ~/gpAdminLogs """
+# NOTE: when I run gpexpand it logs to ~/gpAdminLogs/gpexpand_yyyymmdd.log (chris)
+"""* gpexpand doesn't log to ~/gpAdminLogs """,
+
+"""* ignore external tables """
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -141,6 +142,47 @@ def parseargs():
 
     return options, args
 
+#-------------------------------------------------------------------------
+# process information functions
+def create_pid_file(master_data_directory):
+    try:
+        fp = open(master_data_directory + '/gpexpand.pid', 'w')
+        fp.write(str(os.getpid()))
+    except IOError:
+        raise
+    finally:
+        if fp: fp.close()
+
+def remove_pid_file(master_data_directory):
+    try:
+        os.unlink(master_data_directory + '/gpexpand.pid')
+    except:
+        pass
+
+def is_gpexpand_running(master_data_directory):
+    is_running = False
+    try:
+        fp = open(master_data_directory + '/gpexpand.pid', 'r')
+        pid = fp.readline().strip()
+        fp.close()
+        print 'Found pid file and read in pid: %s' % pid
+        p = Popen(['ps', '-p %s' % pid], stdout=PIPE)
+        os.waitpid(p.pid,0)
+        # swallow ps header
+        p.stdout.readline()
+        ps_info = p.stdout.readline().strip()
+        print 'ps_info: %s' % ps_info
+        if ps_info.find('gpexpand') == -1:
+            remove_pid_file(master_data_directory)
+            is_running = False
+        else:
+            is_running = True
+    except IOError:
+        pass
+    except Exception, msg:
+        print msg
+    
+    return is_running
 
 #-------------------------------------------------------------------------
 #expansion schema
@@ -736,7 +778,8 @@ class gpexpand:
             self.pool.addCommand(cpCmd)
         
         self.pool.join()
-        self.pool.check_results()
+        #TODO: Copy will fail if the backup was never made...
+        #self.pool.check_results()
 
         originalPrimaryCount += self.gparray.get_primary_count()
 
@@ -1096,7 +1139,9 @@ UPDATE gp_distribution_policy
             except pg.OperationalError:
                 pass    
         if self.pool:
-            self.pool.haltWork()      
+            self.pool.haltWork()
+            
+        remove_pid_file(options.master_data_directory)
     
     
     def cleanup_schema(self):
@@ -1109,7 +1154,7 @@ UPDATE gp_distribution_policy
         
         #remove our status files
         if self.statusLogger:
-            statusLogger.remove_status_file()
+            self.statusLogger.remove_status_file()
             
         #drop schema
         self.logger.info("Removing gpexpand schema")
@@ -1390,21 +1435,30 @@ try:
         logger.error('gexpand ' + ' '.join(sys.argv[1:]))
         sys.exit(1)
         
+    if is_gpexpand_running(options.master_data_directory):
+        logger.error('gpexpand is already running.  Only one instance')
+        logger.error('of gpexpand is allowed at a time.')
+        sys.exit(1)
+    else:
+        create_pid_file(options.master_data_directory)
     
     gp_expand = gpexpand(logger,gparray,dburl,parallel=options.parallel)   
     
     if options.clean:
         gp_expand.cleanup_schema()        
         logger.info('Cleanup Finished.  exiting...')
+        remove_pid_file(options.master_data_directory)
         sys.exit(0)
     
     state = gp_expand.get_state()
     
     if state == 'EXPANSION_PREPARE_DONE' or state == 'REORGAZIZE_INPROGRESS':
         gp_expand.perform_expansion()
+        remove_pid_file(options.master_data_directory)
     elif options.filename is None:                 
         interview_setup(gparray)            
-        logger.info("Exiting...")           
+        logger.info("Exiting...")
+        remove_pid_file(options.master_data_directory)
         sys.exit(0)
     else:            
         gp_expand.start_prepare()
@@ -1421,7 +1475,7 @@ try:
         logger.info('************************************************')
 
     gp_expand.shutdown()
-    logger.info("Exiting...")          
+    logger.info("Exiting...")
     sys.exit(0)
         
 except Exception,e:
