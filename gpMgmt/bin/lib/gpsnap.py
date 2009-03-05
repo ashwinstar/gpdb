@@ -33,7 +33,8 @@ import subprocess, time, datetime, threading, Queue, pickle, random
 MASTER_DATA_DIRECTORY = os.getenv('MASTER_DATA_DIRECTORY')
 if not MASTER_DATA_DIRECTORY:
     sys.exit('MASTER_DATA_DIRECTORY env not defined')
-
+os.putenv('PGHOST', '')
+os.putenv("PGOPTIONS", '-c gp_session_role=utility')
 
 class __globals__:
     opt = {}
@@ -144,7 +145,7 @@ def run(cmd):
 def psql(sql, quiet=True):
     sql = sql.strip()
     vvmsg('SQL: ' + sql)
-    cmd = ['psql']
+    cmd = ['psql', 'template1']
     if quiet: cmd.append('-q')
     cmd = cmd + ['-At', '-c', sql]
     stime = time.time()
@@ -205,22 +206,12 @@ class Segment:
         rc = subprocess.Popen(cmd).wait()
         if rc: 
             # some errors occurred ... clean up
-            self.deleteSnapshot(name)
+            self.deleteTgzSnapshot(name)
         else:
             msg('Created snapshot %s:%s' % (self.hostname, 
                                             sname.tgzpath()))
         return rc
 
-
-    def createZfsSnapshot(self, name):
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs list -t snapshot $N@%s || zfs snapshot $N@%s'" % (name, name))]
-        vvmsg("  - " + " ".join(cmd))
-        rc = subprocess.Popen(cmd).wait()
-        if not rc:
-            msg('Created snapshot %s:%s' % (self.hostname, self.datapath))
-        return rc
         
     def deleteSnapshot(self, name):
         sname = SnapshotName(self.datapath, name)
@@ -228,14 +219,6 @@ class Segment:
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                'rm -f %s %s' 
                % (sname.tgzpath(), sname.ctlpath())]
-        vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
-
-    def deleteZfsSnapshot(self, name):
-        msg('Deleting snapshot of %s:%s' % (self.hostname, self.datapath))
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs destroy $N@%s'" % (name))]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
 
@@ -250,14 +233,6 @@ class Segment:
         return subprocess.Popen(cmd).wait()
 
         
-    def checkZfsSnapshot(self, name):
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs list -t snapshot $N@%s'" % (name))]
-        vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
-               
-
     def restoreSnapshot(self, name):
         sname = SnapshotName(self.datapath, name)
         msg('Restoring snapshot of %s:%s' % (self.hostname, self.datapath))
@@ -268,7 +243,38 @@ class Segment:
         return subprocess.Popen(cmd).wait()
         
 
-    def restoreZfsSnapshot(self, name):
+
+
+class ZfsSegment(Segment):
+    def __init__(self, line):
+        Segment.__init__(self, line)
+
+    def createSnapshot(self, name):
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
+               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
+                + ("bash -c 'zfs list -t snapshot $N@%s || zfs snapshot $N@%s'" % (name, name))]
+        vvmsg("  - " + " ".join(cmd))
+        rc = subprocess.Popen(cmd).wait()
+        if not rc:
+            msg('Created snapshot %s:%s' % (self.hostname, self.datapath))
+        return rc
+
+    def deleteSnapshot(self, name):
+        msg('Deleting snapshot of %s:%s' % (self.hostname, self.datapath))
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
+               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
+                + ("bash -c 'zfs destroy $N@%s'" % (name))]
+        vvmsg("  - " + " ".join(cmd))
+        return subprocess.Popen(cmd).wait()
+
+    def checkSnapshot(self, name):
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
+               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
+                + ("bash -c 'zfs list -t snapshot $N@%s'" % (name))]
+        vvmsg("  - " + " ".join(cmd))
+        return subprocess.Popen(cmd).wait()
+               
+    def restoreSnapshot(self, name):
         msg('Restoring snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
@@ -276,15 +282,6 @@ class Segment:
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
         
-
-    @staticmethod
-    def select():
-        lines = psql('''
-select content, definedprimary, dbid, isprimary, valid, hostname, port, datadir as datapath 
-from gp_configuration
-order by content''')
-        return [Segment(line) for line in lines]
-
 
 
 ############
@@ -333,10 +330,7 @@ def test_pmap():
 
 ############
 def check_psql():
-    os.putenv('PGHOST', '')
-    os.putenv('PGDATABASE', 'template1')
-    os.putenv('PGOPTIONS', '-c gp_session_role=utility')
-    (rc, out) = run('psql -c "select now()" 2>&1')
+    (rc, out) = run("psql -c 'select now()' 2>&1")
     if rc:
         die('cannot run psql:\n\t%s' % ''.join(out))
 
@@ -406,7 +400,18 @@ class ControlInfo:
             finally: f and f.close()
         
         return ret
-            
+
+
+def selectSegments():
+    lines = psql('''
+select content, definedprimary, dbid, isprimary, valid, hostname, port, datadir as datapath 
+from gp_configuration
+order by content''')
+    if GV.opt['-z']:
+        return [ZfsSegment(line) for line in lines]
+    else:
+        return [Segment(line) for line in lines]
+
         
 
 ############
@@ -424,7 +429,7 @@ def createSnapshot(name):
     run('gpstart -m')
     vmsg("Checking psql connectivity ...")
     check_psql()
-    segments = Segment.select()
+    segments = selectSegments()
     
     # shut it down
     vmsg("Stopping masters ...")
@@ -441,10 +446,10 @@ def createSnapshot(name):
     if erows:
         emsg = (["Create failed:"] +
                 ["  unable to create %s:%s@%s" 
-                 % (s.hostname, s.datapath) for (s, rc) in erows])
+                 % (s.hostname, s.datapath, name) for (s, rc) in erows])
         # delete the snapshots
         pmap(lambda s: (s, s.deleteSnapshot(name)), segments)
-        die(emsg)
+        die("\n".join(emsg))
 
     # create control file
     etime = datetime.datetime.now()
@@ -462,7 +467,7 @@ def createSnapshot(name):
         # delete the snapshots
         pmap(lambda s: (s, s.deleteSnapshot(name)), segments)
         pmap(lambda m: (m, ctlInfo.delete(m)), masters)
-        die(emsg)
+        die("\n".join(emsg))
         
     msg("Created. Elapsed %s." % humantime(etime - stime))
 
