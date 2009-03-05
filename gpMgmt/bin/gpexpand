@@ -70,9 +70,6 @@ Remaining TODO items:
     model since the tables can be in a different database from
     where the gpexpand schema is kept. """,
 
-"""* gpexpand interview should auto-determine data directory and not
-     force the user to specify the directories all the way down to the seg8 level.""",
-
 """* during initial setup we ssh to 127.0.0.1.  This is not guaranteed to have passwordless
      ssh setup for it.  we should use the hostname from gp_configuration""",
 
@@ -80,7 +77,9 @@ Remaining TODO items:
      this when the database is stopped and possibly can't be started fully.""",
      
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
-     the system.  should get rid of this requirement. """
+     the system.  should get rid of this requirement. """,
+     
+"""* gpexpand doesn't log to ~/gpAdminLogs """
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -385,8 +384,8 @@ class SegmentTemplate:
         GpStop.local('stop GPDB')
 
         try:    
-            gp_segcopy = GpSegCopy(self.logger, '127.0.0.1', self.masterDataDirectory,
-                                   '127.0.0.1', self.tempDir, True, True, 'sync')
+            gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
+                                   self.gparray.master.hostname, self.tempDir, True, True, 'sync')
             gp_segcopy.copy()
         except SegcopyError, msg:
             raise SegmentTemplateError(msg)
@@ -409,7 +408,7 @@ class SegmentTemplate:
         self.logger.info('Distributing template tar file to new hosts')
       
         self._distribute_tarfile()
-        self._extract_tarfile()
+        
         
     
     def _distribute_tarfile(self):  
@@ -419,24 +418,8 @@ class SegmentTemplate:
             
         self.pool.join()
         self.pool.check_results()
-        
-        
-    def _extract_tarfile(self):
-        self.logger.info('Extracting template tar file to new segment data directories')
-        for seg in self.newSegments:
-            extractTarCmd = ExtractTar('extract tar file to all new hosts', self.schema_tar_file,
-                                       seg.datadir, ctxt=REMOTE, 
-                                       remoteHost=seg.hostname)
-            self.pool.addCommand(extractTarCmd)
-            
-        self.pool.join()
-        
-        #TODO:  check_results always shows a failure with RC=127
-        #self.pool.check_results()        
-        self.pool.empty_completed_items()
-        
-        
-        
+  
+
     def _configure_new_segments(self):
         """Configures new segments.  This includes modifying the postgresql.conf file
         and setting up the gp_id table"""
@@ -455,7 +438,7 @@ class SegmentTemplate:
             #name, dataDir, port, numSegs, contentId, dbId, newSegment=False, ctxt=LOCAL, remoteHost=None):
             segCfgCmd = ConfigExpansionSeg('configure new segment', seg.datadir, 
                                               seg.port, newPrimaryCount, 
-                                              seg.content, seg.dbid, True,
+                                              seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
                                               ctxt=REMOTE, remoteHost=seg.hostname) 
             self.pool.addCommand(segCfgCmd)
             newDbId += 1
@@ -467,6 +450,9 @@ class SegmentTemplate:
         Then modifies the template copy of pg_hba.conf"""
         
         self.logger.info('Copying postgresql.conf from existing segment into template')
+        
+        #TODO: I'm not sure this is doing what we think it should do.  I believe what this does is
+        #      ssh srcSegHostname  and then  scp dir 127.0.0.1:tmpdir ?
         cpCmd = RemoteCopy('copying postgresql.conf to %s:%s/postgresql.conf' % (self.srcSegHostname, self.srcSegDataDir), 
                            self.srcSegDataDir + '/postgresql.conf', '127.0.0.1', 
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
@@ -582,19 +568,27 @@ class gpexpand:
         dbid:content:definedprimary:hostname:port:datadir
         
         """
-        maxDbId = self.gparray.get_max_dbid()        
+        maxDbId = self.gparray.get_max_dbid() + 1        
         oldSegCount = self.gparray.get_segment_count()
+        
+        #figure out the common datadir prefix
+        full_prefix= self.gparray.segments[0].primaryDB.datadir.split('/')[-1]
+        dir_prefix=full_prefix.strip('0')
+        
+        logger.debug("Existing GPDB Array has %d segments" % oldSegCount)
+        
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
         outfile = open(outputfile, 'w')
         
         logger.info("Generating input file...")
-        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase)
+        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix)
         
         
         for r in rows:              
             (content,defprim,dbid,isprim,valid,hostname,port,datadir)=r
             new_dbid = maxDbId + dbid
             new_content = oldSegCount + content
+            datadir = datadir.rstrip(str(content)) + str(new_content)            
             outfile.write("%d:%d:%s:%s:%d:%s\n" % (new_dbid,new_content,isprim,hostname,port,datadir) )           
         
         
@@ -1111,6 +1105,8 @@ UPDATE gp_distribution_policy
         #TODO: we should have an option to dump the contents out to a backup before we
         # blow things away.
         
+        #TODO: we should prompt the user before blowing things away.
+        
         #remove our status files
         if self.statusLogger:
             statusLogger.remove_status_file()
@@ -1287,9 +1283,13 @@ class ExpandCommand(SQLCommand):
         raise ExecutionError("TODO:  must implement")        
         
         
+def proposeDataDirs(gparray,newhostlist):    
+        
+    #TODO:  actually do something.
+    return ["/dbfast1","/dbfast2","/dbfast3","/dbfast4"]
 
 #------------------------------- UI Help --------------------------------
-def interview_setup():
+def interview_setup(gparray):
     #TODO: add func to gpexpand to try and guess a default set of portbases
     #      for primaries and mirrors.
     default_primary_port_est=5500
@@ -1320,9 +1320,13 @@ before continuing by re-running this utility and providing the input file. """
             
     hostlist=ask_list(help,"Please enter a comma separated list of hostnames that you'd like to add\n" \
                       "or press Enter if you are not adding any hosts",'')    
+
+    #We now look at the gparray of their existing array to propose a set of datadirectories.
+    proposed_dirs=proposeDataDirs(gparray,hostlist)
+    
             
     primary_datadirs=ask_list(None,"\nPlease enter a comma separated list of data directories to put new\n"\
-                              "primary segment databases on",None)
+                              "primary segment databases on ",', '.join(proposed_dirs))
             
     primary_portbase=ask_int(None,"\nPlease provide a base port number to use for the new\n"\
                              " primary segdbs?",
@@ -1339,10 +1343,11 @@ before continuing by re-running this utility and providing the input file. """
                            "What type of mirroring strategy would you like?",
                            'grouped', ['spread','grouped','none'])
             
-    if mirror_type.lower().strip() != 'none':                
+    if mirror_type.lower().strip() != 'none':  
+        proposed_dirs=proposeDataDirs(gparray,hostlist)              
         mirror_datadirs=ask_list(None,
                                  "\nPlease enter a comma separated list of data directories to put new\n"\
-                                 "mirror segment databases on ",None) 
+                                 "mirror segment databases on ",' , '.join(proposed_dirs)) 
         mirror_portbase=ask_int(None,"Please provide a base port number to use for the new \n"\
                                 "mirror segdbs?",
                                 None,5600,1024,65536)
@@ -1398,7 +1403,7 @@ try:
     if state == 'EXPANSION_PREPARE_DONE' or state == 'REORGAZIZE_INPROGRESS':
         gp_expand.perform_expansion()
     elif options.filename is None:                 
-        interview_setup()            
+        interview_setup(gparray)            
         logger.info("Exiting...")           
         sys.exit(0)
     else:            
@@ -1408,21 +1413,23 @@ try:
         gp_expand.add_segments()
         gp_expand.update_original_segments()
         gp_expand.update_master()
-        gp_expand.prepare_schema()                        
+        gp_expand.prepare_schema()   
+        logger.info('************************************************')                     
         logger.info('Initialization of the system expansion complete.')
         logger.info('To begin table expansion onto the new segments')
         logger.info('rerun gpexpand')
+        logger.info('************************************************')
 
     gp_expand.shutdown()
     logger.info("Exiting...")          
     sys.exit(0)
         
-except Exception, e:
+except Exception,e:
     if options.verbose:
         logger.exception("gpexpand failed. exiting...")
     else:
         #TODO:  need a way of printing more user friendly error messages
-        logger.error("gpexpand failed: %s \n\nExiting...", e)
+        logger.error("gpexpand failed: %s \n\nExiting...", e )
     if gp_expand is not None:
         gp_expand.shutdown()
     sys.exit(3)

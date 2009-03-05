@@ -29,7 +29,7 @@ def validate_list(input,default):
     
 
 def ask_list(bg_info,msg,default):
-    help=''
+    help=default
     return ask_input(bg_info,msg,help,default,validate_list)    
  
 #################

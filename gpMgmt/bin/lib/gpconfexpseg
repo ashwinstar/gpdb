@@ -8,6 +8,8 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, Chmod
 from gppylib.db import dbconn
 from gppylib.db import catalog
+from gppylib.commands import base
+from gppylib.commands import unix
 
 description = (""" 
 Adds additional segments to a pre-existing GPDB Array.
@@ -28,6 +30,7 @@ def parseargs():
     parser.add_option('-c', '--content', type='int')
     parser.add_option('-i', '--dbid', type='int')
     parser.add_option('-n', '--newsegment', action='store_true')
+    parser.add_option('-t', '--tarfile', type='string')
   
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
@@ -51,6 +54,9 @@ def parseargs():
 
     if not options.datadir:
         raise Exception('Invalid datadir arg')
+    
+    if options.newsegment and not options.tarfile:
+        raise Exception('-t must be specified if -n is used')
 
     return options, args
 
@@ -59,21 +65,32 @@ try:
     (options, args) = parseargs()
     # update postgresql.conf
     if options.newsegment:
+        
+        if os.path.exists(options.datadir):
+            #it better be empty
+            if len(os.listdir(work_path)) == 0:
+                os.chmod(options.datadir,0700)
+            else:
+                raise Exception('Segment directory %s exists but is not empty!' % options.datadir)
+        else:
+            os.mkdir(options.datadir,0700)
+        
+            
+        extractTarCmd = unix.ExtractTar('extract tar file to new segment', options.tarfile, options.datadir )
+        extractTarCmd.run(validateAfter=True)
+        
         modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % options.datadir,
                                                               options.datadir + '/postgresql.conf',
                                                               'port', options.port, optType='number')
         modifyPostgresqlConfCmd.run(validateAfter=True)
 
-        # need 700 permissions on datadir
-        chmodCmd = Chmod('Changing permissions on %s' % options.datadir, options.datadir, '0700')
-        chmodCmd.run(validateAfter=True)
     
     # stop up segment in utility
     try:
         startCmd = SegmentStart('Start expansion segment', 
-                                options.datadir, options.port, utilityMode=True)
+                                options.datadir, utilityMode=True)
         startCmd.run(validateAfter=True)
-    except ExecutionException:
+    except base.ExecutionError:
         # We'll ignore this here in case we are cleaning up a previous failed run
         pass
     

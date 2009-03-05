@@ -92,7 +92,7 @@ class MasterStop(Command):
 #-----------------------------------------------        
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, utilityMode=False, nowait=False,ctxt=LOCAL, remoteHost=None):
-        cmdfrags=['pg_ctl -D %s' % dataDir]
+        cmdfrags=['pg_ctl -D %s -l %s/pg_log/bootstrap.log' % (dataDir,dataDir)]
         if not nowait:
             cmdfrags.append('-w')
         if utilityMode:
@@ -200,12 +200,14 @@ class ModifyPostgresqlConfSetting(Command):
 
 #-----------------------------------------------        
 class ConfigExpansionSeg(Command):
-    def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, ctxt=LOCAL, remoteHost=None):
-        cmdStr = '$GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (dataDir, numSegs, contentId, dbId)
+    def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, tarFile=None, ctxt=LOCAL, remoteHost=None):
+        cmdStr = 'source %s/greenplum_path.sh; $GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (GPHOME,dataDir, numSegs, contentId, dbId)                
         if port:
             cmdStr += ' -p %s' % port
         if newSegment:
             cmdStr += ' -n'
+        if tarFile:
+            cmdStr += ' -t %s' % tarFile
             
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 

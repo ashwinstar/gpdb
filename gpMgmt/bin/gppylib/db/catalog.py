@@ -113,7 +113,7 @@ def vacuum_catalog(dburl,conn,full=False):
         vac_curs.execute("COMMIT")
         vac_curs.execute("SET CLIENT_MIN_MESSAGES='ERROR'")
         for table in catlist:
-            logger.debug('Vacuuming %s' % table[0])
+            logger.debug('Vacuuming %s %s' % (db[0],table[0]) )
             
             if full:
                 sql = "VACUUM FULL %s" % table[0]

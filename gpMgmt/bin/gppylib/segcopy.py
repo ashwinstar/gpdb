@@ -92,12 +92,13 @@ class GpSegCopy:
         if self.schema_only:
             logger.info("Cleaning up catalog for schema only copy on destination")
             #TODO: what to do about port...???
-            startCmd=SegmentStart(name,self.dstDir, 5432, True, ctxt=REMOTE, remoteHost=self.dstHost)
+            startCmd=SegmentStart(name,self.dstDir, utilityMode=True, ctxt=REMOTE, remoteHost=self.dstHost)
             stopCmd=SegmentStop(name, self.dstDir, ctxt=REMOTE, remoteHost=self.dstHost)
             
             startCmd.run(validateAfter=True)
             res=startCmd.get_results()
             dburl = dbconn.DbURL(hostname=self.dstHost,port=5432)
+            logger.info("connecting to database: %s" % dburl)
             conn = dbconn.connect(dburl, True)
             
             # TODO: add other catalog tables
