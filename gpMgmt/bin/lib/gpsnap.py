@@ -3,12 +3,16 @@
 '''
 gpsnap -- snapshot a gpdb array
 
-Usage: gpsnap {-c|-r|-d|-i} snapshot_name
+Usage: gpsnap [-vf?] {-c|-r|-d|-i} snapshot_name
 
 	-c: create a snapshot
         -r: restore a snapshot
         -d: delete a snapshot
         -i: show information on snapshot
+
+        -v: verbose
+        -f: force
+        -?: print help
 
 '''
 
@@ -31,10 +35,11 @@ if not MASTER_DATA_DIRECTORY:
 class __globals__:
     opt = {}
     opt['-v'] = False
-    opt['-c'] = ''
-    opt['-r'] = ''
-    opt['-d'] = ''
-    opt['-i'] = ''
+    opt['-c'] = False
+    opt['-r'] = False
+    opt['-d'] = False
+    opt['-i'] = False
+    opt['-f'] = False
     snapname = ''
 
 
@@ -46,6 +51,17 @@ def usage(exitarg):
     print __doc__
     sys.exit(exitarg)
 
+############
+def humantime(td):
+    d = td.days > 0 and td.days or 0
+    h = int(td.seconds / 60 / 60)
+    m = int(td.seconds / 60) % 60
+    s = td.seconds % 60
+    ret = ''
+    if d: ret = ret + '%dD ' % d
+    if h: ret = ret + '%dh ' % h
+    ret = ret + ('%dm %ds' % (m, s))
+    return ret
 
 ############
 def tstamp():
@@ -61,20 +77,26 @@ def die(s):
     sys.exit('%s ERROR: %s' % (tstamp(), s))
 
 
-
-    
+############
+def confirm(s):
+    if not GV.opt['-f'] and sys.stdin.isatty():
+        ok = raw_input('%s. Confirm? ' % s)
+        ok = ok.strip().lower()
+        if ok == '' or ok[0] != 'y':
+            die("Aborted")
+    return True
 
 ############
 def parseCommandLine():
     import getopt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vcrdi')
+        (options, args) = getopt.getopt(sys.argv[1:], '?vcrdif')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
-        if switch == '?':        usage(0)
-        elif switch[1] in 'vcrdi': GV.opt[switch] = True
+        if switch == '?': usage(0)
+        elif switch[1] in 'vcrdif': GV.opt[switch] = True
         
     if 1 == reduce(lambda x,y: x+y, [GV.opt['-'+s] and 1 or 0 for s in "crdi"]):
         pass
@@ -303,8 +325,14 @@ class ControlInfo:
             if f: f.close()
     
 
+
 ############
 def createSnapshot(name):
+    ctlInfo = ControlInfo.read(name)
+    if ctlInfo:
+        die("Snapshot '%s' exists." % name)
+    confirm('Create a snapshot. Proceed to shutdown the database')
+
     # need gp_configuration
     stime = datetime.datetime.now()
     run('gpstart -m')
@@ -350,7 +378,7 @@ def createSnapshot(name):
         emsg = "\n".join(["Failed to take snapshot"] + emsg)
         die(emsg)
         
-    
+    msg("Created. Elapsed %s." % humantime(etime - stime))
 
 ############
 def restoreSnapshot(name):
@@ -358,6 +386,10 @@ def restoreSnapshot(name):
     if not ctlInfo:
         die("Unable to find snapshot '%s'" % name)
     
+    confirm("Restore snapshot '%s'. Proceed to shutdown database" % name)
+
+    stime = datetime.datetime.now()
+
     # shut it down
     run('gpstop -af')
 
@@ -374,6 +406,7 @@ def restoreSnapshot(name):
         emsg = "\n".join(["Snapshot failure"] + emsg)
         die(emsg)
 
+    confirm("Proceed to delete DB and restore snapshot" % name)
 
     out = pmap(lambda s: (s, s.restoreSnapshot(name)), slist)
     for (s, rc) in out:
@@ -383,6 +416,9 @@ def restoreSnapshot(name):
     if emsg:
         emsg = "\n".join(["Failed to restore some segments"] + emsg)
         die(emsg)
+
+    etime = datetime.datetime.now()
+    msg("Restored. Elapsed %s." % humantime(etime - stime))
     
     
 ############
@@ -401,8 +437,12 @@ def infoSnapshot(name):
 def deleteSnapshot(name):
     ctlInfo = ControlInfo.read(name)
     if not ctlInfo:
+        msg("Snapshot '%s' does not exist" % name)
         return                  # assume there isn't any snapshots available
 
+    confirm("Delete snapshot '%s'" % name)
+
+    stime = datetime.datetime.now()
     slist = ctlInfo.segments[:]
     random.shuffle(slist)
 
@@ -416,6 +456,8 @@ def deleteSnapshot(name):
         emsg = "\n".join(["Unable to delete snapshot '%s'" % name] + emsg)
         die(emsg)
 
+    etime = datetime.datetime.now()
+    msg("Deleted. Elapsed %s." % humantime(etime - stime))
 
 
 
