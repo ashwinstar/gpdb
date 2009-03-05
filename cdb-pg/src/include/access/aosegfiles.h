@@ -61,7 +61,13 @@ extern void
 InsertInitialSegnoEntry(Relation parentrel, int segno);
 
 extern FileSegInfo *
-GetFileSegInfo(Relation parentrel, int segno, bool forupdate);
+GetFileSegInfoForWrite(Relation parentrel, int segno);
+
+extern FileSegInfo *
+GetFileSegInfoForVacuum(Relation parentrel, int segno);
+
+extern FileSegInfo *
+GetFileSegInfoForRead(Relation parentrel, int segno);
 
 extern FileSegInfo *
 GetAllFileSegInfo(Relation parentrel, Snapshot snapshot, int *totalsegs);

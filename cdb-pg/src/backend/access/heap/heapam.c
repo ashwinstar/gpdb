@@ -2998,7 +2998,10 @@ simple_heap_update(Relation relation, ItemPointer otid, HeapTuple tup)
  *	cid: current command ID (used for visibility test, and stored into
  *		tuple's cmax if lock is successful)
  *	mode: indicates if shared or exclusive tuple lock is desired
- *	nowait: if true, ereport rather than blocking if lock not available
+ *	waittype: 
+ *		if LockTupleWait, wait for lock until it's acquired (normal behavior)
+ *		if LockTupleNoWait,	if can't get lock right away, report error.
+ *		if LockTupleIfNotLocked, if can't get lock right away, give up. no error
  *
  * Output parameters:
  *	*tuple: all fields filled in
@@ -3052,7 +3055,7 @@ simple_heap_update(Relation relation, ItemPointer otid, HeapTuple tup)
 HTSU_Result
 heap_lock_tuple(Relation relation, HeapTuple tuple, Buffer *buffer,
 				ItemPointer ctid, TransactionId *update_xmax,
-				CommandId cid, LockTupleMode mode, bool nowait)
+				CommandId cid, LockTupleMode mode, LockTupleWaitType waittype)
 {
 	HTSU_Result result;
 	ItemPointer tid = &(tuple->t_self);
@@ -3092,7 +3095,7 @@ l3:
 
 		/* must copy state data before unlocking buffer */
 		xwait = HeapTupleHeaderGetXmax(tuple->t_data);;
-		
+
 		infomask = tuple->t_data->t_infomask;
 
 		LockBuffer(*buffer, BUFFER_LOCK_UNLOCK);
@@ -3127,7 +3130,12 @@ l3:
 		 */
 		if (!have_tuple_lock)
 		{
-			if (nowait)
+			if (waittype == LockTupleIfNotLocked)
+			{
+				if (!ConditionalLockTuple(relation, tid, tuple_lock_type))
+					return HeapTupleBeingUpdated; /* return without a lock */
+			}
+			else if (waittype == LockTupleNoWait)
 			{
 				if (!ConditionalLockTuple(relation, tid, tuple_lock_type))
 					ereport(ERROR,
@@ -3158,7 +3166,12 @@ l3:
 		else if (infomask & HEAP_XMAX_IS_MULTI)
 		{
 			/* wait for multixact to end */
-			if (nowait)
+			if (waittype == LockTupleIfNotLocked)
+			{
+				if (!ConditionalMultiXactIdWait((MultiXactId) xwait))
+					return HeapTupleBeingUpdated; /* return without a lock */
+			}
+			else if (waittype == LockTupleNoWait)
 			{
 				if (!ConditionalMultiXactIdWait((MultiXactId) xwait))
 					ereport(ERROR,
@@ -3193,7 +3206,12 @@ l3:
 		else
 		{
 			/* wait for regular transaction to end */
-			if (nowait)
+			if (waittype == LockTupleIfNotLocked)
+			{
+				if (!ConditionalXactLockTableWait(xwait))
+					return HeapTupleBeingUpdated; /* return without a lock */
+			}
+			else if (waittype == LockTupleNoWait)
 			{
 				if (!ConditionalXactLockTableWait(xwait))
 					ereport(ERROR,

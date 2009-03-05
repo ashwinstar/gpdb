@@ -1744,7 +1744,7 @@ ltrmark:;
 		tuple.t_self = *tid;
 		test = heap_lock_tuple(relation, &tuple, &buffer,
 							   &update_ctid, &update_xmax, cid,
-							   LockTupleExclusive, false);
+							   LockTupleExclusive, LockTupleWait);
 		switch (test)
 		{
 			case HeapTupleSelfUpdated:

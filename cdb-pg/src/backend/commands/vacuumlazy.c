@@ -859,7 +859,7 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
  *		column and we simulate relpages by subdividing the eof value
  *		("pg_aoseg_<oid>:eof") over the defined page size.
  *
- *		If FULL, we also truncate any leftover bytes that come after eof
+ *		We also truncate any leftover bytes that come after eof
  *		and are not a valid part of the relation (for example invalid rows
  *		that were left over after a failed COPY operation and needs
  *		vacuuming).
@@ -895,48 +895,14 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	totalbytes = eof;
 	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
 		
-	/* 
-	 * if VACUUM FULL we want to also truncate the relation after eof.
-	 * This must only be done when the relation is exclusively locked
-	 * or otherwise we can truncate concurrent user's data while he's
-	 * in the process of writing it! Therefore allowed in FULL only.
-	 */
 	if(isVacFull)
 	{
 		/* FULL */
 
-		if (Gp_role == GP_ROLE_EXECUTE)
-		{
-			FileSegInfo *segfile_array = NULL;	/* array of all segfiles information */
-			int total_segfiles;
-			int i;
-
-			/*
-			 * Get information about all the file segments we need to scan
-			 */
-			segfile_array = GetAllFileSegInfo(aorel, SnapshotNow, &total_segfiles);
-
-			for(i = 0 ; i < total_segfiles ; i++)
-			{
-				int segno;
-				int64 segeof;
-				File relfile;
-				char filenamepath[MAXPGPATH];
-
-				segno = segfile_array[i].segno;
-				segeof = segfile_array[i].eof;
-				
-				/* Open and truncate the relation segfile beyond its eof */
-				OpenAOSegmentFile(aorel, segno, false, &relfile, filenamepath);
-				TruncateAOSegmentFile(relfile, aorel, segeof, elevel);			
-				CloseAOSegmentFile(relfile, aorel, segno);	
-			}
-		}
-
 		/* fill in remaining VRelStats values */
 		((VRelStats *)vacrelstats)->rel_pages = nblocks;
 		((VRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((VRelStats *)vacrelstats)->hasindex = false;		
+		((VRelStats *)vacrelstats)->hasindex = false;
 		((VRelStats *)vacrelstats)->min_tlen = 0;
 		((VRelStats *)vacrelstats)->max_tlen = 0;
 		((VRelStats *)vacrelstats)->num_vtlinks = 0;
@@ -945,11 +911,11 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	else
 	{
 		/* LAZY */
-		
+
 		/* fill in remaining LVRelStats values */
 		((LVRelStats *)vacrelstats)->rel_pages = nblocks;
 		((LVRelStats *)vacrelstats)->rel_tuples = num_tuples;
-		((LVRelStats *)vacrelstats)->hasindex = false;				
+		((LVRelStats *)vacrelstats)->hasindex = false;
 		((LVRelStats *)vacrelstats)->nonempty_pages = 0;
 		((LVRelStats *)vacrelstats)->num_dead_tuples = 0;
 		((LVRelStats *)vacrelstats)->max_dead_tuples = 0;
@@ -959,6 +925,65 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		((LVRelStats *)vacrelstats)->num_free_pages = 0;
 		((LVRelStats *)vacrelstats)->max_free_pages = 0;
 		((LVRelStats *)vacrelstats)->pages_removed = 0;
+	}
+
+	/*
+	 * in both VACUUM and VACUUM FULL we want to also truncate the relation
+	 * after eof. This must only be done when the relation is exclusively locked
+	 * (as in VACUUM FULL) or the aoseg tuple for the segfile being truncated
+	 * is exclusively locked.
+	 *
+	 * If we don't guarantee the locking conditions we can truncate concurrent
+	 * user's data while he's in the process of writing it!
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		FileSegInfo *segfile_array = NULL;	/* array of all segfiles information */
+		int total_segfiles;
+		int i;
+
+		/* Get information about all the file segments we need to scan */
+		segfile_array = GetAllFileSegInfo(aorel, SnapshotNow, &total_segfiles);
+
+		/*
+		 * For each fileseg, get a lock on it and truncate beyond eof. If
+		 * fileseg is currently locked for update by another transaction
+		 * then skip it and don't truncate it (we don't want to wait on the lock
+		 * because that may take a long time. besides, the other transaction may
+		 * overwrite the junk beyond eof anyway, so we need not worry about this
+		 * too much, and treat it as a "best effort" operation).
+		 */
+		for(i = 0 ; i < total_segfiles ; i++)
+		{
+			FileSegInfo*	fsinfo;
+			int 			segno;
+			int64 			segeof;
+			File 			relfile;
+			char 			filenamepath[MAXPGPATH];
+
+			segno = segfile_array[i].segno;
+
+			/* get the eof and a lock */
+			fsinfo = GetFileSegInfoForVacuum(aorel, segno);
+
+			if(!fsinfo)
+			{
+				elog(DEBUG5, "vacuum skipping truncate of AO segfile %d, "
+							 "relation %s", segno, relname);
+			}
+			else
+			{
+				segeof = (int64)fsinfo->eof;
+
+				/* Open and truncate the relation segfile beyond its eof */
+				OpenAOSegmentFile(aorel, segno, false, &relfile, filenamepath);
+				TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
+				CloseAOSegmentFile(relfile, aorel, segno);
+
+				pfree(fsinfo);
+				fsinfo = NULL;
+			}
+		}
 	}
 	
 	ereport(elevel,

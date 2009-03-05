@@ -138,6 +138,13 @@ typedef enum
 	LockTupleExclusive
 } LockTupleMode;
 
+typedef enum
+{
+	LockTupleWait,		/* wait for lock until it's acquired */
+	LockTupleNoWait,	/* if can't get lock right away, report error */
+	LockTupleIfNotLocked/* if can't get lock right away, give up. no error */
+} LockTupleWaitType;
+
 /* CKTAN */
 typedef struct HeapInsertDesc HeapInsertDesc;
 struct HeapInsertDesc
@@ -164,7 +171,7 @@ extern Relation heap_openrv(const RangeVar *relation, LOCKMODE lockmode);
 #define heap_close(r,l)  relation_close(r,l)
 
 extern bool heap_enableHeapInsertDesc;
-extern HeapInsertDesc* heap_begininsert(Relation relation, CommandId cid, 
+extern HeapInsertDesc* heap_begininsert(Relation relation, CommandId cid,
 					bool use_wal, bool use_fsm);
 extern Oid heap_insertnext(HeapInsertDesc *ins, HeapTuple tup);
 extern void heap_endinsert(HeapInsertDesc *ins);
@@ -201,7 +208,7 @@ extern HTSU_Result heap_update(Relation relation, ItemPointer otid,
 extern HTSU_Result heap_lock_tuple(Relation relation, HeapTuple tuple,
 				Buffer *buffer, ItemPointer ctid,
 				TransactionId *update_xmax, CommandId cid,
-				LockTupleMode mode, bool nowait);
+				LockTupleMode mode, LockTupleWaitType waittype);
 extern void heap_inplace_update(Relation relation, HeapTuple tuple);
 extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 							  Buffer buf);
@@ -241,7 +248,7 @@ extern bool heap_attisnull_normalattr(HeapTuple tup, int attnum);
 
 extern HeapTuple heaptuple_copy_to(HeapTuple tup, HeapTuple result, uint32 *len);
 
-static inline HeapTuple heap_copytuple(HeapTuple tuple) 
+static inline HeapTuple heap_copytuple(HeapTuple tuple)
 {
 	return heaptuple_copy_to(tuple, NULL, NULL);
 }

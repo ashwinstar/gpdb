@@ -658,7 +658,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 				RelationGetRelid(parentrel), tupcount, segno)));
 
 	/* get the information for the file segment we inserted into */
-	fsinfo = GetFileSegInfo(parentrel, segno, true);
+	fsinfo = GetFileSegInfoForWrite(parentrel, segno);
 	Assert(fsinfo);
 	
 	/*

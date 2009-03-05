@@ -31,9 +31,18 @@
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
 
+typedef enum
+{
+	SegfileNoLock,
+	SegfileTryLock,
+	SegfileForceLock
+} SegfileLockStrategy;
+
+static FileSegInfo *GetFileSegInfo(Relation parentrel,
+								   int segno,
+								   SegfileLockStrategy lockstrategy);
 
 static Datum ao_compression_ratio_internal(Oid relid);
-
 
 /* ------------------------------------------------------------------------
  *
@@ -96,6 +105,48 @@ InsertInitialSegnoEntry(Relation parentrel,
 }
 
 /*
+ * GetFileSegInfoForWrite
+ *
+ * Wrapper for GetFileSegInfo, called before writing data into the segfile.
+ * Forces taking an exclusive lock on the file segment.
+ * Returns the fileseg information.
+ *
+ * Is used by any write operation, such as COPY and INSERT.
+ */
+FileSegInfo *
+GetFileSegInfoForWrite(Relation parentrel, int segno)
+{
+	return GetFileSegInfo(parentrel, segno, SegfileForceLock);
+}
+
+/*
+ * GetFileSegInfoForVacuum
+ *
+ * Wrapper for GetFileSegInfo, called before truncating data beyond eof.
+ * Tries to take an exclusive lock on the file segment.
+ * Returns the fileseg information if lock was taken, and NULL otherwise.
+ *
+ * Is used by VACUUM.
+ */
+FileSegInfo *
+GetFileSegInfoForVacuum(Relation parentrel, int segno)
+{
+	return GetFileSegInfo(parentrel, segno, SegfileTryLock);
+}
+
+/*
+ * Wrapper for GetFileSegInfo, called before reading data from the segfile.
+ * Doesn't take any lock.
+ *
+ * Is used by any reader, such as a scan operator in SELECT.
+ */
+FileSegInfo *
+GetFileSegInfoForRead(Relation parentrel, int segno)
+{
+	return GetFileSegInfo(parentrel, segno, SegfileNoLock);
+}
+
+/*
  * GetFileSegInfo
  *
  * Get the catalog entry for an appendonly relation from the
@@ -106,8 +157,9 @@ InsertInitialSegnoEntry(Relation parentrel,
  * pass true for 'forupdate'. Otherwise, pass false for read only. When
  * we intend to update an entry we lock it for the duration of the operation.
  */
+static
 FileSegInfo *
-GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
+GetFileSegInfo(Relation parentrel, int segno, SegfileLockStrategy lockstrategy)
 {
 
 	Relation		pg_aoseg_rel;
@@ -120,12 +172,14 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 	Datum			eof, eof_uncompressed, tupcount, varbcount;
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
+	bool			forupdate = (lockstrategy != SegfileNoLock);
 	LOCKMODE		lockmode = (forupdate ? RowExclusiveLock : AccessShareLock);
 	Snapshot 		usesnapshot = (forupdate ? SnapshotDirty : GetTransactionSnapshot());
 	Buffer			buffer;
 	ItemPointerData update_ctid;
 	TransactionId 	update_xmax;
 	HTSU_Result 	test;
+	LockTupleWaitType waittype;
 
 	if(forupdate)
 		LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
@@ -176,7 +230,7 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 
 			InsertInitialSegnoEntry(parentrel, segno);
 			LWLockRelease(AppendOnlyLock);
-			return GetFileSegInfo(parentrel, segno, true); /* recurse */
+			return GetFileSegInfo(parentrel, segno, lockstrategy); /* recurse */
 		}
 		else
 		{
@@ -214,12 +268,24 @@ lmark:	;
 		tupdata = *tuple;
 		Assert(ItemPointerIsValid(&tupdata.t_self));
 
+		/* select the proper wait type. should we wait on the lock or not? */
+		if(lockstrategy == SegfileForceLock)
+		{
+			waittype = 	LockTupleWait;
+		}
+		else
+		{
+			Assert(lockstrategy == SegfileTryLock);
+			waittype = LockTupleIfNotLocked;
+		}
+
 		test = heap_lock_tuple(pg_aoseg_rel, &tupdata, &buffer,
 							&update_ctid, &update_xmax,
 							GetCurrentCommandId() /* TODO: is that right? */,
 							LockTupleExclusive,
-							false);
+							waittype);
 		ReleaseBuffer(buffer);
+
 		switch (test)
 		{
 			case HeapTupleSelfUpdated:
@@ -259,6 +325,16 @@ lmark:	;
 					Insist(false);
 				}
 
+			case HeapTupleBeingUpdated:
+				/*
+				 * we tried to get a lock but couldn't (can only happen in
+				 * LockTupleIfNotLocked waittype) then just quit and return NULL
+				 */
+				Assert(waittype = LockTupleIfNotLocked);
+				index_endscan(aoscan);
+				index_close(pg_aoseg_idx, lockmode);
+				heap_close(pg_aoseg_rel, lockmode);
+				return NULL;
 			default:
 				elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
 				return NULL;
@@ -326,6 +402,7 @@ lmark:	;
 
 	return fsinfo;
 }
+
 
 /*
  * GetAllFileSegInfo
@@ -741,7 +818,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 				/*
 				 * Get the numbers on the QD for this segment
 				 */
-				fsinfo = GetFileSegInfo(parentrel, qe_segno, true);
+				fsinfo = GetFileSegInfoForWrite(parentrel, qe_segno);
 
 				/* since we passed 'true' a segfile record must exist now */
 				Assert(fsinfo);

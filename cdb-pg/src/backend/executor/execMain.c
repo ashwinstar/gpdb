@@ -2183,7 +2183,8 @@ lnext:	;
 					test = heap_lock_tuple(erm->relation, &tuple, &buffer,
 										   &update_ctid, &update_xmax,
 										   estate->es_snapshot->curcid,
-										   lockmode, erm->noWait);
+										   lockmode,
+										   (erm->noWait ? LockTupleNoWait : LockTupleWait));
 					ReleaseBuffer(buffer);
 					switch (test)
 					{

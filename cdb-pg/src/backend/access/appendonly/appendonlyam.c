@@ -523,9 +523,8 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	Assert(strlen(aoInsertDesc->appendFilePathName) + 1 <= aoInsertDesc->appendFilePathNameMaxLen);
 	
 	/* get the information for the file segment we insert into */
-	fsinfo = GetFileSegInfo(aoInsertDesc->aoi_rel, 
-							aoInsertDesc->cur_segno,
-							/* forupdate */ true);
+	fsinfo = GetFileSegInfoForWrite(aoInsertDesc->aoi_rel,
+									aoInsertDesc->cur_segno);
 	
 	Assert(fsinfo);
 	eof = (int64)fsinfo->eof;
