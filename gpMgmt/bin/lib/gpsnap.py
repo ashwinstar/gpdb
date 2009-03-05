@@ -406,7 +406,7 @@ def restoreSnapshot(name):
         emsg = "\n".join(["Snapshot failure"] + emsg)
         die(emsg)
 
-    confirm("Proceed to delete DB and restore snapshot" % name)
+    confirm("Proceed to delete DB and restore snapshot")
 
     out = pmap(lambda s: (s, s.restoreSnapshot(name)), slist)
     for (s, rc) in out:
