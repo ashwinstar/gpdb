@@ -305,6 +305,8 @@ IsSharedRelation(Oid relationId)
 		relationId == TableSpaceRelationId ||
 		relationId == GpConfigurationRelationId ||
 		relationId == GpConfigHistoryRelationId ||
+		relationId == GpDbInterfacesRelationId ||
+		relationId == GpInterfacesRelationId ||
 		relationId == GpIdRelationId ||
 		relationId == GpVersionRelationId ||
 		relationId == ResQueueRelationId ||
@@ -329,6 +331,8 @@ IsSharedRelation(Oid relationId)
 		relationId == TablespaceNameIndexId ||
 		relationId == GpConfigurationContentDefinedprimaryIndexId ||
 		relationId == GpConfigurationDbidIndexId ||
+		relationId == GpDbInterfacesIndexId ||
+		relationId == GpInterfacesIndexId ||
 		relationId == AuthIdRolResQueueIndexId ||
 		relationId == ResQueueOidIndexId ||
 		relationId == ResQueueRsqnameIndexId )

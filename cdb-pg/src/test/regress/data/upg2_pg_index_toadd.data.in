@@ -1,4 +1,6 @@
 copy @gpupgradeschemaname@.pg_index from stdin null as E'\\N' csv delimiter '|' header;
 indexrelid|indrelid|indnatts|indisunique|indisprimary|indisclustered|indisvalid|indkey|indclass|indexprs|indpred
 5009|6107|2|t|f|f|t|1 2|1989 1976|\N|\N
+6108|5029|1|f|f|f|t|1|1976|\N|\N
+6109|5030|1|t|f|f|t|1|1976|\N|\N
 \.

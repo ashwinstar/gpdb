@@ -44,6 +44,7 @@
 #include "cdb/cdbfts.h"
 #include "libpq/ip.h"
 #include "postmaster/bgwriter.h"
+#include "catalog/indexing.h"
 
 /*
  * Helper Functions
@@ -51,8 +52,14 @@
 static int	CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi);
 
-static char **segment_ip_cache = NULL;
-static int segment_ip_cache_limit = 0;
+static void getAddressesForDBid(CdbComponentDatabaseInfo *c);
+
+static HTAB *segment_ip_cache_htab = NULL;
+
+struct segment_ip_cache_entry {
+	char key[NAMEDATALEN];
+	char hostinfo[NI_MAXHOST];
+};
 
 /*
  * getGpId() causes the gp_id table's singleton row to be read into a global structure
@@ -170,8 +177,7 @@ getGpId(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot have a Gp_role of dispatch when connected to a segment database."
-					 )));
+				 errmsg("Cannot have a Gp_role of dispatch when connected to a segment database.")));
 	}
 
 	if (Gp_role != GP_ROLE_UTILITY && GpIdentity.segindex != Gp_segment)
@@ -181,15 +187,13 @@ getGpId(void)
 			Gp_segment = GpIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_id segindex not same as Gp_segment."
-						 )));
+					 errmsg("gp_id segindex not same as Gp_segment.")));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("gp_id segindex not same as Gp_segment."
-						 )));
+					 errmsg("gp_id segindex not same as Gp_segment.")));
 		}
 	}
 
@@ -209,21 +213,10 @@ freeGpId(void)
 		GpIdentity.gpname = NULL;
 	}
 
-	if (Gp_role == GP_ROLE_DISPATCH && segment_ip_cache != NULL)
+	if (Gp_role == GP_ROLE_DISPATCH && segment_ip_cache_htab != NULL)
 	{
-		int i;
-
-		for (i=0; i < segment_ip_cache_limit; i++)
-		{
-			if (segment_ip_cache[i])
-			{
-				pfree(segment_ip_cache[i]);
-				segment_ip_cache[i] = NULL;
-			}
-		}
-		pfree(segment_ip_cache);
-		segment_ip_cache = NULL;
-		segment_ip_cache_limit = 0;
+		hash_destroy(segment_ip_cache_htab);
+		segment_ip_cache_htab = NULL;
 	}
 
 	GpIdentity.numsegments = 0;
@@ -274,8 +267,9 @@ getCdbComponentInfo(void)
 	/*
 	 * Allocate component_databases return structure and
 	 * component_databases->segment_db_info array with an initial size
-	 * of 128, and component_databases->entry_db_info with an initial size of 4.
-	 * If necessary during row fetching, we grow these by doubling each time we run out.
+	 * of 128, and component_databases->entry_db_info with an initial
+	 * size of 4.  If necessary during row fetching, we grow these by
+	 * doubling each time we run out.
 	 */
 	component_databases = palloc0(sizeof(CdbComponentDatabases));
 
@@ -292,9 +286,10 @@ getCdbComponentInfo(void)
 	while (HeapTupleIsValid(gp_configuration_tuple = heap_getnext(gp_configuration_scan, ForwardScanDirection)))
 	{
 		/*
-		 * Grab the fields that we need from gp_configuration.
-		 * We do this first, because until we read them, we don't know whether
-		 * this is an entry database row or a segment database row.
+		 * Grab the fields that we need from gp_configuration.  We do
+		 * this first, because until we read them, we don't know
+		 * whether this is an entry database row or a segment database
+		 * row.
 		 */
 		CdbComponentDatabaseInfo *pRow;
 
@@ -351,15 +346,6 @@ getCdbComponentInfo(void)
 				pOld = component_databases->segment_db_info;
 				component_databases->segment_db_info = (CdbComponentDatabaseInfo *)
 					repalloc(pOld, sizeof(CdbComponentDatabaseInfo) * segment_array_size);
-
-				/* MPP-2104: We have to grow this as well. */
-				if (segment_ip_cache != NULL)
-				{
-					segment_ip_cache = repalloc(segment_ip_cache, sizeof(char *) * segment_array_size);
-					for (i=segment_ip_cache_limit; i < segment_array_size; i++)
-						segment_ip_cache[i] = NULL;
-					segment_ip_cache_limit = segment_array_size;
-				}
 			}
 
 			pRow = &component_databases->segment_db_info[component_databases->total_segment_dbs];
@@ -411,82 +397,9 @@ getCdbComponentInfo(void)
 		Assert(!isNull);
 		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
 
-		if (segment_ip_cache == NULL)
-		{
-			MemoryContext oldContext;
 
-			oldContext = MemoryContextSwitchTo(TopMemoryContext);
-			/* Max number of nodes is the size of the segment array (plus up to two QDs) */
-			segment_ip_cache_limit = segment_array_size + 10;   /* memory is cheap */
-			segment_ip_cache = palloc0(segment_ip_cache_limit * sizeof(char *));
-			MemoryContextSwitchTo(oldContext);
-		}
-
-        /* Note dbid is 1-based, so segment_ip_cache[0] is unused */
-		Assert(dbid < segment_ip_cache_limit);
-		if (segment_ip_cache[dbid] == NULL)
-		{
-			MemoryContext oldContext;
-			int			ret;
-			char		portNumberStr[32];
-			char	   *service;
-			struct addrinfo *addrs = NULL,
-					   *addr;
-			struct addrinfo hint;
-			
-			/* Initialize hint structure */
-			MemSet(&hint, 0, sizeof(hint));
-			hint.ai_socktype = SOCK_STREAM;
-			hint.ai_family = AF_UNSPEC;
-			
-			snprintf(portNumberStr, sizeof(portNumberStr), "%d", pRow->port);
-			service = portNumberStr;
-				
-			ret = pg_getaddrinfo_all(pRow->hostname, service, &hint, &addrs);
-			if (ret || !addrs)
-			{
-				if (addrs)
-					pg_freeaddrinfo_all(hint.ai_family, addrs);
-				ereport(ERROR,
-						(errmsg("could not translate host name \"%s\", port \"%d\" to address: %s",
-								pRow->hostname, pRow->port, gai_strerror(ret))));
-			}
-			
-			/* save in the cache context */
-			oldContext = MemoryContextSwitchTo(TopMemoryContext);
-			
-			for (addr = addrs; addr; addr = addr->ai_next)
-			{
-#ifdef HAVE_UNIX_SOCKETS
-				/* Ignore AF_UNIX sockets, if any are returned. */
-				if (addr->ai_family == AF_UNIX)
-					continue;
-#endif
-				if (addr->ai_family == AF_INET) /* IPv4 address */
-				{
-					char		hostinfo[NI_MAXHOST];
-					pg_getnameinfo_all((struct sockaddr_storage *)addr->ai_addr, addr->ai_addrlen,
-							hostinfo, sizeof(hostinfo),
-												   NULL, 0,
-												   NI_NUMERICHOST);
-					segment_ip_cache[dbid] = pstrdup(hostinfo);
-					break;
-				}
-			}
-			
-			MemoryContextSwitchTo(oldContext);
-			
-#ifdef HAVE_IPV6
-			if (segment_ip_cache[dbid] == NULL && addrs->ai_family == AF_INET6)
-				elog(ERROR,"host %s only has IPv6 address, not yet supported",pRow->hostname);
-#endif
-			
-			pg_freeaddrinfo_all(hint.ai_family, addrs);
-		}
-		
-		pRow->hostip = pstrdup(segment_ip_cache[dbid]);
-
-		
+		getAddressesForDBid(pRow);
+		pRow->hostip = pRow->hostaddrs[0];
 	}
 
 	/*
@@ -496,15 +409,13 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("Greenplum Database number of segment databases cannot be 0"
-					 )));
+				 errmsg("Greenplum Database number of segment databases cannot be 0")));
 	}
 	if (component_databases->total_entry_dbs == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("Greenplum Database number of entry databases cannot be 0"
-					 )));
+				 errmsg("Greenplum Database number of entry databases cannot be 0")));
 	}
 
 	/*
@@ -525,9 +436,10 @@ getCdbComponentInfo(void)
 	for (i = 0; i < component_databases->total_segment_dbs; i++)
 	{
 		if (i == 0 ||
-			(component_databases->segment_db_info[i].segindex !=
-			 component_databases->segment_db_info[i - 1].segindex))
+			(component_databases->segment_db_info[i].segindex != component_databases->segment_db_info[i - 1].segindex))
+		{
 			component_databases->total_segments++;
+		}
 	}
 
 
@@ -570,8 +482,9 @@ getCdbComponentInfo(void)
 	}
 
 	/*
-	 * Now validate that the segindexes for the segment databases are between 0 and GpIdentity.numsegments-1 inclusive,
-	 * and that we hit them all. Since it's sorted, this is relatively easy.
+	 * Now validate that the segindexes for the segment databases are
+	 * between 0 and GpIdentity.numsegments-1 inclusive, and that we
+	 * hit them all. Since it's sorted, this is relatively easy.
 	 */
 	x = 0;
 	for (i = 0; i < getgpsegmentCount(); i++)
@@ -608,7 +521,6 @@ getCdbComponentInfo(void)
 	heap_endscan(gp_configuration_scan);
 
 	heap_close(gp_configuration_rel, AccessShareLock);
-
 
 	return component_databases;
 }
@@ -680,9 +592,9 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 
 	if (cdi->hostname != NULL)
 		pfree(cdi->hostname);
+
 	if (cdi->datadir != NULL)
 		pfree(cdi->datadir);
-
 }
 
 /*
@@ -750,10 +662,12 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (cdb_total_plans > 0)
+		{
 			elog(DEBUG1, "session dispatched %d plans %d slices (%f), largest plan %d",
 				 cdb_total_plans, cdb_total_slices,
 				 ((double)cdb_total_slices/(double)cdb_total_plans),
 				 cdb_max_slices);
+		}
 	}
 
 	if (Gp_role != GP_ROLE_UTILITY && Gp_role != GP_ROLE_DISPATCHAGENT)
@@ -762,7 +676,6 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 		CleanUpMotionLayerIPC();
 	}
 }
-
 
 /*
  * CdbComponentDatabaseInfoCompare:
@@ -785,16 +698,289 @@ CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
 }
 
 /*
- * Given total number of primary segment databases and a number of segments
- * to "skip" - this routine creates a boolean map (array) the size of total
- * number of segments and randomly selects several entries (total number of
- * total_to_skip) to be marked as "skipped". This is used for external tables
- * with the 'gpfdist' protocol where we want to get a number of *random* segdbs
- * to connect to a gpfdist client.
+ * We're going to sort interface-ids by priority.  So we need a little
+ * struct, and a comparison function to hand-off to qsort().
+ */
+struct priority_iface {
+	int priority;
+	int interface;
+};
+
+/*
+ * iface_priority_compare() A compare function for interface-priority
+ * structs.  for use with qsort.
+ */
+static int
+iface_priority_compare(const void *p1, const void *p2)
+{
+	const struct priority_iface *obj1 = (struct priority_iface *) p1;
+	const struct priority_iface *obj2 = (struct priority_iface *) p2;
+
+	return (obj1->priority - obj2->priority);
+}
+
+/*
+ * Maintain a cache of names.
+ *
+ * The keys are all NAMEDATALEN long.
+ */
+static char *
+getDnsCachedAddress(char *name, int port)
+{
+	struct segment_ip_cache_entry *e;
+
+	if (segment_ip_cache_htab == NULL)
+	{
+		HASHCTL		hash_ctl;
+
+		MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+
+		hash_ctl.keysize = NAMEDATALEN + 1;
+		hash_ctl.entrysize = sizeof(struct segment_ip_cache_entry);
+
+		segment_ip_cache_htab = hash_create("segment_dns_cache",
+											256,
+											&hash_ctl,
+											HASH_ELEM);
+		Assert(segment_ip_cache_htab != NULL);
+	}
+
+	e = (struct segment_ip_cache_entry *)hash_search(segment_ip_cache_htab,
+													 name, HASH_FIND, NULL);
+
+	/* not in our cache, we've got to actually do the name lookup. */
+	if (e == NULL)
+	{
+		MemoryContext oldContext;
+		int			ret;
+		char		portNumberStr[32];
+		char	   *service;
+		struct addrinfo *addrs = NULL,
+			*addr;
+		struct addrinfo hint;
+			
+		/* Initialize hint structure */
+		MemSet(&hint, 0, sizeof(hint));
+		hint.ai_socktype = SOCK_STREAM;
+		hint.ai_family = AF_UNSPEC;
+			
+		snprintf(portNumberStr, sizeof(portNumberStr), "%d", port);
+		service = portNumberStr;
+				
+		ret = pg_getaddrinfo_all(name, service, &hint, &addrs);
+		if (ret || !addrs)
+		{
+			if (addrs)
+				pg_freeaddrinfo_all(hint.ai_family, addrs);
+			ereport(ERROR,
+					(errmsg("could not translate host name \"%s\", port \"%d\" to address: %s",
+							name, port, gai_strerror(ret))));
+		}
+			
+		/* save in the cache context */
+		oldContext = MemoryContextSwitchTo(TopMemoryContext);
+			
+		for (addr = addrs; addr; addr = addr->ai_next)
+		{
+#ifdef HAVE_UNIX_SOCKETS
+			/* Ignore AF_UNIX sockets, if any are returned. */
+			if (addr->ai_family == AF_UNIX)
+				continue;
+#endif
+			if (addr->ai_family == AF_INET) /* IPv4 address */
+			{
+				char		hostinfo[NI_MAXHOST];
+
+				pg_getnameinfo_all((struct sockaddr_storage *)addr->ai_addr, addr->ai_addrlen,
+								   hostinfo, sizeof(hostinfo),
+								   NULL, 0,
+								   NI_NUMERICHOST);
+
+				/* INSERT INTO OUR CACHE HTAB HERE */
+
+				e = (struct segment_ip_cache_entry *)hash_search(segment_ip_cache_htab,
+																 name,
+																 HASH_ENTER,
+																 NULL);
+				Assert(e != NULL);
+				memcpy(e->hostinfo, hostinfo, sizeof(hostinfo));
+
+				break;
+			}
+		}
+			
+		MemoryContextSwitchTo(oldContext);
+			
+		pg_freeaddrinfo_all(hint.ai_family, addrs);
+	}
+
+	/* return a pointer to our cache. */
+	return e->hostinfo;
+}
+
+/*
+ * Given a component-db in the system, find the addresses at which it
+ * can be reached, appropriately populate the argument-structure, and
+ * maintain the ip-lookup-cache.
+ *
+ * We get all of the interface-ids, sort them in priority order, then
+ * go get their details ... and then make sure they're cached properly.
+ */
+static void
+getAddressesForDBid(CdbComponentDatabaseInfo *c)
+{
+	Relation	gp_db_interface_rel;
+	Relation	gp_interface_rel;
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	dbscan, ifacescan;
+
+	int			j, i=0;
+	struct priority_iface *ifaces=NULL;
+	int			iface_count, iface_max=0;
+
+	Datum		attr;
+	bool		isNull;
+
+	int			dbid;
+	int			iface_id;
+	int			priority;
+
+	Assert(c != NULL);
+		
+	gp_db_interface_rel = heap_open(GpDbInterfacesRelationId, AccessShareLock);
+
+	ScanKeyInit(&key, Anum_gp_db_interfaces_dbid,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(c->dbid));
+
+	dbscan = systable_beginscan(gp_db_interface_rel, GpDbInterfacesIndexId,
+								true, SnapshotNow, 1, &key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(dbscan)))
+	{
+		i++;
+		if (i > iface_max)
+		{
+			/* allocate 8-more slots */
+			if (ifaces == NULL)
+				ifaces = palloc((iface_max + 8) * sizeof(struct priority_iface));
+			else
+				ifaces = repalloc(ifaces, (iface_max + 8) * sizeof(struct priority_iface));
+
+			memset(ifaces + iface_max, 0, 8 * sizeof(struct priority_iface));
+			iface_max += 8;
+		}
+
+		/* dbid is for sanity-check on scan condition only */
+		attr = heap_getattr(tuple, Anum_gp_db_interfaces_dbid, gp_db_interface_rel->rd_att, &isNull);
+		Assert(!isNull);
+		dbid = DatumGetInt16(attr);
+		Assert(dbid == c->dbid);
+
+		attr = heap_getattr(tuple, Anum_gp_db_interfaces_interfaceid, gp_db_interface_rel->rd_att, &isNull);
+		Assert(!isNull);
+		iface_id = DatumGetInt16(attr);
+
+		attr = heap_getattr(tuple, Anum_gp_db_interfaces_priority, gp_db_interface_rel->rd_att, &isNull);
+		Assert(!isNull);
+		priority = DatumGetInt16(attr);
+
+		ifaces[i-1].priority = priority;
+		ifaces[i-1].interface = iface_id;
+	}
+	iface_count = i;
+
+	/* Finish up scan and close appendonly catalog. */
+	systable_endscan(dbscan);
+
+	heap_close(gp_db_interface_rel, AccessShareLock);
+
+	/* we now have the unsorted list, or an empty list. */
+	do
+	{
+		/* fallback to using hostname if our list is empty */
+		if (iface_count == 0)
+			break;
+
+		qsort(ifaces, iface_count, sizeof(struct priority_iface), iface_priority_compare);
+
+		/* we now have interfaces, sorted by priority. */
+
+		gp_interface_rel = heap_open(GpInterfacesRelationId, AccessShareLock);
+
+		j=0;
+		for (i=0; i < iface_count; i++)
+		{
+			int status=0;
+
+			/* Start a new scan. */
+			ScanKeyInit(&key, Anum_gp_interfaces_interfaceid,
+						BTEqualStrategyNumber, F_INT2EQ,
+						ObjectIdGetDatum(ifaces[i].interface));
+
+			ifacescan = systable_beginscan(gp_interface_rel, GpInterfacesIndexId,
+										   true, SnapshotNow, 1, &key);
+
+			tuple = systable_getnext(ifacescan);
+
+			Assert(HeapTupleIsValid(tuple));
+
+			/* iface_id is for sanity-check on scan condition only */
+			attr = heap_getattr(tuple, Anum_gp_interfaces_interfaceid, gp_interface_rel->rd_att, &isNull);
+			Assert(!isNull);
+			iface_id = DatumGetInt16(attr);
+			Assert(iface_id == ifaces[i].interface); 
+
+			attr = heap_getattr(tuple, Anum_gp_interfaces_status, gp_interface_rel->rd_att, &isNull);
+			Assert(!isNull);
+			status = DatumGetInt16(attr);
+
+			/* if the status is "alive" use the interface. */
+			if (status == 1)
+			{
+				attr = heap_getattr(tuple, Anum_gp_interfaces_address, gp_interface_rel->rd_att, &isNull);
+				Assert(!isNull);
+				c->hostaddrs[j++] = pstrdup(getDnsCachedAddress(DatumGetCString(attr), c->port));
+			}
+
+			systable_endscan(ifacescan);
+		}
+
+		heap_close(gp_interface_rel, AccessShareLock);
+
+		/* fallback to using hostname if our list is empty */
+		if (j == 0)
+			break;
+
+		/* successfully retrieved at least one entry. */
+
+		return;
+	}
+	while (0);
+
+	/* fallback to using hostname */
+	memset(c->hostaddrs, 0, COMPONENT_DBS_MAX_ADDRS * sizeof(char *));
+
+	/* add an entry, using the hostname as fallback. */
+	c->hostaddrs[0] = pstrdup(getDnsCachedAddress(c->hostname, c->port));
+
+	return;
+}
+
+/*
+ * Given total number of primary segment databases and a number of
+ * segments to "skip" - this routine creates a boolean map (array) the
+ * size of total number of segments and randomly selects several
+ * entries (total number of total_to_skip) to be marked as
+ * "skipped". This is used for external tables with the 'gpfdist'
+ * protocol where we want to get a number of *random* segdbs to
+ * connect to a gpfdist client.
  *
  * Caller of this function should pfree skip_map when done with it.
  */
-bool *makeRandomSegMap(int total_primaries, int total_to_skip)
+bool *
+makeRandomSegMap(int total_primaries, int total_to_skip)
 {
 	int			randint;     /* some random int representing a seg    */
 	int			skipped = 0; /* num segs already marked to be skipped */
@@ -808,24 +994,23 @@ bool *makeRandomSegMap(int total_primaries, int total_to_skip)
 		/*
 		 * create a random int between 0 and (total_primaries - 1).
 		 * 
-		 * NOTE that the lower and upper limits in geqo_randint() 
-		 * are inclusive so we take them into account. In reality
-		 * the chance of those limits to get selected by the random
-		 * generator is extremely small, so we may want to find a 
+		 * NOTE that the lower and upper limits in geqo_randint() are
+		 * inclusive so we take them into account. In reality the
+		 * chance of those limits to get selected by the random
+		 * generator is extremely small, so we may want to find a
 		 * better random generator some time (not critical though).
 		 */
 		randint = geqo_randint(0, total_primaries - 1);
 		
 		/*
-		 * mark this random index 'true' in the skip map (marked to 
-		 * be skipped) unless it was already marked.
+		 * mark this random index 'true' in the skip map (marked to be
+		 * skipped) unless it was already marked.
 		 */
 		if(skip_map[randint] == false)
 		{
 			skip_map[randint] = true;
 			skipped++;
 		}
-		
 	}	
 	
 	return skip_map;

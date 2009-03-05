@@ -69,6 +69,15 @@ select * from public.pg_index;
 \i @abs_srcdir@/data/upg2_pg_class_toadd.data
 copy public.pg_class from stdin oids null E'\\N' csv delimiter '|' header;
 reindex table pg_aocs;
+-- will error out in regression tests, this is expected
+reindex table gp_configuration_history;
+psql:@abs_srcdir@/data/upg2_pg_class_toadd.data:13: ERROR:  shared table "gp_configuration_history" can only be reindexed in stand-alone mode
+-- will error out in regression tests, this is expected
+reindex table gp_db_interfaces;
+psql:@abs_srcdir@/data/upg2_pg_class_toadd.data:15: ERROR:  shared table "gp_db_interfaces" can only be reindexed in stand-alone mode
+-- will error out in regression tests, this is expected
+reindex table gp_interfaces;
+psql:@abs_srcdir@/data/upg2_pg_class_toadd.data:17: ERROR:  shared table "gp_interfaces" can only be reindexed in stand-alone mode
 \i @abs_srcdir@/data/upg2_pg_attribute_toadd.data
 copy public.pg_attribute from stdin csv delimiter '|' header;
 \i @abs_srcdir@/data/upg2_pg_type_toadd.data
@@ -516,12 +525,18 @@ order by c.relname, a.attnum;
  gp_configuration_history | time                              |      1 | timestamptz     |      8 |        -1
  gp_configuration_history | dbid                              |      2 | int2            |      2 |        -1
  gp_configuration_history | desc                              |      3 | text            |     -1 |        -1
+ gp_db_interfaces         | dbid                              |      1 | int2            |      2 |        -1
+ gp_db_interfaces         | interfaceid                       |      2 | int2            |      2 |        -1
+ gp_db_interfaces         | priority                          |      3 | int2            |      2 |        -1
  gp_distribution_policy   | localoid                          |      1 | oid             |      4 |        -1
  gp_distribution_policy   | attrnums                          |      2 | _int2           |     -1 |        -1
  gp_id                    | gpname                            |      1 | name            |     64 |        -1
  gp_id                    | numsegments                       |      2 | int2            |      2 |        -1
  gp_id                    | dbid                              |      3 | int2            |      2 |        -1
  gp_id                    | content                           |      4 | int2            |      2 |        -1
+ gp_interfaces            | interfaceid                       |      1 | int2            |      2 |        -1
+ gp_interfaces            | address                           |      2 | name            |     64 |        -1
+ gp_interfaces            | status                            |      3 | int2            |      2 |        -1
  gp_master_mirroring      | summary_state                     |      1 | text            |     -1 |        -1
  gp_master_mirroring      | detail_state                      |      2 | text            |     -1 |        -1
  gp_master_mirroring      | log_time                          |      3 | timestamptz     |      8 |        -1
@@ -910,7 +925,7 @@ order by c.relname, a.attnum;
  pg_window                | winpretype                        |      8 | oid             |      4 |        -1
  pg_window                | winfinfunc                        |      9 | regproc         |      4 |        -1
  pg_window                | winkind                           |     10 | char            |      1 |        -1
-(405 rows)
+(411 rows)
 
 -- end_equivalent
 -- begin_equivalent 
@@ -1034,7 +1049,9 @@ select * from old_index where indexrelid < 10000 order by indexrelid, indrelid;
        6101 |     5000 |        2 | t           | f            | f              | t          | 1 2      | 1976 424            |          | 
        6102 |     5000 |        1 | t           | f            | f              | t          | 3        | 1976                |          | 
        6103 |     5002 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
-(86 rows)
+       6108 |     5029 |        1 | f           | f            | f              | t          | 1        | 1976                |          | 
+       6109 |     5030 |        1 | t           | f            | f              | t          | 1        | 1976                |          | 
+(88 rows)
 
 select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
 	   indrelid;
@@ -1126,7 +1143,9 @@ select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
        6101 |     5000 |        2 | t           | f            | f              | t          | 1 2      | 1976 424            |          | 
        6102 |     5000 |        1 | t           | f            | f              | t          | 3        | 1976                |          | 
        6103 |     5002 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
-(86 rows)
+       6108 |     5029 |        1 | f           | f            | f              | t          | 1        | 1976                |          | 
+       6109 |     5030 |        1 | t           | f            | f              | t          | 1        | 1976                |          | 
+(88 rows)
 
 -- end_equivalent
 drop view old_class, old_type, old_attribute, old_index;

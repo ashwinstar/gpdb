@@ -25,6 +25,7 @@
  * pointed to by non-NULL char*'s are also palloc'd.
  *
  */
+#define COMPONENT_DBS_MAX_ADDRS (8)
 typedef struct CdbComponentDatabaseInfo
 {
 	int16		dbid;			/* the dbid of this database */
@@ -40,7 +41,7 @@ typedef struct CdbComponentDatabaseInfo
 	int32		port;			/* port that instance is listening on */
 	char	   *datadir;		/* directory where instance was initialized
 								 * into */
-	
+	char	   *hostaddrs[COMPONENT_DBS_MAX_ADDRS];	/* cached lookup of names */	
 } CdbComponentDatabaseInfo;
 
 
