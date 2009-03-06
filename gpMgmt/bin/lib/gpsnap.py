@@ -3,12 +3,13 @@
 '''
 gpsnap -- snapshot a gpdb array
 
-Usage: gpsnap [-vlfz?] [-u user] {-c|-r|-d|-i} snapshot_name
+Usage: gpsnap [-Vvlfz?] [-u user] {-crdiI} snapshot_name
 
 	-c: create a snapshot
         -r: restore a snapshot
         -d: delete a snapshot
         -i: show information on snapshot
+        -I: show detailed info on snapshot
 
         -z: use zfs snapshot mechanism
         -l: list snapshots
@@ -38,18 +39,9 @@ os.putenv("PGOPTIONS", '-c gp_session_role=utility')
 
 class __globals__:
     opt = {}
-    opt['-v'] = False
-    opt['-V'] = False
-    opt['-c'] = False
-    opt['-r'] = False
-    opt['-d'] = False
-    opt['-i'] = False
-    opt['-f'] = False
-    opt['-l'] = False
-    opt['-z'] = False
+    for o in 'vVcrdiIflzu': opt['-' + o] = False
     opt['-u'] = ''
     snapname = ''
-
 
 
 GV = __globals__()
@@ -104,22 +96,22 @@ def confirm(s):
 def parseCommandLine():
     import getopt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?Vvlcrdifzu:')
+        (options, args) = getopt.getopt(sys.argv[1:], '?VvlcrdiIfzu:')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?': usage(0)
-        elif switch[1] in 'Vvlcrdifz': GV.opt[switch] = True
+        elif switch[1] in 'VvlcrdiIfz': GV.opt[switch] = True
         elif switch == '-u': GV.opt[switch] = val
 
     if GV.opt['-l']:
         return
         
-    if 1 == reduce(lambda x,y: x+y, [GV.opt['-'+s] and 1 or 0 for s in "crdi"]):
+    if 1 == reduce(lambda x,y: x+y, [GV.opt['-'+s] and 1 or 0 for s in "crdiI"]):
         pass
     else:
-        usage('Error: please specify one of -c / -r / -d / -i')
+        usage('Error: please specify one of -c / -r / -d / -i / -I')
     
     if 1 == len(args):
         GV.snapname = args[0]
@@ -217,8 +209,7 @@ class Segment:
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                ('cd %s && ' % sname.toppath())
                + ('(rm -f %s %s) && ' % (sname.tgzname(), sname.ctlname()))
-               + ('(gtar cfz %s %s 2> /dev/null || tar cfz %s %s)' % (sname.tgzname(), sname.dbdir(), 
-                                                                      sname.tgzname(), sname.dbdir()))]
+               + ('gtar cfz %s %s ' % (sname.tgzname(), sname.dbdir()))] 
         vvmsg("  - " + " ".join(cmd))
         rc = subprocess.Popen(cmd).wait()
         if rc: 
@@ -244,10 +235,12 @@ class Segment:
         sname = SnapshotName(self.datapath, name)
         msg('Checking snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               '(gtar tfz %s || tar tfz %s) > /dev/null'
-               % (sname.tgzpath(), sname.tgzpath())]
+               '(gtar tfz %s > /dev/null && ls -l %s) 2>&1' % (sname.tgzpath(), sname.tgzpath())]
         vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
+	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+	lines = p.stdout.readlines()
+	rc = p.wait()
+	return (rc, lines)
 
         
     def restoreSnapshot(self, name):
@@ -321,9 +314,12 @@ class ZfsSegment(Segment):
 	    return -1
 	
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-		'zfs list -t snapshot ' + sname]
+		'zfs list -t snapshot %s 2>&1' % sname]
         vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
+	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+	lines = p.stdout.readlines()
+	rc = p.wait()
+	return (rc, lines)
                
     def restoreSnapshot(self, name):
 
@@ -340,7 +336,7 @@ class ZfsSegment(Segment):
 
 
 ############
-def pmap(func, jlist, numThreads = 10):
+def pmap(func, jlist, numThreads = 16):
     if (numThreads > len(jlist)): 
         numThreads = len(jlist)
 
@@ -353,8 +349,8 @@ def pmap(func, jlist, numThreads = 10):
             while True: 
                 outq.put((None, func(inq.get_nowait())))
         except Queue.Empty: pass
-        except:
-            outq.put((sys.exc_info()[0], None))
+        except Exception, ex:
+            outq.put( (ex, None) )
             # drain 
             try:
                 while True: inq.get_nowait()
@@ -475,7 +471,8 @@ def createSnapshot(name):
     if ctlInfo:
         die("Snapshot '%s' exists." % name)
     
-    if not confirm('Create a snapshot. \nThis will shutdown the database.'):
+    if not confirm('Create a %s snapshot. \nThis will shutdown the database.' 
+			% (GV.opt['-z'] and 'zfs' or 'tgz')):
         die("Aborted by user.")
 
     # need gp_configuration
@@ -543,7 +540,7 @@ def restoreSnapshot(name):
     segments = ctlInfo.segments[:]
     random.shuffle(segments)
 
-    erows = filter(lambda (s,rc): rc,
+    erows = filter(lambda (s,(rc,lines)): rc,
                    pmap(lambda s: (s, s.checkSnapshot(name)), segments))
     if erows:
         emsg = (["Snapshot failure"] +
@@ -571,12 +568,31 @@ def infoSnapshot(name):
     ctlInfo = ControlInfo.read(name)
     if not ctlInfo:
         die("Unable to find snapshot '%s'" % name)
-    print 'snapshot name:',ctlInfo.name
-    print 'created      :',str(ctlInfo.etime)
-    print 'segments     :'
-    for s in ctlInfo.segments: print "\t%s" % str(s)
+    msg('snapshot name: ' + ctlInfo.name)
+    msg('created      : ' + str(ctlInfo.etime))
+    msg('segments     : ')
+    for s in ctlInfo.segments: msg("    " + str(s))
+    return ctlInfo
     
+def infoSnapshotDetailed(name):
+    ctlInfo = infoSnapshot(name)
+    print
+    msg('probing segments for detailed info ...')
+    segments = ctlInfo.segments[:]
+    random.shuffle(segments)
 
+    erows = []
+    for (s, (rc, lines)) in pmap(lambda s: (s, s.checkSnapshot(name)), segments):
+	if rc: erows.append( (s, (rc, lines)))
+	else: 
+	    for x in lines: msg('    [%s:%s info] %s' % (s.hostname, s.datapath, x.strip()))
+
+    for (s, (rc, lines)) in erows:
+	for x in lines: msg('    [%s:%s error] %s' % (s.hostname, s.datapath, x.strip()))
+
+    if erows:
+	die("Error(s) detected. Snapshot is not valid.")
+	
 
 ############
 def deleteSnapshot(name):
@@ -618,18 +634,14 @@ def listSnapshots():
 ############
 def main():
     parseCommandLine()
-    if GV.opt['-c']: 
-        createSnapshot(GV.snapname)
-    elif GV.opt['-r']:
-        restoreSnapshot(GV.snapname)
-    elif GV.opt['-d']:
-        deleteSnapshot(GV.snapname)
-    elif GV.opt['-i']:
-        infoSnapshot(GV.snapname)
-    elif GV.opt['-l']:
-        listSnapshots()
+    if GV.opt['-c']:   createSnapshot(GV.snapname)
+    elif GV.opt['-r']: restoreSnapshot(GV.snapname)
+    elif GV.opt['-d']: deleteSnapshot(GV.snapname)
+    elif GV.opt['-i']: infoSnapshot(GV.snapname)
+    elif GV.opt['-I']: infoSnapshotDetailed(GV.snapname)
+    elif GV.opt['-l']: listSnapshots()
     else:
-        usage('Error: invalid flags and/or arguments')
+	 usage('Error: invalid flags and/or arguments')
 
 if __name__ == '__main__':
     main()
