@@ -205,6 +205,8 @@ class Segment:
                          self.isprimary, self.valid, self.hostname, 
                          self.port, self.datapath])
 
+    def type(self): return 'tgz'
+
     def ctlpath(self, name):
         sname = SnapshotName(self.datapath, name)
         return self.content == '-1' and sname.ctlpath() or None
@@ -263,37 +265,75 @@ class Segment:
 class ZfsSegment(Segment):
     def __init__(self, line):
         Segment.__init__(self, line)
+	self.snapshotname = ''
+
+    def type(self): return 'zfs'
+
+    def get_snapshotname(self, name):
+	if self.snapshotname: return self.snapshotname
+
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname, 
+		'zfs list -t filesystem ' + self.datapath]
+	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+	out = p.stdout.readlines()
+	rc = p.wait()
+	
+	sname = ''
+	for lines in out: 
+	    t = map(lambda x: x.strip(), lines.split())
+	    if len(t) != 5: return -1
+	    if self.datapath.find(t[4]) == 0: 
+		sname = t[0]+'@' + name; break
+
+	self.snapshotname = sname
+	return sname
+
 
     def createSnapshot(self, name):
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs list -t snapshot $N@%s || zfs snapshot $N@%s'" % (name, name))]
+	sname = self.get_snapshotname(name)
+	if not sname:
+	    return -1
+
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname, 
+		'zfs snapshot ' + sname]
+	p = subprocess.Popen(cmd)
+	rc = p.wait()
+
         vvmsg("  - " + " ".join(cmd))
-        rc = subprocess.Popen(cmd).wait()
         if not rc:
             msg('Created snapshot %s:%s' % (self.hostname, self.datapath))
         return rc
 
     def deleteSnapshot(self, name):
+	sname = self.get_snapshotname(name)
+	if not sname:
+	    return -1
+	
         msg('Deleting snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs destroy $N@%s'" % (name))]
+		'zfs destroy ' + sname]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
 
     def checkSnapshot(self, name):
+	sname = self.get_snapshotname(name)
+	if not sname:
+	    return -1
+	
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs list -t snapshot $N@%s'" % (name))]
+		'zfs list -t snapshot ' + sname]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
                
     def restoreSnapshot(self, name):
+
+	sname = self.get_snapshotname(name)
+	if not sname:
+	    return -1
+	
         msg('Restoring snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('N=`zfs list -t filesystem %s` && export N && ' % self.datapath)
-                + ("bash -c 'zfs rollback $N@%s'" % (name))]
+		'zfs rollback ' + sname]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
         
