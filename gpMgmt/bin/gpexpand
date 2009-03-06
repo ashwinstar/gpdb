@@ -75,7 +75,9 @@ Remaining TODO items:
      this when the database is stopped and possibly can't be started fully.""",
      
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
-     the system.  should get rid of this requirement. """
+     the system.  should get rid of this requirement. """,
+     
+"""* Validation of input file needs to be improved """
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -618,14 +620,14 @@ class gpexpand:
         outfile = open(outputfile, 'w')
         
         logger.info("Generating input file...")
-        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix)
+        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase)
         
         
         for r in rows:              
             (content,defprim,dbid,isprim,valid,hostname,port,datadir)=r
             new_dbid = maxDbId + dbid
             new_content = oldSegCount + content
-            datadir = datadir.rstrip(str(content)) + str(new_content)            
+            datadir = datadir.rstrip(str(content)) + '/' + dir_prefix + str(new_content)            
             outfile.write("%d:%d:%s:%s:%d:%s\n" % (new_dbid,new_content,isprim,hostname,port,datadir) )           
         
         
@@ -1242,9 +1244,9 @@ class ExpandTable():
         
         logger.info("distrib policy for table: %s is '%s' " % (self.fq_name,foo))
         if foo == "" or foo == "None" or foo is None:
-            sql = "ALTER TABLE ONLY %s SET DISTRIBUTED RANDOMLY" % (self.fq_name)                        
+            sql = "ALTER TABLE ONLY %s SET WITH(REORGANIZE=TRUE) DISTRIBUTED RANDOMLY" % (self.fq_name)                        
         else:
-            sql = " ALTER TABLE ONLY %s SET DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
+            sql = " ALTER TABLE ONLY %s SET WITH(REORGANIZE=TRUE) DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
         logger.info("Expand SQL: %s" % sql)    
         dbconn.execSQL(table_conn,sql)
         table_conn.commit()
