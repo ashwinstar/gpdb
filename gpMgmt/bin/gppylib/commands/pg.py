@@ -151,9 +151,8 @@ def getPostmasterPID(db):
     sout=cmd.get_results().stdout.lstrip(' ')
     return int(sout.split()[1])
 
-def killPostmaster(host,pid,signal):
+def killPostmaster(db,signal):
     killPgProc(db,"postmaster",signal)
-    
 
 def getSeqServerPID(db):
     postmaster_pid=getPostmasterPID(db)    
@@ -192,15 +191,15 @@ def getFTSProbePID(db):
 def killFTSProbe(db,signal):
     return killPgProc(db,"postgres: ftsprobe process",signal)
 
-
 def killPgProc(db,procname,signal):
     postmasterPID=getPostmasterPID(db)
-    (parentPID,procPID)=getProcWithParent(db.hostname,postmasterPID,procname)
+    if procname == "postmaster":
+        procPID = postmasterPID
+        parentPID = 0
+    else:
+        (parentPID,procPID)=getProcWithParent(db.hostname,postmasterPID,procname)
     if procPID == 0:
-        raise Exception("Invalid PID: '0' to kill.  parent postmaster PID: %s" % postmasterPID)    
-    cmd=Kill.remote("kill seqserver",procPID,signal,db.hostname)
+        raise Exception("Invalid PID: '0' to kill.  parent postmaster PID: %s" % postmasterPID)
+    cmd=Kill.remote("kill "+procname,procPID,signal,db.hostname)
     return (parentPID,procPID)
-    
 
-
-    
