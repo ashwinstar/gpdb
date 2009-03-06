@@ -151,7 +151,7 @@ DELETE_STANDBY () {
 		ERROR_EXIT "[FATAL]:-Failed to start master instance in admin mode, check the gpstart log file" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting catalog entry for $MASTER_STANDBY_HOSTNAME" 1
-	${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -c "delete from $CONFIG_TABLE where content=-1 and dbid<>1 and isprimary='f';" >> $LOG_FILE 2>&1
+	${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d "$DEFAULTDB" -c "delete from $CONFIG_TABLE where content=-1 and dbid<>1 and isprimary='f';" >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		LOG_MSG "[FATAL]:-Failed to delete catalog entry for $MASTER_STANDBY_HOSTNAME" 1
 		LOG_MSG "[INFO]:-Restarting the GPDB array" 1
@@ -317,10 +317,10 @@ CHECK_PARAM () {
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
 	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}" 1
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_MPP_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
+	MASTER_MPP_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d  $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
 	#Check to see if there are any other Greenplum instances on the proposed standby host
-	IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
+	IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
 	if [ $UPDATE_CATALOG -eq 1 ];then
 		if [ $IN_USE_COUNT -ne 0 ];then
@@ -328,7 +328,7 @@ CHECK_PARAM () {
 			LOG_MSG "[WARN]:-This may have an impact on overall Greenplum Database segment instance performance" 1
 		fi
 		#Check to ensure that port requested not already in use on that host
-		PORT_IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
+		PORT_IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT -d $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
 		ERROR_CHK $? "obtain standby port check" 2
 		if [ $PORT_IN_USE_COUNT -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2
@@ -520,13 +520,13 @@ FAIL_PRIMARY_SEGMENTS () {
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
 	ERROR_CHK $? "start read only master segment instance" 2
 	#Now set primary segment instances port numbers to a negative number
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d  $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""
 	ERROR_CHK $? "update primary segment port numbers" 2
 	#Now delete any reference to a master standby instance
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" delete from $CONFIG_TABLE where content=-1 and definedprimary='f';\""
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" delete from $CONFIG_TABLE where content=-1 and definedprimary='f';\""
 	ERROR_CHK $? "delete master standby record" 2
 	#Now change the master segment instance hostname
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
 	ERROR_CHK $? "update master instance hostname" 2
 	#Now shutdown the read only master from utility mode
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
@@ -534,8 +534,8 @@ FAIL_PRIMARY_SEGMENTS () {
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY start"
 	ERROR_CHK $? "start readonly master instance" 2
 	#Now force an update of gp_pgdatabase
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
 	LOG_MSG "[INFO]:-Forced update of gp_pgdatabase complete" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

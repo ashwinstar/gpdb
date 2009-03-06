@@ -1092,11 +1092,11 @@ UPDATE_MPPCONFIGURATION () {
 		U_PORT=$6
 		U_DIR=$7
 		U_DB=$DEFAULTDB
-		CHK_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT "$U_DB" -A -t -c "select count(*) from $GP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT -d "$U_DB" -A -t -c "select count(*) from $GP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		ERROR_CHK $? "obtain psql count Master gp_configuration" 2
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system configuration table"				
-				env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT "$U_DB" -c "insert into $GP_CONFIGURATION_TBL (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},'t', '${U_PRIMARY}','${U_HOSTNAME}',${U_PORT},'${U_DIR}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT -d "$U_DB" -c "insert into $GP_CONFIGURATION_TBL (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},'t', '${U_PRIMARY}','${U_HOSTNAME}',${U_PORT},'${U_DIR}');" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_CONTENT to Master gp_configuration" 2
 		else
 				LOG_MSG "[INFO]:-Content $U_CONTENT already exists in gp_configuration system table"
@@ -1140,10 +1140,10 @@ UPDATE_MPP () {
 		TYPE=$6
 		U_HOST=$7
 		if [ $TYPE -eq 0 ]; then
-				$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT "$U_DB" -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT -d "$U_DB" -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_DBID to Master gp_id" 2
 		else
-				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT "$U_DB" -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT -d "$U_DB" -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update Greenplum system table" 2
@@ -1362,7 +1362,7 @@ START_QD_PRODUCTION () {
 }
 SET_GP_USER_PW () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	$PSQL -p $MASTER_PORT "$DEFAULTDB" -c"alter user $USER_NAME password '$GP_PASSWD';"
+	$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -c"alter user $USER_NAME password '$GP_PASSWD';"
 	ERROR_CHK $? "update Greenplum superuser password" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1370,7 +1370,7 @@ SET_GP_USER_PW () {
 CREATE_DATABASE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SET_VAR $QD_PRIMARY_ARRAY
-		$PSQL -p $GP_PORT "$DEFAULTDB" -c"create database \"${DATABASE_NAME}\";" >> $LOG_FILE 2>&1
+		$PSQL -p $GP_PORT -d "$DEFAULTDB" -c"create database \"${DATABASE_NAME}\";" >> $LOG_FILE 2>&1
 		ERROR_CHK $? "create database $DATABASE_NAME" 2
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
