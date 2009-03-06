@@ -75,12 +75,7 @@ Remaining TODO items:
      this when the database is stopped and possibly can't be started fully.""",
      
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
-     the system.  should get rid of this requirement. """,
-     
-# NOTE: when I run gpexpand it logs to ~/gpAdminLogs/gpexpand_yyyymmdd.log (chris)
-"""* gpexpand doesn't log to ~/gpAdminLogs """,
-
-"""* ignore external tables """
+     the system.  should get rid of this requirement. """
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
