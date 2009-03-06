@@ -919,7 +919,8 @@ WHERE
                     UNION
                    SELECT parchildrelid as oid FROM pg_partition_rule
                  )
-    AND n.nspname != 'gpexpand';
+    AND n.nspname != 'gpexpand'
+    AND c.relkind != 'x';
 
                   """ 
         self.logger.info(sql)
