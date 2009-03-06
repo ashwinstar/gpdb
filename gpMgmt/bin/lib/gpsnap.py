@@ -265,12 +265,12 @@ class Segment:
 class ZfsSegment(Segment):
     def __init__(self, line):
         Segment.__init__(self, line)
-	self.snapshotname = ''
+	self.snapshotname = {}
 
     def type(self): return 'zfs'
 
     def get_snapshotname(self, name):
-	if self.snapshotname: return self.snapshotname
+	if self.snapshotname.get(name): return self.snapshotname[name]
 
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname, 
 		'zfs list -t filesystem ' + self.datapath]
@@ -285,7 +285,7 @@ class ZfsSegment(Segment):
 	    if self.datapath.find(t[4]) == 0: 
 		sname = t[0]+'@' + name; break
 
-	self.snapshotname = sname
+	self.snapshotname[name] = sname
 	return sname
 
 
