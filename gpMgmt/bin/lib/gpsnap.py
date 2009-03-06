@@ -3,7 +3,7 @@
 '''
 gpsnap -- snapshot a gpdb array
 
-Usage: gpsnap [-vlfz?] {-c|-r|-d|-i} snapshot_name
+Usage: gpsnap [-vlfz?] [-u user] {-c|-r|-d|-i} snapshot_name
 
 	-c: create a snapshot
         -r: restore a snapshot
@@ -47,6 +47,7 @@ class __globals__:
     opt['-f'] = False
     opt['-l'] = False
     opt['-z'] = False
+    opt['-u'] = ''
     snapname = ''
 
 
@@ -103,13 +104,14 @@ def confirm(s):
 def parseCommandLine():
     import getopt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?Vvlcrdifz')
+        (options, args) = getopt.getopt(sys.argv[1:], '?Vvlcrdifzu:')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?': usage(0)
         elif switch[1] in 'Vvlcrdifz': GV.opt[switch] = True
+        elif switch == '-u': GV.opt[switch] = val
 
     if GV.opt['-l']:
         return
@@ -139,6 +141,19 @@ def run(cmd):
         for line in out: vvmsg(line[:-1])
     rc = p.close()
     return (rc, out)
+
+def runas(cmd):
+    if GV.opt['-u']:
+        vvmsg(cmd)
+        p = subprocess.Popen(['su', '-', GV.opt['-u'], '-c', cmd], 
+                             stdout=subprocess.PIPE)
+        out = p.stdout.readlines()
+        if GV.opt['-V']:
+            for line in out: vvmsg(line[:-1])
+        return (p.wait(), out)
+    else:
+        return run(cmd)
+
 
 
 ############
@@ -330,7 +345,7 @@ def test_pmap():
 
 ############
 def check_psql():
-    (rc, out) = run("psql -c 'select now()' 2>&1")
+    (rc, out) = runas("psql -c 'select now()' 2>&1")
     if rc:
         die('cannot run psql:\n\t%s' % ''.join(out))
 
@@ -426,14 +441,14 @@ def createSnapshot(name):
     # need gp_configuration
     stime = datetime.datetime.now()
     vmsg("Starting masters in utility mode ...")
-    run('gpstart -m')
+    runas('gpstart -m')
     vmsg("Checking psql connectivity ...")
     check_psql()
     segments = selectSegments()
     
     # shut it down
     vmsg("Stopping masters ...")
-    run('gpstop -af')
+    runas('gpstop -af')
 
     # shuffle the segments so we spread work across the array
     segments = segments[:]
@@ -483,7 +498,7 @@ def restoreSnapshot(name):
     stime = datetime.datetime.now()
 
     # shut it down
-    run('gpstop -af')
+    runas('gpstop -af')
 
     segments = ctlInfo.segments[:]
     random.shuffle(segments)
