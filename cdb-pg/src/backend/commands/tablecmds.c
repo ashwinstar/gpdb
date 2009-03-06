@@ -317,7 +317,8 @@ static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
 static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
-static void ATExecSetDistributedBy(Relation rel, Node *node);
+static void ATExecSetDistributedBy(Relation rel, Node *node, 
+								   AlterTableCmd *cmd);
 
 /* ALTER TABLE ... PARTITION */
 static char *
@@ -4230,7 +4231,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecDropInherit(rel, (RangeVar *) cmd->def, false);
 			break;
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
-			ATExecSetDistributedBy(rel, (Node *) cmd->def);
+			ATExecSetDistributedBy(rel, (Node *) cmd->def, cmd);
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
@@ -9175,7 +9176,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
  * set distribution policy for rel
  */
 static void
-ATExecSetDistributedBy(Relation rel, Node *node)
+ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 {
 	List 	   *lprime;
 	List 	   *lwith, *ldistro;
@@ -9189,6 +9190,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 	List	   *oid_map = NIL;
 	List	   *qe_data = NIL; /* data to pass to QEs */
 	bool        bRandom = false;
+	bool        bReorganizeRandom = false;
 
 	Relation	pgclass;
 	HeapTuple	optsTuple;
@@ -9213,10 +9215,70 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 
 	if (lwith && (Gp_role == GP_ROLE_DISPATCH))
 	{
-		Oid			relid;
-		Datum		datum;
-		bool		isnull;
-		bool		isReset = false;
+		Oid			 relid;
+		Datum		 datum;
+		bool		 isnull;
+		bool		 isReset    = false;
+		bool		 bWithReorg = false;
+		ListCell	*lc;
+		ListCell	*lprev = NULL;
+
+		/* remove the "REORGANIZE=true/false" from the WITH clause */
+		for (lc = list_head(lwith); lc != NULL;)
+		{
+			DefElem	*def	   = lfirst(lc);
+			char	*reorg_str = "REORGANIZE";
+
+			if (pg_strcasecmp(reorg_str, def->defname) != 0)
+			{ /* no match -- keep going */
+
+				/* XXX XXX: remove when we support real storage options */
+					ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("SET WITH ignored")));
+
+				lprev = lc;
+				lc = lnext(lc);
+			}
+			else /* matched -- set the flag, remove the list cell */
+			{
+				ListCell	*lnext = lnext(lc);
+
+				bWithReorg = true;
+
+				if (!def->arg)
+					bReorganizeRandom = true;
+				else
+				{
+					if (pg_strcasecmp("TRUE", strVal(def->arg)) == 0)
+						bReorganizeRandom = true;
+					else if (pg_strcasecmp("FALSE", strVal(def->arg)) == 0)
+						bReorganizeRandom = false;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("invalid REORGANIZE option \"%s\"",
+										strVal(def->arg))));
+				}
+
+				/* remove the current cell */
+				lwith = list_delete_cell(lwith, lc, lprev);
+
+				/* rebuild lprime (to fix dispatch) */
+				lprime = list_make2(lwith, ldistro);
+				cmd->def = (Node *) lprime;
+
+				/* keep going */
+				lc = lnext;
+			}
+		} /* end foreach lc */
+
+		/* if there are other storage options, but REORGANIZE is not
+		 * specified, then the storage must be re-org'd.  But if
+		 * REORGANIZE was specified use that setting.
+		 */
+		if (!bWithReorg && list_length(lwith))
+			bReorganizeRandom = true;
 
 		pgclass = heap_open(RelationRelationId, RowExclusiveLock);
 
@@ -9247,8 +9309,10 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 			heap_close(pgclass, RowExclusiveLock);
 		}
 
+		/* XXX XXX XXX XXX */
 		if (ldistro)
 		{
+			if (0)
 			ereport(NOTICE,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("SET WITH ignored")));
@@ -9277,14 +9341,19 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 			bRandom = true;
 
 			/* need to rebuild if have new storage options */
-			if (!newopts)
+			if (!(newopts && bReorganizeRandom))
 			{
 				if (rel->rd_cdbpolicy->nattrs == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
 							 errmsg("distribution policy of relation \"%s\" "
 									"already set to DISTRIBUTED RANDOMLY",
-									RelationGetRelationName(rel))));
+									RelationGetRelationName(rel)),
+							 errhint("Use ALTER TABLE ... "
+									 "SET WITH (REORGANIZE=TRUE) "
+									 "DISTRIBUTED RANDOMLY "
+									 "to force a random redistribution")
+									));
 
 				policy = (GpPolicy *) palloc(sizeof(GpPolicy));
 				policy->ptype = POLICYTYPE_PARTITIONED;
@@ -9307,11 +9376,6 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 			heap_close(rel, NoLock);
 			return;
 		}
-		else /* need to fix this up on the QEs */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("SET WITH not supported for RANDOM")));
-		
 	}
 
 	/*
@@ -9426,7 +9490,8 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 				if (rel->rd_att->attrs[i]->attisdropped)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot handle table with dropped attributes")));
+							 errmsg("cannot handle table with "
+									"dropped attributes")));
 			}
 		}
 
@@ -9453,6 +9518,7 @@ ATExecSetDistributedBy(Relation rel, Node *node)
 		oid_map = lsecond(qe_data);
 	}
 
+	/* XXX XXX XXX XXX */
 	if (0 && newopts)
 	{
 		Datum		repl_val[Natts_pg_class];
