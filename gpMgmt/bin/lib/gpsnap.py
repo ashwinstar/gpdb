@@ -36,6 +36,7 @@ if not MASTER_DATA_DIRECTORY:
     sys.exit('MASTER_DATA_DIRECTORY env not defined')
 os.putenv('PGHOST', '')
 os.putenv("PGOPTIONS", '-c gp_session_role=utility')
+os.putenv('PGDATABASE', 'template1')
 
 class __globals__:
     opt = {}
@@ -381,7 +382,7 @@ def test_pmap():
 
 ############
 def check_psql():
-    (rc, out) = runas("psql -c 'select now()' 2>&1")
+    (rc, out) = runas("psql 2>&1")
     if rc:
         die('cannot run psql:\n\t%s' % ''.join(out))
 
@@ -477,11 +478,15 @@ def createSnapshot(name):
 
     # need gp_configuration
     stime = datetime.datetime.now()
-    vmsg("Starting masters in utility mode ...")
-    runas('gpstart -m')
-    vmsg("Checking psql connectivity ...")
-    check_psql()
-    segments = selectSegments()
+    (rc, out) = runas("psql 2>&1") # is it up?
+    if not rc:
+        segments = selectSegments()
+    else:
+        vmsg("Starting masters in utility mode ...")
+        runas('gpstart -m')
+        vmsg("Checking psql connectivity ...")
+        
+        segments = selectSegments()
     
     # shut it down
     vmsg("Stopping masters ...")
