@@ -3,12 +3,12 @@
  * fe-lobj.c
  *	  Front-end large object interface
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-lobj.c,v 1.60 2006/10/04 00:30:13 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-lobj.c,v 1.67 2009/01/01 17:24:03 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,7 +19,6 @@
  *	must be included first on MS C.  Might as well do it for all WIN32's
  *	here.
  */
-#include "c.h"
 #include <io.h>
 #endif
 
@@ -42,6 +41,8 @@
 
 static int	lo_initialize(PGconn *conn);
 
+static Oid
+lo_import_internal(PGconn *conn, const char *filename, const Oid oid);
 
 /*
  * lo_open
@@ -122,6 +123,59 @@ lo_close(PGconn *conn, int fd)
 		return -1;
 	}
 }
+
+/*
+ * lo_truncate
+ *	  truncates an existing large object to the given size
+ *
+ * returns 0 upon success
+ * returns -1 upon failure
+ */
+int
+lo_truncate(PGconn *conn, int fd, size_t len)
+{
+	PQArgBlock	argv[2];
+	PGresult   *res;
+	int			retval;
+	int			result_len;
+
+	if (conn->lobjfuncs == NULL)
+	{
+		if (lo_initialize(conn) < 0)
+			return -1;
+	}
+
+	/* Must check this on-the-fly because it's not there pre-8.3 */
+	if (conn->lobjfuncs->fn_lo_truncate == 0)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("cannot determine OID of function lo_truncate\n"));
+		return -1;
+	}
+
+	argv[0].isint = 1;
+	argv[0].len = 4;
+	argv[0].u.integer = fd;
+
+	argv[1].isint = 1;
+	argv[1].len = 4;
+	argv[1].u.integer = len;
+
+	res = PQfn(conn, conn->lobjfuncs->fn_lo_truncate,
+			   &retval, &result_len, 1, argv, 2);
+
+	if (PQresultStatus(res) == PGRES_COMMAND_OK)
+	{
+		PQclear(res);
+		return retval;
+	}
+	else
+	{
+		PQclear(res);
+		return -1;
+	}
+}
+
 
 /*
  * lo_read
@@ -432,6 +486,27 @@ lo_unlink(PGconn *conn, Oid lobjId)
 Oid
 lo_import(PGconn *conn, const char *filename)
 {
+	return lo_import_internal(conn, filename, InvalidOid);
+}
+
+/*
+ * lo_import_with_oid -
+ *	  imports a file as an (inversion) large object.
+ *	  large object id can be specified.
+ *
+ * returns the oid of that object upon success,
+ * returns InvalidOid upon failure
+ */
+
+Oid
+lo_import_with_oid(PGconn *conn, const char *filename, Oid lobjId)
+{
+	return lo_import_internal(conn, filename, lobjId);
+}
+
+static Oid
+lo_import_internal(PGconn *conn, const char *filename, const Oid oid)
+{
 	int			fd;
 	int			nbytes,
 				tmp;
@@ -455,10 +530,14 @@ lo_import(PGconn *conn, const char *filename)
 	/*
 	 * create an inversion object
 	 */
-	lobjOid = lo_creat(conn, INV_READ | INV_WRITE);
+	if (oid == InvalidOid)
+		lobjOid = lo_creat(conn, INV_READ | INV_WRITE);
+	else
+		lobjOid = lo_create(conn, oid);
+
 	if (lobjOid == InvalidOid)
 	{
-		/* we assume lo_creat() already set a suitable error message */
+		/* we assume lo_create() already set a suitable error message */
 		(void) close(fd);
 		return InvalidOid;
 	}
@@ -622,6 +701,7 @@ lo_initialize(PGconn *conn)
 	/*
 	 * Execute the query to get all the functions at once.	In 7.3 and later
 	 * we need to be schema-safe.  lo_create only exists in 8.1 and up.
+	 * lo_truncate only exists in 8.3 and up.
 	 */
 	if (conn->sversion >= 70300)
 		query = "select proname, oid from pg_catalog.pg_proc "
@@ -633,6 +713,7 @@ lo_initialize(PGconn *conn)
 			"'lo_unlink', "
 			"'lo_lseek', "
 			"'lo_tell', "
+			"'lo_truncate', "
 			"'loread', "
 			"'lowrite') "
 			"and pronamespace = (select oid from pg_catalog.pg_namespace "
@@ -685,6 +766,8 @@ lo_initialize(PGconn *conn)
 			lobjfuncs->fn_lo_lseek = foid;
 		else if (!strcmp(fname, "lo_tell"))
 			lobjfuncs->fn_lo_tell = foid;
+		else if (!strcmp(fname, "lo_truncate"))
+			lobjfuncs->fn_lo_truncate = foid;
 		else if (!strcmp(fname, "loread"))
 			lobjfuncs->fn_lo_read = foid;
 		else if (!strcmp(fname, "lowrite"))
@@ -695,7 +778,6 @@ lo_initialize(PGconn *conn)
 
 	/*
 	 * Finally check that we really got all large object interface functions
-	 * --- except lo_create, which may not exist.
 	 */
 	if (lobjfuncs->fn_lo_open == 0)
 	{

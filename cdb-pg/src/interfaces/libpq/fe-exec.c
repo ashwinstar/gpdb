@@ -3,13 +3,12 @@
  * fe-exec.c
  *	  functions related to sending a query down to the backend
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.194 2008/01/01 19:46:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.194.2.1 2008/09/10 17:01:17 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +21,6 @@
 #include "libpq-int.h"
 
 #include "mb/pg_wchar.h"
-#include <limits.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -162,42 +160,12 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curBlock = NULL;
 	result->curOffset = 0;
 	result->spaceLeft = 0;
-    result->cdbstats = NULL;            /*CDB*/
-    result->QEWriter_HaveInfo = false;
-    result->QEWriter_DistributedTransactionId = 0;
-    result->QEWriter_CommandId = 0;
-    result->QEWriter_Dirty = false;
-    result->Standby_HaveInfo = false;
-    result->Standby_xlogid = 0;
-    result->Standby_xrecoff = 0;
-	
-    result->extras = NULL;
-    result->extraslen = 0;
-	
-	result->numRejected = 0;
-	result->naotupcounts = 0;
-	result->aotupcounts = NULL;
 
 	if (conn)
 	{
 		/* copy connection data we might need for operations on PGresult */
 		result->noticeHooks = conn->noticeHooks;
 		result->client_encoding = conn->client_encoding;
-
-		if (conn->QEWriter_HaveInfo)
-		{
-			result->QEWriter_HaveInfo = true;
-			result->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
-			result->QEWriter_CommandId= conn->QEWriter_CommandId;
-			result->QEWriter_Dirty = conn->QEWriter_Dirty;
-		}
-
-		if (conn->Standby_HaveInfo)
-		{
-			result->Standby_HaveInfo = true;
-			result->Standby_xlogid = conn->Standby_xlogid;
-			result->Standby_xrecoff = conn->Standby_xrecoff;
-		}
 
 		/* consider copying conn's errorMessage */
 		switch (status)
@@ -406,25 +374,6 @@ PQclear(PGresult *res)
 	res->paramDescs = NULL;
 	res->errFields = NULL;
 	/* res->curBlock was zeroed out earlier */
-	
-	
-	res->QEWriter_HaveInfo = false;
-	res->QEWriter_DistributedTransactionId = 0;
-	res->QEWriter_CommandId = 0;
-	res->QEWriter_Dirty = false;
-	
-	res->Standby_HaveInfo = false;
-	res->Standby_xlogid = 0;
-	res->Standby_xrecoff = 0;
-	
-	if (res->extras)
-		free(res->extras);
-	res->extraslen = 0;
-	res->extras = NULL;
-
-	if (res->aotupcounts)
-		free(res->aotupcounts);
-	res->naotupcounts = 0;
 
 	/* Free the PGresult structure itself */
 	free(res);
@@ -521,7 +470,7 @@ pqPrepareAsyncResult(PGconn *conn)
  * a trailing newline, and should not be more than one line).
  */
 void
-pqInternalNotice(const PGNoticeHooks * hooks, const char *fmt,...)
+pqInternalNotice(const PGNoticeHooks *hooks, const char *fmt,...)
 {
 	char		msgBuf[1024];
 	va_list		args;
@@ -569,18 +518,11 @@ pqInternalNotice(const PGNoticeHooks * hooks, const char *fmt,...)
 /*
  * pqAddTuple
  *	  add a row pointer to the PGresult structure, growing it if necessary
- *	  Returns TRUE if OK, FALSE if not enough memory to add the row or 
- *    the result counter overflows.
+ *	  Returns TRUE if OK, FALSE if not enough memory to add the row
  */
 int
 pqAddTuple(PGresult *res, PGresAttValue *tup)
 {
-	if (res->ntups == INT_MAX)
-	{
-		/* If we are going to overflow ntups, then abort.  */
-		return FALSE;
-	}
-
 	if (res->ntups >= res->tupArrSize)
 	{
 		/*
@@ -609,7 +551,6 @@ pqAddTuple(PGresult *res, PGresAttValue *tup)
 		res->tuples = newTuples;
 	}
 	res->tuples[res->ntups] = tup;
-
 	res->ntups++;
 	return TRUE;
 }
@@ -722,366 +663,6 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 			conn->sversion = (100 * vmaj + vmin) * 100 + vrev;
 		}
 	}
-}
-
-
-/* Special Greenplum-only method for executing SQL statements.  Specifies a global
- * transaction context that the statement should be executed within.
- *
- * This should *ONLY* ever be used by the Greenplum Database Query Dispatcher and NEVER (EVER)
- * by anyone else.
- *
- * snapshot - serialized form of Snapshot data.
- * xid      - Global Transaction Id to use.
- * flags    - specifies additional processing instructions to the remote server.
- *			  e.g.  Auto explicitly start a transaction before executing this
- *		      statement.
- * gp_command_count - Client request serial# to be passed to the qExec.
- */
-/*
- * Our goal is to build one copy of the Greenplum Database query stucture, and to
- * have each dispatcher connection hold pointers into the single copy.
- * query
- * So the code below does the same work, roughly as:
- * 
- * 	if (pqPutMsgStart('M', false, conn) < 0 ||
- *		pqPutInt(gp_command_count, 4, conn ) < 0 ||
- *		pqPuts(snapshotInfo, conn ) < 0 ||
- *		pqPutInt(flags, 4, conn ) < 0 ||
- *		pqPuts(command, conn) < 0 ||
- *		pqPutMsgEnd(conn) < 0)
- *
- * The remaining work (protocol xmit state, mostly) is done by
- * PQsendGpQuery_shared().
- */
-char *
-PQbuildGpQueryString(const char  *command,
-					  int          command_len,
-					  const char  *querytree,
-					  int          querytree_len,
-					  const char  *plantree,
-					  int          plantree_len,
-					  const char  *params,
-					  int          params_len,
-					  const char  *sliceinfo,
-					  int          sliceinfo_len,
-					  const char  *snapshotInfo,
-					  int		   snapshotInfo_len,
-					  int          flags,
-					  int          gp_command_count,
-					  int		   localSlice,
-					  int		   rootIdx,
-					  int		   primary_gang_id,
-					  int		   mirror_gang_id,
-					  int64		   currentStatementStartTimestamp,
-					  Oid			sessionUserId,
-					  bool			sessionUserIsSuper,
-					  Oid			outerUserId,
-					  bool			outerUserIsSuper,
-					  Oid			currentUserId,
-					  int         *final_len)
-{
-	int	tmp, len;
-	uint32		n32;
-	int	total_query_len;
-	char *shared_query, *pos;
-	char one = 1;
-	char zero = 0;
-
-	total_query_len = 5 /* overhead */ + 14 /* userids */ + 24 /* lengths */ +
-		4 /* comamnd count */ + snapshotInfo_len + 8 +
-		4 /* flags */ + command_len + querytree_len + plantree_len + params_len + sliceinfo_len + 4 + 4 + 4 + 4;
-
-	shared_query = malloc(total_query_len);
-	if (shared_query == NULL)
-	{
-		/* tell our caller how much memory we wanted */
-		if (final_len != NULL)
-			*final_len = total_query_len;
-		return NULL;
-	}
-
-	pos = shared_query;
-
-	*pos++ = 'M';
-
-	pos += 4; /* place holder for message length */
-
-	tmp = htonl(gp_command_count);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(sessionUserId);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	if (sessionUserIsSuper)
-		*pos++ = one;
-	else
-		*pos++ = zero;
-	
-	
-	tmp = htonl(outerUserId);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	if (outerUserIsSuper)
-		*pos++ = one;
-	else
-		*pos++ = zero;
-	
-	tmp = htonl(currentUserId);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(localSlice);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(rootIdx);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(primary_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(mirror_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	/* High order half first, since we're doing MSB-first */
-	n32 = (uint32) (currentStatementStartTimestamp >> 32);
-	n32 = htonl(n32);
-	memcpy(pos, &n32,4);
-	pos += 4;
-	/* Now the low order half */
-	n32 = (uint32) currentStatementStartTimestamp;
-	n32 = htonl(n32);
-	memcpy(pos, &n32,4);
-	pos += 4;
-	
-	tmp = htonl(command_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(querytree_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(plantree_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(params_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(sliceinfo_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(snapshotInfo_len);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-
-	if (snapshotInfo_len > 0)
-	{
-		memcpy(pos, snapshotInfo, snapshotInfo_len);
-		pos += snapshotInfo_len;
-	}
-
-	tmp = htonl(flags);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-
-	if (command_len > 0)
-	{
-		memcpy(pos, command, command_len);
-		pos += command_len;
-	}
-	
-	if (querytree_len > 0)
-	{
-		memcpy(pos, querytree, querytree_len);
-		pos += querytree_len;
-	}
-	
-	if (plantree_len > 0)
-	{
-		memcpy(pos, plantree, plantree_len);
-		pos += plantree_len;
-	}
-	
-	if (params_len > 0)
-	{
-		memcpy(pos, params, params_len);
-		pos += params_len;
-	}
-	
-	if (sliceinfo_len > 0)
-	{
-		memcpy(pos, sliceinfo, sliceinfo_len);
-		pos += sliceinfo_len;
-	}
-
-	len = pos - shared_query - 1;
-
-	/* fill in length placeholder */
-	tmp = htonl(len);
-	memcpy(shared_query+1, &tmp, 4);
-
-	if (final_len)
-		*final_len = len + 1;
-
-	return shared_query;
-}
-
-/* Special Greenplum Database-only method for executing DTX protocol commands.  
- *
- * Our goal is to build one copy of the Greenplum Database DTX command, and to
- * have each dispatcher connection hold pointers into the single copy.
- * query
- * So the code below does the same work, roughly as:
- * 
- * 	if (pqPutMsgStart('T', false, conn) < 0 ||
- *		pqPutInt(dtxProtocolCommand, 4, conn ) < 0 ||
- *		pqPutMsgEnd(conn) < 0)
- *
- * The remaining work (protocol xmit state, mostly) is done by
- * PQsendGpQuery_shared().
- */
-char *
-PQbuildGpDtxProtocolCommand(
-					  int						dtxProtocolCommand,
-					  int						flags,
-					  char*						dtxProtocolCommandLoggingStr,
-					  char*						gid,
-					  int   					gxid,
-					  int						primary_gang_id,
-					  int						mirror_gang_id,
-					  int         		    	*final_len)
-{
-	int loggingStrLen;
-	int gidLen;
-	int	tmp, len;
-	int	total_query_len;
-	char *shared_query, *pos;
-
-	loggingStrLen = strlen(dtxProtocolCommandLoggingStr);
-	gidLen = strlen(gid);
-
-	total_query_len = 5 /* overhead */ + 4 /* dtxProtocolCommand */ + 
-		   4 /*flags */ + 8 /* lengths */ +
-		   loggingStrLen + gidLen + 4 /* gxid */ + 8 /* gang ids */;
-
-	shared_query = malloc(total_query_len);
-	if (shared_query == NULL)
-	{
-		/* tell our caller how much memory we wanted */
-		if (final_len != NULL)
-			*final_len = total_query_len;
-		return NULL;
-	}
-
-	pos = shared_query;
-
-	*pos++ = 'T';
-
-	pos += 4; /* place holder for message length */
-
-	tmp = htonl(dtxProtocolCommand);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(flags);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(loggingStrLen);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	memcpy(pos, dtxProtocolCommandLoggingStr, loggingStrLen);
-	pos += loggingStrLen;
-	
-	tmp = htonl(gidLen);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	memcpy(pos, gid, gidLen);
-	pos += gidLen;
-	
-	tmp = htonl(gxid);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(primary_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	tmp = htonl(mirror_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-	
-	len = pos - shared_query - 1;
-
-	/* fill in length placeholder */
-	tmp = htonl(len);
-	memcpy(shared_query+1, &tmp, 4);
-
-	if (final_len)
-		*final_len = len + 1;
-
-	return shared_query;
-}
-
-int
-PQsendGpQuery_shared(PGconn *conn, char *shared_query, int query_len)
-{
-	if (!PQsendQueryStart(conn))
-		return 0;
-
-	if (!shared_query)
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("shared mpp-query string is a null pointer\n"));
-		return 0;
-	}
-
-	if (conn->outBuffer_shared)
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-						  libpq_gettext("Cannot overwrite shared query string\n"));
-		return 0;
-	}
-
-	if (conn->outBuffer)
-		free(conn->outBuffer);
-
-	conn->outBuffer = shared_query;
-	conn->outBuffer_shared = true;
-
-	conn->outMsgStart = 0;
-	conn->outMsgEnd = query_len;
-	conn->outCount = query_len;
-
-	/* remember we are using simple query protocol */
-	conn->queryclass = PGQUERY_SIMPLE;
-
-	/*
-	 * Give the data a push.  In nonblock mode, don't complain if we're unable
-	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 */
-	if (pqFlush(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-
-	/* OK, it's launched! */
-	conn->asyncStatus = PGASYNC_BUSY;
-	return 1;
 }
 
 
@@ -2139,8 +1720,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 {
 	if (!conn)
 		return -1;
-	if (conn->asyncStatus != PGASYNC_COPY_IN &&
-		conn->asyncStatus != PGASYNC_COPY_OUT)
+	if (conn->asyncStatus != PGASYNC_COPY_IN)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("no COPY in progress\n"));
@@ -2450,7 +2030,7 @@ PQresultStatus(const PGresult *res)
 char *
 PQresStatus(ExecStatusType status)
 {
-	if ((int)status < 0 || status >= sizeof pgresStatus / sizeof pgresStatus[0])
+	if (status < 0 || status >= sizeof pgresStatus / sizeof pgresStatus[0])
 		return libpq_gettext("invalid ExecStatusType code");
 	return pgresStatus[status];
 }
@@ -2824,12 +2404,6 @@ PQcmdTuples(PGresult *res)
 	else if (strncmp(res->cmdStatus, "MOVE ", 5) == 0 ||
 			 strncmp(res->cmdStatus, "COPY ", 5) == 0)
 		p = res->cmdStatus + 5;
-	/*
-	 * CDB: we want to caclulate es_processed for a SELECT INTO, so need
-	 *      to handle a SELECT too.
-	 */
-	else if (strncmp(res->cmdStatus, "SELECT ", 7) == 0)
-		p = res->cmdStatus + 7;
 	else
 		return "";
 
@@ -3186,10 +2760,14 @@ PQescapeByteaInternal(PGconn *conn,
 	{
 		if (*vp < 0x20 || *vp > 0x7e)
 		{
+			int		val = *vp;
+
 			if (!std_strings)
 				*rp++ = '\\';
-			(void) sprintf((char *) rp, "\\%03o", *vp);
-			rp += 4;
+			*rp++ = '\\';
+			*rp++ = (val >> 6) + '0';
+			*rp++ = ((val >> 3) & 07) + '0';
+			*rp++ = (val & 07) + '0';
 		}
 		else if (*vp == '\'')
 		{
@@ -3324,98 +2902,4 @@ PQunescapeBytea(const unsigned char *strtext, size_t *retbuflen)
 
 	*retbuflen = buflen;
 	return tmpbuf;
-}
-
-int PQsendCreateGang(PGconn * conn, int size, void * binaryGangInfo)
-{
-	char * query = "create gang";
-	
-	if (!PQexecStart(conn))
-		return 0;
-
-
-	PQsendQueryStart(conn);
-	
-	/* construct the outgoing Query message */
-	if (pqPutMsgStart('G', false, conn) < 0 ||
-		pqPuts(query, conn) < 0 ||
-		pqPutInt(size, 4, conn) < 0 ||
-		pqPutnchar(binaryGangInfo, size, conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-	
-	/* remember we are using simple query protocol */
-	conn->queryclass = PGQUERY_SIMPLE;
-
-	/* and remember the query text too, if possible */
-	/* if insufficient memory, last_query just winds up NULL */
-	if (conn->last_query)
-		free(conn->last_query);
-	conn->last_query = strdup(query);
-
-	/*
-	 * Give the data a push.  In nonblock mode, don't complain if we're unable
-	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 */
-	if (pqFlush(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-
-	/* OK, it's launched! */
-	conn->asyncStatus = PGASYNC_BUSY;
-	
-	return 1;
-
-
-}
-
-int PQsendControlGang(PGconn * conn, int gang_id, const char * query)
-{
-	
-	if (!PQexecStart(conn))
-		return 0;
-
-
-	PQsendQueryStart(conn);
-	
-	/* construct the outgoing Query message */
-	if (pqPutMsgStart('G', false, conn) < 0 ||
-		pqPuts(query, conn) < 0 ||
-		pqPutInt(gang_id, 4, conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-	
-	/* remember we are using simple query protocol */
-	conn->queryclass = PGQUERY_SIMPLE;
-
-	/* and remember the query text too, if possible */
-	/* if insufficient memory, last_query just winds up NULL */
-	if (conn->last_query)
-		free(conn->last_query);
-	conn->last_query = strdup(query);
-
-	/*
-	 * Give the data a push.  In nonblock mode, don't complain if we're unable
-	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 */
-	if (pqFlush(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-
-	/* OK, it's launched! */
-	conn->asyncStatus = PGASYNC_BUSY;
-	
-	return 1;
-
-
 }

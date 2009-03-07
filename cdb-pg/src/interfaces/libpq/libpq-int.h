@@ -9,11 +9,10 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-int.h,v 1.116.2.1 2007/07/23 18:13:10 mha Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-int.h,v 1.129 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -39,16 +38,36 @@
 #include <signal.h>
 #endif
 
-#ifdef WIN32_ONLY_COMPILER
-typedef int ssize_t;			/* ssize_t doesn't exist in VC (at least not
-								 * VC6) */
-#endif
-
 /* include stuff common to fe and be */
 #include "getaddrinfo.h"
 #include "libpq/pqcomm.h"
 /* include stuff found in fe only */
 #include "pqexpbuffer.h"
+
+#ifdef ENABLE_GSS
+#if defined(HAVE_GSSAPI_H)
+#include <gssapi.h>
+#else
+#include <gssapi/gssapi.h>
+#endif
+#endif
+
+#ifdef ENABLE_SSPI
+#define SECURITY_WIN32
+#include <security.h>
+#undef SECURITY_WIN32
+
+#ifndef ENABLE_GSS
+/*
+ * Define a fake structure compatible with GSSAPI on Unix.
+ */
+typedef struct
+{
+	void	   *value;
+	int			length;
+}	gss_buffer_desc;
+#endif
+#endif   /* ENABLE_SSPI */
 
 #ifdef USE_SSL
 #include <openssl/ssl.h>
@@ -58,7 +77,7 @@ typedef int ssize_t;			/* ssize_t doesn't exist in VC (at least not
 /*
  * POSTGRES backend dependent Constants.
  */
-#define CMDSTATUS_LEN 49
+#define CMDSTATUS_LEN 72		/* should match COMPLETION_TAG_BUFSIZE */
 
 /*
  * PGresult and the subsidiary types PGresAttDesc, PGresAttValue
@@ -80,19 +99,6 @@ union pgresult_data
 	PGresult_data *next;		/* link to next block, or NULL */
 	char		space[1];		/* dummy for accessing block as bytes */
 };
-
-/* Data about a single attribute (column) of a query result */
-
-typedef struct pgresAttDesc
-{
-	char	   *name;			/* column name */
-	Oid			tableid;		/* source table, if known */
-	int			columnid;		/* source column, if known */
-	int			format;			/* format code for value (text/binary) */
-	Oid			typid;			/* type id */
-	int			typlen;			/* type size */
-	int			atttypmod;		/* type-specific modifier info */
-} PGresAttDesc;
 
 /* Data about a single parameter of a prepared statement */
 typedef struct pgresParamDesc
@@ -143,15 +149,6 @@ typedef struct
 	void	   *noticeProcArg;
 } PGNoticeHooks;
 
-/* CDB: Statistical response message list element */
-typedef struct pgCdbStatCell
-{
-    struct pgCdbStatCell   *next;
-    int         len;
-    char       *data;
-} pgCdbStatCell;
-
-
 struct pg_result
 {
 	int			ntups;
@@ -174,17 +171,6 @@ struct pg_result
 	PGNoticeHooks noticeHooks;
 	int			client_encoding;	/* encoding id */
 
-	/* Transaction information passed from EXECUTOR to DISPATCHER */
-	bool						QEWriter_HaveInfo;
-	DistributedTransactionId 	QEWriter_DistributedTransactionId;
-	CommandId 					QEWriter_CommandId;
-	bool 						QEWriter_Dirty;
-	
-	/* XLOG passed from Standby Master to Primary */
-	bool						Standby_HaveInfo;
-	uint32						Standby_xlogid;		/* log file #, 0 based */
-	uint32						Standby_xrecoff;	/* byte offset of location in log file */
-	
 	/*
 	 * Error information (all NULL if not an error result).  errMsg is the
 	 * "overall" error message returned by PQresultErrorMessage.  If we have
@@ -204,22 +190,6 @@ struct pg_result
 	PGresult_data *curBlock;	/* most recently allocated block */
 	int			curOffset;		/* start offset of free space in block */
 	int			spaceLeft;		/* number of free bytes remaining in block */
-
-    /* CDB: List of statistical response messages ('Y') from qExec. */
-    pgCdbStatCell  *cdbstats;   /* ordered from newest to oldest */
-    
-	/*
-	 * Used for gang management commands and stats collected from QEs for
-	 * Vacuum and Analyze commands.
-	 */
-    void * extras;
-    int	   extraslen;
-
-	/* GPDB: number of rows rejected in SREH (protocol message 'j') */
-	int			numRejected;
-	/* GPDB: number of processed tuples for each AO partition */
-	int			naotupcounts;
-	PQaoRelTupCount *aotupcounts;
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */
@@ -280,6 +250,7 @@ typedef struct pgLobjfuncs
 	Oid			fn_lo_unlink;	/* OID of backend function lo_unlink	*/
 	Oid			fn_lo_lseek;	/* OID of backend function lo_lseek		*/
 	Oid			fn_lo_tell;		/* OID of backend function lo_tell		*/
+	Oid			fn_lo_truncate; /* OID of backend function lo_truncate	*/
 	Oid			fn_lo_read;		/* OID of backend function LOread		*/
 	Oid			fn_lo_write;	/* OID of backend function LOwrite		*/
 } PGlobjfuncs;
@@ -307,13 +278,11 @@ struct pg_conn
 	char	   *dbName;			/* database name */
 	char	   *pguser;			/* Postgres username and password, if any */
 	char	   *pgpass;
+	bool		pgpass_from_client;	/* did password come from connect args? */
 	char	   *sslmode;		/* SSL mode (require,prefer,allow,disable) */
-#ifdef KRB5
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	char	   *krbsrvname;		/* Kerberos service name */
 #endif
-    char       *gpqeid;        /* MPP: session id & startup info for qExec */
-    char       *gpqdid;        /* MPP: session id & startup info for QD callback */
-    char       *gpdaid;        /* MPP: session id & startup info for QDA relay */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;
@@ -325,18 +294,6 @@ struct pg_conn
 	ConnStatusType status;
 	PGAsyncStatusType asyncStatus;
 	PGTransactionStatusType xactStatus; /* never changes to ACTIVE */
-
-	/* Transaction information passed from EXECUTOR to DISPATCHER */
-	bool						QEWriter_HaveInfo;
-	DistributedTransactionId 	QEWriter_DistributedTransactionId;
-	CommandId 					QEWriter_CommandId;
-	bool 						QEWriter_Dirty;
-	
-	/* XLOG passed from Standby Master to Primary */
-	bool						Standby_HaveInfo;
-	uint32						Standby_xlogid;		/* log file #, 0 based */
-	uint32						Standby_xrecoff;	/* byte offset of location in log file */
-		
 	PGQueryClass queryclass;
 	char	   *last_query;		/* last SQL command, or NULL if unknown */
 	bool		options_valid;	/* true if OK to attempt connection */
@@ -354,6 +311,7 @@ struct pg_conn
 	SockAddr	raddr;			/* Remote address */
 	ProtocolVersion pversion;	/* FE/BE protocol version in use */
 	int			sversion;		/* server version, e.g. 70401 for 7.4.1 */
+	bool		password_needed;	/* true if server demanded a password */
 
 	/* Transient state needed while establishing connection */
 	struct addrinfo *addrlist;	/* list of possible backend addresses */
@@ -365,10 +323,6 @@ struct pg_conn
 	/* Miscellaneous stuff */
 	int			be_pid;			/* PID of backend --- needed for cancels */
 	int			be_key;			/* key of backend --- needed for cancels */
-	
-	int			motion_listener; /* CDB tcp port for the interconnect listener. */
-	char		*qe_version;
-	
 	char		md5Salt[4];		/* password salt received from backend */
 	char		cryptSalt[2];	/* password salt received from backend */
 	pgParameterStatus *pstatus; /* ParameterStatus data */
@@ -389,8 +343,6 @@ struct pg_conn
 	int			outBufSize;		/* allocated size of buffer */
 	int			outCount;		/* number of chars waiting in buffer */
 
-	bool		outBuffer_shared;
-
 	/* State for constructing messages in outBuffer */
 	int			outMsgStart;	/* offset to msg start (length word); if -1,
 								 * msg has no length word */
@@ -409,6 +361,28 @@ struct pg_conn
 	char		peer_dn[256 + 1];		/* peer distinguished name */
 	char		peer_cn[SM_USER + 1];	/* peer common name */
 #endif
+
+#ifdef ENABLE_GSS
+	gss_ctx_id_t gctx;			/* GSS context */
+	gss_name_t	gtarg_nam;		/* GSS target name */
+	gss_buffer_desc ginbuf;		/* GSS input token */
+	gss_buffer_desc goutbuf;	/* GSS output token */
+#endif
+
+#ifdef ENABLE_SSPI
+#ifndef ENABLE_GSS
+	gss_buffer_desc ginbuf;		/* GSS input token */
+#else
+	char	   *gsslib;			/* What GSS librart to use ("gssapi" or
+								 * "sspi") */
+#endif
+	CredHandle *sspicred;		/* SSPI credentials handle */
+	CtxtHandle *sspictx;		/* SSPI context */
+	char	   *sspitarget;		/* SSPI target name */
+	int			usesspi;		/* Indicate if SSPI is in use on the
+								 * connection */
+#endif
+
 
 	/* Buffer for current error message */
 	PQExpBufferData errorMessage;		/* expansible string */
@@ -458,7 +432,6 @@ extern pgthreadlock_t pg_g_threadlock;
 #define pglock_thread()		((void) 0)
 #define pgunlock_thread()	((void) 0)
 #endif
-
 
 /* === in fe-exec.c === */
 
@@ -527,7 +500,6 @@ extern int	pqPuts(const char *s, PGconn *conn);
 extern int	pqGetnchar(char *s, size_t len, PGconn *conn);
 extern int	pqPutnchar(const char *s, size_t len, PGconn *conn);
 extern int	pqGetInt(int *result, size_t bytes, PGconn *conn);
-extern int64 pqGetInt64(int64 *result, PGconn *conn);
 extern int	pqPutInt(int value, size_t bytes, PGconn *conn);
 extern int	pqPutMsgStart(char msg_type, bool force_len, PGconn *conn);
 extern int	pqPutMsgEnd(PGconn *conn);

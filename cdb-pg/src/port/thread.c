@@ -133,6 +133,39 @@ struct passwd *get_gp_passwdptr()
 }
 #endif
 
+
+/*
+ * Wrapper around getpwuid() or getpwuid_r() to mimic POSIX getpwuid_r()
+ * behaviour, if it is not available or required.
+ */
+#ifndef WIN32
+int
+pqGetpwuid(uid_t uid, struct passwd * resultbuf, char *buffer,
+		   size_t buflen, struct passwd ** result)
+{
+#if defined(FRONTEND) && defined(ENABLE_THREAD_SAFETY) && defined(HAVE_GETPWUID_R)
+
+#ifdef GETPWUID_R_5ARG
+	/* POSIX version */
+	getpwuid_r(uid, resultbuf, buffer, buflen, result);
+#else
+
+	/*
+	 * Early POSIX draft of getpwuid_r() returns 'struct passwd *'.
+	 * getpwuid_r(uid, resultbuf, buffer, buflen)
+	 */
+	*result = getpwuid_r(uid, resultbuf, buffer, buflen);
+#endif
+#else
+
+	/* no getpwuid_r() available, just use getpwuid() */
+	*result = getpwuid(uid);
+#endif
+
+	return (*result == NULL) ? -1 : 0;
+}
+#endif
+
 /*
  * Wrapper around gethostbyname() or gethostbyname_r() to mimic
  * POSIX gethostbyname_r() behaviour, if it is not available or required.

@@ -48,7 +48,7 @@
  *
  * EXCEPTIONS:
  *
- * obviously, a page is not formatted before it is initialized with by
+ * obviously, a page is not formatted before it is initialized by
  * a call to PageInit.
  *
  * NOTES:

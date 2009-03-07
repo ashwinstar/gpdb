@@ -14,8 +14,8 @@
 #include "postgres.h"
 #include <pthread.h>
 
-#include "libpq-fe.h"               /* prerequisite for libpq-int.h */
-#include "libpq-int.h"              /* PQExpBufferData */
+#include "gp-libpq-fe.h"               /* prerequisite for libpq-int.h */
+#include "gp-libpq-int.h"              /* PQExpBufferData */
 
 #include "lib/stringinfo.h"         /* StringInfoData */
 #include "utils/guc.h"              /* log_min_messages */

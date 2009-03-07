@@ -1,5 +1,3 @@
-#include <pthread.h>
-#if 0 
 #ifndef __PTHREAD_H
 #define __PTHREAD_H
 
@@ -19,4 +17,4 @@ void		pthread_mutex_lock(pthread_mutex_t *);
 void		pthread_mutex_unlock(pthread_mutex_t *);
 
 #endif
-#endif 
+

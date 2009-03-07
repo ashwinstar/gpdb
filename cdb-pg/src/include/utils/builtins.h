@@ -257,7 +257,7 @@ extern Datum btname_pattern_cmp(PG_FUNCTION_ARGS);
 extern Datum bttext_pattern_cmp(PG_FUNCTION_ARGS);
 
 /* float.c */
-extern DLLIMPORT int extra_float_digits;
+extern PGDLLIMPORT int extra_float_digits;
 
 extern double get_float8_infinity(void);
 extern float get_float4_infinity(void);
@@ -617,6 +617,14 @@ extern Datum varcharsend(PG_FUNCTION_ARGS);
 extern Datum varchar(PG_FUNCTION_ARGS);
 
 /* varlena.c */
+extern text *cstring_to_text(const char *s);
+extern text *cstring_to_text_with_len(const char *s, int len);
+extern char *text_to_cstring(const text *t);
+extern void text_to_cstring_buffer(const text *src, char *dst, size_t dst_len);
+
+#define CStringGetTextDatum(s) PointerGetDatum(cstring_to_text(s))
+#define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
+
 extern Datum textin(PG_FUNCTION_ARGS);
 extern Datum textout(PG_FUNCTION_ARGS);
 extern Datum textrecv(PG_FUNCTION_ARGS);

@@ -3,13 +3,12 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.339.2.2 2007/07/23 18:13:09 mha Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.356.2.1 2008/10/23 16:17:22 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -93,8 +92,10 @@ static int ldapServiceLookup(const char *purl, PQconninfoOption *options,
 #define DefaultPassword		  ""
 #ifdef USE_SSL
 #define DefaultSSLMode	"prefer"
+#define DefaultSSLVerify "cn"
 #else
 #define DefaultSSLMode	"disable"
+#define DefaultSSLVerify "none"
 #endif
 
 /* ----------
@@ -176,28 +177,44 @@ static const PQconninfoOption PQconninfoOptions[] = {
 #endif
 
 	/*
-	 * "sslmode" option is allowed even without client SSL support because the
-	 * client can still handle SSL modes "disable" and "allow".
+	 * ssl options are allowed even without client SSL support because the
+	 * client can still handle SSL modes "disable" and "allow". Other parameters
+	 * have no effect on non-SSL connections, so there is no reason to exclude them
+	 * since none of them are mandatory.
 	 */
 	{"sslmode", "PGSSLMODE", DefaultSSLMode, NULL,
 	"SSL-Mode", "", 8},			/* sizeof("disable") == 8 */
 
-#ifdef KRB5
-	/* Kerberos authentication supports specifying the service name */
+	{"sslverify", "PGSSLVERIFY", DefaultSSLVerify, NULL,
+	"SSL-Verify", "", 5},		/* sizeof("chain") == 5 */
+
+	{"sslcert", "PGSSLCERT", NULL, NULL,
+	"SSL-Client-Cert", "", 64},
+
+	{"sslkey", "PGSSLKEY", NULL, NULL,
+	"SSL-Client-Key", "", 64},
+
+	{"sslrootcert", "PGSSLROOTCERT", NULL, NULL,
+	"SSL-Root-Certificate", "", 64},
+
+	{"sslcrl", "PGSSLCRL", NULL, NULL,
+	"SSL-Revocation-List", "", 64},
+
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+	/* Kerberos and GSSAPI authentication support specifying the service name */
 	{"krbsrvname", "PGKRBSRVNAME", PG_KRB_SRVNAM, NULL,
 	"Kerberos-service-name", "", 20},
 #endif
 
-    /* CDB: qExec wants some info from qDisp before GUCs are processed */
-    {"gpqeid", NULL, "", NULL,
-	"gp-debug-qeid", "D", 40},
-	
-	{"gpqdid", NULL, "", NULL,
-	"gp-debug-qdid", "D", 40},
-	
-	{"gpdaid", NULL, "", NULL,
-	"gp-debug-daid", "D", 40},
-	
+#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
+
+	/*
+	 * GSSAPI and SSPI both enabled, give a way to override which is used by
+	 * default
+	 */
+	{"gsslib", "PGGSSLIB", NULL, NULL,
+	"GSS-library", "", 7},		/* sizeof("gssapi") = 7 */
+#endif
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -234,7 +251,7 @@ static PGconn *makeEmptyPGconn(void);
 static void freePGconn(PGconn *conn);
 static void closePGconn(PGconn *conn);
 static PQconninfoOption *conninfo_parse(const char *conninfo,
-			   PQExpBuffer errorMessage);
+			   PQExpBuffer errorMessage, bool *password_from_string);
 static char *conninfo_getval(PQconninfoOption *connOptions,
 				const char *keyword);
 static void defaultNoticeReceiver(void *arg, const PGresult *res);
@@ -378,7 +395,8 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	/*
 	 * Parse the conninfo string
 	 */
-	connOptions = conninfo_parse(conninfo, &conn->errorMessage);
+	connOptions = conninfo_parse(conninfo, &conn->errorMessage,
+								 &conn->pgpass_from_client);
 	if (connOptions == NULL)
 	{
 		conn->status = CONNECTION_BAD;
@@ -414,6 +432,18 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->connect_timeout = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "sslmode");
 	conn->sslmode = tmp ? strdup(tmp) : NULL;
+#if 0
+	tmp = conninfo_getval(connOptions, "sslverify");
+	conn->sslverify = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslkey");
+	conn->sslkey = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslcert");
+	conn->sslcert = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslrootcert");
+	conn->sslrootcert = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslcrl");
+	conn->sslcrl = tmp ? strdup(tmp) : NULL;
+#endif
 #ifdef USE_SSL
 	tmp = conninfo_getval(connOptions, "requiressl");
 	if (tmp && tmp[0] == '1')
@@ -424,18 +454,14 @@ connectOptions1(PGconn *conn, const char *conninfo)
 		conn->sslmode = strdup("require");
 	}
 #endif
-#ifdef KRB5
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	tmp = conninfo_getval(connOptions, "krbsrvname");
 	conn->krbsrvname = tmp ? strdup(tmp) : NULL;
 #endif
-	tmp = conninfo_getval(connOptions, "gpqeid");
-	conn->gpqeid = tmp ? strdup(tmp) : NULL;
-	
-	tmp = conninfo_getval(connOptions, "gpqdid");
-	conn->gpqdid = tmp ? strdup(tmp) : NULL;
-	
-	tmp = conninfo_getval(connOptions, "gpdaid");
-	conn->gpdaid = tmp ? strdup(tmp) : NULL;
+#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
+	tmp = conninfo_getval(connOptions, "gsslib");
+	conn->gsslib = tmp ? strdup(tmp) : NULL;
+#endif
 
 	/*
 	 * Free the option info - all is in conn now
@@ -478,6 +504,7 @@ connectOptions2(PGconn *conn)
 										conn->dbName, conn->pguser);
 		if (conn->pgpass == NULL)
 			conn->pgpass = strdup(DefaultPassword);
+		conn->pgpass_from_client = false;
 	}
 
 	/*
@@ -532,6 +559,26 @@ connectOptions2(PGconn *conn)
 	else
 		conn->sslmode = strdup(DefaultSSLMode);
 
+#if 0
+	/*
+	 * Validate sslverify option
+	 */
+	if (conn->sslverify)
+	{
+		if (strcmp(conn->sslverify, "none") != 0
+			&& strcmp(conn->sslverify, "cert") != 0
+			&& strcmp(conn->sslverify, "cn") != 0)
+		{
+			conn->status = CONNECTION_BAD;
+			printfPQExpBuffer(&conn->errorMessage,
+							libpq_gettext("invalid sslverify value: \"%s\"\n"),
+							  conn->sslverify);
+			return false;
+		}
+	}
+#endif
+
+
 	/*
 	 * Only if we get this far is it appropriate to try to connect. (We need a
 	 * state flag, rather than just the boolean result of this function, in
@@ -546,7 +593,9 @@ connectOptions2(PGconn *conn)
  *		PQconndefaults
  *
  * Parse an empty string like PQconnectdb() would do and return the
- * working connection options array.
+ * resulting connection options array, ie, all the default values that are
+ * available from the environment etc.  On error (eg out of memory),
+ * NULL is returned.
  *
  * Using this function, an application may determine all possible options
  * and their current default values.
@@ -561,10 +610,11 @@ PQconninfoOption *
 PQconndefaults(void)
 {
 	PQExpBufferData errorBuf;
+	bool		password_from_string;
 	PQconninfoOption *connOptions;
 
 	initPQExpBuffer(&errorBuf);
-	connOptions = conninfo_parse("", &errorBuf);
+	connOptions = conninfo_parse("", &errorBuf, &password_from_string);
 	termPQExpBuffer(&errorBuf);
 	return connOptions;
 }
@@ -596,14 +646,34 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		return NULL;
 
 	/*
-	 * Parse an empty conninfo string in order to set up the same defaults
-	 * that PQconnectdb() would use.
+	 * If the dbName parameter contains '=', assume it's a conninfo string.
 	 */
-	if (!connectOptions1(conn, ""))
-		return conn;
+	if (dbName && strchr(dbName, '='))
+	{
+		if (!connectOptions1(conn, dbName))
+			return conn;
+	}
+	else
+	{
+		/*
+		 * Old-style path: first, parse an empty conninfo string in order to
+		 * set up the same defaults that PQconnectdb() would use.
+		 */
+		if (!connectOptions1(conn, ""))
+			return conn;
+
+		/* Insert dbName parameter value into struct */
+		if (dbName && dbName[0] != '\0')
+		{
+			if (conn->dbName)
+				free(conn->dbName);
+			conn->dbName = strdup(dbName);
+		}
+	}
 
 	/*
-	 * Absorb specified options into conn structure, overriding defaults
+	 * Insert remaining parameters into struct, overriding defaults (as well
+	 * as any conflicting data from dbName taken as a conninfo).
 	 */
 	if (pghost && pghost[0] != '\0')
 	{
@@ -633,13 +703,6 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		conn->pgtty = strdup(pgtty);
 	}
 
-	if (dbName && dbName[0] != '\0')
-	{
-		if (conn->dbName)
-			free(conn->dbName);
-		conn->dbName = strdup(dbName);
-	}
-
 	if (login && login[0] != '\0')
 	{
 		if (conn->pguser)
@@ -652,6 +715,7 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		if (conn->pgpass)
 			free(conn->pgpass);
 		conn->pgpass = strdup(pwd);
+		conn->pgpass_from_client = true;
 	}
 
 	/*
@@ -1503,12 +1567,13 @@ keep_going:						/* We will come back to here until there is
 
 				/*
 				 * Try to validate message length before using it.
-				 * Authentication requests can't be very large.  Errors can be
-				 * a little larger, but not huge.  If we see a large apparent
+				 * Authentication requests can't be very large, although GSS
+				 * auth requests may not be that small.  Errors can be a
+				 * little larger, but not huge.  If we see a large apparent
 				 * length in an error, it means we're really talking to a
 				 * pre-3.0-protocol server; cope.
 				 */
-				if (beresp == 'R' && (msgLength < 8 || msgLength > 100))
+				if (beresp == 'R' && (msgLength < 8 || msgLength > 2000))
 				{
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
@@ -1667,6 +1732,43 @@ keep_going:						/* We will come back to here until there is
 						return PGRES_POLLING_READING;
 					}
 				}
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+
+				/*
+				 * Continue GSSAPI/SSPI authentication
+				 */
+				if (areq == AUTH_REQ_GSS_CONT)
+				{
+					int			llen = msgLength - 4;
+
+					/*
+					 * We can be called repeatedly for the same buffer. Avoid
+					 * re-allocating the buffer in this case - just re-use the
+					 * old buffer.
+					 */
+					if (llen != conn->ginbuf.length)
+					{
+						if (conn->ginbuf.value)
+							free(conn->ginbuf.value);
+
+						conn->ginbuf.length = llen;
+						conn->ginbuf.value = malloc(llen);
+						if (!conn->ginbuf.value)
+						{
+							printfPQExpBuffer(&conn->errorMessage,
+											  libpq_gettext("out of memory allocating GSSAPI buffer (%i)"),
+											  llen);
+							goto error_return;
+						}
+					}
+
+					if (pqGetnchar(conn->ginbuf.value, llen, conn))
+					{
+						/* We'll come back when there is more data. */
+						return PGRES_POLLING_READING;
+					}
+				}
+#endif
 
 				/*
 				 * OK, we successfully read the message; mark data consumed
@@ -1680,12 +1782,7 @@ keep_going:						/* We will come back to here until there is
 				 * avoid the Kerberos code doing a hostname look-up.
 				 */
 
-				/*
-				 * XXX fe-auth.c has not been fixed to support PQExpBuffers,
-				 * so:
-				 */
-				if (pg_fe_sendauth(areq, conn, conn->pghost, conn->pgpass,
-								   conn->errorMessage.data) != STATUS_OK)
+				if (pg_fe_sendauth(areq, conn) != STATUS_OK)
 				{
 					conn->errorMessage.len = strlen(conn->errorMessage.data);
 					goto error_return;
@@ -1873,10 +1970,6 @@ makeEmptyPGconn(void)
 	conn->status = CONNECTION_BAD;
 	conn->asyncStatus = PGASYNC_IDLE;
 	conn->xactStatus = PQTRANS_IDLE;
-	conn->QEWriter_HaveInfo = false;
-	conn->QEWriter_DistributedTransactionId = 0;
-	conn->QEWriter_CommandId = 0;
-	conn->QEWriter_Dirty = false;
 	conn->options_valid = false;
 	conn->nonblocking = false;
 	conn->setenv_state = SETENV_STATE_IDLE;
@@ -1884,6 +1977,7 @@ makeEmptyPGconn(void)
 	conn->std_strings = false;	/* unless server says differently */
 	conn->verbosity = PQERRORS_DEFAULT;
 	conn->sock = -1;
+	conn->password_needed = false;
 #ifdef USE_SSL
 	conn->allow_ssl_try = true;
 	conn->wait_ssl_try = false;
@@ -1904,7 +1998,6 @@ makeEmptyPGconn(void)
 	conn->inBuffer = (char *) malloc(conn->inBufSize);
 	conn->outBufSize = 16 * 1024;
 	conn->outBuffer = (char *) malloc(conn->outBufSize);
-	conn->outBuffer_shared = false;
 	initPQExpBuffer(&conn->errorMessage);
 	initPQExpBuffer(&conn->workBuffer);
 
@@ -1923,25 +2016,16 @@ makeEmptyPGconn(void)
 
 /*
  * freePGconn
- *	 - free the PGconn data structure
+ *	 - free an idle (closed) PGconn data structure
  *
- * When changing/adding to this function, see also closePGconn!
+ * NOTE: this should not overlap any functionality with closePGconn().
+ * Clearing/resetting of transient state belongs there; what we do here is
+ * release data that is to be held for the life of the PGconn structure.
+ * If a value ought to be cleared/freed during PQreset(), do it there not here.
  */
 static void
 freePGconn(PGconn *conn)
 {
-	PGnotify   *notify;
-	pgParameterStatus *pstatus;
-
-	if (!conn)
-		return;
-
-	pqClearAsyncResult(conn);	/* deallocate result and curTuple */
-	if (conn->sock >= 0)
-	{
-		pqsecure_close(conn);
-		closesocket(conn->sock);
-	}
 	if (conn->pghost)
 		free(conn->pghost);
 	if (conn->pghostaddr)
@@ -1964,47 +2048,24 @@ freePGconn(PGconn *conn)
 		free(conn->pgpass);
 	if (conn->sslmode)
 		free(conn->sslmode);
-#ifdef KRB5
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	if (conn->krbsrvname)
 		free(conn->krbsrvname);
 #endif
-    if (conn->gpqeid)			/* CDB */
-        free(conn->gpqeid);
-    if (conn->gpqdid)			/* CDB */
-        free(conn->gpqdid);
-    if (conn->gpdaid)			/* CDB */
-        free(conn->gpdaid);
-    if (conn->qe_version)		/* CDB */
-        free(conn->qe_version);
-
+#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
+	if (conn->gsslib)
+		free(conn->gsslib);
+#endif
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)
 		free(conn->last_query);
-	pg_freeaddrinfo_all(conn->addrlist_family, conn->addrlist);
-	notify = conn->notifyHead;
-	while (notify != NULL)
-	{
-		PGnotify   *prev = notify;
-
-		notify = notify->next;
-		free(prev);
-	}
-	pstatus = conn->pstatus;
-	while (pstatus != NULL)
-	{
-		pgParameterStatus *prev = pstatus;
-
-		pstatus = pstatus->next;
-		free(prev);
-	}
-	if (conn->lobjfuncs)
-		free(conn->lobjfuncs);
 	if (conn->inBuffer)
 		free(conn->inBuffer);
-	if (conn->outBuffer && !conn->outBuffer_shared)
+	if (conn->outBuffer)
 		free(conn->outBuffer);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
+
 	free(conn);
 
 #ifdef WIN32
@@ -2016,7 +2077,9 @@ freePGconn(PGconn *conn)
  * closePGconn
  *	 - properly close a connection to the backend
  *
- * Release all transient state, but NOT the connection parameters.
+ * This should reset or release all transient state, but NOT the connection
+ * parameters.  On exit, the PGconn should be in condition to start a fresh
+ * connection with the same parameters (see PQreset()).
  */
 static void
 closePGconn(PGconn *conn)
@@ -2040,9 +2103,10 @@ closePGconn(PGconn *conn)
 	}
 
 	/*
-	 * must reset the blocking status so a possible reconnect will work don't
-	 * call PQsetnonblocking() because it will fail if it's unable to flush
-	 * the connection.
+	 * Must reset the blocking status so a possible reconnect will work.
+	 *
+	 * Don't call PQsetnonblocking() because it will fail if it's unable to
+	 * flush the connection.
 	 */
 	conn->nonblocking = FALSE;
 
@@ -2070,7 +2134,7 @@ closePGconn(PGconn *conn)
 		notify = notify->next;
 		free(prev);
 	}
-	conn->notifyHead = NULL;
+	conn->notifyHead = conn->notifyTail = NULL;
 	pstatus = conn->pstatus;
 	while (pstatus != NULL)
 	{
@@ -2085,6 +2149,41 @@ closePGconn(PGconn *conn)
 	conn->lobjfuncs = NULL;
 	conn->inStart = conn->inCursor = conn->inEnd = 0;
 	conn->outCount = 0;
+#ifdef ENABLE_GSS
+	{
+		OM_uint32	min_s;
+
+		if (conn->gctx)
+			gss_delete_sec_context(&min_s, &conn->gctx, GSS_C_NO_BUFFER);
+		if (conn->gtarg_nam)
+			gss_release_name(&min_s, &conn->gtarg_nam);
+		if (conn->ginbuf.length)
+			gss_release_buffer(&min_s, &conn->ginbuf);
+		if (conn->goutbuf.length)
+			gss_release_buffer(&min_s, &conn->goutbuf);
+	}
+#endif
+#ifdef ENABLE_SSPI
+	if (conn->ginbuf.length)
+		free(conn->ginbuf.value);
+	conn->ginbuf.length = 0;
+	conn->ginbuf.value = NULL;
+	if (conn->sspitarget)
+		free(conn->sspitarget);
+	conn->sspitarget = NULL;
+	if (conn->sspicred)
+	{
+		FreeCredentialsHandle(conn->sspicred);
+		free(conn->sspicred);
+		conn->sspicred = NULL;
+	}
+	if (conn->sspictx)
+	{
+		DeleteSecurityContext(conn->sspictx);
+		free(conn->sspictx);
+		conn->sspictx = NULL;
+	}
+#endif
 }
 
 /*
@@ -2232,7 +2331,7 @@ internal_cancel(SockAddr *raddr, int be_pid, int be_key,
 	 */
 	if ((tmpsock = socket(raddr->addr.ss_family, SOCK_STREAM, 0)) < 0)
 	{
-		StrNCpy(errbuf, "PQcancel() -- socket() failed: ", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- socket() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 retry3:
@@ -2242,7 +2341,7 @@ retry3:
 		if (SOCK_ERRNO == EINTR)
 			/* Interrupted system call - we'll just try again */
 			goto retry3;
-		StrNCpy(errbuf, "PQcancel() -- connect() failed: ", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- connect() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 
@@ -2263,7 +2362,7 @@ retry4:
 		if (SOCK_ERRNO == EINTR)
 			/* Interrupted system call - we'll just try again */
 			goto retry4;
-		StrNCpy(errbuf, "PQcancel() -- send() failed: ", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- send() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 
@@ -2321,7 +2420,7 @@ PQcancel(PGcancel *cancel, char *errbuf, int errbufsize)
 {
 	if (!cancel)
 	{
-		StrNCpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
 		return FALSE;
 	}
 
@@ -2352,7 +2451,7 @@ PQrequestCancel(PGconn *conn)
 
 	if (conn->sock < 0)
 	{
-		StrNCpy(conn->errorMessage.data,
+		strlcpy(conn->errorMessage.data,
 				"PQrequestCancel() -- connection is not open\n",
 				conn->errorMessage.maxlen);
 		conn->errorMessage.len = strlen(conn->errorMessage.data);
@@ -2484,7 +2583,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	if (pg_strncasecmp(url, LDAP_URL, strlen(LDAP_URL)) != 0)
 	{
 		printfPQExpBuffer(errorMessage,
-		libpq_gettext("invalid LDAP URL \"%s\": scheme must be ldap://\n"), purl);
+						  libpq_gettext("invalid LDAP URL \"%s\": scheme must be ldap://\n"), purl);
 		free(url);
 		return 3;
 	}
@@ -2499,7 +2598,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	if (p == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
 	{
 		printfPQExpBuffer(errorMessage, libpq_gettext(
-				 "invalid LDAP URL \"%s\": missing distinguished name\n"), purl);
+			 "invalid LDAP URL \"%s\": missing distinguished name\n"), purl);
 		free(url);
 		return 3;
 	}
@@ -2510,7 +2609,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	if ((p = strchr(dn, '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
 	{
 		printfPQExpBuffer(errorMessage, libpq_gettext(
-			"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
+		"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
 		free(url);
 		return 3;
 	}
@@ -2531,7 +2630,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	if ((p = strchr(scopestr, '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
 	{
 		printfPQExpBuffer(errorMessage,
-					libpq_gettext("invalid LDAP URL \"%s\": no filter\n"), purl);
+				libpq_gettext("invalid LDAP URL \"%s\": no filter\n"), purl);
 		free(url);
 		return 3;
 	}
@@ -2552,7 +2651,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 		if (*portstr == '\0' || *endptr != '\0' || errno || lport < 0 || lport > 65535)
 		{
 			printfPQExpBuffer(errorMessage, libpq_gettext(
-						"invalid LDAP URL \"%s\": invalid port number\n"), purl);
+					"invalid LDAP URL \"%s\": invalid port number\n"), purl);
 			free(url);
 			return 3;
 		}
@@ -2563,7 +2662,7 @@ ldapServiceLookup(const char *purl, PQconninfoOption *options,
 	if (strchr(attrs[0], ',') != NULL)
 	{
 		printfPQExpBuffer(errorMessage, libpq_gettext(
-			"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
+		"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
 		free(url);
 		return 3;
 	}
@@ -2869,11 +2968,11 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 			return 1;
 		}
 
-		while ((line = fgets(buf, MAXBUFSIZE - 1, f)) != NULL)
+		while ((line = fgets(buf, sizeof(buf), f)) != NULL)
 		{
 			linenr++;
 
-			if (strlen(line) >= MAXBUFSIZE - 2)
+			if (strlen(line) >= sizeof(buf) - 1)
 			{
 				fclose(f);
 				printfPQExpBuffer(errorMessage,
@@ -2999,9 +3098,12 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
  * If successful, a malloc'd PQconninfoOption array is returned.
  * If not successful, NULL is returned and an error message is
  * left in errorMessage.
+ * *password_from_string is set TRUE if we got a password from the
+ * conninfo string, otherwise FALSE.
  */
 static PQconninfoOption *
-conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
+conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
+			   bool *password_from_string)
 {
 	char	   *pname;
 	char	   *pval;
@@ -3011,7 +3113,8 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
 	char	   *cp2;
 	PQconninfoOption *options;
 	PQconninfoOption *option;
-	char		errortmp[INITIAL_EXPBUFFER_SIZE];
+
+	*password_from_string = false;			/* default result */
 
 	/* Make a working copy of PQconninfoOptions */
 	options = malloc(sizeof(PQconninfoOptions));
@@ -3169,6 +3272,12 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
 			free(buf);
 			return NULL;
 		}
+
+		/*
+		 * Special handling for password
+		 */
+		if (strcmp(option->keyword, "password") == 0)
+			*password_from_string = (option->val[0] != '\0');
 	}
 
 	/* Done with the modifiable input string */
@@ -3234,8 +3343,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
 		 */
 		if (strcmp(option->keyword, "user") == 0)
 		{
-			option->val = pg_fe_getauthname(errortmp);
-			/* note any error message is thrown away */
+			option->val = pg_fe_getauthname(errorMessage);
 			continue;
 		}
 	}
@@ -3334,41 +3442,6 @@ PQoptions(const PGconn *conn)
 	return conn->pgoptions;
 }
 
-/* GPDB function to retrieve QE-backend details (motion listener) */
-int	PQgetQEdetail(PGconn *conn)
-{
-	if (!conn)
-		return -1;
-	
-	/* return it immediately if we've already fetched it. */
-	if (conn->motion_listener != 0)
-		return conn->motion_listener;
-	
-	/* send a request to fetch the motion listener port. */
-	pqPacketSend(conn, 'W', NULL, 0 );
-
-	conn->asyncStatus = PGASYNC_BUSY;	
-	
-	/* wait for a response. */
-	if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)
-		pqParseInput3(conn);
-	else
-		return -1;
-	
-	while (conn->motion_listener == 0)
-	{
-		pqWait(TRUE, FALSE, conn);
-		pqReadData(conn);
-		
-		if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)
-			pqParseInput3(conn);
-		else
-			return -1;
-	}
-	
-	return conn->motion_listener;
-}
-
 ConnStatusType
 PQstatus(const PGconn *conn)
 {
@@ -3445,6 +3518,29 @@ PQbackendPID(const PGconn *conn)
 	if (!conn || conn->status != CONNECTION_OK)
 		return 0;
 	return conn->be_pid;
+}
+
+int
+PQconnectionNeedsPassword(const PGconn *conn)
+{
+	if (!conn)
+		return false;
+	if (conn->password_needed &&
+		(conn->pgpass == NULL || conn->pgpass[0] == '\0'))
+		return true;
+	else
+		return false;
+}
+
+int
+PQconnectionUsedPassword(const PGconn *conn)
+{
+	if (!conn)
+		return false;
+	if (conn->password_needed && conn->pgpass_from_client)
+		return true;
+	else
+		return false;
 }
 
 int
@@ -3668,7 +3764,7 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 
 	if ((passfile_env = getenv("PGPASSFILE")) != NULL)
 		/* use the literal path from the environment, if set */
-		StrNCpy(pgpassfile, passfile_env, MAXPGPATH);
+		strlcpy(pgpassfile, passfile_env, sizeof(pgpassfile));
 	else
 	{
 		char		homedir[MAXPGPATH];
@@ -3700,6 +3796,12 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 				pgpassfile);
 		return NULL;
 	}
+#else
+
+	/*
+	 * On Win32, the directory is protected, so we don't have to check the
+	 * file.
+	 */
 #endif
 
 	fp = fopen(pgpassfile, "r");
@@ -3712,7 +3814,7 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 				   *ret;
 		int			len;
 
-		fgets(buf, LINELEN - 1, fp);
+		fgets(buf, sizeof(buf), fp);
 
 		len = strlen(buf);
 		if (len == 0)
@@ -3752,12 +3854,13 @@ bool
 pqGetHomeDirectory(char *buf, int bufsize)
 {
 #ifndef WIN32
-	struct passwd *pwd = get_gp_passwdptr(); 
+	char		pwdbuf[BUFSIZ];
+	struct passwd pwdstr;
+	struct passwd *pwd = NULL;
 
-	if(!pwd)
+	if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
 		return false;
-
-	StrNCpy(buf, pwd->pw_dir, bufsize);
+	strlcpy(buf, pwd->pw_dir, bufsize);
 	return true;
 #else
 	char		tmppath[MAX_PATH];

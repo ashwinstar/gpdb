@@ -15,7 +15,7 @@
 #include <pthread.h>
 #include <limits.h>
 
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "miscadmin.h"			/* MyDatabaseId */
 #include "storage/proc.h"		/* MyProc */
 #include "storage/ipc.h"
@@ -40,8 +40,8 @@ extern char *default_tablespace;
 #include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"		/* Gp_role, etc. */
 #include "storage/bfz.h"
-#include "libpq-fe.h"
-#include "libpq-int.h"
+#include "gp-libpq-fe.h"
+#include "gp-libpq-int.h"
 #include "libpq/libpq-be.h"
 #include "libpq/ip.h"
 

@@ -23,7 +23,7 @@
 
 struct CdbDispatchResult;           /* #include "cdb/cdbdispatchresult.h" */
 struct CdbDispatchResults;          /* #include "cdb/cdbdispatchresult.h" */
-struct pg_result;                   /* #include "libpq-fe.h" */
+struct pg_result;                   /* #include "gp-libpq-fe.h" */
 struct Gang;                        /* #include "cdb/cdbgang.h" */
 struct Node;                        /* #include "nodes/nodes.h" */
 struct QueryDesc;                   /* #include "executor/execdesc.h" */

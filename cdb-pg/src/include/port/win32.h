@@ -4,6 +4,15 @@
 #define WIN32_ONLY_COMPILER
 #endif
 
+#define _WIN32_WINNT 0x0500
+/*
+ * Always build with SSPI support. Keep it as a #define in case
+ * we want a switch to disable it sometime in the future.
+ */
+#ifndef __BORLANDC__
+#define ENABLE_SSPI 1
+#endif
+
 /* undefine and redefine after #include */
 #undef mkdir
 
@@ -122,16 +131,57 @@ int			semop(int semId, struct sembuf * sops, int flag);
 
 /*
  *	Signal stuff
- *	WIN32 doesn't have wait(), so the return value for children
- *	is simply the return value specified by the child, without
- *	any additional information on whether the child terminated
- *	on its own or via a signal.  These macros are also used
- *	to interpret the return value of system().
+ *
+ *	For WIN32, there is no wait() call so there are no wait() macros
+ *	to interpret the return value of system().	Instead, system()
+ *	return values < 0x100 are used for exit() termination, and higher
+ *	values are used to indicated non-exit() termination, which is
+ *	similar to a unix-style signal exit (think SIGSEGV ==
+ *	STATUS_ACCESS_VIOLATION).  Return values are broken up into groups:
+ *
+ *	http://msdn2.microsoft.com/en-gb/library/aa489609.aspx
+ *
+ *		NT_SUCCESS			0 - 0x3FFFFFFF
+ *		NT_INFORMATION		0x40000000 - 0x7FFFFFFF
+ *		NT_WARNING			0x80000000 - 0xBFFFFFFF
+ *		NT_ERROR			0xC0000000 - 0xFFFFFFFF
+ *
+ *	Effectively, we don't care on the severity of the return value from
+ *	system(), we just need to know if it was because of exit() or generated
+ *	by the system, and it seems values >= 0x100 are system-generated.
+ *	See this URL for a list of WIN32 STATUS_* values:
+ *
+ *		Wine (URL used in our error messages) -
+ *			http://source.winehq.org/source/include/ntstatus.h
+ *		Descriptions - http://www.comp.nus.edu.sg/~wuyongzh/my_doc/ntstatus.txt
+ *		MS SDK - http://www.nologs.com/ntstatus.html
+ *
+ *	It seems the exception lists are in both ntstatus.h and winnt.h, but
+ *	ntstatus.h has a more comprehensive list, and it only contains
+ *	exception values, rather than winnt, which contains lots of other
+ *	things:
+ *
+ *		http://www.microsoft.com/msj/0197/exception/exception.aspx
+ *
+ *		The ExceptionCode parameter is the number that the operating system
+ *		assigned to the exception. You can see a list of various exception codes
+ *		in WINNT.H by searching for #defines that start with "STATUS_". For
+ *		example, the code for the all-too-familiar STATUS_ACCESS_VIOLATION is
+ *		0xC0000005. A more complete set of exception codes can be found in
+ *		NTSTATUS.H from the Windows NT DDK.
+ *
+ *	Some day we might want to print descriptions for the most common
+ *	exceptions, rather than printing an include file name.	We could use
+ *	RtlNtStatusToDosError() and pass to FormatMessage(), which can print
+ *	the text of error values, but MinGW does not support
+ *	RtlNtStatusToDosError().
  */
+#define WIFEXITED(w)	(((w) & 0XFFFFFF00) == 0)
+#define WIFSIGNALED(w)	(!WIFEXITED(w))
 #define WEXITSTATUS(w)	(w)
 #define WIFEXITED(w)	(true)
 #define WIFSIGNALED(w)	(false)
-#define WTERMSIG(w)		(0)
+#define WTERMSIG(w)		(w)
 
 #define sigmask(sig) ( 1 << ((sig)-1) )
 
@@ -186,6 +236,18 @@ struct itimerval
 };
 int			setitimer(int which, const struct itimerval * value, struct itimerval * ovalue);
 
+/*
+ * WIN32 does not provide 64-bit off_t, but does provide the functions operating
+ * with 64-bit offsets.
+ */
+#define pgoff_t __int64
+#ifdef WIN32_ONLY_COMPILER
+#define fseeko(stream, offset, origin) _fseeki64(stream, offset, origin)
+#define ftello(stream) _ftelli64(stream)
+#else
+#define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
+#define ftello(stream) ftello64(stream)
+#endif
 
 /*
  * Supplement to <sys/types.h>.
@@ -235,8 +297,8 @@ typedef int pid_t;
 
 
 /* In backend/port/win32/signal.c */
-extern DLLIMPORT volatile int pg_signal_queue;
-extern DLLIMPORT int pg_signal_mask;
+extern PGDLLIMPORT volatile int pg_signal_queue;
+extern PGDLLIMPORT int pg_signal_mask;
 extern HANDLE pgwin32_signal_event;
 extern HANDLE pgwin32_initial_signal_pipe;
 

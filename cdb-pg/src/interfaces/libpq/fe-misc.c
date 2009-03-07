@@ -23,7 +23,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-misc.c,v 1.133 2008/01/01 19:46:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-misc.c,v 1.133.2.1 2008/08/20 11:53:51 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -164,7 +164,7 @@ pqPuts(const char *s, PGconn *conn)
 int
 pqGetnchar(char *s, size_t len, PGconn *conn)
 {
-	if ((int)len < 0 || len > (size_t) (conn->inEnd - conn->inCursor))
+	if ((long)len < 0 || len > (size_t) (conn->inEnd - conn->inCursor))
 		return EOF;
 
 	memcpy(s, conn->inBuffer + conn->inCursor, len);
@@ -233,42 +233,6 @@ pqGetInt(int *result, size_t bytes, PGconn *conn)
 		fprintf(conn->Pfdebug, "From backend (#%lu)> %d\n", (unsigned long) bytes, *result);
 
 	return 0;
-}
-
-int64
-pqGetInt64(int64 *result, PGconn *conn)
-{
-    int64       tmp;
-    uint32      h32;
-    uint32      l32;
-
-	if (conn->inCursor + 8 > conn->inEnd)
-		return EOF;
-
-    memcpy(&h32, conn->inBuffer + conn->inCursor, 4);
-	conn->inCursor += 4;
-	memcpy(&l32, conn->inBuffer + conn->inCursor, 4);
-	conn->inCursor += 4;
-    h32 = ntohl(h32);
-    l32 = ntohl(l32);
-
-#ifdef INT64_IS_BUSTED
-    /* error out if incoming value is wider than 32 bits */
-    tmp = l32;
-    if ((tmp < 0) ? (h32 != -1) : (h32 != 0))
-	{
-		pqInternalNotice(&conn->noticeHooks,
-						 "binary value is out of range for type bigint");
-		return EOF;
-	}
-#else
-    tmp = h32;
-    tmp <<= 32;
-    tmp |= l32;
-#endif
-
-	*result = tmp;
-    return 0;
 }
 
 /*
@@ -897,20 +861,8 @@ pqSendSome(PGconn *conn, int len)
 
 	/* shift the remaining contents of the buffer */
 	if (remaining > 0)
-	{
-		if (conn->outBuffer_shared)
-			conn->outBuffer = ptr;
-		else
-			memmove(conn->outBuffer, ptr, remaining);
-	}
+		memmove(conn->outBuffer, ptr, remaining);
 	conn->outCount = remaining;
-
-	if (remaining == 0 && conn->outBuffer_shared)
-	{
-		conn->outBuffer_shared = false;
-		conn->outBuffer = malloc(16384);
-		conn->outBufSize = 16384;
-	}
 
 	return result;
 }

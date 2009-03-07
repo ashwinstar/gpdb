@@ -11,7 +11,7 @@
 subdir = src/backend/optimizer/util
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
-override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
+override CPPFLAGS := -I$../../gp_libpq_fe $(CPPFLAGS)
 
 OBJS = clauses.o joininfo.o pathnode.o plancat.o predtest.o \
        relnode.o restrictinfo.o tlist.o var.o

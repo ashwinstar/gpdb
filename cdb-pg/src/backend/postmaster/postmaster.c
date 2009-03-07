@@ -161,8 +161,12 @@ void FtsProbeMain(int argc, char *argv[]);
  * authorization phase).  This is used mainly to keep track of how many
  * children we have and send them appropriate signals when necessary.
  *
- * "Special" children such as the startup and bgwriter tasks are not in
- * this list.
+ * "Special" children such as the startup, bgwriter and autovacuum launcher
+ * tasks are not in this list.	Autovacuum worker processes are in it.
+ * Also, "dead_end" children are in it: these are children launched just
+ * for the purpose of sending a friendly rejection message to a would-be
+ * client.	We must track them because they are attached to shared memory,
+ * but we know they will never become live backends.
  */
 typedef struct bkend
 {
@@ -226,7 +230,7 @@ static char ExtraOptions[MAXPGPATH];
  * backend dumps core.	Normally, it kills all peers of the dead backend
  * and reinitializes shared memory.  By specifying -s or -n, we can have
  * the postmaster stop (rather than kill) peers and not reinitialize
- * shared data structures.
+ * shared data structures.	(Reinit is currently dead code, though.)
  */
 static bool Reinit = true;
 static int	SendStop = false;
@@ -365,7 +369,7 @@ static int	initMasks(fd_set *rmask);
 static void report_fork_failure_to_client(Port *port, int errnum);
 static enum CAC_state canAcceptConnections(void);
 static long PostmasterRandom(void);
-static void RandomSalt(char *cryptSalt, char *md5Salt);
+static void RandomSalt(char *md5Salt);
 static void signal_child(pid_t pid, int signal);
 static void SignalChildren(int signal);
 static int	CountChildren(void);
@@ -557,8 +561,8 @@ PostmasterMain(int argc, char *argv[])
 
 	/*
 	 * Parse command-line options.  CAUTION: keep this in sync with
-	 * tcop/postgres.c (the option sets should not conflict)
-	 * and with the common help() function in main/main.c.
+	 * tcop/postgres.c (the option sets should not conflict) and with the
+	 * common help() function in main/main.c.
 	 */
 	while ((opt = getopt(argc, argv, "A:B:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:W:y:-:")) != -1)
 	{
@@ -1012,7 +1016,15 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Load configuration files for client authentication.
 	 */
-	load_hba();
+	if (!load_hba())
+	{
+	/*
+		 * It makes no sense continue if we fail to load the HBA file, since 
+		 * there is no way to connect to the database in this case.
+	 */
+		ereport(FATAL,
+				(errmsg("could not load pg_hba.conf")));
+	}
 	load_ident();
 
 	/*
@@ -1058,6 +1070,7 @@ PostmasterMain(int argc, char *argv[])
 		ExitPostmaster(1);
 
 #ifdef EXEC_BACKEND
+	/* Write out nondefault GUC settings for child processes to use */
 	write_nondefault_variables(PGC_POSTMASTER);
 #endif
 
@@ -1182,6 +1195,13 @@ checkDataDir(void)
 				 errmsg("could not read permissions of directory \"%s\": %m",
 						DataDir)));
 	}
+
+	/* eventual chdir would fail anyway, but let's test ... */
+	if (!S_ISDIR(stat_buf.st_mode))
+		ereport(FATAL,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("specified data directory \"%s\" is not a directory",
+						DataDir)));
 
 	/*
 	 * Check that the directory belongs to my userid; if not, reject.
@@ -1376,6 +1396,7 @@ ServerLoop(void)
 		 */
 		PG_SETMASK(&BlockSig);
 
+		/* Now check the select() result */
 		if (selres < 0)
 		{
 			if (errno != EINTR && errno != EWOULDBLOCK)
@@ -1558,7 +1579,7 @@ initMasks(fd_set *rmask)
 
 
 /*
- * Read the startup packet and do something according to it.
+ * Read a client's startup packet and do something according to it.
  *
  * Returns STATUS_OK or STATUS_ERROR, or might call ereport(FATAL) and
  * not return at all.
@@ -1956,6 +1977,9 @@ canAcceptConnections(void)
 	 * backend might exit before the auth cycle is completed. The exact
 	 * MaxBackends limit is enforced when a new backend tries to join the
 	 * shared-inval backend array.
+	 *
+	 * In the EXEC_BACKEND case, the limit here must match the size of the
+	 * ShmemBackendArray, since all these processes will have cancel codes.
 	 */
 	if (CountChildren() >= 2 * MaxBackends)
 		return CAC_TOOMANY;
@@ -1982,6 +2006,7 @@ ConnCreate(int serverFd)
 
 	if (StreamConnection(serverFd, port) != STATUS_OK)
 	{
+		if (port->sock >= 0)
 		StreamClose(port->sock);
 		ConnFree(port);
 		port = NULL;
@@ -1995,8 +2020,24 @@ ConnCreate(int serverFd)
 		 * fork, not after.  Else the postmaster's random sequence won't get
 		 * advanced, and all backends would end up using the same salt...
 		 */
-		RandomSalt(port->cryptSalt, port->md5Salt);
+		RandomSalt(port->md5Salt);
 	}
+
+	/*
+	 * Allocate GSSAPI specific state struct
+	 */
+#ifndef EXEC_BACKEND
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+	port->gss = (pg_gssinfo *) calloc(1, sizeof(pg_gssinfo));
+	if (!port->gss)
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+		ExitPostmaster(1);
+	}
+#endif
+#endif
 
 	return port;
 }
@@ -2011,6 +2052,8 @@ ConnFree(Port *conn)
 #ifdef USE_SSL
 	secure_close(conn);
 #endif
+	if (conn->gss)
+		free(conn->gss);
 	free(conn);
 }
 
@@ -2126,7 +2169,10 @@ SIGHUP_handler(SIGNAL_ARGS)
 		/* PgStatPID does not currently need SIGHUP */
 
 		/* Reload authentication config files too */
-		load_hba();
+		if (!load_hba())
+			ereport(WARNING,
+					(errmsg("pg_hba.conf not reloaded")));
+
 		load_ident();
 
 #ifdef EXEC_BACKEND
@@ -2349,7 +2395,7 @@ pmdie(SIGNAL_ARGS)
 }
 
 /*
- * Reaper -- signal handler to cleanup after a backend (child) dies.
+ * Reaper -- signal handler to cleanup after a child process dies.
  */
 static void
 reaper(SIGNAL_ARGS)
@@ -3146,6 +3192,8 @@ SignalChildren(int signal)
  * BackendStartup -- start backend process
  *
  * returns: STATUS_ERROR if the fork failed, STATUS_OK otherwise.
+ *
+ * Note: if you change this code, also consider StartAutovacuumWorker.
  */
 static int
 BackendStartup(Port *port)
@@ -3173,7 +3221,7 @@ BackendStartup(Port *port)
 		return STATUS_ERROR;
 	}
 
-	/* Pass down canAcceptConnections state (kluge for EXEC_BACKEND case) */
+	/* Pass down canAcceptConnections state */
 	port->canAcceptConnections = canAcceptConnections();
 
 #ifdef EXEC_BACKEND
@@ -3422,7 +3470,15 @@ BackendInitialize(Port *port)
 											  ALLOCSET_DEFAULT_MAXSIZE);
 	MemoryContextSwitchTo(PostmasterContext);
 
-	load_hba();
+	if (!load_hba())
+	{
+		/* 
+		 * It makes no sense continue if we fail to load the HBA file, since 
+		 * there is no way to connect to the database in this case.
+		 */
+		ereport(FATAL,
+				(errmsg("could not load pg_hba.conf")));
+	}
 	load_ident();
 	load_role();
 #endif
@@ -3613,6 +3669,10 @@ postmaster_forkexec(int argc, char *argv[])
 
 /*
  * backend_forkexec -- fork/exec off a backend process
+ *
+ * Some operating systems (WIN32) don't have fork() so we have to simulate
+ * it by storing parameters that need to be passed to the child and
+ * then create a new child process.
  *
  * returns the pid of the fork/exec'd process, or -1 on failure
  */
@@ -3948,6 +4008,19 @@ SubPostmasterMain(int argc, char *argv[])
 	memset(&port, 0, sizeof(Port));
 	read_backend_variables(argv[2], &port);
 
+	/*
+	 * Set up memory area for GSS information. Mirrors the code in ConnCreate
+	 * for the non-exec case.
+	 */
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+	port.gss = (pg_gssinfo *) calloc(1, sizeof(pg_gssinfo));
+	if (!port.gss)
+		ereport(FATAL,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+#endif
+
+
 	/* Check we got appropriate args */
 	if (argc < 3)
 		elog(FATAL, "invalid subpostmaster invocation");
@@ -4248,37 +4321,12 @@ dummy_handler(SIGNAL_ARGS)
 
 
 /*
- * CharRemap: given an int in range 0..61, produce textual encoding of it
- * per crypt(3) conventions.
- */
-static char
-CharRemap(long ch)
-{
-	if (ch < 0)
-		ch = -ch;
-	ch = ch % 62;
-
-	if (ch < 26)
-		return 'A' + ch;
-
-	ch -= 26;
-	if (ch < 26)
-		return 'a' + ch;
-
-	ch -= 26;
-	return '0' + ch;
-}
-
-/*
  * RandomSalt
  */
 static void
-RandomSalt(char *cryptSalt, char *md5Salt)
+RandomSalt(char *md5Salt)
 {
 	long		rand = PostmasterRandom();
-
-	cryptSalt[0] = CharRemap(rand % 62);
-	cryptSalt[1] = CharRemap(rand / 62);
 
 	/*
 	 * It's okay to reuse the first random value for one of the MD5 salt

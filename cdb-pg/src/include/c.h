@@ -99,17 +99,22 @@ extern "C" {
 /* Must be before gettext() games below */
 #include <locale.h>
 
-#define _(x) gettext((x))
+#define _(x) gettext(x)
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #else
 #define gettext(x) (x)
+#define dgettext(d,x) (x)
 #endif
 
 /*
- *	Use this to mark strings to be translated by gettext, in places where
- *	you don't want an actual function call to occur (eg, constant tables).
+ *	Use this to mark string constants as needing translation at some later
+ *	time, rather than immediately.  This is useful for cases where you need
+ *	access to the original string and translated string, and for cases where
+ *	immediate translation is not possible, like when initializing global
+ *	variables.
+ *		http://www.gnu.org/software/autoconf/manual/gettext/Special-cases.html
  */
 #define gettext_noop(x) (x)
 
@@ -804,6 +809,32 @@ typedef NameData *Name;
 #define STATUS_WAITING			(2)
 
 
+/* gettext domain name mangling */
+
+/*
+ * To better support parallel installations of major PostgeSQL
+ * versions as well as parallel installations of major library soname
+ * versions, we mangle the gettext domain name by appending those
+ * version numbers.  The coding rule ought to be that whereever the
+ * domain name is mentioned as a literal, it must be wrapped into
+ * PG_TEXTDOMAIN().  The macros below do not work on non-literals; but
+ * that is somewhat intentional because it avoids having to worry
+ * about multiple states of premangling and postmangling as the values
+ * are being passed around.
+ *
+ * Make sure this matches the installation rules in nls-global.mk.
+ */
+
+/* need a second indirection because we want to stringize the macro value, not the name */
+#define CppAsString2(x) CppAsString(x)
+
+#ifdef SO_MAJOR_VERSION
+# define PG_TEXTDOMAIN(domain) (domain CppAsString2(SO_MAJOR_VERSION) "-" PG_MAJORVERSION)
+#else
+# define PG_TEXTDOMAIN(domain) (domain "-" PG_MAJORVERSION)
+#endif
+
+
 /* ----------------------------------------------------------------
  *				Section 8: system-specific hacks
  *
@@ -904,6 +935,14 @@ extern int	fdatasync(int fildes);
 #if defined(HAVE_LONG_LONG_INT_64) && !defined(HAVE_STRTOULL) && defined(HAVE_STRTOUQ)
 #define strtoull strtouq
 #define HAVE_STRTOULL 1
+#endif
+
+/*
+ * We assume if we have these two functions, we have their friends too, and
+ * can use the wide-character functions.
+ */
+#if defined(HAVE_WCSTOMBS) && defined(HAVE_TOWLOWER)
+#define USE_WIDE_UPPER_LOWER
 #endif
 
 /* EXEC_BACKEND defines */

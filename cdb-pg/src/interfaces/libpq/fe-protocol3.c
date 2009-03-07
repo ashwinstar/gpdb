@@ -3,13 +3,12 @@
  * fe-protocol3.c
  *	  functions that are specific to frontend/backend protocol version 3
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.29 2006/10/04 00:30:13 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.38 2009/01/09 18:50:03 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -38,13 +37,10 @@
 /*
  * This macro lists the backend message types that could be "long" (more
  * than a couple of kilobytes).
- * 
- * MPP-3628: explain-analyze of large subtrees can generate big messages.
  */
 #define VALID_LONG_MESSAGE_TYPE(id) \
 	((id) == 'T' || (id) == 'D' || (id) == 'd' || (id) == 'V' || \
-	 (id) == 'E' || (id) == 'N' || (id) == 'A' || (id) == 'Y' || \
-	 (id) == 'y')
+	 (id) == 'E' || (id) == 'N' || (id) == 'A')
 
 
 static void handleSyncLoss(PGconn *conn, char id, int msgLength);
@@ -54,11 +50,7 @@ static int	getAnotherTuple(PGconn *conn, int msgLength);
 static int	getParameterStatus(PGconn *conn);
 static int	getNotify(PGconn *conn);
 static int	getCopyStart(PGconn *conn, ExecStatusType copytype);
-static int	getQEWriterTransactionInfo(PGconn *conn);
-static int	getStandbyMasterEndLocation(PGconn *conn);
 static int	getReadyForQuery(PGconn *conn);
-static int	getReadyForQuery_QEWriter(PGconn *conn);
-static void saveCdbStatMsg(PGresult *result, char *data, int len);
 static void reportErrorPosition(PQExpBuffer msg, const char *query,
 					int loc, int encoding);
 static int build_startup_packet(const PGconn *conn, char *packet,
@@ -123,7 +115,8 @@ pqParseInput3(PGconn *conn)
 			 * recovery strategy if we are unable to make the buffer big
 			 * enough.
 			 */
-			if (pqCheckInBufferSpace(conn->inCursor + msgLength, conn))
+			if (pqCheckInBufferSpace(conn->inCursor + (size_t) msgLength,
+									 conn))
 			{
 				/*
 				 * XXX add some better recovery code... plan is to skip over
@@ -217,58 +210,6 @@ pqParseInput3(PGconn *conn)
 							CMDSTATUS_LEN);
 					conn->asyncStatus = PGASYNC_READY;
 					break;
-				case 'g':		/* command complete with QE Writer transaction information */
-					if (pqGets(&conn->workBuffer, conn))
-						return;
-					
-					if (getQEWriterTransactionInfo(conn))
-						return;
-//					pqInternalNotice(&conn->noticeHooks,
-//							"Called getQEWriterTransactionInfo from pqParseInput3 (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)\n",
-//							conn->QEWriter_DistributedTransactionId, conn->QEWriter_CommandId,
-//							(conn->QEWriter_Dirty ? "true" : "false"));
-
-					if (conn->result == NULL)
-					{
-						conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
-						if (!conn->result)
-							return;
-					}
-					strncpy(conn->result->cmdStatus, conn->workBuffer.data,
-							CMDSTATUS_LEN);
-					
-					conn->asyncStatus = PGASYNC_READY;
-					break;
-				case 'o':
-					{
-						int i;
-						PQaoRelTupCount *ao;
-
-						/* row count for AO partitioned tables */
-						conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-						if (!conn->result)
-							return;
-							
-						if (pqGetInt(&(conn->result->naotupcounts), 4, conn))
-							return;
-							
-						/* now just loop through */
-						conn->result->aotupcounts = 
-							malloc(sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
-						ao = conn->result->aotupcounts;
-						for (i = 0; i < conn->result->naotupcounts; i++)
-						{
-							if (pqGetInt((int *)&(ao->aorelid), 4, conn))
-								return;
-							if (pqGetInt64(&(ao->tupcount), conn))
-								return;
-
-							ao++;
-						}
-					}
-					conn->asyncStatus = PGASYNC_READY;
-					break;
 				case 'E':		/* error return */
 					if (pqGetErrorNotice3(conn, true))
 						return;
@@ -278,23 +219,6 @@ pqParseInput3(PGconn *conn)
 					if (getReadyForQuery(conn))
 						return;
 					conn->asyncStatus = PGASYNC_IDLE;
-					break;
-				case 'z':		/* backend is ready for new query (includes additional QE Writer transaction information) */
-					if (getReadyForQuery_QEWriter(conn))
-						return;
-					conn->asyncStatus = PGASYNC_IDLE;
-					break;
-				case 's':		/* standby master command complete with XLOG end location */
-					if (getStandbyMasterEndLocation(conn))
-						return;
-					if (conn->result == NULL)
-					{
-						conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
-						if (!conn->result)
-							return;
-					}
-					conn->asyncStatus = PGASYNC_READY;
 					break;
 				case 'I':		/* empty query */
 					if (conn->result == NULL)
@@ -340,22 +264,6 @@ pqParseInput3(PGconn *conn)
 					if (pqGetInt(&(conn->be_key), 4, conn))
 						return;
 					break;
-				case 'w':  /* get the GPDB QE details (Motion Listener) */
-					{
-						int version_len=0;
-
-						if (pqGetInt(&(conn->motion_listener), 4, conn))
-							return;
-						if (pqGetInt(&version_len, 4, conn))
-							return;
-						conn->qe_version = malloc(version_len);
-						if (conn->qe_version == NULL)
-							return;
-						if (pqGetnchar(conn->qe_version, version_len, conn))
-							return;
-					}
-					conn->asyncStatus = PGASYNC_IDLE;
-					break;
 				case 'T':		/* Row Description */
 					if (conn->result == NULL ||
 						conn->queryclass == PGQUERY_DESCRIBE)
@@ -389,19 +297,24 @@ pqParseInput3(PGconn *conn)
 					/*
 					 * NoData indicates that we will not be seeing a
 					 * RowDescription message because the statement or portal
-					 * inquired about doesn't return rows. Set up a COMMAND_OK
-					 * result, instead of TUPLES_OK.
-					 */
-					if (conn->result == NULL)
-						conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
-
-					/*
-					 * If we're doing a Describe, we're ready to pass the
-					 * result back to the client.
+					 * inquired about doesn't return rows.
+					 *
+					 * If we're doing a Describe, we have to pass something
+					 * back to the client, so set up a COMMAND_OK result,
+					 * instead of TUPLES_OK.  Otherwise we can just ignore
+					 * this message.
 					 */
 					if (conn->queryclass == PGQUERY_DESCRIBE)
+					{
+						if (conn->result == NULL)
+						{
+							conn->result = PQmakeEmptyPGresult(conn,
+															PGRES_COMMAND_OK);
+							if (!conn->result)
+								return;
+						}
 						conn->asyncStatus = PGASYNC_READY;
+					}
 					break;
 				case 't':		/* Parameter Description */
 					if (getParamDescriptions(conn))
@@ -463,62 +376,7 @@ pqParseInput3(PGconn *conn)
 					 * the COPY command.
 					 */
 					break;
-				case 'j':
-					
-					/*
-					 * QE COPY reports number of rejected rows to the QD COPY
-					 * in single row error handling mode.
-					 */
-					conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-					if (!conn->result)
-						return;
-						
-					if (pqGetInt(&(conn->result->numRejected), 4, conn))
-						return;
-							
-					conn->asyncStatus = PGASYNC_READY;
-					break;
-                case 'Y':       /* CDB: statistical response from QE to QD */
-					/* for certain queries, the stats may arrive
-					 * before the completion status -- for this case
-					 * we're responsible for allocating the result
-					 * struct */
-					if (conn->result == NULL)
-                        conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-                    if (conn->result)
-                        saveCdbStatMsg(conn->result,
-                                       conn->inBuffer + conn->inCursor,
-                                       msgLength);
-                    conn->inCursor += msgLength;
-                    break;
-                case 'y':
-					/*
-					 * CDB: for gang management and stats collection for Vacuum/Analyze
-					 * commands.
-					 */
-                	if (pqGets(&conn->workBuffer, conn))
-						return;
-					if (conn->result == NULL)
-					{
-						conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
-						if (!conn->result)
-							return;
-					}
-					strncpy(conn->result->cmdStatus, conn->workBuffer.data,
-							CMDSTATUS_LEN);
-					
-					
-					if (pqGetInt(&conn->result->extraslen, 4, conn))
-						return;
-					conn->result->extras = malloc(conn->result->extraslen);
-					if (pqGetnchar((char *)conn->result->extras, conn->result->extraslen, conn))
-						return;
-					conn->asyncStatus = PGASYNC_READY;
-
-                    break;
-
-                default:
+				default:
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
 													"unexpected response from server; first received character was \"%c\"\n"),
@@ -766,15 +624,6 @@ getAnotherTuple(PGconn *conn, int msgLength)
 	int			vlen;			/* length of the current field value */
 	int			i;
 
-#ifdef CDB_LIMITRESULT
-
- if (result->ntups >= 10)
-    {
-      /* after first 10 rows, discard all the rest */
-	conn->inCursor = conn->inStart + 5 + msgLength;
-	    return 0;
-    }
-#endif
 	/* Allocate tuple space if first time for this data message */
 	if (conn->curTuple == NULL)
 	{
@@ -1004,35 +853,11 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 	 */
 	if (isError)
 	{
-        res->errMsg = pqResultStrdup(res, workBuf.data);
+		res->errMsg = pqResultStrdup(res, workBuf.data);
 		if (!res->errMsg)
 			goto fail;
-
-        /* CDB: Transfer statistical messages on to the new result. */
-        if (conn->result &&
-            conn->result->cdbstats)
-        {
-            pgCdbStatCell  *cell;
-            pgCdbStatCell  *next;
-            pgCdbStatCell  *prev = NULL;
-
-            /* Copy messages (incidentally reversing the list). */
-            for (cell = conn->result->cdbstats; cell; cell = cell->next)
-                saveCdbStatMsg(res, cell->data, cell->len);
-
-            /* Reverse the list again to restore newest-first ordering. */
-            for (cell = res->cdbstats; cell; cell = next)
-            {
-                next = cell->next;
-                cell->next = prev;
-                prev = cell;
-            }
-            res->cdbstats = prev;
-        }
-
 		pqClearAsyncResult(conn);
 		conn->result = res;
-		resetPQExpBuffer(&conn->errorMessage);
 		appendPQExpBufferStr(&conn->errorMessage, workBuf.data);
 	}
 	else
@@ -1425,56 +1250,13 @@ failure:
 }
 
 /*
- * getQEWriterTransactionInfo - process QE Writer transaction information in remainer of message
- */
-static int
-getQEWriterTransactionInfo(PGconn *conn)
-{
-	char						dirty;
-
-	//
-	// Between the EXECUTOR and DISPATCHER, send back a dirty flag plus
-	// transaction information for verification purposes.
-	//
-	if (pqGetInt((int*)&conn->QEWriter_DistributedTransactionId, 4, conn))
-		return EOF;
-	if (pqGetInt((int*)&conn->QEWriter_CommandId, 4, conn))
-		return EOF;
-	if (pqGetc(&dirty, conn))
-		return EOF;
-	conn->QEWriter_Dirty = (dirty == 'T');
-
-	conn->QEWriter_HaveInfo = true;
-
-	return 0;
-}
-
-/*
- * getStandbyEndLocation - process standby master XLOG end location in remainer of message
- */
-static int
-getStandbyMasterEndLocation(PGconn *conn)
-{
-	//
-	// Between the Standby Master and Primary, send back a XLOG end location.
-	//
-	if (pqGetInt((int*)&conn->Standby_xlogid, 4, conn))
-		return EOF;
-	if (pqGetInt((int*)&conn->Standby_xrecoff, 4, conn))
-		return EOF;
-	conn->Standby_HaveInfo = true;
-
-	return 0;
-}
-
-/*
  * getReadyForQuery - process ReadyForQuery message
  */
 static int
 getReadyForQuery(PGconn *conn)
 {
 	char		xact_status;
-	
+
 	if (pqGetc(&xact_status, conn))
 		return EOF;
 	switch (xact_status)
@@ -1495,74 +1277,6 @@ getReadyForQuery(PGconn *conn)
 
 	return 0;
 }
-
-/*
- * getReadyForQuery_QEWriter - process ReadyForQuery message with additional
- *    QE Writer information.
- */
-static int
-getReadyForQuery_QEWriter(PGconn *conn)
-{
-	char		xact_status;
-	
-	if (pqGetc(&xact_status, conn))
-		return EOF;
-	switch (xact_status)
-	{
-		case 'I':
-			conn->xactStatus = PQTRANS_IDLE;
-			break;
-		case 'T':
-			conn->xactStatus = PQTRANS_INTRANS;
-			break;
-		case 'E':
-			conn->xactStatus = PQTRANS_INERROR;
-			break;
-		default:
-			conn->xactStatus = PQTRANS_UNKNOWN;
-			break;
-	}
-
-	if (getQEWriterTransactionInfo(conn))
-		return EOF;
-
-//	pqInternalNotice(&conn->noticeHooks,
-//		"Called getQEWriterTransactionInfo from getReadyForQuery_QEWriter (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)\n",
-//		conn->QEWriter_DistributedTransactionId, conn->QEWriter_CommandId,
-//		(conn->QEWriter_Dirty ? "true" : "false"));
-
-	return 0;
-}
-
-
-/*
- * saveCdbStatMsg - attach qExec statistics message to PGresult
- */
-void
-saveCdbStatMsg(PGresult *result, char *data, int len)
-{
-    pgCdbStatCell  *cell;
-
-    /* Allocate list element. */
-    cell = pqResultAlloc(result, sizeof(*cell), true);
-    if (!cell)
-        return;
-
-    /* Allocate an aligned buffer from the PGresult's memory pool. */
-    cell->data = (char *)pqResultAlloc(result, len, true);
-    if (!cell->data)
-        return;
-
-    /* Copy the message data. */
-    cell->len = len;
-	memcpy(cell->data, data, len);
-
-    /* Add to head of list. */
-    cell->next = result->cdbstats;
-    result->cdbstats = cell;
-    return;
-}                               /* saveCdbStatMsg */
-
 
 /*
  * getCopyDataMessage - fetch next CopyData message, process async messages
@@ -1596,14 +1310,31 @@ getCopyDataMessage(PGconn *conn)
 		}
 		avail = conn->inEnd - conn->inCursor;
 		if (avail < msgLength - 4)
+		{
+			/*
+			 * Before returning, enlarge the input buffer if needed to hold
+			 * the whole message.  See notes in parseInput.
+			 */
+			if (pqCheckInBufferSpace(conn->inCursor + (size_t) msgLength - 4,
+									 conn))
+			{
+				/*
+				 * XXX add some better recovery code... plan is to skip over
+				 * the message using its length, then report an error. For the
+				 * moment, just treat this like loss of sync (which indeed it
+				 * might be!)
+				 */
+				handleSyncLoss(conn, id, msgLength);
+				return -2;
+			}
 			return 0;
+		}
 
 		/*
 		 * If it's a legitimate async message type, process it.  (NOTIFY
 		 * messages are not currently possible here, but we handle them for
-		 * completeness.  NOTICE is definitely possible, and ParameterStatus
-		 * could probably be made to happen.)  Otherwise, if it's anything
-		 * except Copy Data, report end-of-copy.
+		 * completeness.)  Otherwise, if it's anything except Copy Data,
+		 * report end-of-copy.
 		 */
 		switch (id)
 		{
@@ -2020,7 +1751,8 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 			 * Before looping, enlarge the input buffer if needed to hold the
 			 * whole message.  See notes in parseInput.
 			 */
-			if (pqCheckInBufferSpace(conn->inCursor + msgLength, conn))
+			if (pqCheckInBufferSpace(conn->inCursor + (size_t) msgLength,
+									 conn))
 			{
 				/*
 				 * XXX add some better recovery code... plan is to skip over
@@ -2187,37 +1919,6 @@ build_startup_packet(const PGconn *conn, char *packet,
 		if (packet)
 			strcpy(packet + packet_len, conn->pgoptions);
 		packet_len += strlen(conn->pgoptions) + 1;
-	}
-
-	/* CDB: Add qExec startup data */
-	if (conn->gpqeid && conn->gpqeid[0])
-	{
-		if (packet)
-			strcpy(packet + packet_len, "gpqeid");
-		packet_len += strlen("gpqeid") + 1;
-		if (packet)
-			strcpy(packet + packet_len, conn->gpqeid);
-		packet_len += strlen(conn->gpqeid) + 1;
-	}
-	/* CDB: Add qExec startup data */
-	if (conn->gpqdid && conn->gpqdid[0])
-	{
-		if (packet)
-			strcpy(packet + packet_len, "gpqdid");
-		packet_len += strlen("gpqdid") + 1;
-		if (packet)
-			strcpy(packet + packet_len, conn->gpqdid);
-		packet_len += strlen(conn->gpqdid) + 1;
-	}
-	/* CDB: Add qExec startup data */
-	if (conn->gpdaid && conn->gpdaid[0])
-	{
-		if (packet)
-			strcpy(packet + packet_len, "gpdaid");
-		packet_len += strlen("gpdaid") + 1;
-		if (packet)
-			strcpy(packet + packet_len, conn->gpdaid);
-		packet_len += strlen(conn->gpdaid) + 1;
 	}
 
 	/* Add any environment-driven GUC settings needed */

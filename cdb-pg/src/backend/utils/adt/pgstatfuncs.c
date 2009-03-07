@@ -716,7 +716,7 @@ pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS)
 #ifndef WIN32
 #include <sys/resource.h>
 #endif
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "lib/stringinfo.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"

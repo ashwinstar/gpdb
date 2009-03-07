@@ -556,6 +556,38 @@ DATA(insert OID = 2283 ( anyelement		PGNSP PGUID  4 t p t \054 0 0 anyelement_in
 #define ANYELEMENTOID	2283
 
 /*
+ * macros
+ */
+#define  TYPTYPE_BASE		'b' /* base type (ordinary scalar type) */
+#define  TYPTYPE_COMPOSITE	'c' /* composite (e.g., table's rowtype) */
+#define  TYPTYPE_DOMAIN		'd' /* domain over another type */
+#define  TYPTYPE_ENUM		'e' /* enumerated type */
+#define  TYPTYPE_PSEUDO		'p' /* pseudo-type */
+
+#define  TYPCATEGORY_INVALID	'\0'	/* not an allowed category */
+#define  TYPCATEGORY_ARRAY		'A'
+#define  TYPCATEGORY_BOOLEAN	'B'
+#define  TYPCATEGORY_COMPOSITE	'C'
+#define  TYPCATEGORY_DATETIME	'D'
+#define  TYPCATEGORY_ENUM		'E'
+#define  TYPCATEGORY_GEOMETRIC	'G'
+#define  TYPCATEGORY_NETWORK	'I'		/* think INET */
+#define  TYPCATEGORY_NUMERIC	'N'
+#define  TYPCATEGORY_PSEUDOTYPE	'P'
+#define  TYPCATEGORY_STRING		'S'
+#define  TYPCATEGORY_TIMESPAN	'T'
+#define  TYPCATEGORY_USER		'U'
+#define  TYPCATEGORY_BITSTRING	'V'		/* er ... "varbit"? */
+#define  TYPCATEGORY_UNKNOWN	'X'
+
+/* Is a type OID a polymorphic pseudotype?	(Beware of multiple evaluation) */
+#define IsPolymorphicType(typid)  \
+	((typid) == ANYELEMENTOID || \
+	 (typid) == ANYARRAYOID)
+	 //(typid) == ANYNONARRAYOID || \   /// added in pg 8.4
+	// (typid) == ANYENUMOID)
+
+/*
  * prototypes for functions in pg_type.c
  */
 extern Oid	TypeShellMake(const char *typeName, Oid typeNamespace);

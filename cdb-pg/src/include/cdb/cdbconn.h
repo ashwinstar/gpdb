@@ -13,8 +13,8 @@
 #ifndef CDBCONN_H
 #define CDBCONN_H
 
-#include "libpq-fe.h"               /* prerequisite for libpq-int.h */
-#include "libpq-int.h"              /* PQExpBufferData */
+#include "gp-libpq-fe.h"               /* prerequisite for libpq-int.h */
+#include "gp-libpq-int.h"              /* PQExpBufferData */
 
 
 /* --------------------------------------------------------------------------------------------------

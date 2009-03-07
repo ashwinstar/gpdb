@@ -85,7 +85,6 @@
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 
-#define _(x)	gettext((x))
 
 /* ----------
  * Routines type

@@ -42,6 +42,9 @@
 /* Define to 1 to enable Linux Trace. (--enable-ltrace) */
 #undef ENABLE_LTRACE
 
+/* Define to build with GSSAPI support. (--with-gssapi) */
+#undef ENABLE_GSS
+
 /* Define to 1 if you want National Language Support. (--enable-nls) */
 #undef ENABLE_NLS
 
@@ -93,9 +96,17 @@
    don't. */
 #undef HAVE_DECL_SNPRINTF
 
+/* Define to 1 if you have the declaration of `strlcat', and to 0 if you
+   don't. */
+#undef HAVE_DECL_STRLCAT
+
 /* Define to 1 if you have the declaration of `strlcpy', and to 0 if you
    don't. */
 #undef HAVE_DECL_STRLCPY
+
+/* Define to 1 if you have the declaration of `sys_siglist', and to 0 if you
+   don't. */
+#undef HAVE_DECL_SYS_SIGLIST
 
 /* Define to 1 if you have the declaration of `vsnprintf', and to 0 if you
    don't. */
@@ -115,6 +126,9 @@
 
 /* Define to 1 if you have the <endian.h> header file. */
 #undef HAVE_ENDIAN_H
+
+/* Define to 1 if you have the `ERR_set_mark' function. */
+#undef HAVE_ERR_SET_MARK
 
 /* Define to 1 if you have the `fcvt' function. */
 #undef HAVE_FCVT
@@ -164,6 +178,9 @@
 /* Define to 1 if you have the `getpeereid' function. */
 #undef HAVE_GETPEEREID
 
+/* Define to 1 if you have the `getpeerucred' function. */
+#undef HAVE_GETPEERUCRED
+
 /* Define to 1 if you have the `getpwuid_r' function. */
 #undef HAVE_GETPWUID_R
 
@@ -175,6 +192,12 @@
 
 /* Define to 1 if you have the `gettimeofday' function. */
 #undef HAVE_GETTIMEOFDAY
+
+/* Define to 1 if you have the <gssapi/gssapi.h> header file. */
+#undef HAVE_GSSAPI_GSSAPI_H
+
+/* Define to 1 if you have the <gssapi.h> header file. */
+#undef HAVE_GSSAPI_H
 
 /* Define to 1 if you have the <history.h> header file. */
 #undef HAVE_HISTORY_H
@@ -269,6 +292,12 @@
 /* Define to 1 if you have the `wldap32' library (-lwldap32). */
 #undef HAVE_LIBWLDAP32
 
+/* Define to 1 if you have the `xml2' library (-lxml2). */
+#undef HAVE_LIBXML2
+
+/* Define to 1 if you have the `xslt' library (-lxslt). */
+#undef HAVE_LIBXSLT
+
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
 
@@ -308,6 +337,9 @@
 
 /* Define to 1 if you have the <poll.h> header file. */
 #undef HAVE_POLL_H
+
+/* Define to 1 if you have the `posix_fadvise' function. */
+#undef HAVE_POSIX_FADVISE
 
 /* Define to 1 if you have the POSIX signal interface. */
 #undef HAVE_POSIX_SIGNALS
@@ -405,6 +437,9 @@
 
 /* Define to 1 if you have the <string.h> header file. */
 #undef HAVE_STRING_H
+
+/* Define to 1 if you have the `strlcat' function. */
+#undef HAVE_STRLCAT
 
 /* Define to 1 if you have the `strlcpy' function. */
 #undef HAVE_STRLCPY
@@ -505,6 +540,9 @@
 /* Define to 1 if you have the <sys/stat.h> header file. */
 #undef HAVE_SYS_STAT_H
 
+/* Define to 1 if you have the <sys/tas.h> header file. */
+#undef HAVE_SYS_TAS_H
+
 /* Define to 1 if you have the <sys/time.h> header file. */
 #undef HAVE_SYS_TIME_H
 
@@ -526,6 +564,9 @@
 
 /* Define to 1 if you have the external array `tzname'. */
 #undef HAVE_TZNAME
+
+/* Define to 1 if you have the <ucred.h> header file. */
+#undef HAVE_UCRED_H
 
 /* Define to 1 if the system has the type `uint64'. */
 #undef HAVE_UINT64
@@ -612,6 +653,10 @@
 /* A string containing the version number, platform, and C compiler */
 #undef PG_VERSION_STR
 
+/* Define to 1 to allow profiling output to be saved separately for each
+   process. */
+#undef PROFILE_PID_DIR
+
 /* Define to the necessary symbol if this constant uses a non-standard name on
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
@@ -663,6 +708,16 @@
 /* Define to 1 to build with LDAP support. (--with-ldap) */
 #undef USE_LDAP
 
+/* Define to 1 to build with XML support. (--with-libxml) */
+#undef USE_LIBXML
+
+/* Define to 1 to use XSLT support when building contrib/xml2.
+   (--with-libxslt) */
+#undef USE_LIBXSLT
+
+/* Define to select named POSIX semaphores. */
+#undef USE_NAMED_POSIX_SEMAPHORES
+
 /* Define to 1 to build with PAM support. (--with-pam) */
 #undef USE_PAM
 
@@ -678,8 +733,14 @@
 /* Define to select SysV-style shared memory. */
 #undef USE_SYSV_SHARED_MEMORY
 
+/* Define to select unnamed POSIX semaphores. */
+#undef USE_UNNAMED_POSIX_SEMAPHORES
+
 /* Define to select Win32-style semaphores. */
 #undef USE_WIN32_SEMAPHORES
+
+/* Define to select Win32-style shared memory. */
+#undef USE_WIN32_SHARED_MEMORY
 
 /* Define to 1 if your processor stores words with the most significant byte
    first (like Motorola and SPARC, unlike Intel and VAX). */
@@ -697,9 +758,11 @@
 /* Define to empty if `const' does not conform to ANSI C. */
 #undef const
 
-/* Define as `__inline' if that's what the C compiler calls it, or to nothing
-   if it is not supported. */
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
 #undef inline
+#endif
 
 /* Define to empty if the C compiler does not understand signed types. */
 #undef signed

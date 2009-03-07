@@ -20,7 +20,7 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "cdb/cdbdisp.h"
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "lib/stringinfo.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"

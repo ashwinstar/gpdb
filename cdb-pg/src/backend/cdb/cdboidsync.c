@@ -32,7 +32,7 @@
 #include "storage/proc.h"
 #include "utils/builtins.h"
 
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "lib/stringinfo.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"

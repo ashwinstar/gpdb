@@ -27,10 +27,10 @@
  * the backend's "backend/libpq" is quite separate from "interfaces/libpq".
  * All that remains is similarities of names to trap the unwary...
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.188.2.1 2007/06/04 11:59:40 mha Exp $
+ *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.199 2009/01/01 17:23:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -177,6 +177,22 @@ pq_close(int code, Datum arg)
 {
 	if (MyProcPort != NULL)
 	{
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+#ifdef ENABLE_GSS
+		OM_uint32	min_s;
+
+		/* Shutdown GSSAPI layer */
+		if (MyProcPort->gss->ctx != GSS_C_NO_CONTEXT)
+			gss_delete_sec_context(&min_s, &MyProcPort->gss->ctx, NULL);
+
+		if (MyProcPort->gss->cred != GSS_C_NO_CREDENTIAL)
+			gss_release_cred(&min_s, &MyProcPort->gss->cred);
+#endif   /* ENABLE_GSS */
+		/* GSS and SSPI share the port->gss struct */
+
+		free(MyProcPort->gss);
+#endif   /* ENABLE_GSS || ENABLE_SSPI */
+
 		/* Cleanly shut down SSL layer */
 		secure_close(MyProcPort);
 
@@ -251,7 +267,6 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 	int			fd,
 				err;
 	int			maxconn;
-	int			one = 1;
 	int			ret;
 	char		portNumberStr[32];
 	const char *familyDesc;
@@ -262,6 +277,10 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 	struct addrinfo hint;
 	int			listen_index = 0;
 	int			added = 0;
+
+#if !defined(WIN32) || defined(IPV6_V6ONLY)
+	int			one = 1;
+#endif
 
 	/* Initialize hint structure */
 	MemSet(&hint, 0, sizeof(hint));
@@ -361,13 +380,15 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 
 #ifndef WIN32
 		/*
-		 * Without the SO_REUSEADDR flag, a new postmaster can't be started right away after
-		 * a stop or crash, giving "address already in use" error on TCP ports.
+		 * Without the SO_REUSEADDR flag, a new postmaster can't be started
+		 * right away after a stop or crash, giving "address already in use"
+		 * error on TCP ports.
 		 *
-		 * On win32, however, this behavior only happens if the SO_EXLUSIVEADDRUSE is set.
-		 * With SO_REUSEADDR, win32 allows multiple servers to listen on the same address,
-		 * resulting in unpredictable behavior. With no flags at all, win32 behaves as
-		 * Unix with SO_REUSEADDR.
+		 * On win32, however, this behavior only happens if the
+		 * SO_EXLUSIVEADDRUSE is set. With SO_REUSEADDR, win32 allows multiple
+		 * servers to listen on the same address, resulting in unpredictable
+		 * behavior. With no flags at all, win32 behaves as Unix with
+		 * SO_REUSEADDR.
 		 */
 		if (!IS_AF_UNIX(addr->ai_family))
 		{
@@ -561,7 +582,7 @@ Setup_AF_UNIX(void)
 
 /*
  * StreamConnection -- create a new connection with client using
- *		server port.
+ *		server port.  Set port->sock to the FD of the new connection.
  *
  * ASSUME: that this doesn't need to be non-blocking because
  *		the Postmaster uses select() to tell when the server master
@@ -581,6 +602,15 @@ StreamConnection(int server_fd, Port *port)
 		ereport(LOG,
 				(errcode_for_socket_access(),
 				 errmsg("could not accept new connection: %m")));
+
+		/*
+		 * If accept() fails then postmaster.c will still see the server
+		 * socket as read-ready, and will immediately try again.  To avoid
+		 * uselessly sucking lots of CPU, delay a bit before trying again.
+		 * (The most likely reason for failure is being out of kernel file
+		 * table slots; we can do little except hope some will get freed up.)
+		 */
+		pg_usleep(100000L);		/* wait 0.1 sec */
 		return STATUS_ERROR;
 	}
 
@@ -885,10 +915,7 @@ pq_getstring(StringInfo s)
 {
 	int			i;
 
-	/* Reset string to empty */
-	s->len = 0;
-	s->data[0] = '\0';
-	s->cursor = 0;
+	resetStringInfo(s);
 
 	/* Read until we get the terminating '\0' */
 	for (;;)
@@ -940,10 +967,7 @@ pq_getmessage(StringInfo s, int maxlen)
 {
 	int32		len;
 
-	/* Reset message buffer to empty */
-	s->len = 0;
-	s->data[0] = '\0';
-	s->cursor = 0;
+	resetStringInfo(s);
 
 	/* Read message length word */
 	if (pq_getbytes((char *) &len, 4) == EOF)

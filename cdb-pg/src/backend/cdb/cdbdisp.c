@@ -53,7 +53,7 @@
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbrelsize.h"
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "libpq/libpq-be.h"
 #include "commands/vacuum.h" /* VUpdatedStats */
 #include "cdb/cdbanalyze.h"  /* cdbanalyze_get_columnstats */

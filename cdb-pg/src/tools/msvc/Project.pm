@@ -347,9 +347,7 @@ sub Save
     }
 
     # Dump the project
-    my $y = $self->{name} . '.vcproj';
-  
-    open(F, ">$y") || croak("Could not write to $y\n");
+    open(F, ">$self->{name}.vcproj") || croak("Could not write to $self->{name}.vcproj\n");
     $self->WriteHeader(*F);
     $self->WriteReferences(*F);
     print F <<EOF;

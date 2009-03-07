@@ -11,7 +11,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include "regex/regex.h"
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "libpq/libpq-be.h"
 #include "fmgr.h"
 #include "funcapi.h"

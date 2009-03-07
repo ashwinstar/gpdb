@@ -25,6 +25,7 @@ typedef struct
 	int			currIdx;
 }	Working_State;
 
+PG_FUNCTION_INFO_V1(gp_pgdatabase__);
 
 /*
  * pgdatabasev - produce a view of pgdatabase to include transient state

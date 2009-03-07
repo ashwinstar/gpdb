@@ -1247,6 +1247,8 @@ DATA(insert OID = 715 (  lo_create		   PGNSP PGUID 12 f f t f v 1 26 f "26" _nul
 DESCR("large object create");
 DATA(insert OID = 958 (  lo_tell		   PGNSP PGUID 12 f f t f v 1 23 f "23" _null_ _null_ _null_	lo_tell - _null_ ));
 DESCR("large object position");
+DATA(insert OID = 1099 (  lo_truncate	   PGNSP PGUID 12 f f t f v 2 23 f "23 23" _null_ _null_ _null_ lo_truncate - _null_  ));
+DESCR("truncate large object");
 
 DATA(insert OID = 959 (  on_pl			   PGNSP PGUID 12 f f t f i 2  16 f "600 628" _null_ _null_ _null_	on_pl - _null_ ));
 DESCR("point on line?");

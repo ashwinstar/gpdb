@@ -19,6 +19,7 @@
 
 #include <ctype.h>
 #include <float.h>
+#include <math.h>
 #include <limits.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -122,6 +123,10 @@ extern bool enable_partition_rules;
 List       *gp_guc_list_for_explain;
 List       *gp_guc_list_for_no_plan;
 
+
+#ifdef USE_SSL
+extern char *SSLCipherSuites;
+#endif
 /*
  * Assign/Show hook functions defined in this module
  */
@@ -3466,7 +3471,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"krb_server_keyfile", PGC_POSTMASTER, CONN_AUTH_SECURITY,
+		{"krb_server_keyfile", PGC_SIGHUP, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the location of the Kerberos server key file."),
 			NULL,
 			GUC_SUPERUSER_ONLY
@@ -3476,21 +3481,12 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"krb_srvname", PGC_POSTMASTER, CONN_AUTH_SECURITY,
+		{"krb_srvname", PGC_SIGHUP, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the name of the Kerberos service."),
 			NULL
 		},
 		&pg_krb_srvnam,
 		PG_KRB_SRVNAM, NULL, NULL
-	},
-
-	{
-		{"krb_server_hostname", PGC_POSTMASTER, CONN_AUTH_SECURITY,
-			gettext_noop("Sets the hostname of the Kerberos server."),
-			NULL
-		},
-		&pg_krb_server_hostname,
-		NULL, NULL, NULL
 	},
 
 	{
@@ -3810,6 +3806,18 @@ static struct config_string ConfigureNamesString[] =
 		&IdentFileName,
 		NULL, NULL, NULL
 	},
+	
+#ifdef USE_SSL
+	{
+		{"ssl_ciphers", PGC_POSTMASTER, CONN_AUTH_SECURITY,
+			gettext_noop("Sets the list of allowed SSL ciphers."),
+			NULL,
+			GUC_SUPERUSER_ONLY
+		},
+		&SSLCipherSuites,
+		"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH", NULL, NULL
+	},
+#endif   /* USE_SSL */
 
 	{
 		{"external_pid_file", PGC_POSTMASTER, FILE_LOCATIONS,

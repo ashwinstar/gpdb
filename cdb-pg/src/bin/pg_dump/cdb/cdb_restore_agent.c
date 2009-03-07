@@ -70,7 +70,7 @@ int			optreset;
 #include <locale.h>
 #endif
 
-#define _(x) gettext((x))
+
 
 
 static void usage(const char *progname);

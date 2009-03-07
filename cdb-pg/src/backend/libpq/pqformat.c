@@ -21,10 +21,10 @@
  * are different.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/libpq/pqformat.c,v 1.43 2007/01/05 22:19:29 momjian Exp $
+ *	$PostgreSQL: pgsql/src/backend/libpq/pqformat.c,v 1.49 2009/03/02 21:18:43 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,6 +41,7 @@
  *		pq_sendcountedtext - append a counted text string (with character set conversion)
  *		pq_sendtext		- append a text string (with conversion)
  *		pq_sendstring	- append a null-terminated text string (with conversion)
+ *		pq_send_ascii_string - append a null-terminated text string (without conversion)
  *		pq_endmessage	- send the completed message to the frontend
  * Note: it is also possible to append data to the StringInfo buffer using
  * the regular StringInfo routines, but this is discouraged since required
@@ -202,6 +203,35 @@ pq_sendstring(StringInfo buf, const char *str)
 }
 
 /* --------------------------------
+ *		pq_send_ascii_string	- append a null-terminated text string (without conversion)
+ *
+ * This function intentionally bypasses encoding conversion, instead just
+ * silently replacing any non-7-bit-ASCII characters with question marks.
+ * It is used only when we are having trouble sending an error message to
+ * the client with normal localization and encoding conversion.  The caller
+ * should already have taken measures to ensure the string is just ASCII;
+ * the extra work here is just to make certain we don't send a badly encoded
+ * string to the client (which might or might not be robust about that).
+ *
+ * NB: passed text string must be null-terminated, and so is the data
+ * sent to the frontend.
+ * --------------------------------
+ */
+void
+pq_send_ascii_string(StringInfo buf, const char *str)
+{
+	while (*str)
+	{
+		char	ch = *str++;
+
+		if (IS_HIGHBIT_SET(ch))
+			ch = '?';
+		appendStringInfoCharMacro(buf, ch);
+}
+	appendStringInfoChar(buf, '\0');
+}
+
+/* --------------------------------
  *		pq_sendint		- append a binary integer to a StringInfo buffer
  * --------------------------------
  */
@@ -325,7 +355,7 @@ pq_sendfloat8(StringInfo buf, float8 f)
 		appendBinaryStringInfo(buf, (char *) &swap.h[1], 4);
 		appendBinaryStringInfo(buf, (char *) &swap.h[0], 4);
 	}
-#else
+#else							/* INT64 works */
 	union
 	{
 		float8		f;
@@ -563,7 +593,7 @@ pq_getmsgfloat8(StringInfo msg)
 		swap.h[0] = pq_getmsgint(msg, 4);
 	}
 	return swap.f;
-#else
+#else							/* INT64 works */
 	union
 	{
 		float8		f;

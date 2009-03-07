@@ -8,10 +8,10 @@
  *	  Structs that need to be client-visible are in pqcomm.h.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/libpq-be.h,v 1.57 2006/10/04 00:30:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/libpq-be.h,v 1.69 2009/01/01 17:23:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,6 +29,39 @@
 #include <netinet/tcp.h>
 #endif
 
+#ifdef ENABLE_GSS
+#if defined(HAVE_GSSAPI_H)
+#include <gssapi.h>
+#else
+#include <gssapi/gssapi.h>
+#endif   /* HAVE_GSSAPI_H */
+/*
+ * GSSAPI brings in headers that set a lot of things in the global namespace on win32,
+ * that doesn't match the msvc build. It gives a bunch of compiler warnings that we ignore,
+ * but also defines a symbol that simply does not exist. Undefine it again.
+ */
+#ifdef WIN32_ONLY_COMPILER
+#undef HAVE_GETADDRINFO
+#endif
+#endif   /* ENABLE_GSS */
+
+#ifdef ENABLE_SSPI
+#define SECURITY_WIN32
+#include <security.h>
+#undef SECURITY_WIN32
+
+#ifndef ENABLE_GSS
+/*
+ * Define a fake structure compatible with GSSAPI on Unix.
+ */
+typedef struct
+{
+	void	   *value;
+	int			length;
+}	gss_buffer_desc;
+#endif
+#endif   /* ENABLE_SSPI */
+
 #include "libpq/hba.h"
 #include "libpq/pqcomm.h"
 #include "utils/timestamp.h"
@@ -36,8 +69,24 @@
 
 typedef enum CAC_state
 {
-	CAC_OK, CAC_STARTUP, CAC_SHUTDOWN, CAC_RECOVERY, CAC_TOOMANY
+	CAC_OK, CAC_STARTUP, CAC_SHUTDOWN, CAC_RECOVERY, CAC_TOOMANY,
+	CAC_WAITBACKUP
 } CAC_state;
+
+/*
+ * GSSAPI specific state information
+ */
+#if defined(ENABLE_GSS) | defined(ENABLE_SSPI)
+typedef struct
+{
+	gss_buffer_desc outbuf;		/* GSSAPI output token buffer */
+#ifdef ENABLE_GSS
+	gss_cred_id_t cred;			/* GSSAPI connection cred's */
+	gss_ctx_id_t ctx;			/* GSSAPI connection context */
+	gss_name_t	name;			/* GSSAPI client name */
+#endif
+}	pg_gssinfo;
+#endif
 
 /*
  * This is used by the postmaster in its communication with frontends.	It
@@ -71,8 +120,7 @@ typedef struct Port
 	/*
 	 * Information that needs to be held during the authentication cycle.
 	 */
-	UserAuth	auth_method;
-	char	   *auth_arg;
+	HbaLine	   *hba;
 	char		md5Salt[4];		/* Password salt */
 	char		cryptSalt[2];	/* Password salt */
 
@@ -97,6 +145,17 @@ typedef struct Port
 	int			keepalives_idle;
 	int			keepalives_interval;
 	int			keepalives_count;
+
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+
+	/*
+	 * If GSSAPI is supported, store GSSAPI information. Oterwise, store a
+	 * NULL pointer to make sure offsets in the struct remain the same.
+	 */
+	pg_gssinfo *gss;
+#else
+	void	   *gss;
+#endif
 
 	/*
 	 * SSL structures (keep these last so that USE_SSL doesn't affect

@@ -29,6 +29,11 @@
 #include <sys/types.h>			/* for umask() */
 #include <sys/stat.h>			/* for stat() */
 #endif
+#ifdef USE_SSL
+#include <openssl/ssl.h>
+#endif
+
+//#include "portability/instr_time.h"
 
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
@@ -56,12 +61,21 @@ static bool do_edit(const char *filename_arg, PQExpBuffer query_buf);
 static bool do_connect(char *dbname, char *user, char *host, char *port);
 static bool do_shell(const char *command);
 
+//static void minimal_error_message(PGresult *res);
+
+static void printSSLInfo(void);
+
+#ifdef WIN32
+static void checkWin32Codepage(void);
+#endif
+
+
 
 /*----------
  * HandleSlashCmds:
  *
- * Handles all the different commands that start with '\',
- * ordinarily called by MainLoop().
+ * Handles all the different commands that start with '\'.
+ * Ordinarily called by MainLoop().
  *
  * scan_state is a lexer working state that is set to continue scanning
  * just after the '\'.  The lexer is advanced past the command and all
@@ -147,6 +161,9 @@ HandleSlashCmds(PsqlScanState scan_state,
 	psql_scan_slash_command_end(scan_state);
 
 	free(cmd);
+
+	/* some commands write to queryFout, so make sure output is sent */
+	fflush(pset.queryFout);
 
 	return status;
 }
@@ -292,7 +309,7 @@ exec_command(const char *cmd,
 		}
 
 		if (pset.dirname)
-			pfree(pset.dirname);
+			free(pset.dirname);
 		pset.dirname = pg_strdup(dir);
 		canonicalize_path(pset.dirname);
 
@@ -978,8 +995,9 @@ prompt_for_password(const char *username)
 	{
 		char	   *prompt_text;
 
-		prompt_text = malloc(strlen(username) + 32);
-		sprintf(prompt_text, "Password for user \"%s\": ", username);
+		prompt_text = malloc(strlen(username) + 100);
+		snprintf(prompt_text, strlen(username) + 100,
+				 _("Password for user %s: "), username);
 		result = simple_prompt(prompt_text, 100, false);
 		free(prompt_text);
 	}
@@ -1030,13 +1048,13 @@ do_connect(char *dbname, char *user, char *host, char *port)
 	 * If the user asked to be prompted for a password, ask for one now. If
 	 * not, use the password from the old connection, provided the username
 	 * has not changed. Otherwise, try to connect without a password first,
-	 * and then ask for a password if we got the appropriate error message.
+	 * and then ask for a password if needed.
 	 *
-	 * XXX: this behavior is broken. It leads to spurious connection attempts
-	 * in the postmaster's log, and doing a string comparison against the
-	 * returned error message is pretty fragile.
+	 * XXX: this behavior leads to spurious connection attempts recorded in
+	 * the postmaster's log.  But libpq offers no API that would let us obtain
+	 * a password and then continue with the first connection attempt.
 	 */
-	if (pset.getPassword)
+	if (pset.getPassword == TRI_YES)
 	{
 		password = prompt_for_password(user);
 	}
@@ -1061,7 +1079,7 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		 * Connection attempt failed; either retry the connection attempt with
 		 * a new password, or give up.
 		 */
-		if (strcmp(PQerrorMessage(n_conn), PQnoPasswordSupplied) == 0)
+		if (!password && PQconnectionNeedsPassword(n_conn) && pset.getPassword != TRI_NO)
 		{
 			PQfinish(n_conn);
 			password = prompt_for_password(user);
@@ -1102,6 +1120,7 @@ do_connect(char *dbname, char *user, char *host, char *port)
 	PQsetNoticeProcessor(n_conn, NoticeProcessor, NULL);
 	pset.db = n_conn;
 	SyncVariables();
+	connection_warnings(); /* Must be after SyncVariables */
 
 	/* Tell the user about the new connection */
 	if (!pset.quiet)
@@ -1124,6 +1143,106 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		PQfinish(o_conn);
 	return true;
 }
+
+
+void
+connection_warnings(void)
+{
+	if (!pset.quiet && !pset.notty)
+	{
+		int			client_ver = parse_version(PG_VERSION);
+
+		if (pset.sversion != client_ver)
+		{
+			const char *server_version;
+			char		server_ver_str[16];
+
+			/* Try to get full text form, might include "devel" etc */
+			server_version = PQparameterStatus(pset.db, "server_version");
+			if (!server_version)
+			{
+				snprintf(server_ver_str, sizeof(server_ver_str),
+						 "%d.%d.%d",
+						 pset.sversion / 10000,
+						 (pset.sversion / 100) % 100,
+						 pset.sversion % 100);
+				server_version = server_ver_str;
+			}
+
+			printf(_("%s (%s, server %s)\n"), 
+			pset.progname, PG_VERSION, server_version);
+		}
+		else
+			printf("%s (%s)\n", pset.progname, PG_VERSION);
+
+		if (pset.sversion / 100 != client_ver / 100)
+			printf(_("WARNING: %s version %d.%d, server version %d.%d.\n"
+				 "         Some psql features might not work.\n"),
+				pset.progname, client_ver / 10000, (client_ver / 100) % 100,
+				pset.sversion / 10000, (pset.sversion / 100) % 100);
+
+#ifdef WIN32
+		checkWin32Codepage();
+#endif
+		printSSLInfo();
+	}
+}
+
+
+/*
+ * printSSLInfo
+ *
+ * Prints information about the current SSL connection, if SSL is in use
+ */
+static void
+printSSLInfo(void)
+{
+#ifdef USE_SSL
+	int			sslbits = -1;
+	SSL		   *ssl;
+
+	ssl = PQgetssl(pset.db);
+	if (!ssl)
+		return;					/* no SSL */
+
+	SSL_get_cipher_bits(ssl, &sslbits);
+	printf(_("SSL connection (cipher: %s, bits: %i)\n"),
+		   SSL_get_cipher(ssl), sslbits);
+#else
+	/*
+	 * If psql is compiled without SSL but is using a libpq with SSL,
+	 * we cannot figure out the specifics about the connection. But
+	 * we know it's SSL secured.
+	 */
+	if (PQgetssl(pset.db))
+		printf(_("SSL connection (unknown cipher)\n"));
+#endif
+}
+
+
+/*
+ * checkWin32Codepage
+ *
+ * Prints a warning when win32 console codepage differs from Windows codepage
+ */
+#ifdef WIN32
+static void
+checkWin32Codepage(void)
+{
+	unsigned int wincp,
+				concp;
+
+	wincp = GetACP();
+	concp = GetConsoleCP();
+	if (wincp != concp)
+	{
+		printf(_("WARNING: Console code page (%u) differs from Windows code page (%u)\n"
+				 "         8-bit characters might not work correctly. See psql reference\n"
+			     "         page \"Notes for Windows users\" for details.\n"),
+			   concp, wincp);
+	}
+}
+#endif
 
 
 /*
@@ -1689,3 +1808,33 @@ do_shell(const char *command)
 	}
 	return true;
 }
+
+/*
+ * Report just the primary error; this is to avoid cluttering the output
+ * with, for instance, a redisplay of the internally generated query
+  
+static void
+minimal_error_message(PGresult *res)
+{
+	PQExpBuffer msg;
+	const char *fld;
+
+	msg = createPQExpBuffer();
+
+	fld = PQresultErrorField(res, PG_DIAG_SEVERITY);
+	if (fld)
+		printfPQExpBuffer(msg, "%s:  ", fld);
+	else
+		printfPQExpBuffer(msg, "ERROR:  ");
+	fld = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
+	if (fld)
+		appendPQExpBufferStr(msg, fld);
+	else
+		appendPQExpBufferStr(msg, "(not available)");
+	appendPQExpBufferStr(msg, "\n");
+
+	psql_error("%s", msg->data);
+
+	destroyPQExpBuffer(msg);
+}
+*/

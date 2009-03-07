@@ -13,7 +13,7 @@ subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-DIRS := access bootstrap catalog parser commands executor lib libpq \
+DIRS := access bootstrap catalog parser commands executor lib libpq gp_libpq_fe \
 	main nodes optimizer port postmaster regex rewrite \
 	storage tcop utils $(top_builddir)/src/timezone cdb
 
@@ -64,6 +64,7 @@ libpostgres.a: postgres.def
 endif # cygwin
 
 ifeq ($(PORTNAME), win32)
+LIBS += -lsecur32
 
 postgres: $(OBJS) postgres.def libpostgres.a $(WIN32RES)
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def

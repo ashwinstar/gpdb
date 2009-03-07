@@ -11,8 +11,8 @@
 subdir = src/backend/executor
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
-override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
-OBJCOPY ?= objcopy
+override CPPFLAGS := -I../gp_libpq_fe $(CPPFLAGS)
+
 
 OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        execProcnode.o execQual.o execScan.o execTuples.o \

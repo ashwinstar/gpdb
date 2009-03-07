@@ -7,7 +7,7 @@
 subdir = src/backend/utils/stat
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
-override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
+override CPPFLAGS := -I$../../gp_libpq_fe  $(CPPFLAGS)
 
 BLD_TOP = ../../../../..
 include $(BLD_TOP)/Makefile.thirdparty

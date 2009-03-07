@@ -25,9 +25,9 @@
 #include "utils/memutils.h"
 #include "utils/typcache.h"
 
-#include "libpq-fe.h"
+#include "gp-libpq-fe.h"
 #include "libpq/libpq-be.h"
-#include "libpq-int.h"
+#include "gp-libpq-int.h"
 #include "nodes/makefuncs.h"
 #include "nodes/parsenodes.h"
 #include "cdb/cdbvars.h"

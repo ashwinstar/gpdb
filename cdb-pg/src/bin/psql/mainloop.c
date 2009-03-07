@@ -26,9 +26,9 @@ int
 MainLoop(FILE *source)
 {
 	PsqlScanState scan_state;	/* lexer working state */
-	PQExpBuffer query_buf;		/* buffer for query being accumulated */
-	PQExpBuffer previous_buf;	/* if there isn't anything in the new buffer
-								 * yet, use this one for \e, etc. */
+	volatile PQExpBuffer query_buf;	/* buffer for query being accumulated */
+	volatile PQExpBuffer previous_buf;	/* if there isn't anything in the new
+								 * buffer yet, use this one for \e, etc. */
 	PQExpBuffer history_buf;	/* earlier lines of a multi-line command, not
 								 * yet saved to readline history */
 	char	   *line;			/* current line of input */
@@ -164,6 +164,23 @@ MainLoop(FILE *source)
 		if (line[0] == '\0' && !psql_scan_in_quote(scan_state))
 		{
 			free(line);
+			continue;
+		}
+
+		/* A request for help? Be friendly and give them some guidance */
+		if (pset.cur_cmd_interactive && query_buf->len == 0 &&
+			pg_strncasecmp(line, "help", 4) == 0 &&
+			(line[4] == '\0' || line[4] == ';' || isspace((unsigned char) line[4])))
+		{
+			free(line);
+			puts(_("You are using psql, the command-line interface to PostgreSQL."));
+			printf(_("Type:  \\copyright for distribution terms\n"
+					 "       \\h for help with SQL commands\n"
+					 "       \\? for help with psql commands\n"
+					 "       \\g or terminate with semicolon to execute query\n"
+					 "       \\q to quit\n"));
+
+			fflush(stdout);
 			continue;
 		}
 

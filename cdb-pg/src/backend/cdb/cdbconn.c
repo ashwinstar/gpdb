@@ -12,8 +12,8 @@
  */
 #include "postgres.h"
 
-#include "libpq-fe.h"
-#include "libpq-int.h"
+#include "gp-libpq-fe.h"
+#include "gp-libpq-int.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "libpq/libpq-be.h"

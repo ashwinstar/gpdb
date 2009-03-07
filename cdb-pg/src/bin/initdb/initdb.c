@@ -1596,8 +1596,8 @@ static void
 setup_auth(void)
 {
 	PG_CMD_DECL;
-	char	  **line;
-	static char *pg_authid_setup[] = {
+	const char **line;
+	static const char *pg_authid_setup[] = {
 		/*
 		 * Create triggers to ensure manual updates to shared catalogs will be
 		 * reflected into their "flat file" copies.
@@ -1738,8 +1738,8 @@ static void
 setup_depend(void)
 {
 	PG_CMD_DECL;
-	char	  **line;
-	static char *pg_depend_setup[] = {
+	const char **line;
+	static const char *pg_depend_setup[] = {
 		/*
 		 * Make PIN entries in pg_depend for all objects made so far in the
 		 * tables that the dependency code handles.  This is overkill (the
@@ -1748,7 +1748,8 @@ setup_depend(void)
 		 * dependencies seems hard.
 		 *
 		 * Note that we deliberately do not pin the system views, which
-		 * haven't been created yet.
+		 * haven't been created yet.  Also, no conversions, databases, or
+		 * tablespaces are pinned.
 		 *
 		 * First delete any already-made entries; PINs override all else, and
 		 * must be the only entries for their objects.
@@ -2144,8 +2145,8 @@ static void
 make_template0(void)
 {
 	PG_CMD_DECL;
-	char	  **line;
-	static char *template0_setup[] = {
+	const char **line;
+	static const char *template0_setup[] = {
 		"CREATE DATABASE template0;\n",
 		"UPDATE pg_database SET "
 		"	datistemplate = 't', "
@@ -2199,8 +2200,8 @@ static void
 make_postgres(void)
 {
 	PG_CMD_DECL;
-	char	  **line;
-	static char *postgres_setup[] = {
+	const char **line;
+	static const char *postgres_setup[] = {
 		"CREATE DATABASE postgres;\n",
 		/*
 		 * Make 'postgres' a template database 
@@ -2876,11 +2877,12 @@ main(int argc, char *argv[])
 				progname, argv[optind + 1]);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
+		exit(1);
 	}
 
 	if (pwprompt && pwfilename)
 	{
-		fprintf(stderr, _("%s: password prompt and password file may not be specified together\n"), progname);
+		fprintf(stderr, _("%s: password prompt and password file cannot be specified together\n"), progname);
 		exit(1);
 	}
 
@@ -3006,7 +3008,7 @@ main(int argc, char *argv[])
 		char		full_path[MAXPGPATH];
 
 		if (find_my_exec(argv[0], full_path) < 0)
-			StrNCpy(full_path, progname, MAXPGPATH);
+			strlcpy(full_path, progname, sizeof(full_path));
 
 		if (ret == -1)
 			fprintf(stderr,

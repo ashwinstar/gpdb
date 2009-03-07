@@ -4,11 +4,45 @@
  *	  This file contains heap tuple accessor and mutator routines, as well
  *	  as various tuple utilities.
  *
- * NOTE: there is massive duplication of code in this module to
- * support both the convention that a null is marked by a bool TRUE,
- * and the convention that a null is marked by a char 'n'.	The latter
- * convention is deprecated but it'll probably be a long time before
- * we can get rid of it entirely.
+ * Some notes about varlenas and this code:
+ *
+ * Before Postgres 8.3 varlenas always had a 4-byte length header, and
+ * therefore always needed 4-byte alignment (at least).  This wasted space
+ * for short varlenas, for example CHAR(1) took 5 bytes and could need up to
+ * 3 additional padding bytes for alignment.
+ *
+ * Now, a short varlena (up to 126 data bytes) is reduced to a 1-byte header
+ * and we don't align it.  To hide this from datatype-specific functions that
+ * don't want to deal with it, such a datum is considered "toasted" and will
+ * be expanded back to the normal 4-byte-header format by pg_detoast_datum.
+ * (In performance-critical code paths we can use pg_detoast_datum_packed
+ * and the appropriate access macros to avoid that overhead.)  Note that this
+ * conversion is performed directly in heap_form_tuple, without invoking
+ * tuptoaster.c.
+ *
+ * This change will break any code that assumes it needn't detoast values
+ * that have been put into a tuple but never sent to disk.	Hopefully there
+ * are few such places.
+ *
+ * Varlenas still have alignment 'i' (or 'd') in pg_type/pg_attribute, since
+ * that's the normal requirement for the untoasted format.  But we ignore that
+ * for the 1-byte-header format.  This means that the actual start position
+ * of a varlena datum may vary depending on which format it has.  To determine
+ * what is stored, we have to require that alignment padding bytes be zero.
+ * (Postgres actually has always zeroed them, but now it's required!)  Since
+ * the first byte of a 1-byte-header varlena can never be zero, we can examine
+ * the first byte after the previous datum to tell if it's a pad byte or the
+ * start of a 1-byte-header varlena.
+ *
+ * Note that while formerly we could rely on the first varlena column of a
+ * system catalog to be at the offset suggested by the C struct for the
+ * catalog, this is now risky: it's only safe if the preceding field is
+ * word-aligned, so that there will never be any padding.
+ *
+ * We don't pack varlenas whose attstorage is 'p', since the data type
+ * isn't expecting to have to detoast values.  This is used in particular
+ * by oidvector and int2vector, which are used in the system catalogs
+ * and we'd like to still refer to them via C struct offsets.
  *
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
@@ -38,6 +72,13 @@
 
 #include "utils/debugbreak.h"
 
+/* Does att's datatype allow packing into the 1-byte-header varlena format? */
+#define ATT_IS_PACKABLE(att) \
+	((att)->attlen == -1 && (att)->attstorage != 'p')
+/* Use this if it's already known varlena */
+#define VARLENA_ATT_IS_PACKABLE(att) \
+	((att)->attstorage != 'p')
+	
 /* ----------------------------------------------------------------
  *						misc support routines
  * ----------------------------------------------------------------
@@ -283,7 +324,7 @@ heap_attisnull_normalattr(HeapTuple tup, int attnum)
  *
  *		This caches attribute offsets in the attribute descriptor.
  *
- *		An alternate way to speed things up would be to cache offsets
+ *		An alternative way to speed things up would be to cache offsets
  *		with the tuple, but that seems more difficult unless you take
  *		the storage hit of actually putting those offsets into the
  *		tuple you send to disk.  Yuck.
@@ -294,6 +335,8 @@ heap_attisnull_normalattr(HeapTuple tup, int attnum)
  *		the same attribute descriptor will go much quicker. -cim 5/4/91
  *
  *		NOTE: if you need to change this code, see also heap_deform_tuple.
+ *		Also see nocache_index_getattr, which is the same code for index
+ *		tuples.
  * ----------------
  */
 Datum
@@ -430,7 +473,13 @@ nocachegetattr(HeapTuple tuple,
 		int			natts = HeapTupleHeaderGetNatts(tup);
 
 		/*
-		 * need to set cache for some atts
+		 * If we get here, we have a tuple with no nulls or var-widths up to
+		 * and including the target attribute, so we can use the cached offset
+		 * ... only we don't have it yet, or we'd not have got here.  Since
+		 * it's cheap to compute offsets for fixed-width columns, we take the
+		 * opportunity to initialize the cached offsets for *all* the leading
+		 * fixed-width columns, in hope of avoiding future visits to this
+		 * routine.
 		 */
 
 		/* this is always true */
@@ -793,8 +842,9 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
  *		Null attributes are indicated by a 'n' in the appropriate byte
  *		of nulls[]. Non-null attributes are indicated by a ' ' (space).
  *
- * OLD API with char 'n'/' ' convention for indicating nulls
- * ----------------
+ * OLD API with char 'n'/' ' convention for indicating nulls.
+ * This is deprecated and should not be used in new code, but we keep it
+ * around for use by old add-on modules.
  */
 HeapTuple
 heap_formtuple(TupleDesc tupleDescriptor,
@@ -893,7 +943,8 @@ heap_modify_tuple(HeapTuple tuple,
  *
  * OLD API with char 'n'/' ' convention for indicating nulls, and
  * char 'r'/' ' convention for indicating whether to replace columns.
- * ----------------
+ * This is deprecated and should not be used in new code, but we keep it
+ * around for use by old add-on modules.
  */
 HeapTuple
 heap_modifytuple(HeapTuple tuple,
@@ -1040,8 +1091,9 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
  *		heap_getattr; the loop will become O(N^2) as soon as any
  *		noncacheable attribute offsets are involved.
  *
- * OLD API with char 'n'/' ' convention for indicating nulls
- * ----------------
+ * OLD API with char 'n'/' ' convention for indicating nulls.
+ * This is deprecated and should not be used in new code, but we keep it
+ * around for use by old add-on modules.
  */
 void
 heap_deformtuple(HeapTuple tuple,

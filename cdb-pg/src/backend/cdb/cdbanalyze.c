@@ -20,8 +20,8 @@
 #include "catalog/pg_statistic.h"
 #include "utils/lsyscache.h"
 #include "fmgr.h"
-#include "libpq-fe.h"
-#include "libpq-int.h"
+#include "gp-libpq-fe.h"
+#include "gp-libpq-int.h"
 
 /*
  * cdbanalyze_query_local_catalogs

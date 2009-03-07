@@ -111,7 +111,7 @@ init_MultiFuncCall(PG_FUNCTION_ARGS)
 	else
 	{
 		/* second and subsequent calls */
-		elog(ERROR, "init_MultiFuncCall may not be called more than once");
+		elog(ERROR, "init_MultiFuncCall cannot be called more than once");
 
 		/* never reached, but keep compiler happy */
 		retval = NULL;
@@ -203,8 +203,8 @@ shutdown_MultiFuncCall(Datum arg)
  * only when we couldn't resolve the actual rowtype for lack of information.
  *
  * The other hard case that this handles is resolution of polymorphism.
- * We will never return ANYELEMENT or ANYARRAY, either as a scalar result
- * type or as a component of a rowtype.
+ * We will never return polymorphic pseudotypes (ANYELEMENT etc), either
+ * as a scalar result type or as a component of a rowtype.
  *
  * This function is relatively expensive --- in a function returning set,
  * try to call it only the first time through.
@@ -348,7 +348,7 @@ internal_get_result_type(Oid funcid,
 	/*
 	 * If scalar polymorphic result, try to resolve it.
 	 */
-	if (rettype == ANYARRAYOID || rettype == ANYELEMENTOID)
+	if (IsPolymorphicType(rettype))
 	{
 		Oid			newrettype = exprType(call_expr);
 
@@ -399,9 +399,9 @@ internal_get_result_type(Oid funcid,
 
 /*
  * Given the result tuple descriptor for a function with OUT parameters,
- * replace any polymorphic columns (ANYELEMENT/ANYARRAY) with correct data
- * types deduced from the input arguments.	Returns TRUE if able to deduce
- * all types, FALSE if not.
+ * replace any polymorphic columns (ANYELEMENT etc) with correct data types
+ * deduced from the input arguments. Returns TRUE if able to deduce all types,
+ * FALSE if not.
  */
 static bool
 resolve_polymorphic_tupdesc(TupleDesc tupdesc, oidvector *declared_args,
@@ -499,11 +499,11 @@ resolve_polymorphic_tupdesc(TupleDesc tupdesc, oidvector *declared_args,
 }
 
 /*
- * Given the declared argument types and modes for a function,
- * replace any polymorphic types (ANYELEMENT/ANYARRAY) with correct data
- * types deduced from the input arguments.	Returns TRUE if able to deduce
- * all types, FALSE if not.  This is the same logic as
- * resolve_polymorphic_tupdesc, but with a different argument representation.
+ * Given the declared argument types and modes for a function, replace any
+ * polymorphic types (ANYELEMENT etc) with correct data types deduced from the
+ * input arguments.  Returns TRUE if able to deduce all types, FALSE if not.
+ * This is the same logic as resolve_polymorphic_tupdesc, but with a different
+ * argument representation.
  *
  * argmodes may be NULL, in which case all arguments are assumed to be IN mode.
  */

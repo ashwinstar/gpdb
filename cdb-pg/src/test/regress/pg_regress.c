@@ -415,13 +415,13 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 	}
 
 	/*
-	 * in a VPATH build, use the provided source directory; otherwise, use
-	 * the current directory.
+	 * in a VPATH build, use the provided source directory; otherwise, use the
+	 * current directory.
 	 */
 	if (srcdir)
-		strcpy(abs_srcdir, srcdir);
+		strlcpy(abs_srcdir, srcdir, MAXPGPATH);
 	else
-		strcpy(abs_srcdir, abs_builddir);
+		strlcpy(abs_srcdir, abs_builddir, MAXPGPATH);
 
 	snprintf(indir, MAXPGPATH, "%s/%s", abs_srcdir, source);
 	names = pgfnames(indir);
@@ -446,9 +446,22 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 
 	/* try to create the test tablespace dir if it doesn't exist */
 	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", abs_builddir);
+
+#ifdef WIN32
+	/*
+	 * On Windows only, clean out the test tablespace dir, or create it if it
+	 * doesn't exist.  On other platforms we expect the Makefile to take
+	 * care of that.  (We don't migrate that functionality in here because
+	 * it'd be harder to cope with platform-specific issues such as SELinux.)
+	 *
+	 * XXX it would be better if pg_regress.c had nothing at all to do with
+	 * testtablespace, and this were handled by a .BAT file or similar on
+	 * Windows.  See pgsql-hackers discussion of 2008-01-18.
+	 */
 	if (directory_exists(testtablespace))
 		rmtree(testtablespace, true);
 	make_directory(testtablespace);
+#endif
 
 	/* finally loop on each file and do the replacement */
 	for (name = names; *name; name++)
@@ -1012,14 +1025,30 @@ spawn_process(const char *cmdline)
 	cmdline2 = malloc(strlen(cmdline) + 8);
 	sprintf(cmdline2, "cmd /c %s", cmdline);
 
-	if (!CreateProcessAsUser(restrictedToken, NULL, cmdline2, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	if (!CreateProcessAsUser(restrictedToken,
+						NULL,
+						cmdline2,
+						NULL,
+						NULL,
+						TRUE,
+						CREATE_SUSPENDED,
+						NULL,
+						NULL,
+						&si,
+						&pi))
 	{
 		fprintf(stderr, _("could not start process for \"%s\": %lu\n"),
 				cmdline2, GetLastError());
 		exit_nicely(2);
 	}
+
+#ifndef __CYGWIN__
+	AddUserToDacl(pi.hProcess);
+#endif
+
 	free(cmdline2);
 
+    ResumeThread(pi.hThread);
 	CloseHandle(pi.hThread);
 	return pi.hProcess;
 #endif
@@ -1176,8 +1205,8 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	const char *platform_expectfile;
 
 	/*
-	 * We can pass either the resultsfile or the expectfile, they should
-	 * have the same type (filename.type) anyway.
+	 * We can pass either the resultsfile or the expectfile, they should have
+	 * the same type (filename.type) anyway.
 	 */
 	platform_expectfile = get_expectfile(testname, resultsfile);
 
@@ -1593,9 +1622,9 @@ run_single_test(const char *test, test_function tfunc)
 	/*
 	 * Advance over all three lists simultaneously.
 	 *
-	 * Compare resultfiles[j] with expectfiles[j] always.
-	 * Tags are optional but if there are tags, the tag list has the
-	 * same length as the other two lists.
+	 * Compare resultfiles[j] with expectfiles[j] always. Tags are optional
+	 * but if there are tags, the tag list has the same length as the other
+	 * two lists.
 	 */
 	for (rl = resultfiles, el = expectfiles, tl = tags;
 		rl != NULL; /* rl and el have the same length */
@@ -1744,9 +1773,9 @@ help(void)
 	printf(_("                            (can be used multiple times to concatenate)\n"));
 	printf(_("  --srcdir=DIR              absolute path to source directory (for VPATH builds)\n"));
 	printf(_("  --temp-install=DIR        create a temporary installation in DIR\n"));
-	printf(_("  --no-locale               use C locale\n"));
 	printf(_("\n"));
 	printf(_("Options for \"temp-install\" mode:\n"));
+	printf(_("  --no-locale               use C locale\n"));
 	printf(_("  --top-builddir=DIR        (relative) path to top level build directory\n"));
 	printf(_("  --temp-port=PORT          port number to start temp postmaster on\n"));
 	printf(_("\n"));
