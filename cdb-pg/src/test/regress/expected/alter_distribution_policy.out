@@ -17,7 +17,8 @@ HINT:  Column "i" appears more than once
 alter table atsdb set distributed by (i, m);
 ERROR:  column "m" of relation "atsdb" does not exist
 alter table atsdb set distributed by (i);
-ERROR:  distribution policy of relation "atsdb" already set to (i)
+WARNING:  distribution policy of relation "atsdb" already set to (i)
+HINT:  Use ALTER TABLE "atsdb" SET WITH (REORGANIZE=TRUE) DISTRIBUTED BY (i) to force redistribution
 -- should work
 alter table atsdb set distributed randomly;
 select localoid::regclass, attrnums from gp_distribution_policy where localoid = 'atsdb'::regclass;
@@ -85,8 +86,8 @@ set enable_seqscan to off;
 explain select * from atsdb where i = 1;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1)  (cost=0.00..200.27 rows=1 width=36)
-   ->  Index Scan using atsdb_i_idx on atsdb  (cost=0.00..200.27 rows=1 width=36)
+ Gather Motion 2:1  (slice1)  (cost=0.00..200.32 rows=1 width=36)
+   ->  Index Scan using atsdb_i_idx on atsdb  (cost=0.00..200.32 rows=1 width=36)
          Index Cond: i = 1
  Settings:  enable_seqscan=off
 (4 rows)
@@ -157,9 +158,17 @@ drop table atsdb_ao;
 -- Check divergent distribution policies for partitioning.
 create table atsdb (i int, j int, k int) partition by range(k)
 (start(1) end(4) every(1));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_1" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_2" for table "atsdb"
 NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_3" for table "atsdb"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table atsdb_1_prt_2 set distributed by (j);
 alter table atsdb_1_prt_3 set distributed randomly;
 -- test COPY
@@ -173,6 +182,7 @@ select count(*) from atsdb;
 -- compare distribution: we create a table, identical to the partitioned table,
 -- and compare how the tuples have been distributed.
 create table atsdb_1 (like atsdb_1_prt_1);
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 copy atsdb_1 from stdin delimiter '|';
 select gp_segment_id, * from atsdb where k = 1 except 
 select gp_segment_id, * from atsdb_1;
@@ -181,6 +191,7 @@ select gp_segment_id, * from atsdb_1;
 (0 rows)
 
 create table atsdb_2 (like atsdb_1_prt_2);
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 copy atsdb_2 from stdin delimiter '|';
 select gp_segment_id, * from atsdb where k = 2 except
 select gp_segment_id, * from atsdb_2;

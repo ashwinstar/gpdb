@@ -9344,16 +9344,16 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			if (!(newopts && bReorganizeRandom))
 			{
 				if (rel->rd_cdbpolicy->nattrs == 0)
-					ereport(ERROR,
+					ereport(WARNING,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
 							 errmsg("distribution policy of relation \"%s\" "
 									"already set to DISTRIBUTED RANDOMLY",
 									RelationGetRelationName(rel)),
-							 errhint("Use ALTER TABLE ... "
+							 errhint("Use ALTER TABLE \"%s\" "
 									 "SET WITH (REORGANIZE=TRUE) "
 									 "DISTRIBUTED RANDOMLY "
-									 "to force a random redistribution")
-									));
+									 "to force a random redistribution",
+									 RelationGetRelationName(rel))));
 
 				policy = (GpPolicy *) palloc(sizeof(GpPolicy));
 				policy->ptype = POLICYTYPE_PARTITIONED;
@@ -9472,12 +9472,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						strcat(dist, ",");
 					strcat(dist, strVal(lfirst(lc)));
 				}
-				ereport(ERROR,
+				ereport(WARNING,
 						(errcode(ERRCODE_DUPLICATE_OBJECT),
 						 errmsg("distribution policy of relation \"%s\" "
 								"already set to (%s)",
 								RelationGetRelationName(rel),
-								dist)));
+								dist),
+						 errhint("Use ALTER TABLE \"%s\" "
+								 "SET WITH (REORGANIZE=TRUE) "
+								 "DISTRIBUTED BY (%s) "
+								 "to force redistribution",
+								 RelationGetRelationName(rel),
+								 dist)));
 			}
 		}
 
@@ -14277,12 +14283,14 @@ static void
 ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
                  AlterPartitionCmd *pc)
 {
-	AlterPartitionId 	*pid   	= (AlterPartitionId *)pc->partid;
-	AlterTableCmd 		*atc   	= (AlterTableCmd *)pc->arg1;
-	PgPartRule   		*prule 	= NULL;
-	List 				*pidlst = NIL;
-	AlterPartitionId 	*pid2 	= makeNode(AlterPartitionId);
-	AlterPartitionCmd 	*pc2 	= NULL;
+	AlterPartitionId 	*pid		   = (AlterPartitionId *)pc->partid;
+	AlterTableCmd 		*atc		   = (AlterTableCmd *)pc->arg1;
+	PgPartRule   		*prule		   = NULL;
+	List 				*pidlst		   = NIL;
+	AlterPartitionId 	*pid2		   = makeNode(AlterPartitionId);
+	AlterPartitionCmd 	*pc2		   = NULL;
+	bool				 bPartitionCmd = true;	/* true if a "partition" cmd */
+	Relation			 rel2		   = rel;
 
 	while (1)
 	{
@@ -14322,6 +14330,11 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
 				break;
+
+		/* Next, list of ALTER TABLE commands applicable to a child table */
+		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
+				bPartitionCmd = false;
+				break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -14345,17 +14358,49 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 					 errmsg("cannot ALTER PARTITION for relation \"%s\"",
 							RelationGetRelationName(rel))));
 
-		pc2 = (AlterPartitionCmd *) atc->def;
-		pid = (AlterPartitionId *)pc2->partid;
+		if (bPartitionCmd)
+		{
+			/* build the IDRule for the nested ALTER PARTITION cmd ... */
+			Assert(IsA(atc->def, AlterPartitionCmd));
 
-		pid2->idtype = AT_AP_IDRule;
-		pid2->partiddef = (Node *)list_make2((Node *)prule, pid);
-		pid2->location  = -1;
+			pc2 = (AlterPartitionCmd *)atc->def;
+			pid = (AlterPartitionId *)pc2->partid;
 
-		pc2->partid = (Node *)pid2;
+			pid2->idtype = AT_AP_IDRule;
+			pid2->partiddef = (Node *)list_make2((Node *)prule, pid);
+			pid2->location  = -1;
+
+			pc2->partid = (Node *)pid2;
+		}
+		else /* treat as a table */
+		{
+			/* get the child table relid */
+			rel2 = heap_open(prule->topRule->parchildrelid,
+							 AccessExclusiveLock);
+
+			/* give the notice first, because it looks weird if it
+			 * comes after a failure message 
+			 */
+			ereport(NOTICE,
+					(errmsg("ALTERing table \"%s\" "
+							"(%s)",
+							RelationGetRelationName(rel2),
+							prule->relname)));
+		}
 	}
 	/* execute the command */
-	ATExecCmd(tab, rel, atc);
+	ATExecCmd(tab, rel2, atc);
+
+	if (!bPartitionCmd &&
+		(Gp_role == GP_ROLE_DISPATCH))
+	{
+		/* NOTE: for the case of Set Distro,
+		 * ATExecSetDistributedBy rebuilds the relation, so rel2
+		 * is already gone!  
+		 */
+		if (atc->subtype != AT_SetDistributedBy)
+			heap_close(rel2, NoLock);			
+	}
 
 } /* end ATPExecPartAlter */
 
