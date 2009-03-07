@@ -778,7 +778,7 @@ class gpexpand:
         #TODO: Copy will fail if the backup was never made...
         #self.pool.check_results()
 
-        originalPrimaryCount += self.gparray.get_primary_count()
+        originalPrimaryCount = self.gparray.get_primary_count()
 
         self.logger.info('Restoring original segment configurations')
         for seg in self.old_segments:            
