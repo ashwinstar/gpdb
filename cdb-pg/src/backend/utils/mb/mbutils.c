@@ -16,6 +16,17 @@
 #include "utils/syscache.h"
 
 /*
+ * When converting strings between different encodings, we assume that space
+ * for converted result is 4-to-1 growth in the worst case. The rate for
+ * currently supported encoding pairs are within 3 (SJIS JIS X0201 half width
+ * kanna -> UTF8 is the worst case).  So "4" should be enough for the moment.
+ *
+ * Note that this is not the same as the maximum character width in any
+ * particular encoding.
+ */
+#define MAX_CONVERSION_GROWTH  4
+
+/*
  * We handle for actual FE and BE encoding setting encoding-identificator
  * and encoding-name too. It prevent searching and conversion from encoding
  * to encoding name in getdatabaseencoding() and other routines.
@@ -274,8 +285,8 @@ pg_do_encoding_conversion(unsigned char *src, int len,
 }
 
 /*
- * Convert string using encoding_nanme. We assume that string's
- * encoding is same as DB encoding.
+ * Convert string using encoding_name. The source
+ * encoding is the DB encoding.
  *
  * TEXT convert(TEXT string, NAME encoding_name) */
 Datum

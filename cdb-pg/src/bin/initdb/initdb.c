@@ -3243,7 +3243,7 @@ main(int argc, char *argv[])
 	{
 		char	*linkloc;
 
-		linkloc = (char *) palloc(strlen(pg_data) + 8 + 2);
+		linkloc = (char *) malloc(strlen(pg_data) + 8 + 2);
 		sprintf(linkloc, "%s/pg_xlog", pg_data);
 
 		/* check if the specified xlog directory is empty */

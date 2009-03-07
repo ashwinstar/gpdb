@@ -2,7 +2,7 @@
  * Encoding names and routines for work with it. All
  * in this file is shared bedween FE and BE.
  *
- * $PostgreSQL: pgsql/src/backend/utils/mb/encnames.c,v 1.31 2006/07/14 14:52:25 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/mb/encnames.c,v 1.38 2009/02/10 19:29:39 petere Exp $
  */
 #ifdef FRONTEND
 #include "postgres_fe.h"
@@ -12,10 +12,11 @@
 #include "utils/builtins.h"
 #endif
 
+#include <ctype.h>
 #include <unistd.h>
 
 #include "mb/pg_wchar.h"
-#include <ctype.h>
+
 
 /* ----------
  * All encoding names, sorted:		 *** A L P H A B E T I C ***
@@ -44,6 +45,10 @@ pg_encname	pg_encname_tbl[] =
 		"euccn", PG_EUC_CN
 	},							/* EUC-CN; Extended Unix Code for simplified
 								 * Chinese */
+	{
+		"eucjis2004", PG_EUC_JIS_2004
+	},							/* EUC-JIS-2004; Extended UNIX Code fixed
+								 * Width for Japanese, standard JIS X 0213 */
 	{
 		"eucjp", PG_EUC_JP
 	},							/* EUC-JP; Extended UNIX Code fixed Width for
@@ -118,6 +123,9 @@ pg_encname	pg_encname_tbl[] =
 		"koi8r", PG_KOI8R
 	},							/* KOI8-R; RFC1489 */
 	{
+		"koi8u", PG_KOI8U
+	},							/* KOI8-U; RFC2319 */
+	{
 		"latin1", PG_LATIN1
 	},							/* alias for ISO-8859-1 */
 	{
@@ -156,6 +164,11 @@ pg_encname	pg_encname_tbl[] =
 	{
 		"shiftjis", PG_SJIS
 	},							/* Shift_JIS; JIS X 0202-1991 */
+
+	{
+		"shiftjis2004", PG_SHIFT_JIS_2004
+	},							/* SHIFT-JIS-2004; Shift JIS for Japanese,
+								 * standard JIS X 0213 */
 	{
 		"sjis", PG_SJIS
 	},							/* alias for Shift_JIS */
@@ -284,7 +297,7 @@ sizeof(pg_encname_tbl) / sizeof(pg_encname_tbl[0]) - 1;
 
 /* ----------
  * These are "official" encoding names.
- * XXX must be sorted by the same order as pg_enc type (see mb/pg_wchar.h)
+ * XXX must be sorted by the same order as enum pg_enc (in mb/pg_wchar.h)
  * ----------
  */
 pg_enc2name pg_enc2name_tbl[] =
@@ -305,7 +318,7 @@ pg_enc2name pg_enc2name_tbl[] =
 		"EUC_TW", PG_EUC_TW
 	},
 	{
-		"JOHAB", PG_JOHAB
+		"EUC_JIS_2004", PG_EUC_JIS_2004
 	},
 	{
 		"UTF8", PG_UTF8
@@ -356,7 +369,7 @@ pg_enc2name pg_enc2name_tbl[] =
 		"WIN874", PG_WIN874
 	},
 	{
-		"KOI8", PG_KOI8R
+		"KOI8R", PG_KOI8R
 	},
 	{
 		"WIN1251", PG_WIN1251
@@ -392,6 +405,9 @@ pg_enc2name pg_enc2name_tbl[] =
 		"WIN1257", PG_WIN1257
 	},
 	{
+		"KOI8U", PG_KOI8U
+	},
+	{
 		"SJIS", PG_SJIS
 	},
 	{
@@ -405,6 +421,12 @@ pg_enc2name pg_enc2name_tbl[] =
 	},
 	{
 		"GB18030", PG_GB18030
+	},
+	{
+		"JOHAB", PG_JOHAB
+	},
+	{
+		"SHIFT_JIS_2004", PG_SHIFT_JIS_2004
 	}
 };
 
@@ -440,15 +462,21 @@ pg_valid_server_encoding(const char *name)
 	return enc;
 }
 
+int
+pg_valid_server_encoding_id(int encoding)
+{
+	return PG_VALID_BE_ENCODING(encoding);
+}
+
 /* ----------
  * Remove irrelevant chars from encoding name
  * ----------
  */
 static char *
-clean_encoding_name(char *key, char *newkey)
+clean_encoding_name(const char *key, char *newkey)
 {
-	char	   *p,
-			   *np;
+	const char *p;
+	char	   *np;
 
 	for (p = key, np = newkey; *p != '\0'; p++)
 	{
@@ -493,7 +521,7 @@ pg_char_to_encname_struct(const char *name)
 				 errmsg("encoding name too long")));
 #endif
 	}
-	key = clean_encoding_name((char *) name, buff);
+	key = clean_encoding_name(name, buff);
 
 	while (last >= base)
 	{
@@ -518,14 +546,14 @@ pg_char_to_encname_struct(const char *name)
  * Returns encoding or -1 for error
  */
 int
-pg_char_to_encoding(const char *s)
+pg_char_to_encoding(const char *name)
 {
-	pg_encname *p = NULL;
+	pg_encname *p;
 
-	if (!s)
+	if (!name)
 		return -1;
 
-	p = pg_char_to_encname_struct(s);
+	p = pg_char_to_encname_struct(name);
 	return p ? p->encoding : -1;
 }
 
@@ -557,9 +585,9 @@ Datum
 PG_encoding_to_char(PG_FUNCTION_ARGS)
 {
 	int32		encoding = PG_GETARG_INT32(0);
-	char *encoding_name = (char *) pg_encoding_to_char(encoding);
+	const char *encoding_name = pg_encoding_to_char(encoding);
 
-	return DirectFunctionCall1(namein, CStringGetDatum(encoding_name));
+	return DirectFunctionCall1(namein, CStringGetDatum((char *)encoding_name));
 }
 
 #endif
