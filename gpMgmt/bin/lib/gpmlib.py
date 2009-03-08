@@ -315,7 +315,7 @@ class Env:
             self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
             self.LIB_TYPE='LD_LIBRARY_PATH'
-            self.PG_METHOD='ident sameuser'
+            self.PG_METHOD='ident'
             self.HOST_ARCH_TYPE='uname -i'
             self.NOLINE_ECHO='%s -e' % self.ECHO
             self.DEFAULT_LOCALE_SETTING='en_US.utf8'
@@ -326,7 +326,7 @@ class Env:
             self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
             self.LIB_TYPE='DYLD_LIBRARY_PATH'
-            self.PG_METHOD='ident sameuser'
+            self.PG_METHOD='ident'
             self.HOST_ARCH_TYPE='uname -m'
             self.NOLINE_ECHO= self.ECHO
             self.DEFAULT_LOCALE_SETTING='en_US.utf-8'
@@ -337,7 +337,7 @@ class Env:
             self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
             self.LIB_TYPE='LD_LIBRARY_PATH'
-            self.PG_METHOD='ident sameuser'
+            self.PG_METHOD='ident'
             self.HOST_ARCH_TYPE='uname -m'
             self.NOLINE_ECHO='%s -e' % self.ECHO
             self.DEFAULT_LOCALE_SETTING='en_US.utf-8'

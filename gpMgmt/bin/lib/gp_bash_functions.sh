@@ -1654,7 +1654,7 @@ case $OS_TYPE in
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
-		PG_METHOD="ident sameuser"
+		PG_METHOD="ident"
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
@@ -1666,7 +1666,7 @@ case $OS_TYPE in
 	darwin ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
-		PG_METHOD="ident sameuser"
+		PG_METHOD="ident"
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO=$ECHO
 		DEFAULT_LOCALE_SETTING=en_US.utf-8
@@ -1677,7 +1677,7 @@ case $OS_TYPE in
 	freebsd ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
-		PG_METHOD="ident sameuser"
+		PG_METHOD="ident"
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
