@@ -145,7 +145,7 @@ extern void GPMemoryProtectInit(void);
 extern void *gp_malloc(size_t sz); 
 extern void *gp_calloc(size_t nmemb, size_t sz); 
 extern void *gp_realloc(void *ptr, size_t sz, size_t newsz); 
-extern void gp_free(void *ptr, size_t sz); 
+extern void gp_free2(void *ptr, size_t sz); 
 #else
 #define gp_malloc(sz) malloc(sz)
 #define gp_calloc(sz1, sz2) calloc((sz1), (sz2))

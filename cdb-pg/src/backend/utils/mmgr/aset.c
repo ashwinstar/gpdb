@@ -552,7 +552,7 @@ AllocSetReset(MemoryContext context)
 			/* Wipe freed memory for debugging purposes */
 			memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-			gp_free(block, freesz);
+			gp_free2(block, freesz);
 		}
 		block = next;
 	}
@@ -599,7 +599,7 @@ AllocSetDelete(MemoryContext context)
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-		gp_free(block, freesz);
+		gp_free2(block, freesz);
 		block = next;
 	}
 }
@@ -932,7 +932,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-		gp_free(block, freesz);
+		gp_free2(block, freesz);
 	}
 	else
 	{

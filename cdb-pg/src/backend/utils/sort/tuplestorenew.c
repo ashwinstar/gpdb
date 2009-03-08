@@ -588,7 +588,7 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 	while(p)
 	{
 		NTupleStorePage *pnext = nts_page_next(p); 
-		gp_free(p, sizeof(NTupleStorePage));
+		gp_free2(p, sizeof(NTupleStorePage));
 		p = pnext;
 	}
 
@@ -596,7 +596,7 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 	while(p)
 	{
 		NTupleStorePage *pnext = nts_page_next(p); 
-		gp_free(p, sizeof(NTupleStorePage));
+		gp_free2(p, sizeof(NTupleStorePage));
 		p = pnext;
 	}
 
@@ -608,7 +608,7 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 			BufFileClose(ts->plobfile);
 	}
 
-	gp_free(ts, sizeof(NTupleStore));
+	gp_free2(ts, sizeof(NTupleStore));
 }
 
 static void XCallBack_NTS(XactEvent event, void *nts)

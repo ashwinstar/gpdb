@@ -298,7 +298,7 @@ void *gp_realloc(void *ptr, size_t sz, size_t newsz)
 	return NULL; 
 }
 
-void gp_free(void *ptr, size_t sz)
+void gp_free2(void *ptr, size_t sz)
 {
 	free(ptr);
 	gpproc_total_malloc -= sz;
