@@ -179,8 +179,6 @@ int			semop(int semId, struct sembuf * sops, int flag);
 #define WIFEXITED(w)	(((w) & 0XFFFFFF00) == 0)
 #define WIFSIGNALED(w)	(!WIFEXITED(w))
 #define WEXITSTATUS(w)	(w)
-#define WIFEXITED(w)	(true)
-#define WIFSIGNALED(w)	(false)
 #define WTERMSIG(w)		(w)
 
 #define sigmask(sig) ( 1 << ((sig)-1) )
