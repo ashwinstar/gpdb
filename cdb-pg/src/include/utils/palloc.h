@@ -150,7 +150,7 @@ extern void gp_free2(void *ptr, size_t sz);
 #define gp_malloc(sz) malloc(sz)
 #define gp_calloc(sz1, sz2) calloc((sz1), (sz2))
 #define gp_realloc(ptr, sz1, sz2) realloc((ptr), (sz2))
-#define gp_free(ptr, sz) free(ptr)
+#define gp_free2(ptr, sz) free(ptr)
 #endif
 
 #endif   /* PALLOC_H */
