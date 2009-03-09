@@ -202,7 +202,7 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 				 ExecStatusType expected);
 /* START MPP ADDITION */
 static char *nextToken(register char **stringp, register const char *delim);
-static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage);
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted);
 /* END MPP ADDITION */
 
 int
@@ -2486,6 +2486,7 @@ getTables(int *numTables)
 	int			i_relhasindex;
 	int			i_relhasrules;
 	int			i_relhasoids;
+	int			i_relistoasted;
 	int			i_owning_tab;
 	int			i_owning_col;
 	int			i_reltablespace;
@@ -2524,6 +2525,7 @@ getTables(int *numTables)
 					  "(%s relowner) as rolname, "
 					  "relchecks, reltriggers, "
 					  "relhasindex, relhasrules, relhasoids, "
+					  "(reltoastrelid != 0) as relistoasted, "
 					  "d.refobjid as owning_tab, "
 					  "d.refobjsubid as owning_col, "
 					  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace) AS reltablespace, "
@@ -2575,6 +2577,7 @@ getTables(int *numTables)
 	i_relhasindex = PQfnumber(res, "relhasindex");
 	i_relhasrules = PQfnumber(res, "relhasrules");
 	i_relhasoids = PQfnumber(res, "relhasoids");
+	i_relistoasted = PQfnumber(res, "relistoasted");
 	i_owning_tab = PQfnumber(res, "owning_tab");
 	i_owning_col = PQfnumber(res, "owning_col");
 	i_reltablespace = PQfnumber(res, "reltablespace");
@@ -2595,6 +2598,7 @@ getTables(int *numTables)
 		tblinfo[i].hasindex = (strcmp(PQgetvalue(res, i, i_relhasindex), "t") == 0);
 		tblinfo[i].hasrules = (strcmp(PQgetvalue(res, i, i_relhasrules), "t") == 0);
 		tblinfo[i].hasoids = (strcmp(PQgetvalue(res, i, i_relhasoids), "t") == 0);
+		tblinfo[i].istoasted = (strcmp(PQgetvalue(res, i, i_relistoasted), "t") == 0);
 		tblinfo[i].ncheck = atoi(PQgetvalue(res, i, i_relchecks));
 		tblinfo[i].ntrig = atoi(PQgetvalue(res, i, i_reltriggers));
 		if (PQgetisnull(res, i, i_owning_tab))
@@ -3671,7 +3675,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 				char attbyval = PQgetvalue(res, j, i_attbyval)[0];
 				char attalign = PQgetvalue(res, j, i_attalign)[0];
 
-				atttypname = gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j]);
+				atttypname = gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j], tbinfo->istoasted);
 				if (atttypname == NULL)
 				{
 					/* If we can't reconstruct the type, the dump must be abandoned! */
@@ -8386,11 +8390,27 @@ nextToken(register char **stringp, register const char *delim)
  * It doesn't need to be the exact type it was before... it just needs to
  * have the same size, alignment, and storage characteristics.
  *
+ * For tables having toastable (varlena) columns, the determination is a bit
+ * more complicated.  When creating a table or adding a column, a calculation
+ * is made to determine (1) if any column is toastable and (2) whether or not
+ * the maximum possible value would require toasting.  This determination is
+ * made by the needs_toast_table() function in toasting.c and the
+ * type_maximum_size() function in format_type.c.  In general, for varlena types
+ * with a declared size, toasting is not enabled if the size is below
+ * TOAST_TUPLE_THRESHOLD; if more, toasting is enabled.  If the varlena type
+ * has no declared type, toasting is always enabled.
+ *
+ * As of this writing, the following types participate in the toastable length
+ * calculation: bpchar, varchar, numeric, varbit, and bit.  Of these types,
+ * bpchar, varchar, varbit, and bit each have the same "general" attributes of
+ * text.
+ *
+ *
  * *** THIS FUNCTION SHOULD ONLY BE USED WHEN ATTEMPTING TO RECOVER A TYPE
  * *** FOR gp_migrator relfile COMPATIBILITY.  WHEN USED, THE RESULT *MUST*
  * *** BE EXAMINED TO ENSURE A TYPE IS ACTUALLY RETURNED!
  */
-static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage)
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted)
 {
 	int i;
 
@@ -8401,28 +8421,29 @@ static char *gettype(int typlen, char typbyval, char typalign, int ndims, int ty
 		char  typbyval;
 		char  typalign;
 		char  typstorage;
+		int	  special;
 	} typinfo;
 
 	static typinfo typrecords[] =
 		{
-			{"text",      -1, 'f', 'i', 'x'},
-			{"numeric",   -1, 'f', 'i', 'm'},
-			{"inet",      -1, 'f', 'i', 'p'},
-			{"path",      -1, 'f', 'd', '\0'},
-			{"bool",       1, 't', 'c', '\0'},
-			{"int2",       2, 't', 's', '\0'},
-			{"int4",       4, 't', 'i', '\0'},
-			{"int8",       8, 't', 'd', '\0'},
-			{"money",      4, 'f', 'i', '\0'},
-			{"tid",        6, 'f', 's', '\0'},
-			{"macaddr",    6, 'f', 'i', '\0'},
-			{"tinterval", 12, 'f', 'i', '\0'},
-			{"timetz",    12, 'f', 'd', '\0'},
-			{"interval",  16, 'f', 'd', '\0'},
-			{"circle",    24, 'f', 'd', '\0'},
-			{"box",       32, 'f', 'd', '\0'},
-			{"name",      64, 'f', 'i', '\0'},
-			{0, 0, 0, 0, 0}
+			{"text",      -1, 'f', 'i', 'x',  1},
+			{"numeric",   -1, 'f', 'i', 'm',  2},
+			{"inet",      -1, 'f', 'i', 'p',  0},
+			{"path",      -1, 'f', 'd', '\0', 0},
+			{"bool",       1, 't', 'c', '\0', 0},
+			{"int2",       2, 't', 's', '\0', 0},
+			{"int4",       4, 't', 'i', '\0', 0},
+			{"int8",       8, 't', 'd', '\0', 0},
+			{"money",      4, 'f', 'i', '\0', 0},
+			{"tid",        6, 'f', 's', '\0', 0},
+			{"macaddr",    6, 'f', 'i', '\0', 0},
+			{"tinterval", 12, 'f', 'i', '\0', 0},
+			{"timetz",    12, 'f', 'd', '\0', 0},
+			{"interval",  16, 'f', 'd', '\0', 0},
+			{"circle",    24, 'f', 'd', '\0', 0},
+			{"box",       32, 'f', 'd', '\0', 0},
+			{"name",      64, 'f', 'i', '\0', 0},
+			{0, 0, 0, 0, 0, 0}
 		};
 
 	for (i = 0; typrecords[i].name; i++)
@@ -8431,7 +8452,34 @@ static char *gettype(int typlen, char typbyval, char typalign, int ndims, int ty
 			typrecords[i].typbyval == typbyval &&
 			typrecords[i].typalign == typalign &&
 			(typrecords[i].typstorage == '\0' || typrecords[i].typstorage == typstorage))
-			return typrecords[i].name;
+		{
+			switch (typrecords[i].special)
+			{
+			case 0:
+				// Type requires no special handling; return the type name
+				return typrecords[i].name;
+			case 1:
+				// Type is mapped to "text"; toastability needs to checked and
+				// type possibly modified.
+				if (istoasted)
+					return typrecords[i].name;
+				// At this point, the original type is known *not* to have been "text";
+				// based on code examination, it was one of bpchar, varchar, varbit, or
+				// bit with a "short" length.  Since the column is to be dropped, the
+				// choice is arbitrary as long as a short length is used.
+				return "bit(1)";
+			case 2:
+				// Type is mapped to "numeric"; toastability needs to be checked
+				// and type possibly modified.  If the table is has a toast table,
+				// using an open-length numeric column is appropriate.  If the table
+				// has no toast table, a declared length must be used.  Since the
+				// column is to be dropped, the choice is arbitrary as long as a
+				// sort length is used.
+				if (istoasted)
+					return typrecords[i].name;
+				return "numeric(1)";
+			}
+		}
 	}
 
 	return NULL;	/* unable to determine type */
