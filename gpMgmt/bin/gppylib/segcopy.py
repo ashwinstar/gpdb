@@ -3,6 +3,7 @@
 #
 
 import os
+import socket
 
 from gppylib.gplog import *
 from gppylib.commands.unix import *
@@ -23,7 +24,7 @@ class GpSegCopy:
         self.clean=clean
         self.schema_only=schema_only
         self.method=method
-        self.masterDataDir = os.getenv("MASTER_DATA_DIRECTORY")        
+        self.masterDataDir = os.getenv("MASTER_DATA_DIRECTORY")    
         
     
     def pre_check(self):
@@ -91,13 +92,19 @@ class GpSegCopy:
 
         if self.schema_only:
             logger.info("Cleaning up catalog for schema only copy on destination")
-            #TODO: what to do about port...???
-            startCmd=SegmentStart(name,self.dstDir, utilityMode=True, ctxt=REMOTE, remoteHost=self.dstHost)
+            # get an available port
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(("",0))
+            templatePort = s.getsockname()[1]
+            s.close()
+            logger.debug('Using port %d for segment template cleanup.' % templatePort)
+            
+            startCmd=SegmentStart(name,self.dstDir, utilityMode=True, port=templatePort, ctxt=REMOTE, remoteHost=self.dstHost)
             stopCmd=SegmentStop(name, self.dstDir, ctxt=REMOTE, remoteHost=self.dstHost)
             
             startCmd.run(validateAfter=True)
-            res=startCmd.get_results()
-            dburl = dbconn.DbURL(hostname=self.dstHost,port=5432)
+
+            dburl = dbconn.DbURL(hostname=self.dstHost,port=templatePort)
             logger.info("connecting to database: %s" % dburl)
             conn = dbconn.connect(dburl, True)
             

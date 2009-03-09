@@ -91,25 +91,28 @@ class MasterStop(Command):
         
 #-----------------------------------------------        
 class SegmentStart(Command):      
-    def __init__(self, name, dataDir, utilityMode=False, nowait=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, dataDir, utilityMode=False, nowait=False, port=None, ctxt=LOCAL, remoteHost=None):
         cmdfrags=['pg_ctl -D %s -l %s/pg_log/bootstrap.log' % (dataDir,dataDir)]
+        portOption = None
+        if port:
+            portOption = "-p %s" % port
         if not nowait:
             cmdfrags.append('-w')
         if utilityMode:
-            cmdfrags.append("-o '-i -c gp_role=utility' start 2>&1")
+            cmdfrags.append("-o '-i -c gp_role=utility %s' start 2>&1" % (portOption if portOption else ''))
         else:
-            cmdfrags.append("-o '-i' start 2>&1")
+            cmdfrags.append("-o '-i %s' start 2>&1" % (portOption if portOption else ''))
         self.cmdStr=' '.join(cmdfrags)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     @staticmethod
-    def local(name,dataDir,utilityMode=False,nowait=False):
-        cmd=SegmentStart(name,dataDir,utilityMode)
+    def local(name,dataDir,utilityMode=False,nowait=False,port=None):
+        cmd=SegmentStart(name,dataDir,utilityMode,nowait,port)
         cmd.run(validateAfter=True)
     
     @staticmethod
-    def remote(name,remoteHost,dataDir,utilityMode=False,nowait=False):
-        cmd.SegmentStart(name,dataDir,utilityMode,ctxt=REMOTE, remoteHost=remoteHost)
+    def remote(name,remoteHost,dataDir,utilityMode=False,nowait=False,port=None):
+        cmd.SegmentStart(name,dataDir,utilityMode,nowait,port,ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------        

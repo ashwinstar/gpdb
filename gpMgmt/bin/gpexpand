@@ -474,7 +474,6 @@ class SegmentTemplate:
         newDbId = self.maxDbId + 1
         for seg in self.newSegments:
             seg.dbId = newDbId
-            #name, dataDir, port, numSegs, contentId, dbId, newSegment=False, ctxt=LOCAL, remoteHost=None):
             segCfgCmd = ConfigExpansionSeg('configure new segment', seg.datadir, 
                                               seg.port, newPrimaryCount, 
                                               seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
@@ -628,7 +627,7 @@ class gpexpand:
             new_dbid = maxDbId + dbid
             new_content = oldSegCount + content
             datadir = datadir.rstrip(str(content)) + '/' + dir_prefix + str(new_content)            
-            outfile.write("%d:%d:%s:%s:%d:%s\n" % (new_dbid,new_content,isprim,hostname,port,datadir) )           
+            outfile.write("%s:%d:%s:%d:%d:%s\n" % (hostname,port,datadir,new_dbid,new_content,isprim) )           
         
         
         outfile.close()
@@ -650,10 +649,10 @@ class gpexpand:
                     l = f.readline()
                     if not l:
                         break                    
-                    dbid,contentId,definedprimary,hostname,port,datadir = l.split(':')
+                    hostname,port,datadir,dbid,contentId,definedprimary = l.strip().split(':')
                                         
                     db = GpDB(int(contentId),parseTrueFalse(definedprimary),int(dbid),
-                              parseTrueFalse(definedprimary),True,hostname,int(port),datadir.strip())                    
+                              parseTrueFalse(definedprimary),True,hostname,int(port),datadir)                    
                     self.new_segments.append(db)
                     line += 1
             except ValueError:
