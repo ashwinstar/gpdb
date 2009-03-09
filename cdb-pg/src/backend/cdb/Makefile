@@ -69,7 +69,7 @@ depend dep:
 
 clean:
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
-	rm -f SUBSYS.o
+	rm -f SUBSYS.o $(ALLOBJS)
 
 ifeq (depend,$(wildcard depend))
 include depend
