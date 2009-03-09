@@ -445,7 +445,6 @@ wloop:
 
 static bool my_bio_initialized = false;
 static BIO_METHOD my_bio_methods;
-static int	(*std_sock_read) (BIO *h, char *buf, int size);
 
 static int
 my_sock_read(BIO *h, char *buf, int size)
@@ -893,6 +892,7 @@ initialize_SSL(void)
 
 			ssl_loaded_verify_locations = true;
 }
+}}
 
 /*
  *	Destroy global SSL context.
