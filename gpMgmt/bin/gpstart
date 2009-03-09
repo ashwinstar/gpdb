@@ -104,9 +104,6 @@ USAGE () {
 		$ECHO "      Database startup options:"
 		$ECHO "      -m, start master instance only in maintenance mode [default:- full Greenplum database startup]"
 		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
-		$ECHO "      -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
-		$ECHO "      -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
-		$ECHO "          not applicable in master maintenance mode startup"
 		$ECHO "      -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO "      -R, start in restricted mode. Only users with superuser privilege are allowed to connect."
 		$ECHO
@@ -217,9 +214,6 @@ GET_DETAILS () {
 		if [ $RETVAL -ne 0 ];then
 			LOG_MSG "[FATAL]:-Failed to start Master instance in admin mode" 1
 			LOG_MSG "[INFO]:-Dumping end of Master instance log file to gpstart log file" 1
-			LOG_MSG "[INFO]:-********************************Diagnostic Dump Start*********************************"
-			$TAIL -15 ${MASTER_DATA_DIRECTORY}.log >> $LOG_FILE
-			LOG_MSG "[INFO]:-********************************Diagnostic Dump End***********************************" 
 			LOG_MSG "[INFO]:-Check $LOG_FILE for start up error message from $PG_CTL" 1
 			ERROR_EXIT "[FATAL]:-Unable to continue GPDB array startup" 2
 		fi
@@ -272,15 +266,11 @@ GET_DETAILS () {
 
 START_ADMIN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ x"" != x"$SWITCH_LOG" ];then
-			SWITCH_MASTER_LOG
-		fi
 		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
 		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility " start
 		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
+		if [ $RETVAL -ne 0 ]; then				
 				ERROR_EXIT "[FATAL]:-Could not start master instance in admin mode" 2
 		fi
 		LOG_MSG "[INFO]:-Successfully started master instance in admin mode" 1
@@ -296,21 +286,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
 		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
-		if [ x"" == x"$SWITCH_LOG" ];then
-		LOG_MSG "[INFO]:-Master switch log file     = Off" 1
-		else
-		LOG_MSG "[INFO]:-Master switch log file     = On" 1
-			if [ -f ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE ];then
-			LOG_MSG "[INFO]:-Switch type                = Append" 1
-			else
-			LOG_MSG "[INFO]:-Switch type                = Move" 1
-			fi
-		fi
-		if [ x"" == x"$SWITCH_QE_LOG" ];then
-		LOG_MSG "[INFO]:-Segment switch log file    = Off" 1
-		else
-		LOG_MSG "[INFO]:-Segment switch log file    = On" 1
-		fi
+		
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Master standby start       = On" 1
 		else
@@ -361,9 +337,6 @@ ARRAY_REORDER () {
 
 PROCESS_STARTUP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ x"" != x"$SWITCH_LOG" ];then
-		SWITCH_MASTER_LOG
-	fi
 	if [ $READ_COUNT -eq 0 ];then
 		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
 			STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
@@ -387,9 +360,6 @@ PROCESS_STARTUP () {
 	export LC_MONETARY=$LC_MONETARY
 	export LC_NUMERIC=$LC_NUMERIC
 	INST_COUNT=0
-	if [ x"" == x"$SWITCH_QE_LOG" ];then
-		SWITCH_QE_LOG=0
-	fi
 	#INVALID_START_COUNT=0
 	TOTAL_FAILED_COUNT=0
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
@@ -407,7 +377,7 @@ PROCESS_STARTUP () {
 		else
 			VALID_SETTING=0
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE "$QD_DBNAME" &
+			$GPSEGSTART $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE "$QD_DBNAME" &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
@@ -545,7 +515,7 @@ PROCESS_STARTUP () {
 #******************************************************************************
 trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'aqysmbl:d:e!DB:R" opt;do
+		while getopts ":vt'?'aqymbl:d:!DB:R" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -554,8 +524,6 @@ if [ $# -ne 0 ]; then
 						a ) unset INTERACTIVE ;;
 						q ) unset VERBOSE ;;
 						m ) ADMIN=1 ;;
-						s ) SWITCH_LOG=1 ;;
-						e ) SWITCH_QE_LOG=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						y ) unset START_SYNC ;;
 						b ) CHK_STANDBY=1 ;;

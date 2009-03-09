@@ -90,42 +90,7 @@ QE_DIR_CHK () {
 }
 
 START_SEG () {
-	if [ $QE_SWITCH_LOG -eq 1 ];then
-	#*************************************************************************************************************
-	# Start of switch log section
-	#*************************************************************************************************************
-		IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}.log_$CUR_DATE ]; then $ECHO 1;else $ECHO 0;fi"`
-		if [ $IS_THERE -eq 0 ];then
-			LOG_MSG "[INFO][$INST_COUNT]:-Processing switch log request for $QE_NAME ${QE_DIR}.log"
-			LOG_MSG "[INFO][$INST_COUNT]:-Moving log file to ${QE_DIR}.log_$CUR_DATE"
-			$TRUSTED_SHELL $QE_NAME "$MV ${QE_DIR}.log ${QE_DIR}.log_$CUR_DATE"
-			if [ $? -ne 0 ];then
-				LOG_MSG "[WARN][$INST_COUNT]:-Issue with Moving log file to ${QE_DIR}.log_$CUR_DATE" 1
-				EXIT_STATUS=1
-			else
-				LOG_MSG "[INFO][$INST_COUNT]:-Completed Moving log file to ${QE_DIR}.log_$CUR_DATE"
-			fi
-		else
-			LOG_MSG "[INFO][$INST_COUNT]:-Appending log file to ${QE_DIR}.log_$CUR_DATE"
-			$TRUSTED_SHELL $QE_NAME "$CAT ${QE_DIR}.log >> ${QE_DIR}.log_$CUR_DATE"
-			if [ $? -ne 0 ];then
-				LOG_MSG "[WARN][$INST_COUNT]:-Issue with Appending log file to ${QE_DIR}.log_$CUR_DATE" 1
-				EXIT_STATUS=1
-			else
-				LOG_MSG "[INFO][$INST_COUNT]:-Completed Appending log file to ${QE_DIR}.log_$CUR_DATE"
-			fi
-			$TRUSTED_SHELL $QE_NAME "$RM ${QE_DIR}.log;$TOUCH ${QE_DIR}.log"
-			if [ $? -ne 0 ];then
-				LOG_MSG "[WARN][$INST_COUNT]:-Issue with $RM ${QE_DIR}.log;$TOUCH ${QE_DIR}.log" 1
-				EXIT_STATUS=1
-			else
-				LOG_MSG "[INFO][$INST_COUNT]:-Completed $RM ${QE_DIR}.log;$TOUCH ${QE_DIR}.log"
-			fi
-		fi
-	fi
-	#*************************************************************************************************************
-	# End of switch log section
-	#*************************************************************************************************************
+
 
 	#*************************************************************************************************************
 	# Start of segment startup section
@@ -164,12 +129,6 @@ START_SEG () {
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN][$INST_COUNT]:-Segment directory $QE_DIR on $QE_NAME does not exist" 1
 			LOG_MSG "[WARN][$INST_COUNT]:-Unable to tail segment log file" 1
-		else
-			LOG_MSG "[INFO][$INST_COUNT]:-Start diagnostic data dump to log file" 1
-			LOG_MSG "[INFO][$INST_COUNT]:-------------------------------------------------" 1
-			$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log" >> $LOG_FILE
-			LOG_MSG "[INFO][$INST_COUNT]:-End of diagnostic data dump" 1
-			LOG_MSG "[INFO][$INST_COUNT]:-------------------------------------------------" 1
 		fi
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed to start segment $QE_HOST $DE_DIR $QE_PORT" 1
 		QE_LINE="FAILED:${QE_LINE}:VALID_START_FAIL"
@@ -257,7 +216,6 @@ else
 fi
 PARENT_PID=$1;shift		#PID of gpstart process calling this script
 CHK_CALL
-QE_SWITCH_LOG=$1;shift		#0=No switch segment log 1=switch segment log
 QE_NAME=$1;shift		#Hostname holding database segment
 QE_PORT=$1;shift		#Segment port
 QE_DIR=$1;shift			#Segment directory

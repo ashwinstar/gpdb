@@ -105,18 +105,12 @@ START_SEG () {
 	if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Startup request returned error code $RETVAL" 1
 		LOG_MSG "[INFO][$INST_COUNT]:-Command string called which resulted in error" 1
-		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start"  1
+		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT} $EXTRA_START_OPTS\" start >/dev/null 2>&1"  1
 		LOG_MSG "[INFO][$INST_COUNT]:-Tail'ing Segment instance log file" 1
 		$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN][$INST_COUNT]:-Segment directory $QE_DIR on $QE_NAME does not exist" 1
 			LOG_MSG "[WARN][$INST_COUNT]:-Unable to tail segment log file" 1
-		else
-			LOG_MSG "[INFO][$INST_COUNT]:-Start diagnostic data dump to log file" 1
-			LOG_MSG "[INFO][$INST_COUNT]:-------------------------------------------------" 1
-			$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log" >> $LOG_FILE
-			LOG_MSG "[INFO][$INST_COUNT]:-End of diagnostic data dump" 1
-			LOG_MSG "[INFO][$INST_COUNT]:-------------------------------------------------" 1
 		fi
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed to start segment $QE_HOST $DE_DIR $QE_PORT" 1
 		QE_LINE="FAILED:${QE_LINE}:START_FAIL"

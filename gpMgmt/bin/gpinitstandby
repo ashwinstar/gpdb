@@ -531,7 +531,7 @@ FAIL_PRIMARY_SEGMENTS () {
 	#Now shutdown the read only master from utility mode
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 	#Now start up the read only master
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY start"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY start >> /dev/null 2>&1"
 	ERROR_CHK $? "start readonly master instance" 2
 	#Now force an update of gp_pgdatabase
 	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -d $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
