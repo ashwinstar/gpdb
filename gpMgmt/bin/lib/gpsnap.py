@@ -34,6 +34,9 @@ import subprocess, time, datetime, threading, Queue, pickle, random
 MASTER_DATA_DIRECTORY = os.getenv('MASTER_DATA_DIRECTORY')
 if not MASTER_DATA_DIRECTORY:
     sys.exit('MASTER_DATA_DIRECTORY env not defined')
+
+
+# we always connect to localhost for snapshot ... must run on master machine
 os.putenv('PGHOST', '')
 os.putenv("PGOPTIONS", '-c gp_session_role=utility')
 os.putenv('PGDATABASE', 'template1')
@@ -187,7 +190,11 @@ class SnapshotName:
 
 ############
 class Segment:
+    '''Represent a segment and operations to be done on the segment. 
+    The default operations are TGZ.'''
+
     def __init__(self, line):
+        'Init using a line from gp_configuration'
         row = [x.strip() for x in line.split('|')]
         (self.content, self.definedprimary, self.dbid,
          self.isprimary, self.valid, self.hostname,
@@ -201,6 +208,9 @@ class Segment:
     def type(self): return 'tgz'
 
     def ctlpath(self, name):
+        '''Return where to store the control file for this segment. If the 
+        DB content is not -1 (masters), return None. Otherwise, the ctlpath
+        is MASTER_DATA_DIRECTORY/{sname}.snap'''
         sname = SnapshotName(self.datapath, name)
         return self.content == '-1' and sname.ctlpath() or None
 
@@ -257,9 +267,11 @@ class Segment:
 
 
 class ZfsSegment(Segment):
+    '''Redefine the operations on segments using ZFS snapshots.'''
+
     def __init__(self, line):
         Segment.__init__(self, line)
-	self.snapshotname = {}
+	self.snapshotname = {}  # cache the snapshot name 
 
     def type(self): return 'zfs'
 
@@ -445,9 +457,7 @@ class ControlInfo:
         for fpath in out:
             fpath = fpath.strip()
             f = None
-            try:
-                f = open(fpath)
-                ret.append(pickle.load(f))
+            try: f = open(fpath); ret.append(pickle.load(f))
             except IOError: pass
             finally: f and f.close()
         
@@ -553,7 +563,8 @@ def restoreSnapshot(name):
                  % (s.hostname, s.datapath) for (s, rc) in erows])
         die("\n".join(emsg))
 
-    if not confirm("Continue to *delete* database and restore snapshot.\nThis is the point of no return."):
+    if not confirm("\n".join(["\nContinue to *DELETE* database and restore snapshot.",
+                              "THIS IS THE POINT OF NO RETURN."])):
         die("Aborted by user.")
 
     erows = filter(lambda (s,rc): rc, 
@@ -579,6 +590,7 @@ def infoSnapshot(name):
     for s in ctlInfo.segments: msg("    " + str(s))
     return ctlInfo
     
+############
 def infoSnapshotDetailed(name):
     ctlInfo = infoSnapshot(name)
     print
