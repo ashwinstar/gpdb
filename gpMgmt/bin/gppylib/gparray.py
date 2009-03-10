@@ -41,6 +41,12 @@ class GpDB:
     
     def get_datadir(self):
         return self.datadir
+    
+    def get_status(self):
+        if self.valid:
+            return "Valid"
+        else:
+            return "Invalid"
 
 
 
@@ -127,7 +133,7 @@ def createFromGpInitFile(intputFile):
     """TODO: """
     raise Exception,"TODO: implement createFromGpInitFile"
 
-def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase):
+def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix):
     rows=[]
     
     dbid = 0
@@ -136,8 +142,9 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
     for host in hostlist:
         isprimary='t'
         port=primary_portbase        
-        for dir in primary_list:                                
-            rows.append( (content,isprimary,dbid,isprimary,'t',host,port,dir) )
+        for dir in primary_list:   
+            fulldir = "%s/%s%d" % (dir,dir_prefix,content)                             
+            rows.append( (content,isprimary,dbid,isprimary,'t',host,port,fulldir) )
             port += 1
             content += 1
             dbid += 1
@@ -161,12 +168,13 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
             port = mirror_portbase
             mirror_host_offset=1
             for dir in mirror_list:
+                fulldir = "%s/%s%d" % (dir,dir_prefix,content)
                 mirror_host = hostlist[mirror_host_offset % num_hosts]
                 if mirror_host == host:
                     mirror_host_offset += 1
                     mirror_host = hostlist[mirror_host_offset % num_hosts]
                     
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,dir) )
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,fulldir) )
                 port += 1
                 content += 1
                 dbid += 1
@@ -190,7 +198,8 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
             port = mirror_portbase
             
             for dir in mirror_list:
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,dir) )
+                fulldir = "%s/%s%d" % (dir,dir_prefix,content)
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,fulldir) )
                 port += 1
                 content += 1
                 dbid += 1

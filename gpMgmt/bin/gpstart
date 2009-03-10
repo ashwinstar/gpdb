@@ -183,27 +183,7 @@ RECOVERY_STARTUP () {
 	exit $EXIT_STATUS	
 }
 
-SWITCH_MASTER_LOG () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Moving master segment log file to ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE" 1
-	if [ -f ${MASTER_DATA_DIRECTORY}.log ];then
-		if [ -f ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE ];then
-			LOG_MSG "[INFO]:-Master log file has been previously switched today"
-			LOG_MSG "[INFO]:-Will append current master segment the switched log file"
-			$CAT ${MASTER_DATA_DIRECTORY}.log >> ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE
-			ERROR_CHK $? "complete append to switched log file" 1
-			$RM -f ${MASTER_DATA_DIRECTORY}.log
-			ERROR_CHK $? "complete delete of current master segment log file" 1
-		else
-			$MV ${MASTER_DATA_DIRECTORY}.log ${MASTER_DATA_DIRECTORY}.log_$CUR_DATE
-			ERROR_CHK $? "complete move of master segment log file" 1
-		fi
-	else
-		LOG_MSG "[WARN]:-No current master segment log file, ignoring log file switch request" 1
-		EXIT_STATUS=1
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+
 
 GET_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"

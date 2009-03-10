@@ -7,6 +7,8 @@
 TODO: docs
 
 """
+import os
+
 from gppylib.gplog import *
 from gppylib.gparray import *
 from base import *
@@ -14,8 +16,10 @@ from unix import *
 
 logger = get_default_logger()
 
-
-
+GPHOME=os.environ.get('GPHOME')
+SRC_GPPATH="source %s/greenplum_path.sh;" % GPHOME
+PG_CTL="%s/bin/pg_ctl" % GPHOME
+INITDB="%s/bin/initdb" % GPHOME
 
 
 
@@ -47,7 +51,7 @@ logger = get_default_logger()
 class InitDB(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db
-        self.cmdStr="%s %s" % ('initdb', db.get_datadir()) 
+        self.cmdStr="%s %s %s" % (SRC_GPPATH,INITDB, db.get_datadir()) 
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -60,8 +64,25 @@ class InitDB(Command):
         cmd=InitDB(name,db,ctxt=REMOTE,remoteHost=host)
         cmd.run(validateAfter=True) 
 
+class DbStatus(Command):
+    def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
+        self.db=db        
+        self.cmdStr="%s %s -D %s status" % (SRC_GPPATH,PG_CTL,self.db.datadir)
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
-
+    def is_running(self):
+        if self.results.rc != 0:
+            return False
+        elif self.results.stdout.lower().find('no server running') != -1:
+            return False
+        else:
+            return True
+    
+    @staticmethod
+    def local(name,db):
+        cmd=DbStatus(name,db)
+        cmd.run(validateAfter=True)
+        return cmd.is_running()
 
 
 class ReadPostmasterTempFile(Command):

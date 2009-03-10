@@ -340,10 +340,12 @@ mgmtcopy :
 	@mkdir -p $(INSTLOC)/bin
 	@mkdir -p $(INSTLOC)/lib
 	@mkdir -p $(INSTLOC)/lib/python	
+	@mkdir -p $(INSTLOC)/sbin
 	@#Setup /lib/python contents
 	@cp -rp $(GPMGMT)/bin/gppylib $(INSTLOC)/lib/python
 	@cp -rp $(GPMGMT)/bin/ext/* $(INSTLOC)/lib/python
 	@cp -rp $(GPMGMT)/bin $(INSTLOC)
+	@cp -rp $(GPMGMT)/sbin/* $(INSTLOC)/sbin/.
 	@cp -rp $(GPCC)/build/bin $(INSTLOC)
 	@cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
 	@if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
@@ -362,8 +364,10 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpcrondump \
 		$(INSTLOC)/bin/gpdbrestore \
 		$(INSTLOC)/bin/gpdeletesystem \
+		$(INSTLOC)/bin/gpexpand \
 		$(INSTLOC)/bin/gpinitstandby \
 		$(INSTLOC)/bin/gpinitsystem \
+		$(INSTLOC)/bin/gplogfilter \
 		$(INSTLOC)/bin/gprebuildsystem \
 		$(INSTLOC)/bin/gprecoverseg \
 		$(INSTLOC)/bin/gpscp \
@@ -372,6 +376,7 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpssh \
 		$(INSTLOC)/bin/gpssh-exkeys \
 		$(INSTLOC)/bin/gpstart \
+		$(INSTLOC)/bin/gpstart.py \
 		$(INSTLOC)/bin/gpstate \
 		$(INSTLOC)/bin/gpstop \
 		$(INSTLOC)/bin/gpsys1
