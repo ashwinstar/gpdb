@@ -1868,9 +1868,16 @@ authident(hbaPort *port)
  * PAM conversation function
  */
 
+
+#ifdef pg_on_solaris
+static int
+pam_passwd_conv_proc(int num_msg, struct pam_message **msg,
+					struct pam_response **resp, void *appdata_ptr)
+#else
 static int
 pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
 					 struct pam_response ** resp, void *appdata_ptr)
+#endif
 {
 	if (num_msg != 1 || msg[0]->msg_style != PAM_PROMPT_ECHO_OFF)
 	{
