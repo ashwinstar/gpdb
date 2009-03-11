@@ -248,7 +248,7 @@ START_ADMIN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
-		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility " start
+		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility " start >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then				
 				ERROR_EXIT "[FATAL]:-Could not start master instance in admin mode" 2

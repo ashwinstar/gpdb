@@ -220,12 +220,12 @@ class Segment:
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                ('cd %s && ' % sname.toppath())
                + ('(rm -f %s %s) && ' % (sname.tgzname(), sname.ctlname()))
-               + ('gtar cfz %s %s ' % (sname.tgzname(), sname.dbdir()))] 
+               + ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR cfz %s %s)' % (sname.tgzname(), sname.dbdir()))] 
         vvmsg("  - " + " ".join(cmd))
         rc = subprocess.Popen(cmd).wait()
         if rc: 
             # some errors occurred ... clean up
-            self.deleteTgzSnapshot(name)
+            self.deleteSnapshot(name)
         else:
             msg('Created snapshot %s:%s' % (self.hostname, 
                                             sname.tgzpath()))
@@ -246,7 +246,7 @@ class Segment:
         sname = SnapshotName(self.datapath, name)
         msg('Checking snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               '(gtar tfz %s > /dev/null && ls -l %s) 2>&1' % (sname.tgzpath(), sname.tgzpath())]
+               '({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR tfz %s > /dev/null && ls -l %s) 2>&1' % (sname.tgzpath(), sname.tgzpath())]
         vvmsg("  - " + " ".join(cmd))
 	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 	lines = p.stdout.readlines()
@@ -258,7 +258,7 @@ class Segment:
         sname = SnapshotName(self.datapath, name)
         msg('Restoring snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               'rm -rf %s; cd %s && (gtar xfz %s || tar xfz %s) 2> /dev/null' 
+               'rm -rf %s; cd %s && ({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR xfz %s) 2> /dev/null' 
                % (self.datapath, sname.toppath(), sname.tgzname(), sname.tgzname())]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
