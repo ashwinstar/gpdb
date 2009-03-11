@@ -85,10 +85,6 @@ static void process_psqlrc_file(char *filename);
 static void showVersion(void);
 static void EstablishVariableSpace(void);
 
-#ifdef USE_SSL
-static void printSSLInfo(void);
-#endif
-
 #ifdef WIN32
 static void checkWin32Codepage(void);
 #endif
@@ -615,31 +611,6 @@ showVersion(void)
 	puts(_("contains support for command-line editing"));
 #endif
 }
-
-
-
-/*
- * printSSLInfo
- *
- * Prints information about the current SSL connection, if SSL is in use
- */
-#ifdef USE_SSL
-static void
-printSSLInfo(void)
-{
-	int			sslbits = -1;
-	SSL		   *ssl;
-
-	ssl = PQgetssl(pset.db);
-	if (!ssl)
-		return;					/* no SSL */
-
-	SSL_get_cipher_bits(ssl, &sslbits);
-	printf(_("SSL connection (cipher: %s, bits: %i)\n\n"),
-		   SSL_get_cipher(ssl), sslbits);
-}
-#endif
-
 
 /*
  * checkWin32Codepage
