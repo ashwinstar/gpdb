@@ -73,8 +73,15 @@ static int  authident(hbaPort *port);
 #define PGSQL_PAM_SERVICE "postgresql"	/* Service name passed to PAM */
 
 static int	CheckPAMAuth(Port *port, char *user, char *password);
+
+#ifdef pg_on_solaris
+static int pam_passwd_conv_proc(int num_msg, struct pam_message **msg,
+                    struct pam_response **resp, void *appdata_ptr);
+#else
 static int pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
-					 struct pam_response ** resp, void *appdata_ptr);
+                     struct pam_response ** resp, void *appdata_ptr);
+#endif
+
 
 static struct pam_conv pam_passw_conv = {
 	&pam_passwd_conv_proc,
