@@ -259,7 +259,7 @@ class Segment:
         msg('Restoring snapshot of %s:%s' % (self.hostname, self.datapath))
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                'rm -rf %s; cd %s && ({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR xfz %s) 2> /dev/null' 
-               % (self.datapath, sname.toppath(), sname.tgzname(), sname.tgzname())]
+               % (self.datapath, sname.toppath(), sname.tgzname())]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
         
