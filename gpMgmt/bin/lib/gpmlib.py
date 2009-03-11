@@ -216,8 +216,9 @@ def directory_writable(dir, host=None):
             os.remove(file)
         
     else:
-        cmd = makeCommand('''python -c \\"import sys, os; sys.path.append('%s'); import gpmlib; gpmlib.directory_writable('%s')\\"''' %
-                          (os.path.join(os.environ.get('GPHOME'), 'bin/lib'), dir))
+        gphome = os.environ.get('GPHOME')
+        cmd = makeCommand('''python -c \\"import sys, os; sys.path.extend(['%s', '%s']); import gpmlib; gpmlib.directory_writable('%s')\\"''' %
+                          (os.path.join(gphome, 'bin', 'lib'), os.path.join(gphome, 'lib', 'python'), dir))
         (ok, out) = run('''%s "%s"''' % (gplib.ssh_prefix(host=host), cmd))
         if not ok:
             fatal('write file %s error' % file)
@@ -627,14 +628,16 @@ def get_ipaddr_to_stdout(host):
 #############
 def edit_file(host, file, search_txt, sub_txt, append=False):
     if host != 'localhost':
-        cmd = makeCommand('''python -c \\"import sys; sys.path.append('%s'); import gpmlib; gpmlib.edit_file('localhost', '%s', '%s', '%s', %s)\\"''' % 
-                          (os.path.join(os.environ.get('GPHOME'), 'bin/lib'),
+        gphome = os.environ.get('GPHOME')
+        cmd = makeCommand('''python -c \\"import sys; sys.path.extend(['%s', '%s']); import gpmlib; gpmlib.edit_file('localhost', '%s', '%s', '%s', %s)\\"''' % 
+                          (os.path.join(gphome, 'bin', 'lib'),
+                           os.path.join(gphome, 'lib', 'python'),
                            file,
                            search_txt,
                            sub_txt,
                            str(append)))
 
-        (ok, out) = run('''%s "%s"''' % (gplib.ssh_prefix(host=host), cmd))
+        (ok, out) = run2('''%s "%s"''' % (gplib.ssh_prefix(host=host), cmd), True)
         return ok
     else:
 
