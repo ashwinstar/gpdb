@@ -5,6 +5,16 @@ VERSION
 .deps
 .settings
 .pydevproject
+openssl
+openssl-0.9.8g
+openldap
+openldap-2.3.38
+krb5
+krb5-1.6.2
+*.log
+curl
+curl-7.17.1
+ext
 Linux GCC
 Linux\ GCC
 
