@@ -3153,6 +3153,18 @@ static struct config_int ConfigureNamesInt[] =
 		INT_MAX, 0, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"gp_distinct_grouping_sets_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
+		 gettext_noop("Threshold for the number of grouping sets whose distinct-qualified "
+					  "aggregate computation will be rewritten based on the multi-phrase aggregation. "
+					  "The rest of grouping sets in the same query will not be rewritten."),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_distinct_grouping_sets_threshold,
+		32, 0, 1024, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

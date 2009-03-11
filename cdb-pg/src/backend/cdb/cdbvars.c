@@ -242,6 +242,7 @@ bool		gp_eager_one_phase_agg = FALSE;
 bool		gp_eager_two_phase_agg = FALSE;
 bool        gp_enable_groupext_distinct_pruning = true;
 bool        gp_enable_groupext_distinct_gather = true;
+int         gp_distinct_grouping_sets_threshold = 32;
 bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;

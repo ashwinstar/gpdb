@@ -718,6 +718,16 @@ extern bool gp_enable_groupext_distinct_pruning;
  */
 extern bool gp_enable_groupext_distinct_gather;
 
+/*
+ * "gp_distinct_grouping_sets_threshold"
+ *
+ * The planner will treat gp_enable_groupext_distinct_pruning as 'off'
+ * when the number of grouping sets that have been rewritten based
+ * on the multi-phrase aggregation exceeds the threshold value here divided by
+ * the number of distinct-qualified aggregates.
+ */
+extern int gp_distinct_grouping_sets_threshold;
+
 /* May Greenplum apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.

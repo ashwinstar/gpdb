@@ -114,6 +114,9 @@ typedef struct GroupExtContext
 	/* the rollup which is currently being processed */
 	CanonicalRollup *current_rollup;
 
+	/* The current grouping set sequence number */
+	int curr_grpset_no;
+
 	/* The following are intended for input sharing */
 	Plan *subplan;
 	CdbPathLocus input_locus;
@@ -230,6 +233,7 @@ plan_grouping_extension(PlannerInfo *root,
 	context.need_repeat_node = false;
 	context.querynode_changed = false;
 	context.canonical_rollups = NIL;
+	context.curr_grpset_no = 0;
 
 	/*
 	 * Convert a list of grouping sets into multiple rollups.
@@ -1365,6 +1369,8 @@ plan_append_aggs_with_rewrite(PlannerInfo *root,
 		if (context->current_rollup->grpset_counts[group_no] <= 0)
 			continue;
 
+		context->curr_grpset_no++;
+
 		/* Estimate the number of groups for this rollup level. */
 		*context->p_dNumGroups =
 			(((double)(context->current_rollup->numcols + 1 - group_no)) /
@@ -1918,9 +1924,10 @@ plan_list_rollup_plans(PlannerInfo *root,
 	Query *orig_query = root->parse;
 	Query *final_query = NULL;
 	List *pathkeys = NIL;
+	bool orig_gp_enable_groupext_distinct_pruning = gp_enable_groupext_distinct_pruning;
 
 	/*
-	 * Augment the targetlist of lefttree with DQA arguments is
+	 * Augment the targetlist of lefttree with DQA arguments if
 	 * any. If lefttree is not a projection capable plan, we insert a
 	 * Result on top of it
 	 */
@@ -2005,6 +2012,23 @@ plan_list_rollup_plans(PlannerInfo *root,
 		*context->p_dNumGroups = orig_numGroups;
 		root->parse = copyObject(orig_query);
 
+		if (gp_enable_groupext_distinct_pruning &&
+			context->agg_counts->numDistinctAggs > 0 &&
+			gp_distinct_grouping_sets_threshold > 0)
+		{
+			/*
+			 * XXX The rewrite may generate a plan with a large number of slices, which
+			 * can not be run by the existing GPDB architecture. We disable the rewrite
+			 * for the rest of grouping sets when the number of grouping sets we have
+			 * rewitten is greater than the value specified
+			 * by "gp_distinct_grouping_sets_threshold" dividved by the number of
+			 * distinct-qualified aggregates.
+			 */
+			if (context->curr_grpset_no >=
+				gp_distinct_grouping_sets_threshold / context->agg_counts->numDistinctAggs)
+				gp_enable_groupext_distinct_pruning = false;
+		}
+
 		rollup_plan = make_aggs_for_rollup(root, context, subplan);
 
 		new_numGroups += *context->p_dNumGroups;
@@ -2080,6 +2104,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 	}
 
 	*context->p_dNumGroups = new_numGroups;
+	gp_enable_groupext_distinct_pruning = orig_gp_enable_groupext_distinct_pruning;
 
 	/* Update the original Query node */
 	root->parse = orig_query;
