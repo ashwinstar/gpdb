@@ -90,7 +90,7 @@ extern Plan *make_distinctaggs_for_rollup(PlannerInfo *root, bool is_agg,
 extern Plan *window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr);
 extern RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
 extern Value *get_tle_name(TargetEntry *tle, List* rtable, const char *default_name);
-
+extern bool contain_windowref(Node *node, void *context);
 
 /*
  * prototype for plan/plangroupexp.c

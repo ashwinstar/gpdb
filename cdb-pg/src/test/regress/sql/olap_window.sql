@@ -1382,3 +1382,10 @@ order by 1,2,3;
 
 -- MPP-4840
 explain select n from ( select row_number() over () from (values (0)) as t(x) ) as r(n) group by n;
+
+-- MPP-5219
+select case when 1=2 then rank() over (partition by cn order by pn) end from sale;
+select cn, pn, case when 1=2 then rank() over (partition by cn order by pn) end,
+rank() over (partition by cn order by pn) from sale; --mvd 1,2->4
+select pn, vn, case when 1=2 then rank() over (partition by cn order by pn) end,
+rank() over (partition by pn order by vn) from sale; --mvd 1,2->4

@@ -942,8 +942,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 													  tlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 	}
-	else if ( parse->windowClause && parse->targetList )
-	/* Should really test for no windowing target, but empty tlist suffices. */
+	else if ( parse->windowClause && parse->targetList &&
+			  contain_windowref((Node *)parse->targetList, NULL) )
 	{
 		/*
 		 * Calculate pathkeys that represent ordering requirements. Stash
