@@ -226,6 +226,6 @@ print "Creating tables, loading data and running VACUUM ANALYZE\n";
 
 my $tmp_outfile = $ddl_dml_file."_out";
 
-system("psql -p $port $dbname -a -f $ddl_dml_file > $tmp_outfile 2>&1");
+system("psql -p $port -d $dbname -a -f $ddl_dml_file > $tmp_outfile 2>&1");
 
 print "Done.\n";
