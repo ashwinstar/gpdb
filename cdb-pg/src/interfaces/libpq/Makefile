@@ -20,7 +20,7 @@ SO_MAJOR_VERSION= 5
 SO_MINOR_VERSION= 1
 DLTYPE= library
 
-override CPPFLAGS :=  -DFRONTEND -DUNSAFE_STAT_OK -I$(srcdir) $(CPPFLAGS) -I$(top_builddir)/src/port
+override CPPFLAGS :=  -DFRONTEND -DUNSAFE_STAT_OK -I$(srcdir) $(CPPFLAGS) -I$(top_builddir)/src/port -I$(top_srcdir)/src/port
 ifneq ($(PORTNAME), win32)
 override CFLAGS += $(PTHREAD_CFLAGS)
 endif
@@ -159,6 +159,7 @@ $(top_builddir)/src/port/pg_config_paths.h:
 
 install: all installdirs install-lib
 	$(INSTALL_DATA) $(srcdir)/libpq-fe.h '$(DESTDIR)$(includedir)'
+	$(INSTALL_DATA) $(srcdir)/libpq-events.h '$(DESTDIR)$(includedir)'
 	$(INSTALL_DATA) $(srcdir)/libpq-int.h '$(DESTDIR)$(includedir_internal)'
 	$(INSTALL_DATA) $(srcdir)/pqexpbuffer.h '$(DESTDIR)$(includedir_internal)'
 	$(INSTALL_DATA) $(srcdir)/pg_service.conf.sample '$(DESTDIR)$(datadir)/pg_service.conf.sample'
@@ -167,10 +168,14 @@ installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(libdir)' '$(DESTDIR)$(includedir)' '$(DESTDIR)$(includedir_internal)'
 
 uninstall: uninstall-lib
-	rm -f '$(DESTDIR)$(includedir)/libpq-fe.h' '$(DESTDIR)$(includedir_internal)/libpq-int.h' '$(DESTDIR)$(includedir_internal)/pqexpbuffer.h' '$(DESTDIR)$(datadir)/pg_service.conf.sample'
+	rm -f '$(DESTDIR)$(includedir)/libpq-fe.h'
+	rm -f '$(DESTDIR)$(includedir)/libpq-events.h'
+	rm -f '$(DESTDIR)$(includedir_internal)/libpq-int.h'
+	rm -f '$(DESTDIR)$(includedir_internal)/pqexpbuffer.h'
+	rm -f '$(DESTDIR)$(datadir)/pg_service.conf.sample'
 
 clean distclean: clean-lib
-	rm -f $(OBJS) pg_config_paths.h crypt.c getaddrinfo.c inet_aton.c noblock.c open.c pgstrcasecmp.c snprintf.c strerror.c strlcpy.c thread.c md5.c ip.c encnames.c wchar.c win32error.c pgsleep.c pthread.h exports.list
+	rm -f $(OBJS) pg_config_paths.h crypt.c getaddrinfo.c inet_aton.c noblock.c open.c pgstrcasecmp.c snprintf.c strerror.c strlcpy.c thread.c md5.c ip.c encnames.c wchar.c win32error.c pgsleep.c pthread.h libpq.rc exports.list
 # Might be left over from a Win32 client-only build
 	rm -f pg_config_paths.h
 
