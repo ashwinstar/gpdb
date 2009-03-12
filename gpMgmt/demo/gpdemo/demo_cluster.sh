@@ -214,7 +214,7 @@ echo "# This names the data directories for the Segment Instances and the Entry 
 echo "SEG_PREFIX=$SEG_PREFIX" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# This is the port at which to contact the resulting Greenplum database, e.g." >> $CLUSTER_CONFIG
-echo "#   psql -p \$PORT_BASE template1" >> $CLUSTER_CONFIG
+echo "#   psql -p \$PORT_BASE -d template1" >> $CLUSTER_CONFIG
 echo "PORT_BASE=${DEMO_PORT_BASE}" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Prefix for script created database" >> $CLUSTER_CONFIG

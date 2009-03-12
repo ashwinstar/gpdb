@@ -61,7 +61,7 @@ class PSQL:
         else:
             ofile = '> %s 2>&1' % ofile
 
-        return shell.run('psql %s %s %s %s' % (dbname, flag, arg, ofile))
+        return shell.run('psql -d %s %s %s %s' % (dbname, flag, arg, ofile))
 
 
         

@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.83.2.1 2009/01/28 15:06:57 mha Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.90 2009/01/28 15:06:47 mha Exp $
  *
  *	  Since the server static private key ($DataDir/server.key)
  *	  will normally be stored unencrypted so that the database
@@ -44,32 +44,6 @@
  *	  Because the risk of cryptanalysis increases as large
  *	  amounts of data are sent with the same session key, the
  *	  session keys are periodically renegotiated.
- *
- * PATCH LEVEL
- *	  milestone 1: fix basic coding errors
- *	  [*] existing SSL code pulled out of existing files.
- *	  [*] SSL_get_error() after SSL_read() and SSL_write(),
- *		  SSL_shutdown(), default to TLSv1.
- *
- *	  milestone 2: provide endpoint authentication (server)
- *	  [*] client verifies server cert
- *	  [*] client verifies server hostname
- *
- *	  milestone 3: improve confidentially, support perfect forward secrecy
- *	  [ ] use 'random' file, read from '/dev/urandom?'
- *	  [*] emphermal DH keys, default values
- *	  [*] periodic renegotiation
- *	  [*] private key permissions
- *
- *	  milestone 4: provide endpoint authentication (client)
- *	  [*] server verifies client certificates
- *
- *	  milestone 5: provide informational callbacks
- *	  [*] provide informational callbacks
- *
- *	  other changes
- *	  [ ] tcp-wrappers
- *	  [ ] more informative psql
  *
  *-------------------------------------------------------------------------
  */
@@ -114,7 +88,6 @@ static DH  *tmp_dh_cb(SSL *s, int is_export, int keylength);
 static int	verify_cb(int, X509_STORE_CTX *);
 static void info_cb(const SSL *ssl, int type, int args);
 static void initialize_SSL(void);
-static void destroy_SSL(void);
 static int	open_server_SSL(Port *);
 static void close_SSL(Port *);
 static const char *SSLerrmessage(void);
@@ -216,17 +189,6 @@ secure_initialize(void)
 #endif
 
 	return 0;
-}
-
-/*
- *	Destroy global context
- */
-void
-secure_destroy(void)
-{
-#ifdef USE_SSL
-	destroy_SSL();
-#endif
 }
 
 /*
@@ -892,18 +854,6 @@ initialize_SSL(void)
 
 			ssl_loaded_verify_locations = true;
 }
-}}
-
-/*
- *	Destroy global SSL context.
- */
-static void
-destroy_SSL(void)
-{
-	if (SSL_context)
-	{
-		SSL_CTX_free(SSL_context);
-		SSL_context = NULL;
 	}
 }
 

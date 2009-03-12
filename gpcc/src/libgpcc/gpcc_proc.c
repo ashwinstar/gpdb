@@ -135,7 +135,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
 	strcat(cmd, hostname);
     }
     
-    sprintf(cmd, "%s -p %d %s -A -t -c \"%s\"", cmd, port, dbname, sql);
+    sprintf(cmd, "%s -p %d -d %s -A -t -c \"%s\"", cmd, port, dbname, sql);
 
     argv[0] = cmd;
     argv[1] = 0;

@@ -156,7 +156,7 @@ def runas(cmd):
 def psql(sql, quiet=True):
     sql = sql.strip()
     vvmsg('SQL: ' + sql)
-    cmd = ['psql', 'template1']
+    cmd = ['psql', '-d', 'template1']
     if quiet: cmd.append('-q')
     cmd = cmd + ['-At', '-c', sql]
     stime = time.time()

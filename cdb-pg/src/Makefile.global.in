@@ -34,6 +34,7 @@ all:
 
 # PostgreSQL version number
 VERSION = @PACKAGE_VERSION@
+MAJORVERSION = @PG_MAJORVERSION@
 
 # Support for VPATH builds
 vpath_build = @vpath_build@
@@ -66,11 +67,12 @@ configure_args = @configure_args@
 
 ifndef PGXS
 
-# Note that prefix and exec_prefix aren't defined in a PGXS build;
+# Note that prefix, exec_prefix, and datarootdir aren't defined in a PGXS build;
 # makefiles may only use the derived variables such as bindir.
 
 prefix := @prefix@
 exec_prefix := @exec_prefix@
+datarootdir := @datarootdir@
 
 bindir := @bindir@
 
@@ -109,20 +111,22 @@ endif
 mandir := @mandir@
 
 docdir := @docdir@
-# docdir can be an empty string to signify --without-docdir
-ifneq (,$(docdir))
 ifeq "$(findstring pgsql, $(docdir))" ""
 ifeq "$(findstring postgres, $(docdir))" ""
 override docdir := $(docdir)/postgresql
 endif
 endif
-endif
+
+htmldir := @htmldir@
 
 localedir := @localedir@
 
 else # PGXS case
 
+# Extension makefiles should set PG_CONFIG, but older ones might not
+ifndef PG_CONFIG
 PG_CONFIG = pg_config
+endif
 
 bindir := $(shell $(PG_CONFIG) --bindir)
 datadir := $(shell $(PG_CONFIG) --sharedir)
@@ -211,6 +215,7 @@ endif # not PGXS
 
 CC = @CC@
 GCC = @GCC@
+SUN_STUDIO_CC = @SUN_STUDIO_CC@
 CFLAGS = @CFLAGS@
 
 ifeq ($(GCC), yes)
@@ -307,6 +312,8 @@ WANTED_LANGUAGES = @WANTED_LANGUAGES@
 # Name of the "template"
 PORTNAME= @PORTNAME@
 
+build_os = @build_os@
+
 host_tuple = @host@
 host_os = @host_os@
 host_cpu = @host_cpu@
@@ -350,7 +357,7 @@ endif
 
 # This macro is for use by libraries linking to libpq.  (Because libpgport
 # isn't created with the same link flags as libpq, it can't be used.)
-libpq := -L$(libpq_builddir) -lpq
+libpq = -L$(libpq_builddir) -lpq
   
 # If doing static linking, shared library dependency info isn't available,
 # so add in the libraries that libpq depends on.

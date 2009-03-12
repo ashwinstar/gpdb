@@ -33,6 +33,7 @@ LIBS := $(LIBS:-lpgport=)
 
 OBJS=	fe-auth.o fe-connect.o fe-exec.o fe-misc.o fe-print.o fe-lobj.o \
 	fe-protocol2.o fe-protocol3.o pqexpbuffer.o pqsignal.o fe-secure.o \
+	libpq-events.o \
 	md5.o ip.o wchar.o encnames.o noblock.o pgstrcasecmp.o thread.o \
 	$(filter crypt.o getaddrinfo.o inet_aton.o open.o snprintf.o strerror.o strlcpy.o win32error.o, $(LIBOBJS))
 
