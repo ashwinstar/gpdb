@@ -34,7 +34,7 @@ _help = ["""
 Tne input file should be be a plain text file with a line for each segment
 to add with the format:
 
-  <dbid>:<content>:<definedprimary>:<hostname>:<port>:<datadir>
+  <hostname>:<port>:<data_directory>:<dbid>:<content>:<definedprimary>
 
 """,
 """
@@ -54,8 +54,6 @@ Remaining TODO items:
 
 """* how to measure progress. """,
 
-"""* don't try and update downed segments. """,
-
 """* update gpexpand.status table during expansion """,
 
 """* create a view to measure progress """,
@@ -68,16 +66,15 @@ Remaining TODO items:
     model since the tables can be in a different database from
     where the gpexpand schema is kept. """,
 
-"""* during initial setup we ssh to 127.0.0.1.  This is not guaranteed to have passwordless
-     ssh setup for it.  we should use the hostname from gp_configuration""",
-
 """* running --clean requires you to have your database started.  often times you run
      this when the database is stopped and possibly can't be started fully.""",
      
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
      the system.  should get rid of this requirement. """,
      
-"""* Validation of input file needs to be improved """
+"""* Validation of input file needs to be improved """,
+
+"""* Interview: if not adding new hosts, hostname field is empty in output file """
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -162,18 +159,17 @@ def is_gpexpand_running(master_data_directory):
         fp = open(master_data_directory + '/gpexpand.pid', 'r')
         pid = fp.readline().strip()
         fp.close()
-        print 'Found pid file and read in pid: %s' % pid
         p = Popen(['ps', '-p %s' % pid], stdout=PIPE)
         os.waitpid(p.pid,0)
         # swallow ps header
         p.stdout.readline()
-        ps_info = p.stdout.readline().strip()
-        print 'ps_info: %s' % ps_info
-        if ps_info.find('gpexpand') == -1:
-            remove_pid_file(master_data_directory)
-            is_running = False
-        else:
-            is_running = True
+        ps_info = p.stdout.readline()
+        if ps_info:
+            if ps_info.strip().find('gpexpand') == -1:
+                remove_pid_file(master_data_directory)
+                is_running = False
+            else:
+                is_running = True
     except IOError:
         pass
     except Exception, msg:
@@ -243,7 +239,7 @@ class GpExpandStatus():
                                 'PREPARE_EXPANSION_SCHEMA_STARTED': 13,
                                 'PREPARE_EXPANSION_SCHEMA_DONE': 14,
                                 'EXPANSION_PREPARE_DONE': 15,
-                                'REORGAZIZE_INPROGRESS': 16,
+                                'REORGANIZE_INPROGRESS': 16,
                                 'COMPLETE': 17 }
         self._status = None
         self._status_info = None
@@ -251,14 +247,13 @@ class GpExpandStatus():
         self._master_mirror_hostname = master_mirror_hostname
         self._status_filename = master_data_directory + '/gpexpand.status'
         self._fp = None
+        self._temp_dir = None
         
         if os.path.exists(self._status_filename):
             self._read_status_file()
         else:
             self._create_status_file()
             self._sync_status_file()
-    
-    
     
     def _read_status_file(self):
         """Reads in an existing gpexpand status file"""        
@@ -269,6 +264,8 @@ class GpExpandStatus():
             
             for line in self._fp:
                 (self._status, self._status_info) = line.rstrip().split(':')
+                if self._status == 'BUILD_SEGMENT_TEMPLATE_STARTED':
+                    self._temp_dir = self._status_info
         except IOError:
             raise
         
@@ -329,6 +326,9 @@ class GpExpandStatus():
         if os.path.exists(self._status_filename):
             os.unlink(self._status_filename)
 
+    def get_temp_dir(self):
+        return self._temp_dir
+
 #-------------------------------------------------------------------------
 
 class ExpansionError(Exception): pass
@@ -344,11 +344,7 @@ class SegmentTemplate:
                  schemaTarFile='gpexpand_schema.tar'):
         self.logger = logger
         self.statusLogger = statusLogger
-        if pool:
-            self.pool = pool
-        else:
-            #TODO:  we should force a pool to be passed in.
-            self.pool = WorkerPool()
+        self.pool = pool
         self.gparray = gparray
         self.newSegments = newSegments
         self.noVacuumCatalog = noVacuumCatalog
@@ -489,22 +485,23 @@ class SegmentTemplate:
         
         self.logger.info('Copying postgresql.conf from existing segment into template')
         
-        #TODO: I'm not sure this is doing what we think it should do.  I believe what this does is
-        #      ssh srcSegHostname  and then  scp dir 127.0.0.1:tmpdir ?
+        localHostname = socket.gethostname()
         cpCmd = RemoteCopy('copying postgresql.conf to %s:%s/postgresql.conf' % (self.srcSegHostname, self.srcSegDataDir), 
-                           self.srcSegDataDir + '/postgresql.conf', '127.0.0.1', 
+                           self.srcSegDataDir + '/postgresql.conf', localHostname, 
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
        
         
         self.logger.info('Copying pg_hba.conf from existing segment into template')
         cpCmd = RemoteCopy('copy pg_hba.conf to %s:%s/pg_hba.conf' % (self.srcSegHostname, self.srcSegDataDir), 
-                           self.srcSegDataDir + '/pg_hba.conf', '127.0.0.1', 
+                           self.srcSegDataDir + '/pg_hba.conf', localHostname, 
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
         
         
         rmCmd = RemoveFiles('gpexpand', self.tempDir + '/gpperfmon/data')
+        rmCmd.run(validateAfter=True)
+        rmCmd = RemoveFiles('gpexpand', self.tempDir + '/pg_log/*')
         rmCmd.run(validateAfter=True)
         
         self.logger.info('Adding new segments into template pg_hba.conf')
@@ -581,7 +578,8 @@ class gpexpand:
         self.numworkers=parallel   
         self.gparray = gparray
         self.conn = dbconn.connect(self.dburl)
-        
+        self.old_segments = gparray.getSegDbList()
+                
         if dburl.pgdb == 'template0' or dburl.pgdb == 'template1' or dburl.pgdb == 'postgres':
             raise ExpansionError("Invalid database '%s' specified.  Cannot use a template database.\n"
                                  "Please set the environment variable PGDATABASE to a different database and re-run" % dburl.pgdb)            
@@ -590,10 +588,13 @@ class gpexpand:
 
         #TODO: we want more threads most likely for segment addition
         self.pool = WorkerPool()
-        self.tempDir = '%s/gpexpand_%s_%d' % (os.getcwd(), 
-                                              datetime.datetime.now().strftime('%m%d%Y'), 
-                                              os.getpid()) 
+        self.tempDir = self.statusLogger.get_temp_dir()
+        if not self.tempDir:
+            self.tempDir = '%s/gpexpand_%s_%d' % (os.getcwd(), 
+                                                  datetime.datetime.now().strftime('%m%d%Y'), 
+                                                  os.getpid()) 
         self.queue = None
+        self.segTemplate = None
         pass
     
     
@@ -619,7 +620,7 @@ class gpexpand:
         outfile = open(outputfile, 'w')
         
         logger.info("Generating input file...")
-        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase)
+        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix)
         
         
         for r in rows:              
@@ -652,7 +653,8 @@ class gpexpand:
                     hostname,port,datadir,dbid,contentId,definedprimary = l.strip().split(':')
                                         
                     db = GpDB(int(contentId),parseTrueFalse(definedprimary),int(dbid),
-                              parseTrueFalse(definedprimary),True,hostname,int(port),datadir)                    
+                              parseTrueFalse(definedprimary),True,hostname.strip(),
+                              int(port),datadir.strip())                    
                     self.new_segments.append(db)
                     line += 1
             except ValueError:
@@ -662,6 +664,13 @@ class gpexpand:
         except IOError:
             raise ExpansionError('Input file %s not found' % options.filename)
         
+        #TODO: validate the input:
+        # - Any duplicate dbid?
+        # - Do mirrors have valid contentid?
+        # - Hostname resolution successful?
+        # - dbids contiguous and sequential?
+        # - contentids contiguous and sequential?
+        # - mirrors correct?
         
     def add_segments(self):
         # Check if we are beyond this point
@@ -670,9 +679,6 @@ class gpexpand:
                                                              'BUILD_SEGMENT_TEMPLATE_DONE',
                                                              'BUILD_SEGMENTS_STARTED']:
             return
-        
-        
-        self.old_segments = gparray.getSegDbList()
         
         # Create, distribute and configure the new segments.
         self.segTemplate = SegmentTemplate(self.logger, self.statusLogger, self.pool,
@@ -696,8 +702,7 @@ class gpexpand:
     def update_original_segments(self):
         status = self.statusLogger.get_current_status()
         if status[0] == 'UPDATE_OLD_SEGMENTS_STARTED':
-#            self.logger.info('Cleaning up last segment build attempt')
-            pass
+            self.restore_original_segments()
         elif status[0] != 'BUILD_SEGMENTS_DONE':
             self.logger.debug('Current status is past UPDATE_OLD_SEGMENTS_DONE')
             return
@@ -724,6 +729,8 @@ class gpexpand:
 
         self.logger.info('Copying new pg_hba.conf file to original segments')
         for seg in self.old_segments:
+            if seg.content == -1 or not seg.valid:            
+                continue
             cpCmd = RemoteCopy('copy new pg_hba.conf file to original segments', 
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
@@ -745,6 +752,8 @@ class gpexpand:
 
         self.logger.info('Configuring original segments')
         for seg in self.old_segments:            
+            if seg.content == -1 or not seg.valid:            
+                continue
             segCfgCmd = ConfigExpansionSeg('configure original segment', seg.datadir, 
                                                seg.port, self.newPrimaryCount, 
                                                seg.content, seg.dbid,
@@ -759,12 +768,15 @@ class gpexpand:
             self.restore_original_segments()
             raise ExpansionError('Failed to configure original segments')   
         
-        self.segTemplate.cleanup()
+        if self.segTemplate:
+            self.segTemplate.cleanup()
 
         self.statusLogger.set_status('UPDATE_OLD_SEGMENTS_DONE')
             
 
     def restore_original_segments(self):
+        self.logger.info('Restoring original segments')
+        GpStop.local('stop GPDB')
         self.logger.info('Restoring pg_hba.conf file on original segments')
         for seg in self.old_segments:
             srcFile=seg.datadir + '/pg_hba.gpexpand.bak'
@@ -779,7 +791,7 @@ class gpexpand:
 
         originalPrimaryCount = self.gparray.get_primary_count()
 
-        self.logger.info('Restoring original segment configurations')
+        self.logger.info('Restoring original segments catalog tables')
         for seg in self.old_segments:            
             segCfgCmd = ConfigExpansionSeg('Restore original segment', seg.datadir, 
                                             seg.port, originalPrimaryCount, 
@@ -1362,13 +1374,15 @@ before continuing by re-running this utility and providing the input file. """
             
     hostlist=ask_list(help,"Please enter a comma separated list of hostnames that you'd like to add\n" \
                       "or press Enter if you are not adding any hosts",'')    
-
+    hostlist = [h.strip() for h in hostlist]
+    
     #We now look at the gparray of their existing array to propose a set of datadirectories.
     proposed_dirs=proposeDataDirs(gparray,hostlist)
     
             
     primary_datadirs=ask_list(None,"\nPlease enter a comma separated list of data directories to put new\n"\
                               "primary segment databases on ",', '.join(proposed_dirs))
+    primary_datadirs = [p.strip() for p in primary_datadirs]
             
     primary_portbase=ask_int(None,"\nPlease provide a base port number to use for the new\n"\
                              " primary segdbs?",
@@ -1449,7 +1463,7 @@ try:
     
     state = gp_expand.get_state()
     
-    if state == 'EXPANSION_PREPARE_DONE' or state == 'REORGAZIZE_INPROGRESS':
+    if state == 'EXPANSION_PREPARE_DONE' or state == 'REORGANIZE_INPROGRESS':
         gp_expand.perform_expansion()
         remove_pid_file(options.master_data_directory)
     elif options.filename is None:                 

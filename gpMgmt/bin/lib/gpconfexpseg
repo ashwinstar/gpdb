@@ -85,14 +85,10 @@ try:
         modifyPostgresqlConfCmd.run(validateAfter=True)
 
     
-    # stop up segment in utility
-    try:
-        startCmd = SegmentStart('Start expansion segment', 
+    # start up segment in utility
+    startCmd = SegmentStart('Start expansion segment', 
                                 options.datadir, utilityMode=True)
-        startCmd.run(validateAfter=True)
-    except base.ExecutionError:
-        # We'll ignore this here in case we are cleaning up a previous failed run
-        pass
+    startCmd.run(validateAfter=True)
     
     # update gp_id
     dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=options.port)
@@ -111,5 +107,5 @@ try:
 
 
 except Exception, msg:
-    print msg
+    print >> sys.stderr, msg
     sys.exit(1)
