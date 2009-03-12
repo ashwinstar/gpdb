@@ -260,6 +260,7 @@ sub AddDir
     }
 
     # Match rules that pull in source files from different directories
+    # example: pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
     my $replace_re = qr{^([^:\n\$]+\.c)\s*:\s*(?:%\s*: )?\$(\([^\)]+\))\/(.*)\/[^\/]+\s*$}m;
     while ($mf =~ m{$replace_re}m)
     {

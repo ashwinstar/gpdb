@@ -52,7 +52,8 @@ sub Install
         $conf = "release";
     }
     die "Could not find debug or release binaries" if ($conf eq "");
-    print "Installing for $conf in $target\n";
+    my $majorver = DetermineMajorVersion();
+    print "Installing version $majorver for $conf in $target\n";
 
     EnsureDirectories($target, 'bin','lib','share','share/timezonesets','share/contrib','doc',
         'doc/contrib', 'symbols');
@@ -94,7 +95,7 @@ sub Install
     CopyContribFiles($config,$target);
     CopyIncludeFiles($target);
 
-    GenerateNLSFiles($target,$config->{nls}) if ($config->{nls});
+    GenerateNLSFiles($target,$config->{nls},$majorver) if ($config->{nls});
 
     print "Installation complete.\n";
 }
@@ -209,8 +210,11 @@ sub GenerateConversionScript
         $sql .= "-- $se --> $de\n";
         $sql .=
 "CREATE OR REPLACE FUNCTION $func (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '\$libdir/$obj', '$func' LANGUAGE C STRICT;\n";
+        $sql .=
+"COMMENT ON FUNCTION $func(INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) IS 'internal conversion function for $se to $de';\n";
         $sql .= "DROP CONVERSION pg_catalog.$name;\n";
         $sql .= "CREATE DEFAULT CONVERSION pg_catalog.$name FOR '$se' TO '$de' FROM $func;\n";
+        $sql .= "COMMENT ON CONVERSION pg_catalog.$name IS 'conversion for $se to $de';\n";
     }
     open($F,">$target/share/conversion_create.sql")
       || die "Could not write to conversion_create.sql\n";
@@ -330,7 +334,9 @@ sub CopyIncludeFiles
     lcopy('src/include/libpq/libpq-fs.h', $target . '/include/libpq/')
       || carp 'Could not copy libpq-fs.h';
 
-    CopyFiles('Libpq headers', $target . '/include/', 'src/interfaces/libpq/', 'libpq-fe.h');
+    CopyFiles('Libpq headers',
+	      $target . '/include/', 'src/interfaces/libpq/',
+	      'libpq-fe.h', 'libpq-events.h');
     CopyFiles(
         'Libpq internal headers',
         $target .'/include/internal/',
@@ -392,6 +398,7 @@ sub GenerateNLSFiles
 {
     my $target = shift;
     my $nlspath = shift;
+    my $majorver = shift;
 
     print "Installing NLS files...";
     EnsureDirectories($target, "share/locale");
@@ -405,24 +412,31 @@ sub GenerateNLSFiles
     {
         s/nls.mk/po/;
         my $dir = $_;
-        next unless ($dir =~ /([^\\]+)\\po$/);
+        next unless ($dir =~ /([^\/]+)\/po$/);
         my $prgm = $1;
         $prgm = 'postgres' if ($prgm eq 'backend');
         foreach (glob("$dir/*.po"))
         {
             my $lang;
-            next unless /^(.*)\.po/;
+            next unless /([^\/]+)\.po/;
             $lang = $1;
 
             EnsureDirectories($target, "share/locale/$lang", "share/locale/$lang/LC_MESSAGES");
             system(
-"$nlspath\\bin\\msgfmt -o $target\\share\\locale\\$lang\\LC_MESSAGES\\$prgm.mo $dir\\$_"
+"\"$nlspath\\bin\\msgfmt\" -o \"$target\\share\\locale\\$lang\\LC_MESSAGES\\$prgm-$majorver.mo\" $_"
               )
               && croak("Could not run msgfmt on $dir\\$_");
             print ".";
         }
     }
     print "\n";
+}
+
+sub DetermineMajorVersion
+{
+    my $f = read_file('src/include/pg_config.h') || croak 'Could not open pg_config.h';
+    $f =~ /^#define\s+PG_MAJORVERSION\s+"([^"]+)"/m || croak 'Could not determine major version';
+    return $1;
 }
 
 sub read_file
