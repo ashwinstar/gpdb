@@ -26,7 +26,24 @@ Starts a GPDB Array.
 
 _help = ["""
 TODO: Items""",
-"* _process_segment_start(): better handling of commands with > 1 return codes"]
+
+"*  _process_segment_start(): better handling of commands with > 1 return codes",
+
+"*  timeout on how long to wait to try and start something",
+
+"* honor the -B flag",
+
+"* implement gp.start_standbymaster",
+
+"* implement gp.chk_gpdb_id",
+
+"* add a 'trust' mode that does minimal safety checks",
+
+"* Fails if a host can't be found in a pre-existing host cache",
+
+"* Host cache contains duplicate entries",
+
+"* dump more identification in _process_segment_start()"]
 
 EXECNAME = os.path.split(__file__)[-1]
 
@@ -54,45 +71,26 @@ class SegStartStatus():
 class GpStart():
     
     ######
-    def __init__(self,restricted,start_standby):
+    def __init__(self,restricted,start_standby,trust):
         self.restricted=restricted
         self.start_standby=start_standby
+        self.trust=trust
         self.pool = None
         pass
     
     ######
     def prepare(self):
-        logger.info("Gathering information and validating the environment...")        
-        self._check_gphome()
-        self._check_masterdatadir()
-        self._check_permissions()
-        self._read_postgresqlconf()
-        self._standby_check()     
+        logger.info("Gathering information and validating the environment...")
+        self.gphome=gp.get_gphome()
+        self.master_datadir=gp.get_masterdatadir()        
+        if not self.trust:                    
+            gp.check_permissions()                    
+        self._read_postgresqlconf()        
+        if not self.trust:
+            gp.standby_check(self.master_datadir)                 
         self._check_version()
         self._check_master_running()
-       
-    
-    ######            
-    def _check_gphome(self):   
-       logger.debug("Checking if GPHOME env variable is set.")
-       self.gphome=os.getenv('GPHOME',None)
-       if not self.gphome:            
-            raise GpStartError('Environment Variable GPHOME not set')
-  
-    
-    ######
-    def _check_masterdatadir(self):
-        logger.debug("Checking if MASTER_DATA_DIRECTORY env variable is set.")
-        self.master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
-        if self.master_datadir is None:
-            raise GpStartError("Environment Variable MASTER_DATA_DIRECTORY not set!")
-  
-          
-    ######
-    def _check_permissions(self):
-        logger.debug("--Checking that current user can use GP binaries")
-        gp.chk_gpdb_id()   
-  
+
     
     ######
     def _read_postgresqlconf(self):
@@ -103,18 +101,14 @@ class GpStart():
         self.max_connections = pgconf_dict.int('max_connections') 
         logger.debug("Read from postgresql.conf max_connections=%s" % self.max_connections)
   
-        
-    ######
-    def _standby_check(self):
-        logger.debug("---Make sure we aren't a passive standby master")
-        if (gp.check_passive_standby('check if passive standby',self.master_datadir)):
-            raise GpStartError('Cannot run this utility on the standby instance')
-  
     
     ######
     def _check_version(self):
-        self.gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
-        logger.info("local Greenplum Version: '%s'" % self.gpversion)
+        if self.trust:
+            self.gpversion="no version info"
+        else:    
+            self.gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
+            logger.info("local Greenplum Version: '%s'" % self.gpversion)
   
     
     ######
@@ -227,8 +221,9 @@ class GpStart():
         logger.debug("Gathering collation settings...")
         (self.lc_collate,self.lc_monetary,self.lc_numeric)=catalog.getCollationSettings(self.conn)
         
-        self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
-        logger.debug("FTS Mode: %s" % self.ftsmode)
+        if not self.trust:
+            self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
+            logger.debug("FTS Mode: %s" % self.ftsmode)
         
         self.conn.close()
         pass
@@ -244,11 +239,14 @@ class GpStart():
         
         segs = self.gparray.get_valid_segdbs()
         invalid_segs=self.gparray.get_invalid_segdbs()                                
-        hostdict=self._build_hostdict(segs)                                           
-        failed_seg_status.extend(self._ping_segment_hosts(hostdict))                        
+        hostdict=self._build_hostdict(segs)  
+        
+        if not self.trust:                                         
+            failed_seg_status.extend(self._ping_segment_hosts(hostdict))
+                                    
         self._start_segments(hostdict)                
-        self._process_segment_start(hostdict,failed_seg_status)    
-        self._print_segment_start(segs,failed_seg_status)
+        success_seg_status=self._process_segment_start(hostdict,failed_seg_status)    
+        self._print_segment_start(segs,failed_seg_status,success_seg_status)
 
         self.start_final_master()        
 
@@ -258,11 +256,15 @@ class GpStart():
     
     ######
     def _build_hostdict(self,segs):
-        hostcache=self._get_hostcache(self.gparray,self.pool)
+        hostcache=gp.readGpHostCache(self.gparray,self.pool)
         hostdict={}
                 
         for db in segs:
-            realhost=hostcache[db.hostname]
+            if db.hostname in hostcache:
+                realhost=hostcache[db.hostname]
+            else:
+                realhost = db.hostname
+                
             if realhost not in hostdict:                
                 hostdict[realhost] = [db] 
             else:
@@ -291,7 +293,7 @@ class GpStart():
             
             logger.debug("Dispatching command to start segments on host: %s" % key)
             cmd=gp.GpSegStartCmd("remote segment starts on host '%s'" % key, self.gphome, dblist, 
-                                 [self.lc_collate,self.lc_monetary,self.lc_numeric],self.gpversion,
+                                 [self.lc_collate,self.lc_monetary,self.lc_numeric],self.gpversion,self.trust,
                                  ctxt=base.REMOTE, remoteHost=key)
             self.pool.addCommand(cmd)
             
@@ -302,9 +304,10 @@ class GpStart():
     ######
     def _process_segment_start(self,hostdict,failed_seg_status):
         logger.info("Process results...")
+        success_seg_status=[]
         cmds=self.pool.getCompletedItems()
         for cmd in cmds:
-            if cmd.get_results().rc == 1:
+            if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:                            
                 cmdout = cmd.get_results().stdout
                 lines=cmdout.split('\n')
                 for line in lines:
@@ -319,20 +322,30 @@ class GpStart():
                             for db in dbs:
                                 if db.datadir == dir:
                                     failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )
-            elif cmd.get_results().rc > 1:
+                        else:
+                            dbs = hostdict[cmd.remoteHost]
+                            for db in dbs:
+                                if db.datadir == dir:
+                                    success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
+            else:
                 #TODO:  better handling and formatting.
                 logger.error("Failed Executing command: '%s' " % cmd.get_results())
+            
+                
                     
         self.pool.empty_completed_items()
+        return success_seg_status
         
     ######
-    def _print_segment_start(self,segs,failed_seg_status):
+    def _print_segment_start(self,segs,failed_seg_status,success_seg_status):
         started = len(segs) - len(failed_seg_status)
         logger.info("-------------------------------------")
         if len(failed_seg_status) > 0:
             for failure in failed_seg_status:
                 logger.info(failure)
-            logger.info("-------------------------------------")
+        for stat in success_seg_status:
+            logger.debug(stat)            
+        logger.info("-------------------------------------")
         logger.info("Successfully started %d of %d segment instances" % (started,len(segs)))
 
     
@@ -419,41 +432,7 @@ class GpStart():
             return False
         
     
-    ######
-    def _get_hostcache(self,gparray,pool):
-        hostcache={}
-        path=os.path.expanduser("~") + "/.gphostcache"
-        if os.path.isfile(path):
-            try:
-                file = open(path, 'r')
-                
-                for line in file:
-                    (interface,hostname)=line.split(':')
-                    hostcache[interface.strip()]=hostname.strip()                    
-            except IOError:
-                raise Exception(' file %s not found' % path)                    
-            finally:
-                file.close()
-        else:
-            #let's create one
-            hostlist=gparray.get_hostlist()
-            cmdlist=[]
-            for host in hostlist:
-                cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=host)
-                pool.addCommand(cmd)
-                cmdlist.append(cmd)
-            self.pool.join()
-            self.pool.check_results()
-            
-            
-            file = open(path, 'w')
-            for cmd in cmdlist:
-                file.write("%s:%s\n" % (cmd.remotehost,cmd.get_hostname()))
-                hostcache[cmd.remotehost]=cmd.get_hostname()
-            file.flush()
-            file.close()
-            
-        return hostcache        
+          
     
     
 #----------------------- Command line option parser ----------------------
@@ -479,6 +458,7 @@ def parseargs():
                       
     optgrp2.add_option('-q', '--quiet', action='store_true',
                         help='suppress status messages')
+    optgrp2.add_option('--trust', action='store_true', help='do not perform any safety checks... no seatbelts')
     
     optgrp4 = OptionGroup(parser, 'Connection options: ')
     parser.add_option_group(optgrp4)
@@ -546,7 +526,7 @@ def main():
         if options.quiet:
             quiet_stdout_logging()
     
-        gpstart = GpStart(options.restricted,options.start_standby)
+        gpstart = GpStart(options.restricted,options.start_standby,options.trust)
         gpstart.prepare()
           
         gpstart.startMaster()    

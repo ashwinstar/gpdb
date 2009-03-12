@@ -11,7 +11,7 @@ import os
 from gppylib.gplog import *
 from base import *
 from unix import *
-from gppylib.commands import pg
+import pg
 
 
 logger = get_default_logger()
@@ -93,7 +93,7 @@ class MasterStop(Command):
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, utilityMode=False, nowait=False,port=None,ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
-        cmdfrags=['%s %s -D %s -l %s/pg_log/bootstrap.log' % (SRC_GPPATH,pg.PG_CTL,dataDir,dataDir)]
+        cmdfrags=['%s %s -D %s ' % (SRC_GPPATH,pg.PG_CTL,dataDir)]
         portOption = ""
         if port:
             portOption = "-p %s" % port
@@ -118,13 +118,14 @@ class SegmentStart(Command):
 
 #-----------------------------------------------        
 class SegmentStop(Command):
-    def __init__(self, name, dataDir, ctxt=LOCAL, remoteHost=None):
-        self.cmdStr='%s $GPHOME/bin/pg_ctl stop -D %s' % (SRC_GPPATH,dataDir)
-        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+    def __init__(self, name, dataDir,mode='smart', ctxt=LOCAL, remoteHost=None):        
+        cmdfrags=['%s $GPHOME/bin/pg_ctl stop -D %s -m %s' % (SRC_GPPATH,dataDir,mode)]           
+        cmdStr=' '.join(cmdfrags)    
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, dblist, collatelist, gpversion,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, dblist, collatelist, gpversion,trust=False,ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dblist
         self.dirlist=[]
@@ -133,8 +134,25 @@ class GpSegStartCmd(Command):
             
         dirstr=" -D ".join(self.dirlist)        
         colstr=":".join(collatelist)
-        self.cmdStr="%s $GPHOME/sbin/gpsegstart.py -D %s -C %s -V '%s'" % (SRC_GPPATH,dirstr,colstr,gpversion)
+        cmdStr="%s $GPHOME/sbin/gpsegstart.py -D %s -C %s -V '%s'" % (SRC_GPPATH,dirstr,colstr,gpversion)
+        if trust:
+            cmdStr += " --trust"
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+#-----------------------------------------------
+class GpSegStopCmd(Command):
+    def __init__(self, name, gphome, dblist, ctxt=LOCAL, remoteHost=None):
+        self.gphome=gphome
+        self.dblist=dblist
+        self.dirlist=[]
+        for db in dblist:
+            self.dirlist.append(db.datadir)
+            
+        dirstr=" -D ".join(self.dirlist)        
+        colstr=":".join(collatelist)
+        self.cmdStr="%s $GPHOME/sbin/gpsegstart.py -D %s '" % (SRC_GPPATH,dirstr)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+
         
 #-----------------------------------------------
 class GpInitSystem(Command):
@@ -254,6 +272,84 @@ def distribute_tarball(queue,list,tarball):
 
 
 
+def readGpHostCache(gparray,pool):
+    
+    hostcache={}
+    path=os.path.expanduser("~") + "/.gphostcache"
+    if os.path.isfile(path):
+        try:
+            file = open(path, 'r')
+            
+            for line in file:
+                (interface,hostname)=line.split(':')
+                hostcache[interface.strip()]=hostname.strip()                    
+        except IOError:
+            raise Exception(' file %s not found' % path)                    
+        finally:
+            file.close()
+    else:
+        #let's create one
+        hostlist=gparray.get_hostlist()
+        cmdlist=[]
+        for host in hostlist:
+            cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=host)
+            pool.addCommand(cmd)
+            cmdlist.append(cmd)
+        self.pool.join()
+        self.pool.check_results()
+        
+        
+        file = open(path, 'w')
+        
+        for cmd in cmdlist:
+            if cmd.remotehost not in hostcache:
+                file.write("%s:%s\n" % (cmd.remotehost,cmd.get_hostname()))
+                hostcache[cmd.remotehost]=cmd.get_hostname()
+        file.flush()
+        file.close()
+        
+    return hostcache        
+
+
+
+
+class GpError(Exception): pass 
+
+######            
+def get_gphome():   
+    logger.debug("Checking if GPHOME env variable is set.")
+    gphome=os.getenv('GPHOME',None)
+    if not gphome:            
+        raise GpError('Environment Variable GPHOME not set')
+    return gphome
+  
+    
+######
+def get_masterdatadir():
+    logger.debug("Checking if MASTER_DATA_DIRECTORY env variable is set.")
+    master_datadir = os.environ.get('MASTER_DATA_DIRECTORY')
+    if master_datadir is None:
+        raise GpError("Environment Variable MASTER_DATA_DIRECTORY not set!")
+    return master_datadir
+
+
+          
+######
+def check_permissions():
+    logger.debug("--Checking that current user can use GP binaries")
+    chk_gpdb_id()   
+  
+  
+        
+######
+def standby_check(master_datadir):
+    logger.debug("---Make sure we aren't a passive standby master")
+    if (check_passive_standby('check if passive standby',master_datadir)):
+        raise GpError('Cannot run this utility on the standby instance')
+  
+    
+    
+    
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
 
 def start_standbymaster(host,datadir,port):

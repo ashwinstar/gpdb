@@ -97,7 +97,7 @@ class gplogTestCase(unittest.TestCase):
         master=(-1,True,0,True,True,'masterhost',5432,'/masterdir')
         allrows=[]
         allrows.append(master)                 
-        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase)
+        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,'seg')
         
         
         for r in rows:
