@@ -76,6 +76,7 @@
 #include "tcop/tcopprot.h"
 
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
@@ -1729,7 +1730,7 @@ ResultRelInfoSetSegno(ResultRelInfo *resultRelInfo, List *mapping)
    	bool	  found = false;
    	
 	/* only relevant for AO relations */
-	if(RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AO)
+	if(!relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 		return;
 	
 	Assert(mapping);
@@ -1831,7 +1832,7 @@ SendAOTupCounts(EState *estate)
 		resultRelInfo = estate->es_result_relations;
 		for (i = 0; i < estate->es_num_result_relations; i++)
 		{
-			if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+			if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 				aocount++;
 
 			resultRelInfo++;
@@ -1845,7 +1846,7 @@ SendAOTupCounts(EState *estate)
 			resultRelInfo = estate->es_result_relations;
 			for (i = 0; i < estate->es_num_result_relations; i++)
 			{
-				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+				if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 				{
 					pq_sendint(&buf, 
 							   RelationGetRelid(resultRelInfo->ri_RelationDesc),
@@ -1910,6 +1911,8 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 			heap_endinsert(estate->es_HeapInsertDesc);
 		if (resultRelInfo->ri_aoInsertDesc)
 			appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
+                if (resultRelInfo->ri_aocsInsertDesc)
+                        aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
 
 
 		/* Close indices and then the relation itself */
@@ -2351,7 +2354,7 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
-    Oid         sourceTableOid;
+	Oid         sourceTableOid;
 	char		relstorage;
 
 	/*
@@ -2378,10 +2381,15 @@ ExecInsert(TupleTableSlot *slot,
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
-	if (relstorage != RELSTORAGE_AO)
-		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
-	else
+	if (relstorage == RELSTORAGE_AO)
 		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
+	else if(relstorage == RELSTORAGE_AOCS)
+	{
+		/* We will not serialize slot for ao cs table */
+		tuple = NULL;
+	}
+	else
+		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
 
 	
 	/* BEFORE ROW INSERT Triggers */
@@ -2389,6 +2397,9 @@ ExecInsert(TupleTableSlot *slot,
 		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
 	{
 		HeapTuple	newtuple;
+
+		/* NYI */
+		Assert(relstorage != RELSTORAGE_AOCS);
 
 		newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
 
@@ -2408,7 +2419,7 @@ ExecInsert(TupleTableSlot *slot,
 			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
 				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
 			ExecStoreGenericTuple(newtuple, newslot, false);
-            newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
+			newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
 			slot = newslot;
 			tuple = newtuple;
 		}
@@ -2428,7 +2439,32 @@ ExecInsert(TupleTableSlot *slot,
 	 *
 	 * NOTE: for append-only relations we use the append-only access methods.
 	 */
-	if (relstorage != RELSTORAGE_AO)
+	if (relstorage == RELSTORAGE_AO)
+	{
+		if (resultRelInfo->ri_aoInsertDesc == NULL)
+		{
+			/* Set the pre-assigned fileseg number to insert into */
+			ResultRelInfoSetSegno(resultRelInfo, estate->es_result_aosegnos);
+
+			resultRelInfo->ri_aoInsertDesc = 
+				appendonly_insert_init(resultRelationDesc, 
+									   resultRelInfo->ri_aosegno);
+
+		}
+		
+		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);				
+	}
+	else if (relstorage == RELSTORAGE_AOCS)
+	{
+		if (resultRelInfo->ri_aocsInsertDesc == NULL)
+		{
+			ResultRelInfoSetSegno(resultRelInfo, estate->es_result_aosegnos);
+			resultRelInfo->ri_aocsInsertDesc = aocs_insert_init(resultRelationDesc, resultRelInfo->ri_aosegno);
+		}
+
+		newId = aocs_insert(resultRelInfo->ri_aocsInsertDesc, slot);				
+	}
+	else
 	{
 		if (heap_enableHeapInsertDesc)
 		{
@@ -2448,32 +2484,17 @@ ExecInsert(TupleTableSlot *slot,
 								true, true, GetCurrentTransactionId());
 		}
 	}
-	else
-	{
-		if (resultRelInfo->ri_aoInsertDesc == NULL)
-		{
-			/* Set the pre-assigned fileseg number to insert into */
-			ResultRelInfoSetSegno(resultRelInfo, estate->es_result_aosegnos);
-
-			resultRelInfo->ri_aoInsertDesc = 
-				appendonly_insert_init(resultRelationDesc, 
-									   resultRelInfo->ri_aosegno);
-
-		}
-		
-		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);				
-	}
 	
 	IncrAppended();
 	(estate->es_processed)++;
 	(resultRelInfo->ri_aoprocessed)++;
 	estate->es_lastoid = newId;
 
-    /* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
-    sourceTableOid = slot->tts_tableOid;
-    slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
+	/* CDB: Set 'tableOid' to target relid in case RETURNING needs it. */
+	sourceTableOid = slot->tts_tableOid;
+	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 
-	if (relstorage != RELSTORAGE_AO)
+	if (!relstorage_is_ao(relstorage))
 	{
 		setLastTid(&(((HeapTuple)tuple)->t_self));
 		
@@ -2486,15 +2507,15 @@ ExecInsert(TupleTableSlot *slot,
 	}
 
 	/* AFTER ROW INSERT Triggers */
-	ExecARInsertTriggers(estate, resultRelInfo, tuple);
+        ExecARInsertTriggers(estate, resultRelInfo, tuple);
 
 	/* Process RETURNING if present */
 	if (resultRelInfo->ri_projectReturning)
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
 							 slot, planSlot, dest);
 
-    /* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
-    slot->tts_tableOid = sourceTableOid;
+	/* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
+	slot->tts_tableOid = sourceTableOid;
 }
 
 /* ----------------------------------------------------------------
@@ -3603,6 +3624,7 @@ typedef struct
 	DestReceiver pub;			/* publicly-known function pointers */
 	EState	   *estate;			/* EState we are working with */
 	AppendOnlyInsertDescData *ao_insertDesc; /* descriptor to AO tables */
+        AOCSInsertDescData *aocs_ins;           /* descriptor for aocs */
 } DR_intorel;
 
 /*
@@ -3744,7 +3766,10 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 */
 	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
 	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
-	relstorage = (stdRdOptions->appendonly ? RELSTORAGE_AO : RELSTORAGE_HEAP);
+	if(stdRdOptions->appendonly)
+		relstorage = stdRdOptions->columnstore ? RELSTORAGE_AOCS : RELSTORAGE_AO;
+	else
+		relstorage = RELSTORAGE_HEAP;
 	
 	/*
 	 * We can skip WAL-logging the insertions, unless PITR is in use.
@@ -3755,8 +3780,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * transaction commit.	Else the commit might be lost, even though all the
 	 * data is safely fsync'd ...
 	 */
-	estate->es_into_relation_use_wal = (relstorage != RELSTORAGE_AO ? 
-										XLogArchivingActive() : false);
+	estate->es_into_relation_use_wal = (relstorage_is_ao(relstorage) ? false : XLogArchivingActive()); 
 	estate->es_into_relation_descriptor = intoRelationDesc;
 
 	/*
@@ -3786,7 +3810,7 @@ CloseIntoRel(QueryDesc *queryDesc)
 		char		relstorage = rel->rd_rel->relstorage;
 
 		/* APPEND_ONLY is closed in the intorel_shutdown */
-		if (relstorage != RELSTORAGE_AO)
+		if (!relstorage_is_ao(relstorage))
 		{
 			/*
 			 * If we skipped using WAL, and it's not a temp relation, we must
@@ -3830,6 +3854,7 @@ CreateIntoRelDestReceiver(void)
 
 	self->estate = NULL;
 	self->ao_insertDesc = NULL;
+        self->aocs_ins = NULL;
 
 	return (DestReceiver *) self;
 }
@@ -3860,7 +3885,25 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		
 	Assert(estate->es_result_partitions == NULL);
 
-	if (relstorage != RELSTORAGE_AO)
+	if (relstorage == RELSTORAGE_AO)
+	{		
+		MemTuple	tuple = ExecCopySlotMemTuple(slot);
+		
+		if (myState->ao_insertDesc == NULL)
+			myState->ao_insertDesc = appendonly_insert_init(into_rel, 
+															RESERVED_SEGNO);
+
+		appendonly_insert(myState->ao_insertDesc, tuple);		
+		pfree(tuple);
+	}
+	else if (relstorage == RELSTORAGE_AOCS)
+        {
+                if(myState->aocs_ins == NULL)
+                        myState->aocs_ins = aocs_insert_init(into_rel, RESERVED_SEGNO);
+
+                aocs_insert(myState->aocs_ins, slot);
+        }
+	else
 	{
 		HeapTuple	tuple = ExecCopySlotHeapTuple(slot);
 		
@@ -3872,17 +3915,6 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 					GetCurrentTransactionId());	
 		
 		heap_freetuple(tuple);
-	}
-	else
-	{		
-		MemTuple	tuple = ExecCopySlotMemTuple(slot);
-		
-		if (myState->ao_insertDesc == NULL)
-			myState->ao_insertDesc = appendonly_insert_init(into_rel, 
-															RESERVED_SEGNO);
-
-		appendonly_insert(myState->ao_insertDesc, tuple);		
-		pfree(tuple);
 	}
 				
 	/* We know this is a newly created relation, so there are no indexes */
@@ -3905,6 +3937,8 @@ intorel_shutdown(DestReceiver *self)
 
 	if (relstorage == RELSTORAGE_AO && myState->ao_insertDesc)
 		appendonly_insert_finish(myState->ao_insertDesc);	
+	else if (relstorage == RELSTORAGE_AOCS && myState->aocs_ins)
+                aocs_insert_finish(myState->aocs_ins);
 }
 
 /*

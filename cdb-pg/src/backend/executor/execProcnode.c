@@ -90,6 +90,7 @@
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeExternalscan.h"
 #include "executor/nodeAppendOnlyscan.h"
+#include "executor/nodeAOCSScan.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
@@ -191,6 +192,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			result = (PlanState *) ExecInitAppendOnlyScan((AppendOnlyScan *) node,
 														  estate, eflags);
 			break;
+                case T_AOCSScan:
+			result = (PlanState *) ExecInitAOCSScan((AOCSScan *) node,
+														  estate, eflags);
+			break;
+
 
 		case T_ExternalScan:
 			result = (PlanState *) ExecInitExternalScan((ExternalScan *) node,
@@ -417,6 +423,7 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_BitmapOr,
 		&&Exec_Jmp_SeqScan,
 		&&Exec_Jmp_AppendOnlyScan,
+		&&Exec_Jmp_AOCSScan,
 		&&Exec_Jmp_ExternalScan,
 		&&Exec_Jmp_IndexScan,
 		&&Exec_Jmp_BitmapIndexScan,
@@ -486,6 +493,10 @@ Exec_Jmp_SeqScan:
 
 Exec_Jmp_AppendOnlyScan:
 	result = ExecAppendOnlyScan((AppendOnlyScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_AOCSScan:
+	result = ExecAOCSScan((AOCSScanState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_ExternalScan:
@@ -841,6 +852,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_AppendOnlyScan:
 			return ExecCountSlotsAppendOnlyScan((AppendOnlyScan *) node);
 
+		case T_AOCSScan:
+			return ExecCountSlotsAOCSScan((AOCSScan *) node);
+
 		case T_ExternalScan:
 			return ExecCountSlotsExternalScan((ExternalScan *) node);
 
@@ -1063,6 +1077,10 @@ ExecEndNode(PlanState *node)
 
 		case T_AppendOnlyScanState:
 			ExecEndAppendOnlyScan((AppendOnlyScanState *) node);
+			break;
+
+		case T_AOCSScanState:
+			ExecEndAOCSScan((AOCSScanState *) node);
 			break;
 
 		case T_BitmapIndexScanState:

@@ -1354,59 +1354,60 @@ cdbpath_dedup_fixup_append(AppendPath *appendPath, CdbpathDedupFixupContext *ctx
     ctx->need_subplan_id = save_need_subplan_id;
 }                               /* cdbpath_dedup_fixup_append */
 
-static CdbVisitOpt
+	static CdbVisitOpt
 cdbpath_dedup_fixup_walker(Path *path, void *context)
 {
-    CdbpathDedupFixupContext   *ctx = (CdbpathDedupFixupContext *)context;
+	CdbpathDedupFixupContext   *ctx = (CdbpathDedupFixupContext *)context;
 
-    Assert(!ctx->rowid_vars);
+	Assert(!ctx->rowid_vars);
 
-    /* Watch for a UniquePath node calling for removal of dups by row id. */
-    if (path->pathtype == T_Unique)
-        return cdbpath_dedup_fixup_unique((UniquePath *)path, ctx);
+	/* Watch for a UniquePath node calling for removal of dups by row id. */
+	if (path->pathtype == T_Unique)
+		return cdbpath_dedup_fixup_unique((UniquePath *)path, ctx);
 
-    /* Leave node unchanged unless a downstream Unique op needs row ids. */
-    if (!bms_overlap(path->parent->relids, ctx->distinct_on_rowid_relids))
-        return CdbVisit_Walk;       /* visit descendants */
+	/* Leave node unchanged unless a downstream Unique op needs row ids. */
+	if (!bms_overlap(path->parent->relids, ctx->distinct_on_rowid_relids))
+		return CdbVisit_Walk;       /* visit descendants */
 
-    /* Alter this node to produce row ids for an ancestral Unique operator. */
-    switch (path->pathtype)
-    {
-        case T_Append:
-            cdbpath_dedup_fixup_append((AppendPath *)path, ctx);
-            break;
+	/* Alter this node to produce row ids for an ancestral Unique operator. */
+	switch (path->pathtype)
+	{
+		case T_Append:
+			cdbpath_dedup_fixup_append((AppendPath *)path, ctx);
+			break;
 
-	    case T_SeqScan:
+		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
-	    case T_IndexScan:
-	    case T_BitmapHeapScan:
-	    case T_TidScan:
-	    case T_SubqueryScan:
-	    case T_FunctionScan:
-        case T_ValuesScan:
-            cdbpath_dedup_fixup_baserel(path, ctx);
-            break;
+		case T_AOCSScan:
+		case T_IndexScan:
+		case T_BitmapHeapScan:
+		case T_TidScan:
+		case T_SubqueryScan:
+		case T_FunctionScan:
+		case T_ValuesScan:
+			cdbpath_dedup_fixup_baserel(path, ctx);
+			break;
 
-	    case T_HashJoin:
-	    case T_MergeJoin:
-	    case T_NestLoop:
-            cdbpath_dedup_fixup_joinrel((JoinPath *)path, ctx);
-		    break;
+		case T_HashJoin:
+		case T_MergeJoin:
+		case T_NestLoop:
+			cdbpath_dedup_fixup_joinrel((JoinPath *)path, ctx);
+			break;
 
-	    case T_Result:
-	    case T_Material:
-            /* These nodes share child's RelOptInfo and don't need fixup. */
-            return CdbVisit_Walk;           /* visit descendants */
+		case T_Result:
+		case T_Material:
+			/* These nodes share child's RelOptInfo and don't need fixup. */
+			return CdbVisit_Walk;           /* visit descendants */
 
-        case T_Motion:
-            cdbpath_dedup_fixup_motion((CdbMotionPath *)path, ctx);
-            break;
+		case T_Motion:
+			cdbpath_dedup_fixup_motion((CdbMotionPath *)path, ctx);
+			break;
 
-        default:
-            Insist(0);
-    }
-    return CdbVisit_Skip;       /* already visited kids, don't revisit them */
+		default:
+			Insist(0);
+	}
+	return CdbVisit_Skip;       /* already visited kids, don't revisit them */
 }                               /* cdbpath_dedup_fixup_walker */
 
 void

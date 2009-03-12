@@ -38,7 +38,10 @@
  */
 #define MaxAllocSize	((Size) 0x3fffffff)		/* 1 gigabyte - 1 */
 
-#define AllocSizeIsValid(size)	((Size) (size) <= MaxAllocSize)
+static inline bool AllocSizeIsValid(Size sz)
+{
+        return (sz < MaxAllocSize);
+}
 
 /*
  * All chunks allocated by any memory context manager are required to be

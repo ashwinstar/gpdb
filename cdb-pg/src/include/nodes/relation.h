@@ -553,6 +553,17 @@ typedef struct AppendOnlyPath
 	/* for now it's pretty plain.. */
 } AppendOnlyPath;
 
+/*
+ * AOCSPath is used for append-only column store table scans.
+ */
+typedef struct AOCSPath
+{
+	Path		path;
+
+	/* for now it's pretty plain.. */
+} AOCSPath;
+
+
 /* 
  * ExternalPath is used for external table scans. 
  */

@@ -795,7 +795,10 @@ relation_open(Oid relationId, LOCKMODE lockmode)
 	r = RelationIdGetRelation(relationId);
 
 	if (!RelationIsValid(r))
+	{
+		Assert(!"Catch me");
 		elog(ERROR, "could not open relation with OID %u", relationId);
+	}
 
 	return r;
 }
@@ -2252,7 +2255,7 @@ heap_delete(Relation relation, ItemPointer tid,
 
 	Assert(ItemPointerIsValid(tid));
 
-	if (relation->rd_rel->relstorage == RELSTORAGE_AO)
+	if (relstorage_is_ao(relation->rd_rel->relstorage))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Append-only tables are not updatable. Operation not permitted.")));
@@ -2571,7 +2574,7 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 
 	Assert(ItemPointerIsValid(otid));
 
-	if (relation->rd_rel->relstorage == RELSTORAGE_AO)
+	if (relstorage_is_ao(relation->rd_rel->relstorage))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Append-only tables are not updatable. Operation not permitted.")));

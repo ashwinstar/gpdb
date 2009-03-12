@@ -189,10 +189,32 @@ static inline HeapTuple TupGetHeapTuple(TupleTableSlot *slot)
 	return slot->PRIVATE_tts_heaptuple; 
 }
 
+static inline void free_heaptuple_memtuple(TupleTableSlot *slot)
+{
+	if(TupShouldFree(slot))
+	{
+		if(slot->PRIVATE_tts_heaptuple && slot->PRIVATE_tts_heaptuple != slot->PRIVATE_tts_htup_buf)
+			pfree(slot->PRIVATE_tts_heaptuple);
+		
+		if(slot->PRIVATE_tts_memtuple && slot->PRIVATE_tts_memtuple != slot->PRIVATE_tts_mtup_buf)
+			pfree(slot->PRIVATE_tts_memtuple);
+	}
+
+	slot->PRIVATE_tts_heaptuple = NULL;
+	slot->PRIVATE_tts_memtuple = NULL;
+}
+
 static inline void TupSetVirtualTuple(TupleTableSlot *slot)
 {
 	Assert(slot);
 	slot->PRIVATE_tts_flags |= TTS_VIRTUAL;
+}
+
+static inline void TupSetVirtualTupleNValid(TupleTableSlot *slot, int nvalid)
+{
+        free_heaptuple_memtuple(slot);
+        slot->PRIVATE_tts_flags = TTS_VIRTUAL;
+        slot->PRIVATE_tts_nvalid = nvalid;
 }
 
 static inline Datum *slot_get_values(TupleTableSlot *slot)

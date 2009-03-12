@@ -1294,7 +1294,16 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	vacrelstats->rel_tuples = 0;
 	vacrelstats->hasindex = false;
 
-	if(relstorage != RELSTORAGE_AO)
+	if(relstorage == RELSTORAGE_AO)
+	{
+		/* append-only relation. has a special path */
+		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ true);
+	} 
+	else if (relstorage == RELSTORAGE_AOCS)
+	{
+                vacuum_aocs_rel(onerel, vacrelstats, true);
+	}
+	else
 	{
 
 		/* scan the heap */
@@ -1342,11 +1351,6 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 
 		/* update shared free space map with final free space info */
 		vac_update_fsm(onerel, &fraged_pages, vacrelstats->rel_pages);
-	}
-	else
-	{
-		/* append-only relation. has a special path */
-		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ true);
 	}
 
 	/* update statistics in pg_class */

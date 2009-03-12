@@ -205,6 +205,7 @@ plan_tree_walker(Node *node,
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
+		case T_AOCSScan:
 		case T_BitmapHeapScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
@@ -660,7 +661,19 @@ plan_tree_mutator(Node *node,
 				return (Node *) newappendonlyscan;
 			}
 			break;
-			
+	
+		case T_AOCSScan:
+			{
+				AOCSScan    *aocs = (AOCSScan *) node;
+				AOCSScan    *newaocs; 
+				
+				FLATCOPY(newaocs, aocs, AOCSScan);
+				SCANMUTATE(newaocs, aocs);
+				/* (for now) A AOCSScan is really just a Scan, so we're done. */
+				return (Node *) newaocs;
+			}
+			break;
+				
 		case T_ExternalScan:
 			{
 				ExternalScan    *extscan = (ExternalScan *) node;

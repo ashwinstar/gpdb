@@ -366,21 +366,6 @@ ExecSetSlotDescriptor(
 	}
 }
 
-static void free_heaptuple_memtuple(TupleTableSlot *slot)
-{
-	if(TupShouldFree(slot))
-	{
-		if(slot->PRIVATE_tts_heaptuple && slot->PRIVATE_tts_heaptuple != slot->PRIVATE_tts_htup_buf)
-			pfree(slot->PRIVATE_tts_heaptuple);
-		
-		if(slot->PRIVATE_tts_memtuple && slot->PRIVATE_tts_memtuple != slot->PRIVATE_tts_mtup_buf)
-			pfree(slot->PRIVATE_tts_memtuple);
-	}
-
-	slot->PRIVATE_tts_heaptuple = NULL;
-	slot->PRIVATE_tts_memtuple = NULL;
-}
-
 /* --------------------------------
  *		ExecStoreTuple
  *
@@ -1435,61 +1420,61 @@ end_tup_output(TupOutputState *tstate)
 Datum
 slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
 {
-	Datum   result;
+        Datum   result = 0;
+        Assert(!TupIsNull(slot));
 
-	Assert(slot);
+        /* Currently, no sys attribute ever reads as NULL. */
+        if (isnull)
+                *isnull = false;
 
-	/* Currently, no sys attribute ever reads as NULL. */
-	if (isnull)
-		*isnull = false;
+        /* HeapTuple */
+        if (slot->PRIVATE_tts_heaptuple)
+        {
+                HeapTuple   htup = slot->PRIVATE_tts_heaptuple;
 
-    /* MemTuple */
-    if (slot->PRIVATE_tts_memtuple)
-    {
-	    switch(attnum)
-	    {
-		    case SelfItemPointerAttributeNumber:
-                result = PointerGetDatum(&(slot->tts_synthetic_ctid));
-                break;
-		    case ObjectIdAttributeNumber:
-                result = ObjectIdGetDatum(MemTupleGetOid(slot->PRIVATE_tts_memtuple,
-                                                         slot->tts_mt_bind));
-                break;
-		    case GpSegmentIdAttributeNumber:
-			    result = Int32GetDatum(Gp_segment);
-			    break;
-		    case TableOidAttributeNumber:
-			    result = ObjectIdGetDatum(slot->tts_tableOid);
-			    break;
-            default:
-                result = 0;
-                Assert(!"Invalid attnum for memtuple_getsysattr");
-                elog(ERROR, "Invalid attnum: %d", attnum);
+                Assert(htup);
+                switch(attnum)
+                {
+                        case SelfItemPointerAttributeNumber:
+                                result = PointerGetDatum(&(htup->t_self));
+                                break;
+                        case ObjectIdAttributeNumber:
+                                result = ObjectIdGetDatum(HeapTupleGetOid(htup));
+                                break;
+                        case TableOidAttributeNumber:
+                                result = ObjectIdGetDatum(slot->tts_tableOid);
+                                break;
+                        default:
+                                result = heap_getsysattr(htup, attnum, isnull);
+                }
         }
-    }
 
-    /* HeapTuple */
-    else
-    {
-        HeapTuple   htup = slot->PRIVATE_tts_heaptuple;
-
-    	Assert(htup);
-	    switch(attnum)
-	    {
-		    case SelfItemPointerAttributeNumber:
-                result = PointerGetDatum(&(htup->t_self));
-                break;
-		    case ObjectIdAttributeNumber:
-                result = ObjectIdGetDatum(HeapTupleGetOid(htup));
-                break;
-		    case TableOidAttributeNumber:
-			    result = ObjectIdGetDatum(slot->tts_tableOid);
-			    break;
-            default:
-                result = heap_getsysattr(htup, attnum, isnull);
+        /* MemTuple, virtual tuple */
+        else
+        {
+                switch(attnum)
+                {
+                        case SelfItemPointerAttributeNumber:
+                                result = PointerGetDatum(&(slot->tts_synthetic_ctid));
+                                break;
+                        case ObjectIdAttributeNumber:
+                                if(slot->PRIVATE_tts_memtuple)
+                                        result = ObjectIdGetDatum(MemTupleGetOid(slot->PRIVATE_tts_memtuple,
+                                                        slot->tts_mt_bind));
+                                else
+                                        result = ObjectIdGetDatum(InvalidOid);
+                                break;
+                        case GpSegmentIdAttributeNumber:
+                                result = Int32GetDatum(Gp_segment);
+                                break;
+                        case TableOidAttributeNumber:
+                                result = ObjectIdGetDatum(slot->tts_tableOid);
+                                break;
+                        default:
+                                elog(ERROR, "Invalid attnum: %d", attnum);
+                }
         }
-    }
 
-    return result;
+        return result;
 }                               /* slot_getsysattr */
 

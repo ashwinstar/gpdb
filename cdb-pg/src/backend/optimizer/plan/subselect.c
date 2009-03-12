@@ -1122,6 +1122,7 @@ finalize_plan(Plan *plan, List *rtable,
 		case T_Window:
 		case T_SeqScan:
 		case T_AppendOnlyScan:
+                case T_AOCSScan:
 		case T_ExternalScan:
 		case T_Material:
 		case T_Sort:

@@ -49,7 +49,7 @@ AOSegmentFilePathNameLen(Relation rel)
  * The filepathname parameter assume sufficient space.
  */
 void
-OpenAOSegmentFile(Relation rel, int segno, bool create,
+OpenAOSegmentFile(Relation rel, int segno, int col, bool create,
 	File *file, char *filepathname)
 {
 	char	*basepath;
@@ -63,11 +63,17 @@ OpenAOSegmentFile(Relation rel, int segno, bool create,
 	 */
 	if (segno > 0)
 	{
-		/* be sure we have enough space for the '.segno' */
-		sprintf(filepathname, "%s.%u", basepath, segno);
+                if(col < 0)
+                {
+                        /* be sure we have enough space for the '.segno' */
+                        sprintf(filepathname, "%s.%u", basepath, segno);
+                }
+                else
+                        sprintf(filepathname, "%s.col%d.%d", basepath, col, segno);
 	}
 	else
 		strcpy(filepathname, basepath);
+
 	pfree(basepath);
 	
 	*file = PathNameOpenFile(filepathname, fileflags, 0600);
@@ -94,6 +100,7 @@ OpenAOSegmentFile(Relation rel, int segno, bool create,
 		}
 	}
 }
+
 
 /*
  * Close an Append Only relation file segment

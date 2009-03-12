@@ -44,6 +44,7 @@
 #include "catalog/toasting.h"
 #include "catalog/pg_exttable.h"
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
 #include "commands/cluster.h"
 #include "commands/copy.h"
 #include "commands/defrem.h"
@@ -4728,7 +4729,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			 * When rewriting an appendonly table we choose to always insert
 			 * into the segfile reserved for special purposes (segno #0).
 			 */
-			int 					segno = RESERVED_SEGNO;
+			int 			segno = RESERVED_SEGNO;
 			AppendOnlyInsertDesc 	aoInsertDesc = NULL;
 
 
@@ -4844,7 +4845,98 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			if(newrel)
 				appendonly_insert_finish(aoInsertDesc);
 		}
-		else if(relstorage == RELSTORAGE_AO && Gp_role == GP_ROLE_DISPATCH)
+		else if(relstorage == RELSTORAGE_AOCS && Gp_role != GP_ROLE_DISPATCH)
+		{
+                        int segno = RESERVED_SEGNO;
+                        AOCSInsertDesc idesc = NULL;
+                        AOCSScanDesc sdesc = NULL;
+                        int nvp = oldrel->rd_att->natts;
+                        bool *proj = palloc(sizeof(bool) * nvp);
+
+                        memset(proj, true, nvp);
+
+                        if(newrel)
+                                idesc = aocs_insert_init(newrel, segno);
+
+                        sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
+
+
+                        aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+                
+                        while(!TupIsNull(oldslot))
+                        {
+                                oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+                                econtext->ecxt_scantuple = oldslot;
+
+                                if(newrel)
+                                {
+                                        Datum *slotvalues = slot_get_values(oldslot);
+                                        bool  *slotnulls = slot_get_isnull(oldslot);
+
+
+                                        /* aocs does not do oid yet */
+                                        Assert(!oldTupDesc->tdhasoid);
+                                        Assert(!newTupDesc->tdhasoid);
+
+                                        /* Dropped att should be set correctly by aocs_getnext */
+
+                                        /* Process supplied expressions */
+                                        foreach(l, tab->newvals)
+                                        {
+                                                NewColumnValue *ex = lfirst(l);
+                                                
+                                                slotvalues[ex->attnum-1] = ExecEvalExpr(ex->exprstate,
+                                                                econtext,
+                                                                &slotnulls[ex->attnum-1],
+                                                                NULL
+                                                                );
+                                        }
+                                }
+
+                                /* Check constraints */
+                                foreach (l, tab->constraints)
+                                {
+                                        NewConstraint *con = lfirst(l);
+                                        switch(con->contype)
+                                        {
+                                                case CONSTR_CHECK:
+                                                        if(!ExecQual(con->qualstate, econtext, true))
+                                                                ereport(ERROR, 
+                                                                        (errcode(ERRCODE_CHECK_VIOLATION),
+                                                                         errmsg("check constraint \"%s\" is violated",
+                                                                                 con->name
+                                                                               )));
+                                                        break;
+                                                case CONSTR_FOREIGN:
+                                                        /* Nothing to do */
+                                                        break;
+                                                default:
+                                                        elog(ERROR, "Unrecognized constraint type: %d",
+                                                                        (int) con->contype);
+                                        }
+                                }
+
+                                if(newrel)
+                                {
+                                        MemoryContextSwitchTo(oldCxt);
+                                        aocs_insert(idesc, oldslot);
+                                }
+
+                                ResetExprContext(econtext);
+                                CHECK_FOR_INTERRUPTS();
+
+                                MemoryContextSwitchTo(oldCxt);
+                                aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+                        }
+
+                        aocs_endscan(sdesc);
+
+                        if(newrel)
+                                aocs_insert_finish(idesc);
+
+                        pfree(proj);
+                }
+		else if(relstorage_is_ao(relstorage) && Gp_role == GP_ROLE_DISPATCH)
 		{
 			/*
 			 * All we want to do on the QD during an AO table rewrite
@@ -4865,7 +4957,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			AORelRemoveHashEntry(RelationGetRelid(oldrel));
 			LWLockRelease(AppendOnlyLock);
 		}
-
+		else
+		{
+			Assert(!"Invalid relstorage type");
+		}
 
 		ExecDropSingleTupleTableSlot(oldslot);
 		ExecDropSingleTupleTableSlot(newslot);
@@ -5216,6 +5311,11 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	Oid			typeOid;
 	Form_pg_type tform;
 	Expr	   *defval;
+
+	if(rel->rd_rel->relstorage == RELSTORAGE_AOCS)
+	{
+		elog(ERROR, "AOCS does not support add column yet");
+	}
 
 	/*
 	 * Append Only tables don't support ADD COLUMN when no default value is
@@ -8202,7 +8302,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
-			if(rel->rd_rel->relstorage == RELSTORAGE_AO)
+			if(relstorage_is_ao(rel->rd_rel->relstorage))
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("altering reloptions for append only tables is not "
@@ -17352,6 +17452,10 @@ ATPExecPartSplit(Relation rel,
 		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
 	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
 		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
+	else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
+	{
+		Assert(!"AOCS NYI");
+	}
 
 	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
@@ -17378,6 +17482,10 @@ ATPExecPartSplit(Relation rel,
 				break;
 
 			ExecStoreMemTuple(mtuple, tts, false);
+		}
+		else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
+		{
+			Assert(!"AOCS NYI");
 		}
 
 		econtext->ecxt_scantuple = tts;
@@ -17429,6 +17537,8 @@ ATPExecPartSplit(Relation rel,
 		heap_endscan(heapscan);
 	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
 		appendonly_endscan(aoscan);
+	else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
+		Assert(!"AOCS NYI");
 
 	elog(DEBUG5, "dropping temp rel %s", RelationGetRelationName(temprel));
 	temprelid = RelationGetRelid(temprel);

@@ -230,7 +230,7 @@ typedef struct StdRdOptions
 	int			compresslevel;  /* compression level (AO rels only) */
 	char*		compresstype;   /* compression type (AO rels only) */
 	bool		checksum;		/* checksum (AO rels only) */
-	
+	bool 		columnstore;		/* columnstore (AO only) */ 
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10

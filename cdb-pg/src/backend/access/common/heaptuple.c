@@ -105,13 +105,7 @@ heap_compute_data_size(TupleDesc tupleDesc,
 
 		/* we're anticipating converting to a short varlena header even if it's
 		 * not currently */
- 		if (att[i]->attlen == -1 &&
- 			!VARATT_IS_EXTERNAL_D(values[i]) &&
- 			(VARATT_IS_SHORT_D(values[i]) || 
-			 (VARATT_COULD_SHORT_D(values[i]) &&
-			  att[i]->atttypid != INT2VECTOROID &&
-			  att[i]->atttypid != OIDVECTOROID &&
-			  att[i]->atttypid < FirstNormalObjectId)))
+ 		if (att[i]->attlen == -1 && value_type_could_short(values[i], att[i]->atttypid))
 		{
 			/* no alignment and we will convert to 1-byte header */; 
 			data_length += VARSIZE_ANY_EXHDR_D(values[i]) + VARHDRSZ_SHORT;
@@ -124,16 +118,6 @@ heap_compute_data_size(TupleDesc tupleDesc,
 	}
 
 	return data_length;
-}
-
-static inline char * att_align_zero(char *data, char alignchar)
-{
-    size_t  misalignment = (size_t)att_align(1, alignchar) - 1;
-
-    while ((size_t)data & misalignment)
-		*(data++) = 0;
-
-	return data;
 }
 
 /*

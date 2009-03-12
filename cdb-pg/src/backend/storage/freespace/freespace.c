@@ -804,7 +804,7 @@ LoadFreeSpaceMap(void)
 	{
 		FsmCacheRelHeader relheader;
 		Size		len;
-		char	   *data;
+		char	   *data = NULL;
 		FSMRelation *fsmrel;
 		int			nPages;
 		int			curAlloc;
@@ -826,13 +826,15 @@ LoadFreeSpaceMap(void)
 			len = nPages * sizeof(IndexFSMPageData);
 		else
 			len = nPages * sizeof(FSMPageData);
-		data = (char *) palloc(len);
-		if (fread(data, 1, len, fp) != len)
-		{
-			elog(LOG, "premature EOF in \"%s\"", FSM_CACHE_FILENAME);
-			pfree(data);
-			goto read_failed;
-		}
+
+                data = (char *) palloc(len);
+
+                if (fread(data, 1, len, fp) != len)
+                {
+                        elog(LOG, "premature EOF in \"%s\"", FSM_CACHE_FILENAME);
+                        pfree(data);
+                        goto read_failed;
+                }
 
 		/*
 		 * Okay, create the FSM entry and insert data into it.	Since the rels

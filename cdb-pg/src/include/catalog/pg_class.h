@@ -151,28 +151,34 @@ DESCR("");
 /* abstract tuple types */
 DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 0 0 f f c v 3 0 0 0 0 0 f f f f 0 _null_ _null_ ));
 
-#define		  RELKIND_INDEX			  'i'		/* secondary index */
-#define		  RELKIND_RELATION		  'r'		/* ordinary cataloged heap */
-#define		  RELKIND_SEQUENCE		  'S'		/* SEQUENCE relation */
+#define		  RELKIND_INDEX		  'i'		/* secondary index */
+#define		  RELKIND_RELATION	  'r'		/* ordinary cataloged heap */
+#define		  RELKIND_SEQUENCE	  'S'		/* SEQUENCE relation */
 #define		  RELKIND_UNCATALOGED	  'u'		/* temporary heap */
 #define		  RELKIND_TOASTVALUE	  't'		/* moved off huge values */
 #define		  RELKIND_AOSEGMENTS	  'o'		/* AO segment files and eof's */
-#define		  RELKIND_VIEW			  'v'		/* view */
+#define		  RELKIND_VIEW		  'v'		/* view */
 #define		  RELKIND_COMPOSITE_TYPE  'c'		/* composite type */
-#define		  RELKIND_EXTERNAL		  'x'		/* external relation */
+#define		  RELKIND_EXTERNAL	  'x'		/* external relation */
 
 /*
  * relstorage describes how a relkind is physically stored in the database.
  *
  * RELSTORAGE_HEAP    - stored on disk using heap storage.
  * RELSTORAGE_AO      - stored on disk using append only storage.
+ * RELSTORAGE_VOCS    - stored on dist using append only column storage.
  * RELSTORAGE_VIRTUAL - has virtual storage, meaning, relation has no
  *						data directly stored forit or data is external (right
  *						now this relates to views, external tables, and comp
  *						types).
  */
-#define		  RELSTORAGE_HEAP		  'h'
-#define		  RELSTORAGE_AO			  'a'
-#define		  RELSTORAGE_VIRTUAL	  'v'
+#define		  RELSTORAGE_HEAP	'h'
+#define		  RELSTORAGE_AO		'a'
+#define 	  RELSTORAGE_AOCS 	'c'	
+#define		  RELSTORAGE_VIRTUAL	'v'
 
+static inline bool relstorage_is_ao(char c)
+{
+	return c == RELSTORAGE_AO || c == RELSTORAGE_AOCS;
+}
 #endif   /* PG_CLASS_H */

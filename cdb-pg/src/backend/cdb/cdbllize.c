@@ -1107,6 +1107,7 @@ motion_sanity_walker(Node *node, int *result)
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
+		case T_AOCSScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:

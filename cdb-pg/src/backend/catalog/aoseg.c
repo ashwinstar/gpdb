@@ -123,37 +123,95 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	if (!needs_aoseg_table(rel))
 		return false;
 
-	/*
-	 * Create the aoseg table and its index
-	 */
-	snprintf(aoseg_relname, sizeof(aoseg_relname),
-			 "pg_aoseg_%u", relOid);
-	snprintf(aoseg_idxname, sizeof(aoseg_idxname),
-			 "pg_aoseg_%u_index", relOid);
+	if(rel->rd_rel->relstorage == RELSTORAGE_AO)
+	{
 
-	/* this is pretty painful...  need a tuple descriptor */
-	tupdesc = CreateTemplateTupleDesc(5, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-					   "segno",
-					   INT4OID,
-					   -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-					   "eof",
-					   FLOAT8OID,
-					   -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-					   "tupcount",
-					   FLOAT8OID,
-					   -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-					   "varblockcount",
-					   FLOAT8OID,
-					   -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-					   "eofuncompressed",
-					   FLOAT8OID,
-					   -1, 0);
+		/*
+		 * Create the aoseg table and its index
+		 */
+		snprintf(aoseg_relname, sizeof(aoseg_relname),
+				"pg_aoseg_%u", relOid);
+		snprintf(aoseg_idxname, sizeof(aoseg_idxname),
+				"pg_aoseg_%u_index", relOid);
 
+                /* this is pretty painful...  need a tuple descriptor */
+                tupdesc = CreateTemplateTupleDesc(5, false);
+                TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+                                "segno",
+                                INT4OID,
+                                -1, 0);
+                TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+                                "eof",
+                                FLOAT8OID,
+                                -1, 0);
+                TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+                                "tupcount",
+                                FLOAT8OID,
+                                -1, 0);
+                TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+                                "varblockcount",
+                                FLOAT8OID,
+                                -1, 0);
+                TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+                                "eofuncompressed",
+                                FLOAT8OID,
+                                -1, 0);
+	}
+	else
+	{
+		Assert(rel->rd_rel->relstorage == RELSTORAGE_AOCS);
+		/* Create AOCS seg table */
+
+		snprintf(aoseg_relname, sizeof(aoseg_relname),
+				"pg_aocsseg_%u", relOid);
+		snprintf(aoseg_idxname, sizeof(aoseg_idxname),
+				"pg_aocsseg_%u_index", relOid);
+
+		/* 
+		 * XXX 
+		 * At this moment, we hardwire the rel aocs info.  
+		 * Essentially, we assume total vertical partition, and 
+		 * we do not do datatype specific compression.
+		 *
+		 * In order to make things right, we need to first fix
+		 * the DefineRelation, so that we store the per column
+		 * info, then, we need to open the catalog, pull out
+		 * info here.
+		 */
+
+		/* 
+		 * XXX We do not handle add/drop column etc nicely yet.
+		 */
+
+		/* 
+		 * Assuming full vertical partition, we want to include
+		 * the following in the seg table.
+		 * 
+		 * segno int,			-- whatever purpose ao use it
+		 * tupcount bigint 		-- total tup
+		 * varblockcount bigint,	-- total varblock
+                 * vpinfo varbinary(max)        -- vertial partition info encoded in bianry.
+		 */
+
+		tupdesc = CreateTemplateTupleDesc(4, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+				"segno",
+				INT4OID,
+				-1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+				"tupcount",
+				INT8OID,
+				-1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+				"varblockcount",
+				INT8OID,
+				-1, 0);
+                TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+				"vpinfot",
+                                VARBITOID,
+				-1, 0);
+	}
 	
 	/*
 	 * Note: the aoseg relation is placed in the regular pg_aoseg namespace
@@ -262,5 +320,5 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 static bool
 needs_aoseg_table(Relation rel)
 {
-	return (rel->rd_rel->relstorage == RELSTORAGE_AO);
+	return relstorage_is_ao(rel->rd_rel->relstorage);
 }

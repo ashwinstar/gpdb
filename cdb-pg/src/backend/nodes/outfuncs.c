@@ -412,6 +412,14 @@ _outAppendOnlyScan(StringInfo str, AppendOnlyScan *node)
 }
 
 static void
+_outAOCSScan(StringInfo str, AOCSScan *node)
+{
+	WRITE_NODE_TYPE("AOCSSCAN");
+	
+	_outScanInfo(str, (Scan *) node);
+}
+
+static void
 _outExternalScan(StringInfo str, ExternalScan *node)
 {
 	WRITE_NODE_TYPE("EXTERNALSCAN");
@@ -1455,6 +1463,15 @@ _outAppendOnlyPath(StringInfo str, AppendOnlyPath *node)
 
 	_outPathInfo(str, (Path *) node);
 }
+
+static void
+_outAOCSPath(StringInfo str, AOCSPath *node)
+{
+	WRITE_NODE_TYPE("APPENDONLYPATH");
+
+	_outPathInfo(str, (Path *) node);
+}
+
 
 static void
 _outResultPath(StringInfo str, ResultPath *node)
@@ -3316,6 +3333,9 @@ _outNode(StringInfo str, void *obj)
 			case T_AppendOnlyScan:
 				_outAppendOnlyScan(str, obj);
 				break;				
+			case T_AOCSScan:
+				_outAOCSScan(str, obj);
+				break;				
 			case T_ExternalScan:
 				_outExternalScan(str, obj);
 				break;				
@@ -3529,6 +3549,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AppendOnlyPath:
 				_outAppendOnlyPath(str, obj);
+				break;
+			case T_AOCSPath:
+				_outAOCSPath(str, obj);
 				break;
 			case T_ResultPath:
 				_outResultPath(str, obj);

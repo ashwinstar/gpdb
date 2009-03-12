@@ -140,28 +140,6 @@ static inline short compute_null_save(short *null_saves, unsigned char *nullbitm
 	return ret;
 }
 		
-/* Whether a type could short.
- * Oringianlly postgres if very aggressive, it saves all system types
- * except int2vector and oidvector.  This is potentially a problem because
- * if the varlena needs an alignment, we need to palloc and memcpy.  It is 
- * very hard to determine if the space saved on disk is worth the CPU cost.
- * Leave it as is for now.
- */
-static inline bool typid_could_short(int typid)
-{
-#if 1
-	return ( typid != INT2VECTOROID && 
-			typid != OIDVECTOROID &&
-			typid < FirstNormalObjectId
-	       );
-#else
-	return (typid == BYTEAOID || typid == TEXTOID 
-			|| typid == BPCHAROID || typid == VARCHAROID 
-			|| typid == NUMERICOID || typid == CSTRINGOID
-	       );
-#endif
-}
-
 #undef MEMTUPLE_INLINE_CHARTYPE
 /* Determine if an attr should be treated as offset_len in memtuple */
 static inline bool att_bind_as_varoffset(Form_pg_attribute attr)
@@ -392,14 +370,7 @@ static uint32 compute_memtuple_size_using_bind(Datum *values, bool *isnull, bool
 
 		/* Varlen stuff */
 		/* We plan to convert to short varlena even if it is not currently */
-		if(bind->flag == MTB_ByRef 
-				&& !VARATT_IS_EXTERNAL_D(values[i])
-				&& (VARATT_IS_SHORT_D(values[i]) 
-					|| (VARATT_COULD_SHORT_D(values[i])
-						&& typid_could_short(attr->atttypid)
-					   )
-				   )
-		  ) 
+		if(bind->flag == MTB_ByRef && value_type_could_short(values[i], attr->atttypid)) 
 		{
 			data_length += VARSIZE_ANY_EXHDR_D(values[i]) + VARHDRSZ_SHORT;
 		}
@@ -660,12 +631,11 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 				}
 				else if(VARATT_IS_SHORT_D(values[i]))
 				{
-					Assert(typid_could_short(attr->atttypid));
 					attr_len = VARSIZE_SHORT(DatumGetPointer(values[i]));
 					Assert((varlen_start - (char *) mtup) + attr_len <= len);
 					memcpy(varlen_start, DatumGetPointer(values[i]), attr_len);
 				}
-				else if(VARATT_COULD_SHORT_D(values[i]) && typid_could_short(attr->atttypid))
+				else if(value_type_could_short(values[i], attr->atttypid))
 				{
 					attr_len = VARSIZE_D(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
 					*varlen_start = VARSIZE_TO_SHORT_D(values[i]);

@@ -899,6 +899,9 @@ explain_outNode(StringInfo str,
 		case T_AppendOnlyScan:
 			pname = "Append-only Scan";
 			break;
+		case T_AOCSScan:
+			pname = "Append-only Column Store Scan";
+			break;
 		case T_ExternalScan:
 			pname = "External Scan";
 			break;						
@@ -1049,6 +1052,7 @@ explain_outNode(StringInfo str,
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
+		case T_AOCSScan:
 		case T_BitmapHeapScan:
 		case T_TidScan:
 			if (((Scan *) plan)->scanrelid > 0)
@@ -1184,6 +1188,7 @@ explain_outNode(StringInfo str,
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
+		case T_AOCSScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
 		case T_ValuesScan:

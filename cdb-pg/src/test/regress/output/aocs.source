@@ -1,0 +1,531 @@
+CREATE TABLE tenk_heap (
+	unique1 	int4,
+	unique2 	int4,
+	two 	 	int4,
+	four 		int4,
+	ten			int4,
+	twenty 		int4,
+	hundred 	int4,
+	thousand 	int4,
+	twothousand int4,
+	fivethous 	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name
+) with (appendonly=false) distributed by(unique1);
+--
+-- create few AO tables. test various reloptions combinations. use a sample
+-- of them (the first 4) for later testing.
+--
+-- valid
+CREATE TABLE tenk_aocs1 (like tenk_heap) with (appendonly=true, columnstore=true, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs2 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=0, blocksize=262144) distributed by(unique1);
+CREATE TABLE tenk_aocs3 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs4 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=1, compresstype=quicklz) distributed by(unique1);
+CREATE TABLE tenk_aocs5 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
+-- invalid
+CREATE TABLE tenk_aocs6 (like tenk_heap) with (appendonly=false, columnstore=true, compresslevel=6, checksum=true) distributed by(unique1);
+ERROR:  invalid option 'compresslevel' for base relation. Only valid for Append Only relations
+CREATE TABLE tenk_aocs7 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=6, compresstype=quicklz) distributed by(unique1);
+ERROR:  compresslevel=6 is out of range for quicklz (should be 1 or 3)
+CREATE TABLE tenk_aocs8 (like tenk_heap) with (appendonly=true, columnstore=true, blocksize=100) distributed by(unique1);
+ERROR:  block size must be between 8KB and 2MB and be an 8KB multiple. Got 100
+CREATE TABLE tenk_aocs9 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
+ERROR:  compresstype can't be used with compresslevel 0
+-- cs without ao is invalid.
+CREATE TABLE tenk_aocs10 (like tenk_heap) with (columnstore=true) distributed by(unique1);
+ERROR:  invalid option 'columnstore' for base relation. Only valid for Append Only relations
+-------------------- 
+-- catalog checks
+--------------------
+-- check pg_appendonly
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
+  relname   | blocksize | compresstype | compresslevel | checksum 
+------------+-----------+--------------+---------------+----------
+ tenk_aocs1 |     32768 |              |             0 | t
+ tenk_aocs2 |    262144 |              |             0 | f
+ tenk_aocs3 |   1048576 | zlib         |             6 | t
+ tenk_aocs4 |     32768 | quicklz      |             1 | f
+ tenk_aocs5 |   1048576 | zlib         |             6 | t
+(5 rows)
+
+-------------------- 
+-- supported sql
+--------------------
+-- COPY
+COPY tenk_heap FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_aocs1 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_aocs2 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_aocs3 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_aocs4 FROM '@abs_srcdir@/data/tenk.data';
+-- SELECT
+SELECT count(*) FROM tenk_heap;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs1;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs3;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs4;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT aototal('tenk_aocs1'), aototal('tenk_aocs2'), aototal('tenk_aocs3'), aototal('tenk_aocs4');
+ aototal | aototal | aototal | aototal 
+---------+---------+---------+---------
+   10000 |   10000 |   10000 |   10000
+(1 row)
+
+-- INSERT SELECT
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap;
+INSERT INTO tenk_aocs2 SELECT * FROM tenk_heap;
+INSERT INTO tenk_aocs3 SELECT * FROM tenk_heap;
+INSERT INTO tenk_aocs4 SELECT * FROM tenk_heap;
+-- mix and match some
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_aocs1;
+INSERT INTO tenk_aocs2 SELECT * FROM tenk_aocs3;
+INSERT INTO tenk_aocs3 SELECT * FROM tenk_aocs2;
+INSERT INTO tenk_aocs4 SELECT * FROM tenk_aocs3;
+SELECT aototal('tenk_aocs1'), aototal('tenk_aocs2'), aototal('tenk_aocs3'), aototal('tenk_aocs4');
+ aototal | aototal | aototal | aototal 
+---------+---------+---------+---------
+   40000 |   40000 |   60000 |   80000
+(1 row)
+
+-- SELECT
+SELECT count(*) FROM tenk_heap;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs1;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs2;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs3;
+ count 
+-------
+ 60000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs4;
+ count 
+-------
+ 80000
+(1 row)
+
+--
+-- Test that the catalog eof entry doesn't change even if the file gets
+-- larger due to bad data that isn't cleaned up until the next VACUUM. 
+-- make sure the SELECT stops at eof (count is the same). 
+-- The first row is good (so it grows the file), the second is bad.
+--
+COPY tenk_aocs1 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_aocs1, line 2: "bad data row"
+COPY tenk_aocs2 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_aocs2, line 2: "bad data row"
+COPY tenk_aocs3 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_aocs3, line 2: "bad data row"
+COPY tenk_aocs4 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_aocs4, line 2: "bad data row"
+SELECT count(*) FROM tenk_aocs1;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs2;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs3;
+ count 
+-------
+ 60000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs4;
+ count 
+-------
+ 80000
+(1 row)
+
+SELECT aototal('tenk_aocs1'), aototal('tenk_aocs2'), aototal('tenk_aocs3'), aototal('tenk_aocs4');
+ aototal | aototal | aototal | aototal 
+---------+---------+---------+---------
+   40000 |   40000 |   60000 |   80000
+(1 row)
+
+-------------------- 
+-- transactionality
+--------------------
+-- rollback
+BEGIN;
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap;
+SELECT count(*) FROM tenk_aocs1; -- should show new count
+ count 
+-------
+ 50000
+(1 row)
+
+ROLLBACK;
+SELECT count(*) FROM tenk_aocs1; -- should show previous count
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT aototal('tenk_aocs1');
+ aototal 
+---------
+   40000
+(1 row)
+
+-- commit
+BEGIN;
+INSERT INTO tenk_aocs1 SELECT * FROM tenk_heap;
+SELECT count(*) FROM tenk_aocs1; -- should show new count
+ count 
+-------
+ 50000
+(1 row)
+
+COMMIT;
+SELECT count(*) FROM tenk_aocs1; -- should show new count
+ count 
+-------
+ 50000
+(1 row)
+
+SELECT aototal('tenk_aocs1');
+ aototal 
+---------
+   50000
+(1 row)
+
+-- same txn inserts
+BEGIN;
+INSERT INTO tenk_aocs1(unique1) VALUES(12345678);
+INSERT INTO tenk_aocs1(unique1) VALUES(12345678);
+INSERT INTO tenk_aocs1(unique1) VALUES(12345678);
+INSERT INTO tenk_aocs1(unique1) VALUES(12345678);
+INSERT INTO tenk_aocs1(unique1) VALUES(12345678);
+ROLLBACK;
+BEGIN;
+INSERT INTO tenk_aocs1(unique1) VALUES(87654321);
+INSERT INTO tenk_aocs1(unique1) VALUES(87654321);
+INSERT INTO tenk_aocs1(unique1) VALUES(87654321);
+INSERT INTO tenk_aocs1(unique1) VALUES(87654321);
+INSERT INTO tenk_aocs1(unique1) VALUES(87654321);
+COMMIT;
+SELECT count(*) FROM tenk_aocs1 WHERE unique1 = 12345678; -- should be 0
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM tenk_aocs1 WHERE unique1 = 87654321; -- should be 5
+ count 
+-------
+     5
+(1 row)
+
+--------------------
+-- cursors (basic)
+--------------------
+BEGIN;
+DECLARE foo1 CURSOR FOR SELECT * FROM tenk_aocs1 ORDER BY 1,2,3,4;
+DECLARE foo2 CURSOR FOR SELECT * FROM tenk_aocs2 ORDER BY 1,2,3,4;
+FETCH 1 in foo1;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH 2 in foo2;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(2 rows)
+
+FETCH 1 in foo1;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH 2 in foo2;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(2 rows)
+
+CLOSE foo1;
+CLOSE foo2;
+END;
+BEGIN;
+DECLARE foo3 NO SCROLL CURSOR FOR SELECT * FROM tenk_aocs1 ORDER BY 1,2,3,4;
+FETCH 1 FROM foo3;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH BACKWARD 1 FROM foo3; -- should fail
+ERROR:  backward scan is not supported in this version of Greenplum Database
+END;
+-- Cursors outside transaction blocks
+BEGIN;
+DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_aocs1 ORDER BY 1,2,3,4;
+FETCH FROM foo4;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH FROM foo4;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+COMMIT;
+FETCH FROM foo4;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
+ name |                                  statement                                   | is_holdable | is_binary | is_scrollable 
+------+------------------------------------------------------------------------------+-------------+-----------+---------------
+ foo4 | DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_aocs1 ORDER BY 1,2,3,4; | t           | f         | f
+(1 row)
+
+CLOSE foo4;
+-- DROP
+DROP TABLE tenk_aocs1;
+DROP TABLE tenk_aocs2;
+DROP TABLE tenk_aocs3;
+DROP TABLE tenk_aocs4;
+-- CTAS
+CREATE TABLE tenk_aocs1 with(appendonly=true, columnstore=true, checksum=true) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_aocs2 with(appendonly=true, columnstore=true, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_aocs3 with(appendonly=true, columnstore=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_aocs4 with(appendonly=true, columnstore=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
+  relname   | blocksize | compresstype | compresslevel | checksum 
+------------+-----------+--------------+---------------+----------
+ tenk_aocs1 |     32768 |              |             0 | t
+ tenk_aocs2 |    262144 |              |             0 | f
+ tenk_aocs3 |   1048576 | zlib         |             6 | t
+ tenk_aocs4 |     32768 | quicklz      |             1 | f
+ tenk_aocs5 |   1048576 | zlib         |             6 | t
+(5 rows)
+
+SELECT count(*) FROM tenk_aocs1;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs3;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs4;
+ count 
+-------
+ 10000
+(1 row)
+
+-- NYI
+-- test get_ao_compression_ratio. use uncompressed table, so result is always 1.
+-- SELECT get_ao_compression_ratio('tenk_aocs2');
+-- VACUUM
+VACUUM tenk_aocs1;
+VACUUM tenk_aocs2;
+VACUUM tenk_aocs3;
+VACUUM tenk_aocs4;
+VACUUM FULL tenk_aocs1;
+NOTICE:  'VACUUM FULL' is not safe for large tables and has been known to yield unpredictable runtimes.
+HINT:  Use 'VACUUM' instead.
+ANALYZE tenk_aocs2;
+ANALYZE tenk_aocs4;
+VACUUM ANALYZE tenk_aocs3;
+SELECT count(*) FROM tenk_aocs1;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs3;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs4;
+ count 
+-------
+ 10000
+(1 row)
+
+-- JOIN
+SELECT count(*) FROM tenk_aocs1 t1, tenk_aocs2 t2 where t1.unique1 = t2.unique2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_aocs1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
+ count 
+-------
+ 10000
+(1 row)
+
+-- EXCEPT
+SELECT unique1 FROM tenk_aocs1 EXCEPT SELECT unique1 FROM tenk_aocs1;
+ unique1 
+---------
+(0 rows)
+
+SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_aocs3;
+ unique1 
+---------
+(0 rows)
+
+-- TRUNCATE
+TRUNCATE tenk_aocs2;
+-- OID with aocs NYI
+-- OIDS
+-- 
+CREATE TABLE aocswithoids(a int, b int) WITH (appendonly=true, columnstore=true, oids=true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+COPY aowithoids FROM STDIN;
+ERROR:  relation "aowithoids" does not exist
+1	1
+2	2
+\.
+invalid command \.
+SELECT * FROM aocswithoids ORDER BY a; -- this should show a,b only
+ERROR:  syntax error at or near "1"
+LINE 1: 1 1
+        ^
+SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
+ oideq 
+-------
+(0 rows)
+
+-------------------- 
+-- unsupported sql 
+--------------------
+-- DELETE (not supported)
+DELETE FROM tenk_aocs1 WHERE unique1 = 1;
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 minithump4:24002 pid=30754)
+-- UPDATE (not supported)
+UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 minithump4:24002 pid=30754)
+-- CREATE INDEX (not supported)
+CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
+ERROR:  cannot create indexes on append only tables yet.
+-- ALTER
+ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
+ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
+ERROR:  AOCS does not support add column yet (tablecmds.c:5317)
+ALTER TABLE tenk_renamed ALTER COLUMN twothousand SET NOT NULL;
+ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
+ERROR:  AOCS does not support add column yet (tablecmds.c:5317)
+SELECT count(*) FROM tenk_renamed;
+ count 
+-------
+ 10000
+(1 row)
+
+ALTER TABLE tenk_renamed RENAME TO tenk_aocs1;
+--------------------
+-- system columns
+--------------------
+CREATE TABLE syscoltest(a int) WITH (appendonly=true, columnstore=true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+INSERT INTO syscoltest VALUES(1);
+SELECT ctid FROM syscoltest;
+   ctid   
+----------
+ (0,2048)
+(1 row)
+
+DROP TABLE syscoltest;
+-------------------- 
+-- supported sql 
+--------------------
+DROP TABLE tenk_heap;
+DROP TABLE tenk_aocs1;
+DROP TABLE tenk_aocs2;
+DROP TABLE tenk_aocs3;
+DROP TABLE tenk_aocs4;
+DROP TABLE tenk_aocs5;
+DROP TABLE aocswithoids;

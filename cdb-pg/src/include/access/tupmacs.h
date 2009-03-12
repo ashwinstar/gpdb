@@ -14,6 +14,8 @@
 #ifndef TUPMACS_H
 #define TUPMACS_H
 
+#include "catalog/pg_magic_oid.h"
+#include "catalog/pg_type.h"
 
 /*
  * check to see if the ATT'th bit of an array of 8-bit bytes is set.
@@ -132,4 +134,25 @@
 		} \
 	} while (0)
 
+/* Proper align with zero padding */
+static inline char * att_align_zero(char *data, char alignchar)
+{
+    size_t  misalignment = (size_t)att_align(1, alignchar) - 1;
+
+    while ((size_t)data & misalignment)
+		*(data++) = 0;
+
+	return data;
+}
+
+/* Determin if a datum of type oid can be stored in short varlena format */
+static inline bool value_type_could_short(Datum d, Oid typid)
+{
+        return	!VARATT_IS_EXTERNAL_D(d) &&
+                (VARATT_IS_SHORT_D(d) || 
+                 (VARATT_COULD_SHORT_D(d) &&
+                  typid != INT2VECTOROID &&
+                  typid != OIDVECTOROID &&
+                  typid < FirstNormalObjectId));
+}
 #endif

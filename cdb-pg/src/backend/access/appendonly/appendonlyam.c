@@ -62,6 +62,7 @@
 #include "storage/smgr.h"
 #include "storage/quicklz1.h"
 #include "storage/quicklz3.h"
+#include "storage/gp_compress.h"
 #include "utils/guc.h"
 
 #ifdef HAVE_LIBZ
@@ -97,7 +98,6 @@ static void doDecompress(
 							 int64		    bufferCount);
 
 static int32 getUsableBlockSize(int32 configBlockSize);
-static CompressorType CompressorStrToType(const char* comp_str, int comp_level);
 
 /*
  * errcontext_appendonly_scan_block
@@ -435,7 +435,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	}
 
 	/* Open this file 'segment' */
-	OpenAOSegmentFile(reln, segno, /* create */ false,
+	OpenAOSegmentFile(reln, segno, -1, /* create */ false,
 					  &scan->aos_file, scan->aos_filenamepath);
 	Assert(strlen(scan->aos_filenamepath) + 1 <= scan->aos_filenamepath_maxlen);
 
@@ -516,7 +516,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 
 	/* Open the 'segment' file */
 	OpenAOSegmentFile(aoInsertDesc->aoi_rel, 
-					  aoInsertDesc->cur_segno, 
+					  aoInsertDesc->cur_segno, -1,
 					  /* create */ true,
 					  &aoInsertDesc->appendFile, 
 					  aoInsertDesc->appendFilePathName);		
@@ -2615,45 +2615,3 @@ getUsableBlockSize(int32 configBlockSize)
 	
 	return result;
 }
-
-static CompressorType CompressorStrToType(const char* comp_str, int comp_level)
-{
-	CompressorType comptype = COMPTYPE_NONE;
-	
-	if (!comp_str)
-	{
-		comptype = COMPTYPE_NONE;		
-	}
-	else if (pg_strcasecmp(comp_str, "zlib") == 0)
-	{
-		comptype = COMPTYPE_ZLIB;		
-	}
-	else if (pg_strcasecmp(comp_str, "quicklz") == 0)
-	{
-		switch(comp_level)
-		{
-			case 1:
-				comptype = COMPTYPE_QUICKLZ1;
-				break;
-			case 3:
-				comptype = COMPTYPE_QUICKLZ3;
-				break;
-			default:
-				ereport(ERROR,
-						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("Found quicklz with unsupported compression "
-								"level %d", comp_level)));
-		}
-	}
-	else
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Found undefined compressor %s", comp_str)));
-
-	}
-	
-	return comptype;
-}
-
-

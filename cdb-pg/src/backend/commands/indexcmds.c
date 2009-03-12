@@ -175,7 +175,7 @@ DefineIndex(RangeVar *heapRelation,
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
 
-	if(rel->rd_rel->relstorage == RELSTORAGE_AO)
+	if(relstorage_is_ao(rel->rd_rel->relstorage))
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("cannot create indexes on append only tables yet.")));

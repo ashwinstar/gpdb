@@ -20,10 +20,12 @@
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "access/aosegfiles.h"
+#include "access/aocssegfiles.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
@@ -91,6 +93,9 @@ static int acquire_sample_rows(Relation onerel, HeapTuple *rows,
 static int acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 								  double *totalrows, double *totaldeadrows,
 								  double *totalbytes);
+static int acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
+								  double *totalrows, double *totaldeadrows,
+								  double *totalbytes);
 static double random_fract(void);
 static double init_selection_state(int n);
 static double get_next_S(double t, int n, double *stateptr);
@@ -126,6 +131,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 				totalbytes = 0.0;
 	HeapTuple  *rows;
 	bool		is_appendonly;
+	char 		relstorage; 
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -150,13 +156,68 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 */
 	anl_context = CurrentMemoryContext;
 
-	is_appendonly = (onerel->rd_rel->relstorage == RELSTORAGE_AO ? true : false);
-
 	/*
 	 * Check for user-requested abort.	Note we want this to be inside a
 	 * transaction, so xact.c doesn't issue useless WARNING.
 	 */
 	CHECK_FOR_INTERRUPTS();
+
+	relstorage = onerel->rd_rel->relstorage;
+	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage);
+
+	/*
+	 * Check permissions --- this should match vacuum's check!
+	 */
+	if (!(pg_class_ownercheck(RelationGetRelid(onerel), GetUserId()) ||
+		  (pg_database_ownercheck(MyDatabaseId, GetUserId()) && !onerel->rd_rel->relisshared)))
+	{
+		/* No need for a WARNING if we already complained during VACUUM */
+		if (!vacstmt->vacuum)
+			if (Gp_role != GP_ROLE_EXECUTE)
+				ereport(WARNING,
+						(errmsg("skipping \"%s\" --- only table or database owner can analyze it",
+								RelationGetRelationName(onerel))));
+		relation_close(onerel, ShareUpdateExclusiveLock);
+		return;
+	}
+
+	/*
+	 * Check that it's a plain table; we used to do this in get_rel_oids() but
+	 * seems safer to check after we've locked the relation.
+	 */
+	if (onerel->rd_rel->relkind != RELKIND_RELATION && !is_appendonly)
+	{
+		/* No need for a WARNING if we already complained during VACUUM */
+		if (!vacstmt->vacuum)
+			if (Gp_role != GP_ROLE_EXECUTE)
+			ereport(WARNING,
+					(errmsg("skipping \"%s\" --- cannot analyze indexes, views, "
+							"external tables or special system tables",
+							RelationGetRelationName(onerel))));
+		relation_close(onerel, ShareUpdateExclusiveLock);
+		return;
+	}
+
+	/*
+	 * Silently ignore tables that are temp tables of other backends ---
+	 * trying to analyze these is rather pointless, since their contents are
+	 * probably not up-to-date on disk.  (We don't throw a warning here; it
+	 * would just lead to chatter during a database-wide ANALYZE.)
+	 */
+	if (isOtherTempNamespace(RelationGetNamespace(onerel)))
+	{
+		relation_close(onerel, ShareUpdateExclusiveLock);
+		return;
+	}
+
+	/*
+	 * We can ANALYZE any table except pg_statistic. See update_attstats
+	 */
+	if (RelationGetRelid(onerel) == StatisticRelationId)
+	{
+		relation_close(onerel, ShareUpdateExclusiveLock);
+		return;
+	}
 
 	ereport(elevel,
 			(errmsg("analyzing \"%s.%s\"",
@@ -326,12 +387,16 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 */
 	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
 	if(!is_appendonly)
-		numrows = acquire_sample_rows(onerel, rows, targrows,
-									  &totalrows, &totaldeadrows);
+		numrows = acquire_sample_rows(onerel, rows, targrows, &totalrows, &totaldeadrows);
 	else
-		numrows = acquire_sample_ao_rows(onerel, rows, targrows,
-										 &totalrows, &totaldeadrows,
-										 &totalbytes);
+	{
+		if(relstorage == RELSTORAGE_AOCS)
+			numrows = acquire_sample_aocs_rows(onerel, rows, targrows, 
+					&totalrows, &totaldeadrows, &totalbytes);
+		else
+			numrows = acquire_sample_ao_rows(onerel, rows, targrows,
+					&totalrows, &totaldeadrows, &totalbytes);
+	}
 
 
 	/*
@@ -952,7 +1017,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 					   double *totalrows, double *totaldeadrows,
 					   double *totalbytes)
 {
-	int					numrows = 0;	/* # rows collected */
+	int				numrows = 0;	/* # rows collected */
 	double				liverows = 0;	/* # rows seen */
 	double				deadrows = 0;	/* # dead rows seen */
 	double				rowstoskip = -1;	/* -1 means not set yet */
@@ -1006,7 +1071,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 		 * the relation we're done.
 		 */
 		if (numrows < targrows)
-			rows[numrows++] = heap_copytuple(ExecFetchSlotHeapTuple(slot));
+			rows[numrows++] = ExecCopySlotHeapTuple(slot);
 		else
 		{
 			/*
@@ -1028,7 +1093,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 				
 				Assert(k >= 0 && k < targrows);
 				heap_freetuple(rows[k]);
-				rows[k] = heap_copytuple(ExecFetchSlotHeapTuple(slot));
+				rows[k] = ExecCopySlotHeapTuple(slot);
 			}
 			
 			rowstoskip -= 1;
@@ -1070,6 +1135,158 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	
 	pfree(fstotal);
 	
+	return numrows;
+}
+
+/*
+ * acquire_sample_aocs_rows -- same as acquire_sample_rows but designed
+ * specifically for append only column store tables.
+ */
+static int
+acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
+					   double *totalrows, double *totaldeadrows,
+					   double *totalbytes)
+{
+        int				numrows = 0;	/* # rows collected */
+	double				liverows = 0;	/* # rows seen */
+	double				deadrows = 0;	/* # dead rows seen */
+	double				rowstoskip = -1;	/* -1 means not set yet */
+
+	double				rstate;
+
+	AOCSScanDesc	        scandesc = NULL;
+	TupleTableSlot		*slot;
+        
+        int nvp = onerel->rd_att->natts;
+        int totalseg;
+        AOCSFileSegInfo         **allseg;
+        bool *proj;
+
+        int i, j;
+	
+	Assert(targrows > 1);
+	
+        *totalbytes = 0;
+        *totalrows = 0;
+
+	/* early exit - no data on the QD */
+	if(Gp_role == GP_ROLE_DISPATCH)
+		return 0;
+	
+	/* get table level statistics from the pg_aoseg table */
+        allseg = GetAllAOCSFileSegInfo(onerel, SnapshotNow, &totalseg);
+
+        for(i = 0; i<totalseg; ++i) 
+        {
+                for(j=0; j<nvp; ++j)
+                {
+                        AOCSVPInfoEntry *e = getAOCSVPEntry(allseg[i], j);
+                        *totalbytes += e->eof_uncompressed;
+                }
+                
+                *totalrows += allseg[i]->tupcount;
+        }
+	
+	
+	/* Prepare for sampling rows */
+	rstate = init_selection_state(targrows);
+
+        proj = palloc(sizeof(bool) * nvp);
+        for(i=0; i<nvp; ++i)
+                proj[i] = true;
+	
+	scandesc = aocs_beginscan(onerel, SnapshotNow, 0, NULL, proj);
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
+
+	for(;;)
+	{
+                aocs_getnext(scandesc, ForwardScanDirection, slot);
+
+                if(TupIsNull(slot))
+                        break;
+		
+		/* check for interrupts once in a while */
+		if((int)liverows % 400 == 0)
+			vacuum_delay_point();
+		
+		/*
+		 * The first targrows live rows are simply copied into the
+		 * reservoir. Then we start replacing tuples in the sample
+		 * until we reach the end of the relation.	This algorithm is
+		 * from Jeff Vitter's paper (see full citation below). It
+		 * works by repeatedly computing the number of tuples to skip
+		 * before selecting a tuple, which replaces a randomly chosen
+		 * element of the reservoir (current set of tuples).  At all
+		 * times the reservoir is a true random sample of the tuples
+		 * we've passed over so far, so when we fall off the end of
+		 * the relation we're done.
+		 */
+		if (numrows < targrows)
+			rows[numrows++] = ExecCopySlotHeapTuple(slot);
+		else
+		{
+			/*
+			 * t in Vitter's paper is the number of records already
+			 * processed.  If we need to compute a new S value, we
+			 * must use the not-yet-incremented value of liverows as
+			 * t.
+			 */
+			if (rowstoskip < 0)
+				rowstoskip = get_next_S(liverows, targrows, &rstate);
+			
+			if (rowstoskip <= 0)
+			{
+				/*
+				 * Found a suitable tuple, so save it, replacing one
+				 * old tuple at random
+				 */
+				int			k = (int) (targrows * random_fract());
+				
+				Assert(k >= 0 && k < targrows);
+				heap_freetuple(rows[k]);
+				rows[k] = ExecCopySlotHeapTuple(slot); 
+			}
+			
+			rowstoskip -= 1;
+		}
+		
+		liverows += 1;
+	}
+	
+	ExecDropSingleTupleTableSlot(slot);
+	
+	aocs_endscan(scandesc);			
+
+	/* 
+	 * In the heap table version acquire_sample_rows will now sort the sample 
+	 * tuples by position (itempointer). However with AO tables we can't sort
+	 * because we have no valid TIDs to use. Kurt explains why this is ok to 
+	 * skip: The sort is used to give a (poor) indication of whether an index 
+	 * scan, in key order, will cause base rel pages to be accessed sequentially
+	 * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
+	 */
+	 	
+	/*
+	 * Set total numbers of rows in relation.
+	 */
+	*totaldeadrows = 0;
+
+	/*
+	 * Emit some interesting relation info
+	 */
+	ereport(elevel,
+			(errmsg("\"%s\": "
+					"containing %.0f live rows and %.0f dead rows; "
+					"%d rows in sample, %.0f total rows",
+					RelationGetRelationName(onerel),
+					liverows, deadrows,
+					numrows, *totalrows)));
+	
+        pfree(proj);
+        for(i = 0; i<totalseg; ++i) 
+                pfree(allseg[i]);
+        pfree(allseg);
+
 	return numrows;
 }
 

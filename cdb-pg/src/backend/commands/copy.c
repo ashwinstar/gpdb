@@ -32,6 +32,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbaocsam.h"
 #include "commands/copy.h"
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"
@@ -1485,7 +1486,7 @@ DoCopy(const CopyStmt *stmt)
 				 * utility mode (or dispatch mode for no policy table).
 				 * create a one entry map for our one and only relation
 				 */
-				if(relstorage == RELSTORAGE_AO)
+				if(relstorage_is_ao(relstorage))
 				{
 					SegfileMapNode *n = makeNode(SegfileMapNode);
 					n->relid = RelationGetRelid(cstate->rel);
@@ -2074,6 +2075,10 @@ CopyTo(CopyState cstate)
 				ExecDropSingleTupleTableSlot(slot);
 
 				appendonly_endscan(aoscandesc);
+			}
+			else if(relstorage == RELSTORAGE_AOCS)
+			{
+				Assert(!"AOCS NYI");
 			}
 			else
 			{
@@ -3388,17 +3393,18 @@ CopyFromDispatch(CopyState cstate)
 	//AfterTriggerEndQuery(estate);
 
 	resultRelInfo = estate->es_result_relations;
-    for (i = estate->es_num_result_relations; i > 0; i--)
-    {
+	for (i = estate->es_num_result_relations; i > 0; i--)
+	{
 		/* update AO tuple counts */
-    	if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
-    	{
+		char relstorage = RelinfoGetStorage(resultRelInfo);
+		if (relstorage_is_ao(relstorage))
+		{
 			if (cdbCopy->aotupcounts)
 			{
 				HTAB *ht = cdbCopy->aotupcounts;
 				struct {
 					Oid relid;
-				    int64 tupcount;
+					int64 tupcount;
 				} *ao;
 				bool found;
 				Oid relid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -3421,12 +3427,13 @@ CopyFromDispatch(CopyState cstate)
 										resultRelInfo->ri_aosegno,
 										cstate->processed);
 			}
-    	}
-        /* Close indices and then the relation itself */
-        ExecCloseIndices(resultRelInfo);
-        heap_close(resultRelInfo->ri_RelationDesc, NoLock);
-        resultRelInfo++;
-    }
+		}
+
+		/* Close indices and then the relation itself */
+		ExecCloseIndices(resultRelInfo);
+		heap_close(resultRelInfo->ri_RelationDesc, NoLock);
+		resultRelInfo++;
+	}
 
 	/*
 	 * free all resources besides ones that are needed for error reporting
@@ -3513,11 +3520,11 @@ CopyFrom(CopyState cstate)
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(cstate->rel->trigdesc);
 	if (resultRelInfo->ri_TrigDesc)
 		resultRelInfo->ri_TrigFunctions = (FmgrInfo *)
-            palloc0(resultRelInfo->ri_TrigDesc->numtriggers * sizeof(FmgrInfo));
-    resultRelInfo->ri_TrigInstrument = NULL;
-    ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+                        palloc0(resultRelInfo->ri_TrigDesc->numtriggers * sizeof(FmgrInfo));
+        resultRelInfo->ri_TrigInstrument = NULL;
+        ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
 
-    ExecOpenIndices(resultRelInfo);
+        ExecOpenIndices(resultRelInfo);
 
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
@@ -3910,20 +3917,20 @@ CopyFrom(CopyState cstate)
 
 				}
 
+				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS &&
+					resultRelInfo->ri_aocsInsertDesc == NULL)
+				{
+					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+                                        resultRelInfo->ri_aocsInsertDesc = 
+						aocs_insert_init(resultRelInfo->ri_RelationDesc, resultRelInfo->ri_aosegno);
+				}
+			
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 				/*
 				 * And now we can form the input tuple.
 				 */
-				if (RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AO)
-				{
-					/* form a regular heap tuple */
-					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);
-
-					if (cstate->oids && file_has_oids)
-						HeapTupleSetOid((HeapTuple)tuple, loaded_oid);
-				}
-				else
+				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
 				{
 					/* form a mem tuple */
 					tuple = (MemTuple)
@@ -3934,6 +3941,19 @@ CopyFrom(CopyState cstate)
 					if (cstate->oids && file_has_oids)
 						MemTupleSetOid(tuple, resultRelInfo->ri_aoInsertDesc->mt_bind, loaded_oid);
 				}
+				else if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS)
+				{
+                                        tuple = NULL;
+				}
+				else
+				{
+					/* form a regular heap tuple */
+					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
+					
+					if (cstate->oids && file_has_oids)
+						HeapTupleSetOid((HeapTuple)tuple, loaded_oid);
+				}
+
 
 				/*
 				 * Triggers and stuff need to be invoked in query context.
@@ -3951,6 +3971,10 @@ CopyFrom(CopyState cstate)
 					resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
 				{
 					HeapTuple	newtuple;
+
+                                        if(tuple)
+                                                elog(ERROR, "AOCS Does not do trigger yet");
+
 					Assert(resultRelInfo->ri_TrigFunctions != NULL);
 					newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
 
@@ -3965,45 +3989,55 @@ CopyFrom(CopyState cstate)
 
 				if (!skip_tuple)
 				{
+                                        if (RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AOCS)
+                                        {
+                                                /* XXX TODO:
+                                                 * AOCS does not do constraint checking yet.
+                                                 */
+                                                /* Place tuple in tuple slot */
+                                                ExecStoreGenericTuple(tuple, slot, false);
 
-					/* Place tuple in tuple slot */
-					ExecStoreGenericTuple(tuple, slot, false);
-
-					/*
-					 * Check the constraints of the tuple
-					 */
-					if (resultRelInfo->ri_RelationDesc->rd_att->constr)
-						ExecConstraints(resultRelInfo, slot, estate);
+                                                /*
+                                                 * Check the constraints of the tuple
+                                                 */
+                                                if (resultRelInfo->ri_RelationDesc->rd_att->constr)
+                                                        ExecConstraints(resultRelInfo, slot, estate);
+                                        }
 
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if (RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AO)
+					if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+					{
+						/* inserting into an append only relation */
+						appendonly_insert(resultRelInfo->ri_aoInsertDesc,
+										  tuple);
+					}
+					else if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS)
+					{
+                                                aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls);
+					}
+					else
 					{
 						if (heap_enableHeapInsertDesc)
 						{
 							if (cstate->heapInsertDesc == NULL)
 							{
 								cstate->heapInsertDesc = heap_begininsert(cstate->rel,
-																		  GetCurrentCommandId(), true, true);
+										GetCurrentCommandId(), true, true);
 							}
 							heap_insertnext(cstate->heapInsertDesc, tuple);
 						}
 						else
 						{
 							simple_heap_insert(resultRelInfo->ri_RelationDesc,
-											   tuple);
+									tuple);
 						}
 
 						if (resultRelInfo->ri_NumIndices > 0)
 							ExecInsertIndexTuples(slot, &(((HeapTuple)tuple)->t_self), estate, false);
 					}
-					else
-					{
-						/* inserting into an append only relation */
-						appendonly_insert(resultRelInfo->ri_aoInsertDesc,
-										  tuple);
-					}
+
 
 					/* AFTER ROW INSERT Triggers */
 					ExecARInsertTriggers(estate, resultRelInfo, tuple);
@@ -4018,7 +4052,7 @@ CopyFrom(CopyState cstate)
 					 * count, so this counter is meaningless.
 					 */
 					cstate->processed++;
-					if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+					if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 						resultRelInfo->ri_aoprocessed++;
 				}
 
@@ -4062,9 +4096,6 @@ CopyFrom(CopyState cstate)
 
 	pfree(attr_offsets);
 
-	pfree(values);
-	pfree(nulls);
-
 	pfree(in_functions);
 	pfree(typioparams);
 	pfree(defmap);
@@ -4072,20 +4103,23 @@ CopyFrom(CopyState cstate)
 
 	ExecDropSingleTupleTableSlot(slot);
 
-	/*
-	 * Finalise appends and close relations we opened.
-	 */
-	resultRelInfo = estate->es_result_relations;
-    for (i = estate->es_num_result_relations; i > 0; i--)
-    {
-        if (resultRelInfo->ri_aoInsertDesc)
-            appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
+        /*
+         * Finalise appends and close relations we opened.
+         */
+        resultRelInfo = estate->es_result_relations;
+        for (i = estate->es_num_result_relations; i > 0; i--)
+        {
+                if (resultRelInfo->ri_aoInsertDesc)
+                        appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
 
-        /* Close indices and then the relation itself */
-        ExecCloseIndices(resultRelInfo);
-        heap_close(resultRelInfo->ri_RelationDesc, NoLock);
-        resultRelInfo++;
-    }
+                if (resultRelInfo->ri_aocsInsertDesc)
+                        aocs_insert_finish(resultRelInfo->ri_aocsInsertDesc);
+
+                /* Close indices and then the relation itself */
+                ExecCloseIndices(resultRelInfo);
+                heap_close(resultRelInfo->ri_RelationDesc, NoLock);
+                resultRelInfo++;
+        }
 	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }

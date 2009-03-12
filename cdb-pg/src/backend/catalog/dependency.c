@@ -2076,10 +2076,12 @@ getRelationDescription(StringInfo buffer, Oid relid)
 	switch (relForm->relkind)
 	{
 		case RELKIND_RELATION:
-			if(relForm->relstorage != RELSTORAGE_AO)
-				appendStringInfo(buffer, _("table %s"), relname);
-			else
+			if(relForm->relstorage == RELSTORAGE_AO)
 				appendStringInfo(buffer, _("append only table %s"), relname);
+                        else if (relForm->relstorage == RELSTORAGE_AOCS)
+				appendStringInfo(buffer, _("append only column store table %s"), relname);
+			else
+				appendStringInfo(buffer, _("table %s"), relname);
 			break;			
 		case RELKIND_EXTERNAL:
 			appendStringInfo(buffer, _("external table %s"),

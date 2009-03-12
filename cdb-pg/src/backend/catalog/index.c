@@ -2381,7 +2381,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
 	{
-		Assert(rel->rd_rel->relstorage == RELSTORAGE_AO);
+		Assert(relstorage_is_ao(rel->rd_rel->relstorage)); 
 		result |= reindex_relation(aoseg_relid, false, false, oidmap, build_map);
 	}
 		

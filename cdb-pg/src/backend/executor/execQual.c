@@ -4947,3 +4947,221 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 
 	return slot;
 }
+
+void GetNeededColumnsForScan(Node *expr, bool *mask, int n)
+{
+        if(!expr)
+                return;
+
+        switch(nodeTag(expr))
+        {
+                case T_Var:
+                        {
+                                Var *var = (Var *) expr;
+                                if(var->varattno > 0) 
+                                {
+                                        Assert(var->varattno <= n);
+                                        mask[var->varattno-1] = true;
+                                }
+                        }
+                        break;
+                case T_ArrayRef:
+                        {
+                                ArrayRef *aref = (ArrayRef *) expr;
+                                GetNeededColumnsForScan((Node *) aref->refupperindexpr, mask, n);
+                                GetNeededColumnsForScan((Node *) aref->reflowerindexpr, mask, n);
+                                GetNeededColumnsForScan((Node *) aref->refexpr, mask, n);
+                                GetNeededColumnsForScan((Node *) aref->refassgnexpr, mask, n);
+                        }
+                        break;
+                case T_FuncExpr:
+                        {
+                                FuncExpr *f = (FuncExpr *) expr;
+                                GetNeededColumnsForScan((Node *) f->args, mask, n);
+                        }
+                        break;
+                case T_OpExpr:
+                        {
+                                OpExpr *o = (OpExpr *) expr;
+                                GetNeededColumnsForScan((Node *) o->args, mask, n);
+                        }
+                        break;
+                case T_DistinctExpr:
+                        {
+                                DistinctExpr *d = (DistinctExpr *) expr;
+                                GetNeededColumnsForScan((Node *) d->args, mask, n);
+                        }
+                        break;
+                case T_BoolExpr:
+                        {
+                                BoolExpr *b = (BoolExpr *) expr;
+                                GetNeededColumnsForScan((Node *) b->args, mask, n);
+                        }
+                        break;
+                case T_FieldSelect:
+                        {
+                                FieldSelect *f = (FieldSelect *) expr;
+                                GetNeededColumnsForScan((Node *) f->arg, mask, n);
+                        }
+                        break;
+                case T_FieldStore:
+                        {
+                                FieldStore *f = (FieldStore *) expr;
+                                GetNeededColumnsForScan((Node *) f->arg, mask, n);
+                                GetNeededColumnsForScan((Node *) f->newvals, mask, n);
+                        }
+                        break;
+                case T_RelabelType:
+                        {
+                                RelabelType *r = (RelabelType *) expr;
+                                GetNeededColumnsForScan((Node *) r->arg, mask, n);
+                        }
+                        break;
+                case T_ConvertRowtypeExpr:
+                        {
+                                ConvertRowtypeExpr *c = (ConvertRowtypeExpr *) expr;
+                                GetNeededColumnsForScan((Node *) c->arg, mask, n);
+                        }
+                        break;
+                case T_CaseExpr:
+                        {
+                                CaseExpr *c = (CaseExpr *) expr;
+                                GetNeededColumnsForScan((Node *) c->arg, mask, n);
+                                GetNeededColumnsForScan((Node *) c->args, mask, n);
+                        }
+                        break;
+                case T_CaseWhen:
+                        {
+                                CaseWhen *c = (CaseWhen *) expr;
+                                GetNeededColumnsForScan((Node *) c->expr, mask, n);
+                                GetNeededColumnsForScan((Node *) c->result, mask, n);
+                        }
+                        break;
+                case T_ArrayExpr:
+                        {
+                                ArrayExpr *a = (ArrayExpr *) expr;
+                                GetNeededColumnsForScan((Node *) a->elements, mask, n);
+                        }
+                        break;
+                case T_RowExpr:
+                        {
+                                RowExpr *r = (RowExpr *) expr;
+                                GetNeededColumnsForScan((Node *) r->args, mask, n);
+                        }
+                        break;
+                case T_RowCompareExpr:
+                        {
+                                RowCompareExpr *r = (RowCompareExpr *) expr;
+                                GetNeededColumnsForScan((Node *) r->largs, mask, n);
+                                GetNeededColumnsForScan((Node *) r->rargs, mask, n);
+                        }
+                        break;
+                case T_CoalesceExpr:
+                        {
+                                CoalesceExpr *c = (CoalesceExpr *) expr;
+                                GetNeededColumnsForScan((Node *) c->args, mask, n);
+                        }
+                        break;
+                case T_NullIfExpr:
+                        {
+                                NullIfExpr *e = (NullIfExpr *) expr;
+                                GetNeededColumnsForScan((Node *) e->args, mask, n);
+                        }
+                        break;
+                case T_NullTest:
+                        {
+                                NullTest *e = (NullTest *) expr;
+                                GetNeededColumnsForScan((Node *) e->arg, mask, n);
+                        }
+                        break;
+                case T_BooleanTest:
+                        {
+                                BooleanTest *b = (BooleanTest *) expr;
+                                GetNeededColumnsForScan((Node *) b->arg, mask, n);
+                        }
+                        break;
+                case T_CoerceToDomain:
+                        {
+                                CoerceToDomain *c = (CoerceToDomain *) expr;
+                                GetNeededColumnsForScan((Node *) c->arg, mask, n);
+                        }
+                        break;
+                case T_TargetEntry:
+                        {
+                                TargetEntry *t = (TargetEntry *) expr;
+                                GetNeededColumnsForScan((Node *) t->expr, mask, n);
+                        }
+                        break;
+                case T_List:
+                        {
+                                List *l = (List *) expr;
+                                ListCell *lc;
+
+                                foreach(lc, l)
+                                {
+                                        GetNeededColumnsForScan(lfirst(lc), mask, n);
+                                }
+                        }
+                        break;
+                case T_ScalarArrayOpExpr:
+                        {
+                                ScalarArrayOpExpr *s = (ScalarArrayOpExpr *) expr;
+                                GetNeededColumnsForScan((Node *) s->args, mask, n);
+                        }
+                        break;
+
+                /* The followings are no-op */
+                case T_Const:
+                case T_Param:
+                case T_CoerceToDomainValue:
+                case T_CaseTestExpr:
+                        break;
+
+                /* The following are invalid */
+                case T_GroupingFunc:
+                case T_Grouping:
+                case T_GroupId:
+                case T_WindowRef:
+                case T_SubPlan:
+                case T_MinMaxExpr:
+                case T_Aggref:
+                default:
+                        Assert(!"Grouping/Window/Subplan cannot appear in scan");
+                        elog(ERROR, "Invalid node type: %d", (int) nodeTag(expr));
+        }
+}
+
+                        
+
+                        
+                        
+
+
+
+                        
+
+                        
+
+                        
+
+                                
+
+                        
+
+
+
+
+                                
+
+
+                        
+                        
+
+
+
+                        
+                
+                       
+                                
+                        
+        

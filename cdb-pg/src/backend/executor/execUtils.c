@@ -1197,7 +1197,7 @@ ExecUpdateAOtupCount(ResultRelInfo *result_rels,
 		Relation rel = result_rels->ri_RelationDesc;
 		char relstorage = rel->rd_rel->relstorage;
 		
-		if(relstorage == RELSTORAGE_AO)
+		if(relstorage_is_ao(relstorage))
 		{
 			Assert(result_rels->ri_aosegno != InvalidFileSegNumber);
 			UpdateMasterAosegTotals(result_rels->ri_RelationDesc,

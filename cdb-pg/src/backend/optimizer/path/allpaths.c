@@ -325,7 +325,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AO)
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AO) 
 	{
 		/*
 		 * If the relation is append-only, create an append-only 
@@ -333,10 +333,16 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * considered for an append-only base rel).
 		 */
 		add_path(root, rel, (Path *) create_appendonly_path(root, rel));
-		
 		set_cheapest(root, rel);
 		return;
 	}
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCS) 
+        {
+		add_path(root, rel, (Path *) create_aocs_path(root, rel));
+		set_cheapest(root, rel);
+		return;
+        }
+
 	
 	/* Consider sequential scan. */
     seqpath = create_seqscan_path(root, rel);

@@ -18,6 +18,8 @@
 #include "access/transam.h"			  /* InvalidTransactionId */
 #include "cdb/cdbvars.h"			  /* Gp_role              */
 
+#include "access/aocssegfiles.h"                  /* AOCS */
+
 /*
  * GUC variables
  */
@@ -598,7 +600,7 @@ List *assignPerRelSegno(List *all_relids)
 		Oid cur_relid = lfirst_oid(cell);
 		Relation rel = heap_open(cur_relid, NoLock);
 
-		if (rel->rd_rel->relstorage == RELSTORAGE_AO)
+		if (relstorage_is_ao(rel->rd_rel->relstorage))
 		{
 			SegfileMapNode *n;
 
@@ -636,7 +638,6 @@ List *assignPerRelSegno(List *all_relids)
  */
 void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 {
-	FileSegInfo		*fsinfo;
 	float8			tupcount_float8;
 	AORelHashEntry	aoentry = NULL;
 
@@ -649,23 +650,32 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("int64 out of range")));
 
-	tupcount_float8 = DatumGetFloat8(DirectFunctionCall1(i8tod,
-														 (int64) tupcount));
+	tupcount_float8 = DatumGetFloat8(DirectFunctionCall1(i8tod, (int64) tupcount));
 
-	if (Debug_appendonly_print_insert)
-		ereport(LOG,(errmsg("Updating aoseg entry for append-only relation %d "
+        if(parentrel->rd_rel->relstorage == RELSTORAGE_AO)
+        {
+                FileSegInfo		*fsinfo;
+
+                if (Debug_appendonly_print_insert)
+                        ereport(LOG,(errmsg("Updating aoseg entry for append-only relation %d "
 				 "with " INT64_FORMAT " new tuples for segno %d", 
 				RelationGetRelid(parentrel), tupcount, segno)));
+                /* get the information for the file segment we inserted into */
+                fsinfo = GetFileSegInfoForWrite(parentrel, segno); 
+                Assert(fsinfo);
 
-	/* get the information for the file segment we inserted into */
-	fsinfo = GetFileSegInfoForWrite(parentrel, segno);
-	Assert(fsinfo);
-	
-	/*
-	 * Update the master AO segment info table with correct tuple count total
-	 */
-	UpdateFileSegInfo(parentrel, segno, 0, 0, tupcount_float8, 0);
-	pfree(fsinfo);
+                /*
+                 * Update the master AO segment info table with correct tuple count total
+                 */
+                UpdateFileSegInfo(parentrel, segno, 0, 0, tupcount_float8, 0);
+                pfree(fsinfo);
+        }
+        else
+        {
+                Assert(parentrel->rd_rel->relstorage == RELSTORAGE_AOCS);
+                GetAOCSFileSegInfoForWrite(parentrel, segno);
+                AOCSFileSegInfoAddCount(parentrel, segno, tupcount, 0);
+        }
 
 	/*
 	 * Now, update num of tups added in the hash table. This pending count will

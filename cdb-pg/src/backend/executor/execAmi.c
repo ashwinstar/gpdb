@@ -17,6 +17,7 @@
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
 #include "executor/nodeAppendOnlyscan.h"
+#include "executor/nodeAOCSScan.h"
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
@@ -137,6 +138,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 			ExecAppendOnlyReScan((AppendOnlyScanState *) node, exprCtxt);
 			break;
 
+		case T_AOCSScanState:
+			ExecAOCSReScan((AOCSScanState *) node, exprCtxt);
+			break;
+
 		case T_BitmapIndexScanState:
 			ExecBitmapIndexReScan((BitmapIndexScanState *) node, exprCtxt);
 			break;
@@ -240,6 +245,7 @@ ExecMarkPos(PlanState *node)
 			break;
 
 		case T_AppendOnlyScanState:
+		case T_AOCSScanState:
 			elog(ERROR, "Marking scan position for append-only relation is not supported");
 			break;			
 			
@@ -313,6 +319,7 @@ ExecRestrPos(PlanState *node)
 			break;
 
 		case T_AppendOnlyScanState:
+		case T_AOCSScanState:
 			elog(ERROR, "Restoring scan position is not yet supported for append-only relation scan");
 			break;			
 

@@ -224,8 +224,8 @@ extern void vacuum_delay_point(void);
 
 /* in commands/vacuumlazy.c */
 extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
-extern void vacuum_appendonly_rel(Relation aorel, void *vacrelstats,
-								  bool isVacFull);
+extern void vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull);
+extern void vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull);
 
 /* in commands/analyze.c */
 extern void analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_context);

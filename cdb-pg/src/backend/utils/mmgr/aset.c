@@ -869,6 +869,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 	AllocSet	set = (AllocSet) context;
 	AllocChunk	chunk = AllocPointerGetChunk(pointer);
 
+        Assert(chunk->size > 0);
 	AllocFreeInfo(set, chunk);
 #ifdef USE_ASSERT_CHECKING
 	/*
@@ -927,11 +928,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 			prevblock->next = block->next;
 
 		freesz = block->endptr - (char *) block;
-        MemoryContextNoteFree(&set->header, freesz); 
-#ifdef CLOBBER_FREED_MEMORY
-		/* Wipe freed memory for debugging purposes */
-		memset(block, 0x7F, block->freeptr - ((char *) block));
-#endif
+                MemoryContextNoteFree(&set->header, freesz); 
 		gp_free2(block, freesz);
 	}
 	else
@@ -951,6 +948,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 		chunk->requested_size = 0;
 #endif
 		set->freelist[fidx] = chunk;
+                Assert(chunk->size > 0);
 	}
 }
 
@@ -1291,6 +1289,7 @@ AllocSetCheck(MemoryContext context)
 				elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p (%s:%d)",
 					 name, chunk, block, CDB_MCXT_WHERE(&set->header));
 			}
+                        
 			if (chsize < (1 << ALLOC_MINBITS))
 			{
 				Assert(!"Memory Context Error");

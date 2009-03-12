@@ -204,6 +204,7 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 		case T_SeqScan:
 		case T_ExternalScan:
 		case T_AppendOnlyScan:
+                case T_AOCSScan:
             if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
                 return cdb_insert_result_node(plan, ctxt);
 			fix_scanexpr_references(plan, &plan->targetlist, ctxt);
@@ -843,6 +844,11 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			break;			
 		case T_AppendOnlyScan:
 			((AppendOnlyScan *) plan)->scan.scanrelid += rtoffset;
+			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
+			adjust_expr_varnos((Node *) plan->qual, rtoffset);
+			break;				
+		case T_AOCSScan:
+			((AOCSScan *) plan)->scan.scanrelid += rtoffset;
 			adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
 			adjust_expr_varnos((Node *) plan->qual, rtoffset);
 			break;				

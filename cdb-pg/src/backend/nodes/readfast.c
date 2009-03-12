@@ -2427,6 +2427,20 @@ _readAppendOnlyScan(const char ** str)
 }
 
 /*
+ * _readAOCSScan
+ */
+static AOCSScan *
+_readAOCSScan(const char ** str)
+{
+	READ_LOCALS(AOCSScan);
+
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_DONE();
+}
+
+
+/*
  * _readExternalScan
  */
 static ExternalScan *
@@ -3263,6 +3277,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_AppendOnlyScan:
 				return_value = _readAppendOnlyScan(str);
+				break;				
+			case T_AOCSScan:
+				return_value = _readAOCSScan(str);
 				break;				
 			case T_ExternalScan:
 				return_value = _readExternalScan(str);

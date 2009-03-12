@@ -29,31 +29,14 @@
 #include "cdb/cdbbufferedread.h"
 #include "cdb/cdbvarblock.h"
 
+#include "storage/gp_compress.h"
+
 #define DEFAULT_COMPRESS_LEVEL				 0
 #define MIN_APPENDONLY_BLOCK_SIZE			 8 * 1024
 #define DEFAULT_APPENDONLY_BLOCK_SIZE		32 * 1024
 #define MAX_APPENDONLY_BLOCK_SIZE			 2 * 1024 * 1024
 #define DEFAULT_VARBLOCK_TEMPSPACE_LEN   	 4 * 1024 
 #define DEFAULT_FS_SAFE_WRITE_SIZE			 0
-
-// UNDONE: Is there a QLZ DEFINE for this?
-#define MAX_OVERRUN_QUICKLZ 400
-
-/*
- *	Represents the compressor type used for an AO table.
- *	Note that we treat quicklz with compression levels 1 and 3 as
- *	two separate types of compressors, this is because we have to
- *	compile them separately and have a separate API for each. Zlib
- *	compression will have a compression level attached to it, checked
- *	separately. 
- */
-typedef enum CompressorType
-{
-	COMPTYPE_NONE,		/* no compression used */
-	COMPTYPE_ZLIB,	
-	COMPTYPE_QUICKLZ1,
-	COMPTYPE_QUICKLZ3
-} CompressorType;
 
 /*
  * AppendOnlyInsertDescData is used for inserting data into append-only

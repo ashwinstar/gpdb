@@ -302,6 +302,21 @@ _copyAppendOnlyScan(AppendOnlyScan *from)
 }
 
 /*
+ * _copyAppendOnlyScan
+ */
+static AOCSScan *
+_copyAOCSScan(AOCSScan *from)
+{
+	AOCSScan    *newnode = makeNode(AOCSScan);
+	
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+	
+	return newnode;
+}
+/*
  * _copyExternalScan
  */
 static ExternalScan *
@@ -3618,7 +3633,10 @@ copyObject(void *from)
 			break;
 		case T_AppendOnlyScan:
 			retval = _copyAppendOnlyScan(from);
-			break;
+			break;		
+                case T_AOCSScan:
+			retval = _copyAOCSScan(from);
+                        break;
 		case T_ExternalScan:
 			retval = _copyExternalScan(from);
 			break;			

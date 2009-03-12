@@ -217,64 +217,65 @@ pathnode_walk_kids(Path            *path,
     Assert(path != NULL);
 
     switch (path->pathtype)
-	{
-	    case T_SeqScan:
-		case T_ExternalScan:
-		case T_AppendOnlyScan:
-	    case T_IndexScan:
-	    case T_TidScan:
-	    case T_SubqueryScan:
-	    case T_FunctionScan:
-        case T_ValuesScan:
-            return CdbVisit_Walk;
-	    case T_BitmapHeapScan:
-	        v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
-            break;
-        case T_BitmapAnd:
-            v = pathnode_walk_list(((BitmapAndPath *)path)->bitmapquals, walker, context);
-            break;
-        case T_BitmapOr:
-            v = pathnode_walk_list(((BitmapOrPath *)path)->bitmapquals, walker, context);
-            break;
-        case T_HashJoin:
-	    case T_MergeJoin:
-            v = pathnode_walk_node(((JoinPath *)path)->outerjoinpath, walker, context);
-            if (v != CdbVisit_Walk)     /* stop */
-                break;
-            v = pathnode_walk_node(((JoinPath *)path)->innerjoinpath, walker, context);
-            break;
-	    case T_NestLoop:
-        {
-            NestPath   *nestpath = (NestPath *)path;
+    {
+            case T_SeqScan:
+            case T_ExternalScan:
+            case T_AppendOnlyScan:
+            case T_AOCSScan:
+            case T_IndexScan:
+            case T_TidScan:
+            case T_SubqueryScan:
+            case T_FunctionScan:
+            case T_ValuesScan:
+                    return CdbVisit_Walk;
+            case T_BitmapHeapScan:
+                    v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
+                    break;
+            case T_BitmapAnd:
+                    v = pathnode_walk_list(((BitmapAndPath *)path)->bitmapquals, walker, context);
+                    break;
+            case T_BitmapOr:
+                    v = pathnode_walk_list(((BitmapOrPath *)path)->bitmapquals, walker, context);
+                    break;
+            case T_HashJoin:
+            case T_MergeJoin:
+                    v = pathnode_walk_node(((JoinPath *)path)->outerjoinpath, walker, context);
+                    if (v != CdbVisit_Walk)     /* stop */
+                            break;
+                    v = pathnode_walk_node(((JoinPath *)path)->innerjoinpath, walker, context);
+                    break;
+            case T_NestLoop:
+                    {
+                            NestPath   *nestpath = (NestPath *)path;
 
-            v = pathnode_walk_node(nestpath->jpath.outerjoinpath, walker, context);
-            if (v != CdbVisit_Walk)     /* stop */
-                break;
-            v = pathnode_walk_node(nestpath->jpath.innerjoinpath, walker, context);
-            if (v != CdbVisit_Walk)     /* stop */
-                break;
-            v = pathnode_walk_node((Path *)nestpath->alternate, walker, context);
-            break;
-        }
-        case T_Append:
-            v = pathnode_walk_list(((AppendPath *)path)->subpaths, walker, context);
-            break;
-	    case T_Result:
-	        v = pathnode_walk_node(((ResultPath *)path)->subpath, walker, context);
-            break;
-	    case T_Material:
-	        v = pathnode_walk_node(((MaterialPath *)path)->subpath, walker, context);
-            break;
-	    case T_Unique:
-	        v = pathnode_walk_node(((UniquePath *)path)->subpath, walker, context);
-            break;
-        case T_Motion:
-	        v = pathnode_walk_node(((CdbMotionPath *)path)->subpath, walker, context);
-            break;
-        default:
-            v = CdbVisit_Walk;  /* keep compiler quiet */
-		    elog(ERROR, "unrecognized path type: %d", (int)path->pathtype);
-	}
+                            v = pathnode_walk_node(nestpath->jpath.outerjoinpath, walker, context);
+                            if (v != CdbVisit_Walk)     /* stop */
+                                    break;
+                            v = pathnode_walk_node(nestpath->jpath.innerjoinpath, walker, context);
+                            if (v != CdbVisit_Walk)     /* stop */
+                                    break;
+                            v = pathnode_walk_node((Path *)nestpath->alternate, walker, context);
+                            break;
+                    }
+            case T_Append:
+                    v = pathnode_walk_list(((AppendPath *)path)->subpaths, walker, context);
+                    break;
+            case T_Result:
+                    v = pathnode_walk_node(((ResultPath *)path)->subpath, walker, context);
+                    break;
+            case T_Material:
+                    v = pathnode_walk_node(((MaterialPath *)path)->subpath, walker, context);
+                    break;
+            case T_Unique:
+                    v = pathnode_walk_node(((UniquePath *)path)->subpath, walker, context);
+                    break;
+            case T_Motion:
+                    v = pathnode_walk_node(((CdbMotionPath *)path)->subpath, walker, context);
+                    break;
+            default:
+                    v = CdbVisit_Walk;  /* keep compiler quiet */
+                    elog(ERROR, "unrecognized path type: %d", (int)path->pathtype);
+    }
     return v;
 }	                            /* pathnode_walk_kids */
 
@@ -1244,6 +1245,25 @@ create_appendonly_path(PlannerInfo *root, RelOptInfo *rel)
 	return pathnode;
 }
 
+/* 
+ * Create a path for scanning an append-only table
+ */
+AOCSPath *
+create_aocs_path(PlannerInfo *root, RelOptInfo *rel)
+{
+	AOCSPath	   *pathnode = makeNode(AOCSPath);
+	
+	pathnode->path.pathtype = T_AOCSScan;
+	pathnode->path.parent = rel;
+	pathnode->path.pathkeys = NIL;	/* seqscan has unordered result */
+	
+        pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+        pathnode->path.motionHazard = false;
+	pathnode->path.rescannable = true;
+	
+	cost_aocsscan(pathnode, root, rel);
+	return pathnode;
+}
 /* 
 * Create a path for scanning an external table
  */

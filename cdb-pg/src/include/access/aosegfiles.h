@@ -57,10 +57,17 @@ typedef struct FileSegTotals
 	float8		totalbytesuncompressed; /* the sum of all 'eofuncompressed' values */
 } FileSegTotals;
 
+typedef enum
+{
+	SegfileNoLock,
+	SegfileTryLock,
+	SegfileForceLock
+} SegfileLockStrategy;
+
 extern void 
 InsertInitialSegnoEntry(Relation parentrel, int segno);
 
-extern FileSegInfo *
+ FileSegInfo *
 GetFileSegInfoForWrite(Relation parentrel, int segno);
 
 extern FileSegInfo *

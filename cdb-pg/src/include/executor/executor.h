@@ -211,6 +211,7 @@ extern int	ExecTargetListLength(List *targetlist);
 extern int	ExecCleanTargetListLength(List *targetlist);
 extern TupleTableSlot *ExecProject(ProjectionInfo *projInfo,
 			ExprDoneCond *isDone);
+extern void GetNeededColumnsForScan(Node *expr, bool *mask, int n);
 
 /*
  * prototypes from functions in execScan.c

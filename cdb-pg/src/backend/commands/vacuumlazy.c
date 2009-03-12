@@ -52,6 +52,7 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "access/aosegfiles.h"
+#include "access/aocssegfiles.h"
 #include "access/aomd.h"
 #include "commands/vacuum.h"
 #include "catalog/catalog.h"
@@ -176,7 +177,16 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	 * Execute the various vaccum operations. Appendonly tables are treated
 	 * differently as they are not heap based and have no indexes.
 	 */
-	if(relstorage != RELSTORAGE_AO)
+	if(relstorage == RELSTORAGE_AO)
+	{
+		/* append-only relation. has a special path */
+		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ false);
+	} 
+	else if (relstorage == RELSTORAGE_AOCS)
+	{
+                vacuum_aocs_rel(onerel, vacrelstats, /* FULL */ false);
+	}
+	else
 	{
 		vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 							  &OldestXmin, &FreezeLimit);
@@ -208,12 +218,6 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 
 		/* Update shared free space map with final free space info */
 		lazy_update_fsm(onerel, vacrelstats);
-	}
-	else
-	{
-		/* append-only relation. has a special path */
-		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ false);
-		
 	}
 
 	/* Update statistics in pg_class */
@@ -976,7 +980,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 				segeof = (int64)fsinfo->eof;
 
 				/* Open and truncate the relation segfile beyond its eof */
-				OpenAOSegmentFile(aorel, segno, false, &relfile, filenamepath);
+				OpenAOSegmentFile(aorel, segno, -1, false, &relfile, filenamepath);
 				TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
 				CloseAOSegmentFile(relfile, aorel, segno);
 
@@ -991,6 +995,154 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					relname, num_tuples, nblocks,
 					(isVacFull ? "truncated unused data after eof." : ""))));
 	pfree(fstotal);
+}
+
+/*
+ *	vacuum_aocs_rel() -- vaccum an aocs relation
+ *              See vacuum_appendonly_rel.
+ */
+void
+vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
+{
+	BlockNumber nblocks;
+	char	   *relname;
+	int64		num_tuples = 0;
+        int64           sz = 0;
+
+        int totalseg;
+        AOCSFileSegInfo **allseg;
+
+	PGRUsage	ru0;
+
+        int i, j;
+
+
+		
+	pg_rusage_init(&ru0);
+	
+	relname = RelationGetRelationName(aorel);
+	ereport(elevel,
+			(errmsg("vacuuming \"%s.%s\"",
+					get_namespace_name(RelationGetNamespace(aorel)),
+					relname)));
+	
+        allseg = GetAllAOCSFileSegInfo(aorel, SnapshotNow, &totalseg);
+        for(i=0; i<totalseg; ++i)
+        {
+                num_tuples += allseg[i]->tupcount;
+                nblocks += allseg[i]->varblockcount;
+
+                for(j=0; j<allseg[i]->vpinfo.nEntry; ++j)
+                {
+                        AOCSVPInfoEntry *entry;
+                        entry = getAOCSVPEntry(allseg[i], j);
+
+                        sz += entry->eof;
+                }
+        }
+	nblocks = (uint32)RelationGuessNumberOfBlocks(sz);
+                
+	if(isVacFull)
+	{
+		/* FULL */
+
+		/* fill in remaining VRelStats values */
+		((VRelStats *)vacrelstats)->rel_pages = nblocks;
+		((VRelStats *)vacrelstats)->rel_tuples = num_tuples;
+		((VRelStats *)vacrelstats)->hasindex = false;
+		((VRelStats *)vacrelstats)->min_tlen = 0;
+		((VRelStats *)vacrelstats)->max_tlen = 0;
+		((VRelStats *)vacrelstats)->num_vtlinks = 0;
+		((VRelStats *)vacrelstats)->vtlinks = NULL;
+	}
+	else
+	{
+		/* LAZY */
+
+		/* fill in remaining LVRelStats values */
+		((LVRelStats *)vacrelstats)->rel_pages = nblocks;
+		((LVRelStats *)vacrelstats)->rel_tuples = num_tuples;
+		((LVRelStats *)vacrelstats)->hasindex = false;
+		((LVRelStats *)vacrelstats)->nonempty_pages = 0;
+		((LVRelStats *)vacrelstats)->num_dead_tuples = 0;
+		((LVRelStats *)vacrelstats)->max_dead_tuples = 0;
+		((LVRelStats *)vacrelstats)->tuples_deleted = 0;
+		((LVRelStats *)vacrelstats)->tot_free_pages = 0;
+		((LVRelStats *)vacrelstats)->fs_is_heap = false;
+		((LVRelStats *)vacrelstats)->num_free_pages = 0;
+		((LVRelStats *)vacrelstats)->max_free_pages = 0;
+		((LVRelStats *)vacrelstats)->pages_removed = 0;
+	}
+
+	/*
+	 * in both VACUUM and VACUUM FULL we want to also truncate the relation
+	 * after eof. This must only be done when the relation is exclusively locked
+	 * (as in VACUUM FULL) or the aoseg tuple for the segfile being truncated
+	 * is exclusively locked.
+	 *
+	 * If we don't guarantee the locking conditions we can truncate concurrent
+	 * user's data while he's in the process of writing it!
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		/*
+		 * For each fileseg, get a lock on it and truncate beyond eof. If
+		 * fileseg is currently locked for update by another transaction
+		 * then skip it and don't truncate it (we don't want to wait on the lock
+		 * because that may take a long time. besides, the other transaction may
+		 * overwrite the junk beyond eof anyway, so we need not worry about this
+		 * too much, and treat it as a "best effort" operation).
+		 */
+		for(i = 0 ; i < totalseg ; i++)
+		{
+                        AOCSFileSegInfo         *fsinfo;
+			int 			segno;
+
+			segno = allseg[i]->segno;
+
+			/* get the eof and a lock */
+			fsinfo = GetAOCSFileSegInfoForVacuum(aorel, segno);
+
+			if(!fsinfo)
+			{
+				elog(DEBUG5, "vacuum skipping truncate of AO segfile %d, "
+							 "relation %s", segno, relname);
+			}
+			else
+			{
+                                for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
+                                {
+                                        int64 			segeof;
+                                        File 			relfile;
+                                        char 			filenamepath[MAXPGPATH];
+                                        AOCSVPInfoEntry *entry;
+
+                                        entry = getAOCSVPEntry(fsinfo, j);
+                                        segeof = entry->eof;
+
+                                        /* Open and truncate the relation segfile beyond its eof */
+                                        OpenAOSegmentFile(aorel, segno, j, false, &relfile, filenamepath);
+                                        TruncateAOSegmentFile(relfile, aorel, segeof, elevel);
+                                        CloseAOSegmentFile(relfile, aorel, segno);
+                                }
+
+				pfree(fsinfo);
+				fsinfo = NULL;
+			}
+		}
+	}
+	
+	ereport(elevel,
+			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
+					relname, (double) num_tuples, nblocks,
+					(isVacFull ? "truncated unused data after eof." : ""))));
+
+        if(allseg)
+        {
+                for(i = 0; i<totalseg; ++i) 
+                        pfree(allseg[i]);
+                pfree(allseg);
+        }
 }
 
 /*

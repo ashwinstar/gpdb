@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <glob.h>
 
 #include "access/appendonlywriter.h" 
 #include "catalog/catalog.h"
@@ -275,49 +276,36 @@ mdunlink(RelFileNode rnode, bool isRedo)
 	}
 
 #ifndef LET_OS_MANAGE_FILESIZE
-	
 	/* 
 	 * Delete the additional segments, if any. 
-	 * 
-	 * This is done by sequentially incrementing the segment number and checking
-	 * for file existance. Before AO tables we would quit if we reach a non
-	 * existing segment file. However since AO segment files are non sequential
-	 * in number, and so we must check for all possibly existing AO relfiles
-	 * and remove them as well (0 >= segno < MAX_AOREL_CONCURRENCY)
-	 */
+         * Use glob path.* to find all segments.
+         */
 	if (status)
 	{
-		char	   *segpath = (char *) palloc(strlen(path) + 12);
-		BlockNumber segno;
+                char tmp[MAXPGPATH];
+                int i;
+                glob_t g;
 
-		/*
-		 * Note that because we loop until getting ENOENT, we will
-		 * correctly remove all inactive segments as well as active ones.
-		 */
-		for (segno = 1;; segno++)
-		{
-			sprintf(segpath, "%s.%u", path, segno);
-			if (unlink(segpath) < 0)
-			{
-				/* ENOENT is expected after the last segment... */
-				if (errno != ENOENT)
-				{
-					status = false;
-					save_errno = errno;
-				}
-				else
-				{
-					/* got ENOENT */
-					if(segno >= MAX_AOREL_CONCURRENCY)
-						break;
-					else
-						continue;
-				}
-				
-			}
-		}
-		pfree(segpath);
-	}
+                sprintf(tmp, "%s.*", path);
+                i = glob(tmp, 0, 0, &g);
+
+                /* glob success */
+                if(i==0)
+                {
+                        size_t n;
+                        for(n=0; n<g.gl_pathc; ++n)
+                        {
+                                if((unlink(g.gl_pathv[n])) < 0)
+                                {
+                                        status = false;
+                                        save_errno = errno;
+                                        break;
+                                }
+                        }
+
+                        globfree(&g);
+                }
+        }
 #endif
 
 	pfree(path);

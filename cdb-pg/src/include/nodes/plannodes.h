@@ -422,8 +422,13 @@ typedef struct AppendOnlyScan
 {
 	Scan		scan;
 	/* nothing for now... */
-	
 } AppendOnlyScan;
+
+typedef struct AOCSScan
+{
+	Scan		scan;
+	/* nothing for now... */
+} AOCSScan; 
 
 /*
  * ==========
@@ -878,5 +883,6 @@ typedef struct Motion
 } Motion;
 
 #endif   /* PLANNODES_H */
+
 
 

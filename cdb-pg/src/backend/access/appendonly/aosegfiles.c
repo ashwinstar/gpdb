@@ -31,16 +31,9 @@
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
 
-typedef enum
-{
-	SegfileNoLock,
-	SegfileTryLock,
-	SegfileForceLock
-} SegfileLockStrategy;
+static FileSegInfo *GetFileSegInfo(Relation parentrel, int segno, 
+                SegfileLockStrategy lockstrategy);
 
-static FileSegInfo *GetFileSegInfo(Relation parentrel,
-								   int segno,
-								   SegfileLockStrategy lockstrategy);
 
 static Datum ao_compression_ratio_internal(Oid relid);
 
@@ -745,7 +738,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	parentrel = heap_openrv(parentrv, RowExclusiveLock);
 
 	relstorage = parentrel->rd_rel->relstorage;
-	if(relstorage != RELSTORAGE_AO)
+	if(!relstorage_is_ao(relstorage))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("'%s' is not an append-only relation", relname)));
@@ -949,7 +942,7 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 		 * verify this is an AO relation
 		 */
 		relstorage = parentrel->rd_rel->relstorage;
-		if(relstorage != RELSTORAGE_AO)
+		if(!relstorage_is_ao(relstorage))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("'%s' is not an append-only relation",
@@ -1124,7 +1117,7 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 		 * verify this is an AO relation
 		 */
 		relstorage = parentrel->rd_rel->relstorage;
-		if(relstorage != RELSTORAGE_AO)
+		if(!relstorage_is_ao(relstorage))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("'%s' is not an append-only relation",
@@ -1309,7 +1302,7 @@ ao_compression_ratio_internal(Oid relid)
 	parentrel = heap_open(relid, AccessShareLock);
 
 	relstorage = parentrel->rd_rel->relstorage;
-	if(relstorage != RELSTORAGE_AO)
+	if(!relstorage_is_ao(relstorage))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("'%s' is not an append-only relation",
