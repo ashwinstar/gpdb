@@ -44,7 +44,14 @@ def get_unittest_logger():
         set_file_logging(filename)
     return LOGGER
 
-        
+
+def setup_helper_tool_logging(appName,hostname,userName):
+    """ for cmd line utilities that get called by tools.  we want the same
+        log format but we dont want to log to ~/gpAdminLogs
+    """
+    logger = get_default_logger()
+    logger.name="%s:%s" % (hostname,userName)
+    return logger
 
 def setup_tool_logging(appName,hostname,userName):
     """ sets up the logging as per standard GP Tools should  """

@@ -43,40 +43,42 @@ class SegStartStatus():
 #-------------------------------------------------------------------------    
 class GpSegStart():
     ######
-    def __init__(self,dblist,gpversion,collation):
+    def __init__(self,dblist,gpversion,collation,trust):
         self.dblist=dblist
         self.expected_gpversion=gpversion
         self.pool = base.WorkerPool(numWorkers=len(dblist))
+        self.trust = trust
         
         self.gphome=os.path.abspath(os.pardir)
         
-        
-        self.actual_gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
-        if self.actual_gpversion != self.expected_gpversion:
-            raise Exception("Local Software Version does not match what is expected.\n"
-                            "The local software version is: '%s'\n"
-                            "But we were expecting it to be: '%s'\n"
-                            "Please review and correct" % (self.actual_gpversion,self.expected_gpversion))
-                            
-        
-        collation_strings=collation.split(':')
-        if len(collation_strings) != 3:
-            raise Exception("Invalid collation string specified!")
-        (self.expected_lc_collate,self.expected_lc_monetary,self.expected_lc_numeric)=collation_strings
+        if not self.trust:
+            self.actual_gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
+            if self.actual_gpversion != self.expected_gpversion:
+                raise Exception("Local Software Version does not match what is expected.\n"
+                                "The local software version is: '%s'\n"
+                                "But we were expecting it to be: '%s'\n"
+                                "Please review and correct" % (self.actual_gpversion,self.expected_gpversion))
+                                
+            
+            collation_strings=collation.split(':')
+            if len(collation_strings) != 3:
+                raise Exception("Invalid collation string specified!")
+            (self.expected_lc_collate,self.expected_lc_monetary,self.expected_lc_numeric)=collation_strings
         pass
 
     ######
     def start(self): 
         results=[]
         failures=False
-               
-        for dir in self.dblist:
-            if not os.path.isdir(dir):
-                logger.info("Segment data directory does not exist for: '%s'" % dir)
-                results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
-                self.dblist.remove(dir)
-                failures=True                        
-        
+
+        if not self.trust:
+            for dir in self.dblist:
+                if not os.path.isdir(dir):
+                    logger.info("Segment data directory does not exist for: '%s'" % dir)
+                    results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
+                    self.dblist.remove(dir)
+                    failures=True                        
+            
         logger.info("Starting segments...")       
         for dir in self.dblist:
             cmd=gp.SegmentStart("Starting seg at dir %s" % dir,dir)
@@ -99,19 +101,21 @@ class GpSegStart():
             port = pgconf_dict.int('port')
             dburl = dbconn.DbURL(port=port)
             conn = dbconn.connect(dburl, utility=True)
-            (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
-            if lc_collate != self.expected_lc_collate:
-                raise Exception("Segment's value of lc_collate does not match the master.\n"
-                                " Master had value: '%s' while this segment has: '%s'" %\
-                                (self.expected_lc_collate,lc_collate))                
-            if lc_monetary != self.expected_lc_monetary:
-                raise Exception("Segment's value of lc_monetary does not match the master.\n"
-                                " Master had value: '%s' while this segment has: '%s'" %\
-                                (self.expected_lc_monetary,lc_monetary))
-            if lc_numeric != self.expected_lc_numeric:
-                raise Exception("Segment's value of lc_numeric does not match the master.\n"
-                                " Master had value: '%s' while this segment has: '%s'" %\
-                                (self.expected_lc_numeric,lc_numeric))
+            
+            if not self.trust:
+                (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
+                if lc_collate != self.expected_lc_collate:
+                    raise Exception("Segment's value of lc_collate does not match the master.\n"
+                                    " Master had value: '%s' while this segment has: '%s'" %\
+                                    (self.expected_lc_collate,lc_collate))                
+                if lc_monetary != self.expected_lc_monetary:
+                    raise Exception("Segment's value of lc_monetary does not match the master.\n"
+                                    " Master had value: '%s' while this segment has: '%s'" %\
+                                    (self.expected_lc_monetary,lc_monetary))
+                if lc_numeric != self.expected_lc_numeric:
+                    raise Exception("Segment's value of lc_numeric does not match the master.\n"
+                                    " Master had value: '%s' while this segment has: '%s'" %\
+                                    (self.expected_lc_numeric,lc_numeric))
             conn.close()
         
         self.pool.haltWork()
@@ -158,6 +162,8 @@ def parseargs():
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                       help="expected software version")
     
+    parser.add_option('--trust', action='store_true', help='do not perform any safety checks... no seatbelts')
+
     
     
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
@@ -180,7 +186,7 @@ def main():
         figleaf.start()
         
     try:
-        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+        gplog.setup_helper_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
     
         logger.info("Starting gpsegstart with args: %s" % ' '.join(sys.argv[1:]))
         
@@ -194,7 +200,7 @@ def main():
         
         logger.info("options.gpversion: %s" % options.gpversion )
         
-        gpsegstart = GpSegStart(options.dblist,options.gpversion,options.collation)
+        gpsegstart = GpSegStart(options.dblist,options.gpversion,options.collation,options.trust)
         
         failures = gpsegstart.start()
         

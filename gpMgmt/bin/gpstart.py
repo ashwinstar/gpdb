@@ -37,12 +37,6 @@ TODO: Items""",
 
 "* implement gp.chk_gpdb_id",
 
-"* add a 'trust' mode that does minimal safety checks",
-
-"* Fails if a host can't be found in a pre-existing host cache",
-
-"* Host cache contains duplicate entries",
-
 "* dump more identification in _process_segment_start()"]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -123,9 +117,7 @@ class GpStart():
         logger.info("Commencing recovery startup checks")
         
         lockfile="/tmp/.s.PGSQL.%s" % self.port
-        cmd=unix.FileDirExists('check for /tmp/.s.PGSQL file file',lockfile)
-        cmd.run(validateAfter=True)    
-        tmpfile_exists = cmd.filedir_exists()        
+        tmpfile_exists = os.path.exists(lockfile)
         
         netstat_port_active = unix.PgPortIsActive.local('check netstat for master port',
                                                         lockfile, self.port)
@@ -143,11 +135,14 @@ class GpStart():
         
         logger.info("No Master instance process, entering recovery startup mode")
         
-        logger.info("Clearing Master instance lock files")        
-        os.remove(lockfile)
+        if tmpfile_exists:
+            logger.info("Clearing Master instance lock files")        
+            os.remove(lockfile)
         
-        logger.info("Clearing Master instance pid file")
-        os.remove("%s/postmaster.pid" % self.master_datadir)
+        postmaster_pid_file = "%s/postmaster.pid" % self.master_datadir
+        if os.path.exists(postmaster_pid_file): 
+            logger.info("Clearing Master instance pid file")
+            os.remove("%s/postmaster.pid" % self.master_datadir)
         
         self.startMaster()
         
@@ -318,15 +313,17 @@ class GpStart():
                         reasonStr = fields[3].split(':')[1]
                         
                         if started.lower() == 'false':
-                            dbs = hostdict[cmd.remoteHost]
-                            for db in dbs:
-                                if db.datadir == dir:
-                                    failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )
+                            success=False
                         else:
-                            dbs = hostdict[cmd.remoteHost]
-                            for db in dbs:
-                                if db.datadir == dir:
+                            success=True
+                            
+                        dbs = hostdict[cmd.remoteHost]
+                        for db in dbs:
+                            if db.datadir == dir:
+                                if success:
                                     success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
+                                else:
+                                    failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
             else:
                 #TODO:  better handling and formatting.
                 logger.error("Failed Executing command: '%s' " % cmd.get_results())
