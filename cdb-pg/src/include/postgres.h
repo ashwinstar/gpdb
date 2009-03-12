@@ -305,6 +305,12 @@ static inline float8 DatumGetFloat8(Datum d) { Datum_U du; du.d = d; return du.f
 static inline Datum Float8GetDatum(float8 f) { Datum_U du; du.f8 = f; return du.d; }
 static inline Datum Float8GetDatumFast(float8 f) { return Float8GetDatum(f); }
 
+static inline bool IsAligned(void *p, int align)
+{
+        int64 i = (int64) PointerGetDatum(p);
+        return i == TYPEALIGN(align, i);
+}
+
 /* ----------------------------------------------------------------
  *				Section 3:	exception handling definitions
  *							Assert, Trap, etc macros

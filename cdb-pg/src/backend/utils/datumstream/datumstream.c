@@ -36,7 +36,7 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
 
 		*datum = PointerGetDatum(acc->datump);
                 /* XXX To Remove */
-                Assert(VARSIZE_ANY(*datum) <= 1000);
+                Assert(VARSIZE_ANY_D(*datum) <= 1000);
         }
 	else if(acc->datumlen == 1)
 		*datum = *(uint8 *) acc->datump;

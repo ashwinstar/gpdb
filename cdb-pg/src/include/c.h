@@ -623,12 +623,6 @@ typedef NameData *Name;
 #define DOUBLEALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_DOUBLE, (LEN))
 #define MAXALIGN_DOWN(LEN)		TYPEALIGN_DOWN(MAXIMUM_ALIGNOF, (LEN))
 
-static inline bool IsAligned(void *p, int align)
-{
-        int64 i = (int64) p;
-        return i == TYPEALIGN(align, i);
-}
-
 /* ----------------------------------------------------------------
  *				Section 6:	widely useful macros
  * ----------------------------------------------------------------
