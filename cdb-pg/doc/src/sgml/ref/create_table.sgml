@@ -63,6 +63,7 @@ where <replaceable>storage_parameter</replaceable> is:
 
    APPENDONLY={TRUE|FALSE}
    [COMPRESSLEVEL={0-9}]
+   [COMPRESSTYPE={ZLIB | QUICKLZ}]
    [FILLFACTOR={10-100}]
 
 where <replaceable>column_constraint</replaceable> is:
