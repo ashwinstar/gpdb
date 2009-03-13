@@ -14,6 +14,10 @@
 #	libpgport_srv.a - contains object files without FRONTEND defined,
 #		for use only by the backend binaries
 #
+# LIBOBJS is set by configure (via Makefile.global) to be the list of
+# object files that are conditionally needed as determined by configure's probing.
+# OBJS adds additional object files that are always compiled.
+#
 # IDENTIFICATION
 #    $PostgreSQL: pgsql/src/port/Makefile,v 1.33 2006/07/14 16:45:43 tgl Exp $
 #
@@ -81,6 +85,7 @@ pg_config_paths.h: $(top_builddir)/src/Makefile.global
 	echo "#define PKGLIBDIR \"$(pkglibdir)\"" >>$@
 	echo "#define LOCALEDIR \"$(localedir)\"" >>$@
 	echo "#define DOCDIR \"$(docdir)\"" >>$@
+	echo "#define HTMLDIR \"$(htmldir)\"" >>$@
 	echo "#define MANDIR \"$(mandir)\"" >>$@
 
 clean distclean maintainer-clean:

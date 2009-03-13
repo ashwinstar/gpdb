@@ -3,12 +3,12 @@
  * path.c
  *	  portable path handling routines
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/path.c,v 1.74 2008/01/01 19:46:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/path.c,v 1.76 2009/01/01 17:24:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -600,6 +600,15 @@ get_doc_path(const char *my_exec_path, char *ret_path)
 }
 
 /*
+ *	get_html_path
+ */
+void
+get_html_path(const char *my_exec_path, char *ret_path)
+{
+	make_relative_path(ret_path, HTMLDIR, PGBINDIR, my_exec_path);
+}
+
+/*
  *	get_man_path
  */
 void
@@ -619,11 +628,12 @@ bool
 get_home_path(char *ret_path)
 {
 #ifndef WIN32
-	struct passwd *pwd = get_gp_passwdptr(); 
+	char		pwdbuf[BUFSIZ];
+	struct passwd pwdstr;
+	struct passwd *pwd = NULL;
 
-	if (!pwd)
+	if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
 		return false;
-
 	strlcpy(ret_path, pwd->pw_dir, MAXPGPATH);
 	return true;
 #else
