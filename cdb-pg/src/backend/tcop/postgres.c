@@ -2902,7 +2902,7 @@ start_xact_command(void)
 
 		/* Set statement timeout running, if any */
 		/* NB: this mustn't be enabled until we are within an xact */
-		if (StatementTimeout > 0)
+		if (StatementTimeout > 0 && Gp_role != GP_ROLE_EXECUTE)
 			enable_sig_alarm(StatementTimeout, true);
 		else
 			cancel_from_timeout = false;
