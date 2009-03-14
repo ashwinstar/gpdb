@@ -1714,7 +1714,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 							 clist; 
 							 clist = clist->next)
 						{
-							char *host, *path, *tokenizer;
+							char *host, *path, *tokenizer = NULL;
 
 							if (obj->u.input.type == MAPRED_INPUT_GPFDIST)
 								bufcat(&buffer, "'gpfdist://");
@@ -2013,7 +2013,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 							}
 							else
 							{
-								char *pname, *ptype, *toktype;
+								char *pname, *ptype, *toktype = NULL;
 
 								/* create the returns as specified */
 								pname = "key";
