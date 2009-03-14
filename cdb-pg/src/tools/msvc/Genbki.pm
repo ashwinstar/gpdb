@@ -65,7 +65,7 @@ sub genbki
     $indata =~ s{^TransactionId}{xid}gm;
     $indata =~ s{\(TransactionId}{(xid}g;
     $indata =~ s{PGUID}{$bootstrapsuperuserid}g;
-    $indata =~ s{NAMEDATALEN}{$namedatalen}g;
+   # $indata =~ s{NAMEDATALEN}{$namedatalen}g;
     $indata =~ s{PGNSP}{$pgcatalognamespace}g;
 
     #print $indata;
