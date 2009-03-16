@@ -20,7 +20,7 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
 	Assert(acc && datum && null);
 	Assert(acc->is_reader);
 	
-	if(acc->nullp && (*acc->nullp & acc->nullbit))
+	if(acc->has_null && (*acc->nullp & acc->nullbit))
 	{
 		*null = true;
 		return 0;
@@ -30,13 +30,8 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
 
         if (acc->datumlen < 0)
         {
-                /* Might be zero paddings */
-                if(*acc->datump == 0)
-                        acc->datump = (char *) att_align(acc->datump, acc->align);
-
 		*datum = PointerGetDatum(acc->datump);
-                /* XXX To Remove */
-                Assert(VARSIZE_ANY_D(*datum) <= 1000);
+                Assert(VARATT_IS_SHORT_D(*datum) || !VARATT_IS_EXTENDED_D(*datum)); 
         }
 	else if(acc->datumlen == 1)
 		*datum = *(uint8 *) acc->datump;
@@ -63,6 +58,8 @@ int datumstream_get(DatumStream *acc, Datum *datum, bool *null)
 
 extern int datumstream_advance(DatumStream *acc)
 {
+        bool advdatump = true;
+
 	Assert(acc);
 	Assert(acc->is_reader);
         Assert(acc->nth <= acc->block.ndatum);
@@ -75,8 +72,11 @@ extern int datumstream_advance(DatumStream *acc)
         if(acc->nth == 0)
                 return 1;
 
-	if(acc->nullp)
-	{
+	if(acc->has_null)
+        {
+                if(*acc->nullp & acc->nullbit)
+                        advdatump = false;
+
                 acc->nullbit <<= 1;
                 if(acc->nullbit == 0)
                 {
@@ -85,19 +85,45 @@ extern int datumstream_advance(DatumStream *acc)
                 }
         }
 
-        if(*acc->nullp & acc->nullbit)
+        if(!advdatump)
                 return 1;
 
 	if(acc->datumlen < 0)
 	{
                 struct varlena *s = (struct varlena *) acc->datump;
+
+                Assert(acc->datumlen == -1);
                 acc->datump += VARSIZE_ANY(s);
+
+                /* Might be zero paddings */
+                if(*acc->datump == 0)
+                        acc->datump = (char *) att_align(acc->datump, acc->align);
+
+                Assert(acc->datump <= acc->dpbuf + acc->dpbufsz);
+                Assert((acc->has_null && (*acc->nullp & acc->nullbit))
+                                || VARATT_IS_SHORT_D(PointerGetDatum(acc->datump)) 
+                                || !VARATT_IS_EXTENDED_D(PointerGetDatum(acc->datump)) 
+                                ); 
 	}
 	else
 		acc->datump += acc->datumlen; 
 
 	return 1;
 }
+
+static inline void incr_acc_n(DatumStream *acc)
+{
+        acc->nullbit <<= 1;
+
+	if(acc->nullbit == 0)
+	{
+		++acc->nullp;
+		acc->nullbit = 1;
+	}
+
+        ++acc->nth;
+}
+
 
 int datumstream_put(DatumStream *acc, Datum d, bool null)
 {
@@ -107,18 +133,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
         {
                 acc->has_null = true;
 		*acc->nullp |= acc->nullbit;
-        }
-
-	acc->nullbit <<= 1;
-	if(acc->nullbit == 0)
-	{
-		++acc->nullp;
-		acc->nullbit = 1;
-	}
-
-        if(null)
-        {
-                ++acc->nth;
+                incr_acc_n(acc);
                 return 0;
         }
 
@@ -143,7 +158,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
 
                         memcpy(acc->datump, DatumGetPointer(d), sz);
                         acc->datump += sz;
-                        ++acc->nth;
+                        incr_acc_n(acc);
                         return sz;
                 }
                 else if(value_type_could_short(d, acc->typid))
@@ -155,7 +170,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
                         *(acc->datump) = VARSIZE_TO_SHORT_D(d);
                         memcpy(acc->datump+1, VARDATA_D(d), sz-1);
                         acc->datump += sz;
-                        ++acc->nth;
+                        incr_acc_n(acc);
                         return sz;
                 }
                 else
@@ -168,7 +183,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
                         acc->datump = att_align_zero(acc->datump, acc->align);
                         memcpy(acc->datump, DatumGetPointer(d), sz);
                         acc->datump += sz;
-                        ++acc->nth;
+                        incr_acc_n(acc);
                         return sz;
                 }
         }
@@ -204,7 +219,7 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
                         break;
         }
 
-        ++acc->nth;
+        incr_acc_n(acc);
         return acc->datumlen;
 }
 
