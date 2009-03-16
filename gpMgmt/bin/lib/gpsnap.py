@@ -322,9 +322,10 @@ class ZfsSnapshot(SnapshotMethod):
         (hname, sname) = self.fullname
         msg('Deleting snapshot of %s:%s' % self.fullname)
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hname,
-		'zfs destroy ' + sname]
+               'zfs destroy %s; rm -f %s' % (sname, self.ctlpath)]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
+        
 
     def checkSnapshot(self):
         (hname, sname) = self.fullname
