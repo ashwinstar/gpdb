@@ -6641,26 +6641,26 @@ select * from pg_catalog.pg_aggregate where aggfnoid < 10000 order by aggfnoid;
 
 -- end_equivalent
 -- begin_equivalent
-select * from old_namespace where oid < 10000 order by oid;
- oid  |    nspname     | nspowner |        nspacl        
-------+----------------+----------+----------------------
-   11 | pg_catalog     |       10 | {swm=UC/swm,=U/swm}
-   99 | pg_toast       |       10 | 
- 2200 | public         |       10 | {swm=UC/swm,=UC/swm}
- 3012 | pg_bitmapindex |       10 | 
- 6104 | pg_aoseg       |       10 | 
- 6106 | pg_aocsseg     |       10 | 
+select oid, nspname, nspowner from old_namespace where oid < 10000 order by oid;
+ oid  |    nspname     | nspowner 
+------+----------------+----------
+   11 | pg_catalog     |       10
+   99 | pg_toast       |       10
+ 2200 | public         |       10
+ 3012 | pg_bitmapindex |       10
+ 6104 | pg_aoseg       |       10
+ 6106 | pg_aocsseg     |       10
 (6 rows)
 
-select oid, * from pg_catalog.pg_namespace where oid < 10000 order by oid;
- oid  |    nspname     | nspowner |        nspacl        
-------+----------------+----------+----------------------
-   11 | pg_catalog     |       10 | {swm=UC/swm,=U/swm}
-   99 | pg_toast       |       10 | 
- 2200 | public         |       10 | {swm=UC/swm,=UC/swm}
- 3012 | pg_bitmapindex |       10 | 
- 6104 | pg_aoseg       |       10 | 
- 6106 | pg_aocsseg     |       10 | 
+select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000 order by oid;
+ oid  |    nspname     | nspowner 
+------+----------------+----------
+   11 | pg_catalog     |       10
+   99 | pg_toast       |       10
+ 2200 | public         |       10
+ 3012 | pg_bitmapindex |       10
+ 6104 | pg_aoseg       |       10
+ 6106 | pg_aocsseg     |       10
 (6 rows)
 
 -- end_equivalent
