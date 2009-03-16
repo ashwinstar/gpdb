@@ -512,7 +512,7 @@ try:
             GV.newHosts.append(host)
             
     if not GV.newHosts:
-        print >> sys.stderr, '[ERROR] no valid new hosts specified; at least new host must be specified for key exchange'
+        print >> sys.stderr, '[ERROR] no valid new hosts specified; at least one new host must be specified for key exchange'
         sys.exit(1)
     
     GV.allHosts.extend( GV.newHosts )
