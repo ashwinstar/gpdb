@@ -24,6 +24,7 @@ fileset = {
     'err.h':             [],
     'float.h':           [],
     'gssapi.h':			 [],
+    'gssapi/gssapi.h':		 [],
     'ia64/sys/inline.h': [],
     'io.h':              [],
     'ioctl.h':           [],
