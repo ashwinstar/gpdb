@@ -140,11 +140,18 @@ def run(cmd):
 
 def runas(cmd):
     if GV.opt['-u']:
-	x = ['su', '-', GV.opt['-u'], '-c', 'bash -i']
+	x = ['su', '-', GV.opt['-u'], '-c', 'bash']
         vvmsg(" ".join(x))
         p = subprocess.Popen(x, 
 			     stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE)
+	path = os.getenv('PATH')
+	ld_library_path = os.getenv('LD_LIBRARY_PATH')
+	dyld_library_path = os.getenv('DYLD_LIBRARY_PATH')
+	cmd1 = ('export PATH="%s"\n' % path +
+		'export LD_LIBRARY_PATH="%s"\n' % ld_library_path +
+		'export DYLD_LIBRARY_PATH="%s"\n' % dyld_library_path)
+	p.stdin.write(cmd1)
 	p.stdin.write(cmd)
 	p.stdin.close()
         out = p.stdout.readlines()
