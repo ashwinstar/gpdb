@@ -479,6 +479,12 @@ CdbShutdownPortals(void);
 bool
 cdbdisp_check_estate_for_cancel(EState *estate);
 
+/* 
+ * make a plan constant, if possible. Call must say if we're doing single row
+ * inserts.
+ */
+extern Node *make_plan_constant(Node *n, bool is_SRI);
+
 /*--------------------------------------------------------------------*/
 
 #endif   /* CDBDISP_H */

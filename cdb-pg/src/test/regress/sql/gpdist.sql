@@ -284,3 +284,91 @@ INSERT INTO customer_on VALUES (597, 'Customer#000000597', 'Dbv,XVGzl4X', 15, '2
 INSERT INTO customer_on VALUES (599, 'Customer#000000599', 'fIvpza0tlXAVjOAPkWN5,DiU0DO4e5NkfgOlXpDI', 4, '14-916-825-6916', 6004.52, 'HOUSEHOLD ', 'thely even requests wake carefully regular theodolites. instructions haggle alongside of the f');
 
 SELECT * from customer_off a, customer_off b where a.gp_segment_id <> b.gp_segment_id and a.c_custkey = b.c_custkey;
+
+-- Test partitioned tables which have child with different distribution policies
+
+set gp_enable_fast_sri to on;
+-- single level case
+create table pt (i int, j int, k int) distributed by (i) partition by range(k)
+(start(1) end(10) every(2));
+alter table pt_1_prt_1 set distributed by (j);
+alter table pt_1_prt_2 set distributed randomly;
+alter table pt_1_prt_2 set distributed by (k);
+insert into pt values(1, 1, 1);
+insert into pt values(2, 2, 2);
+insert into pt values(3, 3, 3);
+insert into pt values(4, 4, 4);
+insert into pt values(5, 5, 5);
+insert into pt values(6, 6, 6);
+insert into pt values(7, 7, 7);
+
+select * from pt;
+
+create table pt_1 (i int, j int, k int) distributed by (j);
+create table pt_2 (i int, j int, k int) distributed randomly;
+create table pt_3 (i int, j int, k int) distributed by (k);
+create table pt_4 (i int, j int, k int) distributed by (i);
+
+insert into pt_1 values(1, 1, 1);
+insert into pt_1 values(2, 2, 2);
+insert into pt_2 values(3, 3, 3);
+insert into pt_2 values(4, 4, 4);
+insert into pt_3 values(5, 5, 5);
+insert into pt_3 values(6, 6, 6);
+insert into pt_4 values(7, 7, 7);
+
+select gp_segment_id, * from pt_1_prt_1 except 
+select gp_segment_id, * from pt_1;
+select gp_segment_id, * from pt_1_prt_3 except 
+select gp_segment_id, * from pt_3;
+select gp_segment_id, * from pt_1_prt_4 except 
+select gp_segment_id, * from pt_4;
+drop table pt, pt_1, pt_2, pt_3, pt_4;
+
+-- sub partitioned case
+create table pt(i int, j int, k int, l char(2)) distributed by (i)
+partition by range(k) subpartition by list(l) subpartition template(values('A'),
+values('B')) (start(30) end(50) every(10));
+alter table pt set distributed randomly;
+
+insert into pt values(35, 35, 35, 'A');
+insert into pt values(36, 35, 35, 'A');
+insert into pt values(37, 35, 35, 'A');
+insert into pt values(38, 35, 35, 'A');
+
+create table pt_1 (like pt_1_prt_1);
+insert into pt_1 values(35, 35, 35, 'A');
+insert into pt_1 values(36, 35, 35, 'A');
+insert into pt_1 values(37, 35, 35, 'A');
+insert into pt_1 values(38, 35, 35, 'A');
+
+select gp_segment_id, * from pt except
+select gp_segment_id, * from pt_1;
+
+alter table pt_1_prt_2 set distributed by (j);
+insert into pt values(45, 45, 45, 'B');
+insert into pt values(45, 46, 46, 'B');
+insert into pt values(45, 47, 47, 'B');
+create table pt_2 (like pt_1_prt_2_2_prt_2);
+insert into pt_2 values(45, 45, 45, 'B');
+insert into pt_2 values(45, 46, 46, 'B');
+insert into pt_2 values(45, 47, 47, 'B');
+
+select gp_segment_id, * from pt  where k > 40 and l = 'B' except
+select gp_segment_id, * from pt_2;
+
+alter table pt_1_prt_2_2_prt_1 set distributed by (j);
+insert into pt values(45, 45, 45, 'A');
+insert into pt values(45, 46, 46, 'A');
+insert into pt values(45, 47, 47, 'A');
+create table pt_3 (like pt_1_prt_2_2_prt_1);
+insert into pt_3 values(45, 45, 45, 'A');
+insert into pt_3 values(45, 46, 46, 'A');
+insert into pt_3 values(45, 47, 47, 'A');
+
+select gp_segment_id, * from pt  where k > 40 and l = 'A' except
+select gp_segment_id, * from pt_3;
+
+-- make sure we're not seeing things
+select * from pt order by 1, 2, 3, 4;
+drop table pt, pt_1, pt_2, pt_3;

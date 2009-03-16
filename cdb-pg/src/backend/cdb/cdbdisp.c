@@ -3689,6 +3689,20 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 }	/* cdbdisp_dispatchX */
 
 /*
+ * Evaluate functions to constants.
+ */
+Node *
+make_plan_constant(Node *n, bool is_SRI)
+{
+	pre_dispatch_function_evaluation_context pcontext;
+
+	pcontext.single_row_insert = is_SRI;
+
+	return plan_tree_mutator(n, pre_dispatch_function_evaluation_mutator,
+							 &pcontext);
+}
+
+/*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.  (A plan tree will correspond either
  * to an initPlan or to the main plan.)
@@ -3747,11 +3761,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
+	bool		is_SRI;
 	
 	DispatchCommandQueryParms queryParms;
  
-	pre_dispatch_function_evaluation_context pcontext;
-
 	*pPrimaryResults = NULL;
 	if (pMirrorResults)
 		*pMirrorResults = NULL;
@@ -3788,7 +3801,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 *
 	 */
 
-	pcontext.single_row_insert = false;
+	is_SRI = false;
 
 	if (queryDesc->operation == CMD_INSERT)
 	{
@@ -3796,9 +3809,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 		if (queryDesc->parsetree->jointree != NULL)
 			if (queryDesc->parsetree->jointree->fromlist == NIL)
-				pcontext.single_row_insert = true;
+				is_SRI = true;
 		
-		if (queryDesc->operation == CMD_INSERT && !pcontext.single_row_insert)
+		if (queryDesc->operation == CMD_INSERT && !is_SRI)
 			clear_relsize_cache();
 	}
 
@@ -3842,19 +3855,13 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 				oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
-		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
-									pre_dispatch_function_evaluation_mutator,
-														 &pcontext);
-
+		queryDesc->plantree = (Plan *) make_plan_constant((Node *) queryDesc->plantree, is_SRI);
 
 		/* 
 		 * It's fine to use plan_tree_mutator() because it calls
 		 * expression_tree_mutator recursively
 		 */
-		queryDesc->parsetree =
-			(Query *)plan_tree_mutator((Node *)queryDesc->parsetree,
-									   pre_dispatch_function_evaluation_mutator,
-									   &pcontext);
+		queryDesc->parsetree = (Query *)make_plan_constant((Node *)queryDesc->parsetree, is_SRI);
 
 		if (savetargets != NIL)
 		{

@@ -23,6 +23,7 @@
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 #include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
 
+#include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_policy.h"
@@ -31,6 +32,7 @@
 #include "catalog/pg_proc.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbfts.h"         /* isFTSEnabled() */
 #include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 #include "cdb/cdbllize.h"
@@ -41,6 +43,7 @@
 
 #include "nodes/print.h"
 
+#include "executor/executor.h"
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
@@ -399,18 +402,15 @@ apply_motion(Plan *plan, Query *query)
 				{
 					case POLICYTYPE_PARTITIONED:
                     {
-                        List   *hashExpr;
+                        List   *hashExpr = NIL;
 
-			            /*
+						/*
 			             * Make sure the top level flow is partitioned on the
                          * partitioning key of the target relation.	Since this
                          * is an INSERT command, the target list will correspond
                          * to the attributes of the target relation in order.
 			             */
-						hashExpr = getExprListFromTargetList(plan->targetlist,
-															 targetPolicy->nattrs,
-															 targetPolicy->attrs,
-															 true);
+					
 
 						/* Is this plan an all-const insert ? */
 						if (gp_enable_fast_sri && IsA(plan, Result))
@@ -419,7 +419,122 @@ apply_motion(Plan *plan, Query *query)
 							bool	typesOK=true;
 							Var		*elem;
 							Oid		att_type;
+							PartitionNode *pn;
+							RangeTblEntry	*rte;
+					        Relation		rel;
+		
+					        rte = rt_fetch(query->resultRelation, query->rtable);
+        					rel = relation_open(rte->relid, NoLock);
 
+							/* 1: See if it's partitioned */
+							pn = RelationBuildPartitionDesc(rel, false);
+
+							if (pn && !partition_policies_equal(targetPolicy, pn))
+							{
+								/* 2: See if partitioning columns are constant */
+								List *partatts = get_partition_attrs(pn);
+								ListCell *lc;
+								bool all_const = true;
+
+								foreach(lc, partatts)
+								{
+									List *tl = plan->targetlist;
+									ListCell *cell;
+									AttrNumber attnum = lfirst_int(lc);
+									bool found = false;
+
+									foreach(cell, tl)
+									{
+										TargetEntry *tle = (TargetEntry *)lfirst(cell);
+
+										Assert(tle->expr);
+										if (tle->resno == attnum)
+										{
+											found = true;
+											if (!IsA(tle->expr, Const))
+												all_const = false;
+											break;
+										}
+									}
+									Assert(found);
+								}
+
+								/* 3: if not, mutate plan to make constant */
+								if (!all_const)
+									plan->targetlist = (List *)make_plan_constant((Node *)plan->targetlist, true);
+
+								/* better be constant now */
+								if (allConstantValuesClause(plan))
+								{
+									bool *nulls;
+									Datum *values;
+									EState *estate = CreateExecutorState();
+        							Size sz;
+									ResultRelInfo *rri;
+
+									/* 4: build tuple, look up partitioning key */
+									nulls = palloc0(sizeof(bool) * rel->rd_att->natts);
+									values = palloc(sizeof(Datum) * rel->rd_att->natts);
+
+									foreach(lc, partatts)
+									{
+										AttrNumber attnum = lfirst_int(lc);
+										List *tl = plan->targetlist;
+										ListCell *cell;
+
+										foreach(cell, tl)
+										{
+											TargetEntry *tle = (TargetEntry *)lfirst(cell);
+
+											Assert(tle->expr);
+
+											if (tle->resno == attnum)
+											{
+												Assert(IsA(tle->expr, Const));
+												
+												nulls[attnum - 1] = ((Const *)tle->expr)->constisnull;
+												if (!nulls[attnum - 1])
+													values[attnum - 1] = ((Const *)tle->expr)->constvalue;
+											}
+										}
+									}
+									estate->es_result_partitions = pn;
+							        estate->es_partition_state = makeNode(PartitionState);
+
+							        sz = num_partition_levels(estate->es_result_partitions);
+							        sz *= sizeof(void *);
+							        estate->es_partition_state->amstate = palloc0(sz);
+							        estate->es_partition_state->max_partition_attr =
+						            	max_partition_attr(estate->es_result_partitions);
+							        estate->es_partition_state->result_partition_array_size = 1;
+								    rri = makeNode(ResultRelInfo);
+								    rri->ri_RangeTableIndex = 1;      /* dummy */
+								    rri->ri_RelationDesc = rel;
+
+									estate->es_result_relations = rri;
+									estate->es_num_result_relations = 1;
+									estate->es_result_relation_info = rri;
+									rri = values_get_partition(values, nulls, RelationGetDescr(rel),
+															   estate);
+
+									/* 5: get target policy for destination table */
+									targetPolicy = RelationGetPartitioningKey(rri->ri_RelationDesc);
+
+									if (targetPolicy->ptype != POLICYTYPE_PARTITIONED)
+										elog(ERROR, "policy must be partitioned");
+
+									ExecCloseIndices(rri);
+									heap_close(rri->ri_RelationDesc, NoLock);
+									FreeExecutorState(estate);
+								}
+
+							}
+					        relation_close(rel, NoLock);
+
+				           	hashExpr = getExprListFromTargetList(plan->targetlist,
+																 targetPolicy->nattrs,
+																 targetPolicy->attrs,
+																 true);
 							/* check the types. */
 							foreach(cell, hashExpr)
 							{
@@ -456,6 +571,13 @@ apply_motion(Plan *plan, Query *query)
 								List	*hList = NIL;
 								int		i;
 
+								/* 
+								 * If this table has child tables, we need to
+								 * find out distination partition and see what
+								 * the policy for that is. It might be
+								 * different!
+								 */
+
 								/* build our list */
 								for (i = 0; i < targetPolicy->nattrs; i++)
 								{
@@ -488,6 +610,12 @@ apply_motion(Plan *plan, Query *query)
 							if (!IsA(plan, Result) || !((Result *)plan)->hashFilter)
 								plan->flow->hashExpr = NIL;
 
+						if (!hashExpr)
+				           	hashExpr = getExprListFromTargetList(plan->targetlist,
+																 targetPolicy->nattrs,
+																 targetPolicy->attrs,
+																 true);
+			
                         if (!repartitionPlan(plan, true, false, false, hashExpr))
                             ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
                                             errmsg("Cannot parallelize that INSERT yet")));
