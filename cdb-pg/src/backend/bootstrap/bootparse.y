@@ -27,13 +27,16 @@
 #include "access/xact.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/catalog.h"
+#include "catalog/gp_configuration.h"
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_aocs.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
+#include "catalog/pg_type.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
@@ -200,6 +203,26 @@ Boot_CreateStmt:
 					else
 					{
 						Oid id;
+						Oid typid = InvalidOid;
+
+						/* boot strap new table types for 3.3 */
+						switch ($6)
+						{
+							case GpInterfacesRelationId:
+								typid = GPINTERFACES_RELTYPE_OID;
+								break;
+							case GpConfigHistoryRelationId:
+								typid = GP_CONFIG_HISTORY_RELTYPE_OID;
+								break;
+							case AOCSRelationId:
+								typid = PGAOCS_RELTYPE_OID;
+								break;
+							case GpDbInterfacesRelationId:
+								typid = GP_DB_INTERFACES_RELTYPE_OID; 
+								break;
+							default:
+								break;
+						}
 
 						id = heap_create_with_catalog(LexIDStr($5),
 													  PG_CATALOG_NAMESPACE,
@@ -215,7 +238,7 @@ Boot_CreateStmt:
 													  NULL,			/*CDB*/
 													  (Datum) 0,
 													  true,
-													  0);
+													  &typid);
 						elog(DEBUG4, "relation created with oid %u", id);
 					}
 					do_end();

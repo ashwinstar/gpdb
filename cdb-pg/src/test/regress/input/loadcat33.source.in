@@ -1,0 +1,31 @@
+begin;
+copy @gpupgradeschemaname@.pg_class from '@gpupgradedatadir@/upg2_pg_class_toadd.data' oids null E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_attribute from '@gpupgradedatadir@/upg2_pg_attribute_toadd.data' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_index from '@gpupgradedatadir@/upg2_pg_index_toadd.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
+-- fix up pg_appendonly
+alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
+
+-- adjust 3.2 quicklz
+update @gpupgradeschemaname@.pg_appendonly set compresstype = 'quicklz', compresslevel = compresslevel - 10 where compresslevel > 10;
+update @gpupgradeschemaname@.pg_appendonly set compresstype = 'zlib' where compresslevel < 10;
+
+-- upgrade pg_partitions.parantpartitioname
+update pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+commit;
+
+reindex table @gpupgradeschemaname@.pg_appendonly;
+-- will error out in regression tests, this is expected
+reindex table pg_aocs;
+-- will error out in regression tests, this is expected
+reindex table gp_configuration_history;
+-- will error out in regression tests, this is expected
+reindex table gp_db_interfaces;
+-- will error out in regression tests, this is expected
+reindex table gp_interfaces;
+

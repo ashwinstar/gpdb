@@ -905,39 +905,50 @@ heap_create_with_catalog(const char *relname,
 	 *
 	 * NOTE: we could get a unique-index failure here, in case the same name
 	 * has already been used for a type.
+	 *
+	 * Don't create the shell type if the bootstrapper tells us it already
+	 * knows what it is. Importing for upgrading.
 	 */
-	if (comptypeOid==NULL || *comptypeOid == InvalidOid)
-	new_type_oid = AddNewRelationType(relname,
-									  relnamespace,
-									  relid,
-									  relkind);
+	if (IsBootstrapProcessingMode() &&
+		(PointerIsValid(comptypeOid) && OidIsValid(*comptypeOid)))
+	{
+		new_type_oid = *comptypeOid;
+	}
 	else
 	{
-		new_type_oid = TypeCreateWithOid(relname,	/* type name */
-				   relnamespace,		/* type namespace */
-				   relid, /* relation oid */
-				   relkind,	/* relation kind */
-				   -1,			/* internal size (varlena) */
-				   'c',			/* type-type (complex) */
-				   ',',			/* default array delimiter */
-				   F_RECORD_IN, /* input procedure */
-				   F_RECORD_OUT,	/* output procedure */
-				   F_RECORD_RECV,		/* receive procedure */
-				   F_RECORD_SEND,		/* send procedure */
-				   InvalidOid,	/* analyze procedure - default */
-				   InvalidOid,	/* array element type - irrelevant */
-				   InvalidOid,	/* domain base type - irrelevant */
-				   NULL,		/* default value - none */
-				   NULL,		/* default binary representation */
-				   false,		/* passed by reference */
-				   'd',			/* alignment - must be the largest! */
-				   'x',			/* fully TOASTable */
-				   -1,			/* typmod */
-				   0,			/* array dimensions for typBaseType */
-				   false,
-				   *comptypeOid);		/* Type NOT NULL */
+		if (comptypeOid == NULL || *comptypeOid == InvalidOid)
+			new_type_oid = AddNewRelationType(relname,
+											  relnamespace,
+											  relid,
+											  relkind);
+		else
+		{
+			new_type_oid = TypeCreateWithOid(relname,	/* type name */
+					   relnamespace,		/* type namespace */
+					   relid, /* relation oid */
+					   relkind,	/* relation kind */
+					   -1,			/* internal size (varlena) */
+					   'c',			/* type-type (complex) */
+					   ',',			/* default array delimiter */
+					   F_RECORD_IN, /* input procedure */
+					   F_RECORD_OUT,	/* output procedure */
+					   F_RECORD_RECV,		/* receive procedure */
+					   F_RECORD_SEND,		/* send procedure */
+					   InvalidOid,	/* analyze procedure - default */
+					   InvalidOid,	/* array element type - irrelevant */
+					   InvalidOid,	/* domain base type - irrelevant */
+					   NULL,		/* default value - none */
+					   NULL,		/* default binary representation */
+					   false,		/* passed by reference */
+					   'd',			/* alignment - must be the largest! */
+					   'x',			/* fully TOASTable */
+					   -1,			/* typmod */
+					   0,			/* array dimensions for typBaseType */
+					   false,
+					   *comptypeOid);		/* Type NOT NULL */
 				
-		Assert(new_type_oid == *comptypeOid);
+			Assert(new_type_oid == *comptypeOid);
+		}
 	}
 
 	if (comptypeOid)

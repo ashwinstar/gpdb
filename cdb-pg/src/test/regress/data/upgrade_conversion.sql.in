@@ -1,0 +1,21 @@
+update @gpupgradeschemaname@.pg_conversion set conforencoding = conforencoding + 1 where conforencoding >= 34;
+update @gpupgradeschemaname@.pg_conversion set contoencoding = contoencoding + 1 where contoencoding >= 34;
+update @gpupgradeschemaname@.pg_conversion set conforencoding = 40 where conforencoding = 5;
+update @gpupgradeschemaname@.pg_conversion set contoencoding = 40 where contoencoding = 5;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.euc_jis_2004_to_shift_jis_2004 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/euc_jis_2004_and_shift_jis_2004', 'euc_jis_2004_to_shift_jis_2004' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.shift_jis_2004_to_euc_jis_2004 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/euc_jis_2004_and_shift_jis_2004', 'shift_jis_2004_to_euc_jis_2004' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.utf8_to_shift_jis_2004 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/utf8_and_shift_jis_2004', 'utf8_to_shift_jis_2004' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.shift_jis_2004_to_utf8 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/utf8_and_shift_jis_2004', 'shift_jis_2004_to_utf8' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.utf8_to_euc_jis_2004 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/utf8_and_euc_jis_2004', 'utf8_to_euc_jis_2004' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.euc_jis_2004_to_utf8 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/utf8_and_euc_jis_2004', 'euc_jis_2004_to_utf8' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.utf8_to_koi8u (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/utf8_and_cyrillic', 'utf8_to_koi8u' LANGUAGE C STRICT;
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.koi8u_to_utf8 (INTEGER, INTEGER, CSTRING, INTERNAL, INTEGER) RETURNS VOID AS '$libdir/utf8_and_cyrillic', 'koi8u_to_utf8' LANGUAGE C STRICT;
+
+insert into @gpupgradeschemaname@.pg_conversion values('euc_jis_2004_to_shift_jis_2004', '11', '10', '5', '41', 'euc_jis_2004_to_shift_jis_2004', 't'); 
+insert into @gpupgradeschemaname@.pg_conversion values('euc_jis_2004_to_utf8', '11', '10', '5', '6', 'euc_jis_2004_to_utf8', 't'); 
+insert into @gpupgradeschemaname@.pg_conversion values('koi8_u_to_utf8', '11', '10', '34', '6', 'koi8u_to_utf8', 't'); 
+insert into @gpupgradeschemaname@.pg_conversion values('utf8_to_koi8_u', '11', '10', '6', '34', 'utf8_to_koi8u', 't'); 
+insert into @gpupgradeschemaname@.pg_conversion values('shift_jis_2004_to_utf8', '11', '10', '41', '6', 'shift_jis_2004_to_utf8', 't'); 
+insert into @gpupgradeschemaname@.pg_conversion values('shift_jis_2004_to_euc_jis_2004', '11', '10', '41', '5', 'shift_jis_2004_to_euc_jis_2004', 't'); 
+insert into @gpupgradeschemaname@.pg_conversion values('utf8_to_euc_jis_2004', '11', '10', '6', '5', 'utf8_to_euc_jis_2004', 't');
+insert into @gpupgradeschemaname@.pg_conversion values('utf8_to_shift_jis_2004', '11', '10', '6', '41', 'utf8_to_shift_jis_2004', 't');

@@ -149,16 +149,24 @@ installcheck-parallel: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 installcheck-good: all $(srcdir)/current_good_schedule
-	cp -f data/pg_class32.data.in data/pg_class32.data
-	cp -f data/upg2_pg_class_toadd.data.in data/upg2_pg_class_toadd.data
-	cp -f data/upg2_pg_attribute_toadd.data.in data/upg2_pg_attribute_toadd.data
-	cp -f data/upg2_pg_type_toadd.data.in data/upg2_pg_type_toadd.data
-	cp -f data/upg2_pg_index_toadd.data.in data/upg2_pg_index_toadd.data
-	gpstringsubs.pl data/pg_class32.data
-	gpstringsubs.pl data/upg2_pg_class_toadd.data
-	gpstringsubs.pl data/upg2_pg_attribute_toadd.data
-	gpstringsubs.pl data/upg2_pg_type_toadd.data
-	gpstringsubs.pl data/upg2_pg_index_toadd.data
+	@cp -f data/pg_class32.data.in data/pg_class32.data
+	@cp -f data/upg2_pg_class_toadd.data.in data/upg2_pg_class_toadd.data
+	@cp -f data/upg2_pg_attribute_toadd.data.in data/upg2_pg_attribute_toadd.data
+	@cp -f data/upg2_pg_type_toadd.data.in data/upg2_pg_type_toadd.data
+	@cp -f data/upg2_pg_index_toadd.data.in data/upg2_pg_index_toadd.data
+	@cp -f data/pg_namespace32.data.in data/pg_namespace32.data
+	@cp -f data/upgrade_conversion.sql.in data/upgrade_conversion.sql
+	@cp -f input/loadcat33.source.in input/loadcat33.source
+	@cp -f data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql
+	@gpstringsubs.pl data/pg_class32.data
+	@gpstringsubs.pl data/upg2_pg_class_toadd.data
+	@gpstringsubs.pl data/upg2_pg_attribute_toadd.data
+	@gpstringsubs.pl data/upg2_pg_type_toadd.data
+	@gpstringsubs.pl data/upg2_pg_index_toadd.data
+	@gpstringsubs.pl input/loadcat33.source
+	@gpstringsubs.pl data/pg_namespace32.data
+	@gpstringsubs.pl data/upgrade_conversion.sql
+	@gpstringsubs.pl data/upgrade_pg_partitions.sql
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 .PHONY: $(srcdir)/current_good_schedule

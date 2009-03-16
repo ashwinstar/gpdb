@@ -17,6 +17,16 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 OBJS= gpmodcatversion.o pg_crc.o
 
+UPGRADEFILES=$(top_srcdir)/src/test/regress/input/loadcat33.source.in \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_class_toadd.data.in \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_attribute_toadd.data.in \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_type_toadd.data.in \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_index_toadd.data.in \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_proc_toadd.data \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_namespace_toadd.data \
+	$(top_srcdir)/src/test/regress/data/upg2_pg_description_toadd.data \
+	$(top_srcdir)/src/test/regress/data/upgrade_conversion.sql.in 
+
 all: gpmodcatversion
 
 include $(top_srcdir)/src/Makefile.shlib  
@@ -27,12 +37,21 @@ gpmodcatversion: $(OBJS)
 pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
 	rm -f $@ && $(LN_S) $< .
 
-install: all installdirs
+install: all installdirs installupgradefiles
 	$(INSTALL_PROGRAM) gpmodcatversion$(X) \
 		'$(DESTDIR)$(bindir)/lib'/gpmodcatversion$(X)
 
+
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
+	$(mkinstalldirs) '$(DESTDIR)$(datadir)' '$(DESTDIR)$(datadir)/upgrade'
+
+
+installupgradefiles: $(UPGRADEFILES)
+	@for i in $(UPGRADEFILES); \
+	do \
+		$(INSTALL_DATA) $$i '$(DESTDIR)$(datadir)/upgrade/'`basename $$i`; \
+	done
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)'/lib, gpmodcatversion$(X)

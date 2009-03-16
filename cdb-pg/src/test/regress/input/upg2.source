@@ -18,11 +18,31 @@
 --
 
 -- build "old" catalog tables
-
+create table public.pg_appendonly (reloid oid,
+								   blocksize integer,
+								   safefswritesize integer,
+								   compresslevel smallint,
+								   majorversion smallint,
+								   minorversion smallint,
+								   checksum boolean);
 create table old_attribute_v32 (like pg_attribute) ;
 create table old_class_v32 (like pg_class) with oids;
 create table old_type_v32 (like pg_type) with oids;
 create table old_index_v32 (like pg_index);
+create table old_proc_v32 (like pg_proc) with oids;
+create table old_namespace_v32 (like pg_namespace) with oids;
+-- don't use LIKE, as 3.2 has a different structure
+create table old_aggregate_v32 (aggfnoid        regproc  not null,
+								aggtransfn      regproc  not null,
+								agginvtransfn   regproc  not null,
+								aggprelimfn     regproc  not null,
+								agginvprelimfn  regproc  not null,
+								aggfinalfn      regproc  not null,
+								aggsortop       oid      not null,
+								aggtranstype    oid      not null,
+								agginitval      text) with oids;
+
+create table old_description_v32(like pg_catalog.pg_description);
 
 -- load the "old" catalog
 COPY old_attribute_v32 
@@ -33,11 +53,64 @@ COPY old_type_v32
   from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
 COPY old_index_v32
   from '@abs_srcdir@/data/pg_index32.data' csv header;
+COPY old_proc_v32
+  from '@abs_srcdir@/data/pg_proc32.data' with oids csv header;
+COPY old_aggregate_v32
+  from '@abs_srcdir@/data/pg_aggregate32.data' csv header;
+COPY old_namespace_v32
+  from '@abs_srcdir@/data/pg_namespace32.data' with oids csv header;
+COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
+  csv header; 
 
 create table public.pg_class(like pg_catalog.pg_class) with oids;
 create table public.pg_attribute(like pg_catalog.pg_attribute);
 create table public.pg_type(like pg_catalog.pg_type) with oids;
 create table public.pg_index(like pg_catalog.pg_index);
+create table public.pg_proc(like pg_catalog.pg_proc) with oids;
+create table public.pg_aggregate(like pg_catalog.pg_aggregate);
+create table public.pg_namespace(like pg_catalog.pg_namespace) with oids;
+create table public.pg_conversion(like pg_catalog.pg_conversion);
+create table public.pg_description(like pg_catalog.pg_description);
+
+-- pg_partitions from 3.2
+create view public.pg_partitions as
+SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel, 
+        CASE
+            WHEN p1.partitiontype <> 'range'::text THEN NULL::bigint
+            WHEN p1.partitionnodefault > 0 THEN p1.partitionrank
+            WHEN p1.partitionrank = 1 THEN NULL::bigint
+            ELSE p1.partitionrank - 1
+        END AS partitionrank, p1.partitionposition, p1.partitionlistvalues, p1.partitionrangestart, 
+        CASE
+            WHEN p1.partitiontype = 'range'::text THEN p1.partitionstartinclusive
+            ELSE NULL::boolean
+        END AS partitionstartinclusive, p1.partitionrangeend, 
+        CASE
+            WHEN p1.partitiontype = 'range'::text THEN p1.partitionendinclusive
+            ELSE NULL::boolean
+        END AS partitionendinclusive, p1.partitioneveryclause, p1.parisdefault AS partitionisdefault, p1.partitionboundary
+   FROM ( SELECT n.nspname AS schemaname, cl.relname AS tablename, n2.nspname AS partitionschemaname, cl2.relname AS partitiontablename, pr1.parname AS partitionname, cl3.relname AS parentpartitiontablename, pr2.parname AS parentpartitionname, 
+                CASE
+                    WHEN pp.parkind = 'h'::"char" THEN 'hash'::text
+                    WHEN pp.parkind = 'r'::"char" THEN 'range'::text
+                    WHEN pp.parkind = 'l'::"char" THEN 'list'::text
+                    ELSE NULL::text
+                END AS partitiontype, pp.parlevel AS partitionlevel, pr1.parruleord AS partitionposition, rank() OVER(
+         PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
+          ORDER BY pr1.parruleord) AS partitionrank, pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) AS partitionlistvalues, pg_get_expr(pr1.parrangestart, pr1.parchildrelid) AS partitionrangestart, pr1.parrangestartincl AS partitionstartinclusive, pg_get_expr(pr1.parrangeend, pr1.parchildrelid) AS partitionrangeend, pr1.parrangeendincl AS partitionendinclusive, pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) AS partitioneveryclause, min(pr1.parruleord) OVER(
+         PARTITION BY pp.oid, cl.relname, pp.parlevel, cl3.relname
+          ORDER BY pr1.parruleord) AS partitionnodefault, pr1.parisdefault, pg_get_partition_rule_def(pr1.oid, true) AS partitionboundary
+           FROM pg_namespace n, pg_namespace n2, pg_class cl, pg_class cl2, pg_partition pp, pg_partition_rule pr1
+      LEFT JOIN pg_partition_rule pr2 ON pr1.parparentrule = pr2.oid
+   LEFT JOIN pg_class cl3 ON pr2.parchildrelid = cl3.oid
+  WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid) p1;
+
+COPY public.pg_conversion
+  from '@abs_srcdir@/data/pg_conversion32.data' csv header;
+\i @abs_srcdir@/data/upgrade_conversion.sql
+
+-- new tables and attributes. 
+\i @abs_srcdir@/sql/loadcat33.sql
 
 create view old_class as
 select oid, relname, relnamespace, reltype, relowner,
@@ -75,12 +148,24 @@ select oid, * from public.pg_type;
 create view old_index as select * from old_index_v32 union all
 select * from public.pg_index;
 
--- new tables and attributes. 
--- AOCS
-\i @abs_srcdir@/data/upg2_pg_class_toadd.data
-\i @abs_srcdir@/data/upg2_pg_attribute_toadd.data
-\i @abs_srcdir@/data/upg2_pg_type_toadd.data
-\i @abs_srcdir@/data/upg2_pg_index_toadd.data
+create view old_proc as select oid, * from old_proc_v32 union all
+select oid, * from public.pg_proc;
+create view old_aggregate as select * from old_aggregate_v32 union all
+select * from public.pg_aggregate;
+
+create view old_namespace as select oid, * from old_namespace_v32 union all
+select oid, * from public.pg_namespace;
+
+create view old_description as select * from old_description_v32 union all
+select * from public.pg_description;
+
+-- pg_catalog.pg_partitions should be the same as public.pg_partitions
+select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
+from pg_rewrite a, pg_rewrite b
+where
+a.ev_class = 'public.pg_partitions'::regclass and
+b.ev_class = 'pg_catalog.pg_partitions'::regclass;
+
 
 -- begin_equivalent 
 -- compare old vs new catalog tables
@@ -143,5 +228,46 @@ select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
 
 -- end_equivalent
 
-drop view old_class, old_type, old_attribute, old_index;
-drop table public.pg_class, public.pg_attribute, public.pg_type, public.pg_index;
+-- begin_equivalent
+-- compare old and new pg_proc
+select * from old_proc where oid < 10000 order by oid;
+
+select * from pg_catalog.pg_proc where oid < 10000 order by oid;
+
+-- end_equivalent
+
+-- begin_equivalent
+-- compare old and new pg_aggregate
+select * from old_aggregate where aggfnoid::oid < 10000 order by aggfnoid;
+
+select * from pg_catalog.pg_aggregate where aggfnoid < 10000 order by aggfnoid;
+
+-- end_equivalent
+
+-- begin_equivalent
+select * from old_namespace where oid < 10000 order by oid;
+
+select oid, * from pg_catalog.pg_namespace where oid < 10000 order by oid;
+-- end_equivalent
+
+-- pg_conversion
+select * from pg_catalog.pg_conversion
+except select * from public.pg_conversion;
+
+select * from public.pg_conversion except
+select * from pg_catalog.pg_conversion;
+
+-- pg_description
+select * from pg_catalog.pg_description where objoid < 10000
+except select * from public.old_description where objoid < 10000;
+
+select * from public.pg_description where objoid < 10000 except
+select * from public.old_description where objoid < 10000;
+
+drop view old_class, old_type, old_attribute, old_index, old_aggregate,
+	 old_proc, old_namespace, public.pg_partitions, public.old_description;
+drop table public.pg_class, public.pg_attribute, public.pg_type,
+	 public.pg_index, public.pg_aggregate, public.pg_proc, public.pg_namespace,
+	 public.pg_conversion, old_aggregate_v32, old_attribute_v32, old_class_v32,
+	 old_index_v32, old_namespace_v32, old_proc_v32, old_type_v32,
+	 old_description_v32, public.pg_description;

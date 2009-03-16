@@ -93,6 +93,10 @@ The tokens are:
 
  Replace @gpupgradeschemaname@ with public.
 
+=item gpupgradedatadir
+
+ Replace @gpupgradedatadir@ with /path/to/regression/data/
+
 =over 12
 
 =item Mac OSX intel: i386
@@ -303,6 +307,7 @@ if (1)
     my $psexp   = '\\@ps_pidfirst\\@';
 	my $unexp = '\\@gpcurusername\\@';
 	my $schema = '\\@gpupgradeschemaname\\@';
+	my $ugdir = '\\@gpupgradedatadir\\@';
 
     my $locps   = 'ps axww';
     if ($^O !~ /darwin|mac|osx/i)
@@ -341,9 +346,11 @@ if (1)
 
     my $gpwhich_all = `grep gpwhich_ $filnam`;
     my $gpuname_all = `grep uname_ $filnam`;
+	my $curdir = `pwd`;
+	chomp $curdir;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; \' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
 
     # replace all "which" expressions with binary
     if (defined($gpwhich_all) && length($gpwhich_all))
