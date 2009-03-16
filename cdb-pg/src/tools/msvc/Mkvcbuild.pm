@@ -53,24 +53,6 @@ sub mkvcbuild
     $libpgport = $solution->AddProject('libpgport','lib','misc');
     $libpgport->AddDefine('FRONTEND');
     $libpgport->AddFiles('src\port',@pgportfiles);
-    
-    # because in GPDB, the postgres executible calls libpq, we need to build it first.
-
-    $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
-    $libpq->AddDefine('FRONTEND');
-    $libpq->AddDefine('UNSAFE_STAT_OK');
-    $libpq->AddIncludeDir('src\port');
-    $libpq->AddLibrary('wsock32.lib');
-    $libpq->AddLibrary('ws2_32.lib');
-    $libpq->AddLibrary('secur32.lib');
-    $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
-    
-    # since GPDB postgres uses pthreads, we use them here too.
-    $libpq->AddLibrary($config->{'pthread'} . '\pthreadVC2.lib');
-    
-    $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
-    $libpq->ReplaceFile('src\interfaces\libpq\libpqrc.c','src\interfaces\libpq\libpq.rc');
-    $libpq->AddReference($libpgport);
 
     $postgres = $solution->AddProject('postgres','exe','','src\backend');
     $postgres->AddIncludeDir('src\backend');
@@ -87,13 +69,6 @@ sub mkvcbuild
     $postgres->AddFiles('src\backend\parser','scan.l','gram.y');
     $postgres->AddFiles('src\backend\bootstrap','bootscanner.l','bootparse.y');
     $postgres->AddFiles('src\backend\utils\misc','guc-file.l');
-    
-    # because GPDB postgres calls libpq, add references to libpq and libpgport and their includes
-    $postgres->AddIncludeDir('src\interfaces\libpq');
-    $postgres->AddIncludeDir('src\port');
-    $postgres->AddReference($libpgport);
-    $postgres->AddReference($libpq);
-    
     $postgres->AddDefine('BUILDING_DLL');
     $postgres->AddLibrary('wsock32.lib');
     $postgres->AddLibrary('ws2_32.lib');
@@ -108,12 +83,6 @@ sub mkvcbuild
     my $plpgsql = $solution->AddProject('plpgsql','dll','PLs','src\pl\plpgsql\src');
     $plpgsql->AddFiles('src\pl\plpgsql\src','scan.l','gram.y');
     $plpgsql->AddReference($postgres);
-    
-    #in GPDB, plpgsql calls libpq, so include references to it.
-    $plpgsql->AddIncludeDir('src\interfaces\libpq');
-    $plpgsql->AddReference($libpq,$libpgport);
-    $plpgsql->AddLibrary('wsock32.lib');
-    $plpgsql->AddLibrary('ws2_32.lib');
 
     if ($solution->{options}->{perl})
     {
@@ -156,6 +125,18 @@ sub mkvcbuild
         $pltcl->AddReference($postgres);
         $pltcl->AddLibrary($solution->{options}->{tcl} . '\lib\tcl84.lib');
     }
+
+    $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
+    $libpq->AddDefine('FRONTEND');
+    $libpq->AddDefine('UNSAFE_STAT_OK');
+    $libpq->AddIncludeDir('src\port');
+    $libpq->AddLibrary('wsock32.lib');
+    $libpq->AddLibrary('ws2_32.lib');
+    $libpq->AddLibrary('secur32.lib');
+    $libpq->AddLibrary('wldap32.lib') if ($solution->{options}->{ldap});
+    $libpq->UseDef('src\interfaces\libpq\libpqdll.def');
+    $libpq->ReplaceFile('src\interfaces\libpq\libpqrc.c','src\interfaces\libpq\libpq.rc');
+    $libpq->AddReference($libpgport);
 
     my $pgtypes =
       $solution->AddProject('libpgtypes','dll','interfaces','src\interfaces\ecpg\pgtypeslib');
@@ -357,26 +338,27 @@ sub mkvcbuild
         my @files = split /\s+/,$1;
         foreach my $f (@files)
         {
-            if ($f =~ /\/keywords\.o$/)
+			$f =~ s/\.o$/\.c/;
+            if ($f eq 'keywords.c')
             {
                 $proj->AddFile('src\backend\parser\keywords.c');
                 $proj->AddIncludeDir('src\backend');
             }
+               elsif ($f eq 'kwlookup.c')
+            {
+                $proj->AddFile('src\backend\parser\kwlookup.c');
+            }
+            elsif ($f eq 'dumputils.c')
+            {
+                $proj->AddFile('src\bin\pg_dump\dumputils.c');
+            }
+            elsif ($f =~ /print\.c$/)
+            { # Also catches mbprint.c
+                $proj->AddFile('src\bin\psql\\' . $f);
+            }
             else
             {
-                $f =~ s/\.o$/\.c/;
-                if ($f eq 'dumputils.c')
-                {
-                    $proj->AddFile('src\bin\pg_dump\dumputils.c');
-                }
-                elsif ($f =~ /print\.c$/)
-                { # Also catches mbprint.c
-                    $proj->AddFile('src\bin\psql\\' . $f);
-                }
-                else
-                {
-                    $proj->AddFile('src\bin\scripts\\' . $f);
-                }
+                $proj->AddFile('src\bin\scripts\\' . $f);
             }
         }
         $proj->AddIncludeDir('src\interfaces\libpq');
