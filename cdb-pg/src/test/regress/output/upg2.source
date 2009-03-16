@@ -129,7 +129,7 @@ copy public.pg_index from '@gpupgradedatadir@/upg2_pg_index_toadd.data' null as 
 copy public.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd.data' oids null as E'\\N' csv delimiter '|' header;
-copy public.pg_description from '@abs_srcdir@/data//upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
+copy public.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column compresstype text;
 -- adjust 3.2 quicklz

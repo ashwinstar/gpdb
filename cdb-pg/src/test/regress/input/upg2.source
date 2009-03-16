@@ -245,9 +245,9 @@ select * from pg_catalog.pg_aggregate where aggfnoid < 10000 order by aggfnoid;
 -- end_equivalent
 
 -- begin_equivalent
-select * from old_namespace where oid < 10000 order by oid;
+select oid, nspname, nspowner from old_namespace where oid < 10000 order by oid;
 
-select oid, * from pg_catalog.pg_namespace where oid < 10000 order by oid;
+select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000 order by oid;
 -- end_equivalent
 
 -- pg_conversion
