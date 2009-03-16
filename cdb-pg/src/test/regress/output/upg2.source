@@ -625,7 +625,7 @@ order by c.relname, a.attnum;
  pg_window                | winpretype                        |      8 | oid             |      4 |        -1
  pg_window                | winfinfunc                        |      9 | regproc         |      4 |        -1
  pg_window                | winkind                           |     10 | char            |      1 |        -1
-(404 rows)
+(410 rows)
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_attribute a,
