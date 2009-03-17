@@ -936,9 +936,9 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 			 * XXX: attempt to do some backwards compatible parsing here?
 			 */
 			
-			if (parsedline->auth_method == uaIdent && token == "sameuser")
+			if (parsedline->auth_method == uaIdent && strcmp(token,"sameuser")==0)
 			{
-				if (parsedline->database == "all")
+				if (strcmp(parsedline->database,"all")==0)
 					parsedline->database = pstrdup("sameuser");
 				continue;
 			}
