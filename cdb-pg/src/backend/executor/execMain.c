@@ -2720,11 +2720,17 @@ ExecUpdate(TupleTableSlot *slot,
 								   nulls, slot->tts_tupleDescriptor, 
 								   estate->es_partition_state);
 
+		if (!OidIsValid(targetid))
+			ereport(ERROR,
+					(errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY),
+					 errmsg("no partition for partitioning key")));			
+
 		if (RelationGetRelid(resultRelationDesc) != targetid)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("moving tuple from partition \"%s\" to partition \"%s\" not supported",
+					 errmsg("moving tuple from partition \"%s\" to "
+							"partition \"%s\" not supported",
 							get_rel_name(RelationGetRelid(resultRelationDesc)),
 							get_rel_name(targetid))));
 		}
