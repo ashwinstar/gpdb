@@ -248,7 +248,7 @@ class TgzSnapshot(SnapshotMethod):
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
                ('cd %s && ' % self.toppath)
                + ('rm -f %s %s && ' % (self.tgzname, self.ctlname))
-               + ('gtar cfz %s %s ' % (self.tgzname, self.dbdir))] 
+               + ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR cfz %s %s)' % (self.tgzname, self.dbdir))] 
         vvmsg("  - " + " ".join(cmd))
         rc = subprocess.Popen(cmd).wait()
         if rc: 
@@ -272,7 +272,7 @@ class TgzSnapshot(SnapshotMethod):
     def checkSnapshot(self):
         msg('Checking snapshot %s:%s' % self.fullname)
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               '(gtar tfz %s > /dev/null && ls -l %s) 2>&1' % (self.tgzpath, self.tgzpath)]
+               '({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR tfz %s > /dev/null && ls -l %s) 2>&1' % (self.tgzpath, self.tgzpath)]
         vvmsg("  - " + " ".join(cmd))
 	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 	lines = p.stdout.readlines()
@@ -282,8 +282,8 @@ class TgzSnapshot(SnapshotMethod):
     def restoreSnapshot(self):
         msg('Restoring snapshot %s:%s' % self.fullname)
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               'rm -rf %s; cd %s && gtar xfz %s 2> /dev/null' 
-               % (self.seg.datapath, self.toppath, self.tgzname)]
+               'rm -rf %s; cd %s && ({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR xfz %s) 2> /dev/null' 
+               % (self.datapath, self.toppath, self.tgzname)]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
         
