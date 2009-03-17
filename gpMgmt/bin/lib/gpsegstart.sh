@@ -95,6 +95,12 @@ START_SEG () {
 	#*************************************************************************************************************
 	# Start of segment startup section
 	#*************************************************************************************************************
+	
+	#create a pg_log dir if not already there
+	if [ ! -d ${QE_DIR}/pg_log ]; then
+		$MKDIR ${QE_DIR}/pg_log
+	fi
+	
 	if [ $START_INVALID -eq 1 ];then
 		#Check to see if there is a stale postmaster.pid file
 		IS_THERE=`$TRUSTED_SHELL $QE_NAME "if [ -f ${QE_DIR}/$PG_PID ];then echo 1;else echo 0;fi"`
@@ -105,7 +111,7 @@ START_SEG () {
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-  CMD="${EXPORT_LIB_PATH};${EXPORT_PYBIN};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
+  CMD="${EXPORT_LIB_PATH};${EXPORT_PYBIN};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -l $QE_DIR/pg_log/startup.log -D $QE_DIR -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
   LOG_MSG "[INFO][$INST_COUNT]:-CMD is $CMD"
 	$TRUSTED_SHELL $QE_NAME $CMD
 	RETVAL=$?
@@ -123,7 +129,7 @@ START_SEG () {
 	#So exit with fatal message and exit code 2
 		LOG_MSG "[WARN][$INST_COUNT]:-Startup request returned error code $RETVAL" 1
 		LOG_MSG "[INFO][$INST_COUNT]:-Command string called which resulted in error" 1
-		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -o \"-i -p ${QE_PORT}\" start"  1
+		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -l $QE_DIR/pg_log/startup.log -D $QE_DIR -o \"-i -p ${QE_PORT}\" start"  1
 		LOG_MSG "[INFO][$INST_COUNT]:-Tail'ing Segment instance log file" 1
 		$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 		if [ $? -ne 0 ]; then

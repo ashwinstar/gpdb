@@ -84,6 +84,9 @@ class GpStart():
             gp.standby_check(self.master_datadir)                 
         self._check_version()
         self._check_master_running()
+        
+        if not os.path.exists(self.master_datadir + '/pg_log'):
+            os.mkdir(self.master_datadir + '/pg_log')
 
     
     ######
@@ -229,6 +232,10 @@ class GpStart():
         failed_seg_status = []
         workers=min(len(self.gparray.get_hostlist()),64)
         self.pool = base.WorkerPool(numWorkers=workers)
+        
+        if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:            
+            raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
+        
         
         self.standby_was_started = self._start_standby()
         

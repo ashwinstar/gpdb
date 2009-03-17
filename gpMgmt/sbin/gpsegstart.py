@@ -77,7 +77,11 @@ class GpSegStart():
                     logger.info("Segment data directory does not exist for: '%s'" % dir)
                     results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
                     self.dblist.remove(dir)
-                    failures=True                        
+                    failures=True      
+                else:
+                    if not os.path.exists(self.master_datadir + '/pg_log'):
+                        os.mkdir(self.master_datadir + '/pg_log')                  
+
             
         logger.info("Starting segments...")       
         for dir in self.dblist:
@@ -89,6 +93,7 @@ class GpSegStart():
         for cmd in cmds:
             res=cmd.get_results()
             if res.rc != 0:
+                #TODO: read in last entries in startup.log
                 status=SegStartStatus(cmd.dataDir,False,"PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
                 results.append(status)
                 self.dblist.remove(cmd.dataDir)

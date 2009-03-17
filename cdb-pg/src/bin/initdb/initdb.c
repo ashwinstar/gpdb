@@ -284,13 +284,13 @@ xstrdup(const char *s)
 }
 
 /*
- * add_assignment 
+ * add_assignment
  *
  * Returns a copy of the array of lines, with an additional line inserted:
  * an assignment (maybe commented out) to the specified configuration variable.
  *
- * If there is already an assignment to the variable, that setting remains in 
- * effect, taking precedence over the caller's requested setting, which is 
+ * If there is already an assignment to the variable, that setting remains in
+ * effect, taking precedence over the caller's requested setting, which is
  * inserted as a comment.  Else the caller's requested assignment is inserted.
  */
 static char **
@@ -349,13 +349,13 @@ add_assignment(char **lines, const char *varname, const char *fmt, ...)
 
     /* Tab to align comments */
     j = (int)(bufp - buf);
-    do 
+    do
     {
         *bufp++ = '\t';
         j += 8;
     } while (j < 40);
-    
-    /* Append comment. */   
+
+    /* Append comment. */
     bufp += snprintf(bufp, bufe-bufp, "# inserted by initdb\n");
 
     /* Make a copy of the ptr array, opening up a hole after the chosen line. */
@@ -364,7 +364,7 @@ add_assignment(char **lines, const char *varname, const char *fmt, ...)
     memcpy(result+iinsert+1, lines+iinsert, (isrc - iinsert + 1) * sizeof(lines[0]));
 
     /* Insert assignment. */
-    result[iinsert] = xstrdup(buf); 
+    result[iinsert] = xstrdup(buf);
 
     return result;
 }                               /* add_assignment */
@@ -2204,7 +2204,7 @@ make_postgres(void)
 	static const char *postgres_setup[] = {
 		"CREATE DATABASE postgres;\n",
 		/*
-		 * Make 'postgres' a template database 
+		 * Make 'postgres' a template database
 		 */
 		"UPDATE pg_database SET "
 		"	datistemplate = 't' "
@@ -2461,7 +2461,7 @@ setlocales(void)
 
 /*
  * Try to parse value as an integer.  The accepted formats are the
- * usual decimal, octal, or hexadecimal formats. 
+ * usual decimal, octal, or hexadecimal formats.
  */
 static long
 parse_long(const char *value, bool blckszUnit, const char* optname)
@@ -2725,6 +2725,7 @@ main(int argc, char *argv[])
 #endif
 	static const char *subdirs[] = {
 		"global",
+		"pg_log",
 		"pg_xlog",
 		"pg_xlog/archive_status",
 		"pg_clog",
@@ -3361,7 +3362,7 @@ main(int argc, char *argv[])
 	setup_privileges();
 
 	setup_schema();
-	
+
 	/* sets up the Greenplum Database admin schema */
 	setup_cdb_schema();
 

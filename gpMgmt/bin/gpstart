@@ -189,7 +189,7 @@ GET_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
-		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility"  start >> $LOG_FILE 2>&1
+		$PG_CTL -w -l $MASTER_DATA_DIRECTORY/pg_log/startup.log -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility"  start >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
 			LOG_MSG "[FATAL]:-Failed to start Master instance in admin mode" 1
@@ -248,7 +248,7 @@ START_ADMIN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Starting master instance in admin mode" 1
 		export PGPORT=$MASTER_PORT
-		env PGOPTIONS=" " $PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility " start >> $LOG_FILE 2>&1
+		env PGOPTIONS=" " $PG_CTL -w -l $MASTER_DATA_DIRECTORY/pg_log/startup.log -D $MASTER_DATA_DIRECTORY -o "-i -p $MASTER_PORT -c gp_role=utility " start >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then				
 				ERROR_EXIT "[FATAL]:-Could not start master instance in admin mode" 2
@@ -470,7 +470,7 @@ PROCESS_STARTUP () {
 	else 
 	    MASTER_MIRRORING_ADMINISTRATOR_DISABLE=""
 	fi
-	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -o "$RESTRICTED_MODE_CONNS $MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
+	$PG_CTL -w -l $MASTER_DATA_DIRECTORY/pg_log/startup.log -D $MASTER_DATA_DIRECTORY -o "$RESTRICTED_MODE_CONNS $MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
 	ERROR_CHK $? "startup Master instance" 2
 	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
@@ -537,10 +537,23 @@ else
 fi
 CHK_QD_DB_RUNNING
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+
+#create a pg_log dir if not already there
+if [ ! -d ${MASTER_DATA_DIRECTORY}/pg_log ]; then
+	$MKDIR ${MASTER_DATA_DIRECTORY}/pg_log
+fi
+
 if [ $ADMIN ]; then
 	START_ADMIN
 	exit $EXIT_STATUS
 fi
+
+if [ ! $RESTRICTED_MODE ]; then
+	if [ -f ${MASTER_DATA_DIRECTORY}/gpexpand.status ]; then
+		ERROR_EXIT "[FATAL]:-Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'"
+	fi	
+fi
+
 GET_DETAILS
 if [ $INTERACTIVE ]; then
 	PROMPT_CONTINUE
