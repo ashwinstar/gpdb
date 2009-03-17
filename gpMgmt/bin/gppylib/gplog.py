@@ -73,7 +73,10 @@ def quiet_stdout_logging():
     #       log normally to the file handler.
     global SOUT_HANDLER
     SOUT_HANDLER.setLevel(logging.WARN)
-    
+
+
+def logging_is_verbose():
+    return LOGGER.getEffectiveLevel() == logging.DEBUG    
     
     
 #------------------------------- Private --------------------------------    

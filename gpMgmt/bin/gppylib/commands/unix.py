@@ -75,7 +75,14 @@ def getLocalHostname():
 def getUserName():
     return os.environ.get('LOGNAME') or os.environ.get('USER')
 
-
+def check_pid(pid):        
+    """ Check For the existence of a unix pid. """
+    try:
+        os.kill(pid, signal.SIG_DFL)
+    except OSError:
+        return False
+    else:
+        return True
 
 #---------------Platform Framework--------------------
 
@@ -334,6 +341,11 @@ class RemoveFiles(Command):
     def remote(name,remote_host,directory):
         rmCmd=RemoveFiles(name,directory,ctxt=REMOTE,remoteHost=remote_host)
         rmCmd.run(validateAfter=True) 
+    
+    @staticmethod
+    def local(name,directory):
+        rmCmd=RemoveFiles(name,directory)
+        rmCmd.run(validateAfter=True)
 
 
 #-------------file and dir existence -------------

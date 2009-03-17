@@ -83,8 +83,25 @@ class DbStatus(Command):
         cmd=DbStatus(name,db)
         cmd.run(validateAfter=True)
         return cmd.is_running()
-
-
+    
+    @staticmethod
+    def remote(name,db,remoteHost):
+        cmd=DbStatus(name,db,ctxt=REMOTE,remoteHost=remoteHost)
+        cmd.run(validateAfter=True)
+        return cmd.is_running()
+    
+class ReloadDbConf(Command):
+    def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
+        self.db=db
+        cmdStr="%s $GPHOME/bin/pg_ctl reload -D %s" % (SRC_GPPATH,self.db.datadir)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def local(name,db):
+        cmd=ReloadDbConf(name,db)
+        cmd.run(validateAfter=True)
+        return cmd
+        
 class ReadPostmasterTempFile(Command):
     def __init__(self,name,port,ctxt=LOCAL,remoteHost=None):
         self.port=port
@@ -125,7 +142,6 @@ class ReadPostmasterTempFile(Command):
         cmd=ReadPostmasterTempFile(name,db,ctxt=REMOTE,remoteHost=host)
         cmd.run(validateAfter=True)
  
-
 
 
 

@@ -10,6 +10,7 @@ from gppylib.db import dbconn
 from gppylib.db import catalog
 from gppylib.commands import base
 from gppylib.commands import unix
+from gppylib import gplog
 
 description = (""" 
 Adds additional segments to a pre-existing GPDB Array.
@@ -24,6 +25,7 @@ def parseargs():
     parser.set_usage('%prog is a utility script used by gpexpand and not intended to be run separately.')
     parser.remove_option('-h')
     
+    parser.add_option('-v','--verbose', action='store_true',help='debug output.')
     parser.add_option('-p','--port', type='int')
     parser.add_option('-d', '--datadir', type='string')                        
     parser.add_option('-s','--numsegs', type='int')
@@ -62,7 +64,14 @@ def parseargs():
 
 
 try:
+    logger=gplog.setup_helper_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+
     (options, args) = parseargs()
+    if options.verbose:
+        gplog.enable_verbose_logging()
+        
+    logger.info("Starting gpconfexpseg with args: %s" % ' '.join(sys.argv[1:]))
+    
     # update postgresql.conf
     if options.newsegment:
         
@@ -75,10 +84,12 @@ try:
         else:
             os.mkdir(options.datadir,0700)
         
-            
+        
+        logger.info("extract tar file to new segment")    
         extractTarCmd = unix.ExtractTar('extract tar file to new segment', options.tarfile, options.datadir )
         extractTarCmd.run(validateAfter=True)
         
+        logger.info("Updating %s/postgresql.conf" % options.datadir)
         modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % options.datadir,
                                                               options.datadir + '/postgresql.conf',
                                                               'port', options.port, optType='number')
@@ -86,6 +97,7 @@ try:
 
     
     # start up segment in utility
+    logger.info("starting expansion segment")
     startCmd = SegmentStart('Start expansion segment', 
                                 options.datadir, utilityMode=True)
     startCmd.run(validateAfter=True)
@@ -102,10 +114,12 @@ try:
     conn.close()
 
     # stop segment
+    logger.info("stopping expansion segment")
     stopCmd = SegmentStop('Stop expansion segment', options.datadir)
     stopCmd.run(validateAfter=True)
 
 
 except Exception, msg:
+    logger.exception(msg)
     print >> sys.stderr, msg
     sys.exit(1)

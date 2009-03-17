@@ -506,7 +506,7 @@ class SegmentTemplate:
             segCfgCmd = ConfigExpansionSeg('configure new segment', seg.datadir, 
                                               seg.port, newPrimaryCount, 
                                               seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
-                                              ctxt=REMOTE, remoteHost=seg.hostname) 
+                                              verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname) 
             self.pool.addCommand(segCfgCmd)
             newDbId += 1
         self.pool.join()
@@ -725,12 +725,7 @@ class gpexpand:
     def get_state(self):
         return self.statusLogger.get_current_status()[0]
     
-    def generate_inputfile(self,hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase):
-        """        
-        File format is:
-        dbid:content:definedprimary:hostname:port:datadir
-        
-        """
+    def generate_inputfile(self,hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase):        
         maxDbId = self.gparray.get_max_dbid() + 1        
         oldSegCount = self.gparray.get_segment_count()
         
@@ -861,10 +856,10 @@ class gpexpand:
         self.logger.info('Configuring original segments')
         for seg in self.old_segments:            
             if seg.content == -1 or not seg.valid:            
-                continue
+                continue            
             segCfgCmd = ConfigExpansionSeg('configure original segment', seg.datadir, 
                                                seg.port, self.newPrimaryCount, 
-                                               seg.content, seg.dbid,
+                                               seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
                                                ctxt=REMOTE, remoteHost=seg.hostname) 
             self.pool.addCommand(segCfgCmd)
             

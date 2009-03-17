@@ -21,6 +21,7 @@ GPHOME=os.environ.get('GPHOME')
 SRC_GPPATH="source %s/greenplum_path.sh;" % GPHOME
 
 
+
 def check_passive_standby(name,dir):
     cmd=FileContainsTerm(name,'gpsync',"%s/postmaster.opts" % dir)
     cmd.run(validateAfter=False)
@@ -93,7 +94,7 @@ class MasterStop(Command):
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, utilityMode=False, nowait=False,port=None,ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
-        cmdfrags=['%s %s -D %s ' % (SRC_GPPATH,pg.PG_CTL,dataDir)]
+        cmdfrags=['%s %s -D %s -l %s/pg_log/startup.log ' % (SRC_GPPATH,pg.PG_CTL,dataDir,dataDir)]
         portOption = ""
         if port:
             portOption = "-p %s" % port
@@ -239,7 +240,7 @@ class ModifyPostgresqlConfSetting(Command):
 
 #-----------------------------------------------        
 class ConfigExpansionSeg(Command):
-    def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, tarFile=None, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None):
         cmdStr = '%s $GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (SRC_GPPATH,dataDir, numSegs, contentId, dbId)                
         if port:
             cmdStr += ' -p %s' % port
@@ -247,6 +248,8 @@ class ConfigExpansionSeg(Command):
             cmdStr += ' -n'
         if tarFile:
             cmdStr += ' -t %s' % tarFile
+        if verbose:
+            cmdStr += ' -v '
             
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
@@ -300,7 +303,7 @@ def readGpHostCache(gparray,pool):
         hostlist=gparray.get_hostlist()
         cmdlist=[]
         for host in hostlist:
-            cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=host)
+            cmd=Hostname('host lookup',ctxt=base.REMOTE,remoteHost=host)
             pool.addCommand(cmd)
             cmdlist.append(cmd)
         self.pool.join()

@@ -31,11 +31,45 @@ def getSessionGUC(conn,gucname):
     sql = "SHOW %s" % gucname
     return basicSQLExec(conn,sql)[0][0]            
 
+def getUserDatabaseList(conn):
+    sql = "SELECT datname FROM pg_catalog.pg_database WHERE datname NOT IN ('postgres','template1','template0') ORDER BY 1"
+    return basicSQLExec(conn,sql)
+
+
 def getDatabaseList(conn):
     sql = "SELECT datname FROM pg_catalog.pg_database"
     return basicSQLExec(conn,sql)
 
+
+def getActiveUserPIDs(conn):
+    sql = """
+        SELECT 
+            procpid 
+        FROM 
+            pg_stat_activity 
+        WHERE 
+            procpid != pg_backend_pid() AND current_query<>'idle'        
+        """
+    rows = basicSQLExec(conn,sql)
+    return rows
+
+def getUserPIDs(conn):
+    """dont count ourselves"""
+    sql = """SELECT procpid FROM pg_stat_activity WHERE procpid != pg_backend_pid()"""
+    return basicSQLExec(conn,sql)
     
+    
+    
+def cancelBackendPIDs(conn):
+    sql = """
+        SELECT 
+            pg_cancel_backend(procpid) 
+        FROM 
+            (SELECT procpid FROM pg_stat_activity WHERE procpid != pg_backend_pid()) as s;
+        """
+    rows = basicSQLExec(conn,sql)
+    
+        
     
 def getCollationSettings(conn):
     sql = """ 
@@ -78,8 +112,14 @@ def get_catalogtable_list(conn):
     finally:
         if cursor:
             cursor.close()
-    
-      
+
+def get_usertable_list(conn):    
+    sql = """SELECT schemaname || '.' ||  tablename 
+             FROM pg_tables 
+             WHERE schemaname <> 'pg_catalog'
+          """
+    return basicSQLExec(conn,sql)
+
 
 def vacuum_catalog(dburl,conn,full=False,utility=False):
     """ Will use the provided connection to enumerate the list of databases
@@ -105,7 +145,7 @@ def vacuum_catalog(dburl,conn,full=False,utility=False):
         test_url = copy.deepcopy(dburl)
         test_url.pgdb = db[0]
         
-        if db[0] == 'template0':
+        if db[0] == 'template0' or db[0] == 'postgres':
             continue
         
         vac_conn = dbconn.connect(test_url,utility)

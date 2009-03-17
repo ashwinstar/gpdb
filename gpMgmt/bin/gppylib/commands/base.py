@@ -154,7 +154,7 @@ class Worker(Thread):
                     logger.debug("[%s] got cmd: %s" % (self.name,self.cmd.cmdStr))
                     #TODO:  catch Exception (especially ExecutionException)                        
                     self.cmd.run()
-                    logger.debug("[%s] finished cmd" % self.name)
+                    logger.debug("[%s] finished cmd: %s" % (self.name, self.cmd))
                     self.pool.addFinishedWorkItem(self.cmd)
                     self.cmd=None
                     try_count = 0
@@ -380,6 +380,12 @@ class Command:
         self.cmdStr=cmdStr        
         self.exec_context=createExecutionContext(ctxt,remoteHost,stdin=stdin)
         self.remoteHost=remoteHost
+        
+    def __str__(self):
+        if self.results:
+            return "%s cmdStr='%s'  had result: %s" % (self.name,self.cmdStr,self.results)
+        else:
+            return "%s cmdStr='%s'" % (self.name,self.cmdStr)
         
 
     def run(self,validateAfter=False):
