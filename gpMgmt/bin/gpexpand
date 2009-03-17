@@ -720,7 +720,8 @@ class gpexpand:
             GpStop('gpexpand rollback')
             
         self.statusLogger.remove_status_file()
-        os.unlink(options.master_data_directory + '/gpexpand_gp_configuration.bak')
+        if os.path.exists(options.master_data_directory + '/gpexpand_gp_configuration.bak'):
+            os.unlink(options.master_data_directory + '/gpexpand_gp_configuration.bak')
     
     def get_state(self):
         return self.statusLogger.get_current_status()[0]
