@@ -461,8 +461,6 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				vacstmt->relation = makeRangeVar(namespace_name, relname);
 			}
 
-			Assert(vacstmt->relation != NULL);
-
 			/*
 			 * Record the relation that is in the vacuum process, so that we can clear up
 			 * its freespace map entry when the vacuum process crashes or is cancelled.

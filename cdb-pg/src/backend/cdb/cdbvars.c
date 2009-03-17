@@ -488,27 +488,29 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 		Gp_role = newrole;
 
 		if (source != PGC_S_DEFAULT)
-		if (do_connect)
 		{
-			/*
-			 * In case there are problems with the Greenplum Database tables or data,
-			 * we catch any error coming out of cdblink_setup so we can set the
-			 * gp_role back to what it was.  Otherwise we may be left with
-			 * inappropriate connections for the new role.
-			 */
-			PG_TRY();
+			if (do_connect)
 			{
-				cdb_setup();
-			}
-			PG_CATCH();
-			{
-				cdb_cleanup(0,0);
-				Gp_role = oldrole;
-				if (Gp_role != GP_ROLE_UTILITY)
+				/*
+				 * In case there are problems with the Greenplum Database tables or data,
+				 * we catch any error coming out of cdblink_setup so we can set the
+				 * gp_role back to what it was.  Otherwise we may be left with
+				 * inappropriate connections for the new role.
+				 */
+				PG_TRY();
+				{
 					cdb_setup();
-				PG_RE_THROW();
+				}
+				PG_CATCH();
+				{
+					cdb_cleanup(0,0);
+					Gp_role = oldrole;
+					if (Gp_role != GP_ROLE_UTILITY)
+						cdb_setup();
+					PG_RE_THROW();
+				}
+				PG_END_TRY();
 			}
-			PG_END_TRY();
 		}
 	}
 

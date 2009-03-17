@@ -74,10 +74,13 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 		 * still gives plenty of chances before we get into real trouble.
 		 */
 		if (IsUnderPostmaster && (xid % 65536) == 0)
+		{
+			elog(LOG, "GetNewTransactionId: requesting autovac (xid %u xidVacLimit %u)", xid, ShmemVariableCache->xidVacLimit);
 			SendPostmasterSignal(PMSIGNAL_START_AUTOVAC);
+		}
 
 		if (IsUnderPostmaster &&
-		 TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidStopLimit))
+			TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidStopLimit))
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 					 errmsg("database is not accepting commands to avoid wraparound data loss in database \"%s\"",
@@ -86,11 +89,11 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 							 NameStr(ShmemVariableCache->limit_datname))));
 		else if (TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidWarnLimit))
 			ereport(WARNING,
-			(errmsg("database \"%s\" must be vacuumed within %u transactions",
-					NameStr(ShmemVariableCache->limit_datname),
-					ShmemVariableCache->xidWrapLimit - xid),
-			 errhint("To avoid a database shutdown, execute a full-database VACUUM in \"%s\".",
-					 NameStr(ShmemVariableCache->limit_datname))));
+					(errmsg("database \"%s\" must be vacuumed within %u transactions",
+							NameStr(ShmemVariableCache->limit_datname),
+							ShmemVariableCache->xidWrapLimit - xid),
+					 errhint("To avoid a database shutdown, execute a full-database VACUUM in \"%s\".",
+							 NameStr(ShmemVariableCache->limit_datname))));
 	}
 
 	/*

@@ -242,6 +242,9 @@ AutoVacMain(int argc, char *argv[])
 	IsUnderPostmaster = true;
 	am_autovacuum = true;
 
+	/* MPP-4990: Autovacuum always runs as utility-mode */
+	Gp_role = GP_ROLE_UTILITY;
+
 	/* reset MyProcPid */
 	MyProcPid = getpid();
 
