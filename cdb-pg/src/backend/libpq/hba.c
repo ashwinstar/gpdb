@@ -935,6 +935,19 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 			 *
 			 * XXX: attempt to do some backwards compatible parsing here?
 			 */
+			
+			if (parsedline->auth_method == uaIdent && token == "sameuser")
+			{
+				if (parsedline->database == "all")
+					parsedline->database = pstrdup("sameuser");
+				continue;
+			}
+			else if (parsedline->auth_method == uaIdent)
+			{
+				parsedline->usermap = pstrdup(token);
+				continue;
+			}
+			
 			ereport(LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("authentication option not in name=value format: %s", token),

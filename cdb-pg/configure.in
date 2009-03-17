@@ -1134,10 +1134,14 @@ fi
 # Similarly, use system's getopt_long() only if system provides struct option.
 # Solaris' getopt() doesn't do what we want for long options, so always use
 # our versions on that platform.
-if test "$PORTNAME" = "solaris"; then
-  AC_LIBOBJ(getopt)
-  AC_LIBOBJ(getopt_long)
-elif test x"$ac_cv_type_struct_option" = xyes ; then
+#
+# Actually, for Greenplum, we don't care about the bug very much,
+# and this fix screws up command parameter ordering.
+#
+#if test "$PORTNAME" = "solaris"; then
+#  AC_LIBOBJ(getopt)
+#  AC_LIBOBJ(getopt_long)
+if test x"$ac_cv_type_struct_option" = xyes ; then
   AC_REPLACE_FUNCS([getopt_long])
 else
   AC_LIBOBJ(getopt_long)
