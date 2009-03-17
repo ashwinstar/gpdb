@@ -441,7 +441,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			 * issues a "vacuum <db>" command, or a "vacuum <parent_partition_table>"
 			 * command.
 			 */
-			if (list_length(relations) > 1)
+			if (list_length(relations) > 1 || vacstmt->relation == NULL)
 			{
 				char *namespace_name = get_namespace_name(get_rel_namespace(relid));
 				char *relname = get_rel_name(relid);
