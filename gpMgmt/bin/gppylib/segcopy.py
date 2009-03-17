@@ -99,14 +99,11 @@ class GpSegCopy:
             s.close()
             logger.debug('Using port %d for segment template cleanup.' % templatePort)
             
-            startCmd=SegmentStart(name,self.dstDir, utilityMode=True, port=templatePort, ctxt=REMOTE, remoteHost=self.dstHost)
-            stopCmd=SegmentStop(name, self.dstDir, ctxt=REMOTE, remoteHost=self.dstHost)
-            
-            startCmd.run(validateAfter=True)
+            SegmentStart.local(name, self.dstDir, utilityMode=True, port=templatePort)
 
             dburl = dbconn.DbURL(hostname=self.dstHost,port=templatePort)
             logger.info("connecting to database: %s" % dburl)
-            conn = dbconn.connect(dburl, True)
+            conn = dbconn.connect(dburl, utility=True)
             
             # TODO: add other catalog tables
             table_names = [
@@ -123,8 +120,7 @@ class GpSegCopy:
             conn.commit()
             conn.close()
             
-            stopCmd.run(validateAfter=True)
-            res=stopCmd.get_results()
+            SegmentStop.local(name, self.dstDir)
             
             logger.info("Schema only copy cleanup complete")
    

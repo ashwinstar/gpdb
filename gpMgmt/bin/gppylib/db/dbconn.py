@@ -49,17 +49,16 @@ def parseRow(row):
 
 def parseLine(line):
     fields=line.split('|')
-    row={}
-    row['content']=int(fields[0])
-    row['definedprimary']=parseBool(fields[1])
-    row['dbid']=int(fields[2])
-    row['isprimary']=parseBool(fields[3])
-    row['valid']=parseBool(fields[4])
-    row['hostname']=fields[5]
-    row['port']=int(fields[6])
-    row['datadir']=fields[7].rstrip('\n')
+    row=[]
+    row.append(int(fields[0]))
+    row.append(parseBool(fields[1]))
+    row.append(int(fields[2]))
+    row.append(parseBool(fields[3]))
+    row.append(parseBool(fields[4]))
+    row.append(fields[5])
+    row.append(int(fields[6]))
+    row.append(fields[7].rstrip('\n'))
     return row
-
 
 
 

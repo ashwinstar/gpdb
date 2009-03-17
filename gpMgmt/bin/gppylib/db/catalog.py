@@ -81,7 +81,7 @@ def get_catalogtable_list(conn):
     
       
 
-def vacuum_catalog(dburl,conn,full=False):
+def vacuum_catalog(dburl,conn,full=False,utility=False):
     """ Will use the provided connection to enumerate the list of databases
         and then connect to each one in turn and vacuum full all of the 
         catalog files
@@ -108,7 +108,7 @@ def vacuum_catalog(dburl,conn,full=False):
         if db[0] == 'template0':
             continue
         
-        vac_conn = dbconn.connect(test_url)
+        vac_conn = dbconn.connect(test_url,utility)
         vac_curs = vac_conn.cursor()        
         vac_curs.execute("COMMIT")
         vac_curs.execute("SET CLIENT_MIN_MESSAGES='ERROR'")

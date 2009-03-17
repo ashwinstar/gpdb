@@ -48,6 +48,15 @@ class GpDB:
         else:
             return "Invalid"
 
+    def get_gp_configuration_string(self):
+        return '%d|%s|%d|%s|%s|%s|%d|%s' % ( self.content,
+                                            't' if self.definedprimary else 'f',
+                                            self.dbid,
+                                            't' if self.isprimary else 'f',
+                                            't' if self.valid else 'f',
+                                            self.hostname,
+                                            self.port,
+                                            self.datadir)
 
 
 class Segment:
@@ -107,9 +116,9 @@ class Segment:
 
     
 #--- factory methods for creating GpArray objects.
-def createGPDBFromDB(dbURL):
+def createGPDBFromDB(dbURL, utility=False):
     """Constructor for building gparray from provided database URL"""    
-    conn = dbconn.connect(dbURL)
+    conn = dbconn.connect(dbURL,utility)
     rows = dbconn.getConfig(conn)
     array =  GpArray(rows)
     conn.close()
@@ -123,9 +132,23 @@ def createFromFile(inputFile):
     rows=[]
     
     for line in f:
-        rows.append(gpconfig.parseLine(line))
+        rows.append(dbconn.parseLine(line))
     
     return GpArray(rows)
+
+def dumpToFile(gparray, filename):
+    try:
+        fp = open(filename, 'w')
+        if gparray.master:
+            fp.write(gparray.master.get_gp_configuration_string() + '\n')
+        if gparray.standbyMaster:
+            fp.write(gparray.standbyMaster.get_gp_configuration_string() + '\n')
+        for gpdb in gparray.getSegDbList():
+            fp.write(gpdb.get_gp_configuration_string() + '\n')
+    except IOError:
+        raise
+    finally:
+        if fp: fp.close()
 
 
 

@@ -122,6 +122,11 @@ class SegmentStop(Command):
         cmdfrags=['%s $GPHOME/bin/pg_ctl stop -D %s -m %s' % (SRC_GPPATH,dataDir,mode)]           
         cmdStr=' '.join(cmdfrags)    
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def local(name, dataDir):
+        cmd=SegmentStop(name, dataDir)
+        cmd.run(validateAfter=True)
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
@@ -138,6 +143,7 @@ class GpSegStartCmd(Command):
         if trust:
             cmdStr += " --trust"
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
@@ -172,15 +178,17 @@ class GpDeleteSystem():
 
 #-----------------------------------------------
 class GpStart(Command):
-    def __init__(self, name, masterOnly=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, masterOnly=False, restricted=False, ctxt=LOCAL, remoteHost=None):
         self.cmdStr="%s $GPHOME/bin/gpstart -a" % (SRC_GPPATH)
         if masterOnly:
             self.cmdStr += " -m"
+        if restricted:
+            self.cmdStr += " -R"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
-    def local(name,masterOnly=False):
-        cmd=GpStart(name,masterOnly)
+    def local(name,masterOnly=False,restricted=False):
+        cmd=GpStart(name,masterOnly,restricted)
         cmd.run(validateAfter=True)
        
 #-----------------------------------------------           
