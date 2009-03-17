@@ -160,8 +160,6 @@ bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
 int			Gp_udp_bufsize_k; /* UPD recv buf size, in KB */
 
-bool		gp_enable_direct_serialization=false;
-
 #ifdef USE_ASSERT_CHECKING
 /*
  * UDP-IC Test hooks (for fault injection).

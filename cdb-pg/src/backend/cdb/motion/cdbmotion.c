@@ -431,7 +431,7 @@ SendTuple(MotionLayerState *mlStates,
 	elog(DEBUG5, "Serializing HeapTuple for sending.");
 #endif
 
-	if (gp_enable_direct_serialization && targetRoute != BROADCAST_SEGIDX)
+	if (targetRoute != BROADCAST_SEGIDX)
 	{
 		struct directTransportBuffer b;
 

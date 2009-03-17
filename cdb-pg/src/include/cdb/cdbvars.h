@@ -414,9 +414,6 @@ extern int	Gp_interconnect_queue_depth;
 /* UDP recv buf size in KB.  For testing */
 extern int 	Gp_udp_bufsize_k;
 
-/* Use the direct serialization path, when possible ? */
-extern bool gp_enable_direct_serialization;
-
 /*
  * Parameter Gp_interconnect_hash_multiplier
  *
