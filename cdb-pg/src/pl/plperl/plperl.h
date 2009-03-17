@@ -53,7 +53,7 @@ int			spi_ERROR(void);
 
 /* routines from plperl.c */
 HV		   *plperl_spi_exec(char *, int);
-void		plperl_return_next(SV *);
+//void		plperl_return_next(SV *);
 SV		   *plperl_spi_query(char *);
 SV		   *plperl_spi_fetchrow(char *);
 SV		   *plperl_spi_prepare(char *, int, SV **);

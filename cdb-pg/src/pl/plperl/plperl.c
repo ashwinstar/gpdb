@@ -23,6 +23,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
+#include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -62,7 +63,8 @@ typedef struct plperl_proc_desc
 
 typedef struct plperl_proc_entry
 {
-	char proc_name[NAMEDATALEN];
+	char		proc_name[NAMEDATALEN]; /* internal name, eg
+										 * __PLPerl_proc_39987 */
 	plperl_proc_desc *proc_data;
 } plperl_proc_entry;
 
@@ -953,7 +955,7 @@ plperl_validator(PG_FUNCTION_ARGS)
 				 proc->prorettype != VOIDOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("plperl functions cannot return type %s",
+					 errmsg("PL/Perl functions cannot return type %s",
 							format_type_be(proc->prorettype))));
 	}
 
@@ -965,7 +967,7 @@ plperl_validator(PG_FUNCTION_ARGS)
 		if (get_typtype(argtypes[i]) == 'p')
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("plperl functions cannot take type %s",
+					 errmsg("PL/Perl functions cannot accept type %s",
 							format_type_be(argtypes[i]))));
 	}
 
@@ -1360,7 +1362,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 				/* Not an arrayref */
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg("set-returning Perl function must return "
+					 errmsg("set-returning PL/Perl function must return "
 								"reference to array or use return_next")));
 			}			
 		}
@@ -1531,7 +1533,7 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 			{
 				ereport(WARNING,
 						(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
-					   errmsg("ignoring modified tuple in DELETE trigger")));
+					   errmsg("ignoring modified row in DELETE trigger")));
 				trv = NULL;
 			}
 		}
@@ -1539,8 +1541,8 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
-					 errmsg("result of Perl trigger function must be undef, "
-							"\"SKIP\" or \"MODIFY\"")));
+					 errmsg("result of PL/Perl trigger function must be undef, "
+							"\"SKIP\", or \"MODIFY\"")));
 			trv = NULL;
 		}
 		retval = PointerGetDatum(trv);
@@ -1698,7 +1700,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("trigger functions may only be called "
+							 errmsg("trigger functions can only be called "
 									"as triggers")));
 				}
 				else
@@ -1708,7 +1710,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("plperl functions cannot return type %s",
+							 errmsg("PL/Perl functions cannot return type %s",
 									format_type_be(procStruct->prorettype))));
 				}
 			}
@@ -1757,7 +1759,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("plperl functions cannot take type %s",
+							 errmsg("PL/Perl functions cannot accept type %s",
 						format_type_be(procStruct->proargtypes.values[i]))));
 				}
 
@@ -2169,8 +2171,9 @@ plperl_spi_prepare(char *query, int argc, SV **argv)
 	PG_TRY();
 	{
 		/************************************************************
-		 * Lookup the argument types by name in the system cache
-		 * and remember the required information for input conversion
+		 * Resolve argument type names and then look them up by oid
+		 * in the system cache, and remember the required information
+		 * for input conversion.
 		 ************************************************************/
 		for (i = 0; i < argc; i++)
 		{
@@ -2610,10 +2613,10 @@ hv_store_string(HV *hv, const char *key, SV *val)
 	int32	klen = strlen(key);
 
 	/*
-	 * This seems nowhere documented, but under Perl 5.8.0 and up,
-	 * hv_store() recognizes a negative klen parameter as meaning
-	 * a UTF-8 encoded key.  It does not appear that hashes track
-	 * UTF-8-ness of keys at all in Perl 5.6.
+	 * This seems nowhere documented, but under Perl 5.8.0 and up, hv_store()
+	 * recognizes a negative klen parameter as meaning a UTF-8 encoded key. It
+	 * does not appear that hashes track UTF-8-ness of keys at all in Perl
+	 * 5.6.
 	 */
 #if PERL_BCDVERSION >= 0x5008000L
 	if (GetDatabaseEncoding() == PG_UTF8)
