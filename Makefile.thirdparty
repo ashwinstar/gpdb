@@ -95,12 +95,12 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	libedit/2.11
 	yaml/0.1.1
 	zlib/1.2.3
-        libevent/1.4.6
-        apr/1.2.12
-        apr-util/1.2.12
-        sigar/1.5.0.1
-        lighttpd/1.4.19
-        pcre/7.8
+	libevent/1.4.6
+	apr/1.2.12
+	apr-util/1.2.12
+	sigar/1.5.0.1
+	lighttpd/1.4.19
+	pcre/7.8
 endef
 BLD_THIRDPARTY_LIBS_BASE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE))
 
