@@ -107,7 +107,7 @@ def parseargs():
     optgrp.add_option('-f', '--find',     type='literal', metavar='string',
                       dest='filters', action='MatchRegex',
                       help='select log entries containing string')
-    optgrp.add_option('-F', '--!find',    type='literal', metavar='string',
+    optgrp.add_option('-F', '--nofind',    type='literal', metavar='string',
                       dest='filters', action='NoMatchRegex',
                       help='reject log entries containing string')
     optgrp.add_option('-m', '--match',    type='regex', metavar='regex',
