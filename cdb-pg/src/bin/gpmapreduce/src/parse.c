@@ -1762,6 +1762,11 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 					obj->u.input.columns->type = copyscalar("text");
 					obj->u.input.columns->next = NULL;
 				}
+				if (!obj->u.input.columns->next &&
+					!obj->u.input.delimiter)
+				{
+					obj->u.input.delimiter = copyscalar("off");
+				}
 			}
 			break;
 
