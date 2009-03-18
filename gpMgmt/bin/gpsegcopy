@@ -53,7 +53,7 @@ def parseargs():
     parser.add_option('-s', '--schema_only', action='store_true',
                         help='copy only the schema (no data)')
     parser.add_option('-m', '--method', type='choice', choices=['c', 'copy', 's', 'sync'],
-                      metavar='c[opy]|s[ync]', action='store', default='copy', 
+                      metavar='c[opy]|s[ync]', action='store', default='sync', 
                       help=('set the method of segment copy'))
 
     
@@ -115,7 +115,7 @@ try:
         sys.exit()  
     
     logger.debug("creating GpSegCopy object")    
-    segcopy = GpSegCopy(logger,srcHost,srcDir,dstHost,dstDir,options.clean,options.schema_only,options.method)
+    segcopy = GpSegCopy(logger,srcHost,srcDir,dstHost,dstDir,options.clean,options.schema_only,options.method, verbose=options.debug)
     segcopy.pre_check()
     segcopy.copy()
 

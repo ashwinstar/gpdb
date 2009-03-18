@@ -41,9 +41,14 @@ def get_max_dbid(name,conn):
 
 #-----------------------------------------------        
 class PySync(Command):
-    def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None, options=None):
         psync_executable=GPHOME + "/bin/lib/pysync.py"
-        self.cmdStr="%s %s %s %s:%s" % (SRC_GPPATH,psync_executable,srcDir,dstHost,dstDir)        
+        self.cmdStr="%s %s %s %s %s:%s" % (SRC_GPPATH,
+                                           psync_executable,
+                                           options if options else "",
+                                           srcDir,
+                                           dstHost,
+                                           dstDir)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
@@ -433,9 +438,3 @@ def chk_local_db_running(datadir,port):
         msg += "Did not find a netstat entry for .s.PGSQL.%s" % port
         
     raise Exception(msg)
-                
-
-            
-    
-    
-    

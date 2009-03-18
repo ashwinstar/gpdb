@@ -453,7 +453,8 @@ class SegmentTemplate:
 
         try:    
             gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
-                                   self.gparray.master.hostname, self.tempDir, True, True, 'sync')
+                                   self.gparray.master.hostname, self.tempDir, True, True, 'sync',
+                                   verbose=options.verbose)
             gp_segcopy.copy()
         except SegcopyError, msg:
             raise SegmentTemplateError(msg)

@@ -1,3 +1,4 @@
+from __future__ import with_statement
 import os, sys
 progname = os.path.split(sys.argv[0])[-1]
 
@@ -7,9 +8,11 @@ if sys.version_info < (2, 5, 0):
 Please upgrade python installed on this machine.''' % progname)
 
 import platform,  gplib, socket, random, popen2
+import threading
 from time import localtime, strftime
 
 import pg8000
+import pysync
 
 ##################
 log = {}
@@ -675,16 +678,30 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
         return True
 
 
-def kill_sync_segment_datadir(src_host, dst_cfg, logfile):
-    cmd = makeCommand('kill `cat /tmp/pysync.py.%s.ppid`' % (dst_cfg['datadir'].replace('/', '_')))
-    run('%s "%s" >> %s 2>&1' % 
-        (gplib.ssh_prefix(host=src_host),
-         cmd,
-         logfile))
+class _SyncProgress:
+    
+    markLock = threading.Lock()
+    
+    def __init__(self, logfunc, dst_cfg):
+        self.logfunc = logfunc
+        self.dst_host = dst_cfg["hostname"]
+        self.dst_dir = dst_cfg["datadir"]
+        self.dbid = dst_cfg["dbid"] if dst_cfg.has_key("dbid") else None
+        self.content = dst_cfg["content"] if dst_cfg.has_key("content") else None
+        self._tag = "%s:dbid=%s" % (self.dst_host, self.dbid) if self.dbid != None else "%s:%s" % (self.dst_host, self.dst_dir)
+    
+    def mark_sync_progress(self, message):
+        with _SyncProgress.markLock:
+            self.logfunc("%s %s" % (self._tag, message))
 
 
 #############
-def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True, setpid_callback=None, err_is_fatal=True):
+def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, 
+                         force_stop=True, setpid_callback=None, err_is_fatal=True, 
+                         verbose=False, progressBytes=None, progressTime=None):
+    
+    if setpid_callback:
+        log_warn('Use of sync_segment_datadir setpid_callback keyword is deprecated')
 
     if directory_exists(dst_cfg['datadir'], dst_cfg['hostname']):
         log_info('Data Directory %s exists' % dst_cfg['datadir'])
@@ -699,22 +716,18 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True, s
         if not ok:
             fatal('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
-
-    cmd = makeCommand('%s -v --delete -x db_dumps -x pg_log %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
-                                                               src_dir,
-                                                               dst_cfg['hostname'],
-                                                               dst_cfg['datadir']))
-
-    if setpid_callback:
-        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
-                             (gplib.ssh_prefix(host=src_host),
-                              cmd,
-                              logfile), setpid_callback=setpid_callback)
-    else:
-        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
-                             (gplib.ssh_prefix(host=src_host),
-                              cmd,
-                              logfile))
+    # Call pysync.LocalPysync directly
+    pysyncOptions = ["--delete", "-x", "db_dumps", "-x", "pg_log"]
+    if verbose:
+        pysyncOptions += ["-v"]
+    if progressBytes:
+        pysyncOptions += ["--progress-bytes", progressBytes]
+    if progressTime:
+        pysyncOptions += ["--progress-time", progressTime]
+    pysyncCmd = [pysync.__name__] + pysyncOptions + [src_dir, "%s:%s" % (dst_cfg['hostname'], dst_cfg['datadir'])]
+    sync = pysync.LocalPysync(pysyncCmd, 
+                              recordProgressCallback=_SyncProgress(log_info, dst_cfg).mark_sync_progress)
+    ok = (sync.run() == 0)
 
     if not ok:
         if err_is_fatal:

@@ -8,462 +8,359 @@ if sys.hexversion<0x2040400:
     os.system("/bin/sh -c 'type python>&2'");
     sys.exit(1)
 
+import cPickle
+import inspect
+import md5
+import signal
+import socket
 import subprocess
+import threading
+import zlib
+import pysync_remote
+from pysync_remote import Options
+from pysync_remote import ProgressUpdate, ProgressCounters
+from pysync_remote import statToTuple
 
 bootstrapSource="""
 import os,sys
 exec(sys.stdin.read(int(sys.stdin.readline())))
 """
 
-pysyncSource="""
-if sys.hexversion<0x2040400:
-    sys.stderr.write("pysync.py needs python version at least 2.4.4 on the remote computer.\\n")
-    sys.stderr.write("You are using %s\\n"%sys.version)
-    sys.stderr.write("Here is a guess at where the python executable is--\\n")
-    os.system("/bin/sh -c 'type python>&2'");
-    sys.exit(1)
-import cPickle
-from datetime import datetime
-import md5
-import socket
-import stat
-import time
-import zlib
-
-CHUNK_SIZE=4000000
-
-class Progress: 
-    def __init__(self, byteMax, fileMax):
-        self.status = '';
-        self.fname = '';
-        self.byteMax = byteMax;
-        self.byteNow = 0;
-        self.fileMax = fileMax;
-        self.fileNow = 0;
-        self.tstamp = 0;
-
-    def _printStatus(self):
-        pct = 0
-        if self.byteMax > 0: pct = int(self.byteNow * 100 / self.byteMax);
-        sys.stderr.write('[%s %d%%] %s %s byte:%d/%d file:%d/%d\\n' % (
-                          datetime.now().isoformat(' '), 
-                          pct, self.status, self.fname, self.byteNow, 
-                          self.byteMax, self.fileNow, self.fileMax))
-
-    def update(self, status, fname, byteNow, fileNow):
-        changed = (status != self.status 
-                   or fname != self.fname
-                   or fileNow != self.fileNow
-                   or (time.time() - self.tstamp > 5))
-        self.status = status
-        self.fname = fname
-        self.byteNow = byteNow
-        self.fileNow = fileNow
-        if changed: 
-            self.tstamp = time.time()
-            self._printStatus()
-
-class Options:
-    pass
-
-def statToTuple(s,name):
-    if stat.S_ISREG(s.st_mode):
-	return ['-',s.st_mode,s.st_size,None]
-    if stat.S_ISLNK(s.st_mode):
-	return ('l',0,os.readlink(name))
-    if stat.S_ISDIR(s.st_mode):
-	return ('d',s.st_mode)
-    if stat.S_ISCHR(s.st_mode):
-	return ('c',s.st_mode,s.st_rdev)
-    if stat.S_ISBLK(s.st_mode):
-	return ('b',s.st_mode,s.st_rdev)
-    if stat.S_ISFIFO(s.st_mode):
-	return ('p',s.st_mode)
-    if stat.S_ISSOCK(s.st_mode):
-	return ('s',s.st_mode)
-    raise Exception('Pysync can not handle %s.'%name)
-
-class RemotePysync:
-
-    def sendCommand(self,*args):
-	a = cPickle.dumps(args)
-	sys.stdout.write('%d\\n%s'%(len(a),a))
-	sys.stdout.flush()
-
-    def getAnswer(self):
-	size = int(sys.stdin.readline())
-	data = sys.stdin.read(size)
-	assert size==len(data)
-	return cPickle.loads(data)
-
-    def doCommand(self,*args):
-	self.sendCommand(*args)
-	return self.getAnswer()
-
-    def removeJunk(self,list):
-	for root,dirs,files in os.walk('.',False):
-	    os.chmod(root,0700)
-	    for i in dirs+files:
-		name = os.path.join(root,i)
-		t = statToTuple(os.lstat(name),name)
-		if name not in list and self.options.delete or name in list and list[name][0]!=t[0]:
-		    if t[0]=='d':
-			os.rmdir(name)
-		    else:
-			os.remove(name)
-
-    def createDirs(self,list):
-	for name in sorted(list.keys()):
-	    value = list[name]
-	    if value[0]=='d' and not os.path.exists(name):
-		os.mkdir(name,0700)
-
-    def createFiles(self,list):
-	for name,value in list.iteritems():
-	    if value[0]=='d' or value[0]=='L':
-		continue
-	    if os.path.lexists(name):
-		t = statToTuple(os.lstat(name),name)
-		if value[0]==t[0]:
-		    if value[0]!='l':
-			os.chmod(name,0700)
-		    if value[0]=='-':
-			value[3] = t[2]
-			if t[2]>value[2]:
-			    f = open(name,'r+b')
-			    f.truncate(value[2])
-			    f.close()
-			continue
-		    if value[2:]==t[2:]:
-			continue
-		os.remove(name)
-	    if value[0]=='-':
-		open(name,'w+b').close()
-	    elif value[0]=='l':
-		os.symlink(value[2],name)
-	    elif value[0]=='c':
-		os.mknod(name,0700|stat.S_IFCHR,value[2])
-	    elif value[0]=='b':
-		os.mknod(name,0700|stat.S_IFBLK,value[2])
-	    elif value[0]=='p':
-		os.mkfifo(name,0700)
-	    elif value[0]=='s':
-		f = socket.socket(socket.AF_UNIX)
-		f.bind(name)
-		f.close()
-	    else:
-		assert 0
-
-    def linkLinks(self,list):
-	for name,value in list.iteritems():
-	    if value[0]=='L':
-		if os.path.lexists(name):
-		    os.remove(name)
-		os.link(value[1],name)
-
-    def getData(self,name,offset,size):
-	if not self.socket:
-	    ss = socket.socket()
-	    ss.bind((self.options.host,0))
-	    ss.listen(1)
-	    self.doCommand('connect',ss.getsockname())
-	    self.socket = ss.accept()[0]
-	    ss.close()
-	s = self.doCommand('getData',name,offset,size)
-	o = 0
-	sb = []
-	while o<s:
-	    a = self.socket.recv(min(s-o,65536))
-	    if len(a)==0:
-		raise IOError('EOF')
-	    sb.append(a)
-	    o += len(a)
-	data = "".join(sb)
-	if self.options.compress:
-	    data = zlib.decompress(data)
-	assert len(data)==size
-	return data
-
-    def copyData(self,list):
-	fileMax = 0
-	byteMax = 0
-	for name,value in list.iteritems():
-	    if value[0]=='-':
-		fileMax += 1
-		byteMax += value[2]
-	progress = Progress(byteMax,fileMax)
-	fileNow = 0
-	byteNow = 0
-	bytesTotal = 0
-	unchanged = 0
-	for name,value in list.iteritems():
-	    if value[0]=='-':
-		f = None
-		if self.options.minusn:
-		    if os.path.lexists(name) and stat.S_ISREG(os.lstat(name).st_mode):
-			f = open(name,'rb')
-		else:
-		    f = open(name,'r+b')
-		localSize = 0
-		if f:
-		    f.seek(0,2)
-		    localSize = f.tell()
-		offset = 0
-		bytesFile = 0
-		changed = value[2]!=value[3]
-		while offset<value[2]:
-		    if self.options.verbose:
-			progress.update('',name,byteNow,fileNow)
-		    size = min(value[2]-offset,CHUNK_SIZE)
-		    digest = None
-		    if offset+size<=localSize:
-			self.sendCommand('getDigest',name,offset,size)
-			f.seek(offset)
-			b = f.read(size)
-			assert len(b)==size
-			a = md5.new(b).digest()
-			digest = self.getAnswer()
-			if a==digest:
-			    offset += size
-			    byteNow += size
-			    continue
-		    changed = True
-		    if not self.options.minusn:
-			data = self.getData(name,offset,size)
-			if not self.options.insecure:
-			    if digest==None:
-				digest = self.doCommand('getDigest',name,offset,size)
-			    if md5.new(data).digest()!=digest:
-				raise Exception('Digest did not match.')
-			f.seek(offset)
-			f.write(data)
-		    bytesFile += size
-		    bytesTotal += size
-		    offset += size
-		    byteNow += size
-		if f:
-		    f.close()
-		if self.options.minusn and self.options.verbose:
-		    sys.stderr.write('%s %d\\n'%(name,bytesFile))
-		if not changed:
-		    sys.stderr.write('%s is the same\\n'%name)
-		    unchanged += 1
-		fileNow += 1
-	if self.options.verbose:
-	    progress.update('','',byteNow,fileNow)
-        updated = fileMax - unchanged
-	sys.stderr.write('%d out of %d file(s) updated.\\n'%(updated, fileMax))
-	if self.options.minusn:
-	    sys.stderr.write('Total--%d byte%s\\n'%(bytesTotal,bytesTotal!=1 and 's' or ''))
-
-    def fixPermissions(self,list):
-	for name,value in list.iteritems():
-	    if value[0]!='L' and value[0]!='l':
-		os.chmod(name,value[1]&01777)
-
-    def run(self):
-	self.socket = None
-	self.options = self.doCommand('getOptions')
-	os.chdir(self.doCommand('getDestDir'))
-	list = self.doCommand('getList')
-	if self.options.minusn:
-	    self.copyData(list)
-	else:
-	    self.removeJunk(list)
-	    self.createDirs(list)
-	    self.createFiles(list)
-	    self.linkLinks(list)
-	    self.copyData(list)
-	    self.fixPermissions(list)
-	self.doCommand('quit',0)
-
-if 'pysyncSource' not in globals():
-    RemotePysync().run()
-"""
-
-exec(pysyncSource)
-
 class LocalPysync:
+    '''
+    The LocalPysync class initiates a directory synchronization task by starting
+    the pysync_remote module on a target system then processes commands from that
+    system to accomplish directry synchronization.  Once the pysync_remote module
+    is started on the remote system, this LocalPysync instance acts as the remote
+    system's agent.
+    '''
 
-    def __init__(self,argv):
-	self.options = Options()
-	self.options.compress = False
-	self.options.verbose = False
-	self.options.insecure = False
-	self.options.delete = False
-	self.options.minusn = False
-	self.options.sshargs = []
-	self.cache = [None]
-	self.exclude = set()
-	a = argv[1:]
-	while a:
-	    if a[0]=='-v':
-		self.options.verbose = True
-	    elif a[0]=='-?':
-		self.usage(argv)
-	    elif a[0]=='-compress':
-		self.options.compress = True
-	    elif a[0]=='-n':
-		self.options.minusn = True
-	    elif a[0]=='--insecure':
-		self.options.insecure = True
-	    elif a[0]=='--ssharg':
-		a.pop(0)
-		self.options.sshargs.append(a[0])
-	    elif a[0]=='--delete':
-		self.options.delete = True
-	    elif a[0]=='-x':
-		a.pop(0)
-		name = a[0]
-		if name[0]=='/':
-		    raise Exception('Please do not use absolute path with -x.')
-		if name[0:2]!='./':
-		    name = os.path.join('.',name)
-		self.exclude.add(name)
-	    else:
-		break
-	    a.pop(0)
-	if len(a)!=2:
-	    self.usage(argv)
-	sourceDir = a[0]
-	dest = a[1]
-	i = dest.find(':')
-	if i==-1:
-	    self.usage(argv)
-	os.chdir(sourceDir)
-	self.userAndHost = dest[:i]
-	self.destDir = dest[i+1:]
-	self.connectAddress = None
-	self.sendData = None
-	self.options.host = socket.gethostbyname(self.userAndHost[self.userAndHost.find('@')+1:])
+    NUMBER_SCALES = { 'M':1024*1024, 'G':1024*1024*1024, 'T':1024*1024*1024*1024 }
+
+    class _Quit(SystemExit):
+        def __init__(self, *info):
+            SystemExit.__init__(self, *info)
+
+    def __init__(self, argv, recordProgressCallback=None, recordRawProgressCallback=None, progressTimestamp=False):
+        '''
+        Initialize a new LocalPysync instance.
+        
+        argv - a command-line style list of arguments as described by self.usage()
+        recordProgressCallback - function to call to present a printable progress
+                message generated by RemotePysync; the function must accept a single
+                argument of type str.
+        recordRawProgressCallback - function to call to handle raw progress information
+                generated by RemotePysync; the function must accept a single argument
+                of type pysync_remote.ProgressUpdate.
+        progressTimestamp - indicates whether or not RemotePysync should include the
+                observation timestamp on messages it creates.
+        '''
+        self.options = Options()
+        self.sshargs = []
+        self.cache = [None]
+        self.exclude = set()
+        self.recordProgressCallback = recordProgressCallback
+        self.recordRawProgressCallback = recordRawProgressCallback
+        self.options.progressTimestamp = progressTimestamp
+        
+        a = argv[1:]
+        while a:
+            if a[0]=='-v':
+                self.options.verbose = True
+            
+            elif a[0]=='-?':
+                self.usage(argv)
+            
+            elif a[0]=='-compress':
+                self.options.compress = True
+            
+            elif a[0]=='-n':
+                self.options.minusn = True
+            
+            elif a[0]=='--insecure':
+                self.options.insecure = True
+            
+            elif a[0]=='--ssharg':
+                a.pop(0)
+                self.sshargs.append(a[0])
+            
+            elif a[0]=='--delete':
+                self.options.delete = True
+            
+            elif a[0]=='-x':
+                a.pop(0)
+                name = a[0]
+                if name[0]=='/':
+                    raise Exception('Please do not use absolute path with -x.')
+                if name[0:2]!='./':
+                    name = os.path.join('.',name)
+                self.exclude.add(name)
+            
+            elif a[0] == '--progress-bytes':
+                a.pop(0)
+                try:
+                    scale = a[0][-1]
+                    if scale == '%':
+                        # Ensure number part is convertable; otherwise pass the whole value
+                        factor = float(a[0][:-1])
+                        self.options.progressBytes = a[0]
+                    elif scale.upper() in LocalPysync.NUMBER_SCALES:
+                        # Real numeric value followed by a supported scale identifier
+                        progressBytes = int(float(a[0][:-1]) * LocalPysync.NUMBER_SCALES[scale.upper()])
+                        self.options.progressBytes = progressBytes
+                    else:
+                        # If the value isn't a percent or scaled, it must be an integer number of bytes
+                        progressBytes = int(a[0])
+                        self.options.progressBytes = self.options.progressBytes
+                except ValueError:
+                    raise ValueError("--progress-bytes value is not supported", a[0])
+                if type(self.options.progressBytes) != str and progressBytes < pysync_remote.SyncProgress.MINIMUM_VOLUME_INTERVAL:
+                    raise ValueError("--progress-bytes value must be at least %d" % pysync_remote.SyncProgress.MINIMUM_VOLUME_INTERVAL, a[0])
+            
+            elif a[0] == '--progress-time':
+                a.pop(0)
+                try:
+                    progressSeconds = int(60 * float(a[0]))
+                    self.options.progressTime = progressSeconds
+                except ValueError:
+                    raise ValueError("--progress-time value is not supported", a[0])
+                if progressSeconds < pysync_remote.SyncProgress.MINIMUM_TIME_INTERVAL:
+                    raise ValueError("--progress-time value must be at least %f" % (pysync_remote.SyncProgress.MINIMUM_TIME_INTERVAL / 60))
+            
+            else:
+                break
+            a.pop(0)
+        if len(a)!=2:
+            self.usage(argv)
+            
+        self.sourceDir = os.path.abspath(a[0])
+        if not os.path.exists(self.sourceDir):
+            raise ValueError("Source path \"%s\" not found" % self.sourceDir)
+        if not os.path.isdir(self.sourceDir):
+            raise ValueError("Source path \"%s\" is not a directory" % self.sourceDir)
+        if not os.access(self.sourceDir, os.F_OK | os.R_OK | os.X_OK):
+            raise ValueError("Source path) \"%s\" is not accessible" % self.sourceDir)
+        
+        dest = a[1]
+        i = dest.find(':')
+        if i==-1:
+            self.usage(argv)
+        
+        self.userAndHost = dest[:i]
+        self.destDir = dest[i+1:]
+        self.connectAddress = None
+        self.sendData = None
+        self.options.host = socket.gethostbyname(self.userAndHost[self.userAndHost.find('@')+1:])
 
     def usage(self,argv):
-	sys.stderr.write("""usage:
-    python """+argv[0]+""" [-v] [-?] [-n] [--ssharg arg] [-x exclude_file] [--insecure] [--delete] sourcedir [user@]host:destdir
-	-v: Print progress
-	-?: Print this message.
-	--ssharg arg: pass arg to ssh.  Use many times to pass many args.
-	-n: Do not do any work. Just print how many bytes will need to be
-	    transferred over the network per file and a total.
-	-x name: Do not transfer named file or directory.  Don't be too
-	    creative with the name.  For example, "directory/./file" will not
-	    work--use "directory/file".  Name is relative to sourcedir.
-	--insecure: Do not check MD5 digest after transfering data.
-	    This makes pysync.py run faster, but a bad guy can forge TCP
-	    packets and put junk of his choice into your files.
-	--delete: Delete things in dst that do not exist in src.
+        sys.stderr.write("""usage:
+    python """+argv[0]+""" [-v] [-?] [-n] 
+                [--ssharg arg] [-x exclude_file] [--insecure] [--delete]
+                [--progress-time seconds] [--progress-bytes { n[.n]{% | G | T} }
+                sourcedir [user@]host:destdir
+        -v: verbose output
+        -?: Print this message.
+        --ssharg arg: pass arg to ssh.  Use many times to pass many args.
+        -n: Do not do any work. Just print how many bytes will need to be
+            transferred over the network per file and a total.
+        -x name: Do not transfer named file or directory.  Don't be too
+            creative with the name.  For example, "directory/./file" will not
+            work--use "directory/file".  Name is relative to sourcedir.
+        --insecure: Do not check MD5 digest after transfering data.
+            This makes pysync.py run faster, but a bad guy can forge TCP
+            packets and put junk of his choice into your files.
+        --delete: Delete things in dst that do not exist in src.
+        --progress-time minutes: the number of minutes to elapse before a
+            time-based progress message is issued.  Progress messages may
+            appear more frequently than specified due to the --progress-bytes 
+            value.
+        --progress-bytes count:  the number of bytes processed before a
+            volume-based progress message is issued.  The count may be a
+            number followed by 'G' or 'T' or number followed by '%'.  If
+            specified as a percent, the count is calculated as the specified
+            percent of the total bytes expected to be processed.
 """)
-	sys.exit(1)
+        sys.exit(1)
 
     def readFile(self,filename,offset,size):
-	key = (filename,offset,size)
-	if self.cache[0]==key:
-	    return self.cache[1]
-	f = open(filename,'rb')
-	f.seek(offset)
-	a = f.read(size)
-	f.close()
-	assert len(a)==size
-	self.cache = (key,a)
-	return a
+        '''
+        Read a chunk of the specified size at the specified offset from the
+        file identified.  The last chunk read is cached for possible re-reading.
+        
+        The file is opened only for the duration of the seek and read operations.
+        '''
+        key = (filename,offset,size)
+        if self.cache[0]==key:
+            return self.cache[1]
+        absfilename = os.path.join(self.sourceDir, filename)
+        f = open(absfilename,'rb')
+        f.seek(offset)
+        a = f.read(size)
+        f.close()
+        assert len(a)==size
+        self.cache = (key,a)
+        return a
 
     def getList(self):
-	list = dict()
-	inomap = dict()
-	for root,dirs,files in os.walk('.'):
-	    for i in dirs+files:
-		name = os.path.join(root,i)
-		if name in self.exclude:
-		    if i in dirs:
-			dirs.remove(i)
-		    continue
-		s = os.lstat(name)
-		if s.st_ino in inomap:
-		    list[name] = ('L',inomap[s.st_ino])
-		    continue
-		inomap[s.st_ino] = name
-		list[name] = statToTuple(s,name)
-	return list
+        '''
+        Gets a map of {name:stat} pairs to be processed.  The stat value
+        is generally the tuple returned from pysync_remote.statToTuple.
+        Hard links (an entry with an inode equal to another in the list)
+        are represented by a ('L', linked_name) tuple.
+        '''
+        list = dict()
+        inomap = dict()
+        for root,dirs,files in os.walk(self.sourceDir):
+            for i in dirs+files:
+                absname = os.path.join(root, i)
+                relname = '.' + absname[len(self.sourceDir):]
+                if relname in self.exclude:
+                    if i in dirs:
+                        dirs.remove(i)
+                    continue
+                s = os.lstat(absname)
+                if s.st_ino in inomap:
+                    list[relname] = ('L',inomap[s.st_ino])
+                    continue
+                inomap[s.st_ino] = relname
+                list[relname] = statToTuple(s,absname)
+        return list
 
     def doCommand(self,what):
-	if what[0]=='connect':
-	    self.connectAddress = what[1]
-	elif what[0]=='getOptions':
-	    return self.options
-	elif what[0]=='getDestDir':
-	    return self.destDir
-	elif what[0]=='getList':
-	    return self.getList()
-	elif what[0]=='getDigest':
-	    return md5.new(self.readFile(what[1],what[2],what[3])).digest()
-	elif what[0]=='getData':
-	    self.sendData = self.readFile(what[1],what[2],what[3])
-	    if self.options.compress:
-		self.sendData = zlib.compress(self.sendData,1)
-	    return len(self.sendData)
-	elif what[0]=='quit':
-	    sys.exit(what[1])
-	else:
-	    assert 0
+        '''
+        Perform the command requested by the remote side and prepare any
+        result.
+        '''
+        if what[0]=='connect':
+            self.connectAddress = what[1]
+        elif what[0]=='getOptions':
+            return self.options
+        elif what[0]=='getDestDir':
+            return self.destDir
+        elif what[0]=='getList':
+            return self.getList()
+        elif what[0]=='getDigest':
+            return md5.new(self.readFile(what[1],what[2],what[3])).digest()
+        elif what[0]=='getData':
+            self.sendData = self.readFile(what[1],what[2],what[3])
+            if self.options.compress:
+                self.sendData = zlib.compress(self.sendData,1)
+            return len(self.sendData)
+        elif what[0] == 'recordProgress':
+            if self.recordProgressCallback:
+                self.recordProgressCallback(what[1].rstrip())
+            else:
+                sys.stdout.write(what[1].rstrip())
+                sys.stdout.write('\n')
+            return None
+        elif what[0] == 'recordRawProgress':
+            if self.recordRawProgressCallback:
+                self.recordRawProgressCallback(what[1])
+            else:
+                sys.stdout.write("raw: " + str(what[1]))
+                sys.stdout.write('\n')
+            return None
+        elif what[0]=='quit':
+            raise LocalPysync._Quit(what[1])
+        else:
+            assert 0
 
     def work(self):
-	while 1:
+        '''
+        Wait for and process commands from the RemotePysync instance connected
+        to the Popened SSH process.
+        
+        Command processing continues until EOF is reached on Popen.stdout (the 
+        command input stream from RemotePysync) or a "quit" command is proocessed.
+        Command response objects are serialized and written to Popen.stdin (the 
+        command output stream to RemotePysync).
+        '''
+        while True:
             try:
                 # check if parent still alive
                 os.kill(os.getppid(), 0)
             except:
                 # parent gone, exit
-                break
-	    a = self.p.stdout.readline()
-	    if len(a)==0:
-		break
-	    size = int(a)
-	    data = self.p.stdout.read(size)
-	    assert len(data)==size
-	    answer = cPickle.dumps(self.doCommand(cPickle.loads(data)))
-	    self.p.stdin.write("%d\n%s"%(len(answer),answer))
-	    self.p.stdin.flush()
-	    if self.connectAddress!=None:
-		self.socket = socket.socket()
-		self.socket.connect(self.connectAddress)
-		self.connectAddress = None
-	    if self.sendData!=None:
-		self.socket.sendall(self.sendData)
-		self.sendData = None
+                return 2
+            
+            # Get the length of the next serialized command
+            a = self.p.stdout.readline()
+            if len(a)==0:
+                # End the command loop if EOF
+                return 3
+            size = int(a)
+            
+            # Read the serialized command and process it.
+            data = self.p.stdout.read(size)
+            assert len(data)==size
+            try:
+                answer = cPickle.dumps(self.doCommand(cPickle.loads(data)))
+            except LocalPysync._Quit, e:
+                return e.code
+            
+            # Send the serialized command response
+            self.p.stdin.write("%d\n%s"%(len(answer),answer))
+            self.p.stdin.flush()
+            
+            # If the command was a connect order, open a socket to
+            # the remote side for data transfer
+            if self.connectAddress!=None:
+                self.socket = socket.socket()
+                self.socket.connect(self.connectAddress)
+                self.connectAddress = None
+                
+            # If the command was a getData order, send the prepared
+            # data over the socket.
+            if self.sendData!=None:
+                self.socket.sendall(self.sendData)
+                self.sendData = None
 
     def run(self):
+        '''
+        Start the pysync_remote module on the remote host and call self.work() to process 
+        commands presented by the remote host.
+        '''
         # save of ppid to allow the process to be stopped.
         os.system('echo %d > /tmp/pysync.py.%s.ppid' % (os.getppid(), self.destDir.replace('/', '_')))
         PATH = os.environ.get('PATH') or '.'
         LIBPATH = os.environ.get('LD_LIBRARY_PATH') or '.'
         
-        cmd = '''bash -c "GPHOME=%s PATH=%s/ext/python/bin:%s LD_LIBRARY_PATH=%s/ext/python/lib:%s python -u -c '%s'"''' % (os.environ.get('GPHOME'), 
-                                                                                                                            os.environ.get('GPHOME'), 
-                                                                                                                            PATH, 
-                                                                                                                            os.environ.get('GPHOME'), 
-                                                                                                                            LIBPATH,
-                                                                                                                            bootstrapSource)
+        cmd = ('''bash -c "GPHOME=%s PATH=%s/ext/python/bin:%s LD_LIBRARY_PATH=%s/ext/python/lib:%s python -u -c '%s'"''' 
+               % (os.environ.get('GPHOME'), 
+                  os.environ.get('GPHOME'), 
+                  PATH, 
+                  os.environ.get('GPHOME'), 
+                  LIBPATH, 
+                  bootstrapSource))
         args = []
         args.append('ssh')
-        args.extend(self.options.sshargs)
+        args.extend(self.sshargs)
         args.append(self.userAndHost)
         args.append(cmd)
+        code = 0
         self.p = None
-	try:
-	    try:
-		self.p = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-		self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
-		self.work()
-	    except OSError, e:
-		sys.stderr.write(str(e))
-                raise 
-	finally:
+        try:
+            try:
+                pysyncSource = inspect.getsource(pysync_remote)
+                self.p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
+                code = self.work()
+            except OSError, e:
+                sys.stderr.write(str(e))
+                raise
+        finally:
             os.remove('/tmp/pysync.py.%s.ppid' % (self.destDir.replace('/','_')))
-	    if self.p:
-                os.kill(self.p.pid,9)
+            if self.p:
+                timer = threading.Timer(2.0, (lambda: os.kill(self.p.pid, signal.SIGHUP)))
+                timer.start()
+                rc = self.p.wait()
+                timer.cancel()
+
+        return code
 
 if os.environ.get('GPHOME') is None:
     print '[FATAL]:- Please specify environment variable GPHOME'
     sys.exit(1)
 
-LocalPysync(sys.argv).run()
+if __name__ == '__main__':
+    sys.exit(LocalPysync(sys.argv, progressTimestamp=True).run())

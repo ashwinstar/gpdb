@@ -2,20 +2,42 @@
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
 
+from __future__ import with_statement
 import os
 import socket
+import sys
+import threading
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "bin", "lib"))
 
 from gppylib.gplog import *
 from gppylib.commands.unix import *
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
 from gppylib.db import dbconn
+import pysync
 
 class SegcopyError(Exception):  pass
 
+
+class _SyncProgress:
+    
+    _markLock = threading.Lock()
+    
+    def __init__(self, logfunc, gpSegCopy):
+        self.logfunc = logfunc
+        self.dstHost = gpSegCopy.dstHost
+        self.dstDir = gpSegCopy.dstDir
+        self._tag = "%s:%s" % (self.dstHost, self.dstDir)
+    
+    def mark_sync_progress(self, message):
+        with _SyncProgress._markLock:
+            self.logfunc("%s %s" % (self._tag, message))
+
+
 class GpSegCopy:
     
-    def __init__(self,logger,srcHost,srcDir,dstHost,dstDir,clean,schema_only,method):
+    def __init__(self,logger,srcHost,srcDir,dstHost,dstDir,clean,schema_only,method, progressBytes=None, progressTime=None, verbose=False):
         self.logger=logger
         self.srcHost=srcHost
         self.srcDir=srcDir
@@ -24,7 +46,10 @@ class GpSegCopy:
         self.clean=clean
         self.schema_only=schema_only
         self.method=method
-        self.masterDataDir = os.getenv("MASTER_DATA_DIRECTORY")    
+        self.masterDataDir = os.getenv("MASTER_DATA_DIRECTORY")
+        self.progressBytes = progressBytes
+        self.progressTime = progressTime
+        self.verbose = verbose
         
     
     def pre_check(self):
@@ -46,9 +71,8 @@ class GpSegCopy:
             RemoveFiles.remote("dstDir",self.dstHost,self.dstDir)
                      
         self.verify_remotedir("dstDir",self.dstHost,self.dstDir, srcDirSize)
-        
-        pass
-    
+
+
     def get_status(self):
         self.logger.critical("TODO: get_status")
         pass
@@ -73,11 +97,24 @@ class GpSegCopy:
             scpCmd=RemoteCopy(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
             scpCmd.run(validateAfter=True)
             res=scpCmd.get_results()
-        else:            
-            pysyncCmd=PySync(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
-            pysyncCmd.run(validateAfter=True)
-            res=pysyncCmd.get_results()
-            
+        else:
+
+            # Call pysync.LocalPysync directly
+            pysyncOptions = []
+            if self.verbose:
+                pysyncOptions += ["-v"]
+            if self.progressBytes:
+                pysyncOptions += ["--progress-bytes", self.progressBytes]
+            if self.progressTime:
+                pysyncOptions += ["--progress-time", self.progressTime]
+            pysyncCmd = [pysync.__name__] + pysyncOptions + [self.srcDir, "%s:%s" % (self.dstHost, self.dstDir)]
+            sync = pysync.LocalPysync(pysyncCmd, 
+                                      recordProgressCallback=_SyncProgress(self.logger.info, self).mark_sync_progress)
+            ok = (sync.run() == 0)
+            if not ok:
+                raise SegcopyError, ("Copy data from (%s:%s) to (%s:%s) failed" 
+                                     % (self.srcHost, self.srcDir, self.dstHost, self.dstDir))
+        
         #basic validation
         dstDirSize=DiskUsage.get_size(name,self.dstHost,self.dstDir)
         
@@ -136,6 +173,10 @@ class GpSegCopy:
             remote_bytes_avail=DiskFree.get_size(name,host,directory)
             RemoveDirectory.remote(name,host,directory)            
         else:
+            # If clean is specified, there will be no existing remote
+            # directory; ensure there is one.
+            if self.clean:
+                MakeDirectory.remote(name, host, directory)
             remote_bytes_avail=DiskFree.get_size(name,host,directory)
             
             

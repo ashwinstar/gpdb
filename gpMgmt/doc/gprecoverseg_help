@@ -11,7 +11,7 @@ gprecoverseg [-d <master_data_directory>]
              [-p <new_recover_host> 
               | -s <pri_datadir>,<mir_datadir> 
               | -i <recover_config_file>] 
-             [-B <parallel_processes>] [-T <timeout_in_seconds>] [-f] 
+             [-B <parallel_processes>] [-f] 
              [-z <seg_data_dir>:<seg_hostname> | -S <seg_dbid>] 
              [-a] [-q] [-l <logfile_directory>] [-D] 
 
@@ -155,11 +155,6 @@ catalog. For example, when running in readonly mode, segments are not
 marked invalid in the catalog but you can still detect a down segment 
 using gpstate. Use this option with care!
 
-
--T <timeout_in_seconds>
-
-Increases the allowed time to complete a segment recovery operation. 
-The default value is 259200 seconds (3 days).
 
 -z <seg_data_dir>:<seg_hostname> (force recovery of a valid primary)
 

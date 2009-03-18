@@ -8,14 +8,13 @@ be able to generate mirror copies of primary segments.
 
 gpaddmirrors -- add mirror segment
 
-Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-o outfile] [-s] [-i mirror_config] [-m mirror_datadir_config] [-B number] [-T timeout]
+Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port_offset] [-o outfile] [-s] [-i mirror_config] [-m mirror_datadir_config] [-B number]
            
           --version : print version information
           -?        : print this help screen
           -D        : set logging output to debug level
           -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
           -a        : non-interactive mode [default: interactive mode]
-          -T        : <timeout> in second [default: 259200 seconds]
           -d        : master data directory
           -l        : <log directory> alternative log file directory [optional]
           -o        : file to output configuration
@@ -69,7 +68,6 @@ opt['-o'] = None
 opt['-p'] = 1000
 opt['-l'] = None
 opt['-D'] = False
-opt['-T'] = 259200
 
 arg = {}
 arg['exit'] = 0
@@ -107,7 +105,7 @@ def parseCommandLine():
         elif (switch == '-d'):        opt[switch] = val
         elif (switch == '-l'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
-        elif (switch == '-T'):        opt[switch] = int(val)
+        elif (switch == '-T'):        gpmlib.log_info('Option -T is obsolete.  This option will be ignored')
 
     gpmlib.log_set_module(script_name)
 
@@ -293,57 +291,36 @@ def chk_mirror_dir(qes, mirrors):
 ################
 # multi-thread running data sychronization
 class SyncDataThread(Thread):
-    def __init__(self, pri_host, pri_datadir, mir_cfg, timeout, logfile):
+    def __init__(self, pri_host, pri_datadir, mir_cfg, logfile):
         Thread.__init__(self)
         self.pri_host = pri_host
         self.pri_datadir = pri_datadir
         self.mir_cfg = mir_cfg
         self.status = False
         self.logfile = logfile
-        self.timeout = datetime.today() + timedelta(seconds=timeout)
 
     def run(self):
         # sync data directory
-        gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s)' % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))
+        gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s dbid=%s)' 
+                        % (self.pri_host, self.pri_datadir,
+                           self.mir_cfg['hostname'], self.mir_cfg['datadir'], self.mir_cfg['dbid']))
 
-        if not gpmlib.sync_segment_datadir(self.pri_host, self.pri_datadir, self.mir_cfg, self.logfile):
-            gpmlib.log_error('Copy data from (%s:%s) to (%s:%s) failed' % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))    
+        if not gpmlib.sync_segment_datadir(self.pri_host, self.pri_datadir, self.mir_cfg, self.logfile, verbose=opt['-D']):
+            gpmlib.log_error('Copy data from (%s:%s) to (%s:%s) failed' 
+                             % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))    
             return
 
         self.status = True
 
 
-    def timed_out(self):
-        return datetime.today() > self.timeout
-
 ################
 def create_mirrors(qes, mirrors):
     global opt, arg
 
-    # calculate the timeout
-    pri_host = qes[0]['hostname']
-    pri_datadir = qes[0]['datadir']
-    (ok,out) = gpmlib.run('%s "%s -k %s |%s -1"' % 
-                          (gplib.ssh_prefix(host=pri_host),
-                           ENV.DF,
-                           pri_datadir,
-                           ENV.TAIL))
-                    
-    wait_limit = opt['-T']
-    timeout = wait_limit
-    if ok and len(out) > 0:
-        seg_size_kb = int(out[0].split()[1])
-        timeout = seg_size_kb/1000
-
-    if timeout < wait_limit:
-        timeout = wait_limit 
-
     # Start parallel segment instance
     gpmlib.log_info('Commencing parallel segment instance startup, please wait...')
-    gpmlib.log_info('Timeout value = %d seconds' % (timeout))
 
     error = []
-    kill = []
     thlist = []
     n = 0
     for i in range(len(qes)):
@@ -351,7 +328,7 @@ def create_mirrors(qes, mirrors):
         pri_datadir = qes[i]['datadir']
         mir_cfg = mirrors[i]
 
-        th = SyncDataThread(pri_host, pri_datadir, mir_cfg, timeout, opt['-l'])
+        th = SyncDataThread(pri_host, pri_datadir, mir_cfg, opt['-l'])
         thlist.append(th)
         th.start()
 
@@ -365,14 +342,7 @@ def create_mirrors(qes, mirrors):
                     th = thlist.pop()
                     th.join(2)
                     if th.isAlive():
-                        if th.timed_out():
-                            # python no thread.kill, just ignore the thread now
-                            kill.append((th.mir_cfg['hostname'], th.mir_cfg['datadir']))
-                            gpmlib.log_error('Thread (%s, %s) timed out' % (th.mir_cfg['hostname'], th.mir_cfg['datadir']))
-                        else:
-                            tmplist.append(th)
-                        sys.stdout.write('.')
-                        sys.stdout.flush()
+                        tmplist.append(th)
                     else:
                         if not th.status:
                             error.append((th.mir_cfg['hostname'], th.mir_cfg['datadir']))
@@ -391,14 +361,7 @@ def create_mirrors(qes, mirrors):
                 th = thlist.pop()
                 th.join(2)
                 if th.isAlive():
-                    if th.timed_out():
-                        # python no thread.kill, just ignore the thread now                       
-                        kill.append((th.mir_cfg['hostname'], th.mir_cfg['datadir'])) 
-                        gpmlib.log_error('Thread (%s, %s) timed out' % (th.mir_cfg['hostname'], th.mir_cfg['datadir']))
-                    else:
-                        tmplist.append(th)
-                    sys.stdout.write('.')
-                    sys.stdout.flush()
+                    tmplist.append(th)
                 else:
                     if not th.status:
                         error.append((th.mir_cfg['hostname'], th.mir_cfg['datadir']))
@@ -409,18 +372,16 @@ def create_mirrors(qes, mirrors):
     sys.stdout.write('\n')
     sys.stdout.flush()
 
-    completed = len(qes) - len(error) - len(kill)
-    killed = len(kill)
+    completed = len(qes) - len(error)
     failed = len(error)
     gpmlib.log_info('-------------------------------------------')
     gpmlib.log_info('Parallel process exit status')
     gpmlib.log_info('-------------------------------------------')
     gpmlib.log_info('Total processes marked as completed  = %d' % completed)
-    gpmlib.log_info('Total processes marked as killed     = %d' % killed)
     gpmlib.log_info('Total processes marked as failed     = %d' % failed)
     gpmlib.log_info('-------------------------------------------')
 
-    if failed + killed > 0:
+    if failed > 0:
         gpmlib.log_warn('Errors detected in parallel processing, review %s for more details' % opt['-l'])
         arg['exit'] = 1
         return False
@@ -449,7 +410,6 @@ def display_param(master_datadir, master_port, qes, mirrors, multi_home):
     gpmlib.log_info('Greenplum master hostname                = %s' % socket.gethostname())
     gpmlib.log_info('Greenplum master data directory          = %s' % master_datadir)
     gpmlib.log_info('Greenplum master port                    = %d' % master_port)
-    gpmlib.log_info('Timeout                                  = %d seconds' % opt['-T'])
     gpmlib.log_info('Parallel batch limit                     = %d' % opt['-B'])
     if multi_home:
         gpmlib.log_info('Multi-home configuration')
