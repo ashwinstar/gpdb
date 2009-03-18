@@ -12,10 +12,33 @@
 # ------------------------------------------------------------------------------------------------
 
 BLD_THIRDPARTY:=$(BLD_TOP)/ext
+ifeq "$(BLD_ARCH)" ""
 BLD_ARCH=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
+endif
 ifeq "$(BLD_ARCH)" "osx105_x86"
 BLD_ARCH=osx104_x86
 endif
+
+rhel4_x86_64_BLD_BITS=64
+rhel4_x86_32_BLD_BITS=32
+rhel5_x86_64_BLD_BITS=64
+rhel5_x86_32_BLD_BITS=32
+sol8_sparc_BLD_BITS=32
+sol8_sparc_32_BLD_BITS=32
+sol8_sparc_64_BLD_BITS=64
+sol9_sparc_BLD_BITS=32
+sol9_sparc_32_BLD_BITS=32
+sol9_sparc_64_BLD_BITS=64
+sol10_sparc_BLD_BITS=64
+sol10_sparc_64_BLD_BITS=64
+sol10_sparc_32_BLD_BITS=32
+sol10_x86_64_BLD_BITS=64
+sol10_x86_32_BLD_BITS=32
+suse10_x86_64_BLD_BITS=64
+win64_BLD_BITS=64
+win32_BLD_BITS=32
+BLD_BITS=$($(BLD_ARCH)_BLD_BITS)
+
 
 # ------------------------------------------------------------------------------------------------
 #
