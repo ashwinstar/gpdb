@@ -113,7 +113,7 @@ def parseargs():
     optgrp.add_option('-m', '--match',    type='regex', metavar='regex',
                       dest='filters', action='MatchRegex',
                       help='select log entries where a match for the regex is found')
-    optgrp.add_option('-M', '--!match',   type='regex', metavar='regex',
+    optgrp.add_option('-M', '--nomatch',   type='regex', metavar='regex',
                       dest='filters', action='NoMatchRegex',
                       help='reject log entries where a match for the regex is found')
     optgrp.add_option('-t', '--trouble',  action='store_true',
