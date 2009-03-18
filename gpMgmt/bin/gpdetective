@@ -398,6 +398,11 @@ class GPDetective:
            SELECT * from gp_configuration
         ''')
         
+        self.writeSelect('config_history.log', 
+		'''
+			SELECT * FROM gp_configuration_history
+		''')
+        
         
     
     #------------------------------------------------------------
