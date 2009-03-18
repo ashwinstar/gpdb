@@ -117,7 +117,7 @@
 #shared_buffers = 128MB			# min 128kB or max_connections*16kB
 					# (change requires restart)
 #temp_buffers = 8MB			# min 800kB
-#max_prepared_transactions = 5		# can be 0 or more
+#max_prepared_transactions = 50		# can be 0 or more
 					# (change requires restart)
 # Note: increasing max_prepared_transactions costs ~600 bytes of shared memory
 # per transaction slot, plus lock space (see max_locks_per_transaction).
@@ -154,7 +154,6 @@
 #bgwriter_all_percent = 0.333		# 0-100% of all buffers scanned/round
 #bgwriter_all_maxpages = 5		# 0-1000 buffers max written/round
 
-#max_prepared_transactions = 100 # 0-1000
 
 #---------------------------------------------------------------------------
 # WRITE AHEAD LOG
@@ -255,14 +254,14 @@
 					# depending on platform.
 
 # This is used when logging to stderr:
-#redirect_stderr = off			# Enable capturing of stderr into log
+#redirect_stderr = on			# Enable capturing of stderr into log
 					# files
 					# (change requires restart)
 
 # These are only used if redirect_stderr is on:
 #log_directory = 'pg_log'		# Directory where log files are written
 					# Can be absolute or relative to PGDATA
-#log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log' # Log file name pattern.
+#log_filename = 'gpdb-%Y-%m-%d.log' # Log file name pattern.
 					# Can include strftime() escapes
 #log_truncate_on_rotation = off # If on, any existing log file of the same
 					# name as the new log file will be
@@ -275,7 +274,7 @@
 #log_rotation_age = 1d			# Automatic rotation of logfiles will
 					# happen after that time.  0 to
 					# disable.
-#log_rotation_size = 10MB		# Automatic rotation of logfiles will
+#log_rotation_size = 0		# Automatic rotation of logfiles will
 					# happen after that much log
 					# output.  0 to disable.
 
