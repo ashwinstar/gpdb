@@ -23,6 +23,10 @@
 #include "nodes/relation.h"
 #include "optimizer/clauses.h" /* AggClauseCounts */
 
+/* GUC parameters */
+#define DEFAULT_CURSOR_TUPLE_FRACTION 1.0 /* assume all rows will be fetched */
+extern double cursor_tuple_fraction;
+
 /*
  * A structure that contains information for planning GROUP BY 
  * queries.

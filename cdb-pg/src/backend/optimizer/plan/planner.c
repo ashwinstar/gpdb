@@ -59,6 +59,9 @@
 
 #include "utils/debugbreak.h"
 
+/* GUC parameter */
+double cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
+
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
 
 
@@ -143,18 +146,31 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	{
 		/*
 		 * We have no real idea how many tuples the user will ultimately FETCH
-		 * from a cursor, but it seems a good bet that he doesn't want 'em
-		 * all.  Optimize for 10% retrieval (you gotta better number?  Should
-		 * this be a SETtable parameter?)
+		 * from a cursor, but it is sometimes the case that he doesn't want 'em
+		 * all, or would prefer a fast-start plan anyway so that he can
+		 * process some of the tuples sooner.  Use a GUC parameter to decide
+		 * what fraction to optimize for.
 		 */
-		tuple_fraction = 0.10;
+		tuple_fraction = cursor_tuple_fraction;
+
+		/*
+		 * We document cursor_tuple_fraction as simply being a fraction,
+		 * which means the edge cases 0 and 1 have to be treated specially
+		 * here.  We convert 1 to 0 ("all the tuples") and 0 to a very small
+		 * fraction.
+		 */
+		if (tuple_fraction >= 1.0)
+			tuple_fraction = 0.0;
+		else if (tuple_fraction <= 0.0)
+			tuple_fraction = 1e-10;
 	}
 	else
 	{
+
 		/* Default assumption is we need all the tuples */
 		tuple_fraction = 0.0;
 	}
-
+	
 	/* primary planning entry point (may recurse for subqueries) */
 	result_plan = subquery_planner(parse, tuple_fraction, NULL);
 
