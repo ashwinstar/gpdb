@@ -81,7 +81,7 @@ by default unless proceeded by the --case=ignore option.
 Finds the log entries containing the specified string.
 
 
--F '<string>' | --!find='<string>'
+-F '<string>' | --nofind='<string>'
 
 Rejects the log entries containing the specified string.
 
@@ -93,7 +93,7 @@ expression. See http://docs.python.org/library/re.html for
 Python regular expression syntax.
 
 
--M <regex> | --!match=<regex>
+-M <regex> | --nomatch=<regex>
 
 Rejects log entries that match the specified Python regular 
 expression. See http://docs.python.org/library/re.html for 
