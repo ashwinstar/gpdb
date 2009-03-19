@@ -360,7 +360,7 @@ bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 		loctup.t_len = ItemIdGetLength(lp);
 		ItemPointerSet(&(loctup.t_self), page, targoffset);
 
-		valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
+		valid = HeapTupleSatisfiesVisibility(scan->rs_rd, &loctup, snapshot, buffer);
 		if (valid)
 			scan->rs_vistuples[ntup++] = targoffset;
 	}

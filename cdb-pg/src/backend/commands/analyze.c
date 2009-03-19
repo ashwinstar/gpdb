@@ -898,7 +898,7 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 			targtuple.t_data = (HeapTupleHeader) PageGetItem(targpage, itemid);
 			targtuple.t_len = ItemIdGetLength(itemid);
 
-			if(HeapTupleSatisfiesVisibility(&targtuple, SnapshotNow, targbuffer))
+			if(HeapTupleSatisfiesVisibility(onerel, &targtuple, SnapshotNow, targbuffer))
 			{
 				/*
 				 * The first targrows live rows are simply copied into the

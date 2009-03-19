@@ -842,6 +842,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	relation->rd_isnailed = false;
 	relation->rd_createSubid = InvalidSubTransactionId;
 	relation->rd_istemp = isTempNamespace(relation->rd_rel->relnamespace);
+	relation->rd_issyscat = (strncmp(relation->rd_rel->relname.data, "pg_", 3) == 0);
 
     /*
      * CDB: On QEs, temp relations must use shared buffer cache so data
@@ -1329,6 +1330,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_isnailed = true;
 	relation->rd_createSubid = InvalidSubTransactionId;
 	relation->rd_istemp = false;
+	relation->rd_issyscat = (strncmp(relationName, "pg_", 3) == 0);	/* GP */
     relation->rd_isLocalBuf = false;    /*CDB*/
 
 	/*
@@ -2253,6 +2255,9 @@ RelationBuildLocalRelation(const char *relname,
 
 	/* is it a temporary relation? */
 	rel->rd_istemp = isTempNamespace(relnamespace);
+
+	/* is it a system catalog? */
+	rel->rd_issyscat = (strncmp(relname, "pg_", 3) == 0);
 
     /*
      * CDB: On QEs, temp relations must use shared buffer cache so data

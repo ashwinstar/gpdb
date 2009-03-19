@@ -2044,7 +2044,7 @@ validate_index_heapscan(Relation heapRelation,
 				/* must hold a buffer lock to call HeapTupleSatisfiesNow */
 				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
-				if (HeapTupleSatisfiesNow(heapTuple->t_data, scan->rs_cbuf))
+				if (HeapTupleSatisfiesNow(scan->rs_rd, heapTuple->t_data, scan->rs_cbuf))
 					check_unique = true;
 				else
 					check_unique = false;

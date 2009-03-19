@@ -133,6 +133,7 @@ typedef struct RelationData
 								 * InvalidBlockNumber */
 	int			rd_refcnt;		/* reference count */
 	bool		rd_istemp;		/* CDB: true => skip locking, logging, fsync */
+	bool		rd_issyscat;	/* GP: true => system catalog table (has "pg_" prefix) */
 	bool		rd_isnailed;	/* rel is nailed in cache */
 	bool		rd_isvalid;		/* relcache entry is valid */
 	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1 =

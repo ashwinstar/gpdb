@@ -46,6 +46,7 @@ extern void TruncateCLOG(TransactionId oldestXact);
 extern bool CLOGScanForPrevStatus(
 	TransactionId	*indexXid,
 	XidStatus		*status);
+extern bool CLOGTransactionIsOld(TransactionId xid);
 
 /* XLOG stuff */
 #define CLOG_ZEROPAGE		0x00

@@ -235,6 +235,32 @@ CLOGScanForPrevStatus(
 }
 
 /*
+ * Determine the "age" of a transaction id.
+ */
+bool
+CLOGTransactionIsOld(TransactionId xid)
+{
+	TransactionId nextXid;
+	int pagesBack;
+
+	if (ShmemVariableCache == NULL)
+		return false;	// In case we are called very early in the life of the backend process, etc.
+
+	nextXid = ShmemVariableCache->nextXid;
+
+	if (nextXid < xid)
+		return false;	// Not sure what is going on.
+
+	pagesBack = (nextXid - xid) / CLOG_XACTS_PER_PAGE;
+
+	/*
+	 * Declare the transaction old if it is in the bottom older half of the hot CLOG cache window, or
+	 * before the window.
+	 */
+	return (pagesBack > NUM_CLOG_BUFFERS/2);
+}
+
+/*
  * Initialization of shared memory for CLOG
  */
 Size

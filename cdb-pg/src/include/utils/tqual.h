@@ -20,6 +20,8 @@
 #include "utils/timestamp.h"  /* TimestampTz */
 #include "access/xact.h"   /* MaxGpSavePoints */
 #include "utils/combocid.h" /*MaxComboCids*/
+#include "utils/rel.h"	/* Relation */
+
 
 #include "cdb/cdbdistributedsnapshot.h"  /* DistributedSnapshotWithLocalMapping */
 
@@ -126,24 +128,28 @@ extern volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
  *	Assumes heap tuple is valid.
  *	Beware of multiple evaluations of snapshot argument.
  *	Hint bits in the HeapTuple's t_infomask may be updated as a side effect.
+ *
+ *   GP: The added relation parameter helps us decide if we are going to set tuple hint
+ *   bits.  If it is null, we ignore the gp_disable_tuple_hints GUC.
+ *
  */
-#define HeapTupleSatisfiesVisibility(tuple, snapshot, buffer) \
+#define HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer) \
 ((snapshot) == SnapshotNow ? \
-	HeapTupleSatisfiesNow((tuple)->t_data, buffer) \
+	HeapTupleSatisfiesNow(relation, (tuple)->t_data, buffer) \
 : \
 	((snapshot) == SnapshotSelf ? \
-		HeapTupleSatisfiesItself((tuple)->t_data, buffer) \
+		HeapTupleSatisfiesItself(relation, (tuple)->t_data, buffer) \
 	: \
 		((snapshot) == SnapshotAny ? \
 			true \
 		: \
 			((snapshot) == SnapshotToast ? \
-				HeapTupleSatisfiesToast((tuple)->t_data, buffer) \
+				HeapTupleSatisfiesToast(relation, (tuple)->t_data, buffer) \
 			: \
 				((snapshot) == SnapshotDirty ? \
-					HeapTupleSatisfiesDirty((tuple)->t_data, buffer) \
+					HeapTupleSatisfiesDirty(relation, (tuple)->t_data, buffer) \
 				: \
-					HeapTupleSatisfiesSnapshot((tuple)->t_data, snapshot, buffer) \
+					HeapTupleSatisfiesSnapshot(relation, (tuple)->t_data, snapshot, buffer) \
 				) \
 			) \
 		) \
@@ -252,10 +258,22 @@ typedef enum
 	WATCH_VISIBILITY_XMAX_SNAPSHOT_NOT_IN_PROGRESS,
 	WATCH_VISIBILITY_SET_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE,
 	WATCH_VISIBILITY_SET_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE,
+	WATCH_VISIBILITY_GUC_OFF_MARK_BUFFFER_DIRTY_FOR_XMIN,
+	WATCH_VISIBILITY_GUC_OFF_MARK_BUFFFER_DIRTY_FOR_XMAX,
+	WATCH_VISIBILITY_NO_REL_MARK_BUFFFER_DIRTY_FOR_XMIN,
+	WATCH_VISIBILITY_NO_REL_MARK_BUFFFER_DIRTY_FOR_XMAX,
+	WATCH_VISIBILITY_SYS_CAT_MARK_BUFFFER_DIRTY_FOR_XMIN,
+	WATCH_VISIBILITY_SYS_CAT_MARK_BUFFFER_DIRTY_FOR_XMAX,
+	WATCH_VISIBILITY_NO_XID_MARK_BUFFFER_DIRTY_FOR_XMIN,
+	WATCH_VISIBILITY_NO_XID_MARK_BUFFFER_DIRTY_FOR_XMAX,
+	WATCH_VISIBILITY_TOO_OLD_MARK_BUFFFER_DIRTY_FOR_XMIN,
+	WATCH_VISIBILITY_TOO_OLD_MARK_BUFFFER_DIRTY_FOR_XMAX,
+	WATCH_VISIBILITY_YOUNG_DO_NOT_MARK_BUFFFER_DIRTY_FOR_XMIN,
+	WATCH_VISIBILITY_YOUNG_DO_NOT_MARK_BUFFFER_DIRTY_FOR_XMAX,
 	MAX_WATCH_VISIBILITY	// Must be last.
 } WATCH_VISIBILITY;
 
-#define WATCH_VISIBILITY_BYTE_LEN 10
+#define WATCH_VISIBILITY_BYTE_LEN 12
 
 extern uint8 WatchVisibilityFlags[WATCH_VISIBILITY_BYTE_LEN];
 
@@ -304,13 +322,13 @@ extern void SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creato
 extern void addSharedSnapshot(char *creatorDescription, int id);
 extern void lookupSharedSnapshot(char *lookerDescription, char *creatorDescription, int id);
 
-extern bool HeapTupleSatisfiesItself(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesNow(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesDirty(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesToast(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesSnapshot(HeapTupleHeader tuple,
+extern bool HeapTupleSatisfiesItself(Relation relation, HeapTupleHeader tuple, Buffer buffer);
+extern bool HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer);
+extern bool HeapTupleSatisfiesDirty(Relation relation, HeapTupleHeader tuple, Buffer buffer);
+extern bool HeapTupleSatisfiesToast(Relation relation, HeapTupleHeader tuple, Buffer buffer);
+extern bool HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple,
 						   Snapshot snapshot, Buffer buffer);
-extern HTSU_Result HeapTupleSatisfiesUpdate(HeapTupleHeader tuple,
+extern HTSU_Result HeapTupleSatisfiesUpdate(Relation relation, HeapTupleHeader tuple,
 						 CommandId curcid, Buffer buffer);
 extern HTSV_Result HeapTupleSatisfiesVacuum(HeapTupleHeader tuple,
 					    TransactionId OldestXmin, Buffer buffer, 
