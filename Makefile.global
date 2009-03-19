@@ -27,15 +27,15 @@ endif
 # take over the path
 ifneq "$(BLD_PATH_FIXED)" "true"
 rhel4_x86_32_PATH_PREPEND=/opt/python-2.5.1/bin
-sol10_x86_32_PATH_PREPEND=/opt/python32-2.5.1/bin
-sol10_sparc_64_PATH_PREPEND=/opt/gcc-4.1.1/bin
-sol10_sparc_32_PATH_PREPEND=/opt/python32-2.5.1/bin:/opt/gcc-4.1.1/bin
-sol9_sparc_PATH_PREPEND=/usr/local/bin
-sol9_sparc_64_PATH_PREPEND=/usr/local/bin
-sol9_sparc_32_PATH_PREPEND=/usr/local/bin
-sol8_sparc_PATH_PREPEND=/usr/local/bin
-sol8_sparc_64_PATH_PREPEND=/usr/local/bin
-sol8_sparc_32_PATH_PREPEND=/usr/local/bin
+#sol10_x86_32_PATH_PREPEND=/opt/python32-2.5.1/bin
+#sol10_sparc_64_PATH_PREPEND=/opt/gcc-4.1.1/bin
+#sol10_sparc_32_PATH_PREPEND=/opt/python32-2.5.1/bin:/opt/gcc-4.1.1/bin
+#sol9_sparc_PATH_PREPEND=/usr/local/bin
+#sol9_sparc_64_PATH_PREPEND=/usr/local/bin
+#sol9_sparc_32_PATH_PREPEND=/usr/local/bin
+#sol8_sparc_PATH_PREPEND=/usr/local/bin
+#sol8_sparc_64_PATH_PREPEND=/usr/local/bin
+#sol8_sparc_32_PATH_PREPEND=/usr/local/bin
 BLD_PATH_PREPEND=$($(BLD_ARCH)_PATH_PREPEND)
 ifneq "$(BLD_PATH_PREPEND)" ""
 export PATH:=$(BLD_PATH_PREPEND):$(PATH)
@@ -47,8 +47,8 @@ $(warning PATH=$(PATH))
 # take over the path
 ifneq "$(BLD_LD_LIBRARY_PATH_FIXED)" "true"
 rhel4_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python-2.5.1/lib:/opt/gcc-4.1.1/lib
-sol10_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
-sol10_sparc_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
+#sol10_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
+#sol10_sparc_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
 BLD_LD_LIBRARY_PATH_PREPEND=$($(BLD_ARCH)_LD_LIBRARY_PATH_PREPEND)
 ifneq "$(BLD_LD_LIBRARY_PATH_PREPEND)" ""
 export LD_LIBRARY_PATH:=$(BLD_LD_LIBRARY_PATH_PREPEND):$(LD_LIBRARY_PATH)
@@ -58,7 +58,7 @@ endif
 $(warning LD_LIBRARY_PATH=$(LD_LIBRARY_PATH))
 
 # disable our gcc wrapper
-export NO_M64=1
+#export NO_M64=1
 
 # 32-bit/64-bit compiler/linker flag settings
 rhel4_x86_64_BLD_CFLAGS=-m64
