@@ -13,7 +13,7 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 from subprocess import Popen, PIPE
 
 from gppylib.commands.unix import *
-from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, GpStop, GpStart, ConfigExpansionSeg
+from gppylib.commands.gp import *
 from gppylib.gparray import *
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.gplog import *
@@ -125,16 +125,9 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
-    options.master_data_directory = os.getenv('MASTER_DATA_DIRECTORY', None)
-    if not options.master_data_directory:
-        logger.error('MASTER_DATA_DIRECTORY environment variable not set')
-        parser.exit()
-    
-    options.gphome=os.getenv('GPHOME',None)
-    if not options.gphome:
-        logger.error('GPHOME environment variable not set')
-        parser.exit()
-
+    options.master_data_directory = get_masterdatadir()
+    options.gphome = get_gphome()
+    options.pgport = os.getenv('PGPORT', 5432)
 
     return options, args
 
@@ -178,6 +171,10 @@ def is_gpexpand_running(master_data_directory):
         print msg
     
     return is_running
+
+
+def gpexpand_status_file_exists(master_data_directory):
+    return os.path.exists(master_data_directory + '/gpexpand.status')
 
 #-------------------------------------------------------------------------
 #expansion schema
@@ -254,12 +251,10 @@ class GpExpandStatus():
         self._temp_dir = None
         self._input_filename = None
         self._original_primary_count = None
+        self._gp_configuration_backup = None
         
         if os.path.exists(self._status_filename):
             self._read_status_file()
-        else:
-            self._create_status_file()
-            self._sync_status_file()
     
     def _read_status_file(self):
         """Reads in an existing gpexpand status file"""        
@@ -289,7 +284,7 @@ class GpExpandStatus():
         if not self._status_values.has_key(self._status[-1]):
             raise InvalidStatusError('Invalid status file.  Unknown status %s' % self._status)
     
-    def _create_status_file(self):
+    def create_status_file(self):
         """Creates a new gpexpand status file"""
         try:
             self._fp = open(self._status_filename, 'w')
@@ -304,6 +299,9 @@ class GpExpandStatus():
             self._status_info.append('None')
         except IOError:
             raise
+        
+        self._sync_status_file()
+
     
     def _sync_status_file(self):
         """Syncs the gpexpand status file with the master mirror"""
@@ -362,8 +360,11 @@ class GpExpandStatus():
             os.unlink(self._status_filename)
         if os.path.exists(self._status_standby_filename):
             os.unlink(self._status_standby_filename)
-        #TODO: remove remote status file
-
+        if self._master_mirror_hostname:
+            RemoveFiles.remote('gpexpand status file cleanup', 
+                               self._master_data_directory + '/gpexpand.status', 
+                               self._master_mirror_hostname)    
+        
     def get_temp_dir(self):
         return self._temp_dir
     
@@ -519,7 +520,7 @@ class SegmentTemplate:
         
         self.logger.info('Copying postgresql.conf from existing segment into template')
         
-        localHostname = socket.gethostname()
+        localHostname = self.gparray.master.get_hostname()
         cpCmd = RemoteCopy('copying postgresql.conf to %s:%s/postgresql.conf' % (self.srcSegHostname, self.srcSegDataDir), 
                            self.srcSegDataDir + '/postgresql.conf', localHostname, 
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
@@ -532,7 +533,7 @@ class SegmentTemplate:
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
         
-        
+        # Don't need log files and gpperfmon files in template.
         rmCmd = RemoveFiles('gpexpand', self.tempDir + '/gpperfmon/data')
         rmCmd.run(validateAfter=True)
         rmCmd = RemoveFiles('gpexpand', self.tempDir + '/pg_log/*')
@@ -633,38 +634,55 @@ class gpexpand:
         pass
     
     @staticmethod
-    def prepare_gpdb_state(logger):
+    def prepare_gpdb_state(logger, dburl):
         # Get the database in the expected state for the expansion/rollback
-        statusLogger = GpExpandStatus(logger, options.master_data_directory)
-        status = statusLogger.get_current_status()[0]
-        try:
-            logger.info('Checking if Greenplum Database is running')
-            test_dburl = dbconn.DbURL(dbname='template1')
-            test_conn = dbconn.connect(test_dburl, utility=True)
-            test_conn.close()
-            if status == 'EXPANSION_PREPARE_DONE' or \
-                (status == 'UNINITIALIZED' and not options.filename):
-                pass
-            else:
-                try:
+        gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport)[1]
+        status_file_exists = os.path.exists(options.master_data_directory + '/gpexpand.status')
+        if gpdb_running:
+            gpdb_mode = get_local_db_mode(options.master_data_directory)
+        gpexpand_db_status = None
+        
+        if status_file_exists:
+            if gpdb_running:
+                if gpdb_mode != 'UTILITY':
                     logger.info('Stopping Greenplum Database')
-                    GpStop.local('gpexpand')
-                except:
-                    pass
-                logger.info('Starting Greenplum Database in master only mode')
-                GpStart.local('gpexpand', masterOnly=True)
-        except Exception, msg:
-            if status == 'EXPANSION_PREPARE_DONE':
-                # start up full
-                logger.info('Starting Greenplum Database')
-                GpStart.local('gpexpand')
-            elif status == 'UNINITIALIZED' and not options.filename:
-                # interview doesn't care if db is up
-                pass
+                    GpStop.local('gpexpand prepare gpdb state')
+                    logger.info('Starting Greenplum Database in master only mode')
+                    GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
             else:
                 logger.info('Starting Greenplum Database in master only mode')
-                GpStart.local('gpexpand', masterOnly=True)
+                GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
+        else:
+            if not gpdb_running:
+                logger.info('Starting Greenplum Database')
+                GpStart.local('gpexpand prepare gpdb state')
+                
+            #get status from db
+            gpexpand_db_status = gpexpand.get_status_from_db(dburl)
 
+            if not gpexpand_db_status:
+                GpStop.local('gpexpand prepare gpdb state')
+                GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
+
+        return gpexpand_db_status
+
+    @staticmethod
+    def get_status_from_db(dburl):
+        conn = None
+        gpexpand_db_status = None
+        if get_local_db_mode(options.master_data_directory) == 'NORMAL':
+            try:
+                conn = dbconn.connect(dburl)
+                cursor = dbconn.execSQL(conn,'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
+                if cursor.rowcount == 1:
+                    gpexpand_db_status = cursor.fetchone()[0]
+            except:
+                # expansion schema doesn't exists.
+                pass
+            finally: 
+                if conn: conn.close()    
+        
+        return gpexpand_db_status
     
     def rollback(self):
         cleanSchema = False
@@ -702,13 +720,9 @@ class gpexpand:
             else:
                 self.logger.debug('Skipping %s' % status[0])
 
+        GpStop.local('gpexpand rollback', masterOnly=True)
+
         if cleanSchema:
-            # we need the original array up to drop schema
-            try:
-                GpStop.local('gpexpand rollback')
-            except:
-                pass
-            
             GpStart.local('gpexpand rollback', restricted=True)
             self.logger.info('Dropping expansion expansion schema')
             schema_conn = dbconn.connect(self.dburl)
@@ -721,8 +735,8 @@ class gpexpand:
             GpStop('gpexpand rollback')
             
         self.statusLogger.remove_status_file()
-        if os.path.exists(options.master_data_directory + '/gpexpand_gp_configuration.bak'):
-            os.unlink(options.master_data_directory + '/gpexpand_gp_configuration.bak')
+        if os.path.exists(options.master_data_directory + '/gpexpand.gp_configuration'):
+            os.unlink(options.master_data_directory + '/gpexpand.gp_configuration')
     
     def get_state(self):
         return self.statusLogger.get_current_status()[0]
@@ -829,8 +843,8 @@ class gpexpand:
         self.pool.join()
         try:
             self.pool.check_results()
-        except Exception:
-            raise ExpansionError('Failed to configure original segments')
+        except ExecutionError, msg:
+            raise ExpansionError('Failed to configure original segments: %s' % msg)
             
 
         self.logger.info('Copying new pg_hba.conf file to original segments')
@@ -846,8 +860,8 @@ class gpexpand:
         
         try:
             self.pool.check_results()
-        except Exception:
-            raise ExpansionError('Failed to configure original segments')
+        except ExecutionError, msg:
+            raise ExpansionError('Failed to configure original segments: %s' % msg)
 
         self.newPrimaryCount = 0;
         for seg in self.new_segments:
@@ -869,8 +883,8 @@ class gpexpand:
 
         try:
             self.pool.check_results()
-        except Exeception:
-            raise ExpansionError('Failed to configure original segments')   
+        except ExecutionError, msg:
+            raise ExpansionError('Failed to configure original segments: %s', msg)   
         
         if self.segTemplate:
             self.segTemplate.cleanup()
@@ -880,8 +894,11 @@ class gpexpand:
 
     def restore_original_segments(self):
         self.logger.info('Restoring original segments')
-
-        originalArray = createFromFile(self.statusLogger.get_gp_configuration_backup())
+        gp_configuration_backup_file = self.statusLogger.get_gp_configuration_backup();
+        if gp_configuration_backup_file:
+            originalArray = createFromFile(self.statusLogger.get_gp_configuration_backup())
+        else:
+            originalArray = self.gparray
         originalPrimaryCount = self.statusLogger.get_original_primary_count()
         
         self.logger.info('Restoring pg_hba.conf file on original segments')
@@ -912,9 +929,9 @@ class gpexpand:
     
 
     def update_master(self):
-        dumpToFile(gparray, options.master_data_directory + '/gpexpand_gp_configuration.bak')
+        dumpToFile(gparray, options.master_data_directory + '/gpexpand.gp_configuration')
         self.statusLogger.set_status('UPDATE_MASTER_STARTED', 
-                                     options.master_data_directory + '/gpexpand_gp_configuration.bak')
+                                     options.master_data_directory + '/gpexpand.gp_configuration')
 
         # Update gp_configuration on the master
         self.logger.info('Starting master in utility mode')
@@ -960,7 +977,11 @@ class gpexpand:
     
     def start_prepare(self):
         if options.filename:
+            self.statusLogger.create_status_file()
             self.statusLogger.set_status('EXPANSION_PREPARE_STARTED', os.path.abspath(options.filename))
+        
+    def finalize_prepare(self):
+        self.statusLogger.remove_status_file()
         
     def setup_schema(self):
         """Used to setup the gpexpand schema"""
@@ -997,8 +1018,14 @@ class gpexpand:
             self._populate_partitioned_tables(dbname,c)            
             c.commit()
             c.close()
+
+        nowStr = datetime.datetime.now()
+        statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP DONE', '%s' ) " % (gpexpand_schema,status_table,nowStr)
+        dbconn.execSQL(self.conn, statusSQL)
              
         self.conn.commit()
+        
+        
         self.statusLogger.set_status('PREPARE_EXPANSION_SCHEMA_DONE')
         self.statusLogger.set_status('EXPANSION_PREPARE_DONE')
         
@@ -1536,17 +1563,12 @@ try:
    
     dburl = dbconn.DbURL()
     
-    gpexpand.prepare_gpdb_state(logger)
+    gpexpand_db_status = gpexpand.prepare_gpdb_state(logger, dburl)
     
     # Get array configuration
     try:
         gparray = createGPDBFromDB(dburl,utility=True)
     except DatabaseError, ex:
-        try:
-            # Stop the db started by prepare_gpdb_state
-            GpStop.local('gpexpand')
-        except:
-            pass
         logger.error('Failed to connect to database.  Make sure the')
         logger.error('Greenplum instance you wish to expand is running')
         logger.error('and that your environment is correct, then rerun')
@@ -1567,25 +1589,30 @@ try:
         logger.info('Rollback complete.  Greenplum Database can now be started')
         sys.exit(0)
     
-    state = gp_expand.get_state()
+    gpexpand_file_status = None
+    if not gpexpand_db_status:
+        gpexpand_file_status = gp_expand.get_state()
     
-    if state == 'EXPANSION_PREPARE_DONE' or state == 'REORGANIZE_INPROGRESS':
+    if gpexpand_db_status == 'SETUP DONE':
         gp_expand.perform_expansion()
-    elif state == 'UNINITIALIZED' and options.filename:            
-        gp_expand.start_prepare()
+    elif gpexpand_db_status == 'EXPANSION DONE':
+        logger.info('Expansion has already completed.  Exiting...')
+    elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:            
         gp_expand.read_input_file()
+        gp_expand.start_prepare()
         gp_expand.add_segments()
         gp_expand.update_original_segments()
         gp_expand.update_master()
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
+        gp_expand.finalize_prepare()
         GpStart.local('gpexpand')
         logger.info('************************************************')                     
         logger.info('Initialization of the system expansion complete.')
         logger.info('To begin table expansion onto the new segments')
         logger.info('rerun gpexpand')
         logger.info('************************************************')
-    elif options.filename is None and state == 'UNINITIALIZED':                 
+    elif options.filename is None and gpexpand_file_status == None:                 
         interview_setup(gparray)            
     else:
         logger.error('Please run gpexpand -r to rollback last failed expansion')

@@ -438,3 +438,35 @@ def chk_local_db_running(datadir,port):
         msg += "Did not find a netstat entry for .s.PGSQL.%s" % port
         
     raise Exception(msg)
+            
+    
+    
+    
+
+def get_local_db_mode(master_data_dir):
+    """ Gets the mode Greenplum is running in.
+        Possible return values are:
+            'NORMAL'
+            'RESTRICTED'
+            'UTILITY'
+    """
+    mode = 'NORMAL'
+    
+    if not os.path.exists(master_data_dir + '/postmaster.pid'):
+        raise Exception('Greenplum database appears to be stopped')
+    
+    try:
+        fp = open(master_data_dir + '/postmaster.opts', 'r')
+        optline = fp.readline()
+        if optline.find('superuser_reserved_connections') > 0:
+            mode = 'RESTRICTED'
+        elif optline.find('gp_role=utility') > 0:
+            mode = 'UTILITY'
+    except OSError:
+        raise Exception('Failed to open %s.  Is Greenplum Database running?' % master_data_dir + '/postmaster.opts')
+    except IOError:
+        raise Exception('Failed to read options from %s' % master_data_dir + '/postmaster.opts')
+    finally:
+        if fp: fp.close()
+    
+    return mode
