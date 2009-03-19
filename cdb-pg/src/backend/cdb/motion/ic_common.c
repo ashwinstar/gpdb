@@ -474,7 +474,10 @@ getTransportDirectBuffer(ChunkTransportState *transportStates,
 	/* buffer is missing ? */
 
 	b->pri = NULL;
+	b->prilen = 0;
+	b->hasMirrors = false;
 	b->mir = NULL;
+	b->mirlen = 0;
 
 	return;
 }
