@@ -228,8 +228,9 @@ class GpStart():
     
     
     ######
-    def start(self):        
-        failed_seg_status = []
+    def start(self):     
+        """ returns whether all segments were started successfully """   
+        self.failed_seg_status = []
         workers=min(len(self.gparray.get_hostlist()),64)
         self.pool = base.WorkerPool(numWorkers=workers)
         
@@ -244,17 +245,21 @@ class GpStart():
         hostdict=self._build_hostdict(segs)  
         
         if not self.trust:                                         
-            failed_seg_status.extend(self._ping_segment_hosts(hostdict))
+            self.failed_seg_status.extend(self._ping_segment_hosts(hostdict))
                                     
         self._start_segments(hostdict)                
-        success_seg_status=self._process_segment_start(hostdict,failed_seg_status)    
-        self._print_segment_start(segs,failed_seg_status,success_seg_status)
+        self.success_seg_status=self._process_segment_start(hostdict,self.failed_seg_status)    
+        self._print_segment_start(segs,self.failed_seg_status,self.success_seg_status)
 
         self.start_final_master()        
 
         self.cleanup()
-    
-    
+        
+        if len(self.failed_seg_status) == 0:
+            return True
+        else:
+            return False
+        
     
     ######
     def _build_hostdict(self,segs):
@@ -343,16 +348,33 @@ class GpStart():
     ######
     def _print_segment_start(self,segs,failed_seg_status,success_seg_status):
         started = len(segs) - len(failed_seg_status)
-        logger.info("-------------------------------------")
-        if len(failed_seg_status) > 0:
-            for failure in failed_seg_status:
-                logger.info(failure)
-        for stat in success_seg_status:
-            logger.debug(stat)            
-        logger.info("-------------------------------------")
-        logger.info("Successfully started %d of %d segment instances" % (started,len(segs)))
+        failed = len(failed_seg_status)
+        
+        if failed > 0 or logging_is_verbose():             
+            logger.info("----------------------------------------------------")
+            if failed > 0:
+                for failure in failed_seg_status:
+                    logger.info(failure)
+            for stat in success_seg_status:
+                logger.debug(stat)            
+            logger.info("----------------------------------------------------\n\n")
+            
+        flag=""
+        if failed > 0:
+            flag="<<<<<"
+        logger.info("----------------------------------------------------")
+        logger.info("Total processes marked as completed       = %d" % started)
+        logger.info("Total processes marked as failed          = %d %s" % (failed,flag))
+        logger.info("----------------------------------------------------")
+        logger.info("Successfully started %d of %d segment instances %s" % (started,len(segs),flag))
+        logger.info("----------------------------------------------------")
 
-    
+        if failed > 0:
+            logger.warning("Review %s" % get_logfile())
+            logger.warning("For more details on segment startup failure(s)")
+            logger.warning("Run gpstate to review current segment instance status")
+            logger.info("----------------------------------------------------")
+
     ######
     def _ping_segment_hosts(self,hostdict):
         failedSegs=[]
@@ -366,7 +388,7 @@ class GpStart():
         for cmd in cmds:
             if cmd.get_results().rc != 0:
                 host=cmd.hostToPing
-                logger.info("Ping to host: '%s' FAILED" % host)
+                logger.warning("Ping to host: '%s' FAILED" % host)
                 logger.debug("  ping details: %s" % cmd)
                 
                 dblist=hostdict[host]
@@ -376,7 +398,7 @@ class GpStart():
                 
                 
                 for db in dblist:
-                    pingCmd = base.Ping("dbid: %d" % db.dbid,db.hostname)
+                    pingCmd = unix.Ping("dbid: %d" % db.dbid,db.hostname)
                     pingCmd.run()
                     if pingCmd.get_results().rc == 0:
                         alternateHost=db.hostname
@@ -547,9 +569,14 @@ def main():
         if options.master_only:
             pass                        
         else:
-            gpstart.start()
+            success=gpstart.start()
+            
+            if not success:
+                sys.exit(1)
         
-        sys.exit(0)    
+        sys.exit(0)
+        
+            
     except base.ExecutionError, e:
         logger.fatal("Error occurred: %s\n Command was: '%s'\n"
                      "rc=%d, stdout='%s', stderr='%s'" %\

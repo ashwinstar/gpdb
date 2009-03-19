@@ -308,11 +308,11 @@ def readGpHostCache(gparray,pool):
         hostlist=gparray.get_hostlist()
         cmdlist=[]
         for host in hostlist:
-            cmd=Hostname('host lookup',ctxt=base.REMOTE,remoteHost=host)
+            cmd=Hostname('host lookup',ctxt=REMOTE,remoteHost=host)
             pool.addCommand(cmd)
             cmdlist.append(cmd)
-        self.pool.join()
-        self.pool.check_results()
+        pool.join()
+        pool.check_results()
         
         
         file = open(path, 'w')

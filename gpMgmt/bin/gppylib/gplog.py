@@ -82,10 +82,15 @@ def logging_is_verbose():
 #------------------------------- Private --------------------------------    
 
 def set_file_logging(filename): 
-    global LOGGER,SOUT_HANDLER   
+    global LOGGER,SOUT_HANDLER,FILENAME
+    FILENAME=filename   
     FILE_HANDLER = logging.FileHandler( filename, 'a')
     FILE_HANDLER.setFormatter(get_default_formatter())
     LOGGER.addHandler(FILE_HANDLER)
+
+def get_logfile():
+    global FILENAME
+    return FILENAME
 
 def get_default_formatter():
     return logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s","%Y%m%d:%H:%M:%S")

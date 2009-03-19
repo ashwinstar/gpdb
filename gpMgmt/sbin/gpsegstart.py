@@ -79,8 +79,8 @@ class GpSegStart():
                     self.dblist.remove(dir)
                     failures=True      
                 else:
-                    if not os.path.exists(self.master_datadir + '/pg_log'):
-                        os.mkdir(self.master_datadir + '/pg_log')                  
+                    if not os.path.exists(dir + '/pg_log'):
+                        os.mkdir(dir + '/pg_log')                  
 
             
         logger.info("Starting segments...")       
