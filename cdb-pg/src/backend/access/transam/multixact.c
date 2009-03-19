@@ -1756,14 +1756,14 @@ TruncateMultiXact(void)
 	 */
 	cutoffPage = MultiXactIdToOffsetPage(oldestMXact);
 
-	SimpleLruTruncate(MultiXactOffsetCtl, cutoffPage);
+	SimpleLruTruncate(MultiXactOffsetCtl, cutoffPage, false);
 
 	/*
 	 * Also truncate MultiXactMember at the previously determined offset.
 	 */
 	cutoffPage = MXOffsetToMemberPage(oldestOffset);
 
-	SimpleLruTruncate(MultiXactMemberCtl, cutoffPage);
+	SimpleLruTruncate(MultiXactMemberCtl, cutoffPage, false);
 
 	/*
 	 * Set the last known truncation point.  We don't need a lock for this

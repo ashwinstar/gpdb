@@ -663,7 +663,7 @@ DistributedLog_Truncate(TransactionId oldestXid)
 	DistributedLog_WriteTruncateXlogRec(cutoffPage);
 
 	/* Now we can remove the old DistributedLog segment(s) */
-	SimpleLruTruncate(DistributedLogCtl, cutoffPage);
+	SimpleLruTruncate(DistributedLogCtl, cutoffPage, true); /* we already hold the lock */
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), 
 		 "DistributedLog_Truncate with oldest local xid = %d to cutoff page = %d",
@@ -786,7 +786,7 @@ DistributedLog_redo(XLogRecPtr lsn, XLogRecord *record)
 		 */
 		DistributedLogCtl->shared->latest_page_number = page;
 
-		SimpleLruTruncate(DistributedLogCtl, page);
+		SimpleLruTruncate(DistributedLogCtl, page, false);
 		
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), 
 			 "DistributedLog_redo truncate to cutoff page = %d",

@@ -459,7 +459,7 @@ StartupDistributedXidMap(void)
 	 */
 	LWLockAcquire(DistributedXidMapControlLock, LW_EXCLUSIVE);
 
-//	SimpleLruTruncate(DistributedXidMapCtl, 0);
+//	SimpleLruTruncate(DistributedXidMapCtl, 0, false);
 
 	/* Zero the first page */
 	ZeroDistributedXidMapPage(0);
@@ -520,7 +520,7 @@ TruncateDistributedXidMap(DistributedTransactionId oldestXact)
 	// UNDONE: Save cutoff page and don't call SimpleLruTruncate when there
 	// is no change to the cuttoff page. 
 
-	SimpleLruTruncate(DistributedXidMapCtl, cutoffPage);
+	SimpleLruTruncate(DistributedXidMapCtl, cutoffPage, false);
 }
 
 

@@ -115,7 +115,7 @@ extern int SimpleLruReadPage_ReadOnly(SlruCtl ctl, int pageno,
 						   TransactionId xid);
 extern void SimpleLruWritePage(SlruCtl ctl, int slotno, SlruFlush fdata);
 extern void SimpleLruFlush(SlruCtl ctl, bool checkpoint);
-extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage);
+extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage, bool lockHeld);
 extern bool SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions);
 extern bool SimpleLruPageExists(SlruCtl ctl, int pageno);
 

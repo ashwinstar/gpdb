@@ -334,7 +334,7 @@ TruncateSUBTRANS(TransactionId oldestXact)
 	 */
 	cutoffPage = TransactionIdToPage(oldestXact);
 
-	SimpleLruTruncate(SubTransCtl, cutoffPage);
+	SimpleLruTruncate(SubTransCtl, cutoffPage, false);
 }
 
 

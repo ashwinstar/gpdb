@@ -433,7 +433,7 @@ TruncateCLOG(TransactionId oldestXact)
 	WriteTruncateXlogRec(cutoffPage);
 
 	/* Now we can remove the old CLOG segment(s) */
-	SimpleLruTruncate(ClogCtl, cutoffPage);
+	SimpleLruTruncate(ClogCtl, cutoffPage, false);
 }
 
 
@@ -538,7 +538,7 @@ clog_redo(XLogRecPtr lsn, XLogRecord *record)
 		 */
 		ClogCtl->shared->latest_page_number = pageno;
 
-		SimpleLruTruncate(ClogCtl, pageno);
+		SimpleLruTruncate(ClogCtl, pageno, false);
 	}
 	else
 		elog(PANIC, "clog_redo: unknown op code %u", info);
