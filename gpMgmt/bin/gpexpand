@@ -125,8 +125,13 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
-    options.master_data_directory = get_masterdatadir()
-    options.gphome = get_gphome()
+    try:
+        options.master_data_directory = get_masterdatadir()
+        options.gphome = get_gphome()
+    except GpError, msg:
+        logger.error(msg)
+        parser.exit()
+        
     options.pgport = os.getenv('PGPORT', 5432)
 
     return options, args
@@ -213,12 +218,6 @@ class GpExpandStatus():
     
     The status file is placed in the master data directory on both the master and 
     the standby master.  its used to keep track of where we are in the progression.
-    
-    Each state knows how to go back a single step.  So if there is a failure during
-    
-    TODO:  more description on how we recover from failures during the initial setup
-           points.  
-    
     """
     def __init__(self, logger, master_data_directory, master_mirror_hostname=None):
         self.logger=logger
@@ -237,9 +236,8 @@ class GpExpandStatus():
                                 'SETUP_EXPANSION_SCHEMA_DONE': 12,
                                 'PREPARE_EXPANSION_SCHEMA_STARTED': 13,
                                 'PREPARE_EXPANSION_SCHEMA_DONE': 14,
-                                'EXPANSION_PREPARE_DONE': 15,
-                                'REORGANIZE_INPROGRESS': 16,
-                                'COMPLETE': 17 }
+                                'EXPANSION_PREPARE_DONE': 15
+                                }
         self._status = []
         self._status_info = []
         self._master_data_directory = master_data_directory
@@ -444,13 +442,13 @@ class SegmentTemplate:
             self.logger.info('VACUUM FULL on the catalog tables')
             catalog.vacuum_catalog(self.dburl,self.conn,full=True,utility=True)
         
-        MakeDirectory.local('gpexpand temp dir',self.tempDir)    
+        MakeDirectory.local('gpexpand create temp dir',self.tempDir)    
                 
         self._select_src_segment()
 
         self.oldSegCount = self.gparray.get_segment_count()
              
-        GpStop.local('stop GPDB', masterOnly=True, force=True)
+        GpStop.local('gpexpand _create_template stop gpdb', masterOnly=True, force=True)
 
         try:    
             gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
@@ -483,7 +481,7 @@ class SegmentTemplate:
     
     def _distribute_tarfile(self):  
         for host in self.hosts:
-            cpCmd = RemoteCopy('distribute tar file to all new hosts', self.schema_tar_file, host, '.')
+            cpCmd = RemoteCopy('gpexpand distribute tar file to new hosts', self.schema_tar_file, host, '.')
             self.pool.addCommand(cpCmd)
             
         self.pool.join()
@@ -505,10 +503,10 @@ class SegmentTemplate:
         newDbId = self.maxDbId + 1
         for seg in self.newSegments:
             seg.dbId = newDbId
-            segCfgCmd = ConfigExpansionSeg('configure new segment', seg.datadir, 
-                                              seg.port, newPrimaryCount, 
-                                              seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
-                                              verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname) 
+            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segment', seg.datadir, 
+                                            seg.port, newPrimaryCount, 
+                                            seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
+                                            verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname) 
             self.pool.addCommand(segCfgCmd)
             newDbId += 1
         self.pool.join()
@@ -521,22 +519,24 @@ class SegmentTemplate:
         self.logger.info('Copying postgresql.conf from existing segment into template')
         
         localHostname = self.gparray.master.get_hostname()
-        cpCmd = RemoteCopy('copying postgresql.conf to %s:%s/postgresql.conf' % (self.srcSegHostname, self.srcSegDataDir), 
+        cpCmd = RemoteCopy('gpexpand copying postgresql.conf to %s:%s/postgresql.conf' % (self.srcSegHostname, self.srcSegDataDir), 
                            self.srcSegDataDir + '/postgresql.conf', localHostname, 
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
        
         
         self.logger.info('Copying pg_hba.conf from existing segment into template')
-        cpCmd = RemoteCopy('copy pg_hba.conf to %s:%s/pg_hba.conf' % (self.srcSegHostname, self.srcSegDataDir), 
+        cpCmd = RemoteCopy('gpexpand copy pg_hba.conf to %s:%s/pg_hba.conf' % (self.srcSegHostname, self.srcSegDataDir), 
                            self.srcSegDataDir + '/pg_hba.conf', localHostname, 
                            self.tempDir, ctxt=REMOTE, remoteHost=self.srcSegHostname)
         cpCmd.run(validateAfter=True)
         
         # Don't need log files and gpperfmon files in template.
-        rmCmd = RemoveFiles('gpexpand', self.tempDir + '/gpperfmon/data')
+        rmCmd = RemoveFiles('gpexpand remove gppermfon data from template', 
+                            self.tempDir + '/gpperfmon/data')
         rmCmd.run(validateAfter=True)
-        rmCmd = RemoveFiles('gpexpand', self.tempDir + '/pg_log/*')
+        rmCmd = RemoveFiles('gpexpand remove logs from template', 
+                            self.tempDir + '/pg_log/*')
         rmCmd.run(validateAfter=True)
         
         self.logger.info('Adding new segments into template pg_hba.conf')
@@ -553,12 +553,12 @@ class SegmentTemplate:
         except IOError, msg:
             raise SegmentTemplateError('Failed to open %s/pg_hba.conf' % self.tempDir)
         except Exception, msg:
-            raise SegmentTemplateError('Failed to add new segments to template pg_hba.conf: %' % msg)
+            raise SegmentTemplateError('Failed to add new segments to template pg_hba.conf')
     
     
     def _tar_template(self):
         """Tars up the template files"""        
-        tarCmd = CreateTar('tar segment template', self.tempDir, self.schema_tar_file)
+        tarCmd = CreateTar('gpexpand tar segment template', self.tempDir, self.schema_tar_file)
         tarCmd.run(validateAfter=True)
 
 
@@ -566,9 +566,9 @@ class SegmentTemplate:
     def cleanup_build_segment_template(tarFile, tempDir):
         """Reverts the work done by build_segment_template.  Deletes the temp
         directory and local tar file"""
-        rmCmd = RemoveFiles('remove temp dir: %s' % tempDir, tempDir)
+        rmCmd = RemoveFiles('gpexpand remove temp dir: %s' % tempDir, tempDir)
         rmCmd.run(validateAfter=True)
-        rmCmd = RemoveFiles('remove segment template file', tarFile)
+        rmCmd = RemoveFiles('gpexpand remove segment template file', tarFile)
         rmCmd.run(validateAfter=True)
 
     
@@ -580,17 +580,20 @@ class SegmentTemplate:
         hosts = []
         
         for seg in newSegments:
-            hostnameCmd = Hostname('associating hostnames with segments', ctxt=REMOTE, remoteHost=seg.hostname)
-            hostnameCmd.run(validateAfter=True)            
+            hostnameCmd = Hostname('gpexpand associate hostnames with segments', 
+                                   ctxt=REMOTE, remoteHost=seg.hostname)
+            hostnameCmd.run(validateAfter=True)
+                        
             if not hostnameCmd.get_hostname() in hosts:
                 hosts.append(hostnameCmd.get_hostname())
+            
             if removeDataDirs:
-                rmCmd = RemoveFiles('remove segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
+                rmCmd = RemoveFiles('gpexpand remove segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
                 pool.addCommand(rmCmd)
 
         for host in hosts:
-            rmCmd = RemoveFiles('remove segment template file on host: %s' % host, 
+            rmCmd = RemoveFiles('gpexpand remove segment template file on host: %s' % host, 
                                 tarFile, ctxt=REMOTE, remoteHost=host)
             pool.addCommand(rmCmd)            
             
@@ -646,23 +649,23 @@ class gpexpand:
             if gpdb_running:
                 if gpdb_mode != 'UTILITY':
                     logger.info('Stopping Greenplum Database')
-                    GpStop.local('gpexpand prepare gpdb state')
-                    logger.info('Starting Greenplum Database in master only mode')
+                    GpStop.local('gpexpand prepare stop database')
+                    logger.info('gpexpand prepare start database master only')
                     GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
             else:
                 logger.info('Starting Greenplum Database in master only mode')
-                GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
+                GpStart.local('gpexpand prepare start database master only', masterOnly=True)
         else:
             if not gpdb_running:
                 logger.info('Starting Greenplum Database')
-                GpStart.local('gpexpand prepare gpdb state')
+                GpStart.local('gpexpand prepare start database')
                 
             #get status from db
             gpexpand_db_status = gpexpand.get_status_from_db(dburl)
 
             if not gpexpand_db_status:
-                GpStop.local('gpexpand prepare gpdb state')
-                GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
+                GpStop.local('gpexpand prepare stop database')
+                GpStart.local('gpexpand prepare start database master only', masterOnly=True)
 
         return gpexpand_db_status
 
@@ -723,7 +726,7 @@ class gpexpand:
         GpStop.local('gpexpand rollback', masterOnly=True)
 
         if cleanSchema:
-            GpStart.local('gpexpand rollback', restricted=True)
+            GpStart.local('gpexpand rollback start database restricted', restricted=True)
             self.logger.info('Dropping expansion expansion schema')
             schema_conn = dbconn.connect(self.dburl)
             try:
@@ -732,7 +735,7 @@ class gpexpand:
                 schema_conn.close()
             except:
                 pass # schema wasn't created yet.
-            GpStop('gpexpand rollback')
+            GpStop('gpexpand rollback stop database')
             
         self.statusLogger.remove_status_file()
         if os.path.exists(options.master_data_directory + '/gpexpand.gp_configuration'):
@@ -836,7 +839,7 @@ class gpexpand:
                 continue
             srcFile = seg.datadir + '/pg_hba.conf'
             dstFile = seg.datadir + '/pg_hba.gpexpand.bak'
-            cpCmd = RemoteCopy('Back up pg_hba.conf file on original segments', 
+            cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
             self.pool.addCommand(cpCmd)
         
@@ -851,7 +854,7 @@ class gpexpand:
         for seg in self.old_segments:
             if seg.content == -1 or not seg.valid:            
                 continue
-            cpCmd = RemoteCopy('copy new pg_hba.conf file to original segments', 
+            cpCmd = RemoteCopy('gpexpand copy new pg_hba.conf file to original segments', 
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
             self.pool.addCommand(cpCmd)
@@ -873,10 +876,10 @@ class gpexpand:
         for seg in self.old_segments:            
             if seg.content == -1 or not seg.valid:            
                 continue            
-            segCfgCmd = ConfigExpansionSeg('configure original segment', seg.datadir, 
-                                               seg.port, self.newPrimaryCount, 
-                                               seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
-                                               ctxt=REMOTE, remoteHost=seg.hostname) 
+            segCfgCmd = ConfigExpansionSeg('gpexpand configure original segment', seg.datadir, 
+                                            seg.port, self.newPrimaryCount, 
+                                            seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
+                                            ctxt=REMOTE, remoteHost=seg.hostname) 
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -905,7 +908,7 @@ class gpexpand:
         for seg in originalArray.getSegDbList():
             srcFile=seg.datadir + '/pg_hba.gpexpand.bak'
             dstFile=seg.datadir + '/pg_hba.conf'
-            cpCmd = RemoteCopy('Restore of pg_hba.conf file on original segments', srcFile, seg.hostname, 
+            cpCmd = RemoteCopy('gpexpand restore of pg_hba.conf file on original segments', srcFile, seg.hostname, 
                                 dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
             self.pool.addCommand(cpCmd)
         
@@ -913,7 +916,7 @@ class gpexpand:
         
         self.logger.info('Restoring original segments catalog tables')
         for seg in originalArray.getSegDbList():            
-            segCfgCmd = ConfigExpansionSeg('Restore original segment', seg.datadir, 
+            segCfgCmd = ConfigExpansionSeg('gpexpand restore original segment catalog tables', seg.datadir, 
                                             seg.port, originalPrimaryCount, 
                                             seg.content, seg.dbid,
                                             ctxt=REMOTE, remoteHost=seg.hostname) 
@@ -936,7 +939,7 @@ class gpexpand:
         # Update gp_configuration on the master
         self.logger.info('Starting master in utility mode')
 
-        startCmd = GpStart('gpexpand', masterOnly=True)
+        startCmd = GpStart('gpexpand update master start database master only', masterOnly=True)
         startCmd.run(validateAfter=True)
         
         self.conn = dbconn.connect(self.dburl, utility=True)
@@ -948,13 +951,13 @@ class gpexpand:
         self.conn.close()
         
         self.logger.info('Stopping master in utility mode')
-        stopCmd = GpStop('gpexpand', masterOnly=True)
+        stopCmd = GpStop('gpexpand update master stop database', masterOnly=True)
         stopCmd.run(validateAfter=True)
         
         self.statusLogger.set_status('UPDATE_MASTER_DONE')
         
         self.logger.info('Starting Greenplum Database in restricted mode')
-        startCmd = GpStart('gpexpand', restricted=True)
+        startCmd = GpStart('gpexpand update master start database restricted', restricted=True)
         startCmd.run(validateAfter=True)
         
         # Need to restore the connection used by the expansion
@@ -1223,8 +1226,12 @@ UPDATE gp_distribution_policy
         
         
         #go through and reset any "IN PROGRESS" tables
-        sql = """UPDATE gpexpand.status_detail set status = '%s' WHERE status = '%s' """ % (undone_status,start_status)
         self.conn = dbconn.connect(self.dburl)
+        sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STARTED', '%s' ) " % (gpexpand_schema,status_table,expansionStart)
+        cursor = dbconn.execSQL(self.conn, sql)
+        self.conn.commit()
+        
+        sql = """UPDATE gpexpand.status_detail set status = '%s' WHERE status = '%s' """ % (undone_status,start_status)
         cursor = dbconn.execSQL(self.conn,sql)
         self.conn.commit()
         
@@ -1238,8 +1245,6 @@ UPDATE gp_distribution_policy
             tbl = ExpandTable(row)            
             cmd = ExpandCommand(name,self.dburl,tbl)
             self.queue.addCommand(cmd)
-        
-        self.conn.close()
         
         stopTime = None
         stoppedEarly = False
@@ -1256,10 +1261,21 @@ UPDATE gp_distribution_policy
                 stoppedEarly = True
                 break
 
+        expansionStopped = datetime.datetime.now()
+
         if stoppedEarly:
+            sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
+            cursor = dbconn.execSQL(self.conn, sql)
+            self.conn.commit()
             logger.info('End time reached.  Stopping expansion.')
+            logger.info('You can resume expansion by running: %s' % 'gexpand ' + ' '.join(sys.argv[1:]))
         else:
-            logger.info("EXPANSION COMPLETE")
+            sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION COMPLETE', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
+            cursor = dbconn.execSQL(self.conn, sql)
+            self.conn.commit()            
+            logger.info("EXPANSION COMPLETED SUCCESSFULLY")
+
+        self.conn.close()
 
         self.queue.haltWork()                
         self.pool.haltWork()
