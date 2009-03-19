@@ -347,7 +347,11 @@ static void ConnFree(Port *port);
 static void reset_shared(int port);
 static void SIGHUP_handler(SIGNAL_ARGS);
 static void pmdie(SIGNAL_ARGS);
+
+static volatile int need_call_reaper = 0;
+
 static void reaper(SIGNAL_ARGS);
+static void do_reaper(void);
 static bool ServiceProcessesExist(int excludeFlags);
 static bool StopServices(int excludeFlags, int signal);
 static char *GetServerProcessTitle(int pid);
@@ -1390,6 +1394,9 @@ ServerLoop(void)
 
 		selres = select(nSockets, &rmask, NULL, NULL, &timeout);
 
+                if(need_call_reaper)
+                        do_reaper();
+
 		/*
 		 * Block all signals until we wait again.  (This makes it safe for our
 		 * signal handlers to do nontrivial work.)
@@ -2400,6 +2407,11 @@ pmdie(SIGNAL_ARGS)
 static void
 reaper(SIGNAL_ARGS)
 {
+        need_call_reaper = 1;
+}
+
+static void do_reaper()
+{
 	int			save_errno = errno;
 	int         s;
 	bool        wasServiceProcess;
@@ -2417,6 +2429,7 @@ reaper(SIGNAL_ARGS)
 	int			pid;			/* process id of dead backend */
 
 	PG_SETMASK(&BlockSig);
+        need_call_reaper = 0;
 
 	ereport(DEBUG4,
 			(errmsg_internal("reaping dead processes")));
