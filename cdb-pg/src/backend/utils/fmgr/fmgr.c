@@ -794,9 +794,9 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 					fcinfo->flinfo->fn_oid, n_arguments, 16)));
 			returnValue = NULL; /* keep compiler quiet */
 			break;
-}
+	}
 
-	return (Datum) returnValue;
+	return PointerGetDatum(returnValue);
 }
 
 
