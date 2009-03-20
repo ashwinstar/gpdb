@@ -31,8 +31,6 @@ TODO: Items""",
 
 "*  timeout on how long to wait to try and start something",
 
-"* honor the -B flag",
-
 "* implement gp.start_standbymaster",
 
 "* implement gp.chk_gpdb_id",
@@ -65,11 +63,12 @@ class SegStartStatus():
 class GpStart():
     
     ######
-    def __init__(self,restricted,start_standby,trust):
+    def __init__(self,restricted,start_standby,trust,parallel=64):
         self.restricted=restricted
         self.start_standby=start_standby
         self.trust=trust
         self.pool = None
+        self.parallel=parallel
         pass
     
     ######
@@ -211,7 +210,7 @@ class GpStart():
         logger.info("Obtaining Greenplum Master catalog information")
         
         logger.info("Obtaining Segment details from master...")
-        self.dburl = dbconn.DbURL()
+        self.dburl = dbconn.DbURL(port=self.port)
         self.conn = dbconn.connect(self.dburl, utility=True)
         rows = dbconn.getConfig(self.conn)
         self.gparray = gparray.GpArray(rows)
@@ -231,7 +230,7 @@ class GpStart():
     def start(self):     
         """ returns whether all segments were started successfully """   
         self.failed_seg_status = []
-        workers=min(len(self.gparray.get_hostlist()),64)
+        workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
         
         if os.path.exists(self.master_datadir + "/gpexpand.status") and not self.restricted:            
@@ -552,7 +551,7 @@ def main():
         if options.quiet:
             quiet_stdout_logging()
     
-        gpstart = GpStart(options.restricted,options.start_standby,options.trust)
+        gpstart = GpStart(options.restricted,options.start_standby,options.trust,parallel=options.parallel)
         gpstart.prepare()
           
         gpstart.startMaster()    

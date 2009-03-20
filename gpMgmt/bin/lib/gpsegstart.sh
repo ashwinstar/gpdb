@@ -96,10 +96,6 @@ START_SEG () {
 	# Start of segment startup section
 	#*************************************************************************************************************
 	
-	#create a pg_log dir if not already there
-	if [ ! -d ${QE_DIR}/pg_log ]; then
-		$MKDIR ${QE_DIR}/pg_log
-	fi
 	
 	if [ $START_INVALID -eq 1 ];then
 		#Check to see if there is a stale postmaster.pid file
