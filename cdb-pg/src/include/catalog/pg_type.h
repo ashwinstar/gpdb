@@ -598,8 +598,10 @@ DATA(insert OID = 6436 ( gp_db_interfaces	PGNSP PGUID -1 f c t \054 5029 0 recor
 /*
  * prototypes for functions in pg_type.c
  */
-extern Oid	TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId);
-extern Oid	TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId, Oid shelltypeOid);
+extern Oid TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId,
+						 Oid shelloid);
+extern Oid TypeShellMakeWithOid(const char *typeName, Oid typeNamespace,
+								Oid ownerId, Oid shelltypeOid);
 
 extern Oid TypeCreate(const char *typeName,
 		   Oid typeNamespace,

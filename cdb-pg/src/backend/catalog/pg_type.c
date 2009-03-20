@@ -45,13 +45,15 @@
  */
  
 Oid
-TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
+TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId,
+			  Oid shelloid)
 {
-	return TypeShellMakeWithOid(typeName,typeNamespace,ownerId, InvalidOid);
+	return TypeShellMakeWithOid(typeName,typeNamespace,ownerId, shelloid);
 }
 
 Oid
-TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId, Oid shelltypeOid)
+TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId,
+					 Oid shelltypeOid)
 {
 	Relation	pg_type_desc;
 	TupleDesc	tupDesc;

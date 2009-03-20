@@ -148,7 +148,8 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 							0, 0);
 	if (!OidIsValid(typoid))
 	{
-		typoid = TypeShellMake(typeName, typeNamespace, GetUserId());
+		typoid = TypeShellMake(typeName, typeNamespace, GetUserId(), newOid);
+
 		/* Make new shell type visible for modification below */
 		CommandCounterIncrement();
 
@@ -157,7 +158,22 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 		 * creating the shell type was all we're supposed to do.
 		 */
 		if (parameters == NIL)
+		{
+			/* Must dispatch shell type creation */
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				DefineStmt * stmt = makeNode(DefineStmt);
+				stmt->kind = OBJECT_TYPE;
+				stmt->oldstyle = false; /*?*/
+				stmt->defnames = names;
+				stmt->args = NIL;
+				stmt->definition = parameters;
+				stmt->newOid = typoid;
+				stmt->shadowOid = shadowOid;
+				CdbDispatchUtilityStatement((Node *) stmt, "DefineType");
+			}
 			return;
+		}
 	}
 	else
 	{
