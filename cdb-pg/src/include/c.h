@@ -604,7 +604,7 @@ typedef NameData *Name;
  */
 
 #define TYPEALIGN(ALIGNVAL,LEN)  \
-	(((long) (LEN) + ((ALIGNVAL) - 1)) & ~((long) ((ALIGNVAL) - 1)))
+	(((int64) (LEN) + ((ALIGNVAL) - 1)) & ~((int64) ((ALIGNVAL) - 1)))
 
 #define SHORTALIGN(LEN)			TYPEALIGN(ALIGNOF_SHORT, (LEN))
 #define INTALIGN(LEN)			TYPEALIGN(ALIGNOF_INT, (LEN))
@@ -615,7 +615,7 @@ typedef NameData *Name;
 #define BUFFERALIGN(LEN)		TYPEALIGN(ALIGNOF_BUFFER, (LEN))
 
 #define TYPEALIGN_DOWN(ALIGNVAL,LEN)  \
-	(((long) (LEN)) & ~((long) ((ALIGNVAL) - 1)))
+	(((int64) (LEN)) & ~((int64) ((ALIGNVAL) - 1)))
 
 #define SHORTALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_SHORT, (LEN))
 #define INTALIGN_DOWN(LEN)		TYPEALIGN_DOWN(ALIGNOF_INT, (LEN))
