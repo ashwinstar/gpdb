@@ -57,6 +57,16 @@
 
 #define atooid(x)	((Oid) strtoul((x), NULL, 10))
 
+/*
+ * Bison doesn't allocate anything that needs to live across parser calls,
+ * so we can easily have it use palloc instead of malloc.  This prevents
+ * memory leaks if we error out during parsing.  Note this only works with
+ * bison >= 2.0.  However, in bison 1.875 the default is to use alloca()
+ * if possible, so there's not really much problem anyhow, at least if
+ * you're building with gcc.
+ */
+#define YYMALLOC palloc
+#define YYFREE   pfree
 
 static void
 do_start(void)
@@ -84,6 +94,7 @@ int num_columns_read = 0;
 
 %}
 
+%expect 0
 %name-prefix="boot_yy"
 
 %union
@@ -261,10 +272,7 @@ Boot_InsertStmt:
 						elog(ERROR, "incorrect number of columns in row (expected %d, got %d)",
 							 numattr, num_columns_read);
 					if (boot_reldesc == NULL)
-					{
-						elog(ERROR, "relation not open");
-						err_out();
-					}
+						elog(FATAL, "relation not open");
 					InsertOneTuple($2);
 					do_end();
 				}

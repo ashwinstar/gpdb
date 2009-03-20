@@ -1135,26 +1135,31 @@ check_input(char *path)
 	if (stat(path, &statbuf) != 0)
 	{
 		if (errno == ENOENT)
+		{
 			fprintf(stderr,
-					_("%s: file \"%s\" does not exist\n"
-					  "This means you have a corrupted installation or identified\n"
-					  "the wrong directory with the invocation option -L.\n"),
-					progname, path);
+					_("%s: file \"%s\" does not exist\n"), progname, path);
+			fprintf(stderr,
+					_("This might mean you have a corrupted installation or identified\n"
+					  "the wrong directory with the invocation option -L.\n"));
+		}
 		else
+	{
 			fprintf(stderr,
-					_("%s: could not access file \"%s\": %s\n"
-					  "This may mean you have a corrupted installation or identified\n"
-					  "the wrong directory with the invocation option -L.\n"),
-					progname, path, strerror(errno));
+					_("%s: could not access file \"%s\": %s\n"), progname, path,
+					  strerror(errno));
+			fprintf(stderr,
+					_("This might mean you have a corrupted installation or identified\n"
+					  "the wrong directory with the invocation option -L.\n"));
+		}
 		exit(1);
 	}
 	if (!S_ISREG(statbuf.st_mode))
 	{
 		fprintf(stderr,
-				_("%s: file \"%s\" is not a regular file\n"
-			   "This means you have a corrupted installation or identified\n"
-				  "the wrong directory with the invocation option -L.\n"),
-				progname, path);
+				_("%s: file \"%s\" is not a regular file\n"), progname, path);
+		fprintf(stderr,
+				_("This might mean you have a corrupted installation or identified\n"
+				  "the wrong directory with the invocation option -L.\n"));
 		exit(1);
 	}
 }
@@ -2377,6 +2382,8 @@ locale_date_order(const char *locale)
 
 /*
  * check if given string is a valid locale specifier
+ *
+ * this should match the backend check_locale() function
  */
 static bool
 chklocale(const char *locale)
@@ -2563,7 +2570,7 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 
 	if (_CreateRestrictedToken == NULL)
 	{
-		fprintf(stderr, "WARNING: Unable to create restricted tokens on this platform\n");
+		fprintf(stderr, "WARNING: cannot create restricted tokens on this platform\n");
 		if (Advapi32Handle != NULL)
 			FreeLibrary(Advapi32Handle);
 		return 0;
@@ -3225,11 +3232,13 @@ main(int argc, char *argv[])
 		case 2:
 			/* Present and not empty */
 			fprintf(stderr,
-					_("%s: directory \"%s\" exists but is not empty\n"
-					  "If you want to create a new database system, either remove or empty\n"
+					_("%s: directory \"%s\" exists but is not empty\n"),
+					progname, pg_data);
+			fprintf(stderr,
+					_("If you want to create a new database system, either remove or empty\n"
 					  "the directory \"%s\" or run %s\n"
 					  "with an argument other than \"%s\".\n"),
-					progname, pg_data, pg_data, progname, pg_data);
+					pg_data, progname, pg_data);
 			exit(1);			/* no further message needed */
 
 		default:
@@ -3289,11 +3298,13 @@ main(int argc, char *argv[])
 			case 2:
 				/* Present and not empty */
 				fprintf(stderr,
-						_("%s: directory \"%s\" exists but is not empty\n"
-						  "If you want to store the transaction log there, either\n"
+						_("%s: directory \"%s\" exists but is not empty\n"),
+						progname, xlog_dir);
+				fprintf(stderr,
+						_("If you want to store the transaction log there, either\n"
 						  "remove or empty the directory \"%s\".\n"),
-						progname, xlog_dir, xlog_dir);
-				exit(1);			/* no further message needed */
+						xlog_dir);
+				exit_nicely();
 
 			default:
 				/* Trouble accessing directory */
@@ -3301,6 +3312,10 @@ main(int argc, char *argv[])
 						progname, xlog_dir, strerror(errno));
 				exit_nicely();
 		}
+
+		/* form name of the place where the symlink must go */
+		linkloc = (char *) pg_malloc(strlen(pg_data) + 8 + 1);
+		sprintf(linkloc, "%s/pg_xlog", pg_data);
 
 #ifdef HAVE_SYMLINK
 		if (symlink(xlog_dir, linkloc) != 0)
@@ -3310,7 +3325,7 @@ main(int argc, char *argv[])
 			exit_nicely();
 		}
 #else
-		fprintf(stderr, _("%s: symlinks are not supported on this plataform"));
+		fprintf(stderr, _("%s: symlinks are not supported on this platform"));
 		exit_nicely();
 #endif
 	}

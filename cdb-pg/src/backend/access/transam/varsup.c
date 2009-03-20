@@ -34,8 +34,6 @@ VariableCache ShmemVariableCache = NULL;
 
 /*
  * Allocate the next XID for my new transaction or subtransaction.
- *
- * The new XID is also stored into MyProc before returning.
  */
 TransactionId
 GetNewTransactionId(bool isSubXact, bool setProcXid)
@@ -49,7 +47,6 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	if (IsBootstrapProcessingMode())
 	{
 		Assert(!isSubXact);
-		MyProc->xid = BootstrapTransactionId;
 		return BootstrapTransactionId;
 	}
 

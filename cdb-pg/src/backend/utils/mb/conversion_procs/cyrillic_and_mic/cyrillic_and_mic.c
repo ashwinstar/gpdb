@@ -2,11 +2,11 @@
  *
  *	  Cyrillic and MULE_INTERNAL
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/cyrillic_and_mic/cyrillic_and_mic.c,v 1.14 2006/05/30 22:12:14 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/cyrillic_and_mic/cyrillic_and_mic.c,v 1.20 2009/02/28 18:49:42 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -88,9 +88,7 @@ koi8r_to_mic(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_KOI8R);
-	Assert(PG_GETARG_INT32(1) == PG_MULE_INTERNAL);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_KOI8R, PG_MULE_INTERNAL);
 
 	koi8r2mic(src, dest, len);
 
@@ -104,9 +102,7 @@ mic_to_koi8r(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_MULE_INTERNAL);
-	Assert(PG_GETARG_INT32(1) == PG_KOI8R);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_MULE_INTERNAL, PG_KOI8R);
 
 	mic2koi8r(src, dest, len);
 
@@ -120,9 +116,7 @@ iso_to_mic(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_ISO_8859_5);
-	Assert(PG_GETARG_INT32(1) == PG_MULE_INTERNAL);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_ISO_8859_5, PG_MULE_INTERNAL);
 
 	iso2mic(src, dest, len);
 
@@ -136,9 +130,7 @@ mic_to_iso(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_MULE_INTERNAL);
-	Assert(PG_GETARG_INT32(1) == PG_ISO_8859_5);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_MULE_INTERNAL, PG_ISO_8859_5);
 
 	mic2iso(src, dest, len);
 
@@ -152,9 +144,7 @@ win1251_to_mic(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN1251);
-	Assert(PG_GETARG_INT32(1) == PG_MULE_INTERNAL);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN1251, PG_MULE_INTERNAL);
 
 	win12512mic(src, dest, len);
 
@@ -168,9 +158,7 @@ mic_to_win1251(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_MULE_INTERNAL);
-	Assert(PG_GETARG_INT32(1) == PG_WIN1251);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_MULE_INTERNAL, PG_WIN1251);
 
 	mic2win1251(src, dest, len);
 
@@ -184,9 +172,7 @@ win866_to_mic(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN866);
-	Assert(PG_GETARG_INT32(1) == PG_MULE_INTERNAL);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN866, PG_MULE_INTERNAL);
 
 	win8662mic(src, dest, len);
 
@@ -200,9 +186,7 @@ mic_to_win866(PG_FUNCTION_ARGS)
 	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
-	Assert(PG_GETARG_INT32(0) == PG_MULE_INTERNAL);
-	Assert(PG_GETARG_INT32(1) == PG_WIN866);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_MULE_INTERNAL, PG_WIN866);
 
 	mic2win866(src, dest, len);
 
@@ -217,11 +201,9 @@ koi8r_to_win1251(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_KOI8R);
-	Assert(PG_GETARG_INT32(1) == PG_WIN1251);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_KOI8R, PG_WIN1251);
 
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	koi8r2mic(src, buf, len);
 	mic2win1251(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -237,11 +219,9 @@ win1251_to_koi8r(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN1251);
-	Assert(PG_GETARG_INT32(1) == PG_KOI8R);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN1251, PG_KOI8R);
 
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	win12512mic(src, buf, len);
 	mic2koi8r(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -257,11 +237,9 @@ koi8r_to_win866(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_KOI8R);
-	Assert(PG_GETARG_INT32(1) == PG_WIN866);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_KOI8R, PG_WIN866);
 
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	koi8r2mic(src, buf, len);
 	mic2win866(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -277,11 +255,9 @@ win866_to_koi8r(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN866);
-	Assert(PG_GETARG_INT32(1) == PG_KOI8R);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN866, PG_KOI8R);
 
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	win8662mic(src, buf, len);
 	mic2koi8r(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -297,9 +273,7 @@ win866_to_win1251(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN866);
-	Assert(PG_GETARG_INT32(1) == PG_WIN1251);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN866, PG_WIN1251);
 
 	/*
 	 * Note: There are a few characters like the "Numero" sign that exist in
@@ -307,7 +281,7 @@ win866_to_win1251(PG_FUNCTION_ARGS)
 	 * not in KOI8R. As we use MULE_INTERNAL/KOI8R as an intermediary, we
 	 * will fail to convert those characters.
 	 */
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	win8662mic(src, buf, len);
 	mic2win1251(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -323,12 +297,10 @@ win1251_to_win866(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN1251);
-	Assert(PG_GETARG_INT32(1) == PG_WIN866);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN1251, PG_WIN866);
 
 	/* Use mic/KOI8R as intermediary, see comment in win866_to_win1251() */
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	win12512mic(src, buf, len);
 	mic2win866(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -344,11 +316,9 @@ iso_to_koi8r(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_ISO_8859_5);
-	Assert(PG_GETARG_INT32(1) == PG_KOI8R);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_ISO_8859_5, PG_KOI8R);
 
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	iso2mic(src, buf, len);
 	mic2koi8r(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -364,11 +334,9 @@ koi8r_to_iso(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_KOI8R);
-	Assert(PG_GETARG_INT32(1) == PG_ISO_8859_5);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_KOI8R, PG_ISO_8859_5);
 
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	koi8r2mic(src, buf, len);
 	mic2iso(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -384,12 +352,10 @@ iso_to_win1251(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_ISO_8859_5);
-	Assert(PG_GETARG_INT32(1) == PG_WIN1251);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_ISO_8859_5, PG_WIN1251);
 
 	/* Use mic/KOI8R as intermediary, see comment in win866_to_win1251() */
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	iso2mic(src, buf, len);
 	mic2win1251(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -405,12 +371,10 @@ win1251_to_iso(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN1251);
-	Assert(PG_GETARG_INT32(1) == PG_ISO_8859_5);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN1251, PG_ISO_8859_5);
 
 	/* Use mic/KOI8R as intermediary, see comment in win866_to_win1251() */
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	win12512mic(src, buf, len);
 	mic2iso(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -426,12 +390,10 @@ iso_to_win866(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_ISO_8859_5);
-	Assert(PG_GETARG_INT32(1) == PG_WIN866);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_ISO_8859_5, PG_WIN866);
 
 	/* Use mic/KOI8R as intermediary, see comment in win866_to_win1251() */
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	iso2mic(src, buf, len);
 	mic2win866(buf, dest, strlen((char *) buf));
 	pfree(buf);
@@ -447,12 +409,10 @@ win866_to_iso(PG_FUNCTION_ARGS)
 	int			len = PG_GETARG_INT32(4);
 	unsigned char *buf;
 
-	Assert(PG_GETARG_INT32(0) == PG_WIN866);
-	Assert(PG_GETARG_INT32(1) == PG_ISO_8859_5);
-	Assert(len >= 0);
+	CHECK_ENCODING_CONVERSION_ARGS(PG_WIN866, PG_ISO_8859_5);
 
 	/* Use mic/KOI8R as intermediary, see comment in win866_to_win1251() */
-	buf = palloc(len * ENCODING_GROWTH_RATE);
+	buf = palloc(len * ENCODING_GROWTH_RATE + 1);
 	win8662mic(src, buf, len);
 	mic2iso(buf, dest, strlen((char *) buf));
 	pfree(buf);

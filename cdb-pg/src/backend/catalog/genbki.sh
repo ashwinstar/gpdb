@@ -105,6 +105,11 @@ TMPFILE="genbkitmp$$.c"
 
 trap "rm -f $TMPFILE ${OUTPUT_PREFIX}.bki.$$ ${OUTPUT_PREFIX}.description.$$ ${OUTPUT_PREFIX}.shdescription.$$" 0 1 2 3 15
 
+# CAUTION: be wary about what symbols you substitute into the .bki file here!
+# It's okay to substitute things that are expected to be really constant
+# within a given Postgres release, such as fixed OIDs.  Do not substitute
+# anything that could depend on platform or configuration.  (The right place
+# to handle those sorts of things is in initdb.c's bootstrap_template1().)
 
 # Get NAMEDATALEN from postgres_ext.h
 for dir in $INCLUDE_DIRS; do
