@@ -30,9 +30,10 @@
 #define COMMERROR	16			/* Client communication problems; same as LOG
 								 * for server reporting, but never sent to
 								 * client. */
-#define INFO		17			/* Informative messages that are always sent
-								 * to client;  is not affected by
-								 * client_min_messages */
+#define INFO		17			/* Messages specifically requested by user
+								 * (eg VACUUM VERBOSE output); always sent to
+								 * client regardless of client_min_messages,
+								 * but by default not sent to server log. */
 #define NOTICE		18			/* Helpful messages to users about query
 								 * operation;  sent to client and server log
 								 * by default. */
@@ -211,7 +212,7 @@ typedef struct ErrorContextCallback
 	void	   *arg;
 } ErrorContextCallback;
 
-extern DLLIMPORT ErrorContextCallback *error_context_stack;
+extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 
 
 /*----------
@@ -270,7 +271,7 @@ extern DLLIMPORT ErrorContextCallback *error_context_stack;
 #define PG_RE_THROW()  \
 	siglongjmp(*PG_exception_stack, 1)
 
-extern DLLIMPORT sigjmp_buf *PG_exception_stack;
+extern PGDLLIMPORT sigjmp_buf *PG_exception_stack;
 
 
 /* Stuff that error handlers might want to use */
@@ -382,6 +383,7 @@ extern int	Log_destination;
 /* Other exported functions */
 extern void DebugFileOpen(void);
 extern char *unpack_sql_state(int sql_state);
+extern bool in_error_recursion_trouble(void);
 
 #ifdef HAVE_SYSLOG
 extern void set_syslog_parameters(const char *ident, int facility);

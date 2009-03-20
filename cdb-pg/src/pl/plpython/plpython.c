@@ -3003,7 +3003,7 @@ PLy_traceback(int *xlevel)
 	appendStringInfo(&xstr, "%s: %s", estr, vstr);
 	if (tb)
 		appendStringInfo(&xstr, " (%s, line %d)",
-						 tb->tb_frame->f_code->co_filename,
+				PyString_AsString(tb->tb_frame->f_code->co_filename),
 						 tb->tb_lineno);
 
 	Py_DECREF(eob);

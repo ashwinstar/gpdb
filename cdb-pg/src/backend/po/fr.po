@@ -3476,8 +3476,8 @@ msgstr "droit refusé pour créer « %s.%s »"
 msgid "System catalog modifications are currently disallowed."
 msgstr "Les modifications du catalogue système sont actuellement interdites."
 
-#: catalog/heap.c:343 commands/tablecmds.c:773 commands/tablecmds.c:1077
-#: commands/tablecmds.c:3213
+#: catalog/heap.c:343 commands/tablecmds.c:772 commands/tablecmds.c:1076
+#: commands/tablecmds.c:3234
 #, c-format
 msgid "tables can have at most %d columns"
 msgstr "les tables peuvent avoir au plus %d colonnes"
@@ -8717,7 +8717,7 @@ msgstr "L'entrée cible de la règle SELECT a trop d'entrées"
 msgid "RETURNING list has too few entries"
 msgstr "la liste RETURNING a trop peu d'entrées"
 
-#: rewrite/rewriteManip.c:757
+#: rewrite/rewriteManip.c:776
 msgid "conditional utility statements are not implemented"
 msgstr "Les instructions conditionnelles ne sont pas implémentées"
 
@@ -9640,11 +9640,11 @@ msgstr "Force la synchronisation des mises à jour sur le disque."
 msgid "The server will use the fsync() system call in several places to make sure that updates are physically written to disk. This insures that a database cluster will recover to a consistent state after an operating system or hardware crash."
 msgstr "Le serveur utiliser l'appel système fsync() à différents endroits pour s'assurer que les mises à jour sont écrites physiquement sur le disque. Ceci nous assure qu'un groupe de bases de données se retrouvera dans un état cohérent après un arrêt brutal dû au système d'exploitation ou au matériel."
 
-#: utils/misc/guc.c:526
+#: utils/misc/guc.c:531
 msgid "Continues processing past damaged page headers."
 msgstr "Continue le travail après les en-têtes de page endommagés."
 
-#: utils/misc/guc.c:527
+#: utils/misc/guc.c:532
 msgid "Detection of a damaged page header normally causes PostgreSQL to report an error, aborting the current transaction. Setting zero_damaged_pages to true causes the system to instead report a warning, zero out the damaged page, and continue processing. This behavior will destroy data, namely all the rows on the damaged page."
 msgstr "La détection d'une en-tête de page endommagée cause normalement le rapport d'une erreur par PostgreSQL, l'annulation de la transaction en cours. Initialiser zero_damaged_pages à true fait que le système ne rapporte qu'un message d'attention et continue à travailler. Ce comportement détruira des données, notamment toutes les lignes de la page endommagée."
 
@@ -10525,7 +10525,7 @@ msgstr ""
 "%s ne sait pas où trouver les données du système de bases de données.\n"
 "Il est configurable avec « data_directory » dans « %s » ou avec l'option -D ou encore avec la variable d'environnement PGDATA.\n"
 
-#: utils/misc/guc.c:2995
+#: utils/misc/guc.c:3000
 #, c-format
 msgid ""
 "%s does not know where to find the \"hba\" configuration file.\n"
@@ -10534,7 +10534,7 @@ msgstr ""
 "%s ne sait pas où trouver le fichier de configuration « hba ».\n"
 "Il est configurable avec « hba_file » dans « %s » ou avec l'option -D ou encore avec la variable d'environnement PGDATA.\n"
 
-#: utils/misc/guc.c:3018
+#: utils/misc/guc.c:3023
 #, c-format
 msgid ""
 "%s does not know where to find the \"ident\" configuration file.\n"

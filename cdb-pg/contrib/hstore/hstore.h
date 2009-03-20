@@ -1,14 +1,10 @@
+/*
+ * $PostgreSQL: pgsql/contrib/hstore/hstore.h,v 1.6 2008/05/12 00:00:42 alvherre Exp $
+ */
 #ifndef __HSTORE_H__
 #define __HSTORE_H__
 
-#include "postgres.h"
-#include "funcapi.h"
-#include "access/gist.h"
-#include "access/itup.h"
-#include "utils/elog.h"
-#include "utils/palloc.h"
-#include "utils/builtins.h"
-#include "storage/bufpage.h"
+#include "fmgr.h"
 
 
 typedef struct
@@ -23,12 +19,12 @@ typedef struct
 
 typedef struct
 {
-	int4		len;
+	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int4		size;
 	char		data[1];
 }	HStore;
 
-#define HSHRDSIZE	(2*sizeof(int4))
+#define HSHRDSIZE	(VARHDRSZ + sizeof(int4))
 #define CALCDATASIZE(x, lenstr) ( (x) * sizeof(HEntry) + HSHRDSIZE + (lenstr) )
 #define ARRPTR(x)		( (HEntry*) ( (char*)(x) + HSHRDSIZE ) )
 #define STRPTR(x)		( (char*)(x) + HSHRDSIZE + ( sizeof(HEntry) * ((HStore*)x)->size ) )
@@ -49,4 +45,7 @@ typedef struct
 int			comparePairs(const void *a, const void *b);
 int			uniquePairs(Pairs * a, int4 l, int4 *buflen);
 
-#endif
+#define HStoreContainsStrategyNumber	7
+#define HStoreExistsStrategyNumber		9
+
+#endif /* __HSTORE_H__ */

@@ -1,9 +1,14 @@
-#include "hstore.h"
-#include "utils/array.h"
+/*
+ * $PostgreSQL
+ */
+#include "postgres.h"
+
 #include "catalog/pg_type.h"
 #include "funcapi.h"
-#include <access/heapam.h>
-#include <fmgr.h>
+#include "utils/array.h"
+#include "utils/builtins.h"
+
+#include "hstore.h"
 
 
 static HEntry *
@@ -52,13 +57,12 @@ fetchval(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	}
 
-	out = palloc(VARHDRSZ + entry->vallen);
-	memcpy(VARDATA(out), STRPTR(hs) + entry->pos + entry->keylen, entry->vallen);
-	SET_VARSIZE(out, VARHDRSZ + entry->vallen);
+	out = cstring_to_text_with_len(STRPTR(hs) + entry->pos + entry->keylen,
+								   entry->vallen);
 
 	PG_FREE_IF_COPY(hs, 0);
 	PG_FREE_IF_COPY(key, 1);
-	PG_RETURN_POINTER(out);
+	PG_RETURN_TEXT_P(out);
 }
 
 PG_FUNCTION_INFO_V1(exists);
@@ -75,7 +79,7 @@ exists(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(hs, 0);
 	PG_FREE_IF_COPY(key, 1);
 
-	PG_RETURN_BOOL(entry!=NULL);
+	PG_RETURN_BOOL(entry);
 }
 
 PG_FUNCTION_INFO_V1(defined);
@@ -105,14 +109,14 @@ delete(PG_FUNCTION_ARGS)
 {
 	HStore	   *hs = PG_GETARG_HS(0);
 	text	   *key = PG_GETARG_TEXT_P(1);
-	HStore	   *out = palloc(hs->len);
+	HStore	   *out = palloc(VARSIZE(hs));
 	char	   *ptrs,
 			   *ptrd;
 	HEntry	   *es,
 			   *ed;
 
-	out->len = hs->len;
-	out->size = hs->size;		/* temprorary! */
+	SET_VARSIZE(out, VARSIZE(hs));
+	out->size = hs->size;		/* temporary! */
 
 	ptrs = STRPTR(hs);
 	es = ARRPTR(hs);
@@ -142,7 +146,7 @@ delete(PG_FUNCTION_ARGS)
 		out->size = ed - ARRPTR(out);
 
 		memmove(STRPTR(out), ptrd, buflen);
-		out->len = CALCDATASIZE(out->size, buflen);
+		SET_VARSIZE(out, CALCDATASIZE(out->size, buflen));
 	}
 
 
@@ -159,7 +163,7 @@ hs_concat(PG_FUNCTION_ARGS)
 {
 	HStore	   *s1 = PG_GETARG_HS(0);
 	HStore	   *s2 = PG_GETARG_HS(1);
-	HStore	   *out = palloc(s1->len + s2->len);
+	HStore	   *out = palloc(VARSIZE(s1) + VARSIZE(s2));
 	char	   *ps1,
 			   *ps2,
 			   *pd;
@@ -167,7 +171,7 @@ hs_concat(PG_FUNCTION_ARGS)
 			   *es2,
 			   *ed;
 
-	out->len = s1->len + s2->len;
+	SET_VARSIZE(out, VARSIZE(s1) + VARSIZE(s2));
 	out->size = s1->size + s2->size;
 
 	ps1 = STRPTR(s1);
@@ -256,7 +260,7 @@ hs_concat(PG_FUNCTION_ARGS)
 		out->size = ed - ARRPTR(out);
 
 		memmove(STRPTR(out), pd, buflen);
-		out->len = CALCDATASIZE(out->size, buflen);
+		SET_VARSIZE(out, CALCDATASIZE(out->size, buflen));
 	}
 
 	PG_FREE_IF_COPY(s1, 0);
@@ -270,26 +274,48 @@ Datum		tconvert(PG_FUNCTION_ARGS);
 Datum
 tconvert(PG_FUNCTION_ARGS)
 {
-	text	   *key = PG_GETARG_TEXT_P(0);
-	text	   *val = PG_GETARG_TEXT_P(1);
+	text	   *key;
+	text	   *val = NULL;
 	int			len;
 	HStore	   *out;
 
-	len = CALCDATASIZE(1, VARSIZE(key) + VARSIZE(val) - 2 * VARHDRSZ);
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	key = PG_GETARG_TEXT_P(0);
+
+	if (PG_ARGISNULL(1))
+		len = CALCDATASIZE(1, VARSIZE(key));
+	else
+	{
+		val = PG_GETARG_TEXT_P(1);
+		len = CALCDATASIZE(1, VARSIZE(key) + VARSIZE(val) - 2 * VARHDRSZ);
+	}
 	out = palloc(len);
-	out->len = len;
+	SET_VARSIZE(out, len);
 	out->size = 1;
 
 	ARRPTR(out)->keylen = VARSIZE(key) - VARHDRSZ;
-	ARRPTR(out)->vallen = VARSIZE(val) - VARHDRSZ;
-	ARRPTR(out)->valisnull = false;
+	if (PG_ARGISNULL(1))
+	{
+		ARRPTR(out)->vallen = 0;
+		ARRPTR(out)->valisnull = true;
+	}
+	else
+	{
+		ARRPTR(out)->vallen = VARSIZE(val) - VARHDRSZ;
+		ARRPTR(out)->valisnull = false;
+	}
 	ARRPTR(out)->pos = 0;
 
 	memcpy(STRPTR(out), VARDATA(key), ARRPTR(out)->keylen);
-	memcpy(STRPTR(out) + ARRPTR(out)->keylen, VARDATA(val), ARRPTR(out)->vallen);
+	if (!PG_ARGISNULL(1))
+	{
+		memcpy(STRPTR(out) + ARRPTR(out)->keylen, VARDATA(val), ARRPTR(out)->vallen);
+		PG_FREE_IF_COPY(val, 1);
+	}
 
 	PG_FREE_IF_COPY(key, 0);
-	PG_FREE_IF_COPY(val, 1);
 
 	PG_RETURN_POINTER(out);
 }
@@ -308,22 +334,19 @@ akeys(PG_FUNCTION_ARGS)
 	d = (Datum *) palloc(sizeof(Datum) * (hs->size + 1));
 	while (ptr - ARRPTR(hs) < hs->size)
 	{
-		text	   *item = (text *) palloc(VARHDRSZ + ptr->keylen);
+		text	   *item;
 
-		SET_VARSIZE(item, VARHDRSZ + ptr->keylen);
-		memcpy(VARDATA(item), base + ptr->pos, ptr->keylen);
+		item = cstring_to_text_with_len(base + ptr->pos, ptr->keylen);
 		d[ptr - ARRPTR(hs)] = PointerGetDatum(item);
 		ptr++;
 	}
 
-	a = construct_array(
-						d,
+	a = construct_array(d,
 						hs->size,
 						TEXTOID,
 						-1,
 						false,
-						'i'
-		);
+						'i');
 
 	ptr = ARRPTR(hs);
 	while (ptr - ARRPTR(hs) < hs->size)
@@ -352,23 +375,20 @@ avals(PG_FUNCTION_ARGS)
 	d = (Datum *) palloc(sizeof(Datum) * (hs->size + 1));
 	while (ptr - ARRPTR(hs) < hs->size)
 	{
-		int			vallen = (ptr->valisnull) ? 0 : ptr->vallen;
-		text	   *item = (text *) palloc(VARHDRSZ + vallen);
+		text	   *item;
 
-		SET_VARSIZE(item, VARHDRSZ + vallen);
-		memcpy(VARDATA(item), base + ptr->pos + ptr->keylen, vallen);
+		item = cstring_to_text_with_len(base + ptr->pos + ptr->keylen,
+										(ptr->valisnull) ? 0 : ptr->vallen);
 		d[ptr - ARRPTR(hs)] = PointerGetDatum(item);
 		ptr++;
 	}
 
-	a = construct_array(
-						d,
+	a = construct_array(d,
 						hs->size,
 						TEXTOID,
 						-1,
 						false,
-						'i'
-		);
+						'i');
 
 	ptr = ARRPTR(hs);
 	while (ptr - ARRPTR(hs) < hs->size)
@@ -399,8 +419,8 @@ setup_firstcall(FuncCallContext *funcctx, HStore * hs)
 
 	st = (AKStore *) palloc(sizeof(AKStore));
 	st->i = 0;
-	st->hs = (HStore *) palloc(hs->len);
-	memcpy(st->hs, hs, hs->len);
+	st->hs = (HStore *) palloc(VARSIZE(hs));
+	memcpy(st->hs, hs, VARSIZE(hs));
 
 	funcctx->user_fctx = (void *) st;
 	MemoryContextSwitchTo(oldcontext);
@@ -429,10 +449,10 @@ skeys(PG_FUNCTION_ARGS)
 	if (st->i < st->hs->size)
 	{
 		HEntry	   *ptr = &(ARRPTR(st->hs)[st->i]);
-		text	   *item = (text *) palloc(VARHDRSZ + ptr->keylen);
+		text	   *item;
 
-		SET_VARSIZE(item, VARHDRSZ + ptr->keylen);
-		memcpy(VARDATA(item), STRPTR(st->hs) + ptr->pos, ptr->keylen);
+		item = cstring_to_text_with_len(STRPTR(st->hs) + ptr->pos,
+										ptr->keylen);
 		st->i++;
 
 		SRF_RETURN_NEXT(funcctx, PointerGetDatum(item));
@@ -480,11 +500,10 @@ svals(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			int			vallen = ptr->vallen;
-			text	   *item = (text *) palloc(VARHDRSZ + vallen);
+			text	   *item;
 
-			SET_VARSIZE(item, VARHDRSZ + vallen);
-			memcpy(VARDATA(item), STRPTR(st->hs) + ptr->pos + ptr->keylen, vallen);
+			item = cstring_to_text_with_len(STRPTR(st->hs) + ptr->pos + ptr->keylen,
+											ptr->vallen);
 			st->i++;
 
 			SRF_RETURN_NEXT(funcctx, PointerGetDatum(item));
@@ -515,17 +534,18 @@ hs_contains(PG_FUNCTION_ARGS)
 
 		if (entry)
 		{
-			if (!te->valisnull)
+			if (te->valisnull || entry->valisnull)
 			{
-				if (entry->valisnull || !(
-										  te->vallen == entry->vallen &&
-										  strncmp(
-											 vv + entry->pos + entry->keylen,
-												  tv + te->pos + te->keylen,
-												  te->vallen) == 0
-										  ))
+				if (!(te->valisnull && entry->valisnull))
 					res = false;
 			}
+			else if (te->vallen != entry->vallen ||
+					 strncmp(
+							 vv + entry->pos + entry->keylen,
+							 tv + te->pos + te->keylen,
+							 te->vallen)
+				)
+				res = false;
 		}
 		else
 			res = false;
@@ -568,12 +588,14 @@ each(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		st = (AKStore *) palloc(sizeof(AKStore));
 		st->i = 0;
-		st->hs = (HStore *) palloc(hs->len);
-		memcpy(st->hs, hs, hs->len);
+		st->hs = (HStore *) palloc(VARSIZE(hs));
+		memcpy(st->hs, hs, VARSIZE(hs));
 		funcctx->user_fctx = (void *) st;
 
-		tupdesc = RelationNameGetTupleDesc("hs_each");
-		funcctx->slot = TupleDescGetSlot(tupdesc);
+		/* Build a tuple descriptor for our result type */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "return type must be a row type");
+
 		funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
 		MemoryContextSwitchTo(oldcontext);
@@ -588,39 +610,34 @@ each(PG_FUNCTION_ARGS)
 		HEntry	   *ptr = &(ARRPTR(st->hs)[st->i]);
 		Datum		res,
 					dvalues[2];
-		char		nulls[] = {' ', ' '};
+		bool		nulls[2] = {false, false};
 		text	   *item;
 		HeapTuple	tuple;
 
-		item = (text *) palloc(VARHDRSZ + ptr->keylen);
-		SET_VARSIZE(item, VARHDRSZ + ptr->keylen);
-		memcpy(VARDATA(item), STRPTR(st->hs) + ptr->pos, ptr->keylen);
+		item = cstring_to_text_with_len(STRPTR(st->hs) + ptr->pos, ptr->keylen);
 		dvalues[0] = PointerGetDatum(item);
 
 		if (ptr->valisnull)
 		{
 			dvalues[1] = (Datum) 0;
-			nulls[1] = 'n';
+			nulls[1] = true;
 		}
 		else
 		{
-			int			vallen = ptr->vallen;
-
-			item = (text *) palloc(VARHDRSZ + vallen);
-			SET_VARSIZE(item, VARHDRSZ + vallen);
-			memcpy(VARDATA(item), STRPTR(st->hs) + ptr->pos + ptr->keylen, vallen);
+			item = cstring_to_text_with_len(STRPTR(st->hs) + ptr->pos + ptr->keylen,
+											ptr->vallen);
 			dvalues[1] = PointerGetDatum(item);
 		}
 		st->i++;
 
-		tuple = heap_formtuple(funcctx->attinmeta->tupdesc, dvalues, nulls);
-		res = TupleGetDatum(funcctx->slot, tuple);
+		tuple = heap_form_tuple(funcctx->attinmeta->tupdesc, dvalues, nulls);
+		res = HeapTupleGetDatum(tuple);
 
 		pfree(DatumGetPointer(dvalues[0]));
-		if (nulls[1] != 'n')
+		if (!nulls[1])
 			pfree(DatumGetPointer(dvalues[1]));
 
-		SRF_RETURN_NEXT(funcctx, res);
+		SRF_RETURN_NEXT(funcctx, PointerGetDatum(res));
 	}
 
 	pfree(st->hs);

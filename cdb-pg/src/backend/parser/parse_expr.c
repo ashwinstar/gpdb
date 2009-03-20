@@ -22,6 +22,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/plannodes.h"
 #include "optimizer/clauses.h"
+#include "optimizer/var.h"
 #include "parser/analyze.h"
 #include "parser/gramparse.h"
 #include "parser/parse_coerce.h"

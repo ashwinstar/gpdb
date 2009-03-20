@@ -280,6 +280,7 @@ typedef struct RelOptInfo
 	List	   *pathlist;		/* Path structures */
 	struct Path *cheapest_startup_path;
 	struct Path *cheapest_total_path;
+	struct Path *cheapest_unique_path;
     struct CdbRelDedupInfo *dedup_info; /* subquery dup removal info, or NULL */
 
 	/* information about a base rel (not set for join rels!) */

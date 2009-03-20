@@ -3,12 +3,12 @@
  * plpgsql.h		- Definitions for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/plpgsql.h,v 1.81.2.2 2007/01/30 22:05:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/plpgsql.h,v 1.81.2.3 2008/10/09 16:35:19 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -526,6 +526,10 @@ typedef struct PLpgSQL_func_hashkey
 {								/* Hash lookup key for functions */
 	Oid			funcOid;
 
+	bool		isTrigger;		/* true if called as a trigger */
+
+	/* be careful that pad bytes in this struct get zeroed! */
+
 	/*
 	 * For a trigger function, the OID of the relation triggered on is part of
 	 * the hashkey --- we want to compile the trigger separately for each
@@ -547,7 +551,7 @@ typedef struct PLpgSQL_function
 	char	   *fn_name;
 	Oid			fn_oid;
 	TransactionId fn_xmin;
-	ItemPointerData fn_tid;
+	CommandId	fn_cmin;
 	int			fn_functype;
 	PLpgSQL_func_hashkey *fn_hashkey;	/* back-link to hashtable key */
 	MemoryContext fn_cxt;

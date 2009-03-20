@@ -1,3 +1,8 @@
+/* $PostgreSQL: pgsql/contrib/dblink/dblink.sql.in,v 1.17 2008/04/05 02:44:42 momjian Exp $ */
+
+-- Adjust this setting to control where the objects get created.
+SET search_path = public;
+
 -- dblink_connect now restricts non-superusers to password
 -- authenticated connections
 CREATE OR REPLACE FUNCTION dblink_connect (text)
@@ -160,8 +165,8 @@ LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION dblink_current_query ()
 RETURNS text
-AS 'MODULE_PATHNAME','dblink_current_query'
-LANGUAGE C;
+AS 'SELECT pg_catalog.current_query()'
+LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION dblink_send_query(text, text)
 RETURNS int4

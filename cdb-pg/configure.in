@@ -23,7 +23,7 @@ dnl       $Author$
 dnl ------------------------------------------------------------------
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-AC_INIT([Greenplum Database], [8.2.10], [support@greenplum.com])
+AC_INIT([Greenplum Database], [8.2.13], [support@greenplum.com])
 
 m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.59], [], [m4_fatal([Autoconf version 2.59 is required.
 Untested combinations of 'autoconf' and PostgreSQL versions are not
@@ -1581,7 +1581,7 @@ AC_TRY_RUN([#include "$srcdir/src/test/thread/thread_test.c"],
   [AC_MSG_RESULT(yes)],
   [AC_MSG_RESULT(no)
   AC_MSG_ERROR([thread test program failed
-This platform is not thread-safe.  Check the file 'config.log'for the
+This platform is not thread-safe.  Check the file 'config.log' for the
 exact reason.
 
 You can use the configure option --enable-thread-safety-force to force

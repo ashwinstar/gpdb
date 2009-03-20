@@ -425,10 +425,10 @@ extern int pg_verify_mbstr_len(int encoding, const char *mbstr, int len,
 					bool noError);
 
 extern void check_encoding_conversion_args(int src_encoding,
-										   int dest_encoding,
-										   int len,
-										   int expected_src_encoding,
-										   int expected_dest_encoding);
+                                                                                   int dest_encoding,
+                                                                                   int len,
+                                                                                   int expected_src_encoding,
+                                                                                   int expected_dest_encoding);
 
 extern void report_invalid_encoding(int encoding, const char *mbstr, int len);
 extern void report_untranslatable_char(int src_encoding, int dest_encoding,

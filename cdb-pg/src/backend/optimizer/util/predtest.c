@@ -19,6 +19,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
+#include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "optimizer/predtest.h"
 #include "parser/parse_expr.h"
@@ -26,6 +27,15 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+
+/*
+ * Proof attempts involving many AND or OR branches are likely to require
+ * O(N^2) time, and more often than not fail anyway.  So we set an arbitrary
+ * limit on the number of branches that we will allow at any one level of
+ * clause.  (Note that this is only effective because the trees have been
+ * AND/OR flattened!)  XXX is it worth exposing this as a GUC knob?
+ */
+#define MAX_BRANCHES_TO_TEST    100
 
 /*
  * To avoid redundant coding in predicate_implied_by_recurse and
@@ -686,6 +696,13 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
  *
  * If the expression is classified as AND- or OR-type, then *info is filled
  * in with the functions needed to iterate over its components.
+ *
+ * This function also implements enforcement of MAX_BRANCHES_TO_TEST: if an
+ * AND/OR expression has too many branches, we just classify it as an atom.
+ * (This will result in its being passed as-is to the simple_clause functions,
+ * which will fail to prove anything about it.)  Note that we cannot just stop
+ * after considering MAX_BRANCHES_TO_TEST branches; in general that would
+ * result in wrong proofs rather than failing to prove anything.
  */
 static PredClass
 predicate_classify(Node *clause, PredIterInfo info)

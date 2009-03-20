@@ -136,7 +136,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 						   get_namespace_name(namespaceId));
-		rettype = TypeShellMakeWithOid(typname, namespaceId, shelltypeOid);
+		rettype = TypeShellMakeWithOid(typname, namespaceId, GetUserId(), shelltypeOid);
 		Assert(OidIsValid(rettype));
 	}
 

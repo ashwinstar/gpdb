@@ -29,6 +29,7 @@
 #include "access/xact.h"
 #include "commands/portalcmds.h"
 #include "executor/executor.h"
+#include "executor/tstoreReceiver.h"
 #include "optimizer/planner.h"
 #include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
@@ -473,8 +474,12 @@ PersistHoldablePortal(Portal portal)
 		if(Gp_role == GP_ROLE_UTILITY)
 			ExecutorRewind(queryDesc);
 
-		/* Change the destination to output to the tuplestore */
+		/*
+		 * Change the destination to output to the tuplestore.  Note we
+		 * tell the tuplestore receiver to detoast all data passed through it.
+		 */
 		queryDesc->dest = CreateDestReceiver(DestTuplestore, portal);
+			SetTuplestoreDestReceiverDeToast(queryDesc->dest, true);
 
 		/* Fetch the result set into the tuplestore */
 		ExecutorRun(queryDesc, ForwardScanDirection, 0L);

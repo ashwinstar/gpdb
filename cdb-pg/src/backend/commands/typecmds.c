@@ -148,7 +148,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 							0, 0);
 	if (!OidIsValid(typoid))
 	{
-		typoid = TypeShellMake(typeName, typeNamespace);
+		typoid = TypeShellMake(typeName, typeNamespace, GetUserId());
 		/* Make new shell type visible for modification below */
 		CommandCounterIncrement();
 
@@ -376,6 +376,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 				   typeNamespace,		/* namespace */
 				   InvalidOid,	/* relation oid (n/a here) */
 				   0,			/* relation kind (ditto) */
+				   GetUserId(), /* owner's ID */
 				   internalLength,		/* internal size */
 				   'b',			/* type-type (base type) */
 				   delimiter,	/* array element delimiter */
@@ -409,6 +410,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			   typeNamespace,	/* namespace */
 			   InvalidOid,		/* relation oid (n/a here) */
 			   0,				/* relation kind (ditto) */
+			   GetUserId(), /* owner's ID */
 			   -1,				/* internal size */
 			   'b',				/* type-type (base type) */
 			   DEFAULT_TYPDELIM,	/* array element delimiter */
@@ -793,6 +795,7 @@ DefineDomain(CreateDomainStmt *stmt)
 				   domainNamespace,		/* namespace */
 				   InvalidOid,	/* relation oid (n/a here) */
 				   0,			/* relation kind (ditto) */
+				   GetUserId(), /* owner's ID */
 				   internalLength,		/* internal size */
 				   'd',			/* type-type (domain type) */
 				   delimiter,	/* array element delimiter */

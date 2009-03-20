@@ -722,6 +722,9 @@ pg_plan_query(Query *querytree, ParamListInfo boundParams)
 	/* Utility commands have no plans. */
 	if (querytree->commandType == CMD_UTILITY)
 		return NULL;
+	
+	/* Planner must have a snapshot in case it calls user-defined functions. */
+	Assert(ActiveSnapshot != NULL);
 
 	if (log_planner_stats)
 		ResetUsage();
@@ -1459,6 +1462,7 @@ exec_simple_query(const char *query_string)
 	foreach(parsetree_item, parsetree_list)
 	{
 		Node	   *parsetree = (Node *) lfirst(parsetree_item);
+		Snapshot        mySnapshot = NULL;
 		const char *commandTag;
 		char		completionTag[COMPLETION_TAG_BUFSIZE];
 		List	   *querytree_list,
@@ -1506,6 +1510,15 @@ exec_simple_query(const char *query_string)
 
 		/* If we got a cancel signal in parsing or prior command, quit */
 		CHECK_FOR_INTERRUPTS();
+		
+		/*
+		 * Set up a snapshot if parse analysis/planning will need one.
+		 */
+		if (analyze_requires_snapshot(parsetree))
+		{
+			mySnapshot = CopySnapshot(GetTransactionSnapshot());
+			ActiveSnapshot = mySnapshot;
+		}
 
 		/*
 		 * OK to analyze, rewrite, and plan this query.
@@ -1518,7 +1531,12 @@ exec_simple_query(const char *query_string)
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0);
 
-		plantree_list = pg_plan_queries(querytree_list, NULL, true);
+		plantree_list = pg_plan_queries(querytree_list, NULL, false);
+
+		/* Done with the snapshot used for parsing/planning */
+		ActiveSnapshot = NULL;
+		if (mySnapshot)
+			FreeSnapshot(mySnapshot);
 
 		/* If we got a cancel signal in analysis or planning, quit */
 		CHECK_FOR_INTERRUPTS();
@@ -1789,6 +1807,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (parsetree_list != NIL)
 	{
 		Node	   *parsetree = (Node *) linitial(parsetree_list);
+		Snapshot        mySnapshot = NULL;
 		int			i;
 
 		/*
@@ -1810,6 +1829,15 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 					 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block")));
+		
+        /*
+         * Set up a snapshot if parse analysis/planning will need one.
+         */
+		if (analyze_requires_snapshot(parsetree))
+		{
+			mySnapshot = CopySnapshot(GetTransactionSnapshot());
+			ActiveSnapshot = mySnapshot;
+		}
 
 		/*
 		 * OK to analyze, rewrite, and plan this query.  Note that the
@@ -1853,7 +1881,12 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		if (!is_named && numParams > 0)
 			plantree_list = NIL;
 		else
-			plantree_list = pg_plan_queries(querytree_list, NULL, true);
+			plantree_list = pg_plan_queries(querytree_list, NULL, false);
+		
+		/* Done with the snapshot used for parsing/planning */
+		ActiveSnapshot = NULL;
+		if (mySnapshot)
+			FreeSnapshot(mySnapshot);
 		
 		if (parsetree_list)
 		{	
@@ -2077,9 +2110,17 @@ exec_bind_message(StringInfo input_message)
 	 */
 	if (numParams > 0)
 	{
+		Snapshot        mySnapshot;
 		ListCell   *l;
 		MemoryContext oldContext;
 		int			paramno;
+		
+		 /*
+		  * Set a snapshot if we have parameters to fetch (since the input
+		  * functions might need it).
+		  */
+		mySnapshot = CopySnapshot(GetTransactionSnapshot());
+		ActiveSnapshot = mySnapshot;
 
 		oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
@@ -2212,6 +2253,10 @@ exec_bind_message(StringInfo input_message)
 		}
 
 		MemoryContextSwitchTo(oldContext);
+		
+		/* Done with the snapshot used for parameter I/O */
+		ActiveSnapshot = NULL;
+		FreeSnapshot(mySnapshot);
 	}
 	else
 		params = NULL;
@@ -6528,6 +6573,12 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 
             case 'X':
             case EOF:
+
+                /* No active snapshot any more either */
+                ActiveSnapshot = NULL;
+
+                /* No active snapshot any more either */
+                ActiveSnapshot = NULL;
 
                 /*
                  * Reset whereToSendOutput to prevent ereport from

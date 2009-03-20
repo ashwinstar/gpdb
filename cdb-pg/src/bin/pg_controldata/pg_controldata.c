@@ -6,9 +6,9 @@
  * copyright (c) Oliver Elphick <olly@lfix.co.uk>, 2001;
  * licence: BSD
  *
- * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.31 2006/08/21 16:16:31 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.31.2.1 2008/09/24 08:59:44 mha Exp $
  */
-#include "postgres.h"
+#include "postgres_fe.h"
 
 #include <unistd.h>
 #include <time.h>
@@ -73,7 +73,7 @@ main(int argc, char *argv[])
 	char		pgctime_str[128];
 	char		ckpttime_str[128];
 	char		sysident_str[32];
-	char	   *strftime_fmt = "%c";
+	const char *strftime_fmt = "%c";
 	const char *progname;
 
 	set_pglocale_pgservice(argv[0], "pg_controldata");
@@ -113,7 +113,7 @@ main(int argc, char *argv[])
 
 	snprintf(ControlFilePath, MAXPGPATH, "%s/global/pg_control", DataDir);
 
-	if ((fd = open(ControlFilePath, O_RDONLY, 0)) == -1)
+	if ((fd = open(ControlFilePath, O_RDONLY | PG_BINARY, 0)) == -1)
 	{
 		fprintf(stderr, _("%s: could not open file \"%s\" for reading: %s\n"),
 				progname, ControlFilePath, strerror(errno));
@@ -158,6 +158,11 @@ main(int argc, char *argv[])
 
 	printf(_("pg_control version number:            %u\n"),
 		   ControlFile.pg_control_version);
+	if (ControlFile.pg_control_version % 65536 == 0 && ControlFile.pg_control_version / 65536 != 0)
+		printf(_("WARNING: possible byte ordering mismatch\n"
+				 "The byte ordering used to store the pg_control file might not match the one\n"
+				 "used by this program.  In that case the results below would be incorrect, and\n"
+				 "the PostgreSQL installation would be incompatible with this data directory.\n"));
 	printf(_("Catalog version number:               %u\n"),
 		   ControlFile.catalog_version_no);
 	printf(_("Database system identifier:           %s\n"),

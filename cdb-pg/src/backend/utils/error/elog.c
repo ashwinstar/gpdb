@@ -90,6 +90,9 @@ extern pthread_t main_tid;
 #endif 
 #endif
 
+#undef _
+#define _(x) err_gettext(x)
+
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
 
@@ -152,6 +155,38 @@ static void elog_debug_linger(ErrorData *edata);
 #include <execinfo.h>
 #endif
 #endif
+
+/*
+ * in_error_recursion_trouble --- are we at risk of infinite error recursion?
+ *
+ * This function exists to provide common control of various fallback steps
+ * that we take if we think we are facing infinite error recursion.  See the
+ * callers for details.
+ */
+bool
+in_error_recursion_trouble(void)
+{
+        /* Pull the plug if recurse more than once */
+        return (recursion_depth > 2);
+}
+
+/*
+ * One of those fallback steps is to stop trying to localize the error
+ * message, since there's a significant probability that that's exactly
+ * what's causing the recursion.
+ */
+static inline const char *
+err_gettext(const char *str)
+{
+#ifdef ENABLE_NLS
+        if (in_error_recursion_trouble())
+                return str;
+        else
+                return gettext(str);
+#else
+        return str;
+#endif
+}
 
 
 /*
@@ -307,12 +342,12 @@ errstart(int elevel, const char *filename, int lineno,
 		MemoryContextReset(ErrorContext);
 
 		/*
-		 * If we recurse more than once, the problem might be something broken
+		 * Infinite error recursion might be due to something broken
 		 * in a context traceback routine.  Abandon them too.  We also
 		 * abandon attempting to print the error statement (which, if long,
 		 * could itself be the source of the recursive failure).
 		 */
-		if (recursion_depth > 2)
+		if (in_error_recursion_trouble())
 		{
 			error_context_stack = NULL;
 			debug_query_string = NULL;
@@ -700,18 +735,20 @@ errcode_for_socket_access(void)
  * it's common code for errmsg(), errdetail(), etc.  Must be called inside
  * a routine that is declared like "const char *fmt, ..." and has an edata
  * pointer set up.	The message is assigned to edata->targetfield, or
- * appended to it if appendval is true.
+ * appended to it if appendval is true.  The message is subject to translation
+ * if translateit is true.
  *
  * Note: we pstrdup the buffer rather than just transferring its storage
  * to the edata field because the buffer might be considerably larger than
  * really necessary.
  */
-#define EVALUATE_MESSAGE(targetfield, appendval)  \
+#define EVALUATE_MESSAGE(targetfield, appendval, translateit)  \
 	{ \
 		char		   *fmtbuf; \
 		StringInfoData	buf; \
 		/* Internationalize the error format string */ \
-		fmt = _(fmt); \
+		if (translateit && !in_error_recursion_trouble()) \
+			fmt = gettext(fmt); \
 		/* Expand %m in format string */ \
 		fmtbuf = expand_fmt_string(fmt, edata); \
 		initStringInfo(&buf); \
@@ -758,7 +795,7 @@ errmsg(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(message, false);
+	EVALUATE_MESSAGE(message, false, true);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -771,9 +808,12 @@ errmsg(const char *fmt,...)
  * errmsg_internal --- add a primary error message text to the current error
  *
  * This is exactly like errmsg() except that strings passed to errmsg_internal
- * are customarily left out of the internationalization message dictionary.
- * This should be used for "can't happen" cases that are probably not worth
- * spending translation effort on.
+ * are not translated, and are customarily left out of the
+ * internationalization message dictionary.  This should be used for "can't
+ * happen" cases that are probably not worth spending translation effort on.
+ * We also use this for certain cases where we *must* not try to translate
+ * the message because the translation would fail and result in infinite
+ * error recursion.
  */
 int
 errmsg_internal(const char *fmt,...)
@@ -785,7 +825,7 @@ errmsg_internal(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(message, false);
+	EVALUATE_MESSAGE(message, false, false);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -807,7 +847,7 @@ errdetail(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(detail, false);
+	EVALUATE_MESSAGE(detail, false, true);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -829,7 +869,7 @@ errhint(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(hint, false);
+	EVALUATE_MESSAGE(hint, false, true);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -855,7 +895,7 @@ errcontext(const char *fmt,...)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(context, true);
+	EVALUATE_MESSAGE(context, true, true);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -1094,12 +1134,12 @@ elog_finish(int elevel, const char *fmt,...)
 		return;					/* nothing to do */
 
 	/*
-	 * Format error message just like errmsg().
+	 * Format error message just like errmsg_internal().
 	 */
 	recursion_depth++;
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(message, false);
+	EVALUATE_MESSAGE(message, false, false);
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -1253,7 +1293,9 @@ ReThrowError(ErrorData *edata)
 		/*
 		 * Wups, stack not big enough.	We treat this as a PANIC condition
 		 * because it suggests an infinite loop of errors during error
-		 * recovery.
+		 * recovery.  Note that the message is intentionally not localized,
+		 * else failure to convert it to client encoding could cause further
+		 * recursion.
 		 */
 		errordata_stack_depth = -1;		/* make room on stack */
 		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
@@ -1865,7 +1907,7 @@ log_line_prefix(StringInfo buf)
 					const char *username = MyProcPort->user_name;
 
 					if (username == NULL || *username == '\0')
-						username = "";
+						username = _("[unknown]");
 					appendStringInfo(buf, "%s", username);
 				}
 				break;
@@ -1875,7 +1917,7 @@ log_line_prefix(StringInfo buf)
 					const char *dbname = MyProcPort->database_name;
 
 					if (dbname == NULL || *dbname == '\0')
-						dbname = "";
+						dbname = _("[unknown]");
 					appendStringInfo(buf, "%s", dbname);
 				}
 				break;
@@ -1896,11 +1938,21 @@ log_line_prefix(StringInfo buf)
 			case 'm':
 				{
 					/*
-					 * It is not safe to call strftime since it is not async-safe, and it
+					 * Note: for %m, %t, and %s we deliberately use the C
+					 * library's strftime/localtime, and not the equivalent
+					 * functions from src/timezone.  This ensures that all
+					 * backends will report log entries in the same timezone,
+					 * namely whatever C-library setting they inherit from the
+					 * postmaster.	If we used src/timezone then local
+					 * settings of the TimeZone GUC variable would confuse the
+					 * log.
+					 * 
+					 * 	CDB:  It is not safe to call strftime since it is not async-safe, and it
 					 * is expensive to call strftime to get timezone everytime, we use
 					 * pg_strftime, but stick on a fixed timezone (default_timezone)
 					 * instead a settable timezone as PostgreSQL does, since we want all
 					 * log messages to have the same time format. See MPP-2591.
+					 * 
 					 */
 					pg_time_t		stamp_time;
 					char		strfbuf[128],
@@ -2212,22 +2264,22 @@ send_message_to_server_log(ErrorData *edata)
 		}
 		if (edata->hint)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Hint:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, _("HINT:  "));
 			append_with_tabs(&buf, edata->hint);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->internalquery)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Query:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, _("QUERY:  "));
 			append_with_tabs(&buf, edata->internalquery);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->context)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Context:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, _("CONTEXT:  "));
 			append_with_tabs(&buf, edata->context);
 			appendStringInfoChar(&buf, '\n');
 		}
@@ -2245,9 +2297,8 @@ send_message_to_server_log(ErrorData *edata)
 			}
 			else if (edata->filename)
 			{
-
-                appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-				appendStringInfo(&buf, gettext("Location:  %s:%d\n"),
+				log_line_prefix(&buf);
+				appendStringInfo(&buf, _("LOCATION:  %s:%d\n"),
 								 edata->filename, edata->lineno);
 			}
 		}
@@ -2258,8 +2309,8 @@ send_message_to_server_log(ErrorData *edata)
 	 */
 	if (edata->elevel >= log_min_error_statement && debug_query_string != NULL)
 	{
-        appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-		appendStringInfoString(&buf, gettext("Statement:  "));
+		log_line_prefix(&buf);
+		appendStringInfoString(&buf, _("STATEMENT:  "));
 		append_with_tabs(&buf, debug_query_string);
 		appendStringInfoChar(&buf, '\n');
 	}
@@ -2404,6 +2455,25 @@ write_pipe_chunks(int fd, char *data, int len)
 	write(fd, &p, PIPE_HEADER_SIZE + len);
 }
 
+/*
+ * Append a text string to the error report being built for the client.
+ *
+ * This is ordinarily identical to pq_sendstring(), but if we are in
+ * error recursion trouble we skip encoding conversion, because of the
+ * possibility that the problem is a failure in the encoding conversion
+ * subsystem itself.  Code elsewhere should ensure that the passed-in
+ * strings will be plain 7-bit ASCII, and thus not in need of conversion,
+ * in such cases.  (In particular, we disable localization of error messages
+ * to help ensure that's true.)
+ */
+static void
+err_sendstring(StringInfo buf, const char *str)
+{
+        if (in_error_recursion_trouble())
+                pq_send_ascii_string(buf, str);
+        else
+                pq_sendstring(buf, str);
+}
 
 /*
  * Write error report to client
@@ -2424,7 +2494,7 @@ send_message_to_frontend(ErrorData *edata)
 		int			i;
 
 		pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY);
-		pq_sendstring(&msgbuf, error_severity(edata->elevel));
+		err_sendstring(&msgbuf, error_severity(edata->elevel));
 
 		/* unpack MAKE_SQLSTATE code */
 		ssval = edata->sqlerrcode;
@@ -2436,77 +2506,70 @@ send_message_to_frontend(ErrorData *edata)
 		tbuf[i] = '\0';
 
 		pq_sendbyte(&msgbuf, PG_DIAG_SQLSTATE);
-		pq_sendstring(&msgbuf, tbuf);
+		err_sendstring(&msgbuf, tbuf);
 
 		/* M field is required per protocol, so always send something */
 		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
 		if (edata->message)
-        {
-            char   *cp = edata->message;
-
-            while (*cp <= ' ' &&
-                   *cp > '\0')
-                cp++;
-            pq_sendstring(&msgbuf, cp);
-        }
+			err_sendstring(&msgbuf, edata->message);
 		else
-			pq_sendstring(&msgbuf, _("missing error text"));
+			err_sendstring(&msgbuf, _("missing error text"));
 
 		if (edata->detail)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
-			pq_sendstring(&msgbuf, edata->detail);
+			err_sendstring(&msgbuf, edata->detail);
 		}
 
 		if (edata->hint)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_HINT);
-			pq_sendstring(&msgbuf, edata->hint);
+			err_sendstring(&msgbuf, edata->hint);
 		}
 
 		if (edata->context)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_CONTEXT);
-			pq_sendstring(&msgbuf, edata->context);
+			err_sendstring(&msgbuf, edata->context);
 		}
 
 		if (edata->cursorpos > 0)
 		{
 			snprintf(tbuf, sizeof(tbuf), "%d", edata->cursorpos);
 			pq_sendbyte(&msgbuf, PG_DIAG_STATEMENT_POSITION);
-			pq_sendstring(&msgbuf, tbuf);
+			err_sendstring(&msgbuf, tbuf);
 		}
 
 		if (edata->internalpos > 0)
 		{
 			snprintf(tbuf, sizeof(tbuf), "%d", edata->internalpos);
 			pq_sendbyte(&msgbuf, PG_DIAG_INTERNAL_POSITION);
-			pq_sendstring(&msgbuf, tbuf);
+			err_sendstring(&msgbuf, tbuf);
 		}
 
 		if (edata->internalquery)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_INTERNAL_QUERY);
-			pq_sendstring(&msgbuf, edata->internalquery);
+			err_sendstring(&msgbuf, edata->internalquery);
 		}
 
 		if (edata->filename)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FILE);
-			pq_sendstring(&msgbuf, edata->filename);
+			err_sendstring(&msgbuf, edata->filename);
 		}
 
 		if (edata->lineno > 0)
 		{
 			snprintf(tbuf, sizeof(tbuf), "%d", edata->lineno);
 			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_LINE);
-			pq_sendstring(&msgbuf, tbuf);
+			err_sendstring(&msgbuf, tbuf);
 		}
 
 		if (edata->funcname)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FUNCTION);
-			pq_sendstring(&msgbuf, edata->funcname);
+			err_sendstring(&msgbuf, edata->funcname);
 		}
 
 		pq_sendbyte(&msgbuf, '\0');		/* terminator */
@@ -2537,7 +2600,7 @@ send_message_to_frontend(ErrorData *edata)
 
 		appendStringInfoChar(&buf, '\n');
 
-		pq_sendstring(&msgbuf, buf.data);
+		err_sendstring(&msgbuf, buf.data);
 
 		pfree(buf.data);
 	}

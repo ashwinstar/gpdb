@@ -22,7 +22,7 @@
  *-------------------------------------------------------------------------
  */
 
-#include "postgres.h"
+#include "postgres_fe.h"
 
 #include "port.h"
 
@@ -213,7 +213,7 @@ show_pgxs(bool all)
 	if (all)
 		printf("PGXS = ");
 	get_pkglib_path(mypath, path);
-	strncat(path, "/pgxs/src/makefiles/pgxs.mk", MAXPGPATH - 1 - strlen(path));
+	strlcat(path, "/pgxs/src/makefiles/pgxs.mk", sizeof(path));
 	cleanup_path(path);
 	printf("%s\n", path);
 }

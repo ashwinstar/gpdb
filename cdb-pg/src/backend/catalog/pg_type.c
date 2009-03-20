@@ -45,13 +45,13 @@
  */
  
 Oid
-TypeShellMake(const char *typeName, Oid typeNamespace)
+TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 {
-	return TypeShellMakeWithOid(typeName,typeNamespace,InvalidOid);
+	return TypeShellMakeWithOid(typeName,typeNamespace,ownerId, InvalidOid);
 }
 
 Oid
-TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid)
+TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId, Oid shelltypeOid)
 {
 	Relation	pg_type_desc;
 	TupleDesc	tupDesc;
@@ -76,7 +76,7 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid)
 	for (i = 0; i < Natts_pg_type; ++i)
 	{
 		nulls[i] = ' ';
-		values[i] = 0;		/* redundant, but safe */
+		values[i] = (Datum) NULL;		/* redundant, but safe */
 	}
 
 	/*
@@ -91,7 +91,7 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid)
 	namestrcpy(&name, typeName);
 	values[i++] = NameGetDatum(&name);	/* typname */
 	values[i++] = ObjectIdGetDatum(typeNamespace);		/* typnamespace */
-	values[i++] = ObjectIdGetDatum(GetUserId());		/* typowner */
+	values[i++] = ObjectIdGetDatum(ownerId);		/* typowner */
 	values[i++] = Int16GetDatum(sizeof(int4));	/* typlen */
 	values[i++] = BoolGetDatum(true);	/* typbyval */
 	values[i++] = CharGetDatum('p');	/* typtype */
@@ -138,7 +138,7 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid)
 								 typoid,
 								 InvalidOid,
 								 0,
-								 GetUserId(),
+								 ownerId,
 								 F_SHELL_IN,
 								 F_SHELL_OUT,
 								 InvalidOid,
@@ -171,6 +171,7 @@ TypeCreateWithOid(const char *typeName,
 		   Oid typeNamespace,
 		   Oid relationOid,		/* only for 'c'atalog types */
 		   char relationKind,	/* ditto */
+		   Oid ownerId,
 		   int16 internalSize,
 		   char typeType,
 		   char typDelim,
@@ -246,7 +247,7 @@ TypeCreateWithOid(const char *typeName,
 	namestrcpy(&name, typeName);
 	values[i++] = NameGetDatum(&name);	/* typname */
 	values[i++] = ObjectIdGetDatum(typeNamespace);		/* typnamespace */
-	values[i++] = ObjectIdGetDatum(GetUserId());		/* typowner */
+	values[i++] = ObjectIdGetDatum(ownerId);		/* typowner */
 	values[i++] = Int16GetDatum(internalSize);	/* typlen */
 	values[i++] = BoolGetDatum(passedByValue);	/* typbyval */
 	values[i++] = CharGetDatum(typeType);		/* typtype */
@@ -313,7 +314,7 @@ TypeCreateWithOid(const char *typeName,
 		/*
 		 * shell type must have been created by same owner
 		 */
-		if (((Form_pg_type) GETSTRUCT(tup))->typowner != GetUserId())
+		if (((Form_pg_type) GETSTRUCT(tup))->typowner != ownerId)
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE, typeName);
 
 		/*
@@ -358,7 +359,7 @@ TypeCreateWithOid(const char *typeName,
 								 typeObjectId,
 								 relationOid,
 								 relationKind,
-								 GetUserId(),
+								 ownerId,
 								 inputProcedure,
 								 outputProcedure,
 								 receiveProcedure,
@@ -383,6 +384,7 @@ Oid TypeCreate(const char *typeName,
 		   Oid typeNamespace,
 		   Oid relationOid,
 		   char relationKind,
+		   Oid ownerId,
 		   int16 internalSize,
 		   char typeType,
 		   char typDelim,
@@ -402,7 +404,7 @@ Oid TypeCreate(const char *typeName,
 		   int32 typNDims,
 		   bool typeNotNull)
 {
-	return TypeCreateWithOid(typeName,typeNamespace,relationOid,relationKind,internalSize,
+	return TypeCreateWithOid(typeName,typeNamespace,relationOid,relationKind,ownerId,internalSize,
 		   typeType,
 		   typDelim,
 		   inputProcedure,

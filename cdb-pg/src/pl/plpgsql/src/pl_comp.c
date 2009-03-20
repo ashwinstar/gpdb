@@ -3,12 +3,12 @@
  * pl_comp.c		- Compiler part of the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_comp.c,v 1.108.2.2 2007/02/08 18:37:38 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_comp.c,v 1.108.2.3 2008/10/09 16:35:19 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -165,8 +165,8 @@ recheck:
 	{
 		/* We have a compiled function, but is it still valid? */
 		if (function->fn_xmin == HeapTupleHeaderGetXmin(procTup->t_data) &&
-			  ItemPointerEquals(&function->fn_tid, &procTup->t_self))
-			  function_valid = true;
+			function->fn_cmin == HeapTupleHeaderGetCmin(procTup->t_data))
+			function_valid = true;
 		else
 		{
 			/*
@@ -355,7 +355,7 @@ do_compile(FunctionCallInfo fcinfo,
 	function->fn_name = pstrdup(NameStr(procStruct->proname));
 	function->fn_oid = fcinfo->flinfo->fn_oid;
 	function->fn_xmin = HeapTupleHeaderGetXmin(procTup->t_data);
-	function->fn_tid = procTup->t_self;
+	function->fn_cmin = HeapTupleHeaderGetCmin(procTup->t_data);
 	function->fn_functype = functype;
 	function->fn_cxt = func_cxt;
 	function->out_param_varno = -1;		/* set up for no OUT param */
@@ -1252,7 +1252,6 @@ plpgsql_parse_dblwordtype(char *word)
 	 * It must be a relation, sequence, view, or type
 	 */
 	if (classStruct->relkind != RELKIND_RELATION &&
-		classStruct->relkind != RELKIND_EXTERNAL &&
 		classStruct->relkind != RELKIND_SEQUENCE &&
 		classStruct->relkind != RELKIND_VIEW &&
 		classStruct->relkind != RELKIND_COMPOSITE_TYPE)
@@ -1966,12 +1965,15 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	/* get function OID */
 	hashkey->funcOid = fcinfo->flinfo->fn_oid;
 
+	/* get call context */
+	hashkey->isTrigger = CALLED_AS_TRIGGER(fcinfo);
+
 	/*
 	 * if trigger, get relation OID.  In validation mode we do not know what
 	 * relation is intended to be used, so we leave trigrelOid zero; the hash
 	 * entry built in this case will never really be used.
 	 */
-	if (CALLED_AS_TRIGGER(fcinfo) && !forValidator)
+	if (hashkey->isTrigger && !forValidator)
 	{
 		TriggerData *trigdata = (TriggerData *) fcinfo->context;
 
