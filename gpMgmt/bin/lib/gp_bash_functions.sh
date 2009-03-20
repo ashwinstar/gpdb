@@ -1659,7 +1659,7 @@ case $OS_TYPE in
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING_TIME="-c 1"
-		GTAR=`findCmdInPath gtar`
+		GTAR=`findCmdInPath tar`
 		DF="`findCmdInPath df` -P"
 		ID=`whoami`
 		DU_TXT="-c" ;;
