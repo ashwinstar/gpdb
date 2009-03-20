@@ -88,8 +88,7 @@ static void CopyAttributeOutCSV(CopyState cstate, char *string,
 								bool use_quote, bool single_attr);
 static bool DetectLineEnd(CopyState cstate, size_t bytesread  __attribute__((unused)));
 static void CopyReadAttributesTextNoDelim(CopyState cstate, bool *nulls,
-										  int num_phys_attrs, int attnum,
-										  char* attname);
+										  int num_phys_attrs, int attnum);
 
 /* Low-level communications functions */
 static void SendCopyBegin(CopyState cstate);
@@ -4770,7 +4769,7 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 	/* have a single column only and no delim specified? take the fast track */
 	if (cstate->delimiter_off)
 		return CopyReadAttributesTextNoDelim(cstate, nulls, num_phys_attrs,
-											 attnum, NameStr(attr[attnum - 1]->attname));
+											 attnum);
 
 	/*
 	 * Scan through the line buffer to read all attributes data
@@ -5274,7 +5273,7 @@ CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
  */
 static void
 CopyReadAttributesTextNoDelim(CopyState cstate, bool *nulls, int num_phys_attrs,
-							  int attnum, char* attname)
+							  int attnum)
 {
 	int 	len = 0;
 
@@ -5286,29 +5285,14 @@ CopyReadAttributesTextNoDelim(CopyState cstate, bool *nulls, int num_phys_attrs,
 	if (cstate->eol_type == EOL_CRNL)
 		len--;
 
-
 	/* check if this is a NULL value or data value (assumed NULL) */
 	if (len == cstate->null_print_len &&
 		strncmp(cstate->line_buf.data, cstate->null_print, len) == 0)
-	{
 		nulls[attnum - 1] = true;
-	}
 	else
-	{
 		nulls[attnum - 1] = false;
 
-		/* catch empty row error */
-		if (len == 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("missing data for column \"%s\", found empty data "
-							 "line", attname)));
-	}
-
-
-
 	appendBinaryStringInfo(&cstate->attribute_buf, cstate->line_buf.data, len);
-
 }
 
 /*
