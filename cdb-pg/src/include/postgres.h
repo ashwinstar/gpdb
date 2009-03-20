@@ -308,7 +308,7 @@ static inline Datum Float8GetDatumFast(float8 f) { return Float8GetDatum(f); }
 static inline bool IsAligned(void *p, int align)
 {
         int64 i = (int64) PointerGetDatum(p);
-        return i == TYPEALIGN(align, i);
+        return ((i & (align-1)) == 0);
 }
 
 /* ----------------------------------------------------------------
