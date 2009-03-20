@@ -561,7 +561,7 @@
 # GREENPLUM ARRAY CONFIGURATION
 #---------------------------------------------------------------------------
 
-#gp_fault_action = continue         # none for disabling Fault Tolerance feature,
+gp_fault_action = readonly         # none for disabling Fault Tolerance feature,
                                      # other valid parameters are readonly, continue
 #gp_set_read_only = false           # sets the system read only
 
@@ -581,6 +581,9 @@ gp_interconnect_type=udp
 #gp_connections_per_thread = 4
 #gp_segment_connect_timeout = 60s
 #gp_enable_delete_as_truncate = off
+
+# - Resource limits -
+gp_vmem_protect_limit = 8192  #Virtual memory limit (in MB).
 
 #---------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
