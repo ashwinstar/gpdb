@@ -9209,6 +9209,11 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 
 	from_tbl = makeRangeVar(nspname,
 							pstrdup(RelationGetRelationName(rel)));
+
+	from_tbl->inhOpt = INH_NO; /* MPP-5300: turn off inheritance -
+								* Otherwise, the data from the child
+								* tables is added to the parent!
+								*/
 	s->fromClause = list_make1(from_tbl);
 	s->into = makeRangeVar(nspname, pstrdup(tmpname));
 
