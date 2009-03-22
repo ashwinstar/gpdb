@@ -25,7 +25,8 @@ UPGRADEFILES=$(top_srcdir)/src/test/regress/input/loadcat33.source.in \
 	$(top_srcdir)/src/test/regress/data/upg2_pg_proc_toadd.data \
 	$(top_srcdir)/src/test/regress/data/upg2_pg_namespace_toadd.data \
 	$(top_srcdir)/src/test/regress/data/upg2_pg_description_toadd.data \
-	$(top_srcdir)/src/test/regress/data/upgrade_conversion.sql.in 
+	$(top_srcdir)/src/test/regress/data/upgrade_conversion.sql.in \
+	$(top_srcdir)/src/test/regress/data/downgrade_conversion.sql.in
 
 all: gpmodcatversion
 
@@ -58,4 +59,6 @@ uninstall:
 
 clean distclean maintainer-clean: clean-lib
 	rm -f gpmodcatversion$(X)
+	rm -f gpmodcatversion.o
+	rm -f pg_crc.o
 	rm -f pg_crc.c
