@@ -59,11 +59,9 @@ InsertInitialSegnoEntry(Relation parentrel,
 	Relation	pg_aoseg_idx;
 	TupleDesc	pg_aoseg_dsc;
 	HeapTuple	pg_aoseg_tuple = NULL;
-	char		nulls[Natts_pg_aoseg];
-	Datum		values[Natts_pg_aoseg];
-
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
+	int			natts = 0;
+	char	   *nulls;
+	Datum	   *values;
 
 	/*
 	 * Open the toast relation and its index.  We can use the index to check
@@ -73,6 +71,11 @@ InsertInitialSegnoEntry(Relation parentrel,
 	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, RowExclusiveLock);
 
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	natts = pg_aoseg_dsc->natts;
+	nulls = palloc(sizeof(char) * natts);
+	values = palloc0(sizeof(Datum) * natts);
+	MemSet(nulls, ' ', sizeof(nulls));
+
 	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, RowExclusiveLock);
 
 	values[Anum_pg_aoseg_segno - 1] = ObjectIdGetDatum(segno);
@@ -517,9 +520,9 @@ UpdateFileSegInfo(Relation parentrel,
 	Datum				filevarblockcount;
 	Datum				new_tuple_count;
 	Datum				new_varblock_count;
-	Datum				new_record[Natts_pg_aoseg];
-	char				new_record_nulls[Natts_pg_aoseg];
-	char				new_record_repl[Natts_pg_aoseg];
+	Datum			   *new_record;
+	char			   *new_record_nulls;
+	char			   *new_record_repl;
 	bool				isNull;
 
 	/* overflow sanity checks. don't check the same for tuples_added,
@@ -534,6 +537,9 @@ UpdateFileSegInfo(Relation parentrel,
 	 */
 	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, RowExclusiveLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	new_record = palloc0(sizeof(Datum) * pg_aoseg_dsc->natts);
+	new_record_nulls = palloc(sizeof(char) * pg_aoseg_dsc->natts);
+	new_record_repl = palloc(sizeof(char) * pg_aoseg_dsc->natts);
 	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, RowExclusiveLock);
 
 	/*
@@ -592,9 +598,8 @@ UpdateFileSegInfo(Relation parentrel,
 	/*
 	 * Build a tuple to update
 	 */
-	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
-	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
+	MemSet(new_record_nulls, ' ', sizeof(char) * pg_aoseg_dsc->natts);
+	MemSet(new_record_repl, ' ', sizeof(char) * pg_aoseg_dsc->natts);
 
 	new_record[Anum_pg_aoseg_eof - 1] = Float8GetDatum((float8)eof);
 	new_record_repl[Anum_pg_aoseg_eof - 1] = 'r';

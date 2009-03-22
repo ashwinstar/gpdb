@@ -38,20 +38,22 @@ InsertAppendOnlyEntry(Oid relid,
 {
 	Relation	pg_appendonly_rel;
 	HeapTuple	pg_appendonly_tuple = NULL;
-	char		nulls[Natts_pg_appendonly];
-	Datum		values[Natts_pg_appendonly];
+	char	   *nulls;
+	Datum	   *values;
+	int			natts = 0;
 	
 	/* these are hardcoded for now. in the future should get passed in */
 	const int	majorversion = 1;
 	const int	minorversion = 0;
 	
- 	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
-	
     /*
      * Open and lock the pg_appendonly catalog.
      */
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
+	natts = RelationGetDescr(pg_appendonly_rel)->natts;
+	values = palloc0(sizeof(Datum) * natts);
+	nulls = palloc(sizeof(char) * natts);
+	MemSet(nulls, ' ', sizeof(char) * natts);
 	
 	values[Anum_pg_appendonly_relid - 1] = ObjectIdGetDatum(relid);
 	values[Anum_pg_appendonly_blocksize - 1] = Int32GetDatum(blocksize);
