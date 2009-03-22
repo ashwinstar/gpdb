@@ -74,7 +74,7 @@ InsertInitialSegnoEntry(Relation parentrel,
 	natts = pg_aoseg_dsc->natts;
 	nulls = palloc(sizeof(char) * natts);
 	values = palloc0(sizeof(Datum) * natts);
-	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(nulls, ' ', sizeof(char) * natts);
 
 	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, RowExclusiveLock);
 
