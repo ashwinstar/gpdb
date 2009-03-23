@@ -85,6 +85,8 @@ main(int argc, char **argv)
 	memset( &parmAr, 0, sizeof(parmAr) );
 	memset( &masterParm, 0, sizeof(masterParm) );
 
+	pszProgName  = (char *)get_progname(argv[0]);
+
 	/* Parse command line for options */
 	if( !fillInputOptions( argc, argv, &inputOpts ))
 	{
@@ -336,8 +338,6 @@ bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	opts->format = archUnknown;
 	opts->suppressDumpWarnings = false;
-
-	pszProgName  = (char *)get_progname(argv[0]);
 
 	bSawCDB_S_Option = false;
 
@@ -1598,7 +1598,7 @@ int reportMasterError(InputOptions inputopts, const ThreadParm* pMasterParm, con
 		pszMsg = "";
 
 	appendPQExpBuffer(reportBuf, "\tRestore of database \"%s\" on Master database: %s%s%s\n",
-					  pOptions->pszDBName,
+					  StringNotNull( pOptions->pszDBName, "UNSPECIFIED" ),
 					  pszStatus,
 					  pszMsg,
 					  (strcmp(pszMsg,"")==0)?"":"}"
