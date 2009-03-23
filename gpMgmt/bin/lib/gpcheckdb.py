@@ -114,7 +114,7 @@ def run(cmd):
     return (rc, out)
 
 #####################################################
-def psql_nowait(sql, echo=False, quiet=True):
+def psql_open(sql, echo=False, quiet=True):
     sql = sql.strip()
     if echo: msg("SQL: " + sql)
     cmd = ['psql']
@@ -131,7 +131,7 @@ def psql_nowait(sql, echo=False, quiet=True):
     return p
 
 
-def psql_dowait(p):
+def psql_wait(p):
     out = p.stdout.readlines()
     rc = p.wait()
     etime = time.time()
@@ -146,53 +146,11 @@ def psql_dowait(p):
     return out
 
 def psql(sql, echo=False, quiet=True):
-    p = psql_nowait(sql, echo, quiet)
-    return psql_dowait(p)
+    p = psql_open(sql, echo, quiet)
+    return psql_wait(p)
 
 
 ############
-def pmap(func, jlist, numThreads = 16):
-    if (numThreads > len(jlist)): 
-        numThreads = len(jlist)
-
-    inq = Queue.Queue(len(jlist))
-    for i in jlist: inq.put(i)
-    
-    outq = Queue.Queue(len(jlist))
-    def work():
-        try:
-            while True: 
-                outq.put((None, func(inq.get_nowait())))
-        except Queue.Empty: pass
-        except:
-            outq.put( (sys.exc_info(), None) )
-            # drain 
-            try:
-                while True: inq.get_nowait()
-            except Queue.Empty: pass
-
-    thread = [threading.Thread(target=work) for i in xrange(numThreads)]
-    for t in thread: t.start()
-    for t in thread: t.join()
-    
-    ret = []
-    try: 
-        while True: 
-            (ex, result) = outq.get_nowait()
-            if ex: 
-                raise ex
-            ret.append(result)
-    except Queue.Empty: pass
-    return ret
-
-
-def test_pmap():
-    import random, time
-    def p(x): time.sleep(random.random()); print x; return x
-    jlist = [x for x in "abcdefghijklmnopqrstuvwxyz"]
-    return pmap(p, jlist)
-
-
 def chk_not_analyzed():
     print '-----------------------'
     print 'LOOKING FOR TABLES NOT ANALYZED'
@@ -209,6 +167,7 @@ SELECT '    * ' || nspname || '.' || relname
     print "".join(out)
 
 
+############
 def chk_users_without_resource_queues():
     print '-----------------------'
     print 'LOOKING FOR USERS WITHOUT RESOURCE QUEUES'
@@ -222,6 +181,7 @@ SELECT '    * ' || rolname
     print "".join(out)
 
 
+############
 def chk_tables_with_big_skew():
     print '-----------------------'
     out = psql('''
@@ -236,6 +196,7 @@ from (
 ''')
 
 
+############
 def chk_guc():
     print '-----------------------'
     print 'CHECKING GUCS'
