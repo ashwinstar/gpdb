@@ -74,10 +74,25 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	if (!(stmt->options & CURSOR_OPT_HOLD))
 		RequireTransactionChain((void *) stmt, "DECLARE CURSOR");
 
-	if (Gp_role != GP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
-		ereport(ERROR,
+	/*
+	 * Allow using the SCROLL keyword even though we don't support its
+	 * functionality (backward scrolling). Silently accept it and instead
+	 * of reporting an error like before, override it to NO SCROLL.
+	 * 
+	 * for information see: MPP-5305 and BIT-93
+	 */
+	if (stmt->options & CURSOR_OPT_SCROLL)
+	{
+		/*ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));
+				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));*/
+
+		stmt->options -= CURSOR_OPT_SCROLL;
+	}
+
+	stmt->options |= CURSOR_OPT_NO_SCROLL;
+	
+	Assert(!(stmt->options & CURSOR_OPT_SCROLL && stmt->options & CURSOR_OPT_NO_SCROLL));
 	
 	/*
 	 * Because the planner is not cool about not scribbling on its input, we
@@ -149,26 +164,29 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 
 	MemoryContextSwitchTo(oldContext);
 
+	portal->cursorOptions = stmt->options;
+
 	/*
 	 * Set up options for portal.
 	 *
 	 * If the user didn't specify a SCROLL type, allow or disallow scrolling
 	 * based on whether it would require any additional runtime overhead to do
 	 * so.
+	 *
+	 * GPDB: we do not allow backward scans at the moment regardless
+	 * of any additional runtime overhead. We forced CURSOR_OPT_NO_SCROLL
+	 * above. Comment out this logic.
 	 */
-	portal->cursorOptions = stmt->options;
+	/*
 	if (!(portal->cursorOptions & (CURSOR_OPT_SCROLL | CURSOR_OPT_NO_SCROLL)))
 	{
-		/*
-		 * MPP: we do not allow backward scans at the moment regardless
-		 * of any additional runtime overhead. Comment out this option:
-		 */
-		/*if (ExecSupportsBackwardScan(plan))
+		if (ExecSupportsBackwardScan(plan))
 			portal->cursorOptions |= CURSOR_OPT_SCROLL;
-		else*/
+		else
 			portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 	}
-
+	*/
+	
 	/*
 	 * Before starting this portal, we need to make sure that the shared
 	 * snapshot is already set by a writer gang, or the cursor query readers
