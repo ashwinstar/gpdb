@@ -194,33 +194,36 @@ def test_pmap():
 
 
 def chk_not_analyzed():
+    print '-----------------------'
+    print 'LOOKING FOR TABLES NOT ANALYZED'
     out = psql('''
-SELECT nspname || '.' || relname 
+SELECT '    * ' || nspname || '.' || relname 
   from pg_class, pg_namespace 
  where reltuples=0 and relpages=0 and relnamespace=pg_namespace.oid 
        and nspname not in ('information_schema','pg_aoseg',
                            'pg_bitmapindex', 'pg_catalog', 'pg_toast') 
        and relkind='r'
+ order by 1
 ''')
-    print '-----------------------'
-    print '%d table(s) not analyzed' % len(out)
-    for t in out: 
-        print '  * ' + t
+    print '    %d object(s) found' % len(out)
+    print "".join(out)
 
 
 def chk_users_without_resource_queues():
+    print '-----------------------'
+    print 'LOOKING FOR USERS WITHOUT RESOURCE QUEUES'
     out = psql('''
-SELECT rolname
+SELECT '    * ' || rolname
   from pg_roles 
  where rolresqueue is null and rolsuper='f'
+ order by 1
 ''')
-    print '-----------------------'
-    print '%d user(s) without resource queues' % len(out)
-    for u in out:
-        print '  * ' + u
+    print '    %d object(s) found' % len(out)
+    print "".join(out)
 
 
 def chk_tables_with_big_skew():
+    print '-----------------------'
     out = psql('''
 select ' '||max(c)||' ' ||min(c)||' '|| avg(c)||' '|| stddev(c)||' '|| (max(c) - min(c))/max(c) as p_diff_max_min
 from (
@@ -231,9 +234,28 @@ from (
             on t1.gp_segment_id_present =t2.gp_segment_id    
 ) as data     
 ''')
+
+
+def chk_guc():
     print '-----------------------'
-
-
+    print 'CHECKING GUCS'
+    out = psql('''
+SELECT current_setting('lc_collate'),
+       current_setting('lc_monetary'),
+       current_setting('lc_numeric'),
+       current_setting('max_connections'),
+       current_setting('gp_fault_action'),
+       current_setting('work_mem')
+''')
+    (lc_collate, lc_monetary, lc_numeric, max_connections,
+     gp_fault_action, work_mem)  = out[0].strip().split('|')
+    print '    lc_collate      =', lc_collate
+    print '    lc_monetary     =', lc_monetary
+    print '    lc_numeric      =', lc_numeric
+    print '    max_connections =', max_connections
+    print '    gp_fault_action =', gp_fault_action
+    print '    work_mem        =', work_mem
+    
 
 ############
 def main():
@@ -255,6 +277,7 @@ def main():
     chk_users_without_resource_queues()
 
     # check for a few guc settings (e.g., gp_vmem_protect_limit)
+    chk_guc()
 
 
     
