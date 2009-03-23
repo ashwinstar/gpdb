@@ -6484,6 +6484,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *errnspname;
 		char	   *errtblname;
 		char	   *extencoding;
+		char	   *tmpstring = NULL;
 
         reltypename = "TABLE";
         /*
@@ -6600,7 +6601,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			on_clause++;
 
 			/* add EXECUTE clause */
-			appendPQExpBuffer(q, " EXECUTE E'%s' ", escape_backslashes(command, true));
+			tmpstring = escape_backslashes(command, true);
+			appendPQExpBuffer(q, " EXECUTE E'%s' ", tmpstring);
+			free(tmpstring);
+			tmpstring = NULL;
 
 			/* add ON clause */
 			if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
@@ -6637,9 +6641,12 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
         /* add FORMAT clause */
+		tmpstring = escape_fmtopts_string((const char*) fmtopts);
         appendPQExpBuffer(q, "FORMAT '%s' (%s)\n",
                           fmttype[0] == 't' ? "text" : "csv",
-                          escape_backslashes((const char*) fmtopts, false));
+                          tmpstring);
+        free(tmpstring);
+        tmpstring = NULL;
 
 		if (g_fout->remoteVersion >= 80205)
 		{

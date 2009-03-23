@@ -38,5 +38,7 @@ extern void processSQLNamePattern(PGconn *conn, PQExpBuffer buf,
 					  const char *schemavar, const char *namevar,
 					  const char *altnamevar, const char *visibilityrule);
 extern char *escape_backslashes(const char *src, bool quotes_too);
+extern char *escape_fmtopts_string(const char *src);
+
 
 #endif   /* DUMPUTILS_H */
