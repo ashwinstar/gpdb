@@ -905,12 +905,15 @@ describeOneTableDetails(const char *schemaname,
 	switch (tableinfo.relkind)
 	{
 		case 'r':
-			if(tableinfo.relstorage != 'a')
-				printfPQExpBuffer(&title, _("Table \"%s.%s\""),
-								  schemaname, relationname);
-			else
+			if(tableinfo.relstorage == 'a')
 				printfPQExpBuffer(&title, _("Append-Only Table \"%s.%s\""),
 								  schemaname, relationname);
+			else if(tableinfo.relstorage == 'c')
+				printfPQExpBuffer(&title, _("Append-Only Columnar Table \"%s.%s\""),
+								  schemaname, relationname);
+			else
+				printfPQExpBuffer(&title, _("Table \"%s.%s\""),
+								  schemaname, relationname);				
 			break;
 		case 'x':
 			printfPQExpBuffer(&title,_("External table \"%s.%s\""),
@@ -1315,7 +1318,7 @@ describeOneTableDetails(const char *schemaname,
 			inherits_count = PQntuples(result6);
 		
 		/* count and get Append Only footers */
-		if (tableinfo.relstorage == 'a')
+		if (tableinfo.relstorage == 'a' || tableinfo.relstorage == 'c')
 		{
 			aoinfo_count = 4; /* always have 4 footers: blocksize, compresstype, compresslevel and checksum */
 			
@@ -1801,8 +1804,8 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	if (pset.sversion > 80206)
 		appendPQExpBuffer(&buf,
 				  ", CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'a' "
-				  "THEN '%s' WHEN 'v' THEN '%s' END as \"%s\"\n",
-				  _("heap"), _("append only"), _("none"), _("Storage"));
+				  "THEN '%s' WHEN 'v' THEN '%s' WHEN 'c' THEN '%s' END as \"%s\"\n",
+				  _("heap"), _("append only"), _("none"), _("append only columnar"), _("Storage"));
 
 	if (showIndexes)
 		appendPQExpBuffer(&buf,
