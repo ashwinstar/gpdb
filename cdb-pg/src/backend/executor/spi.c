@@ -24,6 +24,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
+#include "utils/resscheduler.h"
 
 #include "gp-libpq-fe.h"
 #include "libpq/libpq-be.h"
@@ -2956,6 +2957,25 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 			}
 			else
 				res = SPI_OK_SELECT;
+
+            /* 
+             * Checking if we need to put this through resource queue.
+             * Same as in pquery.c, except we check ActivePortal->releaseResLock.
+             * If the Active portal already hold a lock on the queue, we cannot
+             * acquire it again.
+             */
+            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
+                    !superuser() && 
+                    queryDesc->plantree &&
+                    queryDesc->plantree->dispatch == DISPATCH_PARALLEL && 
+                    !ActivePortal->releaseResLock
+               )
+            {
+                PortalSetStatus(ActivePortal, PORTAL_QUEUE);
+                ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plantree);
+                PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
+            }
+
 			break;
 		case CMD_INSERT:
 			if (queryDesc->parsetree->returningList)
