@@ -7,7 +7,7 @@ import datetime
 import os
 import sys
 import socket
-from time import strftime
+from time import strftime, sleep
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 from subprocess import Popen, PIPE
@@ -31,11 +31,14 @@ Adds additional segments to a pre-existing GPDB Array.
 """)
 
 _help = ["""
-Tne input file should be be a plain text file with a line for each segment
+The input file should be be a plain text file with a line for each segment
 to add with the format:
 
   <hostname>:<port>:<data_directory>:<dbid>:<content>:<definedprimary>
-
+""",
+"""
+If an input file is not specified, gpexpand will ask a series of questions 
+and create one.
 """,
 """
 
@@ -104,13 +107,15 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit')
     parser.add_option('-i','--input', dest="filename",
-                        help="input expansion configuration file", metavar="FILE")        
+                        help="input expansion configuration file.", metavar="FILE")        
     parser.add_option('-q', '--quiet', action='store_true',
                         help='suppress status messages')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
-                        help='number of tables to expand at a time. Valid values are 1-127')
+                        help='number of tables to expand at a time. Valid values are 1-128')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')
+    parser.add_option('-m', '--max-before-delay', type='int', default=8, metavar="<max_before_delay>",
+                      help='Maximum concurrent remote commands per host before delay.  Valid values are 1-128')
   
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
@@ -122,6 +127,11 @@ def parseargs():
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:
         logger.error('Invalid argument.  parallel value must be >= 1 and <= 128')
+        parser.print_help()
+        parser.exit()
+        
+    if options.max_before_delay > 128 or options.max_before_delay < 1:
+        logger.error('Invalid argument.  max-before-delay value must be >= 1 and <= 128')
         parser.print_help()
         parser.exit()
         
@@ -484,11 +494,13 @@ class SegmentTemplate:
         
         self.logger.info('Configuring new segments')
         
+        commandsSent = {}
         newPrimaryCount = 0;
         for seg in self.newSegments:
             if seg.definedprimary and seg.content != -1:             
                 newPrimaryCount += 1
-         
+                commandsSent[seg.hostname] = 0
+        
         newPrimaryCount += self.gparray.get_primary_count()
         newDbId = self.maxDbId + 1
         for seg in self.newSegments:
@@ -496,9 +508,16 @@ class SegmentTemplate:
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segment', seg.datadir, 
                                             seg.port, newPrimaryCount, 
                                             seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
-                                            verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname) 
+                                            verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname)
+ 
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                sleep(1) 
             self.pool.addCommand(segCfgCmd)
+            commandsSent[seg.hostname] += 1
+            
             newDbId += 1
+            
         self.pool.join()
         self.pool.check_results()
         
@@ -568,8 +587,12 @@ class SegmentTemplate:
         and removes remote data directories"""
 
         hosts = []
+        commandsSent = {}
         
         for seg in newSegments:
+            if not commandsSent.has_key(seg.hostname):
+                commandsSent[seg.hostname] = 0
+                
             hostnameCmd = Hostname('gpexpand cleanup new segments associate hostnames with segments', 
                                    ctxt=REMOTE, remoteHost=seg.hostname)
             hostnameCmd.run(validateAfter=True)
@@ -580,6 +603,11 @@ class SegmentTemplate:
             if removeDataDirs:
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
+                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                    logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                    sleep(1) 
+                
+                commandsSent[seg.hostname] += 1
                 pool.addCommand(rmCmd)
 
         for host in hosts:
@@ -854,16 +882,30 @@ class gpexpand:
         self.statusLogger.set_status('UPDATE_OLD_SEGMENTS_STARTED', self.gparray.get_primary_count())
 
         self.logger.info('Backing up pg_hba.conf file on original segments')
+        commandsSent = {}
+        
         for seg in self.old_segments:
             if seg.content == -1 or not seg.valid:            
                 continue
+            
+            if not commandsSent.has_key(seg.hostname):
+                commandsSent[seg.hostname] = 0
+            
             srcFile = seg.datadir + '/pg_hba.conf'
             dstFile = seg.datadir + '/pg_hba.gpexpand.bak'
             cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
+
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                sleep(1) 
+            
+            commandsSent[seg.hostname] += 1
+
             self.pool.addCommand(cpCmd)
-        
+            
         self.pool.join()
+
         try:
             self.pool.check_results()
         except ExecutionError, msg:
@@ -877,6 +919,13 @@ class gpexpand:
             cpCmd = RemoteCopy('gpexpand copy new pg_hba.conf file to original segments', 
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
+            
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                sleep(1) 
+                
+            commandsSent[seg.hostname] += 1
+
             self.pool.addCommand(cpCmd)
             
         self.pool.join()
@@ -899,7 +948,14 @@ class gpexpand:
             segCfgCmd = ConfigExpansionSeg('gpexpand configure original segment', seg.datadir, 
                                             seg.port, self.newPrimaryCount, 
                                             seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
-                                            ctxt=REMOTE, remoteHost=seg.hostname) 
+                                            ctxt=REMOTE, remoteHost=seg.hostname)
+            
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                sleep(1) 
+                
+            commandsSent[seg.hostname] += 1
+             
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -924,13 +980,25 @@ class gpexpand:
             originalArray = self.gparray
         originalPrimaryCount = self.statusLogger.get_original_primary_count()
         
+        commandsSent = {}
+        
         self.logger.info('Restoring pg_hba.conf file on original segments')
         for seg in originalArray.getSegDbList():
+            if not commandsSent.has_key(seg.hostname):
+                commandsSent[seg.hostname] = 0
+                
             srcFile=seg.datadir + '/pg_hba.gpexpand.bak'
             dstFile=seg.datadir + '/pg_hba.conf'
             cpCmd = RemoteCopy('gpexpand restore of pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, 
                                remoteHost=seg.hostname)
+            
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                sleep(1) 
+                
+            commandsSent[seg.hostname] += 1
+            
             self.pool.addCommand(cpCmd)
         
         self.pool.join()
@@ -941,6 +1009,13 @@ class gpexpand:
                                            seg.datadir, seg.port, originalPrimaryCount, 
                                            seg.content, seg.dbid, ctxt=REMOTE, 
                                            remoteHost=seg.hostname) 
+            
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
+                sleep(1) 
+                
+            commandsSent[seg.hostname] += 1
+            
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -1678,5 +1753,8 @@ except KeyboardInterrupt:
     # currently preventing cleanup.
     sys.exit('\nUser Interrupted')
 finally:
-    if remove_pid:
-        remove_pid_file(options.master_data_directory)
+    try:
+        if remove_pid:
+            remove_pid_file(options.master_data_directory)
+    except NameError:
+        pass
