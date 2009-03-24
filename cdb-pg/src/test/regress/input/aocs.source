@@ -40,7 +40,6 @@ CREATE TABLE tenk_aocs10 (like tenk_heap) with (columnstore=true) distributed by
 --------------------
 
 -- check pg_appendonly
-SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
 
 -------------------- 
 -- supported sql
@@ -189,7 +188,6 @@ CREATE TABLE tenk_aocs1 with(appendonly=true, columnstore=true, checksum=true) A
 CREATE TABLE tenk_aocs2 with(appendonly=true, columnstore=true, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_aocs3 with(appendonly=true, columnstore=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_aocs4 with(appendonly=true, columnstore=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
-SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
 SELECT count(*) FROM tenk_aocs1;
 SELECT count(*) FROM tenk_aocs2;
 SELECT count(*) FROM tenk_aocs3;

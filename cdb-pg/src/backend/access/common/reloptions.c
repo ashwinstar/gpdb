@@ -450,7 +450,7 @@ default_reloptions(Datum reloptions, bool validate,
 void
 heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *safewrite)
 {
-	 char* default_compressor =  "zlib";
+	 char* default_compressor =  "quicklz";/*"zlib";*/
 	
 	if (IsBootstrapProcessingMode())
 		return;
