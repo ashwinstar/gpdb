@@ -11,6 +11,7 @@ import os
 import platform
 import socket
 import sys
+import signal
 
 from gppylib.gplog import *
 from gppylib.commands.base import *

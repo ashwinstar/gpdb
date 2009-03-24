@@ -157,23 +157,13 @@ def is_gpexpand_running(master_data_directory):
     is_running = False
     try:
         fp = open(master_data_directory + '/gpexpand.pid', 'r')
-        pid = fp.readline().strip()
+        pid = int(fp.readline().strip())
         fp.close()
-        p = Popen(['ps', '-p %s' % pid], stdout=PIPE)
-        os.waitpid(p.pid,0)
-        # swallow ps header
-        p.stdout.readline()
-        ps_info = p.stdout.readline()
-        if ps_info:
-            if ps_info.strip().find('gpexpand') == -1:
-                remove_pid_file(master_data_directory)
-                is_running = False
-            else:
-                is_running = True
+        is_running = check_pid(pid)
     except IOError:
         pass
     except Exception, msg:
-        print msg
+        raise
     
     return is_running
 
@@ -1589,6 +1579,7 @@ with: gpexpand -i %s
             
 #------------------------------- Mainline --------------------------------
 gp_expand=None
+remove_pid=True
 try:
     logger = get_default_logger()
     setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
@@ -1604,6 +1595,7 @@ try:
     if is_gpexpand_running(options.master_data_directory):
         logger.error('gpexpand is already running.  Only one instance')
         logger.error('of gpexpand is allowed at a time.')
+        remove_pid = False
         sys.exit(1)
     else:
         create_pid_file(options.master_data_directory)
@@ -1627,14 +1619,15 @@ try:
     if options.clean:
         gp_expand.cleanup_schema()        
         logger.info('Cleanup Finished.  exiting...')
-        remove_pid_file(options.master_data_directory)
         sys.exit(0)
         
     if options.rollback:
-        gp_expand.rollback()
-        remove_pid_file(options.master_data_directory)
-        logger.info('Rollback complete.  Greenplum Database can now be started')
-        sys.exit(0)
+        try:
+            gp_expand.rollback()
+            logger.info('Rollback complete.  Greenplum Database can now be started')
+            sys.exit(0)
+        except ExpansionError,e:
+            logger.error(e)
     
     gpexpand_file_status = None
     if not gpexpand_db_status:
@@ -1667,7 +1660,6 @@ try:
 
     gp_expand.shutdown()
     logger.info("Exiting...")
-    remove_pid_file(options.master_data_directory)
     sys.exit(0)
         
 except Exception,e:
@@ -1685,3 +1677,6 @@ except KeyboardInterrupt:
     #TODO: sys.exit is pretty harsh on the work threads and is
     # currently preventing cleanup.
     sys.exit('\nUser Interrupted')
+finally:
+    if remove_pid:
+        remove_pid_file(options.master_data_directory)
