@@ -3302,8 +3302,6 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             datadir = regexp_replace(datadir, E'(%s-?\\\\d+)$',
             E'gpmigrator/upgrade/\\\\1');""" % self.config['SEG_PREFIX'])
         self.Update("VACUUM FREEZE gp_configuration")
-        gp = self.Select('select * from gp_configuration')
-        for
         self.Shutdown()
 
     #------------------------------------------------------------
