@@ -184,9 +184,14 @@ format_type_internal(Oid type_oid, int32 typemod,
 		if (!HeapTupleIsValid(base_tuple))
 		{
 			if (allow_invalid)
+			{
+				ReleaseSysCache(tuple);
 				return pstrdup("???[]");
+			}
 			else
+			{
 				elog(ERROR, "cache lookup failed for type %u", type_oid);
+			}
 		}
 		base_typeform = (Form_pg_type) GETSTRUCT(base_tuple);
 
