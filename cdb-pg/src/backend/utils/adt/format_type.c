@@ -21,6 +21,7 @@
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "utils/syscache.h"
@@ -143,31 +144,77 @@ format_type_internal(Oid type_oid, int32 typemod,
 	 * than checking typlen we check the toast property, and don't deconstruct
 	 * "plain storage" array types --- this is because we don't want to show
 	 * oidvector as oid[].
+	 *
+	 * *** MPP-5137 patch ***
+	 * The intent of this routine is to replace an array type reference with
+	 * an array of the underlying base type if, and only if, the array
+	 * reference is to the system-defined array type over a base type.
+	 *
+	 * Checking only typstorage = 'p' causes format_type failures when
+	 * processing user-defined array types having typstorage != 'p'.
+	 *
+	 * To avoid this, at least until 8.3, different checking is in order.
+	 * Until 8.3, all system-defined array types have names beginning with an
+	 * underscore ('_') with the remainder of the name the same as the base
+	 * element type name and have a typinput value of array_in.  Base type
+	 * array replacement will occur only if both conditions are met.  All
+	 * other references are left intact.
+	 *
+	 * User-defined and system-defined fixed-length types (like "name" and
+	 * "oidvector") can not use array_in; all of the system-defined
+	 * fixed-length types use specialized typinput routines, not array_in, so
+	 * checking for array_in clears the system types. (See comments in array.h
+	 * about fixed-length arrays.)
 	 */
 	array_base_type = typeform->typelem;
 
 	if (array_base_type != InvalidOid &&
-		typeform->typstorage != 'p' &&
-		typeform->typtype != 'd')
+		typeform->typtype != 'd' &&
+		/* TODO: Change test to use pg_type.typarray when introducing 8.3 updates */
+		NameStr(typeform->typname)[0] == '_' &&
+		typeform->typinput == F_ARRAY_IN)
 	{
+		HeapTuple base_tuple;
+		Form_pg_type base_typeform;
+
 		/* Switch our attention to the array element type */
-		ReleaseSysCache(tuple);
-		tuple = SearchSysCache(TYPEOID,
+		base_tuple = SearchSysCache(TYPEOID,
 							   ObjectIdGetDatum(array_base_type),
 							   0, 0, 0);
-		if (!HeapTupleIsValid(tuple))
+		if (!HeapTupleIsValid(base_tuple))
 		{
 			if (allow_invalid)
 				return pstrdup("???[]");
 			else
 				elog(ERROR, "cache lookup failed for type %u", type_oid);
 		}
-		typeform = (Form_pg_type) GETSTRUCT(tuple);
-		type_oid = array_base_type;
-		is_array = true;
+		base_typeform = (Form_pg_type) GETSTRUCT(base_tuple);
+
+		/*
+		 * Now make final checks for system-defined array type before
+		 * substituting the array form of a base type for an array type
+		 * reference.
+		 *
+		 * TODO: Eliminate the name check when merging 8.3 updates and typarray checked
+		 */
+		if (strcmp(NameStr(base_typeform->typname), NameStr(typeform->typname)+1) == 0)
+		{
+			ReleaseSysCache(tuple);
+			tuple = base_tuple;
+			typeform = base_typeform;
+			type_oid = array_base_type;
+			is_array = true;
+		}
+		else
+		{
+			ReleaseSysCache(base_tuple);
+			is_array = false;
+		}
 	}
 	else
+	{
 		is_array = false;
+	}
 
 	/*
 	 * See if we want to special-case the output for certain built-in types.
