@@ -119,7 +119,7 @@ class SegmentStart(Command):
     
     @staticmethod
     def remote(name,remoteHost,dataDir,utilityMode=False,nowait=False,port=None):
-        cmd.SegmentStart(name,dataDir,utilityMode,nowait,port,ctxt=REMOTE, remoteHost=remoteHost)
+        cmd=SegmentStart(name,dataDir,utilityMode,nowait,port,ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------        
@@ -165,6 +165,19 @@ class GpSegStopCmd(Command):
         self.cmdStr="%s $GPHOME/sbin/gpsegstart.py -D %s '" % (SRC_GPPATH,dirstr)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
+
+#-----------------------------------------------
+class GpStandbyStart(Command):
+    def __init__(self,name,datadir,port,ctxt=LOCAL, remoteHost=None):
+        self.datadir=datadir
+        cmdStr="%s exec \"$GPHOME/bin/gpsyncmaster -D %s -p %d -i \" >> standby.logfile 2>&1 &" % (SRC_GPPATH,datadir,port)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+    
+    @staticmethod
+    def remote(name,host,datadir,port):
+        cmd=GpStandbyStart(name,datadir,port,ctxt=REMOTE,remoteHost=host)
+        cmd.run(validateAfter=True)
+        return cmd
         
 #-----------------------------------------------
 class GpInitSystem(Command):
@@ -332,6 +345,14 @@ def readGpHostCache(gparray,pool):
 class GpError(Exception): pass 
 
 ######            
+def get_user():
+    logger.debug("Checking if LOGNAME or USER env variable is set.")
+    username = os.environ.get('LOGNAME') or os.environ.get('USER')
+    if not username:
+        raise GpError('Environment Variable LOGNAME or USER not set')
+    return username
+
+    
 def get_gphome():   
     logger.debug("Checking if GPHOME env variable is set.")
     gphome=os.getenv('GPHOME',None)
@@ -351,9 +372,9 @@ def get_masterdatadir():
 
           
 ######
-def check_permissions():
+def check_permissions(username):
     logger.debug("--Checking that current user can use GP binaries")
-    chk_gpdb_id()   
+    chk_gpdb_id(username)   
   
   
         
@@ -369,23 +390,32 @@ def standby_check(master_datadir):
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
 
 def start_standbymaster(host,datadir,port):
-    #TODO: check if there is already a process running
     
-    #start the syncmaster
+    logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
+    pidfileexists=FileDirExists.remote('check for standby PID file',host,datadir + '/postmaster.pid')
+    lockfileexists=FileDirExists.remote('check for standby lock file',host,"/tmp/.s.PGSQL.%s" % port)
     
-    #make sure its started.
+    if pidfileexists and lockfileexists:
+        raise Exception("Standby instance running. postmaster.pid and /tmp/.s.PGSQL.%s exists" % port)
+    
+    #TODO: any other cases to handle
+        
+    cmd=GpStandbyStart.remote('start standby master',host,datadir,port)
+    
+    logger.debug("Starting standby: %s" % cmd )
+    
+    #TODO: make sure its started.
     pass
 
+
 # these match names from gp_bash_functions.sh
-def chk_gpdb_id():
-    
-    #TODO: make sure that our user is the same one that owns the GP binaries.
-    #TODO: make sure that our group is the same group that owns the GP binaries
-    
-    #TODO:  that the USER variable is set.
-    
-    
+def chk_gpdb_id(username):
+    path="%s/bin/initdb" % GPHOME
+    if not os.access(path,os.X_OK):
+        raise GpError("File permission mismatch.  The current user %s does not have sufficient"
+                      " privileges to run the Greenplum binaries and management utilities." % username )
     pass        
+
 
 def chk_local_db_running(datadir,port):
     """Perform a few checks to see if the db is running.  We 1st look at:

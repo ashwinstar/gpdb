@@ -33,8 +33,6 @@ TODO: Items""",
 
 "* implement gp.start_standbymaster",
 
-"* implement gp.chk_gpdb_id",
-
 "* dump more identification in _process_segment_start()"]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -75,9 +73,10 @@ class GpStart():
     def prepare(self):
         logger.info("Gathering information and validating the environment...")
         self.gphome=gp.get_gphome()
-        self.master_datadir=gp.get_masterdatadir()        
+        self.master_datadir=gp.get_masterdatadir()
+        self.user=gp.get_user()        
         if not self.trust:                    
-            gp.check_permissions()                    
+            gp.check_permissions(self.user)                    
         self._read_postgresqlconf()        
         if not self.trust:
             gp.standby_check(self.master_datadir)                 
@@ -444,10 +443,13 @@ class GpStart():
         if self.start_standby and self.gparray.standbyMaster is not None:
             if self.gparray.standbyMaster.valid:
                 try:
-                    gp.start_standbymaster(host,datadir,port)
+                    host=self.gparray.standbyMaster.hostname
+                    datadir=self.gparray.standbyMaster.datadir
+                    port=self.gparray.standbyMaster.port
+                    gp.start_standbymaster(host,datadir,port)                    
                     return True
-                except ExecutionError(e):
-                    logger.debug("Error occured while starting the standby master: %s" % e)
+                except base.ExecutionError, e:
+                    logger.warning("Error occured while starting the standby master: %s" % e)
                     return False
             else:
                 logger.info("No Valid standby master to start")
@@ -496,7 +498,7 @@ def parseargs():
     
     optgrp3.add_option('-y', '--no_standby', dest="start_standby", action='store_false',default=True,
                         help='do not start master standby server')
-    optgrp3.add_option('-B', '--parallel', type="int", default=1, metavar="<parallel_processes>",
+    optgrp3.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
                         help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)    
     optgrp3.add_option('-R', '--restricted', action='store_true',
                         help='start in restricted mode. Only users with superuser privilege are allowed to connect.')
