@@ -3299,10 +3299,11 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         # gp_configuration needs to point back to the original directory locations.
         # All the information should be stored in gp_config
         self.Update("""UPDATE gp_configuration SET
-            datadir = regexp_replace(datadir, E'(testdb-?\\\\d+)$',
-            E'gpmigrator/upgrade/\\\\1');""")
+            datadir = regexp_replace(datadir, E'(%s-?\\\\d+)$',
+            E'gpmigrator/upgrade/\\\\1');""" % self.config['SEG_PREFIX'])
         self.Update("VACUUM FREEZE gp_configuration")
         gp = self.Select('select * from gp_configuration')
+        for
         self.Shutdown()
 
     #------------------------------------------------------------
