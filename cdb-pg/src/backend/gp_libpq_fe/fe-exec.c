@@ -2979,25 +2979,6 @@ PQfreemem(void *ptr)
 	free(ptr);
 }
 
-#if 0
-/*
- * PQfreeNotify - free's the memory associated with a PGnotify
- *
- * This function is here only for binary backward compatibility.
- * New code should use PQfreemem().  A macro will automatically map
- * calls to PQfreemem.	It should be removed in the future.  bjm 2003-03-24
- */
-
-#undef PQfreeNotify
-void		PQfreeNotify(PGnotify *notify);
-
-void
-PQfreeNotify(PGnotify *notify)
-{
-	PQfreemem(notify);
-}
-#endif 
-
 
 /*
  * Escaping arbitrary strings to get valid SQL literal strings.

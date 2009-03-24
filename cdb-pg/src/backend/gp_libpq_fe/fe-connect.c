@@ -59,18 +59,6 @@
 #include <pthread.h>
 #endif
 
-#ifdef USE_LDAP
-#ifdef WIN32
-#include <winldap.h>
-#else
-/* OpenLDAP deprecates RFC 1823, but we want standard conformance */
-#define LDAP_DEPRECATED 1
-#include <ldap.h>
-typedef struct timeval LDAP_TIMEVAL;
-#endif
-static int ldapServiceLookup(const char *purl, PQconninfoOption *options,
-				  PQExpBuffer errorMessage);
-#endif
 
 #include "libpq/ip.h"
 #include "mb/pg_wchar.h"
@@ -93,12 +81,8 @@ static int ldapServiceLookup(const char *purl, PQconninfoOption *options,
 #define DefaultOption	""
 #define DefaultAuthtype		  ""
 #define DefaultPassword		  ""
-#ifdef USE_SSL
-/* For QD to QE communications, we don't need ssl */
 #define DefaultSSLMode	"disable"
-#else
-#define DefaultSSLMode	"disable"
-#endif
+
 
 /* ----------
  * Definition of the conninfo parameters and their fallback resources.
@@ -168,38 +152,12 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"options", "PGOPTIONS", DefaultOption, NULL,
 	"Backend-Debug-Options", "D", 40},
 
-#ifdef USE_SSL
-
-	/*
-	 * "requiressl" is deprecated, its purpose having been taken over by
-	 * "sslmode". It remains for backwards compatibility.
-	 */
-	{"requiressl", "PGREQUIRESSL", "0", NULL,
-	"Require-SSL", "D", 1},
-#endif
-
 	/*
 	 * "sslmode" option is allowed even without client SSL support because the
 	 * client can still handle SSL modes "disable" and "allow".
 	 */
 	{"sslmode", "PGSSLMODE", DefaultSSLMode, NULL,
 	"SSL-Mode", "", 8},			/* sizeof("disable") == 8 */
-
-#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
-	/* Kerberos and GSSAPI authentication support specifying the service name */
-	{"krbsrvname", "PGKRBSRVNAME", PG_KRB_SRVNAM, NULL,
-	"Kerberos-service-name", "", 20},
-#endif
-
-#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
-
-	/*
-	 * GSSAPI and SSPI both enabled, give a way to override which is used by
-	 * default
-	 */
-	{"gsslib", "PGGSSLIB", NULL, NULL,
-	"GSS-library", "", 7},		/* sizeof("gssapi") = 7 */
-#endif
 
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
     {"gpqeid", NULL, "", NULL,
@@ -428,24 +386,6 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->connect_timeout = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "sslmode");
 	conn->sslmode = tmp ? strdup(tmp) : NULL;
-#ifdef USE_SSL
-	tmp = conninfo_getval(connOptions, "requiressl");
-	if (tmp && tmp[0] == '1')
-	{
-		/* here warn that the requiressl option is deprecated? */
-		if (conn->sslmode)
-			free(conn->sslmode);
-		conn->sslmode = strdup("require");
-	}
-#endif
-#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
-	tmp = conninfo_getval(connOptions, "krbsrvname");
-	conn->krbsrvname = tmp ? strdup(tmp) : NULL;
-#endif
-#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
-	tmp = conninfo_getval(connOptions, "gsslib");
-	conn->gsslib = tmp ? strdup(tmp) : NULL;
-#endif
 
 	tmp = conninfo_getval(connOptions, "gpqeid");
 	conn->gpqeid = tmp ? strdup(tmp) : NULL;
@@ -528,7 +468,6 @@ connectOptions2(PGconn *conn)
 			return false;
 		}
 
-#ifndef USE_SSL
 		switch (conn->sslmode[0])
 		{
 			case 'a':			/* "allow" */
@@ -547,7 +486,6 @@ connectOptions2(PGconn *conn)
 								  conn->sslmode);
 				return false;
 		}
-#endif
 	}
 	else
 		conn->sslmode = strdup(DefaultSSLMode);
@@ -865,14 +803,6 @@ connectDBStart(PGconn *conn)
 		goto connect_errReturn;
 	}
 
-#ifdef USE_SSL
-	/* setup values based on SSL mode */
-	if (conn->sslmode[0] == 'd')	/* "disable" */
-		conn->allow_ssl_try = false;
-	else if (conn->sslmode[0] == 'a')	/* "allow" */
-		conn->wait_ssl_try = true;
-#endif
-
 	/*
 	 * Set up to try to connect, with protocol 3.0 as the first attempt.
 	 */
@@ -895,7 +825,7 @@ connectDBStart(PGconn *conn)
 connect_errReturn:
 	if (conn->sock >= 0)
 	{
-		pqsecure_close(conn);
+		//pqsecure_close(conn);
 		closesocket(conn->sock);
 		conn->sock = -1;
 	}
@@ -1279,43 +1209,6 @@ keep_going:						/* We will come back to here until there is
 				char	   *startpacket;
 				int			packetlen;
 
-#ifdef USE_SSL
-
-				/*
-				 * If SSL is enabled and we haven't already got it running,
-				 * request it instead of sending the startup message.
-				 */
-				if (IS_AF_UNIX(conn->raddr.addr.ss_family))
-				{
-					/* Don't bother requesting SSL over a Unix socket */
-					conn->allow_ssl_try = false;
-				}
-				if (conn->allow_ssl_try && !conn->wait_ssl_try &&
-					conn->ssl == NULL)
-				{
-					ProtocolVersion pv;
-
-					/*
-					 * Send the SSL request packet.
-					 *
-					 * Theoretically, this could block, but it really
-					 * shouldn't since we only got here if the socket is
-					 * write-ready.
-					 */
-					pv = htonl(NEGOTIATE_SSL_CODE);
-					if (pqPacketSend(conn, 0, &pv, sizeof(pv)) != STATUS_OK)
-					{
-						printfPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("could not send SSL negotiation packet: %s\n"),
-							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
-						goto error_return;
-					}
-					/* Ok, wait for response */
-					conn->status = CONNECTION_SSL_STARTUP;
-					return PGRES_POLLING_READING;
-				}
-#endif   /* USE_SSL */
-
 				/*
 				 * Build the startup packet.
 				 */
@@ -1356,126 +1249,10 @@ keep_going:						/* We will come back to here until there is
 			 */
 		case CONNECTION_SSL_STARTUP:
 			{
-#ifdef USE_SSL
-				PostgresPollingStatusType pollres;
 
-				/*
-				 * On first time through, get the postmaster's response to our
-				 * SSL negotiation packet.
-				 */
-				if (conn->ssl == NULL)
-				{
-					/*
-					 * We use pqReadData here since it has the logic to
-					 * distinguish no-data-yet from connection closure. Since
-					 * conn->ssl isn't set, a plain recv() will occur.
-					 */
-					char		SSLok;
-					int			rdresult;
-
-					rdresult = pqReadData(conn);
-					if (rdresult < 0)
-					{
-						/* errorMessage is already filled in */
-						goto error_return;
-					}
-					if (rdresult == 0)
-					{
-						/* caller failed to wait for data */
-						return PGRES_POLLING_READING;
-					}
-					if (pqGetc(&SSLok, conn) < 0)
-					{
-						/* should not happen really */
-						return PGRES_POLLING_READING;
-					}
-					/* mark byte consumed */
-					conn->inStart = conn->inCursor;
-					if (SSLok == 'S')
-					{
-						/* Do one-time setup; this creates conn->ssl */
-						if (pqsecure_initialize(conn) == -1)
-							goto error_return;
-					}
-					else if (SSLok == 'N')
-					{
-						if (conn->sslmode[0] == 'r')	/* "require" */
-						{
-							/* Require SSL, but server does not want it */
-							printfPQExpBuffer(&conn->errorMessage,
-											  libpq_gettext("server does not support SSL, but SSL was required\n"));
-							goto error_return;
-						}
-						/* Otherwise, proceed with normal startup */
-						conn->allow_ssl_try = false;
-						conn->status = CONNECTION_MADE;
-						return PGRES_POLLING_WRITING;
-					}
-					else if (SSLok == 'E')
-					{
-						/* Received error - probably protocol mismatch */
-						if (conn->Pfdebug)
-							fprintf(conn->Pfdebug, "received error from server, attempting fallback to pre-7.0\n");
-						if (conn->sslmode[0] == 'r')	/* "require" */
-						{
-							/* Require SSL, but server is too old */
-							printfPQExpBuffer(&conn->errorMessage,
-											  libpq_gettext("server does not support SSL, but SSL was required\n"));
-							goto error_return;
-						}
-						/* Otherwise, try again without SSL */
-						conn->allow_ssl_try = false;
-						/* Assume it ain't gonna handle protocol 3, either */
-						conn->pversion = PG_PROTOCOL(2, 0);
-						/* Must drop the old connection */
-						closesocket(conn->sock);
-						conn->sock = -1;
-						conn->status = CONNECTION_NEEDED;
-						goto keep_going;
-					}
-					else
-					{
-						printfPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("received invalid response to SSL negotiation: %c\n"),
-										  SSLok);
-						goto error_return;
-					}
-				}
-
-				/*
-				 * Begin or continue the SSL negotiation process.
-				 */
-				pollres = pqsecure_open_client(conn);
-				if (pollres == PGRES_POLLING_OK)
-				{
-					/* SSL handshake done, ready to send startup packet */
-					conn->status = CONNECTION_MADE;
-					return PGRES_POLLING_WRITING;
-				}
-				if (pollres == PGRES_POLLING_FAILED)
-				{
-					/*
-					 * Failed ... if sslmode is "prefer" then do a non-SSL
-					 * retry
-					 */
-					if (conn->sslmode[0] == 'p' /* "prefer" */
-						&& conn->allow_ssl_try	/* redundant? */
-						&& !conn->wait_ssl_try) /* redundant? */
-					{
-						/* only retry once */
-						conn->allow_ssl_try = false;
-						/* Must drop the old connection */
-						closesocket(conn->sock);
-						conn->sock = -1;
-						conn->status = CONNECTION_NEEDED;
-						goto keep_going;
-					}
-				}
-				return pollres;
-#else							/* !USE_SSL */
 				/* can't get here */
 				goto error_return;
-#endif   /* USE_SSL */
+
 			}
 
 			/*
@@ -1577,7 +1354,7 @@ keep_going:						/* We will come back to here until there is
 					{
 						conn->pversion = PG_PROTOCOL(2, 0);
 						/* Must drop the old connection */
-						pqsecure_close(conn);
+						//pqsecure_close(conn);
 						closesocket(conn->sock);
 						conn->sock = -1;
 						conn->status = CONNECTION_NEEDED;
@@ -1630,46 +1407,6 @@ keep_going:						/* We will come back to here until there is
 					/* OK, we read the message; mark data consumed */
 					conn->inStart = conn->inCursor;
 
-#ifdef USE_SSL
-
-					/*
-					 * if sslmode is "allow" and we haven't tried an SSL
-					 * connection already, then retry with an SSL connection
-					 */
-					if (conn->sslmode[0] == 'a' /* "allow" */
-						&& conn->ssl == NULL
-						&& conn->allow_ssl_try
-						&& conn->wait_ssl_try)
-					{
-						/* only retry once */
-						conn->wait_ssl_try = false;
-						/* Must drop the old connection */
-						closesocket(conn->sock);
-						conn->sock = -1;
-						conn->status = CONNECTION_NEEDED;
-						goto keep_going;
-					}
-
-					/*
-					 * if sslmode is "prefer" and we're in an SSL connection,
-					 * then do a non-SSL retry
-					 */
-					if (conn->sslmode[0] == 'p' /* "prefer" */
-						&& conn->ssl
-						&& conn->allow_ssl_try	/* redundant? */
-						&& !conn->wait_ssl_try) /* redundant? */
-					{
-						/* only retry once */
-						conn->allow_ssl_try = false;
-						/* Must drop the old connection */
-						pqsecure_close(conn);
-						closesocket(conn->sock);
-						conn->sock = -1;
-						conn->status = CONNECTION_NEEDED;
-						goto keep_going;
-					}
-#endif
-
 					goto error_return;
 				}
 
@@ -1700,43 +1437,6 @@ keep_going:						/* We will come back to here until there is
 						return PGRES_POLLING_READING;
 					}
 				}
-#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
-
-				/*
-				 * Continue GSSAPI/SSPI authentication
-				 */
-				if (areq == AUTH_REQ_GSS_CONT)
-				{
-					int			llen = msgLength - 4;
-
-				/*
-					 * We can be called repeatedly for the same buffer. Avoid
-					 * re-allocating the buffer in this case - just re-use the
-					 * old buffer.
-				 */
-					if (llen != conn->ginbuf.length)
-					{
-						if (conn->ginbuf.value)
-							free(conn->ginbuf.value);
-
-						conn->ginbuf.length = llen;
-						conn->ginbuf.value = malloc(llen);
-						if (!conn->ginbuf.value)
-				{
-							printfPQExpBuffer(&conn->errorMessage,
-											  libpq_gettext("out of memory allocating GSSAPI buffer (%i)"),
-											  llen);
-					goto error_return;
-				}
-					}
-
-					if (pqGetnchar(conn->ginbuf.value, llen, conn))
-					{
-						/* We'll come back when there is more data. */
-						return PGRES_POLLING_READING;
-					}
-				}
-#endif
 
 				/*
 				 * OK, we successfully read the message; mark data consumed
@@ -1921,10 +1621,6 @@ makeEmptyPGconn(void)
 	conn->verbosity = PQERRORS_DEFAULT;
 	conn->sock = -1;
 	conn->password_needed = false;
-#ifdef USE_SSL
-	conn->allow_ssl_try = true;
-	conn->wait_ssl_try = false;
-#endif
 
 	/*
 	 * We try to send at least 8K at a time, which is the usual size of pipe
@@ -1979,7 +1675,7 @@ freePGconn(PGconn *conn)
 	pqClearAsyncResult(conn);	/* deallocate result and curTuple */
 	if (conn->sock >= 0)
 	{
-		pqsecure_close(conn);
+		//pqsecure_close(conn);
 		closesocket(conn->sock);
 	}
 	if (conn->pghost)
@@ -2004,14 +1700,7 @@ freePGconn(PGconn *conn)
 		free(conn->pgpass);
 	if (conn->sslmode)
 		free(conn->sslmode);
-#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
-	if (conn->krbsrvname)
-		free(conn->krbsrvname);
-#endif
-#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
-	if (conn->gsslib)
-		free(conn->gsslib);
-#endif
+
     if (conn->gpqeid)			/* CDB */
         free(conn->gpqeid);
     if (conn->gpqdid)			/* CDB */
@@ -2098,7 +1787,7 @@ closePGconn(PGconn *conn)
 	 */
 	if (conn->sock >= 0)
 	{
-		pqsecure_close(conn);
+		//pqsecure_close(conn);
 		closesocket(conn->sock);
 	}
 	conn->sock = -1;
@@ -2132,41 +1821,6 @@ closePGconn(PGconn *conn)
 	conn->lobjfuncs = NULL;
 	conn->inStart = conn->inCursor = conn->inEnd = 0;
 	conn->outCount = 0;
-#ifdef ENABLE_GSS
-	{
-		OM_uint32	min_s;
-
-		if (conn->gctx)
-			gss_delete_sec_context(&min_s, &conn->gctx, GSS_C_NO_BUFFER);
-		if (conn->gtarg_nam)
-			gss_release_name(&min_s, &conn->gtarg_nam);
-		if (conn->ginbuf.length)
-			gss_release_buffer(&min_s, &conn->ginbuf);
-		if (conn->goutbuf.length)
-			gss_release_buffer(&min_s, &conn->goutbuf);
-	}
-#endif
-#ifdef ENABLE_SSPI
-	if (conn->ginbuf.length)
-		free(conn->ginbuf.value);
-	conn->ginbuf.length = 0;
-	conn->ginbuf.value = NULL;
-	if (conn->sspitarget)
-		free(conn->sspitarget);
-	conn->sspitarget = NULL;
-	if (conn->sspicred)
-	{
-		FreeCredentialsHandle(conn->sspicred);
-		free(conn->sspicred);
-		conn->sspicred = NULL;
-	}
-	if (conn->sspictx)
-	{
-		DeleteSecurityContext(conn->sspictx);
-		free(conn->sspictx);
-		conn->sspictx = NULL;
-	}
-#endif
 }
 
 /*
@@ -2490,426 +2144,7 @@ pqPacketSend(PGconn *conn, char pack_type,
 	return STATUS_OK;
 }
 
-#ifdef USE_LDAP
 
-#define LDAP_URL	"ldap://"
-#define LDAP_DEF_PORT	389
-#define PGLDAP_TIMEOUT 2
-
-#define ld_is_sp_tab(x) ((x) == ' ' || (x) == '\t')
-#define ld_is_nl_cr(x) ((x) == '\r' || (x) == '\n')
-
-
-/*
- *		ldapServiceLookup
- *
- * Search the LDAP URL passed as first argument, treat the result as a
- * string of connection options that are parsed and added to the array of
- * options passed as second argument.
- *
- * LDAP URLs must conform to RFC 1959 without escape sequences.
- *	ldap://host:port/dn?attributes?scope?filter?extensions
- *
- * Returns
- *	0 if the lookup was successful,
- *	1 if the connection to the LDAP server could be established but
- *	  the search was unsuccessful,
- *	2 if a connection could not be established, and
- *	3 if a fatal error occurred.
- *
- * An error message is returned in the third argument for return codes 1 and 3.
- */
-static int
-ldapServiceLookup(const char *purl, PQconninfoOption *options,
-				  PQExpBuffer errorMessage)
-{
-	int			port = LDAP_DEF_PORT,
-				scope,
-				rc,
-				msgid,
-				size,
-				state,
-				oldstate,
-				i;
-	bool		found_keyword;
-	char	   *url,
-			   *hostname,
-			   *portstr,
-			   *endptr,
-			   *dn,
-			   *scopestr,
-			   *filter,
-			   *result,
-			   *p,
-			   *p1 = NULL,
-			   *optname = NULL,
-			   *optval = NULL;
-	char	   *attrs[2] = {NULL, NULL};
-	LDAP	   *ld = NULL;
-	LDAPMessage *res,
-			   *entry;
-	struct berval **values;
-	LDAP_TIMEVAL time = {PGLDAP_TIMEOUT, 0};
-
-	if ((url = strdup(purl)) == NULL)
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext("out of memory\n"));
-		return 3;
-	}
-
-	/*
-	 * Parse URL components, check for correctness.  Basically, url has '\0'
-	 * placed at component boundaries and variables are pointed at each
-	 * component.
-	 */
-
-	if (pg_strncasecmp(url, LDAP_URL, strlen(LDAP_URL)) != 0)
-	{
-		printfPQExpBuffer(errorMessage,
-		libpq_gettext("invalid LDAP URL \"%s\": scheme must be ldap://\n"), purl);
-		free(url);
-		return 3;
-	}
-
-	/* hostname */
-	hostname = url + strlen(LDAP_URL);
-	if (*hostname == '/')		/* no hostname? */
-		hostname = "localhost"; /* the default */
-
-	/* dn, "distinguished name" */
-	p = strchr(url + strlen(LDAP_URL), '/');
-	if (p == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext(
-				 "invalid LDAP URL \"%s\": missing distinguished name\n"), purl);
-		free(url);
-		return 3;
-	}
-	*p = '\0';					/* terminate hostname */
-	dn = p + 1;
-
-	/* attribute */
-	if ((p = strchr(dn, '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext(
-			"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
-		free(url);
-		return 3;
-	}
-	*p = '\0';
-	attrs[0] = p + 1;
-
-	/* scope */
-	if ((p = strchr(attrs[0], '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext("invalid LDAP URL \"%s\": must have search scope (base/one/sub)\n"), purl);
-		free(url);
-		return 3;
-	}
-	*p = '\0';
-	scopestr = p + 1;
-
-	/* filter */
-	if ((p = strchr(scopestr, '?')) == NULL || *(p + 1) == '\0' || *(p + 1) == '?')
-	{
-		printfPQExpBuffer(errorMessage,
-					libpq_gettext("invalid LDAP URL \"%s\": no filter\n"), purl);
-		free(url);
-		return 3;
-	}
-	*p = '\0';
-	filter = p + 1;
-	if ((p = strchr(filter, '?')) != NULL)
-		*p = '\0';
-
-	/* port number? */
-	if ((p1 = strchr(hostname, ':')) != NULL)
-	{
-		long		lport;
-
-		*p1 = '\0';
-		portstr = p1 + 1;
-		errno = 0;
-		lport = strtol(portstr, &endptr, 10);
-		if (*portstr == '\0' || *endptr != '\0' || errno || lport < 0 || lport > 65535)
-		{
-			printfPQExpBuffer(errorMessage, libpq_gettext(
-						"invalid LDAP URL \"%s\": invalid port number\n"), purl);
-			free(url);
-			return 3;
-		}
-		port = (int) lport;
-	}
-
-	/* Allow only one attribute */
-	if (strchr(attrs[0], ',') != NULL)
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext(
-			"invalid LDAP URL \"%s\": must have exactly one attribute\n"), purl);
-		free(url);
-		return 3;
-	}
-
-	/* set scope */
-	if (pg_strcasecmp(scopestr, "base") == 0)
-		scope = LDAP_SCOPE_BASE;
-	else if (pg_strcasecmp(scopestr, "one") == 0)
-		scope = LDAP_SCOPE_ONELEVEL;
-	else if (pg_strcasecmp(scopestr, "sub") == 0)
-		scope = LDAP_SCOPE_SUBTREE;
-	else
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext("invalid LDAP URL \"%s\": must have search scope (base/one/sub)\n"), purl);
-		free(url);
-		return 3;
-	}
-
-	/* initialize LDAP structure */
-	if ((ld = ldap_init(hostname, port)) == NULL)
-	{
-		printfPQExpBuffer(errorMessage,
-						  libpq_gettext("could not create LDAP structure\n"));
-		free(url);
-		return 3;
-	}
-
-	/*
-	 * Initialize connection to the server.  We do an explicit bind because we
-	 * want to return 2 if the bind fails.
-	 */
-	if ((msgid = ldap_simple_bind(ld, NULL, NULL)) == -1)
-	{
-		/* error in ldap_simple_bind() */
-		free(url);
-		ldap_unbind(ld);
-		return 2;
-	}
-
-	/* wait some time for the connection to succeed */
-	res = NULL;
-	if ((rc = ldap_result(ld, msgid, LDAP_MSG_ALL, &time, &res)) == -1 ||
-		res == NULL)
-	{
-		if (res != NULL)
-		{
-			/* timeout */
-			ldap_msgfree(res);
-		}
-		/* error in ldap_result() */
-		free(url);
-		ldap_unbind(ld);
-		return 2;
-	}
-	ldap_msgfree(res);
-
-	/* search */
-	res = NULL;
-	if ((rc = ldap_search_st(ld, dn, scope, filter, attrs, 0, &time, &res))
-		!= LDAP_SUCCESS)
-	{
-		if (res != NULL)
-			ldap_msgfree(res);
-		printfPQExpBuffer(errorMessage,
-						  libpq_gettext("lookup on LDAP server failed: %s\n"),
-						  ldap_err2string(rc));
-		ldap_unbind(ld);
-		free(url);
-		return 1;
-	}
-
-	/* complain if there was not exactly one result */
-	if ((rc = ldap_count_entries(ld, res)) != 1)
-	{
-		printfPQExpBuffer(errorMessage,
-			 rc ? libpq_gettext("more than one entry found on LDAP lookup\n")
-						  : libpq_gettext("no entry found on LDAP lookup\n"));
-		ldap_msgfree(res);
-		ldap_unbind(ld);
-		free(url);
-		return 1;
-	}
-
-	/* get entry */
-	if ((entry = ldap_first_entry(ld, res)) == NULL)
-	{
-		/* should never happen */
-		printfPQExpBuffer(errorMessage,
-						  libpq_gettext("no entry found on LDAP lookup\n"));
-		ldap_msgfree(res);
-		ldap_unbind(ld);
-		free(url);
-		return 1;
-	}
-
-	/* get values */
-	if ((values = ldap_get_values_len(ld, entry, attrs[0])) == NULL)
-	{
-		printfPQExpBuffer(errorMessage,
-				  libpq_gettext("attribute has no values on LDAP lookup\n"));
-		ldap_msgfree(res);
-		ldap_unbind(ld);
-		free(url);
-		return 1;
-	}
-
-	ldap_msgfree(res);
-	free(url);
-
-	if (values[0] == NULL)
-	{
-		printfPQExpBuffer(errorMessage,
-				  libpq_gettext("attribute has no values on LDAP lookup\n"));
-		ldap_value_free_len(values);
-		ldap_unbind(ld);
-		return 1;
-	}
-
-	/* concatenate values to a single string */
-	for (size = 0, i = 0; values[i] != NULL; ++i)
-		size += values[i]->bv_len + 1;
-	if ((result = malloc(size + 1)) == NULL)
-	{
-		printfPQExpBuffer(errorMessage,
-						  libpq_gettext("out of memory\n"));
-		ldap_value_free_len(values);
-		ldap_unbind(ld);
-		return 3;
-	}
-	for (p = result, i = 0; values[i] != NULL; ++i)
-	{
-		strncpy(p, values[i]->bv_val, values[i]->bv_len);
-		p += values[i]->bv_len;
-		*(p++) = '\n';
-		if (values[i + 1] == NULL)
-			*(p + 1) = '\0';
-	}
-
-	ldap_value_free_len(values);
-	ldap_unbind(ld);
-
-	/* parse result string */
-	oldstate = state = 0;
-	for (p = result; *p != '\0'; ++p)
-	{
-		switch (state)
-		{
-			case 0:				/* between entries */
-				if (!ld_is_sp_tab(*p) && !ld_is_nl_cr(*p))
-				{
-					optname = p;
-					state = 1;
-				}
-				break;
-			case 1:				/* in option name */
-				if (ld_is_sp_tab(*p))
-				{
-					*p = '\0';
-					state = 2;
-				}
-				else if (ld_is_nl_cr(*p))
-				{
-					printfPQExpBuffer(errorMessage, libpq_gettext(
-					"missing \"=\" after \"%s\" in connection info string\n"),
-									  optname);
-					return 3;
-				}
-				else if (*p == '=')
-				{
-					*p = '\0';
-					state = 3;
-				}
-				break;
-			case 2:				/* after option name */
-				if (*p == '=')
-				{
-					state = 3;
-				}
-				else if (!ld_is_sp_tab(*p))
-				{
-					printfPQExpBuffer(errorMessage, libpq_gettext(
-					"missing \"=\" after \"%s\" in connection info string\n"),
-									  optname);
-					return 3;
-				}
-				break;
-			case 3:				/* before option value */
-				if (*p == '\'')
-				{
-					optval = p + 1;
-					p1 = p + 1;
-					state = 5;
-				}
-				else if (ld_is_nl_cr(*p))
-				{
-					optval = optname + strlen(optname); /* empty */
-					state = 0;
-				}
-				else if (!ld_is_sp_tab(*p))
-				{
-					optval = p;
-					state = 4;
-				}
-				break;
-			case 4:				/* in unquoted option value */
-				if (ld_is_sp_tab(*p) || ld_is_nl_cr(*p))
-				{
-					*p = '\0';
-					state = 0;
-				}
-				break;
-			case 5:				/* in quoted option value */
-				if (*p == '\'')
-				{
-					*p1 = '\0';
-					state = 0;
-				}
-				else if (*p == '\\')
-					state = 6;
-				else
-					*(p1++) = *p;
-				break;
-			case 6:				/* in quoted option value after escape */
-				*(p1++) = *p;
-				state = 5;
-				break;
-		}
-
-		if (state == 0 && oldstate != 0)
-		{
-			found_keyword = false;
-			for (i = 0; options[i].keyword; i++)
-			{
-				if (strcmp(options[i].keyword, optname) == 0)
-				{
-					if (options[i].val == NULL)
-						options[i].val = strdup(optval);
-					found_keyword = true;
-					break;
-				}
-			}
-			if (!found_keyword)
-			{
-				printfPQExpBuffer(errorMessage,
-						 libpq_gettext("invalid connection option \"%s\"\n"),
-								  optname);
-				return 1;
-			}
-			optname = NULL;
-			optval = NULL;
-		}
-		oldstate = state;
-	}
-
-	if (state == 5 || state == 6)
-	{
-		printfPQExpBuffer(errorMessage, libpq_gettext(
-				  "unterminated quoted string in connection info string\n"));
-		return 3;
-	}
-
-	return 0;
-}
-#endif
 
 #define MAXBUFSIZE 256
 
@@ -3004,27 +2239,6 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 					char	   *key,
 							   *val;
 					bool		found_keyword;
-
-#ifdef USE_LDAP
-					if (strncmp(line, "ldap", 4) == 0)
-					{
-						int			rc = ldapServiceLookup(line, options, errorMessage);
-
-						/* if rc = 2, go on reading for fallback */
-						switch (rc)
-						{
-							case 0:
-								fclose(f);
-								return 0;
-							case 1:
-							case 3:
-								fclose(f);
-								return 3;
-							case 2:
-								continue;
-						}
-					}
-#endif
 
 					key = line;
 					val = strchr(line, '=');

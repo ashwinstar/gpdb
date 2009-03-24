@@ -17,7 +17,7 @@ ifneq ($(PORTNAME), win32)
 override CFLAGS += $(PTHREAD_CFLAGS)
 endif
 
-OBJS =  fe-exec.o fe-secure.o  pqexpbuffer.o thread.o \
+OBJS =  fe-exec.o pqexpbuffer.o thread.o \
     fe-auth.o   \
     fe-connect.o fe-misc.o fe-protocol3.o
 

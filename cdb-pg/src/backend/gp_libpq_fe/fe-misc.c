@@ -62,6 +62,11 @@
 #include "mb/pg_wchar.h"
 #include "pg_config_paths.h"
 
+#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
+static int	pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending);
+static void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
+				 bool got_epipe);
+#endif
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);
@@ -623,8 +628,9 @@ pqReadData(PGconn *conn)
 
 	/* OK, try to read some data */
 retry3:
-	nread = pqsecure_read(conn, conn->inBuffer + conn->inEnd,
-						  conn->inBufSize - conn->inEnd);
+	// Was pq_secure_read
+	nread = recv(conn->sock, conn->inBuffer + conn->inEnd,
+						  conn->inBufSize - conn->inEnd, 0);
 	if (nread < 0)
 	{
 		if (SOCK_ERRNO == EINTR)
@@ -691,11 +697,6 @@ retry3:
 	 * detect true EOF.
 	 */
 
-#ifdef USE_SSL
-	if (conn->ssl)
-		return 0;
-#endif
-
 	switch (pqReadReady(conn))
 	{
 		case 0:
@@ -712,9 +713,10 @@ retry3:
 	 * Still not sure that it's EOF, because some data could have just
 	 * arrived.
 	 */
-retry4:
-	nread = pqsecure_read(conn, conn->inBuffer + conn->inEnd,
-						  conn->inBufSize - conn->inEnd);
+retry4: 
+	// was pq_secure_read
+	nread = recv(conn->sock, conn->inBuffer + conn->inEnd,
+						  conn->inBufSize - conn->inEnd, 0);
 	if (nread < 0)
 	{
 		if (SOCK_ERRNO == EINTR)
@@ -755,12 +757,56 @@ definitelyFailed:
 				   "\tThis probably means the server terminated abnormally\n"
 							 "\tbefore or while processing the request.\n"));
 	conn->status = CONNECTION_BAD;		/* No more connection to backend */
-	pqsecure_close(conn);
+	//pqsecure_close(conn);
 	closesocket(conn->sock);
 	conn->sock = -1;
 
 	return -1;
 }
+
+/*
+ * Macros to handle disabling and then restoring the state of SIGPIPE handling.
+ * Note that DISABLE_SIGPIPE() must appear at the start of a block.
+ */
+
+#ifndef WIN32
+#ifdef ENABLE_THREAD_SAFETY
+
+#define DISABLE_SIGPIPE(failaction) \
+	sigset_t	osigmask; \
+	bool		sigpipe_pending = false; \
+	bool		got_epipe = false; \
+\
+	if (pq_block_sigpipe(&osigmask, &sigpipe_pending) < 0) \
+		failaction
+
+#define REMEMBER_EPIPE(cond) \
+	do { \
+		if (cond) \
+			got_epipe = true; \
+	} while (0)
+
+#define RESTORE_SIGPIPE() \
+	pq_reset_sigpipe(&osigmask, sigpipe_pending, got_epipe)
+
+#else	/* !ENABLE_THREAD_SAFETY */
+
+#define DISABLE_SIGPIPE(failaction) \
+	pqsigfunc	oldsighandler = pqsignal(SIGPIPE, SIG_IGN)
+
+#define REMEMBER_EPIPE(cond)
+
+#define RESTORE_SIGPIPE() \
+	pqsignal(SIGPIPE, oldsighandler)
+
+#endif	/* ENABLE_THREAD_SAFETY */
+#else	/* WIN32 */
+
+#define DISABLE_SIGPIPE(failaction)
+#define REMEMBER_EPIPE(cond)
+#define RESTORE_SIGPIPE()
+
+#endif	/* WIN32 */
 
 /*
  * pqSendSome: send data waiting in the output buffer.
@@ -790,18 +836,24 @@ pqSendSome(PGconn *conn, int len)
 	{
 		int			sent;
 		char		sebuf[256];
-
+		
+	    DISABLE_SIGPIPE(return -1);
+		
 #ifndef WIN32
-		sent = pqsecure_write(conn, ptr, len);
+		sent = send(conn->sock, ptr, len, 0);
 #else
 		/*
 		 * Windows can fail on large sends, per KB article Q201213. The failure-point
 		 * appears to be different in different versions of Windows, but 64k should
 		 * always be safe.
 		 */
-		sent = pqsecure_write(conn, ptr, Min(len, 65536));
+		sent = send(conn->sock, ptr, Min(len, 65536), 0);
 #endif
 
+		REMEMBER_EPIPE(sent < 0 && SOCK_ERRNO == EPIPE);
+
+		RESTORE_SIGPIPE();
+				
 		if (sent < 0)
 		{
 			/*
@@ -1025,15 +1077,6 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, time_t end_time)
 		return -1;
 	}
 
-#ifdef USE_SSL
-	/* Check for SSL library buffering read bytes */
-	if (forRead && conn->ssl && SSL_pending(conn->ssl) > 0)
-	{
-		/* short-circuit the select */
-		return 1;
-	}
-#endif
-
 	/* We will retry as long as we get EINTR */
 	do
 		result = pqSocketPoll(conn->sock, forRead, forWrite, end_time);
@@ -1215,3 +1258,90 @@ libpq_gettext(const char *msgid)
 }
 
 #endif   /* ENABLE_NLS */
+
+#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
+
+/*
+ *	Block SIGPIPE for this thread.	This prevents send()/write() from exiting
+ *	the application.
+ */
+int
+pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending)
+{
+	sigset_t	sigpipe_sigset;
+	sigset_t	sigset;
+
+	sigemptyset(&sigpipe_sigset);
+	sigaddset(&sigpipe_sigset, SIGPIPE);
+
+	/* Block SIGPIPE and save previous mask for later reset */
+	SOCK_ERRNO_SET(pthread_sigmask(SIG_BLOCK, &sigpipe_sigset, osigset));
+	if (SOCK_ERRNO)
+		return -1;
+
+	/* We can have a pending SIGPIPE only if it was blocked before */
+	if (sigismember(osigset, SIGPIPE))
+	{
+		/* Is there a pending SIGPIPE? */
+		if (sigpending(&sigset) != 0)
+			return -1;
+
+		if (sigismember(&sigset, SIGPIPE))
+			*sigpipe_pending = true;
+		else
+			*sigpipe_pending = false;
+	}
+	else
+		*sigpipe_pending = false;
+
+	return 0;
+}
+
+/*
+ *	Discard any pending SIGPIPE and reset the signal mask.
+ *
+ * Note: we are effectively assuming here that the C library doesn't queue
+ * up multiple SIGPIPE events.	If it did, then we'd accidentally leave
+ * ours in the queue when an event was already pending and we got another.
+ * As long as it doesn't queue multiple events, we're OK because the caller
+ * can't tell the difference.
+ *
+ * The caller should say got_epipe = FALSE if it is certain that it
+ * didn't get an EPIPE error; in that case we'll skip the clear operation
+ * and things are definitely OK, queuing or no.  If it got one or might have
+ * gotten one, pass got_epipe = TRUE.
+ *
+ * We do not want this to change errno, since if it did that could lose
+ * the error code from a preceding send().	We essentially assume that if
+ * we were able to do pq_block_sigpipe(), this can't fail.
+ */
+void
+pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending, bool got_epipe)
+{
+	int			save_errno = SOCK_ERRNO;
+	int			signo;
+	sigset_t	sigset;
+
+	/* Clear SIGPIPE only if none was pending */
+	if (got_epipe && !sigpipe_pending)
+	{
+		if (sigpending(&sigset) == 0 &&
+			sigismember(&sigset, SIGPIPE))
+		{
+			sigset_t	sigpipe_sigset;
+
+			sigemptyset(&sigpipe_sigset);
+			sigaddset(&sigpipe_sigset, SIGPIPE);
+
+			sigwait(&sigpipe_sigset, &signo);
+		}
+	}
+
+	/* Restore saved block mask */
+	pthread_sigmask(SIG_SETMASK, osigset, NULL);
+
+	SOCK_ERRNO_SET(save_errno);
+}
+
+#endif   /* ENABLE_THREAD_SAFETY && !WIN32 */
+

@@ -585,7 +585,7 @@ extern int	pqReadReady(PGconn *conn);
 extern int	pqWriteReady(PGconn *conn);
 
 /* === in fe-secure.c === */
-
+/*
 extern int	pqsecure_initialize(PGconn *);
 extern void pqsecure_destroy(void);
 extern PostgresPollingStatusType pqsecure_open_client(PGconn *);
@@ -598,7 +598,7 @@ extern int	pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending);
 extern void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
 				 bool got_epipe);
 #endif
-
+*/
 /*
  * this is so that we can check if a connection is non-blocking internally
  * without the overhead of a function call
