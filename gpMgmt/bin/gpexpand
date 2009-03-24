@@ -132,7 +132,7 @@ def parseargs():
         logger.error(msg)
         parser.exit()
         
-    options.pgport = os.getenv('PGPORT', 5432)
+    options.pgport = int(os.getenv('PGPORT', 5432))
 
     return options, args
 
@@ -304,7 +304,7 @@ class GpExpandStatus():
     def _sync_status_file(self):
         """Syncs the gpexpand status file with the master mirror"""
         if self._master_mirror_hostname:
-            cpCmd = RemoteCopy('copying gpexpand status file to master mirror', 
+            cpCmd = RemoteCopy('gpexpand copying status file to master mirror', 
                                self._status_standby_filename, self._master_mirror_hostname,
                                self._status_filename, ctxt=REMOTE, 
                                remoteHost=self._master_mirror_hostname)
@@ -359,7 +359,7 @@ class GpExpandStatus():
         if os.path.exists(self._status_standby_filename):
             os.unlink(self._status_standby_filename)
         if self._master_mirror_hostname:
-            RemoveFiles.remote('gpexpand status file cleanup', 
+            RemoveFiles.remote('gpexpand master mirror status file cleanup', 
                                self._master_data_directory + '/gpexpand.status', 
                                self._master_mirror_hostname)    
         
@@ -410,7 +410,7 @@ class SegmentTemplate:
         # Reduce multiple interfaces to common hostname
         self.hosts = []
         for seg in self.newSegments:
-            hostnameCmd = Hostname('associating hostnames with segments', ctxt=REMOTE, remoteHost=seg.hostname)
+            hostnameCmd = Hostname('gpexpand associating hostnames with segments', ctxt=REMOTE, remoteHost=seg.hostname)
             hostnameCmd.run(validateAfter=True)            
             if not hostnameCmd.get_hostname() in self.hosts:
                 self.logger.debug('Adding %s to host list' % hostnameCmd.get_hostname())
@@ -580,7 +580,7 @@ class SegmentTemplate:
         hosts = []
         
         for seg in newSegments:
-            hostnameCmd = Hostname('gpexpand associate hostnames with segments', 
+            hostnameCmd = Hostname('gpexpand cleanup new segments associate hostnames with segments', 
                                    ctxt=REMOTE, remoteHost=seg.hostname)
             hostnameCmd.run(validateAfter=True)
                         
@@ -588,7 +588,7 @@ class SegmentTemplate:
                 hosts.append(hostnameCmd.get_hostname())
             
             if removeDataDirs:
-                rmCmd = RemoveFiles('gpexpand remove segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
+                rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
                 pool.addCommand(rmCmd)
 
@@ -639,32 +639,41 @@ class gpexpand:
     @staticmethod
     def prepare_gpdb_state(logger, dburl):
         # Get the database in the expected state for the expansion/rollback
-        gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport)[1]
+        gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport) == (True, True, True)
         status_file_exists = os.path.exists(options.master_data_directory + '/gpexpand.status')
         if gpdb_running:
             gpdb_mode = get_local_db_mode(options.master_data_directory)
         gpexpand_db_status = None
         
         if status_file_exists:
+            # gpexpand status file exists so the last run of gpexpand didn't finish properly
             if gpdb_running:
                 if gpdb_mode != 'UTILITY':
                     logger.info('Stopping Greenplum Database')
                     GpStop.local('gpexpand prepare stop database')
-                    logger.info('gpexpand prepare start database master only')
-                    GpStart.local('gpexpand prepare gpdb state', masterOnly=True)
+                    logger.info('Starting Greenplum Database in master only mode')
+                    GpStart.local('gpexpand prepare start database master only', masterOnly=True)
             else:
                 logger.info('Starting Greenplum Database in master only mode')
                 GpStart.local('gpexpand prepare start database master only', masterOnly=True)
         else:
             if not gpdb_running:
+                # No status file, so we need to start the database to query the gpexpand schema
+                # for the status.  We might need to resume the expansion.
                 logger.info('Starting Greenplum Database')
                 GpStart.local('gpexpand prepare start database')
                 
-            #get status from db
+            logger.info('Querying gpexpand schema for current expansion state')
             gpexpand_db_status = gpexpand.get_status_from_db(dburl)
+            logger.debug('Expansion status returned is %s' % gpexpand_db_status)
 
-            if not gpexpand_db_status:
+            # The options.filename check is to see if we were not given a filename
+            # If no filename is given, the interview process will begin and there
+            # is no need to change the state of GPDB
+            if not gpexpand_db_status and options.filename:
+                logger.info('Stopping Greenplum Database')
                 GpStop.local('gpexpand prepare stop database')
+                logger.info('Starting Greenplum Database in master only mode')
                 GpStart.local('gpexpand prepare start database master only', masterOnly=True)
 
         return gpexpand_db_status
@@ -676,11 +685,12 @@ class gpexpand:
         if get_local_db_mode(options.master_data_directory) == 'NORMAL':
             try:
                 conn = dbconn.connect(dburl)
+                # Get the last status entry
                 cursor = dbconn.execSQL(conn,'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
                 if cursor.rowcount == 1:
                     gpexpand_db_status = cursor.fetchone()[0]
             except:
-                # expansion schema doesn't exists.
+                # expansion schema doesn't exists or there was a connection failure.
                 pass
             finally: 
                 if conn: conn.close()    
@@ -795,7 +805,7 @@ class gpexpand:
                                         
                     db = GpDB(int(contentId),parseTrueFalse(definedprimary),int(dbid),
                               parseTrueFalse(definedprimary),True,hostname.strip(),
-                              int(port),datadir.strip())                    
+                              int(port),os.path.abspath(datadir.strip()))                    
                     self.new_segments.append(db)
                     line += 1
             except ValueError:
@@ -805,14 +815,38 @@ class gpexpand:
         except IOError:
             raise ExpansionError('Input file %s not found' % options.filename)
         
-        #TODO: validate the input:
+        self.validate_new_segments()
+
+        
+    def validate_new_segments(self):
         # - Any duplicate dbid?
+            # get current dbids
+            # look for dupes that are not mirrors
+            
         # - Do mirrors have valid contentid?
+            # get primary contentids
+            # is the content id for mirrors in there?
+            
         # - Hostname resolution successful?
+            # do a lookup on each host
+            # ping it
+            
         # - dbids contiguous and sequential?
+            # get the orig array of dbids
+            # check the new ones fit 
+            
         # - contentids contiguous and sequential?
+            # get the orig array of dbids
+            # check the new ones fit         
+        
         # - mirrors correct?
+            # do mirrors have a contentid of a primary
+        
         # - no data dirs conflict with those in gparray
+            # check that host + datadir count = 1
+                    
+        pass
+        
         
     def add_segments(self):
         self.segTemplate = SegmentTemplate(self.logger, self.statusLogger, self.pool,
@@ -821,10 +855,6 @@ class gpexpand:
                                            self.dburl,self.conn, options.novacuum, self.tempDir)
         try:
             self.segTemplate.build_segment_template()
-        except SegmentTemplateError, msg:
-            raise ExpansionError(msg)
-            
-        try:
             self.segTemplate.build_new_segments()
         except SegmentTemplateError, msg:
             raise ExpansionError(msg)
@@ -908,18 +938,19 @@ class gpexpand:
         for seg in originalArray.getSegDbList():
             srcFile=seg.datadir + '/pg_hba.gpexpand.bak'
             dstFile=seg.datadir + '/pg_hba.conf'
-            cpCmd = RemoteCopy('gpexpand restore of pg_hba.conf file on original segments', srcFile, seg.hostname, 
-                                dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
+            cpCmd = RemoteCopy('gpexpand restore of pg_hba.conf file on original segments', 
+                               srcFile, seg.hostname, dstFile, ctxt=REMOTE, 
+                               remoteHost=seg.hostname)
             self.pool.addCommand(cpCmd)
         
         self.pool.join()
         
         self.logger.info('Restoring original segments catalog tables')
         for seg in originalArray.getSegDbList():            
-            segCfgCmd = ConfigExpansionSeg('gpexpand restore original segment catalog tables', seg.datadir, 
-                                            seg.port, originalPrimaryCount, 
-                                            seg.content, seg.dbid,
-                                            ctxt=REMOTE, remoteHost=seg.hostname) 
+            segCfgCmd = ConfigExpansionSeg('gpexpand restore original segment catalog tables', 
+                                           seg.datadir, seg.port, originalPrimaryCount, 
+                                           seg.content, seg.dbid, ctxt=REMOTE, 
+                                           remoteHost=seg.hostname) 
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -1622,7 +1653,8 @@ try:
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
         gp_expand.finalize_prepare()
-        GpStart.local('gpexpand')
+        logger.info('Starting Greenplum Database.')
+        GpStart.local('gpexpand expansion prepare final start')
         logger.info('************************************************')                     
         logger.info('Initialization of the system expansion complete.')
         logger.info('To begin table expansion onto the new segments')

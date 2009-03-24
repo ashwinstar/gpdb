@@ -274,7 +274,7 @@ def createExecutionContext(execution_context_id,remoteHost,stdin):
         
         
 class ExecutionContext():
-    """ An ExecutionContext defines where and how to exeucte the Command and how to 
+    """ An ExecutionContext defines where and how to execute the Command and how to 
     gather up information that are the results of the command.  
     
     """
@@ -389,7 +389,12 @@ class Command:
         
 
     def run(self,validateAfter=False):
-        self.exec_context.execute(self)
+        faultPoint = os.getenv('GP_COMMAND_FAULT_POINT')
+        if not faultPoint or (self.name and not self.name.startswith(faultPoint)):
+            self.exec_context.execute(self)
+        else:
+            # simulate error
+            self.results = CommandResult(1,'Fault Injection','Fault Injection' ,False,True)
         
         if validateAfter:
             self.validate()

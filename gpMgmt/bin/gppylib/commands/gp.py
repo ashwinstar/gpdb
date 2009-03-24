@@ -393,9 +393,7 @@ def chk_local_db_running(datadir,port):
        2) DATADIR/postmaster.pid
        3) netstat 
        
-       - if all 3 are negative we say no.       
-       - if all 3 are positive we say yes.       
-       - if they don't all agree then we throw an Error
+       Returns tuple in format (master_pid_exists, tmpfile_exists, port_active)
     
     """    
     cmd=FileDirExists('check for master PID file',datadir + '/postmaster.pid')
@@ -403,44 +401,17 @@ def chk_local_db_running(datadir,port):
     master_pid_exists = cmd.filedir_exists()
     
     
-    cmd=FileDirExists('check for /tmp/.s.PGSQL file file',"/tmp/.s.PGSQL.%s" % port)
+    cmd=FileDirExists('check for /tmp/.s.PGSQL file file',"/tmp/.s.PGSQL.%d" % port)
     cmd.run(validateAfter=True)    
     tmpfile_exists = cmd.filedir_exists()
         
         
-    netstat_port_active = PgPortIsActive.local('check netstat for master port',"/tmp/.s.PGSQL.%s" % port, port)
+    netstat_port_active = PgPortIsActive.local('check netstat for master port',"/tmp/.s.PGSQL.%d" % port, port)
 
     logger.debug("master_pid_exists: %s tmpfile_exists: %s netstat port: %s" %\
                 (master_pid_exists,tmpfile_exists,netstat_port_active))
     
-    return (master_pid_exists,tmpfile_exists,netstat_port_active)
-
-    if master_pid_exists and tmpfile_exists and netstat_port_active:
-        return True
-    if not master_pid_exists and not tmpfile_exists and not netstat_port_active:
-        return False
-    
-    msg="Not sure if database is running in datadir %s on port %s.\n" % (datadir,port)
-    
-    if master_pid_exists:
-        msg += "Found a PID file in %s/postmaster.pid\n" % datadir
-    else:
-        msg += "Did not find a PID file in %s/postmaster.pid\n" % datadir
-    
-    if tmpfile_exists:
-        msg += "Found a tmpfile in /tmp/.s.PGSQL.%s\n" % port
-    else:
-        msg += "Did not find a tmpfile in /tmp/.s.PGSQL.%s\n" % port
-        
-    if netstat_port_active:
-        msg += "Found a netstat entry for .s.PGSQL.%s" % port
-    else:
-        msg += "Did not find a netstat entry for .s.PGSQL.%s" % port
-        
-    raise Exception(msg)
-            
-    
-    
+    return (master_pid_exists,tmpfile_exists,netstat_port_active)    
     
 
 def get_local_db_mode(master_data_dir):

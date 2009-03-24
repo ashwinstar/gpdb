@@ -136,7 +136,8 @@ class GpSegCopy:
             s.close()
             logger.debug('Using port %d for segment template cleanup.' % templatePort)
             
-            SegmentStart.local(name, self.dstDir, utilityMode=True, port=templatePort)
+            SegmentStart.local('segcopy schema only segment start', 
+                               self.dstDir, utilityMode=True, port=templatePort)
 
             dburl = dbconn.DbURL(hostname=self.dstHost,port=templatePort)
             logger.info("connecting to database: %s" % dburl)
