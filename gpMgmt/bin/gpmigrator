@@ -42,7 +42,7 @@ WORKDIR       = 'gpmigrator'
 BACKUPDIR     = 'backup'
 UPGRADEDIR    = 'upgrade'
 PARALLELISM   = 16
-
+MAIN          = "3.3.99.99" # version number for main
 
 #============================================================
 def pretty_version(v):
@@ -50,8 +50,9 @@ def pretty_version(v):
     Turns the RCS revision number into a prettier format
     '''
     m = re.compile('Revision: #(\d+)').search(v)
-    if m: return str(2 + (float(m.group(1))/100))
+    if m: return str(3 + (float(m.group(1))/100))
     else: return str(v)
+
 __version__ = pretty_version('$Revision: #10 $')
 
 #============================================================
@@ -194,10 +195,12 @@ class GPUpgrade:
     #   BUILDSKEL - build a skeleton copy of the old system
     #   TRANSFORMCAT - apply catalog transformations
     #   SETCATVERSION - set catalog version
+    #   EXTRACTAOSEGS - get ao seg info
+    #   GETHIGHESTOID - find the highest OID in the cluster
     commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG', 'MAPPINGS',
                 'REMAPOID', 'DEEPLINK', 'CHKDOWN', 'LOCKDOWN', 'UNLOCK',
                 'EXTRACTCATFILES', 'BUILDSKEL', 'TRANSFORMCAT',
-                'SETCATVERSION', 'EXTRACTAOSEGS']
+                'SETCATVERSION', 'EXTRACTAOSEGS', 'GETHIGHESTOID']
 
     #------------------------------------------------------------
     def __init__(self):
@@ -385,6 +388,13 @@ class GPUpgrade:
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-method', dest='method',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-oldversion', dest='oldversion',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-newversion', dest='newversion',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-isupgrade', dest='upgrade',
+                              action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
             
             if options.version:
@@ -428,7 +438,7 @@ class GPUpgrade:
             self.debug = True
         if options.quiet:
             self.quiet = True
-        if options.logdir and os.path.isdir(options.logdir):
+        if options.logdir:
             self.logdir = options.logdir
         else:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
@@ -436,9 +446,19 @@ class GPUpgrade:
             self.checkschema = False
         if options.validate:
             self.validate = True
+        if self.cmd != 'MASTER':
+            self.oldversion = options.oldversion
+            self.newversion = options.newversion
+            self.method = options.method
+            if options.upgrade:
+                self.upgrade = True
+            else:
+                self.upgrade = False
 
         if self.cmd == 'MASTER':
             today = date.today().strftime('%Y%m%d')
+            if not os.path.isdir(self.logdir):
+                os.makedirs(self.logdir, 0700)
             logname = os.path.join(self.logdir, '%s_%s.log' % (EXECNAME, today))
             self.logfile = open(logname, 'a')
 
@@ -604,6 +624,8 @@ class GPUpgrade:
             exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.oldhome, EXECNAME)
 
         exec_cmd += self.oldhome + ' ' + self.newhome
+        exec_cmd += ' --internal-oldversion=' + str(self.oldversion)
+        exec_cmd += ' --internal-newversion=' + str(self.newversion)
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
         exec_cmd += ' --internal-dirs=%s' % urllib.quote(str(self.datadirs))
@@ -611,6 +633,8 @@ class GPUpgrade:
         exec_cmd += ' --internal-option2=%s' % urllib.quote(str(option2))
         if self.method:
             exec_cmd += ' --internal-method=%s' % urllib.quote(str(self.method))
+        if self.upgrade:
+            exec_cmd += ' --internal-isupgrade'
         if self.revert:
             exec_cmd += ' -R'
 
@@ -625,7 +649,13 @@ class GPUpgrade:
             sys.stderr.write(e.stderr)
             raise UpgradeError('Fatal Segment Error')
         
+        # gpssh is very bad at returning useful status codes so we also need
+        # to see if there was any mention of FATAL within the message
         self.Log('GPSSH', result)
+
+        if re.search('gpmigrator.*\[FATAL\]', result):
+            raise UpgradeError('Fatal Segment Error')
+        return result
 
     #------------------------------------------------------------
     def CheckDirectories(self):
@@ -762,7 +792,8 @@ class GPUpgrade:
 
         conn = None
         try:
-            self.Log('DEBUG', "making database connection: user = %s, dbname = %s port = %i" % (user, db, port))
+            self.Log('DEBUG', "making database connection: user = %s, "
+                     "dbname = %s port = %i" % (user, db, port))
             conn = pg8000.Connection(user=user,
                                      host='localhost',
                                      database=db, 
@@ -770,7 +801,8 @@ class GPUpgrade:
                                      port=port,
                                      socket_timeout=5000)
         except Exception, e:
-            self.Log('FATAL', 'Could not establish connection to database')
+            self.Log('FATAL', 'Could not establish connection to ' +
+                              'database "%s" port %d' % (db, port))
             raise ConnectionError(str(e))
 
         try:
@@ -951,6 +983,8 @@ class GPUpgrade:
             if utility:  cmd = 'gpstart -a -m'
             else:        cmd = 'gpstart -a'
 
+            cmd += ' -l %s' % self.logdir
+
             locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                                   'pg_hba.conf'+LOCKEXT)
             try:
@@ -960,6 +994,7 @@ class GPUpgrade:
                 else:
                     self.Log('DEBUG', "lockfile: '%s' does not exist" % locked)
 
+                self.Log('DEBUG', "Starting cluster with env = %s" % str(env))
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
                                        stdout=self.logfile, 
@@ -1280,14 +1315,13 @@ class GPUpgrade:
                      % (newversion, newbuild))
         else:
             raise UpgradeError('Target not a Greenplum Database: ' + newversion)    
-
-        self.oldversion = oldversion
-        self.newversion = newversion
-
-        # Versions supported by this version of the upgrader
-        #  [3.1.0.0 - 3.3.0.0] + (main) by default
-        def checkversion(v):
-            if v == 'main': return
+        def canonical_ver(v):
+            '''
+            Make a standard a.b.c.d greenplum database version string.
+            Some releases don't look like this, but rather
+            3.2 dev.
+            '''
+            if v == 'main': return "3.3.99.99"
             vs = v.split('.')
 
             # all released versions have 4 integer version components
@@ -1298,6 +1332,26 @@ class GPUpgrade:
                 raise UpgradeError("Unrecognised Greenplum Version '%s'" % v)
             if len(vs) < 4:
                 vs.extend([99,99,99,99])
+
+            vs = map(str, vs)
+            v = '.'.join(vs[:4])
+            return v
+
+        oldversion = canonical_ver(oldversion)
+        newversion = canonical_ver(newversion)
+        self.oldversion = oldversion
+        self.newversion = newversion
+
+        # Versions supported by this version of the upgrader
+        #  [3.1.0.0 - 3.3.0.0] + (main) by default
+        def checkversion(v):
+            if v == 'main': return
+            vs = v.split('.')
+
+            try:
+                vs = map(int, vs)
+            except:
+                raise UpgradeError("Unrecognised Greenplum Version '%s'" % v)
 
             # Acceptable versions are 3.1.1.5 - 3.3.x
             if ((vs[0] < 3) or
@@ -1311,20 +1365,27 @@ class GPUpgrade:
                     "To upgrade to Greenplum Version '%s' use the upgrade tool "
                     "shipped with that release" % v)
             
-
         checkversion(oldversion)
         checkversion(newversion)
         if newversion == 'main' or newversion >= oldversion:
             self.upgrade = True
+            if oldversion[:3] == "3.1" and newversion[:3] != "3.2":
+                raise UpgradeError("upgrade from 3.1 to 3.3 not yet supported")
         else:
             self.upgrade = False    # Downgrade
-            raise UpgradeError("Downgrade not supported from gpmigrator")
+            if newversion[:3] == "3.1":
+                raise UpgradeError("Downgrade to Greenplum Database 3.1 " +
+                                   "not supported from gpmigrator")
 
-        if self.upgrade and self.oldversion[:3] == "3.2":
-            self.method = "transform"
-        else:
+        oldvers = ["3.1", "3.2"]
+        if (self.oldversion[:3] in oldvers and
+            self.newversion[:3] in oldvers):
             self.method = "dumprestore"
-        # Compare old version catalog number with the catalog in MASTER_DATA_DIRECTORY
+        else:
+            self.method = "transform"
+
+        # Compare old version catalog number with the catalog in 
+        # MASTER_DATA_DIRECTORY
         catalog_re = re.compile('Catalog version number: *(.*)')
         oldcat = self.RunCmd('postgres --catalog-version', env=self.oldenv)
         self.Log('INFO', "Source %s" % oldcat)
@@ -1623,56 +1684,60 @@ This may be specified on the commandline with:
         self.Log('INFO', 'Creating list of databases')
         databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
 
-        # Look for dropped columns that we do not know how to deal with
-        # We base this on the typlen, typbyval, and typalign - if we can't recognise the
-        # type from this then we can't handle it.
-        self.Log('INFO', 'Checking for dropped columns')
-        types = {
-            'text':      [-1, False, 'i'],
-            'path':      [-1, False, 'd'],
-            'bool':      [ 1,  True, 'c'],
-            'int2':      [ 2,  True, 's'],
-            'int4':      [ 4,  True, 'i'],
-            'int8':      [ 8,  True, 'd'],
-            'money':     [ 4, False, 'i'],
-            'tid':       [ 6, False, 's'],
-            'macaddr':   [ 6, False, 's'],
-            'tinterval': [12, False, 'i'],
-            'timetz':    [12, False, 'd'],
-            'interval':  [16, False, 'd'],
-            'circle':    [24, False, 'd'],
-            'box':       [32, False, 'd'],
-            'name':      [64, False, 'd']
-            }
-        errors = 0
-        for db in databases:
-            dropped = self.Select(
-                '''
-                   select current_database() as database, '"' || nspname || '"."' || relname || '"' as table, 
-                          attlen, attbyval, attalign
-                   from pg_attribute a 
-                        join pg_class c on (a.attrelid = c.oid) 
-                        join pg_namespace n on (c.relnamespace = n.oid)
-                   where attisdropped
-                ''', db=db);
-            for row in dropped:
-                found = False
-                for t in types:
-                    if (types[t][0] == row['attlen'] and
-                        types[t][1] == row['attbyval'] and
-                        types[t][2] == row['attalign']):
-                        found = True
-                if not found:
-                    self.Log('FATAL', 'In database "%s" - table %s has unrecognised dropped columns'
-                             % (row['database'], row['table']))
-                    errors = errors + 1
-        if errors > 0:
-            raise UpgradeError("non-upgradable dropped columns detected")
+        if self.method == 'dumprestore':
+            # Look for dropped columns that we do not know how to deal with
+            # We base this on the typlen, typbyval, and typalign - if we 
+            # can't recognise the type from this then we can't handle it.
+	        self.Log('INFO', 'Checking for dropped columns')
+	        types = {
+	            'text':      [-1, False, 'i'],
+	            'path':      [-1, False, 'd'],
+	            'bool':      [ 1,  True, 'c'],
+	            'int2':      [ 2,  True, 's'],
+	            'int4':      [ 4,  True, 'i'],
+	            'int8':      [ 8,  True, 'd'],
+	            'money':     [ 4, False, 'i'],
+	            'tid':       [ 6, False, 's'],
+	            'macaddr':   [ 6, False, 's'],
+	            'tinterval': [12, False, 'i'],
+	            'timetz':    [12, False, 'd'],
+	            'interval':  [16, False, 'd'],
+	            'circle':    [24, False, 'd'],
+	            'box':       [32, False, 'd'],
+	            'name':      [64, False, 'd']
+	            }
+	        errors = 0
+	        for db in databases:
+	            dropped = self.Select(
+	                '''
+	                   select current_database() as database, '"' || nspname 
+                       || '"."' || relname || '"' as table, 
+	                          attlen, attbyval, attalign
+	                   from pg_attribute a 
+	                        join pg_class c on (a.attrelid = c.oid) 
+	                        join pg_namespace n on (c.relnamespace = n.oid)
+	                   where attisdropped
+	                ''', db=db);
+	            for row in dropped:
+	                found = False
+	                for t in types:
+	                    if (types[t][0] == row['attlen'] and
+	                        types[t][1] == row['attbyval'] and
+	                        types[t][2] == row['attalign']):
+	                        found = True
+	                if not found:
+	                    self.Log('FATAL', 'In database "%s" - table %s ' +
+                                 'has unrecognised dropped columns'
+	                             % (row['database'], row['table']))
+	                    errors = errors + 1
+	        if errors > 0:
+	            raise UpgradeError("non-upgradable dropped columns detected")
 
         # Look for an existing user named MIGRATIONUSER
         self.Log('INFO', 'Checking gpmigrator user')
         upgradeuser = self.Select(
-            "SELECT count(*)::numeric FROM pg_user WHERE usename = '%s'" % MIGRATIONUSER)
+            "SELECT count(*)::numeric FROM pg_user " +
+            "WHERE usename = '%s'" % MIGRATIONUSER)
         if upgradeuser[0] > 0:
             self.Log('WARN', "Database user '%s' already exists" % MIGRATIONUSER)
             self.Update('DROP USER ' + MIGRATIONUSER)
@@ -1683,7 +1748,7 @@ This may be specified on the commandline with:
         #    - append only tables
         #    - new style partitions
         if (not self.upgrade and self.newversion < '3.2.0.0' and 
-            (self.oldversion >= '3.2.0.0' or self.oldversion == 'main')):
+            self.oldversion >= '3.2.0.0'):
             self.Log('INFO', 'Checking for partitioning and append only tables')
             c = 0
             for db in databases:
@@ -1704,6 +1769,18 @@ Cannot downgrade a database with append only tables     <<<<<
 ---------------------------------------------------
 ''')
 
+        if (not self.upgrade and self.newversion < '3.3.0.0' and
+            (self.oldversion >= '3.3.0.0' or self.oldersion == 'main')):
+            c = 0
+            for db in databases:
+                c = self.Select('SELECT COUNT(*)::numeric FROM pg_catalog.pg_aocs;', db=db)
+                if c[0] > 0:
+                    raise UpgradeError(
+'''
+------------------------------------------------------------
+Cannot downgrade a database with 3.3 horizontal partitioning    <<<<<
+------------------------------------------------------------
+''')
 
         # Extract the information needed to construct a gp_init_config file
         self.Log('INFO', 'Extracting configuration information')
@@ -1844,16 +1921,35 @@ This issue must be resolved before upgrade can complete.
         self.Log('INFO', 'Configuration acquired')
 
 
-    def copy_rewrite_hba(self, frm, to):
+    def copy_rewrite_hba(self, frm, to, upgrdfmt):
+        '''
+        Between 3.2 and 3.3 we have a change in pg_hba.conf. The differences
+        are:
+        - "ident sameuser" becomes "ident"
+        - "ident <map name>" becomes "ident map=<map name>"
+        '''
         f = open(frm, 'r')
         t = open(to, 'w')
+        self.Log('DEBUG', 'writing %s to %s for upgrade = %s'
+                 % (frm, to, str(upgrdfmt)))
         for line in f:
             # translate to new pg_hba.conf format
-            line = line.replace('ident sameuser', 'ident').replace("ident gpmigrator", "ident map=gpmigrator")
+            if "3.3" in [self.oldversion[:3], self.newversion[:3]]:
+                if upgrdfmt:
+                    line = re.compile('ident sameuser$').sub('ident', line)
+                    line = re.compile('ident (.*)$').sub('ident map=\\1', line)
+                else:
+                    line = re.compile('ident$').sub('ident sameuser', line)
+                    line = re.compile('ident map=(.*)$').sub('ident \\1', line)
+
             self.Log('DEBUG', 'writing to %s line %s' % (to, line))
             t.write(line)
         f.close()
         t.close()
+
+    def move_rewrite_hba(self, frm, to, upgrade):
+        self.copy_rewrite_hba(frm, to, upgrade)
+        os.unlink(frm)
 
     #------------------------------------------------------------
     def SetupLockdown(self):
@@ -1922,8 +2018,12 @@ This issue must be resolved before upgrade can complete.
                 if os_type == 'sunos':
                     file.write('local all %s trust\n' % MIGRATIONUSER)
                 else:
-                    file.write('local all %s ident %s\n' 
-                               % (MIGRATIONUSER, MIGRATIONUSER))
+                    if self.oldversion < '3.3.0.0':
+                        file.write('local all %s ident %s\n' 
+                                   % (MIGRATIONUSER, MIGRATIONUSER))
+                    else:
+                        file.write('local all %s ident map=%s\n'
+                                   % (MIGRATIONUSER, MIGRATIONUSER))
                 for addr in ip:
                     file.write('host all %s %s/32 trust\n'
                                % (MIGRATIONUSER, addr))
@@ -1935,13 +2035,16 @@ This issue must be resolved before upgrade can complete.
                 # locked
                 dir = self.newmaster
 
-                self.copy_rewrite_hba(hba, os.path.join(dir, 'pg_hba.conf'))
+                self.copy_rewrite_hba(hba, os.path.join(dir, 'pg_hba.conf'),
+                                      self.upgrade)
                 self.RunCmd('cp -f %s %s' % (ident, dir))
 
                 # Grab the original versions to (if any)
                 if os.path.exists(hba + LOCKEXT):
                     self.copy_rewrite_hba(hba+LOCKEXT,
-                                          os.path.join(dir, 'pg_hba.conf'+LOCKEXT))
+                                          os.path.join(dir,
+                                                       'pg_hba.conf'+LOCKEXT),
+                                          self.upgrade)
                 if os.path.exists(ident + LOCKEXT):
                     self.RunCmd('cp -f %s %s' % (ident+LOCKEXT, dir))
 
@@ -1993,7 +2096,13 @@ This issue must be resolved before upgrade can complete.
                     hba   = os.path.join(d, seg, 'pg_hba.conf')
                     ident = os.path.join(d, seg, 'pg_ident.conf')
                     if os.path.exists(hba + LOCKEXT):
-                        self.RunCmd('mv -f %s %s' % (hba+LOCKEXT, hba))
+                        forward = False
+                        if self.upgrade and env == self.newenv:
+                            forward = True
+                        elif not self.upgrade and env == self.oldenv:
+                            forward = True
+                        self.move_rewrite_hba(hba+LOCKEXT, hba, forward)
+
                     if os.path.exists(ident + LOCKEXT):
                         self.RunCmd('mv -f %s %s' % (ident+LOCKEXT, ident))
 
@@ -2114,14 +2223,16 @@ This issue must be resolved before upgrade can complete.
                     ''', port=port)
 
                     # Check that there are no prepared transactions
-                    #   - This doesn't really belong in BuildMappings, but in a different
-                    #     check upgrade location.  However this the first handy location we have
-                    #     where we are executing on all the segments and it is still relatively
-                    #     early in the process.
-                    #   - It will be run on the new database as well, which is neither helpful
-                    #     nor harmful.
-                    #   - Assuming we have sucessfully locked out all other users this should 
-                    #     never be true because startup will have rollbacked the transaction.
+                    #   - This doesn't really belong in BuildMappings, but in
+                    #     a different check upgrade location.  However this 
+                    #     the first handy location we have where we are 
+                    #     executing on all the segments and it is still
+                    #     relatively early in the process.
+                    #   - It will be run on the new database as well, which is 
+                    #     neither helpful nor harmful.
+                    #   - Assuming we have sucessfully locked out all other 
+                    #     users this should never be true because startup will
+                    #     have rollbacked the transaction.
                     for db in databases:
                         xact = self.Select("SELECT count(*)::numeric FROM pg_prepared_xacts",
                                            db=db['dbname'], port=port);
@@ -3042,9 +3153,10 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                             # Both old and new file should exist
                             if not os.path.exists(oldfile):
                                 raise UpgradeError(oldfile + ' not found')
-                            # we don't want to test if the file exists for 3.2
-                            # upgrades
-                            if not do33link and not os.path.exists(newfile):
+                            # we don't want to test if the file exists if this
+                            # is a transform style 'grade
+                            if (self.method == 'dumprestore' and 
+                                not os.path.exists(newfile)):
                                 raise UpgradeError(newfile + ' not found')
 
                             # Remove the new file, hard link to the old file
@@ -3176,7 +3288,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
 
     def TouchupConfig(self):
         '''
-        Get the upgrade/ config working
+        Touch up the config for a transform method upgrade/downgrade
         '''
 
         # We can do this in utility mode since the master host is the only
@@ -3310,24 +3422,28 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     ''', port=port)
 
                     # Check that there are no prepared transactions
-                    #   - This doesn't really belong in BuildMappings, but in a different
-                    #     check upgrade location.  However this the first handy location we have
-                    #     where we are executing on all the segments and it is still relatively
-                    #     early in the process.
-                    #   - It will be run on the new database as well, which is neither helpful
-                    #     nor harmful.
-                    #   - Assuming we have sucessfully locked out all other users this should 
-                    #     never be true because startup will have rollbacked the transaction.
+                    #   - This doesn't really belong in BuildMappings, but in
+                    #     a different check upgrade location.  However this 
+                    #     the first handy location we have where we are 
+                    #     executing on all the segments and it is still 
+                    #     relatively early in the process.
+                    #   - It will be run on the new database as well, which is
+                    #     neither helpful nor harmful.
+                    #   - Assuming we have sucessfully locked out all other 
+                    #     users this should never be true because startup will
+                    #     have rollbacked the transaction.  
 
                     # Build up the list of mapping objects
                     files = {}
                     for db in databases:
                         first = True
-                        l = self.Select('''select relfilenode, d.oid as datoid
+                        l = self.Select('''select relfilenode, d.oid as datoid,
+                                relname
                                 from pg_class c, pg_database d 
                                 where relnamespace = 11 and d.datname = '%s'
                                 and c.relkind in ('r', 't', 'i') and 
-                                relisshared = 'f';''' % db['dbname'], port=port)
+                                relisshared = 'f';''' % db['dbname'],
+                                port=port, db=db['dbname'])
                 
                         f = []
                         for row in l:
@@ -3336,8 +3452,12 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                                 file = os.path.join('base', str(row['datoid']),
                                                     'PG_VERSION')
                                 f.append(file)
+
                             file = os.path.join('base', str(row['datoid']),
                                                str(row['relfilenode']))
+                            dfile = os.path.join(dir, file)
+                            if not os.path.exists(dfile):
+                                raise UpgradeError('found path "%s" for table "%s" but file does not exist' % (dfile, row['relname']))
                             f.append(file)
                         files[db['dbname']] = f
                 
@@ -3366,9 +3486,9 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     
     def ExtractAosegs(self):
         '''
-        Get the set of ao seg files (i.e., pg_aoseg.*) for later upgrading
+        Build AO seg upgrade/downgrade files for this node
         '''
-         
+        
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
             self.CallSlaves('EXTRACTAOSEGS', self.config['SEG_PREFIX'])
@@ -3385,7 +3505,6 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     # The directory for this segment
                     dir = os.path.join(d, seg)
                     logdir = os.path.join(d, WORKDIR)
-                    fname = os.path.join(logdir, 'aoseg_rewrite.sql')
 
                     conf = os.path.join(dir, 'postgresql.conf')
                     def getconf(x):
@@ -3401,20 +3520,45 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     # Find the port for this segment:
                     port = getconf('port')
                     if port == None:
-                        raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
-                    f = open(fname, 'w')
+                        raise UpgradeError('Could not determine port ' +
+                                           'from %s/postgresql.conf' % dir)
 
-                    aos = self.Select('''select 'alter table pg_aoseg.' ||
-                                         relname || ' add column '
-                                         || ' eofuncompressed double precision;'
-                                         from pg_class where relnamespace
-                                         = 6104 and relkind = 'o';''',
+                    dbs = self.Select('''select datname from pg_database
+                                         where datname != 'template0';''',
                                       port=port)
 
-                    if aos:
-                        for a in aos:
-                            f.write(a)
-                    f.close()
+                    # do it for every database
+                    for db in dbs:
+                        fname = os.path.join(logdir,
+                            'aoseg_%s_rewrite.sql' % db)
+                        self.Log('DEBUG', 'creating AO rewrite: %s' % fname)
+                        f = open(fname, 'w')
+
+                        # The user might have already upgraded the database
+                        # once in which case some (but maybe not all) ao seg
+                        # relations will have been upgraded
+                        if self.upgrade:
+                            aos = self.Select(
+                                '''select 'alter table pg_aoseg.' || relname || 
+                                   ' add column ' || 
+                                   ' eofuncompressed double precision;'
+                                   from pg_class where relnamespace = 6104 and 
+                                   relkind = 'o' and relnatts = '4';''',
+                                   db=db, port=port)
+                        else:
+                            aos = self.Select(
+                                '''select 'update table pg_aoseg.' || relname
+                                   || ' set eofuncompressed = NULL;'
+                                   from pg_class
+                                   where relnamespace = 6104
+                                   and relkind = 'o' and relnatts = '5';''',
+                                   db=db, port=port)
+
+                        if aos:
+                            for a in aos:
+                                f.write(a)
+                        f.close()
+
                     # just once
                     break
 
@@ -3426,11 +3570,14 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
 
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
-            self.CallSlaves('BUILDSKEL', self.config['SEG_PREFIX'])
+            self.CallSlaves('BUILDSKEL', self.config['SEG_PREFIX'],
+                            self.highestoid)
             datadirs = [ self.root ]
         else:
             datadirs = self.datadirs
             seg_prefix = self.option
+            self.highestoid = int(self.option2)
+
 
         def do_copy(src, dst, f):
             '''
@@ -3445,7 +3592,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         
                 # for this is a file, copy all segments
                 if os.path.isfile(os.path.join(src, f)):
-                    for i in range(1, 65000):
+                    for i in range(1, 66000):
                         i = str(i)
                         if os.path.exists(os.path.join(src, f, i)):
                             shutil.copy2(os.path.join(src, f, i),
@@ -3487,8 +3634,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 
                         # only add this if the path != src
                         if not os.path.samefile(src, path):
-                            self.Log('DEBUG', 'path = %s, src = %s, adding %s' % \
-                                     (path, src, f))
+                            self.Log('DEBUG', 'path = %s, src = %s, adding %s'
+                                     % (path, src, f))
                             dirs.append(dirname)
                 
                     dirs = list(set(dirs)) # make unique
@@ -3498,6 +3645,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     if not os.path.exists(dst):
                         os.mkdir(dst, 0700)
                 
+                    dirs.append('pg_log')
                     for dir in dirs:
                         self.Log('DEBUG', "making dir %s" % dir)
             
@@ -3526,7 +3674,10 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                             t = open(to, 'w')
                             for line in f:
                                 # translate to new pg_hba.conf format
-                                line = line.replace('ident sameuser', 'ident')
+                                if self.upgrade:
+                                    line = line.replace('ident sameuser', 'ident')
+                                else:
+                                    line = line.replace('ident', 'ident sameuser')
                                 t.write(line)
                             f.close()
                             t.close()
@@ -3536,9 +3687,18 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                         overwrite(os.path.join(src, 'pg_ident.conf'+LOCKEXT),
                                   os.path.join(dst, 'pg_ident.conf'))
 
+                    # set highest oid
+                    # XXX: should check that this oid is higher!
+                    self.RunCmd("pg_resetxlog -o %d %s" % \
+                                (self.highestoid, dst), env=self.newenv)
+
     def TransformDbs(self, dbs):
         '''
-        Transform the local databases
+        Transform the local databases. The temporary copy we've made of each
+        segment is transformed by passing a set of transformation scripts
+        (stored in share/postgresql/upgrade/). To do the transformation,
+        we start the backend in --single (non postmaster) mode and send
+        the scripts via stdin.
         '''
 
         def get_new_files(procfile, path, dbdir):
@@ -3546,9 +3706,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             f = open(procfile, 'r')
             first = True
             for line in f:
-                # OID is first col and is equal to the relfilenode at this stage
-
-                # skip header
+                # OID is first col and is equal to the relfilenode at 
+                # this stage skip header
                 if first:
                     first = False
                     continue
@@ -3566,6 +3725,12 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             return out
         
         def touch_files(files):
+            '''
+            We are creating new tables but since we do not call heap_create()
+            we do not initialized the data file on disk. Creating an empty
+            file is enough to ensure that the storage layer doesn't get
+            confused.
+            '''
             for f in files:
                 self.Log('DEBUG', 'touching file %s' % f)
                 fp = open(f, 'w')
@@ -3576,12 +3741,17 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 transform_db(path, db, dboid, tfile)
         
         def transform_db(path, dbname, dboid, tfile):
-            self.Log('DEBUG', "transforming db = %s dboid = %s" % (str(dbname), str(dboid)))
+            '''
+            Transform the specified database for a single segment.
+            '''
+            self.Log('DEBUG', "transforming db = %s dboid = %s" % \
+                     (str(dbname), str(dboid)))
 
             load = open(tfile, 'r')
             # create files to back new relations
             if os.path.basename(tfile) == 'loadcat33.source':
-                cl = os.path.join(os.path.dirname(tfile),'upg2_pg_class_toadd.data')
+                cl = os.path.join(os.path.dirname(tfile),
+                                  'upg2_pg_class_toadd.data')
                 dbdir = os.path.join('base', str(dboid))
                 new_files = get_new_files(cl, path, dbdir)
                 touch_files(new_files)
@@ -3615,7 +3785,6 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             out = []
             tmpdir = tempfile.mkdtemp()
             self.Log('DEBUG', "created temporary directory " + tmpdir)
-        
             # strings to find and the data to replace those strings with
             transforms = [['@gpupgradeschemaname@', 'pg_catalog'],
                           ['@gpupgradedatadir@', tmpdir],
@@ -3623,6 +3792,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                          ]
 
             for file in files:
+
                 if file[-3:] == ".in":
                     outfilename = os.path.join(tmpdir, file[:-3])
                 else:
@@ -3667,21 +3837,32 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 dbs[f] = g
 
         # files for upgrading from 3.2 to 3.3
-        files = {}
-        files["33"] = ["loadcat33.source.in",
-                       "upg2_pg_class_toadd.data.in",
-                       "upg2_pg_attribute_toadd.data.in",
-                       "upg2_pg_type_toadd.data.in",
-                       "upg2_pg_index_toadd.data.in",
-                       "upg2_pg_proc_toadd.data",
-                       "upg2_pg_namespace_toadd.data",
-                       "upg2_pg_description_toadd.data"]
-        fs = make_files(files["33"],
-                        '%s/share/postgresql/upgrade/' % self.newhome,
+        files = []
+        if self.upgrade:
+            files = ["loadcat33.source.in",
+                     "upg2_pg_class_toadd.data.in",
+                     "upg2_pg_attribute_toadd.data.in",
+                     "upg2_pg_type_toadd.data.in",
+                     "upg2_pg_index_toadd.data.in",
+                     "upg2_pg_proc_toadd.data",
+                     "upg2_pg_namespace_toadd.data",
+                     "upg2_pg_description_toadd.data"]
+
+            h = self.newhome
+            conv = make_files(['upgrade_conversion.sql.in'],
+                              '%s/share/postgresql/upgrade/' % self.newhome,
+                              self.user)
+        else:
+            # need to use self.oldhome here as downgrade_conversion.sql.in
+            # is only available for 3.3
+            h = self.oldhome
+            conv = make_files(['downgrade_conversion.sql.in'],
+                              '%s/share/postgresql/upgrade/' % h,
+                              self.user)
+        fs = make_files(files,
+                        '%s/share/postgresql/upgrade/' % h,
                         self.user)
-        conv = make_files(['upgrade_conversion.sql.in'],
-                          '%s/share/postgresql/upgrade/' % self.newhome,
-                          self.user)
+
         seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
         for d in datadirs:
             for seg in os.listdir(d):
@@ -3689,15 +3870,20 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     
                     # The directory for this segment
                     dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-                    # fs[0] is loadcat33
-                    transform(dir, dbs, fs[0])
+                    if self.upgrade:
+                        # fs[0] is loadcat33
+                        transform(dir, dbs, fs[0])
+
                     # ao file too
-                    aofile = os.path.join(d, WORKDIR, 'aoseg_rewrite.sql')
-                    transform(dir, dbs, aofile)
-                    # and do the pg_conversion fix
-                    convfile = os.path.join(self.newhome, 'share',
-                                            'postgresql', 'upgrade',
-                                            'upgrade_conversion.sql')
+                    for dboid, dbname in dbs.iteritems():
+                        # no need to rewrite AO in template0
+                        if dbname == 'template0':
+                            continue
+
+                        file = 'aoseg_%s_rewrite.sql' % dbname
+                        aofile = os.path.join(d, WORKDIR, file)
+                        transform_db(dir, dbname, dboid, aofile)
+                        
                     transform(dir, dbs, conv[0])
 
     def SetCatVersion(self, frm, to):
@@ -3710,6 +3896,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
              "3.2": "200808253",
              "3.3": "200903161"}
         
+        self.CheckDown()
+
         def release2catverno(rno):
              if not rno in releases.keys():
                   raise Exception("unknown version %s" % rno)
@@ -3743,8 +3931,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         
         def setcatversion(datadir, frm, to):
             '''
-            Set catalog version to 'to' from 'frm'. Check that the system is down
-            and actually set to the previous version.
+            Set catalog version to 'to' from 'frm'. Make sure the database
+            is already set to frm.
             '''
             (ver, state) = get_control_data(datadir)
         
@@ -3752,11 +3940,22 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             if ver != frmcatverno:
                  raise Exception("Expected version %s but found %s" % (frmcatverno, ver))
         
-            cmd = ['%s/bin/lib/gpmodcatversion' % self.newhome, '--catversion', to, datadir]
+            # gpmodcatversion is only in the 3.3 env so we must use that
+            if self.upgrade:
+                e = self.newenv
+                h = self.newhome
+            else:
+                e = self.oldenv
+                h = self.oldhome
+
+            cmd = ['%s/bin/lib/gpmodcatversion' % h,
+                   '--catversion', to, datadir]
             p = subprocess.Popen(cmd,
-                                 shell=False, close_fds=True,
-                                 env=self.newenv,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                 shell=False,
+                                 close_fds=True,
+                                 env=e,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
             result = p.communicate()
             if p.returncode != 0:
                 raise Exception("could not update catalog to %s" % to)
@@ -3775,7 +3974,55 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             for seg in os.listdir(d):
                 if seg_re.match(seg):
                     dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-                    setcatversion(dir, '3.2', '3.3')
+                    setcatversion(dir, frm, to)
+
+    def GetHighestOid(self):
+        '''
+        Get the highest OID declared on the node, according to the control
+        file. We use this number to reset all the control files in the 
+        new cluster we're building, so that all the new objects will be
+        added with the same OID. Since we're not dispatching the SQL to create
+        the objects, this is our only way to synchronise the OIDs.
+
+        Database must be down.
+        '''
+        
+        self.CheckDown()
+        self.highestoid = 16384 # first normal OID
+        oids = []
+        if self.cmd == 'MASTER':
+            seg_prefix = self.config['SEG_PREFIX'] + '-'
+            datadirs = [ self.root ]
+            out = self.CallSlaves('GETHIGHESTOID', self.config['SEG_PREFIX'])
+            for l in out.splitlines():
+                a = l.split()
+                if a[1] == "highestoid":
+                    oids.append(int(a[2]))
+        else:
+            datadirs = self.datadirs
+            seg_prefix = self.option
+
+        seg_re = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)
+        for d in datadirs:
+            for seg in os.listdir(d):
+                if seg_re.match(seg):
+                    cmd = "pg_controldata %s" % os.path.join(d, seg)
+                    out = self.RunCmd(cmd, env=self.oldenv)
+                    for l in out.splitlines():
+                        a = l.split(':')
+                        if a[0] == "Latest checkpoint's NextOID":
+                            oids.append(int(a[1]))
+
+        self.Log('DEBUG', "oids: %s" % str(oids))
+        for o in oids:
+            # XXX: what about overflow ?
+            if o > self.highestoid:
+                self.highestoid = o
+
+        if self.cmd != 'MASTER':
+            print self.highestoid
+
+        self.Log('DEBUG', "highest oid found: %d" % self.highestoid)
 
 #============================================================
 
@@ -3905,7 +4152,7 @@ try:
         u.dbup = None
         
         # different path for 3.1 to 3.2
-        if u.oldversion[:3] == "3.1":
+        if u.method == "dumprestore":
 	        # Write configuration files for new db
 	        # + Requires configuration info collected in ExtractInfo
 	        # + Requires working directory on master node
@@ -4035,7 +4282,9 @@ try:
 	            u.SetState('RESTORE_STATISTICS')
 	            u.Shutdown()
 
-        else: # 3.2 -> 3.3
+        else:
+            # transform case
+
             u.Startup(u.oldenv)
 
             # get the set of databases
@@ -4044,15 +4293,6 @@ try:
             dbs = {}
             for d in db:
                 dbs[str(d['oid'])] = d['datname']
-
-            # make sure all segs are at the same OID
-            id = 'gpload%s_%d'%(str(time()).replace('.','_'),os.getpid())
-            u.Update('''
-                create table gpmigrator_%s (i int) distributed by (i);''' % id
-                )
-            u.Update('''
-                drop table gpmigrator_%s;''' % id
-                )
 
             # business end
             if 'VALIDATION' not in current_state:
@@ -4073,12 +4313,18 @@ try:
             # All information collected, shutdown old database
             u.Shutdown()
 
+            if 'GETHIGHESTOID' not in current_state:
+                u.GetHighestOid()
+                u.SetState('GETHIGHESTOID')
+
             if 'BUILDSKEL' not in current_state:
                 u.BuildSkel()
                 u.SetState('BUILDSKEL')
 
+            sov = u.oldversion[:3]
+            snv = u.newversion[:3]
             if 'SETCATVERSION' not in current_state:
-                u.SetCatVersion('3.2', '3.3')
+                u.SetCatVersion(sov, snv)
                 u.SetState('SETCATVERSION')
 
             if 'TRANSFORMCAT' not in current_state:
@@ -4243,11 +4489,13 @@ instructions to complete environment configuration
     elif u.cmd == 'BUILDSKEL':
         u.BuildSkel()
     elif u.cmd == 'SETCATVERSION':
-        u.SetCatVersion('3.2', '3.3')
+        u.SetCatVersion(u.oldversion[:3], u.newversion[:3])
     elif u.cmd == 'TRANSFORMCAT':
         u.TransformDbs(u.option2)
     elif u.cmd == 'EXTRACTAOSEGS':
         u.ExtractAosegs()
+    elif u.cmd == 'GETHIGHESTOID':
+        u.GetHighestOid()
     else:
         raise Exception('Unknown cmd: ' + str(u.cmd))
 
