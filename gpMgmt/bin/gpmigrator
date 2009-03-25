@@ -325,7 +325,7 @@ class GPUpgrade:
             self.config['SEG_PREFIX'] = masterdir[:-2]
 
             # Setup the pool of worker threads
-            self.threadpool = Harness(self, PARALLELISM)
+            #self.threadpool = Harness(self, PARALLELISM)
 
         else:
             self.oldenv = self.SetupEnv(self.oldhome, None)
@@ -471,10 +471,7 @@ class GPUpgrade:
                          % self.masterdir)
                 raise UpgradeError('Initialization failed')
             if not os.path.isabs(self.masterdir):
-                self.Log('FATAL', ' directory must be absolute: ' +
-                         self.masterdir)
-                raise UpgradeError('Initialization failed')
-
+                self.masterdir = os.path.abspath(self.masterdir)
             if not os.path.exists(self.oldhome):
                 self.Log('FATAL', ' directory not found: ' + self.oldhome)
                 raise UpgradeError('Initialization failed')
@@ -482,13 +479,9 @@ class GPUpgrade:
                 self.Log('FATAL', ' directory not found: ' + self.newhome)
                 raise UpgradeError('Initialization failed')
             if not os.path.isabs(self.oldhome):
-                self.Log('FATAL', ' directory must be absolute: ' +
-                         self.oldhome)
-                raise UpgradeError('Initialization failed')
+                self.oldhome = os.path.abspath(self.oldhome)
             if not os.path.isabs(self.newhome):
-                self.Log('FATAL', ' directory must be absolute: ' +
-                         self.newhome)
-                raise UpgradeError('Initialization failed')
+                self.newhome = os.path.abspath(self.newhome)
 
             if options.prepare:
                 self.prepare = True
@@ -2697,6 +2690,9 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 cmd += ' -D %s' % datadir
                 cmd += ' -G %s' % self.newenv['GPHOME']
 
+                if not self.threadpool
+                    self.threadpool = Harness(PARALLELISM)
+
                 self.threadpool.localCommand(cmd)
 
                 # And copy the target mapping file as well
@@ -4283,6 +4279,9 @@ try:
 
         else:
             # transform case
+            if not u.execute:
+                u.Log('INFO', 'Preparation Done')
+                sys.exit(0)
 
             u.Startup(u.oldenv)
 
