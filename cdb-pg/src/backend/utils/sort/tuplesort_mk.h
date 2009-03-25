@@ -87,7 +87,7 @@ static inline void mke_set_not_null(MKEntry *e)
 }
 static inline bool mke_is_null(MKEntry *e)
 {
-    return (e->compflags & MKE_CF_NULLBITS) == MKE_CF_NotNull;
+    return (e->compflags & MKE_CF_NULLBITS) != MKE_CF_NotNull;
 }
 static inline int32 mke_get_nullbits(MKEntry *e)
 {
