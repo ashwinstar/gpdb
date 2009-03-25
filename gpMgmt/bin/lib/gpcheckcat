@@ -732,24 +732,28 @@ def row2str(row):
 	return strout
 
 def crossDbCheck():
-        print """
+    print """
 -------------------------------------------
 Performing cross database consistency tests
 -------------------------------------------
 """
 
-        # If we have specified "-o" then we want all the OIDs to be idenitical between
-        # segments, otherwise the queries should all be oid/relfile neutral
-        if GV.opt['-o'] == True:
-            oids       = ', x.oid'
-            nspexclude = 'pg_temp.*'
-        else:
-            oids       = ''
-            nspexclude = 'pg_(temp|toast).*'
+    # If we have specified "-o" then we want all the OIDs to be idenitical
+    # between segments, otherwise the queries should all be oid/relfile neutral
+    if GV.opt['-o'] == True:
+        oids       = ', x.oid'
+        nspexclude = 'pg_temp_.*'
+    else:
+        oids       = ''
+        nspexclude = 'pg_(temp_.*|toast)'
 
 	# 1: get catalog from every node
-        catalogs = {
+    # we use copy (...) to stdout here in case the result set is huge (which is
+    # often with pg_attribute). Otherwise, psql caches the whole result set in
+    # its local memory, then copies to stdout.
+    catalogs = {
                 'pg_class':  '''
+copy (
 SELECT nspname, relname, typname, usename, amname, spcname, relnatts,
        relhasindex, relkind, relacl %s
 FROM pg_catalog.pg_class x
@@ -758,11 +762,13 @@ FROM pg_catalog.pg_class x
      LEFT OUTER JOIN pg_catalog.pg_user u on (relowner = u.usesysid)
      LEFT OUTER JOIN pg_catalog.pg_tablespace spc on (reltablespace = spc.oid)
      LEFT OUTER JOIN pg_catalog.pg_am am on (relam = am.oid)
-WHERE (nspname is null or n.nspname !~ '%s')
+WHERE (nspname is null or nspname !~ '%s')
 ORDER BY nspname, relname
+) to stdout delimiter ','
 ''' % (oids, nspexclude),
                 
                 'pg_attribute': '''
+copy (
 SELECT nspname, relname, attnum, attname, typname, attlen, attbyval, attalign,
        attstorage, attndims, attstattarget
 FROM pg_catalog.pg_attribute x
@@ -771,87 +777,91 @@ FROM pg_catalog.pg_attribute x
      LEFT OUTER JOIN pg_catalog.pg_type t on (atttypid = t.oid)
 WHERE (nspname is null or nspname !~ '%s')
 ORDER BY nspname, relname, attnum
+) to stdout delimiter ','
 ''' % (nspexclude),
 
                 'pg_type': '''
+copy (
 SELECT nspname, typname, relname, usename, 
        typlen, typbyval, typtype, typisdefined, typdelim, typelem %s
 FROM pg_catalog.pg_type x
      LEFT OUTER JOIN pg_catalog.pg_namespace n on (typnamespace = n.oid)
      LEFT OUTER JOIN pg_catalog.pg_class c on (typrelid = c.oid)
      LEFT OUTER JOIN pg_catalog.pg_user u on (typowner = usesysid)
-WHERE (nspname is null or n.nspname !~ '%s')
+WHERE (nspname is null or nspname !~ '%s')
 ORDER BY nspname, typname
+) to stdout delimiter ','
 ''' % (oids, nspexclude),
 
                 'pg_namespace': '''
+copy (
 SELECT nspname, usename, nspacl %s
 FROM   pg_catalog.pg_namespace x
        LEFT OUTER JOIN pg_catalog.pg_user u on (nspowner = usesysid)
 ORDER BY nspname
+) to stdout delimiter ','
 ''' % (oids),
                 }
 
-        # Establish a connection to each node
-            
-        # check each catalog in turn
-        for cid in catalogs:
-            error = False
-            print '  - Comparing %s on master to all segments' % cid
+    # Establish a connection to each node
+        
+    # check each catalog in turn
+    error = False
+    for cid in catalogs:
+        print '  - Comparing %s on master to all segments' % cid
 
-            threads = []
-            i = 1
-            for dbid in GV.cfg:
-                thread = sysCatThread(dbid, cid, catalogs[cid])
-                thread.start()
-                veryverbose('[INFO] launching query thread %s for dbid %i' %
-                            (thread.getName(), dbid))
-                threads.append(thread)
+        threads = []
+        i = 1
+        for dbid in GV.cfg:
+            thread = sysCatThread(dbid, cid, catalogs[cid])
+            thread.start()
+            veryverbose('[INFO] launching query thread %s for dbid %i' %
+                        (thread.getName(), dbid))
+            threads.append(thread)
 
-                # we don't want too much going on at once
-                if (i % GV.opt['-B']) == 0:
-                    for th in threads:
-                        veryverbose('[INFO] waiting on thread %s' % 
-                                th.getName())
-                        th.join()
-                    threads = []
-                i += 1
+            # we don't want too much going on at once
+            if (i % GV.opt['-B']) == 0:
+                for th in threads:
+                    veryverbose('[INFO] waiting on thread %s' % 
+                            th.getName())
+                    th.join()
+                threads = []
+            i += 1
 
-            # process leftovers
-            for th in threads:
-                veryverbose('[INFO] waiting on thread %s' % 
-                                th.getName())
-                th.join()
+        # process leftovers
+        for th in threads:
+            veryverbose('[INFO] waiting on thread %s' % 
+                            th.getName())
+            th.join()
 
-            for dbid in GV.cfg:
-                if dbid == 1:
-                    continue    # master segment
+        for dbid in GV.cfg:
+            if dbid == 1:
+                continue    # master segment
 
-                cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat.%s.%s_s' % \
-                    (GV.tmpdir, GV.tmpdir, dbid, cid)
-                pipe = subprocess.Popen(cmd, shell=True,
-                                        stdout=subprocess.PIPE, close_fds=True)
+            cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat.%s.%s_s' % \
+                (GV.tmpdir, GV.tmpdir, dbid, cid)
+            pipe = subprocess.Popen(cmd, shell=True,
+                                    stdout=subprocess.PIPE, close_fds=True)
 
-                lines = ''
-                for line in pipe.stdout:
-                    lines += line
+            lines = ''
+            for line in pipe.stdout:
+                lines += line
 
-                if len(lines) > 0:
-                    print '\n'
-                    print '[ERROR] inconsistency between master and seg %i' % \
-                            dbid
-                    #print "return code %i\n" % pipe.returncode
-                    print lines
-                    error = True
+            if len(lines) > 0:
+                print '\n'
+                print '[ERROR] inconsistency between master and seg %i' % \
+                        dbid
+                #print "return code %i\n" % pipe.returncode
+                print lines
+                error = True
+                GV.retcode = 1
 
-                os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
+            os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
 
-            os.unlink('%s/gpcheckcat_m' % GV.tmpdir)
+        os.unlink('%s/gpcheckcat_m' % GV.tmpdir)
 
-        if error == False:
-            print '[OK]'
-        else:
-            GV.retcode = 1
+    if error == False:
+        print '[OK]'
 
 class fileCheckThread(Thread):
     # connect to host and look for oidlist for each segment on the host
