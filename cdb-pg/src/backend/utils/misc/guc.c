@@ -3713,8 +3713,8 @@ static struct config_string ConfigureNamesString[] =
 	},
 	{
 		{"timezone_abbreviations", PGC_USERSET, CLIENT_CONN_LOCALE,
-			gettext_noop("Selects a file of time zone abbreviations"),
-			NULL,
+			gettext_noop("Selects a file of time zone abbreviations."),
+			NULL
 		},
 		&timezone_abbreviations_string,
 		"UNKNOWN", assign_timezone_abbreviations, NULL
@@ -3733,8 +3733,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"unix_socket_group", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
 			gettext_noop("Sets the owning group of the Unix-domain socket."),
-			gettext_noop("(The owning user of the socket is always the user "
-						 "that starts the server.)")
+			gettext_noop("The owning user of the socket is always the user "
+						 "that starts the server.")
 		},
 		&Unix_socket_group,
 		"", NULL, NULL
@@ -3801,7 +3801,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"hba_file", PGC_POSTMASTER, FILE_LOCATIONS,
-			gettext_noop("Sets the server's \"hba\" configuration file"),
+			gettext_noop("Sets the server's \"hba\" configuration file."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
@@ -3811,7 +3811,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"ident_file", PGC_POSTMASTER, FILE_LOCATIONS,
-			gettext_noop("Sets the server's \"ident\" configuration file"),
+			gettext_noop("Sets the server's \"ident\" configuration file."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},

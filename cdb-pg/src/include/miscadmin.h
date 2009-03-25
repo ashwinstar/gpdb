@@ -24,6 +24,7 @@
 #define MISCADMIN_H
 
 #include <time.h>				/* for time_t */
+#include <pgtime.h>
 
 #define PG_VERSIONSTR "postgres (Greenplum Database) " PG_VERSION "\n"
 
