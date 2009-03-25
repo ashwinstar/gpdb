@@ -1308,6 +1308,7 @@ class GPUpgrade:
                      % (newversion, newbuild))
         else:
             raise UpgradeError('Target not a Greenplum Database: ' + newversion)    
+
         def canonical_ver(v):
             '''
             Make a standard a.b.c.d greenplum database version string.
@@ -1329,6 +1330,15 @@ class GPUpgrade:
             vs = map(str, vs)
             v = '.'.join(vs[:4])
             return v
+
+        def reverse_canon_ver(v):
+            '''
+            Back the other way
+            '''
+            if v == "3.3.99.99": return "main"
+            elif v == "3.2.99.99": return "3.2 dev"
+            elif v == "3.1.99.99": return "3.1 dev"
+            else: return v
 
         oldversion = canonical_ver(oldversion)
         newversion = canonical_ver(newversion)
@@ -1360,6 +1370,12 @@ class GPUpgrade:
             
         checkversion(oldversion)
         checkversion(newversion)
+
+        if newversion == oldversion:
+            raise UpgradeError("Greenplum Database is already version %s"
+                    % reverse_canon_ver(newversion))
+        elif newversion[:3] == oldversion[:3]:
+            raise UpgradeError("Upgrade not needed to go from version %s to version %s" % (reverse_canon_ver(oldversion), reverse_canon_ver(newversion)))
         if newversion == 'main' or newversion >= oldversion:
             self.upgrade = True
             if oldversion[:3] == "3.1" and newversion[:3] != "3.2":
@@ -2690,7 +2706,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 cmd += ' -D %s' % datadir
                 cmd += ' -G %s' % self.newenv['GPHOME']
 
-                if not self.threadpool
+                if not self.threadpool:
                     self.threadpool = Harness(PARALLELISM)
 
                 self.threadpool.localCommand(cmd)
