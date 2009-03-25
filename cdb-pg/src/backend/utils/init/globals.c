@@ -18,6 +18,7 @@
  */
 #include "postgres.h"
 
+#include "pgtime.h"
 #include "libpq/pqcomm.h"
 #include "miscadmin.h"
 #include "storage/backendid.h"
@@ -34,6 +35,7 @@ volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 CritSectionCount = 0;
 
 int			MyProcPid;
+pg_time_t	MyStartTime;
 struct Port *MyProcPort;
 long		MyCancelKey;
 
