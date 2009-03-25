@@ -247,6 +247,8 @@ AutoVacMain(int argc, char *argv[])
 
 	/* reset MyProcPid */
 	MyProcPid = getpid();
+	
+	MyStartTime = time(NULL);
 
 	/* Identify myself via ps */
 	init_ps_display("autovacuum process", "", "", "");

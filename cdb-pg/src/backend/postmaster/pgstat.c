@@ -1669,6 +1669,8 @@ PgstatCollectorMain(int argc, char *argv[])
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	MyProcPid = getpid();		/* reset MyProcPid */
+	
+	MyStartTime = time(NULL);
 
 	/*
 	 * If possible, make this process a group leader, so that the postmaster

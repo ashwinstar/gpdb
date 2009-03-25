@@ -524,6 +524,8 @@ PostmasterMain(int argc, char *argv[])
 	int			i;
 
 	MyProcPid = PostmasterPid = getpid();
+	
+	MyStartTime = time(NULL);
 
 	IsPostmasterEnvironment = true;
 
@@ -3396,7 +3398,7 @@ BackendInitialize(Port *port)
 
 	/* save process start time */
 	port->SessionStartTime = GetCurrentTimestamp();
-	port->session_start = timestamptz_to_time_t(port->SessionStartTime);
+	MyStartTime = timestamptz_to_time_t(port->SessionStartTime);
 
 	/* set these to empty in case they are needed before we set them up */
 	port->remote_host = "";

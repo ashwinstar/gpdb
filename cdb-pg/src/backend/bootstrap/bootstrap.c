@@ -217,6 +217,8 @@ BootstrapMain(int argc, char *argv[])
 	 * initialize globals
 	 */
 	MyProcPid = getpid();
+	
+	MyStartTime = time(NULL);
 
 	/*
 	 * Fire up essential subsystems: error and memory management
