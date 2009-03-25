@@ -183,6 +183,8 @@ typedef struct TupsortMKContext
 
 	/* For comp */
 	SortFunctionKind sortfnkind; 
+    bool  nullfirst;
+
 	int16 attno;
 	int16 sknum;
 
@@ -337,8 +339,7 @@ struct Tuplesortstate_mk
 	 */
 	Oid		datumType;
 	Oid		sortOperator;
-	FmgrInfo	sortOpFn;		/* cached lookup data for sortOperator */
-	SortFunctionKind sortFnKind;
+    bool    nullfirst;
 
 	/* we need typelen and byval in order to know how to copy the Datums. */
 	int		datumTypeLen;
@@ -657,6 +658,11 @@ tuplesort_begin_heap_mk(TupleDesc tupDesc,
 		/* select a function that implements the sort operator */
 		SelectSortFunction(sortOperators[i], &sortFunction, &sinfo->sortfnkind);
 
+        if(sinfo->sortfnkind == SORTFUNC_REVLT || sinfo->sortfnkind == SORTFUNC_REVCMP)
+            sinfo->nullfirst = true;
+        else
+            sinfo->nullfirst = false;
+
 		/*
 		 * We needn't fill in sk_strategy or sk_subtype since these scankeys
 		 * will never be passed to an index.
@@ -804,7 +810,10 @@ tuplesort_begin_index_mk(Relation indexRel,
 		{
 			TupsortMKContext *sinfo = (TupsortMKContext *) mk_get_ctxt(&state->mkctxt, i);
 			ScanKey sk = state->cmpScanKey + i;
+
 			sinfo->sortfnkind = SORTFUNC_CMP;
+            sinfo->nullfirst = false;
+
 			sinfo->attno = i+1;
 			sinfo->sknum = i;
 			sinfo->tsstate = state;
@@ -887,6 +896,12 @@ tuplesort_begin_datum_mk(Oid datumType,
 		TupsortMKContext *sinfo = (TupsortMKContext *) mk_get_ctxt(&state->mkctxt, 0);
 		SelectSortFunction(sortOperator, &sortFunction, &sinfo->sortfnkind);
 		fmgr_info(sortFunction, &state->cmpScanKey->sk_func); 
+
+        if(sinfo->sortfnkind == SORTFUNC_REVLT || sinfo->sortfnkind == SORTFUNC_REVCMP)
+            sinfo->nullfirst = true;
+        else
+            sinfo->nullfirst = false;
+        state->nullfirst = sinfo->nullfirst;
 
 		sinfo->mk_common.typByVal = typbyval;
 		sinfo->mk_common.typLen = typlen;
@@ -991,7 +1006,7 @@ tuplesort_puttupleslot_mk(Tuplesortstate_mk *state, TupleTableSlot *slot)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 	MKEntry e;
-        mke_blank(&e);
+    mke_blank(&e);
 
 	COPYTUP(state, &e, (void *) slot); 
 	puttuple_common(state, &e);
@@ -1009,7 +1024,7 @@ tuplesort_putindextuple_mk(Tuplesortstate_mk *state, IndexTuple tuple)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 	MKEntry e;
-        mke_blank(&e);
+    mke_blank(&e);
 
 	COPYTUP(state, &e, (void *) tuple); 
 	puttuple_common(state, &e); 
@@ -1027,7 +1042,7 @@ tuplesort_putdatum_mk(Tuplesortstate_mk *state, Datum val, bool isNull)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
 	MKEntry e;
-        mke_blank(&e);
+    mke_blank(&e);
 
 	/*
 	 * If it's a pass-by-reference value, copy it into memory we control, and
@@ -1037,10 +1052,11 @@ tuplesort_putdatum_mk(Tuplesortstate_mk *state, Datum val, bool isNull)
 	{
 		e.d = val;
 		if(isNull)
-			mke_set_null(&e); 
+			mke_set_null(&e, state->nullfirst); 
 	}
 	else
 	{
+        mke_set_not_null(&e);
 		e.d = datumCopy(val, false, state->datumTypeLen);
 		USEMEM(state, GetMemoryChunkSpace(DatumGetPointer(e.d))); 
 	}
@@ -1362,7 +1378,7 @@ tuplesort_gettupleslot_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
 	bool should_free = false;
 	bool fOK;
 
-        mke_set_empty(&e); 
+    mke_set_empty(&e); 
 	fOK = tuplesort_gettuple_common_pos(state, pos, forward, &e, &should_free);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -2049,8 +2065,8 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
 		Assert(!mkheap_empty(state->mkheap)); 
 		lt = LogicalTapeSetGetTape(state->tapeset, state->tp_tapenum[state->destTape]);
 
-                mke_set_empty(&e);
-                mke_set_run(&e, state->currentRun+1);
+        mke_set_empty(&e);
+        mke_set_run(&e, state->currentRun+1);
 		mkheap_puget(state->mkheap, &e);
 
 		Assert(!mke_is_empty(&e));
@@ -2567,9 +2583,11 @@ readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e,
 	MemSet(e, 0, sizeof(MKEntry));
 
 	if (tuplen == 0)
-		mke_set_null(e); 
+		mke_set_null(e, state->nullfirst); 
 	else if (state->datumTypeByVal)
 	{
+        mke_set_not_null(e);
+
 		Assert(tuplen == sizeof(Datum));
 		readSize = LogicalTapeRead(state->tapeset, lt, (void *)&e->d, tuplen);
 
@@ -2585,6 +2603,7 @@ readtup_datum(Tuplesortstate_mk *state, TuplesortPos_mk *pos, MKEntry *e,
 		if(readSize != tuplen)
 			elog(ERROR, "unexpected end of data");
 
+        mke_set_not_null(e);
 		e->d = PointerGetDatum(raddr); 
 		USEMEM(state, GetMemoryChunkSpace(raddr));
 	}
@@ -2618,8 +2637,8 @@ static int tupsort_compare_datum(MKEntry *v1, MKEntry *v2, void *ctxt)
 	TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
 	ScanKey sk = mkctxt->tsstate->cmpScanKey + mkctxt->sknum;
 
-        Assert(!mke_is_null(v1));
-        Assert(!mke_is_null(v2));
+    Assert(!mke_is_null(v1));
+    Assert(!mke_is_null(v2));
 
 	return inlineApplySortFunction(&sk->sk_func, mkctxt->sortfnkind, 
                         v1->d, false,
@@ -2646,7 +2665,7 @@ static void tupsort_cpfr(MKEntry *dst, MKEntry *src, void *ctxt)
 		pfree(DatumGetPointer(dst->d));
 	}
 
-        mke_clear_refc_copied(dst);
+    mke_clear_refc_copied(dst);
 
 	if(src)
 	{
@@ -2686,68 +2705,68 @@ static int tupsort_compare_int32(MKEntry *v1, MKEntry *v2, void *ctxt)
 	int result = 0;
 	TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
 
-        int32 i1 = DatumGetInt32(v1->d);
-        int32 i2 = DatumGetInt32(v2->d);
+    int32 i1 = DatumGetInt32(v1->d);
+    int32 i2 = DatumGetInt32(v2->d);
 
-        Assert(!mke_is_null(v1));
-        Assert(!mke_is_null(v2));
+    Assert(!mke_is_null(v1));
+    Assert(!mke_is_null(v2));
 
-        result = (i1 < i2) ? -1 : ((i1 == i2) ? 0 : 1);
+    result = (i1 < i2) ? -1 : ((i1 == i2) ? 0 : 1);
 
 	return (mkctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
 }
 
 static int tupsort_compare_char(MKEntry *v1, MKEntry *v2, void *ctxt)
 {
-	int result = 0;
-	TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
+    int result = 0;
+    TupsortMKContext *mkctxt = (TupsortMKContext *) ctxt;
 
-        refcnt_locale_str *p1 = (refcnt_locale_str *) DatumGetPointer(v1->d);
-        refcnt_locale_str *p2 = (refcnt_locale_str *) DatumGetPointer(v2->d);
+    refcnt_locale_str *p1 = (refcnt_locale_str *) DatumGetPointer(v1->d);
+    refcnt_locale_str *p2 = (refcnt_locale_str *) DatumGetPointer(v2->d);
 
-        Assert(!mke_is_null(v1));
-        Assert(!mke_is_null(v2));
+    Assert(!mke_is_null(v1));
+    Assert(!mke_is_null(v2));
 
-	Assert(!lc_collate_is_c());
-	Assert(mkctxt->sortfnkind == SORTFUNC_CMP || mkctxt->sortfnkind == SORTFUNC_REVCMP);
+    Assert(!lc_collate_is_c());
+    Assert(mkctxt->sortfnkind == SORTFUNC_CMP || mkctxt->sortfnkind == SORTFUNC_REVCMP);
 
-        Assert(p1->ref > 0 && p2->ref > 0);
+    Assert(p1->ref > 0 && p2->ref > 0);
 
-        if(p1 == p2)
+    if(p1 == p2)
+    {
+        Assert(p1->ref >= 2);
+        result = 0;
+    }
+    else
+    {
+        result = strcmp(p1->data + p1->xfrm_pos, p2->data + p2->xfrm_pos); 
+
+        /* 
+         * See varstr_cmp for comment on comparing str with locale.
+         * Essentially, for some locale, strcoll may return eq even if
+         * original str are different.  
+         */
+        if(result == 0)
+            result = strcmp(p1->data, p2->data); 
+
+        if(result == 0)
         {
-                Assert(p1->ref >= 2);
-                result = 0;
+            if(p1->ref >= p2->ref)
+            {
+                v2->d = v1->d;
+                tupsort_refcnt(p1, 1); 
+                tupsort_refcnt(p2, -1); 
+            }
+            else
+            {
+                v1->d = v2->d;
+                tupsort_refcnt(p2, 1);
+                tupsort_refcnt(p1, -1);
+            }
         }
-        else
-        {
-                result = strcmp(p1->data + p1->xfrm_pos, p2->data + p2->xfrm_pos); 
+    }
 
-                /* 
-                 * See varstr_cmp for comment on comparing str with locale.
-                 * Essentially, for some locale, strcoll may return eq even if
-                 * original str are different.  
-                 */
-                if(result == 0)
-                        result = strcmp(p1->data, p2->data); 
-
-                if(result == 0)
-                {
-                        if(p1->ref >= p2->ref)
-                        {
-                                v2->d = v1->d;
-                                tupsort_refcnt(p1, 1); 
-                                tupsort_refcnt(p2, -1); 
-                        }
-                        else
-                        {
-                                v1->d = v2->d;
-                                tupsort_refcnt(p2, 1);
-                                tupsort_refcnt(p1, -1);
-                        }
-                }
-        }
-
-	return (mkctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
+    return (mkctxt->sortfnkind == SORTFUNC_CMP) ? result : -result;
 }
 
 static void tupsort_prepare_mtup(MKEntry *a, void *ctxt)
@@ -2767,9 +2786,9 @@ static void tupsort_prepare_mtup(MKEntry *a, void *ctxt)
 			);
 
 	if(!isnull)
-		mke_clear_null(a);
+		mke_set_not_null(a); 
 	else 
-		mke_set_null(a);
+		mke_set_null(a, mkctxt->nullfirst);
 }
 
 static void tupsort_prepare_itup(MKEntry *a, void *ctxt)
@@ -2790,9 +2809,9 @@ static void tupsort_prepare_itup(MKEntry *a, void *ctxt)
 				);
 
 	if(!isnull)
-		mke_clear_null(a); 
+		mke_set_not_null(a); 
 	else 
-		mke_set_null(a);
+		mke_set_null(a, mkctxt->nullfirst);
 }
 
 /* "True" length (not counting trailing blanks) of a BpChar */

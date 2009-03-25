@@ -12,8 +12,11 @@
 /* mk_qsort: multi level key quick sort */
 
 /* flags, involved in cmp */
-#define MKE_CF_NullLast        1                      /* Null is bigger than non null */ 
-#define MKE_CF_NullFirst       2                      /* Null first, unused for now   */
+#define MKE_CF_NullFirst       1                      /* Null is smaller than non null */ 
+#define MKE_CF_NotNull         2
+#define MKE_CF_NullLast        3                      /* Null is bigger than non null  */
+#define MKE_CF_NULLBITS        3                      
+
 #define MKE_CF_Lv              0xFFFC                 /* Runs use 14 bits             */
 #define MKE_CF_Run             0x3FFF0000             /* Lv use 14 bits               */
 #define MKE_CF_Empty           0x40000000             /* Empty use 1 bit              */
@@ -39,16 +42,16 @@
  */
 typedef struct MKEntry 
 {
-        int32 compflags;
-        int32 flags;
+    int32 compflags;
+    int32 flags;
 	Datum d;
 	void *ptr;
 } MKEntry;
 
 static inline void mke_blank(MKEntry *e)
 {
-        e->compflags = (MKE_MAX_LV << MKE_LvShift);
-        e->flags = 0;
+    e->compflags = (MKE_MAX_LV << MKE_LvShift);
+    e->flags = 0;
 }
 
 static inline void i_clear_flag(int32 *p, int32 flag)
@@ -69,17 +72,26 @@ static inline int32 i_get_flag(int32 *p, int32 flag, int32 shiftsz)
 }
 
 /* Getter, Setter */
-static inline void mke_set_null(MKEntry *e)
+static inline void mke_set_null(MKEntry *e, bool nullfirst)
 {
+    i_clear_flag(&e->compflags, MKE_CF_NULLBITS);
+    if (nullfirst)
+        i_set_flag(&e->compflags, MKE_CF_NullFirst);
+    else
         i_set_flag(&e->compflags, MKE_CF_NullLast);
 }
-static inline void mke_clear_null(MKEntry *e)
+static inline void mke_set_not_null(MKEntry *e)
 {
-        i_clear_flag(&e->compflags, MKE_CF_NullLast);
+    i_clear_flag(&e->compflags, MKE_CF_NULLBITS);
+    i_set_flag(&e->compflags, MKE_CF_NotNull);
 }
 static inline bool mke_is_null(MKEntry *e)
 {
-        return i_test_flag(&e->compflags, MKE_CF_NullLast);
+    return (e->compflags & MKE_CF_NULLBITS) == MKE_CF_NotNull;
+}
+static inline int32 mke_get_nullbits(MKEntry *e)
+{
+    return (e->compflags & MKE_CF_NULLBITS);
 }
 
 static inline int32 mke_get_run(MKEntry *e)
@@ -106,7 +118,7 @@ static inline void mke_set_lv(MKEntry *e, int32 lv)
 
 static inline void mke_set_empty(MKEntry *e)
 {
-        e->compflags = MKE_CF_Empty + MKE_CF_NullLast;
+        e->compflags = MKE_CF_Empty; 
         e->flags = 0;
 }
 static inline bool mke_is_empty(MKEntry *e)

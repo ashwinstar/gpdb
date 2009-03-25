@@ -295,7 +295,10 @@ static int mkqsort_comp_entry_all_lv(MKEntry *a, MKEntry *b, MKContext *mkctxt)
 	{
 		MKPrepare prep = mkctxt->prep[i];
 		MKCompare comp = mkctxt->comp[i];
+
 		void *ctxt = mk_get_ctxt(mkctxt, i);
+        int32 nf1, nf2;
+
 
 		if(prep)
 		{
@@ -303,18 +306,21 @@ static int mkqsort_comp_entry_all_lv(MKEntry *a, MKEntry *b, MKContext *mkctxt)
 			(prep)(&bb, ctxt);
 		}
 
-                if (mke_is_null(&aa) && mke_is_null(&bb))
-                        continue;
+        nf1 = mke_get_nullbits(&aa);
+        nf2 = mke_get_nullbits(&bb);
 
-                if (mke_is_null(&aa))
-                        return 1;
+        c = nf1 - nf2;
+        if (c!=0)
+            return c;
 
-                if (mke_is_null(&bb))
-                        return -1;
+        if (!mke_is_null(&aa))
+        {
+            Assert(!mke_is_null(&bb));
+            c = (comp)(&aa, &bb, ctxt);
 
-                c = (comp)(&aa, &bb, ctxt);
-		if(c!=0)
-			return c;
+            if (c!=0)
+                return c;
+        }
 	}
 
 	return 0;

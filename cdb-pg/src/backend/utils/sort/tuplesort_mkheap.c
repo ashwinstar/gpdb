@@ -78,17 +78,17 @@ static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
 {
 	int32 ret = a->compflags - b->compflags;
 
-        bool needcmp = (ret == 0);
-        needcmp = needcmp && (!mke_is_null(a));
-        if (needcmp)
-        {
-                int32 lv = mke_get_lv(a);
-                int32 limitmask = heap->mkctxt->limitmask;
-                ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
-                ret = (ret & (~limitmask)) + ((-ret) & limitmask);
-        }
+    bool needcmp = (ret == 0);
+    needcmp = needcmp && (!mke_is_null(a));
+    if (needcmp)
+    {
+        int32 lv = mke_get_lv(a);
+        int32 limitmask = heap->mkctxt->limitmask;
+        ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
+        ret = (ret & (~limitmask)) + ((-ret) & limitmask);
+    }
 
-        return ret;
+    return ret;
 }
 
 #ifdef USE_ASSERT_CHECKING
