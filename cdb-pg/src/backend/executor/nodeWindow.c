@@ -2789,7 +2789,7 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 
 			lvl->default_frame = true;
 
-			frame = key->frame = (WindowFrame *)makeNode(WindowFrame);
+			frame = (WindowFrame *)makeNode(WindowFrame);
 			frame->trail = (WindowFrameEdge *)makeNode(WindowFrameEdge);
 			frame->lead = (WindowFrameEdge *)makeNode(WindowFrameEdge);
 
