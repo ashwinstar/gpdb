@@ -87,15 +87,15 @@
 
 #authentication_timeout = 1min		# 1s-600s
 #ssl = off				# (change requires restart)
+#ssl_ciphers = 'ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH'	# allowed SSL ciphers
+					# (change requires restart)
 #password_encryption = on
 #db_user_namespace = off
 
-# Kerberos
-#krb_server_keyfile = ''		# (change requires restart)
-#krb_srvname = 'postgres'		# (change requires restart)
-#krb_server_hostname = ''		# empty string matches any keytab entry
-					# (change requires restart)
-#krb_caseins_users = off		# (change requires restart)
+# Kerberos and GSSAPI
+#krb_server_keyfile = ''
+#krb_srvname = 'postgres'		# (Kerberos only)
+#krb_caseins_users = off
 
 # - TCP Keepalives -
 # see 'man 7 tcp' for details
