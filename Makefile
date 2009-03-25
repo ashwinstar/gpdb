@@ -469,8 +469,11 @@ copylibs : thirdparty-dist
 	    $(call libcopy,`dirname $$lib`,`basename $$lib`,$(INSTLOC)/lib); \
 	done
 ifeq "$(AUTH)" "true"
+	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
 	mkdir -p $(INSTLOC)/include
 	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
+	mkdir -p $(INSTLOC)/etc
+	cp -rp $(CURDIR)/openssl/ssl/openssl.cnf $(INSTLOC)/etc/
 endif
 
 greenplum_path:
