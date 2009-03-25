@@ -73,6 +73,7 @@
 
 #include "cdb/cdbvars.h"  /*Gp_segment */
 #include "utils/ps_status.h"    /* get_ps_display_username() */
+#include "pgtime.h"
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
 #include "utils/debugbreak.h"
@@ -126,6 +127,9 @@ static int	errordata_stack_depth = -1; /* index of topmost active frame */
 
 static int	recursion_depth = 0;	/* to detect actual recursion */
 
+#define FORMATTED_TS_LEN 128
+static char formatted_start_time[FORMATTED_TS_LEN];
+//static char formatted_log_time[FORMATTED_TS_LEN];
 
 /* Macro for checking errordata_stack_depth is reasonable */
 #define CHECK_STACK_DEPTH() \
@@ -149,6 +153,9 @@ static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
 static void write_pipe_chunks(int fd, char *data, int len);
 static void elog_debug_linger(ErrorData *edata);
+//static void setup_formatted_log_time(void);
+static void setup_formatted_start_time(void);
+
 
 #if (!defined(__darwin__)) && (!defined(pg_on_solaris))
 #if defined(__GLIBC__)
@@ -1719,6 +1726,64 @@ write_eventlog(int level, const char *line)
 }
 #endif   /* WIN32 */
 
+/*
+ * setup formatted_log_time, for consistent times between CSV and regular logs
+ */
+#if 0
+static void
+setup_formatted_log_time(void)
+{
+	struct timeval tv;
+	pg_time_t	stamp_time;
+	pg_tz	   *tz;
+	char		msbuf[8];
+
+	gettimeofday(&tv, NULL);
+	stamp_time = (pg_time_t) tv.tv_sec;
+
+	/*
+	 * Normally we print log timestamps in log_timezone, but during startup we
+	 * could get here before that's set. If so, fall back to gmt_timezone
+	 * (which guc.c ensures is set up before Log_line_prefix can become
+	 * nonempty).
+	 */
+	//tz = log_timezone ? log_timezone : gmt_timezone;
+	tz = default_timezone ? default_timezone : global_timezone;
+
+	pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
+				/* leave room for milliseconds... */
+				"%Y-%m-%d %H:%M:%S     %Z",
+				pg_localtime(&stamp_time, tz));
+
+	/* 'paste' milliseconds into place... */
+	sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
+	strncpy(formatted_log_time + 19, msbuf, 4);
+}
+#endif 
+
+/*
+ * setup formatted_start_time
+ */
+static void
+setup_formatted_start_time(void)
+{
+	pg_time_t	stamp_time = (pg_time_t) MyStartTime;
+	pg_tz	   *tz;
+
+	/*
+	 * Normally we print log timestamps in log_timezone, but during startup we
+	 * could get here before that's set. If so, fall back to gmt_timezone
+	 * (which guc.c ensures is set up before Log_line_prefix can become
+	 * nonempty).
+	 */
+	//tz = log_timezone ? log_timezone : gmt_timezone;
+	tz = default_timezone ? default_timezone : global_timezone;
+
+	pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
+				"%Y-%m-%d %H:%M:%S %Z",
+				pg_localtime(&stamp_time, tz));
+}
+
 
 /*
  * CDB: Tidy up the error message
@@ -1877,6 +1942,7 @@ log_line_prefix(StringInfo buf)
 	{
 		log_line_number = 0;
 		log_my_pid = MyProcPid;
+		formatted_start_time[0] = '\0';
 	}
 	log_line_number++;
 
@@ -1922,12 +1988,7 @@ log_line_prefix(StringInfo buf)
 				}
 				break;
 			case 'c':
-				if (MyProcPort)
-				{
-					appendStringInfo(buf, "%lx.%x",
-									 (long) (MyProcPort->session_start),
-									 MyProcPid);
-				}
+				appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
 				break;
 			case 'p':
 				appendStringInfo(buf, "%d", MyProcPid);
@@ -2007,21 +2068,9 @@ log_line_prefix(StringInfo buf)
 				}
 				break;
 			case 's':
-				if (MyProcPort)
-				{
-					char		strfbuf[128];
-					pg_time_t   stamp_time = (pg_time_t)MyProcPort->session_start;
-
-					pg_strftime(strfbuf, sizeof(strfbuf),
-					/* Win32 timezone names are too long so don't print them */
-#ifndef WIN32
-							 "%Y-%m-%d %H:%M:%S %Z",
-#else
-							 "%Y-%m-%d %H:%M:%S",
-#endif
-							 pg_localtime(&stamp_time, default_timezone));
-					appendStringInfoString(buf, strfbuf);
-				}
+				if (formatted_start_time[0] == '\0')
+									setup_formatted_start_time();
+								appendStringInfoString(buf, formatted_start_time);
 				break;
 			case 'i':
 				if (MyProcPort)
