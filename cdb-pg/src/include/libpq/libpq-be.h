@@ -122,7 +122,6 @@ typedef struct Port
 	 */
 	HbaLine	   *hba;
 	char		md5Salt[4];		/* Password salt */
-	char		cryptSalt[2];	/* Password salt */
 
 	/*
 	 * Information that really has no business at all being in struct Port,
@@ -130,7 +129,6 @@ typedef struct Port
 	 * other members of this struct, we may as well keep it here.
 	 */
 	TimestampTz SessionStartTime;		/* backend start time */
-	time_t		session_start;	/* same, in time_t format */
 
 	/*
 	 * TCP keepalive settings.
