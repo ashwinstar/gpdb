@@ -153,15 +153,9 @@ ProcessConfigFile(GucContext context)
 						 &head, &tail))
 		goto cleanup_list;
 
-	/* Check if all options are valid */
-	for (item = head; item; item = item->next)
-	{
-		if (!set_config_option(item->name, item->value, context,
-							   PGC_S_FILE, false, false))
-			goto cleanup_list;
-	}
-
-	/* If we got here all the options checked out okay, so apply them. */
+	/* try to apply options brute-force; depending on the context bad ones will be
+	 * logged accordingly;
+	 */
 	for (item = head; item; item = item->next)
 	{
 		set_config_option(item->name, item->value, context,
@@ -224,6 +218,8 @@ ParseConfigFile(const char *config_file, const char *calling_file,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("could not open configuration file \"%s\": maximum nesting depth exceeded",
 						config_file)));
+
+		Assert(PGC_POSTMASTER != context || IsUnderPostmaster);
 		return false;
 	}
 
@@ -248,6 +244,8 @@ ParseConfigFile(const char *config_file, const char *calling_file,
 				(errcode_for_file_access(),
 				 errmsg("could not open configuration file \"%s\": %m",
 						config_file)));
+
+		Assert(PGC_POSTMASTER != context || IsUnderPostmaster);
 		return false;
 	}
 
@@ -307,6 +305,7 @@ ParseConfigFile(const char *config_file, const char *calling_file,
 								 depth + 1, context, elevel,
 								 head_p, tail_p))
 			{
+				Assert(PGC_POSTMASTER != context || IsUnderPostmaster);
 				pfree(opt_name);
 				pfree(opt_value);
 				OK = false;
@@ -322,16 +321,10 @@ ParseConfigFile(const char *config_file, const char *calling_file,
 			/*
 			 * This variable must be processed first as it controls
 			 * the validity of other variables; so apply immediately.
+			 * This may fail; plow through, all failures get logged properly.
 			 */
-			if (!set_config_option(opt_name, opt_value, context,
-								   PGC_S_FILE, false, true))
-			{
-				pfree(opt_name);
-				pfree(opt_value);
-				/* we assume error message was logged already */
-				OK = false;
-				goto cleanup_exit;
-			}
+			set_config_option(opt_name, opt_value, context,
+								   PGC_S_FILE, false, true);
 			pfree(opt_name);
 			pfree(opt_value);
 		}
@@ -375,6 +368,9 @@ ParseConfigFile(const char *config_file, const char *calling_file,
 cleanup_exit:
 	yy_delete_buffer(lex_buffer);
 	FreeFile(fp);
+	
+	Assert(OK || (PGC_POSTMASTER == context && IsUnderPostmaster));
+
 	return OK;
 }
 

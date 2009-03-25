@@ -5666,13 +5666,13 @@ set_config_option(const char *name, const char *value,
 	int			elevel;
 	bool		makeDefault;
 
-	if (context == PGC_SIGHUP || source == PGC_S_DEFAULT)
+	if (context == PGC_SIGHUP || context == PGC_POSTMASTER || source == PGC_S_DEFAULT)
 	{
 		/*
 		 * To avoid cluttering the log, only the postmaster bleats loudly
 		 * about problems with the config file.
 		 */
-		elevel = IsUnderPostmaster ? DEBUG2 : LOG;
+		elevel = IsUnderPostmaster ? DEBUG2 : WARNING;
 	}
 	else if (source == PGC_S_DATABASE || source == PGC_S_USER)
 		elevel = INFO;
