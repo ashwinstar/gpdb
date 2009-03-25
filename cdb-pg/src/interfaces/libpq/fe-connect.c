@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.356.2.1 2008/10/23 16:17:22 mha Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.372 2009/01/01 17:24:03 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -431,7 +431,6 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->connect_timeout = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "sslmode");
 	conn->sslmode = tmp ? strdup(tmp) : NULL;
-#if 0
 	tmp = conninfo_getval(connOptions, "sslverify");
 	conn->sslverify = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "sslkey");
@@ -442,7 +441,6 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->sslrootcert = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "sslcrl");
 	conn->sslcrl = tmp ? strdup(tmp) : NULL;
-#endif
 #ifdef USE_SSL
 	tmp = conninfo_getval(connOptions, "requiressl");
 	if (tmp && tmp[0] == '1')
@@ -557,7 +555,6 @@ connectOptions2(PGconn *conn)
 	else
 		conn->sslmode = strdup(DefaultSSLMode);
 
-#if 0
 	/*
 	 * Validate sslverify option
 	 */
@@ -574,7 +571,6 @@ connectOptions2(PGconn *conn)
 			return false;
 		}
 	}
-#endif
 
 
 	/*
@@ -2056,6 +2052,16 @@ freePGconn(PGconn *conn)
 		free(conn->pgpass);
 	if (conn->sslmode)
 		free(conn->sslmode);
+	if (conn->sslverify)
+		free(conn->sslverify);
+	if (conn->sslcert)
+		free(conn->sslcert);
+	if (conn->sslkey)
+		free(conn->sslkey);
+	if (conn->sslrootcert)
+		free(conn->sslrootcert);
+	if (conn->sslcrl)
+		free(conn->sslcrl);
 #if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	if (conn->krbsrvname)
 		free(conn->krbsrvname);
