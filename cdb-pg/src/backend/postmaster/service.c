@@ -156,15 +156,22 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 		addr.sin_port = htons(listenerPort);
 		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-		if ((n = connect(serviceClient->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
+		for (;;)
 		{
-			saved_err = errno;
+			if ((n = connect(serviceClient->sockfd, (struct sockaddr *)&addr, sizeof(addr))) < 0)
+			{
+				saved_err = errno;
 
-			serviceClient->sockfd = -1;
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							  errmsg("Could not connect to '%s': %s", 
-									 serviceConfig->title,
-									 strerror(saved_err))));
+				if (errno == EINTR)
+					continue;
+
+				close(serviceClient->sockfd);
+				serviceClient->sockfd = -1;
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Could not connect to '%s': %s", 
+									   serviceConfig->title,
+									   strerror(saved_err))));
+			}
 		}
 		
 		/* make socket non-blocking BEFORE we connect. */
@@ -175,9 +182,9 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 			close(serviceClient->sockfd);
 			serviceClient->sockfd = -1;
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							 errmsg("Could not set '%s' socket to non-blocking mode: %s", 
-							        serviceConfig->title,
-								    strerror(saved_err))));
+							errmsg("Could not set '%s' socket to non-blocking mode: %s", 
+								   serviceConfig->title,
+								   strerror(saved_err))));
 		}
 	
 		result = true;
