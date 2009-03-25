@@ -162,6 +162,8 @@ SysLoggerMain(int argc, char *argv[])
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	MyProcPid = getpid();		/* reset MyProcPid */
+	
+	MyStartTime = time(NULL);
 
 #ifdef EXEC_BACKEND
 	syslogger_parseArgs(argc, argv);
