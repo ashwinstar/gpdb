@@ -1935,7 +1935,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
-		HTAB *aocounts = NULL;
+		HTAB 			   *aopartcounts = NULL;
 				
 		/*
 		 * If we are finishing a query before all the tuples of the query
@@ -1958,15 +1958,17 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
 			estate->es_lastoid =
 				cdbdisp_maxLastOid(pr, estate->es_cur_slice_idx);
-			aocounts = cdbdisp_sumAoTupCount(estate->es_result_partitions, pr);
+			aopartcounts = cdbdisp_sumAoPartTupCount(estate->es_result_partitions, pr);
 		}
 
 		/* sum up rejected rows if any (single row error handling only) */
 		cdbdisp_sumRejectedRows(pr);
 		
 		/* sum up inserted rows into any AO relation */
-		if (aocounts)
+		if (aopartcounts)
 		{
+			/* counts from a partitioned AO table */
+			
 			ListCell *lc;
 
 			foreach(lc, estate->es_result_aosegnos)
@@ -1978,7 +1980,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 				} *entry;
 				bool found;
 
-				entry = hash_search(aocounts,
+				entry = hash_search(aopartcounts,
 									&(map->relid),
 									HASH_ENTER,
 									&found);
@@ -1994,6 +1996,8 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		}
 		else
 		{
+			/* counts from a (non partitioned) AO table */
+			
 			ExecUpdateAOtupCount(estate->es_result_relations, 
 								 estate->es_num_result_relations,
 								 estate->es_processed);

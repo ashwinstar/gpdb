@@ -264,9 +264,9 @@ int64
 cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex);
 
 HTAB *
-cdbdisp_sumAoTupCount(PartitionNode *parts, CdbDispatchResults *results);
+cdbdisp_sumAoPartTupCount(PartitionNode *parts, CdbDispatchResults *results);
 HTAB *process_aotupcounts(PartitionNode *parts, HTAB *ht, 
-					      void *aotupcounts,
+						  void *aotupcounts,
 						  int naotupcounts);
 
 /*

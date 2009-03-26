@@ -1838,8 +1838,13 @@ SendAOTupCounts(EState *estate)
 			resultRelInfo++;
 		}
 
+
 		if (aocount)
 		{
+			if (Debug_appendonly_print_insert)
+				ereport(LOG,(errmsg("QE sending tuple counts of %d partitioned "
+									"AO relations... ", aocount)));
+
 			pq_beginmessage(&buf, 'o');
 			pq_sendint(&buf, aocount, 4);
 
@@ -1848,11 +1853,16 @@ SendAOTupCounts(EState *estate)
 			{
 				if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
 				{
-					pq_sendint(&buf, 
-							   RelationGetRelid(resultRelInfo->ri_RelationDesc),
-							   4);
-					pq_sendint64(&buf,
-								 resultRelInfo->ri_aoprocessed);
+					Oid relid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
+					uint64 tupcount = resultRelInfo->ri_aoprocessed;
+					
+					pq_sendint(&buf, relid, 4);
+					pq_sendint64(&buf, tupcount);
+					
+					if (Debug_appendonly_print_insert)
+						ereport(LOG,(errmsg("sent tupcount " INT64_FORMAT " for "
+											"relation %d", tupcount, relid)));
+
 				}
 				resultRelInfo++;
 			}

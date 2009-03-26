@@ -957,6 +957,11 @@ process_aotupcounts(PartitionNode *parts, HTAB *ht,
 					void *aotupcounts, int naotupcounts)
 {
 	PQaoRelTupCount *ao = (PQaoRelTupCount *)aotupcounts;
+	
+	if (Debug_appendonly_print_insert)
+		ereport(LOG,(errmsg("found %d AO tuple counts to process",
+							naotupcounts)));
+
 	if (naotupcounts)
 	{
 		int j;
@@ -993,17 +998,26 @@ process_aotupcounts(PartitionNode *parts, HTAB *ht,
 					entry->tupcount += ao->tupcount;
 				else
 					entry->tupcount = ao->tupcount;
+								
+				if (Debug_appendonly_print_insert)
+					ereport(LOG,(errmsg("processed AO tuple counts for partitioned "
+										"relation %d. found total " INT64_FORMAT 
+										"tuples", ao->aorelid, entry->tupcount)));
 			}
 			ao++;
 		}
 	}
 
+
 	return ht;
 }
 
+/*
+ * sum tuple counts that were added into a partitioned AO table
+ */
 HTAB *
-cdbdisp_sumAoTupCount(PartitionNode *parts,
-					  CdbDispatchResults *results)
+cdbdisp_sumAoPartTupCount(PartitionNode *parts,
+						  CdbDispatchResults *results)
 {
 	int i;
 	HTAB *ht = NULL;
