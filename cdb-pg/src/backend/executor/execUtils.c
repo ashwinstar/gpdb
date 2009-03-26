@@ -1982,7 +1982,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 
 				entry = hash_search(aopartcounts,
 									&(map->relid),
-									HASH_ENTER,
+									HASH_FIND,
 									&found);
 
 				if (found)
