@@ -62,7 +62,7 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
 
                 [ QUOTE [ AS ] '<replaceable class="parameter">quote</replaceable>' ] 
 
-                [ ESCAPE [ AS ] '<replaceable class="parameter">escape</replaceable>' ]
+                [ ESCAPE [ AS ] '<replaceable class="parameter">escape</replaceable>' | '<replaceable class="parameter">OFF</replaceable>' ]
 
                 [ FORCE NOT NULL <replaceable class="parameter">column</replaceable> [, ...] ]
 				
@@ -92,7 +92,7 @@ COPY { <replaceable class="parameter">tablename</replaceable> [ ( <replaceable c
 
                 [ QUOTE [ AS ] '<replaceable class="parameter">quote</replaceable>' ] 
 
-                [ ESCAPE [ AS ] '<replaceable class="parameter">escape</replaceable>' ]
+                [ ESCAPE [ AS ] '<replaceable class="parameter">escape</replaceable>' | '<replaceable class="parameter">OFF</replaceable>' ]
 
                 [ FORCE QUOTE <replaceable class="parameter">column</replaceable> [, ...] ]
 
