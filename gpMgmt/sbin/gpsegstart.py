@@ -81,7 +81,16 @@ class GpSegStart():
                 else:
                     if not os.path.exists(dir + '/pg_log'):
                         os.mkdir(dir + '/pg_log')                  
-
+            
+                if os.path.exists(dir + '/postmaster.pid'):
+                     logger.warning("postmaster.pid file exists, checking if recovery startup required")
+                     res = self._recovery_startup(dir)
+                     if res:
+                         results.append(SegStartStatus(dir,False,res))
+                         self.dblist.remove(dir)
+                         failures=True
+                         
+        
             
         logger.info("Starting segments...")       
         for dir in self.dblist:
@@ -138,8 +147,44 @@ class GpSegStart():
         logger.info(status)
         
         return failures
-            
+    
+    
+    ######
+    def _recovery_startup(self,datadir):
+        """ investigate a segment that may still be running """
+        pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")        
+        port = pgconf_dict.int('port')  
         
+        lockfile="/tmp/.s.PGSQL.%s" % port
+        tmpfile_exists = os.path.exists(lockfile)
+        
+        netstat_port_active = unix.PgPortIsActive.local('check netstat for segment port',
+                                                        lockfile, port)
+        
+        if tmpfile_exists and netstat_port_active:
+            logger.info("Have lock file %s and a process running on port %s" % (lockfile,port))
+            return "segment instance process running"
+        elif tmpfile_exists and not netstat_port_active:
+            logger.info("Have lock file %s but no process running on port %s" % (lockfile,port))            
+        elif not tmpfile_exists and netstat_port_active:
+            logger.info("No lock file %s but a process running on port %s" % (lockfile,port))
+            pass
+        elif not tmpfile_exists and not netstat_port_active:
+            logger.info("No socket connection or lock file in /tmp found for port=%s" % port)
+        
+        logger.info("No segment instance process, entering recovery startup mode")
+        
+        if tmpfile_exists:
+            logger.info("Clearing segment instance lock files")        
+            os.remove(lockfile)
+        
+        postmaster_pid_file = "%s/postmaster.pid" % datadir
+        if os.path.exists(postmaster_pid_file): 
+            logger.info("Clearing segment instance pid file")
+            os.remove("%s/postmaster.pid" % datadir)
+    
+        return None
+            
         
 #-------------------------------------------------------------------------
 def parseargs():

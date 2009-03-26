@@ -59,7 +59,7 @@ class MasterStart(Command):
         self.dataDir=dataDir
         self.port=port
         self.utilityMode=utilityMode
-        cmdfrags=["%s $GPHOME/bin/%s -w -D %s -o \" -i -p %s" % (SRC_GPPATH,"pg_ctl",dataDir,port)]
+        cmdfrags=["%s $GPHOME/bin/%s -w -D %s -o \" -E -i -p %s" % (SRC_GPPATH,"pg_ctl",dataDir,port)]
         
         if utilityMode:
             cmdfrags.append(" -c gp_role=utility ")
@@ -151,18 +151,20 @@ class GpSegStartCmd(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 
+
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, dblist, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, dblist, mode, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dblist
         self.dirlist=[]
+        self.mode=mode
         for db in dblist:
             self.dirlist.append(db.datadir)
             
         dirstr=" -D ".join(self.dirlist)        
         colstr=":".join(collatelist)
-        self.cmdStr="%s $GPHOME/sbin/gpsegstart.py -D %s '" % (SRC_GPPATH,dirstr)
+        self.cmdStr="%s $GPHOME/sbin/gpsegstop.py -D %s -m %s'" % (SRC_GPPATH,dirstr,mode)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
