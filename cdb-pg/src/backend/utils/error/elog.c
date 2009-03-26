@@ -79,7 +79,6 @@
 #include "utils/elog.h" /* backtrace() prototype for solaris */
 #include "utils/debugbreak.h"
 
-#ifdef USE_ASSERT_CHECKING
 #include "miscadmin.h"
 #include <pthread.h>
 extern pthread_t main_tid;
@@ -90,7 +89,6 @@ extern pthread_t main_tid;
 #define mythread() ((unsigned long) pthread_self().p)
 #define mainthread() ((unsigned long) main_tid.p)
 #endif 
-#endif
 
 #if defined(pg_on_solaris) || (!defined (__darwin__) && defined(__GLIBC__))
 #include <dlfcn.h>
