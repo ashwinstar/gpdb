@@ -4104,6 +4104,11 @@ try:
         # We always pull the current configuration from the old instance.
         # (It may be nice to rewrite to allow caching state information)
         shutdown = None
+        lockfile = os.path.join(u.oldenv['MASTER_DATA_DIRECTORY'],
+                                'pg_hba.conf'+LOCKEXT)
+        if os.path.exists(lockfile):
+            raise UpgradeError("migration lock file already exists at: %s"
+                                % lockfile)
         try:
             try:
                 env = u.CheckUp(true)
