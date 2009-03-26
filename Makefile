@@ -200,23 +200,8 @@ opt:
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
 devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
-devel : CONFIGFLAGS+= --enable-cassert --enable-debug
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
-	@rm -rf $(INSTLOC)
-	@cd $(GPPGDIR) && $(MAKE) install
-	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
-	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
-	@$(MAKE) mkgpcc
-	@$(MAKE) mkgpperfmon INSTLOC=$(GPPERFMONINSTLOC)
-	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
-	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
-	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
-
-devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
-devel_faultinj : INSTLOC=$(DEVPATH)
-devel_faultinj : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
-devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
-devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)

@@ -406,5 +406,21 @@ extern char **backtrace_symbols(void *const *buffer, int size);
 #endif
 
 extern void GetLastLogTimeVal(struct timeval *lastLogTimeVal);
+extern void write_message_to_server_log(int elevel,
+										int sqlerrcode,
+										const char *message,
+										const char *detail,
+										const char *hint,
+										int cursorpos,
+										int internalpos,
+										const char *internalquery,
+										const char *context,
+										const char *funcname,
+										bool show_funcname,
+										const char *filename,
+										int lineno,
+										int stacktracesize,
+										bool omit_location,
+										void* const *stacktracearray);
 
 #endif   /* ELOG_H */

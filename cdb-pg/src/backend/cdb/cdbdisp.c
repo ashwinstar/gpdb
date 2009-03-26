@@ -38,6 +38,7 @@
 #include "optimizer/planmain.h"
 #include "tcop/tcopprot.h"
 #include "cdb/cdbplan.h"
+#include "postmaster/syslogger.h"
 
 #include "cdb/cdbselect.h"
 #include "cdb/cdbdisp.h"
@@ -292,6 +293,34 @@ write_log(const char *fmt,...)
 	fmt = _(fmt);
 
 	va_start(ap, fmt);
+
+	if (Redirect_stderr && gp_log_format == 1)
+	{
+		char		errbuf[2048];		/* Arbitrary size? */
+		
+		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
+
+		/* Write the message in the CSV format */
+		write_message_to_server_log(LOG,
+									0,
+									errbuf,
+									NULL,
+									NULL,
+									0,
+									0,
+									NULL,
+									NULL,
+									NULL,
+									false,
+									NULL,
+									0,
+									0,
+									true,
+									NULL);
+
+		va_end(ap);
+		return;
+	}
 	
 	get_timestamp(logprefix);
 	strcat(logprefix,"|");

@@ -183,6 +183,8 @@ static const char *assign_debug_dtm_action_target(const char *newval,
 						bool doit, GucSource source);
 static const char *assign_debug_dtm_action_protocol(const char *newval,
 						bool doit, GucSource source);
+static const char *assign_gp_log_format(const char *value, bool doit,
+										GucSource source);
 
 /*
  * GUC option variables that are exported from this module
@@ -298,6 +300,7 @@ static char *log_error_verbosity_str;
 static char *log_statement_str;
 static char *log_min_error_statement_str;
 static char *log_destination_string;
+static char *gp_log_format_string;
 
 #ifdef HAVE_SYSLOG
 static char *syslog_facility_str;
@@ -3678,7 +3681,16 @@ static struct config_string ConfigureNamesString[] =
 			GUC_SUPERUSER_ONLY
 		},
 		&Log_filename,
-		"gpdb-%Y-%m-%d.log", NULL, NULL
+		"gpdb-%Y-%m-%d.csv", NULL, NULL
+	},
+
+	{
+		{"gp_log_format", PGC_POSTMASTER, LOGGING_WHERE,
+		 gettext_noop("Sets the format for log files."),
+		 gettext_noop("Valid values are TEXT, CVS.")
+		},
+		&gp_log_format_string,
+		"csv", assign_gp_log_format, NULL
 	},
 
 #ifdef HAVE_SYSLOG
@@ -8061,6 +8073,26 @@ assign_log_destination(const char *value, bool doit, GucSource source)
 
 	pfree(rawstring);
 	list_free(elemlist);
+
+	return value;
+}
+
+static const char *
+assign_gp_log_format(const char *value, bool doit, GucSource source)
+{
+	int log_format = 0;
+	
+	if (pg_strcasecmp(value, "text") == 0)
+		log_format = 0;
+	else if (pg_strcasecmp(value, "csv") == 0)
+		log_format = 1;
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("unrecognized \"gp_log_format\" key word: \"%s\"",
+						value)));
+	if (doit)
+		gp_log_format = log_format;
 
 	return value;
 }

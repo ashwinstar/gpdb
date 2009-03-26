@@ -14,6 +14,18 @@
 
 #include <limits.h>				/* for PIPE_BUF */
 
+/*
+ * We really want line-buffered mode for logfile output, but Windows does
+ * not have it, and interprets _IOLBF as _IOFBF (bozos).  So use _IONBF
+ * instead on Windows.
+ */
+#ifdef WIN32
+#define LBF_MODE	_IONBF
+#define LOG_EOL         "\r\n"
+#else
+#define LBF_MODE	_IOLBF
+#define LOG_EOL         "\n"
+#endif
 
 /* 
  * Primitive protocol structure for writing to syslogger pipe(s).  The idea
@@ -43,22 +55,72 @@
 
 typedef struct 
 {
-	char		nuls[2];		/* always \0\0 */
-	uint16		len;			/* size of this chunk (counts data only) */
-	int32		pid;			/* writer's pid */
-	char		is_last;		/* last chunk of message? 't' or 'f' */
-	char		data[1];		/* data payload starts here */
+	int32           zero;                   /* leading zero */
+	int32           len;                    /* len, not including hdr */
+	int32		    pid;                    /* writer's pid */
+	int32           thid;                   /* thread id */
+	int32           main_thid;              /* main thread id */
+	int32           chunk_no;               /* chunk number */
+	char		    is_last;                /* last chunk of message? 't' or 'f' */
+	char            log_format;             /* 'c' for csv, 't' for text */
+	int64           log_line_number;        /* indicate the order of the message */
+	int64           next;                   /* next chained chunk.  also force an 8 bytes align */
 } PipeProtoHeader;
 
-typedef union
-{
-	PipeProtoHeader proto;
-	char		filler[PIPE_CHUNK_SIZE];
-} PipeProtoChunk;
-
-#define PIPE_HEADER_SIZE  offsetof(PipeProtoHeader, data)
+#define PIPE_HEADER_SIZE  sizeof(PipeProtoHeader)
 #define PIPE_MAX_PAYLOAD  ((int) (PIPE_CHUNK_SIZE - PIPE_HEADER_SIZE))
 
+typedef struct 
+{
+	PipeProtoHeader hdr; 
+	char		data[PIPE_MAX_PAYLOAD];
+} PipeProtoChunk;
+
+extern void write_syslogger_file_binary(const char *buffer, int count);
+extern void syslogger_log_chunk_list(PipeProtoChunk *chunk);
+
+typedef struct
+{
+	pg_time_t session_start_time;
+	bool gp_is_primary;
+	int32 gp_session_id;
+	int32 gp_command_count;
+	int32 gp_segment_id;
+	int32 slice_id;
+	int32 error_cursor_pos;
+	int32 internal_query_pos;
+	int32 error_fileline;
+	TransactionId top_trans_id;
+	DistributedTransactionId dist_trans_id;
+	TransactionId local_trans_id;
+	TransactionId subtrans_id;
+} GpErrorDataFixFields;
+
+/*
+ * The format for GPDB error data.
+ */
+typedef struct
+{
+	/* Fix-length field */
+	GpErrorDataFixFields fix_fields;
+
+	/* variable-length field */
+	char *username;
+	char *databasename;
+	char *remote_host;
+	char *remote_port;
+	const char *error_severity;
+	char *sql_state;
+	char *error_message;
+	char *error_detail;
+	char *error_hint;
+	char *internal_query;
+	char *error_context;
+	char *debug_query_string;
+	const char *error_func_name;
+	const char *error_filename;
+	char *stacktrace;
+} GpErrorData;
 
 /* GUC options */
 extern bool Redirect_stderr;
@@ -67,6 +129,7 @@ extern int	Log_RotationSize;
 extern DLLIMPORT char *Log_directory;
 extern DLLIMPORT char *Log_filename;
 extern bool Log_truncate_on_rotation;
+extern int gp_log_format;
 
 extern bool am_syslogger;
 
@@ -80,6 +143,10 @@ extern HANDLE syslogPipe[2];
 extern int	SysLogger_Start(void);
 
 extern void write_syslogger_file(const char *buffer, int count);
+
+extern void syslogger_append_timestamp(pg_time_t stamp_time, bool append_comma);
+extern void syslogger_append_current_timestamp(void);
+extern void syslogger_write_int32(bool test0, const char *prefix, int32 i, bool append_comma);
 
 #ifdef EXEC_BACKEND
 extern void SysLoggerMain(int argc, char *argv[]);

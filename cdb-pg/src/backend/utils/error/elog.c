@@ -73,6 +73,7 @@
 
 #include "cdb/cdbvars.h"  /*Gp_segment */
 #include "utils/ps_status.h"    /* get_ps_display_username() */
+#include "cdb/cdbselect.h"
 #include "pgtime.h"
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
@@ -91,6 +92,9 @@ extern pthread_t main_tid;
 #endif 
 #endif
 
+#if defined(pg_on_solaris) || (!defined (__darwin__) && defined(__GLIBC__))
+#include <dlfcn.h>
+#endif
 #undef _
 #define _(x) err_gettext(x)
 
@@ -2236,7 +2240,476 @@ unpack_sql_state(int sql_state)
 	buf[i] = '\0';
 	return buf;
 }
+	
+/*
+ * Send the data through the pipe.
+ */
+static inline void
+gp_write_pipe_chunk(const char *buffer, int len)
+{
+	int retval;
+	fd_set wfds;
+	struct timeval tv;
 
+	/*
+	 * Wait up to 1 second to see if stderr is available for write.
+	 * If not, we ignore the error message. This could happen when
+	 * the logger process crashes.
+	 */
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+
+	FD_ZERO(&wfds);
+	FD_SET(fileno(stderr), &wfds);
+
+	retval = select(fileno(stderr) + 1, NULL, &wfds, NULL, &tv);
+
+	if (retval == 1)
+	{
+		int bytes;
+	retry:
+#ifdef USE_ASSERT_CHECKING
+		{
+			PipeProtoChunk *chunk = (PipeProtoChunk *) buffer;
+			Assert(chunk->hdr.zero == 0);
+			Assert(chunk->hdr.pid != 0);
+			Assert(chunk->hdr.thid != 0);
+			Assert(len <= PIPE_CHUNK_SIZE);
+		}
+#endif
+
+		bytes = write(fileno(stderr), buffer, len);
+	
+		if (bytes < 0 && errno == EINTR)
+			goto retry;
+	}
+}
+
+/*
+ * Append a string (termniated by '\0') to the GpPipeProtoChunk.
+ *
+ * If GpPipeProtoChunk does not have space for the given string,
+ * this function appends enough data to fill the buffer, and
+ * sends out the buffer. After that, the payload session of
+ * GpPipeProtoChunk is reset and the rest of the given string
+ * is appended. If the given string is pretty large, this function
+ * may send out multiple chunks.
+ */
+static inline void
+append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
+{
+	int len;
+
+	char *data = buffer->data + buffer->hdr.len;
+	
+        if(am_syslogger)
+                return;
+
+	if (input == NULL)
+		len = 1;
+	else
+		len = strlen(input) + 1; /* include '\0' */
+
+	if (buffer->hdr.len == PIPE_MAX_PAYLOAD) 
+	{
+                if(am_syslogger)
+                        return;
+
+		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
+		buffer->hdr.len = 0;
+		buffer->hdr.chunk_no++;
+		data = buffer->data;
+	}
+	
+	if (len == 1)
+	{
+		*data = '\0';
+		buffer->hdr.len ++;
+	}
+	else
+	{
+		if (buffer->hdr.len + len > PIPE_MAX_PAYLOAD)
+		{
+			int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
+			
+                        if(am_syslogger)
+                                return;
+
+			snprintf(data, bytes, "%s", input);
+			data += (bytes - 1);
+			*data = input[bytes - 1];
+			buffer->hdr.len += bytes;
+
+			append_string_to_pipe_chunk(buffer, (input + bytes));
+		}
+		else
+		{
+			sprintf(data, "%s", input);
+			buffer->hdr.len += len;
+		}
+	}
+}
+
+/*
+ * Append the backtrace to the given PipeProtoChunk or the syslogger file.
+ *
+ * We can not use the default backtrace_symbols since it calls malloc, which
+ * is not async-safe, to allocate space for symbols. Even though we don't
+ * really support async-safe error logging yet, the malloc has caused several
+ * deadlock issues in the past, we should avoid using them in our error handler.
+ * 
+ * if buffer is NULL, the stack is written to the syslogger file.
+ */
+static inline void
+append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray, 
+				  int stacksize)
+{
+#if (!defined(__darwin__))
+	int stack_no;
+	const int SYMBOL_SIZE = 512;
+	char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */
+	
+	for (stack_no = 0; stack_no < stacksize; stack_no++)
+	{
+		Dl_info dli;
+		int symbol_len;
+		
+		if (dladdr(stackarray[stack_no], &dli) == 0)
+		{
+			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: <not found>\n",
+								  stack_no, stackarray[stack_no]);
+		}
+		else
+		{
+			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
+								  stack_no, stackarray[stack_no], dli.dli_fname, dli.dli_sname,
+								  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
+		}
+		if (buffer != NULL)
+		{
+			append_string_to_pipe_chunk(buffer, symbol);
+
+			if (stack_no != stacksize - 1)
+			{
+				/* Eliminate the last '\0' */
+				buffer->hdr.len --;
+			}
+		}
+		
+		else
+			write_syslogger_file_binary(symbol, symbol_len);
+	}
+#endif
+}
+
+/*
+ * Directly write a string to the syslogger file.
+ */
+static inline void
+write_syslogger_file_string(const char *str, bool append_comma)
+{
+	if (str != NULL)
+		write_syslogger_file_binary(str, strlen(str));
+
+	if (append_comma)
+		write_syslogger_file_binary(",", 1);
+}
+
+
+/*
+ * Directly write the message in CSV format to the syslogger file.
+ */
+static void
+write_syslogger_in_csv(ErrorData *edata)
+{
+	Assert(am_syslogger);
+	
+	/* timestamp_with_millisecond */
+	syslogger_append_current_timestamp();
+
+	/* username */
+	if (MyProcPort != NULL && MyProcPort->user_name != NULL)
+		write_syslogger_file_string(MyProcPort->user_name, true);
+	else
+		write_syslogger_file_string(NULL, true);
+	
+	/* databasename */
+	if (MyProcPort != NULL && MyProcPort->database_name != NULL)
+		write_syslogger_file_string(MyProcPort->database_name, true);
+	else
+		write_syslogger_file_string(NULL, true);
+	
+	/* Process id, thread id */
+	syslogger_write_int32(false, "p", MyProcPid, true);
+	syslogger_write_int32(false, "th", mythread(), true);
+	
+	/* Remote host, remote port */
+	if (MyProcPort != NULL && MyProcPort->remote_host != NULL)
+		write_syslogger_file_string(MyProcPort->remote_host, true);
+	else
+		write_syslogger_file_string(NULL, true);
+	if (MyProcPort != NULL && MyProcPort->remote_port != NULL)
+		write_syslogger_file_string(MyProcPort->remote_port, true);
+	else
+		write_syslogger_file_string(NULL, true);
+	
+	/* session start timestamp */
+	syslogger_append_timestamp((MyProcPort != NULL ?
+								(pg_time_t) timestamptz_to_time_t(MyProcPort->SessionStartTime): 0), true);
+	
+	/* transaction id */
+	if (MyProcPort != NULL && IsTransactionState())
+		syslogger_write_int32(false, "", GetTopTransactionId(), true);
+	else
+		syslogger_write_int32(false, "", InvalidTransactionId, true);
+
+	/* GPDB specific options */
+	syslogger_write_int32(true, "con", gp_session_id, true); 
+	syslogger_write_int32(true, "cmd", gp_command_count, true); 
+	syslogger_write_int32(false, Gp_is_primary == 't'? "seg" : "mir", Gp_segment, true); 
+	syslogger_write_int32(true, "slice", currentSliceId, true); 
+	{
+		DistributedTransactionId dist_trans_id;
+		TransactionId local_trans_id;
+		TransactionId subtrans_id;
+		
+		GetAllTransactionXids(&dist_trans_id,
+							  &local_trans_id,
+							  &subtrans_id);
+
+		syslogger_write_int32(true, "dx", dist_trans_id, true);
+		syslogger_write_int32(true, "x", local_trans_id, true); 
+		syslogger_write_int32(true, "sx", subtrans_id, true); 
+	}
+
+	/* error severity */
+	write_syslogger_file_string(error_severity(edata->elevel), true);
+	
+	/* sql state code */
+	write_syslogger_file_string(unpack_sql_state(edata->sqlerrcode), true);
+	
+	/* error message */
+	write_syslogger_file_string(edata->message, true);
+	
+	/* errdetail */
+	write_syslogger_file_string(edata->detail, true);
+
+	/* errhint */
+	write_syslogger_file_string(edata->hint, true);
+
+	/* internal query */
+	write_syslogger_file_string(edata->internalquery, true);
+
+	/* internal query pos */
+	syslogger_write_int32(true, "", edata->internalpos, true); 
+
+	/* error context */
+	write_syslogger_file_string(edata->context, true);
+	
+	/* user query */
+	write_syslogger_file_string(debug_query_string, true);
+
+	/* cursor pos */
+	syslogger_write_int32(true, "", edata->cursorpos, true); 
+
+	/* func name */
+	write_syslogger_file_string(edata->funcname, true);
+
+	/* file name */
+	write_syslogger_file_string(edata->filename, true);
+
+	/* line number */
+	syslogger_write_int32(true, "", edata->lineno, true); 
+
+	/* stack trace */
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
+		
+	if (edata->elevel >= ERROR &&
+        (edata->elevel > ERROR || !edata->omit_location) &&
+        edata->stacktracesize > 0 &&
+        edata->stacktracearray != NULL)
+	{
+		append_stacktrace(NULL, edata->stacktracearray, edata->stacktracesize);
+	}
+	else
+	{
+		
+#endif
+#endif
+		append_stacktrace(NULL, NULL, 0);
+
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
+	}
+#endif
+#endif
+
+	/* EOL */
+	write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+}
+
+/*
+ * Write error report to server's log.
+ *
+ * This is an equivalent function as send_message_to_server_log, but will write
+ * the error report in the format of GpPipeProtoHeader, followed by a serialized
+ * format of GpErrorData. The error report is sent over to the syslogger process
+ * through the pipe.
+ *
+ * This function is thread-safe. Here, we assume that sprintf is thread-safe.
+ */
+void
+write_message_to_server_log(int elevel,
+							int sqlerrcode,
+							const char *message,
+							const char *detail,
+							const char *hint,
+							int cursorpos,
+							int internalpos,
+							const char *internalquery,
+							const char *context,
+							const char *funcname,
+							bool show_funcname,
+							const char *filename,
+							int lineno,
+							int stacktracesize,
+							bool omit_location,
+							void* const *stacktracearray
+                ) 
+{
+	PipeProtoChunk buffer;
+
+	char *data = buffer.data;
+	GpErrorDataFixFields fix_fields;
+	static uint64 log_line_number = 0;
+
+	Assert(!am_syslogger);
+	
+	buffer.hdr.zero = 0;
+	buffer.hdr.len = 0;
+	buffer.hdr.pid = MyProcPid;
+	buffer.hdr.thid = mythread();
+	buffer.hdr.main_thid = mainthread();
+	buffer.hdr.chunk_no = 0;
+	buffer.hdr.is_last = 'f';
+	buffer.hdr.log_format = 'c';
+	buffer.hdr.log_line_number = log_line_number++;
+	buffer.hdr.next = -1;
+
+	
+	/* Serialize edata in the order defined in GpErrorData. */
+
+	fix_fields.session_start_time =
+		(MyProcPort == NULL) ? 0 : (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
+	fix_fields.gp_is_primary = Gp_is_primary ? 't' : 'f';
+	fix_fields.gp_session_id = gp_session_id;
+	fix_fields.gp_command_count = gp_command_count;
+	fix_fields.gp_segment_id = Gp_segment;
+	fix_fields.slice_id = currentSliceId;
+	fix_fields.error_cursor_pos = cursorpos;
+	fix_fields.internal_query_pos = internalpos;
+	fix_fields.error_fileline = lineno;
+	fix_fields.top_trans_id = InvalidTransactionId;
+	if (MyProcPort != NULL && IsTransactionState())
+		fix_fields.top_trans_id = GetTopTransactionId();
+
+	GetAllTransactionXids(&(fix_fields.dist_trans_id),
+						  &(fix_fields.local_trans_id),
+						  &(fix_fields.subtrans_id));
+
+	Assert(buffer.hdr.len + sizeof(GpErrorDataFixFields) <= PIPE_MAX_PAYLOAD); 
+	
+	memcpy(data, &fix_fields, sizeof(GpErrorDataFixFields));
+	buffer.hdr.len += sizeof(GpErrorDataFixFields);
+
+	/* Variable-length fields */
+
+	/* username */
+	if (MyProcPort == NULL || MyProcPort->user_name == NULL)
+		append_string_to_pipe_chunk(&buffer, NULL);
+	else
+		append_string_to_pipe_chunk(&buffer, MyProcPort->user_name);
+	
+	/* databasename */
+	if (MyProcPort == NULL || MyProcPort->database_name == NULL)
+		append_string_to_pipe_chunk(&buffer, NULL);
+	else
+		append_string_to_pipe_chunk(&buffer, MyProcPort->database_name);
+
+	/* remote_host */
+	if (MyProcPort == NULL || MyProcPort->remote_host == NULL)
+		append_string_to_pipe_chunk(&buffer, NULL);
+	else
+		append_string_to_pipe_chunk(&buffer, MyProcPort->remote_host);
+
+	/* remote_port */
+	if (MyProcPort == NULL || MyProcPort->remote_port == NULL)
+		append_string_to_pipe_chunk(&buffer, NULL);
+	else
+		append_string_to_pipe_chunk(&buffer, MyProcPort->remote_port);
+
+	/* error severity */
+	append_string_to_pipe_chunk(&buffer, error_severity(elevel));
+
+	/* sql state */
+	append_string_to_pipe_chunk(&buffer, unpack_sql_state(sqlerrcode));
+
+	/* error_message */
+	append_string_to_pipe_chunk(&buffer, message);
+	
+	/* error_detail */
+	append_string_to_pipe_chunk(&buffer, detail);
+
+	/* error_hint */
+	append_string_to_pipe_chunk(&buffer, hint);
+
+	/* internal_query */
+	append_string_to_pipe_chunk(&buffer, internalquery);
+
+	/* error_context  */
+	append_string_to_pipe_chunk(&buffer, context);
+	
+	/* debug_query_string */
+	append_string_to_pipe_chunk(&buffer, debug_query_string);
+
+	/* error_func_name */
+	if (show_funcname)
+		append_string_to_pipe_chunk(&buffer, funcname);
+	else
+		append_string_to_pipe_chunk(&buffer, NULL);
+	
+	/* error_filename */
+	append_string_to_pipe_chunk(&buffer, filename);
+		
+	/* stacktrace */
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
+		
+	if (elevel >= ERROR &&
+        (elevel > ERROR || !omit_location) &&
+        stacktracesize > 0 &&
+        stacktracearray != NULL)
+	{
+		append_stacktrace(&buffer, stacktracearray, stacktracesize);
+	}
+	else
+	{
+		
+#endif
+#endif
+		append_stacktrace(&buffer, NULL, 0);
+
+#if (!defined(__darwin__))
+#if defined(__GLIBC__) || defined(pg_on_solaris)
+	}
+#endif
+#endif	
+
+	/* Send the last chunk */
+	buffer.hdr.is_last = 't';
+	gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE);
+}
 
 /*
  * Write error report to server's log
@@ -2247,6 +2720,33 @@ send_message_to_server_log(ErrorData *edata)
 	StringInfoData  buf;
     StringInfoData  prefix;
     int             nc;
+
+	if (Log_destination & LOG_DESTINATION_STDERR)
+	{
+		if (redirection_done && gp_log_format == 1)
+		{
+			if (!am_syslogger)
+				write_message_to_server_log(edata->elevel,
+											edata->sqlerrcode,
+											edata->message,
+											edata->detail,
+											edata->hint,
+											edata->cursorpos,
+											edata->internalpos,
+											edata->internalquery,
+											edata->context,
+											edata->funcname,
+											edata->show_funcname,
+											edata->filename,
+											edata->lineno,
+											edata->stacktracesize,
+											edata->omit_location,
+											edata->stacktracearray);
+			else
+				write_syslogger_in_csv(edata);
+			return;
+		}
+	}
 
     /* Format message prefix. */
     initStringInfo(&buf);
@@ -2467,7 +2967,7 @@ send_message_to_server_log(ErrorData *edata)
 
 	/* If in the syslogger process, try to write messages direct to file */
 	if (am_syslogger)
-		write_syslogger_file(buf.data, buf.len);
+		write_syslogger_file_binary(buf.data, buf.len);
 
     pfree(prefix.data);
 	pfree(buf.data);
@@ -2483,24 +2983,44 @@ write_pipe_chunks(int fd, char *data, int len)
 
 	Assert(len > 0);
 
-	p.proto.nuls[0] = p.proto.nuls[1] = '\0';
-	p.proto.pid = MyProcPid;
+	p.hdr.zero = 0; 
+	p.hdr.pid = MyProcPid;
+        p.hdr.thid = mythread();
+        p.hdr.main_thid = mainthread();
+        p.hdr.chunk_no = 0;
+        p.hdr.log_format = 't';
+        p.hdr.next = -1;
 
 	/* write all but the last chunk */
 	while (len > PIPE_MAX_PAYLOAD)
 	{
-		p.proto.is_last = 'f';
-		p.proto.len = PIPE_MAX_PAYLOAD;
-		memcpy(p.proto.data, data, PIPE_MAX_PAYLOAD);
-		write(fd, &p, PIPE_HEADER_SIZE + PIPE_MAX_PAYLOAD);
+		p.hdr.is_last = 'f';
+		p.hdr.len = PIPE_MAX_PAYLOAD;
+		memcpy(p.data, data, PIPE_MAX_PAYLOAD);
+
+#ifdef USE_ASSERT_CHECKING
+                Assert(p.hdr.zero == 0);
+                Assert(p.hdr.pid != 0);
+                Assert(p.hdr.thid != 0);
+#endif
+		write(fd, &p, PIPE_CHUNK_SIZE);
 		data += PIPE_MAX_PAYLOAD;
 		len -= PIPE_MAX_PAYLOAD;
+
+                ++p.hdr.chunk_no;
 	}
 
 	/* write the last chunk */
-	p.proto.is_last = 't';
-	p.proto.len = len;
-	memcpy(p.proto.data, data, len);
+	p.hdr.is_last = 't';
+	p.hdr.len = len;
+
+#ifdef USE_ASSERT_CHECKING
+        Assert(p.hdr.zero == 0);
+        Assert(p.hdr.pid != 0);
+        Assert(p.hdr.thid != 0);
+        Assert(PIPE_HEADER_SIZE + len <= PIPE_CHUNK_SIZE);
+#endif
+	memcpy(p.data, data, len);
 	write(fd, &p, PIPE_HEADER_SIZE + len);
 }
 
@@ -2862,6 +3382,35 @@ write_stderr(const char *fmt,...)
 	fmt = _(fmt);
 
 	va_start(ap, fmt);
+
+	if (Redirect_stderr && gp_log_format == 1)
+	{
+		char		errbuf[2048];		/* Arbitrary size? */
+		
+		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
+
+		/* Write the message in the CSV format */
+		write_message_to_server_log(LOG,
+									0,
+									errbuf,
+									NULL,
+									NULL,
+									0,
+									0,
+									NULL,
+									NULL,
+									NULL,
+									false,
+									NULL,
+									0,
+									0,
+									true,
+									NULL);
+
+		va_end(ap);
+		return;
+	}
+
 #ifndef WIN32
 	/* On Unix, we just fprintf to stderr */
 	vfprintf(stderr, fmt, ap);
@@ -2948,7 +3497,6 @@ elog_debug_linger(ErrorData *edata)
 /* Use the Solaris stack-walker to build a (sort of) glibc compatible
  * backtrace */
 #include <ucontext.h>
-#include <dlfcn.h>
 
 struct frame_info
 {
