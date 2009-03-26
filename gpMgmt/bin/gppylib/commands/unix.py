@@ -370,7 +370,7 @@ class PathIsDirectory(Command):
 class FileDirExists(Command):
     def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory
-        cmdStr="""python  -c \\"import os; print os.path.exists('%s')\\" """ % directory
+        cmdStr="""python  -c "import os; print os.path.exists('%s')" """ % directory
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
