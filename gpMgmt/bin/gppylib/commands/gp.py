@@ -230,6 +230,7 @@ class GpStop(Command):
     def local(name,masterOnly=False, restart=False, fast=False, force=False):
         cmd=GpStop(name,masterOnly)
         cmd.run(validateAfter=True)
+        return cmd
         
 #-----------------------------------------------        
 class Psql(Command):

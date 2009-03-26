@@ -31,8 +31,6 @@ TODO: Items""",
 
 "*  timeout on how long to wait to try and start something",
 
-"* implement gp.start_standbymaster",
-
 "* dump more identification in _process_segment_start()"]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -50,6 +48,7 @@ class SegStartStatus():
         self.started=started
         self.reason=reason
         self.failedCmd=failedCmd
+        
     
     def __str__(self):
         if self.started:
@@ -67,6 +66,7 @@ class GpStart():
         self.trust=trust
         self.pool = None
         self.parallel=parallel
+        self.attempt_standby_start=False
         pass
     
     ######
@@ -427,7 +427,13 @@ class GpStart():
         if pg.DbStatus.local('master instance',self.gparray.master):
             logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
             
-            logger.info("Database successfully started with no errors reported")
+            
+            if not self.standby_was_started and self.attempt_standby_start:
+                logger.warning("Standby Master could not be started")
+                logger.warning("Database started but warnings generated.")
+                logger.info("Check status of database with gpstate utility")
+            else:            
+                logger.info("Database successfully started with no errors reported")
         else:
             logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port)) 
         
@@ -443,6 +449,7 @@ class GpStart():
         if self.start_standby and self.gparray.standbyMaster is not None:
             if self.gparray.standbyMaster.valid:
                 try:
+                    self.attempt_standby_start=True
                     host=self.gparray.standbyMaster.hostname
                     datadir=self.gparray.standbyMaster.datadir
                     port=self.gparray.standbyMaster.port
@@ -560,7 +567,10 @@ def main():
         logger.info("Master Started...")
         
         if not options.master_only:
-            gp.GpStop.local("forcing master shutdown", masterOnly=True, fast=True)
+            cmd=gp.GpStop("forcing master shutdown", masterOnly=True, fast=True)
+            cmd.run()
+            logger.debug("results of forcing master shutdown: %s" % cmd)
+            #TODO: check results of command.
         
         if options.interactive:
             gpstart.summarize_actions()
