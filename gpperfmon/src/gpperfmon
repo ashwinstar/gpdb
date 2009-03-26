@@ -21,7 +21,7 @@ Usage: gpperfmon -D <MASTER DATA DIRECTORY> --start|--stop|--restart|--status|--
 import os, sys, getopt, signal, time, socket, ConfigParser
 
 script_name = os.path.split(__file__)[-1]
-script_version = '2.0.0'
+script_version = '2.0.0.3'
 
 # valid options
 valid_opts = "?D:"
@@ -638,7 +638,9 @@ ssl.pemfile = "%s"
 #################
 def generate_cert(destfile):
     # TODO: configurable cert params
-    cert_gen_cmd = 'openssl req -new -x509 -keyout %s -out %s -days 3650 -nodes' % (destfile, destfile)
+    openssl_bin = GPHOME + '/bin/openssl'
+    openssl_cnf = GPHOME + '/etc/openssl.cnf'
+    cert_gen_cmd = '%s req -config %s -new -x509 -keyout %s -out %s -days 3650 -nodes' % (openssl_bin, openssl_cnf, destfile, destfile)
     res = os.system(cert_gen_cmd)
     return (res == 0)
 
