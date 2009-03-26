@@ -61,7 +61,7 @@
 #define LISTEN_BACKLOG 64
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
-#define getOid(pNetData)	
+#define getOid(pNetData)
 
 
 /*=========================================================================
@@ -74,14 +74,14 @@ typedef struct ServiceConnectionRequestMsg
 {
 
 	char    eyeCatcher[SERVER_EYE_CATCHER_LEN];
-	
+
 }	ServiceConnectionRequestMsg;
 
 typedef struct ServiceConnectionResponseMsg
 {
 
 	bool    ok;
-	
+
 }	ServiceConnectionResponseMsg;
 
 static bool ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient, bool complain);
@@ -142,16 +142,16 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 	char        *message;
 	bool		result = false;
 	DECLARE_SAVE_SUPPRESS_PANIC();
-	
+
 	PG_TRY();
 	{
 		SUPPRESS_PANIC();
-		
+
 		/*
 		 * Open a connection to the service.
 		 */
 		serviceClient->sockfd = socket(AF_INET, SOCK_STREAM, 0);
-		
+
 		addr.sin_family = AF_INET;
 		addr.sin_port = htons(listenerPort);
 		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -168,12 +168,17 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 				close(serviceClient->sockfd);
 				serviceClient->sockfd = -1;
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Could not connect to '%s': %s", 
+								errmsg("Could not connect to '%s': %s",
 									   serviceConfig->title,
 									   strerror(saved_err))));
 			}
+			else
+			{
+				//success. we're done here!
+				break;
+			}
 		}
-		
+
 		/* make socket non-blocking BEFORE we connect. */
 		if (!pg_set_noblock(serviceClient->sockfd))
 		{
@@ -182,11 +187,11 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 			close(serviceClient->sockfd);
 			serviceClient->sockfd = -1;
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Could not set '%s' socket to non-blocking mode: %s", 
+							errmsg("Could not set '%s' socket to non-blocking mode: %s",
 								   serviceConfig->title,
 								   strerror(saved_err))));
 		}
-	
+
 		result = true;
 		RESTORE_PANIC();
 	}
@@ -206,11 +211,11 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 			strcpy(ClientErrorString, message);
 		else
 			strcpy(ClientErrorString, "");
-		
+
 		if (complain)
 			EmitErrorReport();
 		FlushErrorState();
-	
+
 		result = false;
 	}
 	PG_END_TRY();
@@ -218,7 +223,7 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 	return result;
 }
 
-void 
+void
 ServiceGetClientTimeout(ServiceConfig *serviceConfig, struct timeval *timeout)
 {
 	Assert(serviceConfig != NULL);
@@ -237,11 +242,11 @@ ServiceGetClientTimeout(ServiceConfig *serviceConfig, struct timeval *timeout)
  */
 bool
 ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient, bool complain)
-{	
+{
 //	ServiceConnectionRequestMsg newConnectionRequestMsg;
 //	ServiceConnectionResponseMsg newConnectionResponseMsg;
 	bool connected;
-	
+
 	Assert(serviceConfig != NULL);
 	Assert(serviceClient != NULL);
 
@@ -272,24 +277,24 @@ ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClie
  */
 bool
 ServiceClientSendRequest(ServiceClient *serviceClient, void* request, int requestLen)
-{	
+{
 	ServiceConfig *serviceConfig;
 	char        *message;
 	bool		result = false;
 	DECLARE_SAVE_SUPPRESS_PANIC();
-	
+
 	Assert(serviceClient != NULL);
 	Assert(request != NULL);
-	
+
 	PG_TRY();
 	{
 		SUPPRESS_PANIC();
-		
+
 		serviceConfig = serviceClient->serviceConfig;
 		if (serviceConfig == NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						    errmsg("Not connected to '%s'", 
+						    errmsg("Not connected to '%s'",
 						           serviceConfig->title)));
 		}
 		if (requestLen != serviceClient->serviceConfig->requestLen)
@@ -318,10 +323,10 @@ ServiceClientSendRequest(ServiceClient *serviceClient, void* request, int reques
 			strcpy(ClientErrorString, message);
 		else
 			strcpy(ClientErrorString, "");
-		
+
 		EmitErrorReport();
 		FlushErrorState();
-	
+
 		result = false;
 	}
 	PG_END_TRY();
@@ -332,7 +337,7 @@ ServiceClientSendRequest(ServiceClient *serviceClient, void* request, int reques
 
 static bool
 ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
-{	
+{
 	ServiceConfig *serviceConfig;
 	int		n;
 	int    bytesWritten = 0;
@@ -344,39 +349,39 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
 	DECLARE_SAVE_SUPPRESS_PANIC();
-	
+
 	Assert(serviceClient != NULL);
 	serviceConfig = (ServiceConfig*)serviceClient->serviceConfig;
 	Assert(serviceConfig != NULL);
 	ServiceGetClientTimeout(serviceConfig, &rundownTimeout);
 	Assert(request != NULL);
-		
+
 	PG_TRY();
 	{
 		SUPPRESS_PANIC();
-		
+
 		if (serviceClient->sockfd == -1)
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						     errmsg("Lost connection to '%s'", 
+						     errmsg("Lost connection to '%s'",
 						            serviceConfig->title)));
-		
+
 		/*
 		 * write the request
-		 */	
+		 */
 		while( bytesWritten < requestLen )
 		{
-			n = write(serviceClient->sockfd, 
+			n = write(serviceClient->sockfd,
 				      ((char *)request) + bytesWritten,
 				      requestLen - bytesWritten);
 			saved_err = errno;
-		
+
 			if (n == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-									 errmsg("Connection to '%s' is closed", 
+									 errmsg("Connection to '%s' is closed",
 							                serviceConfig->title)));
 			}
-			
+
 			if (n < 0)
 			{
 				if (saved_err != EINTR && saved_err != EWOULDBLOCK)
@@ -401,13 +406,13 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 						if (n == 0)
 						{
 							struct timeval wholeTimeout;
-							
+
 							ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
 
 							ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 											 errmsg("Write to '%s' timed out after %d.%03d seconds)",
 								 		            serviceConfig->title,
-								                    (int)wholeTimeout.tv_sec, 
+								                    (int)wholeTimeout.tv_sec,
 						 		                    (int)wholeTimeout.tv_usec / 1000)));
 						}
 						else if (n < 0 && errno == EINTR)
@@ -418,7 +423,7 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 
 							ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 											 errmsg("Write error to '%s': %s",
-											        serviceConfig->title, 
+											        serviceConfig->title,
 											        strerror(saved_err))));
 						}
 					}
@@ -451,10 +456,10 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 			strcpy(ClientErrorString, message);
 		else
 			strcpy(ClientErrorString, "");
-		
+
 		EmitErrorReport();
 		FlushErrorState();
-	
+
 		result = false;
 	}
 	PG_END_TRY();
@@ -467,7 +472,7 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
  */
 bool
 ServiceClientReceiveResponse(ServiceClient *serviceClient, void* response, int responseLen, struct timeval *timeout)
-{	
+{
 	ServiceConfig *serviceConfig;
 	bool successful;
 
@@ -507,24 +512,24 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	PG_TRY();
 	{
 		SUPPRESS_PANIC();
-		
+
 		/*
 		 * read the response
-		 */	
+		 */
 		while (bytesRead < responseLen)
 		{
-			n = read(serviceClient->sockfd, 
-				     ((char *)response) + bytesRead, 
+			n = read(serviceClient->sockfd,
+				     ((char *)response) + bytesRead,
 				     responseLen - bytesRead);
 			saved_err = errno;
-			
+
 			if (n == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								 errmsg("Connection to '%s' is closed", 
+								 errmsg("Connection to '%s' is closed",
 								        serviceConfig->title)));
 			}
-			
+
 			if (n < 0)
 			{
 				if (saved_err != EINTR && saved_err != EWOULDBLOCK)
@@ -553,7 +558,7 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 								ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 										          errmsg("Read from '%s' timed out after %d.%03d seconds",
 												         serviceConfig->title,
-												         (int)timeout->tv_sec, 
+												         (int)timeout->tv_sec,
 												         (int)timeout->tv_usec / 1000)));
 							}
 						}
@@ -598,10 +603,10 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 			strcpy(ClientErrorString, message);
 		else
 			strcpy(ClientErrorString, "");
-		
+
 		EmitErrorReport();
 		FlushErrorState();
-	
+
 		result = false;
 	}
 	PG_END_TRY();
@@ -614,7 +619,7 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
  */
 bool
 ServiceClientPollResponse(ServiceClient *serviceClient, void* response, int responseLen, bool *pollResponseReceived)
-{	
+{
 	ServiceConfig *serviceConfig;
 	bool successful;
 
@@ -647,21 +652,21 @@ ServiceClientPollRead(ServiceClient *serviceClient, void* response, int response
 	PG_TRY();
 	{
 		SUPPRESS_PANIC();
-		
+
 		/*
 		 * Attempt to read the response
-		 */	
+		 */
 		while (true)
 		{
-			n = read(serviceClient->sockfd, 
-				     ((char *)response), 
+			n = read(serviceClient->sockfd,
+				     ((char *)response),
 				     responseLen);
 			saved_err = errno;
-			
+
 			if (n == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								 errmsg("Connection to '%s' is closed", 
+								 errmsg("Connection to '%s' is closed",
 								         serviceConfig->title)));
 			}
 			else if (n < 0)
@@ -671,10 +676,10 @@ ServiceClientPollRead(ServiceClient *serviceClient, void* response, int response
 					*pollResponseReceived = false;
 					break;
 				}
-				
+
 				if (saved_err == EINTR)
 					continue;
-				
+
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								 errmsg("Read error from '%s': %s",
 								        serviceConfig->title,
@@ -713,10 +718,10 @@ ServiceClientPollRead(ServiceClient *serviceClient, void* response, int response
 			strcpy(ClientErrorString, message);
 		else
 			strcpy(ClientErrorString, "");
-		
+
 		EmitErrorReport();
 		FlushErrorState();
-	
+
 		result = false;
 	}
 	PG_END_TRY();
@@ -767,7 +772,7 @@ ServiceQuickDie(SIGNAL_ARGS)
 
 	ereport(LOG,
 			(errmsg("terminating immediately")));
-	
+
 	/*
 	 * DO NOT proc_exit() -- we're here because shared memory may be
 	 * corrupted, so we don't want to try to clean up our transaction. Just
@@ -801,18 +806,18 @@ void
 ServiceMain(ServiceCtrl *serviceCtrl)
 {
 	ServiceConfig *serviceConfig;
-	
+
 	sigjmp_buf	local_sigjmp_buf;
 
 	Assert(serviceCtrl != NULL);
 	serviceConfig = (ServiceConfig*)serviceCtrl->serviceConfig;
 	Assert(serviceConfig != NULL);
-	
+
 	IsUnderPostmaster = true;
-	
+
 	/* reset MyProcPid */
 	MyProcPid = getpid();
-	
+
 
 	/* Lose the postmaster's on-exit routines */
 	on_exit_reset();
@@ -898,7 +903,7 @@ ServiceMain(ServiceCtrl *serviceCtrl)
 	{
 		serviceConfig->ServiceInit(serviceCtrl->listenerPort);
 	}
-	
+
 	/* listen loop */
 	ServiceListenLoop(serviceCtrl);
 
@@ -916,10 +921,10 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 				newsockfd;
 	fd_set		rset,
 				rrset;
-	
+
 	struct sockaddr_in addr;
 	socklen_t	addrlen;
-	
+
 	List   *connectedSockets = NIL;
 	ListCell   *cell;
 
@@ -935,7 +940,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 	FD_ZERO(&rset);
 	FD_SET(serviceCtrl->listenerFd, &rset);
 	highsock = serviceCtrl->listenerFd + 1;
-	
+
 	/* we'll handle many incoming sockets but keep the sockets in blocking
 	 * mode since we are dealing with very small messages.
 	 */
@@ -944,7 +949,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		struct timeval shutdownTimeout = {1,0};		// 1 second.
 			// Use local variable since select modifies
 			// the timeout parameter with remaining time.
-	
+
 		CHECK_FOR_INTERRUPTS();
 
 		if (serviceConfig->ServiceShutdownRequested())
@@ -955,7 +960,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			}
 			break;
 		}
-		
+
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
 		{
@@ -970,28 +975,28 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 				proc_exit(1);
 			}
 		}
-		
+
 		memcpy(&rrset, &rset, sizeof(fd_set));
-		
+
 		n = select(highsock + 1, &rrset, NULL, NULL, &shutdownTimeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
-			/* intr or timeout: Have we been here too long ? */			
+			/* intr or timeout: Have we been here too long ? */
 			continue;
 		}
 
 		if (n < 0)
 		{
-			/* this may be a little severe, but if we error on select() 
-			 * we'll just go ahead and blow up.  This will result in the 
-			 * postmaster re-spawning a new process. 
+			/* this may be a little severe, but if we error on select()
+			 * we'll just go ahead and blow up.  This will result in the
+			 * postmaster re-spawning a new process.
 			 */
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							 errmsg("'%s': error during select() call (error:%d).", 
+							 errmsg("'%s': error during select() call (error:%d).",
 			     			        serviceConfig->title, errno)));
-			break;	
+			break;
 		}
-		
+
 		/* is it someone tickling our listener port? */
 		if (FD_ISSET(serviceCtrl->listenerFd, &rrset))
 		{
@@ -1005,11 +1010,11 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 				 * more useful info as to why this happened.
 				 */
 				ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							 	 errmsg("'%s': error from client connection: %s)", 
-				     				    serviceConfig->title, 
+							 	 errmsg("'%s': error from client connection: %s)",
+				     				    serviceConfig->title,
 				     				    strerror(errno))));
 			}
-			
+
 			/* make socket non-blocking BEFORE we connect. */
 			if (!pg_set_noblock(newsockfd))
 			{
@@ -1022,10 +1027,10 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 									    serviceConfig->title,
 									    strerror(errno))));
 			}
-			
+
 			if (newsockfd > highsock)
 				highsock = newsockfd + 1;
-			
+
 			FD_SET(newsockfd, &rset);
 
 			/*
@@ -1034,7 +1039,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			// UNDONE: temporarily turn off new connection flag...
 			if( !ServiceProcessRequest(serviceCtrl, newsockfd, inputBuff, false))
 			{
-				/* close it down */	
+				/* close it down */
 				FD_CLR( newsockfd, &rset);
 				shutdown(newsockfd, SHUT_WR);
 				close(newsockfd);
@@ -1043,30 +1048,30 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			{
 				connectedSockets = lappend_int(connectedSockets, newsockfd);
 			}
-						
+
 		}
-		
-		
-		/* loop through all of our established sockets */					
+
+
+		/* loop through all of our established sockets */
 		cell = list_head(connectedSockets);
 		while (cell != NULL)
 		{
 			int	fd = lfirst_int(cell);
-			
-			/* get the next cell ready before we delete */			
+
+			/* get the next cell ready before we delete */
 			cell = lnext(cell);
-			
+
 			if (FD_ISSET(fd, &rrset))
-			{				
+			{
 				if( !ServiceProcessRequest(serviceCtrl, fd, inputBuff, false))
 				{
-					/* close it down */	
+					/* close it down */
 					FD_CLR( fd, &rset);
 					connectedSockets = list_delete_int(connectedSockets, fd);
 					shutdown(fd, SHUT_WR);
 					close(fd);
-				}							
-			}	
+				}
+			}
 		}
 	}
 
@@ -1085,7 +1090,7 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 	ServiceConfig *serviceConfig = (ServiceConfig*)serviceCtrl->serviceConfig;
 
 	ServiceConnectionRequestMsg newConnectionRequestMsg;
-	
+
 	int			saved_err;
 	fd_set		rset;
 	struct timeval rundownTimeout;
@@ -1095,7 +1100,7 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 	int n;
 	int bytesRead = 0;
 	uint8 *request = NULL;
-	int reqlen;	
+	int reqlen;
 
 	bool successful;
 
@@ -1111,8 +1116,8 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 		request = inputBuff;
 		reqlen = serviceConfig->requestLen;
 	}
-	
-	/* 
+
+	/*
 	 * Read in the incoming request message.
 	 */
 	while (bytesRead < reqlen)
@@ -1124,11 +1129,11 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 
 		if (n == 0)
 		{
-//			elog(LOG, "'%s': client socket sockfd %d is closed", 
+//			elog(LOG, "'%s': client socket sockfd %d is closed",
 //				 serviceConfig->title, sockfd);
 			return false;
 		}
-		
+
 		if (n < 0)
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
@@ -1149,23 +1154,23 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 				do
 				{
 					CHECK_FOR_INTERRUPTS();
-					
+
 					if (serviceConfig->ServiceShutdownRequested())
 						return false;
-		
+
 					FD_ZERO(&rset);
 					FD_SET(sockfd, &rset);
 					n = select(sockfd + 1, &rset, NULL, NULL, &rundownTimeout);
 					if (n == 0)
 					{
 						struct timeval wholeTimeout;
-						
+
 						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
 
 						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 										 errmsg("'%s': read from backend process timed out after %d.%03d seconds",
 												serviceConfig->title,
-												(int)wholeTimeout.tv_sec, 
+												(int)wholeTimeout.tv_sec,
 										 		(int)wholeTimeout.tv_usec / 1000)));
 						return false;
 					}
@@ -1183,7 +1188,7 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 					}
 				}
 				while (n < 1);
-				
+
 			}
 			/* else saved_err == EINTR */
 			continue;
@@ -1208,46 +1213,46 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 	int 		n;
 	int			saved_err;
 	fd_set		wset;
-	
+
 	int bytesWritten = 0;
-	
+
 	struct timeval rundownTimeout;
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
-	
+
 	ServiceGetClientTimeout(serviceConfig, &rundownTimeout);
 
 //	elog(LOG,"ServiceProcessRespond called for sockfd %d, responseLen %d",
 //		 sockfd, responseLen);
-	
+
 	/*
 	 * Write the response
 	 */
 	while (bytesWritten < responseLen )
 	{
-		
+
 		CHECK_FOR_INTERRUPTS();
-					
-		n = write(sockfd, 
+
+		n = write(sockfd,
 			      response + bytesWritten,
 			      responseLen - bytesWritten);
 		saved_err = errno;
-	
+
 		if (n == 0)
 		{
 			ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							 errmsg("'%s': connection to backend process is closed", 
+							 errmsg("'%s': connection to backend process is closed",
 							        serviceConfig->title)));
 			return false;
 		}
-		
+
 		if (n < 0)
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
 				ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							     errmsg("'%s': write error to backend process: %s",
-					  					serviceConfig->title, 
+					  					serviceConfig->title,
 					  					strerror(saved_err))));
 				return false;
 			}
@@ -1261,7 +1266,7 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 				do
 				{
 					CHECK_FOR_INTERRUPTS();
-					
+
 					FD_ZERO(&wset);
 					FD_SET(sockfd, &wset);
 					n = select(sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
@@ -1274,7 +1279,7 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							     		 errmsg("'%s': write to backend process timed out after %d.%03d seconds)",
 												 serviceConfig->title,
-												 (int)wholeTimeout.tv_sec, 
+												 (int)wholeTimeout.tv_sec,
 										 		 (int)wholeTimeout.tv_usec / 1000)));
 						return false;
 					}
@@ -1286,12 +1291,12 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 
 						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							     		 errmsg("'%s': write error to backend process: %s)",
-							 					serviceConfig->title, 
+							 					serviceConfig->title,
 							 					strerror(saved_err))));
 						return false;
 					}
 				}
-				while (n < 1);				
+				while (n < 1);
 			}
 			/* else saved_err == EINTR */
 			continue;
@@ -1331,7 +1336,7 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 	struct sockaddr_in addr;
 	socklen_t	addrlen;
 
-	
+
 	if ((serviceCtrl->listenerFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
 		/*
@@ -1339,7 +1344,7 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * more useful info as to why this happened.
 		 */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("'%s' could not create listener socket: %s", 
+						errmsg("'%s' could not create listener socket: %s",
 						       serviceConfig->title,
 						       strerror(errno))));
 	}
@@ -1347,7 +1352,7 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 	memset(&addr, 0, sizeof(addr));
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
-	
+
 	serv_addr.sin_port = 0;		/* system picks port */
 
 	/*
@@ -1365,7 +1370,7 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 					           serviceConfig->title,
 					           strerror(errno)),
 						       errdetail("error during bind() call (error:%d).", errno)));
-		
+
 	}
 
 	if (listen(serviceCtrl->listenerFd, LISTEN_BACKLOG) < 0)
@@ -1375,7 +1380,7 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * more useful info as to why this happened.
 		 */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("'%s' could not setup listener socket: %s", 
+						errmsg("'%s' could not setup listener socket: %s",
 						       serviceConfig->title,
 						       strerror(errno)),
 							   errdetail("error during listen() call (error:%d).", errno)));
@@ -1391,7 +1396,7 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * more useful info as to why this happened.
 		 */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("'%s' could not setup listener socket: %s", 
+						errmsg("'%s' could not setup listener socket: %s",
 						       serviceConfig->title,
 						       strerror(errno)),
 		   					   errdetail("error during getsockname() call (error:%d).", errno)));

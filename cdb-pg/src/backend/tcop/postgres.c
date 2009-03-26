@@ -723,8 +723,6 @@ pg_plan_query(Query *querytree, ParamListInfo boundParams)
 	if (querytree->commandType == CMD_UTILITY)
 		return NULL;
 	
-	/* Planner must have a snapshot in case it calls user-defined functions. */
-	Assert(ActiveSnapshot != NULL);
 
 	if (log_planner_stats)
 		ResetUsage();
