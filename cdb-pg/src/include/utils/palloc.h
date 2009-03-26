@@ -140,6 +140,7 @@ extern void pgport_pfree(void *pointer);
 
 /* Mem Protection */
 extern void GPMemoryProtectInit(void);
+extern void GPMemoryProtectReset(void);
 
 #ifdef USE_SYSV_SEMAPHORES
 extern void *gp_malloc(size_t sz); 

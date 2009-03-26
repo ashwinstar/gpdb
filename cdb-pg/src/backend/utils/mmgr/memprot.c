@@ -55,6 +55,12 @@ void GPMemoryProtectInit()
 {
 	elog(LOG, "GPDB on this platform does not use SysV Semeaphore.  Physical Mem Protection not implemented");
 }
+
+void GPMemoryProtectReset()
+{
+	elog(LOG, "GPDB on this platform does not use SysV Semeaphore.  Physical Mem Protection not implemented");
+}
+
 #ifdef USE_FAULT_INJECTION
 int64 gp_mp_fault(int32 reason, int64 arg)
 {
@@ -97,6 +103,11 @@ static inline bool gp_memprot_enabled()
 #else
 	return gp_vmem_protect_limit != 0;
 #endif
+}
+
+void GPMemoryProtectReset()
+{
+	gp_mp_inited = false;
 }
 
 /* Initialization */
@@ -332,10 +343,12 @@ int gpmemprot_peek_sem(PGSemaphoreData *psem)
 	union semun s;
 	int ret;
 
+	s.val = 0;
+
 	ret = semctl(psem->semId, psem->semNum, GETVAL, s);
 	if(ret < 0)
-		elog(ERROR, "Greenplum memory protection failed to get memory counter");
-
+		elog(ERROR, "Greenplum memory protection failed to get memory counter: %m");
+	
 	return ret;
 }
 

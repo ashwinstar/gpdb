@@ -102,7 +102,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			MaxBackends = 50;
 		}
 #endif
-
+		GPMemoryProtectReset();
 
 		/*
 		 * Size of the Postgres shared-memory block is estimated via
