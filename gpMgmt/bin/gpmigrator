@@ -946,19 +946,34 @@ class GPUpgrade:
         return True
 
     #------------------------------------------------------------
-    def CheckUp(self):
+    def CheckUp(self, tryconn = False):
         '''
         Checks if one of the postmasters is up and running.
         Return the environment of the running server
         '''
         olddir = self.oldenv['MASTER_DATA_DIRECTORY']
         newdir = self.newenv['MASTER_DATA_DIRECTORY']
+        env = None
 
         if olddir and os.path.exists('%s/postmaster.pid' % olddir):
-            return self.oldenv
+            env = self.oldenv
         if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-            return self.newenv
-        raise UpgradeError("Postmaster failed to start")
+            env = self.newenv
+
+        if not env:
+            raise UpgradeError("Postmaster failed to start")
+
+        if tryconn:
+            try:
+                conn = pg8000.Connection(user=self.user,
+                                     host='localhost',
+                                     database="template1", 
+                                     port=self.masterport,
+                                     socket_timeout=5000)
+            except Exception, e:
+                raise UpgradeError("Found a postmaster.pid but postmaster " +
+                                   "running")
+        return env
 
     #------------------------------------------------------------
     def Startup(self, env, utility=False):
@@ -1385,9 +1400,7 @@ class GPUpgrade:
                 raise UpgradeError("upgrade from 3.1 to 3.3 not yet supported")
         else:
             self.upgrade = False    # Downgrade
-            if newversion[:3] == "3.1":
-                raise UpgradeError("Downgrade to Greenplum Database 3.1 " +
-                                   "not supported from gpmigrator")
+            raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" % newversion[:3])
 
         oldvers = ["3.1", "3.2"]
         if (self.oldversion[:3] in oldvers and
@@ -4093,7 +4106,7 @@ try:
         shutdown = None
         try:
             try:
-                env = u.CheckUp()
+                env = u.CheckUp(true)
                 shutdown = False
                 u.dbup = [env, False]
                 if env == u.newenv:
