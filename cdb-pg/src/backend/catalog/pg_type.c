@@ -78,7 +78,7 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid ownerId,
 	for (i = 0; i < Natts_pg_type; ++i)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;		/* redundant, but safe */
+		values[i] = (Datum) 0;		/* redundant, but safe */
 	}
 
 	/*

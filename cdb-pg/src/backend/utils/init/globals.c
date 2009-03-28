@@ -35,7 +35,7 @@ volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 CritSectionCount = 0;
 
 int			MyProcPid;
-time_t	MyStartTime;
+pg_time_t	MyStartTime;
 struct Port *MyProcPort;
 long		MyCancelKey;
 
