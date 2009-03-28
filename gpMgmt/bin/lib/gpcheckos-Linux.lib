@@ -1,0 +1,924 @@
+###################################################
+#
+# gpcheckos-Linux.lib
+#
+#  v1
+#
+# This library contains the test functions associated with the
+# gpcheckos script for Linux systems.
+#
+# CHANGELOG:
+#
+
+###################################################
+# Functions in this library:
+#
+#  check4root - returns a 0 if the current user is root and a
+#               1 if not.
+#
+#  parse_res - reads the resource file and generates the temporary
+#              files.
+#
+#  versions - shows the versions of the main script, the resource
+#             file, and the lib file that will be used on this 
+#             system.
+#
+#  summary - produces the configuration summary.
+#
+#  patches_tests - examines rpm's we track, if any, and determines if they are
+#                  the right version
+#
+#  os_tests - examines the OS configuration and notes where it deviates 
+#             from the standards.
+#
+#  storage_tests - examines the storage configuration and notes where it
+#                  deviates from teh standard.
+#
+#  network_tests - examines the network configuration and notes where it 
+#                  deviates from teh standard.
+#
+#  interconnect_tests - determines of the master and segment nodes have 
+#                       connectivity on all NICs as expected.
+#
+###################################################
+# VARIABLES
+#
+#  The following variables are defined and set in the calling script.
+#
+#  TEMP_DIR - the location where the functions store temporary files.
+#  RES_FILE_NM - the name, without path, of the resource file
+#  CONFIG_DIR - the path where the resource file is stored
+#  LOG_FILE - the path and file name of the output file
+#  LOG_DIR - the path with the log file will be stored
+#  RUN_NM - the name given to the script run by the user in command parameters
+#  ITER - the run number given to the script run by the user in command params
+#
+# The following variables are set globally and may be used in more than
+# one function in this library or by the calling script.
+#
+
+#version of this file
+LIB_VERS=1
+
+#name of the file containing the resource file version
+RES_VERS_FI=RES_VERS
+
+#name of the file containing release information after parsing
+RELEASE_FND_FI=RELEASE_FND
+
+#name of the file holding the patches found installed
+PATCHES_FND_FI=PATCHES_FOUND
+
+#name of the file holding the patches currently approved
+PATCHES_CUR_FI=CURR_PATCHES
+
+#name of the file holding the approved patch history
+PATCHES_OLD_FI=OLD_PATCHES
+
+#name of the file holding the supported releases
+RELEASES_FI=RELEASES
+
+#name of the current release file
+CURR_RELEASE_FI=CURR_RELEASE
+
+#name of the file holding the supported kernels
+KERNELS_FI=KERNELS
+
+#name of the current release file
+CURR_KERNEL_FI=CURR_KERNEL
+
+#name of the file listing supported servers
+SUPP_SERVERS_FI=SUPP_SERVERS
+
+#name of the file listing services to disable
+SVCS_2_DISABLE_FI=SVCS_2_DISABLE
+
+#listing of services found
+SVCS_FND_FI=SVCS_FND
+
+#latest currently supported kernel patch
+CURR_KERNEL=""
+
+#latest currently supported release line
+CURR_RELEASE=""
+
+#holds the uname string found
+UNAME_FND=""
+
+#size of the RAM found
+RAM_SIZ_FND=""
+
+#swap device found
+SWAP_DEV_FND=""
+
+#swap size found
+SWAP_SIZ_FND=""
+
+#dump device found
+DMP_DEV_FND=""
+
+#dump size found
+DMP_SIZ_FND=""
+
+#number of disks detected
+DSK_CNT_FND=""
+
+#live upgrade status: 0 is configured, 1 is unconfigured
+LUSTATUS_FND=""
+
+#temp file for ifconfig results
+IFCONFIG_FI=IFCONFIG
+
+#temp file for nic negotiation results
+AUTONEG_FI=AUTONEG_INFO
+
+#network property setting vars
+REQ_MAX_Q_FND=""
+REQ_MAX_Q0_FND=""
+LG_ANON_P_FND=""
+SM_ANON_P_FND=""
+TIME_WAIT_FND=""
+
+#server info
+SERVER_FND=""
+SERIAL=FND=""
+
+#number of processors found
+NUM_PROCS=""
+
+###################################################
+# functions:
+
+###################################################
+#
+# lnout
+#
+# This function formats lines out in a standard way.
+#
+lnout()
+{
+  #loop incrementer
+  local i=0
+
+  #the number of tabs to put in front of the line
+  local num_tabs=0
+
+  #indicates whether the line should go to screen and log of just log
+  #0 is both
+  #1 is log only
+  #2 is log only and not append (overwrites file)
+  #3 overrids -q option.  When -q is set, all messages go to the log.
+  #any other value puts the line out to the screen only.
+  local output_mode=1
+
+  #name of the output file
+  local dest_file=""
+ 
+  #the test in the line to outpu
+  local lineout=""
+
+  #the printf template
+  local pf_templ=""
+
+  #set num_tabs to the first incoming argument
+  num_tabs=${1}
+
+  #set the output mode
+  shift 1
+  output_mode=${1}
+
+  #set the output file name
+  shift 1
+  dest_file=${1}
+
+  #set the line out to the remaining arguments
+  shift 1
+  lineout="${*}"
+
+  #set the printf template
+  while [ ${i} -lt ${num_tabs} ]; do
+    pf_templ=${pf_templ}"     "
+    i=`expr ${i} + 1`
+  done
+
+  pf_templ=${pf_templ}"%s\n"
+
+  if [ ${output_mode} -eq 3 ]; then
+    output_mode=0
+  elif [ "X${QUIET_MODE}" == "Xtrue" ] && [ ${output_mode} -eq 0 ]; then
+    output_mode=1
+  fi
+
+  #output the line
+  if [ ${output_mode} -eq 0 ]; then
+    printf "${pf_templ}" "${lineout}" | tee -a ${dest_file}
+  elif [ ${output_mode} -eq 1 ]; then
+    printf "${pf_templ}" "${lineout}" >> ${dest_file}
+  elif [ ${output_mode} -eq 2 ]; then
+    printf "${pf_templ}" "${lineout}" > ${dest_file}
+  else
+    printf "${pf_templ}" "${lineout}"
+  fi
+}
+
+###################################################
+#
+# check4root
+#
+# This function is called form the main script to insure tha that the 
+# current user is root.
+#
+check4root()
+{
+
+  #check the current user id
+  local CURR_USR=`id | cut -d '(' -f2 | cut -d')' -f1`
+
+  #if the user is root, return a 0.
+  if [ "X${CURR_USR}" = "Xroot" ]; then
+    return 0
+ 
+  #otherwise, see if the user has root privs
+  else
+    return 0
+  fi
+}
+
+
+###################################################
+#
+# versions
+#
+# This function reports the version of the main script
+# passed in through the first argument.  It also reports
+# the version from the resource file, the library file
+# that will be used and it's version.
+#
+versions()
+{
+  #main version in from the argument
+  local MAIN_VERS=${1}
+
+  #output the versions
+  lnout 0 0 ${LOG_FILE} "Versions:"
+  lnout 1 0 ${LOG_FILE} ""
+  lnout 1 0 ${LOG_FILE} "Main Script: ${MAIN_VERS}"
+  lnout 1 0 ${LOG_FILE} "Library File Used: gpcheckos-`uname`.lib"
+  lnout 1 0 ${LOG_FILE} "Library Version: ${LIB_VERS}"
+  lnout 1 0 ${LOG_FILE} "Res file version: `cat ${TEMP_DIR}/${RES_VERS_FI}`"
+  exit 0
+}
+
+###################################################
+#
+# parse_res
+#
+# This function reads the resource file and breaks it into the 
+# temporary files used as the basis for evaluating standards
+#
+parse_res()
+{
+  local BEGIN=1
+  local END=1
+  local FST_CHAR=""
+  local CURR_TEMP_FI=""
+
+  #open the resource file an dread it line by line
+  cat ${CONFIG_DIR}/${RES_FILE_NM} | while read LN; do
+
+    #find the current line's first character
+    FST_CHAR=`echo ${LN} | cut -c1`
+ 
+    #if the current line starts with a :, determine if this is the
+    #beginning or end of a section
+    if [ "X${FST_CHAR}" = "X:" ]; then
+
+      #if the begin and end flags are the same, it's the beginning
+      #of a section
+      if [ ${BEGIN} -eq ${END} ]; then
+        #Parse the temp file name related to the section
+        CURR_TEMP_FI=`echo ${LN} | cut -d':' -f2 | cut -d' ' -f1`
+
+        #set the begin flag
+        BEGIN=0
+
+        #if the file is already present, remove it
+        if [ -f ${TEMP_DIR}/${CURR_TEMP_FI} ]; then
+          rm ${TEMP_DIR}/${CURR_TEMP_FI}
+        fi
+        
+      #if a line starting with a : is found and the begin and end flags
+      #are different, it is the end of a section
+      else
+
+        #set the begin and end flags to the same value
+        BEGIN=1
+        END=1
+      fi
+
+    #if the line does not begin with a :, determine if it should be added to 
+    #a temp file
+    else
+      #if the begin and end flags are not the same, add the line to the
+      #current temp file
+      if [ ! ${BEGIN} -eq ${END} ]; then
+        lnout 1 1 ${TEMP_DIR}/${CURR_TEMP_FI} ${LN}
+      fi 
+    fi
+  done
+
+  #Use the temp file for the current release and current kernel to fill their
+  #variables
+  CURR_RELEASE=`cat ${TEMP_DIR}/${CURR_RELEASE_FI}`
+  CURR_KERNEL=`cat ${TEMP_DIR}/${CURR_KERNEL_FI}`
+
+  #remove leading and trailing spaces
+  CURR_KERNEL=`echo ${CURR_KERNEL# } | sed 's/[ \t]*$//'`
+}
+
+###################################################
+#
+# summary
+#
+# This function produces the summary report shown both on screen and 
+# in the log file.  Not everything placed in the log is 
+# put on screen
+#
+summary()
+{
+  #these variables are used in this function for various things.
+  local CURR_SRVR_FI=CURR_SERVER
+  local FLGS_NEXT=""
+  local RAID_CTRL_INFO_FI=RAID_CTRL_INFO
+  local PRTPICL_FI=PRTPICL_OUTPUT
+  local DIMM_INFO_FI=DIMM_INFO
+  local DISK_INFO_FI=DISK_INFO
+  local LUSTATUS_FI=LUSTATUS
+  local BOOT_DSK_FI=BOOT_DSK
+  local METASTAT_FI=METASTAT
+  local METADB_FI=METADB
+  local ZPOOL_FI=ZPOOLS
+  local ZFS_FI=ZFS_MOUNTS
+  local HD_DC_FI=HD_DC
+  local HD_R_FI=HD_R
+  local LN_ARR=""
+  local NUM_FLDS=""
+  local NEW_LN=""
+  local B=""
+  local D=""
+  local F=""
+  local I=""
+  local L=""
+  local M=""
+  local N=""
+  local R=""
+  local S=""
+  local CURR_FLD=""
+  local CURR_CNT=0
+  local ETH_LIST_FI=ETH_LIST
+
+  #+++++++++++++++++++++++++++++++++++++++++++
+  #gather data
+
+  #Current server model
+
+  #find the FRU number for the chassis
+  dmidecode -i 1 > ${TEMP_DIR}/${CURR_SRVR_FI} 2>/dev/null
+      
+    
+  #get the server product name
+  SERVER_FND=`dmidecode -s system-product-name`
+
+  #get the serial number used to place service calls
+  SERIAL_FND=`dmidecode -s system-serial-number`
+
+  #uname information where the kernel data will be found
+  UNAME_FND=`uname -a`
+
+  #mpstat shows one line (plus headings) for each usable processor, core,
+  #or CMT thread
+  NUM_PROCS=`cat /proc/cpuinfo | grep processor | wc -l`
+
+  #get the current release information
+  cat `cat ${TEMP_DIR}/RELEASE_FI` | while read LN; do
+    lnout 2 1 ${TEMP_DIR}/${RELEASE_FND_FI} "${LN}"
+  done
+
+  #get the detailed processor data into the log file
+  lnout 0 2 ${TEMP_DIR}/${PRTPICL_FI} ""
+  grep "model name" /proc/cpuinfo | sed s-": "-":"- | cut -d: -f2 2>&1 | while read LN; do
+    lnout 3 1 ${TEMP_DIR}/${PRTPICL_FI} "${LN}"
+  done
+
+  #RAM size from /proc/meminfo
+  RAM_SIZ_FND=`grep MemTotal /proc/meminfo | awk '{print $2 / 1024}' | cut -d. -f1`
+
+  #Get detailed DIMM information into the log
+  lnout 0 2 ${TEMP_DIR}/${DIMM_INFO_FI} ""
+  dmidecode -t memory 2>&1 | while read LN; do
+    lnout 3 1 ${TEMP_DIR}/${DIMM_INFO_FI} "${LN}"
+  done
+
+  #Get a list of RAID controllers
+  lnout 0 2 ${TEMP_DIR}/${RAID_CTRL_INFO_FI}
+  hpacucli ctrl all show status > ${TEMP_DIR}/${RAID_CTRL_INFO_FI} 2>&1
+
+  #the cfgadm command selects disks and shows no headings.  It will list 
+  #one line for each disk.  Note, cfgadm does not work in virtual environments
+  DSK_CNT_FND=0
+  for i in `grep -i slot ${TEMP_DIR}/${RAID_CTRL_INFO_FI} | awk '{print $NF}'`; do
+    CURR_CNT=`hpacucli ctrl slot=${i} physicaldrive all show status | grep physical | wc -l`
+    DSK_CNT_FND=`expr ${DSK_CNT_FND} + ${CURR_CNT}`
+  done
+
+  #put the detailed disk information into the log file
+  lnout 0 2 ${TEMP_DIR}/${DISK_INFO_FI} ""
+  for i in `grep -i slot ${TEMP_DIR}/${RAID_CTRL_INFO_FI} | awk '{print $NF}'`; do
+    hpacucli ctrl slot=${i} physicaldrive all show status 2>&1 | while read LN; do
+      lnout 3 1 ${TEMP_DIR}/${DISK_INFO_FI} "${LN}"
+    done
+  done
+
+
+  #this command lists the disks and provides some diagnostic info.
+  lnout 0 2 ${TEMP_DIR}/${HD_DC_FI}
+  for i in `hpacucli ctrl all show config | grep physical | awk '{print $2}'`; do
+    hpacucli ctrl slot=1 physicaldrive ${i} show detail | while read LN; do
+      lnout 3 1 ${TEMP_DIR}/${HD_DC_FI} "${LN}"
+    done
+  done
+
+  #this hd command lists SMART data for the disks
+  lnout 3 2 ${TEMP_DIR}/${HD_R_FI} "Unable to obtain SMART data at this time"
+  #TBD NOTE Need to figure out what diag data to send to this file
+
+
+  #the first field in the first line in /proc/swaps is the primary swap device
+  SWAP_DEV_FND=`cat /proc/swaps | grep -v Filename | awk '{print $1}'`
+
+  #the third field in the first line in /proc/swaps is the primary swap size
+  #in kb
+  SWAP_SIZ_FND=`cat /proc/swaps | grep -v Filename | awk '{print $3 / 1024}' | cut -d'.' -f1`
+
+  #log header
+  date +%d-%B-%Y.%H:%M:%S > ${LOG_FILE}
+  lnout 0 0 ${LOG_FILE} "Starting logging..." 
+  lnout 0 1 ${LOG_FILE} ""
+  lnout 0 1 ${LOG_FILE} ""
+  lnout 0 1 ${LOG_FILE} "Start gpcheckos log, run ${RUN_NM}, iteration ${ITER}"
+  lnout 0 1 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "Summary:" 
+  lnout 0 0 ${LOG_FILE} ""
+
+  #clear the IFCONFIG temp file
+  lnout 0 0 ${TEMP_DIR}/${IFCONFIG_FI} ""
+
+  #initialize flag variable
+  NEW_LN=1
+
+  #get eth list
+  ifconfig -a | while read LN; do
+    #parse the current line into a bash array
+    LN_ARR=( `echo ${LN}` )
+
+    #use the first 3 chars of the first array node as a flag
+    LN_FLG=`echo ${LN_ARR[0]} | cut -c 1-3`
+
+    if [ "X${LN_FLG}" = "Xeth" ]; then
+      echo ${LN_ARR[0]} >> ${TEMP_DIR}/${ETH_LIST_FI}
+    fi
+  done
+
+  #read in the output of ifconfig -a
+  for i in `cat ${TEMP_DIR}/${ETH_LIST_FI}`; do
+    #Add the NIC to the list
+    M=${i}
+
+    #get the IP addr info
+    LN_ARR=( `ifconfig ${i} | grep "inet addr"` )
+
+    #get the IP address
+    I=`echo ${LN_ARR[1]} | cut -d: -f2`
+    if [ "X${I}" = "X" ]; then
+      I=" "
+    fi
+
+    #get the netmask
+    N=`echo ${LN_ARR[3]} | cut -d: -f2`
+    if [ "X${N}" = "X" ]; then
+      N=" "
+    fi
+
+    #parse the flags and capture them
+    for f in `ifconfig ${i} | grep MTU | cut -d: -f1`; do
+      if [ ! "X${f}" = "XMTU" ]; then
+        F="${f} ${F}"
+      fi
+    done
+
+    #get the MTU
+    R=`ifconfig ${i} | grep MTU | cut -d: -f2 | awk '{print $1}'`
+ 
+    #Once the flags and MTU are parsed, write the data we've found to a 
+    #new line in the temp file
+    printf "%16s%16s%12s%32s\n" "${M}" "${I}" "${N}" "${F}" >> ${TEMP_DIR}/${IFCONFIG_FI}
+    M=""
+    I=""
+    N=""
+    F=""
+    
+  done
+
+  #get autonegotiation information
+  for i in `cat ${TEMP_DIR}/${ETH_LIST_FI} | awk '{print $1}'`; do
+    S=`ethtool ${i} | grep Speed | awk '{print $2}' | cut -dM -f1`
+    D=`ethtool ${i} | grep Duplex | awk '{print $2}'`
+    LN=`printf "%s\tSpeed:%s\tDuplex:%s\n" "${i}" "${S}" "${D}"`
+    lnout 3 1 ${TEMP_DIR}/${AUTONEG_FI} ${LN}
+  done
+
+  #get service states
+#TBD Need to write tests for services
+
+  #server type
+  lnout 1 0 ${LOG_FILE} "Res file version: `cat ${TEMP_DIR}/${RES_VERS_FI}`"
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 1 0 ${LOG_FILE} "Server: ${SERVER_FND}" 
+  lnout 1 0 ${LOG_FILE} "Serial: ${SERIAL_FND}" 
+
+  #Kernel and uname information
+  lnout 1 0 ${LOG_FILE} "Uname: ${UNAME_FND}" 
+  lnout 1 0 ${LOG_FILE} "OS Release Info:"
+  cat ${TEMP_DIR}/${RELEASE_FND_FI} >> ${LOG_FILE}
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 1 0 ${LOG_FILE} "Capturing dmesg to ${LOG_DIR}/DMESG_LOG"
+  dmesg > ${LOG_DIR}/DMESG_LOG 2>&1
+  lnout 1 0 ${LOG_FILE} "Capturing messages files to ${LOG_DIR}"
+  cp /var/log/messages* ${LOG_DIR}
+  lnout 1 0 ${LOG_FILE} "Capturing RAID card diags to ${LOG_DIR}/HPADUCLI"
+  hpaducli -f ${LOG_DIR}/HPADUCLI 2>&1
+  lnout 1 0 ${LOG_FILE} "Capturing RAID card config to ${LOG_DIR}/HPACUCLI"
+  hpacucli ctrl all show config detail > ${LOG_DIR}/HPACUCLI 2>&1
+  lnout 1 0 ${LOG_FILE} "Capturing numactl output to ${LOG_DIR}/NUMACTL"
+  numactl --hardware > ${LOG_DIR}/NUMACTL 2>&1
+  lnout 1 0 ${LOG_FILE} "Capturing supportconfig output to ${LOG_DIR}"
+  supportconfig -R ${LOG_DIR} > /dev/null 2>&1
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" 
+  lnout 0 0 ${LOG_FILE} ""
+
+  #Processor information
+  lnout 1 0 ${LOG_FILE} "Processor Info:" 
+  lnout 2 0 ${LOG_FILE} "Number of processors/cores: ${NUM_PROCS}" 
+  lnout 2 1 ${LOG_FILE} "Processor Type:" 
+  cat ${TEMP_DIR}/${PRTPICL_FI} >> ${LOG_FILE}
+  lnout 0 0 ${LOG_FILE} ""
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+
+  #Memory information
+  lnout 1 0 ${LOG_FILE} "Memory Info:" 
+  lnout 2 0 ${LOG_FILE} "Memory Recognized in MB: ${RAM_SIZ_FND}" 
+  lnout 2 1 ${LOG_FILE} "Detailed Memory Information:" 
+  cat ${TEMP_DIR}/${DIMM_INFO_FI} >> ${LOG_FILE}
+
+  #Swap information
+  lnout 2 0 ${LOG_FILE} "Primary swap device: ${SWAP_DEV_FND}" 
+  lnout 2 1 ${LOG_FILE} "Primary swap size in GB: ${SWAP_SIZ_FND}" 
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+
+  #Disk information
+  lnout 1 0 ${LOG_FILE} "Disk Info:" 
+  lnout 2 0 ${LOG_FILE} "Number of disk devices detected: ${DSK_CNT_FND}" 
+  lnout 2 1 ${LOG_FILE} "Disk Map: "
+  cat ${TEMP_DIR}/${DISK_INFO_FI} >> ${LOG_FILE}
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 2 1 ${LOG_FILE} "Disk Information:"
+  cat ${TEMP_DIR}/${HD_DC_FI} >> ${LOG_FILE}
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 2 1 ${LOG_FILE} "SMART Data:"
+  cat ${TEMP_DIR}/${HD_R_FI} >> ${LOG_FILE} 
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+
+
+#TBD Patches in SLES are really different than Solaris.  Need to write this 
+#logic
+
+  #Patch information
+  #patches are handled differently than the other options.  To facilitate
+  #checking the installed patch list with the supported list, a temp file
+  #is built.
+  
+  #initialize the temp file
+#  lnout 0 2 ${TEMP_DIR}/${PATCHES_FND_FI} ""
+#  lnout 1 0 ${LOG_FILE} "Patches installed since OS installation:" 
+#  for pdir in `showrev -p | cut -d':' -f2 | awk '{print $1}'`; do
+#    if [ -s /var/sadm/patch/${pdir} ]; then
+#      lnout 2 0 ${LOG_FILE} "${pdir}" 
+#      lnout 0 1 ${TEMP_DIR}/${PATCHES_FND_FI} ${pdir} 
+#    fi
+#  done
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+
+  #Network information
+  lnout 1 0 ${LOG_FILE} "Network Configuration Info:" 
+
+  lnout 2 0 ${LOG_FILE} "Capturing Host file to ${LOG_DIR}..." 
+  cp /etc/hosts ${LOG_DIR}
+
+  lnout 2 0 ${LOG_FILE} "Capturing IFCFG files to ${LOG_DIR}..." 
+  cp /etc/sysconfig/network/ifcfg-eth* ${LOG_DIR}
+
+  lnout 2 0 ${LOG_FILE} "Capturing Networks file to ${LOG_DIR}..." 
+  cp /etc/networks ${LOG_DIR}
+
+  lnout 2 0 ${LOG_FILE} "Capturing Netmasks file to ${LOG_DIR}" 
+  cp /etc/netmasks ${LOG_DIR}
+
+  lnout 2 0 ${LOG_FILE} "Capturing HOSTNAME file to ${LOG_DIR}" 
+  cp /etc/HOSTNAME ${LOG_DIR}
+
+  lnout 2 0 ${LOG_FILE} "Capturing routes file to ${LOG_DIR}" 
+  cp /etc/sysconfig/network/routes ${LOG_DIR}
+  lnout 0 0 ${LOG_FILE} ""
+
+  lnout 2 0 ${LOG_FILE} "Active NICs" 
+  if [ "X${QUIET_MODE}" == "Xfalse" ]; then
+    cat ${TEMP_DIR}/${IFCONFIG_FI} | tee -a ${LOG_FILE}
+  else
+    cat ${TEMP_DIR}/${IFCONFIG_FI} >> ${LOG_FILE}
+  fi
+  lnout 0 0 ${LOG_FILE} ""
+
+  lnout 2 1 ${LOG_FILE} "NIC Autonegotiation Status:"
+  cat ${TEMP_DIR}/${AUTONEG_FI} >> ${LOG_FILE}
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+  
+#TBD Need to figure out how to handle services
+
+#  lnout 1 0 ${LOG_FILE} "Services info" 
+#  if [ "X${QUIET_MODE}" == "Xfalse" ]; then
+#    cat ${TEMP_DIR}/${SVCS_FND_FI} | tee -a ${LOG_FILE}
+#  else
+#    cat ${TEMP_DIR}/${SVCS_FND_FI} >> ${LOG_FILE}
+#  fi
+#
+#  lnout 0 0 ${LOG_FILE} ""
+#  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "Summary complete" 
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+  
+}
+
+patches_tests()
+{
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} "Patch Tests Not yet implemented"
+#  lnout 0 0 ${LOG_FILE} "Patch Report:"
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+}
+
+os_tests()
+{
+  local D=""
+  local M=""
+  local N=""
+  local P=""
+  local S=""
+  local NIC_CNT=""
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} "OS Configuration Report:" 
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} ""
+
+  ###############################
+  #evaluate the server
+
+  #determine if this is a supported server
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "Server Results"
+
+  #Get the matching supported server info
+  supp_srvr=`grep -i "${SERVER_FND}" ${TEMP_DIR}/${SUPP_SERVERS_FI}`
+  rval=${?}
+
+  #if a supported server is found, evaluate it
+  if [ ${rval} -eq 0 ]; then
+    #number of processors expected
+    P=`echo ${supp_srvr} | cut -d':' -f2`
+    
+    #Memory in MB expected
+    M=`echo ${supp_srvr} | cut -d':' -f3`
+
+    #Number of disks expected
+    D=`echo ${supp_srvr} | cut -d':' -f4`
+
+    #This is the number of NICs expected to be active for this server
+    #it is used later in the function.
+    N=`echo ${supp_srvr} | cut -d':' -f5`
+    
+    lnout 0 0 ${LOG_FILE} ""
+    lnout 1 0 ${LOG_FILE} "Server (${SERVER_FND}) is supported"
+
+    #if the number of processors found is at least the num expected, say so
+    if [ ${NUM_PROCS} -ge ${P} ]; then
+      lnout 2 0 ${LOG_FILE} "Found at least ${P} processors"
+    #otherwise warn that it is short
+    else
+      lnout 2 0 ${LOG_FILE} "WARNING: expected ${P} processors, found ${NUM_PROCS}"
+    fi
+
+    #if the amount of memory is at least what was expected, say so
+    if [ ${RAM_SIZ_FND} -ge ${M} ]; then
+      lnout 2 0 ${LOG_FILE} "Found at least ${M}MB memory"
+    #otherwise warn that it is short
+    else
+      lnout 2 0 ${LOG_FILE} "WARNING: expected ${M}MB memory, found ${RAM_SIZ_FND}"
+    fi
+
+    #if the number of disks is at least what was expected, say so
+    if [ ${DSK_CNT_FND} -ge ${D} ]; then
+      lnout 2 0 ${LOG_FILE} "Found at least ${D} disks"
+    #otherwise warn that it is short
+    else
+      lnout 2 0 ${LOG_FILE} "WARNING: expected ${D} disks, found ${DSK_CNT_FND}"
+    fi
+
+  #if the server is not found in the supported list, say so
+  else
+    lnout 1 0 ${LOG_FILE} "WARNING: The server found (${SERVER_FND}) does not"
+    lnout 1 0 ${LOG_FILE} "         appear to be a standard." 
+  fi
+
+  ###############################
+  #evaluate the kernel
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "Kernel Results"
+
+  #parse the kernel patch rev out of the uname output
+  KERNEL_FND=`echo ${UNAME_FND} | awk '{print $3}' | cut -d'_' -f2`
+
+  #if the kernel found is the same as the current kernel, say so
+  if [ "X${KERNEL_FND}" = "X${CURR_KERNEL}" ]; then
+    lnout 1 0 ${LOG_FILE} "The kernel (${KERNEL_FND}) is up to date."
+
+  #otherwise, look to see if the current kernel is in the list of previously
+  #supported kernels
+  else
+    grep ${KERNEL_FND} ${TEMP_DIR}/${KERNELS_FI} > /dev/null 2>&1
+    rval=${?}
+    
+    #if the current kernel is found in the past kernels, say so
+    if [ ${rval} -eq 0 ]; then
+      lnout 1 0 ${LOG_FILE} "The installed kernel (${KERNEL_FND}) can be upgraded to ${CURR_KERNEL}"
+
+    #if the kernel installed cannot be found in the list, complain
+    else 
+      lnout 1 0 ${LOG_FILE} "The installed kernel (${KERNEL_FND}), does not appear to be supported." 
+    fi
+  fi
+
+  ###############################
+  #evaluate swap size
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "Swap Results"
+
+  #compare the swap space to the memory size
+  SWAP_SIZ_FND_MB=`echo ${SWAP_SIZ_FND}\*1024 | bc`
+  if [ ${SWAP_SIZ_FND_MB} -ge ${RAM_SIZ_FND} ]; then
+    lnout 1 0 ${LOG_FILE} "Primary swap is equal to or greater than physical RAM." 
+  else
+    lnout 1 0 ${LOG_FILE} "Primary swap is NOT equal to physical RAM." 
+  fi
+  
+  ###############################
+  #NIC evaluation
+
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "NIC Evaluation"
+
+  #find out how many NICs were plumbed
+  NIC_CNT=`cat ${TEMP_DIR}/${IFCONFIG_FI} | wc -l`
+
+  #if N is not filled, assume the server is non-standard and beg off
+  #the count
+  if [ "X${N}" = "X" ]; then
+    lnout 1 0 ${LOG_FILE} "WARNING: Cannot determine how many NICs to expect for server ${SERVER_FND}"
+
+  #if at least the number of active NICs expected was found, say so
+  elif [ ${NIC_CNT} -ge ${N} ]; then
+    lnout 1 0 ${LOG_FILE} "Found at least the number of active NICs expected."
+
+  #otherwise warn that it is short
+  else
+    lnout 1 0 ${LOG_FILE} "WARNING: Expected at least ${N} NICS, found ${NIC_CNT}"
+  fi
+
+  #For each NIC found, make sure it is 1Gb and full duplex
+  for i in `cat ${TEMP_DIR}/${IFCONFIG_FI} | awk '{print $1}'`; do
+
+    lnout 1 0 ${LOG_FILE} "NIC: ${i}"
+    #pull the NIC info form the autonegotiation records
+    LN=`grep ${i} ${TEMP_DIR}/${AUTONEG_FI}`
+    rval=${?}
+
+    #if the NIC was found in the autonegotiation records, parse it
+    if [ ${rval} -eq 0 ]; then
+
+      #parse the speed from the autoneg record
+      S=`echo ${LN} | awk '{print $2}' | cut -d':' -f2`
+      if [ "X${S}" = "XUnknown!" ]; then
+        S=0
+      fi
+
+      #parse the duplex from the autoneg record
+      D=`echo ${LN} | awk '{print $3}' | cut -d':' -f2`
+
+      #if speed is 1000, say so
+      if [ ${S} -eq 1000 ]; then
+        lnout 2 0 ${LOG_FILE} "Speed is 1Gb"
+
+      #otherwise complain
+      else
+        lnout 2 0 ${LOG_FILE} "WARNING: Speed found is ${S}, expected 1000"
+      fi
+    
+      #if duplex is full, say so
+      if [ "X${D}" = "XFull" ]; then
+        lnout 2 0 ${LOG_FILE} "Duplex is full"
+
+      #otherwise complain
+      else
+        lnout 2 0 ${LOG_FILE} "WARNING: Duplex found is ${D}, expected full"
+      fi
+    
+    #otherwise, complain that an active NIC was not recorded
+    else
+      lnout 1 0 ${LOG_FILE} "ERROR: Could not find ${i} in autonegotiation"
+      lnout 1 0 ${LOG_FILE} "       records.  This is a problem in this tool"
+      lnout 1 0 ${LOG_FILE} "       not necessarily with the server."
+    fi
+  done
+    
+}
+
+storage_tests()
+{
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} "Storage Tests Not yet implemented"
+#  echo "Storage Configuration Report:" | tee -a ${LOG_FILE}
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+#  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+}
+
+network_tests()
+{
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} "Network Tests Not yet implemented"
+#  echo "Network Configuration Report:" | tee -a ${LOG_FILE}
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+#  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+}
+
+interconnect_tests()
+{
+  lnout 0 0 ${LOG_FILE} ""
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+  lnout 0 0 ${LOG_FILE} "Interconnect Not yet implemented"
+#  echo "Interconnect Connectivity Report:" | tee -a ${LOG_FILE}
+  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+#  lnout 0 0 ${LOG_FILE} "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+#  lnout 0 0 ${LOG_FILE} ""
+}
