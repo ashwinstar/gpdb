@@ -261,10 +261,11 @@ default_reloptions(Datum reloptions, bool validate,
 	int32		blocksize;
 	bool		appendonly;
 	bool		checksum;
-	char*		compresstype;
+	char*		compresstype = NULL;
 	int32		compresslevel;
 	char*		defaultCompressor = "zlib"; /* don't precede with 'const' */
 	bool 		columnstore;
+	int			j = 0;
 	
 	StdRdOptions *result;
 
@@ -440,7 +441,10 @@ default_reloptions(Datum reloptions, bool validate,
 	result->appendonly = appendonly;
 	result->blocksize = blocksize;
 	result->compresslevel = compresslevel;
-	result->compresstype = str_tolower(compresstype); /* store as lowercase always */
+	if (compresstype != NULL)
+		for (j = 0;j < strlen(compresstype); j++)
+			compresstype[j] = pg_tolower(compresstype[j]);
+	result->compresstype = compresstype;
 	result->checksum = checksum;
 	result->columnstore = columnstore;
 

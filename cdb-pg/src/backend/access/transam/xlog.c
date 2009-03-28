@@ -5039,7 +5039,7 @@ str_time(pg_time_t tnow)
 #else
 			 "%Y-%m-%d %H:%M:%S",
 #endif
-			 pg_localtime(&tnow, default_timezone));
+			 pg_localtime(&tnow, log_timezone ? log_timezone : gmt_timezone));
 
 	return buf;
 }
@@ -7683,10 +7683,10 @@ pg_start_backup(PG_FUNCTION_ARGS)
 		XLByteToSeg(startpoint, _logId, _logSeg);
 		XLogFileName(xlogfilename, ThisTimeLineID, _logId, _logSeg);
 
-		stamp_time = time(NULL);
+		stamp_time = (pg_time_t) time(NULL);
 		pg_strftime(strfbuf, sizeof(strfbuf),
 				 "%Y-%m-%d %H:%M:%S %Z",
-				 pg_localtime(&stamp_time, default_timezone));
+				 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
 		/*
 		 * Check for existing backup label --- implies a backup is already
@@ -7799,10 +7799,10 @@ pg_stop_backup(PG_FUNCTION_ARGS __attribute__((unused)) )
 	XLByteToSeg(stoppoint, _logId, _logSeg);
 	XLogFileName(stopxlogfilename, ThisTimeLineID, _logId, _logSeg);
 
-	stamp_time = time(NULL);
+	stamp_time = (pg_time_t) time(NULL);
 	pg_strftime(strfbuf, sizeof(strfbuf),
 			 "%Y-%m-%d %H:%M:%S %Z",
-			 pg_localtime(&stamp_time, default_timezone));
+			 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
 	/*
 	 * Open the existing label file

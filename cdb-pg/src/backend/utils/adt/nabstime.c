@@ -86,6 +86,8 @@ static void parsetinterval(char *i_string,
  * GetCurrentAbsoluteTime()
  *
  * Get the current system time (relative to Unix epoch).
+ *
+ * NB: this will overflow in 2038; it should be gone long before that.
  */
 AbsoluteTime
 GetCurrentAbsoluteTime(void)
@@ -112,7 +114,7 @@ abstime2tm(AbsoluteTime _time, int *tzp, struct pg_tm * tm, char **tzn)
 		time -= CTimeZone;
 
 	if (!HasCTZSet && tzp != NULL)
-		tx = pg_localtime(&time, global_timezone);
+		tx = pg_localtime(&time, session_timezone);
 	else
 		tx = pg_gmtime(&time);
 
@@ -474,7 +476,7 @@ timestamp_abstime(PG_FUNCTION_ARGS)
 		result = NOEND_ABSTIME;
 	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) == 0)
 	{
-		tz = DetermineTimeZoneOffset(tm, global_timezone);
+		tz = DetermineTimeZoneOffset(tm, session_timezone);
 		result = tm2abstime(tm, tz);
 	}
 	else
@@ -630,7 +632,8 @@ reltimein(PG_FUNCTION_ARGS)
 	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
 						  field, ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
-		dterr = DecodeInterval(field, ftype, nf, &dtype, tm, &fsec);
+			dterr = DecodeInterval(field, ftype, nf, INTERVAL_FULL_RANGE,
+								   &dtype, tm, &fsec);
 	if (dterr != 0)
 	{
 		if (dterr == DTERR_FIELD_OVERFLOW)
@@ -668,7 +671,7 @@ reltimeout(PG_FUNCTION_ARGS)
 	char		buf[MAXDATELEN + 1];
 
 	reltime2tm(time, tm);
-	EncodeInterval(tm, 0, DateStyle, buf);
+	EncodeInterval(tm, 0, IntervalStyle, buf);
 
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
@@ -1591,7 +1594,7 @@ timeofday(PG_FUNCTION_ARGS)
 	gettimeofday(&tp, NULL);
 	tt = (pg_time_t) tp.tv_sec;
 	pg_strftime(templ, sizeof(templ), "%a %b %d %H:%M:%S.%%06d %Y %Z",
-				pg_localtime(&tt, global_timezone));
+				pg_localtime(&tt, session_timezone));
 	snprintf(buf, sizeof(buf), templ, tp.tv_usec);
 
 	len = VARHDRSZ + strlen(buf);

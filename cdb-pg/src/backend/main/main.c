@@ -312,9 +312,7 @@ help(const char *progname)
 	printf(_("  -p PORT         port number to listen on\n"));
 	printf(_("  -s              show statistics after each query\n"));
 	printf(_("  -S WORK-MEM     set amount of memory for sorts (in kB)\n"));
-#if !defined(pg_on_solaris)
 	printf(_("  --NAME=VALUE    set run-time parameter\n"));
-#endif
 	printf(_("  --describe-config  describe configuration parameters, then exit\n"));
 	printf(_("  --help          show this help, then exit\n"));
 	printf(_("  --version       output version information, then exit\n"));

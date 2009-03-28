@@ -276,7 +276,7 @@ static void get_timestamp(char * strfbuf)
 #else
 			 "%Y-%m-%d %H:%M:%S        ",
 #endif
-			 pg_localtime(&stamp_time, default_timezone));
+			 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
 	/* 'paste' milliseconds into place... */
 	sprintf(msbuf, ".%06d", (int) (tv.tv_usec));

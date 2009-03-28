@@ -289,7 +289,7 @@ date2timestamp(DateADT dateVal)
 #ifdef HAVE_INT64_TIMESTAMP
 	/* date is days since 2000, timestamp is microseconds since same... */
 	result = dateVal * USECS_PER_DAY;
-	/* Date's range is wider than timestamp's, so must check for overflow */
+		/* Date's range is wider than timestamp's, so check for overflow */
 	if (result / USECS_PER_DAY != dateVal)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -316,11 +316,11 @@ date2timestamptz(DateADT dateVal)
 	tm->tm_hour = 0;
 	tm->tm_min = 0;
 	tm->tm_sec = 0;
-	tz = DetermineTimeZoneOffset(tm, global_timezone);
+		tz = DetermineTimeZoneOffset(tm, session_timezone);
 
 #ifdef HAVE_INT64_TIMESTAMP
 	result = dateVal * USECS_PER_DAY + tz * USECS_PER_SEC;
-	/* Date's range is wider than timestamp's, so must check for overflow */
+		/* Date's range is wider than timestamp's, so check for overflow */
 	if ((result - tz * USECS_PER_SEC) / USECS_PER_DAY != dateVal)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -948,8 +948,10 @@ tm2time(struct pg_tm * tm, fsec_t fsec, TimeADT *result)
 
 /* time2tm()
  * Convert time data type to POSIX time structure.
- * For dates within the system-supported time_t range, convert to the
- *	local time zone. If out of this range, leave as GMT. - tgl 97/05/27
+ *
+ * For dates within the range of pg_time_t, convert to the local time zone.
+ * If out of this range, leave as UTC (in practice that could only happen
+ * if pg_time_t is just 32 bits) - thomas 97/05/27
  */
 static int
 time2tm(TimeADT time, struct pg_tm * tm, fsec_t *fsec)
@@ -1200,6 +1202,19 @@ time_cmp(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(1);
 	PG_RETURN_INT32(0);
 }
+
+#if  0
+Datum
+time_hash(PG_FUNCTION_ARGS)
+{
+	/* We can use either hashint8 or hashfloat8 directly */
+#ifdef HAVE_INT64_TIMESTAMP
+	return hashint8(fcinfo);
+#else
+	return hashfloat8(fcinfo);
+#endif
+}
+#endif
 
 Datum
 time_larger(PG_FUNCTION_ARGS)
@@ -2268,7 +2283,7 @@ time_timetz(PG_FUNCTION_ARGS)
 
 	GetCurrentDateTime(tm);
 	time2tm(time, tm, &fsec);
-	tz = DetermineTimeZoneOffset(tm, global_timezone);
+	tz = DetermineTimeZoneOffset(tm, session_timezone);
 
 	result = (TimeTzADT *) palloc(sizeof(TimeTzADT));
 
@@ -2553,10 +2568,9 @@ timetz_zone(PG_FUNCTION_ARGS)
 		if (tzp)
 		{
 			/* Get the offset-from-GMT that is valid today for the zone */
-			pg_time_t	now;
+			pg_time_t	now = (pg_time_t) time(NULL);
 			struct pg_tm *tm;
 
-			now = time(NULL);
 			tm = pg_localtime(&now, tzp);
 			tz = -tm->tm_gmtoff;
 		}

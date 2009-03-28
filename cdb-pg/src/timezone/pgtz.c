@@ -3,10 +3,10 @@
  * pgtz.c
  *	  Timezone Library Integration Functions
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/pgtz.c,v 1.48 2006/11/21 23:11:55 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/pgtz.c,v 1.62 2009/01/01 17:24:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,29 +27,42 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 
-/* Current global timezone */
-pg_tz	   *global_timezone = NULL;
+/* OLD -- Current global timezone */
+//pg_tz	   *global_timezone = NULL;
 
-/* Default timezone */
-pg_tz      *default_timezone = NULL;
+/* OLD --Default timezone */
+//pg_tz      *default_timezone = NULL;
 
-static char tzdir[MAXPGPATH];
-static bool done_tzdir = false;
+/* Current session timezone (controlled by TimeZone GUC) */
+pg_tz	   *session_timezone = NULL;
+
+/* Current log timezone (controlled by log_timezone GUC) */
+pg_tz	   *log_timezone = NULL;
+
+/* Fallback GMT timezone for last-ditch error message formatting */
+pg_tz	   *gmt_timezone = NULL;
+static pg_tz gmt_timezone_data;
+
 
 static bool scan_directory_ci(const char *dirname,
 							  const char *fname, int fnamelen,
 							  char *canonname, int canonnamelen);
 static const char *identify_system_timezone(void);
-static const char *select_default_timezone(void);
-static bool set_global_timezone(const char *tzname);
+static pg_tz *get_pg_tz_for_zone(const char *tzname);
+static pg_tz *select_default_timezone(void);
 
 
 /*
  * Return full pathname of timezone data directory
  */
-static char *
+static const char *
 pg_TZDIR(void)
 {
+#ifndef SYSTEMTZDIR
+	/* normal case: timezone stuff is under our share dir */
+	static bool done_tzdir = false;
+	static char tzdir[MAXPGPATH];
+
 	if (done_tzdir)
 		return tzdir;
 
@@ -58,6 +71,10 @@ pg_TZDIR(void)
 
 	done_tzdir = true;
 	return tzdir;
+#else
+	/* we're configured to use system's timezone database */
+	return SYSTEMTZDIR;
+#endif
 }
 
 
@@ -276,7 +293,7 @@ score_timezone(const char *tzname, struct tztry * tt)
 	 * Load timezone directly. Don't use pg_tzset, because we don't want all
 	 * timezones loaded in the cache at startup.
 	 */
-	if (tzload(tzname, NULL, &tz.state) != 0)
+	if (tzload(tzname, NULL, &tz.state, TRUE) != 0)
 	{
 		if (tzname[0] == ':' || tzparse(tzname, &tz.state, FALSE) != 0)
 		{
@@ -486,7 +503,7 @@ identify_system_timezone(void)
 	if (std_zone_name[0] == '\0')
 	{
 		ereport(LOG,
-				(errmsg("unable to determine system timezone, defaulting to \"%s\"", "GMT"),
+				(errmsg("could not determine system time zone, defaulting to \"%s\"", "GMT"),
 		errhint("You can specify the correct timezone in postgresql.conf.")));
 		return NULL;			/* go to GMT */
 	}
@@ -597,7 +614,7 @@ scan_available_timezones(char *tzdir, char *tzdirsub, struct tztry * tt,
 			if (score > *bestscore)
 			{
 				*bestscore = score;
-				StrNCpy(bestzonename, tzdirsub, TZ_STRLEN_MAX + 1);
+				strlcpy(bestzonename, tzdirsub, TZ_STRLEN_MAX + 1);
 			}
 			else if (score == *bestscore)
 			{
@@ -605,7 +622,7 @@ scan_available_timezones(char *tzdir, char *tzdirsub, struct tztry * tt,
 				if (strlen(tzdirsub) < strlen(bestzonename) ||
 					(strlen(tzdirsub) == strlen(bestzonename) &&
 					 strcmp(tzdirsub, bestzonename) < 0))
-					StrNCpy(bestzonename, tzdirsub, TZ_STRLEN_MAX + 1);
+					strlcpy(bestzonename, tzdirsub, TZ_STRLEN_MAX + 1);
 			}
 		}
 
@@ -963,7 +980,7 @@ static const struct
 		"Australia/Perth"
 	},							/* (GMT+08:00) Perth */
 /*	{"W. Central Africa Standard Time", "W. Central Africa Daylight Time",
-	 *	 *	 *	 *	 *	""}, Could not find a match for this one. Excluded for now. *//* (
+	 *	 *	 *	 *	 *	 *	 *	""}, Could not find a match for this one. Excluded for now. *//* (
 	 * G MT+01:00) West Central Africa */
 	{
 		"W. Europe Standard Time", "W. Europe Daylight Time",
@@ -1191,8 +1208,8 @@ pg_tzset(const char *name)
 	/*
 	 * Upcase the given name to perform a case-insensitive hashtable search.
 	 * (We could alternatively downcase it, but we prefer upcase so that we
-	 * can get consistently upcased results from tzparse() in case the name
-	 * is a POSIX-style timezone spec.)
+	 * can get consistently upcased results from tzparse() in case the name is
+	 * a POSIX-style timezone spec.)
 	 */
 	p = uppername;
 	while (*name)
@@ -1209,7 +1226,7 @@ pg_tzset(const char *name)
 		return &tzp->tz;
 	}
 
-	if (tzload(uppername, canonname, &tzstate) != 0)
+	if (tzload(uppername, canonname, &tzstate, TRUE) != 0)
 	{
 		if (uppername[0] == ':' || tzparse(uppername, &tzstate, FALSE) != 0)
 		{
@@ -1265,55 +1282,52 @@ tz_acceptable(pg_tz *tz)
 
 
 /*
- * Set the global timezone. Verify that it's acceptable first.
+ * Get a pg_tz struct for the given timezone name.	Returns NULL if name
+ * is invalid or not an "acceptable" zone.
  */
-static bool
-set_global_timezone(const char *tzname)
+static pg_tz *
+get_pg_tz_for_zone(const char *tzname)
 {
-	pg_tz	   *tznew;
+	pg_tz	   *tz;
 
 	if (!tzname || !tzname[0])
-		return false;
+		return NULL;
 
-	tznew = pg_tzset(tzname);
-	if (!tznew)
-		return false;
+	tz = pg_tzset(tzname);
+	if (!tz)
+		return NULL;
 
-	if (!tz_acceptable(tznew))
-		return false;
+	if (!tz_acceptable(tz))
+		return NULL;
 
-	global_timezone = tznew;
-
-	/* Set default timezone if it is not set */
-	if (default_timezone == NULL)
-		default_timezone = global_timezone;
-	return true;
+	return tz;
 }
 
+
 /*
- * Identify a suitable default timezone setting based on the environment,
- * and make it active.
+ * Identify a suitable default timezone setting based on the environment.
  *
  * We first look to the TZ environment variable.  If not found or not
  * recognized by our own code, we see if we can identify the timezone
  * from the behavior of the system timezone library.  When all else fails,
  * fall back to GMT.
  */
-static const char *
+static pg_tz *
 select_default_timezone(void)
 {
-	const char *def_tz;
+	pg_tz	   *def_tz;
 
-	def_tz = getenv("TZ");
-	if (set_global_timezone(def_tz))
+	def_tz = get_pg_tz_for_zone(getenv("TZ"));
+	if (def_tz)
 		return def_tz;
 
-	def_tz = identify_system_timezone();
-	if (set_global_timezone(def_tz))
+	def_tz = get_pg_tz_for_zone(identify_system_timezone());
+	if (def_tz)
 		return def_tz;
 
-	if (set_global_timezone("GMT"))
-		return "GMT";
+	def_tz = get_pg_tz_for_zone("GMT");
+	if (def_tz)
+		return def_tz;
 
 	ereport(FATAL,
 			(errmsg("could not select a suitable default timezone"),
@@ -1322,17 +1336,28 @@ select_default_timezone(void)
 }
 
 /*
- * Pre-initialize timezone library.
+ * Pre-initialize timezone library
  *
- * This is called before GUC variable initialization begins. Its purpose is
- * to ensure that elog.c has a pgtz variable to format timestamps with,
- * in case log_line_prefix is set to a value requiring that. We did not set
- * default_timezone yet.
+ * This is called before GUC variable initialization begins.  Its purpose
+ * is to ensure that elog.c has a pgtz variable available to format timestamps
+ * with, in case log_line_prefix is set to a value requiring that.	We cannot
+ * set log_timezone yet.
  */
 void
 pg_timezone_pre_initialize(void)
 {
-	select_default_timezone();
+	/*
+	 * We can't use tzload() because we may not know where PGSHAREDIR is (in
+	 * particular this is true in an EXEC_BACKEND subprocess). Since this
+	 * timezone variable will only be used for emergency fallback purposes, it
+	 * seems OK to just use the "lastditch" case provided by tzparse().
+	 */
+	if (tzparse("GMT", &gmt_timezone_data.state, TRUE) != 0)
+		elog(FATAL, "could not initialize GMT timezone");
+	strcpy(gmt_timezone_data.TZname, "GMT");
+	gmt_timezone = &gmt_timezone_data;
+	
+	//default_timezone = &gmt_timezone_data; // old
 }
 
 /*
@@ -1340,20 +1365,35 @@ pg_timezone_pre_initialize(void)
  *
  * This is called after initial loading of postgresql.conf.  If no TimeZone
  * setting was found therein, we try to derive one from the environment.
+ * Likewise for log_timezone.
  */
 void
 pg_timezone_initialize(void)
 {
-	/* Do we need to try to figure the timezone? */
+	pg_tz	   *def_tz = NULL;
+
+	/* Do we need to try to figure the session timezone? */
 	if (pg_strcasecmp(GetConfigOption("timezone"), "UNKNOWN") == 0)
 	{
-		const char *def_tz;
-
 		/* Select setting */
 		def_tz = select_default_timezone();
+		session_timezone = def_tz;
 		/* Tell GUC about the value. Will redundantly call pg_tzset() */
-		SetConfigOption("timezone", def_tz, PGC_POSTMASTER, PGC_S_ARGV);
+		SetConfigOption("timezone", pg_get_timezone_name(def_tz),
+						PGC_POSTMASTER, PGC_S_ARGV);
 	}
+
+	/* What about the log timezone? */
+	if (pg_strcasecmp(GetConfigOption("log_timezone"), "UNKNOWN") == 0)
+	{
+		/* Select setting, but don't duplicate work */
+		if (!def_tz)
+			def_tz = select_default_timezone();
+		log_timezone = def_tz;
+		/* Tell GUC about the value. Will redundantly call pg_tzset() */
+		SetConfigOption("log_timezone", pg_get_timezone_name(def_tz),
+						PGC_POSTMASTER, PGC_S_ARGV);
+    }
 }
 
 
@@ -1460,9 +1500,16 @@ pg_tzenumerate_next(pg_tzenum *dir)
 		 * Load this timezone using tzload() not pg_tzset(), so we don't fill
 		 * the cache
 		 */
-		if (tzload(fullname + dir->baselen, dir->tz.TZname, &dir->tz.state) != 0)
+		if (tzload(fullname + dir->baselen, dir->tz.TZname, &dir->tz.state, 
+				   TRUE) != 0)
 		{
 			/* Zone could not be loaded, ignore it */
+			continue;
+		}
+
+		if (!tz_acceptable(&dir->tz))
+		{
+			/* Ignore leap-second zones */
 			continue;
 		}
 

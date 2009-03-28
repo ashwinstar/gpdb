@@ -155,7 +155,7 @@ SysLoggerMain(int argc, char *argv[])
 
 	MyProcPid = getpid();		/* reset MyProcPid */
 	
-	MyStartTime = time(NULL);
+	MyStartTime = time(NULL);	/* set our start time in case we call elog */
 
 #ifdef EXEC_BACKEND
 	syslogger_parseArgs(argc, argv);
@@ -257,11 +257,9 @@ SysLoggerMain(int argc, char *argv[])
 	/* Fire up separate data transfer thread */
 	InitializeCriticalSection(&sysfileSection);
 
-	{
-		unsigned int tid;
-
-		threadHandle = (HANDLE) _beginthreadex(0, 0, pipeThread, 0, 0, &tid);
-	}
+	threadHandle = (HANDLE) _beginthreadex(NULL, 0, pipeThread, NULL, 0, NULL);
+	if (threadHandle == 0)
+		elog(FATAL, "could not create syslogger data transfer thread: %m");
 #endif   /* WIN32 */
 
 	/* remember active logfile parameters */
@@ -320,7 +318,7 @@ SysLoggerMain(int argc, char *argv[])
 		if (!rotation_requested && Log_RotationAge > 0)
 		{
 			/* Do a logfile rotation if it's time */
-			pg_time_t	now = time(NULL);
+			pg_time_t	now = (pg_time_t) time(NULL);
 
 			if (now >= next_rotation_time)
 				rotation_requested = time_based_rotation = true;
@@ -488,8 +486,14 @@ next_chunk_loop:
 
 		if (pipe_eof_seen)
 		{
-                        elog(DEBUG1, "Syslogger shutting down");
-                        
+			
+			/*
+			 * seeing this message on the real stderr is annoying - so we make
+			 * it DEBUG1 to suppress in normal use.
+			 */
+			ereport(DEBUG1,
+					(errmsg("Syslogger shutting down")));
+
 			/*
 			 * Normal exit from the syslogger is here.	Note that we
 			 * deliberately do not close syslogFile before exiting; this is to
@@ -733,7 +737,7 @@ syslogger_append_timestamp(pg_time_t stamp_time, bool append_comma)
 #else
                                 "%Y-%m-%d %H:%M:%S",
 #endif
-                                pg_localtime(&stamp_time, default_timezone));
+                                pg_localtime(&stamp_time, log_timezone));
                 write_syslogger_file_binary(strbuf, strlen(strbuf));
         }
 
@@ -769,7 +773,7 @@ syslogger_append_current_timestamp(void)
 #else
 				"%Y-%m-%d %H:%M:%S        ",
 #endif
-				pg_localtime(&stamp_time, default_timezone));
+				pg_localtime(&stamp_time, log_timezone));
 
 	/* 'paste' milliseconds into place... */
 	sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
@@ -1216,7 +1220,7 @@ logfile_getname(pg_time_t timestamp)
 	if (strchr(Log_filename, '%'))
 	{
 		/* treat it as a strftime pattern */
-		tm = pg_localtime(&timestamp, global_timezone);
+		tm = pg_localtime(&timestamp, log_timezone);
 		pg_strftime(filename + len, MAXPGPATH - len, Log_filename, tm);
 	}
 	else
@@ -1246,12 +1250,12 @@ set_next_rotation_time(void)
 	/*
 	 * The requirements here are to choose the next time > now that is a
 	 * "multiple" of the log rotation interval.  "Multiple" can be interpreted
-	 * fairly loosely.	In this version we align to local time rather than
+	 * fairly loosely.	In this version we align to log_timezone rather than
 	 * GMT.
 	 */
 	rotinterval = Log_RotationAge * SECS_PER_MINUTE;	/* convert to seconds */
 	now = time(NULL);
-	tm = pg_localtime(&now, global_timezone);
+	tm = pg_localtime(&now, log_timezone);
 	now += tm->tm_gmtoff;
 	now -= now % rotinterval;
 	now += rotinterval;

@@ -57,7 +57,11 @@ static struct sqlca_t sqlca_init =
 
 #ifdef ENABLE_THREAD_SAFETY
 static pthread_key_t sqlca_key;
+#if pg_on_solaris
+static pthread_once_t sqlca_key_once = { PTHREAD_ONCE_INIT };
+#else 
 static pthread_once_t sqlca_key_once = PTHREAD_ONCE_INIT;
+#endif 
 #else
 static struct sqlca_t sqlca =
 {

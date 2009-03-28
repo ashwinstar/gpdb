@@ -86,10 +86,6 @@ INSERT INTO TIMESTAMP_TBL VALUES ('current');
 ERROR:  date/time value "current" is no longer supported
 -- Postgres v6.0 standard output format
 INSERT INTO TIMESTAMP_TBL VALUES ('Mon Feb 10 17:32:01 1997 PST');
-INSERT INTO TIMESTAMP_TBL VALUES ('Invalid Abstime');
-ERROR:  date/time value "Invalid Abstime" is no longer supported
-INSERT INTO TIMESTAMP_TBL VALUES ('Undefined Abstime');
-ERROR:  date/time value "Undefined Abstime" is no longer supported
 -- Variations on Postgres v6.1 standard output format
 INSERT INTO TIMESTAMP_TBL VALUES ('Mon Feb 10 17:32:01.000001 1997 PST');
 INSERT INTO TIMESTAMP_TBL VALUES ('Mon Feb 10 17:32:01.999999 1997 PST');
@@ -1403,6 +1399,8 @@ SELECT '' AS to_timestamp_5, to_timestamp('1,582nd VIII 21', 'Y,YYYth FMRM DD');
 
 SELECT '' AS to_timestamp_6, to_timestamp('15 "text between quote marks" 98 54 45', 
                                           E'HH "\\text between quote marks\\"" YY MI SS');
+WARNING:  hour "15" is invalid for the 12-hour clock
+HINT:  Use the 24-hour clock, or give an hour between 1 and 12.
  to_timestamp_6 |         to_timestamp         
 ----------------+------------------------------
                 | Thu Jan 01 15:54:45 1998 PST
@@ -1410,6 +1408,8 @@ SELECT '' AS to_timestamp_6, to_timestamp('15 "text between quote marks" 98 54 4
 
     
 SELECT '' AS to_timestamp_7, to_timestamp('05121445482000', 'MMDDHHMISSYYYY');    
+WARNING:  hour "14" is invalid for the 12-hour clock
+HINT:  Use the 24-hour clock, or give an hour between 1 and 12.
  to_timestamp_7 |         to_timestamp         
 ----------------+------------------------------
                 | Fri May 12 14:45:48 2000 PDT
@@ -1422,7 +1422,8 @@ SELECT '' AS to_timestamp_8, to_timestamp('2000January09Sunday', 'YYYYFMMonthDDF
 (1 row)
 
 SELECT '' AS to_timestamp_9, to_timestamp('97/Feb/16', 'YYMonDD');
-ERROR:  invalid value for MON/Mon/mon
+ERROR:  invalid value "/Fe" for "Mon"
+DETAIL:  The given value did not match any of the allowed values for this field.
 SELECT '' AS to_timestamp_10, to_timestamp('19971116', 'YYYYMMDD');
  to_timestamp_10 |         to_timestamp         
 -----------------+------------------------------

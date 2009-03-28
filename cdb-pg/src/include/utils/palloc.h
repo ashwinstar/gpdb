@@ -132,6 +132,8 @@ extern char *MemoryContextStrdup(MemoryContext context, const char *string);
 
 #define pstrdup(str)  MemoryContextStrdup(CurrentMemoryContext, (str))
 
+extern char *pnstrdup(const char *in, Size len);
+
 #if defined(WIN32) || defined(__CYGWIN__)
 extern void *pgport_palloc(Size sz);
 extern char *pgport_pstrdup(const char *str);

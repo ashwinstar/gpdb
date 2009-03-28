@@ -25,31 +25,40 @@
 
 /*
  * Timestamp represents absolute time.
+ *
  * Interval represents delta time. Keep track of months (and years), days,
- *	and time separately since the elapsed time spanned is unknown until
- *	instantiated relative to an absolute time.
+ * and hours/minutes/seconds separately since the elapsed time spanned is
+ * unknown until instantiated relative to an absolute time.
  *
  * Note that Postgres uses "time interval" to mean a bounded interval,
  * consisting of a beginning and ending time, not a time span - thomas 97/03/20
+ *
+ * We have two implementations, one that uses int64 values with units of
+ * microseconds, and one that uses double values with units of seconds.
+ *
+ * TimeOffset and fsec_t are convenience typedefs for temporary variables
+ * that are of different types in the two cases.  Do not use fsec_t in values
+ * stored on-disk, since it is not the same size in both implementations.
  */
 
 #ifdef HAVE_INT64_TIMESTAMP
 typedef int64 Timestamp;
 typedef int64 TimestampTz;
+typedef int64 TimeOffset;
+typedef int32 fsec_t;			/* fractional seconds (in microseconds) */
+
 #else
 typedef double Timestamp;
 typedef double TimestampTz;
+typedef double TimeOffset;
+typedef double fsec_t;			/* fractional seconds (in seconds) */
+
 #endif
 
 typedef struct
 {
-#ifdef HAVE_INT64_TIMESTAMP
-	int64		time;			/* all time units other than days, months and
+	TimeOffset	time;			/* all time units other than days, months and
 								 * years */
-#else
-	double		time;			/* all time units other than days, months and
-								 * years */
-#endif
 	int32		day;			/* days, after time for alignment */
 	int32		month;			/* months and years, after time for alignment */
 } Interval;
@@ -106,17 +115,18 @@ typedef struct
 #define TimestampTzGetDatum(X) Int64GetDatum(X)
 #define IntervalPGetDatum(X) PointerGetDatum(X)
 
-#define PG_GETARG_TIMESTAMP(n) PG_GETARG_INT64(n)
-#define PG_GETARG_TIMESTAMPTZ(n) PG_GETARG_INT64(n)
+#define PG_GETARG_TIMESTAMP(n) DatumGetTimestamp(PG_GETARG_DATUM(n))
+#define PG_GETARG_TIMESTAMPTZ(n) DatumGetTimestampTz(PG_GETARG_DATUM(n))
 #define PG_GETARG_INTERVAL_P(n) DatumGetIntervalP(PG_GETARG_DATUM(n))
 
-#define PG_RETURN_TIMESTAMP(x) PG_RETURN_INT64(x)
-#define PG_RETURN_TIMESTAMPTZ(x) PG_RETURN_INT64(x)
+#define PG_RETURN_TIMESTAMP(x) return TimestampGetDatum(x)
+#define PG_RETURN_TIMESTAMPTZ(x) return TimestampTzGetDatum(x)
 #define PG_RETURN_INTERVAL_P(x) return IntervalPGetDatum(x)
 
 #define DT_NOBEGIN		(-INT64CONST(0x7fffffffffffffff) - 1)
 #define DT_NOEND		(INT64CONST(0x7fffffffffffffff))
-#else
+
+#else  /* !HAVE_INT64_TIMESTAMP */
 
 #define DatumGetTimestamp(X)  ((Timestamp) DatumGetFloat8(X))
 #define DatumGetTimestampTz(X)	((TimestampTz) DatumGetFloat8(X))
@@ -154,14 +164,6 @@ typedef struct
 
 #define TIMESTAMP_NOT_FINITE(j) (TIMESTAMP_IS_NOBEGIN(j) || TIMESTAMP_IS_NOEND(j))
 
-#ifdef HAVE_INT64_TIMESTAMP
-
-typedef int32 fsec_t;
-#else
-
-typedef double fsec_t;
-#endif
-
 /*
  *	Round off to MAX_TIMESTAMP_PRECISION decimal places.
  *	Note: this is also used for rounding off intervals.
@@ -190,6 +192,8 @@ typedef double fsec_t;
 
 /* Set at postmaster start */
 extern TimestampTz PgStartTime;
+/* Set at configuration reload */
+extern TimestampTz PgReloadTime;
 
 
 /*
@@ -200,6 +204,8 @@ extern Datum timestamp_in(PG_FUNCTION_ARGS);
 extern Datum timestamp_out(PG_FUNCTION_ARGS);
 extern Datum timestamp_recv(PG_FUNCTION_ARGS);
 extern Datum timestamp_send(PG_FUNCTION_ARGS);
+extern Datum timestamptypmodin(PG_FUNCTION_ARGS);
+extern Datum timestamptypmodout(PG_FUNCTION_ARGS);
 extern Datum timestamp_scale(PG_FUNCTION_ARGS);
 extern Datum timestamp_eq(PG_FUNCTION_ARGS);
 extern Datum timestamp_ne(PG_FUNCTION_ARGS);
@@ -209,6 +215,7 @@ extern Datum timestamp_ge(PG_FUNCTION_ARGS);
 extern Datum timestamp_gt(PG_FUNCTION_ARGS);
 extern Datum timestamp_finite(PG_FUNCTION_ARGS);
 extern Datum timestamp_cmp(PG_FUNCTION_ARGS);
+extern Datum timestamp_hash(PG_FUNCTION_ARGS);
 extern Datum timestamp_smaller(PG_FUNCTION_ARGS);
 extern Datum timestamp_larger(PG_FUNCTION_ARGS);
 
@@ -232,6 +239,8 @@ extern Datum interval_in(PG_FUNCTION_ARGS);
 extern Datum interval_out(PG_FUNCTION_ARGS);
 extern Datum interval_recv(PG_FUNCTION_ARGS);
 extern Datum interval_send(PG_FUNCTION_ARGS);
+extern Datum intervaltypmodin(PG_FUNCTION_ARGS);
+extern Datum intervaltypmodout(PG_FUNCTION_ARGS);
 extern Datum interval_scale(PG_FUNCTION_ARGS);
 extern Datum interval_eq(PG_FUNCTION_ARGS);
 extern Datum interval_ne(PG_FUNCTION_ARGS);
@@ -248,10 +257,6 @@ extern Datum interval_justify_interval(PG_FUNCTION_ARGS);
 extern Datum interval_justify_hours(PG_FUNCTION_ARGS);
 extern Datum interval_justify_days(PG_FUNCTION_ARGS);
 
-extern Datum timestamp_text(PG_FUNCTION_ARGS);
-extern Datum text_timestamp(PG_FUNCTION_ARGS);
-extern Datum interval_text(PG_FUNCTION_ARGS);
-extern Datum text_interval(PG_FUNCTION_ARGS);
 extern Datum timestamp_trunc(PG_FUNCTION_ARGS);
 extern Datum interval_trunc(PG_FUNCTION_ARGS);
 extern Datum timestamp_part(PG_FUNCTION_ARGS);
@@ -264,6 +269,8 @@ extern Datum timestamptz_in(PG_FUNCTION_ARGS);
 extern Datum timestamptz_out(PG_FUNCTION_ARGS);
 extern Datum timestamptz_recv(PG_FUNCTION_ARGS);
 extern Datum timestamptz_send(PG_FUNCTION_ARGS);
+extern Datum timestamptztypmodin(PG_FUNCTION_ARGS);
+extern Datum timestamptztypmodout(PG_FUNCTION_ARGS);
 extern Datum timestamptz_scale(PG_FUNCTION_ARGS);
 extern Datum timestamptz_timestamp(PG_FUNCTION_ARGS);
 extern Datum timestamptz_zone(PG_FUNCTION_ARGS);
@@ -282,14 +289,19 @@ extern Datum interval_avg(PG_FUNCTION_ARGS);
 extern Datum interval_amalg(PG_FUNCTION_ARGS);              /*CDB*/
 extern Datum interval_demalg(PG_FUNCTION_ARGS);             /*CDB*/
 
+extern Datum timestamp_text(PG_FUNCTION_ARGS);   /* old ones */
+extern Datum text_timestamp(PG_FUNCTION_ARGS);
+extern Datum interval_text(PG_FUNCTION_ARGS);
+extern Datum text_interval(PG_FUNCTION_ARGS);
+extern Datum timestamptz_text(PG_FUNCTION_ARGS);
+extern Datum text_timestamptz(PG_FUNCTION_ARGS);  /* */
+
 extern Datum timestamp_mi(PG_FUNCTION_ARGS);
 extern Datum timestamp_pl_interval(PG_FUNCTION_ARGS);
 extern Datum timestamp_mi_interval(PG_FUNCTION_ARGS);
 extern Datum timestamp_age(PG_FUNCTION_ARGS);
 extern Datum overlaps_timestamp(PG_FUNCTION_ARGS);
 
-extern Datum timestamptz_text(PG_FUNCTION_ARGS);
-extern Datum text_timestamptz(PG_FUNCTION_ARGS);
 extern Datum timestamptz_pl_interval(PG_FUNCTION_ARGS);
 extern Datum timestamptz_mi_interval(PG_FUNCTION_ARGS);
 extern Datum timestamptz_age(PG_FUNCTION_ARGS);
@@ -300,6 +312,13 @@ extern Datum now(PG_FUNCTION_ARGS);
 extern Datum statement_timestamp(PG_FUNCTION_ARGS);
 extern Datum clock_timestamp(PG_FUNCTION_ARGS);
 
+extern Datum pg_postmaster_start_time(PG_FUNCTION_ARGS);
+extern Datum pg_conf_load_time(PG_FUNCTION_ARGS);
+
+extern Datum generate_series_timestamp(PG_FUNCTION_ARGS);
+extern Datum generate_series_timestamptz(PG_FUNCTION_ARGS);
+
+/* Old name */
 extern Datum pgsql_postmaster_start_time(PG_FUNCTION_ARGS);
 
 /* Internal routines (not fmgr-callable) */
@@ -308,9 +327,14 @@ extern TimestampTz GetCurrentTimestamp(void);
 
 extern void TimestampDifference(TimestampTz start_time, TimestampTz stop_time,
 					long *secs, int *microsecs);
+extern bool TimestampDifferenceExceeds(TimestampTz start_time,
+						   TimestampTz stop_time,
+						   int msec);
 
-extern TimestampTz time_t_to_timestamptz(time_t tm);
-extern time_t timestamptz_to_time_t(TimestampTz t);
+extern TimestampTz time_t_to_timestamptz(pg_time_t tm);
+extern pg_time_t timestamptz_to_time_t(TimestampTz t);
+
+extern const char *timestamptz_to_str(TimestampTz t);
 
 extern int	tm2timestamp(struct pg_tm * tm, fsec_t fsec, int *tzp, Timestamp *dt);
 extern int timestamp2tm(Timestamp dt, int *tzp, struct pg_tm * tm,
@@ -328,8 +352,11 @@ extern int	timestamp_cmp_internal(Timestamp dt1, Timestamp dt2);
 /* timestamp comparison works for timestamptz also */
 #define timestamptz_cmp_internal(dt1,dt2)	timestamp_cmp_internal(dt1, dt2)
 
+extern int	isoweek2j(int year, int week);
 extern void isoweek2date(int woy, int *year, int *mon, int *mday);
+extern void isoweekdate2date(int isoweek, int isowday, int *year, int *mon, int *mday);
 extern int	date2isoweek(int year, int mon, int mday);
 extern int	date2isoyear(int year, int mon, int mday);
+extern int	date2isoyearday(int year, int mon, int mday);
 
 #endif   /* TIMESTAMP_H */

@@ -3,12 +3,12 @@
 --
 
 SET DATESTYLE = 'ISO';
+SET IntervalStyle to postgres;
 
 -- check acceptance of "time zone style"
 SELECT INTERVAL '01:00' AS "One hour";
 SELECT INTERVAL '+02:00' AS "Two hours";
 SELECT INTERVAL '-08:00' AS "Eight hours";
-SELECT INTERVAL '-05' AS "Five hours";
 SELECT INTERVAL '-1 +02:03' AS "22 hours ago...";
 SELECT INTERVAL '-1 days +02:03' AS "22 hours ago...";
 SELECT INTERVAL '1.5 weeks' AS "Ten days twelve hours";
@@ -95,6 +95,7 @@ FROM INTERVAL_MULDIV_TBL ORDER BY 1;
 DROP TABLE INTERVAL_MULDIV_TBL;
 
 SET DATESTYLE = 'postgres';
+SET IntervalStyle to postgres_verbose;
 
 SELECT '' AS ten, * FROM INTERVAL_TBL ORDER BY 2;
 
@@ -119,6 +120,8 @@ SELECT justify_interval(interval '1 month -1 hour') as "1 month -1 hour";
 
 -- test fractional second input, and detection of duplicate units
 SET DATESTYLE = 'ISO';
+SET IntervalStyle TO postgres;
+
 SELECT '1 millisecond'::interval, '1 microsecond'::interval,
        '500 seconds 99 milliseconds 51 microseconds'::interval;
 SELECT '3 days 5 milliseconds'::interval;

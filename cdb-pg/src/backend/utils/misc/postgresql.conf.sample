@@ -390,6 +390,8 @@
 					#		  'qe' if QueryExecutor
 					#		  empty if other.
 #log_statement = 'none'			# none, mod, ddl, all
+#log_timezone = unknown			# actually, defaults to TZ environment
+					# setting
 
 #gp_log_gang = terse                    # off, terse, verbose, debug
                                         # logging of qExec worker process

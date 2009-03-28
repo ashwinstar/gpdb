@@ -259,7 +259,7 @@ QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax,
 	pg_strftime(logTimeStr, logTimeStrMax,
 	/* leave room for microseconds... */
 			 "%Y-%m-%d %H:%M:%S        %Z",
-			 pg_localtime(&stamp_time, default_timezone));
+			 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
 	/* 'paste' milliseconds into place... */
 	sprintf(msbuf, ".%06d", (int) (lastLogTimeVal->tv_usec));

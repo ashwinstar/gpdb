@@ -153,6 +153,8 @@ static const char *assign_min_error_statement(const char *newval, bool doit,
 						   GucSource source);
 static const char *assign_msglvl(int *var, const char *newval, bool doit,
 			  GucSource source);
+static const char *assign_IntervalStyle(const char *newval, bool doit,
+						   GucSource source);
 static const char *assign_log_error_verbosity(const char *newval, bool doit,
 						   GucSource source);
 static const char *assign_log_statement(const char *newval, bool doit,
@@ -311,6 +313,7 @@ static bool session_auth_is_superuser;
 static double phony_random_seed;
 static char *backslash_quote_string;
 static char *client_encoding_string;
+static char *IntervalStyle_string;
 static char *datestyle_string;
 static char *default_iso_level_string;
 static char *locale_collate;
@@ -320,6 +323,7 @@ static char *server_encoding_string;
 static char *server_version_string;
 static int	server_version_num;
 static char *timezone_string;
+static char *log_timezone_string;
 static char *timezone_abbreviations_string;
 static char *XactIsoLevel_string;
 static char *custom_variable_classes;
@@ -3401,6 +3405,16 @@ static struct config_string ConfigureNamesString[] =
 		"notice", assign_log_min_messages, NULL
 	},
 
+ 	{
+		{"IntervalStyle", PGC_USERSET, CLIENT_CONN_LOCALE,
+			gettext_noop("Sets the display format for interval values."),
+			NULL,
+			GUC_REPORT
+		},
+		&IntervalStyle_string,
+		INTSTYLE_POSTGRES, assign_IntervalStyle, NULL
+	},
+	
 	{
 		{"log_error_verbosity", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the verbosity of logged messages."),
@@ -3440,7 +3454,15 @@ static struct config_string ConfigureNamesString[] =
 		"%m|%u|%d|%p|%I|%X|:-", NULL, NULL
 	},
 
-
+	{
+		{"log_timezone", PGC_SIGHUP, LOGGING_WHAT,
+			gettext_noop("Sets the time zone to use in log messages."),
+			NULL
+		},
+		&log_timezone_string,
+		"UNKNOWN", assign_log_timezone, show_log_timezone
+	},
+	
 	{
 		{"DateStyle", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets the display format for date and time values."),
@@ -8270,6 +8292,35 @@ assign_msglvl(int *var, const char *newval, bool doit, GucSource source)
 	return newval;				/* OK */
 }
 
+
+static const char *
+assign_IntervalStyle(const char *newval, bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "postgres")==0)
+	{
+		if (doit)
+			IntervalStyle = INTSTYLE_POSTGRES;
+	}
+	else if (pg_strcasecmp(newval, "postgres_verbose")==0)
+	{
+		if (doit)
+			IntervalStyle = INTSTYLE_POSTGRES_VERBOSE;
+	}
+	else if (pg_strcasecmp(newval, "sql_standard")==0)
+	{
+		if (doit)
+			IntervalStyle = INTSTYLE_SQL_STANDARD;
+	}
+	else if (pg_strcasecmp(newval, "ISO_8601")==0)
+	{
+		if (doit)
+			IntervalStyle = INTSTYLE_ISO_8601;
+	}
+	else
+		return NULL;
+	return newval;
+	
+}
 static const char *
 assign_log_error_verbosity(const char *newval, bool doit, GucSource source)
 {

@@ -1749,9 +1749,8 @@ setup_formatted_log_time(void)
 	 * (which guc.c ensures is set up before Log_line_prefix can become
 	 * nonempty).
 	 */
-	//tz = log_timezone ? log_timezone : gmt_timezone;
-	tz = default_timezone ? default_timezone : global_timezone;
-
+	tz = log_timezone ? log_timezone : gmt_timezone;
+	
 	pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
 				/* leave room for milliseconds... */
 				"%Y-%m-%d %H:%M:%S     %Z",
@@ -1778,8 +1777,7 @@ setup_formatted_start_time(void)
 	 * (which guc.c ensures is set up before Log_line_prefix can become
 	 * nonempty).
 	 */
-	//tz = log_timezone ? log_timezone : gmt_timezone;
-	tz = default_timezone ? default_timezone : global_timezone;
+	tz = log_timezone ? log_timezone : gmt_timezone;
 
 	pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
 				"%Y-%m-%d %H:%M:%S %Z",
@@ -2012,7 +2010,7 @@ log_line_prefix(StringInfo buf)
 					 * 
 					 * 	CDB:  It is not safe to call strftime since it is not async-safe, and it
 					 * is expensive to call strftime to get timezone everytime, we use
-					 * pg_strftime, but stick on a fixed timezone (default_timezone)
+					 * pg_strftime, but stick on a fixed timezone (log_timezone)
 					 * instead a settable timezone as PostgreSQL does, since we want all
 					 * log messages to have the same time format. See MPP-2591.
 					 * 
@@ -2038,7 +2036,7 @@ log_line_prefix(StringInfo buf)
 #else
 							 "%Y-%m-%d %H:%M:%S        ",
 #endif
-							 pg_localtime(&stamp_time, default_timezone));
+							 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
 					/* 'paste' milliseconds into place... */
 					sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
@@ -2065,7 +2063,7 @@ log_line_prefix(StringInfo buf)
 #else
 							 "%Y-%m-%d %H:%M:%S",
 #endif
-							 pg_localtime(&stamp_time, default_timezone));
+							 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;
