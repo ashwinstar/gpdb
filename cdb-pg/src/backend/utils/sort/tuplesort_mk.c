@@ -1053,6 +1053,8 @@ tuplesort_putdatum_mk(Tuplesortstate_mk *state, Datum val, bool isNull)
 		e.d = val;
 		if(isNull)
 			mke_set_null(&e, state->nullfirst); 
+        else
+            mke_set_not_null(&e);
 	}
 	else
 	{
