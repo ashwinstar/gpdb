@@ -3520,7 +3520,7 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 	int			type,
 				val;
 	char	   *lowunits;
-	fsec_t		fsec;
+	fsec_t		fsec = 0;
 	struct pg_tm tt,
 			   *tm = &tt;
 
