@@ -353,7 +353,7 @@ cdbanalyze_get_columnstats(VPgStatisticStats *stats,
 			{
 				if (tuples_this_segdb == 0)
 					tuples_this_segdb = 1;
-				distinct += -(distinct * tuples_this_segdb);
+				distinct += -(DatumGetFloat4(dat) * tuples_this_segdb);
 			}
 			else
 				distinct +=  DatumGetFloat4(dat);
