@@ -1733,6 +1733,11 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 							}
 
 							bufcat(&buffer, host);
+
+							/* If a port was specified use it */
+							if (strchr("0123456789", path[0]))
+								bufcat(&buffer, ":");
+
 							bufcat(&buffer, path);
 							if (clist->next)
 								bufcat(&buffer, "',\n           ");
