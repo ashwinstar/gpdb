@@ -2659,7 +2659,7 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 
 			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 				ereport(ERROR,
@@ -2694,7 +2694,7 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 			int			julian;
 
 			if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
@@ -3082,8 +3082,8 @@ timestamp_age(PG_FUNCTION_ARGS)
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
 	Interval   *result;
 	fsec_t		fsec,
-				fsec1,
-				fsec2;
+				fsec1 = 0,
+				fsec2 = 0;
 	struct pg_tm tt,
 			   *tm = &tt;
 	struct pg_tm tt1,
