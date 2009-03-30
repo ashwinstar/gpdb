@@ -2360,6 +2360,7 @@ static inline void
 append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray, 
 				  int stacksize)
 {
+#ifndef WIN32
 #if (!defined(__darwin__))
 	int stack_no;
 	const int SYMBOL_SIZE = 512;
@@ -2395,6 +2396,7 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 		else
 			write_syslogger_file_binary(symbol, symbol_len);
 	}
+#endif
 #endif
 }
 
