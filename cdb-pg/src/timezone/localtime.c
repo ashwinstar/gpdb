@@ -786,6 +786,19 @@ tzparse(const char *name, struct state * sp, int lastditch)
 			pg_time_t	starttime;
 			pg_time_t	endtime;
 
+            start.r_type = 0;
+            start.r_day = 0;
+            start.r_week = 0;
+            start.r_mon = 0;
+            start.r_time = 0;
+
+            end.r_type = 0;
+            end.r_day = 0;
+            end.r_week = 0;
+            end.r_mon = 0;
+            end.r_time = 0;
+
+
 			++name;
 			if ((name = getrule(name, &start)) == NULL)
 				return -1;
