@@ -2558,7 +2558,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 
 			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
 				ereport(ERROR,
@@ -2591,7 +2591,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 		{
 			struct pg_tm tt,
 					   *tm = &tt;
-			fsec_t		fsec;
+			fsec_t		fsec = 0;
 			int			julian;
 
 			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
