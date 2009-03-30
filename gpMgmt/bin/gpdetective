@@ -402,8 +402,60 @@ class GPDetective:
 		'''
 			SELECT * FROM gp_configuration_history
 		''')
+		
+        self.writeSelect('resqueue.log',
+		'''
+		    SELECT * FROM pg_catalog.pg_resqueue
+		''')
         
+        self.writeSelect('mastermirror.log',
+        '''
+            SELECT * FROM pg_catalog.gp_master_mirroring
+        ''')
         
+        self.writeSelect('version_at_initdb.log',
+        '''
+            SELECT * FROM pg_catalog.gp_version_at_initdb
+        ''')
+    
+        self.writeSelect('interfaces.log',
+        '''
+            SELECT * FROM pg_catalog.gp_interfaces
+        ''')
+    
+        self.writeSelect('db_interfaces.log',
+        '''
+            SELECT * FROM pg_catalog.gp_db_interfaces
+        ''')
+        
+        self.writeSelect('autovacuum.log',
+        '''
+            SELECT * FROM pg_catalog.pg_autovacuum
+        ''')
+        
+        self.writeSelect('pgdatabase.log',
+        '''
+            SELECT * FROM pg_catalog.gp_pgdatabase
+        ''')
+        
+        self.writeSelect('dbsizes.log',
+        '''
+            SELECT datname,pg_size_pretty(pg_database_size( datname )) 
+            FROM ( SELECT datname 
+                   FROM pg_database 
+                   WHERE datname NOT IN ('template0', 'postgres')) d
+        ''')
+
+        self.writeSelect('pg_stat_resqueue.log',
+        '''
+            SELECT * FROM pg_catalog.pg_stat_resqueues            
+        ''')
+        
+        self.writeSelect('pg_stat_database.log',
+        '''
+            SELECT * FROM pg_catalog.pg_stat_database            
+        ''')
+
     
     #------------------------------------------------------------
     def get_timeopt(self):
