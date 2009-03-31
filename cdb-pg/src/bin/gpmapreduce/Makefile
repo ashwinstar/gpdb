@@ -30,7 +30,7 @@ gpmapreduce: $(OBJS) $(libpq_builddir)/libpq.a
 
 internal:
 	rm -f $(SRCDIR)/mapred.o $(SRCDIR)/main.o
-	$(MAKE) CFLAGS="-DINTERNAL_BUILD" all
+	$(MAKE) CFLAGS="-DINTERNAL_BUILD $(CFLAGS)" all
 
 check:
 	$(MAKE) -C test

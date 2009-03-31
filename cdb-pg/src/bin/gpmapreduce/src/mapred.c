@@ -40,6 +40,9 @@ const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 const char *IN_FAILED_SQL_TRANSACTION = "25P02";
 const char *OBJ_DOES_NOT_EXIST        = "42P01";
 
+const char *DISTRIBUTION_NOTICE = "NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause";
+
+
 /* local prototypes */
 void *         mapred_malloc(int size);
 void             mapred_free(void *ptr);
@@ -204,9 +207,13 @@ void ignore_notice_handler(void *arg, const PGresult *res)
 
 void print_notice_handler(void *arg, const PGresult *res) 
 {
+	char *error = PQresultErrorMessage(res);
+	if (!strncmp(error, DISTRIBUTION_NOTICE, strlen(DISTRIBUTION_NOTICE)-1))
+		return;
+
 	if (global_verbose_flag)
 		fprintf(stderr, "   - ");
-	fprintf(stderr, PQresultErrorMessage(res));
+	fprintf(stderr, error);
 }
 
 
@@ -1436,7 +1443,25 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 					{
 						bufcat(&buffer, "DROP TABLE ");
 						bufcat(&buffer, output->u.output.desc);
+						PQexec(conn, "SAVEPOINT mapreduce_save");
 						result = PQexec(conn, buffer->buffer);
+						if (PQresultStatus(result) == PGRES_COMMAND_OK)
+						{
+							PQexec(conn, "RELEASE SAVEPOINT mapreduce_save");
+						}
+						else
+						{
+							/* rollback to savepoint */
+							PQexec(conn, "ROLLBACK TO SAVEPOINT mapreduce_save");
+							PQexec(conn, "RELEASE SAVEPOINT mapreduce_save");
+
+							if (global_verbose_flag)
+								fprintf(stderr, "   - ");
+							fprintf(stderr, "Error: %s\n",
+									PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY));
+							mapred_obj_error(output, "Table '%s' can't be replaced",
+											 output->u.output.desc);
+						}
 						bufreset(buffer);
 						exists = false;
 					}
