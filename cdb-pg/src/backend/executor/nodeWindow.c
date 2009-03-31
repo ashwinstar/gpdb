@@ -467,7 +467,7 @@ static void computeFrameValue(WindowStatePerLevel level_state,
 static void createFrameBuffers(WindowState *wstate);
 static void resetFrameBuffers(WindowState *wstate);
 static void resetTransValues(WindowStatePerLevel level_state,
-							 MemoryContext context);
+							 WindowState *wstate);
 static void freeFrameBuffer(WindowFrameBuffer buffer);
 static void freeFrameBuffers(WindowState *wstate);
 
@@ -494,7 +494,7 @@ static FmgrInfo *get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchCo
 static void advanceKeyLevelState(WindowState *wstate, int min_level); 
 static void init_frames(WindowState *wstate);
 static void deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums, 
-								Datum *values, bool *nulls, MemoryContext ctx);
+								Datum *values, bool *nulls, WindowState *wstate);
 static void add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 							   ExprContext *econtext, bool check_nulls);
 static bool hasTuplesInFrame(WindowStatePerLevel level_state,
@@ -1793,7 +1793,6 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 	WindowValue *curr_value = NULL;
 	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	FunctionCallInfoData fcinfo;
-	MemoryContext oldcxt;
 	NTupleStorePos orig_pos;
 
 	has_tuples = hasTuplesInFrame(level_state, wstate);
@@ -1837,12 +1836,11 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					   &funcstate->final_aggNoTransValue,
 					   funcstate->final_aggShouldFree);
 
-		oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 		funcstate->final_aggTransValue =
-			datumCopy(funcstate->aggInitValue,
-					  funcstate->aggTranstypeByVal,
-					  funcstate->aggTranstypeLen);
-		MemoryContextSwitchTo(oldcxt);
+			datumCopyWithMemManager(0, funcstate->aggInitValue,
+									funcstate->aggTranstypeByVal,
+									funcstate->aggTranstypeLen,
+									&(wstate->mem_manager));
 		funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
 		funcstate->final_aggNoTransValue = funcstate->aggInitValueIsNull;
 		funcstate->final_aggShouldFree = !funcstate->aggInitValueIsNull;
@@ -1909,7 +1907,6 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					fmgr_info = &(funcstate->transfn);
 				}
 				
-				wstate->mem_manager.manager = wstate->transcontext;
 				funcstate->final_aggTransValue =
 					invoke_agg_trans_func(fmgr_info,
 										  fmgr_info->fn_nargs - 1,
@@ -1961,7 +1958,6 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					fcinfo.arg[1] = funcstate->aggTransValue;
 					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
 
-					wstate->mem_manager.manager = wstate->transcontext;
 					funcstate->final_aggTransValue =
 						invoke_agg_trans_func(&(funcstate->prelimfn),
 											  funcstate->prelimfn.fn_nargs - 1,
@@ -2168,16 +2164,15 @@ computeFrameValue(WindowStatePerLevel level_state,
 
 			if (lead_value != NULL || trail_value != NULL)
 			{
-				MemoryContext oldcxt;
 				bool has_tuples = true;
 
-				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
 				if (lead_value != NULL)
 				{
 					funcstate->final_aggTransValue =
-						datumCopy(lead_value->value,
-								  funcstate->aggTranstypeByVal,
-								  funcstate->aggTranstypeLen);
+						datumCopyWithMemManager(0, lead_value->value,
+												funcstate->aggTranstypeByVal,
+												funcstate->aggTranstypeLen,
+												&(wstate->mem_manager));
 					funcstate->final_aggTransValueIsNull = 
 						lead_value->valueIsNull;
 
@@ -2189,21 +2184,20 @@ computeFrameValue(WindowStatePerLevel level_state,
 				{
 					has_tuples = hasTuplesInFrame(level_state, wstate);
 					funcstate->final_aggTransValue = 
-						datumCopy(funcstate->aggTransValue,
-								  funcstate->aggTranstypeByVal,
-								  funcstate->aggTranstypeLen);
+						datumCopyWithMemManager(0, funcstate->aggTransValue,
+												funcstate->aggTranstypeByVal,
+												funcstate->aggTranstypeLen,
+												&(wstate->mem_manager));
 					funcstate->final_aggTransValueIsNull = 
 						funcstate->aggTransValueIsNull;
 					funcstate->final_aggNoTransValue = false;
 					funcstate->final_aggShouldFree = true;
 					lead_num_not_nulls = funcstate->numNotNulls;
 				}
-				MemoryContextSwitchTo(oldcxt);
 			
 				if (has_tuples &&
 					(lead_num_not_nulls - trail_num_not_nulls > 0))
 				{
-					wstate->mem_manager.manager = wstate->transcontext;
 					funcstate->final_aggTransValue =
 						invoke_agg_trans_func(&(funcstate->invprelimfn),
 											  funcstate->invprelimfn.fn_nargs - 1,
@@ -2980,7 +2974,7 @@ resetInputBuffer(WindowState *wstate)
 			WindowStatePerLevel level_state =
 				(WindowStatePerLevel)&wstate->level_state[level];
 			
-			resetTransValues(level_state, wstate->transcontext);
+			resetTransValues(level_state, wstate);
 		}
 	}
 
@@ -3135,7 +3129,6 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 
 	if (funcstate->isAgg)
 	{
-		wstate->mem_manager.manager = wstate->transcontext;
 		funcstate->aggTransValue =
 			invoke_agg_trans_func(&(funcstate->transfn),
 								  funcstate->numargs,
@@ -3161,18 +3154,14 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 			 funcstate->aggNoTransValue))
 		{
 			int argno = 1;
-			MemoryContext oldctx;
-			
-			oldctx = MemoryContextSwitchTo(wstate->transcontext);
 			
 			funcstate->aggTransValue = 
-				datumCopy(fcinfo.arg[argno],
-						  funcstate->wrxstate->argtypbyval[argno],
-						  funcstate->wrxstate->argtyplen[argno]);
+				datumCopyWithMemManager(0, fcinfo.arg[argno],
+										funcstate->wrxstate->argtypbyval[argno],
+										funcstate->wrxstate->argtyplen[argno],
+										&(wstate->mem_manager));
 			funcstate->aggTransValueIsNull = fcinfo.argnull[argno];
 			funcstate->aggNoTransValue = false;
-
-			MemoryContextSwitchTo(oldctx);
 		}
 
 		else
@@ -3234,7 +3223,6 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				FrameBufferEntry *entry = level_state->curr_entry_buf;
 				bool has_entry = false;
 				WindowValue *value = NULL;
-				MemoryContext oldcxt;
 				
 				Assert(funcstate->serial_index != -1);
 
@@ -3244,11 +3232,11 @@ invokeTrivialFuncs(WindowState *wstate, bool *found)
 				value = (WindowValue *)list_nth(entry->func_values,
 												funcstate->serial_index);
 				Assert(value != NULL);
-				oldcxt = MemoryContextSwitchTo(wstate->transcontext);
-				funcstate->final_aggTransValue = datumCopy(value->value,
-														   funcstate->aggTranstypeByVal,
-														   funcstate->aggTranstypeLen);
-				MemoryContextSwitchTo(oldcxt);
+				funcstate->final_aggTransValue =
+					datumCopyWithMemManager(0, value->value,
+											funcstate->aggTranstypeByVal,
+											funcstate->aggTranstypeLen,
+											&(wstate->mem_manager));
 				funcstate->final_aggTransValueIsNull = value->valueIsNull;
 				funcstate->final_aggNoTransValue = false;
 				funcstate->final_aggShouldFree = true;
@@ -3425,10 +3413,10 @@ cmp_deformed_tuple(Datum *a, bool *a_nulls, Datum *b, bool *b_nulls,
  */
 static void
 deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums, 
-					Datum *values, bool *nulls, MemoryContext ctx)
+					Datum *values, bool *nulls, WindowState *wstate)
 {
 	int i;
-	MemoryContext oldctx = MemoryContextSwitchTo(ctx);
+	MemoryContext oldctx = MemoryContextSwitchTo(wstate->transcontext);
 
 	for (i = 0; i < nattrs; i++)
 	{
@@ -3441,7 +3429,9 @@ deform_window_tuple(TupleTableSlot *slot, int nattrs, AttrNumber *attnums,
 		 * We must copy this tuple because we may need to keep it around
 		 * a long time. Caller is responsible for freeing these values.
 		 */
-		values[i] = datumCopy(d, attr->attbyval, attr->attlen);
+		values[i] = datumCopyWithMemManager(0, d,
+											attr->attbyval, attr->attlen,
+											&(wstate->mem_manager));
 		nulls[i] = isnull;
 	}
 
@@ -3948,7 +3938,7 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 	deform_window_tuple(wstate->spare,
 						level_state->numSortCols, level_state->sortColIdx,
 						entry->keys, entry->nulls,
-						wstate->transcontext);
+						wstate);
 	
 	is_less = cmp_deformed_tuple(entry->keys, entry->nulls,
 								 &new_edge_value, &new_edge_value_isnull,
@@ -4808,7 +4798,7 @@ ExecWindow(WindowState *wstate)
  */
 static void
 resetTransValue(WindowStatePerFunction funcstate,
-				MemoryContext context)
+				WindowState *wstate)
 {
 	if (funcstate->isAgg)
 	{
@@ -4826,13 +4816,11 @@ resetTransValue(WindowStatePerFunction funcstate,
 			funcstate->aggTransValue = funcstate->aggInitValue;
 		else
 		{
-			MemoryContext oldcxt;
-
-			oldcxt = MemoryContextSwitchTo(context);
-			funcstate->aggTransValue = datumCopy(funcstate->aggInitValue,
-												 funcstate->aggTranstypeByVal,
-												 funcstate->aggTranstypeLen);
-			MemoryContextSwitchTo(oldcxt);
+			funcstate->aggTransValue =
+				datumCopyWithMemManager(0, funcstate->aggInitValue,
+										funcstate->aggTranstypeByVal,
+										funcstate->aggTranstypeLen,
+										&(wstate->mem_manager));
 		}
 	
 		funcstate->aggTransValueIsNull = funcstate->aggInitValueIsNull;
@@ -4862,13 +4850,13 @@ resetTransValue(WindowStatePerFunction funcstate,
  */
 static void
 resetTransValues(WindowStatePerLevel level_state,
-				 MemoryContext context)
+				 WindowState *wstate)
 {
 	ListCell *lc;
 	foreach (lc, level_state->level_funcs)
 	{
 		WindowStatePerFunction funcstate = (WindowStatePerFunction) lfirst(lc);
-		resetTransValue(funcstate, context);
+		resetTransValue(funcstate, wstate);
 	}
 }
 
@@ -4960,13 +4948,13 @@ processTupleSlot(WindowState *wstate, TupleTableSlot *slot, bool last_peer)
 						!OidIsValid(funcstate->invprelimfn_oid) &&
 						OidIsValid(funcstate->prelimfn_oid))
 					{
-						resetTransValue(funcstate, wstate->transcontext);
+						resetTransValue(funcstate, wstate);
 					}
 					else if ((IS_LEAD_LAG(funcstate->wrxstate->winkind) ||
 							  IS_FIRST_LAST(funcstate->wrxstate->winkind)) && 
 							 !last_peer)
 					{
-						resetTransValue(funcstate, wstate->transcontext);
+						resetTransValue(funcstate, wstate);
 					}
 				}
 			}
@@ -5499,7 +5487,7 @@ init_frames(WindowState *wstate)
 		}
 		level_state->trivial_frames_only = trivial_frames_only;
 
-		resetTransValues(level_state, wstate->transcontext);
+		resetTransValues(level_state, wstate);
 	}
 
 	/*
@@ -5672,6 +5660,10 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	initWindowFuncState(wstate, node);
 
+	wstate->mem_manager.alloc = cxt_alloc;
+	wstate->mem_manager.free = cxt_free;
+	wstate->mem_manager.manager = wstate->transcontext;
+
 	/* Frame initialisation can take place now */	
 	init_frames(wstate);
 
@@ -5685,9 +5677,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 		InitPlanStateGpmonPkt(&wstate->ps, "Window", 
                                       (int64)wstate->ps.plan->plan_rows, m, NULL);
 	}
-	wstate->mem_manager.alloc = cxt_alloc;
-	wstate->mem_manager.free = cxt_free;
-	wstate->mem_manager.manager = NULL;
 
 	return wstate;
 }

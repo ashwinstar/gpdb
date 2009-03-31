@@ -154,7 +154,7 @@ static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
 
-static Datum
+Datum
 datumCopyWithMemManager(Datum oldvalue, Datum value, bool typByVal, int typLen,
 						MemoryManagerContainer *mem_manager)
 {
