@@ -70,17 +70,13 @@ typedef struct
 	RelOptInfo *rel;			/* Relation, or NULL if not identifiable */
 	HeapTuple	statsTuple;		/* pg_statistic tuple, or NULL if none */
 	/* NB: if statsTuple!=NULL, it must be freed when caller is done */
+	bool        statsTupleFromSysCache; /* if the stats tuple is from a catalog cache entry - free method depends on this */
 	Oid			vartype;		/* exposed type of expression */
 	Oid			atttype;		/* type to pass to get_attstatsslot */
 	int32		atttypmod;		/* typmod to pass to get_attstatsslot */
 	bool		isunique;		/* true if matched to a unique index */
 } VariableStatData;
 
-#define ReleaseVariableStats(vardata)  \
-	do { \
-		if (HeapTupleIsValid((vardata).statsTuple)) \
-			ReleaseSysCache((vardata).statsTuple); \
-	} while(0)
 
 
 typedef enum
@@ -99,6 +95,7 @@ typedef enum
 
 extern void examine_variable(PlannerInfo *root, Node *node, int varRelid,
 				 VariableStatData *vardata);
+extern void ReleaseVariableStats(VariableStatData vardata);
 extern bool get_restriction_variable(PlannerInfo *root, List *args,
 						 int varRelid,
 						 VariableStatData *vardata, Node **other,

@@ -1999,6 +1999,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&log_autostats,
 		true, NULL, NULL
 	},
+	{
+		{"gp_statistics_pullup_from_child_partition", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("This guc enables the planner to utilize statistics from partitions in planning queries on the parent."),
+			NULL
+		},
+		&gp_statistics_pullup_from_child_partition,
+		true, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
