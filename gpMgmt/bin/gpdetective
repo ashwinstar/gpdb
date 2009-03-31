@@ -39,6 +39,21 @@ def usage(exitarg = None):
     print __doc__
     sys.exit(exitarg)
 
+#============================================================
+def which (filename):
+    if not os.environ.has_key('PATH') or os.environ['PATH'] == '':
+        p = os.defpath
+    else:
+        p = os.environ['PATH']
+
+    pathlist = p.split (os.pathsep)
+
+    for path in pathlist:
+        f = os.path.join(path, filename)
+        if os.access(f, os.X_OK):
+            return f
+    return None
+
 
 #============================================================
 class GPDetective:
@@ -154,8 +169,8 @@ class GPDetective:
             try:
                 raise self.error
             except Exception, e:
-                print "INTERNAL ERROR!!!!: " + str(e)
-                print "details: %s" % traceback.format_exc()
+                print "Internal error: " + str(e)
+                print "  details: %s" % traceback.format_exc()
                 print "Aborting"
         else:
             print "Done"
@@ -722,14 +737,22 @@ class GPDetective:
                 cores = self.runCmd('ls -1 ' + dir, host)
                 cores = cores.split('\n')
 
+            gdb = which('gdb');
+            if (gdb == None):
+                self.log('  No debugger found');
+                self.writeArray('  Core files: ', cores)
+                return
+
             def is_pgcore(c):
-                corecheck = self.runCmd('gdb -batch -n -c ' + str(c), host)
+                corecheck = self.runCmd('%s -batch -n -c %s' 
+                                        % (gdb, str(c)), 
+                                        host)
                 return core_re.search(corecheck)
             cores = filter(is_pgcore, cores)
 
             for corefile in cores:
                 name = re.sub('/', '_', corefile)
-                dbgout = self.runCmd(['gdb', '--batch', '-n', '-c', corefile,
+                dbgout = self.runCmd([gdb, '--batch', '-n', '-c', corefile,
                                       '-x', libdir + '/crashreport.gdb',
                                       sys.path[0] + '/postgres'], host)
                 if host in self.hosts:
@@ -737,58 +760,6 @@ class GPDetective:
                 else:
                     self.writeArray('master/core%s' % name, [dbgout])
     
-    #------------------------------------------------------------
-    def runExtensions(self):
-        '''
-        Run any extensions in $GPHOME/share/gpdetective
-           + Skips tests if the directory is word writeable
-           + Skips any test that is word writeable
-           + Runs any .sql file on the master database
-           + Executes any executable file
-              * stdout is directed to 'ext_file.log'
-              * stderr is directed to self.errlog
-        '''
-        self.log('runExtensions')
-
-        gphome = os.environ.get('GPHOME')
-        if not gphome:
-            print "    - skipped: env{GPHOME} not set"
-            return
-        ext  = gphome + '/share/gpdetective'
-        try:
-            stat_info = os.stat(ext)
-            files     = os.listdir(ext)
-        except OSError:
-            return     # directory doesn't exist
-        if stat_info.st_mode & 0x002:
-            print "    - skipped: a+w on " + ext
-            return
-        re_sql = re.compile('(.*)\.sql')
-        for f in files:
-            path = ext + '/' + f
-            stat_info = os.stat(path)
-            if stat_info.st_mode & 0x002:
-                print "    - %s [skipped]: global write permission" % f
-                continue
-            if not os.access(path, os.R_OK):
-                print "    - %s [skipped]: no execute permission" % f
-                continue
-            m = re_sql.match(f)
-            if m:
-                print "    + " + f
-                self.writeCmd('ext_' + f + '.log',
-                         ['psql', '-aX', '-d', str(self.db),
-                          '-U', str(self.opt['-U']),
-                          '-h', str(self.opt['-h']),
-                          '-p', str(self.opt['-p']),
-                          '-f', path])
-                continue
-            if not os.access(path, os.X_OK):
-                print "    - %s [skipped]: no execute permission" % f
-                continue
-            print "    + " + f
-            self.writeCmd('ext_' + f + '.log', [path])
-
     #------------------------------------------------------------
     def mklogdir(self):
         '''
@@ -835,7 +806,6 @@ try:
         d.systemInfo()
         d.checkCatalog()
         d.crashReport()
-        d.runExtensions()
     except Exception, e:
         d.error = e
         exit(1)
