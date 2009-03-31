@@ -96,7 +96,7 @@ SetEpochTimestamp(void)
 #else
 	double		noresult = 0.0;
 #endif
-	timestamp	dt;
+	timestamp	dt = 0;
 	struct tm	tt,
 			   *tm = &tt;
 
