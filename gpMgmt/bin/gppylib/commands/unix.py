@@ -419,7 +419,6 @@ class CreateTar(Command):
         self.srcDirectory=srcDirectory
         self.dstTarFile=dstTarFile        
         cmdStr="%s cvPf %s -C %s  ." % (findCmdInPath('tar'), self.dstTarFile,srcDirectory)
-        logger.info("CreateTar cmd: %s" % cmdStr)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     

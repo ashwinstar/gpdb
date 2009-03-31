@@ -248,6 +248,7 @@ class GpArray:
     master=None
     standbyMaster=None
     segments=None
+    expansionSegments=None
     
     
     def __init__(self,rows):
@@ -255,6 +256,7 @@ class GpArray:
         
         self.arrayName=''
         self.segments=[]
+        self.expansionSegments=[]
         self.numPrimarySegments = 0
         
         for row in rows:         
@@ -298,16 +300,29 @@ class GpArray:
         self.numSegments=len(self.segments)
         
     
-    def getDbList(self):
+    def getDbList(self, includeExpansionSegs=False):
         """Return a list of all GpDb objects that make up the array"""
         list=[]
         list.append(self.master)
-        list.extend(self.getSegDbList())        
+        if includeExpansionSegs:
+            list.extend(self.getSegDbList(True))
+        else:
+            list.extend(self.getSegDbList())
+
         return list
     
-    def getSegDbList(self):
+    def getSegDbList(self, includeExpansionSegs=False):
         list=[]
         for seg in self.segments:
+            list.extend(seg.get_dbs())
+        if includeExpansionSegs:
+           for seg in self.expansionSegments:
+               list.extend(seg.get_dbs()) 
+        return list
+    
+    def getExpansionSegDbList(self):
+        list=[]
+        for seg in self.expansionSegments:
             list.extend(seg.get_dbs())
         return list
     
@@ -402,6 +417,120 @@ class GpArray:
         #TODO: populate gp_configuration
         self.cleanup()
         pass
+    
+    
+    def addExpansionSeg(self, content, definedprimary, dbid, isprimary, hostname, port, datadir):
+        if (content <= self.segments[-1].get_dbs()[0].content):
+            raise Exception('Invalid content ID for expansion segment')
+        
+        segdb = GpDB(content,definedprimary,dbid,isprimary,
+                     True,hostname,port,datadir)
+        
+        seglen = len(self.segments)
+        expseglen = len(self.expansionSegments)
+        
+        expseg_index = content - seglen
+        logger.debug('New segment index is %d' % expseg_index)
+        if expseglen < expseg_index + 1:
+            logger.debug('Extending expansion array by %d' % (expseglen - expseg_index + 1))
+            self.expansionSegments.extend([None] * (expseglen - expseg_index + 1))
+            self.expansionSegments[expseg_index] = Segment()
+        
+        
+#        if expseglen <= content - seglen + 1:
+#            if expseglen <= content - seglen:
+#                logger.debug('Extending expansionSegments array by %d' % (content - seglen + 1))
+#                self.expansionSegments.extend([None] * (content - seglen + 1))
+#                if self.expansionSegments[content - seglen] is None:
+#                    logger.debug('Creating new segment at %d' % (content - seglen))
+#                    self.expansionSegments[content - seglen] = Segment()
+#            else:
+#                if self.expansionSegments[content - seglen] is None:
+#                    logger.debug('Creating new segment at %d' % (content - seglen))
+#                    self.expansionSegments[content - seglen] = Segment()
+
+#        seg = self.expansionSegments[content - seglen]
+
+        seg = self.expansionSegments[expseg_index]
+        if definedprimary is True: 
+            if seg.primaryDB:
+                raise Exception('Duplicate content id for primary segment')                   
+            seg.addPrimary(segdb)
+        else:             
+            seg.addMirror(segdb)
+    
+            
+    def validateExpansionSegs(self):
+        dbids = []
+        content = []
+        expansion_seg_count = 0
+        
+        # how many mirrors?
+        mirrors_per_segment = len(self.segments[0].mirrorDBs)
+            
+        for seg in self.expansionSegments:
+            # If a segment is 'None' that means we have a gap in the content ids
+            if seg is None:
+                raise Exception('Expansion segments do not have contiguous content ids.')
+            
+            expansion_seg_count += 1
+            
+            for segdb in seg.get_dbs():
+                dbids.append(segdb.dbid)
+                content.append((segdb.content, segdb.isprimary))
+            
+            # mirror count correct for this content id?
+            if mirrors_per_segment > 0:
+                if len(seg.mirrorDBs) != mirrors_per_segment:
+                    raise Exception('Expansion segment has incorrect number of mirrors defined.')
+            else:
+                #shouldn't have any mirrors
+                if len(seg.mirrorDBs) != 0:
+                    raise Exception('Expansion segment has a mirror segment defined but mirroring is not enabled.')
+        
+        # check that the dbids are what they should be
+        dbids.sort()
+
+        if dbids[0] != self.get_max_dbid() + 1:
+            raise Exception('Expansion segments have incorrect dbids')
+        for i in range(0, len(dbids) - 1):
+            if dbids[i] != dbids[i + 1] - 1:
+                raise Exception('Expansion segments have incorrect dbids')
 
 
+        # check that content ids are ok
+        valid_content = []
+        for i in range(self.segments[-1].primaryDB.content + 1, 
+                       self.segments[-1].primaryDB.content + 1 + len(self.expansionSegments)):
+            valid_content.append((i, True))
+            for j in range(0, mirrors_per_segment):
+                valid_content.append((i, False))
+        
+        valid_content.sort(lambda x,y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
+        content.sort(lambda x,y: cmp(x[0], y[0]) or cmp(x[1], y[1]))
+        
+        if valid_content != content:
+            raise Exception('Invalid content ids')
+        
+        # Check for redefinition of original segments
+        original_datadirs = {}
+        for segdb in self.getDbList():
+            original_datadirs[segdb.get_hostname() + segdb.get_datadir()] = True
+            
+        for segdb in self.getExpansionSegDbList():
+            if original_datadirs.has_key(segdb.get_hostname() + segdb.get_datadir()):
+                raise Exception('Segment %s:%s existed in the original array' % (sebdb.get_hostname(), segdb.get_datadir()))
+        
+        pass
+    
+    
+    def addExpansionHosts(self, hosts):
+        pass
+    
+    
+    def addExpansionDatadirs(self, datadirs):
+        pass
+    
+            
+            
 #------------------------------- Mainline --------------------------------
