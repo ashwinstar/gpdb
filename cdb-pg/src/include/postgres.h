@@ -320,7 +320,7 @@ static inline bool IsAligned(void *p, int align)
 #define COMPILE_ASSERT(e) ((void)sizeof(char[1-2*!(e)]))
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
-extern DLLIMPORT bool assert_enabled;
+extern PGDLLIMPORT bool assert_enabled;
 
 /*
  * USE_ASSERT_CHECKING, if defined, turns on all the assertions.

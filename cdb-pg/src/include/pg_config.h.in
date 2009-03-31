@@ -644,6 +644,9 @@
    (--with-krb-srvnam=NAME) */
 #undef PG_KRB_SRVNAM
 
+/* PostgreSQL major version as a string */
+#undef PG_MAJORVERSION
+
 /* Postgres version Greenplum Database is based on */
 #undef PG_VERSION
 
@@ -666,6 +669,9 @@
 
 /* The size of a `unsigned long', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_LONG
+
+/* The size of `void *', as computed by sizeof. */
+#undef SIZEOF_VOID_P
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS

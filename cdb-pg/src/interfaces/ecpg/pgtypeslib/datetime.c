@@ -57,7 +57,6 @@ PGTYPESdate_from_asc(char *str, char **endptr)
 	fsec_t		fsec;
 	struct tm	tt,
 			   *tm = &tt;
-	int			tzp;
 	int			dtype;
 	int			nf;
 	char	   *field[MAXDATEFIELDS];
@@ -76,7 +75,7 @@ PGTYPESdate_from_asc(char *str, char **endptr)
 	}
 
 	if (ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf, ptr) != 0 ||
-	DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tzp, EuroDates) != 0)
+		DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, EuroDates) != 0)
 	{
 		errno = PGTYPES_DATE_BAD_DATE;
 		return INT_MIN;
@@ -88,7 +87,11 @@ PGTYPESdate_from_asc(char *str, char **endptr)
 			break;
 
 		case DTK_EPOCH:
-			GetEpochTime(tm);
+			if (GetEpochTime(tm) < 0)
+			{
+				errno = PGTYPES_DATE_BAD_DATE;
+				return INT_MIN;
+			}
 			break;
 
 		default:
@@ -154,6 +157,7 @@ PGTYPESdate_today(date * d)
 	struct tm	ts;
 
 	GetCurrentDateTime(&ts);
+	if (errno == 0)
 	*d = date2j(ts.tm_year, ts.tm_mon, ts.tm_mday) - date2j(2000, 1, 1);
 	return;
 }

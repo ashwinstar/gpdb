@@ -13,8 +13,8 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 NAME= pgtypes
-SO_MAJOR_VERSION= 2
-SO_MINOR_VERSION= 2
+SO_MAJOR_VERSION= 3
+SO_MINOR_VERSION= 1
 DLTYPE= library
 
 override CPPFLAGS := -DFRONTEND \

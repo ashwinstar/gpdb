@@ -67,9 +67,6 @@ extern pg_tz *session_timezone;
 extern pg_tz *log_timezone;
 extern pg_tz *gmt_timezone;
 
-//extern pg_tz *global_timezone;  // OLD
-//extern pg_tz *default_timezone; // OLD
-
 /* Maximum length of a timezone name (not including trailing null) */
 #define TZ_STRLEN_MAX 255
 
