@@ -44,8 +44,8 @@ typedef struct MKEntry
 {
     int32 compflags;
     int32 flags;
-	Datum d;
-	void *ptr;
+    Datum d;
+    void *ptr;
 } MKEntry;
 
 static inline void mke_blank(MKEntry *e)
@@ -56,19 +56,19 @@ static inline void mke_blank(MKEntry *e)
 
 static inline void i_clear_flag(int32 *p, int32 flag)
 {
-	*p &= ~flag;
+    *p &= ~flag;
 }
 static inline bool i_test_flag(int32 *p, int32 flag)
 {
-	return (*p & flag) != 0;
+    return (*p & flag) != 0;
 }
 static inline void i_set_flag(int32 *p, int32 flag)
 {
-	*p |= flag;
+    *p |= flag;
 }
 static inline int32 i_get_flag(int32 *p, int32 flag, int32 shiftsz)
 {
-        return ((*p & flag) >> shiftsz);
+    return ((*p & flag) >> shiftsz);
 }
 
 /* Getter, Setter */
@@ -96,81 +96,81 @@ static inline int32 mke_get_nullbits(MKEntry *e)
 
 static inline int32 mke_get_run(MKEntry *e)
 {
-        return i_get_flag(&e->compflags, MKE_CF_Run, MKE_RunShift);
+    return i_get_flag(&e->compflags, MKE_CF_Run, MKE_RunShift);
 }
 static inline void mke_set_run(MKEntry *e, int32 run)
 {
-        Assert(run >= 0 && run <= MKE_MAX_RUN);
-        i_clear_flag(&e->compflags, MKE_CF_Run);
-        i_set_flag(&e->compflags, run << MKE_RunShift);
+    Assert(run >= 0 && run <= MKE_MAX_RUN);
+    i_clear_flag(&e->compflags, MKE_CF_Run);
+    i_set_flag(&e->compflags, run << MKE_RunShift);
 }
 
 static inline int32 mke_get_lv(MKEntry *e)
 {
-        return (MKE_MAX_LV - i_get_flag(&e->compflags, MKE_CF_Lv, MKE_LvShift));
+    return (MKE_MAX_LV - i_get_flag(&e->compflags, MKE_CF_Lv, MKE_LvShift));
 }
 static inline void mke_set_lv(MKEntry *e, int32 lv)
 {
-        Assert(lv >= 0 && lv <= MKE_MAX_RUN);
-        i_clear_flag(&e->compflags, MKE_CF_Lv);
-        i_set_flag(&e->compflags, (MKE_MAX_LV - lv) << MKE_LvShift);
+    Assert(lv >= 0 && lv <= MKE_MAX_RUN);
+    i_clear_flag(&e->compflags, MKE_CF_Lv);
+    i_set_flag(&e->compflags, (MKE_MAX_LV - lv) << MKE_LvShift);
 }
 
 static inline void mke_set_empty(MKEntry *e)
 {
-        e->compflags = MKE_CF_Empty; 
-        e->flags = 0;
+    e->compflags = MKE_CF_Empty; 
+    e->flags = 0;
 }
 static inline bool mke_is_empty(MKEntry *e)
 {
-        return i_test_flag(&e->compflags, MKE_CF_Empty); 
+    return i_test_flag(&e->compflags, MKE_CF_Empty); 
 }
 
 static inline void mke_set_comp_max(MKEntry *e)
 {
-        e->compflags = MKE_CF_MAX;
+    e->compflags = MKE_CF_MAX;
 }
 
 static inline void mke_set_refc(MKEntry *e)
 {
-        i_set_flag(&e->flags, MKE_F_RefCnt);
+    i_set_flag(&e->flags, MKE_F_RefCnt);
 }
 static inline void mke_clear_refc(MKEntry *e)
 {
-        i_clear_flag(&e->flags, MKE_F_RefCnt);
+    i_clear_flag(&e->flags, MKE_F_RefCnt);
 }
 static inline bool mke_is_refc(MKEntry *e)
 {
-        return i_test_flag(&e->flags, MKE_F_RefCnt);
+    return i_test_flag(&e->flags, MKE_F_RefCnt);
 }
 
 static inline void mke_set_copied(MKEntry *e)
 {
-        i_set_flag(&e->flags, MKE_F_Copied);
+    i_set_flag(&e->flags, MKE_F_Copied);
 }
 static inline void mke_clear_copied(MKEntry *e)
 {
-        i_clear_flag(&e->flags, MKE_F_Copied);
+    i_clear_flag(&e->flags, MKE_F_Copied);
 }
 static inline bool mke_is_copied(MKEntry *e)
 {
-        return i_test_flag(&e->flags, MKE_F_Copied);
+    return i_test_flag(&e->flags, MKE_F_Copied);
 }
 
 static inline void mke_clear_refc_copied(MKEntry *e)
 {
-        i_clear_flag(&e->flags, MKE_F_RefCnt | MKE_F_Copied);
+    i_clear_flag(&e->flags, MKE_F_RefCnt | MKE_F_Copied);
 }
 
 static inline int32 mke_get_reader(MKEntry *e)
 {
-        return i_get_flag(&e->flags, MKE_F_Reader, MKE_ReaderShift);
+    return i_get_flag(&e->flags, MKE_F_Reader, MKE_ReaderShift);
 }
 static inline void mke_set_reader(MKEntry *e, int32 r)
 {
-        Assert(r >= 0 && r <= MKE_MAX_READER);
-        i_clear_flag(&e->flags, MKE_F_Reader);
-        i_set_flag(&e->flags, r << MKE_ReaderShift);
+    Assert(r >= 0 && r <= MKE_MAX_READER);
+    i_clear_flag(&e->flags, MKE_F_Reader);
+    i_set_flag(&e->flags, r << MKE_ReaderShift);
 }
 
 typedef int32 (*MKCompare) (MKEntry *v1, MKEntry *v2, void *ctxt);
@@ -179,68 +179,68 @@ typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, void *ctxt);
 
 static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, void *ctxt, MKPrepare prep)
 {
-        MKEntry *last = a+j;
+    MKEntry *last = a+j;
 
-        do {
-                (prep)(a, ctxt);
-                mke_set_lv(a, lv);
-        } while (++a <= last);
+    do {
+        (prep)(a, ctxt);
+        mke_set_lv(a, lv);
+    } while (++a <= last);
 }
 
 typedef struct MKContext_LvCommon
 {
-	bool typByVal;
-	int  typLen;
+    bool typByVal;
+    int  typLen;
 } MKContext_LvCommon;
 
 typedef struct MKContext {
-	int total_lv;
-	MKCompare *comp; 	/* One comparison function for each level */
-	MKPrepare *prep;    	/* One prepare function (memtuple_getattr) for each level */
+    int total_lv;
+    MKCompare *comp; 	/* One comparison function for each level */
+    MKPrepare *prep;    	/* One prepare function (memtuple_getattr) for each level */
 
-	MKCopyFree  cpfr;   	/* Just one refcnt function.  */
-	size_t ctxt_size;
-	void *ctxt;
+    MKCopyFree  cpfr;   	/* Just one refcnt function.  */
+    size_t ctxt_size;
+    void *ctxt;
 
-	int32 limit;		/* Limit sort */
-        int32 limitmask;        /* Bit trick */
-	bool unique;		/* Unique sort */
-	bool enforceUnique;	/* enforce Unique, for index build */
+    int32 limit;		/* Limit sort */
+    int32 limitmask;    /* Bit trick */
+    bool unique;		/* Unique sort */
+    bool enforceUnique;	/* enforce Unique, for index build */
 } MKContext;
 
 static inline void *mk_get_ctxt(MKContext *mk_ctxt, int n)
 {
-	return (void *) ((char *) mk_ctxt->ctxt + n * mk_ctxt->ctxt_size);
+    return (void *) ((char *) mk_ctxt->ctxt + n * mk_ctxt->ctxt_size);
 }
 
 /* MK quicksort stuff */
 extern void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKContext *ctxt, bool seenNull);
 static inline void mk_qsort(MKEntry* a, int n, MKContext *ctxt)
 {
-	mk_qsort_impl(a, 0, n-1, 0, true, ctxt, false);
+    mk_qsort_impl(a, 0, n-1, 0, true, ctxt, false);
 }
 
 /* MK Heap stuff */
 typedef bool (*MKFlagPtrReader) (void *ctxt, MKEntry *e);
 typedef struct MKHeapReader
 {
-	MKFlagPtrReader reader;
-	void *mkhr_ctxt;
+    MKFlagPtrReader reader;
+    void *mkhr_ctxt;
 } MKHeapReader;
 
 typedef struct MKHeap 
 {
-	MKContext *mkctxt;
+    MKContext *mkctxt;
 
-	MKEntry *lvtops;
+    MKEntry *lvtops;
 
-	MKEntry *p;
-	int count;
-	int maxentry;
-	int alloc_size;
+    MKEntry *p;
+    int count;
+    int maxentry;
+    int alloc_size;
 
-	MKHeapReader *readers;
-	int nreader;
+    MKHeapReader *readers;
+    int nreader;
 } MKHeap;
 
 
@@ -279,21 +279,21 @@ extern MKEntry *mkheap_peek(MKHeap *mkheap);
 
 static inline bool mkheap_run_match(MKHeap *mkheap, int32 run)
 {
-	MKEntry *e = mkheap_peek(mkheap);
-        
-        if(e)
-                return (run == mke_get_run(e)); 
-        else
-                return false;
+    MKEntry *e = mkheap_peek(mkheap);
+
+    if(e)
+        return (run == mke_get_run(e)); 
+    else
+        return false;
 }
 
 static inline bool mkheap_empty(MKHeap *mkheap)
 {
-	return mkheap->count == 0;
+    return mkheap->count == 0;
 }
 static inline int64 mkheap_cnt(MKHeap *mkheap)
 {
-	return mkheap->count;
+    return mkheap->count;
 }
 
 #endif

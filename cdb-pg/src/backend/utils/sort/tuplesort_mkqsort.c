@@ -13,7 +13,7 @@
 #include "postgres.h"
 #include "tuplesort_mk.h"
 
-#ifdef USE_ASSERT_CHECKING
+#ifdef MKQSORT_VERIFY 
 extern void mkqsort_verify(MKEntry *a, int l, int r, MKContext *mkctxt);
 #endif
 
@@ -273,13 +273,13 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 					errdetail("Table contains duplicate values.")));
 	}
 
-#ifdef USE_ASSERT_CHECKING
+#ifdef MKQSORT_VERIFY 
 	if(lv == 0)
 		mkqsort_verify(a, left, right, ctxt);
 #endif
 }
 
-#ifdef USE_ASSERT_CHECKING
+#ifdef MKQSORT_VERIFY 
 static int mkqsort_comp_entry_all_lv(MKEntry *a, MKEntry *b, MKContext *mkctxt)
 {
 	int i;
