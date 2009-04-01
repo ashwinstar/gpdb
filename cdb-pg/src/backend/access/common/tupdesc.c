@@ -298,7 +298,7 @@ DecrTupleDescRefCount(TupleDesc tupdesc)
  * We don't compare tdrefcount, either.
  */
 bool
-equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
+equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2, bool checkconstr)
 {
 	int			i,
 				j,
@@ -357,6 +357,9 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 		if (attr1->attinhcount != attr2->attinhcount)
 			return false;
 	}
+
+    if (!checkconstr) 
+        return true;
 
 	if (tupdesc1->constr != NULL)
 	{

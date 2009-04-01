@@ -256,6 +256,8 @@ typedef struct ResultRelInfo
         List                    **ri_ConstraintExprs;
         JunkFilter              *ri_junkFilter;
         ProjectionInfo          *ri_projectReturning;
+        int                     tupdesc_match;
+        MemTupleBinding         *mt_bind;
 
         struct AppendOnlyInsertDescData *ri_aoInsertDesc;
         struct AOCSInsertDescData       *ri_aocsInsertDesc;

@@ -2392,7 +2392,43 @@ ExecInsert(TupleTableSlot *slot,
 	 * writable copy
 	 */
 	if (relstorage == RELSTORAGE_AO)
-		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
+    {
+        TupleDesc dslot = slot->tts_tupleDescriptor;
+        TupleDesc drel = resultRelationDesc->rd_att; 
+
+        if (resultRelInfo->tupdesc_match == 0)
+        {
+            /* We do a deep compare of the attrs */
+
+            if (!equalTupleDescs(dslot, drel, false))
+            {
+                resultRelInfo->mt_bind = create_memtuple_binding(drel);
+                resultRelInfo->tupdesc_match = -1;
+            }
+            else
+                resultRelInfo->tupdesc_match = 1;
+        }
+
+        if (resultRelInfo->tupdesc_match == 1)
+        {
+            Assert(resultRelInfo->mt_bind == NULL);
+            tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
+        }
+        else
+        {
+            Datum *d;
+            bool *n;
+
+            Assert(resultRelInfo->tupdesc_match == -1);
+            Assert(resultRelInfo->mt_bind);
+            slot_getallattrs(slot);
+
+            d = slot_get_values(slot);
+            n = slot_get_isnull(slot);
+
+            tuple = memtuple_form_to(resultRelInfo->mt_bind, d, n, NULL, NULL, false); 
+        }
+    }
 	else if(relstorage == RELSTORAGE_AOCS)
 	{
 		/* We will not serialize slot for ao cs table */

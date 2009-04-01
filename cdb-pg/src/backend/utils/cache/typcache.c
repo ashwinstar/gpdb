@@ -437,7 +437,7 @@ assign_record_type_typmod(TupleDesc tupDesc)
 	foreach(l, recentry->tupdescs)
 	{
 		entDesc = (TupleDesc) lfirst(l);
-		if (equalTupleDescs(tupDesc, entDesc))
+		if (equalTupleDescs(tupDesc, entDesc, true))
 		{
 			tupDesc->tdtypmod = entDesc->tdtypmod;
 			return;

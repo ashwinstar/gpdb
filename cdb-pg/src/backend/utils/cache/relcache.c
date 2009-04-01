@@ -1771,7 +1771,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 		}
 		relation->rd_refcnt = old_refcnt;
 		relation->rd_createSubid = old_createSubid;
-		if (equalTupleDescs(old_att, relation->rd_att))
+		if (equalTupleDescs(old_att, relation->rd_att, true))
 		{
 			/* needn't flush typcache here */
 			Assert(relation->rd_att->tdrefcount == 1);
