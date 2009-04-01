@@ -1711,52 +1711,52 @@ This may be specified on the commandline with:
 
         if self.method == 'dumprestore':
             # Look for dropped columns that we do not know how to deal with
-            # We base this on the typlen, typbyval, and typalign - if we 
-            # can't recognise the type from this then we can't handle it.
-	        self.Log('INFO', 'Checking for dropped columns')
-	        types = {
-	            'text':      [-1, False, 'i'],
-	            'path':      [-1, False, 'd'],
-	            'bool':      [ 1,  True, 'c'],
-	            'int2':      [ 2,  True, 's'],
-	            'int4':      [ 4,  True, 'i'],
-	            'int8':      [ 8,  True, 'd'],
-	            'money':     [ 4, False, 'i'],
-	            'tid':       [ 6, False, 's'],
-	            'macaddr':   [ 6, False, 's'],
-	            'tinterval': [12, False, 'i'],
-	            'timetz':    [12, False, 'd'],
-	            'interval':  [16, False, 'd'],
-	            'circle':    [24, False, 'd'],
-	            'box':       [32, False, 'd'],
-	            'name':      [64, False, 'd']
-	            }
-	        errors = 0
-	        for db in databases:
-	            dropped = self.Select(
-	                '''
-	                   select current_database() as database, '"' || nspname 
-                       || '"."' || relname || '"' as table, 
-	                          attlen, attbyval, attalign
-	                   from pg_attribute a 
-	                        join pg_class c on (a.attrelid = c.oid) 
-	                        join pg_namespace n on (c.relnamespace = n.oid)
-	                   where attisdropped
-	                ''', db=db);
-	            for row in dropped:
-	                found = False
-	                for t in types:
-	                    if (types[t][0] == row['attlen'] and
-	                        types[t][1] == row['attbyval'] and
-	                        types[t][2] == row['attalign']):
-	                        found = True
-	                if not found:
-	                    self.Log('FATAL', 'In database "%s" - table %s ' +
-                                 'has unrecognised dropped columns'
-	                             % (row['database'], row['table']))
-	                    errors = errors + 1
-	        if errors > 0:
-	            raise UpgradeError("non-upgradable dropped columns detected")
+            #
+            # The query lists the dropped attributes for which no suitable reconstruction
+            # type exists in pg_type.  This will happen for user-defined types that have 
+            # been dropped.  (This query is compatible with a similar query used in pg_dump
+            # for finding a reconstruction match for dropped attributes with user-defined
+            # types.
+            self.Log('INFO', 'Checking for dropped columns')
+            for db in databases:
+                unsupportedDropped = self.Select( 
+                        '''
+                            SELECT 
+                                current_database() as database,
+                                pg_catalog.quote_ident(nspname) || '.' ||
+                                pg_catalog.quote_ident(relname) AS table,
+                                attnum,
+                                attlen,
+                                attbyval,
+                                attstorage,
+                                attalign,
+                                atttypmod,
+                                attndims,
+                                reltoastrelid != 0 AS istoasted
+                            FROM 
+                                pg_catalog.pg_attribute, 
+                                pg_catalog.pg_class, 
+                                pg_catalog.pg_namespace
+                            WHERE 
+                                  attisdropped
+                              AND attnum >= 0
+                              AND attrelid = pg_catalog.pg_class.oid
+                              AND relnamespace = pg_catalog.pg_namespace.oid
+                              AND (attlen, attbyval, attalign, attstorage) NOT IN 
+                                    (SELECT typlen, typbyval, typalign, typstorage 
+                                     FROM pg_catalog.pg_type 
+                                     WHERE typisdefined AND typtype ='b')
+                            ORDER BY
+                                attrelid, attnum;
+                        ''', db=db)
+                if unsupportedDropped:
+                    for row in unsupportedDropped:
+                        self.Log('FATAL', 
+                                 'Unrecognized dropped column in database "%(database)s" - table %(table)s '
+                                 '[%(attnum)d]: len=%(attlen)d, byval=%(attbyval)s, storage=%(attstorage)s, '
+                                 'align=%(attalign)s, typmod=%(atttypmod)d, ndims=%(attndims)d, istoasted=%(istoasted)s'
+                                 % row)
+                    raise UpgradeError("non-upgradable dropped columns detected")
 
         # Look for an existing user named MIGRATIONUSER
         self.Log('INFO', 'Checking gpmigrator user')

@@ -202,7 +202,7 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 				 ExecStatusType expected);
 /* START MPP ADDITION */
 static char *nextToken(register char **stringp, register const char *delim);
-static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted);
+static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted, Oid *typoid);
 /* END MPP ADDITION */
 
 int
@@ -3668,6 +3668,8 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			 */
 			if ( tbinfo->attisdropped[j] && forGpMigrator )
 			{
+				TypeInfo   *typInfo;
+				Oid			typoid;
 				char *atttypname;
 				char attname[15];
 				int attlen = atoi(PQgetvalue(res, j, i_attlen));
@@ -3675,18 +3677,30 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 				char attbyval = PQgetvalue(res, j, i_attbyval)[0];
 				char attalign = PQgetvalue(res, j, i_attalign)[0];
 
-				atttypname = gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j], tbinfo->istoasted);
+				atttypname = gettype(attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j], tbinfo->istoasted, &typoid);
 				if (atttypname == NULL)
 				{
 					/* If we can't reconstruct the type, the dump must be abandoned! */
 					write_msg(NULL, "Unable to reconstruct definition for table \"%s\" column %d:\n",
 							tbinfo->dobj.name, j+1);
-					write_msg(NULL, "    attlen=%d, attbyval=%c, attalign=%c, attndims=%d, atttypmod=%d, attstorage=%c\n",
-							attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j]);
+					write_msg(NULL, "    attlen=%d, attbyval=%c, attalign=%c, attndims=%d, atttypmod=%d, attstorage=%c, istoasted=%c\n",
+							attlen, attbyval, attalign, attndims, tbinfo->atttypmod[j], tbinfo->attstorage[j], (tbinfo->istoasted ? 't' : 'f'));
 					exit_nicely();
 				}
 
-				tbinfo->atttypnames[j] = strdup(atttypname);
+				/*
+				 * If we're not using a system-defined type for attribute reconstruction, we
+				 * must ensure the chosen reconstruction type is set as a dependency for the
+				 * table.
+				 */
+				if (typoid != 0)
+				{
+					typInfo = findTypeByOid(typoid);
+					if (typInfo)
+						addObjectDependency(&tbinfo->dobj, typInfo->dobj.dumpId);
+				}
+
+				tbinfo->atttypnames[j] = atttypname;
 				sprintf(attname, "gp_col%06d", j);
 				tbinfo->attnames[j] = strdup(attname);
 			}
@@ -8386,7 +8400,7 @@ nextToken(register char **stringp, register const char *delim)
  *
  * When a column is dropped, the type identifier is zeroed making precise
  * recovery of the type identifier impossible.  However, the type size
- * attributes are undesturbed.  This function attempts to match a set of
+ * attributes are undisturbed.  This function attempts to match a set of
  * type attributes against a set of "proxy" or representative types.
  *
  * What we need is matching typbyval, attalign, attlen, and attstorage, so if
@@ -8412,14 +8426,26 @@ nextToken(register char **stringp, register const char *delim)
  * bpchar, varchar, varbit, and bit each have the same "general" attributes of
  * text.
  *
+ * If a column isn't compatible with a system-defined type, the pg_type table
+ * is queried for a suitable type.  If found, typoid is set to the oid of the
+ * returned type.  If non-zero, typoid should be used by the caller to establish
+ * a dependency against the type.
+ *
  *
  * *** THIS FUNCTION SHOULD ONLY BE USED WHEN ATTEMPTING TO RECOVER A TYPE
  * *** FOR gp_migrator relfile COMPATIBILITY.  WHEN USED, THE RESULT *MUST*
  * *** BE EXAMINED TO ENSURE A TYPE IS ACTUALLY RETURNED!
  */
-static char *gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted)
+static char *
+gettype(int typlen, char typbyval, char typalign, int ndims, int typmod, char typstorage, bool istoasted, Oid *typoid)
 {
-	int i;
+	int 		i;
+	int			ntups;
+	int			i_typoid;
+	int			i_typname;
+	PQExpBuffer query;
+	PGresult   *res;
+	char 	   *typname;
 
 	typedef struct
 	{
@@ -8453,6 +8479,8 @@ static char *gettype(int typlen, char typbyval, char typalign, int ndims, int ty
 			{0, 0, 0, 0, 0, 0}
 		};
 
+	*typoid = 0;				/* Presume system-defined type */
+
 	for (i = 0; typrecords[i].name; i++)
 	{
 		if (typrecords[i].typlen == typlen &&
@@ -8464,17 +8492,17 @@ static char *gettype(int typlen, char typbyval, char typalign, int ndims, int ty
 			{
 			case 0:
 				// Type requires no special handling; return the type name
-				return typrecords[i].name;
+				return strdup(typrecords[i].name);
 			case 1:
 				// Type is mapped to "text"; toastability needs to checked and
 				// type possibly modified.
 				if (istoasted)
-					return typrecords[i].name;
+					return strdup(typrecords[i].name);
 				// At this point, the original type is known *not* to have been "text";
 				// based on code examination, it was one of bpchar, varchar, varbit, or
 				// bit with a "short" length.  Since the column is to be dropped, the
 				// choice is arbitrary as long as a short length is used.
-				return "bit(1)";
+				return strdup("bit(1)");
 			case 2:
 				// Type is mapped to "numeric"; toastability needs to be checked
 				// and type possibly modified.  If the table is has a toast table,
@@ -8483,13 +8511,76 @@ static char *gettype(int typlen, char typbyval, char typalign, int ndims, int ty
 				// column is to be dropped, the choice is arbitrary as long as a
 				// sort length is used.
 				if (istoasted)
-					return typrecords[i].name;
-				return "numeric(1)";
+					return strdup(typrecords[i].name);
+				return strdup("numeric(1)");
 			}
 		}
 	}
 
-	return NULL;	/* unable to determine type */
+	/*
+	 * At this point, all non-toastable, variable-length columns *should* have been
+	 * recognized -- all system-defined types are processed above and no type returned
+	 * from this part can be non-toastable.  If the table is *not* toasted, we have
+	 * an error which must be noted.
+	 */
+	if (!istoasted && typlen == -1)
+	{
+		/* Table/column details are reported by calling routine. */
+		write_msg(NULL, "Non-toasted table contains unrecognized dropped column type ...\n");
+		return NULL;
+	}
+
+	/*
+	 * The type is not one of the recognized system-defined types.  Interrogate the
+	 * pg_type table to attempt to find a compatiple one and return that type.  The
+	 * type chosen is the one with the lowest oid matching the typlen, typbyval,
+	 * typalign, and typstorage attributes.  Only defined, non-row types are
+	 * considered.
+	 *
+	 * TODO: Determine a way to select an appropriate type when typmod is significant.
+	 */
+	query = createPQExpBuffer();
+	appendPQExpBuffer(query,
+			"SELECT "
+			"oid as typoid, "
+			"pg_catalog.format_type(oid, %d) AS typname "
+			"FROM pg_catalog.pg_type "
+			"WHERE "
+			"typlen = %d "
+			"AND typbyval = %s "
+			"AND typalign = '%c' "
+			"AND typstorage = '%c' "
+			"AND typelem %s 0 "				/* Include/exclude array types if ndims != 0 */
+			"AND typisdefined "				/* Accept only completely defined types */
+			"AND typtype = 'b' "			/* Accept only base types */
+			"ORDER BY oid "
+			"LIMIT 1 ",
+			typmod,
+			typlen,
+			(typbyval == 't' ? "true" : "false"),
+			typalign,
+			typstorage,
+			(ndims == 0 ? "=" : "!="));
+
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	typname = NULL;
+	if (ntups > 0)
+	{
+		i_typoid = PQfnumber(res, "typoid");
+		i_typname = PQfnumber(res, "typname");
+		typname = strdup(PQgetvalue(res, 0, i_typname));
+		*typoid = atooid(PQgetvalue(res, 0, i_typoid));
+	}
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
+
+	return typname;
 }
 
 /* END MPP ADDITION */
