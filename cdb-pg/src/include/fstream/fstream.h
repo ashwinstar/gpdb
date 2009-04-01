@@ -7,7 +7,7 @@
 typedef __int64 int64_t;
 #endif
 
-#define FSTREAM_BLOCKSIZE	(1024*32)
+#define FSTREAM_BLOCKSIZE	(1024*64)
 
 /* A file stream - data may come from several files */
 typedef struct fstream_t fstream_t;
