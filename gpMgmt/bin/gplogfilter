@@ -6,6 +6,7 @@
 # 
 
 # import Python standard library modules
+import csv
 import gzip
 import locale
 import os
@@ -203,14 +204,19 @@ def openInputFile(ifn, options):
             zname = zname[0:-3]
             if os.path.splitext(zname)[1] == '':
                 zname += '.log'
-        fileIn = open(ifn, (unzip and 'rb') or 'rU')
+        fileIn = open(ifn, (unzip and 'rb') or 'rU')        
         filesToClose.append(fileIn)
-
+        
     # Set up input decompression
     if unzip:
         fileIn = gzip.GzipFile(zname, 'rb', fileobj=fileIn)
         filesToClose.insert(0, fileIn)
 
+    if zname.endswith('.csv'):
+        print "YO"
+        fileIn = csv.reader(fileIn,delimiter=',',quotechar='"')
+        fileIn = CsvFlatten(fileIn)
+        
     return fileIn, filesToClose, ifn, zname
 
 

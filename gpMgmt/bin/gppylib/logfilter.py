@@ -253,6 +253,29 @@ def FilterLogEntries(iterable,
             msg += '; timestamps from %s to %s' % range
         print >>msgfile, msg
 
+    
+
+#------------------------------- Spying --------------------------------
+class CsvFlatten(object):
+    """
+    Used to flatten a CSV parsed log line into something that looks like the 
+    old format.
+    """
+    
+    def __init__(self,iterable):
+        self.source = iter(iterable)
+    
+    def __iter__(self):
+        return self
+    
+    def next(self):
+        item = self.source.next()
+        #we need to make a minor format change to the log level field so that
+        # our single regex will match both.
+        item[16] = item[16] + ": "
+        str = '|'.join(item) + "\n"
+        return str
+
 
 #------------------------------- Spying --------------------------------
 
@@ -540,7 +563,7 @@ def TimestampInBounds(iterable, begin, end):
 
 
 #--------------------------- Pattern Matching ----------------------------
-
+    
 def MatchRegex(iterable, regex):
     """
     Generator to filter a stream, selecting items in which there is a match
