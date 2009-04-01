@@ -269,7 +269,7 @@ def createExecutionContext(execution_context_id,remoteHost,stdin):
             if remoteHost is None:
                 raise Exception("Programmer Error.  Specified REMOTE execution context but didn't provide a remoteHost")
             return RemoteExecutionContext(remoteHost,stdin)
-        elif execution_context+id == RMI:
+        elif execution_context_id == RMI:
             return RMIExecutionContext()
         
         

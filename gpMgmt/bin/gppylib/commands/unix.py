@@ -78,8 +78,12 @@ def getUserName():
 
 def check_pid(pid):        
     """ Check For the existence of a unix pid. """
+    
+    if pid == 0:
+        return False
+    
     try:
-        os.kill(pid, signal.SIG_DFL)
+        os.kill(int(pid), signal.SIG_DFL)
     except OSError:
         return False
     else:

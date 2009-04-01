@@ -2,7 +2,7 @@
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
-
+import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 import figleaf
@@ -31,7 +31,9 @@ TODO: Items""",
 
 "*  timeout on how long to wait to try and start something",
 
-"* dump more identification in _process_segment_start()"]
+"* dump more identification in _process_segment_start()",
+
+"* when gpstart.py becomes gpstart change gp.GpStartCommand verbose option"]
 
 EXECNAME = os.path.split(__file__)[-1]
 
@@ -60,13 +62,14 @@ class SegStartStatus():
 class GpStart():
     
     ######
-    def __init__(self,restricted,start_standby,trust,parallel=64):
+    def __init__(self,restricted,start_standby,trust,parallel=64,quiet=False):
         self.restricted=restricted
         self.start_standby=start_standby
         self.trust=trust
         self.pool = None
         self.parallel=parallel
         self.attempt_standby_start=False
+        self.quiet=quiet
         pass
     
     ######
@@ -158,17 +161,17 @@ class GpStart():
         logger.info("--------------------------")
         logger.info("Master instance parameters")
         logger.info("--------------------------")
-        logger.info("Database                 = %s" % self.gparray.master )
+        logger.info("Database                 = %s" % self.dburl.pgdb )
         logger.info("Master Port              = %s" % self.port )
         logger.info("Master directory         = %s" % self.master_datadir )
         
         if self.gparray.standbyMaster:
             if self.start_standby:
-                logger.info("Master standby start     = Off")
-            else:
                 logger.info("Master standby start     = On")
+            else:
+                logger.info("Master standby start     = Off")
         else:
-            logger.warning("Master standby        = Off ")
+            logger.info("Master standby        = Off ")
         
         logger.info("--------------------------------------")
         logger.info("Segment instances that will be started")
@@ -239,8 +242,9 @@ class GpStart():
         self.standby_was_started = self._start_standby()
         
         segs = self.gparray.get_valid_segdbs()
-        invalid_segs=self.gparray.get_invalid_segdbs()                                
-        hostdict=self._build_hostdict(segs)  
+        invalid_segs=self.gparray.get_invalid_segdbs()    
+        hostdict=gp.build_hostdict(segs,self.gparray,self.pool)                            
+        
         
         if not self.trust:                                         
             self.failed_seg_status.extend(self._ping_segment_hosts(hostdict))
@@ -258,23 +262,6 @@ class GpStart():
         else:
             return False
         
-    
-    ######
-    def _build_hostdict(self,segs):
-        hostcache=gp.readGpHostCache(self.gparray,self.pool)
-        hostdict={}
-                
-        for db in segs:
-            if db.hostname in hostcache:
-                realhost=hostcache[db.hostname]
-            else:
-                realhost = db.hostname
-                
-            if realhost not in hostdict:                
-                hostdict[realhost] = [db] 
-            else:
-                hostdict[realhost].append(db)
-        return hostdict
 
     ######
     def _get_invalid_segments(self):
@@ -293,6 +280,7 @@ class GpStart():
     ######
     def _start_segments(self,hostdict):
         logger.info("Commencing parallel segment instance startup, please wait...")
+        dispatch_count=0
         for key in hostdict.iterkeys():
             dblist = hostdict[key]
             
@@ -301,7 +289,17 @@ class GpStart():
                                  [self.lc_collate,self.lc_monetary,self.lc_numeric],self.gpversion,self.trust,
                                  ctxt=base.REMOTE, remoteHost=key)
             self.pool.addCommand(cmd)
+            dispatch_count+=1
             
+        while self.pool.completed_queue.qsize() < dispatch_count:
+            time.sleep(1)
+            
+            if not self.quiet:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        
+        if not self.quiet:
+            print " "    
         self.pool.join()
         pass
     
@@ -335,10 +333,9 @@ class GpStart():
                                 else:
                                     failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
             else:
-                #TODO:  better handling and formatting.
-                logger.error("Failed Executing command: '%s' " % cmd.get_results())
-            
-                
+                dbs = hostdict[cmd.remoteHost]
+                for db in dbs:
+                    failed_seg_status.append( SegStartStatus(db,started=False,reason=cmd.get_results(),failedCmd=cmd))
                     
         self.pool.empty_completed_items()
         return success_seg_status
@@ -551,16 +548,15 @@ def main():
     
         options, args = parseargs()
         
-        logger.info("Starting gpstart with args: %s" % ' '.join(sys.argv[1:]))
-        
-        
         if options.verbose:
             enable_verbose_logging()
         
         if options.quiet:
             quiet_stdout_logging()
     
-        gpstart = GpStart(options.restricted,options.start_standby,options.trust,parallel=options.parallel)
+        logger.info("Starting gpstart with args: %s" % ' '.join(sys.argv[1:]))
+        
+        gpstart = GpStart(options.restricted,options.start_standby,options.trust,parallel=options.parallel,quiet=options.quiet)
         gpstart.prepare()
           
         gpstart.startMaster()    

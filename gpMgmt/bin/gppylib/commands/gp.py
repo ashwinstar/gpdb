@@ -154,17 +154,17 @@ class GpSegStartCmd(Command):
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, dblist, mode, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, dblist, version,mode, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dblist
         self.dirlist=[]
         self.mode=mode
+        self.version=version
         for db in dblist:
             self.dirlist.append(db.datadir)
             
         dirstr=" -D ".join(self.dirlist)        
-        colstr=":".join(collatelist)
-        self.cmdStr="%s $GPHOME/sbin/gpsegstop.py -D %s -m %s'" % (SRC_GPPATH,dirstr,mode)
+        self.cmdStr="%s $GPHOME/sbin/gpsegstop.py -D %s -m %s -V '%s'" % (SRC_GPPATH,dirstr,mode,version)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
@@ -199,19 +199,40 @@ class GpDeleteSystem():
 
 #-----------------------------------------------
 class GpStart(Command):
-    def __init__(self, name, masterOnly=False, restricted=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, masterOnly=False, restricted=False, verbose=False,ctxt=LOCAL, remoteHost=None):
         self.cmdStr="%s $GPHOME/bin/gpstart -a" % (SRC_GPPATH)
         if masterOnly:
             self.cmdStr += " -m"
         if restricted:
             self.cmdStr += " -R"
+        if verbose:
+            self.cmdStr += " -D"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
     def local(name,masterOnly=False,restricted=False):
         cmd=GpStart(name,masterOnly,restricted)
         cmd.run(validateAfter=True)
-       
+
+#-----------------------------------------------
+class NewGpStart(Command):
+    def __init__(self, name, masterOnly=False, restricted=False, verbose=False,nostandby=False,ctxt=LOCAL, remoteHost=None):
+        self.cmdStr="%s $GPHOME/bin/gpstart.py -a" % (SRC_GPPATH)
+        if masterOnly:
+            self.cmdStr += " -m"
+        if restricted:
+            self.cmdStr += " -R"
+        if verbose:
+            self.cmdStr += " -v"
+        if nostandby:
+            self.cmdStr += " -y"
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def local(name,masterOnly=False,restricted=False,verbose=False,nostandby=False):
+        cmd=NewGpStart(name,masterOnly,restricted,verbose,nostandby)
+        cmd.run(validateAfter=True)
+     
 #-----------------------------------------------           
 class GpStop(Command):
     def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False,ctxt=LOCAL, remoteHost=None):
@@ -387,8 +408,24 @@ def standby_check(master_datadir):
     if (check_passive_standby('check if passive standby',master_datadir)):
         raise GpError('Cannot run this utility on the standby instance')
   
-    
-    
+######
+def build_hostdict(segs,gparray,pool):
+    hostcache=readGpHostCache(gparray,pool)
+    hostdict={}
+            
+    for db in segs:
+        if db.hostname in hostcache:
+            realhost=hostcache[db.hostname]
+        else:
+            realhost = db.hostname
+            
+        if realhost not in hostdict:                
+            hostdict[realhost] = [db] 
+        else:
+            hostdict[realhost].append(db)
+            
+    return hostdict    
+
     
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
 
@@ -474,3 +511,25 @@ def get_local_db_mode(master_data_dir):
         if fp: fp.close()
     
     return mode
+
+######
+def read_postmaster_pidfile(datadir):
+    pid=0
+    f = None
+    try:        
+        f = open(datadir + '/postmaster.pid')
+        pid = int(f.readline().strip())
+    except Exception:
+        pass                
+    finally:
+        if f: f.close()
+    return pid
+            
+        
+        
+        
+    f = open(file,'r')
+    pid = int(f.readline().strip())
+    f.close()
+    return pid
+    

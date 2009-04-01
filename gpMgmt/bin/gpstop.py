@@ -1,0 +1,651 @@
+#!/usr/bin/env python
+#
+# Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
+#
+import os,sys,time
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+
+
+import figleaf
+
+
+from gppylib.db import dbconn
+from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib.gplog import *
+from gppylib.db import dbconn
+from gppylib.db import catalog
+from gppylib import gparray
+from gppylib import userinput
+from gppylib import pgconf
+from gppylib.commands import unix
+from gppylib.commands import gp
+from gppylib.commands import base
+from gppylib.commands import pg
+
+
+description = (""" 
+Stops a GPDB Array.
+""")
+
+_help = ["""
+TODO: Items""",
+
+"* Handle case where gpstop is called against an already stopped system better."
+
+"* when restart is specified, have a way to display the stdout of gpstart as its happening"
+]
+
+EXECNAME = os.path.split(__file__)[-1]
+
+DEFAULT_NUM_WORKERS=64
+
+#---------------------------------------------------------------
+class GpStopError(Exception): pass
+
+#---------------------------------------------------------------
+class SegStopStatus():
+    """Tracks result of trying to stop an individual segment database"""
+    def __init__(self,db,stopped=False,reason=None,failedCmd=None):
+        self.db=db
+        self.stopped=stopped
+        self.reason=reason
+        self.failedCmd=failedCmd
+        
+    
+    def __str__(self):
+        if self.stopped:
+            return "DBID:%d  STOPPED" % self.db.dbid
+        else:
+            return "DBID:%d  FAILED  host:'%s' datadir:'%s' with reason:'%s'" % (self.db.dbid,self.db.hostname,self.db.datadir,self.reason)
+        
+#---------------------------------------------------------------
+class GpStop():
+    
+    ######
+    def __init__(self,mode,cancel_active_connections,parallel,quiet=False):
+        self.mode=mode
+        self.cancel_active_connections=cancel_active_connections        
+        self.pool = None
+        self.parallel=parallel
+        self.quiet=quiet
+        self.pid=0
+        pass       
+        
+        
+    ######
+    def prepare(self):
+        logger.info("Gathering information and validating the environment...")        
+        self.gphome=gp.get_gphome()
+        self.master_datadir=gp.get_masterdatadir()
+        self.user=gp.get_user() 
+        gp.check_permissions(self.user)
+        self._read_postgresqlconf()
+        gp.standby_check(self.master_datadir)   
+        self._check_db_running()
+        self._build_gparray()
+        self._check_version()
+    
+    ######
+    def _check_version(self):            
+        self.gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
+        logger.info("Greenplum Version: '%s'" % self.gpversion)
+  
+    
+    ######
+    def _read_postgresqlconf(self):
+        logger.debug("Obtaining master's port from master data directory")
+        pgconf_dict = pgconf.readfile(self.master_datadir + "/postgresql.conf")        
+        self.port = pgconf_dict.int('port')        
+        logger.debug("Read from postgresql.conf port=%s" % self.port)   
+    
+    
+    ######
+    def _check_db_running(self):
+        if os.path.exists(self.master_datadir + '/postmaster.pid'):
+            self.pid=gp.read_postmaster_pidfile(self.master_datadir)
+            if not unix.check_pid(self.pid):
+                logger.warning("Have a postmaster.pid file but no Master segment process running")
+                logger.info("Clearing postmaster.pid file and /tmp lock files")
+                
+                logger.info("Clearing Master instance lock files")        
+                os.remove(lockfile)
+        
+                logger.info("Clearing Master instance pid file")
+                os.remove("%s/postmaster.pid" % self.master_datadir)
+                
+                logger.info("Setting recovery parameters")
+                self.mode='fast'
+                logger.info("Commencing forced shutdown")
+            pass
+        else:
+            raise GpStopError('postmaster.pid file does not exist.  is Greenplum instance already stopped?')
+    
+    
+    ######
+    def _build_gparray(self):
+        logger.info("Obtaining Greenplum Master catalog information")
+        
+        logger.info("Obtaining Segment details from master...")
+        self.dburl = dbconn.DbURL()
+        conn = dbconn.connect(self.dburl, utility=True)
+        rows = dbconn.getConfig(conn)
+        self.gparray = gparray.GpArray(rows)        
+        conn.close()
+    
+    
+   
+        
+        
+    ######
+    def stop_master(self,masterOnly=False):
+        
+        
+        self.conn = dbconn.connect(self.dburl, utility=True)
+        
+        if masterOnly:
+            self._stop_master_only_checks()
+        else:
+            self._stop_master_checks()
+            
+            
+        self.conn.close()
+    
+        logger.info("Commencing Master instance shutdown with mode=%s" % self.mode)
+        logger.info("Master segment instance directory=%s" % self.master_datadir)
+        
+        cmd=gp.SegmentStop("stopping master", self.master_datadir, mode=self.mode)
+        cmd.run(validateAfter=True)
+        
+        logger.debug("Successfully shutdown the Master instance in admin mode")
+        pass
+    
+    
+    ######
+    def _stop_master_only_checks(self):
+        active_pids = catalog.getActiveUserPIDs(conn)
+        
+        if len(active_pids) > 0:            
+            if self.cancel_active_connections:
+                catalog.cancelBackendPIDs(self.conn)                
+            else:
+                raise GpStopError("There are %d active connections to the database\n"\
+                                  "Option -C not supplied to cancel backend process")
+        
+        total_connections=len(catalog.getUserPIDs(conn))
+        logger.info("There are %d connections to the database" % total_connections)
+        if total_connections > 0:            
+            logger.info("Setting shutdown mode to immediate")
+            self.mode='immediate'
+    
+    
+    ######
+    def _stop_master_checks(self):
+        total_connections=len(catalog.getUserPIDs(self.conn))
+        logger.info("There are %d connections to the database" % total_connections)
+        
+        if total_connections > 0 and self.mode=='smart':
+            logger.warning("There are other connections to this instance, shutdown mode smart aborted")
+            logger.warning("Either remove connections, or use 'gpstop -M fast' or 'gpstop -M immediate'")
+            logger.warning("See gptop -? for all options")
+            raise GpStopError("Active connections. Aborting shutdown...")
+        
+        logger.info("Commencing Master instance shutdown with mode='%s'" % self.mode)
+        logger.info("Master host=%s" % self.gparray.master.hostname)
+        
+        if self.mode == 'smart':
+            pass
+        elif self.mode == 'fast':
+            logger.info("Detected %d connection(s0 to database")
+            if total_connections > 0:                
+                logger.info("Switching to WAIT mode")
+                logger.info("Will wait for shutdown to complete, this may take some time if")
+                logger.info("there are a large number of active complex transactions, please wait...")
+            else:
+                logger.info("Using standard WAIT mode of 60 seconds")
+        pass
+    
+    
+    ######
+    def stop_standby(self):
+        """ assumes prepare() has been called """
+        if self.gparray.standbyMaster:
+            standby=self.gparray.standbyMaster
+            
+            logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
+            cmd=SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',ctxt=REMOTE,remoteHost=standby.hostname)
+            cmd.run(validateAfter=True)
+            
+            if pg.DbStatus.local('checking status of standby master instance',standby.datadir,standby.hostname):
+                logger.info("Successfully shutdown sync process on %s" % standby.hostname)
+            else:
+                logger.warning("Process gpsyncmaster still running, will issue fast shutdown with immediate")            
+                cmd=SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=REMOTE,remoteHost=standby.hostname)
+                cmd.run(validateAfter=True)
+                
+                if pg.DbStatus.local('checking status of standby master instance',standby.datadir,standby.hostname):
+                    logger.info("Successfully shutdown sync process on %s" % standby.hostname)
+                else:
+                    logger.error("Unable to stop gpsyncmaster on host: %s" % standby.hostname)
+        else:
+            logger.info("No standby master host configured")
+            
+    ######
+    def stop_segments(self):        
+        failed_seg_status = []
+        workers=min(len(self.gparray.get_hostlist()),self.parallel)
+        self.pool = base.WorkerPool(numWorkers=workers)
+        
+        hostcache=gp.readGpHostCache(self.gparray,self.pool)
+        
+        segs = self.gparray.get_valid_segdbs()
+        invalid_segs=self.gparray.get_invalid_segdbs()                                
+        hostdict=gp.build_hostdict(segs,self.gparray,self.pool)                                           
+        failed_seg_status.extend(self._ping_segment_hosts(hostdict))
+        
+                                
+        self._stopseg_cmds(hostdict)                
+        self._process_segment_stop(hostdict,failed_seg_status)    
+        self._print_segment_stop(segs,failed_seg_status)
+        
+        
+        pass
+    
+    
+    ######
+    def _ping_segment_hosts(self,hostdict):
+        failedSegs=[]
+                                 
+        for p in unix.Ping.ping_list(hostdict.keys()):
+            self.pool.addCommand(p)
+        self.pool.join()        
+        cmds=self.pool.getCompletedItems()
+        
+        
+        for cmd in cmds:
+            if cmd.get_results().rc != 0:
+                host=cmd.hostToPing
+                logger.info("Ping to host: '%s' FAILED" % host)
+                logger.debug("  ping details: %s" % cmd)
+                
+                dblist=hostdict[host]
+                del hostdict[host]                
+                
+                alternateHost=None
+                
+                for db in dblist:
+                    pingCmd = base.Ping("dbid: %d" % db.dbid,db.hostname)
+                    pingCmd.run()
+                    if pingCmd.get_results().rc == 0:
+                        alternateHost=db.hostname
+                        break
+                
+                if alternateHost:
+                    hostdict[alternateHost]=dblist
+                else:
+                    #no interface to reach any of the segments
+                    for db in dblist:
+                        s = SegStartStatus(db,started=False,reason="Failed to Ping Host",failedCmd=cmd)
+                        failedSegs.append(s)
+                    pass
+            
+        self.pool.empty_completed_items()
+    
+        return failedSegs
+    
+    
+    ######
+    def _stopseg_cmds(self,hostdict):
+        logger.info("Commencing parallel segment instance shutdown, please wait...")
+        dispatch_count=0
+        for key in hostdict.iterkeys():
+            dblist = hostdict[key]
+            
+            logger.debug("Dispatching command to shutdown segments on host: %s" % key)
+            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % key, self.gphome, dblist,self.gpversion,
+                                mode='immediate', ctxt=base.REMOTE, remoteHost=key)
+            self.pool.addCommand(cmd)
+            dispatch_count+=1
+        
+        while self.pool.completed_queue.qsize() < dispatch_count:
+            time.sleep(1)
+        
+            if not self.quiet:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        
+        if not self.quiet:
+            print " "
+        self.pool.join()                
+        pass
+        
+    
+    
+    
+    ######
+    def _process_segment_stop(self,hostdict,failed_seg_status):
+        
+        
+        success_seg_status=[]
+        cmds=self.pool.getCompletedItems()
+        for cmd in cmds:
+            if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:                            
+                cmdout = cmd.get_results().stdout
+                lines=cmdout.split('\n')
+                for line in lines:
+                    if line.startswith("STATUS"):
+                        fields=line.split('--')
+                        dir = fields[1].split(':')[1]
+                        started = fields[2].split(':')[1]
+                        reasonStr = fields[3].split(':')[1]
+                        
+                        if started.lower() == 'false':
+                            success=False
+                        else:
+                            success=True
+                            
+                        dbs = hostdict[cmd.remoteHost]
+                        for db in dbs:
+                            if db.datadir == dir:
+                                if success:
+                                    success_seg_status.append( SegStopStatus(db,stopped=True,reason=reasonStr,failedCmd=cmd) )
+                                else:
+                                    failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )                        
+            else:
+                dbs = hostdict[cmd.remoteHost]
+                for db in dbs:
+                    failed_seg_status.append( SegStopStatus(db,stopped=False,reason=cmd.get_results(),failedCmd=cmd))
+
+        self.pool.empty_completed_items()
+        return success_seg_status        
+    
+    
+    ######
+    def _print_segment_stop(self,segs,failed_seg_status):
+        started = len(segs) - len(failed_seg_status)         
+        failed = len(failed_seg_status)
+        
+        logger.info("------------------------------------------------")
+        logger.info("Parallel process exit status")
+        
+        if failed > 0 or logging_is_verbose():
+            logger.info("------------------------------------------------")
+            if failed > 0:
+                for failure in failed_seg_status:
+                    logger.info(failure)
+            if logging_is_verbose():
+                    for stat in success_seg_status:
+                        logger.debug(stat)              
+             
+        flag=""
+        if failed > 0:
+            flag="<<<<<"
+        
+        logger.info("------------------------------------------------")
+        logger.info("Total processes marked as completed       = %d" % started)
+        logger.info("Total processes marked as failed          = %d %s" % (failed,flag))
+        logger.info("------------------------------------------------")
+        logger.info("Successfully shutdown %d of %d segment instances %s" % (started,len(segs),flag))
+            
+            
+        if len(failed_seg_status) > 0:
+            self.hadFailures=True
+            logger.info("------------------------------------------------")
+            logger.info("Segment instance shutdown failures reported")
+            logger.info("Review logfile for more details on segment startup failure(s)")
+            logger.info("------------------------------------------------")
+        else:
+            self.hadFailures=False
+            logger.info("Database successfully shutdown with no errors reported")
+        pass
+    
+    
+    ######
+    def sighup_master(self):
+        """ assumes prepare() has been called """
+        logger.info("Signalling Master postmaster process to reload")        
+        pg.ReloadDbConf.local("reload master postgresql.conf",self.gparray.master)
+        pass
+    
+    
+    ######
+    def summarize_actions(self):        
+        logger.info("--------------------------------------------")
+        logger.info("Master instance parameters")
+        logger.info("--------------------------------------------")
+        logger.info("Master Greenplum instance process active PID = %s" % self.pid)
+        logger.info("Database                                     = %s" % self.dburl.pgdb )
+        logger.info("Master Port                                  = %s" % self.port )
+        logger.info("Master directory                             = %s" % self.master_datadir )
+        logger.info("Shutdown mode                                = %s" % self.mode)
+        
+        if self.gparray.standbyMaster and self.stop_standby:
+            logger.info("Shutdown Master standby host                 = On")
+        else:
+            logger.info("Shutdown Master standby host                 = Off")
+            
+        
+        logger.info("--------------------------------------------")
+        logger.info("Segment instances that will be shutdown:")
+        logger.info("--------------------------------------------")
+        
+        format_string=self._get_format_string()
+        logger.info(format_string % ("Host","Datadir","Port","Status"))
+        for db in self.gparray.getSegDbList():                
+            logger.info(format_string % (db.hostname,db.datadir,db.port,db.get_status()))
+    
+    
+    
+    
+    ######
+    def _get_format_string(self):
+        host_len=0
+        dir_len=0
+        port_len=0
+        for db in self.gparray.getSegDbList():
+            if len(db.hostname) > host_len:
+                host_len=len(db.hostname)
+            if len(db.datadir) > dir_len:
+                dir_len=len(db.datadir)
+            if len(str(db.port)) > port_len:
+                port_len=len(str(db.port))
+        
+        return "%-" + str(host_len) + "s  %-" + str(dir_len) + "s  %-" + str(port_len) + "s  %s"
+
+
+    ######
+    def cleanup(self):
+        if self.pool:
+            self.pool.haltWork()
+    
+  
+  
+#----------------------- Command line option parser ----------------------
+
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                description=' '.join(description.split()),
+                version='%prog version $Revision: #12 $')
+    parser.setHelp(_help)
+    parser.set_usage('%prog [--help] [options] ')
+    parser.remove_option('-h')
+    
+    parser.add_option('-h', '-?', '--help', action='help',
+                        help='show this help message and exit')
+    parser.add_option('-v','--verbose', action='store_true',
+                        help='debug output.')
+    
+    optgrp2 = OptionGroup(parser, 'Logging options: ')
+    parser.add_option_group(optgrp2)
+    optgrp2.add_option('-a', dest="interactive" , action='store_false',default=True,
+                        help="quiet mode, do not log progress to screen"\
+                             "[default:- verbose output to screen]")    
+                      
+    optgrp2.add_option('-q', '--quiet', action='store_true',
+                        help='suppress status messages')
+    
+    optgrp4 = OptionGroup(parser, 'Connection options: ')
+    parser.add_option_group(optgrp4)
+    
+    
+    optgrp3 = OptionGroup(parser, 'Instance shutdown options: ')
+    parser.add_option_group(optgrp3)
+    optgrp3.add_option('-f', '--fast', action='store_true', default=False,
+                        help="<deprecated> Fast shutdown, active transactions interrupted and rolled back")
+    optgrp3.add_option('-i', '--immediate', action='store_true',default=False,
+                        help="<deprecated> Immediate shutdown, active transaction aborted.")
+    optgrp3.add_option('-s', '--smart', action='store_true',
+                        help="<deprecated> Smart shutdown, wait for active transaction to complete. [default]")
+    optgrp3.add_option('-z', '--force', action='store_true',default=False,
+                        help="<deprecated> Force shutdown of segment instances marked as invalid. Kill postmaster PID, "\
+                             "delete /tmp lock files and remove segment instance postmaster.pid file.")
+    optgrp3.add_option('-M', '--mode', type='choice', choices=['fast', 'immediate', 'smart', 'force'],
+                       metavar='fast|immediate|smart|force', action='store', default='smart',
+                       help='set the method of shutdown')
+    
+    optgrp3.add_option('-r', '--restart', action='store_true',
+                        help='Restart Greenplum Database instance after successful gpstop.')
+    optgrp3.add_option('-m', '--master_only', action='store_true',
+                        help='stop master instance started in maintenance mode')
+    optgrp3.add_option('-y', dest="stop_standby", action='store_false',default=True,
+                        help='stop master instance started in maintenance mode')
+    optgrp3.add_option('-u', dest="request_sighup", action='store_true',
+                        help="upload new master postgresql.conf settings, does not stop Greenplum array,"\
+                             "issues a signal to the master segment potmaster process to reload")
+    optgrp3.add_option('-C', dest="cancel_active_connections", action='store_true',
+                        help='calls pg_cancel_backend function for each active connection prior to shutdown')
+    
+    
+    optgrp3.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
+                        help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)    
+        
+    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
+    
+    
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    
+    
+    
+    if options.mode != 'smart':
+        if options.fast or options.immediate or options.force:
+            raise GpStopError("Can not mix --mode options with older deprecated '-f,-i,-s,-z'")
+    
+    if options.fast:
+        options.mode="fast"
+    if options.immediate:
+        options.mode="immediate"
+    if options.smart:
+        options.mode="smart"
+    if options.force:
+        options.mode="force"
+    
+    
+    
+    #-n sanity check
+    if options.parallel > 128 or options.parallel < 1:
+        parser.print_help()
+        parser.exit()
+        
+        
+    return options, args
+
+
+
+#------------------------------- Mainline --------------------------------
+def check_to_continue():    
+    msg = "\nContinue with Greenplum instance shutdown"                
+    ans = userinput.ask_yesno(None,msg,'N')    
+            
+    if not ans:
+        logger.info("User abort requested, Exiting...")
+        sys.exit(4)
+    pass
+
+    
+def main():
+    use_figleaf=os.getenv('USE_FIGLEAF', None)
+    
+    if use_figleaf:
+        figleaf.start()
+        
+    gpstop = None
+    try:
+        setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+    
+        options, args = parseargs()
+        
+        
+        
+        if options.verbose:
+            enable_verbose_logging()
+        
+        if options.quiet:
+            quiet_stdout_logging()
+    
+        logger.info("Starting gpstop with args: %s" % ' '.join(sys.argv[1:]))
+        
+        gpstop = GpStop(options.mode,options.cancel_active_connections,options.parallel,quiet=options.quiet)
+        gpstop.prepare()
+          
+        
+        if options.interactive:
+            gpstop.summarize_actions()
+            check_to_continue()
+        
+        if options.master_only:
+            gpstop.stop_master()                                 
+        else:
+            if options.request_sighup:
+                gpstop.sighup_master()
+            else:
+                
+                gpstop.stop_master()
+                
+                if options.stop_standby:
+                    gpstop.stop_standby()
+            
+                gpstop.stop_segments()
+                
+                gpstop.cleanup()
+                
+                if options.restart:
+                    #TODO:  need a way of capturing stdout/stderr from command.
+                    logger.info("Restarting System...")
+                    dont_stop_standby = not options.stop_standby
+                    gp.NewGpStart.local('restarting system',verbose=options.verbose,nostandby=dont_stop_standby)                    
+                    pass
+                
+                                
+                
+                if gpstop.hadFailures:
+                    sys.exit(1)
+                    
+        sys.exit(0)    
+    except base.ExecutionError, e:
+        logger.fatal("Error occurred: %s\n Command was: '%s'\n"
+                     "rc=%d, stdout='%s', stderr='%s'" %\
+                     (e.summary,e.cmd.cmdStr, e.cmd.results.rc, e.cmd.results.stdout,
+                     e.cmd.results.stderr ))
+        sys.exit(4)
+    except Exception, e:        
+        if True: #if options.verbose:
+            logger.exception("gpstop failed.  exiting..." )
+        else:
+            logger.fatal("gpstop failed. (Reason='%s') exiting..." % e)
+        if gpstop:
+            gpstop.cleanup()
+        sys.exit(3)
+    except KeyboardInterrupt:
+        if gpstop:
+            gpstop.cleanup()        
+        sys.exit('\nUser Interrupted')
+    finally:
+        if use_figleaf:
+            figleaf.stop()
+            figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
+
+
+
+logger = get_default_logger()    
+if __name__ == '__main__':
+    main()  
