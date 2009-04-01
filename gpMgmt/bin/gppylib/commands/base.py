@@ -74,6 +74,10 @@ class WorkerPool:
     def join(self):
         self.work_queue.join()
         return True
+    
+    def joinWorkers(self):
+        for w in self.workers:
+            w.join()
 
     def getCompletedItems(self):
         list=[]

@@ -112,10 +112,8 @@ def parseargs():
                         help='debug output.')
     parser.add_option('-m', '--max-before-delay', type='int', default=8, metavar="<max_before_delay>",
                       help='Maximum concurrent remote commands per host before delay.  Valid values are 1-128')
-  
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
-    
     
     # Parse the command line arguments
     (options, args) = parser.parse_args()
@@ -770,30 +768,14 @@ class gpexpand:
     def get_state(self):
         return self.statusLogger.get_current_status()[0]
     
-    def generate_inputfile(self,hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase):        
-        maxDbId = self.gparray.get_max_dbid() + 1        
-        oldSegCount = self.gparray.get_segment_count()
-        
-        #figure out the common datadir prefix
-        full_prefix= self.gparray.segments[0].primaryDB.datadir.split('/')[-1]
-        dir_prefix=full_prefix.strip('0')
-        
-        logger.debug("Existing GPDB Array has %d segments" % oldSegCount)
-        
+    def generate_inputfile(self):        
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
         outfile = open(outputfile, 'w')
         
         logger.info("Generating input file...")
-        rows=createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix)
-        
-        
-        for r in rows:              
-            (content,defprim,dbid,isprim,valid,hostname,port,datadir)=r
-            new_dbid = maxDbId + dbid
-            new_content = oldSegCount + content
-            datadir = datadir.rstrip(str(content)) + '/' + dir_prefix + str(new_content)            
-            outfile.write("%s:%d:%s:%d:%d:%s\n" % (hostname,port,datadir,new_dbid,new_content,isprim) )           
-        
+
+        for db in gparray.getExpansionSegDbList():              
+            outfile.write("%s:%d:%s:%d:%d:%s\n" % (db.hostname, db.port, db.datadir, db.dbid, db.content, db.isprimary)) 
         
         outfile.close()
         
@@ -1084,6 +1066,7 @@ class gpexpand:
             dbname=db[0]
             if dbname == 'template0':
                 continue
+            self.logger.info('Populating %s.%s with data from database %s' % (gpexpand_schema, status_detail_table, dbname) )
             c = self.connect_database(dbname)
             self._populate_regular_tables(dbname,c)
             self._populate_partitioned_tables(dbname,c)            
@@ -1130,14 +1113,14 @@ WHERE
     AND c.relkind != 'x';
 
                   """ 
-        self.logger.info(sql)
+        self.logger.debug(sql)
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
         for row in rows:
             fqname = row[0]
             schema_oid = row[1]
             table_oid = row[2]             
-            logger.warning("dist policy raw: %s " % row[3])   
+            logger.debug("dist policy raw: %s " % row[3])   
             dist_policy = row[3]
             (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
             ts = datetime.datetime.now()
@@ -1157,7 +1140,7 @@ WHERE
                                dist_policy,policy_name,policy_oids, 1, 'NOT STARTED', 
                                rel_bytes )
                         
-            self.logger.info(insertSQL)
+            self.logger.debug(insertSQL)
             dbconn.execSQL(self.conn,insertSQL)    
         
         #null out the dist policies
@@ -1175,7 +1158,7 @@ WHERE
     AND n.nspname != 'gpexpand';
         """
       
-        self.logger.info(sql)
+        self.logger.debug(sql)
         dbconn.execSQL(table_conn,sql)
         pass
     
@@ -1209,7 +1192,7 @@ WHERE
     AND p.partitiontablename = c2.relname
 ORDER BY tablename, c2.oid desc;
                   """
-        self.logger.info(sql)
+        self.logger.debug(sql)
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
         for row in rows:            
@@ -1235,7 +1218,7 @@ ORDER BY tablename, c2.oid desc;
                                dist_policy,policy_name,policy_oids, 1, 'NOT STARTED', 
                                rel_bytes )
                         
-            self.logger.info(insertSQL)
+            self.logger.debug(insertSQL)
             dbconn.execSQL(self.conn,insertSQL)
         
         sql = """
@@ -1256,7 +1239,7 @@ UPDATE gp_distribution_policy
     AND p1.partitionlevel = (select max(parlevel) FROM pg_partition WHERE parrelid = p1.tableoid);
 
 """        
-        self.logger.info(sql)
+        self.logger.debug(sql)
         dbconn.execSQL(table_conn,sql)
         pass
  
@@ -1294,7 +1277,6 @@ UPDATE gp_distribution_policy
         #setup a threadpool
         self.queue=WorkerPool(numWorkers=self.numworkers)
         
-        
         #go through and reset any "IN PROGRESS" tables
         self.conn = dbconn.connect(self.dburl)
         sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STARTED', '%s' ) " % (gpexpand_schema,status_table,expansionStart)
@@ -1310,7 +1292,7 @@ UPDATE gp_distribution_policy
         cursor = dbconn.execSQL(self.conn,sql)
         
         for row in cursor:
-            self.logger.info(row)
+            self.logger.debug(row)
             name = "name"            
             tbl = ExpandTable(row)            
             cmd = ExpandCommand(name,self.dburl,tbl)
@@ -1333,11 +1315,16 @@ UPDATE gp_distribution_policy
 
         expansionStopped = datetime.datetime.now()
 
+        self.pool.haltWork()
+        self.pool.joinWorkers()
+        self.queue.haltWork()              
+        self.queue.joinWorkers()
+
         if stoppedEarly:
+            logger.info('End time reached.  Stopping expansion.')
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
             cursor = dbconn.execSQL(self.conn, sql)
             self.conn.commit()
-            logger.info('End time reached.  Stopping expansion.')
             logger.info('You can resume expansion by running gpexpand again')
         else:
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION COMPLETE', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
@@ -1345,32 +1332,29 @@ UPDATE gp_distribution_policy
             self.conn.commit()            
             logger.info("EXPANSION COMPLETED SUCCESSFULLY")
 
-        self.conn.close()
-
-        self.queue.haltWork()                
-        self.pool.haltWork()
     
     def shutdown(self):
         """used if the script is closed abrubtly"""
-        if self.queue is not None:
-            self.queue.haltWork()
-
+        logger.info('Shutting down')
         if self.pool:
             self.pool.haltWork()
-            
-        expansionStopped = datetime.datetime.now()
-        sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
-        cursor = dbconn.execSQL(self.conn, sql)
-        self.conn.commit()
+            self.pool.joinWorkers()
 
-        if self.conn is not None:
-            try:
-                self.conn.close()
-            except pg.OperationalError:
-                pass    
-    
-        remove_pid_file(options.master_data_directory)
-    
+        if self.queue:
+            self.queue.haltWork()
+            self.queue.joinWorkers()
+
+        try:
+            expansionStopped = datetime.datetime.now()
+            sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
+            cursor = dbconn.execSQL(self.conn, sql)
+            self.conn.commit()
+
+            self.conn.close()
+        except pg.OperationalError:
+            pass    
+
+        
     def cleanup_schema(self, gpexpand_db_status):
         """Removes the gpexpand schema"""
         #drop schema
@@ -1403,7 +1387,7 @@ UPDATE gp_distribution_policy
         self.conn.commit()
         pass
 
-    
+
     def connect_database(self,dbname):
         test_url = copy.deepcopy(self.dburl)
         test_url.pgdb = dbname
@@ -1437,7 +1421,8 @@ class ExpandTable():
                            self.storage_options,self.rank,self.status,
                            self.expansion_started,self.expansion_finished,
                            self.source_bytes )
-        logger.info(insertSQL)
+        logger.info('Added table %s.%s' % (self.dbname, self.fq_name))
+        logger.debug(insertSQL)
         dbconn.execSQL(conn,insertSQL)
                
                
@@ -1448,10 +1433,8 @@ class ExpandTable():
         cursor = dbconn.execSQL(table_conn,sql)
         row = cursor.fetchone()
         src_bytes = int(row[0])
-        logger.info(" Table: %s has %d bytes" % (self.fq_name, src_bytes))
-         
-
-        
+        logger.debug(" Table: %s has %d bytes" % (self.fq_name, src_bytes))
+             
         time_str = datetime.datetime.now()       
         sql = """UPDATE %s.%s 
                   SET status = '%s', expansion_started='%s',
@@ -1461,9 +1444,8 @@ class ExpandTable():
                   start_status,time_str,
                   src_bytes, self.dbname,
                   self.schema_oid,self.table_oid) 
-         
 
-        logger.info("Mark Started: " + sql)
+        logger.debug("Mark Started: " + sql)
         dbconn.execSQL(status_conn,sql) 
         status_conn.commit()
         
@@ -1474,9 +1456,8 @@ class ExpandTable():
                  WHERE dbname = '%s' AND schema_oid = %s 
                  AND table_oid = %s """ % (gpexpand_schema,status_detail_table,
                                            self.dbname, self.schema_oid,self.table_oid) 
-         
-
-        logger.info("Undo started: " + sql)
+        
+        logger.debug('Reseting detailed_status: %s' % sql)
         dbconn.execSQL(status_conn,sql) 
         status_conn.commit()
         
@@ -1485,12 +1466,15 @@ class ExpandTable():
     def expand(self,table_conn):
         foo = self.distrib_policy_names.strip()
         
-        logger.info("distrib policy for table: %s is '%s' " % (self.fq_name,foo))
+        logger.info("Distribution policy for table %s is '%s' " % (self.fq_name,foo))
         if foo == "" or foo == "None" or foo is None:
             sql = "ALTER TABLE ONLY %s SET WITH(REORGANIZE=TRUE) DISTRIBUTED RANDOMLY" % (self.fq_name)                        
         else:
             sql = " ALTER TABLE ONLY %s SET WITH(REORGANIZE=TRUE) DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
-        logger.info("Expand SQL: %s" % sql)    
+        
+        logger.info('Expanding %s.%s' % (self.dbname, self.fq_name))  
+        logger.debug("Expand SQL: %s" % sql)  
+        
         dbconn.execSQL(table_conn,sql)
         table_conn.commit()
     
@@ -1502,7 +1486,7 @@ class ExpandTable():
                   AND table_oid = %s """ % (gpexpand_schema,status_detail_table,
                                             done_statue,finish_time,
                                             self.dbname,self.schema_oid,self.table_oid) 
-        logger.info(sql)
+        logger.debug(sql)
         dbconn.execSQL(status_conn,sql)
         status_conn.commit()
         
@@ -1529,10 +1513,8 @@ class ExpandCommand(SQLCommand):
         # Set conn for  cancel
         self.conn = table_conn     
         
-        logger.info("Starting Expansion")
         self.table.mark_started(status_conn,table_conn)
         
-        logger.info("Expanding...")
         canceled = False
         try:
             self.table.expand(table_conn)
@@ -1547,7 +1529,7 @@ class ExpandCommand(SQLCommand):
         if not canceled:
             end_time = datetime.datetime.now()
             #update metadata        
-            logger.info("Finished Expanding...updating metadata")
+            logger.info("Finished expanding %s.%s" % (self.table.dbname, self.table.fq_name))
             self.table.mark_finished(status_conn,table_conn,end_time)
         else:
             logger.info("Reseting status_detail for %s.%s" % (self.table.dbname,self.table.fq_name))
@@ -1556,7 +1538,6 @@ class ExpandCommand(SQLCommand):
         #disconnect
         status_conn.close()
         table_conn.close()
-        
         
     
     def set_results(self,results):
@@ -1572,17 +1553,12 @@ class ExpandCommand(SQLCommand):
         raise ExecutionError("TODO:  must implement")        
         
         
-def proposeDataDirs(gparray,newhostlist):    
-        
-    #TODO:  actually do something.
-    return ["/dbfast1","/dbfast2","/dbfast3","/dbfast4"]
-
 #------------------------------- UI Help --------------------------------
 def interview_setup(gparray):
     #TODO: add func to gpexpand to try and guess a default set of portbases
     #      for primaries and mirrors.
-    default_primary_port_est=5500
-    default_mirror_port_est=5600
+#    default_primary_port_est=5500
+#    default_mirror_port_est=5600
     
     help="""
 System Expansion is used to add segments to an existing GPDB array.
@@ -1606,54 +1582,55 @@ the --input <file>.  Please see the docs for the format of this file.
 We'll now ask you a few questions to try and build this file for you.  
 You'll have the opportunity to save this file and inspect it/modify it 
 before continuing by re-running this utility and providing the input file. """
-            
-    hostlist=ask_list(help,"Please enter a comma separated list of hostnames that you'd like to add\n" \
-                      "or press Enter if you are not adding any hosts",'')    
-    hostlist = [h.strip() for h in hostlist]
-    
-    #We now look at the gparray of their existing array to propose a set of datadirectories.
-    proposed_dirs=proposeDataDirs(gparray,hostlist)
-    
-            
-    primary_datadirs=ask_list(None,"\nPlease enter a comma separated list of data directories to put new\n"\
-                              "primary segment databases on ",', '.join(proposed_dirs))
-    primary_datadirs = [p.strip() for p in primary_datadirs]
-            
-    primary_portbase=ask_int(None,"\nPlease provide a base port number to use for the new\n"\
-                             " primary segdbs?",
-                             None,5500,1024,65536)
 
-            
-    mirror_datadirs=None
-    mirror_portbase=None
-    mirror_type=ask_string("\nYou must now specify a mirroring strategy for the new hosts.  Spread mirroring places\n"\
-                           "a given hosts mirrored segments each on a separate host.  You must be \n"\
-                           "adding more hosts than the number of segments per host to use this. \n"\
-                           "Grouped mirroring places all of a given hosts segments on a single \n"\
-                           "mirrored host.  You must be adding at least 2 hosts in order to use this.\n\n",
-                           "What type of mirroring strategy would you like?",
-                           'grouped', ['spread','grouped','none'])
-            
-    if mirror_type.lower().strip() != 'none':  
-        proposed_dirs=proposeDataDirs(gparray,hostlist)              
-        mirror_datadirs=ask_list(None,
-                                 "\nPlease enter a comma separated list of data directories to put new\n"\
-                                 "mirror segment databases on ",' , '.join(proposed_dirs)) 
-        mirror_portbase=ask_int(None,"Please provide a base port number to use for the new \n"\
-                                "mirror segdbs?",
-                                None,5600,1024,65536)
-            
+    tmp_validator = lambda str, ingore1, ignore2: str
+
+    num_new_hosts = ask_int(None, "\nHow many new hosts do you want to add to the array?", None, 0, 0, 128)
+    
+    mirror_type = 'none'
+    
+    if gparray.get_mirroring_enabled():
+        mirror_type=ask_string("\nYou must now specify a mirroring strategy for the new hosts.  Spread mirroring places\n"\
+                               "a given hosts mirrored segments each on a separate host.  You must be \n"\
+                               "adding more hosts than the number of segments per host to use this. \n"\
+                               "Grouped mirroring places all of a given hosts segments on a single \n"\
+                               "mirrored host.  You must be adding at least 2 hosts in order to use this.\n\n",
+                               "What type of mirroring strategy would you like?",
+                               'grouped', ['spread','grouped','none'])
+    
+    new_hosts = []
+    if num_new_hosts > 0:
+        for i in range(1, num_new_hosts + 1):
+            # bg_info,msg,help,default,validator, *validator_opts
+            host = ask_input(None, "Enter hostname number %d (Do not include interface hostnames)" % i, '', None, tmp_validator, None)
+            new_hosts.append(host.strip())
+
+        gparray.addExpansionHosts(new_hosts, mirror_type)
+
+    help = """
+The expansion process can increase the number of segments per host.  These new 
+segments will be added to existing hosts as well.  If you put 0, the number of 
+segments per host will remain the same.
+    """
+    num_new_datadirs = ask_int(help, "How many new primary segments per host do you want to add?", None, 0, 0, 128)
+    new_datadirs = []
+    if num_new_datadirs > 0:
+        for i in range(1, num_new_datadirs + 1):
+            datadir = ask_input(None, "Enter data directory number %d" % i, '', None, tmp_validator, None)
+            new_datadirs.append(datadir.strip())
+
+        gparray.addExpansionDatadirs(new_datadirs)          
             
     print "\nGenerating configuration file...\n"
             
             
-    outfile=gp_expand.generate_inputfile(hostlist,primary_datadirs,primary_portbase,mirror_type,mirror_datadirs,mirror_portbase)
+    outfile=gp_expand.generate_inputfile()
     print """\nInput configuration file was written to:
 '%s'.  Please review the file and make sure that its correct then re-run 
 with: gpexpand -i %s
                 """ % (outfile,outfile)
     
-            
+    
 #------------------------------- Mainline --------------------------------
 gp_expand=None
 remove_pid=True
@@ -1736,7 +1713,6 @@ try:
         logger.error('The last gpexpand setup did not complete successfully.')
         logger.error('Please run gpexpand -r to rollback to the original state.')
 
-#    gp_expand.shutdown()
     logger.info("Exiting...")
     sys.exit(0)
         
@@ -1752,8 +1728,7 @@ except Exception,e:
 except KeyboardInterrupt:
     if gp_expand is not None:
         gp_expand.shutdown()
-    #TODO: sys.exit is pretty harsh on the work threads and is
-    # currently preventing cleanup.
+
     sys.exit('\nUser Interrupted')
 finally:
     try:

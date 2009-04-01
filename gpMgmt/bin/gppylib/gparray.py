@@ -10,7 +10,6 @@ from gppylib.commands.unix import *
 from gppylib.commands.pg import *
 from gppylib.commands.gp import *
 from gppylib.gplog import *
-#from gppylib import gpconfig
 from gppylib.db import dbconn
     
 
@@ -373,6 +372,15 @@ class GpArray:
                 dbid = db.dbid
         
         return dbid
+    
+    def get_max_contentid(self):
+        content = 0
+        
+        for db in self.getDbList():
+            if db.content > content:
+                content = db.content
+                
+        return content
    
     def get_segment_count(self):
         return len(self.segments)
@@ -380,6 +388,50 @@ class GpArray:
     def get_primary_count(self):
         return self.numPrimarySegments
         
+    def get_mirroring_enabled(self):
+        return len(self.segments[0].mirrorDBs) != 0
+    
+    def get_min_primary_port(self):
+        min_primary_port = self.segments[0].primaryDB.port
+        for seg in self.segments:
+            if seg.primaryDB.port < min_primary_port:
+                min_primary_port = seg.primaryDB.port
+        
+        return min_primary_port
+    
+    def get_min_mirror_port(self):
+        if self.get_mirroring_enabled() is False:
+            raise Exception('Mirroring is not enabled')
+        
+        min_mirror_port = self.segments[0].mirrorDBs[0].port
+        
+        for seg in self.segments:
+            for db in seg.mirrorDBs:
+                if db.port < min_mirror_port:
+                    min_mirror_port = db.port
+        
+        return min_mirror_port
+    
+    def get_primary_root_datadirs(self):
+        primary_datadirs = []
+        for db in self.getDbList():
+            if db.definedprimary and db.content != -1 \
+                and db.datadir[:db.datadir.rfind('/')] not in primary_datadirs:
+                
+                primary_datadirs.append(db.datadir[:db.datadir.rfind('/')])
+        
+        return primary_datadirs
+    
+    def get_mirror_root_datadirs(self):
+        mirror_datadirs = []
+        for db in self.getDbList():
+            if not db.definedprimary and db.content != -1 \
+                and db.datadir[:db.datadir.rfind('/')] not in mirror_datadirs:
+                
+                mirror_datadirs.append(db.datadir[:db.datadir.rfind('/')])
+        
+        return mirror_datadirs
+    
     
     def untarSegments(self,queue,filename):        
         logger.debug("untarSegments start")
@@ -435,21 +487,6 @@ class GpArray:
             logger.debug('Extending expansion array by %d' % (expseglen - expseg_index + 1))
             self.expansionSegments.extend([None] * (expseglen - expseg_index + 1))
             self.expansionSegments[expseg_index] = Segment()
-        
-        
-#        if expseglen <= content - seglen + 1:
-#            if expseglen <= content - seglen:
-#                logger.debug('Extending expansionSegments array by %d' % (content - seglen + 1))
-#                self.expansionSegments.extend([None] * (content - seglen + 1))
-#                if self.expansionSegments[content - seglen] is None:
-#                    logger.debug('Creating new segment at %d' % (content - seglen))
-#                    self.expansionSegments[content - seglen] = Segment()
-#            else:
-#                if self.expansionSegments[content - seglen] is None:
-#                    logger.debug('Creating new segment at %d' % (content - seglen))
-#                    self.expansionSegments[content - seglen] = Segment()
-
-#        seg = self.expansionSegments[content - seglen]
 
         seg = self.expansionSegments[expseg_index]
         if definedprimary is True: 
@@ -524,9 +561,45 @@ class GpArray:
         pass
     
     
-    def addExpansionHosts(self, hosts):
+    def addExpansionHosts(self, hosts, mirror_type):
+        # createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix)
+        primary_dirs = self.get_primary_root_datadirs()
+        mirror_dirs = self.get_mirror_root_datadirs()
+        
+        base_primary_port = self.get_min_primary_port()
+        base_mirror_port = 0
+        if mirror_type != 'none':
+            base_mirror_port = self.get_min_mirror_port()
+        
+        start_last_dir = self.master.datadir.rfind('/') + 1
+        start_dir_content = self.master.datadir.rfind('-')
+        prefix = self.master.datadir[start_last_dir:start_dir_content]
+        
+        rows = createSegmentRows(hosts, primary_dirs, base_primary_port, mirror_type, mirror_dirs, base_mirror_port, prefix)
+        
+        curr_dbid = self.get_max_dbid() + 1
+        curr_content = self.get_max_contentid() + 1
+        
+        mirror_dict = {}
+        # update the dbids and contentids.  Build mirror dictionary
+
+        for row in rows:
+            if row[1] == 't':
+                new_datadir = row[7]
+                new_datadir = new_datadir[:new_datadir.rfind(str(row[0]))] + ('%d' % curr_content)
+                self.addExpansionSeg(curr_content, True, curr_dbid, 
+                                        True, row[5], int(row[6]), new_datadir)
+                mirror_dict[row[0]] = curr_content
+                curr_content += 1
+            else:
+                new_content = mirror_dict[row[0]]
+                new_datadir = row[7]
+                new_datadir = new_datadir[:new_datadir.rfind(str(row[0]))] + ('%d' % new_content)
+                self.addExpansionSeg(new_content, False, curr_dbid, 
+                                     False, row[5], int(row[6]), new_datadir)
+            curr_dbid += 1
+            
         pass
-    
     
     def addExpansionDatadirs(self, datadirs):
         pass
