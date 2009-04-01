@@ -989,7 +989,14 @@ static void syslogger_flush_chunks()
             syslogger_log_chunk_list(chunk);
         }
     }
+
+    /* make sure we free everything */
+    for (i=0; i<CHUNK_SLOTS; ++i)
+    {
+        saved_chunks[i].hdr.pid = 0;
+    }
 }
+
 static void syslogger_handle_chunk(PipeProtoChunk *chunk)
 {
     int i;
@@ -1019,8 +1026,16 @@ static void syslogger_handle_chunk(PipeProtoChunk *chunk)
         prev->hdr.next = chunk - &saved_chunks[0];
     else if(chunk->hdr.chunk_no != 0)
     {
-        /* A chunk without prev, drop it on the flow */
+        /* A chunk without prev, drop it on the floor */
         elog(LOG, "Out of order or dangling chunks from pid %d", chunk->hdr.pid);
+
+        /* remember to free this chunk */
+        chunk->hdr.pid = 0;
+
+        /* Out of order chunk, if we have something before this, output */
+        if(first)
+            syslogger_log_chunk_list(first);
+
         return;
     }
 
