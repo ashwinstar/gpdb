@@ -82,12 +82,10 @@ GET_TABLE_COUNT () {
 		QE_LINE="FAILED|0|${QE_PORT}|${QE_BASE_DIR}|${QE_NAME}|0m0s|"
 	else
 		if [ "$WHERE_CLAUSE" == "0" ];then
-		COUNT_LINE=`$TRUSTED_SHELL -n $QE_NAME "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c'select count(*),'\''$QE_PORT'\'','\''$QE_BASE_DIR'\'','\''$QE_NAME'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}'` 
+			COUNT_LINE=`$TRUSTED_SHELL -n $QE_NAME "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c'select count(*),'\''$QE_PORT'\'','\''$QE_BASE_DIR'\'','\''$QE_NAME'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}'` 
 		else
-		$ECHO $WHERE_CLAUSE|$SED -e 's/\x27/\x27\\\x27\x27/g' >/tmp/sed_edit.$$
-		WHERE_CLAUSE=`$CAT /tmp/sed_edit.$$`
-		$RM -f /tmp/sed_edit.$$
-		COUNT_LINE=`$TRUSTED_SHELL -n $QE_NAME "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c'select count(*),'\''$QE_PORT'\'','\''$QE_BASE_DIR'\'','\''$QE_NAME'\'' from $TARGETTBL where ${WHERE_CLAUSE};'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}'` 
+			WHERE_CLAUSE=$($ECHO "$WHERE_CLAUSE"|$SED -e 's/\x27/\x27\\\x27\x27/g')
+			COUNT_LINE=$($TRUSTED_SHELL -n $QE_NAME "${EXPORT_LIB_PATH}; time env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $QE_PORT -d \"$QD_DBNAME\" -A -t -c\"select count(*),'$QE_PORT','$QE_BASE_DIR','$QE_NAME' from $TARGETTBL where ${WHERE_CLAUSE};\"" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[A-Z][a-z][0-9]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}')
 		fi
 		QE_LINE="COMPLETED|$COUNT_LINE"
 	fi
