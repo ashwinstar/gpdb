@@ -297,7 +297,6 @@ class Env:
         self.WHICH = findCmdInPath('which')
         self.WHOAMI = findCmdInPath('whoami')
         self.ZCAT = findCmdInPath('zcat')
-        self.GTAR = findCmdInPath('gtar')
 
         plat = platform.uname()
         self.SYSTEM = plat[0].lower()
@@ -315,6 +314,7 @@ class Env:
             self.PING_TIME='1'
             self.DF=findCmdInPath('df')
             self.DU_TXT='-s'
+            self.GTAR = findCmdInPath('gtar')            
         elif self.SYSTEM == 'linux':
             self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
@@ -326,6 +326,7 @@ class Env:
             self.PING_TIME='-c 1'
             self.DF='%s -P' % findCmdInPath('df')
             self.DU_TXT='c'
+            self.GTAR = findCmdInPath('tar')            
         elif self.SYSTEM == 'darwin':
             self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
@@ -337,6 +338,7 @@ class Env:
             self.PING_TIME='-c 1'
             self.DF='%s -P' % findCmdInPath('df')
             self.DU_TXT='-c'
+            self.GTAR = findCmdInPath('tar')
         elif self.SYSTEM == 'freebsd':
             self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
@@ -348,6 +350,7 @@ class Env:
             self.PING_TIME='-c 1'
             self.DF='%s -P' % findCmdInPath('df')
             self.DU_TXT='-c'
+            self.GTAR = findCmdInPath('tar')
         else:
             fatal('platform not supported')
 
