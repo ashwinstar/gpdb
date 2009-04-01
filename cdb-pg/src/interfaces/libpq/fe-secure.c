@@ -127,7 +127,7 @@ static long win32_ssl_create_mutex = 0;
 
 #define DISABLE_SIGPIPE(failaction) \
 	sigset_t	osigmask; \
-	bool		sigpipe_pending; \
+	bool		sigpipe_pending = false; \
 	bool		got_epipe = false; \
 \
 	if (pq_block_sigpipe(&osigmask, &sigpipe_pending) < 0) \
