@@ -5317,12 +5317,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		elog(ERROR, "AOCS does not support add column yet");
 	}
 
-	if (rel->rd_rel->relstorage == RELSTORAGE_AO)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot add column to table \"%s\": table is "
-    			 "append only", RelationGetRelationName(rel))));
-
 	/*
 	 * Append Only tables don't support ADD COLUMN when no default value is
 	 * specified. This is because this scenario makes a schema change that
@@ -5984,12 +5978,6 @@ ATExecDropColumn(Relation rel, const char *colName,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot drop inherited column \"%s\"",
 						colName)));
-
-	if (rel->rd_rel->relstorage == RELSTORAGE_AO)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot drop column \"%s\" of table \"%s\": table is "
-    			 "append only", colName, RelationGetRelationName(rel))));
 
 	/* better not be a column we partition on */
 	pn = RelationBuildPartitionDesc(rel, false);
