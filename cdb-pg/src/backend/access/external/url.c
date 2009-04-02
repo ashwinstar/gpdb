@@ -221,13 +221,13 @@ write_callback(char *buffer,
 static int
 check_response(URL_FILE *file, int *rc, const char **response_string)
 {
-	long response_code;
-	char *effective_url;
-	int e;
+	long 		response_code;
+	char*		effective_url = NULL;
+	CURL* 		curl = file->u.curl.handle;
 	static char buffer[30];
-	CURL* curl = file->u.curl.handle;
 
-	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code)))
+	/* get the response code from curl */
+	if (curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code) != CURLE_OK)
 	{
 		*rc = 500;
 		*response_string = "curl_easy_getinfo failed";
@@ -237,13 +237,28 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 	snprintf(buffer, sizeof buffer, "Response Code=%d", (int)response_code);
 	*response_string = buffer;
 
-	if (0 != (e = curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url)))
+	if (curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective_url) != CURLE_OK)
 		return -1;
 
 	if (! (200 <= response_code && response_code < 300))
 	{
 		if (response_code == 0)
-			elog(ERROR, "connection failed while %s", file->url);
+		{
+			long 		oserrno = 0;
+			static char	connmsg[64];
+			
+			/* get the os level errno, and string representation of it */
+			if (curl_easy_getinfo(curl, CURLINFO_OS_ERRNO, &oserrno) == CURLE_OK)
+			{
+				if (oserrno != 0)
+					snprintf(connmsg, sizeof connmsg, "error code = %d (%s)", 
+							 (int) oserrno, strerror((int)oserrno));
+			}
+			
+			elog(ERROR, "connection with gpfdist failed for %s. %s. "
+						"effective url: %s", file->url, 
+						(oserrno != 0 ? connmsg : ""), effective_url);
+		}
 		else
 		{
 			/* we need to sleep 1 sec to avoid this condition:
@@ -253,7 +268,7 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 			   in seg X is thrown away.
 			*/
 			pg_usleep(1000000);
-			elog(ERROR, "http response code %ld while %s, line %s",
+			elog(ERROR, "http response code %ld from gpfdist (%s): %s",
 				 response_code, file->url,
 				 file->u.curl.http_response ? file->u.curl.http_response : "?");
 		}
@@ -695,48 +710,48 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		/* elog(NOTICE, "URL: %s", file->u.curl.curl_url); */
 
-        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
+        if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error (%d - %s)",
 				 file->u.curl.curl_url,
 				 e, curl_easy_strerror(e));
 		}
-        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE)))
+        if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* set callback for each header received from server */
-		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HEADERFUNCTION, header_callback)))
+		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HEADERFUNCTION, header_callback)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* 'file' is the application variable that gets passed to header_callback */
-		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEHEADER, file)))
+		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEHEADER, file)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* set callback for each data block received from server */
-        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
+        if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* 'file' is the application variable that gets passed to write_callback */
-        if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
+        if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
-		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
+		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)",
@@ -767,7 +782,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			elog(ERROR, "internal error: some variable value is too long");
 		}
 
-		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
+		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
@@ -783,7 +798,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			}
 		}
 
-        if (0 != (e = curl_multi_add_handle(multi_handle, file->u.curl.handle)))
+        if (CURLE_OK != (e = curl_multi_add_handle(multi_handle, file->u.curl.handle)))
 		{
 			if (CURLM_CALL_MULTI_PERFORM != e)
 			{
@@ -797,7 +812,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		while (CURLM_CALL_MULTI_PERFORM ==
 			   (e = curl_multi_perform(multi_handle, &file->u.curl.still_running)));
 
-		if (e != 0)
+		if (e != CURLE_OK)
 		{
 			url_fclose(file, false);
 			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",

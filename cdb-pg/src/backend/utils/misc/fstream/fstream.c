@@ -331,7 +331,7 @@ fstream_open(const char *path, const struct fstream_options *options,
 		gfile_printf_then_putc_newline("fstream bad path: %s", path);
 		fstream_close(fs);
 		*response_code = 404;
-		*response_string = "Not Found";
+		*response_string = "No matching file(s) found";
 		return 0;
 	}
 
@@ -344,7 +344,7 @@ fstream_open(const char *path, const struct fstream_options *options,
 		gfile_close(&fs->fd);
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], response_code,
-				response_string))
+					   response_string))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 					fs->glob.gl_pathv[i]);
@@ -404,7 +404,7 @@ static int nextFile(fstream_t*fs)
 				&response_string))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
-					fs->glob.gl_pathv[fs->fidx]);
+											fs->glob.gl_pathv[fs->fidx]);
 			fs->ferror = "unable to open file";
 			return 1;
 		}
@@ -694,7 +694,7 @@ int fstream_rewind(fstream_t *fs)
 	gfile_close(&fs->fd);
 
 	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], &response_code,
-			&response_string))
+				   &response_string))
 	{
 		gfile_printf_then_putc_newline("fstream unable to open file %s",
 				fs->glob.gl_pathv[0]);

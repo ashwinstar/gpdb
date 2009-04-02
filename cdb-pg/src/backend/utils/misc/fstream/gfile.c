@@ -297,8 +297,8 @@ int
 gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 		   const char **response_string)
 {
-	const char*s=strrchr(fpath,'.');
-	struct stat sta;
+	const char* s = strrchr(fpath, '.');
+	struct 		stat sta;
 #ifndef WIN32
 	char is_win_pipe = 0;
 #else
@@ -376,16 +376,16 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 
 	if (!is_win_pipe)
 	{
-		if (stat(fpath,&sta))
+		if (stat(fpath, &sta))
 		{
-			gfile_printf_then_putc_newline("gfile stat %s failure",fpath);
+			gfile_printf_then_putc_newline("gfile stat %s failure", fpath);
 			*response_code = 404;
-			*response_string = "Not Found";
+			*response_string = "file not found";
 			return 1;
 		}
 		if (S_ISDIR(sta.st_mode))
 		{
-			gfile_printf_then_putc_newline("gfile %s is a directory",fpath);
+			gfile_printf_then_putc_newline("gfile %s is a directory", fpath);
 			*response_code = 403;
 			*response_string = "Reading a directory is forbidden.";
 			return 1;
@@ -404,10 +404,13 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 
 	if (!fd->is_win_pipe && -1 == fd->fd.filefd) 
 	{
+		static char buf[128];
 		gfile_printf_then_putc_newline("gfile open failed %s: %s",
 					  				  fpath, strerror(errno));
 		*response_code = 404;
-		*response_string = "Not Found";
+		snprintf(buf, sizeof buf, "file open failure %s: %s", fpath, 
+				strerror(errno));
+		*response_string = buf;
 		return 1;
 	}
 
