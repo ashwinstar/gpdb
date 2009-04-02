@@ -803,7 +803,7 @@ class gpexpand:
                 self.logger.info('Rolling back building of new segments')
                 self.read_input_file(self.statusLogger.get_input_filename())
                 SegmentTemplate.cleanup_build_new_segments(self.pool, self.statusLogger.get_tar_filename(), 
-                                                           self.gparray.getExpansionSegDbList(), True)
+                                                           self.gparray, True)
 
             elif status[0] == 'UPDATE_OLD_SEGMENTS_STARTED':
                 self.logger.info('Rolling back update of original segments')
