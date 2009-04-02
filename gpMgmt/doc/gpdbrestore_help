@@ -13,6 +13,7 @@ gpdbrestore { -t <timestamp_key> [-L]
                | -s <database_name> } 
 [-T <schema>.<table> [,...]] [-e] [-G] [-B <parallel_processes>] 
 [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] [-D]
+[--noanalyze]
 
 gpdbrestore -? | -v
 
@@ -163,6 +164,13 @@ Displays the version of this utility.
 Displays the online help.
 
 
+--noanalyze 
+
+Suppress the ANALYZE run following a successful restore.  The user is
+responsible for running ANALYZE on any restored tables; failure to run 
+ANALYZE following a restore may result in poor database performance.
+
+
 *****************************************************
 EXAMPLES
 *****************************************************
@@ -178,7 +186,7 @@ Restore a database from backup files that reside on an archive
 host outside the Greenplum Database array (command issued on the 
 Greenplum master host):
 
-gpdbrestore –R archivehostname:/data_p1/db_dumps/20080214
+gpdbrestore -R archivehostname:/data_p1/db_dumps/20080214
 
 
 Restore global objects only (roles and tablespaces):

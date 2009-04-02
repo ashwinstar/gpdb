@@ -531,23 +531,73 @@ CHK_EXTERNAL () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_TABLE_IDENTIFIER () {
+    # -----------------------------------------------------------------
+    # Parses a properly quoted, fully-qualified SQL table name into
+    # the schema and table name parts.  If a part is quoted, the quotes
+    # are removed; if a part is not quoted, the part is lower-cased.
+    #
+    # The schema name, if any, is returned in ${SQL_NAME[0]}, the
+    # "quoted" version in ${SQL_NAME[2]}; the table name is returned 
+    # in ${SQL_NAME[1]}, the "quoted" version in ${SQL_NAME[3]}.
+    # 
+    # Quoted identifiers can contain any character, except the 
+    # character with code zero. (To include a double quote, write two 
+    # double quotes.)
+    # -----------------------------------------------------------------
+    local subpattern='((")((([^"]{1,})|""){1,})")|([^".]{1,})'
+    local pattern="^((${subpattern})\\.){0,1}(${subpattern})$"
+    if [[ "${1}" =~ ${pattern} ]] ; then
+        # Get schema name; may be omitted
+        if [ "${BASH_REMATCH[2]}" ] ; then
+            if [ "${BASH_REMATCH[4]}" ] ; then
+                # Quoted name; take literally
+                SQL_NAME[0]="${BASH_REMATCH[5]}"
+            	SQL_NAME[2]="\"${BASH_REMATCH[5]}\""
+            else
+                # Unquoted name; make lower-case
+                SQL_NAME[0]=$($ECHO "${BASH_REMATCH[2]}" | $TR '[:upper:]' '[:lower:]')
+                SQL_NAME[2]="${SQL_NAME[0]}"
+            fi
+        else
+            SQL_NAME[0]=
+        fi
+        # Get table name
+        if [ "${BASH_REMATCH[11]}" ] ; then
+            # Quoted name; take literally
+            SQL_NAME[1]="${BASH_REMATCH[12]}"
+            SQL_NAME[3]="\"${BASH_REMATCH[12]}\""
+        else
+            # Unquoted name; make lower-case
+            SQL_NAME[1]=$($ECHO "${BASH_REMATCH[9]}" | $TR '[:upper:]' '[:lower:]')
+            SQL_NAME[3]="${SQL_NAME[1]}"
+        fi
+    else
+        SQL_NAME=('' '' '' '')
+    fi
+}
+
 CHK_EXISTS_TABLE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TABLENAME=$1
+	TABLENAME="$1"
 	MASTER_PORT=$2
 	QD_DBNAME=$3
 	if [ $# -ne 3 ];then
 		ERROR_EXIT "[FATAL]:-Incorrect number of parameters passed expected 3 got $#" 2;fi
 	DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$DEFAULTDB" -c"select 1 from pg_database where datname='$QD_DBNAME';" |$WC -l`
 	if [ $DB_THERE -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2;fi
+		ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2
+	fi
 	LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
-	if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
-		SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
-                TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
+	GET_TABLE_IDENTIFIER "$TABLENAME"
+	SCHEMA_NAME="${SQL_NAME[0]}"
+	QUOTED_SCHEMA_NAME="${SQL_NAME[2]}"
+	TABLENAME="${SQL_NAME[1]}"
+	QUOTED_TABLENAME="${SQL_NAME[3]}"
+	if [ "${SCHEMA_NAME}" ];then
 		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
 		if [ $TAB_COUNT -eq 1 ];then
-			LOG_MSG "[INFO]:-Found table ${SCHEMA_NAME}.$TABLENAME in database $QD_DBNAME"
+			LOG_MSG "[INFO]:-Found table ${QUOTED_SCHEMA_NAME}.${QUOTED_TABLENAME} in database $QD_DBNAME"
 			CHK_EXTERNAL
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		fi
@@ -1666,6 +1716,8 @@ case $OS_TYPE in
 	darwin ) IFCONFIG_TXT=""
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
+		# Darwin zcat wants to append ".Z" to the end of the file name; use "gunzip -c" instead
+		ZCAT="`findCmdInPath gunzip` -c"
 		PG_METHOD="ident"
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO=$ECHO

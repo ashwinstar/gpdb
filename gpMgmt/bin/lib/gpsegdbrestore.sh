@@ -107,15 +107,19 @@ BUILD_RESTORE_FILES () {
 	#Build the first lines for the dump file
 	#BUILD_HEADER
 	#Can now start to extact table records
-	for TAB_NAME in ${RESTORE_LIST[@]}
+	for TAB_NAME in "${RESTORE_LIST[@]}"
 	do
 		LOG_MSG "[INFO][$INST_COUNT]:-Processing table recovery $TAB_NAME"
-		SCHEMA_TXT=`$ECHO $TAB_NAME|$AWK -F"." '{print $1}'`
-		TAB_TXT=`$ECHO $TAB_NAME|$AWK -F"." '{print $2}'`
+		GET_TABLE_IDENTIFIER "${TAB_NAME}"
+		SCHEMA_TXT="${SQL_NAME[0]}"
+		QUOTED_SCHEMA_TXT="${SQL_NAME[2]}"
+		ESCAPED_QUOTED_SCHEMA_TXT="${QUOTED_SCHEMA_TXT//\"/\\\"}"
+		TAB_TXT="${SQL_NAME[1]}"
+		QUOTED_TAB_TXT="${SQL_NAME[3]}"
 		#Now build the required awk line
-		AWK_LINE="'BEGIN {output=0; schema=0} {if (\$1==\"SET\" && \$2==\"search_path\" && \$4==\"${SCHEMA_TXT},\") schema=1} {if (\$1==\"\\\.\" && output==1) schema=0} {if (\$1==\"COPY\" && \$2==\"${TAB_TXT}\") output=1} {if (output==1 && schema==0) output=0} {if (output==1 && schema==1) print \$0} END {print \"\\\.\"}'"
+		AWK_LINE="'BEGIN {output=0; schema=0} {if (match(\$0, /^SET search_path = ${QUOTED_SCHEMA_TXT},/)) schema=1} {if (\$1==\"\\\.\" && output==1) schema=0} {if (match(\$0, /^COPY ${QUOTED_TAB_TXT} /)) output=1} {if (output==1 && schema==0) output=0} {if (output==1 && schema==1) print \$0} END {print \"\\\.\"}'"
 		#Add required search path to dump file
-		$TRUSTED_SHELL $QE_NAME "$ECHO \"SET search_path = ${SCHEMA_TXT}, pg_catalog;\" >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE"
+		$TRUSTED_SHELL $QE_NAME "$ECHO \"SET search_path = ${ESCAPED_QUOTED_SCHEMA_TXT}, pg_catalog;\" >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE"
 		LOG_MSG "[INFO][$INST_COUNT]:-Commencing data extract for $TAB_NAME on $QE_NAME $QE_DIR"
 		$TRUSTED_SHELL $QE_NAME "$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK $AWK_LINE >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE" >> $LOG_FILE 2>&1
 		LOG_MSG "[INFO][$INST_COUNT]:-$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK $AWK_LINE" >> $LOG_FILE
@@ -173,7 +177,10 @@ PARALLEL_STATUS_FILE=$1;shift
 GP_RESTORE_DIR=$1;shift
 ZIPPED=$1;shift
 MODE=$1;shift
-RESTORE_LIST=(`$ECHO $1|$TR '~' ' '`)
+oldIFS="${IFS}"
+IFS=','
+RESTORE_LIST=($1)
+IFS="${oldIFS}"
 QE_LINE="${QE_NAME}:${QE_DIR}"
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"

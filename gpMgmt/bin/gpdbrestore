@@ -45,6 +45,7 @@ fi
 #******************************************************************************
 INTERACTIVE=1
 VERBOSE=1
+unset NOANALYZE
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
@@ -118,6 +119,9 @@ USAGE () {
 		$ECHO "          Will display all tables in dump file and then exit"
 		$ECHO "      -B, <number> run this batch of table restore create dump file processes in parallel"
 		$ECHO "          [default $BATCH_DEFAULT]"
+		$ECHO "      --noanalyze, suppress the ANALYZE run following a successful restore.  The user is"
+		$ECHO "          responsible for running ANALYZE on any restored tables; failure to run ANALYZE"
+		$ECHO "          following a restore may result in poor database performance."
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -154,16 +158,16 @@ PROMPT_CONTINUE () {
 			LOG_MSG "[INFO]:------------------------------------------" 1
 			LOG_MSG "[INFO]:-Table restore list" 1
 			LOG_MSG "[INFO]:------------------------------------------" 1
-			for I in ${RESTORE_LIST[@]}
+			for I in "${RESTORE_LIST[@]}"
 			do
 			LOG_MSG "[INFO]:-Table                      = $I" 1
 			done
 			LOG_MSG "[INFO]:------------------------------------------" 1
-			if [ ${#TAB_COUNT_ARRAY[@]} -ne 0 ];then
+			if [ "${#TAB_COUNT_ARRAY[@]}" -ne 0 ];then
 			LOG_MSG "[INFO]:------------------------------------------" 1
 			LOG_MSG "[WARN]:-Following tables have non-zero row counts $WARN_MARK" 1
 			LOG_MSG "[INFO]:------------------------------------------" 1
-			for I in ${TAB_COUNT_ARRAY[@]}
+			for I in "${TAB_COUNT_ARRAY[@]}"
 			do
 			LOG_MSG "[WARN]:-Table:Row count            = $I" 1
 			done
@@ -324,23 +328,68 @@ VALIDATE_PARAMS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_DUMP_TABLES () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	
+	VALIDATE_TIMESTAMP
+
+	# The awk stage below scans a dump file for the "SET search_path" statements to obtain
+	# the properly quoted schema name, the "COPY" statements to obtain the properly quoted
+	# table name, and the "Data for Name" comment line to obtain the owner id.  The 
+	# dump_tables local variable contains a newline-separated list of entries identifying 
+	# each table appearing in the dump.  Each entry is of the form "schema.table\towner".
+	local dump_tables cat gz
+	if [ "$COMPRESS" ];then
+		cat="$ZCAT"
+		gz=".gz"
+	else
+		cat="$CAT"
+		gz=
+	fi
+	dump_tables=$(${cat} ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$RESTORE_DIR_DATE/${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}${gz}| \
+		$AWK '
+			BEGIN {
+				schema=""
+				owner=""
+			}
+			/^SET search_path = / {
+				schema=$0
+				sub(/^SET search_path = /, "", schema)
+				sub(/, pg_catalog.*$/, "", schema)
+			}
+			/^-- Data for Name: / {
+				owner=$0
+				sub(/.*; Owner: /, "", owner)
+				sub(/[[:space:]]*$/, "", owner)
+			}
+			/^COPY / {
+				table=$0
+				sub(/^COPY /, "", table)
+				sub(/ (\(.*\))? FROM stdin;/, "", table)
+				printf schema "." table "\t" owner "\n"
+			}')
+	
+	# Assign the list of tables/owners appearing in the dump to DUMP_TABLE_ARRAY using only 
+	# a newline as a separator.
+	local old_IFS="$IFS"
+	IFS=$'\n'
+	DUMP_TABLE_ARRAY=(${dump_tables})
+	IFS="$old_IFS"
+	
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 LIST_DUMP_TABLES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	VALIDATE_TIMESTAMP
-	if [ x"" != x"$COMPRESS" ];then
-		DUMP_TABLE_ARRAY=(`$ZCAT ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$RESTORE_DIR_DATE/${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}.gz| \
-$GREP -i "data for name:"|$TR -d ';'|$AWK '{print $10"."$5"|"$NF}'`)
-	else
-		DUMP_TABLE_ARRAY=(`$CAT ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$RESTORE_DIR_DATE/${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}| \
-$GREP -i "data for name:"|$TR -d ';'|$AWK '{print $10"."$5"|"$NF}'`)
-	fi
+	
 	LOG_MSG "[INFO]:---------------------------------------------------------------------" 1
 	LOG_MSG "[INFO]:-List of database tables for dump file with time stamp $RESTORE_TIMESTAMP" 1
 	LOG_MSG "[INFO]:---------------------------------------------------------------------" 1
-	for DUMP_ITEM in ${DUMP_TABLE_ARRAY[@]}
+	GET_DUMP_TABLES
+	for DUMP_ITEM in "${DUMP_TABLE_ARRAY[@]}"
 	do
-		TAB=`$ECHO $DUMP_ITEM|$AWK -F"|" '{print $1}'`
-		OWNER=`$ECHO $DUMP_ITEM|$AWK -F"|" '{print $2}'`	
+		TAB=`$ECHO "$DUMP_ITEM"|$AWK -F"\t" '{print $1}'`
+		OWNER=`$ECHO "$DUMP_ITEM"|$AWK -F"\t" '{print $2}'`	
 		LOG_MSG "[INFO]:-Table $TAB Owner $OWNER" 1
 	done
 	LOG_MSG "[INFO]:---------------------------------------------------------------------" 1
@@ -901,7 +950,12 @@ GP_RESTORE_DATABASE () {
 	else
 		LOG_MSG "[INFO]:-Restore of ${RESTORE_DBNAME} completed without error" 1
 	fi
-	if [ x"" == x"$RESTORE_TABLE" ];then
+	if [ ${NOANALYZE} ] 
+	then
+		LOG_MSG "[WARN]:---------------------------------------------------------------------------------------------------" 1
+		LOG_MSG "[WARN]:-Analyze bypassed on request; database performance may be adversely impacted until analyze is done." 1
+		LOG_MSG "[WARN]:---------------------------------------------------------------------------------------------------" 1
+	elif [ x"" == x"$RESTORE_TABLE" ];then
 		LOG_MSG "[INFO]:-Commencing analyze of ${RESTORE_DBNAME} database, please wait..." 1
 		$EXPORT_LIB_PATH;$PSQL -A -t -p $MASTER_PORT "$RESTORE_DBNAME" -c"analyze;" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
@@ -911,7 +965,7 @@ GP_RESTORE_DATABASE () {
 			LOG_MSG "[INFO]:-Analyze of $RESTORE_DBNAME completed without error" 1
 		fi
 	else
-		for RESTORE_TAB_NAME in ${RESTORE_LIST[@]} 
+		for RESTORE_TAB_NAME in "${RESTORE_LIST[@]}"
 		do
 			LOG_MSG "[INFO]:-Commencing analyze of table $RESTORE_TAB_NAME in ${RESTORE_DBNAME} database, please wait..." 1
 			$EXPORT_LIB_PATH;$PSQL -A -t -p $MASTER_PORT "$RESTORE_DBNAME" -c"analyze ${RESTORE_TAB_NAME};" >> $LOG_FILE 2>&1
@@ -931,12 +985,15 @@ GP_RESTORE_DATABASE () {
 CHK_RESTORE_TABLE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Checking list of tables for restore, please wait..." 1
-	RESTORE_TABLE_ARRAY=(`$ECHO $RESTORE_TABLE|$TR ',' '\n'`)
-	for RESTORE_ITEM in ${RESTORE_TABLE_ARRAY[@]}
+	local oldIFS="${IFS}"
+	IFS=','
+	RESTORE_TABLE_ARRAY=($RESTORE_TABLE)
+	IFS="${oldIFS}"
+	for RESTORE_ITEM in "${RESTORE_TABLE_ARRAY[@]}"
 	do
 		if [ `$ECHO $RESTORE_ITEM|$GREP -c "\."` -eq 1 ];then
 			#Schema name has been supplied, can continue
-			CHK_EXISTS_TABLE $RESTORE_ITEM $MASTER_PORT $RESTORE_DBNAME
+			CHK_EXISTS_TABLE "$RESTORE_ITEM" $MASTER_PORT $RESTORE_DBNAME
 			if [ $EXISTS -eq 1 ];then
 				LOG_MSG "[WARN]:-Table $RESTORE_ITEM does not exist in database $RESTORE_DBNAME, removing from list of tables to restore" 1
 			else
@@ -944,15 +1001,15 @@ CHK_RESTORE_TABLE () {
 				TAB_COUNT=`${EXPORT_LIB_PATH}; $PSQL -A -t -q -p $MASTER_PORT "$RESTORE_DBNAME" -A -t -c"select count(*) from $RESTORE_ITEM;"` >> $LOG_FILE 2>&1
 				if [ $TAB_COUNT -ne 0 ];then
 					LOG_MSG "[WARN]:-Table $RESTORE_ITEM has $TAB_COUNT records $WARN_MARK" 1
-					TAB_COUNT_ARRAY=(${TAB_COUNT_ARRAY[@]} ${RESTORE_ITEM}:$TAB_COUNT)
+					TAB_COUNT_ARRAY+=("${RESTORE_ITEM}:$TAB_COUNT")
 				fi
-				RESTORE_LIST=(${RESTORE_LIST[@]} $RESTORE_ITEM)
+				RESTORE_LIST+=("$RESTORE_ITEM")
 			fi 
 		else
 			LOG_MSG "[WARN]:-No schema name supplied for $RESTORE_ITEM, removing from list of tables to restore" 1
 		fi
 	done 
-	if [ ${#RESTORE_LIST[@]} -eq 0 ];then
+	if [ "${#RESTORE_LIST[@]}" -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Have no tables to restore" 2
 	else
 		LOG_MSG "[INFO]:-Have ${#RESTORE_LIST[@]} tables to restore, will continue" 1
@@ -1006,8 +1063,12 @@ RUN_PARALLEL () {
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		TSET_VAR
+		local oldIFS="${IFS}"
+		IFS=','
+		local rlist="${RESTORE_LIST[*]}"
+		IFS="${oldIFS}"
 		$GPSEGDBRESTORE $$ $QE_NAME $QE_DIR $QE_DBID $INST_COUNT $LOG_FILE $RESTORE_TIMESTAMP $TABLE_TIMESTAMP \
-$PARALLEL_STATUS_FILE $GP_RESTORE_DIR $ZIPPED $MODE `$ECHO ${RESTORE_LIST[@]}|$TR ' ' '~'` &
+				$PARALLEL_STATUS_FILE $GP_RESTORE_DIR $ZIPPED $MODE "${rlist}" &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
@@ -1037,9 +1098,9 @@ CLEAR_RESTORE_TABLE_DUMP_FILES () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+trap 'ERROR_EXIT "[FATAL]:-Received INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":vt:'?'aql:d:!Dt:b:R:es:GT:B:KL" opt;do
+	while getopts ":vt:'?'aql:d:!Dt:b:R:es:GT:B:KL-:" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		'?' ) USAGE ;;
@@ -1060,6 +1121,12 @@ if [ $# -ne 0 ]; then
 		B ) BATCH_DEFAULT=$OPTARG ;;
 		K ) KEEP_DUMP_FILES=1 ;;
 		L ) LIST_TABLES=1 ;;
+		- ) # Long options ...
+			case ${OPTARG} in
+				noanalyze ) NOANALYZE=1 ;;
+				* ) USAGE ;;
+			esac
+			;;
 		* ) USAGE ;;
 	esac
 	done	
