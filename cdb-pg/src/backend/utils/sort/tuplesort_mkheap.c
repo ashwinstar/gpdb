@@ -76,19 +76,24 @@ static inline bool ISRIGHT(int n)
  */
 static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b) 
 {
-    int32 limitmask = heap->mkctxt->limitmask;
-    int32 ret = a->compflags - b->compflags;
+    int32 ret = (a->compflags & (~MKE_CF_NULLBITS)) - 
+                (b->compflags & (~MKE_CF_NULLBITS));
 
-    bool needcmp = (ret == 0);
-    needcmp = needcmp && (!mke_is_null(a));
-
-    if (needcmp)
+    if (ret == 0)
     {
-        int32 lv = mke_get_lv(a);
-        ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
+        int32 limitmask = heap->mkctxt->limitmask;
+        bool needcmp = false;
+        ret = a->compflags - b->compflags;
+        needcmp = (ret == 0) && (!mke_is_null(a));
+
+        if (needcmp)
+        {
+            int32 lv = mke_get_lv(a);
+            ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
+        }
+        ret = (ret & (~limitmask)) + ((-ret) & limitmask);
     }
 
-    ret = (ret & (~limitmask)) + ((-ret) & limitmask);
     return ret;
 }
 
