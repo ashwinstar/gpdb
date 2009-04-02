@@ -14,6 +14,13 @@
 #ifndef KEYWORDS_H
 #define KEYWORDS_H
 
+/* Keyword categories --- should match lists in gram.y */
+#define UNRESERVED_KEYWORD		0
+#define COL_NAME_KEYWORD		1
+#define TYPE_FUNC_NAME_KEYWORD	2
+#define RESERVED_KEYWORD		3
+
+
 typedef struct ScanKeyword
 {
 	const char *name;

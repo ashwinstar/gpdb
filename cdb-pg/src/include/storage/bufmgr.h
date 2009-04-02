@@ -20,7 +20,7 @@
 typedef void *Block;
 
 /* in globals.c ... this duplicates miscadmin.h */
-extern DLLIMPORT int NBuffers;
+extern PGDLLIMPORT int NBuffers;
 
 /* in bufmgr.c */
 extern bool zero_damaged_pages;
@@ -30,13 +30,13 @@ extern int	bgwriter_lru_maxpages;
 extern int	bgwriter_all_maxpages;
 
 /* in buf_init.c */
-extern DLLIMPORT char *BufferBlocks;
-extern DLLIMPORT int32 *PrivateRefCount;
+extern PGDLLIMPORT char *BufferBlocks;
+extern PGDLLIMPORT int32 *PrivateRefCount;
 
 /* in localbuf.c */
-extern DLLIMPORT int NLocBuffer;
-extern DLLIMPORT Block *LocalBufferBlockPointers;
-extern DLLIMPORT int32 *LocalRefCount;
+extern PGDLLIMPORT int NLocBuffer;
+extern PGDLLIMPORT Block *LocalBufferBlockPointers;
+extern PGDLLIMPORT int32 *LocalRefCount;
 
 /* special block number for ReadBuffer() */
 #define P_NEW	InvalidBlockNumber		/* grow the file to get a new page */

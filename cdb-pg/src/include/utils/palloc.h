@@ -77,7 +77,7 @@ typedef struct MemoryContextData *MemoryContext;
  * We declare it here so that palloc() can be a macro.	Avoid accessing it
  * directly!  Instead, use MemoryContextSwitchTo() to change the setting.
  */
-extern DLLIMPORT MemoryContext CurrentMemoryContext;
+extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
 
 /*
  * Fundamental memory-allocation operations (more are in utils/memutils.h)
@@ -112,8 +112,8 @@ extern void MemoryContextFreeImpl(void *pointer, const char* file, const char *f
 		MemoryContextAllocZeroImpl(CurrentMemoryContext, (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__))
 
 /*
- * MemoryContextSwitchTo
- *		Returns the current context; installs the given context.
+ * MemoryContextSwitchTo can't be a macro in standard C compilers.
+ * But we can make it an inline function when using GCC.
  */
 static inline MemoryContext
 MemoryContextSwitchTo(MemoryContext context)

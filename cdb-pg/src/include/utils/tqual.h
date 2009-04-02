@@ -76,7 +76,7 @@ typedef SnapshotData *Snapshot;
 #define SnapshotAny					((Snapshot) 0x3)
 #define SnapshotToast				((Snapshot) 0x4)
 
-extern DLLIMPORT Snapshot SnapshotDirty;
+extern PGDLLIMPORT Snapshot SnapshotDirty;
 
 /* This macro encodes the knowledge of which snapshots are MVCC-safe */
 #define IsMVCCSnapshot(snapshot)  \
@@ -87,9 +87,9 @@ extern DLLIMPORT Snapshot SnapshotDirty;
 	 (snapshot) != SnapshotDirty)
 
 
-extern DLLIMPORT Snapshot SerializableSnapshot;
-extern DLLIMPORT Snapshot LatestSnapshot;
-extern DLLIMPORT Snapshot ActiveSnapshot;
+extern PGDLLIMPORT Snapshot SerializableSnapshot;
+extern PGDLLIMPORT Snapshot LatestSnapshot;
+extern PGDLLIMPORT Snapshot ActiveSnapshot;
 
 extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;

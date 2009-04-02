@@ -158,7 +158,7 @@ static void ReqShutdownHandler(SIGNAL_ARGS);
 /*
  * Main entry point for bgwriter process
  *
- * This is invoked from BootstrapMain, which has already created the basic
+ * This is invoked from AuxiliaryProcessMain, which has already created the basic
  * execution environment, but not enabled signals yet.
  */
 void

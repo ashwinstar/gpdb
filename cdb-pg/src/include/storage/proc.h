@@ -121,10 +121,10 @@ struct PGPROC
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
 
 
-extern DLLIMPORT PGPROC *MyProc;
+extern PGDLLIMPORT PGPROC *MyProc;
 
 /* Special for MPP reader gangs */
-extern DLLIMPORT PGPROC *lockHolderProcPtr;
+extern PGDLLIMPORT PGPROC *lockHolderProcPtr;
 
 /*
  * There is one ProcGlobal struct for the whole database cluster.
@@ -163,7 +163,7 @@ extern Size ProcGlobalShmemSize(void);
 extern void InitProcGlobal(int mppLocalProcessCounter);
 extern void InitProcess(void);
 extern void InitProcessPhase2(void);
-extern void InitDummyProcess(void);
+extern void InitAuxiliaryProcess(void);
 extern bool HaveNFreeProcs(int n);
 extern void ProcReleaseLocks(bool isCommit);
 

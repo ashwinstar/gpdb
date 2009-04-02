@@ -25,20 +25,18 @@
 #include "utils/tqual.h"
 
 
-static XidStatus TransactionLogFetch(TransactionId transactionId);
-static void TransactionLogUpdate(TransactionId transactionId,
-					 XidStatus status);
-
-/* ----------------
- *		Single-item cache for results of TransactionLogFetch.
- * ----------------
+/*
+ * Single-item cache for results of TransactionLogFetch.  It's worth having
+ * such a cache because we frequently find ourselves repeatedly checking the
+ * same XID, for example when scanning a table just after a bulk insert,
+ * update, or delete.
  */
 static TransactionId cachedFetchXid = InvalidTransactionId;
 static XidStatus cachedFetchXidStatus;
 
 
 /* ----------------------------------------------------------------
- *		postgres log access method interface
+ *		Postgres log access method interface
  *
  *		TransactionLogFetch
  *		TransactionLogUpdate
@@ -73,13 +71,13 @@ TransactionLogFetch(TransactionId transactionId)
 	}
 
 	/*
-	 * Get the status.
+	 * Get the transaction status.
 	 */
 	xidstatus = TransactionIdGetStatus(transactionId);
 
 	/*
-	 * DO NOT cache status for unfinished or sub-committed transactions! We
-	 * only cache status that is guaranteed not to change.
+	 * Cache it, but DO NOT cache status for unfinished or sub-committed
+	 * transactions!  We only cache status that is guaranteed not to change.
 	 */
 	if (xidstatus != TRANSACTION_STATUS_IN_PROGRESS &&
 		xidstatus != TRANSACTION_STATUS_SUB_COMMITTED)

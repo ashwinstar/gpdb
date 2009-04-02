@@ -187,5 +187,7 @@ extern char *XLogLocationToString3_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString4_Long(XLogRecPtr *loc);
 extern char *XLogLocationToString5_Long(XLogRecPtr *loc);
 
+extern void StartupProcessMain(void);
+
 
 #endif   /* XLOG_H */

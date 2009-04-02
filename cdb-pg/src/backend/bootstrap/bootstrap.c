@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include <time.h>
 #include <unistd.h>
 #include <signal.h>
 #ifdef HAVE_GETOPT_H
@@ -50,8 +51,10 @@ extern char *optarg;
 
 #define ALLOC(t, c)		((t *) calloc((unsigned)(c), sizeof(t)))
 
+static void CheckerModeMain(int	xlogop);
+static void BootstrapModeMain(void);
 static void bootstrap_signals(void);
-static void ShutdownDummyProcess(int code, Datum arg);
+static void ShutdownAuxiliaryProcess(int code, Datum arg);
 static hashnode *AddStr(char *str, int strlength, int mderef);
 static Form_pg_attribute AllocateAttribute(void);
 static int	CompHash(char *str, int len);
@@ -193,21 +196,17 @@ static IndexList *ILHead = NULL;
 
 
 /*
- *	 The main entry point for running the backend in bootstrap mode
+ *	 AuxiliaryProcessMain
  *
- *	 The bootstrap mode is used to initialize the template database.
- *	 The bootstrap backend doesn't speak SQL, but instead expects
- *	 commands in a special bootstrap language.
+ *	 The main entry point for auxiliary processes, such as the bgwriter,
+ *	 walwriter, bootstrapper and the shared memory checker code.
  *
- *	 For historical reasons, BootstrapMain is also used as the control
- *	 routine for non-backend subprocesses launched by the postmaster,
- *	 such as startup and shutdown.
+ *	 This code is here just because of historical reasons.
  */
-int
-BootstrapMain(int argc, char *argv[])
+void
+AuxiliaryProcessMain(int argc, char *argv[])
 {
 	char	   *progname = argv[0];
-	int			i;
 	char	   *dbname;
 	int			flag;
 	int			xlogop = BS_XLOG_NOP;
@@ -279,7 +278,7 @@ BootstrapMain(int argc, char *argv[])
 				SetConfigOption("fsync", "false", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 			case 'r':
-				StrNCpy(OutputFileName, optarg, MAXPGPATH);
+				strlcpy(OutputFileName, optarg, MAXPGPATH);
 				break;
 			case 'x':
 				xlogop = atoi(optarg);
@@ -388,9 +387,9 @@ BootstrapMain(int argc, char *argv[])
 	BaseInit();
 
 	/*
-	 * When we are a dummy process, we aren't going to do the full
+	 * When we are an auxiliary process, we aren't going to do the full
 	 * InitPostgres pushups, but there are a couple of things that need to get
-	 * lit up even in a dummy process.
+	 * lit up even in an auxiliary process.
 	 */
 	if (IsUnderPostmaster)
 	{
@@ -399,14 +398,14 @@ BootstrapMain(int argc, char *argv[])
 		 * this was already done by SubPostmasterMain().
 		 */
 #ifndef EXEC_BACKEND
-		InitDummyProcess();
+		InitAuxiliaryProcess();
 #endif
 
 		/* finish setting up bufmgr.c */
 		InitBufferPoolBackend();
 
 		/* register a shutdown callback for LWLock cleanup */
-		on_shmem_exit(ShutdownDummyProcess, 0);
+		on_shmem_exit(ShutdownAuxiliaryProcess, 0);
 	}
 
 	/*
@@ -418,22 +417,20 @@ BootstrapMain(int argc, char *argv[])
 	{
 		case BS_XLOG_NOP:
 			bootstrap_signals();
-			break;
+			CheckerModeMain(xlogop);
+			proc_exit(1);		/* should never return */
 
 		case BS_XLOG_BOOTSTRAP:
 			bootstrap_signals();
 			BootStrapXLOG();
 			StartupXLOG();
-			break;
+			BootstrapModeMain();
+			proc_exit(1);		/* should never return */
 
 		case BS_XLOG_STARTUP:
-			bootstrap_signals();
-			StartupXLOG();
-			LoadFreeSpaceMap();
-			BuildFlatFiles(false);
-			if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
-				InitResQueues();
-			proc_exit(0);		/* startup done */
+			/* don't set signals, startup process has its own agenda */
+			StartupProcessMain();
+			proc_exit(1);		/* should never return */
 
 		case BS_XLOG_BGWRITER:
 			/* don't set signals, bgwriter has its own agenda */
@@ -445,7 +442,16 @@ BootstrapMain(int argc, char *argv[])
 			elog(PANIC, "unrecognized XLOG op: %d", xlogop);
 			proc_exit(1);
 	}
+}
 
+/*
+ * In shared memory checker mode, all we really want to do is create shared
+ * memory and semaphores (just to prove we can do it with the current GUC
+ * settings).
+ */
+static void
+CheckerModeMain(int	xlogop)
+{
 	/*
 	 * We must be getting invoked for bootstrap mode
 	 */
@@ -456,16 +462,35 @@ BootstrapMain(int argc, char *argv[])
 	/*
 	 * Do backend-like initialization for bootstrap mode
 	 */
-	InitProcess();
-	(void) InitPostgres(dbname, NULL);
-
-	/*
-	 * In NOP mode, all we really want to do is create shared memory and
-	 * semaphores (just to prove we can do it with the current GUC settings).
-	 * So, quit now.
-	 */
 	if (xlogop == BS_XLOG_NOP)
 		proc_exit(0);
+	
+	InitProcess();
+	InitPostgres(NULL, NULL);
+	proc_exit(0);
+}
+
+/*
+ *	 The main entry point for running the backend in bootstrap mode
+ *
+ *	 The bootstrap mode is used to initialize the template database.
+ *	 The bootstrap backend doesn't speak SQL, but instead expects
+ *	 commands in a special bootstrap language.
+ */
+static void
+BootstrapModeMain(void)
+{
+	int			i;
+
+	Assert(!IsUnderPostmaster);
+
+	SetProcessingMode(BootstrapProcessing);
+
+	/*
+	 * Do backend-like initialization for bootstrap mode
+	 */
+	InitProcess();
+	InitPostgres(NULL, NULL);
 
 	/* Initialize stuff for bootstrap-file processing */
 	for (i = 0; i < MAXATTR; i++)
@@ -491,9 +516,7 @@ BootstrapMain(int argc, char *argv[])
 	/* Clean up and exit */
 	StartTransactionCommand();
 	cleanup();
-
-	/* not reached, here to make compiler happy */
-	return 0;
+	proc_exit(0);
 }
 
 
@@ -556,14 +579,14 @@ bootstrap_signals(void)
 }
 
 /*
- * Begin shutdown of a dummy process.  This is approximately the equivalent
- * of ShutdownPostgres() in postinit.c.  We can't run transactions in a
- * dummy process, so most of the work of AbortTransaction() is not needed,
+ * Begin shutdown of an auxiliary process.	This is approximately the equivalent
+ * of ShutdownPostgres() in postinit.c.  We can't run transactions in an
+ * auxiliary process, so most of the work of AbortTransaction() is not needed,
  * but we do need to make sure we've released any LWLocks we are holding.
  * (This is only critical during an error exit.)
  */
 static void
-ShutdownDummyProcess(int code, Datum arg)
+ShutdownAuxiliaryProcess(int code, Datum arg)
 {
 	LWLockReleaseAll();
 }
@@ -1036,6 +1059,9 @@ boot_get_type_io_data(Oid typid,
 
 /* ----------------
  *		AllocateAttribute
+ *
+ * Note: bootstrap never sets any per-column ACLs, so we only need
+ * ATTRIBUTE_FIXED_PART_SIZE space per attribute.
  * ----------------
  */
 static Form_pg_attribute

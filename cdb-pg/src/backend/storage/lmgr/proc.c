@@ -372,7 +372,7 @@ InitProcessPhase2(void)
 }
 
 /*
- * InitDummyProcess -- create a dummy per-process data structure
+ * InitAuxiliaryProcess -- create a dummy per-process data structure
  *
  * This is called by bgwriter and similar processes so that they will have a
  * MyProc value that's real enough to let them wait for LWLocks.  The PGPROC
@@ -384,7 +384,7 @@ InitProcessPhase2(void)
  * to the ProcArray or the sinval messaging mechanism, either.
  */
 void
-InitDummyProcess(void)
+InitAuxiliaryProcess(void)
 {
 	PGPROC	   *dummyproc;
 	int			proctype;

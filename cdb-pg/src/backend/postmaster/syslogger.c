@@ -45,6 +45,18 @@
 #include "utils/timestamp.h"
 
 /*
+ * We really want line-buffered mode for logfile output, but Windows does
+ * not have it, and interprets _IOLBF as _IOFBF (bozos).  So use _IONBF
+ * instead on Windows.
+ */
+#ifdef WIN32
+#define LBF_MODE	_IONBF
+#else
+#define LBF_MODE	_IOLBF
+#endif
+
+
+/*
  * GUC parameters.	Redirect_stderr cannot be changed after postmaster
  * start, but the rest can change at SIGHUP.
  */
@@ -189,10 +201,11 @@ SysLoggerMain(int argc, char *argv[])
     }
 
     redirection_done = true;
-
-    /* Syslogger's own stderr can't be the syslogPipe, so set it back to
-     * text mode if we didn't just close it. 
-     * (It was set to binary in SubPostmasterMain).
+    
+	/*
+	 * Syslogger's own stderr can't be the syslogPipe, so set it back to text
+	 * mode if we didn't just close it. (It was set to binary in
+	 * SubPostmasterMain).
      */
 #ifdef WIN32
     else
@@ -216,9 +229,9 @@ SysLoggerMain(int argc, char *argv[])
 
     /*
      * If possible, make this process a group leader, so that the postmaster
-     * can signal any child processes too.  (syslogger probably never has
-     * any child processes, but for consistency we make all postmaster
-     * child processes do this.)
+	 * can signal any child processes too.	(syslogger probably never has any
+	 * child processes, but for consistency we make all postmaster child
+	 * processes do this.)
      */
 #ifdef HAVE_SETSID
     if (setsid() < 0)
@@ -618,9 +631,9 @@ SysLogger_Start(void)
                     int			fd;
 
                     /*
-                     * open the pipe in binary mode and make sure
-                     * stderr is binary after it's been dup'ed into, to avoid
-                     * disturbing the pipe chunking protocol.
+				 	 * open the pipe in binary mode and make sure stderr is binary
+					 * after it's been dup'ed into, to avoid disturbing the pipe
+					 * chunking protocol.
                      */
                     fflush(stderr);
                     fd = _open_osfhandle((long) syslogPipe[1],

@@ -54,6 +54,12 @@ extern "C" {
 #include "utils/elog.h"
 #include "utils/palloc.h"
 
+#if BYTE_ORDER == BIG_ENDIAN
+#ifndef WORDS_BIGENDIAN
+#define WORDS_BIGENDIAN
+#endif
+#endif
+
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)
  * ----------------------------------------------------------------
@@ -68,11 +74,13 @@ extern "C" {
 
 typedef union varattrib
 {
-	struct {
+	struct						/* Normal varlena (4-byte length) */ 
+	{
 		uint8 	va_header;
 		char 	va_data[1];
 	} va_1byte;
-	struct {
+	struct 
+	{
 		uint8 	va_header;
 		uint8	va_padding[3];
 		int32	va_rawsize;		/* Plain data size */
@@ -80,10 +88,10 @@ typedef union varattrib
 		Oid		va_valueid;		/* Unique identifier of value */
 		Oid		va_toastrelid;	/* RelID where to find chunks */
 	} va_external;
-	struct 
+	struct						/* Compressed-in-line format */ 
 	{
 		uint32 	va_header;
-		uint32	va_rawsize;		/* Plain data size */
+		uint32	va_rawsize;		/* Original data size (excludes header) */
 		char	va_data[1];		/* Compressed data */
 	} va_compressed;
 	struct
@@ -95,6 +103,22 @@ typedef union varattrib
 
 /* Externally visible macros (do these all belong here?) */
 
+/*
+ * VARDATA, VARSIZE, and SET_VARSIZE are the recommended API for most code
+ * for varlena datatypes.  Note that they only work on
+ * 4-byte-header Datums!
+ *
+ * Code that wants to use 1-byte-header values without detoasting should
+ * use VARSIZE_ANY/VARSIZE_ANY_EXHDR/VARDATA_ANY.  The other macros here
+ * should usually be used only by tuple assembly/disassembly code and
+ * code that specifically wants to work with still-toasted Datums.
+ *
+ * WARNING: It is only safe to use VARDATA_ANY() -- typically with
+ * PG_DETOAST_DATUM_PACKED() -- if you really don't care about the alignment.
+ * Either because you're working with something like text where the alignment
+ * doesn't matter or because you're not going to access its constituent parts
+ * and just use things like memcpy on it anyways.
+ */
 
 #define VARDATA(PTR)						VARDATA_4B((varattrib*)(PTR))
 #define VARDATA_D(D)						VARDATA(DatumGetPointer(D))
@@ -131,6 +155,8 @@ typedef union varattrib
 #define VARSIZE_ANY_EXHDR_D(D)			    VARSIZE_ANY_EXHDR(DatumGetPointer(D))	
 #define VARSIZE_ANY(PTR)					VARSIZE__ANY((varattrib*)(PTR))
 #define VARSIZE_ANY_D(D)					VARSIZE_ANY(DatumGetPointer(D))
+/* caution: this will not work on an external or compressed-in-line Datum */
+/* caution: this will return a possibly unaligned pointer */
 #define VARDATA_ANY(PTR)					VARDATA__ANY((varattrib*)(PTR))
 #define VARDATA_ANY_D(D)					VARDATA_ANY(DatumGetPointer(D))
 
@@ -144,7 +170,7 @@ typedef union varattrib
  * 00xxxxxx	4-byte length word, aligned, uncompressed data (up to 1G)
  * 01xxxxxx	4-byte length word, aligned, *compressed* data (up to 1G)
  * 10000000	1-byte length word, unaligned, TOAST pointer
- * 1xxxxxxx	1-byte length word, unaligned, uncompressed data (up to 127b)
+ * 1xxxxxxx 1-byte length word, unaligned, uncompressed data (up to 126b)
  *
  * Note: IS_1B is true for external toast records but VARSIZE_1B will return 0
  * for such records. As a consequence you must always check for for IS_EXTERNAL
@@ -200,7 +226,6 @@ typedef union varattrib
 
 #define VARDATA_COMPRESSED(PTR)	((PTR)->va_compressed.va_data)
 
-
 /* ----------------------------------------------------------------
  *				Section 2:	datum type + support macros
  * ----------------------------------------------------------------
@@ -208,9 +233,14 @@ typedef union varattrib
 
 /*
  * Port Notes:
+ * 
+ * 	Postgres makes the following assumption about machines:
+ *
+ *	sizeof(Datum) == sizeof(long) >= sizeof(void *) >= 4
  *
  *  Greenplum CDB:
- * 	Datum is alway 8 bytes, regardless if it is 32bit or 64bit machine.  
+ * 	Datum is alway 8 bytes, regardless if it is 32bit or 64bit machine.
+ *  so may be > sizeof(long).
  *
  *	Postgres also assumes that
  *

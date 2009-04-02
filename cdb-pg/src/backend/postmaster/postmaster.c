@@ -256,6 +256,10 @@ static pid_t StartupPID = 0,
         	PgStatPID = 0,
     		SysLoggerPID = 0;
 
+/* Startup/shutdown state */
+#define			NoShutdown		0
+#define			SmartShutdown	1
+#define			FastShutdown	2
 
 /* CDB */
 
@@ -432,7 +436,7 @@ typedef struct
 	LWLock	   *LWLockArray;
 	slock_t    *ProcStructLock;
 	PROC_HDR   *ProcGlobal;
-	PGPROC	   *DummyProcs;
+	PGPROC	   *AuxiliaryProcs;
 	InheritableSocket pgStatSock;
 	pid_t		PostmasterPid;
 	TimestampTz PgStartTime;
@@ -447,8 +451,8 @@ typedef struct
 	char		my_exec_path[MAXPGPATH];
 	char		pkglib_path[MAXPGPATH];
 	char		ExtraOptions[MAXPGPATH];
-	char		lc_collate[LOCALE_NAME_BUFLEN];
-	char		lc_ctype[LOCALE_NAME_BUFLEN];
+	char		lc_collate[NAMEDATALEN];
+	char		lc_ctype[NAMEDATALEN];
 }	BackendParameters;
 
 static void read_backend_variables(char *id, Port *port);
@@ -820,7 +824,10 @@ PostmasterMain(int argc, char *argv[])
 		ExitPostmaster(1);
 	}
 
-	if (ReservedBackends > MaxBackends)
+	/*
+	 * Check for invalid combinations of GUC settings.
+	 */
+	if (ReservedBackends >= MaxBackends)
 	{
 		write_stderr("%s: superuser_reserved_connections must be less than max_connections\n", progname);
 		ExitPostmaster(1);
@@ -1567,7 +1574,7 @@ ServerLoop(void)
 static int
 initMasks(fd_set *rmask)
 {
-	int			nsocks = -1;
+	int			maxsock = -1;
 	int			i;
 
 	FD_ZERO(rmask);
@@ -1579,11 +1586,11 @@ initMasks(fd_set *rmask)
 		if (fd == -1)
 			break;
 		FD_SET(fd, rmask);
-		if (fd > nsocks)
-			nsocks = fd;
+		if (fd > maxsock)
+			maxsock = fd;
 	}
 
-	return nsocks + 1;
+	return maxsock + 1;
 }
 
 
@@ -1951,16 +1958,16 @@ processCancelRequest(Port *port, void *pkt)
 			}
 			else
 				/* Right PID, wrong key: no way, Jose */
-				ereport(DEBUG2,
-				 (errmsg_internal("bad key in cancel request for process %d",
+				ereport(LOG,
+						(errmsg("wrong key in cancel request for process %d",
 								  backendPID)));
 			return;
 		}
 	}
 
 	/* No matching backend */
-	ereport(DEBUG2,
-			(errmsg_internal("bad pid in cancel request for process %d",
+	ereport(LOG,
+			(errmsg("PID %d in cancel request did not match any process",
 							 backendPID)));
 }
 
@@ -3185,7 +3192,9 @@ signal_child(pid_t pid, int signal)
 }
 
 /*
- * Send a signal to all backend children (but NOT special children)
+ * Send a signal to all backend children, including autovacuum workers
+ * (but NOT special children; dead_end children are never signaled, either).
+ * If only_autovac is TRUE, only the autovacuum worker processes are signalled.
  */
 static void
 SignalChildren(int signal)
@@ -3999,10 +4008,11 @@ SubPostmasterMain(int argc, char *argv[])
 
 	MyProcPid = getpid();		/* reset MyProcPid */
 
-	/* make sure stderr is in binary mode before anything can
-	 * possibly be written to it, in case it's actually the syslogger pipe,
-	 * so the pipe chunking protocol isn't disturbed. Non-logpipe data
-	 * gets translated on redirection (e.g. via pg_ctl -l) anyway.
+	/*
+	 * make sure stderr is in binary mode before anything can possibly be
+	 * written to it, in case it's actually the syslogger pipe, so the pipe
+	 * chunking protocol isn't disturbed. Non-logpipe data gets translated on
+	 * redirection (e.g. via pg_ctl -l) anyway.
 	 */
 #ifdef WIN32
 	_setmode(fileno(stderr),_O_BINARY);
@@ -4067,6 +4077,14 @@ SubPostmasterMain(int argc, char *argv[])
 	/* Read in remaining GUC variables */
 	read_nondefault_variables();
 
+	/*
+	 * Reload any libraries that were preloaded by the postmaster.  Since
+	 * we exec'd this process, those libraries didn't come along with us;
+	 * but we should load them into all child processes to be consistent
+	 * with the non-EXEC_BACKEND behavior.
+	 */
+	process_shared_preload_libraries();
+
 	/* Run backend or appropriate child */
 	if (strcmp(argv[1], "--forkbackend") == 0)
 	{
@@ -4079,20 +4097,14 @@ SubPostmasterMain(int argc, char *argv[])
 		 * Need to reinitialize the SSL library in the backend, since the
 		 * context structures contain function pointers and cannot be passed
 		 * through the parameter file.
+		 *
+		 * XXX should we do this in all child processes?  For the moment it's
+		 * enough to do it in backend children.
 		 */
 #ifdef USE_SSL
 		if (EnableSSL)
 			secure_initialize();
 #endif
-
-		/*
-		 * process any libraries that should be preloaded at postmaster start
-		 *
-		 * NOTE: we have to re-load the shared_preload_libraries here because
-		 * 		 this backend is not fork()ed so we can't inherit any shared
-		 *		 libraries / DLL's from our parent (the postmaster).
-		 */
-		process_shared_preload_libraries();
 
 		/*
 		 * Perform additional initialization and client authentication.
@@ -4136,12 +4148,12 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitDummyProcess();
+		InitAuxiliaryProcess();
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);
 
-		BootstrapMain(argc - 2, argv + 2);
+		AuxiliaryProcessMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
 	if (strcmp(argv[1], "--forkautovac") == 0)
@@ -4200,7 +4212,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitDummyProcess();
+		InitAuxiliaryProcess();
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);
@@ -4217,7 +4229,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitShmemAccess(UsedShmemSegAddr);
 
 		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitDummyProcess();
+		InitAuxiliaryProcess();
 
 		/* Attach process to shared data structures */
 		CreateSharedMemoryAndSemaphores(false, 0);
@@ -4398,7 +4410,7 @@ CountChildren(void)
  * StartChildProcess -- start a non-backend child process for the postmaster
  *
  * xlop determines what kind of child will be started.	All child types
- * initially go to BootstrapMain, which will handle common setup.
+ * initially go to AuxiliaryProcessMain, which will handle common setup.
  *
  * Return value of StartChildProcess is subprocess' PID, or 0 if failed
  * to start subprocess.
@@ -4450,7 +4462,7 @@ StartChildProcess(int xlop)
 		MemoryContextDelete(PostmasterContext);
 		PostmasterContext = NULL;
 
-		BootstrapMain(ac, av);
+		AuxiliaryProcessMain(ac, av);
 		ExitPostmaster(0);
 	}
 #endif   /* EXEC_BACKEND */
@@ -4562,7 +4574,7 @@ save_backend_variables(BackendParameters * param, Port *port,
 	memcpy(&param->port, port, sizeof(Port));
 	write_inheritable_socket(&param->portsocket, port->sock, childPid);
 
-	StrNCpy(param->DataDir, DataDir, MAXPGPATH);
+	strlcpy(param->DataDir, DataDir, MAXPGPATH);
 
 	memcpy(&param->ListenSocket, &ListenSocket, sizeof(ListenSocket));
 
@@ -4595,14 +4607,14 @@ save_backend_variables(BackendParameters * param, Port *port,
 
 	memcpy(&param->syslogPipe, &syslogPipe, sizeof(syslogPipe));
 
-	StrNCpy(param->my_exec_path, my_exec_path, MAXPGPATH);
+	strlcpy(param->my_exec_path, my_exec_path, MAXPGPATH);
 
-	StrNCpy(param->pkglib_path, pkglib_path, MAXPGPATH);
+	strlcpy(param->pkglib_path, pkglib_path, MAXPGPATH);
 
-	StrNCpy(param->ExtraOptions, ExtraOptions, MAXPGPATH);
+	strlcpy(param->ExtraOptions, ExtraOptions, MAXPGPATH);
 
-	StrNCpy(param->lc_collate, setlocale(LC_COLLATE, NULL), LOCALE_NAME_BUFLEN);
-	StrNCpy(param->lc_ctype, setlocale(LC_CTYPE, NULL), LOCALE_NAME_BUFLEN);
+	strlcpy(param->lc_collate, setlocale(LC_COLLATE, NULL), LOCALE_NAME_BUFLEN);
+	strlcpy(param->lc_ctype, setlocale(LC_CTYPE, NULL), LOCALE_NAME_BUFLEN);
 
 	return true;
 }
@@ -4798,11 +4810,11 @@ restore_backend_variables(BackendParameters * param, Port *port)
 
 	memcpy(&syslogPipe, &param->syslogPipe, sizeof(syslogPipe));
 
-	StrNCpy(my_exec_path, param->my_exec_path, MAXPGPATH);
+	strlcpy(my_exec_path, param->my_exec_path, MAXPGPATH);
 
-	StrNCpy(pkglib_path, param->pkglib_path, MAXPGPATH);
+	strlcpy(pkglib_path, param->pkglib_path, MAXPGPATH);
 
-	StrNCpy(ExtraOptions, param->ExtraOptions, MAXPGPATH);
+	strlcpy(ExtraOptions, param->ExtraOptions, MAXPGPATH);
 
 	setlocale(LC_COLLATE, param->lc_collate);
 	setlocale(LC_CTYPE, param->lc_ctype);

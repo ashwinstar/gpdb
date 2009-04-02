@@ -64,7 +64,7 @@
 
 
 /* Return data from examine_variable and friends */
-typedef struct
+typedef struct VariableStatData
 {
 	Node	   *var;			/* the Var or expression tree */
 	RelOptInfo *rel;			/* Relation, or NULL if not identifiable */

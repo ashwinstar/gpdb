@@ -223,7 +223,7 @@ PgArchiverMain(int argc, char *argv[])
 
 	MyProcPid = getpid();		/* reset MyProcPid */
 	
-	MyStartTime = time(NULL);
+	MyStartTime = time(NULL);	/* record Start Time for logging */
 
 	/*
 	 * If possible, make this process a group leader, so that the postmaster
@@ -272,13 +272,15 @@ pgarch_exit(SIGNAL_ARGS)
 	 * seem cleaner to finish up any pending archive copies, but there's a
 	 * nontrivial risk that init will kill us partway through.
 	 */
-	exit(0);
+	/* SIGQUIT means curl up and die ... */
+	exit(1);
 }
 
-/* SIGHUP: set flag to re-read config file at next convenient time */
+/* SIGHUP signal handler for archiver process */
 static void
 ArchSigHupHandler(SIGNAL_ARGS)
 {
+	/* set flag to re-read config file at next convenient time */
 	got_SIGHUP = true;
 }
 
@@ -286,6 +288,7 @@ ArchSigHupHandler(SIGNAL_ARGS)
 static void
 pgarch_waken(SIGNAL_ARGS)
 {
+	/* set flag that there is work to be done */
 	wakened = true;
 }
 
@@ -431,14 +434,14 @@ pgarch_archiveXlog(char *xlog)
 				case 'p':
 					/* %p: relative path of source file */
 					sp++;
-					StrNCpy(dp, pathname, endp - dp);
+					strlcpy(dp, pathname, endp - dp);
 					make_native_path(dp);
 					dp += strlen(dp);
 					break;
 				case 'f':
 					/* %f: filename of source file */
 					sp++;
-					StrNCpy(dp, xlog, endp - dp);
+					strlcpy(dp, xlog, endp - dp);
 					dp += strlen(dp);
 					break;
 				case '%':
@@ -475,8 +478,8 @@ pgarch_archiveXlog(char *xlog)
 		 * should have interrupted us too.  If we overreact it's no big deal,
 		 * the postmaster will just start the archiver again.
 		 *
-		 * Per the Single Unix Spec, shells report exit status > 128 when
-		 * a called command died on a signal.
+		 * Per the Single Unix Spec, shells report exit status > 128 when a
+		 * called command died on a signal.
 		 */
 		bool	signaled = WIFSIGNALED(rc) || WEXITSTATUS(rc) > 128;
 

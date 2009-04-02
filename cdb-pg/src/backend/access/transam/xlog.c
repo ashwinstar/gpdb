@@ -15,9 +15,9 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <fcntl.h>
 #include <signal.h>
 #include <time.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -37,6 +37,7 @@
 #include "catalog/pg_control.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
+#include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/postmaster.h"
@@ -50,8 +51,13 @@
 #include "storage/procarray.h"
 #include "storage/spin.h"
 #include "utils/builtins.h"
-#include "utils/nabstime.h"
+#include "utils/flatfiles.h"
 #include "utils/pg_locale.h"
+#include "utils/nabstime.h"
+#include "utils/guc.h"
+#include "utils/ps_status.h"
+#include "utils/resscheduler.h"
+#include "pg_trace.h"
 
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
@@ -508,6 +514,16 @@ static TimeLineID lastPageTLI = 0;
 
 static bool InRedo = false;
 
+/*
+ * Flag set by interrupt handlers for later service in the redo loop.
+ */
+static volatile sig_atomic_t got_SIGHUP = false;
+static volatile sig_atomic_t shutdown_requested = false;
+/*
+ * Flag set when executing a restore command, to tell SIGTERM signal handler
+ * that it's safe to just proc_exit.
+ */
+static volatile sig_atomic_t in_restore_command = false;
 
 static void XLogArchiveNotify(const char *xlog);
 static void XLogArchiveNotifySeg(uint32 log, uint32 seg);
@@ -7333,6 +7349,9 @@ RequestXLogSwitch(void)
 
 /*
  * XLOG resource manager's routines
+ *
+ * Definitions of info values are in include/catalog/pg_control.h, though
+ * not all records types are related to control file processing.
  */
 void
 xlog_redo(XLogRecPtr lsn __attribute__((unused)) , XLogRecord *record)
@@ -7667,6 +7686,8 @@ pg_start_backup(PG_FUNCTION_ARGS)
 		 * page problems, this guarantees that two successive backup runs will
 		 * have different checkpoint positions and hence different history
 		 * file names, even if nothing happened in between.
+		 *
+		 * We don't use CHECKPOINT_IMMEDIATE, hence this can take awhile.
 		 */
 		RequestCheckpoint(true, false);
 
@@ -7683,6 +7704,7 @@ pg_start_backup(PG_FUNCTION_ARGS)
 		XLByteToSeg(startpoint, _logId, _logSeg);
 		XLogFileName(xlogfilename, ThisTimeLineID, _logId, _logSeg);
 
+		/* Use the log timezone here, not the session timezone */
 		stamp_time = (pg_time_t) time(NULL);
 		pg_strftime(strfbuf, sizeof(strfbuf),
 				 "%Y-%m-%d %H:%M:%S %Z",
@@ -7758,6 +7780,7 @@ pg_start_backup_callback(int code, Datum arg)
  * create a backup history file in pg_xlog (whence it will immediately be
  * archived).  The backup history file contains the same info found in
  * the label file, plus the backup-end time and WAL location.
+ * Note: different from CancelBackup which just cancels online backup mode.
  */
 Datum
 pg_stop_backup(PG_FUNCTION_ARGS __attribute__((unused)) )
@@ -7799,6 +7822,7 @@ pg_stop_backup(PG_FUNCTION_ARGS __attribute__((unused)) )
 	XLByteToSeg(stoppoint, _logId, _logSeg);
 	XLogFileName(stopxlogfilename, ThisTimeLineID, _logId, _logSeg);
 
+	/* Use the log timezone here, not the session timezone */
 	stamp_time = (pg_time_t) time(NULL);
 	pg_strftime(strfbuf, sizeof(strfbuf),
 			 "%Y-%m-%d %H:%M:%S %Z",
@@ -8316,4 +8340,105 @@ XLogLocationToString5_Long(XLogRecPtr *loc)
 	return XLogLocationToBuffer(xlogLocationBuffer5, loc, true);
 }
 
+
+/* ------------------------------------------------------
+ *  Startup Process main entry point and signal handlers
+ * ------------------------------------------------------
+ */
+
+/*
+ * startupproc_quickdie() occurs when signalled SIGQUIT by the postmaster.
+ *
+ * Some backend has bought the farm,
+ * so we need to stop what we're doing and exit.
+ */
+static void
+startupproc_quickdie(SIGNAL_ARGS)
+{
+	PG_SETMASK(&BlockSig);
+
+	/*
+	 * DO NOT proc_exit() -- we're here because shared memory may be
+	 * corrupted, so we don't want to try to clean up our transaction. Just
+	 * nail the windows shut and get out of town.
+	 *
+	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
+	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
+	 * backend.  This is necessary precisely because we don't clean up our
+	 * shared memory state.
+	 */
+	exit(2);
+}
+
+
+/* SIGHUP: set flag to re-read config file at next convenient time */
+static void
+StartupProcSigHupHandler(SIGNAL_ARGS)
+{
+	got_SIGHUP = true;
+}
+
+/* SIGTERM: set flag to abort redo and exit */
+static void
+StartupProcShutdownHandler(SIGNAL_ARGS)
+{
+	if (in_restore_command)
+		proc_exit(1);
+	else
+		shutdown_requested = true;
+	proc_exit(1);
+}
+
+/* Main entry point for startup process */
+void
+StartupProcessMain(void)
+{
+	/*
+	 * If possible, make this process a group leader, so that the postmaster
+	 * can signal any child processes too.
+	 */
+#ifdef HAVE_SETSID
+	if (setsid() < 0)
+		elog(FATAL, "setsid() failed: %m");
+#endif
+
+	/*
+	 * Properly accept or ignore signals the postmaster might send us
+	 */
+	pqsignal(SIGHUP, StartupProcSigHupHandler);	 /* reload config file */
+	pqsignal(SIGINT, SIG_IGN);					/* ignore query cancel */
+	pqsignal(SIGTERM, StartupProcShutdownHandler); /* request shutdown */
+	pqsignal(SIGQUIT, startupproc_quickdie);		/* hard crash time */
+	pqsignal(SIGALRM, SIG_IGN);
+	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGUSR1, SIG_IGN);
+	pqsignal(SIGUSR2, SIG_IGN);
+
+	/*
+	 * Reset some signals that are accepted by postmaster but not here
+	 */
+	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGTTIN, SIG_DFL);
+	pqsignal(SIGTTOU, SIG_DFL);
+	pqsignal(SIGCONT, SIG_DFL);
+	pqsignal(SIGWINCH, SIG_DFL);
+
+	/*
+	 * Unblock signals (they were blocked when the postmaster forked us)
+	 */
+	PG_SETMASK(&UnBlockSig);
+
+	StartupXLOG();	
+
+	BuildFlatFiles(false);
+	
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+		InitResQueues();
+
+	/*
+	 * Exit normally. Exit code 0 tells postmaster that we completed
+	 * recovery successfully.
+	 */
+	proc_exit(0);
+}
 
