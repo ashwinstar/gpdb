@@ -1466,11 +1466,13 @@ class ExpandTable():
     def expand(self,table_conn):
         foo = self.distrib_policy_names.strip()
         
+        (schema_name, table_name) = self.fq_name.split('.')
+        
         logger.info("Distribution policy for table %s is '%s' " % (self.fq_name,foo))
         if foo == "" or foo == "None" or foo is None:
-            sql = "ALTER TABLE ONLY %s SET WITH(REORGANIZE=TRUE) DISTRIBUTED RANDOMLY" % (self.fq_name)                        
+            sql = 'ALTER TABLE ONLY %s."%s" SET WITH(REORGANIZE=TRUE) DISTRIBUTED RANDOMLY' % (schema_name, table_name)
         else:
-            sql = " ALTER TABLE ONLY %s SET WITH(REORGANIZE=TRUE) DISTRIBUTED BY (%s) " % (self.fq_name,foo.lstrip())
+            sql = 'ALTER TABLE ONLY %s."%s" SET WITH(REORGANIZE=TRUE) DISTRIBUTED BY (%s)' % (schema_name, table_name, foo.lstrip())
         
         logger.info('Expanding %s.%s' % (self.dbname, self.fq_name))  
         logger.debug("Expand SQL: %s" % sql)  
