@@ -69,7 +69,7 @@ REMOVE_STANDBY=0
 #
 USAGE () {
 	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$MORE ${GPDOCDIR}/$HELP_DOC_NAME
+		$LESS ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	

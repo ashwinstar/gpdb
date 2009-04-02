@@ -109,6 +109,7 @@ HOSTNAME=`findCmdInPath hostname`
 IPCS=`findCmdInPath ipcs`
 IFCONFIG=`findCmdInPath ifconfig`
 KILL=`findCmdInPath kill`
+LESS=`findCmdInPath less`
 LS=`findCmdInPath ls`
 LOCALE=`findCmdInPath locale`
 MV=`findCmdInPath mv`
