@@ -266,6 +266,107 @@ QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax,
 	strncpy(logTimeStr + 19, msbuf, 7);
 }
 
+
+/*
+ * If calling from a thread it is illegal to leave username or dbName NULL.
+ */
+static void
+initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName, PQExpBuffer buffer, bool utility)
+{
+	char *user = username;
+
+	if (user == NULL)
+		user = MyProcPort->user_name;
+
+	initPQExpBuffer(buffer);
+
+	if (dbName == NULL)
+		dbName = MyProcPort->database_name;
+	
+	/*
+	 * Build the connection string
+	 */
+	if (utility)
+		appendPQExpBuffer(buffer,
+						  "options='-c gp_session_role=UTILITY' ");
+
+	if (q->hostname == NULL)
+		appendPQExpBufferStr(buffer, "host='' ");
+	else if (isdigit(q->hostname[0]))
+		appendPQExpBuffer(buffer, "hostaddr=%s ", q->hostname);
+	else
+		appendPQExpBuffer(buffer, "host=%s ", q->hostname);
+
+	appendPQExpBuffer(buffer, "port=%u ", q->port);
+	appendPQExpBuffer(buffer, "dbname=%s ", dbName);
+	appendPQExpBuffer(buffer, "user=%s ", user);
+	appendPQExpBuffer(buffer, "connect_timeout=%d ", gp_segment_connect_timeout);
+}
+
+/*
+ * Get a superuser name; return in malloc()ed buffer.
+ */
+static char *
+getDBSuperuserName(CdbComponentDatabaseInfo *q, const char *errPrefix)
+{
+	char cmd[200];
+	char *user = NULL;
+
+	TupleDesc tupdesc;
+
+	Assert(errPrefix != NULL);
+
+	/* Get the user we're going to use for our self-connection, using SPI */
+	if (SPI_OK_CONNECT != SPI_connect())
+	{
+		SPI_finish();
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("%s: SPI_connect failed in FTS", errPrefix)));
+	}
+
+	/* As a final step: we need to re-connect with privileges which
+	 * allow catalog updates */
+	if (snprintf(cmd, sizeof(cmd),
+				 "select rolname from pg_catalog.pg_roles where rolcatupdate ='t' and rolsuper = 't' order by oid limit 1;") >= sizeof(cmd))
+	{
+		SPI_finish();
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("%s: could not format command string (get rolname)", errPrefix)));
+	}
+
+	if (SPI_OK_SELECT != SPI_execute(cmd, false, 0))
+	{
+		SPI_finish();
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("%s: SPI_execute failed (%s)", errPrefix, cmd)));
+	}
+
+	if (SPI_processed != 1)
+	{
+		SPI_finish();
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("%s: found %d rows with limit 1!", errPrefix, SPI_processed)));
+	}
+
+	tupdesc = SPI_tuptable->tupdesc;
+	user = strdup(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
+
+	if (!user)
+	{
+		SPI_finish();
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("%s: out of memory", errPrefix)));
+	}
+
+	SPI_finish();
+
+	return user;
+}
+
 static void
 QDMirroringUpdate(
 	QDMIRRORUpdateMask 		updateMask,
@@ -281,166 +382,225 @@ QDMirroringUpdate(
 	char cmd[200 + QDMIRRORErrorMessageSize * 2 + 3];
 	char detailValue[100];
 	char logTimeStr[128];
-	int err;
 	char *summaryStateString;
 	char *detailStateString;
 	char errorMessageQuoted[QDMIRRORErrorMessageSize * 2 + 3];
-	
+	char *user;
+	CdbComponentDatabaseInfo *q;
+
+	volatile PQExpBuffer entryBuffer = NULL;
+	volatile PGconn *entryConn = NULL;
+	volatile PGresult   *rs;
+
 	PG_TRY();
 	{
 		StartTransactionCommand();
 
-		err = SPI_connect();
-		if (err != SPI_OK_CONNECT)
-		{
-			elog(ERROR, "SPI_connect failed with error %d",
-				 err);
-		}
+		q = getEntrySegDB(&count);
 
-		if ((updateMask & QDMIRROR_UPDATEMASK_VALIDFLAG) != 0)
+		if (count > 1)
 		{
-			count = snprintf(cmd, sizeof(cmd),
-					 		 UPDATE_VALIDFLAG_CMD,
-					 		 (validFlag ? 't' : 'f'),
-					 		 ftsQDMirrorInfo->dbid);
-			if (count >= sizeof(cmd))
+			if (q->dbid != GpIdentity.dbid)
 			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("FTS: format command string failure")));
-			}
-
-			err = SPI_execute(cmd, false, 0);
-			if (err != SPI_OK_UPDATE)
-			{
-				elog(ERROR, "SPI_execute command \"%s\" failed with error %d",
-					 cmd, err);
+				q = q + 1;
 			}
 		}
 
-		if ((updateMask & QDMIRROR_UPDATEMASK_MASTERMIRRORING)!= 0)
+		user = getDBSuperuserName(q, "QDMirroringUpdate");
+
+		Assert(user != NULL);
+
+		entryBuffer = createPQExpBuffer();
+
+		/*
+		 * initialize libpq connection buffer, we only need to initialize it
+		 * once.
+		 */
+		initPQConnectionBuffer(q, user, NULL, entryBuffer, true);
+
+		free(user);
+
+		/*
+		 * Call libpq to connect
+		 */
+		entryConn = PQconnectdb(entryBuffer->data);
+
+		if (PQstatus((PGconn *)entryConn) == CONNECTION_BAD)
 		{
-			switch (state)
+			/*
+			 * When we get an error, we strdup it here.  When the main thread
+			 * checks for errors, it makes a palloc copy of this, and frees
+			 * this.
+			 */
+			char	   *error_message = strdup(PQerrorMessage((PGconn *)entryConn));
+			if (!error_message)
 			{
-				case QDMIRROR_STATE_NONE:
-					summaryStateString = "None";
-					break;
-
-				case QDMIRROR_STATE_NOTCONFIGURED:
-					summaryStateString = "Not Configured";
-					break;
-
-				case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
-				case QDMIRROR_STATE_POSITIONINGTOEND:
-				case QDMIRROR_STATE_CATCHUPPENDING:
-				case QDMIRROR_STATE_CATCHINGUP:
-					summaryStateString = "Synchronizing";
-					break;
-
-				case QDMIRROR_STATE_SYNCHRONIZED:
-					summaryStateString = "Synchronized";
-					break;
-
-				case QDMIRROR_STATE_DISABLED:
-					summaryStateString = "Not Synchronized";
-					break;
-
-				default:
-					summaryStateString = "Unknown";
-					break;
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+								errmsg("QDMirroringUpdate: out of memory")));
 			}
 
-			if (state == QDMIRROR_STATE_DISABLED)
-				detailStateString = 
-					QDMirroringDisabledReasonToString(disabledReason);
-			else
-				detailStateString = NULL;
+			free(entryBuffer->data);
+			PQfinish((PGconn *)entryConn);
+			entryConn = NULL;
+			elog(FATAL, "QDMirroringUpdate: setting segDB state failed, error connecting to entry db, error: %s", error_message);
+		}
 
-			if (detailStateString == NULL)
-				strcpy(detailValue, "null");
-			else
+		/* finally, we're ready to actually get some stuff done. */
+
+		do
+		{
+			rs = PQexec((PGconn *)entryConn, "BEGIN");
+			if (PQresultStatus((PGresult *)rs) != PGRES_COMMAND_OK)
+				break;
+
+			if ((updateMask & QDMIRROR_UPDATEMASK_VALIDFLAG) != 0)
 			{
-				count = snprintf(detailValue, sizeof(detailValue),
-						 		 "'%s'",
-						 		 detailStateString);
-				if (count >= sizeof(detailValue))
+				count = snprintf(cmd, sizeof(cmd), UPDATE_VALIDFLAG_CMD, (validFlag ? 't' : 'f'), ftsQDMirrorInfo->dbid);
+				if (count >= sizeof(cmd))
+				{
+					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+									errmsg("QDMirroringUpdate: format command string failure")));
+				}
+
+				rs = PQexec((PGconn *)entryConn, cmd);
+				if (PQresultStatus((PGresult *)rs) != PGRES_COMMAND_OK)
+				{
+					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+									errmsg("QDMirroringUpdate: could not execute command '%s'", cmd)));
+					break;
+				}
+			}
+
+			if ((updateMask & QDMIRROR_UPDATEMASK_MASTERMIRRORING)!= 0)
+			{
+				switch (state)
+				{
+					case QDMIRROR_STATE_NONE:
+						summaryStateString = "None";
+						break;
+
+					case QDMIRROR_STATE_NOTCONFIGURED:
+						summaryStateString = "Not Configured";
+						break;
+
+					case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
+					case QDMIRROR_STATE_POSITIONINGTOEND:
+					case QDMIRROR_STATE_CATCHUPPENDING:
+					case QDMIRROR_STATE_CATCHINGUP:
+						summaryStateString = "Synchronizing";
+						break;
+
+					case QDMIRROR_STATE_SYNCHRONIZED:
+						summaryStateString = "Synchronized";
+						break;
+
+					case QDMIRROR_STATE_DISABLED:
+						summaryStateString = "Not Synchronized";
+						break;
+
+					default:
+						summaryStateString = "Unknown";
+						break;
+				}
+
+				if (state == QDMIRROR_STATE_DISABLED)
+				{
+					detailStateString = 
+						QDMirroringDisabledReasonToString(disabledReason);
+				}
+				else
+				{
+					detailStateString = NULL;
+				}
+
+				if (detailStateString == NULL)
+				{
+					strcpy(detailValue, "null");
+				}
+				else
+				{
+					count = snprintf(detailValue, sizeof(detailValue), "'%s'", detailStateString);
+					if (count >= sizeof(detailValue))
+					{
+						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+										errmsg("QDMirroringUpdate: format command string failure")));
+					}
+				}
+
+				QDMirroringFormatTime(logTimeStr, sizeof(logTimeStr), lastLogTimeVal);
+
+				/*
+				 * Escape quote the error string before putting in DML statement...
+				 */
+				if (errorMessage != NULL)
+				{
+					int errorMessageLen = strlen(errorMessage);
+
+					if (errorMessageLen == 0)
+					{
+						strcpy(errorMessageQuoted, "null");
+					}
+					else
+					{
+						size_t escapedLen;
+					
+						errorMessageQuoted[0] = '\'';
+						escapedLen = PQescapeString(&errorMessageQuoted[1], errorMessage, errorMessageLen);
+						errorMessageQuoted[escapedLen + 1] = '\'';
+						errorMessageQuoted[escapedLen + 2] = '\0';
+
+						elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "Error message quoted: \"%s\"", errorMessageQuoted);
+					}
+				}
+				else
+				{
+					strcpy(errorMessageQuoted, "null");
+				}
+				count = snprintf(cmd, sizeof(cmd), UPDATE_MASTER_MIRRORING_CMD,
+								 summaryStateString, detailValue, logTimeStr, errorMessageQuoted);
+
+				if (count >= sizeof(cmd))
+				{
+					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+									errmsg("QDMirroringUpdate: format command string failure")));
+				}
+
+				rs = PQexec((PGconn *)entryConn, cmd);
+				if (PQresultStatus((PGresult *)rs) != PGRES_COMMAND_OK)
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("FTS: format command string failure")));
+							 errmsg("QDMirroringUpdate: could not execute command '%s'", cmd)));
+					break;
 				}
-			}
 
-			QDMirroringFormatTime(logTimeStr, sizeof(logTimeStr), 
-								  lastLogTimeVal);
-			
-			/*
-			 * Escape quote the error string before putting in DML statement...
-			 */
-			if (errorMessage != NULL)
-			{
-				int errorMessageLen = strlen(errorMessage);
+				elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
+					 "Successfully executed command \"%s\"", cmd);
 
-				if (errorMessageLen == 0)
-					strcpy(errorMessageQuoted, "null");
-				else
-				{
-					size_t escapedLen;
-					
-					errorMessageQuoted[0] = '\'';
-					escapedLen = PQescapeString(
-						&errorMessageQuoted[1], 
-						errorMessage, 
-						errorMessageLen);
-					errorMessageQuoted[escapedLen + 1] = '\'';
-					errorMessageQuoted[escapedLen + 2] = '\0';
-
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
-						 "Error message quoted: \"%s\"", errorMessageQuoted);
-				}
+				rs = PQexec((PGconn *)entryConn, "COMMIT");
+				if (PQresultStatus((PGresult *)rs) != PGRES_COMMAND_OK)
+					break;
 			}
-			else
-				strcpy(errorMessageQuoted, "null");
-			
-			count = snprintf(cmd, sizeof(cmd),
-					 		 UPDATE_MASTER_MIRRORING_CMD,
-					 		 summaryStateString,
-					 		 detailValue,
-					 		 logTimeStr,
-					 		 errorMessageQuoted);
-			if (count >= sizeof(cmd))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("FTS: format command string failure")));
-			}
-			err = SPI_execute(cmd, false, 0);
-			if (err != SPI_OK_UPDATE)
-			{
-				elog(ERROR, "SPI_execute command \"%s\" failed with error %d",
-					 cmd, err);
-			}
-
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
-				 "Successfully executed command \"%s\"",
-				 cmd);
 		}
-		
-		SPI_finish();
+		while (0);
+
+		PQclear((PGresult *)rs);
+		PQfinish((PGconn *)entryConn);
+		free(entryBuffer->data);
 
 		CommitTransactionCommand();
 	}
 	PG_CATCH();
 	{
-		/* 
-		 * Report the unexpected error.
-		 */
-		elog_dismiss(NOTICE);
+		PQclear((PGresult *)rs);
+		PQfinish((PGconn *)entryConn);
+		free(entryBuffer->data);
 
 		AbortCurrentTransaction();
 	}
 	PG_END_TRY();
 
+	return;
 }
 
 void
@@ -1462,7 +1622,7 @@ FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation)
 	
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
-	if(ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
 	{
 		LWLockRelease(ftsQDMirrorLock);
 		return;
@@ -1497,7 +1657,7 @@ FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *ne
 	
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
-	if(ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
 	{
 		LWLockRelease(ftsQDMirrorLock);
 		
