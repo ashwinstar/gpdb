@@ -2407,7 +2407,11 @@ static inline void
 write_syslogger_file_string(const char *str, bool append_comma)
 {
 	if (str != NULL)
-		write_syslogger_file_binary(str, strlen(str));
+	{
+		write_syslogger_file_binary("\"", 1);
+		syslogger_write_str(str, strlen(str), true);
+		write_syslogger_file_binary("\"", 1);
+	}
 
 	if (append_comma)
 		write_syslogger_file_binary(",", 1);
@@ -2464,7 +2468,7 @@ write_syslogger_in_csv(ErrorData *edata)
 	/* GPDB specific options */
 	syslogger_write_int32(true, "con", gp_session_id, true); 
 	syslogger_write_int32(true, "cmd", gp_command_count, true); 
-	syslogger_write_int32(false, Gp_is_primary == 't'? "seg" : "mir", Gp_segment, true); 
+	syslogger_write_int32(false, Gp_is_primary ? "seg" : "mir", Gp_segment, true); 
 	syslogger_write_int32(true, "slice", currentSliceId, true); 
 	{
 		DistributedTransactionId dist_trans_id;

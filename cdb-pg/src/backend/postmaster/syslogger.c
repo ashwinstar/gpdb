@@ -807,7 +807,7 @@ typedef struct CSVChunkStr
  * We use the PostgreSQL defaults for CSV, i.e. quote = escape = '"'
  * If it's NULL, append nothing.
  */
-static inline int syslogger_write_str(const char *data, int len, bool csv)
+int syslogger_write_str(const char *data, int len, bool csv)
 {
     int cnt = 0;
 
