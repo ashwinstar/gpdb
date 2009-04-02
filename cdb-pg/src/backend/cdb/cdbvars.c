@@ -824,7 +824,7 @@ gpvars_assign_gp_autostats_mode(const char *newval, bool doit, GucSource source 
 	if (newval == NULL || newval[0] == 0 ||
 		!pg_strcasecmp("none", newval))
 		newtype = GP_AUTOSTATS_NONE;
-	else if (!pg_strcasecmp("on_change", newval))
+	else if (!pg_strcasecmp("on_change", newval) || !pg_strcasecmp("onchange", newval))
 		newtype = GP_AUTOSTATS_ON_CHANGE;
 	else if (!pg_strcasecmp("on_no_stats", newval))
 		newtype = GP_AUTOSTATS_ON_NO_STATS;
