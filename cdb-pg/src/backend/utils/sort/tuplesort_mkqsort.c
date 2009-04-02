@@ -13,6 +13,8 @@
 #include "postgres.h"
 #include "tuplesort_mk.h"
 
+#include "miscadmin.h"
+
 #ifdef MKQSORT_VERIFY 
 extern void mkqsort_verify(MKEntry *a, int l, int r, MKContext *mkctxt);
 #endif
@@ -205,6 +207,8 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 
 	Assert(ctxt);
 	Assert(lv < ctxt->total_lv);
+
+    CHECK_FOR_INTERRUPTS();
 
 	if(right <= left)
 		return;

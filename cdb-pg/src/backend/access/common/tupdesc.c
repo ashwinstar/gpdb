@@ -298,7 +298,7 @@ DecrTupleDescRefCount(TupleDesc tupdesc)
  * We don't compare tdrefcount, either.
  */
 bool
-equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2, bool checkconstr)
+equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2, bool strict)
 {
 	int			i,
 				j,
@@ -306,7 +306,7 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2, bool checkconstr)
 
 	if (tupdesc1->natts != tupdesc2->natts)
 		return false;
-	if (tupdesc1->tdtypeid != tupdesc2->tdtypeid)
+	if (strict && tupdesc1->tdtypeid != tupdesc2->tdtypeid)
 		return false;
 	if (tupdesc1->tdhasoid != tupdesc2->tdhasoid)
 		return false;
@@ -358,7 +358,7 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2, bool checkconstr)
 			return false;
 	}
 
-    if (!checkconstr) 
+    if (!strict) 
         return true;
 
 	if (tupdesc1->constr != NULL)

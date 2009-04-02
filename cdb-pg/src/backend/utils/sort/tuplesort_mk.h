@@ -180,11 +180,12 @@ typedef void (*MKCopyFree) (MKEntry *dst, MKEntry *src, void *ctxt);
 static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, void *ctxt, MKPrepare prep)
 {
     MKEntry *last = a+j;
+    MKEntry *cur = a+i;
 
     do {
-        (prep)(a, ctxt);
-        mke_set_lv(a, lv);
-    } while (++a <= last);
+        (prep)(cur, ctxt);
+        mke_set_lv(cur, lv);
+    } while (++cur <= last);
 }
 
 typedef struct MKContext_LvCommon
