@@ -851,7 +851,7 @@ url_fclose(URL_FILE *file, bool failOnError)
 			else if (ret == -1)
 			{
 				/* pclose()/wait4() ended with an error; errno should be valid */
-				free(file);
+				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 								errmsg("cannot close external table command: %m"),
@@ -864,7 +864,7 @@ url_fclose(URL_FILE *file, bool failOnError)
 				 * generates a descriptive message from the exit code.
 				 */
 				char buf[512];
-				free(file);
+				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 								errmsg("external table command ended with error: %s",
