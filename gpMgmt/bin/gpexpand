@@ -207,71 +207,56 @@ status_detail_table_sql="""CREATE TABLE %s.%s
                           expansion_finished timestamp,
                           source_bytes numeric ) """ % (gpexpand_schema, status_detail_table)
 # gpexpand views
-table_progress_view='table_progress'
-table_progress_view_sql="""CREATE VIEW %s.%s AS
+progress_view='expansion_progress'
+progress_view_sql="""CREATE VIEW %s.%s AS
 SELECT 
     CASE status 
         WHEN '%s' THEN 'Tables Expanded' 
         WHEN '%s' THEN 'Tables Left' 
         WHEN '%s' THEN 'Tables In Progress' 
-    END as "Table Status", 
-    count(*) 
-FROM %s.%s GROUP BY status""" % (gpexpand_schema, 
-                                 table_progress_view, 
-                                 done_status, 
-                                 undone_status, 
-                                 start_status, 
-                                 gpexpand_schema, 
-                                 status_detail_table)
+    END as Name, 
+    count(*)::text as Value 
+FROM %s.%s GROUP BY status
 
-byte_progress_view='byte_progress'
-byte_progress_view_sql="""CREATE VIEW %s.%s AS
+UNION
+
 SELECT 
     CASE status 
         WHEN '%s' THEN 'Bytes Done' 
         WHEN '%s' THEN 'Bytes Left' 
         WHEN '%s' THEN 'Bytes In Progress' 
-    END as "Value", 
-    SUM(source_bytes) 
-FROM %s.%s GROUP BY status""" % (gpexpand_schema, 
-                                 byte_progress_view, 
-                                 done_status, 
-                                 undone_status, 
-                                 start_status, 
-                                 gpexpand_schema, 
-                                 status_detail_table)
+    END as Name, 
+    SUM(source_bytes)::text as Value 
+FROM %s.%s GROUP BY status
 
-rate_estimate_view='rate_estimate'
-rate_estimate_view_sql="""CREATE VIEW %s.%s AS
+UNION
+
 SELECT 
-    (SUM(source_bytes) / 
-    extract(epoch FROM SUM(expansion_finished - expansion_started)) 
-    / 1024 / 1024)::text || ' MB/s' AS "Overall Expansion Rate" 
-FROM %s.%s
-WHERE status = '%s'""" % (gpexpand_schema, 
-                          rate_estimate_view, 
-                          gpexpand_schema, 
-                          status_detail_table, 
-                          done_status)
+    'Estimated Expansion Rate' as Name,
+    (SUM(source_bytes) / extract(epoch FROM SUM(expansion_finished - expansion_started)) / 1024 / 1024)::text || ' MB/s' AS Value
+FROM %s.%s 
+WHERE status = '%s'
 
-estimated_time_remaining_view='estimated_time_remaining'
-estimated_time_remaining_view_sql="""CREATE VIEW %s.%s AS
+UNION
+
 SELECT
+'Estimated Time to Completion' as Name,
 cast((SUM(source_bytes) /
   (SELECT SUM(source_bytes) / extract(epoch FROM SUM(expansion_finished - expansion_started)) 
-     FROM %s.%s WHERE status = '%s'))::text || ' seconds' as interval)
+     FROM %s.%s WHERE status = '%s'))::text || ' seconds' as interval)::text AS Value
 FROM %s.%s
 WHERE status = '%s' 
-  OR status = '%s'""" % (gpexpand_schema, 
-                         estimated_time_remaining_view, 
-                         gpexpand_schema, 
-                         status_detail_table,
-                         done_status, 
-                         gpexpand_schema, 
-                         status_detail_table,
-                         undone_status, 
-                         start_status)
-
+  OR status = '%s'""" % (gpexpand_schema, progress_view,
+                         done_status, undone_status, start_status,
+                         gpexpand_schema, status_detail_table,
+                         done_status, undone_status, start_status,
+                         gpexpand_schema, status_detail_table,
+                         gpexpand_schema, status_detail_table,
+                         done_status,
+                         gpexpand_schema, status_detail_table,
+                         done_status,
+                         gpexpand_schema, status_detail_table,
+                         start_status, undone_status)
 
 #-------------------------------------------------------------------------
 class InvalidStatusError(Exception): pass
@@ -1116,11 +1101,8 @@ class gpexpand:
         dbconn.execSQL(self.conn,status_detail_table_sql)
 
         #views
-        dbconn.execSQL(self.conn,table_progress_view_sql)
-        dbconn.execSQL(self.conn,byte_progress_view_sql)
-        dbconn.execSQL(self.conn,rate_estimate_view_sql)
-        dbconn.execSQL(self.conn,estimated_time_remaining_view_sql)
-        
+        dbconn.execSQL(self.conn,progress_view_sql)
+
         self.conn.commit()
         
         self.statusLogger.set_status('SETUP_EXPANSION_SCHEMA_DONE')
