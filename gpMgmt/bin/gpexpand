@@ -1777,8 +1777,7 @@ except Exception,e:
     if options.verbose:
         logger.exception("gpexpand failed. exiting...")
     else:
-        #TODO:  need a way of printing more user friendly error messages
-        logger.error("gpexpand failed: %s \n\nExiting...", e )
+        logger.error("gpexpand failed: %s \n\nExiting..." % e )
     if gp_expand is not None:
         gp_expand.shutdown()
     sys.exit(3)
