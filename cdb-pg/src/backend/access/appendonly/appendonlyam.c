@@ -1079,7 +1079,7 @@ doProcessTuple(
 	{
 		ExecStoreMemTuple(tuple, slot, false);
 
-		slot->tts_synthetic_ctid = scan->cdb_fake_ctid;
+		slot_set_ctid(slot, &(scan->cdb_fake_ctid));
 	}
 	
 	/* skip visibility test, all tuples are visible */

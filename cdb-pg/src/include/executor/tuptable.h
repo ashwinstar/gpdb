@@ -128,7 +128,7 @@ typedef struct TupleTableSlot
 	MemTuple PRIVATE_tts_memtuple;
 	void 	*PRIVATE_tts_mtup_buf;
 	uint32  PRIVATE_tts_mtup_buf_len;
-	ItemPointerData tts_synthetic_ctid;	/* needed if memtuple is stored on disk */
+	ItemPointerData PRIVATE_tts_synthetic_ctid;	/* needed if memtuple is stored on disk */
 	
 	/* Virtual tuple stuff */
 	int 	PRIVATE_tts_nvalid;		/* number of valid virtual tup entries */
@@ -261,6 +261,47 @@ static inline void slot_getallattrs(TupleTableSlot *slot)
 }
 
 extern Datum slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull);
+
+/*
+ * Set the synthetic ctid to a given ctid value.
+ *
+ * If the slot contains a memtuple or a virtual tuple, the PRIVATE_tts_synthetic_ctid
+ * is set to the given ctid value. If the slot contains a heap tuple, then t_self
+ * in the heap tuple is set to the given ctid value.
+ *
+ * This function will set both PRIVATE_tts_synthetic_ctid and heaptuple->t_self when
+ * both heap tuple and memtuple or virtual tuple are presented.
+ */
+static inline void slot_set_ctid(TupleTableSlot *slot, ItemPointer new_ctid)
+{
+	Assert(slot);
+
+	if (TupHasHeapTuple(slot))
+	{
+		HeapTuple tuple = TupGetHeapTuple(slot);
+		tuple->t_self = *new_ctid;
+	}
+	
+	if (TupHasMemTuple(slot) || TupHasVirtualTuple(slot))
+		slot->PRIVATE_tts_synthetic_ctid = *new_ctid;
+}
+
+/*
+ * Retrieve the synthetic ctid value from the slot.
+ *
+ * This function assumes that the PRIVATE_tts_synthetic_ctid and heaptuple->t_self
+ * are in sync if both of them are presented in the slot.
+ */
+static inline ItemPointer slot_get_ctid(TupleTableSlot *slot)
+{
+	if (TupHasHeapTuple(slot))
+	{
+		Assert(ItemPointerIsValid(&(slot->PRIVATE_tts_heaptuple->t_self)));
+		return &(slot->PRIVATE_tts_heaptuple->t_self);
+	}
+	
+	return &(slot->PRIVATE_tts_synthetic_ctid);
+}
 
 /*
  * Get an attribute from the tuple table slot.

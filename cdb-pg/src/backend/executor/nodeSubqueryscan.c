@@ -86,8 +86,6 @@ SubqueryNext(SubqueryScanState *node)
     if (node->cdb_want_ctid &&
         !TupIsNull(slot))
     {
-        HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
-
 		/* uninitialised */
 		if (!ItemPointerIsValid(&node->cdb_fake_ctid))
 		{
@@ -114,7 +112,7 @@ SubqueryNext(SubqueryScanState *node)
 
 		}
 
-        tuple->t_self = node->cdb_fake_ctid;
+		slot_set_ctid(slot, &node->cdb_fake_ctid);
     }
     if (!TupIsNull(slot))
     {
