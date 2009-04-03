@@ -389,8 +389,8 @@ QDMirroringUpdate(
 	CdbComponentDatabaseInfo *q;
 
 	volatile PQExpBuffer entryBuffer = NULL;
-	volatile PGconn *entryConn = NULL;
-	volatile PGresult   *rs;
+	volatile PGconn		*entryConn = NULL;
+	volatile PGresult	*rs = NULL;
 
 	PG_TRY();
 	{
