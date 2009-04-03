@@ -140,7 +140,17 @@ static Query *transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 					List **extras_before, List **extras_after);
 static List *transformInsertRow(ParseState *pstate, List *exprlist,
 				   List *stmtcols, List *icolumns, List *attrnos);
+
+/* 
+ * MPP-2506 [insert/update/delete] RETURNING clause not supported:
+ *   We have problems processing the returning clause, so for now we have 
+ *   simply removed it and replaced it with an error message.
+ */
+#define MPP_RETURNING_NOT_SUPPORTED
+#ifndef MPP_RETURNING_NOT_SUPPORTED
 static List *transformReturningList(ParseState *pstate, List *returningList);
+#endif
+
 static Query *transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 								 List **extras_before, List **extras_after);
 static Query *transformRuleStmt(ParseState *query, RuleStmt *stmt,
@@ -854,7 +864,22 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
 
+	/* 
+	 * MPP-2506 [insert/update/delete] RETURNING clause not supported:
+	 *   We have problems processing the returning clause, so for now we have 
+	 *   simply removed it and replaced it with an error message.
+	 */
+#ifdef MPP_RETURNING_NOT_SUPPORTED
+	if (stmt->returningList)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("The RETURNING clause of the DELETE statement is not "
+						"supported in this version of Greenplum Database.")));
+	}
+#else
 	qry->returningList = transformReturningList(pstate, stmt->returningList);
+#endif
 
 	/* CDB: Cursor position not available for errors below this point. */
 	pstate->p_breadcrumb.node = NULL;
@@ -1167,6 +1192,21 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		attnos = lnext(attnos);
 	}
 
+
+	/* 
+	 * MPP-2506 [insert/update/delete] RETURNING clause not supported:
+	 *   We have problems processing the returning clause, so for now we have 
+	 *   simply removed it and replaced it with an error message.
+	 */
+#ifdef MPP_RETURNING_NOT_SUPPORTED
+	if (stmt->returningList)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("The RETURNING clause of the INSERT statement is not "
+						"supported in this version of Greenplum Database.")));
+	}
+#else
 	/*
 	 * If we have a RETURNING clause, we need to add the target relation to
 	 * the query namespace before processing it, so that Var references in
@@ -1182,6 +1222,8 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		qry->returningList = transformReturningList(pstate,
 													stmt->returningList);
 	}
+#endif
+
 
 	/* CDB: Cursor position not available for errors below this point. */
 	pstate->p_breadcrumb.node = NULL;
@@ -9485,7 +9527,22 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
 
+	/* 
+	 * MPP-2506 [insert/update/delete] RETURNING clause not supported:
+	 *   We have problems processing the returning clause, so for now we have 
+	 *   simply removed it and replaced it with an error message.
+	 */
+#ifdef MPP_RETURNING_NOT_SUPPORTED
+	if (stmt->returningList)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("The RETURNING clause of the UPDATE statement is not "
+						"supported in this version of Greenplum Database.")));
+	}
+#else
 	qry->returningList = transformReturningList(pstate, stmt->returningList);
+#endif
 
     /*
      * CDB: Untyped Const or Param nodes in a subquery in the FROM clause
@@ -9582,6 +9639,13 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	return qry;
 }
 
+
+/* 
+ * MPP-2506 [insert/update/delete] RETURNING clause not supported:
+ *   We have problems processing the returning clause, so for now we have 
+ *   simply removed it and replaced it with an error message.
+ */
+#ifndef MPP_RETURNING_NOT_SUPPORTED
 /*
  * transformReturningList -
  *	handle a RETURNING clause in INSERT/UPDATE/DELETE
@@ -9645,6 +9709,7 @@ transformReturningList(ParseState *pstate, List *returningList)
 
 	return rlist;
 }
+#endif
 
 /*
  * transformAlterTable_all_PartitionStmt -
