@@ -1202,7 +1202,7 @@ void updateAppendOnlyStats(PGconn* pConn)
 			resetPQExpBuffer(update_query);
 			appendPQExpBuffer(update_query,
 							  "SELECT * "
-							  "FROM gp_update_ao_master_stats('%s','%s')",
+							  "FROM gp_update_ao_master_stats('%s.%s')",
 							  schemaname, tablename);
 
 			update_res = PQexec(pConn, update_query->data);

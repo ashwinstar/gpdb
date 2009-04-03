@@ -12,3 +12,5 @@ objoid|classoid|objsubid|description
 7170|1255|0|show append only table tuple distribution across segment databases
 7171|1255|0|show append only table compression ratio
 7172|1255|0|show append only table compression ratio
+7173|1255|0|append only tables utility function
+7174|1255|0|append only tables utility function

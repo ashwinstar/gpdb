@@ -90,8 +90,11 @@ UpdateFileSegInfo(Relation parentrel,
 extern FileSegTotals *
 GetSegFilesTotals(Relation parentrel);
 
-extern int 
-gp_update_ao_master_stats__(PG_FUNCTION_ARGS);
+extern Datum 
+gp_update_ao_master_stats_name(PG_FUNCTION_ARGS);
+
+extern Datum 
+gp_update_ao_master_stats_oid(PG_FUNCTION_ARGS);
 
 extern Datum 
 get_ao_distribution_name(PG_FUNCTION_ARGS);

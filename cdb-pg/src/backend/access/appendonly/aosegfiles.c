@@ -695,52 +695,28 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
  * segment. An example for this scenario is gp_restore. running this function
  * puts the QD aoseg table back in sync.
  */
-PG_FUNCTION_INFO_V1(gp_update_ao_master_stats__);
-int
-gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
+static Datum
+gp_update_ao_master_stats_internal(Oid relid)
 {
 	StringInfoData 	sqlstmt;
-	RangeVar		*parentrv;
 	Relation		parentrel;
 	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
-	char			*namespace = NULL;
 	char			*relname = NULL;
 	char			relstorage;
-	short			nargs = PG_NARGS();
 	int 			proc;
 	int 			ret;
 	float8			total_count = 0;
+	MemoryContext 	oldcontext = CurrentMemoryContext;
+
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-
-	/* this check may be redundant. error is caught beforehand */
-	if(nargs != 2)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("gp_update_ao_master_stats called with %d arguments",
-						nargs),
-				errhint("arguments should be (schemaname, tablename)")));
-	}
-
-	if (!PG_ARGISNULL(0))
-		namespace = GET_STR(PG_GETARG_TEXT_P(0));
-
-	if (PG_ARGISNULL(1))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("gp_update_ao_master_stats called with NULL relname")));
-
-	relname = GET_STR(PG_GETARG_TEXT_P(1));
-
-	parentrv = makeRangeVar(namespace, relname);
 
 	/*
 	 * get the relid of the parent (main) relation
 	 */
-	parentrel = heap_openrv(parentrv, RowExclusiveLock);
+	parentrel = heap_open(relid, RowExclusiveLock);
 
 	relstorage = parentrel->rd_rel->relstorage;
 	if(!relstorage_is_ao(relstorage))
@@ -797,12 +773,16 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 				float8 		qe_tupcount;
 				char 		*val_segno;
 				char 		*val_tupcount;
+				MemoryContext 	cxt_save;
 
 				/*
 				 * Get totals from QE's for a specific segment
 				 */
 				val_segno = SPI_getvalue(tuple, tupdesc, 1);
 				val_tupcount = SPI_getvalue(tuple, tupdesc, 2);
+
+				/* use our own context so that SPI won't free our stuff later */
+				cxt_save = MemoryContextSwitchTo(oldcontext);
 
 				/*
 				 * Convert to desired data type
@@ -846,6 +826,8 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 
 				pfree(fsinfo);
 
+				MemoryContextSwitchTo(cxt_save);
+
 				/*
 				 * TODO: if an entry exists for this rel in the AO hash table
 				 * need to also update that entry in shared memory. Need to
@@ -878,7 +860,38 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	pfree(sqlstmt.data);
 	heap_close(parentrel, RowExclusiveLock);
 
-	return total_count;
+	PG_RETURN_FLOAT8(total_count);
+}
+
+Datum
+gp_update_ao_master_stats_name(PG_FUNCTION_ARGS)
+{
+	RangeVar		*parentrv;
+	text	   		*relname = PG_GETARG_TEXT_P(0);
+	Oid				relid;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	parentrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
+	relid = RangeVarGetRelid(parentrv, false);
+
+	return gp_update_ao_master_stats_internal(relid);
+}
+
+
+/*
+ * get_ao_compression_ratio_oid
+ *
+ * same as get_ao_compression_ratio_name, but takes rel oid as argument.
+ */
+Datum
+gp_update_ao_master_stats_oid(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	return gp_update_ao_master_stats_internal(relid);
 }
 
 typedef struct

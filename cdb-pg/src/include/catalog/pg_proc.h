@@ -4760,8 +4760,6 @@ DESCR("window final function");
 DATA(insert OID = 7305 (  ntile_final   PGNSP PGUID 12 f f t f i 2 20 f "1016 20" _null_ _null_ _null_ ntile_final - _null_ ));
 DESCR("window final function");
 
-DATA(insert OID = 7156 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 2 23 f "25 25" _null_ _null_ _null_ gp_update_ao_master_stats__  - _null_  ));
-DESCR("append only tables utility function");
 DATA(insert OID = 7169 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 1 2249 f "26" "{25,25,23,701}" "{i,i,o,o}" "{schema,table,segmentid,tupcount}" get_ao_distribution_oid  - _null_  ));
 DESCR("show append only table tuple distribution across segment databases");
 DATA(insert OID = 7170 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 1 2249 f "25" "{25,25,23,701}" "{i,i,o,o}" "{schema,table,segmentid,tupcount}" get_ao_distribution_name  - _null_  ));
@@ -4770,6 +4768,10 @@ DATA(insert OID = 7171 (  get_ao_compression_ratio    PGNSP PGUID 12 f f f f v 1
 DESCR("show append only table compression ratio");
 DATA(insert OID = 7172 (  get_ao_compression_ratio    PGNSP PGUID 12 f f f f v 1 701 f "25" _null_ _null_ _null_ get_ao_compression_ratio_name  - _null_  ));
 DESCR("show append only table compression ratio");
+DATA(insert OID = 7173 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 1 701 f "26" _null_ _null_ _null_ gp_update_ao_master_stats_oid  - _null_  ));
+DESCR("append only tables utility function");
+DATA(insert OID = 7174 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 1 701 f "25" _null_ _null_ _null_ gp_update_ao_master_stats_name  - _null_  ));
+DESCR("append only tables utility function");
 
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));
