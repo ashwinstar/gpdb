@@ -1621,7 +1621,7 @@ static struct config_bool ConfigureNamesBool[] =
     	{"gp_use_dispatch_agent", PGC_USERSET, DEVELOPER_OPTIONS,
     		gettext_noop("True says to use Query Dispatch Agents to improve dispatching."),
     		NULL,
-			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL
     	},
     	&gp_use_dispatch_agent,
     	false, assign_gp_use_dispatch_agent, NULL
