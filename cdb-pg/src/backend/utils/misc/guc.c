@@ -1385,7 +1385,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 		},
 		&gp_enable_mk_sort,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 #ifdef USE_ASSERT_CHECKING

@@ -7,6 +7,7 @@ create table skewed (a int, b int);
 create table spread (a int, b int);
 
 set gp_interconnect_type=tcp;
+set gp_enable_mk_sort = off;
 
 insert into skewed select 1, i from generate_series(1, 1000) i;
 insert into spread select i, 1 from generate_series(1, 1000) i;
@@ -42,4 +43,5 @@ insert into foo values (1, 'test');
 select * from foo;
 abort;
 
+set gp_enable_mk_sort = on;
 drop table if exists foo;
