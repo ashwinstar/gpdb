@@ -2959,6 +2959,10 @@ static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
     i = mkheap_puget(state->mkheap, e); 
     tupsort_cpfr(e, NULL, mk_get_ctxt(&state->mkctxt, mke_get_lv(e)));
     Assert(state->mkheap->count == state->mkctxt.limit);
+
+    Assert(!mke_is_empty(e));
+    Assert(e->ptr);
+    pfree(e->ptr);
 } 
 
 static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e)
