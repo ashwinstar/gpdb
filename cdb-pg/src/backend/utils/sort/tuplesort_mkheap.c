@@ -588,10 +588,16 @@ int mkheap_puget_reader(MKHeap *mkheap, MKEntry *out)
 
 int mkheap_puget(MKHeap *mkheap, MKEntry *out)
 {
+    int ret = 0;
     if(mkheap->nreader > 0)
-        return mkheap_puget_reader(mkheap, out);
+        ret = mkheap_puget_reader(mkheap, out);
     else
-        return mkheap_puget_impl(mkheap, out);
+        ret = mkheap_puget_impl(mkheap, out);
+
+    Assert(out);
+    if(mkheap->mkctxt->cpfr)
+        (mkheap->mkctxt->cpfr)(out, NULL, mk_get_ctxt(mkheap->mkctxt, mke_get_lv(out)));
+    return ret;
 }
 
 MKEntry *mkheap_peek(MKHeap *mkheap)

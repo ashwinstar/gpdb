@@ -1346,10 +1346,7 @@ tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
             Assert(pos == &state->pos && pos->cur_work_tape == NULL);
 
             *should_free = true;
-            mkheap_puget_reader(state->mkheap, e);
-
-            tupsort_cpfr(e, NULL, mk_get_ctxt(&state->mkctxt, mke_get_lv(e)));
-
+            mkheap_puget(state->mkheap, e);
             return !mke_is_empty(e);
 
         default:
@@ -1795,7 +1792,7 @@ mergeonerun_mk(Tuplesortstate_mk *state)
 
     Assert(state->mkheap);
 
-    while (mkheap_puget_reader(state->mkheap, &e) >= 0) 
+    while (mkheap_puget(state->mkheap, &e) >= 0) 
         WRITETUP(state, lt, &e); 
 
     /*
@@ -2957,12 +2954,12 @@ static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
     Assert(state->mkheap && !mkheap_empty(state->mkheap));
     Assert(state->mkheap->count == state->mkctxt.limit);
     i = mkheap_puget(state->mkheap, e); 
-    tupsort_cpfr(e, NULL, mk_get_ctxt(&state->mkctxt, mke_get_lv(e)));
-    Assert(state->mkheap->count == state->mkctxt.limit);
 
     Assert(!mke_is_empty(e));
     Assert(e->ptr);
-    pfree(e->ptr);
+    FREEMEM(state, GetMemoryChunkSpace(e->ptr)); 
+    pfree(e->ptr); 
+    e->ptr = NULL;
 } 
 
 static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e)
