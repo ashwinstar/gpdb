@@ -181,10 +181,10 @@ static Dllist *BackendList;
 typedef enum pmsub_type
 {
 	SeqServerProc = 0,
-	WalSendServerProc,  
+	WalSendServerProc,
 	WalRedoServerProc,
 #ifdef DO_DDA_SERV
-	DdaServerProc, 
+	DdaServerProc,
 #endif
 	FtsProbeProc,
 	MaxPMSubType
@@ -276,7 +276,7 @@ typedef enum PMSUBPROC_FLAGS
 
 typedef struct pmsubproc
 {
-	pid_t		pid;			/* process id (0 when not running) */	  
+	pid_t		pid;			/* process id (0 when not running) */
 	PMSubType   procType;       /* process type */
 	PMSubStartCallback *serverStart; /* server start function */
 	char       *procName;
@@ -284,23 +284,23 @@ typedef struct pmsubproc
 							    * of instance to start the process */
 } PMSubProc;
 
-static PMSubProc PMSubProcList[MaxPMSubType] = 
+static PMSubProc PMSubProcList[MaxPMSubType] =
 {
-	{0, SeqServerProc, 
-	 (PMSubStartCallback*)&seqserver_start, 
+	{0, SeqServerProc,
+	 (PMSubStartCallback*)&seqserver_start,
 	 "seqserver process", PMSUBPROC_FLAG_QD},
-	{0, WalSendServerProc, 
-	 (PMSubStartCallback*)&walsendserver_start, 
+	{0, WalSendServerProc,
+	 (PMSubStartCallback*)&walsendserver_start,
 	 "walsendserver process",(PMSUBPROC_FLAG_QD|PMSUBPROC_FLAG_STOP_AFTER_BGWRITER)},
-	{0, WalRedoServerProc, 
-	 (PMSubStartCallback*)&walredoserver_start, 
+	{0, WalRedoServerProc,
+	 (PMSubStartCallback*)&walredoserver_start,
 	 "walredoserver process", PMSUBPROC_FLAG_STANDBY},
-	{0, FtsProbeProc, 
-	 (PMSubStartCallback*)&ftsprobe_start, 
+	{0, FtsProbeProc,
+	 (PMSubStartCallback*)&ftsprobe_start,
 	 "ftsprobe process", PMSUBPROC_FLAG_QD},
 #ifdef DO_DDA_SERV
-	{0, DdaServerProc, 
-	 (PMSubStartCallback*)&ddaserver_start, 
+	{0, DdaServerProc,
+	 (PMSubStartCallback*)&ddaserver_start,
 	 "ddaserver process", PMSUBPROC_FLAG_QD_AND_QE},
 #endif
 };
@@ -317,7 +317,7 @@ static bool FatalError = false; /* T if recovering from backend crash */
 bool		ClientAuthInProgress = false;		/* T during new-client
 												 * authentication */
 
-bool redirection_done = false; 
+bool redirection_done = false;
 
 static bool force_autovac = false; /* received START_AUTOVAC signal */
 
@@ -528,7 +528,7 @@ PostmasterMain(int argc, char *argv[])
 	int			i;
 
 	MyProcPid = PostmasterPid = getpid();
-	
+
 	MyStartTime = time(NULL);
 
 	IsPostmasterEnvironment = true;
@@ -807,9 +807,9 @@ PostmasterMain(int argc, char *argv[])
 	 * Check for invalid combinations of GUC settings.
      *
      * CDB: Decouple NBuffers from MaxBackends.  The entry db doesn't benefit
-     * from buffers in excess of the global catalog size; this is typically 
+     * from buffers in excess of the global catalog size; this is typically
      * small and unrelated to the number of clients.  Segment dbs need enough
-     * buffers to accommodate the QEs concurrently accessing the database; but 
+     * buffers to accommodate the QEs concurrently accessing the database; but
      * non-leaf QEs don't necessarily access the database (some are used only
      * for sorting, hashing, etc); so again the number of buffers need not be
      * in proportion to the number of connections.
@@ -827,7 +827,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Check for invalid combinations of GUC settings.
 	 */
-	if (ReservedBackends >= MaxBackends)
+	if (ReservedBackends > MaxBackends)
 	{
 		write_stderr("%s: superuser_reserved_connections must be less than max_connections\n", progname);
 		ExitPostmaster(1);
@@ -1032,7 +1032,7 @@ PostmasterMain(int argc, char *argv[])
 	if (!load_hba())
 	{
 	/*
-		 * It makes no sense continue if we fail to load the HBA file, since 
+		 * It makes no sense continue if we fail to load the HBA file, since
 		 * there is no way to connect to the database in this case.
 	 */
 		ereport(FATAL,
@@ -1537,20 +1537,20 @@ ServerLoop(void)
 		{
 			PMSubProc *subProc = &PMSubProcList[s];
 
-			if (subProc->pid == 0 && 
-				StartupPID == 0 && 
-				!FatalError && 
+			if (subProc->pid == 0 &&
+				StartupPID == 0 &&
+				!FatalError &&
 				Shutdown == NoShutdown &&
 				ServiceStartable(subProc))
 			{
-				subProc->pid = 
+				subProc->pid =
 					(subProc->serverStart)();
 				if (Debug_print_server_processes)
 					elog(LOG,"started '%s' as pid %ld",
 						 subProc->procName, (long)subProc->pid);
 			}
 		}
-		
+
 		/*
 		 * Touch the socket and lock file every 58 minutes, to ensure that
 		 * they are not removed by overzealous /tmp-cleaning tasks.  We assume
@@ -2100,7 +2100,7 @@ ClosePostmasterPorts(bool am_syslogger)
 	}
 
 
-/* XXX XXX: 
+/* XXX XXX:
 #ifndef WIN32
 #define INVALID_PIPE_VAL -1
 #else
@@ -2177,7 +2177,7 @@ SIGHUP_handler(SIGNAL_ARGS)
 				PMSubProc *subProc = &PMSubProcList[ii];
 
 				if (subProc->pid != 0)
-					signal_child(subProc->pid, SIGHUP);		
+					signal_child(subProc->pid, SIGHUP);
 			}
 		}
 		if (SysLoggerPID != 0)
@@ -2259,17 +2259,17 @@ pmdie(SIGNAL_ARGS)
  					elog(LOG,"Startup going or fatal error");
   				break;			/* let reaper() handle this */
  			}
- 
- 			/* 
+
+ 			/*
  			 * Tell the various services to shut down too; nothing left for
- 			 * them to do 
+ 			 * them to do
  			 */
- 			anyServiceSignaled = 
+ 			anyServiceSignaled =
  				StopServices(
  					/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER,
  					SIGUSR2);
  			if (anyServiceSignaled)
- 				break;			/* let reaper() handle this */		
+ 				break;			/* let reaper() handle this */
 
 			/* Start the bgwriter if not running */
 			if (BgWriterPID == 0 && !SyncMaster)
@@ -2277,15 +2277,15 @@ pmdie(SIGNAL_ARGS)
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGUSR2);
- 			
- 			/* 
- 			 * Stop the services that wanted to be stopped after the 
+
+ 			/*
+ 			 * Stop the services that wanted to be stopped after the
  			 * background writer.
  			 */
  			anyServiceSignaled = StopServices(0, SIGUSR2);
  			if (anyServiceSignaled)
- 				break;			/* let reaper() handle this */		
- 
+ 				break;			/* let reaper() handle this */
+
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
@@ -2335,16 +2335,16 @@ pmdie(SIGNAL_ARGS)
 			}
 			if (FatalError)
 				break;			/* let reaper() handle this case */
- 
- 			
+
+
  			/* Tell seqserver to shut down too; nothing left for it to do */
- 			anyServiceSignaled = 
+ 			anyServiceSignaled =
  				StopServices(
  					/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER,
  					SIGUSR2);
  			if (anyServiceSignaled)
- 				break;			/* let reaper() handle this */		
- 
+ 				break;			/* let reaper() handle this */
+
 			/* Start the bgwriter if not running */
 			if (BgWriterPID == 0 && !SyncMaster)
 				BgWriterPID = StartBackgroundWriter();
@@ -2355,14 +2355,14 @@ pmdie(SIGNAL_ARGS)
   				signal_child(BgWriterPID, SIGUSR2);
  				break;
  			}
- 			
- 			/* 
- 			 * Stop the services that wanted to be stopped after the 
+
+ 			/*
+ 			 * Stop the services that wanted to be stopped after the
  			 * background writer.
  			 */
  			anyServiceSignaled = StopServices(/* excludeFlags */ 0, SIGUSR2);
  			if (anyServiceSignaled)
- 				break;			/* let reaper() handle this */		
+ 				break;			/* let reaper() handle this */
 
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
@@ -2370,7 +2370,7 @@ pmdie(SIGNAL_ARGS)
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
- 
+
  			if (SyncMaster)
  				ExitPostmaster(0);
 			break;
@@ -2546,10 +2546,10 @@ static void do_reaper()
 				{
 					PMSubProc *subProc = &PMSubProcList[s];
 
-					if (subProc->pid == 0 && 
+					if (subProc->pid == 0 &&
 						ServiceStartable(subProc))
 					{
-						subProc->pid = 
+						subProc->pid =
 							(subProc->serverStart)();
 
 						if (Debug_print_server_processes)
@@ -2574,7 +2574,7 @@ static void do_reaper()
 		{
 			PMSubProc *subProc = &PMSubProcList[s];
 
-			if (subProc->pid != 0 && 
+			if (subProc->pid != 0 &&
 				pid == subProc->pid)
 			{
 				subProc->pid = 0;
@@ -2582,13 +2582,13 @@ static void do_reaper()
 				if (!EXIT_STATUS_0(exitstatus))
 					LogChildExit(LOG, subProc->procName,
 								 pid, exitstatus);
-				
+
 				if (ServiceStartable(subProc))
 				{
-					if (StartupPID == 0 && 
+					if (StartupPID == 0 &&
 						!FatalError && Shutdown == NoShutdown)
 					{
-						subProc->pid = 
+						subProc->pid =
 							(subProc->serverStart)();
 						if (Debug_print_server_processes)
 						{
@@ -2598,7 +2598,7 @@ static void do_reaper()
 						}
 					}
 				}
-				
+
 				wasServiceProcess = true;
 				break;
 			}
@@ -2641,7 +2641,7 @@ static void do_reaper()
 				StopServices(/* excludeFlags */ 0, SIGUSR2);
 										// Get the service processes that
 										// want to stop after bgwriter.
-				
+
 				ExitPostmaster(0);
 			}
 
@@ -2781,14 +2781,14 @@ static void do_reaper()
 
 		if (ProcGetMppLocalProcessCounter(&Save_MppLocalProcessCounter))
 			ereport(LOG,
-					(errmsg("gp_session_id high-water mark is %d", 
+					(errmsg("gp_session_id high-water mark is %d",
 					        Save_MppLocalProcessCounter)));
 
 		/*
 		 * And, save the DTM start time, too.
 		 */
 		Save_DtxStartTime = getDtxStartTime();
-		
+
 		shmem_exit(0);
 		reset_shared(PostPortNumber);
 
@@ -2802,8 +2802,8 @@ static void do_reaper()
 	{
 		if (DLGetHead(BackendList) || StartupPID != 0 || AutoVacPID != 0)
 			goto reaper_done;
-				
-		anyServiceSignaled = 
+
+		anyServiceSignaled =
 			StopServices(
 				/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER,
 				SIGUSR2);
@@ -2824,7 +2824,7 @@ static void do_reaper()
 			 */
 			StopServices(/* excludeFlags */ 0, SIGUSR2);
 		}
-		
+
 		/* Tell pgarch to shut down too; nothing left for it to do */
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGQUIT);
@@ -2847,7 +2847,7 @@ static bool
 ServiceProcessesExist(int excludeFlags)
 {
 	int s;
-	
+
 	for (s=0; s < MaxPMSubType; s++)
 	{
 		PMSubProc *subProc = &PMSubProcList[s];
@@ -2864,7 +2864,7 @@ StopServices(int excludeFlags, int signal)
 {
 	int s;
 	bool signaled = false;
-	
+
 	for (s=0; s < MaxPMSubType; s++)
 	{
 		PMSubProc *subProc = &PMSubProcList[s];
@@ -2884,14 +2884,14 @@ static char *
 GetServerProcessTitle(int pid)
 {
 	int s;
-	
+
 	for (s=0; s < MaxPMSubType; s++)
 	{
 		PMSubProc *subProc = &PMSubProcList[s];
 		if (subProc->pid == pid)
 			return subProc->procName;
 	}
-	
+
 	if (pid == BgWriterPID)
 		return "background writer process";
 	else if (pid == AutoVacPID)
@@ -3050,7 +3050,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 (int) PgArchPID)));
 		signal_child(PgArchPID, SIGQUIT);
 	}
-	
+
 	/* Force a power-cycle of the seqserver process too */
 	/* (Shouldn't be necessary, but just for luck) */
 	{
@@ -3496,8 +3496,8 @@ BackendInitialize(Port *port)
 
 	if (!load_hba())
 	{
-		/* 
-		 * It makes no sense continue if we fail to load the HBA file, since 
+		/*
+		 * It makes no sense continue if we fail to load the HBA file, since
 		 * there is no way to connect to the database in this case.
 		 */
 		ereport(FATAL,
