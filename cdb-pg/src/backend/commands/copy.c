@@ -1561,7 +1561,8 @@ DoCopy(const CopyStmt *stmt)
     /* 	 Fix for MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
 	if (Gp_role == GP_ROLE_DISPATCH
 			&& is_from
-			&& relationOid != InvalidOid)
+			&& relationOid != InvalidOid
+			&& !rel_is_partitioned(relationOid))
 	{
 		auto_stats(AUTOSTATS_CMDTYPE_COPY, relationOid, processed);
 	} /*end auto-stats block*/

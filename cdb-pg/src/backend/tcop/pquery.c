@@ -386,7 +386,11 @@ ProcessQuery(Portal portal,
 					 relationOid, 
 					 (unsigned int) queryDesc->es_processed);
 			}
-
+		}
+		
+		if (relationOid != InvalidOid 
+				&& !rel_is_partitioned(relationOid))
+		{
 			/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
 			auto_stats(cmdType, relationOid, queryDesc->es_processed);
 		}
