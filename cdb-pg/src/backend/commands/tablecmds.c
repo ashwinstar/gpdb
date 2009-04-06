@@ -9423,7 +9423,7 @@ make_typname(Form_pg_attribute att)
 {
 	TypeName *tname = makeNode(TypeName);
 	int2 attlen = att->attlen;
-	Value *typname;
+	Value *typname = NULL;
 
 	if (attlen == -1)
 	{
@@ -9523,11 +9523,10 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
 		for (attno = 0; attno < tupdesc->natts; attno++)
 		{
 			ColumnDef *cd = makeNode(ColumnDef);
-			TypeName *tname;
+			TypeName *tname = NULL;
 			Form_pg_attribute att = tupdesc->attrs[attno];
 
 			cd->is_local = true;
-			tname->location = -1;
 
 			if (att->attisdropped)
 			{
@@ -9559,6 +9558,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
 					tname->arrayBounds = lappend(tname->arrayBounds,
 												 makeInteger(-1));
 			}
+			tname->location = -1;
 			cd->typname = tname;
 			cs->tableElts = lappend(cs->tableElts, cd);
 		}
