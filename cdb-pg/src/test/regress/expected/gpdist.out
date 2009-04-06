@@ -360,7 +360,7 @@ NOTICE:  CREATE TABLE will create partition "pt_1_prt_1_2_prt_1" for table "pt_1
 NOTICE:  CREATE TABLE will create partition "pt_1_prt_1_2_prt_2" for table "pt_1_prt_1"
 NOTICE:  CREATE TABLE will create partition "pt_1_prt_2_2_prt_1" for table "pt_1_prt_2"
 NOTICE:  CREATE TABLE will create partition "pt_1_prt_2_2_prt_2" for table "pt_1_prt_2"
-alter table pt set distributed randomly;
+alter table only pt set distributed randomly;
 insert into pt values(35, 35, 35, 'A');
 insert into pt values(36, 35, 35, 'A');
 insert into pt values(37, 35, 35, 'A');
@@ -376,7 +376,7 @@ select gp_segment_id, * from pt_1;
 ---------------+---+---+---+---
 (0 rows)
 
-alter table pt_1_prt_2 set distributed by (j);
+alter table only pt_1_prt_2 set distributed by (j);
 insert into pt values(45, 45, 45, 'B');
 insert into pt values(45, 46, 46, 'B');
 insert into pt values(45, 47, 47, 'B');

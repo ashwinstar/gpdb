@@ -329,7 +329,7 @@ drop table pt, pt_1, pt_2, pt_3, pt_4;
 create table pt(i int, j int, k int, l char(2)) distributed by (i)
 partition by range(k) subpartition by list(l) subpartition template(values('A'),
 values('B')) (start(30) end(50) every(10));
-alter table pt set distributed randomly;
+alter table only pt set distributed randomly;
 
 insert into pt values(35, 35, 35, 'A');
 insert into pt values(36, 35, 35, 'A');
@@ -345,7 +345,7 @@ insert into pt_1 values(38, 35, 35, 'A');
 select gp_segment_id, * from pt except
 select gp_segment_id, * from pt_1;
 
-alter table pt_1_prt_2 set distributed by (j);
+alter table only pt_1_prt_2 set distributed by (j);
 insert into pt values(45, 45, 45, 'B');
 insert into pt values(45, 46, 46, 'B');
 insert into pt values(45, 47, 47, 'B');

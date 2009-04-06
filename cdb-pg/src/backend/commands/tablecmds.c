@@ -29,6 +29,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_appendonly.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_inherits.h"
@@ -55,6 +56,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/print.h"
 #include "nodes/relation.h"
 #include "optimizer/clauses.h"
 #include "optimizer/plancat.h"
@@ -72,6 +74,7 @@
 #include "parser/parse_type.h"
 #include "parser/parser.h"
 #include "rewrite/rewriteHandler.h"
+#include "storage/backendid.h"
 #include "storage/smgr.h"
 #include "tcop/utility.h"
 #include "utils/acl.h"
@@ -391,6 +394,9 @@ static Oid  rel_partition_get_master(Oid relid);
 static List *
 atpxRenameList(Relation rel, PartitionNode *pNode,
 			   char *old_parentname, const char *new_parentname, int *skipped);
+static RangeVar *make_temp_table_name(Relation rel, BackendId id);
+static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
+								List *opts);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -3258,6 +3264,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
 			break;
+		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
+			ATSimplePermissions(rel, false);
+			ATSimpleRecursion(wqueue, rel, cmd, recurse);
+			pass = AT_PASS_MISC;
+			break;
 		case AT_EnableTrig:		/* ENABLE TRIGGER variants */
 		case AT_EnableTrigAll:
 		case AT_EnableTrigUser:
@@ -3266,7 +3277,6 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DisableTrigUser:
 		case AT_AddInherit:		/* INHERIT / NO INHERIT */
 		case AT_DropInherit:
-		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
 			ATSimplePermissions(rel, false);
 			/* These commands never recurse */
 			/* No command-specific prep needed */
@@ -5031,6 +5041,14 @@ ATSimplePermissions(Relation rel, bool allowView)
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is not a table or view",
 								RelationGetRelationName(rel))));
+		}
+		else if (!IsUnderPostmaster &&
+				 rel->rd_rel->relkind == RELKIND_AOSEGMENTS)
+		{
+			/* 
+			 * Allow ALTER TABLE operations in standard alone mode on
+			 * AO segment tables.
+			 */
 		}
 		else
 			ereport(ERROR,
@@ -9173,6 +9191,32 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 	heap_close(parent_rel, NoLock);
 }
 
+static StdRdOptions *
+relopts_for_ctas(Relation rel)
+{
+	/* 
+	 * AO table so go get the options out of pg_appendonly. The
+	 * class reloptions isn't to be trusted.
+	 */
+	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
+	if (rel->rd_rel->relstorage == RELSTORAGE_AO)
+	{
+		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel));
+
+		out->appendonly = true;
+		out->blocksize = opts->blocksize;
+		out->compresslevel = opts->compresslevel;
+		out->checksum = opts->checksum;
+		out->compresstype = opts->compresstype ? pstrdup(opts->compresstype) : NULL;
+	}
+	else
+	{
+		if (rel->rd_options)
+			memcpy(out, rel->rd_options, sizeof(StdRdOptions));
+	}
+	return out;
+}
+
 /*
  * Build:
  *
@@ -9181,15 +9225,12 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
  */
 static QueryDesc *
 build_ctas_with_dist(Relation rel, List *dist_clause,
-					 StdRdOptions *newopts)
+					 StdRdOptions *newopts, RangeVar **tmprv)
 {
 	Query *q;
 	SelectStmt *s = makeNode(SelectStmt);
-	List		*parsetrees;
-	char tmpname[NAMEDATALEN];
-	ColumnRef	*n = makeNode(ColumnRef);
-	ResTarget	*t = makeNode(ResTarget);
-	char *nspname;
+	Node *n;
+	List	*parsetrees;
 	RangeVar *from_tbl;
 	List *rewritten;
 	Plan *plan;
@@ -9197,25 +9238,27 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	QueryDesc *queryDesc;
 	List *wo = NIL;
 	StdRdOptions *opts = newopts ? newopts : 
-			(StdRdOptions *)rel->rd_options;
+			(StdRdOptions *)relopts_for_ctas(rel);
+	RangeVar *tmprel = make_temp_table_name(rel, MyBackendId);
+	bool pre_built;
 
-	/* temporary enough */
-	snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", RelationGetRelid(rel));
-	nspname = get_namespace_name(RelationGetNamespace(rel));
+	{
+		ResTarget *t = makeNode(ResTarget);
+	    ColumnRef *c = makeNode(ColumnRef);
+        c->fields = list_make1(makeString("*"));
+        c->location = -1;
+        t->val = (Node *)c;
+        t->location = -1;
+		s->targetList = list_make1(t);
+	}
 
-	n->fields = list_make1(makeString("*"));
-	t->val = (Node *)n;
-	s->targetList = list_make1(t);
-
-	from_tbl = makeRangeVar(nspname,
+	from_tbl = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 							pstrdup(RelationGetRelationName(rel)));
-
 	from_tbl->inhOpt = INH_NO; /* MPP-5300: turn off inheritance -
 								* Otherwise, the data from the child
 								* tables is added to the parent!
 								*/
 	s->fromClause = list_make1(from_tbl);
-	s->into = makeRangeVar(nspname, pstrdup(tmpname));
 
 	/* WITH options */
 	if (rel->rd_rel->relhasoids)
@@ -9229,7 +9272,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 												 (Node *)makeInteger(opts->fillfactor)));
 
 		}
-		if (opts->appendonly)
+		else
 		{
 			wo = lappend(wo, makeDefElem("appendonly",
 										 (Node *)makeString("true")));
@@ -9249,10 +9292,29 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 		}
 	}
 
-	s->intoOptions = wo;
-	s->distributedBy = dist_clause;
+	pre_built = prebuild_temp_table(rel, tmprel, dist_clause, wo);
+	if (pre_built)
+	{
+		InsertStmt *i = makeNode(InsertStmt);
 
-	parsetrees = parse_analyze((Node *)s, NULL, NULL, 0);
+		i->relation = tmprel;
+		i->selectStmt = (Node *)s;
+		n = (Node *)i;
+	}
+	else
+	{
+		s->into = tmprel;
+		s->intoOptions = wo;
+		s->distributedBy = dist_clause;
+		n = (Node *)s;
+	}
+	*tmprv = tmprel;
+
+#ifdef NOT_USED
+	elog_node_display(NOTICE, "f", n, true);
+#endif
+
+	parsetrees = parse_analyze((Node *)n, NULL, NULL, 0);
 	Assert(list_length(parsetrees) == 1);
 	q = (Query *)linitial(parsetrees);
 
@@ -9265,7 +9327,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	Assert(list_length(rewritten) == 1);
 
 	q = (Query *) linitial(rewritten);
-	Assert(q->commandType == CMD_SELECT);
+	Assert(q->commandType == CMD_SELECT || q->commandType == CMD_INSERT);
 
 	/* plan the query */
 	plan = planner(q, false, 0, NULL);
@@ -9284,6 +9346,264 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 								ActiveSnapshot, InvalidSnapshot,
 								dest, NULL, false);
 	return queryDesc;
+}
+
+static Datum
+new_rel_opts(Relation rel, List *lwith)
+{
+	Datum newOptions = PointerGetDatum(NULL);
+
+	if (lwith && list_length(lwith))
+	{
+		Relation pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+		bool make_heap = false;
+		ListCell *lc;
+		bool new_opts = false;
+
+		/* 
+		 * See if user has specified appendonly = false. If so, we
+		 * have no use for the existing reloptions
+		 */
+		foreach(lc, lwith)
+		{
+			DefElem *e = lfirst(lc);
+
+			if (pg_strcasecmp(e->defname, "appendonly") == 0 &&
+				pg_strcasecmp(defGetString(e), "false") == 0)
+			{
+				make_heap = true;
+				break;
+			}
+		}
+
+		if (!make_heap)
+		{
+			/* Get the old reloptions */
+			bool isnull;
+			Oid relid = RelationGetRelid(rel);
+			HeapTuple optsTuple = SearchSysCache(RELOID,
+									   ObjectIdGetDatum(relid),
+									   0, 0, 0);
+			if (!HeapTupleIsValid(optsTuple))
+					elog(ERROR, "cache lookup failed for relation %u", relid);
+
+			newOptions = SysCacheGetAttr(RELOID, optsTuple,
+										 Anum_pg_class_reloptions, &isnull);
+			new_opts = true && !isnull;
+			ReleaseSysCache(optsTuple);
+			if (new_opts)
+			{
+				/* XXX: merge in pg_appendonly options ?!? */
+			}
+		}
+
+		/* Generate new proposed reloptions (text array) */
+		newOptions = transformRelOptions(new_opts ? newOptions : (Datum) 0,
+										 lwith, false, false);
+
+		heap_close(pg_class, RowExclusiveLock);
+	}
+	return newOptions;
+}
+
+static RangeVar *
+make_temp_table_name(Relation rel, BackendId id)
+{
+	char *nspname,
+		 tmpname[NAMEDATALEN];
+	/* temporary enough */
+	snprintf(tmpname, NAMEDATALEN, "pg_temp_%u_%i", RelationGetRelid(rel), id);
+	nspname = get_namespace_name(RelationGetNamespace(rel));
+
+	return makeRangeVar(nspname, pstrdup(tmpname));
+}
+
+static TypeName *
+make_typname(Form_pg_attribute att)
+{
+	TypeName *tname = makeNode(TypeName);
+	int2 attlen = att->attlen;
+	Value *typname;
+
+	if (attlen == -1)
+	{
+		if (att->attalign == 'i')
+		{
+			if (att->atttypmod < MaxAttrSize)
+				typname = makeString(pstrdup("varchar"));
+			else
+				typname = makeString(pstrdup("numeric"));
+		}
+		else if (att->attalign == 'd')
+			typname = makeString(pstrdup("path"));
+	}
+	else if (attlen == 1)
+		typname = makeString(pstrdup("char"));
+	else if (attlen == 2)
+		typname = makeString(pstrdup("int2"));
+	else if (attlen == 4)
+		typname = makeString(pstrdup("int4"));
+	else if (attlen == 6)
+		typname = makeString(pstrdup("tid"));
+	else if (attlen == 8)
+		typname = makeString(pstrdup("int8"));
+	else if (attlen == 12)
+		typname = makeString(pstrdup("timetz"));
+	else if (attlen == 16)
+		typname = makeString(pstrdup("interval"));
+	else if (attlen == 32)
+		typname = makeString(pstrdup("circle"));
+	else if (attlen == 64)
+		typname = makeString(pstrdup("name"));
+	else
+	{
+		/* alignment is the only important thing */
+		switch (att->attalign)
+		{
+			case 'i':
+				typname = makeString(pstrdup("int4"));
+				break;
+			case 'd':
+				typname = makeString(pstrdup("int8"));
+				break;
+			case 'c':
+				typname = makeString(pstrdup("char"));
+				break;
+			case 's':
+				typname = makeString(pstrdup("short"));
+				break;
+			default:
+				elog(ERROR, "unknown alignment '%c'", att->attalign);
+				break;
+		}
+	}
+
+	tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
+	tname->typmod = att->atttypmod;
+	tname->location = -1;
+	return tname;
+}
+
+/*
+ * If the table has dropped columns, we must create the table and
+ * drop the columns before we can dispatch the select statement.
+ * Return true if we do it, false if we do not. If we return false,
+ * there are no dropped columns and we can do a SELECT INTO later.
+ */
+static bool
+prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
+{
+	bool need_rebuild = false;
+	int attno = 0;
+	TupleDesc tupdesc = RelationGetDescr(rel);
+	List *drop_atts = NIL; /* attnums where we want an attribute to drop */
+
+	for (attno = 0; attno < tupdesc->natts; attno++)
+	{
+		if (tupdesc->attrs[attno]->attisdropped)
+		{
+			need_rebuild = true;
+			break;
+		}
+	}
+
+	if (need_rebuild)
+	{
+		CreateStmt *cs = makeNode(CreateStmt);
+		List *parsetrees;
+		Query *q;
+		char *dstr = "__gp_atsdb_droppedcol";
+		DestReceiver *dest = None_Receiver;
+
+		cs->relKind = RELKIND_RELATION;
+		cs->distributedBy = distro;
+		cs->options = opts;
+		cs->relation = tmpname;
+
+		for (attno = 0; attno < tupdesc->natts; attno++)
+		{
+			ColumnDef *cd = makeNode(ColumnDef);
+			TypeName *tname;
+			Form_pg_attribute att = tupdesc->attrs[attno];
+
+			cd->is_local = true;
+			tname->location = -1;
+
+			if (att->attisdropped)
+			{
+				NameData alias;
+
+				tname = make_typname(att);
+				snprintf(NameStr(alias), sizeof(alias), "%s%d", dstr, attno);
+				cd->colname = pstrdup(NameStr(alias));
+				drop_atts = lappend_int(drop_atts, attno);
+			}
+			else
+			{
+				Type typ = typeidType(att->atttypid);
+				Oid typnamespace = ((Form_pg_type) GETSTRUCT(typ))->typnamespace;
+				char *nspname = get_namespace_name(typnamespace);
+				int arno;
+
+				tname = makeNode(TypeName);
+
+				if (!PointerIsValid(nspname))
+					elog(ERROR, "could not lookup namespace %d", typnamespace);
+				cd->colname = pstrdup(NameStr(att->attname));
+				tname->names = list_make2(makeString(nspname),
+										  makeString(typeTypeName(typ)));
+				ReleaseSysCache(typ);
+				tname->typmod = att->atttypmod;
+				for (arno = 0; arno < att->attndims; arno++)
+					/* bound of -1 are fine because this has no effect on data */
+					tname->arrayBounds = lappend(tname->arrayBounds,
+												 makeInteger(-1));
+			}
+			cd->typname = tname;
+			cs->tableElts = lappend(cs->tableElts, cd);
+		}
+#ifdef NOT_USED
+		elog_node_display(NOTICE, "CREATE STATEMENT", cs, true);
+#endif
+		parsetrees = parse_analyze((Node *)cs, NULL, NULL, 0);
+		Assert(list_length(parsetrees) == 1);
+		q = (Query *)linitial(parsetrees);
+		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		CommandCounterIncrement();
+
+		/* should always be true */
+		if (drop_atts)
+		{
+			/* Build an ALTER TABLE DROP COLUMN statement */
+			AlterTableStmt *ats = makeNode(AlterTableStmt);
+			ListCell *lc;
+
+			ats->relkind = OBJECT_TABLE;
+			ats->relation = tmpname;
+
+			foreach(lc, drop_atts)
+			{
+				AlterTableCmd *atc = makeNode(AlterTableCmd);
+				NameData colname;
+
+				attno = lfirst_int(lc);
+				atc->subtype = AT_DropColumn;
+				snprintf(NameStr(colname), NAMEDATALEN, "%s%d", dstr, attno);
+				atc->name = pstrdup(NameStr(colname));
+				ats->cmds = lappend(ats->cmds, atc);
+			}
+#ifdef NOT_USED
+			elog_node_display(NOTICE, "DROP STATEMENT", ats, true);
+#endif
+
+			parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
+			Assert(list_length(parsetrees) == 1);
+			q = (Query *)linitial(parsetrees);
+			ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+			CommandCounterIncrement();
+		}
+	}
+	return need_rebuild;
 }
 
 /*
@@ -9305,19 +9625,23 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Oid			tarrelid = RelationGetRelid(rel);
 	List	   *oid_map = NIL;
 	List	   *qe_data = NIL; /* data to pass to QEs */
-	bool        bRandom = false;
-	bool        bReorganizeRandom = false;
-
-	Relation	pgclass;
-	HeapTuple	optsTuple;
-	Datum		newOptions;
-
+	bool        rand_pol = false;
+	bool        force_reorg = false;
 	StdRdOptions *newopts = NULL;
+	Datum		newOptions = PointerGetDatum(NULL);
+	bool		change_policy = false;
+	bool		is_ao = false;
 
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
+
+	if (IsSystemRelation(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied: \"%s\" is a system catalog",
+						RelationGetRelationName(rel))));
 
 	Assert(PointerIsValid(node));
 	Assert(IsA(node, List));
@@ -9325,139 +9649,111 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	/* linitial is WITH definition, lsecond is distro */
 	lprime = (List *)node; 
 
-	Insist(2 == list_length(lprime));
 	lwith   = (List *)linitial(lprime);
 	ldistro = (List *)lsecond(lprime);
-
-	if (lwith && (Gp_role == GP_ROLE_DISPATCH))
-	{
-		Oid			 relid;
-		Datum		 datum;
-		bool		 isnull;
-		bool		 isReset    = false;
-		bool		 bWithReorg = false;
-		ListCell	*lc;
-		ListCell	*lprev = NULL;
-
-		/* remove the "REORGANIZE=true/false" from the WITH clause */
-		for (lc = list_head(lwith); lc != NULL;)
-		{
-			DefElem	*def	   = lfirst(lc);
-			char	*reorg_str = "REORGANIZE";
-
-			if (pg_strcasecmp(reorg_str, def->defname) != 0)
-			{ /* no match -- keep going */
-
-				/* XXX XXX: remove when we support real storage options */
-					ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("SET WITH ignored")));
-
-				lprev = lc;
-				lc = lnext(lc);
-			}
-			else /* matched -- set the flag, remove the list cell */
-			{
-				ListCell	*lnext = lnext(lc);
-
-				bWithReorg = true;
-
-				if (!def->arg)
-					bReorganizeRandom = true;
-				else
-				{
-					if (pg_strcasecmp("TRUE", strVal(def->arg)) == 0)
-						bReorganizeRandom = true;
-					else if (pg_strcasecmp("FALSE", strVal(def->arg)) == 0)
-						bReorganizeRandom = false;
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("invalid REORGANIZE option \"%s\"",
-										strVal(def->arg))));
-				}
-
-				/* remove the current cell */
-				lwith = list_delete_cell(lwith, lc, lprev);
-
-				/* rebuild lprime (to fix dispatch) */
-				lprime = list_make2(lwith, ldistro);
-				cmd->def = (Node *) lprime;
-
-				/* keep going */
-				lc = lnext;
-			}
-		} /* end foreach lc */
-
-		/* if there are other storage options, but REORGANIZE is not
-		 * specified, then the storage must be re-org'd.  But if
-		 * REORGANIZE was specified use that setting.
-		 */
-		if (!bWithReorg && list_length(lwith))
-			bReorganizeRandom = true;
-
-		pgclass = heap_open(RelationRelationId, RowExclusiveLock);
-
-		/* Get the old reloptions */
-		relid = RelationGetRelid(rel);
-		optsTuple = SearchSysCache(RELOID,
-								   ObjectIdGetDatum(relid),
-								   0, 0, 0);
-		if (!HeapTupleIsValid(optsTuple))
-				elog(ERROR, "cache lookup failed for relation %u", relid);
-
-		datum = SysCacheGetAttr(RELOID, optsTuple, Anum_pg_class_reloptions, 
-								&isnull);
-
-		/* Generate new proposed reloptions (text array) */
-		newOptions = transformRelOptions(isnull ? (Datum) 0 : datum,
-										 lwith, false, isReset);
-
-		newopts = (StdRdOptions *) heap_reloptions(rel->rd_rel->relkind, 
-												   newOptions, true);
-
-		/* just cleanup early if not newopts.  will cleanup later if
-		 * need to rebuild table 
-		 */		
-		if (1 || !newopts) 
-		{
-			ReleaseSysCache(optsTuple);
-			heap_close(pgclass, RowExclusiveLock);
-		}
-
-		/* XXX XXX XXX XXX */
-		if (ldistro)
-		{
-			if (0)
-			ereport(NOTICE,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("SET WITH ignored")));
-		}
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("SET WITH not supported")));
-	}
-
-	if (!ldistro)
-		return;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("SET DISTRIBUTED BY not supported in utility mode")));
 
-	/* check for case of single null value -- set distributed randomly */
-	if (linitial(ldistro) == NULL)
+	/* we only support fully distributed tables */
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		if (Gp_role == GP_ROLE_DISPATCH)
+		if (rel->rd_cdbpolicy->ptype != POLICYTYPE_PARTITIONED)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("%s not supported on non-distributed tables",
+							ldistro ? "SET DISTRIBUTED BY" : "SET WITH")));
+	}
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (lwith)
+		{
+			bool		 seen_reorg = false;
+			ListCell	*lc;
+			char		*reorg_str = "reorganize";
+			List		*nlist = NIL;
+	
+			/* remove the "REORGANIZE=true/false" from the WITH clause */
+			foreach(lc, lwith)
+			{
+				DefElem	*def = lfirst(lc);
+	
+				if (pg_strcasecmp(reorg_str, def->defname) != 0)
+				{
+					if (pg_strcasecmp(def->defname, "appendonly") == 0)
+					{
+						if (pg_strcasecmp(strVal(def->arg), "true") == 0)
+							is_ao = true;
+						else
+							is_ao = false;
+					}
+
+					nlist = lappend(nlist, def);
+				}
+				else
+				{
+					/* have we been here before ? */
+					if (seen_reorg)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("\"%s\" specified more than once",
+										reorg_str)));
+	
+					seen_reorg = true;
+					if (!def->arg)
+						force_reorg = true;
+					else
+					{
+						if (pg_strcasecmp("TRUE", strVal(def->arg)) == 0)
+							force_reorg = true;
+						else if (pg_strcasecmp("FALSE", strVal(def->arg)) == 0)
+							force_reorg = false;
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+									 errmsg("invalid %s option \"%s\"",
+											reorg_str, strVal(def->arg))));
+					}
+				}
+			}
+			lwith = nlist;
+	
+			/* 
+			 * If there are other storage options, but REORGANIZE is not
+			 * specified, then the storage must be re-org'd.  But if
+			 * REORGANIZE was specified use that setting.
+			 *
+			 * If the user specified we not force a reorg but there are other
+			 * WITH clause items, then we cannot honour what the user has
+			 * requested.
+			 */
+			if (!seen_reorg && list_length(lwith))
+				force_reorg = true;
+			else if (seen_reorg && force_reorg == false && list_length(lwith))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("%s must be set to true when changing storage "
+								 "type", reorg_str)));
+
+			newOptions = new_rel_opts(rel, lwith);
+			newopts = (StdRdOptions *) heap_reloptions(rel->rd_rel->relkind, 
+													   newOptions, true);
+		}
+
+		if (ldistro)
+			change_policy = true;
+
+		if (ldistro && linitial(ldistro) == NULL)
 		{
 			Insist(list_length(ldistro) == 1);
 
-			bRandom = true;
+			rand_pol = true;
 
 			/* need to rebuild if have new storage options */
-			if (!(newopts && bReorganizeRandom))
+			if (!(newopts && force_reorg))
 			{
 				if (rel->rd_cdbpolicy->nattrs == 0)
 					ereport(WARNING,
@@ -9479,18 +9775,15 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 											 policy);
 				GpPolicyReplace(RelationGetRelid(rel), policy);
 			}
-
-		}
-
-		/*
-		 * caller expects ATExecSetDistributedBy() to close rel
-		 * (see the non-random distribution case below for why.
-		 */
-
-		if (!newopts)
-		{
-			heap_close(rel, NoLock);
-			return;
+			else
+			{
+				/*
+				 * caller expects ATExecSetDistributedBy() to close rel
+				 * (see the non-random distribution case below for why.
+				 */
+				heap_close(rel, NoLock);
+				return;
+			}
 		}
 	}
 
@@ -9512,114 +9805,129 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		policy = palloc(sizeof(GpPolicy) +
-						sizeof(policy->attrs[0]) * list_length(ldistro));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = 0;
-
-		/* Step (a) */
-
-		if (!bRandom)
+		if (change_policy)
 		{
-			foreach(lc, ldistro)
+			policy = palloc(sizeof(GpPolicy) +
+							sizeof(policy->attrs[0]) * list_length(ldistro));
+			policy->ptype = POLICYTYPE_PARTITIONED;
+			policy->nattrs = 0;
+
+			/* Step (a) */
+			if (!rand_pol)
 			{
-				char *colName = strVal((Value *)lfirst(lc));
-				HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel),
-														colName);
-				AttrNumber	attnum;
-
-				if (list_member(cols, lfirst(lc)))
-						ereport(ERROR,
-								(errcode(ERRCODE_DUPLICATE_OBJECT),
-								 errmsg("distribution policy must be a "
-										"unique set of columns"),
-								 errhint("Column \"%s\" appears "
-										 "more than once", colName)));
-				if (!HeapTupleIsValid(tuple))
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_COLUMN),
-								 errmsg("column \"%s\" of "
-										"relation \"%s\" does not exist",
-										colName, 
-										RelationGetRelationName(rel))));
-
-				attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
-
-				/* Prevent them from altering a system attribute */
-				if (attnum <= 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot distribute by system column \"%s\"",
-								colName)));
-
-			policy->attrs[policy->nattrs++] = attnum;
-			ReleaseSysCache(tuple);
-			cols = lappend(cols, lfirst(lc));
-			} /* end foreach */
-
-			Assert(policy->nattrs > 0);
-		} /* end if not bRandom */
-
-		/* See if the the old policy is the same as the new one */
-		/* (need to rebuild if have new storage options) */
-		if (!newopts && 
-			(policy->nattrs == rel->rd_cdbpolicy->nattrs))
-		{
-			int i;
-			bool diff = false;
-
-			for (i = 0; i < policy->nattrs; i++)
-			{
-				if (policy->attrs[i] != rel->rd_cdbpolicy->attrs[i])
-				{
-					diff = true;
-					break;
-				}
-			}
-			if (!diff)
-			{
-				char * dist = palloc(list_length(ldistro) * (NAMEDATALEN + 1));
-
-				dist[0] = '\0';
-
 				foreach(lc, ldistro)
 				{
-					if (lc != list_head(ldistro))
-						strcat(dist, ",");
-					strcat(dist, strVal(lfirst(lc)));
+					char *colName = strVal((Value *)lfirst(lc));
+					HeapTuple tuple = 
+						SearchSysCacheAttName(RelationGetRelid(rel),
+											  colName);
+					AttrNumber	attnum;
+	
+					if (list_member(cols, lfirst(lc)))
+							ereport(ERROR,
+									(errcode(ERRCODE_DUPLICATE_OBJECT),
+									 errmsg("distribution policy must be a "
+											"unique set of columns"),
+									 errhint("Column \"%s\" appears "
+											 "more than once", colName)));
+					if (!HeapTupleIsValid(tuple))
+							ereport(ERROR,
+									(errcode(ERRCODE_UNDEFINED_COLUMN),
+									 errmsg("column \"%s\" of "
+											"relation \"%s\" does not exist",
+											colName, 
+											RelationGetRelationName(rel))));
+
+					attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+
+					/* Prevent them from altering a system attribute */
+					if (attnum <= 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot distribute by system column \"%s\"",
+									colName)));
+
+					policy->attrs[policy->nattrs++] = attnum;
+					ReleaseSysCache(tuple);
+					cols = lappend(cols, lfirst(lc));
+				} /* end foreach */
+
+				Assert(policy->nattrs > 0);
+
+				/* 
+				 * See if the the old policy is the same as the new one but
+				 * remember, we still might have to rebuild if there are new
+				 * storage options.
+				 */
+				if (!newopts && (policy->nattrs == rel->rd_cdbpolicy->nattrs))
+				{
+					int i;
+					bool diff = false;
+
+					for (i = 0; i < policy->nattrs; i++)
+					{
+						if (policy->attrs[i] != rel->rd_cdbpolicy->attrs[i])
+						{
+							diff = true;
+							break;
+						}
+					}
+					if (!diff)
+					{
+						char *dist =
+							palloc(list_length(ldistro) * (NAMEDATALEN + 1));
+
+						dist[0] = '\0';
+
+						foreach(lc, ldistro)
+						{
+							if (lc != list_head(ldistro))
+								strcat(dist, ",");
+							strcat(dist, strVal(lfirst(lc)));
+						}
+						ereport(WARNING,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("distribution policy of relation \"%s\" "
+									"already set to (%s)",
+									RelationGetRelationName(rel),
+									dist),
+							 errhint("Use ALTER TABLE \"%s\" "
+									 "SET WITH (REORGANIZE=TRUE) "
+									 "DISTRIBUTED BY (%s) "
+									 "to force redistribution",
+									 RelationGetRelationName(rel),
+									 dist)));
+					}	
 				}
-				ereport(WARNING,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("distribution policy of relation \"%s\" "
-								"already set to (%s)",
-								RelationGetRelationName(rel),
-								dist),
-						 errhint("Use ALTER TABLE \"%s\" "
-								 "SET WITH (REORGANIZE=TRUE) "
-								 "DISTRIBUTED BY (%s) "
-								 "to force redistribution",
-								 RelationGetRelationName(rel),
-								 dist)));
 			}
 		}
 
-		/* Step (a.5) - we don't handle dropped attributes yet */
+		if (!ldistro)
 		{
 			int i;
 
-			for (i = 0; i < rel->rd_att->natts; i++)
+			for (i = 0; i < rel->rd_cdbpolicy->nattrs; i++)
 			{
-				if (rel->rd_att->attrs[i]->attisdropped)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot handle table with "
-									"dropped attributes")));
+				AttrNumber attno = rel->rd_cdbpolicy->attrs[i];
+				TupleDesc tupdesc = RelationGetDescr(rel);
+				Value *attstr;
+				NameData attname;
+			   
+				attname = tupdesc->attrs[attno - 1]->attname;
+				attstr = makeString(pstrdup(NameStr(attname)));
+
+				ldistro = lappend(ldistro, attstr);
+			}
+
+			if (!ldistro)
+			{
+				/* must be random distribution */
+				ldistro = list_make1(NULL);
 			}
 		}
 
 		/* Step (b) - build CTAS */
-		queryDesc = build_ctas_with_dist(rel, ldistro, newopts);
-		tmprv = copyObject(queryDesc->parsetree->into);
+		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv);
 
 		/* Step (c) - run on all nodes */
 		ExecutorStart(queryDesc, 0);
@@ -9627,26 +9935,55 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		ExecutorEnd(queryDesc);
 		FreeQueryDesc(queryDesc);
 
+		CommandCounterIncrement(); /* see the effects of the command */
 		/*
 		 * Step (d) - tell the seg nodes about the temporary relation. This
 		 * involves stomping on the node we've been given
 		 */
-		qe_data = lappend(qe_data, tmprv);
+		qe_data = lappend(qe_data, makeInteger(MyBackendId));
 	}
 	else
 	{
-		qe_data = linitial(ldistro);
-		tmprv = linitial(qe_data);
+		int backend_id;
+
+		Assert(list_length(lprime) >= 2);
+
+		lwith = linitial(lprime);
+		qe_data = lsecond(lprime);
+
+		/* Set to random distribution on master with no reorganisation */
+		if (!lwith && list_length(qe_data) == 1 && linitial(qe_data) == NULL)
+		{
+			/* caller expects rel to be closed for this AT type */
+			heap_close(rel, NoLock);
+			return;
+		}
+
+		backend_id = intVal(linitial(qe_data));
+		tmprv = make_temp_table_name(rel, backend_id);
 		oid_map = lsecond(qe_data);
+		if (list_length(lprime) == 3)
+		{
+			Value *v = lthird(lprime);
+			if (intVal(v))
+				is_ao = true;
+			else
+				is_ao = false;
+		}
+
+		newOptions = new_rel_opts(rel, lwith);
 	}
 
-	/* XXX XXX XXX XXX */
-	if (0 && newopts)
+	if (DatumGetPointer(newOptions))
 	{
 		Datum		repl_val[Natts_pg_class];
 		char		repl_null[Natts_pg_class];
 		char		repl_repl[Natts_pg_class];
 		HeapTuple	newOptsTuple;
+		Relation	class = heap_open(RelationRelationId, RowExclusiveLock);
+		HeapTuple	tuple;
+		ScanKeyData	key;
+		SysScanDesc scan;
 
 		/*
 		 * All we need do here is update the pg_class row; the new
@@ -9654,9 +9991,13 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		 * post-commit cache inval.
 		 */
 
-		memset(repl_val, 0, sizeof(repl_val));
-		memset(repl_null, ' ', sizeof(repl_null));
-		memset(repl_repl, ' ', sizeof(repl_repl));
+		MemSet(repl_val, 0, sizeof(repl_val));
+		MemSet(repl_null, ' ', sizeof(repl_null));
+		MemSet(repl_repl, ' ', sizeof(repl_repl));
+
+		repl_val[Anum_pg_class_relstorage - 1] = is_ao ? 
+			CharGetDatum(RELSTORAGE_AO) : CharGetDatum(RELSTORAGE_HEAP);
+		repl_repl[Anum_pg_class_relstorage - 1] = 'r';
 
 		if (newOptions != (Datum) 0)
 			repl_val[Anum_pg_class_reloptions - 1] = newOptions;
@@ -9665,26 +10006,76 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 		repl_repl[Anum_pg_class_reloptions - 1] = 'r';
 
-		newOptsTuple = heap_modifytuple(optsTuple, RelationGetDescr(pgclass),
+		tuple = SearchSysCache(RELOID,
+								   ObjectIdGetDatum(RelationGetRelid(rel)),
+								   0, 0, 0);
+		Insist(HeapTupleIsValid(tuple));
+		newOptsTuple = heap_modifytuple(tuple, RelationGetDescr(class),
 									repl_val, repl_null, repl_repl);
 
-		simple_heap_update(pgclass, &newOptsTuple->t_self, newOptsTuple);
-
-		CatalogUpdateIndexes(pgclass, newOptsTuple);
+		simple_heap_update(class, &newOptsTuple->t_self, newOptsTuple);
+		CatalogUpdateIndexes(class, newOptsTuple);
 
 		heap_freetuple(newOptsTuple);
+		ReleaseSysCache(tuple);
 
-		ReleaseSysCache(optsTuple);
+		heap_close(class, RowExclusiveLock);
 
-		heap_close(pgclass, RowExclusiveLock);
+		/* remove the old pg_appendonly entry, if any */
+		class = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 
-		/* Increment cmd counter to make updates visible; this is
+		ScanKeyInit(&key,
+					Anum_pg_appendonly_relid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(RelationGetRelid(rel)));
+
+		scan = systable_beginscan(class, AppendOnlyRelidIndexId,
+								  true, SnapshotNow, 1, &key);
+		tuple = systable_getnext(scan);
+		if (HeapTupleIsValid(tuple))
+			simple_heap_delete(class, &tuple->t_self);
+
+		systable_endscan(scan);
+
+		if (is_ao)
+		{
+			/* 
+			 * We changed this to make it an AO table. We need to duplicate
+			 * the pg_appendonly tuple for the temp table, replace relid
+			 * with our relid and insert it into the table. There's no
+			 * point just updating the tuple because when we delete it below
+			 * (see the performDeletion call) it's reasonable for the 
+			 * dependency code to expect an entry for the temp table in
+			 * pg_appendonly.
+			 */
+			Oid relid = RangeVarGetRelid(tmprv, false);
+
+			ScanKeyInit(&key,
+						Anum_pg_appendonly_relid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(relid));
+
+			scan = systable_beginscan(class, AppendOnlyRelidIndexId,
+									  true, SnapshotSelf, 1, &key);
+			tuple = systable_getnext(scan);
+			if (HeapTupleIsValid(tuple))
+			{
+				Insist(HeapTupleIsValid(tuple));
+				tuple = heaptuple_copy_to(tuple, NULL, NULL);
+				((Form_pg_appendonly)GETSTRUCT(tuple))->relid = RelationGetRelid(rel);
+				simple_heap_insert(class, tuple);
+				CatalogUpdateIndexes(class, tuple);
+			}
+			systable_endscan(scan);
+		}
+		heap_close(class, RowExclusiveLock);
+
+		/* 
+		 * Increment cmd counter to make updates visible; this is
 		 * needed because the same tuple has to be updated again
 		 */
 		CommandCounterIncrement();
-		
 	}
-
 
 	/*
 	 * Step (e) - swap relfilenodes
@@ -9705,9 +10096,13 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	/* Step (f) */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		GpPolicyReplace(tarrelid, policy);
+		if (change_policy)
+			GpPolicyReplace(tarrelid, policy);
+
 		qe_data = lappend(qe_data, oid_map);
-		linitial(ldistro) = qe_data;
+		linitial(lprime) = lwith;
+		lsecond(lprime) = qe_data;
+		lprime = lappend(lprime, makeInteger(is_ao ? 1 : 0));
 	}
 
 	/* Step (g) Drop the table */

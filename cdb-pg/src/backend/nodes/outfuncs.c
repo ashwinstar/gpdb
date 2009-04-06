@@ -2539,6 +2539,17 @@ _outConstraintsSetStmt(StringInfo str, ConstraintsSetStmt *node)
 }
 
 static void
+_outInsertStmt(StringInfo str, InsertStmt *node)
+{
+	WRITE_NODE_TYPE("INSERT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(cols);
+	WRITE_NODE_FIELD(selectStmt);
+	WRITE_NODE_FIELD(returningList);
+}
+
+static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
 {
 	WRITE_NODE_TYPE("SELECT");
@@ -3817,6 +3828,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SelectStmt:
 				_outSelectStmt(str, obj);
+				break;
+			case T_InsertStmt:
+				_outInsertStmt(str, obj);
 				break;
 			case T_Null:
 				_outNull(str, obj);

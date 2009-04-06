@@ -294,7 +294,17 @@ default_reloptions(Datum reloptions, bool validate,
 
 	/* appendonly */
 	if(values[1] != NULL)
+	{
+		if (!(pg_strcasecmp(values[1], "true") == 0 ||
+			  pg_strcasecmp(values[1], "false") == 0))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid parameter value for \"appendonly\": \"%s\"",
+							values[1])));
+		}
 		appendonly = (pg_strcasecmp(values[1], "true") == 0 ? true : false);
+	}
 	else
 		appendonly = false; /* default */
 		

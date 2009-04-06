@@ -130,3 +130,69 @@ select gp_segment_id, * from atsdb_2;
 -- Can't test INSERT (yet)
 
 drop table atsdb, atsdb_1, atsdb_2;
+
+-- Can't redistribute system catalogs
+alter table pg_class set distributed by (relname);
+alter table pg_class set with(appendonly = true);
+
+-- WITH clause
+create table atsdb (i int, j text) distributed by (j);
+insert into atsdb select i, i::text from generate_series(1, 10) i;
+alter table atsdb set with(appendonly = true);
+select relname, relaosegrelid != 0, reloptions from pg_class where oid =
+'atsdb'::regclass;
+select * from atsdb;
+drop table atsdb;
+
+create view distcheck as select relname as rel, attname from
+gp_distribution_policy g, pg_attribute p, pg_class c
+where g.localoid = p.attrelid and attnum = any(g.attrnums) and
+c.oid = p.attrelid;
+
+-- dropped columns
+create table atsdb (i int, j int, t text, n numeric) distributed by (j);
+insert into atsdb select i, i+1, i+2, i+3 from generate_series(1, 100) i;
+alter table atsdb drop column i;
+select * from atsdb;
+alter table atsdb set distributed by (t);
+select * from distcheck where rel = 'atsdb';
+alter table atsdb drop column n;
+
+alter table atsdb set with(appendonly = true, compresslevel = 3);
+select relname, relaosegrelid != 0, reloptions from pg_class where oid = 
+'atsdb'::regclass;
+
+select * from distcheck where rel = 'atsdb';
+
+select * from atsdb;
+alter table atsdb set distributed by (j);
+
+select * from distcheck where rel = 'atsdb';
+select relname, relaosegrelid != 0, reloptions from pg_class where oid =
+'atsdb'::regclass;
+
+select * from atsdb;
+-- validate parameters
+alter table atsdb set with (appendonly = ff);
+alter table atsdb set with (reorganize = true);
+alter table atsdb set with (fgdfgef = asds);
+alter table atsdb set with(reorganize = true, reorganize = false) distributed
+randomly;
+drop table atsdb;
+
+-- Check that we correctly cascade for partitioned tables
+create table atsdb (i int, j int, k int) partition by range(k)
+(start(1) end(10) every(1));
+insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
+select * from distcheck where rel like 'atsdb%';
+alter table atsdb set distributed by (j);
+select * from distcheck where rel like 'atsdb%';
+select * from atsdb order by 1, 2, 3;
+alter table atsdb set with(appendonly = true);
+select relname, a.blocksize, compresslevel, compresstype, checksum from pg_class c, pg_appendonly a where 
+relname  like 'atsdb%' and c.oid = a.relid order by 1;
+select * from atsdb order by 1, 2, 3;
+insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
+select * from atsdb order by 1, 2, 3;
+drop table atsdb;
+drop view distcheck;

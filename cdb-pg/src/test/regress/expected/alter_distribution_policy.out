@@ -202,3 +202,519 @@ select gp_segment_id, * from atsdb_2;
 -- Can't test randomly distributed
 -- Can't test INSERT (yet)
 drop table atsdb, atsdb_1, atsdb_2;
+-- Can't redistribute system catalogs
+alter table pg_class set distributed by (relname);
+ERROR:  permission denied: "pg_class" is a system catalog
+alter table pg_class set with(appendonly = true);
+ERROR:  permission denied: "pg_class" is a system catalog
+-- WITH clause
+create table atsdb (i int, j text) distributed by (j);
+insert into atsdb select i, i::text from generate_series(1, 10) i;
+alter table atsdb set with(appendonly = true);
+select relname, relaosegrelid != 0, reloptions from pg_class where oid =
+'atsdb'::regclass;
+ relname | ?column? |    reloptions     
+---------+----------+-------------------
+ atsdb   | t        | {appendonly=true}
+(1 row)
+
+select * from atsdb;
+ i  | j  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table atsdb;
+create view distcheck as select relname as rel, attname from
+gp_distribution_policy g, pg_attribute p, pg_class c
+where g.localoid = p.attrelid and attnum = any(g.attrnums) and
+c.oid = p.attrelid;
+-- dropped columns
+create table atsdb (i int, j int, t text, n numeric) distributed by (j);
+insert into atsdb select i, i+1, i+2, i+3 from generate_series(1, 100) i;
+alter table atsdb drop column i;
+select * from atsdb;
+  j  |  t  |  n  
+-----+-----+-----
+   2 | 3   |   4
+   3 | 4   |   5
+   4 | 5   |   6
+   5 | 6   |   7
+   6 | 7   |   8
+   7 | 8   |   9
+   8 | 9   |  10
+   9 | 10  |  11
+  10 | 11  |  12
+  11 | 12  |  13
+  12 | 13  |  14
+  13 | 14  |  15
+  14 | 15  |  16
+  15 | 16  |  17
+  16 | 17  |  18
+  17 | 18  |  19
+  18 | 19  |  20
+  19 | 20  |  21
+  20 | 21  |  22
+  21 | 22  |  23
+  22 | 23  |  24
+  23 | 24  |  25
+  24 | 25  |  26
+  25 | 26  |  27
+  26 | 27  |  28
+  27 | 28  |  29
+  28 | 29  |  30
+  29 | 30  |  31
+  30 | 31  |  32
+  31 | 32  |  33
+  32 | 33  |  34
+  33 | 34  |  35
+  34 | 35  |  36
+  35 | 36  |  37
+  36 | 37  |  38
+  37 | 38  |  39
+  38 | 39  |  40
+  39 | 40  |  41
+  40 | 41  |  42
+  41 | 42  |  43
+  42 | 43  |  44
+  43 | 44  |  45
+  44 | 45  |  46
+  45 | 46  |  47
+  46 | 47  |  48
+  47 | 48  |  49
+  48 | 49  |  50
+  49 | 50  |  51
+  50 | 51  |  52
+  51 | 52  |  53
+  52 | 53  |  54
+  53 | 54  |  55
+  54 | 55  |  56
+  55 | 56  |  57
+  56 | 57  |  58
+  57 | 58  |  59
+  58 | 59  |  60
+  59 | 60  |  61
+  60 | 61  |  62
+  61 | 62  |  63
+  62 | 63  |  64
+  63 | 64  |  65
+  64 | 65  |  66
+  65 | 66  |  67
+  66 | 67  |  68
+  67 | 68  |  69
+  68 | 69  |  70
+  69 | 70  |  71
+  70 | 71  |  72
+  71 | 72  |  73
+  72 | 73  |  74
+  73 | 74  |  75
+  74 | 75  |  76
+  75 | 76  |  77
+  76 | 77  |  78
+  77 | 78  |  79
+  78 | 79  |  80
+  79 | 80  |  81
+  80 | 81  |  82
+  81 | 82  |  83
+  82 | 83  |  84
+  83 | 84  |  85
+  84 | 85  |  86
+  85 | 86  |  87
+  86 | 87  |  88
+  87 | 88  |  89
+  88 | 89  |  90
+  89 | 90  |  91
+  90 | 91  |  92
+  91 | 92  |  93
+  92 | 93  |  94
+  93 | 94  |  95
+  94 | 95  |  96
+  95 | 96  |  97
+  96 | 97  |  98
+  97 | 98  |  99
+  98 | 99  | 100
+  99 | 100 | 101
+ 100 | 101 | 102
+ 101 | 102 | 103
+(100 rows)
+
+alter table atsdb set distributed by (t);
+select * from distcheck where rel = 'atsdb';
+  rel  | attname 
+-------+---------
+ atsdb | t
+(1 row)
+
+alter table atsdb drop column n;
+alter table atsdb set with(appendonly = true, compresslevel = 3);
+select relname, relaosegrelid != 0, reloptions from pg_class where oid = 
+'atsdb'::regclass;
+ relname | ?column? |            reloptions             
+---------+----------+-----------------------------------
+ atsdb   | t        | {appendonly=true,compresslevel=3}
+(1 row)
+
+select * from distcheck where rel = 'atsdb';
+  rel  | attname 
+-------+---------
+ atsdb | t
+(1 row)
+
+select * from atsdb;
+  j  |  t  
+-----+-----
+   2 | 3
+   3 | 4
+   4 | 5
+   5 | 6
+   6 | 7
+   7 | 8
+   8 | 9
+   9 | 10
+  10 | 11
+  11 | 12
+  12 | 13
+  13 | 14
+  14 | 15
+  15 | 16
+  16 | 17
+  17 | 18
+  18 | 19
+  19 | 20
+  20 | 21
+  21 | 22
+  22 | 23
+  23 | 24
+  24 | 25
+  25 | 26
+  26 | 27
+  27 | 28
+  28 | 29
+  29 | 30
+  30 | 31
+  31 | 32
+  32 | 33
+  33 | 34
+  34 | 35
+  35 | 36
+  36 | 37
+  37 | 38
+  38 | 39
+  39 | 40
+  40 | 41
+  41 | 42
+  42 | 43
+  43 | 44
+  44 | 45
+  45 | 46
+  46 | 47
+  47 | 48
+  48 | 49
+  49 | 50
+  50 | 51
+  51 | 52
+  52 | 53
+  53 | 54
+  54 | 55
+  55 | 56
+  56 | 57
+  57 | 58
+  58 | 59
+  59 | 60
+  60 | 61
+  61 | 62
+  62 | 63
+  63 | 64
+  64 | 65
+  65 | 66
+  66 | 67
+  67 | 68
+  68 | 69
+  69 | 70
+  70 | 71
+  71 | 72
+  72 | 73
+  73 | 74
+  74 | 75
+  75 | 76
+  76 | 77
+  77 | 78
+  78 | 79
+  79 | 80
+  80 | 81
+  81 | 82
+  82 | 83
+  83 | 84
+  84 | 85
+  85 | 86
+  86 | 87
+  87 | 88
+  88 | 89
+  89 | 90
+  90 | 91
+  91 | 92
+  92 | 93
+  93 | 94
+  94 | 95
+  95 | 96
+  96 | 97
+  97 | 98
+  98 | 99
+  99 | 100
+ 100 | 101
+ 101 | 102
+(100 rows)
+
+alter table atsdb set distributed by (j);
+select * from distcheck where rel = 'atsdb';
+  rel  | attname 
+-------+---------
+ atsdb | j
+(1 row)
+
+select relname, relaosegrelid != 0, reloptions from pg_class where oid =
+'atsdb'::regclass;
+ relname | ?column? |            reloptions             
+---------+----------+-----------------------------------
+ atsdb   | t        | {appendonly=true,compresslevel=3}
+(1 row)
+
+select * from atsdb;
+  j  |  t  
+-----+-----
+   2 | 3
+   3 | 4
+   4 | 5
+   5 | 6
+   6 | 7
+   7 | 8
+   8 | 9
+   9 | 10
+  10 | 11
+  11 | 12
+  12 | 13
+  13 | 14
+  14 | 15
+  15 | 16
+  16 | 17
+  17 | 18
+  18 | 19
+  19 | 20
+  20 | 21
+  21 | 22
+  22 | 23
+  23 | 24
+  24 | 25
+  25 | 26
+  26 | 27
+  27 | 28
+  28 | 29
+  29 | 30
+  30 | 31
+  31 | 32
+  32 | 33
+  33 | 34
+  34 | 35
+  35 | 36
+  36 | 37
+  37 | 38
+  38 | 39
+  39 | 40
+  40 | 41
+  41 | 42
+  42 | 43
+  43 | 44
+  44 | 45
+  45 | 46
+  46 | 47
+  47 | 48
+  48 | 49
+  49 | 50
+  50 | 51
+  51 | 52
+  52 | 53
+  53 | 54
+  54 | 55
+  55 | 56
+  56 | 57
+  57 | 58
+  58 | 59
+  59 | 60
+  60 | 61
+  61 | 62
+  62 | 63
+  63 | 64
+  64 | 65
+  65 | 66
+  66 | 67
+  67 | 68
+  68 | 69
+  69 | 70
+  70 | 71
+  71 | 72
+  72 | 73
+  73 | 74
+  74 | 75
+  75 | 76
+  76 | 77
+  77 | 78
+  78 | 79
+  79 | 80
+  80 | 81
+  81 | 82
+  82 | 83
+  83 | 84
+  84 | 85
+  85 | 86
+  86 | 87
+  87 | 88
+  88 | 89
+  89 | 90
+  90 | 91
+  91 | 92
+  92 | 93
+  93 | 94
+  94 | 95
+  95 | 96
+  96 | 97
+  97 | 98
+  98 | 99
+  99 | 100
+ 100 | 101
+ 101 | 102
+(100 rows)
+
+-- validate parameters
+alter table atsdb set with (appendonly = ff);
+ERROR:  invalid parameter value for "appendonly": "ff"
+alter table atsdb set with (reorganize = true);
+alter table atsdb set with (fgdfgef = asds);
+ERROR:  unrecognized parameter "fgdfgef"
+alter table atsdb set with(reorganize = true, reorganize = false) distributed
+randomly;
+ERROR:  "reorganize" specified more than once
+drop table atsdb;
+-- Check that we correctly cascade for partitioned tables
+create table atsdb (i int, j int, k int) partition by range(k)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_1" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_2" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_3" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_4" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_5" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_6" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_7" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_8" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_9" for table "atsdb"
+insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
+select * from distcheck where rel like 'atsdb%';
+      rel      | attname 
+---------------+---------
+ atsdb         | i
+ atsdb_1_prt_1 | i
+ atsdb_1_prt_2 | i
+ atsdb_1_prt_3 | i
+ atsdb_1_prt_4 | i
+ atsdb_1_prt_5 | i
+ atsdb_1_prt_6 | i
+ atsdb_1_prt_7 | i
+ atsdb_1_prt_8 | i
+ atsdb_1_prt_9 | i
+(10 rows)
+
+alter table atsdb set distributed by (j);
+select * from distcheck where rel like 'atsdb%';
+      rel      | attname 
+---------------+---------
+ atsdb         | j
+ atsdb_1_prt_1 | j
+ atsdb_1_prt_2 | j
+ atsdb_1_prt_3 | j
+ atsdb_1_prt_4 | j
+ atsdb_1_prt_5 | j
+ atsdb_1_prt_6 | j
+ atsdb_1_prt_7 | j
+ atsdb_1_prt_8 | j
+ atsdb_1_prt_9 | j
+(10 rows)
+
+select * from atsdb order by 1, 2, 3;
+ i  | j  | k 
+----+----+---
+  3 |  2 | 1
+  4 |  3 | 2
+  5 |  4 | 3
+  6 |  5 | 4
+  7 |  6 | 5
+  8 |  7 | 6
+  9 |  8 | 7
+ 10 |  9 | 8
+ 11 | 10 | 9
+(9 rows)
+
+alter table atsdb set with(appendonly = true);
+select relname, a.blocksize, compresslevel, compresstype, checksum from pg_class c, pg_appendonly a where 
+relname  like 'atsdb%' and c.oid = a.relid order by 1;
+    relname    | blocksize | compresslevel | compresstype | checksum 
+---------------+-----------+---------------+--------------+----------
+ atsdb         |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_1 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_2 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_3 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_4 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_5 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_6 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_7 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_8 |     32768 |             3 | quicklz      | f
+ atsdb_1_prt_9 |     32768 |             3 | quicklz      | f
+(10 rows)
+
+select * from atsdb order by 1, 2, 3;
+ i  | j  | k 
+----+----+---
+  3 |  2 | 1
+  4 |  3 | 2
+  5 |  4 | 3
+  6 |  5 | 4
+  7 |  6 | 5
+  8 |  7 | 6
+  9 |  8 | 7
+ 10 |  9 | 8
+ 11 | 10 | 9
+(9 rows)
+
+insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
+select * from atsdb order by 1, 2, 3;
+ i  | j  | k 
+----+----+---
+  3 |  2 | 1
+  3 |  2 | 1
+  4 |  3 | 2
+  4 |  3 | 2
+  5 |  4 | 3
+  5 |  4 | 3
+  6 |  5 | 4
+  6 |  5 | 4
+  7 |  6 | 5
+  7 |  6 | 5
+  8 |  7 | 6
+  8 |  7 | 6
+  9 |  8 | 7
+  9 |  8 | 7
+ 10 |  9 | 8
+ 10 |  9 | 8
+ 11 | 10 | 9
+ 11 | 10 | 9
+(18 rows)
+
+drop table atsdb;
+drop view distcheck;
