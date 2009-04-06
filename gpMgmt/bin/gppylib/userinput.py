@@ -20,7 +20,7 @@ def validate_yesno( input,default ):
         return None
         
 def ask_yesno(bg_info,msg,default):
-    help=" Yy|nn (default=%s)" % default
+    help=" Yy|Nn (default=%s)" % default
     return ask_input(bg_info,msg,help,default,validate_yesno)
 
 #################

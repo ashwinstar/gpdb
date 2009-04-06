@@ -18,7 +18,7 @@ logger = get_default_logger()
 
 #TODO:  need a better way of managing environment variables.
 GPHOME=os.environ.get('GPHOME')
-SRC_GPPATH="source %s/greenplum_path.sh;" % GPHOME
+SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
 
 
