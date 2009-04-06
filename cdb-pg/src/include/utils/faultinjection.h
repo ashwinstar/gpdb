@@ -31,6 +31,7 @@
 #define GP_FAULT_LOG_LONGMSG            200 /* log a long message */
 #define GP_FAULT_LOG_3RDPARTY           201 /* directly write to stderr */
 #define GP_FAULT_LOG_3RDPARTY_LONGMSG   202 /* directly write to stderr */
+#define GP_FAULT_LOG_CRASH              203 /* crash the logger process */
 
 #ifdef USE_FAULT_INJECTION
 extern int64 gp_fault_inject_impl(int32 reason, int64 arg); 

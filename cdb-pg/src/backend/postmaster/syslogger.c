@@ -1016,6 +1016,31 @@ static void syslogger_handle_chunk(PipeProtoChunk *chunk)
     PipeProtoChunk *first = NULL; 
     PipeProtoChunk *prev = NULL; 
 
+#ifdef USE_FAULT_INJECTION
+    if (chunk->hdr.log_format == 'X')
+    {
+        if (chunk->hdr.log_line_number == 1)
+        {
+            proc_exit(1);
+        }
+        else if (chunk->hdr.log_line_number == 2)
+        {
+            proc_exit(2);
+        }
+        else if (chunk->hdr.log_line_number == 11)
+        {
+            *(int *) 0 = 1234;
+        }
+        else
+        {
+            abort();
+        }
+        return;
+    }
+#endif
+
+    Assert(chunk->hdr.log_format == 'c' || chunk->hdr.log_format == 't'); 
+          
     /* I am the last, so chain no one */
     chunk->hdr.next = -1; 
 

@@ -12,6 +12,10 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 
+#include "postmaster/syslogger.h"
+
+#include <unistd.h>
+
 /* exposed in pg_proc.h */
 extern Datum gp_fault_inject(PG_FUNCTION_ARGS) ;
 Datum gp_fault_inject(PG_FUNCTION_ARGS) 
@@ -140,27 +144,42 @@ int64 gp_fault_inject_impl(int32 reason, int64 arg)
 		case GP_FAULT_SEG_GET_VMEMMAX:
 			return gp_mp_fault(reason, arg); 
 
-                case GP_FAULT_LOG_LONGMSG:
-                        elog(LOG, 
-                                        "%s%s%s%s%s" "%s%s%s%s" "%s%s%s%s%s", 
-                                        longmsg, longmsg, longmsg, longmsg, longmsg,
-                                        multiline, multiline, quotestr, quotestr,
-                                        longmsg, longmsg, longmsg, longmsg, longmsg
-                            );
-                        break;
-                case GP_FAULT_LOG_3RDPARTY:
-                        fprintf(stderr, "Hello from 3rd party");
-                        break;
+        case GP_FAULT_LOG_LONGMSG:
+            elog(LOG, 
+                    "%s%s%s%s%s" "%s%s%s%s" "%s%s%s%s%s", 
+                    longmsg, longmsg, longmsg, longmsg, longmsg,
+                    multiline, multiline, quotestr, quotestr,
+                    longmsg, longmsg, longmsg, longmsg, longmsg
+                );
+            break;
+        case GP_FAULT_LOG_3RDPARTY:
+            fprintf(stderr, "Hello from 3rd party");
+            break;
 
-                case GP_FAULT_LOG_3RDPARTY_LONGMSG:
-                        fprintf(stderr,  
-                                        "%s%s%s%s%s" "%s%s%s%s" "%s%s%s%s%s", 
-                                        longmsg, longmsg, longmsg, longmsg, longmsg,
-                                        multiline, multiline, quotestr, quotestr,
-                                        longmsg, longmsg, longmsg, longmsg, longmsg
-                               );
-                        break;
-                        
+        case GP_FAULT_LOG_3RDPARTY_LONGMSG:
+            fprintf(stderr,  
+                    "%s%s%s%s%s" "%s%s%s%s" "%s%s%s%s%s", 
+                    longmsg, longmsg, longmsg, longmsg, longmsg,
+                    multiline, multiline, quotestr, quotestr,
+                    longmsg, longmsg, longmsg, longmsg, longmsg
+                   );
+            break;
+        case GP_FAULT_LOG_CRASH:
+            {
+                PipeProtoHeader hdr;
+                hdr.zero = 0;
+                hdr.len = 0;
+                hdr.pid = 1; 
+                hdr.thid = 1; 
+                hdr.main_thid = 1;
+                hdr.chunk_no = 0;
+                hdr.is_last = 't';
+                hdr.log_format = 'X';
+                hdr.log_line_number = reason;
+                hdr.next = -1;
+                write(2, &hdr, sizeof(PipeProtoHeader));
+            }
+            break;
 		default:
 			elog(ERROR, "Invalid user fault injection code");
 	}
