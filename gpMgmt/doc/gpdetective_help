@@ -9,6 +9,7 @@ SYNOPSIS
 
 gpdetective [-h <master_hostname>] [-p <master_port>] 
 [-U <gp_superuser>] [-P <password>] 
+[--start_date <number_of_days> | <YYYY-MM-DD>]
 
 gpdetective -? | -v
 
@@ -74,6 +75,12 @@ you must also supply the database superuser password. If not specified,
 reads from ~/.pgpass if it exists.
 
 
+--start_date <number_of_days> | <YYYY-MM-DD>
+
+Sets the start date for the diagnostic information collected.  Can 
+specify either the number of days prior, or an explicit past date.
+
+
 -U <gp_superuser>
 
 The Greenplum database superuser role name to connect as 
@@ -95,9 +102,10 @@ Displays the utility usage and syntax.
 EXAMPLES
 *****************************************************
 
-Collect diagnostic information for a Greenplum Database system:
+Collect the diagnostic information for the past two days of activity
+in a Greenplum Database system:
 
-gpdetective
+gpdetective --start_date=2
 
 Collect diagnostic information for a Greenplum Database system:
 
