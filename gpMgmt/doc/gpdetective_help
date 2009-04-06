@@ -8,7 +8,7 @@ SYNOPSIS
 
 
 gpdetective [-h <master_hostname>] [-p <master_port>] 
-[-U <gp_superuser>] [-P <password>] [-f <output_filename>]
+[-U <gp_superuser>] [-P <password>] 
 
 gpdetective -? | -v
 
@@ -45,16 +45,12 @@ And secures the following information:
 
 * Schema information
 
+The bzip2-compressed tar output file containing this information is created 
+in the current directory with a file name of gpdetective<timestamp>.tar.bz2.
 
 *****************************************************
 OPTIONS
 *****************************************************
-
--f <output_filename>
-
-The file name and path location of the gpdetective output file. 
-If not sprecified, a bzip2-compressed tar output file is created 
-in the current directory with a file name of gpdetective<timestamp>.tar.bz2.
 
 
 -h <master_hostname>
@@ -103,10 +99,9 @@ Collect diagnostic information for a Greenplum Database system:
 
 gpdetective
 
-Collect diagnostic information for a Greenplum Database system 
-and specify the name and location of the output file
+Collect diagnostic information for a Greenplum Database system:
 
-gpdetective -f /var/data/my043008gp.tar
+gpdetective 
 
 Collect diagnostic information for a Greenplum Database system 
 and supply the required connection information for the master host:
