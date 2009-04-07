@@ -704,7 +704,7 @@ CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
 struct priority_iface {
 	int priority;
 	int interface;
-};
+} priority_iface;
 
 /*
  * iface_priority_compare() A compare function for interface-priority
