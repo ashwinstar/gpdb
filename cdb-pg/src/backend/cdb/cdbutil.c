@@ -701,7 +701,7 @@ CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
  * We're going to sort interface-ids by priority.  So we need a little
  * struct, and a comparison function to hand-off to qsort().
  */
-struct priority_iface {
+typedef struct priority_iface {
 	int priority;
 	int interface;
 } priority_iface;
