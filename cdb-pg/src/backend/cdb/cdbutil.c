@@ -701,10 +701,10 @@ CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
  * We're going to sort interface-ids by priority.  So we need a little
  * struct, and a comparison function to hand-off to qsort().
  */
-typedef struct priority_iface {
+struct priority_iface {
 	int priority;
-	int interface;
-} priority_iface;
+	int interface_id;
+};
 
 /*
  * iface_priority_compare() A compare function for interface-priority
@@ -887,7 +887,7 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c)
 		priority = DatumGetInt16(attr);
 
 		ifaces[i-1].priority = priority;
-		ifaces[i-1].interface = iface_id;
+		ifaces[i-1].interface_id = iface_id;
 	}
 	iface_count = i;
 
@@ -917,7 +917,7 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c)
 			/* Start a new scan. */
 			ScanKeyInit(&key, Anum_gp_interfaces_interfaceid,
 						BTEqualStrategyNumber, F_INT2EQ,
-						ObjectIdGetDatum(ifaces[i].interface));
+						ObjectIdGetDatum(ifaces[i].interface_id));
 
 			ifacescan = systable_beginscan(gp_interface_rel, GpInterfacesIndexId,
 										   true, SnapshotNow, 1, &key);
@@ -930,7 +930,7 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c)
 			attr = heap_getattr(tuple, Anum_gp_interfaces_interfaceid, gp_interface_rel->rd_att, &isNull);
 			Assert(!isNull);
 			iface_id = DatumGetInt16(attr);
-			Assert(iface_id == ifaces[i].interface); 
+			Assert(iface_id == ifaces[i].interface_id); 
 
 			attr = heap_getattr(tuple, Anum_gp_interfaces_status, gp_interface_rel->rd_att, &isNull);
 			Assert(!isNull);
