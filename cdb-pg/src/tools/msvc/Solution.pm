@@ -3,7 +3,7 @@ package Solution;
 #
 # Package that encapsulates a Visual C++ solution file generation
 #
-# $PostgreSQL: pgsql/src/tools/msvc/Solution.pm,v 1.26 2007/05/27 11:16:41 meskes Exp $
+# $PostgreSQL: pgsql/src/tools/msvc/Solution.pm,v 1.47 2009/01/06 18:37:50 mha Exp $
 #
 use Carp;
 use strict;
@@ -211,62 +211,20 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
     $self->GenerateDefFile("src\\interfaces\\ecpg\\compatlib\\compatlib.def","src\\interfaces\\ecpg\\compatlib\\exports.txt","LIBECPG_COMPAT");
     $self->GenerateDefFile("src\\interfaces\\ecpg\\pgtypeslib\\pgtypeslib.def","src\\interfaces\\ecpg\\pgtypeslib\\exports.txt","LIBPGTYPES");
 
-    if (IsNewer("src\\backend\\utils\\fmgrtab.c","src\\include\\catalog\\pg_proc.h"))
+    if (IsNewer('src\backend\utils\fmgrtab.c','src\include\catalog\pg_proc.h'))
     {
         print "Generating fmgrtab.c and fmgroids.h...\n";
-        open(I,"src\\include\\catalog\\pg_proc.h") || confess "Could not open pg_proc.h";
-        my @fmgr = ();
-        my %seenit;
-        while (<I>)
-        {
-            next unless (/^DATA/);
-            s/^.*OID[^=]*=[^0-9]*//;
-            s/\(//g;
-            s/[ \t]*\).*$//;
-            my @p = split;
-            next if ($p[4] ne "12");
-            push @fmgr,
-              {
-                oid     => $p[0],
-                proname => $p[1],
-                prosrc  => $p[$#p-2],
-                nargs   => $p[10],
-                strict  => $p[7],
-                retset  => $p[8],
-              };
-        }
-        close(I);
-
-        open(H,'>', 'src\include\utils\fmgroids.h')
-          ||confess "Could not open fmgroids.h";
-        print H
-          "/* fmgroids.h generated for Visual C++ */\n#ifndef FMGROIDS_H\n#define FMGROIDS_H\n\n";
-        open(T,">src\\backend\\utils\\fmgrtab.c") || confess "Could not open fmgrtab.c";
-        print T
-"/* fmgrtab.c generated for Visual C++ */\n#include \"postgres.h\"\n#include \"utils/fmgrtab.h\"\n\n";
-        foreach my $s (sort {$a->{oid} <=> $b->{oid}} @fmgr)
-        {
-            next if $seenit{$s->{prosrc}};
-            $seenit{$s->{prosrc}} = 1;
-            print H "#define F_" . uc $s->{prosrc} . " $s->{oid}\n";
-            print T "extern Datum $s->{prosrc} (PG_FUNCTION_ARGS);\n";
-        }
-        print H "\n#endif\n /* FMGROIDS_H */\n";
-        close(H);
-        print T "const FmgrBuiltin fmgr_builtins[] = {\n";
-        my %bmap;
-        $bmap{'t'} = 'true';
-        $bmap{'f'} = 'false';
-        foreach my $s (sort {$a->{oid} <=> $b->{oid}} @fmgr)
-        {
-            print T
-"  { $s->{oid}, \"$s->{prosrc}\", $s->{nargs}, $bmap{$s->{strict}}, $bmap{$s->{retset}}, $s->{prosrc} },\n";
+        chdir('src\backend\utils');
+        system("perl Gen_fmgrtab.pl ../../../src/include/catalog/pg_proc.h");
+        chdir('..\..\..');
+        copyFile('src\backend\utils\fmgroids.h','src\include\utils\fmgroids.h');
         }
 
-        print T
-" { 0, NULL, 0, false, false, NULL }\n};\n\nconst int fmgr_nbuiltins = (sizeof(fmgr_builtins) / sizeof(FmgrBuiltin)) - 1;\n";
-        close(T);
-    }
+    if (IsNewer('src\include\utils\probes.h','src\backend\utils\probes.d'))
+        {
+		print "Generating probes.h...\n";
+		system('psed -f src\backend\utils\Gen_dummy_probes.sed src\backend\utils\probes.d > src\include\utils\probes.h'); 
+        }
 
     if (IsNewer('src\interfaces\libpq\libpq.rc','src\interfaces\libpq\libpq.rc.in'))
     {
@@ -303,7 +261,20 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         print "Generating cdb_schema.sql...\n";
         copyFile("src\\backend\\catalog\\cdb_schema.in","src\\backend\\catalog\\cdb_schema.sql");
     } 
-    
+
+    if (
+        IsNewer(
+            'src\interfaces\ecpg\preproc\preproc.y',
+            'src\backend\parser\gram.y'
+        )
+      )
+    {
+        print "Generating preproc.y...\n";
+        chdir('src\interfaces\ecpg\preproc');
+        system('perl parse.pl < ..\..\..\backend\parser\gram.y > preproc.y');
+        chdir('..\..\..\..');
+    }
+
     if (
         IsNewer(
             'src\interfaces\ecpg\include\ecpg_config.h',

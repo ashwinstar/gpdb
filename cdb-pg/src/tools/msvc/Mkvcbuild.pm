@@ -32,7 +32,7 @@ my $contrib_extrasource = {
     'cube' => ['cubescan.l','cubeparse.y'],
     'seg' => ['segscan.l','segparse.y']
 };
-my @contrib_excludes = ('pgcrypto','uuid-ossp','bufferedtest', 'varblocktest', 'gp_filedump', 'tsearch2');
+my @contrib_excludes = ('pgcrypto','intagg','uuid-ossp','bufferedtest', 'varblocktest', 'gp_filedump', 'tsearch2');
 
 sub mkvcbuild
 {
@@ -61,10 +61,7 @@ sub mkvcbuild
     $postgres->AddFile('src\backend\utils\fmgrtab.c');
     $postgres->ReplaceFile('src\backend\port\dynloader.c','src\backend\port\dynloader\win32.c');
     $postgres->ReplaceFile('src\backend\port\pg_sema.c','src\backend\port\win32_sema.c');
-    
-    # in PG 8.2, we use sysv_shmem.c, but in PG 8.3, this should be win32_shmem.c
-    $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\sysv_shmem.c');
-    
+    $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\win32_shmem.c');
     $postgres->AddFiles('src\port',@pgportfiles);
     $postgres->AddDir('src\timezone');
     $postgres->AddFiles('src\backend\parser','scan.l','gram.y');
@@ -189,8 +186,6 @@ sub mkvcbuild
     $initdb->AddDefine('FRONTEND');
     $initdb->AddLibrary('wsock32.lib'); 
     $initdb->AddLibrary('ws2_32.lib');
-    $initdb->AddReference($libpgport);
-    $initdb->AddReference($libpq);
 
     my $pgconfig = AddSimpleFrontend('pg_config');
 
@@ -224,16 +219,22 @@ sub mkvcbuild
     $pgdump->AddFile('src\bin\pg_dump\pg_dump.c');
     $pgdump->AddFile('src\bin\pg_dump\common.c');
     $pgdump->AddFile('src\bin\pg_dump\pg_dump_sort.c');
+    $pgdump->AddFile('src\bin\pg_dump\keywords.c');
+    $pgdump->AddFile('src\backend\parser\kwlookup.c');
 
     my $pgdumpall = AddSimpleFrontend('pg_dump', 1);
     $pgdumpall->{name} = 'pg_dumpall';
     $pgdumpall->AddIncludeDir('src\backend');
     $pgdumpall->AddFile('src\bin\pg_dump\pg_dumpall.c');
+    $pgdumpall->AddFile('src\bin\pg_dump\keywords.c');
+    $pgdumpall->AddFile('src\backend\parser\kwlookup.c');
 
     my $pgrestore = AddSimpleFrontend('pg_dump', 1);
     $pgrestore->{name} = 'pg_restore';
     $pgrestore->AddIncludeDir('src\backend');
     $pgrestore->AddFile('src\bin\pg_dump\pg_restore.c');
+    $pgrestore->AddFile('src\bin\pg_dump\keywords.c');
+    $pgrestore->AddFile('src\backend\parser\kwlookup.c');
 
     my $zic = $solution->AddProject('zic','exe','utils');
     $zic->AddFiles('src\timezone','zic.c','ialloc.c','scheck.c','localtime.c');
@@ -317,8 +318,7 @@ sub mkvcbuild
     $mf =~ m{DIRS\s*=\s*(.*)$}m || die 'Could not match in conversion makefile' . "\n";
     foreach my $sub (split /\s+/,$1)
     {
-		next if (length($sub) == 0);
-        my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
+no        my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
         my $p = $solution->AddProject($sub, 'dll', 'conversion procs');
         
         $p->AddFile('src\backend\utils\mb\conversion_procs\\' . $sub . '\\' . $sub . '.c');
