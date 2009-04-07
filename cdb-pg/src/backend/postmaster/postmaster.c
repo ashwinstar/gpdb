@@ -4547,7 +4547,7 @@ extern slock_t *ShmemLock;
 extern LWLock *LWLockArray;
 extern slock_t *ProcStructLock;
 extern PROC_HDR *ProcGlobal;
-extern PGPROC *DummyProcs;
+extern PGPROC *AuxiliaryProcs;
 extern int	pgStatSock;
 
 #ifndef WIN32
@@ -4590,7 +4590,7 @@ save_backend_variables(BackendParameters * param, Port *port,
 	param->LWLockArray = LWLockArray;
 	param->ProcStructLock = ProcStructLock;
 	param->ProcGlobal = ProcGlobal;
-	param->DummyProcs = DummyProcs;
+	param->AuxiliaryProcs = AuxiliaryProcs;
 	write_inheritable_socket(&param->pgStatSock, pgStatSock, childPid);
 
 	param->PostmasterPid = PostmasterPid;
@@ -4795,7 +4795,7 @@ restore_backend_variables(BackendParameters * param, Port *port)
 	LWLockArray = param->LWLockArray;
 	ProcStructLock = param->ProcStructLock;
 	ProcGlobal = param->ProcGlobal;
-	DummyProcs = param->DummyProcs;
+	AuxiliaryProcs = param->AuxiliaryProcs;
 	read_inheritable_socket(&pgStatSock, &param->pgStatSock);
 
 	PostmasterPid = param->PostmasterPid;

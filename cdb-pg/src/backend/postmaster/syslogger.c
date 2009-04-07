@@ -56,6 +56,9 @@
 #endif
 
 
+#define READ_BUF_SIZE (2 * PIPE_CHUNK_SIZE)
+
+
 /*
  * GUC parameters.	Redirect_stderr cannot be changed after postmaster
  * start, but the rest can change at SIGHUP.
@@ -199,9 +202,6 @@ SysLoggerMain(int argc, char *argv[])
         dup2(fd, fileno(stderr));
         close(fd);
     }
-
-    redirection_done = true;
-    
 	/*
 	 * Syslogger's own stderr can't be the syslogPipe, so set it back to text
 	 * mode if we didn't just close it. (It was set to binary in
@@ -211,6 +211,10 @@ SysLoggerMain(int argc, char *argv[])
     else
         _setmode(_fileno(stderr),_O_TEXT);
 #endif
+
+    redirection_done = true;
+    
+
 
     /*
      * Also close our copy of the write end of the pipe.  This is needed to

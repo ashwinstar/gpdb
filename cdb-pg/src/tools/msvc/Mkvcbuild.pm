@@ -56,6 +56,7 @@ sub mkvcbuild
 
     $postgres = $solution->AddProject('postgres','exe','','src\backend');
     $postgres->AddIncludeDir('src\backend');
+    $postgres->AddIncludeDir('src\backend\gp_libpq_fe');
     $postgres->AddDir('src\backend\port\win32');
     $postgres->AddFile('src\backend\utils\fmgrtab.c');
     $postgres->ReplaceFile('src\backend\port\dynloader.c','src\backend\port\dynloader\win32.c');
