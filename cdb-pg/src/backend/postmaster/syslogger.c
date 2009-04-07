@@ -208,8 +208,7 @@ SysLoggerMain(int argc, char *argv[])
 	 * SubPostmasterMain).
      */
 #ifdef WIN32
-    else
-        _setmode(_fileno(stderr),_O_TEXT);
+    _setmode(_fileno(stderr),_O_TEXT);
 #endif
 
     redirection_done = true;

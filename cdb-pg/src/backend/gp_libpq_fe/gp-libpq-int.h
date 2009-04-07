@@ -59,6 +59,8 @@ typedef int ssize_t;			/* ssize_t doesn't exist in VC (at least not
 #undef SECURITY_WIN32
 
 #ifndef ENABLE_GSS
+
+#ifndef GSS_BUFFER_DESC_DEFINED
 /*
  * Define a fake structure compatible with GSSAPI on Unix.
  */
@@ -67,6 +69,8 @@ typedef struct
 	void	   *value;
 	int			length;
 }	gss_buffer_desc;
+#define GSS_BUFFER_DESC_DEFINED
+#endif
 #endif
 #endif   /* ENABLE_SSPI */
 
