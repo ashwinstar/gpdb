@@ -1617,7 +1617,7 @@ if [ x"" != x"$PARALLEL_BUILD" ];then
 			$RM -f $I
 		done
 		$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
-		ERROR_EXIT "[FATAL]:-Failures detected, see log file for more detail" 2
+		ERROR_EXIT "[FATAL]:-Failures detected, see log file $LOG_FILE for more detail" 2
 	else
 		LOG_MSG "[INFO]:-Deleting distributed backout files" 1
 		for I in ls /tmp/gpsegcreate.sh_backout*
