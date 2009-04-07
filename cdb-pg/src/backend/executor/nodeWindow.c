@@ -5121,7 +5121,14 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	if (is_trail)
 	{
 		if (level_state->lead_expr != NULL)
-			expr = coerceType(expr, exprType((Node *)(level_state->lead_expr->expr)));
+ 		{
+  			expr = coerceType(expr, exprType((Node *)(level_state->lead_expr->expr)));
+ 			if ( expr == NULL )
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_DATA_EXCEPTION),
+ 						 errmsg("can't coerce trailing frame bound to type of leading frame bound"),
+ 						 errhint("specify the leading and trailing frame bounds as the same type")));
+ 		}
 
 		n = ExecInitExpr(expr, (PlanState *) wstate);
 		
@@ -5133,7 +5140,14 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	else
 	{
 		if (level_state->trail_expr != NULL)
-			expr = coerceType(expr, exprType((Node *)(level_state->trail_expr->expr)));
+ 		{
+  			expr = coerceType(expr, exprType((Node *)(level_state->trail_expr->expr)));
+ 			if ( expr == NULL )
+ 				ereport(ERROR,
+ 						(errcode(ERRCODE_DATA_EXCEPTION),
+ 						 errmsg("can't coerce leading frame bound to type of trailing frame bound"),
+ 						 errhint("specify the leading and trailing frame bounds as the same type")));
+ 		}
 
 		n = ExecInitExpr((Expr *)expr, (PlanState *) wstate);
 
