@@ -21,6 +21,7 @@
  * Need this to get WSAPoll (poll). And it
  * has to be set before any header from the Win32 API is loaded.
  */
+#undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
 
@@ -63,7 +64,9 @@
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define SHUT_RDWR SD_BOTH
