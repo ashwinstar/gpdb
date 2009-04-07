@@ -30,4 +30,4 @@ fmgroids.h fmgrtab.c: Gen_fmgrtab.sh $(top_srcdir)/src/include/catalog/pg_proc.h
 
 clean:
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
-	rm -f SUBSYS.o fmgrtab.o fmgroids.h fmgrtab.c
+	rm -f SUBSYS.o fmgrtab.o fmgroids.h fmgrtab.c probes.h
