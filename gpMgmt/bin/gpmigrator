@@ -1333,7 +1333,7 @@ class GPUpgrade:
             Some releases don't look like this, but rather
             3.2 dev.
             '''
-            if v == 'main': return "3.3.99.99"
+            if v == 'main': return MAIN
             vs = v.split('.')
 
             # all released versions have 4 integer version components
@@ -1353,7 +1353,7 @@ class GPUpgrade:
             '''
             Back the other way
             '''
-            if v == "3.3.99.99": return "main"
+            if v == MAIN: return "main"
             elif v == "3.2.99.99": return "3.2 dev"
             elif v == "3.1.99.99": return "3.1 dev"
             else: return v
@@ -1424,6 +1424,8 @@ class GPUpgrade:
                 self.Log('INFO', "Data   %s " % line)
                 if ((not self.revert and line != oldcat) or
                     (self.revert and line != oldcat and line != newcat)):
+                    self.Log('DEBUG', 'catalog mismatch: expected %s, found %s'
+                             % (oldcat, line))
                     msg = 'Catalog in %s does not match source binary' % self.masterdir
                     raise UpgradeError(msg)
                 break
@@ -1802,9 +1804,9 @@ Cannot downgrade a database with append only tables     <<<<<
                 if c[0] > 0:
                     raise UpgradeError(
 '''
-------------------------------------------------------------
-Cannot downgrade a database with 3.3 horizontal partitioning    <<<<<
-------------------------------------------------------------
+---------------------------------------------------
+Cannot downgrade a database with 3.3 column storage    <<<<<
+---------------------------------------------------
 ''')
 
         # Extract the information needed to construct a gp_init_config file
@@ -2079,6 +2081,18 @@ This issue must be resolved before upgrade can complete.
             self.RunCmd('gpstop -u', env=env)
             self.Log('INFO', 'Database Locked')
 
+
+    def CheckClusterReady(self, databases, port):
+        '''
+        Pre-flight checks
+        '''
+        for db in databases:
+            xact = self.Select("SELECT count(*)::numeric FROM " +
+                               "pg_prepared_xacts",
+                               db=db['dbname'], port=port);
+            if xact[0] > 0:
+                raise UpgradeError("Database contains prepared transactions");
+
     #------------------------------------------------------------
     def ReleaseLockdown(self, env):
         '''
@@ -2212,13 +2226,14 @@ This issue must be resolved before upgrade can complete.
                     if type == 'source':
                         logdir = os.path.join(d, WORKDIR)
                     else:
-                        logdir = os.path.split(d)[0]       # back up one directory
+                        logdir = os.path.split(d)[0]   # back up one directory
                 
                     # Open the mapping file
                     mapfilename = os.path.join(logdir, '%s_%s_mapping' % (seg, type))
                     mapfile = open(mapfilename, 'w')
 
-                    # Find the last line in the conf file that matches our expression
+                    # Find the last line in the conf file that matches our
+                    # expression
                     conf = os.path.join(dir, 'postgresql.conf')
                     def getconf(x):
                         conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
@@ -2233,7 +2248,8 @@ This issue must be resolved before upgrade can complete.
                     # Find the port for this segment:
                     port = getconf('port')
                     if port == None:
-                        raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
+                        raise UpgradeError('Could not determine port from ' +
+                                           '%s/postgresql.conf' % dir)
 
                     # Get a list of databases
                     databases = self.Select(
@@ -2247,22 +2263,8 @@ This issue must be resolved before upgrade can complete.
                        ORDER BY dbname
                     ''', port=port)
 
-                    # Check that there are no prepared transactions
-                    #   - This doesn't really belong in BuildMappings, but in
-                    #     a different check upgrade location.  However this 
-                    #     the first handy location we have where we are 
-                    #     executing on all the segments and it is still
-                    #     relatively early in the process.
-                    #   - It will be run on the new database as well, which is 
-                    #     neither helpful nor harmful.
-                    #   - Assuming we have sucessfully locked out all other 
-                    #     users this should never be true because startup will
-                    #     have rollbacked the transaction.
-                    for db in databases:
-                        xact = self.Select("SELECT count(*)::numeric FROM pg_prepared_xacts",
-                                           db=db['dbname'], port=port);
-                        if xact[0] > 0:
-                            raise UpgradeError("Database contains prepared transactions");
+                    self.CheckClusterReady(databases, port)
+
 
                     # Build up the list of mapping objects
                     if u.method == "dumprestore":
@@ -3396,6 +3398,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         We write the set of files to the file system for later use.
         '''
 
+        self.Log('INFO', 'Extracting list of catalog files')
+
         if self.cmd == 'MASTER':
             datadirs = [ self.root ]
             seg_prefix = self.config['SEG_PREFIX'] + '-'
@@ -3447,18 +3451,6 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                        WHERE datname != 'template0'
                        ORDER BY dbname
                     ''', port=port)
-
-                    # Check that there are no prepared transactions
-                    #   - This doesn't really belong in BuildMappings, but in
-                    #     a different check upgrade location.  However this 
-                    #     the first handy location we have where we are 
-                    #     executing on all the segments and it is still 
-                    #     relatively early in the process.
-                    #   - It will be run on the new database as well, which is
-                    #     neither helpful nor harmful.
-                    #   - Assuming we have sucessfully locked out all other 
-                    #     users this should never be true because startup will
-                    #     have rollbacked the transaction.  
 
                     # Build up the list of mapping objects
                     files = {}
@@ -3515,6 +3507,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         '''
         Build AO seg upgrade/downgrade files for this node
         '''
+
+        self.Log('INFO', 'Building append only segment upgrader')
         
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
@@ -3567,7 +3561,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                         if self.upgrade:
                             aos = self.Select(
                                 '''select 'alter table pg_aoseg.' || relname || 
-                                   ' add column ' || 
+                                   ' add column ' ||
                                    ' eofuncompressed double precision;'
                                    from pg_class where relnamespace = 6104 and 
                                    relkind = 'o' and relnatts = '4';''',
@@ -3583,7 +3577,10 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
 
                         if aos:
                             for a in aos:
-                                f.write(a)
+                                self.Log('DEBUG', a)
+                                # need to add newline as postgres --single
+                                # uses it as a delimiter
+                                f.write(a + '\n')
                         f.close()
 
                     # just once
@@ -3595,6 +3592,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         Copy data files to build a skeleton database.
         '''
 
+        self.Log('INFO', 'Building skeleton cluster')
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
             self.CallSlaves('BUILDSKEL', self.config['SEG_PREFIX'],
@@ -3727,7 +3725,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         we start the backend in --single (non postmaster) mode and send
         the scripts via stdin.
         '''
-
+ 
+        self.Log('INFO', 'Transforming skeleton cluster catalog')
         def get_new_files(procfile, path, dbdir):
             out = []
             f = open(procfile, 'r')
@@ -3765,14 +3764,15 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         
         def transform(path, dbs, tfile):
             for dboid, db in dbs.iteritems():
+                self.Log('INFO', '... ' + db)
                 transform_db(path, db, dboid, tfile)
         
         def transform_db(path, dbname, dboid, tfile):
             '''
             Transform the specified database for a single segment.
             '''
-            self.Log('DEBUG', "transforming db = %s dboid = %s" % \
-                     (str(dbname), str(dboid)))
+            self.Log('DEBUG', "transforming db = %s dboid = %s tfile = %s" % \
+                     (str(dbname), str(dboid), tfile))
 
             load = open(tfile, 'r')
             # create files to back new relations
@@ -3787,7 +3787,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             cmd = ' '.join(['postgres', '--single', '-O', '-P', 
                             '-c', 'gp_session_role=utility',
                             '-c', 'exit_on_error=true',
-                            '-D', path, dbname])
+                            '-E', '-D', path, dbname])
             self.Log('DEBUG', 'running ' + cmd)
             p = subprocess.Popen(cmd, shell = True,
                                   close_fds = True,
@@ -3799,6 +3799,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         
             if p.returncode == 0:
                 self.Log('DEBUG', 'successfully transformed ' + dbname)
+                self.Log('DEBUG', result[0].strip())
             else:
                 raise CmdError(str(cmd), result[0], result[1])
         
@@ -3909,6 +3910,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
 
                         file = 'aoseg_%s_rewrite.sql' % dbname
                         aofile = os.path.join(d, WORKDIR, file)
+                        f = self.RunCmd('cat ' + aofile)
+                        self.Log('DEBUG', "ao upgrade %s" % f)
                         transform_db(dir, dbname, dboid, aofile)
                         
                     transform(dir, dbs, conv[0])
@@ -3918,10 +3921,11 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         Set the catalog version to something different. Cluster should be down.
         '''
 
+        self.Log('INFO', 'Modifying catalog version of skeleton cluster')
         releases = {"3.0": "200703112",
              "3.1": "200712072",
              "3.2": "200808253",
-             "3.3": "200903161"}
+             "3.3": "200904031"}
         
         self.CheckDown()
 
@@ -4014,6 +4018,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         Database must be down.
         '''
         
+        self.Log('INFO', 'Looking for highest OID')
         self.CheckDown()
         self.highestoid = 16384 # first normal OID
         oids = []
