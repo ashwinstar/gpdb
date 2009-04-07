@@ -145,6 +145,14 @@ PROCESS_QE () {
 				$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
 				PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
 		done
+		# Add all local IPV6 addresses
+		SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP inet6|$CUT -d' ' -f2"`)
+		for ADDR in "${SEGMENT_IPV6_LOCAL_ADDRESS_ALL[@]}"
+		do
+			$TRUSTED_SHELL ${GP_HOSTNAME} "$ECHO host     all          $USER_NAME         $ADDR/128       trust >> ${GP_DIR}/$PG_HBA"
+		done
+		
+		
 		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
 		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" start >/dev/null 2>&1"
 		RETVAL=$?
