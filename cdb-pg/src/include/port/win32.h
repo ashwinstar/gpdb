@@ -4,7 +4,10 @@
 #define WIN32_ONLY_COMPILER
 #endif
 
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0500
+#endif
+
 /*
  * Always build with SSPI support. Keep it as a #define in case
  * we want a switch to disable it sometime in the future.
@@ -57,15 +60,12 @@
 #endif
 
 #ifdef BUILDING_DLL
-#define DLLIMPORT __declspec (dllexport)
 #define PGDLLIMPORT __declspec (dllexport)
 #else							/* not BUILDING_DLL */
-#define DLLIMPORT __declspec (dllimport)
 #define PGDLLIMPORT __declspec (dllimport)
 #endif
 #else							/* not CYGWIN, not MSVC, not MingW */
 
-#define DLLIMPORT
 #define PGDLLIMPORT
 #endif
 
