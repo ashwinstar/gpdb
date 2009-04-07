@@ -353,20 +353,43 @@ GET_DUMP_TABLES () {
 				owner=""
 			}
 			/^SET search_path = / {
-				schema=$0
-				sub(/^SET search_path = /, "", schema)
-				sub(/, pg_catalog.*$/, "", schema)
+				# Strip schema identifier from "SET search_path = <schema>, pg_catalog;"
+				schema = substr($0, 19)
+				schema = substr(schema, 1, index(schema, ", pg_catalog;") - 1)
 			}
 			/^-- Data for Name: / {
-				owner=$0
-				sub(/.*; Owner: /, "", owner)
-				sub(/[[:space:]]*$/, "", owner)
+				# Strip owner identifier from "-- Data for Name: ... ; Owner: <owner> "
+				owner = substr($0, index($0, "; Owner: ") + 9) 
+				if ( owner ~ /[ \t]+$/ ) {
+					for ( i = length(owner); i > 0; i-- ) {
+						if (substr(owner, i, 1) !~ /[ \t]/)
+							break
+					}
+					owner = substr(owner, 1, i)
+				}
 			}
 			/^COPY / {
-				table=$0
-				sub(/^COPY /, "", table)
-				sub(/ (\(.*\))? FROM stdin;/, "", table)
-				printf schema "." table "\t" owner "\n"
+				# Strip table identifier from "COPY <table> [(<column_list>)] FROM stdin;"
+				table = substr($0, 6)
+				if ( table ~ /\) FROM stdin;/) {
+					# COPY statement has a column list
+					if ( substr(table, 1, 1) == "\"" ) {
+						table = substr(table, 1, index(table, "\" ("))
+					} else {
+						table = substr(table, 1, index(table, " (") - 1)
+					}
+				} else {
+					# COPY statement has no column list
+					table = substr(table, 1, index(table, " FROM stdin;") - 1)
+				}
+				if ( table ~ /[ \t]+$/ ) {
+					for ( i = length(table); i > 0; i-- ) {
+						if (substr(table, i, 1) !~ /[ \t]/)
+							break
+					}
+					table = substr(table, 1, i)
+				}
+				print schema "." table "\t" owner "\n"
 			}')
 	
 	# Assign the list of tables/owners appearing in the dump to DUMP_TABLE_ARRAY using only 

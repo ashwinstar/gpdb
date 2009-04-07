@@ -532,6 +532,11 @@ CHK_EXTERNAL () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+
+# Specifies the regular expressions used to parse a qualified table name.
+declare -r TABLE_IDENTIFIER_PATTERN='((")((([^"]{1,})|""){1,})")|([^".]{1,})'
+declare -r QUALIFIED_TABLE_IDENTIFIER_PATTERN="^((${TABLE_IDENTIFIER_PATTERN})\\.){0,1}(${TABLE_IDENTIFIER_PATTERN})$"
+
 GET_TABLE_IDENTIFIER () {
     # -----------------------------------------------------------------
     # Parses a properly quoted, fully-qualified SQL table name into
@@ -546,15 +551,13 @@ GET_TABLE_IDENTIFIER () {
     # character with code zero. (To include a double quote, write two 
     # double quotes.)
     # -----------------------------------------------------------------
-    local subpattern='((")((([^"]{1,})|""){1,})")|([^".]{1,})'
-    local pattern="^((${subpattern})\\.){0,1}(${subpattern})$"
-    if [[ "${1}" =~ ${pattern} ]] ; then
+    if PARSE_TABLE_IDENTIFIER "${1}" ; then
         # Get schema name; may be omitted
         if [ "${BASH_REMATCH[2]}" ] ; then
             if [ "${BASH_REMATCH[4]}" ] ; then
-                # Quoted name; take literally
-                SQL_NAME[0]="${BASH_REMATCH[5]}"
-            	SQL_NAME[2]="\"${BASH_REMATCH[5]}\""
+                # Quoted name; undouble quotes but otherwise take literally
+                SQL_NAME[0]="${BASH_REMATCH[5]//\"\"/\"}"
+                SQL_NAME[2]="\"${BASH_REMATCH[5]}\""
             else
                 # Unquoted name; make lower-case
                 SQL_NAME[0]=$($ECHO "${BASH_REMATCH[2]}" | $TR '[:upper:]' '[:lower:]')
@@ -565,8 +568,8 @@ GET_TABLE_IDENTIFIER () {
         fi
         # Get table name
         if [ "${BASH_REMATCH[11]}" ] ; then
-            # Quoted name; take literally
-            SQL_NAME[1]="${BASH_REMATCH[12]}"
+            # Quoted name; undouble quotes but otherwise take literally
+            SQL_NAME[1]="${BASH_REMATCH[12]//\"\"/\"}"
             SQL_NAME[3]="\"${BASH_REMATCH[12]}\""
         else
             # Unquoted name; make lower-case
@@ -577,6 +580,78 @@ GET_TABLE_IDENTIFIER () {
         SQL_NAME=('' '' '' '')
     fi
 }
+
+# Determine if the bash regular expression operator '=~' is supported.
+# If so, define the version of PARSE_TABLE_IDENTIFER using the operator;
+# otherwise, use the sed-based version.
+if $BASH -c '[[ "string" =~ string ]]' 2>/dev/null ; then
+    eval 'PARSE_TABLE_IDENTIFIER () {
+        [[ "${1}" =~ ${QUALIFIED_TABLE_IDENTIFIER_PATTERN} ]]
+    }'
+else
+    # Determine the option, if any, for sed to enable support of the regular
+    # expression used to parse the qualified table identifier.
+    for reOption in "-r" "-E" ""; do
+        reTest=$($ECHO "\"Mixed Case\".\"TableName\"" | $SED ${reOption} -e "s/${QUALIFIED_TABLE_IDENTIFIER_PATTERN}/\\9/" 2>/dev/null)
+        if [ $? -eq 0 ] && [ "${reTest}" == "\"TableName\"" ] ; then
+            break
+        fi
+        reOption=
+    done
+    unset reTest
+    if [ ! "${reOption}" ] ; then
+        ERROR_EXIT "[FATAL]:-$SED lacks support for the regular expression used to parse qualified table identifiers" 2
+    fi
+
+    # The PARSE_TABLE_IDENTIFIER function provides a functional replacement for a 
+    # [[ "${1}" =~ ${QUALIFIED_TABLE_IDENTIFIER} ]] statement that could be used
+    # in the GET_TABLE_IDENTIFIER function in newer versions of BASH.  Once support
+    # for "old" BASH is dropped, the call to this function should be replaced with
+    # the BASH regular expression pattern matching expression above.  (Attempts to
+    # conditionally use the =~ operator fail BASH syntax checking.)
+    PARSE_TABLE_IDENTIFIER () {
+        local nl=$'\\\n'
+        local nullTag=$'~\t~'
+        names="$($ECHO "${1}" | $SED ${reOption} -n -e "
+            p
+            h
+            # Process the schema portion of the name
+            s/${QUALIFIED_TABLE_IDENTIFIER_PATTERN}/${nl}\\1${nl}\\2${nl}\\3${nl}\\4${nl}\\5${nl}\\6${nl}\\7${nl}\\8/
+            x
+            # Reduce to table portion of the name (must have)
+            s/${QUALIFIED_TABLE_IDENTIFIER_PATTERN}/\\9/
+            t haveTable
+            q
+            :haveTable
+            s/(${TABLE_IDENTIFIER_PATTERN})$/\\1${nl}\\2${nl}\\3${nl}\\4${nl}\\5${nl}\\6${nl}\\7${nl}/
+            H
+            g
+            # Word splitting eliminates adjacent separators; provide a "null" value
+            :setNulls
+            s/\\n\\n/${nl}${nullTag}${nl}/g
+            t setNulls
+            p
+            ")"
+        local oldIFS="${IFS}"
+        IFS=$'\n'
+        BASH_REMATCH=(${names})
+        IFS="${oldIFS}"
+        if [ "${#BASH_REMATCH[@]}" -eq 1 ]
+        then
+            # No table name appeared (only original string is in ${names}
+            BASH_REMATCH=()
+            return 1
+        else
+            # Reduce the "null" value to an actual empty string
+            local i
+            for (( i=0; i <"${#BASH_REMATCH[@]}"; i++ )); do
+                [ "${BASH_REMATCH[$i]}" == "${nullTag}" ] && BASH_REMATCH[$i]=""
+            done
+        fi
+        return 0
+    }
+
+fi
 
 CHK_EXISTS_TABLE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"

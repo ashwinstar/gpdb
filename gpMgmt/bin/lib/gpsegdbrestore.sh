@@ -116,13 +116,39 @@ BUILD_RESTORE_FILES () {
 		ESCAPED_QUOTED_SCHEMA_TXT="${QUOTED_SCHEMA_TXT//\"/\\\"}"
 		TAB_TXT="${SQL_NAME[1]}"
 		QUOTED_TAB_TXT="${SQL_NAME[3]}"
+		ESCAPED_QUOTED_TAB_TXT="${QUOTED_TAB_TXT//\"/\\\"}"
 		#Now build the required awk line
-		AWK_LINE="'BEGIN {output=0; schema=0} {if (match(\$0, /^SET search_path = ${QUOTED_SCHEMA_TXT},/)) schema=1} {if (\$1==\"\\\.\" && output==1) schema=0} {if (match(\$0, /^COPY ${QUOTED_TAB_TXT} /)) output=1} {if (output==1 && schema==0) output=0} {if (output==1 && schema==1) print \$0} END {print \"\\\.\"}'"
-		#Add required search path to dump file
-		$TRUSTED_SHELL $QE_NAME "$ECHO \"SET search_path = ${ESCAPED_QUOTED_SCHEMA_TXT}, pg_catalog;\" >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE"
+		AWK_LINE="BEGIN {output=0; schema=0; found=0} 
+			/^SET search_path = ${QUOTED_SCHEMA_TXT},/ {
+				print \$0
+				schema=1
+			}
+			/^\\\.$/ {
+				if (output == 1) {
+					print \$0
+					output=0
+					schema=0
+				}
+			}
+			/^COPY ${QUOTED_TAB_TXT} / {
+				if (schema == 1) {
+					found=1
+					output=1
+				}
+			}
+			{
+				if (output == 1 && schema == 1) print \$0
+			}
+			END {
+				# Emit a failing statement if not found
+				if (found == 0) {
+					print \"\\\\echo Selected table not found ${ESCAPED_QUOTED_SCHEMA_TXT}.${ESCAPED_QUOTED_TAB_TXT} \"
+					print \"\\\.\"
+				}
+			}"
 		LOG_MSG "[INFO][$INST_COUNT]:-Commencing data extract for $TAB_NAME on $QE_NAME $QE_DIR"
-		$TRUSTED_SHELL $QE_NAME "$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK $AWK_LINE >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE" >> $LOG_FILE 2>&1
-		LOG_MSG "[INFO][$INST_COUNT]:-$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK $AWK_LINE" >> $LOG_FILE
+		$TRUSTED_SHELL $QE_NAME "$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK '$AWK_LINE' >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE" >> $LOG_FILE 2>&1
+		LOG_MSG "[INFO][$INST_COUNT]:-$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK '$AWK_LINE'" >> $LOG_FILE
 		if [ $? -ne 0 ];then
 			LOG_MSG "[FATAL][$INST_COUNT]:-Failed to extract data for $TAB_NAME on $QE_NAME $QE_DIR"
 			$ECHO "FAILED${QE_LINE}:EXTRACT_DATA_FAIL" >> $PARALLEL_STATUS_FILE
