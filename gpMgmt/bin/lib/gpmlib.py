@@ -719,18 +719,22 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
         if not ok:
             fatal('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
-    # Call pysync.LocalPysync directly
-    pysyncOptions = ["--delete", "-x", "db_dumps", "-x", "pg_log"]
-    if verbose:
-        pysyncOptions += ["-v"]
-    if progressBytes:
-        pysyncOptions += ["--progress-bytes", progressBytes]
-    if progressTime:
-        pysyncOptions += ["--progress-time", progressTime]
-    pysyncCmd = [pysync.__name__] + pysyncOptions + [src_dir, "%s:%s" % (dst_cfg['hostname'], dst_cfg['datadir'])]
-    sync = pysync.LocalPysync(pysyncCmd, 
-                              recordProgressCallback=_SyncProgress(log_info, dst_cfg).mark_sync_progress)
-    ok = (sync.run() == 0)
+
+    cmd = makeCommand('%s -v --delete -x db_dumps -x pg_log %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
+                                                               src_dir,
+                                                               dst_cfg['hostname'],
+                                                               dst_cfg['datadir']))
+
+    if setpid_callback:
+        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                             (gplib.ssh_prefix(host=src_host),
+                              cmd,
+                              logfile), setpid_callback=setpid_callback)
+    else:
+        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
+                             (gplib.ssh_prefix(host=src_host),
+                              cmd,
+                              logfile))
 
     if not ok:
         if err_is_fatal:
