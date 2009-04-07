@@ -12,7 +12,7 @@
 subdir = src/backend/cdb
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
-override CPPFLAGS := -I../gp_libpq_fe $(CPPFLAGS)
+override CPPFLAGS := -I$(top_srcdir)/src/backend/gp_libpq_fe $(CPPFLAGS)
 
 SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)

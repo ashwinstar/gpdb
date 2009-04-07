@@ -5,7 +5,7 @@
 #
 #-------------------------------------------------------------------------
 
-subdir = src/backend/access/appendonly
+subdir = src/backend/access/aocs
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 

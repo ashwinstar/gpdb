@@ -15,13 +15,14 @@ include $(top_builddir)/src/Makefile.global
 
 EXTRA_OBJS = $(top_builddir)/src/backend/parser/keywords.o
 
+PGDUMP_SRCDIR= $(top_srcdir)/src/bin/pg_dump
 PGDUMP_DIR= $(top_builddir)/src/bin/pg_dump
 
 OBJS= $(PGDUMP_DIR)/pg_backup_db.o $(PGDUMP_DIR)/pg_backup_custom.o \
 	$(PGDUMP_DIR)/pg_backup_files.o $(PGDUMP_DIR)/pg_backup_null.o \
 	$(PGDUMP_DIR)/pg_backup_tar.o $(PGDUMP_DIR)/dumputils.o
 
-override CPPFLAGS := -I$(PGDUMP_DIR) -I$(libpq_srcdir) $(CPPFLAGS) -DBINDIR=\"$(bindir)\"
+override CPPFLAGS := -I$(PGDUMP_SRCDIR) -I$(libpq_srcdir) $(CPPFLAGS) -DBINDIR=\"$(bindir)\"
 
 all: submake-libpq submake-libpgport submake-backend cdb_dump cdb_dump_agent cdb_restore cdb_restore_agent
 
