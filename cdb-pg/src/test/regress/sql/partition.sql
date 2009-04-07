@@ -3003,3 +3003,16 @@ drop table g;
 select * from locktest;
 commit;
 
+-- MPP-5159
+-- Should fail -- missing partition spec and subpartition template follows the
+-- partition declaration.
+CREATE TABLE list_sales (trans_id int, date date, amount
+decimal(9,2), region text)
+DISTRIBUTED BY (trans_id)
+PARTITION BY LIST (region)
+SUBPARTITION TEMPLATE
+( SUBPARTITION usa VALUES ('usa'),
+  SUBPARTITION asia VALUES ('asia'),
+  SUBPARTITION europe VALUES ('europe')
+);
+

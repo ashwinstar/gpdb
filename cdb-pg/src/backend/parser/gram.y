@@ -4010,6 +4010,10 @@ OptTabPartitionBy:
 					n->keys     = $5; 
 					n->partNum  = $7;
 					n->subPart  = $8;
+					if (PointerIsValid(n->subPart) &&
+						!IsA(n->subPart, PartitionBy))
+						yyerror("syntax error");
+
 					n->partSpec = $9;
 					n->partDepth = 0;
 					n->location  = @3;
