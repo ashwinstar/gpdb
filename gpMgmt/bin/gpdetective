@@ -36,9 +36,23 @@ def usage(exitarg = None):
     '''
     Print usage information and exit
     '''
-    print __doc__
+    print cli_help() or __doc__
     sys.exit(exitarg)
 
+#============================================================
+def cli_help():
+    progname=os.path.split(__file__)[-1]
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', progname + '_help');
+    f = None
+    try:
+        try:
+            f = open(help_path);
+            return f.read(-1)
+        except:
+            return ''
+    finally:
+        if f: f.close()
+        
 #============================================================
 def which (filename):
     if not os.environ.has_key('PATH') or os.environ['PATH'] == '':
