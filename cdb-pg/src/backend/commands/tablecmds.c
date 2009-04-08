@@ -9752,8 +9752,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 			rand_pol = true;
 
-			/* need to rebuild if have new storage options */
-			if (!(newopts && force_reorg))
+			if (!force_reorg)
 			{
 				if (rel->rd_cdbpolicy->nattrs == 0)
 					ereport(WARNING,
@@ -9766,16 +9765,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 									 "DISTRIBUTED RANDOMLY "
 									 "to force a random redistribution",
 									 RelationGetRelationName(rel))));
-
-				policy = (GpPolicy *) palloc(sizeof(GpPolicy));
-				policy->ptype = POLICYTYPE_PARTITIONED;
-				policy->nattrs = 0;
-
-				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),
-											 policy);
-				GpPolicyReplace(RelationGetRelid(rel), policy);
 			}
-			else
+
+			policy = (GpPolicy *) palloc(sizeof(GpPolicy));
+			policy->ptype = POLICYTYPE_PARTITIONED;
+			policy->nattrs = 0;
+
+			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),
+										 policy);
+			GpPolicyReplace(RelationGetRelid(rel), policy);
+
+			/* only need to rebuild if have new storage options */
+			if (!(newopts || force_reorg))
 			{
 				/*
 				 * caller expects ATExecSetDistributedBy() to close rel
