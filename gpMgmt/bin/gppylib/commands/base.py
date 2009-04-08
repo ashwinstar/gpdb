@@ -154,7 +154,7 @@ class Worker(Thread):
                     
                 self.cmd = self.pool.getNextWorkItem(timeout=self.timeout)
                 
-                if self.cmd is not None:
+                if self.cmd is not None and not self.shouldStop:
                     logger.debug("[%s] got cmd: %s" % (self.name,self.cmd.cmdStr))
                     #TODO:  catch Exception (especially ExecutionException)                        
                     self.cmd.run()
@@ -457,6 +457,7 @@ class SQLCommand(Command):
         pass
     
     def cancel(self):
+        # if self.conn is not set we cannot cancel.
         if self.conn:
             DB(self.conn).cancel()
         else:
