@@ -2595,7 +2595,7 @@ alter_table_partition_cmd:
                     pid->idtype    = AT_AP_IDName;
                     pid->location  = @3;
                     pid->partiddef = 
-						(Node *)makeString("subpartition template");
+						(Node *)makeString("subpartition_template");
 
                     pc->partid = (Node *)pid;
 

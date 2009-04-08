@@ -6826,3 +6826,62 @@ SUBPARTITION TEMPLATE
 ERROR:  syntax error at or near ";"
 LINE 9: );
          ^
+-- MPP-5185
+-- Should work
+CREATE TABLE rank (id int, rank int, year date, gender
+char(1)) DISTRIBUTED BY (id, gender, year)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+start (date '2001-01-01'),
+start (date '2002-01-01'),
+start (date '2003-01-01'),
+start (date '2004-01-01'),
+start (date '2005-01-01')
+)
+(
+partition boys values ('M'),
+partition girls values ('F')
+);
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_1" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_2" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_3" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_4" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_5" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_1" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_2" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_3" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_4" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_5" for table "rank_1_prt_girls"
+alter table rank set subpartition template ();
+NOTICE:  dropped level 1 subpartition template specification for relation "rank"
+-- nothing there
+select * from pg_partition_templates;
+ schemaname | tablename | partitionname | partitiontype | partitionlevel | partitionrank | partitionposition | partitionlistvalues | partitionrangestart | partitionstartinclusive | partitionrangeend | partitionendinclusive | partitioneveryclause | partitionisdefault | partitionboundary 
+------------+-----------+---------------+---------------+----------------+---------------+-------------------+---------------------+---------------------+-------------------------+-------------------+-----------------------+----------------------+--------------------+-------------------
+(0 rows)
+
+alter table rank set subpartition template (default subpartition def2);
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_subpartition_template" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_subpartition_template_2_prt_def2" for table "rank_1_prt_subpartition_template"
+-- def2 is there
+select * from pg_partition_templates;
+ schemaname | tablename | partitionname | partitiontype | partitionlevel | partitionrank | partitionposition | partitionlistvalues | partitionrangestart | partitionstartinclusive | partitionrangeend | partitionendinclusive | partitioneveryclause | partitionisdefault |     partitionboundary      
+------------+-----------+---------------+---------------+----------------+---------------+-------------------+---------------------+---------------------+-------------------------+-------------------+-----------------------+----------------------+--------------------+----------------------------
+ public     | rank      | def2          | range         |              1 |             1 |                 1 |                     |                     | f                       |                   | f                     |                      | t                  | DEFAULT SUBPARTITION def2 
+(1 row)
+
+alter table rank set subpartition template (default subpartition def2);
+NOTICE:  dropped level 1 subpartition template specification for relation "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_subpartition_template" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_subpartition_template_2_prt_def2" for table "rank_1_prt_subpartition_template"
+-- Should still be there
+select * from pg_partition_templates;
+ schemaname | tablename | partitionname | partitiontype | partitionlevel | partitionrank | partitionposition | partitionlistvalues | partitionrangestart | partitionstartinclusive | partitionrangeend | partitionendinclusive | partitioneveryclause | partitionisdefault |     partitionboundary      
+------------+-----------+---------------+---------------+----------------+---------------+-------------------+---------------------+---------------------+-------------------------+-------------------+-----------------------+----------------------+--------------------+----------------------------
+ public     | rank      | def2          | range         |              1 |             1 |                 1 |                     |                     | f                       |                   | f                     |                      | t                  | DEFAULT SUBPARTITION def2 
+(1 row)
+
+drop table rank;

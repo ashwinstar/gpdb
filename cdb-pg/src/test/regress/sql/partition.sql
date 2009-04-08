@@ -3016,3 +3016,36 @@ SUBPARTITION TEMPLATE
   SUBPARTITION europe VALUES ('europe')
 );
 
+-- MPP-5185
+-- Should work
+CREATE TABLE rank (id int, rank int, year date, gender
+char(1)) DISTRIBUTED BY (id, gender, year)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+start (date '2001-01-01'),
+start (date '2002-01-01'),
+start (date '2003-01-01'),
+start (date '2004-01-01'),
+start (date '2005-01-01')
+)
+(
+partition boys values ('M'),
+partition girls values ('F')
+);
+
+alter table rank set subpartition template ();
+
+-- nothing there
+select * from pg_partition_templates;
+
+alter table rank set subpartition template (default subpartition def2);
+
+-- def2 is there
+select * from pg_partition_templates;
+
+alter table rank set subpartition template (default subpartition def2);
+-- Should still be there
+select * from pg_partition_templates;
+
+drop table rank;

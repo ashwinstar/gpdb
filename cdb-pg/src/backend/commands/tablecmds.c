@@ -10303,7 +10303,7 @@ get_part_oid(Oid rootrelid, int16 parlevel, bool istemplate)
 
 	scan = systable_beginscan(rel,
 							  PartitionParrelidParlevelParistemplateIndexId,
-							  true, SnapshotAny, 3, key);
+							  true, SnapshotSelf, 3, key);
 
 	tuple = systable_getnext(scan);
 	if (HeapTupleIsValid(tuple))
@@ -17007,20 +17007,21 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 		Assert (lvl > 1);
 	}
 
-	if (!pc->arg1) /* null template spec - clear it*/
 	{
 		/* relid, level, no parent */
 		switch (del_part_template(RelationGetRelid(rel), lvl, 0))
 		{
 			case 0:
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("relation \"%s\" does not have a "
-								"level %d "
-								"subpartition template specification",
-								RelationGetRelationName(rel),
-								lvl)));
-
+				if (!pc->arg1)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("relation \"%s\" does not have a "
+									"level %d "
+									"subpartition template specification",
+									RelationGetRelationName(rel),
+									lvl)));
+				}
 				break;
 			case 1:
 				ereport(NOTICE,
@@ -17044,12 +17045,9 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 		}
 
 	}
-	else 
-	{
-		del_part_template(RelationGetRelid(rel), lvl, 0);
-		ATPExecPartAdd(tab, rel, pc, AT_PartSetTemplate);
-	}
 
+	if (pc->arg1)
+		ATPExecPartAdd(tab, rel, pc, AT_PartSetTemplate);
 
 } /* end ATPExecPartSetTemplate */
 
