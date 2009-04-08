@@ -45,7 +45,6 @@ and create one.
 Remaining TODO items:
 ====================
 """,
-"""* support for --clean to cover all of setup. (Chris)""",
 """* ability to specify storage options. (John)
     - verify with jeff that alter table ... set distribution will support.""",
 
@@ -104,8 +103,6 @@ def parseargs():
                         help='show this help message and exit')
     parser.add_option('-i','--input', dest="filename",
                         help="input expansion configuration file.", metavar="FILE")        
-    parser.add_option('-q', '--quiet', action='store_true',
-                        help='suppress status messages')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
                         help='number of tables to expand at a time. Valid values are 1-128')
     parser.add_option('-v','--verbose', action='store_true',
@@ -1726,9 +1723,6 @@ try:
     if options.verbose:
         enable_verbose_logging()
     
-    if options.quiet:
-        quiet_stdout_logging()
-
     if is_gpexpand_running(options.master_data_directory):
         logger.error('gpexpand is already running.  Only one instance')
         logger.error('of gpexpand is allowed at a time.')
