@@ -129,6 +129,11 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
+    if options.end and options.end < datetime.datetime.now():
+        logger.error('End time occurs in the past')
+        parser.print_help()
+        parser.exit()
+        
     try:
         options.master_data_directory = get_masterdatadir()
         options.gphome = get_gphome()
