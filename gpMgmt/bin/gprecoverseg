@@ -1361,18 +1361,6 @@ def update_status(db, recovered_qes):
             gpmlib.log_warn('Segment Recovery will need to be performed again for this segment.')
 
 ################
-def reset_valid(db, recovered_qes):
-    gpmlib.log_info('Resetting invalid segment status values')
-    for qe in recovered_qes:
-        try:
-            db.execute("insert into gp_configuration_history values (now(), $1, 'GPRECOVERSEG: set valid=t')", int(qe['dbid']))
-            db.execute("update gp_configuration set valid='t' where dbid=%d" % int(qe['dbid']))
-        except (pg8000.errors.InterfaceError, pg8000.errors.ProgrammingError), e:
-            gpmlib.log_warn('Unable to mark dbid %d as valid.' % int(qe['dbid']))
-            gpmlib.log_warn('Encountered database error: %s' % e)
-            gpmlib.log_warn('Segment Recovery will need to be performed again for this segment.')
-
-################
 def reset_qe_connect(db):
     db.execute("select oid from pg_namespace where nspname='public'")
     r = db.read_tuple()
@@ -1695,9 +1683,6 @@ try:
         if opt['-f']:
             # update status of recovered segments
             update_status(db, recovered_qes)
-
-            # update valid='t' of recovered segments
-            reset_valid(db, recovered_qes)
 
             db.close()
             db = None
