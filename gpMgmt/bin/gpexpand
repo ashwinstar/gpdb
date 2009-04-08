@@ -110,7 +110,7 @@ def parseargs():
                         help='number of tables to expand at a time. Valid values are 1-128')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')
-    parser.add_option('-m', '--max-before-delay', type='int', default=8, metavar="<max_before_delay>",
+    parser.add_option('-m', '--batch-size-before-delay', type='int', default=8, metavar="<batch_size_before_delay>",
                       help='Maximum concurrent remote commands per host before delay.  Valid values are 1-128')
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
@@ -124,8 +124,8 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
-    if options.max_before_delay > 128 or options.max_before_delay < 1:
-        logger.error('Invalid argument.  max-before-delay value must be >= 1 and <= 128')
+    if options.batch_size_before_delay > 128 or options.batch_size_before_delay < 1:
+        logger.error('Invalid argument.  batch-size-before-delay value must be >= 1 and <= 128')
         parser.print_help()
         parser.exit()
         
@@ -559,7 +559,7 @@ class SegmentTemplate:
                                             seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
                                             verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname)
  
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             self.pool.addCommand(segCfgCmd)
@@ -653,7 +653,7 @@ class SegmentTemplate:
             if removeDataDirs:
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
-                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                     logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                     sleep(1) 
                 
@@ -831,7 +831,10 @@ class gpexpand:
         logger.info("Generating input file...")
 
         for db in gparray.getExpansionSegDbList():              
-            outfile.write("%s:%d:%s:%d:%d:%s\n" % (db.hostname, db.port, db.datadir, db.dbid, db.content, db.isprimary)) 
+            outfile.write("%s:%d:%s:%d:%d:%s\n" % (db.hostname, db.port, 
+                                                   db.datadir, db.dbid, 
+                                                   db.content, 
+                                                   't' if db.isprimary else 'f')) 
         
         outfile.close()
         
@@ -902,7 +905,7 @@ class gpexpand:
             cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
 
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             
@@ -926,7 +929,7 @@ class gpexpand:
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -957,7 +960,7 @@ class gpexpand:
                                             seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
                                             ctxt=REMOTE, remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1001,7 +1004,7 @@ class gpexpand:
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, 
                                remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1018,7 +1021,7 @@ class gpexpand:
                                            seg.content, seg.dbid, ctxt=REMOTE, 
                                            remoteHost=seg.hostname) 
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1411,7 +1414,10 @@ UPDATE gp_distribution_policy
 
             self.conn.close()
         except pg.OperationalError:
-            pass    
+            pass
+        except Exception:
+            # schema doesn't exist.  Cancel or error during setup
+            pass
 
         
     def cleanup_schema(self, gpexpand_db_status):
@@ -1659,12 +1665,12 @@ before continuing by re-running this utility and providing the input file. """
                                "What type of mirroring strategy would you like?",
                                'grouped', ['spread','grouped','none'])
     
-    new_hosts = []
     if num_new_hosts > 0:
-        for i in range(1, num_new_hosts + 1):
-            # bg_info,msg,help,default,validator, *validator_opts
-            host = ask_input(None, "Enter hostname number %d (Do not include interface hostnames)" % i, '', None, tmp_validator, None)
-            new_hosts.append(host.strip())
+        new_hosts=ask_list(None,
+                           "\nEnter a comma separated list of new hosts you want\n"\
+                           "to add to your array.  Do not include interface hostnames ", [])
+        if len(new_hosts) != num_new_hosts:
+            raise ExpansionError('The number of hostnames entered does not match the number requested')
 
         gparray.addExpansionHosts(new_hosts, mirror_type)
 
@@ -1674,13 +1680,24 @@ segments will be added to existing hosts as well.  If you put 0, the number of
 segments per host will remain the same.
     """
     num_new_datadirs = ask_int(help, "How many new primary segments per host do you want to add?", None, 0, 0, 128)
-    new_datadirs = []
     if num_new_datadirs > 0:
-        for i in range(1, num_new_datadirs + 1):
-            datadir = ask_input(None, "Enter data directory number %d" % i, '', None, tmp_validator, None)
-            new_datadirs.append(datadir.strip())
+        new_datadirs = []
+        new_mirrordirs = []
+        new_datadirs=ask_list(None,
+                              "\nEnter a comma separated list of the new primary data directories\n" \
+                              "you want to use for the new segments. ", [])
+        if len(new_datadirs) != num_new_datadirs:
+            raise ExpansionError('The number of data directories entered does not match the number of primary segments added')
+        
+        if mirror_type != 'none':
+            new_mirrordirs=ask_list(None,
+                                  "\nEnter a comma separated list of the new mirror data directories\n" \
+                                  "you want to use for the new segments. ", [])
+            if len(new_mirrordirs) != num_new_datadirs:
+                raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
+                
 
-        gparray.addExpansionDatadirs(new_datadirs)          
+        gparray.addExpansionDatadirs(new_datadirs, new_mirrordirs, mirror_type)
             
     print "\nGenerating configuration file...\n"
             

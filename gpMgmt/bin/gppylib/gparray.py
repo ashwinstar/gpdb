@@ -311,6 +311,7 @@ class GpArray:
         return list
     
     def getSegDbList(self, includeExpansionSegs=False):
+        """Return a list of all GpDb objects for all segments in the array"""
         list=[]
         for seg in self.segments:
             list.extend(seg.get_dbs())
@@ -320,6 +321,8 @@ class GpArray:
         return list
     
     def getExpansionSegDbList(self):
+        """Returns a list of all GpDb objects that make up the new segments
+        of an expansion"""
         list=[]
         for seg in self.expansionSegments:
             list.extend(seg.get_dbs())
@@ -348,11 +351,12 @@ class GpArray:
         return list
         
         
-    def get_hostlist(self):
+    def get_hostlist(self, includeMaster=True):
         list=[]
-        list.append(self.master.hostname)
-        if self.standbyMaster is not None:
-            list.append(self.standbyMaster.hostname)        
+        if includeMaster:
+            list.append(self.master.hostname)
+            if self.standbyMaster is not None:
+                list.append(self.standbyMaster.hostname)        
         for seg in self.segments:
             list.extend(seg.get_hosts())
         return list
@@ -364,19 +368,23 @@ class GpArray:
         logger.debug("finished cleanup")
    
    
-    def get_max_dbid(self):
+    def get_max_dbid(self,includeExpansionSegs=False):
+        """Returns the maximum dbid in the array.  If includeExpansionSegs
+        is True, this includes the expansion segment array in the search"""
         dbid = 0
         
-        for db in self.getDbList():
+        for db in self.getDbList(includeExpansionSegs):
             if db.dbid > dbid:
                 dbid = db.dbid
         
         return dbid
     
-    def get_max_contentid(self):
+    def get_max_contentid(self, includeExpansionSegs=False):
+        """Returns the maximum contentid in the array.  If includeExpansionSegs
+        is True, this includes the expansion segment array in the search"""
         content = 0
         
-        for db in self.getDbList():
+        for db in self.getDbList(includeExpansionSegs):
             if db.content > content:
                 content = db.content
                 
@@ -389,9 +397,11 @@ class GpArray:
         return self.numPrimarySegments
         
     def get_mirroring_enabled(self):
+        """Returns True is mirrors are defined"""
         return len(self.segments[0].mirrorDBs) != 0
     
     def get_min_primary_port(self):
+        """Returns the minimum primary segment db port"""
         min_primary_port = self.segments[0].primaryDB.port
         for seg in self.segments:
             if seg.primaryDB.port < min_primary_port:
@@ -399,7 +409,17 @@ class GpArray:
         
         return min_primary_port
     
+    def get_max_primary_port(self):
+        """Returns the maximum primary segment db port"""
+        max_primary_port = self.segments[0].primaryDB.port
+        for seg in self.segments:
+            if seg.primaryDB.port > max_primary_port:
+                max_primary_port = seg.primaryDB.port
+        
+        return max_primary_port
+    
     def get_min_mirror_port(self):
+        """Returns the minimum mirror segment db port"""
         if self.get_mirroring_enabled() is False:
             raise Exception('Mirroring is not enabled')
         
@@ -412,7 +432,49 @@ class GpArray:
         
         return min_mirror_port
     
+    def get_max_mirror_port(self):
+        """Returns the maximum mirror segment db port"""
+        if self.get_mirroring_enabled() is False:
+            raise Exception('Mirroring is not enabled')
+        
+        max_mirror_port = self.segments[0].mirrorDBs[0].port
+        
+        for seg in self.segments:
+            for db in seg.mirrorDBs:
+                if db.port > max_mirror_port:
+                    max_mirror_port = db.port
+        
+        return max_mirror_port
+
+    
+    def get_interface_numbers(self):
+        """Returns interface numbers in the array.  Assumes that nodes are named
+        <hostname>-<int_num>.  If the nodes just have <hostname> then an empty
+        array is returned."""
+        # Get the first segment hostname minus the interface number
+        interface_nums = []
+        primary_hostname = self.segments[0].primaryDB.hostname
+        (host_part, inf_num) = ['-'.join(primary_hostname.split('-')[:-1]), primary_hostname.split('-')[-1]]
+        if host_part == '' or not inf_num.isdigit():
+            return []
+        
+        search_host_part = host_part
+        
+        # get the interface numbers for host_part
+        for db in self.getDbList():
+            (host_part, inf_num) = ['-'.join(db.hostname.split('-')[:-1]), db.hostname.split('-')[-1]]
+            if host_part == search_host_part:
+                if not inf_num.isdigit():
+                    # We have an unexpected formatted hostname
+                    return []
+                else:
+                    if inf_num not in interface_nums:
+                        interface_nums.append(inf_num)
+        
+        return interface_nums
+    
     def get_primary_root_datadirs(self):
+        """Returns a list of primary data directories minus the <prefix><contentid>"""
         primary_datadirs = []
         for db in self.getDbList():
             if db.definedprimary and db.content != -1 \
@@ -423,6 +485,7 @@ class GpArray:
         return primary_datadirs
     
     def get_mirror_root_datadirs(self):
+        """Returns a list of mirror data directories minus the <prefix><contentid>"""
         mirror_datadirs = []
         for db in self.getDbList():
             if not db.definedprimary and db.content != -1 \
@@ -432,6 +495,12 @@ class GpArray:
         
         return mirror_datadirs
     
+    def get_datadir_prefix(self):
+        """Returns the prefix portion of <prefix><contentid>"""
+        start_last_dir = self.master.datadir.rfind('/') + 1
+        start_dir_content = self.master.datadir.rfind('-')
+        prefix = self.master.datadir[start_last_dir:start_dir_content]
+        return prefix
     
     def untarSegments(self,queue,filename):        
         logger.debug("untarSegments start")
@@ -472,6 +541,8 @@ class GpArray:
     
     
     def addExpansionSeg(self, content, definedprimary, dbid, isprimary, hostname, port, datadir):
+        """ Adds a segment to the gparray as an expansion segment.
+        """
         if (content <= self.segments[-1].get_dbs()[0].content):
             raise Exception('Invalid content ID for expansion segment')
         
@@ -498,6 +569,8 @@ class GpArray:
     
             
     def validateExpansionSegs(self):
+        """ Checks the segments added for various inconsistencies and errors.
+        """
         dbids = []
         content = []
         expansion_seg_count = 0
@@ -562,48 +635,109 @@ class GpArray:
     
     
     def addExpansionHosts(self, hosts, mirror_type):
-        # createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_list,mirror_portbase,dir_prefix)
+        """ Adds a list of hosts to the array, using the same data
+        directories as the original hosts.  Also adds the mirrors
+        based on mirror_type.
+        """
         primary_dirs = self.get_primary_root_datadirs()
         mirror_dirs = self.get_mirror_root_datadirs()
+
+        interface_list = self.get_interface_numbers()
         
         base_primary_port = self.get_min_primary_port()
         base_mirror_port = 0
         if mirror_type != 'none':
             base_mirror_port = self.get_min_mirror_port()
         
-        start_last_dir = self.master.datadir.rfind('/') + 1
-        start_dir_content = self.master.datadir.rfind('-')
-        prefix = self.master.datadir[start_last_dir:start_dir_content]
+        prefix = self.get_datadir_prefix()
         
         rows = createSegmentRows(hosts, primary_dirs, base_primary_port, mirror_type, mirror_dirs, base_mirror_port, prefix)
         
-        curr_dbid = self.get_max_dbid() + 1
-        curr_content = self.get_max_contentid() + 1
+        self._fixup_and_add_expansion_segments(rows, interface_list)
         
-        mirror_dict = {}
-        # update the dbids and contentids.  Build mirror dictionary
+    
+    def addExpansionDatadirs(self, datadirs, mirrordirs, mirror_type):
+        """ Adds new segments based on new data directories to both original
+        hosts and hosts that were added by addExpansionHosts.
+        """
+        max_primary_port = self.get_max_primary_port()
+        if mirror_type != 'none':
+            max_mirror_port = self.get_max_mirror_port()
+        else:
+            max_mirror_port = 0
 
+        interface_list = self.get_interface_numbers()
+        interface_count = len(interface_list)
+            
+        prefix = self.get_datadir_prefix()
+          
+        hosts = []
+        # Get all the hosts to add the data dirs to
+        for seg in self.getSegDbList(True):
+            host = seg.get_hostname()
+            
+            # If we have interface numbers, strip them so we only add data
+            # dirs once per node
+            if interface_count > 0:
+                host = host[:host.rfind('-')]
+        
+            if host not in hosts:
+                hosts.append(host)
+                
+        # Create the rows
+        rows = createSegmentRows(hosts, datadirs, max_primary_port + 1, 
+                                 mirror_type, mirrordirs, max_mirror_port + 1,
+                                 prefix)
+        
+        self._fixup_and_add_expansion_segments(rows, interface_list)
+        
+    
+    def _fixup_and_add_expansion_segments(self, rows, interface_list):
+        """Fixes up expansion segments added to be after the original segdbs 
+        This includes fixing up the dbids, content ids, data directories, 
+        interface part of the hostnames and mirrors.  After this is done, it
+        adds them to the expansion array."""
+        interface_count = len(interface_list)
+
+        mirror_dict = {}
+        # must be sorted by isprimary, then hostname
+        rows.sort(lambda a,b: (cmp(b[1], a[1]) or cmp(a[5],b[5])))
+        current_host = rows[0][5]
+        current_interface = 0
+        curr_dbid = self.get_max_dbid(True) + 1
+        curr_content = self.get_max_contentid(True) + 1
+        
+        # Fix up the rows with correct dbids, contentids, datadirs and interfaces
         for row in rows:
+            hostname = row[5]
+            
+            # If we have interface hostnames in the original segments, 
+            # adjust the new segment hostname
+            if interface_count > 0:
+                if current_host != hostname:
+                    current_host = hostname
+                    current_interface = 0
+
+                if current_interface == interface_count:
+                    current_interface = 0
+                
+                hostname = '%s-%s' % (current_host, interface_list[current_interface])
+                current_interface += 1
+     
+            # Add the new segment to the expansion segments array
+            # Remove the content id off of the datadir
+            new_datadir = row[7][:row[7].rfind(str(row[0]))]
             if row[1] == 't':
-                new_datadir = row[7]
-                new_datadir = new_datadir[:new_datadir.rfind(str(row[0]))] + ('%d' % curr_content)
+                new_datadir += ('%d' % curr_content)
                 self.addExpansionSeg(curr_content, True, curr_dbid, 
-                                        True, row[5], int(row[6]), new_datadir)
+                                        True, hostname, int(row[6]), new_datadir)
+                # The content id was adjusted, so we need to save it for the mirror
                 mirror_dict[row[0]] = curr_content
                 curr_content += 1
             else:
                 new_content = mirror_dict[row[0]]
-                new_datadir = row[7]
-                new_datadir = new_datadir[:new_datadir.rfind(str(row[0]))] + ('%d' % new_content)
+                new_datadir += ('%d' % new_content)
                 self.addExpansionSeg(new_content, False, curr_dbid, 
-                                     False, row[5], int(row[6]), new_datadir)
-            curr_dbid += 1
-            
-        pass
-    
-    def addExpansionDatadirs(self, datadirs):
-        pass
-    
-            
-            
+                                     False, hostname, int(row[6]), new_datadir)
+            curr_dbid += 1           
 #------------------------------- Mainline --------------------------------
