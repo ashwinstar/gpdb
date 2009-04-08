@@ -44,18 +44,6 @@
 #include "utils/ps_status.h"
 #include "utils/timestamp.h"
 
-/*
- * We really want line-buffered mode for logfile output, but Windows does
- * not have it, and interprets _IOLBF as _IOFBF (bozos).  So use _IONBF
- * instead on Windows.
- */
-#ifdef WIN32
-#define LBF_MODE	_IONBF
-#else
-#define LBF_MODE	_IOLBF
-#endif
-
-
 #define READ_BUF_SIZE (2 * PIPE_CHUNK_SIZE)
 
 
@@ -125,7 +113,9 @@ static CRITICAL_SECTION sysfileSection;
 
 static bool chunk_is_postgres_chunk(PipeProtoHeader *hdr)
 {
-    return hdr->zero == 0 && hdr->pid != 0 && hdr->thid != 0 ;
+    return hdr->zero == 0 && hdr->pid != 0 && hdr->thid != 0 &&
+		(hdr->log_format == 't' || hdr->log_format == 'c') &&
+		(hdr->is_last == 't' || hdr->is_last == 'f');
 }
 
 
@@ -291,7 +281,7 @@ SysLoggerMain(int argc, char *argv[])
         bool		time_based_rotation = false;
 
 #ifndef WIN32
-        int			bytesRead;
+        int			bytesRead = 0;
         int			rc;
         fd_set		rfds;
         struct timeval timeout;
@@ -379,105 +369,29 @@ SysLoggerMain(int argc, char *argv[])
 
             chunk = find_unused_chunk();
 
-next_chunk_loop:
-            bytesRead = piperead(syslogPipe[0], (char *) chunk+readPos, sizeof(PipeProtoHeader) - readPos); 
-            if (bytesRead < 0)
-            {
-                if (errno != EINTR)
-                    elog(ERROR, "Syslogger could not read from logger pipe: %m");
-            }
-            else if (bytesRead > 0)
-            {
-                if((bytesRead + readPos) == sizeof(PipeProtoHeader) && 
-                        chunk_is_postgres_chunk((PipeProtoHeader *) chunk))
-                {
-                    bytesRead = piperead(syslogPipe[0], chunk->data, chunk->hdr.len);
-                    Assert(bytesRead == chunk->hdr.len);
-                    syslogger_handle_chunk(chunk);
-                    readPos = 0;
-                }
-                else 
-                {
-                    char *z = (char *) chunk;
-                    PipeProtoHeader hdr;
+			Assert(chunk != NULL);
 
-                    if(!*z)
-                    {
-                        /* Boy, really messed up.  Someone (3rd party) print out
-                         * an message with leading zero ???.  Let me eat this zero
-                         * can go on.
-                         */
-                        memcpy(&hdr, z+readPos+1, bytesRead-1);
-                        memcpy(z+readPos, &hdr, bytesRead-1);
-                        readPos += bytesRead - 1;
-                    }
-                    else
-                    {
-                        /* Third party log message.  First let's find out the
-                         * message
-                         */
-                        char *zend = z + readPos + bytesRead; 
-                        char *cend = z + PIPE_CHUNK_SIZE;
-
-                        /* Move z to \0 */
-                        while(z < zend && *z)
-                            ++z;
-
-                        if(z < zend)
-                        {
-                            /* OK, the 3rd party msg is less than header size. 
-                             * print it and go on
-                             */
-                            elog(LOG, "3rd party error log: %s", (char *) chunk);
-
-                            readPos = zend - z;
-                            memcpy(&hdr, z, readPos); 
-                            memcpy(chunk, &hdr, readPos); 
-                            goto next_chunk_loop;
-                        }
-                        else
-                        {
-                            /* 3rd party msg longer than header */
-                            do {
-                                /* read next byte */
-                                int nread;
-                                nread = piperead(syslogPipe[0], z, 1);
-
-                                if(nread < 0)
-                                {
-                                    if (errno != EINTR)
-                                        elog(ERROR, "Syslogger could not read from logger pipe: %m");
-                                    continue;
-                                }
-
-                                if(*z)
-                                {
-                                    /* none zero.  Appending.
-                                     * if longer than pipechunk, we will
-                                     * truncate 
-                                     */
-                                    if(z < cend)
-                                        ++z;
-                                }
-                                else
-                                {
-                                    /* Good, finally see \0 */
-                                    break;
-                                }
-                            } while (true);
-
-                            elog(LOG, "3rd party error log: %s", (char *) chunk);
-
-                            /* We have ate exactly one byte */
-                            ((char *) chunk)[0] = 0;
-                            readPos = 1;
-                            goto next_chunk_loop;
-                        }
-                    }
-                }
-            }
-            else
-            {
+			/* Read data to fill the buffer up to PIPE_CHUNK_SIZE bytes */
+		next_chunkloop:
+			if (bytesRead < sizeof(PipeProtoHeader))
+			{
+				/*
+				 * We always try to make sure that the buffer has at least sizeof(PipeProtoHeader)
+				 * bytes if we have read several bytes in the previous read. This handles the case
+				 * when a valid chunk has to be read in two read calls, and the first read only
+				 * picks up less than sizeof(PipeProtoHeader) bytes.
+				 *
+				 * However, this read may force some 3rd party error messages (less than
+				 * sizeof(PipeProtoHeader) bytes) to sits in the buffer until the next message
+				 * comes in. Thus you may experience some delays for small 3rd party error messages
+				 * showing up in the logfile. Hopefully, this is very rare.
+				 */
+				readPos = bytesRead;
+				bytesRead = piperead(syslogPipe[0], (char *)chunk + readPos, PIPE_CHUNK_SIZE - readPos);
+			}
+			
+			if (bytesRead == 0)
+			{
                 /*
                  * Zero bytes read when select() is saying read-ready means
                  * EOF on the pipe: that is, there are no longer any processes
@@ -488,7 +402,131 @@ next_chunk_loop:
 
                 /* if there's any data left then force it out now */
                 syslogger_flush_chunks();
+			}
+			
+			else if (bytesRead < 0)
+			{
+                if (errno != EINTR)
+                    elog(ERROR, "Syslogger could not read from logger pipe: %m");
             }
+
+			else
+            {
+				if (bytesRead + readPos >= sizeof(PipeProtoHeader) &&
+					chunk_is_postgres_chunk((PipeProtoHeader *)chunk))
+				{
+					int chunk_size = chunk->hdr.len + sizeof(PipeProtoHeader);
+					int needBytes = chunk_size - (bytesRead + readPos);
+
+					/*
+					 * Finish reading a chunk if the bytes we have read so far
+					 * is not sufficient.
+					 */
+					if (needBytes > 0)
+					{
+						bytesRead =	piperead(syslogPipe[0],
+											 ((char *)chunk) + (bytesRead + readPos),
+											 needBytes);
+
+						Assert(bytesRead == needBytes);
+					}
+					
+					syslogger_handle_chunk(chunk);
+
+					/*
+					 * Copy the remaining bytes to the beginning of a new unused chunk
+					 * buffer if we have read too much.
+					 */
+					if (needBytes < 0)
+					{
+						int moreBytes = bytesRead + readPos - chunk_size;
+						PipeProtoChunk *new_chunk = find_unused_chunk();
+
+						Assert(moreBytes > 0);
+						
+						if (new_chunk == NULL)
+						{
+							syslogger_flush_chunks();
+							new_chunk = find_unused_chunk();
+							Assert(new_chunk != NULL);
+						}
+
+						memmove((char *)new_chunk, ((char *)chunk) + chunk_size, moreBytes);
+						chunk = new_chunk;
+						bytesRead = moreBytes;
+						readPos = 0;
+
+						goto next_chunkloop;
+					}
+
+					/* go back to the main loop */
+				}
+				
+				else
+				{
+					/*
+					 * This is a 3rd party error. We may read parts of the standard
+					 * error message along with the 3rd party error. So here, we
+					 * scan the data byte by byte until we find a byte that is 0.
+					 */
+					char *msgEnd = (char *)chunk;
+					char *chunkEnd = ((char *)chunk) + (bytesRead + readPos);
+
+					while (*msgEnd != 0 &&
+						   (msgEnd < chunkEnd))
+						msgEnd++;
+					
+					if (msgEnd >= chunkEnd)
+					{
+						char lastChar = '\0';
+						
+						/*
+						 * We didn't find a byte '0', so the whole message
+						 * is one 3rd party error message.
+						 */
+						if (bytesRead + readPos >= PIPE_CHUNK_SIZE)
+						{
+							msgEnd --;
+							lastChar = *msgEnd;
+						}
+
+						/* Add a '\0' terminator */
+						*msgEnd = '\0';
+
+						elog(LOG, "3rd party error log:\n%s%c", (char *)chunk, lastChar);
+
+						/* remember to free this chunk */
+						chunk->hdr.pid = 0;
+					}
+					
+					else
+					{
+						Assert(*msgEnd == 0);
+
+						/*
+						 * If a 3rd party error does not start with byte '0',
+						 * write the message.
+						 */
+						if (msgEnd != (char *)chunk)
+							elog(LOG, "3rd party error log:\n%s", (char *)chunk);
+						else
+						{
+							/* A 3rd party error starts with bytes '0', ignore this bytes. */
+							msgEnd++;
+						}
+
+						if (chunkEnd - msgEnd > 0)
+						{
+							/* We copy the rest of bytes to the beginning of the chunk buffer. */
+							memmove((char *)chunk, msgEnd, chunkEnd - msgEnd);
+							bytesRead = chunkEnd - msgEnd;
+							readPos = 0;
+
+							goto next_chunkloop;
+						}
+					}
+				}
+			}
         }
 #else							/* WIN32 */
 

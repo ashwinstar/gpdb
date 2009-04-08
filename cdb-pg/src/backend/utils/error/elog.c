@@ -3391,23 +3391,35 @@ write_stderr(const char *fmt,...)
 		
 		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
-		/* Write the message in the CSV format */
-		write_message_to_server_log(LOG,
-									0,
-									errbuf,
-									NULL,
-									NULL,
-									0,
-									0,
-									NULL,
-									NULL,
-									NULL,
-									false,
-									NULL,
-									0,
-									0,
-									true,
-									NULL);
+		if (!am_syslogger)
+		{
+			/* Write the message in the CSV format */
+			write_message_to_server_log(LOG,
+										0,
+										errbuf,
+										NULL,
+										NULL,
+										0,
+										0,
+										NULL,
+										NULL,
+										NULL,
+										false,
+										NULL,
+										0,
+										0,
+										true,
+										NULL);
+		}
+		else
+		{
+			ErrorData edata;
+			memset(&edata, 0, sizeof(ErrorData));
+			edata.elevel = LOG;
+			edata.message = errbuf;
+			edata.omit_location = true;
+			write_syslogger_in_csv(&edata);
+		}
 
 		va_end(ap);
 		return;

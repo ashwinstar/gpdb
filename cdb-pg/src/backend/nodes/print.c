@@ -25,7 +25,6 @@
 #include "optimizer/clauses.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
-#include "postmaster/syslogger.h" /* Redirect_stderr */
 
 /*
  * print
@@ -40,16 +39,8 @@ print(void *obj)
 	s = nodeToString(obj);
 	f = format_node_dump(s);
 	pfree(s);
-	if (Redirect_stderr)
-	{
-		write_stderr("%s\n", f);
-	}
-	
-	else
-	{
-		printf("%s\n", f);
-		fflush(stdout);
-	}
+	printf("%s\n", f);
+	fflush(stdout);
 	
 	pfree(f);
 }
@@ -67,16 +58,8 @@ pprint(void *obj)
 	s = nodeToString(obj);
 	f = pretty_format_node_dump(s);
 	pfree(s);
-	if (Redirect_stderr)
-	{
-		write_stderr("%s\n", f);
-	}
-	
-	else
-	{
-		printf("%s\n", f);
-		fflush(stdout);
-	}
+	printf("%s\n", f);
+	fflush(stdout);
 	
 	pfree(f);
 }
