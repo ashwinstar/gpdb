@@ -477,9 +477,7 @@ class GpArray:
         """Returns a list of primary data directories minus the <prefix><contentid>"""
         primary_datadirs = []
         for db in self.getDbList():
-            if db.definedprimary and db.content != -1 \
-                and db.datadir[:db.datadir.rfind('/')] not in primary_datadirs:
-                
+            if db.definedprimary and db.content != -1:
                 primary_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return primary_datadirs
@@ -488,9 +486,7 @@ class GpArray:
         """Returns a list of mirror data directories minus the <prefix><contentid>"""
         mirror_datadirs = []
         for db in self.getDbList():
-            if not db.definedprimary and db.content != -1 \
-                and db.datadir[:db.datadir.rfind('/')] not in mirror_datadirs:
-                
+            if not db.definedprimary and db.content != -1:
                 mirror_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return mirror_datadirs
@@ -574,6 +570,10 @@ class GpArray:
         dbids = []
         content = []
         expansion_seg_count = 0
+       
+        # make sure we have added at least one segment
+        if len(self.expansionSegments) == 0:
+            raise Exception('No expansion segments defined')
         
         # how many mirrors?
         mirrors_per_segment = len(self.segments[0].mirrorDBs)
