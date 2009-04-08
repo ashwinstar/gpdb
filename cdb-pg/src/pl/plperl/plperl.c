@@ -2157,19 +2157,30 @@ plperl_spi_prepare(char *query, int argc, SV **argv)
 	BeginInternalSubTransaction(NULL);
 	MemoryContextSwitchTo(oldcontext);
 
-	/************************************************************
-	 * Allocate the new querydesc structure
-	 ************************************************************/
-	qdesc = (plperl_query_desc *) malloc(sizeof(plperl_query_desc));
-	MemSet(qdesc, 0, sizeof(plperl_query_desc));
-	snprintf(qdesc->qname, sizeof(qdesc->qname), "%lx", (long) qdesc);
-	qdesc->nargs = argc;
-	qdesc->argtypes = (Oid *) malloc(argc * sizeof(Oid));
-	qdesc->arginfuncs = (FmgrInfo *) malloc(argc * sizeof(FmgrInfo));
-	qdesc->argtypioparams = (Oid *) malloc(argc * sizeof(Oid));
-
 	PG_TRY();
 	{
+		/************************************************************
+		 * Allocate the new querydesc structure
+		 ************************************************************/
+		qdesc = (plperl_query_desc *) malloc(sizeof(plperl_query_desc));
+		if (qdesc == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+
+		MemSet(qdesc, 0, sizeof(plperl_query_desc));
+		snprintf(qdesc->qname, sizeof(qdesc->qname), "%lx", (long) qdesc);
+		qdesc->nargs = argc;
+		qdesc->argtypes = (Oid *) malloc(argc * sizeof(Oid));
+		qdesc->arginfuncs = (FmgrInfo *) malloc(argc * sizeof(FmgrInfo));
+		qdesc->argtypioparams = (Oid *) malloc(argc * sizeof(Oid));
+		if (qdesc->argtypes       == NULL ||
+			qdesc->arginfuncs     == NULL ||
+			qdesc->argtypioparams == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+
 		/************************************************************
 		 * Resolve argument type names and then look them up by oid
 		 * in the system cache, and remember the required information
@@ -2227,10 +2238,14 @@ plperl_spi_prepare(char *query, int argc, SV **argv)
 	{
 		ErrorData  *edata;
 
-		free(qdesc->argtypes);
-		free(qdesc->arginfuncs);
-		free(qdesc->argtypioparams);
-		free(qdesc);
+		if (qdesc && qdesc->argtypes)
+			free(qdesc->argtypes);
+		if (qdesc && qdesc->arginfuncs)
+			free(qdesc->arginfuncs);
+		if (qdesc && qdesc->argtypioparams)
+			free(qdesc->argtypioparams);
+		if (qdesc)
+			free(qdesc);
 
 		/* Save error info */
 		MemoryContextSwitchTo(oldcontext);
