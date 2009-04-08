@@ -186,6 +186,21 @@ CHK_PARAMS () {
 		    LOG_MSG "[INFO]:-Reading Greenplum input configuration file $INPUT_CONFIG"
 		    READ_INPUT_CONFIG
 		fi
+		
+		#validation
+		if [ x"" != x"${QD_PRIMARY_ARRAY}" ] ; then
+		    if [ x"" != x"${MASTER_PORT}" ] ; then
+		        ERROR_EXIT "[FATAL]:-Problem with configuration. Cannot specify MASTER_PORT and QD_PRIMARY_ARRAY" 2    		
+			fi
+
+			if [ x"" != x"${MASTER_HOSTNAME}" ] ; then
+			    ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_HOSTNAME and QD_PRIMARY_ARRAY" 2    			
+			fi
+
+			if [ x"" != x"${MASTER_DIRECTORY}" ] ; then
+			    ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_DIRECTORY and QD_PRIMARY_ARRAY" 2    			
+			fi
+	    fi
 
 
 		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
@@ -1500,7 +1515,7 @@ READ_INPUT_CONFIG () {
     ((TOTAL_SEG=${#QE_PRIMARY_ARRAY[@]}))
     MIRROR_TYPE=0
     MULTI_HOME=0
-
+   
 }
 
 #******************************************************************************
