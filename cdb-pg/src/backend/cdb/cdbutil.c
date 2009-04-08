@@ -52,7 +52,7 @@
 static int	CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi);
 
-static void getAddressesForDBid(CdbComponentDatabaseInfo *c);
+static void getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel);
 
 static HTAB *segment_ip_cache_htab = NULL;
 
@@ -232,7 +232,7 @@ freeGpId(void)
  * strucures are allocated from the caller's context.
  */
 CdbComponentDatabases *
-getCdbComponentInfo(void)
+getCdbComponentInfo(bool DNSLookupAsError)
 {
 	CdbComponentDatabases *component_databases = NULL;
 
@@ -398,7 +398,7 @@ getCdbComponentInfo(void)
 		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
 
 
-		getAddressesForDBid(pRow);
+		getAddressesForDBid(pRow, DNSLookupAsError ? ERROR : LOG);
 		pRow->hostip = pRow->hostaddrs[0];
 	}
 
@@ -535,7 +535,7 @@ getCdbComponentInfo(void)
 CdbComponentDatabases *
 getCdbComponentDatabases(void)
 {
-	return applyTransientState(getCdbComponentInfo());
+	return applyTransientState(getCdbComponentInfo(true));
 }
 
 
@@ -725,7 +725,7 @@ iface_priority_compare(const void *p1, const void *p2)
  * The keys are all NAMEDATALEN long.
  */
 static char *
-getDnsCachedAddress(char *name, int port)
+getDnsCachedAddress(char *name, int port, int elevel)
 {
 	struct segment_ip_cache_entry *e;
 
@@ -772,9 +772,12 @@ getDnsCachedAddress(char *name, int port)
 		{
 			if (addrs)
 				pg_freeaddrinfo_all(hint.ai_family, addrs);
-			ereport(ERROR,
+
+			ereport(elevel,
 					(errmsg("could not translate host name \"%s\", port \"%d\" to address: %s",
 							name, port, gai_strerror(ret))));
+
+			return NULL;
 		}
 			
 		/* save in the cache context */
@@ -827,7 +830,7 @@ getDnsCachedAddress(char *name, int port)
  * go get their details ... and then make sure they're cached properly.
  */
 static void
-getAddressesForDBid(CdbComponentDatabaseInfo *c)
+getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 {
 	Relation	gp_db_interface_rel;
 	Relation	gp_interface_rel;
@@ -845,6 +848,8 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c)
 	int			dbid;
 	int			iface_id;
 	int			priority;
+
+	char		*name;
 
 	Assert(c != NULL);
 		
@@ -941,7 +946,9 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c)
 			{
 				attr = heap_getattr(tuple, Anum_gp_interfaces_address, gp_interface_rel->rd_att, &isNull);
 				Assert(!isNull);
-				c->hostaddrs[j++] = pstrdup(getDnsCachedAddress(DatumGetCString(attr), c->port));
+				name = getDnsCachedAddress(DatumGetCString(attr), c->port, elevel);
+				if (name)
+					c->hostaddrs[j++] = pstrdup(name);
 			}
 
 			systable_endscan(ifacescan);
@@ -963,7 +970,12 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c)
 	memset(c->hostaddrs, 0, COMPONENT_DBS_MAX_ADDRS * sizeof(char *));
 
 	/* add an entry, using the hostname as fallback. */
-	c->hostaddrs[0] = pstrdup(getDnsCachedAddress(c->hostname, c->port));
+	name = getDnsCachedAddress(c->hostname, c->port, elevel);
+
+	if (name)
+		c->hostaddrs[0] = pstrdup(name);
+	else
+		c->hostaddrs[0] = NULL;
 
 	return;
 }

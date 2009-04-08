@@ -389,7 +389,7 @@ void FtsProbeLoop(void)
 	tv.tv_usec = 0;
 	tv.tv_sec = gp_fts_probe_interval;
 
-	cdb_component_dbs = getCdbComponentInfo();
+	cdb_component_dbs = getCdbComponentInfo(false);
 	ftsLock();
 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
@@ -430,7 +430,7 @@ void FtsProbeLoop(void)
 		else
 			processing_fullscan = false;
 
-		cdb_component_dbs = getCdbComponentInfo();
+		cdb_component_dbs = getCdbComponentInfo(false);
 
 		elog(DEBUG3, "Ftsprober: starting %sscan with %d dbids with %d content-ids",
 			 (processing_fullscan ? "full " : ""),

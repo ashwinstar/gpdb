@@ -121,13 +121,13 @@ extern void freeGpId(void);
 
 // UNDONE: This was a private procedure... are there any issues in making it public???
 /*
- * getCdbComponentDatabases
+ * getCdbComponentInfo
  *
  *
  * Storage for the SegmentInstances block and all subsidiary
- * strucures are allocated from the caller's context.
+ * structures are allocated from the caller's context.
  */
-extern CdbComponentDatabases *getCdbComponentInfo(void);
+extern CdbComponentDatabases *getCdbComponentInfo(bool DnsLookupFailureIsError);
 
 /*
  * Given total number of primary segment databases and a number of segments
