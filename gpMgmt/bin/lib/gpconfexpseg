@@ -94,7 +94,6 @@ try:
                                                               options.datadir + '/postgresql.conf',
                                                               'port', options.port, optType='number')
         modifyPostgresqlConfCmd.run(validateAfter=True)
-
     
     # start up segment in utility
     logger.info("starting expansion segment")
@@ -103,7 +102,7 @@ try:
     startCmd.run(validateAfter=True)
     
     # update gp_id
-    dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=options.port)
+    dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=options.port,dbname='template1')
     conn = dbconn.connect(dbUrl, utility=True)
             
     gpid_tbl = catalog.GpIdTable(conn)

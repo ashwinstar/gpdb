@@ -92,23 +92,27 @@ def parseargs():
     parser.add_option('-c','--clean', action='store_true',
                         help='remove the expansion schema.')
     parser.add_option('-r', '--rollback', action='store_true',
-                      help='rollback failed expansion setup')
+                      help='rollback failed expansion setup.')
     parser.add_option('-V', '--novacuum', action='store_true', 
-                      help='Do not vacuum catalog tables before creating schema copy')                        
+                      help='Do not vacuum catalog tables before creating schema copy.')                        
     parser.add_option('-d','--duration', type='duration', metavar='[h][:m[:s]]',
-                      help='duration from beginning to end')
+                      help='duration from beginning to end.')
     parser.add_option('-e','--end', type='datetime', metavar='datetime',
-                       help="ending date and time")
-    parser.add_option('-h', '-?', '--help', action='help',
-                        help='show this help message and exit')
+                       help="ending date and time in the format 'YYYY-MM-DD hh:mm:ss'.")
     parser.add_option('-i','--input', dest="filename",
                         help="input expansion configuration file.", metavar="FILE")        
+    parser.add_option('-D','--database', dest='database',
+                      help='Database to create the gpexpand schema and tables in.  If this ' \
+                      'option is not given, PGDATABASE will be used.  The template1 and ' \
+                      'template0 database cannot be used.')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
-                        help='number of tables to expand at a time. Valid values are 1-128')
+                        help='number of tables to expand at a time. Valid values are 1-128.')
+    parser.add_option('-b', '--batch-size', type='int', default=8, metavar="<batch_size>",
+                      help='Batch size of remote commands per host before delay.  Valid values are 1-128.')
     parser.add_option('-v','--verbose', action='store_true',
-                        help='debug output.')
-    parser.add_option('-m', '--batch-size-before-delay', type='int', default=8, metavar="<batch_size_before_delay>",
-                      help='Maximum concurrent remote commands per host before delay.  Valid values are 1-128')
+                      help='debug output.')
+    parser.add_option('-h', '-?', '--help', action='help',
+                        help='show this help message and exit.')
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
     
@@ -121,8 +125,8 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
-    if options.batch_size_before_delay > 128 or options.batch_size_before_delay < 1:
-        logger.error('Invalid argument.  batch-size-before-delay value must be >= 1 and <= 128')
+    if options.batch_size > 128 or options.batch_size < 1:
+        logger.error('Invalid argument.  batch-size value must be >= 1 and <= 128')
         parser.print_help()
         parser.exit()
         
@@ -561,7 +565,7 @@ class SegmentTemplate:
                                             seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
                                             verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname)
  
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             self.pool.addCommand(segCfgCmd)
@@ -655,7 +659,7 @@ class SegmentTemplate:
             if removeDataDirs:
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
-                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                     logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                     sleep(1) 
                 
@@ -907,7 +911,7 @@ class gpexpand:
             cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
 
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             
@@ -931,7 +935,7 @@ class gpexpand:
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -962,7 +966,7 @@ class gpexpand:
                                             seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
                                             ctxt=REMOTE, remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1006,7 +1010,7 @@ class gpexpand:
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, 
                                remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1023,7 +1027,7 @@ class gpexpand:
                                            seg.content, seg.dbid, ctxt=REMOTE, 
                                            remoteHost=seg.hostname) 
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size_before_delay == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1732,6 +1736,8 @@ try:
         create_pid_file(options.master_data_directory)
    
     dburl = dbconn.DbURL()
+    if options.database:
+        dburl.pgdb = options.database
     
     gpexpand_db_status = gpexpand.prepare_gpdb_state(logger, dburl)
     
