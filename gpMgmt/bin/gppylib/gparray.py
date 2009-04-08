@@ -476,8 +476,15 @@ class GpArray:
     def get_primary_root_datadirs(self):
         """Returns a list of primary data directories minus the <prefix><contentid>"""
         primary_datadirs = []
+
+        seg0_hostname = self.segments[0].primaryDB.get_hostname()
+        if len(self.get_interface_numbers()) > 0:
+            seg0_hostname = seg0_hostname[:seg0_hostname.rfind('-')]
+        
         for db in self.getDbList():
-            if db.definedprimary and db.content != -1:
+            if db.definedprimary and db.content != -1 and \
+                db.get_hostname().startswith(seg0_hostname):
+                
                 primary_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return primary_datadirs
@@ -485,8 +492,14 @@ class GpArray:
     def get_mirror_root_datadirs(self):
         """Returns a list of mirror data directories minus the <prefix><contentid>"""
         mirror_datadirs = []
+
+        seg0_hostname = self.segments[0].primaryDB.get_hostname()
+        if len(self.get_interface_numbers()) > 0:
+            seg0_hostname = seg0_hostname[:seg0_hostname.rfind('-')]
+
         for db in self.getDbList():
-            if not db.definedprimary and db.content != -1:
+            if not db.definedprimary and db.content != -1 and \
+                db.get_hostname().startswith(seg0_hostname):
                 mirror_datadirs.append(db.datadir[:db.datadir.rfind('/')])
         
         return mirror_datadirs
