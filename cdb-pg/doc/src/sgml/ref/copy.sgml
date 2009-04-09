@@ -66,7 +66,7 @@ COPY <replaceable class="parameter">tablename</replaceable> [ ( <replaceable cla
 
                 [ FORCE NOT NULL <replaceable class="parameter">column</replaceable> [, ...] ]
 				
-				[ FILL MISSING FIELDS ]
+		[ FILL MISSING FIELDS ]
 
 		[ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] [KEEP] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] ]
 
