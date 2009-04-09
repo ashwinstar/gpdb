@@ -973,6 +973,7 @@ class GPUpgrade:
             except Exception, e:
                 raise UpgradeError("Found a postmaster.pid but postmaster " +
                                    "running")
+            conn.close()
         return env
 
     #------------------------------------------------------------
@@ -3727,7 +3728,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         the scripts via stdin.
         '''
  
-        self.Log('INFO', 'Transforming skeleton cluster catalog')
+        self.Log('INFO', 'Performing multi-stage catalog transformation')
         def get_new_files(procfile, path, dbdir):
             out = []
             f = open(procfile, 'r')
@@ -3901,6 +3902,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
                     if self.upgrade:
                         # fs[0] is loadcat33
+                        self.Log('INFO', 'Pass 1')
                         transform(dir, dbs, fs[0])
 
                     # ao file too
@@ -3915,6 +3917,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                         self.Log('DEBUG', "ao upgrade %s" % f)
                         transform_db(dir, dbname, dboid, aofile)
                         
+                    self.Log('INFO', 'Pass 2')
                     transform(dir, dbs, conv[0])
 
     def SetCatVersion(self, frm, to):
@@ -4117,7 +4120,7 @@ try:
                                 % lockfile)
         try:
             try:
-                env = u.CheckUp(true)
+                env = u.CheckUp(True)
                 shutdown = False
                 u.dbup = [env, False]
                 if env == u.newenv:
@@ -4209,7 +4212,7 @@ try:
 	        # Prepare done, anything done after this point may allow modifying
 	        # the olddb
 	        if not u.execute:
-	            u.Log('INFO', 'Preparation Done')
+	            u.Log('INFO', 'Preparation successfully completed')
 	            sys.exit(0)
 	
 	        # Make sure that the database isn't running
@@ -4323,7 +4326,7 @@ try:
         else:
             # transform case
             if not u.execute:
-                u.Log('INFO', 'Preparation Done')
+                u.Log('INFO', 'Preparation successfully completed')
                 sys.exit(0)
 
             u.Startup(u.oldenv)
