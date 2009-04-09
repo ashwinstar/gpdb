@@ -465,7 +465,7 @@ GPLOAD:
            - desc: text
            - date: date
     - FORMAT: text
-    - DELIMITER: |
+    - DELIMITER: '|'
     - ERROR_LIMIT: 25
     - ERROR_TABLE: payables.err_expenses
    OUTPUT:
