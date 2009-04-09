@@ -928,6 +928,20 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 	pEntry->txport = saddr.sin_port;
 
+	/*
+	 * Note the buffer stuff below: The receive-side of our transmit socket is only used for acks.
+	 *
+	 * 128k of ack-space is enough for ~2000 acks if they're about 60-bytes. So that's a pretty
+	 * large number -- probably good enough.
+	 *
+	 * For transmit outbound space, I'm not sure that we can really feed the kernel as fast as
+	 * it can transmit. 128k of out-bound space is enough for 16 outbound messages at the default
+	 * size. Just in case, let's try 256k.
+	 *
+	 * Since only one copy of this outbound-stuff is held *per process* these buffers are pretty
+	 * cheap.
+	 */
+
 	{
 		int                 rcvbuf;
 		socklen_t           rcvbufsize=0;
@@ -942,7 +956,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 		fun = "setsockopt";
 		rcvbuf = 128 * 1024;
 
-		if(Gp_udp_bufsize_k != 0)
+		if (Gp_udp_bufsize_k != 0)
 			rcvbuf = Gp_udp_bufsize_k * 1024;
 
 		rcvbufsize = sizeof(rcvbuf);
@@ -951,6 +965,35 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 		elog(DEBUG1, "UDP-IC: xmit will use rx size of %d bytes", rcvbuf);
 	}
+
+	{
+		int                 sndbuf;
+		socklen_t           sndbufsize=0;
+
+		fun = "getsockopt";
+		sndbufsize = sizeof(sndbuf);
+		if (getsockopt(pEntry->txfd, SOL_SOCKET, SO_SNDBUF, (char *)&sndbuf, &sndbufsize) < 0)
+			goto error;
+
+		elog(DEBUG1, "UDP-IC: xmit default tx-size %d bytes", sndbuf);
+
+		fun = "setsockopt";
+		sndbuf = 256 * 1024;
+	retry:
+		sndbufsize = sizeof(sndbuf);
+		if (setsockopt(pEntry->txfd, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sndbufsize) < 0)
+		{
+			if (sndbuf == 256 * 1024)
+			{
+				sndbuf = 128 * 1024;
+				goto retry;
+			}
+			goto error;
+		}
+
+		elog(DEBUG1, "UDP-IC: xmit will use tx size of %d bytes", sndbuf);
+	}
+
 
     return pEntry;
 
