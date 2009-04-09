@@ -2258,6 +2258,14 @@ _outPartitionValuesSpec(StringInfo str, PartitionValuesSpec *node)
 }
 
 static void
+_outInhRelation(StringInfo str, InhRelation *node)
+{
+	WRITE_NODE_TYPE("INHRELATION");
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
 _outPartition(StringInfo str, Partition *node)
 {
 	int i;
@@ -3665,6 +3673,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_PartitionValuesSpec:
 				_outPartitionValuesSpec(str, obj);
+				break;
+			case T_InhRelation:
+				_outInhRelation(str, obj);
 				break;
 			case T_SegfileMapNode:
 				_outSegfileMapNode(str, obj);
