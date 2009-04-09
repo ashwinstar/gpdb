@@ -220,8 +220,8 @@ SELECT
         WHEN '%s' THEN 'Tables Expanded' 
         WHEN '%s' THEN 'Tables Left' 
         WHEN '%s' THEN 'Tables In Progress' 
-    END as Name, 
-    count(*)::text as Value 
+    END AS Name, 
+    count(*)::text AS Value 
 FROM %s.%s GROUP BY status
 
 UNION
@@ -231,25 +231,31 @@ SELECT
         WHEN '%s' THEN 'Bytes Done' 
         WHEN '%s' THEN 'Bytes Left' 
         WHEN '%s' THEN 'Bytes In Progress' 
-    END as Name, 
-    SUM(source_bytes)::text as Value 
+    END AS Name, 
+    SUM(source_bytes)::text AS Value 
 FROM %s.%s GROUP BY status
 
 UNION
 
 SELECT 
-    'Estimated Expansion Rate' as Name,
-    (SUM(source_bytes) / extract(epoch FROM SUM(expansion_finished - expansion_started)) / 1024 / 1024)::text || ' MB/s' AS Value
+    'Estimated Expansion Rate' AS Name,
+    (SUM(source_bytes) / extract(epoch FROM (max(expansion_finished) - min(expansion_started))) / 1024 / 1024)::text || ' MB/s' AS Value 
 FROM %s.%s 
-WHERE status = '%s'
+WHERE status = '%s' 
+AND 
+expansion_started > (SELECT updated FROM %s.%s WHERE status = '%s' ORDER BY updated DESC LIMIT 1)
 
 UNION
 
 SELECT
-'Estimated Time to Completion' as Name,
-cast((SUM(source_bytes) /
-  (SELECT SUM(source_bytes) / extract(epoch FROM SUM(expansion_finished - expansion_started)) 
-     FROM %s.%s WHERE status = '%s'))::text || ' seconds' as interval)::text AS Value
+'Estimated Time to Completion' AS Name,
+CAST((SUM(source_bytes) / (
+SELECT SUM(source_bytes) / extract(epoch FROM (max(expansion_finished) - min(expansion_started))) 
+FROM %s.%s 
+WHERE status = '%s' 
+AND 
+expansion_started > (SELECT updated FROM %s.%s WHERE status = '%s' ORDER BY
+updated DESC LIMIT 1)))::text || ' seconds' as interval)::text AS Value
 FROM %s.%s
 WHERE status = '%s' 
   OR status = '%s'""" % (gpexpand_schema, progress_view,
@@ -259,10 +265,15 @@ WHERE status = '%s'
                          gpexpand_schema, status_detail_table,
                          gpexpand_schema, status_detail_table,
                          done_status,
+                         gpexpand_schema, status_table,
+                         'EXPANSION STARTED',
                          gpexpand_schema, status_detail_table,
                          done_status,
+                         gpexpand_schema, status_table,
+                         'EXPANSION STARTED',
                          gpexpand_schema, status_detail_table,
                          start_status, undone_status)
+
 
 #-------------------------------------------------------------------------
 class InvalidStatusError(Exception): pass
