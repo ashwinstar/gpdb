@@ -508,7 +508,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		+ keywidth
 		+ transpace;
 	
-	double nbuckets = ceil(ngroups/gp_hashagg_groups_per_bucket); /* Buckets */
+	double nbuckets;
 
 	/* Hash Entries */
 	double nentries;
@@ -521,12 +521,6 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 		 ngroups, numaggs, keywidth, transpace);
 	elog(HHA_MSG_LVL, "HashAgg: memquota = %g, entrysize = %g, batchfile_buffer_size = %g",
 		 memquota, entrysize, batchfile_buffer_size);
-
-	if (nbuckets > UINT_MAX || ngroups > UINT_MAX)
-	{
-		elog(HHA_MSG_LVL, "HashAgg: table size bigger than int type!");
-		return false;
-	}
 
 	/*
 	 * When all groups can not fit in the memory, we compute
