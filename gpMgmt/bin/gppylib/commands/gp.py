@@ -9,10 +9,12 @@ TODO: docs!
 import os
 
 from gppylib.gplog import *
+from gppylib.db import dbconn
+from gppylib.db import catalog
 from base import *
 from unix import *
 import pg
-
+from gppylib import pgconf
 
 logger = get_default_logger()
 
@@ -59,16 +61,23 @@ class MasterStart(Command):
         self.dataDir=dataDir
         self.port=port
         self.utilityMode=utilityMode
-        cmdfrags=["%s $GPHOME/bin/%s -w -D %s -o \" -E -i -p %s" % (SRC_GPPATH,"pg_ctl",dataDir,port)]
+        if disableMasterMirror:
+            standby="-y"
+        else:
+            standby=""
         
         if utilityMode:
-            cmdfrags.append(" -c gp_role=utility ")
+            gp_mode_flags=" -c gp_role=utility "
+        else:
+            gp_mode_flags=" -E "    
+            
+        cmdfrags=["%s $GPHOME/bin/%s -w -D %s -o \" %s %s -i -p %s" %\
+                  (SRC_GPPATH,"pg_ctl",dataDir,standby,gp_mode_flags,port)]
+        
         
         if restrictedMode:
-            cmdfrags.append(" -c superuser_reserved_connections=%s " % max_connections)
+            cmdfrags.append(" -c superuser_reserved_connections=%s" % max_connections)
         
-        if disableMasterMirror:
-            cmdfrags.append(" -y ")    
         
         cmdfrags.append("\" start ")    
         
@@ -79,7 +88,7 @@ class MasterStart(Command):
     @staticmethod
     def local(name,dataDir,port,restrictedMode=False,max_connections=1,
                  disableMasterMirror=False,utilityMode=False):
-        cmd=MasterStart(name,dataDir,port,restrictedMode,max_connections,disableMasterMirror,utilityMode)        
+        cmd=MasterStart(name,dataDir,port,restrictedMode,max_connections,disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
@@ -130,13 +139,13 @@ class SegmentStop(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
     @staticmethod
-    def local(name, dataDir):
-        cmd=SegmentStop(name, dataDir)
+    def local(name, dataDir,mode='smart'):
+        cmd=SegmentStop(name, dataDir,mode)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, dblist, collatelist, gpversion,trust=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, dblist, collatelist, gpversion,verbose=False,ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dblist
         self.dirlist=[]
@@ -145,16 +154,20 @@ class GpSegStartCmd(Command):
             
         dirstr=" -D ".join(self.dirlist)        
         colstr=":".join(collatelist)
-        cmdStr="%s $GPHOME/sbin/gpsegstart.py -D %s -C %s -V '%s'" % (SRC_GPPATH,dirstr,colstr,gpversion)
-        if trust:
-            cmdStr += " --trust"
+        if verbose:
+            setverbose=" -v "
+        else:
+            setverbose=""
+            
+        cmdStr="%s $GPHOME/sbin/gpsegstart.py %s -D %s -C %s -V '%s'" % (SRC_GPPATH,setverbose,dirstr,colstr,gpversion)
+        
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, dblist, version,mode, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, dblist, version,mode,verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dblist
         self.dirlist=[]
@@ -163,8 +176,15 @@ class GpSegStopCmd(Command):
         for db in dblist:
             self.dirlist.append(db.datadir)
             
-        dirstr=" -D ".join(self.dirlist)        
-        self.cmdStr="%s $GPHOME/sbin/gpsegstop.py -D %s -m %s -V '%s'" % (SRC_GPPATH,dirstr,mode,version)
+        dirstr=" -D ".join(self.dirlist)
+        if verbose:
+            setverbose=" -v "
+        else:
+            setverbose=""
+            
+        self.cmdStr="%s $GPHOME/sbin/gpsegstop.py %s -D %s -m %s -V '%s'"  %\
+                        (SRC_GPPATH,setverbose,dirstr,mode,version)
+                        
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
@@ -172,7 +192,8 @@ class GpSegStopCmd(Command):
 class GpStandbyStart(Command):
     def __init__(self,name,datadir,port,ctxt=LOCAL, remoteHost=None):
         self.datadir=datadir
-        cmdStr="%s exec \"$GPHOME/bin/gpsyncmaster -D %s -p %d -i \" >> standby.logfile 2>&1 &" % (SRC_GPPATH,datadir,port)
+        logfile="%s/pg_log/startup.log" % datadir
+        cmdStr="%s exec $GPHOME/bin/gpsyncmaster -D %s -p %d -i  >> %s 2>&1 &" % (SRC_GPPATH,datadir,port,logfile)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -236,7 +257,7 @@ class NewGpStart(Command):
 #-----------------------------------------------           
 class GpStop(Command):
     def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False,ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstop -af" % SRC_GPPATH
+        self.cmdStr="%s $GPHOME/bin/gpstop -a" % SRC_GPPATH
         if masterOnly:
             self.cmdStr += " -m"
         if restart:
@@ -312,7 +333,68 @@ class GpVersion(Command):
         return cmd.get_version()
     
     
+#-----------------------------------------------
+class GpSegCheckLocaleAndConnect(Command):
+    def __init__(self,name,datadir,expected_lc_collate,expected_lc_monetary,expected_lc_numeric):
+        self.name=name
+        self.datadir=datadir
+        self.expected_lc_collate=expected_lc_collate
+        self.expected_lc_monetary=expected_lc_monetary
+        self.expected_lc_numeric=expected_lc_numeric
+        self.error_str=""
+        self.success=False
+        self.cmdStr="GpSegCheckLocaleAndConnect"
+        pass
+    
+    
+    def run(self,validateAfter=False):
+        pgconf_dict = pgconf.readfile(self.datadir + "/postgresql.conf")        
+        port = pgconf_dict.int('port')
+        dburl = dbconn.DbURL(port=port)
         
+        logger.debug("%s connecting to %s" % (self.datadir,dburl))
+        conn = dbconn.connect(dburl, utility=True)
+            
+        (lc_collate,lc_monetary,lc_numeric)=catalog.getCollationSettings(conn)
+        if lc_collate != self.expected_lc_collate:                    
+            self.error_str+="Segment's value of lc_collate does not match the master.\n" \
+                            " Master had value: '%s' while this segment has: '%s'\n" %\
+                            (self.expected_lc_collate,lc_collate)                
+        if lc_monetary != self.expected_lc_monetary:
+            self.error_str += "Segment's value of lc_monetary does not match the master.\n"\
+                              " Master had value: '%s' while this segment has: '%s'" %\
+                            (self.expected_lc_monetary,lc_monetary)
+        if lc_numeric != self.expected_lc_numeric:
+            self.error_str += "Segment's value of lc_numeric does not match the master.\n" \
+                              " Master had value: '%s' while this segment has: '%s'" %\
+                              (self.expected_lc_numeric,lc_numeric)
+                
+        conn.close()
+        logger.debug("%s connection closed" % self.datadir)
+        
+        if len(self.error_str) == 0:
+            self.success = True
+        else:
+            self.sucess = False
+    
+    def set_results(self,results):
+        raise ExecutionError("TODO:  must implement")
+    
+    def get_results(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def was_successful(self):
+        raise ExecutionError("TODO:  must implement")
+    
+    def validate(self):
+        raise ExecutionError("TODO:  must implement")      
+
+    def getResults(self):
+        return (self.success,self.error_str)
+
+        
+
+#-----------------------------------------------        
 def distribute_tarball(queue,list,tarball):
         logger.debug("distributeTarBall start")        
         for db in list:
@@ -430,21 +512,28 @@ def build_hostdict(segs,gparray,pool):
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-
 
 def start_standbymaster(host,datadir,port):
+    logger.info("Starting standby master")
     
     logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
     pidfileexists=FileDirExists.remote('check for standby PID file',host,datadir + '/postmaster.pid')
     lockfileexists=FileDirExists.remote('check for standby lock file',host,"/tmp/.s.PGSQL.%s" % port)
     
+    #TODO:  should we throw an exception here or do something else?
     if pidfileexists and lockfileexists:
         raise Exception("Standby instance running. postmaster.pid and /tmp/.s.PGSQL.%s exists" % port)
     
     #TODO: any other cases to handle
         
-    cmd=GpStandbyStart.remote('start standby master',host,datadir,port)
-    
+    cmd=GpStandbyStart.remote('start standby master',host,datadir,port)    
     logger.debug("Starting standby: %s" % cmd )
     
-    #TODO: make sure its started.
+    logger.debug("Starting standby master results: %s" % cmd.get_results() )
+    
+    if cmd.get_results().rc == 0:
+        return True
+    else:
+        return False
+    
     pass
 
 

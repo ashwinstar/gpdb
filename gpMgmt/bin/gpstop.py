@@ -62,13 +62,15 @@ class SegStopStatus():
 class GpStop():
     
     ######
-    def __init__(self,mode,cancel_active_connections,parallel,quiet=False):
+    def __init__(self,mode,cancel_active_connections,master_datadir=None,parallel=DEFAULT_NUM_WORKERS,quiet=False,force=False):
         self.mode=mode
         self.cancel_active_connections=cancel_active_connections        
+        self.master_datadir=master_datadir
         self.pool = None
         self.parallel=parallel
         self.quiet=quiet
         self.pid=0
+        self.force=force
         pass       
         
         
@@ -76,7 +78,8 @@ class GpStop():
     def prepare(self):
         logger.info("Gathering information and validating the environment...")        
         self.gphome=gp.get_gphome()
-        self.master_datadir=gp.get_masterdatadir()
+        if self.master_datadir is None:
+            self.master_datadir=gp.get_masterdatadir()
         self.user=gp.get_user() 
         gp.check_permissions(self.user)
         self._read_postgresqlconf()
@@ -212,17 +215,17 @@ class GpStop():
             standby=self.gparray.standbyMaster
             
             logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
-            cmd=SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',ctxt=REMOTE,remoteHost=standby.hostname)
+            cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',ctxt=base.REMOTE,remoteHost=standby.hostname)
             cmd.run(validateAfter=True)
             
             if pg.DbStatus.local('checking status of standby master instance',standby.datadir,standby.hostname):
                 logger.info("Successfully shutdown sync process on %s" % standby.hostname)
             else:
                 logger.warning("Process gpsyncmaster still running, will issue fast shutdown with immediate")            
-                cmd=SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=REMOTE,remoteHost=standby.hostname)
+                cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
                 cmd.run(validateAfter=True)
                 
-                if pg.DbStatus.local('checking status of standby master instance',standby.datadir,standby.hostname):
+                if pg.DbStatus.remote('checking status of standby master instance',standby.datadir,standby.hostname):
                     logger.info("Successfully shutdown sync process on %s" % standby.hostname)
                 else:
                     logger.error("Unable to stop gpsyncmaster on host: %s" % standby.hostname)
@@ -244,8 +247,8 @@ class GpStop():
         
                                 
         self._stopseg_cmds(hostdict)                
-        self._process_segment_stop(hostdict,failed_seg_status)    
-        self._print_segment_stop(segs,failed_seg_status)
+        success_seg_status=self._process_segment_stop(hostdict,failed_seg_status)    
+        self._print_segment_stop(segs,failed_seg_status,success_seg_status)
         
         
         pass
@@ -302,7 +305,7 @@ class GpStop():
             
             logger.debug("Dispatching command to shutdown segments on host: %s" % key)
             cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % key, self.gphome, dblist,self.gpversion,
-                                mode='immediate', ctxt=base.REMOTE, remoteHost=key)
+                                mode='immediate', verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
@@ -360,7 +363,7 @@ class GpStop():
     
     
     ######
-    def _print_segment_stop(self,segs,failed_seg_status):
+    def _print_segment_stop(self,segs,failed_seg_status,success_seg_status):
         started = len(segs) - len(failed_seg_status)         
         failed = len(failed_seg_status)
         
@@ -482,6 +485,8 @@ def parseargs():
                       
     optgrp2.add_option('-q', '--quiet', action='store_true',
                         help='suppress status messages')
+    optgrp2.add_option('-l', '--logfile_directory', type='string', default=None,
+                       help="The directory to write the log file. Defaults to ~/gpAdminLogs.")
     
     optgrp4 = OptionGroup(parser, 'Connection options: ')
     parser.add_option_group(optgrp4)
@@ -489,6 +494,9 @@ def parseargs():
     
     optgrp3 = OptionGroup(parser, 'Instance shutdown options: ')
     parser.add_option_group(optgrp3)
+    optgrp3.add_option('-d', '--master_data_directory', type='string', default=None,
+                       help="Optional. The master host data directory. If not specified, the value set"\
+                            "for $MASTER_DATA_DIRECTORY will be used.")
     optgrp3.add_option('-f', '--fast', action='store_true', default=False,
                         help="<deprecated> Fast shutdown, active transactions interrupted and rolled back")
     optgrp3.add_option('-i', '--immediate', action='store_true',default=False,
@@ -527,8 +535,8 @@ def parseargs():
     
     
     if options.mode != 'smart':
-        if options.fast or options.immediate or options.force:
-            raise GpStopError("Can not mix --mode options with older deprecated '-f,-i,-s,-z'")
+        if options.fast or options.immediate:
+            raise GpStopError("Can not mix --mode options with older deprecated '-f,-i,-s'")
     
     if options.fast:
         options.mode="fast"
@@ -536,8 +544,11 @@ def parseargs():
         options.mode="immediate"
     if options.smart:
         options.mode="smart"
+    
+    #deprecating force option.  it no longer kills -9 things.
+    # just make it stop fast instead.
     if options.force:
-        options.mode="force"
+        options.mode="fast"
     
     
     
@@ -569,12 +580,9 @@ def main():
         figleaf.start()
         
     gpstop = None
-    try:
-        setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
-    
+    try:            
         options, args = parseargs()
-        
-        
+        setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),options.logfile_directory)
         
         if options.verbose:
             enable_verbose_logging()
@@ -584,7 +592,12 @@ def main():
     
         logger.info("Starting gpstop with args: %s" % ' '.join(sys.argv[1:]))
         
-        gpstop = GpStop(options.mode,options.cancel_active_connections,options.parallel,quiet=options.quiet)
+        gpstop = GpStop(options.mode,
+                        options.cancel_active_connections,
+                        master_datadir=options.master_data_directory,
+                        parallel=options.parallel,
+                        quiet=options.quiet,
+                        force=options.force)
         gpstop.prepare()
           
         
@@ -628,7 +641,7 @@ def main():
                      e.cmd.results.stderr ))
         sys.exit(4)
     except Exception, e:        
-        if True: #if options.verbose:
+        if options.verbose:
             logger.exception("gpstop failed.  exiting..." )
         else:
             logger.fatal("gpstop failed. (Reason='%s') exiting..." % e)

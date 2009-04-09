@@ -53,11 +53,11 @@ def setup_helper_tool_logging(appName,hostname,userName):
     logger.name="%s:%s" % (hostname,userName)
     return logger
 
-def setup_tool_logging(appName,hostname,userName):
+def setup_tool_logging(appName,hostname,userName,logdir=None):
     """ sets up the logging as per standard GP Tools should  """
     logger = get_default_logger()
     logger.name="%s:%s" % (hostname,userName)
-    enable_gpadmin_logging(appName)
+    enable_gpadmin_logging(appName,logdir)
     return logger
 
 
@@ -96,13 +96,21 @@ def get_default_formatter():
     return logging.Formatter("%(asctime)s:%(filename)s:%(name)s-[%(levelname)-s]:-%(message)s","%Y%m%d:%H:%M:%S")
 
     
-def enable_gpadmin_logging(name):
+def enable_gpadmin_logging(name,logdir=None):
     global FILE_HANDLER
         
     logger = get_default_logger()
     now = datetime.date.today()
-    homeDir=os.path.expanduser("~")
     
-    filename = "%s/gpAdminLogs/%s_%s.log" % (homeDir,name, now.strftime("%Y%m%d"))
+    if logdir is None:
+        homeDir=os.path.expanduser("~")
+        gpadmin_logs_dir=homeDir + "/gpAdminLogs"
+    else:
+        gpadmin_logs_dir=logdir
+    
+    if not os.path.exists(gpadmin_logs_dir):
+        os.mkdir(gpadmin_logs_dir)
+    
+    filename = "%s/%s_%s.log" % (gpadmin_logs_dir,name, now.strftime("%Y%m%d"))
     set_file_logging(filename)    
     pass

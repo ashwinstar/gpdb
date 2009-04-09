@@ -122,7 +122,8 @@ def main():
         figleaf.start()
         
     try:
-        gplog.setup_helper_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())                    
+        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+                            
         options, args = parseargs()
         
         if options.verbose:
