@@ -1204,8 +1204,9 @@ class gpload:
                                 ' does not exist on host ' + m.group(1))
                     else:
                         errstr = errstr.decode('utf-8')
-                        self.log(self.ERROR, u'error encountered running ' +
-                            u'%s: %s' % (sql, errstr))
+                        self.log(self.ERROR, u'%s ' % (errstr)  + 
+                                 u'encountered while running %s' % (sql))
+
 
         p.condition.acquire()
         p.number = 1

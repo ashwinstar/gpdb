@@ -1203,14 +1203,16 @@ static size_t gp_proto1_read(char *buf, int bufsz, URL_FILE *file, CopyState pst
 	if (bufsz > curl->block.datalen)
 		bufsz = curl->block.datalen;
 
-	n = curl->buf.top - curl->buf.bot;
-	// elog(NOTICE, "n = %d", n);
 	fill_buffer(file, bufsz);
 	n = curl->buf.top - curl->buf.bot;
+
+	/* if gpfdist closed connection prematurely or died catch it here */
 	if (n == 0 && !curl->eof)
 	{
-		//elog(NOTICE, "bufsz = %d, not eof -> error", bufsz);
 		curl->error = 1;
+		
+		if(!curl->still_running)
+			elog(ERROR, "gpfdist server closed connection.\n");
 	}
 
 	if (n > bufsz)
