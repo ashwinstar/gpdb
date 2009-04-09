@@ -8,8 +8,8 @@ SYNOPSIS
 *****************************************************
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
-[-z] [-f | -i | -s] [-r] [-m] [-y] [-u] [-a] [-q] [-l 
-logfile_directory] [-D] [-t | -? | -v]
+[-z] [- M s[mart] | f[ast] | i[mmediate]] [-r] [-m] [-y] 
+[-u] [-a] [-q] [-l logfile_directory] [ -? | -v]
 
 
 *****************************************************
@@ -28,13 +28,16 @@ By default, you are not allowed to shut down Greenplum Database if
 there are any client connections to the database. Use the -C option to 
 terminate any connections before shutting down. If there are any 
 transactions in progess, the default behavior is to wait for them to 
-commit before shutting down. Use the -f or -i options to either rollback 
+commit before shutting down. Use the -M f or -M i options to either rollback 
 or abort open transactions.
 
 With the -u option, the utility uploads changes made to the master 
 postgresql.conf and pg_hba.conf files without interruption of service. 
 Note that any active sessions will not pickup the changes until they 
 reconnect to the database.
+
+The following options are deprecated in version 3.3:[-f | -i | -s]. 
+Instead, use [- M s[mart] | f[ast] | i[mmediate]].
 
 
 *****************************************************
@@ -63,19 +66,19 @@ then retry startup again. The default behavior is to not shutdown segment
 instances with an invalid status.
 
 
--f (fast shutdown - rollback)
+-M f (fast shutdown - rollback)
 
 Fast shut down. Any transactions in progress are interrupted and rolled back.
 
 
--i (immediate shutdown - abort)
+-M i (immediate shutdown - abort)
 
 Immediate shut down. Any transactions in progress are aborted. Use this 
 option with care if you are running in continue fault tolerance mode 
 (read-write), as this could cause data corruption.
 
 
--s (smart shutdown - wait for commits)
+-M s (smart shutdown - wait for commits)
 
 Smart shut down. Waits for active transactions to complete before shutting 
 down. This is the default shutdown mode.
@@ -122,11 +125,6 @@ still written to the log file.
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--D (debug)
-
-Sets logging level to debug.
-
-
 -t (show default script settings)
 
 Displays the settings that will be used to shut down the system, such as 
@@ -155,7 +153,7 @@ gpstop
 
 Stop a Greenplum Database system in fast mode:
 
-gpstop -f
+gpstop -M f
 
 
 Force shutdown of the system if it has failed segment instances from a 

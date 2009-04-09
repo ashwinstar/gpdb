@@ -8,9 +8,9 @@ SYNOPSIS
 
 gpstart [-d <master_data_directory>] [-B <parallel_processes>] 
         [-R] [-m] [-y] [-a] [-q] [-l <logfile_directory>] 
-        [-D]
+        
 
-gpstart [-t | -? | -v]
+gpstart  -? | -v]
 
 
 *****************************************************
@@ -23,6 +23,13 @@ are actually starting several postgres database server processes
 at once (the master and all of the segment instances). The gpstart 
 utility handles the startup of the individual instances. Each instance 
 is started in parallel.
+
+The first time an administrator runs gpstart, the utility creates a 
+hosts cache file named .gphostcache in the user’s home directory. 
+Subsequently, the utility uses this list of hosts to start the system 
+more efficiently. If new hosts are added to the system, you must 
+manually remove this file from the gpadmin user’s home directory. 
+The utility will create a new hosts cache file at the next startup.
 
 Before you can start a Greenplum Database system, you must have 
 initialized the system using gpinitsystem first.
@@ -50,11 +57,6 @@ Optional. The master host data directory. If not specified, the
 value set for $MASTER_DATA_DIRECTORY will be used.
 
 
--D (debug)
-
-Sets logging level to debug.
-
-
 -l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
@@ -78,14 +80,6 @@ but is still written to the log file.
 
 Starts Greenplum Database in restricted mode (only database 
 superusers are allowed to connect).
-
-
--t (show default utility settings)
-
-Displays the settings that will be used to start the system, such 
-as the master data directory and port, and the name, data directory, 
-port, valid status, and primary or mirror status of all the segment 
-instances.
 
 
 -v (show utility version)
@@ -118,11 +112,6 @@ Start a Greenplum Database system in restricted mode (only allow
 superuser connections):
 
 gpstart -R
-
-
-Start a Greenplum Database system and roll over the log files:
-
-gpstart -s -e
 
 
 Start the Greenplum master instance only and connect in utility mode:
