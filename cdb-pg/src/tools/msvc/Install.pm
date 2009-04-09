@@ -249,7 +249,7 @@ sub CopyContribFiles
     {
         next if ($d =~ /^\./);
         next unless (-f "contrib/$d/Makefile");
-        next if ($d eq "uuid-ossp");
+        next if ($d eq "uuid-ossp"&& !defined($config->{uuid}));
         next if ($d eq "sslinfo" && !defined($config->{openssl}));
         next if ($d eq "xml2" && !defined($config->{xml}));
 
@@ -283,7 +283,7 @@ sub CopyContribFiles
 
             # Special case for contrib/spi
             $flist =
-"README.spi autoinc.example insert_username.example moddatetime.example refint.example timetravel.example"
+"autoinc.example insert_username.example moddatetime.example refint.example timetravel.example"
               if ($d eq 'spi');
             foreach my $f (split /\s+/,$flist)
             {

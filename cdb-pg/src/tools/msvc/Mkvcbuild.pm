@@ -45,7 +45,7 @@ sub mkvcbuild
 
     our @pgportfiles = qw(
       chklocale.c crypt.c fseeko.c getrusage.c inet_aton.c random.c srandom.c
-      unsetenv.c getaddrinfo.c gettimeofday.c kill.c open.c rand.c
+      getaddrinfo.c gettimeofday.c kill.c open.c rand.c
       snprintf.c strlcat.c strlcpy.c copydir.c dirmod.c exec.c noblock.c path.c pipe.c
       pgsleep.c pgstrcasecmp.c qsort.c qsort_arg.c sprompt.c thread.c
       getopt.c getopt_long.c dirent.c rint.c win32env.c win32error.c glob.c);
@@ -103,7 +103,14 @@ sub mkvcbuild
             }
         }
         $plperl->AddReference($postgres);
+        if (-e $solution->{options}->{perl} . '\lib\CORE\perl510.lib')
+        {
+            $plperl->AddLibrary($solution->{options}->{perl} . '\lib\CORE\perl510.lib');
+        }
+        else
+        {
         $plperl->AddLibrary($solution->{options}->{perl} . '\lib\CORE\perl58.lib');
+    }
     }
 
     if ($solution->{options}->{python})
@@ -121,7 +128,14 @@ sub mkvcbuild
         my $pltcl = $solution->AddProject('pltcl','dll','PLs','src\pl\tcl');
         $pltcl->AddIncludeDir($solution->{options}->{tcl} . '\include');
         $pltcl->AddReference($postgres);
+        if (-e $solution->{options}->{tcl} . '\lib\tcl85.lib')
+        {
+            $pltcl->AddLibrary($solution->{options}->{tcl} . '\lib\tcl85.lib');
+        }
+        else
+        {
         $pltcl->AddLibrary($solution->{options}->{tcl} . '\lib\tcl84.lib');
+    }
     }
 
     $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
@@ -318,7 +332,7 @@ sub mkvcbuild
     $mf =~ m{DIRS\s*=\s*(.*)$}m || die 'Could not match in conversion makefile' . "\n";
     foreach my $sub (split /\s+/,$1)
     {
-no        my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
+        my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
         my $p = $solution->AddProject($sub, 'dll', 'conversion procs');
         
         $p->AddFile('src\backend\utils\mb\conversion_procs\\' . $sub . '\\' . $sub . '.c');
@@ -533,9 +547,6 @@ sub GenerateContribSqlFiles
             my $in = "$d.in";
             my $out = "$d";
 
-            # tsearch2 uses inconsistent naming
-            $in = "tsearch.sql.in" if ($in eq "tsearch2.sql.in");
-            $in = "untsearch.sql.in" if ($in eq "uninstall_tsearch2.sql.in");
             if (Solution::IsNewer("contrib/$n/$out", "contrib/$n/$in"))
             {
                 print "Building $out from $in (contrib/$n)...\n";

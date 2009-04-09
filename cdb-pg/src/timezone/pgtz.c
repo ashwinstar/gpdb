@@ -27,12 +27,6 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 
-/* OLD -- Current global timezone */
-//pg_tz	   *global_timezone = NULL;
-
-/* OLD --Default timezone */
-//pg_tz      *default_timezone = NULL;
-
 /* Current session timezone (controlled by TimeZone GUC) */
 pg_tz	   *session_timezone = NULL;
 
@@ -1356,8 +1350,6 @@ pg_timezone_pre_initialize(void)
 		elog(FATAL, "could not initialize GMT timezone");
 	strcpy(gmt_timezone_data.TZname, "GMT");
 	gmt_timezone = &gmt_timezone_data;
-	
-	//default_timezone = &gmt_timezone_data; // old
 }
 
 /*
