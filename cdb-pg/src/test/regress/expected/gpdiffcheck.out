@@ -46,17 +46,17 @@ select c1, c1, c2, c3 from gpd1 order by 1,2;
 
 --
 --
-select c1, c1, c2, c3 from gpd1 order by 1,2;-- order 1, 2     , 3    , 4
+select c1, c1, c2, c3 from gpd1 order by 1,2,3,4;-- order 1, 2     , 3    , 4
  c1 | c1 | c2 | c3 
 ----+----+----+----
  a  | a  |  1 |  1
  a  | a  |  1 |  2
- b  | b  |  2 |  1
  b  | b  |  1 |  2
- c  | c  |  3 |  2
+ b  | b  |  2 |  1
  c  | c  |  2 |  3
- d  | d  |  4 |  4
+ c  | c  |  3 |  2
  d  | d  |  4 |  3
+ d  | d  |  4 |  4
 (8 rows)
 
 --

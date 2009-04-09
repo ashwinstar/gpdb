@@ -22,7 +22,7 @@ select c1 from gpd1;
 select c1, c1, c2, c3 from gpd1 order by 1,2;
 --
 --
-select c1, c1, c2, c3 from gpd1 order by 1,2;-- order 1, 2     , 3    , 4
+select c1, c1, c2, c3 from gpd1 order by 1,2,3,4; -- order 1, 2     , 3    , 4
 --
 -- ignore
 -- order 1, 2
