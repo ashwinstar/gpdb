@@ -13,7 +13,7 @@ gprecoverseg [-d <master_data_directory>]
               | -i <recover_config_file>] 
              [-B <parallel_processes>] [-f] 
              [-z <seg_data_dir>:<seg_hostname> | -S <seg_dbid>] 
-             [-a] [-q] [-l <logfile_directory>] [-D] 
+             [-a] [-q] [-l <logfile_directory>] 
 
 gprecoverseg -o <output_sample_recover_config>
 
@@ -119,7 +119,7 @@ The directory to write the log file. Defaults to ~/gpAdminLogs.
 Specifies a file name and location to output a sample recovery 
 configuration file. The output file lists the currently invalid segments 
 and their default recovery location in the format that is required by 
-the -c option. This file can be edited to supply alternate recovery 
+the -i option. This file can be edited to supply alternate recovery 
 locations if needed.
 
 
