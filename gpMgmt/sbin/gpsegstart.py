@@ -20,6 +20,7 @@ from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib import pgconf
 
+
 description = (""" 
 Starts a set of one or more segment databases.
 """)
