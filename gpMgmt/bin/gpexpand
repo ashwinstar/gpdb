@@ -554,7 +554,7 @@ class SegmentTemplate:
         for seg in self.gparray.getExpansionSegDbList():
             if seg.definedprimary and seg.content != -1:             
                 newPrimaryCount += 1
-                commandsSent[seg.hostname] = 0
+            commandsSent[seg.hostname] = 0
         
         newPrimaryCount += self.gparray.get_primary_count()
         newDbId = self.maxDbId + 1
