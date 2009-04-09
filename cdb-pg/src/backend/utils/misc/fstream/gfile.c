@@ -378,10 +378,32 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 	{
 		if (stat(fpath, &sta))
 		{
-			gfile_printf_then_putc_newline("gfile stat %s failure", fpath);
-			*response_code = 404;
-			*response_string = "file not found";
-			return 1;
+			if(errno == EOVERFLOW)
+			{
+				/*
+				 * ENGINF-176
+				 * 
+				 * Some platforms don't support stat'ing of "large files"
+				 * accurately (files over 2GB) - SPARC for example. In these
+				 * cases the storage size of st_size is too small and the
+				 * file size will overflow. Therefore, we look for cases where
+				 * overflow had occurred, and resume operation. At least we
+				 * know that the file does exist and that's the main goal of
+				 * stat'ing here anyway. we set the size to 0, similarly to
+				 * the winpipe path, so that negative sizes won't be used.
+				 * 
+				 * TODO: there may be side effects to setting the size to 0,
+				 * need to double check.
+				 */
+				sta.st_size = 0;
+			}
+			else
+			{
+				gfile_printf_then_putc_newline("gfile stat %s failure", fpath);
+				*response_code = 404;
+				*response_string = "file not found";
+				return 1;				
+			}
 		}
 		if (S_ISDIR(sta.st_mode))
 		{
