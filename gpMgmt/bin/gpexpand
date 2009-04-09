@@ -54,10 +54,6 @@ Remaining TODO items:
 
 """* smarter heuristics on setting ranks. """,
 
-"""* how to measure progress. """,
-
-"""* create a view to measure progress """,
-
 """* make sure system isn't in "readonly mode" during setup. """,
 
 """* need a startup validation where we check the status detail
