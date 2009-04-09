@@ -2145,7 +2145,7 @@ plperl_spi_cursor_close(char *cursor)
 SV *
 plperl_spi_prepare(char *query, int argc, SV **argv)
 {
-	plperl_query_desc *qdesc;
+	plperl_query_desc  *qdesc = NULL;
 	plperl_query_entry *hash_entry;
 	bool        found;
 	void	   *plan;
