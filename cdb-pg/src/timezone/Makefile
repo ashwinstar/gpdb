@@ -13,6 +13,7 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := $(CPPFLAGS)
+override CFLAGS := $(CFLAGS) -O1
 
 # files to build into backend
 OBJS= localtime.o strftime.o pgtz.o
