@@ -2527,6 +2527,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             self.Log('DEBUG', "CMD: " + cmd)
 
             outfilename = os.path.join(self.workdir, 'gpcheckcat_%s.log' % db)
+            outfilename = outfilename.replace(' ', '_')
             outfile = open(outfilename, 'w')
 
             pipe = subprocess.Popen(cmd, shell=True, stdout=outfile, stderr=outfile,close_fds=True)

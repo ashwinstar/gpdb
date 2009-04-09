@@ -717,7 +717,7 @@ class sysCatThread(Thread):
             outfile = "%s/gpcheckcat.%s.%s_s" % (GV.tmpdir, dbid, table)
     
         cmd  = 'PGOPTIONS="-c gp_session_role=utility"'
-        cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" %s' % \
+        cmd += ' psql -A -F , -o %s -h %s -p %s -U %s -c "%s" "%s"' % \
             (outfile, host, port, GV.opt['-U'], catalog, GV.dbname)
     
         subprocess.call(cmd, shell=True, close_fds=True)
@@ -1095,6 +1095,7 @@ Performing segment specific consistency checks
             c = GV.cfg[seg]
             filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'],
                         c['port'], GV.dbname)
+            filename = filename.replace(' ', '_')
             fullpath = '%s/%s' % (GV.opt['-g'], filename)
             try:
                 file = open(fullpath, 'w')
@@ -1118,7 +1119,7 @@ Performing segment specific consistency checks
 
             script += 'echo "Repairing segment %i"\n' % seg
             script += 'env PGOPTIONS="-c gp_session_role=utility" ' + \
-                    'psql -X -a -h %s -p %i -f %s %s > %s.out\n' % \
+                    'psql -X -a -h %s -p %i -f %s "%s" > %s.out\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
         if len(Reindex) > 0:
@@ -1137,7 +1138,7 @@ Performing segment specific consistency checks
 
             script += 'echo "Reindexing potentially damaged bitmap indexes"\n'
             c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s %s > %s.out 2>&1\n' % \
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
         if len(Constraints) > 0:
@@ -1157,7 +1158,7 @@ Performing segment specific consistency checks
 
             script += 'echo "Dropping invalid unique constraints"\n'
             c = GV.cfg[1]
-            script += 'psql -X -a -h %s -p %i -f %s %s > %s.out 2>&1\n' % \
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
 
