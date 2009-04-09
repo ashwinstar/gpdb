@@ -503,7 +503,7 @@ class SegmentTemplate:
 
         self.oldSegCount = self.gparray.get_segment_count()
              
-        GpStop.local('gpexpand _create_template stop gpdb', masterOnly=True, force=True)
+        GpStop.local('gpexpand _create_template stop gpdb', masterOnly=True, fast=True)
 
         try:    
             gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
@@ -724,7 +724,7 @@ class gpexpand:
             if gpdb_running:
                 if gpdb_mode != 'UTILITY':
                     logger.info('Stopping Greenplum Database')
-                    GpStop.local('Stop GPDB', force=True)
+                    GpStop.local('Stop GPDB', fast=True)
                     logger.info('Starting Greenplum Database in master only mode')
                     GpStart.local('Start GPDB', masterOnly=True)
             else:
@@ -738,7 +738,7 @@ class gpexpand:
             else:
                 if gpdb_mode == 'UTILITY':
                     logger.info('Stopping Greenplum Database master')
-                    GpStop.local('Stop GPDB', masterOnly=True, force=True)
+                    GpStop.local('Stop GPDB', masterOnly=True, fast=True)
                     logger.info('Starting Greenplum Database')
                     GpStart.local('Start GPDB')
             
@@ -749,7 +749,7 @@ class gpexpand:
             if (not gpexpand_db_status and options.filename) and not options.clean:
                 # New expansion, need to be in master only
                 logger.info('Readying Greenplum Database for a new expansion')
-                GpStop.local('Stop GPDB', force=True)
+                GpStop.local('Stop GPDB', fast=True)
                 GpStart.local('Sart GPDB', masterOnly=True)
             
         return gpexpand_db_status
@@ -809,7 +809,7 @@ class gpexpand:
             else:
                 self.logger.debug('Skipping %s' % status[0])
 
-        GpStop.local('gpexpand rollback', masterOnly=True, force=True)
+        GpStop.local('gpexpand rollback', masterOnly=True, fast=True)
 
         if cleanSchema:
             GpStart.local('gpexpand rollback start database restricted', restricted=True)
@@ -821,7 +821,7 @@ class gpexpand:
                 schema_conn.close()
             except:
                 pass # schema wasn't created yet.
-            GpStop('gpexpand rollback stop database', force=True)
+            GpStop('gpexpand rollback stop database', fast=True)
             
         self.statusLogger.remove_status_file()
         if os.path.exists(options.master_data_directory + '/gpexpand.gp_configuration'):
@@ -1066,8 +1066,7 @@ class gpexpand:
         self.conn.close()
         
         self.logger.info('Stopping master in utility mode')
-        stopCmd = GpStop('gpexpand update master stop database', masterOnly=True, force=True)
-        stopCmd.run(validateAfter=True)
+        GpStop.local('gpexpand update master stop database', masterOnly=True, fast=True)
         
         self.statusLogger.set_status('UPDATE_MASTER_DONE')
         
@@ -1151,8 +1150,12 @@ class gpexpand:
         self.statusLogger.set_status('PREPARE_EXPANSION_SCHEMA_DONE')
         self.statusLogger.set_status('EXPANSION_PREPARE_DONE')
         
+        # At this point, no rollback is possible and the the system
+        # including new segments has been started once before so finalize
+        self.finalize_prepare()
+        
         self.logger.info('Stopping Greenplum Database')
-        GpStop.local('gpexpand setup complete', force=True)
+        GpStop.local('gpexpand setup complete', fast=True)
     
     
     def _populate_regular_tables(self,dbname,table_conn):
@@ -1782,7 +1785,6 @@ try:
         gp_expand.update_master()
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
-        gp_expand.finalize_prepare()
         logger.info('Starting Greenplum Database')
         GpStart.local('gpexpand expansion prepare final start')
         logger.info('************************************************')                     

@@ -270,7 +270,7 @@ class GpStop(Command):
         
     @staticmethod
     def local(name,masterOnly=False, restart=False, fast=False, force=False):
-        cmd=GpStop(name,masterOnly)
+        cmd=GpStop(name,masterOnly, restart, fast, force)
         cmd.run(validateAfter=True)
         return cmd
         
