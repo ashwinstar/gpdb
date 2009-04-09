@@ -33,8 +33,12 @@ class GpDB:
         self.port=port
         self.datadir=datadir
     
+    def __str__(self):
+        return "%s:%s:content=%s:dbid=%s:valid=%s" % (self.hostname,self.datadir,self.content,self.dbid,self.valid)
    
-
+    def __repr__(self):
+        return self.__str__()
+    
     def get_hostname(self):
         return self.hostname
     

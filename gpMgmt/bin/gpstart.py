@@ -243,9 +243,16 @@ class GpStart():
         self.standby_was_started = self._start_standby()
         
         segs = self.gparray.get_valid_segdbs()
+        
+        logger.debug("gp_configuration indicates following valid segments")
+        for seg in segs:
+            logger.debug("SegDB: %s" % seg)
+        
         invalid_segs=self.gparray.get_invalid_segdbs()    
         hostdict=gp.build_hostdict(segs,self.gparray,self.pool)                            
         
+        
+        self._print_hostdict(hostdict)
         
         self.failed_seg_status.extend(self._ping_segment_hosts(hostdict))
                                     
@@ -261,7 +268,21 @@ class GpStart():
             return True
         else:
             return False
+    
+    def _print_hostdict(self,hostdict):
+        logger.debug("Construct host-->datadirs mapping:")
         
+        entries=[]
+        for key in hostdict.iterkeys():
+            dblist = hostdict[key]
+            
+            datadirs=[]            
+            for db in dblist:
+                datadirs.append(db.datadir)
+            
+            entries.append("Host %s has Datadirs: [%s]" % (key,','.join(datadirs)))
+        
+        logger.debug('\n'.join(entries))
 
     ######
     def _get_invalid_segments(self):
