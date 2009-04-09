@@ -1,3 +1,4 @@
+set client_min_messages='ERROR';
 CREATE TABLE tenk_heap (
 	unique1 	int4,
 	unique2 	int4,
@@ -509,3 +510,4 @@ DROP TABLE tenk_aocs3;
 DROP TABLE tenk_aocs4;
 DROP TABLE tenk_aocs5;
 DROP TABLE aocswithoids;
+set client_min_messages='WARNING';

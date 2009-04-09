@@ -64,7 +64,7 @@ static void open_ds_for_seg(Relation rel, int32 segno,
                 int tmp;
                 Form_pg_attribute attr = tupdesc->attrs[i];
 
-                tmp = snprintf(fn, MAXPGPATH, "%s.col%d.%d", basepath, i, segno);
+                tmp = snprintf(fn, MAXPGPATH, AOCS_FILE_PATH_FORMAT, basepath, i, segno);
                 Assert(tmp < MAXPGPATH);
 
                 if(proj)

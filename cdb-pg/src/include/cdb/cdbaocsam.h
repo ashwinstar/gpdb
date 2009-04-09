@@ -37,9 +37,9 @@ typedef struct AOCSInsertDescData
 	int64		varblockCount;
 	int32		cur_segno;
 
-        CompressorType  compType;
+    CompressorType  compType;
 	int32 		compLevel;
-        int32           blocksz;
+    int32       blocksz;
 
 	struct DatumStream     **ds;
 } AOCSInsertDescData;
@@ -53,28 +53,28 @@ typedef struct AOCSScanDescData
 {
 	/* scan parameters */
 	Relation	aos_rel;			/* target relation descriptor */
-	Index       	aos_scanrelid;                  /* index */
-	int		aos_nkeys;			/* number of scan keys */
+	Index       aos_scanrelid;                  /* index */
+	int		    aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
 
-        int             total_seg;
-        int             cur_seg;
+    int         total_seg;
+    int         cur_seg;
 
-        CompressorType  compType;
-	int32 		compLevel;
-        int32           blocksz;
+    CompressorType  compType;
+    int32 		compLevel;
+    int32       blocksz;
 
-        struct AOCSFileSegInfo **seginfo;
-	struct DatumStream     **ds;
-        bool            *proj;
-        
-	/* synthetic system attributes */
-	ItemPointerData cdb_fake_ctid;
-        int64 total_row;
-        int64 cur_seg_row;
+    struct AOCSFileSegInfo **seginfo;
+    struct DatumStream     **ds;
+    bool            *proj;
 
-	PgStat_Info aos_pgstat_info; /* statistics collector hook */
-	
+    /* synthetic system attributes */
+    ItemPointerData cdb_fake_ctid;
+    int64 total_row;
+    int64 cur_seg_row;
+
+    PgStat_Info aos_pgstat_info; /* statistics collector hook */
+
 }	AOCSScanDescData;
 
 typedef AOCSScanDescData *AOCSScanDesc;

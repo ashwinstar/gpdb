@@ -12,6 +12,9 @@
 #include "storage/fd.h"
 #include "utils/rel.h"
 
+#define AO_FILE_PATH_FORMAT "%s.%u"
+#define AOCS_FILE_PATH_FORMAT "%s.%d.%d"
+
 extern int
 AOSegmentFilePathNameLen(Relation rel);
 

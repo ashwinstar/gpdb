@@ -66,10 +66,10 @@ OpenAOSegmentFile(Relation rel, int segno, int col, bool create,
                 if(col < 0)
                 {
                         /* be sure we have enough space for the '.segno' */
-                        sprintf(filepathname, "%s.%u", basepath, segno);
+                        sprintf(filepathname, AO_FILE_PATH_FORMAT, basepath, segno);
                 }
                 else
-                        sprintf(filepathname, "%s.col%d.%d", basepath, col, segno);
+                        sprintf(filepathname, AOCS_FILE_PATH_FORMAT, basepath, col, segno);
 	}
 	else
 		strcpy(filepathname, basepath);

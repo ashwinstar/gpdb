@@ -436,7 +436,7 @@ default_reloptions(Datum reloptions, bool validate,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'columnstore\' for base relation. "
 							"Only valid for Append Only relations")));
-		
+      		
 		columnstore = (pg_strcasecmp(values[6], "true") == 0 ? true : false);
 	}
 	else

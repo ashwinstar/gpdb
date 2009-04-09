@@ -13,6 +13,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <glob.h>
 
 #include "access/heapam.h"
 #include "access/appendonlywriter.h"
@@ -352,41 +353,37 @@ calculate_relation_size(RelFileNode *rfn)
 	int64		totalsize = 0;
 	char	   *relationpath;
 	char		pathname[MAXPGPATH];
-	unsigned int segcount = 0;
+    struct stat fst;
+    int i;
+    glob_t g;
 
 	relationpath = relpath(*rfn);
 
-	for (segcount = 0;; segcount++)
-	{
-		struct stat fst;
-		
-		if (segcount == 0)
-			snprintf(pathname, MAXPGPATH, "%s",
-					 relationpath);
-		else
-			snprintf(pathname, MAXPGPATH, "%s.%u",
-					 relationpath, segcount);
-		
-		if (stat(pathname, &fst) < 0)
-		{
-			
-			if (errno == ENOENT)
-			{
-				if(segcount >= MAX_AOREL_CONCURRENCY)
-					break;
-				else
-					continue;
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not stat file \"%s\": %m", pathname)));				
-			}
-		}
+    /* Get first one, without . */
+    snprintf(pathname, MAXPGPATH, "%s", relationpath);
+    if (stat(pathname, &fst) >= 0)
+        totalsize += fst.st_size;
 
-		totalsize += fst.st_size;
-	}
+    /* What ever has the form relationpath.*  This will cover 
+     * 1. the postgres 1G chunking, relationpath.chunkno 
+     * 2. AO.  relationpath.segno
+     * 3. AOCS relationpath.col.segno
+     */
+    snprintf(pathname, MAXPGPATH, "%s.*", relationpath);
+    i = glob(pathname, 0, 0, &g);
+
+    if(i==0)
+    {
+        /* glob success */
+        size_t n;
+        for(n=0; n<g.gl_pathc; ++n)
+        {
+            if(stat(g.gl_pathv[n], &fst) >= 0)
+                totalsize += fst.st_size;
+        }
+
+        globfree(&g);
+    }
 		
 	return totalsize;
 }

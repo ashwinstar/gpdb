@@ -858,7 +858,21 @@ heap_create_with_catalog(const char *relname,
 	if(appendOnlyRel)
 	{
 		if(stdRdOptions->columnstore)
+        {
+            elog(WARNING, 
+                "Column store is an experiment feature in Greenplum Database. "
+                "There is neither warranty nor support in any form.  Use this "
+                "feature at your own risk.  Especially, there will be no "
+                "support in ugrade into future releases, as the data format "
+                "may change.  If you use this feature and experience difficulties, "
+                "please do not contact greenplum customer support.  However, you "
+                "may try to reach developper ftian@greenplum.com directly.  We "
+                "(ftian) will try, not will not promise any help to solve your "
+                "problem. "
+            );
+
 			relstorage = RELSTORAGE_AOCS;
+        }
 		else
 			relstorage = RELSTORAGE_AO;
 	}
