@@ -320,6 +320,9 @@ if [ $# -ne 0 ];then
 else
 	USAGE
 fi
+
+MASTER_DATA_DIRECTORY=$DELETE_MASTER_DATA_DIRECTORY
+
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
@@ -334,6 +337,8 @@ CHK_GPDB_ID
 if [ x"" == x"$DELETE_MASTER_DATA_DIRECTORY" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -d option" 2
 fi
+
+
 CHK_ON_PASSIVE_STANDBY
 CHECK_PARAM
 OBTAIN_PARAM
