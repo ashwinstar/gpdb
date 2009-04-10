@@ -253,7 +253,28 @@ class NewGpStart(Command):
     def local(name,masterOnly=False,restricted=False,verbose=False,nostandby=False):
         cmd=NewGpStart(name,masterOnly,restricted,verbose,nostandby)
         cmd.run(validateAfter=True)
-     
+
+#-----------------------------------------------
+class NewGpStop(Command):
+    def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False, verbose=False, ctxt=LOCAL, remoteHost=None):
+        self.cmdStr="%s $GPHOME/bin/gpstop.py -a" % (SRC_GPPATH)
+        if masterOnly:
+            self.cmdStr += " -m"
+        if verbose:
+            self.cmdStr += " -v"
+        if fast:
+            self.cmdStr += " -f"
+        if restart:
+            self.cmdStr += " -r"
+        if force:
+            self.cmdStr += " -z"
+        Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
+        
+    @staticmethod
+    def local(name,masterOnly=False, restart=False, fast=False, force=False, verbose=False):
+        cmd=NewGpStop(name,masterOnly,restart, fast, force, verbose)
+        cmd.run(validateAfter=True)
+        
 #-----------------------------------------------           
 class GpStop(Command):
     def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False,ctxt=LOCAL, remoteHost=None):
