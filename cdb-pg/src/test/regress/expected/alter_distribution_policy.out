@@ -718,3 +718,29 @@ select * from atsdb order by 1, 2, 3;
 
 drop table atsdb;
 drop view distcheck;
+-- MPP-5452
+-- Should succeed
+create table atsdb (i int, k int) partition by range(i) (start (1) end(10)
+every(1));
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_1" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_2" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_3" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_4" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_5" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_6" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_7" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_8" for table "atsdb"
+NOTICE:  CREATE TABLE will create partition "atsdb_1_prt_9" for table "atsdb"
+alter table atsdb alter partition for(rank(5)) set distributed by (i);
+NOTICE:  ALTERing table "atsdb_1_prt_5" (partition for rank 5 of relation "atsdb")
+WARNING:  distribution policy of relation "atsdb_1_prt_5" already set to (i)
+HINT:  Use ALTER TABLE "atsdb_1_prt_5" SET WITH (REORGANIZE=TRUE) DISTRIBUTED BY (i) to force redistribution
+alter table atsdb alter partition for(rank(5)) set distributed by (i);
+NOTICE:  ALTERing table "atsdb_1_prt_5" (partition for rank 5 of relation "atsdb")
+WARNING:  distribution policy of relation "atsdb_1_prt_5" already set to (i)
+HINT:  Use ALTER TABLE "atsdb_1_prt_5" SET WITH (REORGANIZE=TRUE) DISTRIBUTED BY (i) to force redistribution
+alter table atsdb alter partition for(rank(5)) set distributed by (i);
+NOTICE:  ALTERing table "atsdb_1_prt_5" (partition for rank 5 of relation "atsdb")
+WARNING:  distribution policy of relation "atsdb_1_prt_5" already set to (i)
+HINT:  Use ALTER TABLE "atsdb_1_prt_5" SET WITH (REORGANIZE=TRUE) DISTRIBUTED BY (i) to force redistribution
+drop table atsdb;

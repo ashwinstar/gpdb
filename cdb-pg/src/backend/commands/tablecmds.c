@@ -4085,6 +4085,12 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			 tab->subcmds[AT_PASS_ALTER_TYPE] ||
 			 tab->subcmds[AT_PASS_COL_ATTRS]))
 		{
+			/* 
+			 * For 3.3 upgrade, don't create a toast table for 
+			 * pg_appendonly.
+			 */
+			if (!IsUnderPostmaster && tab->relid == AppendOnlyRelationId)
+				continue;
 
 			if (Gp_role == GP_ROLE_DISPATCH && oidInfo != NULL)
 			{
@@ -4099,10 +4105,12 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 				if (rel->rd_rel->reltoastrelid == InvalidOid)
 				{
 					/*
-					 * Pre-Allocate an OID for the toast table and toast index, just in case needed.
+					 * Pre-Allocate an OID for the toast table and toast index,
+					 * just in case needed.
 					 *
-					 * The OID will be the relfilenode as well, so make sure it doesn't collide
-					 * with either pg_class OIDs or existing physical files.
+					 * The OID will be the relfilenode as well, so make sure it
+					 * doesn't collide with either pg_class OIDs or existing
+					 * physical files.
 					 */
 
 					oidInfo[m].toastOid = GetNewRelFileNode(rel->rd_rel->reltablespace, false,  pg_class_desc);
@@ -9898,6 +9906,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 									 "to force redistribution",
 									 RelationGetRelationName(rel),
 									 dist)));
+						heap_close(rel, NoLock);
+						/* Tell QEs to do nothing */
+						linitial(lprime) = NULL;
+						lsecond(lprime) = list_make1(NULL);
+	
+						return;
 					}	
 				}
 			}

@@ -196,3 +196,12 @@ insert into atsdb select i+2, i+1, i from generate_series(1, 9) i;
 select * from atsdb order by 1, 2, 3;
 drop table atsdb;
 drop view distcheck;
+
+-- MPP-5452
+-- Should succeed
+create table atsdb (i int, k int) partition by range(i) (start (1) end(10)
+every(1));
+alter table atsdb alter partition for(rank(5)) set distributed by (i);
+alter table atsdb alter partition for(rank(5)) set distributed by (i);
+alter table atsdb alter partition for(rank(5)) set distributed by (i);
+drop table atsdb;

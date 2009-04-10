@@ -475,10 +475,10 @@ ERROR:  cannot create indexes on append only tables yet.
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
-ERROR:  AOCS does not support add column yet (tablecmds.c:5335)
+ERROR:  AOCS does not support add column yet (tablecmds.c:5343)
 ALTER TABLE tenk_renamed ALTER COLUMN twothousand SET NOT NULL;
 ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
-ERROR:  AOCS does not support add column yet (tablecmds.c:5335)
+ERROR:  AOCS does not support add column yet (tablecmds.c:5343)
 SELECT count(*) FROM tenk_renamed;
  count 
 -------
