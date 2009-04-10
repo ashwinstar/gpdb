@@ -43,6 +43,16 @@ ERROR:  invalid option 'columnstore' for base relation. Only valid for Append On
 -- catalog checks
 --------------------
 -- check pg_appendonly
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
+  relname   | blocksize | compresstype | compresslevel | checksum 
+------------+-----------+--------------+---------------+----------
+ tenk_aocs1 |     32768 |              |             0 | t
+ tenk_aocs2 |    262144 |              |             0 | f
+ tenk_aocs3 |   1048576 | zlib         |             6 | t
+ tenk_aocs4 |     32768 | quicklz      |             1 | f
+ tenk_aocs5 |   1048576 | zlib         |             6 | t
+(5 rows)
+
 -------------------- 
 -- supported sql
 --------------------
@@ -351,6 +361,16 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 CREATE TABLE tenk_aocs4 with(appendonly=true, columnstore=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
+  relname   | blocksize | compresstype | compresslevel | checksum 
+------------+-----------+--------------+---------------+----------
+ tenk_aocs1 |     32768 |              |             0 | t
+ tenk_aocs2 |    262144 |              |             0 | f
+ tenk_aocs3 |   1048576 | zlib         |             6 | t
+ tenk_aocs4 |     32768 | quicklz      |             1 | f
+ tenk_aocs5 |   1048576 | zlib         |             6 | t
+(5 rows)
+
 SELECT count(*) FROM tenk_aocs1;
  count 
 -------

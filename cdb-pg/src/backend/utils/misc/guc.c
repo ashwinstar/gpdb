@@ -2199,7 +2199,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Test_compresslevel_override,
-		3/*DEFAULT_COMPRESS_LEVEL*/, 0, 9, NULL, NULL
+		DEFAULT_COMPRESS_LEVEL, 0, 9, NULL, NULL
 	},
 
 	{
