@@ -781,7 +781,7 @@ AtAbort_AppendOnly(void)
 {
 	HASH_SEQ_STATUS status;
 	AORelHashEntry	aoentry = NULL;
-	TransactionId 	CurrentXid = GetCurrentTransactionId();
+	TransactionId 	CurrentXid = GetCurrentTransactionIdIfAny();
 
 	hash_seq_init(&status, AppendOnlyHash);
 	
@@ -850,7 +850,7 @@ AtEOXact_AppendOnly(void)
 {
 	HASH_SEQ_STATUS status;
 	AORelHashEntry	aoentry = NULL;
-	TransactionId 	CurrentXid = GetCurrentTransactionId();
+	TransactionId 	CurrentXid = GetCurrentTransactionIdIfAny();
 	bool			entry_updated = false;
 
 	hash_seq_init(&status, AppendOnlyHash);
