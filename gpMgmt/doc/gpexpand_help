@@ -1,0 +1,169 @@
+COMMAND NAME:  gpexpand
+
+Expands an existing Greenplum Database across new hosts in the array.
+
+******************************************************
+SYNOPSIS
+******************************************************
+
+gpexpand [-i <configuration_file>] [-d <[hh][mm[ss]]][-b]> 
+[ -c] [-e <YYYY-MM-DD hh:mm:ss>] [-h][-q] [-b <batch_size>] 
+[-D <database_name>][-r] [-n <parallel_processes>]
+
+gpexpand -? | -v
+
+Prerequisites:
+
+* You are logged in as the Greenplum Database superuser (gpadmin).
+
+* The new segment hosts have been installed and configured as per the existing 
+  segment hosts. This involves configuring the hardware and OS, installing the 
+  Greenplum software, creating the data directory locations, creating the gpadmin 
+  user account, and exchanging SSH keys. 
+
+* Enough disk space on your segment hosts to temporarily hold a copy of your 
+  largest database schema (excluding indexes). The utility will verify that you 
+  have the required free disk space before it begins the expansion. 
+
+* The environment variable PGDATABASE must be set to a valid, non-template 
+  database value. 
+
+
+*******************************************************
+DESCRIPTION
+*******************************************************
+
+The gpexpand utility performs array expansion in two phases: initialization, 
+and reorganization. In the initialization phase, gpexpand runs with an input 
+file that specifies data directories, dbid values, and other characteristics 
+of the new segments. You can create the input file manually, or by following 
+the prompts in an interactive interview triggered by running the utility with 
+no options. In either case, you begin initialization by running 
+gpexpand -i <input_file>.
+
+In addition to initializing the segments, the initialization phase performs 
+these actions: 
+
+* Creates an expansion schema to store the status of the expansion operation, 
+  including detailed status for tables.
+
+* Nulls the distribution policy for all tables. The original distribution policies 
+  are later restored in the reorganization phase.
+
+To begin the reorganization phase, you must run gpexpand with either the -d (duration) 
+or -e (end time) options. Until the specified end time or duration is reached, the 
+utility will reorganize tables in the order they are listed in the expansion schema. 
+Each table is reorganized using ALTER TABLE commands to rebalance the tables across 
+new segments, and to set tables to their original distribution policy. If gpexpand 
+completes the reorganization of all tables before the specified duration, it displays 
+a success message and ends. 
+
+All other objects in the original schema are retained as is (indexes, rules, functions, 
+views, etc.). Only tables containing data are rebalanced by gpexpand.
+
+
+********************************************************
+OPTIONS
+********************************************************
+
+
+-h (help)
+
+Displays the online help.
+
+-D <database_name>
+
+Specifies the database in which to create the expansion schema and tables. If this 
+option is not given, the setting for the environment variable PGDATABASE is used. 
+The database templates template1 and template0 cannot be used.
+
+
+-d <[hh][:mm[:ss]]>
+
+Duration of the expansion session from beginning to end.
+
+
+-e <YYYY-MM-DD hh:mm:ss>
+
+Ending date and time for the expansion session.
+
+
+-i <configuration_file>
+
+Specify the expansion configuration file.
+
+
+-b <batch_size>
+
+The number of commands to send to a given host before making a one-second pause. 
+Default is 8.  Valid values are 1-128.
+
+The gpexpand utility issues a number of setup commands that may exceed the host’s 
+maximum threshold for authenticated connections as defined by MaxStartups in the 
+SSH daemon configuration. The one-second pause allows authentications to be completed 
+before gpexpand issues any more commands. 
+
+The default value does not normally need to be changed. However, it may be necessary 
+to reduce the maximum number of commands if gpexpand fails with connection errors 
+such as 'ssh_exchange_identification: Connection closed by remote host.'
+
+
+-n <parallel_processes>
+
+The number of tables to redistribute simultaneously. Valid values are 1 - 127.
+
+
+-c (clean)
+
+Remove the expansion schema.
+
+
+-r (roll back)
+
+Roll back a failed expansion setup operation.
+
+
+-q (quiet)
+
+Supress status messages.
+
+
+-V 
+
+Vacuum catalog tables before creating schema copy.
+
+
+-v (verbose)
+
+Verbose debugging output.
+
+
+--version
+
+Display the utility’s version number and exit.
+
+
+-? | h (help)
+
+Displays the online help.
+
+
+*********************************************************
+EXAMPLES
+*********************************************************
+
+Run gpexpand with an input file to initialize new segments and create the expansion schema:
+
+$ gpexpand -i input_file
+
+
+Run gpexpand for sixty hours maximum duration to redistribute tables to new segments:
+
+$ gpexpand -d 60:00:00
+
+
+**********************************************************
+SEE ALSO
+**********************************************************
+
+gpssh-exkeys
