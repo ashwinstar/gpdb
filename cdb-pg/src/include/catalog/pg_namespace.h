@@ -83,10 +83,6 @@ DESCR("Standard public schema");
 DATA(insert OID = 6104 ( "pg_aoseg" PGUID _null_ ));
 DESCR("Reserved schema for Append Only segment list and eof tables");
 #define PG_AOSEGMENT_NAMESPACE 6104
-DATA(insert OID = 6106 ( "pg_aocsseg" PGUID _null_ ));
-DESCR("Reserved schema for Append Only Column Store segment list and eof tables");
-#define PG_AOCSSEGMENT_NAMESPACE 6106
-
 
 /*
  * prototypes for functions in pg_namespace.c

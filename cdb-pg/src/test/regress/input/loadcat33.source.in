@@ -23,8 +23,6 @@ commit;
 
 reindex table @gpupgradeschemaname@.pg_appendonly;
 -- will error out in regression tests, this is expected
-reindex table pg_aocs;
--- will error out in regression tests, this is expected
 reindex table gp_configuration_history;
 -- will error out in regression tests, this is expected
 reindex table gp_db_interfaces;

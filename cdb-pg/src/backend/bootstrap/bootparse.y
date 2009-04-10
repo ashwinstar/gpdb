@@ -30,7 +30,6 @@
 #include "catalog/gp_configuration.h"
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
-#include "catalog/pg_aocs.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
@@ -224,9 +223,6 @@ Boot_CreateStmt:
 								break;
 							case GpConfigHistoryRelationId:
 								typid = GP_CONFIG_HISTORY_RELTYPE_OID;
-								break;
-							case AOCSRelationId:
-								typid = PGAOCS_RELTYPE_OID;
 								break;
 							case GpDbInterfacesRelationId:
 								typid = GP_DB_INTERFACES_RELTYPE_OID; 
