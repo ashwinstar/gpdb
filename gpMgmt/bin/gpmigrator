@@ -2268,11 +2268,20 @@ This issue must be resolved before upgrade can complete.
 
 
                     # Build up the list of mapping objects
+                    rks = ['a', 'r', 't', 'i', 'S']
                     if u.method == "dumprestore":
                         exschema = "pg_(toast|temp.*)"
                     else:
                         exschema = "pg_temp.*"
+                        rks.append('o')
+
+                    rkstr = ', '.join(map(lambda x: "'%s'" % x, rks))
                     for db in databases:
+                        if u.method == 'dumprestore':
+                            objs = "c.oid >= %s" % db['max_sysoid']
+                        else:
+                            objs = "(c.oid >= %s OR " % db['max_sysoid']
+                            objs += "n.nspname='information_schema')"
                         oids = self.Select(
                         '''
                            SELECT
@@ -2292,12 +2301,12 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 left outer join pg_class c3 on c2.reltoastidxid=c3.oid
                 left outer join pg_class parent on parent.oid = c.parentoid
                 left outer join pg_namespace pn on parent.relnamespace = pn.oid
-                           WHERE c.oid >= %s
-                             AND c.relkind in ('a', 'r', 't', 'i', 'S', 'o')
+                           WHERE %s
+                             AND c.relkind in (%s)
                              AND c.relnamespace = n.oid 
                              AND n.nspname !~ '%s'
                            ORDER BY name;
-                        ''' % (db['max_sysoid'], exschema), 
+                        ''' % (objs, rkstr, exschema), 
                         db=db['dbname'],
                         port=port)
                         
