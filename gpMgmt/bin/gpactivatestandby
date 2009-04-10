@@ -64,7 +64,7 @@ unset START_GPSYNC
 #
 USAGE () {
 	if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-		$LESS ${GPDOCDIR}/$HELP_DOC_NAME
+		$LESSCMD ${GPDOCDIR}/$HELP_DOC_NAME
 		exit 0
 	else
 		$ECHO	
