@@ -1682,8 +1682,6 @@ static void CopyToCreateDispatchCommand(CopyState cstate,
 	 */
 	if(num_phys_attrs > 0) /* don't append anything for zero column table */
 	{
-		appendStringInfo(cdbcopy_cmd, "(");
-
 		foreach(cur, cstate->attnumlist)
 		{
 			int			attnum = lfirst_int(cur);
@@ -1693,15 +1691,15 @@ static void CopyToCreateDispatchCommand(CopyState cstate,
 			if (attr[m]->attisdropped)
 				continue;
 
-			if (is_first_col)
-				appendStringInfo(cdbcopy_cmd, "%s", quote_identifier(NameStr(attr[m]->attname)));
-			else
-				appendStringInfo(cdbcopy_cmd, ",%s", quote_identifier(NameStr(attr[m]->attname)));
+			/* append column string. quote it if needed */
+			appendStringInfo(cdbcopy_cmd, (is_first_col ? "(%s" : ",%s"),
+							 quote_identifier(NameStr(attr[m]->attname)));
 
 			is_first_col = false;
 		}
 
-		appendStringInfo(cdbcopy_cmd, ")");
+		if (!is_first_col)
+			appendStringInfo(cdbcopy_cmd, ")");
 	}
 
 	appendStringInfo(cdbcopy_cmd, " TO STDOUT WITH");
@@ -2235,8 +2233,6 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 	 */
 	if(num_phys_attrs > 0) /* don't append anything for zero column table */
 	{
-		appendStringInfo(cdbcopy_cmd, "(");
-
 		is_first_col = true;
 		foreach(cur, cstate->attnumlist)
 		{
@@ -2248,7 +2244,7 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 				continue;
 
 			/* append column string. quote it if needed */
-			appendStringInfo(cdbcopy_cmd, (is_first_col ? "%s" : ",%s"),
+			appendStringInfo(cdbcopy_cmd, (is_first_col ? "(%s" : ",%s"),
 							 quote_identifier(NameStr(attr[m]->attname)));
 
 			is_first_col = false;
@@ -2293,7 +2289,7 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 					continue;
 
 				/* append column string. quote it if needed */
-				appendStringInfo(cdbcopy_cmd, (is_first_col ? "%s" : ",%s"),
+				appendStringInfo(cdbcopy_cmd, (is_first_col ? "(%s" : ",%s"),
 								 quote_identifier(NameStr(attr[defmap[i]]->attname)));
 
 				extra_attr_count++;
@@ -2301,7 +2297,8 @@ static void CopyFromCreateDispatchCommand(CopyState cstate,
 			}
 		}
 
-		appendStringInfo(cdbcopy_cmd, ")");
+		if (!is_first_col)
+			appendStringInfo(cdbcopy_cmd, ")");
 	}
 
 	/*
@@ -3921,10 +3918,10 @@ CopyFrom(CopyState cstate)
 					resultRelInfo->ri_aocsInsertDesc == NULL)
 				{
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
-                                        resultRelInfo->ri_aocsInsertDesc = 
+                                        resultRelInfo->ri_aocsInsertDesc =
 						aocs_insert_init(resultRelInfo->ri_RelationDesc, resultRelInfo->ri_aosegno);
 				}
-			
+
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 				/*
@@ -3948,8 +3945,8 @@ CopyFrom(CopyState cstate)
 				else
 				{
 					/* form a regular heap tuple */
-					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
-					
+					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);
+
 					if (cstate->oids && file_has_oids)
 						HeapTupleSetOid((HeapTuple)tuple, loaded_oid);
 				}
