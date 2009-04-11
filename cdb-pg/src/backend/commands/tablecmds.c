@@ -9551,17 +9551,29 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
 				Oid typnamespace = ((Form_pg_type) GETSTRUCT(typ))->typnamespace;
 				char *nspname = get_namespace_name(typnamespace);
 				int arno;
+				char *typstr;
+				int4 ndims = att->attndims;
 
 				tname = makeNode(TypeName);
 
 				if (!PointerIsValid(nspname))
 					elog(ERROR, "could not lookup namespace %d", typnamespace);
 				cd->colname = pstrdup(NameStr(att->attname));
+				typstr = typeTypeName(typ);
 				tname->names = list_make2(makeString(nspname),
-										  makeString(typeTypeName(typ)));
+										  makeString(typstr));
 				ReleaseSysCache(typ);
 				tname->typmod = att->atttypmod;
-				for (arno = 0; arno < att->attndims; arno++)
+
+				/* 
+				 * If this is a built in array type, like _int4, then reduce
+				 * the array dimensions by 1. This is an annoying postgres
+				 * hack which I wish would go away.
+				 */
+				if (typstr && typstr[0] == '_' && ndims > 0)
+					ndims--;
+
+				for (arno = 0; arno < ndims; arno++)
 					/* bound of -1 are fine because this has no effect on data */
 					tname->arrayBounds = lappend(tname->arrayBounds,
 												 makeInteger(-1));

@@ -205,3 +205,34 @@ alter table atsdb alter partition for(rank(5)) set distributed by (i);
 alter table atsdb alter partition for(rank(5)) set distributed by (i);
 alter table atsdb alter partition for(rank(5)) set distributed by (i);
 drop table atsdb;
+
+--MPP-5500
+
+CREATE TABLE test_add_drop_rename_column_change_datatype(
+ text_col text,
+ bigint_col bigint,
+ char_vary_col character varying(30),
+ numeric_col numeric,
+ int_col int4,
+ float_col float4,
+ int_array_col int[],
+ drop_col numeric,
+ before_rename_col int4,
+ change_datatype_col numeric,
+ a_ts_without timestamp without time zone,
+ b_ts_with timestamp with time zone,
+ date_column date) distributed randomly;
+ 
+insert into test_add_drop_rename_column_change_datatype values ('0_zero', 0, '0_zero', 0, 0, 0, '{0}', 0, 0, 0, '2004-10-19 10:23:54', '2004-10-19 10:23:54+02', '1-1-2000');
+insert into test_add_drop_rename_column_change_datatype values ('1_zero', 1, '1_zero', 1, 1, 1, '{1}', 1, 1, 1, '2005-10-19 10:23:54', '2005-10-19 10:23:54+02', '1-1-2001');
+insert into test_add_drop_rename_column_change_datatype values ('2_zero', 2, '2_zero', 2, 2, 2, '{2}', 2, 2, 2, '2006-10-19 10:23:54', '2006-10-19 10:23:54+02', '1-1-2002');
+ 
+ALTER TABLE test_add_drop_rename_column_change_datatype ADD COLUMN added_col character varying(30);
+ALTER TABLE test_add_drop_rename_column_change_datatype DROP COLUMN drop_col ;
+ALTER TABLE test_add_drop_rename_column_change_datatype RENAME COLUMN before_rename_col TO after_rename_col;
+ALTER TABLE test_add_drop_rename_column_change_datatype ALTER COLUMN change_datatype_col TYPE int4;
+alter table test_add_drop_rename_column_change_datatype set with(reorganize =
+true) distributed randomly;
+select * from test_add_drop_rename_column_change_datatype ;
+drop table test_add_drop_rename_column_change_datatype ;
+
