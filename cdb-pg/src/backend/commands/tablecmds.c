@@ -9399,10 +9399,6 @@ new_rel_opts(Relation rel, List *lwith)
 										 Anum_pg_class_reloptions, &isnull);
 			new_opts = true && !isnull;
 			ReleaseSysCache(optsTuple);
-			if (new_opts)
-			{
-				/* XXX: merge in pg_appendonly options ?!? */
-			}
 		}
 
 		/* Generate new proposed reloptions (text array) */
@@ -9410,6 +9406,11 @@ new_rel_opts(Relation rel, List *lwith)
 										 lwith, false, false);
 
 		heap_close(pg_class, RowExclusiveLock);
+	}
+	else
+	{
+		/* just do the current options */
+
 	}
 	return newOptions;
 }
@@ -9759,8 +9760,10 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 								 "type", reorg_str)));
 
 			newOptions = new_rel_opts(rel, lwith);
-			newopts = (StdRdOptions *) heap_reloptions(rel->rd_rel->relkind, 
-													   newOptions, true);
+			if (newOptions)
+				newopts = 
+					(StdRdOptions *) heap_reloptions(rel->rd_rel->relkind,
+													 newOptions, true);
 		}
 
 		if (ldistro)
@@ -9880,7 +9883,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				 * remember, we still might have to rebuild if there are new
 				 * storage options.
 				 */
-				if (!newopts && (policy->nattrs == rel->rd_cdbpolicy->nattrs))
+				if (!newopts && !force_reorg &&
+					(policy->nattrs == rel->rd_cdbpolicy->nattrs))
 				{
 					int i;
 					bool diff = false;

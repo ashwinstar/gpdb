@@ -236,3 +236,10 @@ true) distributed randomly;
 select * from test_add_drop_rename_column_change_datatype ;
 drop table test_add_drop_rename_column_change_datatype ;
 
+-- MPP-5501
+-- should run without error
+create table atsdb with (appendonly=true) as select * from
+generate_series(1,1000);
+alter table only atsdb set with(reorganize=true) distributed by (generate_series);
+select count(*) from atsdb;
+drop table atsdb;
