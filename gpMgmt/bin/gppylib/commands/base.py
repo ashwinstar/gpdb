@@ -460,7 +460,8 @@ class SQLCommand(Command):
         if self.conn:
             DB(self.conn).cancel()
         else:
-            raise ExecutionError("programmer error.  must set self.conn before calling cancel")
+            # Connection hasn't been established yet, nothing to cancel
+            pass
 
     
     def was_successful(self):
