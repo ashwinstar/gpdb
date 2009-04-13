@@ -1422,15 +1422,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_delete_as_truncate", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable conversion of 'delete from tablename' -> 'truncate tablename':"),
-			NULL,
-		},
-		&gp_enable_delete_as_truncate,
-		false, NULL, NULL
-	},
-
-	{
 		{"gp_adjust_selectivity_for_outerjoins", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Adjust selectivity of null tests over outer joins."),
 			NULL,
