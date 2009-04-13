@@ -65,6 +65,18 @@ InsertAppendOnlyEntry(Oid relid,
 	
 	if(compresstype)
 	{
+		/*
+		 * check compresstype string length.
+		 * 
+		 * when compresstype column was added to pg_appendonly (release 3.3) we
+		 * skipped the creation of a toast table even though it's normally
+		 * required for tables with text columns. In this case it's not
+		 * necessary because compresstype is always very short (or NULL) and we
+		 * never expect it to be toasted. so, for sanity, make sure that it's 
+		 * indeed very short. otherwise, it's an internal error.
+		 */
+		Insist(strlen(compresstype) < 100);
+		
 		values[Anum_pg_appendonly_compresstype - 1] = DirectFunctionCall1(textin,
 																		  CStringGetDatum(compresstype));
 					
