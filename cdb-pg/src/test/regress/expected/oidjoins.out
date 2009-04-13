@@ -582,9 +582,8 @@ FROM	pg_catalog.pg_type fk
 WHERE	typrelid != 0 AND 
 	NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class pk WHERE pk.oid = fk.typrelid);
   ctid   | typrelid 
----------+----------
- (0,118) |     6107
-(1 row)
+------+----------
+(0 rows)
 
 SELECT	ctid, typelem 
 FROM	pg_catalog.pg_type fk 
