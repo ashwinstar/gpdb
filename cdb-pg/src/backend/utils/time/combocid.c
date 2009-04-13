@@ -47,12 +47,11 @@
 #include "utils/combocid.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
-
+#include "utils/tqual.h"
+#include "cdb/cdbdtxcontextinfo.h"
 
 /* Hash table to lookup combo cids by cmin and cmax */
 static HTAB *comboHash = NULL;
-
-
 
 typedef struct
 {
@@ -268,12 +267,40 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 	return combocid;
 }
 
+static void
+combocid_limit_debug(const char *str)
+{
+	elog(LOG, "combocid %s limit as %s", str, Gp_is_writer ? "writer" : "reader");
+
+	/* if we're the reader, what's the problem ? */
+	if (!Gp_is_writer)
+	{
+		volatile SharedSnapshotSlot *ss=SharedLocalSnapshotSlot;
+
+		if (ss == NULL)
+			elog(LOG, "Reader: snapshot slot is null.");
+		else
+		{
+			elog(LOG, "SharedSnapshotSlot: writer pid %d slotid %d xid %d cid %d QDxid %d QDcid %d %s "
+				 "segmate-sync %d subcnt %d combocnt %d",
+				 ss->pid, ss->slotid, ss->xid, ss->cid, ss->QDxid, ss->QDcid, ss->ready ? "ready" : "NOT ready", 
+				 ss->segmateSync, ss->subcnt, ss->combocidcnt);
+			elog(LOG, "QEDtxContextInfo: cid %d segmate-sync %d", QEDtxContextInfo.curcid, QEDtxContextInfo.segmateSync);
+		}
+	}
+}
+
 static CommandId
 GetRealCmin(CommandId combocid)
 {
 	if (combocid >= usedComboCids)
+	{
+		if (Debug_print_combocid_detail)
+			combocid_limit_debug("cmin");
+
 		elog(ERROR, "Too many updates/deletes within transaction (cmin). Reader gang not able to provide correct visibility %u/%u",
 			  combocid, usedComboCids);
+	}
 	
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmin;
@@ -284,8 +311,13 @@ GetRealCmax(CommandId combocid)
 {
 
 	if (combocid >= usedComboCids)
+	{
+		if (Debug_print_combocid_detail)
+			combocid_limit_debug("cmax");
+
 		elog(ERROR, "Too many updates/deletes within transaction (cmax). Reader gang not able to provide correct visibility %u/%u",
 			 combocid, usedComboCids);
+	}
 
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmax;

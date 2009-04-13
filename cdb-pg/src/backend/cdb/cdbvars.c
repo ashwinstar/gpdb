@@ -138,6 +138,11 @@ bool	gp_enable_slow_writer_testmode = false;
 bool	gp_enable_delete_as_truncate = false;
 
 /*
+ * Debug_print_combocid_detail: request details when we hit combocid limits.
+ */
+bool	Debug_print_combocid_detail = false;
+
+/*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
  * is used for the duration of this process and should never change.

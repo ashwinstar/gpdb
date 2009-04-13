@@ -241,6 +241,13 @@ extern bool           gp_enable_slow_writer_testmode;
  */
 extern bool           gp_enable_delete_as_truncate;
 
+/* Parameter debug_print_combocid_detail
+ *
+ * This run-time parameter requests extra details when we hit the combocid
+ * limit in combocid.c
+ */
+extern bool Debug_print_combocid_detail;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

@@ -1501,6 +1501,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"Debug_print_combocid_detail", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When running into combocid limit, emit detailed snapshot information."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_print_combocid_detail,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_appendonly_verify_block_checksums", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Verify the append-only block checksum when reading."),
 		 NULL,
