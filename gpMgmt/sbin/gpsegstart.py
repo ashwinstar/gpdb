@@ -134,9 +134,9 @@ class GpSegStart():
             (success,error_str)=cmd.getResults()
             
             if success:
-                results.append(SegStartStatus(dir,True,"Start Succeeded"))
+                results.append(SegStartStatus(cmd.datadir,True,"Start Succeeded"))
             else:
-                results.append(SegStartStatus(dir,False,error_str))
+                results.append(SegStartStatus(cmd.datadir,False,error_str))
                                
                               
         self.pool.haltWork()

@@ -260,6 +260,15 @@ class GpStart():
         self.success_seg_status=self._process_segment_start(hostdict,self.failed_seg_status)    
         self._print_segment_start(segs,self.failed_seg_status,self.success_seg_status)
 
+        #make sure we have at least one segment per content
+        if not self._verify_enough_segments(self.success_seg_status,self.gparray):
+            # go through and remove any segments that we did start so that we keep everything
+            # shutdown cleanly
+            self._shutdown_segments(self.success_seg_status,hostdict)
+            
+            
+            raise GpStartError("Do not have enough valid segments to start the array.")
+        
         self.start_final_master()        
 
         self.cleanup()
@@ -268,6 +277,62 @@ class GpStart():
             return True
         else:
             return False
+    
+    
+    def _shutdown_segments(self,success_seg_status,hostdict):
+        logger.info("Commencing parallel segment instance shutdown, please wait...")
+        dispatch_count=0
+        for key in hostdict.iterkeys():
+            dblist = hostdict[key]
+            
+            #TODO:  future optimization would be to only stop the segments that we actually started.
+            logger.debug("Dispatching command to shutdown segments on host: %s" % key)
+            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % key, self.gphome, dblist,self.gpversion,
+                                mode='immediate', verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
+            self.pool.addCommand(cmd)
+            dispatch_count+=1
+        
+        while self.pool.completed_queue.qsize() < dispatch_count:
+            time.sleep(1)
+        
+            if not self.quiet:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        
+        if not self.quiet:
+            print " "
+        self.pool.join()                
+        pass
+            
+        
+    def _verify_enough_segments(self,success_seg_status,gparray):
+        content_dict={}
+        
+        for seg in success_seg_status:                        
+            if seg.db.content not in content_dict:
+                content_dict[seg.db.content]=seg                
+        
+        keys = content_dict.keys()
+        keys.sort()        
+        prev_content=-1        
+        curr_content=-1
+        
+        for key in keys:
+            curr_content=int(key)
+            if curr_content != (prev_content + 1):
+                #means we have a gap and so don't have enough segments
+                logger.error("No segment started for content: %d.  curr_content=%d" % (prev_content+1,curr_content))
+                return False
+            prev_content=curr_content
+        
+        #content is 0-based.
+        if (curr_content+1) != gparray.get_segment_count():
+            #we must have lost one at the end... so don't have enough
+            logger.error("No segment started for content: %d.  curr_content=%d" % (gparray.get_segment_count()-1,curr_content))
+            return False
+            
+        return True
+    
     
     def _print_hostdict(self,hostdict):
         logger.debug("Construct host-->datadirs mapping:")
@@ -334,7 +399,8 @@ class GpStart():
             if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:                            
                 cmdout = cmd.get_results().stdout
                 lines=cmdout.split('\n')
-                for line in lines:
+                
+                for line in lines:                    
                     if line.startswith("STATUS"):
                         fields=line.split('--')
                         dir = fields[1].split(':')[1]
@@ -347,9 +413,10 @@ class GpStart():
                             success=True
                             
                         dbs = hostdict[cmd.remoteHost]
-                        for db in dbs:
+                        
+                        for db in dbs:                     
                             if db.datadir == dir:
-                                if success:
+                                if success:                                                         
                                     success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
                                 else:
                                     failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
