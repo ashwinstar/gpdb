@@ -99,7 +99,7 @@ ExecMaterial(MaterialState *node)
 		 */
 		if(ma->share_type == SHARE_MATERIAL_XSLICE)
 		{
-			char rwfile_prefix[60];
+			char rwfile_prefix[100];
 
 			if(ma->driver_slice != currentSliceId)
 			{

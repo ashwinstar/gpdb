@@ -99,7 +99,7 @@ ExecSort(SortState *node)
 
 		if(plannode->share_type == SHARE_SORT_XSLICE)
 		{
-			char rwfile_prefix[60];
+			char rwfile_prefix[100];
 			if(plannode->driver_slice != currentSliceId)
 			{
 				elog(LOG, "Sort exec on CrossSlice, current slice %d", currentSliceId);

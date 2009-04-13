@@ -90,7 +90,7 @@ ShareInputNext(ShareInputScanState *node)
 
 		if(share_type == SHARE_MATERIAL_XSLICE)
 		{
-			char rwfile_prefix[60];
+			char rwfile_prefix[100];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 	
 #ifdef USE_OLD_TUPLESTORE
@@ -116,7 +116,7 @@ ShareInputNext(ShareInputScanState *node)
 		}
 		else if(share_type == SHARE_SORT_XSLICE)
 		{
-			char rwfile_prefix[60];
+			char rwfile_prefix[100];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 			
 			if(gp_enable_mk_sort)
@@ -485,7 +485,9 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 
 void shareinput_create_bufname_prefix(char* p, int size, int share_id)
 {
-	snprintf(p, size, "SIRW_%d_%d_%d", gp_session_id, gp_command_count, share_id);
+	snprintf(p, size, "%s_SIRW_%d_%d_%d", 
+            PG_TEMP_FILE_PREFIX, 
+            gp_session_id, gp_command_count, share_id);
 }
 
 /* Here we use the absolute path name as the lock name.  See fd.c 
@@ -494,8 +496,8 @@ void shareinput_create_bufname_prefix(char* p, int size, int share_id)
 static void sisc_lockname(char* p, int size, int share_id, const char* name)
 {
 	snprintf(p, size,
-			"%s/%s/gpcdb2.sisc_%d_%d_%d_%d_%s",
-			DatabasePath, PG_TEMP_FILES_DIR,
+			"%s/%s/%s_gpcdb2.sisc_%d_%d_%d_%d_%s",
+			DatabasePath, PG_TEMP_FILES_DIR, PG_TEMP_FILE_PREFIX, 
 			Gp_segment, gp_session_id, gp_command_count, share_id, name
 			);
 }
