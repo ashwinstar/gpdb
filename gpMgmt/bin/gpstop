@@ -574,6 +574,7 @@ def check_to_continue():
 
     
 def main():
+    options_parsed=False
     use_figleaf=os.getenv('USE_FIGLEAF', None)
     
     if use_figleaf:
@@ -582,6 +583,8 @@ def main():
     gpstop = None
     try:            
         options, args = parseargs()
+        options_parsed=True
+        
         setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),options.logfile_directory)
         
         if options.verbose:
@@ -642,10 +645,14 @@ def main():
                      e.cmd.results.stderr ))
         sys.exit(4)
     except Exception, e:        
-        if options.verbose:
+        if not options_parsed:
             logger.exception("gpstop failed.  exiting..." )
         else:
-            logger.fatal("gpstop failed. (Reason='%s') exiting..." % e)
+            if options.verbose:
+                logger.exception("gpstop failed.  exiting..." )
+            else:
+                logger.fatal("gpstop failed. (Reason='%s') exiting..." % e)
+                
         if gpstop:
             gpstop.cleanup()
         sys.exit(3)
