@@ -352,7 +352,7 @@ class GPInitSegment():
         if os_type == 'sunos':
             pg_hba.write('local all all trust\n')
         else:
-            pg_hba.write('local all sameuser ident\n')
+            pg_hba.write('local all %s ident\n' % self.user)
 
         # Find all known ip addresses that this host identifies with
         ifconf = RunCmd(cmd, self.env)

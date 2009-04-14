@@ -1397,18 +1397,18 @@ class GPUpgrade:
             raise UpgradeError("Upgrade not needed to go from version %s to version %s" % (reverse_canon_ver(oldversion), reverse_canon_ver(newversion)))
         if newversion == 'main' or newversion >= oldversion:
             self.upgrade = True
-            if oldversion[:3] == "3.1" and newversion[:3] != "3.2":
-                raise UpgradeError("upgrade from 3.1 to 3.3 not yet supported")
         else:
             self.upgrade = False    # Downgrade
             raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" % newversion[:3])
 
-        oldvers = ["3.1", "3.2"]
-        if (self.oldversion[:3] in oldvers and
+        oldvers = ["3.1"]
+        if (self.oldversion[:3] in oldvers or
             self.newversion[:3] in oldvers):
             self.method = "dumprestore"
         else:
             self.method = "transform"
+
+        self.Log('DEBUG', 'Using %s method for migration' % self.method)
 
         # Compare old version catalog number with the catalog in 
         # MASTER_DATA_DIRECTORY
@@ -2736,7 +2736,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 cmd += ' -G %s' % self.newenv['GPHOME']
 
                 if not self.threadpool:
-                    self.threadpool = Harness(PARALLELISM)
+                    self.threadpool = Harness(self, PARALLELISM)
 
                 self.threadpool.localCommand(cmd)
 
@@ -2751,9 +2751,9 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             # All processes launched, wait for them to finish
             self.threadpool.wait()
 
-        except Exception, e:
+        except:
             # Do something smart?
-            raise e
+            raise
 
 
     #------------------------------------------------------------
@@ -3123,9 +3123,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             seg_prefix  = self.config['SEG_PREFIX'] + '-'
 
             # they believe the mapping is valid.
-            do33link = self.oldversion[:3] == "3.2"
-            self.CallSlaves('REMAPOID', self.config['SEG_PREFIX'],
-                            do33link)
+            self.CallSlaves('REMAPOID', self.config['SEG_PREFIX'])
 
 
         else:
@@ -3134,7 +3132,6 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
 
             datadirs       = self.datadirs
             seg_prefix     = self.option
-            do33link       = self.option2
 
 
             # We should always have at least on data directory...
@@ -4428,7 +4425,7 @@ try:
         #    DATA_DIR/upgrade  = fully upgraded new db
         #    DATA_DIR/backup   = empty except for the state and flag files.
         # => Make a deep hardlink copy of DATA_DIR -> DATA_DIR/backup
-        if u.oldversion[:3] == "3.1":
+        if u.upgrade:
             u.ReleaseLockdown(u.oldenv)
         else:
             u.ReleaseLockdown(u.newenv)
