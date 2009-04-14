@@ -74,8 +74,8 @@ static void *probeSegmentFromThread(void *arg);
 
 static bool am_ftsprobe = false;
 
-static bool shutdown_requested = false;
-static bool rescan_requested = false;
+static volatile bool shutdown_requested = false;
+static volatile bool rescan_requested = false;
 
 static char *probeUser = NULL;
 static char *probeDatabase = NULL;
