@@ -3148,7 +3148,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL,
 		},
 		&gp_vmem_protect_limit,
-		0, 0, INT_MAX / 2, NULL, NULL
+		8192, 0, INT_MAX / 2, NULL, NULL
 	},
 	{
 		{"gp_autostats_on_change_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
