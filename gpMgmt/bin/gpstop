@@ -601,9 +601,6 @@ def main():
         gpstop.prepare()
           
         
-        if options.interactive:
-            gpstop.summarize_actions()
-            check_to_continue()
         
         if options.master_only:
             gpstop.stop_master()                                 
@@ -612,6 +609,10 @@ def main():
                 gpstop.sighup_master()
             else:
                 
+                if options.interactive:
+                    gpstop.summarize_actions()
+                    check_to_continue()
+        
                 gpstop.stop_master()
                 
                 if options.stop_standby:
