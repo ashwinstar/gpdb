@@ -25,9 +25,13 @@ SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
 
 def check_passive_standby(name,dir):
-    cmd=FileContainsTerm(name,'gpsync',"%s/postmaster.opts" % dir)
-    cmd.run(validateAfter=False)
-    return cmd.contains_term()
+    path = os.path.join(dir, 'postmaster.opts')
+    if os.path.exists(path):
+        cmd=FileContainsTerm(name,'gpsync', path)
+        cmd.run(validateAfter=False)
+        return cmd.contains_term()
+    else:
+        return 0
 
 
 def get_max_dbid(name,conn):
