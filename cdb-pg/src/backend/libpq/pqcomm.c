@@ -101,7 +101,6 @@ char	   *Unix_socket_group;
 /* Where the Unix socket file is */
 static char sock_path[MAXPGPATH];
 
-
 /*
  * Buffers for low-level I/O
  */
@@ -120,9 +119,10 @@ static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 /*
  * Message status
  */
-static bool PqCommBusy;
+/* XXX This flag is used by frontend protocal 1 and 2 only.  That is 
+ * VERY OLD (We should be on Protocol 3).
+ */
 static bool DoingCopyOut;
-
 
 /* Internal functions */
 static void pq_close(int code, Datum arg);
@@ -143,7 +143,6 @@ void
 pq_init(void)
 {
 	PqSendPointer = PqRecvPointer = PqRecvLength = 0;
-	PqCommBusy = false;
 	DoingCopyOut = false;
 	on_proc_exit(pq_close, 0);
 }
@@ -159,8 +158,6 @@ pq_init(void)
 void
 pq_comm_reset(void)
 {
-	/* Do not throw away pending data, but do reset the busy flag */
-	PqCommBusy = false;
 	/* We can abort any old-style COPY OUT, too */
 	pq_endcopyout(true);
 }
@@ -1042,12 +1039,9 @@ pq_putbytes(const char *s, size_t len)
 
 	/* Should only be called by old-style COPY OUT */
 	Assert(DoingCopyOut);
-	/* No-op if reentrant call */
-	if (PqCommBusy)
-		return 0;
-	PqCommBusy = true;
+    pthread_mutex_lock(&send_mutex);
 	res = internal_putbytes(s, len);
-	PqCommBusy = false;
+    pthread_mutex_unlock(&send_mutex);
 	return res;
 }
 
@@ -1085,13 +1079,9 @@ pq_flush(void)
 	int			res;
 
 	/* No-op if reentrant call */
-	if (PqCommBusy)
-		return 0;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
-	PqCommBusy = true;
 	res = internal_flush();
-	PqCommBusy = false;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return res;
@@ -1186,16 +1176,22 @@ internal_flush(void)
 int
 pq_putmessage(char msgtype, const char *s, size_t len)
 {
-	if (DoingCopyOut || PqCommBusy)
-		return 0;
-
+    int ret = EOF;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_lock(&send_mutex);
 
-	PqCommBusy = true;
+    if (DoingCopyOut)
+    {
+        ret = 0;
+        goto fail;
+    }
+        
 	if (msgtype)
+    {
 		if (internal_putbytes(&msgtype, 1))
 			goto fail;
+    }
+
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 	{
 		uint32		n32;
@@ -1204,10 +1200,9 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 		if (internal_putbytes((char *) &n32, 4))
 			goto fail;
 	}
+
 	if (internal_putbytes(s, len))
 		goto fail;
-
-	PqCommBusy = false;
 
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
@@ -1215,7 +1210,6 @@ pq_putmessage(char msgtype, const char *s, size_t len)
 	return 0;
 
 fail:
-	PqCommBusy = false;
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && IsUnderPostmaster)
 		pthread_mutex_unlock(&send_mutex);
 	return EOF;
@@ -1229,7 +1223,9 @@ fail:
 void
 pq_startcopyout(void)
 {
+    pthread_mutex_lock(&send_mutex);
 	DoingCopyOut = true;
+    pthread_mutex_unlock(&send_mutex);
 }
 
 /* --------------------------------
@@ -1250,7 +1246,9 @@ pq_endcopyout(bool errorAbort)
 	if (errorAbort)
 		pq_putbytes("\n\n\\.\n", 5);
 	/* in non-error case, copy.c will have emitted the terminator line */
+    pthread_mutex_lock(&send_mutex);
 	DoingCopyOut = false;
+    pthread_mutex_unlock(&send_mutex);
 }
 
 
