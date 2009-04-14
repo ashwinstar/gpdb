@@ -227,7 +227,7 @@ class GpStart(Command):
         if restricted:
             self.cmdStr += " -R"
         if verbose:
-            self.cmdStr += " -D"
+            self.cmdStr += " -v"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
@@ -238,7 +238,7 @@ class GpStart(Command):
 #-----------------------------------------------
 class NewGpStart(Command):
     def __init__(self, name, masterOnly=False, restricted=False, verbose=False,nostandby=False,ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstart.py -a" % (SRC_GPPATH)
+        self.cmdStr="%s $GPHOME/bin/gpstart -a" % (SRC_GPPATH)
         if masterOnly:
             self.cmdStr += " -m"
         if restricted:
@@ -257,7 +257,7 @@ class NewGpStart(Command):
 #-----------------------------------------------
 class NewGpStop(Command):
     def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False, verbose=False, ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstop.py -a" % (SRC_GPPATH)
+        self.cmdStr="%s $GPHOME/bin/gpstop -a" % (SRC_GPPATH)
         if masterOnly:
             self.cmdStr += " -m"
         if verbose:
