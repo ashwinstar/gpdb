@@ -1195,8 +1195,8 @@ WHERE
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
         try:
-            sql_file = os.path.abspath('./%s.sql' % status_detail_table)
-            self.logger.debug('status_detail sql file: %s' % sql_file)
+            sql_file = os.path.abspath('./%s.dat' % status_detail_table)
+            self.logger.debug('status_detail data file: %s' % sql_file)
             fp = open(sql_file, 'w')
             for row in rows:
                 fqname = row[0]
@@ -1283,8 +1283,8 @@ ORDER BY tablename, c2.oid desc;
         rows = curs.fetchall()            
 
         try:
-            sql_file = os.path.abspath('./%s.sql' % status_detail_table)
-            self.logger.debug('status_detail sql file: %s' % sql_file)
+            sql_file = os.path.abspath('./%s.dat' % status_detail_table)
+            self.logger.debug('status_detail data file: %s' % sql_file)
             fp = open(sql_file, 'w')
 
             for row in rows:            
