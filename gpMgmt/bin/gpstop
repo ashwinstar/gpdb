@@ -590,7 +590,7 @@ def main():
         if options.quiet:
             quiet_stdout_logging()
     
-        logger.info("Starting gpstop with args: %s" % ' '.join(sys.argv[1:]))
+        logger.info("Starting gpstop with args: '%s'" % ' '.join(sys.argv[1:]))
         
         gpstop = GpStop(options.mode,
                         options.cancel_active_connections,

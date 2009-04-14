@@ -27,9 +27,9 @@ Starts a GPDB Array.
 _help = ["""
 TODO: Items""",
 
-"* dump more identification in _process_segment_start()",
+"* dump more identification in _process_segment_start()"
 
-"* when gpstart.py becomes gpstart change gp.GpStartCommand verbose option"]
+]
 
 EXECNAME = os.path.split(__file__)[-1]
 
@@ -166,14 +166,13 @@ class GpStart():
         logger.info("Database                 = %s" % self.dburl.pgdb )
         logger.info("Master Port              = %s" % self.port )
         logger.info("Master directory         = %s" % self.master_datadir )
-        
         if self.gparray.standbyMaster:
             if self.start_standby:
                 logger.info("Master standby start     = On")
             else:
                 logger.info("Master standby start     = Off")
         else:
-            logger.info("Master standby        = Off ")
+            logger.info("Master standby           = Off ")
         
         logger.info("--------------------------------------")
         logger.info("Segment instances that will be started")
@@ -203,7 +202,7 @@ class GpStart():
     
     ######
     def startMaster(self):    
-        logger.info("Start Master instance in admin mode")    
+        logger.info("Starting Master instance in admin mode")    
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,utilityMode=True)
         cmd.run()
         
@@ -646,7 +645,7 @@ def main():
         if options.quiet:
             quiet_stdout_logging()
     
-        logger.info("Starting gpstart with args: %s" % ' '.join(sys.argv[1:]))
+        logger.info("Starting gpstart with args: '%s'" % ' '.join(sys.argv[1:]))
         
         gpstart = GpStart(options.restricted,
                           options.start_standby,
