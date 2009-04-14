@@ -702,6 +702,7 @@ class GPUpgrade:
         env['PATH']    = path
         env['LD_LIBRARY_PATH'] = lpath
         env['DYLD_LIBRARY_PATH'] = dypath
+        env['PYTHONPATH'] = os.path.join(gphome, 'lib', 'python')
         if masterdir:
             env['MASTER_DATA_DIRECTORY'] = masterdir
             env['PGPORT'] = str(self.masterport)
@@ -986,10 +987,13 @@ class GPUpgrade:
             raise UpgradeError('database already started')
         self.dbup = [env, utility]
 
+        isu = ""
+        if utility:
+            isu = " in utility mode"
         if (env == self.oldenv):
-            self.Log('INFO', 'Starting old Greenplum postmaster')
+            self.Log('INFO', 'Starting old Greenplum postmaster%s' % isu)
         else:
-            self.Log('INFO', 'Starting new Greenplum postmaster')
+            self.Log('INFO', 'Starting new Greenplum postmaster%s' % isu)
 
         try:
             if utility:  cmd = 'gpstart -a -m'
@@ -1087,8 +1091,8 @@ class GPUpgrade:
                               'pg_hba.conf'+LOCKEXT)
 
         try:
-            if utility:  cmd = 'gpstop -fam'
-            else:        cmd = 'gpstop -fa'
+            if utility:  cmd = 'gpstop -am -s'
+            else:        cmd = 'gpstop -a -s'
 
             locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                                   'pg_hba.conf'+LOCKEXT)
@@ -1097,6 +1101,7 @@ class GPUpgrade:
                     env['PGUSER'] = MIGRATIONUSER
                     self.Log('DEBUG', 'handling locked shutdown')
                 self.Log('DEBUG', 'shutting down with env: %s' % str(env))
+                self.Log('DEBUG', 'shutting down with command: %s' % cmd)
 
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
@@ -2079,7 +2084,7 @@ This issue must be resolved before upgrade can complete.
             # With the new lockfiles in place force the server to reload
             self.Log('INFO', '...Syncing')
             self.Log('DEBUG', 'calling gpstop -u with env: %s' % str(env))
-            self.RunCmd('gpstop -u', env=env)
+            self.RunCmd('gpstop -u -a', env=env)
             self.Log('INFO', 'Database Locked')
 
 

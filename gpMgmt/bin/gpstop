@@ -305,7 +305,7 @@ class GpStop():
             
             logger.debug("Dispatching command to shutdown segments on host: %s" % key)
             cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % key, self.gphome, dblist,self.gpversion,
-                                mode='immediate', verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
+                                mode=self.mode, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
