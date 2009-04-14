@@ -129,7 +129,7 @@ class GpStop():
         logger.info("Obtaining Greenplum Master catalog information")
         
         logger.info("Obtaining Segment details from master...")
-        self.dburl = dbconn.DbURL()
+        self.dburl = dbconn.DbURL(port=self.port)
         conn = dbconn.connect(self.dburl, utility=True)
         rows = dbconn.getConfig(conn)
         self.gparray = gparray.GpArray(rows)        
