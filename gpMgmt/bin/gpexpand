@@ -1194,32 +1194,40 @@ WHERE
         self.logger.debug(sql)
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
-        for row in rows:
-            fqname = row[0]
-            schema_oid = row[1]
-            table_oid = row[2]             
-            logger.debug("dist policy raw: %s " % row[3])   
-            dist_policy = row[3]
-            (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
-            ts = datetime.datetime.now()
-            rel_bytes = int(row[5])
+        try:
+            sql_file = os.path.abspath('./%s.sql' % status_detail_table)
+            self.logger.debug('status_detail sql file: %s' % sql_file)
+            fp = open(sql_file, 'w')
+            for row in rows:
+                fqname = row[0]
+                schema_oid = row[1]
+                table_oid = row[2]             
+                self.logger.debug("dist policy raw: %s " % row[3])   
+                dist_policy = row[3]
+                (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
+                ts = datetime.datetime.now()
+                rel_bytes = int(row[5])
             
-            if dist_policy is None:
-                dist_policy = 'NULL'
-            else:
-                dist_policy = "'" + dist_policy + "'"
+                if dist_policy is None:
+                    dist_policy = 'NULL'
+
+                fp.write("""%s\t%s\t%s\t%s\t%s\t%s\t%s\tNULL\t%d\t%s\tNULL\tNULL\t%d\n""" % (dbname,fqname,schema_oid,table_oid, 
+                                                                                                    dist_policy,policy_name,policy_oids, 1, 
+                                                                                                    undone_status, rel_bytes ))
+        except Exception, e:
+            raise ExpansionError(e)
+        finally:
+            if fp: fp.close()
             
-                       
-            insertSQL = """INSERT INTO %s.%s 
-                                VALUES ('%s','%s',%s,%s,
-                                        %s,'%s', '%s', NULL , %d, '%s', NULL, NULL, %d)                
-                        """ % (gpexpand_schema,status_detail_table,
-                               dbname,fqname,schema_oid,table_oid, 
-                               dist_policy,policy_name,policy_oids, 1, undone_status, 
-                               rel_bytes )
+        try:
+            copySQL = """COPY %s.%s FROM '%s' NULL AS 'NULL'""" % (gpexpand_schema, status_detail_table, sql_file)
                         
-            self.logger.debug(insertSQL)
-            dbconn.execSQL(self.conn,insertSQL)    
+            self.logger.debug(copySQL)
+            dbconn.execSQL(self.conn,copySQL)    
+        except Exception, e:
+            raise ExpansionError(e)
+        finally:
+            os.unlink(sql_file)
         
         #null out the dist policies
         sql = """
@@ -1273,31 +1281,43 @@ ORDER BY tablename, c2.oid desc;
         self.logger.debug(sql)
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
-        for row in rows:            
-            fqname = row[0]
-            schema_oid = row[1]
-            table_oid = row[2]             
-            logger.warning("dist policy raw: %s " % row[3])   
-            dist_policy = row[3]
-            (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
-            ts = datetime.datetime.now()
-            rel_bytes = int(row[5])
+
+        try:
+            sql_file = os.path.abspath('./%s.sql' % status_detail_table)
+            self.logger.debug('status_detail sql file: %s' % sql_file)
+            fp = open(sql_file, 'w')
+
+            for row in rows:            
+                fqname = row[0]
+                schema_oid = row[1]
+                table_oid = row[2]             
+                self.logger.debug("dist policy raw: %s " % row[3])   
+                dist_policy = row[3]
+                (policy_name,policy_oids) = self.form_dist_policy_name(table_conn, row[3], table_oid)
+                ts = datetime.datetime.now()
+                rel_bytes = int(row[5])
             
-            if dist_policy is None:
-                dist_policy = 'NULL'
-            else:
-                dist_policy = "'" + dist_policy + "'"
-                       
-            insertSQL = """INSERT INTO %s.%s 
-                                VALUES ('%s','%s',%s,%s,
-                                        %s,'%s', '%s', NULL , %d, '%s', NULL, NULL, %d)                
-                        """ % (gpexpand_schema,status_detail_table,
-                               dbname,fqname,schema_oid,table_oid, 
-                               dist_policy,policy_name,policy_oids, 1, undone_status, 
-                               rel_bytes )
+                if dist_policy is None:
+                    dist_policy = 'NULL'
+
+                fp.write("""%s\t%s\t%s\t%s\t%s\t%s\t%s\tNULL\t%d\t%s\tNULL\tNULL\t%d\n""" % (dbname,fqname,schema_oid,table_oid, 
+                                                                                                    dist_policy,policy_name,policy_oids, 1, 
+                                                                                                    undone_status, rel_bytes ))
+        except Exception:
+            raise
+        finally:
+            if fp: fp.close()
+
+        try:
+            copySQL = """COPY %s.%s FROM '%s' NULL AS 'NULL'""" % (gpexpand_schema, status_detail_table, sql_file)
                         
-            self.logger.debug(insertSQL)
-            dbconn.execSQL(self.conn,insertSQL)
+            self.logger.debug(copySQL)
+            dbconn.execSQL(self.conn,copySQL)    
+        except Exception, e:
+            raise ExpansionError(e)
+        finally:
+            os.unlink(sql_file)
+
         
         sql = """
 UPDATE gp_distribution_policy
