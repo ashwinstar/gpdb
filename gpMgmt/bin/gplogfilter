@@ -213,7 +213,6 @@ def openInputFile(ifn, options):
         filesToClose.insert(0, fileIn)
 
     if zname.endswith('.csv'):
-        print "YO"
         fileIn = csv.reader(fileIn,delimiter=',',quotechar='"')
         fileIn = CsvFlatten(fileIn)
         
