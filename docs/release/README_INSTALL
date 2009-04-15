@@ -167,9 +167,10 @@ directories:
 GREENPLUM DATABASE DOCUMENTATION
 ************************************************
 
-The following Greenplum Database documentation is available in the
-$GPHOME/docs directory of your Greenplum installation, or you 
-can go to http://gpn.greenplum.com to get the latest documentation:
+The Greenplum Database Administrator Guide is available in the
+$GPHOME/docs directory of your Greenplum installation.  Both the 
+Administrator Guide and the release notes are available for download
+on http://gpn.greenplum.com.
 
 * GPAdminGuide.pdf - Greenplum Database Administrator Guide
 
