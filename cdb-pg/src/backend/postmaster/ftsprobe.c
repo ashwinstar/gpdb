@@ -988,6 +988,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 					changeEntries++;
 
 					segStatus = ftsProbeInfo->fts_status[segInfo->dbid];
+					changes[primaryChange].dbid = segInfo->dbid;
 					changes[primaryChange].oldStatus = segStatus;
 					changes[primaryChange].newStatus = segStatus | FTS_STATUS_ALIVE;
 					changes[primaryChange].persist = false;
@@ -1006,6 +1007,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 							changeEntries++;
 
 							segStatus = ftsProbeInfo->fts_status[mirror->dbid];
+							changes[mirrorChange].dbid = mirror->dbid;
 							changes[mirrorChange].oldStatus = segStatus;
 							changes[mirrorChange].newStatus = segStatus & ~FTS_STATUS_PRIMARY;
 							changes[mirrorChange].persist = false;
