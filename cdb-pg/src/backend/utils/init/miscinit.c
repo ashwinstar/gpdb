@@ -478,7 +478,7 @@ InitializeSessionUserId(const char *rolename)
 		 * many connections to each segment to execute a non-trivial plan and
 		 * the user connection limit does not map, semantically, to that idea.
 		 */
-		if (Gp_role != GP_ROLE_EXECUTE && rform->rolconnlimit >= 0 &&
+		if (Gp_role == GP_ROLE_DISPATCH && rform->rolconnlimit >= 0 &&
 			!AuthenticatedUserIsSuperuser &&
 			CountUserBackends(roleid) > rform->rolconnlimit)
 			ereport(FATAL,
