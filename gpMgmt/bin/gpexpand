@@ -235,7 +235,7 @@ UNION
 
 SELECT 
     'Estimated Expansion Rate' AS Name,
-    (SUM(source_bytes) / extract(epoch FROM (max(expansion_finished) - min(expansion_started))) / 1024 / 1024)::text || ' MB/s' AS Value 
+    (SUM(source_bytes) / (extract(epoch FROM (max(expansion_finished) - min(expansion_started))) + 1) / 1024 / 1024)::text || ' MB/s' AS Value 
 FROM %s.%s 
 WHERE status = '%s' 
 AND 
@@ -246,7 +246,7 @@ UNION
 SELECT
 'Estimated Time to Completion' AS Name,
 CAST((SUM(source_bytes) / (
-SELECT SUM(source_bytes) / extract(epoch FROM (max(expansion_finished) - min(expansion_started))) 
+SELECT SUM(source_bytes) / (extract(epoch FROM (max(expansion_finished) - min(expansion_started))) + 1) 
 FROM %s.%s 
 WHERE status = '%s' 
 AND 
