@@ -117,5 +117,9 @@ int			GinFuzzySearchLimit = 0;
 /* gpperfmon port number */
 int 	gpperfmon_port = 8888;
 /* Memory protection GUCs*/
+#ifdef __darwin__
+int gp_vmem_protect_limit = 0; 
+#else
 int gp_vmem_protect_limit = 8192;
+#endif
 
