@@ -375,7 +375,7 @@ class GpSegCheckLocaleAndConnect(Command):
     def run(self,validateAfter=False):
         pgconf_dict = pgconf.readfile(self.datadir + "/postgresql.conf")        
         port = pgconf_dict.int('port')
-        dburl = dbconn.DbURL(port=port)
+        dburl = dbconn.DbURL(port=port,dbname='template1')
         
         logger.debug("%s connecting to %s" % (self.datadir,dburl))
         conn = dbconn.connect(dburl, utility=True)
