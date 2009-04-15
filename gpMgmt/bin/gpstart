@@ -2,11 +2,16 @@
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
-import time
+import sys,time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-import figleaf
+try:
+    import figleaf
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
+
+    
 from gppylib.db import dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.gplog import *
@@ -584,7 +589,7 @@ def parseargs():
     
     optgrp3 = OptionGroup(parser, 'Database startup options: ')
     parser.add_option_group(optgrp3)
-    optgrp3.add_option('-d', '--master_data_directory', type='string', default=None,
+    optgrp3.add_option('-d', '--master_data_directory', type='string', default=None, metavar="<DATA DIRECTORY>",
                        help="Optional. The master host data directory. If not specified, the value set"\
                             "for $MASTER_DATA_DIRECTORY will be used.")
     optgrp3.add_option('-m', '--master_only', action='store_true',
@@ -603,7 +608,7 @@ def parseargs():
     # Parse the command line arguments
     (options, args) = parser.parse_args()
     
-        
+    
     
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:
@@ -646,6 +651,9 @@ def main():
         if options.quiet:
             quiet_stdout_logging()
     
+        if options.master_data_directory:
+            options.master_data_directory=os.path.abspath(options.master_data_directory)
+            
         logger.info("Starting gpstart with args: '%s'" % ' '.join(sys.argv[1:]))
         
         gpstart = GpStart(options.restricted,

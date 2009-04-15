@@ -6,7 +6,10 @@ import os,sys,time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 
-import figleaf
+try:
+    import figleaf
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 
 from gppylib.db import dbconn
@@ -588,11 +591,12 @@ def main():
         setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),options.logfile_directory)
         
         if options.verbose:
-            enable_verbose_logging()
-        
+            enable_verbose_logging()        
         if options.quiet:
             quiet_stdout_logging()
-    
+        if options.master_data_directory:
+            options.master_data_directory=os.path.abspath(options.master_data_directory)
+            
         logger.info("Starting gpstop with args: '%s'" % ' '.join(sys.argv[1:]))
         
         gpstop = GpStop(options.mode,
