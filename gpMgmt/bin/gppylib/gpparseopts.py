@@ -46,8 +46,7 @@ class OptParser(OptionParser):
         if helpFileStr:
             if file is None:
                 file = sys.stdout
-            encoding = self._get_encoding(file)
-            file.write(helpFileStr.encode(encoding, "replace"))        
+            file.write(helpFileStr)
         else:
             OptionParser.print_help(self,file)
             
