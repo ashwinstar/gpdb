@@ -289,15 +289,15 @@ static void usage_error(const char* msg, int print_usage)
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
 						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v | -V]\n\n"
-						"       gpfdist -? | --version\n\n"
-						"        -?        : print this screen\n"
-						"        -v        : verbose mode\n"
-						"        -V        : more verbose\n"
-						"        -p port   : port to serve HTTP, default is 8080\n"
-						"        -d dir    : serve files under the specified directory,  default is '.'\n"
-						"        -l logfn  : log filename\n"
-					    "        -t tm     : timeout in seconds \n"
-						"        --version : print version information\n\n");
+						"       gpfdist [-? | --help] | --version\n\n"
+						"        -?, --help : print this screen\n"
+						"        -v         : verbose mode\n"
+						"        -V         : more verbose\n"
+						"        -p port    : port to serve HTTP, default is 8080\n"
+						"        -d dir     : serve files under the specified directory,  default is '.'\n"
+						"        -l logfn   : log filename\n"
+					    "        -t tm      : timeout in seconds \n"
+						"        --version  : print version information\n\n");
 		}
 	}
 
@@ -331,7 +331,7 @@ static void parse_command_line(int argc, const char* const argv[],
 
 	static const apr_getopt_option_t option[] =
 	{
-	{ NULL, '?', 0, "print help screen" },
+	{ "help", '?', 0, "print help screen" },
 	{ NULL, 'V', 0, "very verbose" },
 	{ NULL, 'v', 0, "verbose mode" },
 	{ NULL, 'p', 1, "which port to serve HTTP" },
@@ -351,7 +351,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	if (0 != apr_getopt_init(&os, pool, argc, argv))
 		gfatal(FLINE, "apt_getopt_init failed");
 
-	while (0 == (e = apr_getopt_long(os, option, &ch, &arg)))
+	while (APR_SUCCESS == (e = apr_getopt_long(os, option, &ch, &arg)))
 	{
 		switch (ch)
 		{
