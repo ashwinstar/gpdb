@@ -2,12 +2,12 @@
 '''
 Usage: gpdetective <option> [dbname]
 
-	-?         : Print usage and exit
+    -?         : Print usage and exit
         -v         : Print version and exit
-	-h host	   : DB host name
-	-p port    : DB port number
-	-P passwd  : DB password
-	-U uname   : DB User Name
+    -h host    : DB host name
+    -p port    : DB port number
+    -P passwd  : DB password
+    -U uname   : DB User Name
 
         --start_date=number       : Log start date (number of days ago)
         --start_date="YYYY-MM-DD" : Log start date (explicit date)
@@ -118,7 +118,7 @@ class GPDetective:
                                             '?h:p:P:U:vV',
                                             ['version', 'start_date='])
             for (switch, val) in options:
-                if   switch == '-?':	   usage(0)
+                if   switch == '-?':       usage(0)
                 if   switch[1] in 'vV' or switch == '--version':
                     print 'gpdetective ' + __version__
                     sys.exit(0)
@@ -149,7 +149,7 @@ class GPDetective:
         except ValueError: exit('Error: Could not determine PORT')
 
         # Connect to master
-	try:
+        try:
             self.master = self.connect(db=self.db, utility=True)
         except:
             print "Error: Could not connect to the master database:",
@@ -167,7 +167,8 @@ class GPDetective:
 
 
     #------------------------------------------------------------
-    def __del__(self):
+
+    def finishup(self):
         '''
         Cleanup open connections and remove temporary files
         '''
@@ -178,7 +179,6 @@ class GPDetective:
         if self.master: self.master.close()
         if self.errlog: self.errlog.close()
         if self.logdir: subprocess.call(['rm', '-rf', self.logdir])
-        
         if self.error:
             try:
                 raise self.error
@@ -358,7 +358,7 @@ class GPDetective:
         # A stupid hack to ignore unmatched globs in 'ls'
         if (cmd[0] == 'ls'):
             x = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        else:
+        else:            
             x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
         return str(x.communicate()[0].strip())
 
@@ -428,14 +428,14 @@ class GPDetective:
         ''')
         
         self.writeSelect('config_history.log', 
-		'''
-			SELECT * FROM gp_configuration_history
-		''')
-		
+        '''
+            SELECT * FROM gp_configuration_history
+        ''')
+        
         self.writeSelect('resqueue.log',
-		'''
-		    SELECT * FROM pg_catalog.pg_resqueue
-		''')
+        '''
+            SELECT * FROM pg_catalog.pg_resqueue
+        ''')
         
         self.writeSelect('mastermirror.log',
         '''
@@ -803,11 +803,11 @@ class GPDetective:
         tarcmd = ['tar', '-cf', tarfile];
         tarcmd.extend(os.listdir('.'))
         self.runCmd(tarcmd)
-	try:
-          self.runCmd(['bzip2', tarfile])
-          tarfile = tarfile + '.bz2';
+        try:
+            self.runCmd(['bzip2', tarfile])
+            tarfile = tarfile + '.bz2';
         except:
-          pass
+            pass
         self.runCmd(['cp', tarfile, self.olddir])
         os.chdir(self.tardir)
 
@@ -820,8 +820,10 @@ try:
         d.systemInfo()
         d.checkCatalog()
         d.crashReport()
+        d.finishup()
     except Exception, e:
         d.error = e
+        d.finishup()
         exit(1)
 except pg8000.InterfaceError, (errno, strerror):
     print "ERROR:" 
