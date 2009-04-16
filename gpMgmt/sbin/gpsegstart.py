@@ -5,7 +5,15 @@
 #
 # Internal Use Function.
 #
-import os,sys
+import os, sys
+
+progname = os.path.split(sys.argv[0])[-1]
+
+if sys.version_info < (2, 5, 0):
+    sys.exit(
+'''Error: %s is supported on Python versions 2.5 or greater
+Please upgrade python installed on this machine.''' % progname)
+
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 

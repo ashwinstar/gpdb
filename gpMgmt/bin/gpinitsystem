@@ -1344,8 +1344,6 @@ CREATE_STANDBY_QD () {
 	if [ ! -f $INIT_STANDBY_PROG ]; then
 		LOG_MSG "[WARN]:-Unable to locate $INIT_STANDBY_PROG, hence unable to initialize standby master $STANDBY_HOSTNAME"
 		EXIT_STATUS=1
-		STOP_QD_PRODUCTION
-		START_QD_PRODUCTION
 	else
 		LOG_MSG "[INFO]:-Starting initialization of standby master $STANDBY_HOSTNAME" 1
 		export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1;$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a
@@ -1650,16 +1648,19 @@ else
 		CREATE_QES_MIRROR
 	fi
 fi
-SET_GP_USER_PW
+
 if [ x"" != x"$DATABASE_NAME" ]; then
 	CREATE_DATABASE
 fi
+
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 	CREATE_STANDBY_QD
-else
-	STOP_QD_PRODUCTION
-	START_QD_PRODUCTION
 fi
+
+STOP_QD_PRODUCTION
+START_QD_PRODUCTION
+SET_GP_USER_PW
+
 SCAN_LOG
 LOG_MSG "[INFO]:-Greenplum Database instance successfully created" 1
 LOG_MSG "[INFO]:-------------------------------------------------------" 1

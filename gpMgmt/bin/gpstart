@@ -2,7 +2,16 @@
 #
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
-import sys,time
+import os, sys
+
+progname = os.path.split(sys.argv[0])[-1]
+
+if sys.version_info < (2, 5, 0):
+    sys.exit(
+'''Error: %s is supported on Python versions 2.5 or greater
+Please upgrade python installed on this machine.''' % progname)
+    
+import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 try:
@@ -92,6 +101,10 @@ class GpStart():
 
     
     ######
+    def get_master_datadir(self):
+        return self.master_datadir
+    
+    ######
     def _read_postgresqlconf(self):
         logger.debug("Obtaining master's port from master data directory")
         pgconf_dict = pgconf.readfile(self.master_datadir + "/postgresql.conf")        
@@ -152,7 +165,8 @@ class GpStart():
         
         logger.info("Commencing forced instance shutdown")
         
-        gp.GpStop.local("forcing master shutdown", masterOnly=True, fast=True, force=True)
+        gp.GpStop.local("forcing master shutdown", masterOnly=True, fast=True, 
+                        force=True, datadir=self.master_datadir)
         
     
     def _remove_postmaster_tmpfile(self,port):
@@ -673,7 +687,7 @@ def main():
         
         if not options.master_only:
             logger.info("Shutting down master")
-            cmd=gp.GpStop("Shutting down master", masterOnly=True, fast=True)
+            cmd=gp.GpStop("Shutting down master", masterOnly=True, fast=True, datadir=gpstart.get_master_datadir())
             cmd.run()
             logger.debug("results of forcing master shutdown: %s" % cmd)
             #TODO: check results of command.
