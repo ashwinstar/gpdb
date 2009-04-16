@@ -38,6 +38,7 @@ create table old_aggregate_v32 (aggfnoid        regproc  not null,
 								aggsortop       oid      not null,
 								aggtranstype    oid      not null,
 								agginitval      text) with oids;
+create table old_depend_v32 (like pg_catalog.pg_depend);
 create table old_description_v32(like pg_catalog.pg_description);
 -- load the "old" catalog
 COPY old_attribute_v32 
@@ -56,6 +57,7 @@ COPY old_namespace_v32
   from '@abs_srcdir@/data/pg_namespace32.data' with oids csv header;
 COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
   csv header; 
+COPY old_depend_v32 from '@abs_srcdir@/data/pg_depend32.data' csv header;
 create table public.pg_class(like pg_catalog.pg_class) with oids;
 create table public.pg_attribute(like pg_catalog.pg_attribute);
 create table public.pg_type(like pg_catalog.pg_type) with oids;
@@ -65,6 +67,7 @@ create table public.pg_aggregate(like pg_catalog.pg_aggregate);
 create table public.pg_namespace(like pg_catalog.pg_namespace) with oids;
 create table public.pg_conversion(like pg_catalog.pg_conversion);
 create table public.pg_description(like pg_catalog.pg_description);
+create table public.pg_depend(like pg_catalog.pg_depend);
 -- pg_partitions from 3.2
 create view public.pg_partitions as
 SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel, 
@@ -130,6 +133,7 @@ copy public.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd.data' oids null 
 copy public.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy public.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
+copy public.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd.data' null as E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table public.pg_appendonly add column compresstype text;
 -- adjust 3.2 quicklz
@@ -143,13 +147,13 @@ commit;
 reindex table public.pg_appendonly;
 -- will error out in regression tests, this is expected
 reindex table gp_configuration_history;
-psql:@abs_srcdir@/sql/loadcat33.sql:26: ERROR:  shared table "gp_configuration_history" can only be reindexed in stand-alone mode
+psql:@abs_srcdir@/sql/loadcat33.sql:27: ERROR:  shared table "gp_configuration_history" can only be reindexed in stand-alone mode
 -- will error out in regression tests, this is expected
 reindex table gp_db_interfaces;
-psql:@abs_srcdir@/sql/loadcat33.sql:28: ERROR:  shared table "gp_db_interfaces" can only be reindexed in stand-alone mode
+psql:@abs_srcdir@/sql/loadcat33.sql:29: ERROR:  shared table "gp_db_interfaces" can only be reindexed in stand-alone mode
 -- will error out in regression tests, this is expected
 reindex table gp_interfaces;
-psql:@abs_srcdir@/sql/loadcat33.sql:30: ERROR:  shared table "gp_interfaces" can only be reindexed in stand-alone mode
+psql:@abs_srcdir@/sql/loadcat33.sql:31: ERROR:  shared table "gp_interfaces" can only be reindexed in stand-alone mode
 create view old_class as
 select oid, relname, relnamespace, reltype, relowner,
 	   relam, relfilenode, reltablespace,
@@ -190,6 +194,8 @@ create view old_namespace as select oid, * from old_namespace_v32 union all
 select oid, * from public.pg_namespace;
 create view old_description as select * from old_description_v32 union all
 select * from public.pg_description;
+create view old_depend as select * from old_depend_v32 union all
+select * from public.pg_depend;
 -- pg_catalog.pg_partitions should be the same as public.pg_partitions
 select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
 from pg_rewrite a, pg_rewrite b
@@ -6676,10 +6682,26 @@ select * from public.old_description where objoid < 10000;
 --------+----------+----------+-------------
 (0 rows)
 
+-- pg_depend
+-- pg_description
+select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
+except select * from public.old_depend where objid < 10000 and refobjid < 10000;
+ classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
+---------+-------+----------+------------+----------+-------------+---------
+(0 rows)
+
+select * from public.pg_depend where objid < 10000 and refobjid < 10000 except
+select * from public.old_depend where objid < 10000 and refobjid < 10000;
+ classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
+---------+-------+----------+------------+----------+-------------+---------
+(0 rows)
+
 drop view old_class, old_type, old_attribute, old_index, old_aggregate,
-	 old_proc, old_namespace, public.pg_partitions, public.old_description;
+	 old_proc, old_namespace, public.pg_partitions, public.old_description,
+	 old_depend;
 drop table public.pg_class, public.pg_attribute, public.pg_type,
 	 public.pg_index, public.pg_aggregate, public.pg_proc, public.pg_namespace,
 	 public.pg_conversion, old_aggregate_v32, old_attribute_v32, old_class_v32,
 	 old_index_v32, old_namespace_v32, old_proc_v32, old_type_v32,
-	 old_description_v32, public.pg_description;
+	 old_description_v32, public.pg_description, public.pg_depend,
+	 old_depend_v32;

@@ -3887,7 +3887,8 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                      "upg2_pg_index_toadd.data.in",
                      "upg2_pg_proc_toadd.data",
                      "upg2_pg_namespace_toadd.data",
-                     "upg2_pg_description_toadd.data"]
+                     "upg2_pg_description_toadd.data",
+                     "upg2_pg_depend_toadd.data"]
 
             h = self.newhome
             conv = make_files(['upgrade_conversion.sql.in'],

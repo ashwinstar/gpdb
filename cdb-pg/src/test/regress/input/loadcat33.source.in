@@ -6,6 +6,7 @@ copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd.d
 copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd.data' null as E'\\N' csv delimiter '|' header;
 -- fix up pg_appendonly
 alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
 
