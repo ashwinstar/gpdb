@@ -71,6 +71,7 @@ class GpStart():
         self.attempt_standby_start=False
         self.quiet=quiet
         self.master_datadir=master_datadir
+        logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass
     
     ######
@@ -609,6 +610,9 @@ def parseargs():
     (options, args) = parser.parse_args()
     
     
+    proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')    
+    if options.parallel == 64 and proccount is not None:
+        options.parallel = int(proccount)
     
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:

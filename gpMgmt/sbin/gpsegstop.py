@@ -128,9 +128,9 @@ def main():
         options, args = parseargs()
         
         if options.verbose:
-            enable_verbose_logging()        
+            gplog.enable_verbose_logging()        
         if options.quiet:
-            quiet_stdout_logging()
+            gplog.quiet_stdout_logging()
 
         logger.info("Starting gpsegstop with args: %s" % ' '.join(sys.argv[1:]))
         

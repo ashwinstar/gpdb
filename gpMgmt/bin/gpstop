@@ -74,6 +74,7 @@ class GpStop():
         self.quiet=quiet
         self.pid=0
         self.force=force
+        logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass       
         
         
@@ -555,12 +556,16 @@ def parseargs():
     
     
     
+    proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')    
+    if options.parallel == 64 and proccount is not None:
+        options.parallel = int(proccount)
+
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:
         parser.print_help()
         parser.exit()
-        
-        
+    
+    
     return options, args
 
 
