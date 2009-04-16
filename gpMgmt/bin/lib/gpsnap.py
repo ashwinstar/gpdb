@@ -486,6 +486,38 @@ def mkSnapshots(segments, name, type):
         htab[fn] = s
 
     return map(lambda k: htab[k], htab.keys())
+
+
+############
+def pstop(segments):
+    def action(hostname):
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', 
+               hostname,
+               'pstop postgres']
+        p = subprocess.Popen(cmd)
+        return p.wait()
+
+    masters = filter(lambda s: s.content == '-1', segments)
+    segments = filter(lambda s: s.content != '-1', segments)
+    vmsg('Suspending Masters')
+    pmap(lambda s: action(s.seg.hostname), masters)
+    vmsg('Suspending Segments')
+    pmap(lambda s: action(s.seg.hostname), segments)
+
+############
+def prun(segments):
+    def action(hostname):
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', 
+               hostname,
+               'prun postgres']
+        p = subprocess.Popen(cmd)
+        return p.wait()
+    masters = filter(lambda s: s.content == '-1', segments)
+    segments = filter(lambda s: s.content != '-1', segments)
+    vmsg('Resuming Segments')
+    pmap(lambda s: action(s.seg.hostname), segments)
+    vmsg('Resuming Masters')
+    pmap(lambda s: action(s.seg.hostname), masters)
     
 
 ############
@@ -494,11 +526,9 @@ def createSnapshot(name):
     if ctlInfo:
         die("Snapshot '%s' exists." % name)
     
-    if not confirm('Create a %s snapshot. \nThis will shutdown the database.' 
-			% (GV.opt['-z'] and 'zfs' or 'tgz')):
-        die("Aborted by user.")
-
     # need gp_configuration
+    print 'Create a %s snapshot.' % (GV.opt['-z'] and 'zfs' or 'tgz')
+    print 'Retrieving gp_configuration ... '
     stime = datetime.datetime.now()
     CMD = ("python %s -f -d %s %s"
 			% (os.path.join(sys.path[0], 'gpgetconfig.py'), 
@@ -513,43 +543,56 @@ def createSnapshot(name):
     segments = [Segment(line.split(']', 1)[1]) for line in out]
     
     # shut it down
-    vmsg("Stopping masters ...")
-    runas('gpstop -af')
+    suspend = GV.opt['-z']
+    if suspend:
+        if not confirm('This will suspend the database.'):
+            die('Aborted by user.')
+        vmsg('Suspending gpdb ...')
+        pstop(segments)
+    else:
+        if not confirm('This will shutdown the database'):
+            die('Aborted by user.')
+        vmsg("Stopping gpdb ...")
+        runas('gpstop -af')
 
-    # make the snapshots objects
-    snapshots = mkSnapshots(segments, name, GV.opt['-z'] and 'zfs' or 'tgz')
+    try:
+        # make the snapshots objects
+        snapshots = mkSnapshots(segments, name, GV.opt['-z'] and 'zfs' or 'tgz')
 
-    # take the snapshots in parallel
-    erows = filter(lambda (s, rc): rc,
-                   pmap(lambda s: (s, s.createSnapshot()), snapshots))
-    # if error -> rollback
-    if erows:
-        emsg = (["Create failed:"] +
-                ["  unable to create %s:%s" % s.fullname for (s, rc) in erows])
-        # delete the snapshots
-        map(lambda s: (s, s.deleteSnapshot()), snapshots)
-        #pmap(lambda s: (s, s.deleteSnapshot()), snapshots)
-        die("\n".join(emsg))
+        # take the snapshots in parallel
+        erows = filter(lambda (s, rc): rc,
+                       pmap(lambda s: (s, s.createSnapshot()), snapshots))
+        # if error -> rollback
+        if erows:
+            emsg = (["Create failed:"] +
+                    ["  unable to create %s:%s" % s.fullname for (s, rc) in erows])
+            # delete the snapshots
+            map(lambda s: (s, s.deleteSnapshot()), snapshots)
+            #pmap(lambda s: (s, s.deleteSnapshot()), snapshots)
+            die("\n".join(emsg))
 
-    # create control file
-    etime = datetime.datetime.now()
-    ctlInfo = ControlInfo(name, snapshots, GV.opt['-z'] and 'zfs' or 'tgz', etime)
+        # create control file
+        etime = datetime.datetime.now()
+        ctlInfo = ControlInfo(name, snapshots, GV.opt['-z'] and 'zfs' or 'tgz', etime)
 
-    # write the control file to the masters
-    masters = filter(lambda s: s.content == '-1', segments)
-    erows = filter(lambda (m, rc): rc,
-                   [(m, ctlInfo.write(m)) for m in masters])
-    # if error -> rollback
-    if erows:
-        emsg = (["Create failed:"] +
-                ["  cannot create control file %s:%s"
-                 % (m.hostname, m.ctlpath(name)) for (m, rc) in erows])
-        # delete the snapshots
-        pmap(lambda s: (s, s.deleteSnapshot()), snapshots)
-        pmap(lambda m: (m, ctlInfo.delete(m)), masters)
-        die("\n".join(emsg))
+        # write the control file to the masters
+        masters = filter(lambda s: s.content == '-1', segments)
+        erows = filter(lambda (m, rc): rc,
+                       [(m, ctlInfo.write(m)) for m in masters])
+        # if error -> rollback
+        if erows:
+            emsg = (["Create failed:"] +
+                    ["  cannot create control file %s:%s"
+                     % (m.hostname, m.ctlpath(name)) for (m, rc) in erows])
+            # delete the snapshots
+            pmap(lambda s: (s, s.deleteSnapshot()), snapshots)
+            pmap(lambda m: (m, ctlInfo.delete(m)), masters)
+            die("\n".join(emsg))
         
-    msg("Created. Elapsed %s." % humantime(etime - stime))
+        msg("Created. Elapsed %s." % humantime(etime - stime))
+    finally:
+        if suspend:
+            prun(segments)
 
 ############
 def restoreSnapshot(name):
