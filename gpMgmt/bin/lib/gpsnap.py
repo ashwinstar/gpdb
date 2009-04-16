@@ -27,7 +27,7 @@ if sys.version_info < (2,5,0):
 '''Error %s is supported on Python version 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
-import subprocess, time, datetime, threading, Queue, pickle, random
+import subprocess, time, datetime, threading, Queue, random
 
 
 ############
@@ -86,6 +86,56 @@ def vvmsg(s):
 def die(s):
     sys.exit('%s ERROR: %s' % (tstamp(), s))
 
+############
+def ssh2(hostname, cmd, input=''):
+    if input.find('"""') >= 0 or input.find("'''") >= 0:
+        raise 'illegal """ or \'\'\' chars in input'
+    if input.find('%') >= 0:
+        raise 'illegal %% char in input'
+    proxy = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hostname,
+             'bash -c python']
+    vvmsg('  - ssh ' + hostname + ' ' + str(cmd))
+    pycmd = """
+import os,sys,subprocess
+f = open('/tmp/x' + str(os.getpid()), 'a')
+p = subprocess.Popen(['bash', '-c', '''%s'''], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+f.write('writing\\n')
+f.flush()
+p.stdin.write('''%s''')
+f.write('closing\\n')
+f.flush()
+p.stdin.close()
+f.write('reading\\n')
+f.flush()
+sys.stdout.write(p.stdout.read())
+f.write('waiting\\n')
+f.flush()
+rc = p.wait()
+f.write('done\\n')
+f.close()
+sys.exit(rc)
+""" % (cmd, input)
+    p = subprocess.Popen(proxy, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    p.stdin.write(pycmd)
+    p.stdin.close()
+    out = p.stdout.read()
+    rc = p.wait()
+    return (rc, out)
+    
+
+############
+def ssh(hostname, cmd, input=''):
+    proxy = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hostname,
+             '''bash -c '%s' ''' % cmd]
+    vvmsg('  - ssh ' + hostname + ' ' + str(cmd))
+    p = subprocess.Popen(proxy, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    p.stdin.write(input)
+    p.stdin.close()
+    out = p.stdout.read()
+    rc = p.wait()
+    return (rc, out)
+    
+    
 
 ############
 def confirm(s):
@@ -163,18 +213,16 @@ def runas(cmd):
         return run(cmd)
 
 
+
 def getZfsMountpoint(hostname, datapath): 
 
-    cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hostname,
-           "bash -c 'echo hostname $(hostname)'; zfs list -t filesystem " + datapath]
-    (hname, mpoint) = (None, None)
-    vvmsg("  - " + " ".join(cmd))
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    out = p.stdout.readlines()
-    if p.wait(): 
+    cmd = "echo hostname $(hostname); zfs list -t filesystem " + datapath
+    (rc, out) = ssh(cmd)
+    if rc:
         return (None, None)
 	
-    for line in out:
+    (hname, mpoint) = (None, None)
+    for line in out.split('\n'):
         t = map(lambda x: x.strip(), line.split())
         if not t: continue
         if t[0] == 'hostname': hname = t[1]; continue
@@ -221,47 +269,41 @@ class TgzSnapshot(SnapshotMethod):
 
     def createSnapshot(self):
         msg('Creating snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
-               ('cd %s && ' % self.seg.toppath)
-               + ('rm -f %s && ' % self.tgzname)
-               + ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR cfz %s %s)' 
-                  % (self.tgzname, self.seg.dbdir))] 
-        vvmsg("  - " + " ".join(cmd))
-        rc = subprocess.Popen(cmd).wait()
+        cmd = ('cd %s && ' % self.seg.toppath)
+        cmd = cmd + ('rm -f %s && ' % self.tgzname)
+        cmd = cmd + ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR cfz %s %s)' 
+                     % (self.tgzname, self.seg.dbdir))
+        (rc, out) = ssh(self.seg.hostname, cmd)
         if rc: 
             # some errors occurred ... clean up
             self.deleteSnapshot()
         else:
             msg(' ... created %s:%s' % self.fullname)
-
         return rc
 
         
     def deleteSnapshot(self):
         msg('Deleting snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
-               'rm -f %s' % (self.tgzpath)]
-        vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
+        cmd = 'rm -f %s' % (self.tgzpath)
+        (rc, out) = ssh(self.seg.hostname, cmd)
+        return rc
 
 
     def checkSnapshot(self):
         msg('Checking snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
-               '({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR tfz %s > /dev/null && ls -l %s) 2>&1' % (self.tgzpath, self.tgzpath)]
-        vvmsg("  - " + " ".join(cmd))
+        cmd = ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR tfz %s > /dev/null && ls -l %s) 2>&1' 
+                    % (self.tgzpath, self.tgzpath))
+        (rc, out) = ssh(self.seg.hostname, cmd)
 	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-	lines = p.stdout.readlines()
-	rc = p.wait()
+	lines = out.split('\n')
 	return (rc, lines)
         
     def restoreSnapshot(self):
         msg('Restoring snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
-               'rm -rf %s; cd %s && ({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR xfz %s) 2> /dev/null' 
-               % (self.seg.datapath, self.seg.toppath, self.tgzname)]
-        vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
+        cmd = ('rm -rf %s; cd %s && ({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR xfz %s) 2> /dev/null' 
+               % (self.seg.datapath, self.seg.toppath, self.tgzname))
+        (rc, out) = ssh(self.seg.hostname, cmd)
+        return rc
         
     
 class ZfsSnapshot(SnapshotMethod):
@@ -282,12 +324,8 @@ class ZfsSnapshot(SnapshotMethod):
 
     def createSnapshot(self):
         (hname, sname) = self.fullname
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hname,
-		'zfs snapshot ' + sname]
-	p = subprocess.Popen(cmd)
-	rc = p.wait()
-
-        vvmsg("  - " + " ".join(cmd))
+        cmd = 'zfs snapshot ' + sname
+        (rc, out) = ssh(hname, cmd)
         if not rc:
             msg('Created snapshot %s:%s' % self.fullname)
         return rc
@@ -295,30 +333,24 @@ class ZfsSnapshot(SnapshotMethod):
     def deleteSnapshot(self):
         (hname, sname) = self.fullname
         msg('Deleting snapshot of %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hname,
-               'zfs destroy %s' % (sname)]
-        vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
+        cmd = 'zfs destroy %s' % (sname)
+        (rc, out) = ssh(hname, cmd)
+        return rc
         
 
     def checkSnapshot(self):
         (hname, sname) = self.fullname
         msg('Checking snapshot of %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hname,
-		'zfs list -t snapshot %s 2>&1' % sname]
-        vvmsg("  - " + " ".join(cmd))
-	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-	lines = p.stdout.readlines()
-	rc = p.wait()
-	return (rc, lines)
+        cmd = 'zfs list -t snapshot %s 2>&1' % sname
+        (rc, out) = ssh(hname, cmd)
+        return (rc, out.split('\n'))
                
     def restoreSnapshot(self):
         (hname, sname) = self.fullname
         msg('Restoring snapshot of %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hname,
-		'zfs rollback ' + sname]
-        vvmsg("  - " + " ".join(cmd))
-        return subprocess.Popen(cmd).wait()
+        cmd = 'zfs rollback ' + sname
+        (rc, out) = ssh(hname, cmd)
+        return rc
         
 
 
@@ -381,32 +413,23 @@ class ControlInfo:
     def delete(self, master):
         fpath = ctlpath(master.dbdir, self.name)
         fpath = os.path.join(fpath[0], fpath[1], fpath[2])
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', master.hostname,
-               'rm -f %s' % fpath]
-        vmsg(" ".join(cmd))
-        p = subprocess.Popen(cmd)
-        p.wait()
+        cmd = 'rm -f %s' % fpath
+        (rc, out) = ssh(master.hostname, cmd)
+        return rc
 
     def write(self, master):
         (home, dir, fname) = ctlpath(master.dbdir, self.name)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', master.hostname,
-               'cd %s && mkdir -p %s && cd %s && cat > %s'
-               % (home, dir, dir, fname)]
-        vvmsg(" ".join(cmd))
-
+        cmd =  ('cd %s && mkdir -p %s && cd %s && cat > %s'
+                % (home, dir, dir, fname))
         line = []
         line.append('name: ' + self.name)
         line.append('type: ' + self.type)
         line.append('etime: ' + str(self.etime))
         for i in xrange(len(self.snapshots)):
             line.append('segment' + str(i) + ': ' + str(self.snapshots[i].seg))
+        line.append('')
 
-        p = subprocess.Popen(cmd, stdin = subprocess.PIPE)
-        for x in line:
-            p.stdin.write(x)
-            p.stdin.write('\n')
-        p.stdin.close()
-        rc = p.wait()
+        (rc, out) = ssh(master.hostname, cmd, '\n'.join(line))
         if not rc:
             msg('Control file at %s:%s/%s/%s' % (master.hostname, home, dir, fname))
         return rc
@@ -441,12 +464,10 @@ class ControlInfo:
     def read(name):
         (toppath, dbdir) = os.path.split(MASTER_DATA_DIRECTORY)
         (home, dir, fname) = ctlpath(dbdir, name)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', '127.0.0.1',
-               'cd %s && test -d %s && cd %s && test -e %s && cat %s'
-               % (home, dir, dir, fname, fname)]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        ctl = ControlInfo.parse(p.stdout)
-        p.wait()
+        cmd = ('cd %s && test -d %s && cd %s && test -e %s && cat %s'
+               % (home, dir, dir, fname, fname))
+        (rc, out) = ssh('127.0.0.1', cmd)
+        ctl = ControlInfo.parse(out.split('\n'))
         return ctl
         
     
@@ -492,11 +513,9 @@ def mkSnapshots(segments, name, type):
 ############
 def pstop(segments):
     def action(hostname):
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', 
-               hostname,
-	       "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | xargs pstop"]
-        p = subprocess.Popen(cmd)
-        return p.wait()
+        cmd = "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | xargs pstop"
+        (rc, out) = ssh(hostname, cmd)
+        return rc
 
     masters = filter(lambda s: s.content == '-1', segments)
     segments = filter(lambda s: s.content != '-1', segments)
@@ -508,11 +527,10 @@ def pstop(segments):
 ############
 def prun(segments):
     def action(hostname):
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', 
-               hostname,
-	       "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | xargs prun"]
-        p = subprocess.Popen(cmd)
-        return p.wait()
+        cmd = "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | xargs prun"
+        (rc, out) = ssh(hostname, cmd)
+        return rc
+
     masters = filter(lambda s: s.content == '-1', segments)
     segments = filter(lambda s: s.content != '-1', segments)
     vmsg('Resuming Segments')
