@@ -467,6 +467,11 @@ ClientAuthentication(Port *port)
 		auth_failed(port, status);
 }
 
+void
+FakeClientAuthentication(Port * port)
+{
+	sendAuthRequest(port, AUTH_REQ_OK);
+}
 
 /*
  * Send an authentication request packet to the frontend.

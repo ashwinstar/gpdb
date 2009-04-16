@@ -88,7 +88,7 @@ typedef struct
  * version.
  */
 
-#define PG_PROTOCOL_MAJOR(v)	((v) >> 16)
+#define PG_PROTOCOL_MAJOR(v)	(((v) >> 16) & 0xfff)
 #define PG_PROTOCOL_MINOR(v)	((v) & 0x0000ffff)
 #define PG_PROTOCOL(m,n)	(((m) << 16) | (n))
 

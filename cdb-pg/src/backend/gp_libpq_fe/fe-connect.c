@@ -809,7 +809,7 @@ connectDBStart(PGconn *conn)
 	conn->addrlist = addrs;
 	conn->addr_cur = addrs;
 	conn->addrlist_family = hint.ai_family;
-	conn->pversion = PG_PROTOCOL(3, 0);
+	conn->pversion = PG_PROTOCOL(3 + 0x7000, 0);
 	conn->status = CONNECTION_NEEDED;
 
 	/*
@@ -1345,21 +1345,6 @@ keep_going:						/* We will come back to here until there is
 					 * newline, so add one to conform to libpq conventions.
 					 */
 					appendPQExpBufferChar(&conn->errorMessage, '\n');
-
-					/*
-					 * If we tried to open the connection in 3.0 protocol,
-					 * fall back to 2.0 protocol.
-					 */
-					if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)
-					{
-						conn->pversion = PG_PROTOCOL(2, 0);
-						/* Must drop the old connection */
-						//pqsecure_close(conn);
-						closesocket(conn->sock);
-						conn->sock = -1;
-						conn->status = CONNECTION_NEEDED;
-						goto keep_going;
-					}
 
 					goto error_return;
 				}

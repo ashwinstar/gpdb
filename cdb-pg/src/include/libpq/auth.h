@@ -23,5 +23,6 @@ extern char *pg_krb_server_hostname;
 extern char *pg_krb_realm;
 
 extern void ClientAuthentication(Port *port);
+extern void FakeClientAuthentication(Port *port);
 
 #endif   /* AUTH_H */

@@ -17,13 +17,6 @@
 
 static void help(const char *progname);
 
-enum trivalue
-{
-	TRI_DEFAULT,
-	TRI_NO,
-	TRI_YES
-};
-
 int
 main(int argc, char *argv[])
 {

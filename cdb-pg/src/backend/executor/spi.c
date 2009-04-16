@@ -344,14 +344,11 @@ build_gpqdid_params(StringInfoData * buf)
 	appendStringInfo(buf, "%d;", gp_session_id);
 
 #ifdef HAVE_INT64_TIMESTAMP
-	appendStringInfo(buf, INT64_FORMAT ";", PgStartTime);
+	appendStringInfo(buf, INT64_FORMAT " ", PgStartTime);
 #else
-	appendStringInfo(buf, "%.14a;", PgStartTime);
+	appendStringInfo(buf, "%.14a ", PgStartTime);
 #endif
 
-	/* change last semicolon to space */
-	Assert(buf->data[buf->len - 1] == ';');
-	buf->data[buf->len - 1] = ' ';
 }	/* build_gpqdid_params */
 
 int

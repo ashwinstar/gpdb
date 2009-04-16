@@ -13,6 +13,13 @@
 #include "getopt_long.h"
 #include "pqexpbuffer.h"
 
+enum trivalue
+{
+	TRI_DEFAULT,
+	TRI_NO,
+	TRI_YES
+};
+
 #ifndef HAVE_INT_OPTRESET
 extern int	optreset;
 #endif
