@@ -45,14 +45,11 @@ from threading import Thread
 from datetime import date, datetime, timedelta
 
 sys.path.append(sys.path[0] + '/lib')
-try:
-    import pg8000
+import pg8000
 
-    import gplib
-    import gpmlib
-    from gpmlib import ENV
-except ImportError, e:
-    gpmlib.error('Unable to import module: ' + str(e))
+import gplib
+import gpmlib
+from gpmlib import ENV
 
 
 script_name = os.path.split(__file__)[-1]

@@ -122,16 +122,22 @@ def makeCommand(cmd):
     PATH=os.environ.get('PATH')
     if not PATH:
         PATH='%s/bin:%s/ext/python/bin:.' % (GPHOME, GPHOME)
+        
+    PYTHONPATH=os.environ.get('PYTHONPATH')
+    if not PYTHONPATH:
+        PYTHONPATH="%(gphome)s/lib/python" % {'gphome':GPHOME}
 
     return ('GPHOME=%s && export GPHOME '
             '&& PATH=%s && export PATH '
             '&& %s=%s && export %s '
+            '&& PYTHONPATH=%s && export PYTHONPATH '
             '&& %s'
             % (GPHOME, 
                PATH,
                ENV.LIB_TYPE,
                LIB_PATH,
                ENV.LIB_TYPE,
+               PYTHONPATH,
                cmd))
 
 
@@ -720,23 +726,35 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
             fatal('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
 
-    cmd = makeCommand('%s -v --delete -x db_dumps -x pg_log %s %s:%s' % (os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
-                                                               src_dir,
-                                                               dst_cfg['hostname'],
-                                                               dst_cfg['datadir']))
-
-    if setpid_callback:
-        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
-                             (gplib.ssh_prefix(host=src_host),
-                              cmd,
-                              logfile), setpid_callback=setpid_callback)
-    else:
-        (ok, out) = run_warn('%s "%s" >> %s 2>&1' % 
-                             (gplib.ssh_prefix(host=src_host),
-                              cmd,
-                              logfile))
+    # Call PysyncProxy to initiate the sync operation with progress feedback
+    pysyncOptions = ["--delete", "-x", "db_dumps", "-x", "pg_log"]
+    sync = pysync.PysyncProxy(src_host, src_dir, dst_cfg['hostname'], dst_cfg['datadir'], 
+                              pysyncOptions, verbose=verbose, 
+                              progressBytes=progressBytes, progressTime=progressTime, 
+                              recordProgressCallback=_SyncProgress(log_info, dst_cfg).mark_sync_progress)
+    code = sync.run()
+    ok = (code == 0)
 
     if not ok:
+        log_warn('-----------------------------------------------------')
+        log_warn('Command Failed: %s' % sync.cmd)
+        log_warn('Return code: %d' % code)
+        log_warn('Exit status: %d' % os.WEXITSTATUS(sync.returncode))
+        if sync.stdout:
+            log_warn('Standard output:')
+            for l in sync.stdout:
+                log_warn('\t %s' % l.strip())
+        else:
+            log_warn('Standard output:  None')
+
+        if sync.stderr:
+            log_warn('Standard error:')
+            for l in sync.stderr:
+                log_warn('\t %s' % l.strip())
+        else:
+            log_warn('Standard error:   None')
+        log_warn('-----------------------------------------------------')
+
         if err_is_fatal:
             fatal('failed to synchronize data from primary segment %s:%s to mirror segment %s:%s' % (src_host, src_dir, 
                                                                                                  dst_cfg['hostname'], dst_cfg['datadir']))
