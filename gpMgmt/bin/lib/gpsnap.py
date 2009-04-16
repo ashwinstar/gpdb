@@ -109,6 +109,7 @@ def parseCommandLine():
         elif switch[1] in 'VvlcrdiIfz': GV.opt[switch] = True
         elif switch == '-u': GV.opt[switch] = val
 
+    if GV.opt['-V']: GV.opt['-v'] = True
         
     if 1 == reduce(lambda x,y: x+y, [GV.opt['-'+s] and 1 or 0 for s in "crdiI"]):
         pass
@@ -441,8 +442,8 @@ class ControlInfo:
         (toppath, dbdir) = os.path.split(MASTER_DATA_DIRECTORY)
         (home, dir, fname) = ctlpath(dbdir, name)
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', '127.0.0.1',
-               'cd %s && cd %s && test -e %s && cat %s'
-               % (home, dir, fname, fname)]
+               'cd %s && test -d %s && cd %s && test -e %s && cat %s'
+               % (home, dir, dir, fname, fname)]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         ctl = ControlInfo.parse(p.stdout)
         p.wait()
@@ -493,31 +494,31 @@ def pstop(segments):
     def action(hostname):
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', 
                hostname,
-               'pstop postgres']
+	       "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | xargs pstop"]
         p = subprocess.Popen(cmd)
         return p.wait()
 
     masters = filter(lambda s: s.content == '-1', segments)
     segments = filter(lambda s: s.content != '-1', segments)
     vmsg('Suspending Masters')
-    pmap(lambda s: action(s.seg.hostname), masters)
+    pmap(lambda s: action(s.hostname), masters)
     vmsg('Suspending Segments')
-    pmap(lambda s: action(s.seg.hostname), segments)
+    pmap(lambda s: action(s.hostname), segments)
 
 ############
 def prun(segments):
     def action(hostname):
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', 
                hostname,
-               'prun postgres']
+	       "ps -ef | grep postgres | grep -v grep | awk '{print $2}' | xargs prun"]
         p = subprocess.Popen(cmd)
         return p.wait()
     masters = filter(lambda s: s.content == '-1', segments)
     segments = filter(lambda s: s.content != '-1', segments)
     vmsg('Resuming Segments')
-    pmap(lambda s: action(s.seg.hostname), segments)
+    pmap(lambda s: action(s.hostname), segments)
     vmsg('Resuming Masters')
-    pmap(lambda s: action(s.seg.hostname), masters)
+    pmap(lambda s: action(s.hostname), masters)
     
 
 ############
@@ -583,7 +584,7 @@ def createSnapshot(name):
         if erows:
             emsg = (["Create failed:"] +
                     ["  cannot create control file %s:%s"
-                     % (m.hostname, m.ctlpath(name)) for (m, rc) in erows])
+                     % (m.hostname, "/".join(ctlpath(m.dbdir, name))) for (m, rc) in erows])
             # delete the snapshots
             pmap(lambda s: (s, s.deleteSnapshot()), snapshots)
             pmap(lambda m: (m, ctlInfo.delete(m)), masters)
