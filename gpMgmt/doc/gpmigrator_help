@@ -140,6 +140,11 @@ screen, but is still written to the log file.
 Displays the online help.
 
 
+--debug
+
+Set logging level to debug.
+
+
 --version
 
 Displays the version of this utility. 
