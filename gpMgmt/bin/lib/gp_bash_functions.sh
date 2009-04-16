@@ -671,14 +671,22 @@ CHK_EXISTS_TABLE () {
 	TABLENAME="${SQL_NAME[1]}"
 	QUOTED_TABLENAME="${SQL_NAME[3]}"
 	if [ "${SCHEMA_NAME}" ];then
+	    LOG_MSG "[JGE] CHK_EXISTS_TABLE schema name"
+		TMP_OUT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		LOG_MSG "[JGE] TMP_OUT=$TMP_OUT"
 		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
+		LOG_MSG "[JGE] TAB_COUNT: $TAB_COUNT"
 		if [ $TAB_COUNT -eq 1 ];then
 			LOG_MSG "[INFO]:-Found table ${QUOTED_SCHEMA_NAME}.${QUOTED_TABLENAME} in database $QD_DBNAME"
 			CHK_EXTERNAL
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		fi
 	else
+	    LOG_MSG "[JGE] CHK_EXISTS_TABLE no schema name"
+	    TMP_OUT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';"`
+	    LOG_MSG "[JGE] TMP_OUT:$TMP_OUT"
 		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';" |$WC -l`
+		LOG_MSG "[JGE] TAB_COUNT: $TAB_COUNT"
 		if [ $TAB_COUNT -eq 1 ];then
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
 			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
