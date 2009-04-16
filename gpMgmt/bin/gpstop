@@ -201,7 +201,7 @@ class GpStop():
         if self.mode == 'smart':
             pass
         elif self.mode == 'fast':
-            logger.info("Detected %d connection(s0 to database")
+            logger.info("Detected %d connections to database" % total_connections)
             if total_connections > 0:                
                 logger.info("Switching to WAIT mode")
                 logger.info("Will wait for shutdown to complete, this may take some time if")
