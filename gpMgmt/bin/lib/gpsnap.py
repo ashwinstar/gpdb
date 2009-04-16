@@ -162,67 +162,43 @@ def runas(cmd):
         return run(cmd)
 
 
+def getZfsMountpoint(hostname, datapath): 
 
-############
+    cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hostname,
+           "bash -c 'echo hostname $(hostname)'; zfs list -t filesystem " + datapath]
+    (hname, mpoint) = (None, None)
+    vvmsg("  - " + " ".join(cmd))
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    out = p.stdout.readlines()
+    if p.wait(): 
+        return (None, None)
+	
+    for line in out:
+        t = map(lambda x: x.strip(), line.split())
+        if not t: continue
+        if t[0] == 'hostname': hname = t[1]; continue
+        if len(t) != 5: break
+        if datapath.find(t[4]) == 0: mpoint = t[0]; continue
+
+    return (hname, mpoint)
+
+
 class Segment:
-    '''Represent a segment and operations to be done on the segment. 
-    The default operations are TGZ.'''
-
     def __init__(self, line):
-        'Init using a line from gp_configuration'
         row = [x.strip() for x in line.split('|')]
         (self.content, self.definedprimary, self.dbid,
          self.isprimary, self.valid, self.hostname,
          self.port, self.datapath) = row
-        self.zfs_mountpoint = None
         (self.toppath, self.dbdir) = os.path.split(self.datapath)
-        
-
-    def ctlname(self, name): 
-        if self.content != '-1': return ''
-        return '%s@%s.sn2' % (self.dbdir, name)
-    def ctlpath(self, name):
-        '''Return where to store the control file for snapshot. If the 
-        DB content is not -1 (masters), return None. Otherwise, the ctlpath
-        is MASTER_DATA_DIRECTORY/{sname}.sn2'''
-        if self.ctlname(name):
-            return os.path.join(self.toppath, self.ctlname(name))
-        else:
-            return ''
-
     def __str__(self):
-        return "|".join([self.content, self.definedprimary, self.dbid, 
-                         self.isprimary, self.valid, self.hostname, 
+        return "|".join([self.content, self.definedprimary, self.dbid,
+                         self.isprimary, self.valid, self.hostname,
                          self.port, self.datapath])
-
-    def getZfsMountpoint(self): 
-        if self.zfs_mountpoint: return self.zfs_mountpoint
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               "bash -c 'echo hostname $(hostname)'; zfs list -t filesystem " + self.datapath]
-	(hname, mpoint) = (None, None)
-        vvmsg("  - " + " ".join(cmd))
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        out = p.stdout.readlines()
-        if p.wait(): 
-	    return (None, None)
-	
-        for line in out:
-            t = map(lambda x: x.strip(), line.split())
-            if not t: continue
-            if t[0] == 'hostname': hname = t[1]; continue
-            if len(t) != 5: break
-            if self.datapath.find(t[4]) == 0: mpoint = t[0]; continue
-
-        return (hname, mpoint)
-
+    
 
 class SnapshotMethod:
-    def __init__(self, type, name,
-                 hostname, datapath, ctlname, ctlpath): 
-        (self.type, self.name) = (type, name)
-        (self.hostname, self.datapath) = (hostname, datapath)
-        (self.toppath, self.dbdir) = os.path.split(datapath)
-        (self.ctlname, self.ctlpath) = (ctlname, ctlpath)
+    def __init__(self, type, name, seg):
+        (self.type, self.name, self.seg) = (type, name, seg)
         self.fullname = ''
 
     def set_fullname(self,fn): self.fullname = fn
@@ -235,20 +211,20 @@ class SnapshotMethod:
 
 class TgzSnapshot(SnapshotMethod):
 
-    def __init__(self, seg, name):
-        SnapshotMethod.__init__(self, 'tgz', name,
-                                seg.hostname, seg.datapath, seg.ctlname(name), seg.ctlpath(name))
-        self.prefix = '%s@%s' % (self.dbdir, self.name)
+    def __init__(self, name, seg):
+        SnapshotMethod.__init__(self, 'tgz', name, seg)
+        self.prefix = '%s@%s' % (seg.dbdir, self.name)
         self.tgzname = self.prefix + '.tgz'
-        self.tgzpath = os.path.join(self.toppath, self.tgzname)
-        self.set_fullname( (self.hostname, self.tgzpath) )
+        self.tgzpath = os.path.join(self.seg.toppath, self.tgzname)
+        self.set_fullname( (self.seg.hostname, self.tgzpath) )
 
     def createSnapshot(self):
         msg('Creating snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               ('cd %s && ' % self.toppath)
-               + ('rm -f %s %s && ' % (self.tgzname, self.ctlname))
-               + ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR cfz %s %s)' % (self.tgzname, self.dbdir))] 
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
+               ('cd %s && ' % self.seg.toppath)
+               + ('rm -f %s && ' % self.tgzname)
+               + ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR cfz %s %s)' 
+                  % (self.tgzname, self.seg.dbdir))] 
         vvmsg("  - " + " ".join(cmd))
         rc = subprocess.Popen(cmd).wait()
         if rc: 
@@ -262,16 +238,15 @@ class TgzSnapshot(SnapshotMethod):
         
     def deleteSnapshot(self):
         msg('Deleting snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
-               'rm -f %s %s' 
-               % (self.tgzpath, self.ctlpath)]
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
+               'rm -f %s' % (self.tgzpath)]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
 
 
     def checkSnapshot(self):
         msg('Checking snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
                '({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR tfz %s > /dev/null && ls -l %s) 2>&1' % (self.tgzpath, self.tgzpath)]
         vvmsg("  - " + " ".join(cmd))
 	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -281,9 +256,9 @@ class TgzSnapshot(SnapshotMethod):
         
     def restoreSnapshot(self):
         msg('Restoring snapshot %s:%s' % self.fullname)
-        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.hostname,
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', self.seg.hostname,
                'rm -rf %s; cd %s && ({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR xfz %s) 2> /dev/null' 
-               % (self.datapath, self.toppath, self.tgzname)]
+               % (self.seg.datapath, self.seg.toppath, self.tgzname)]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
         
@@ -291,14 +266,12 @@ class TgzSnapshot(SnapshotMethod):
 class ZfsSnapshot(SnapshotMethod):
     '''Redefine the operations on segments using ZFS snapshots.'''
 
-    def __init__(self, seg, name):
-        SnapshotMethod.__init__(self, 'zfs', name,
-                                seg.hostname, seg.datapath, seg.ctlname(name), seg.ctlpath(name))
-
-        (hname, mpoint) = seg.getZfsMountpoint()
+    def __init__(self, name, seg):
+        SnapshotMethod.__init__(self, 'zfs', name, seg)
+        (hname, mpoint) = getZfsMountpoint(self.seg.hostname, self.seg.datapath)
         if not hname or not mpoint:
             msg('Error: unable to find zfs mountpoint for %s:%s'
-                % (self.hostname, self.datapath))
+                % (self.seg.hostname, self.seg.datapath))
             return None
 
         # note: hname is slightly different from self.seg.hostname(). 
@@ -322,7 +295,7 @@ class ZfsSnapshot(SnapshotMethod):
         (hname, sname) = self.fullname
         msg('Deleting snapshot of %s:%s' % self.fullname)
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hname,
-               'zfs destroy %s; rm -f %s' % (sname, self.ctlpath)]
+               'zfs destroy %s' % (sname)]
         vvmsg("  - " + " ".join(cmd))
         return subprocess.Popen(cmd).wait()
         
@@ -390,61 +363,97 @@ def test_pmap():
     jlist = [x for x in "abcdefghijklmnopqrstuvwxyz"]
     return pmap(p, jlist)
 
+def ctlpath(dbdir, name):
+    home = "~%s" % GV.opt['-u']
+    dir = ".gpsnap"
+    fname = "%s@%s.sn2" % (dbdir, name)
+    return (home, dir, fname)
 
 
 ############
 class ControlInfo:
-    def __init__(self, name, snapshots, 
-                 stime, etime):
-        (self.name, self.snapshots, 
-         self.stime, self.etime) = (name, snapshots, stime, etime)
+    def __init__(self, name, snapshots, type, etime):
+        (self.name, self.snapshots, self.etime) = (name, snapshots, etime)
         self.etime = self.etime.replace(microsecond=0)
-        self.stime = self.stime.replace(microsecond=0)
-        self.type = GV.opt['-z'] and 'zfs' or 'tgz'
+        self.type = type;
 
     def delete(self, master):
-        fpath = master.ctlpath(self.name)
-        if not fpath:
-            return
+        fpath = ctlpath(master.dbdir, self.name)
+        fpath = os.path.join(fpath[0], fpath[1], fpath[2])
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', master.hostname,
                'rm -f %s' % fpath]
         vmsg(" ".join(cmd))
-        p = subprocess.Popen(cmd, stdin = subprocess.PIPE)
-        p.stdin.write(pickle.dumps(self))
-        p.stdin.close()
+        p = subprocess.Popen(cmd)
         p.wait()
 
     def write(self, master):
-        fpath = master.ctlpath(self.name)
-        if not fpath:
-            die('Internal error: cannot write control file to non-master')
-
+        (home, dir, fname) = ctlpath(master.dbdir, self.name)
         cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', master.hostname,
-               'cat > %s' % fpath]
+               'cd %s && mkdir -p %s && cd %s && cat > %s'
+               % (home, dir, dir, fname)]
         vvmsg(" ".join(cmd))
+
+        line = []
+        line.append('name: ' + self.name)
+        line.append('type: ' + self.type)
+        line.append('etime: ' + str(self.etime))
+        for i in xrange(len(self.snapshots)):
+            line.append('segment' + str(i) + ': ' + str(self.snapshots[i].seg))
+
         p = subprocess.Popen(cmd, stdin = subprocess.PIPE)
-        p.stdin.write(pickle.dumps(self))
+        for x in line:
+            p.stdin.write(x)
+            p.stdin.write('\n')
         p.stdin.close()
         rc = p.wait()
         if not rc:
-            msg('Control file at %s:%s' % (master.hostname, fpath))
+            msg('Control file at %s:%s/%s/%s' % (master.hostname, home, dir, fname))
         return rc
+
+    @staticmethod
+    def parse(f):
+        dict = {}
+        for line in f:
+            line = line.strip()
+            if len(line) > 0 and line[0] == '#': continue
+            line = line.split(':', 1)
+            if len(line) != 2: continue
+            dict[line[0].strip()] = line[1].strip()
+        if not dict.get('name'): return None
+        if not dict.get('type'): return None
+        if not dict.get('etime'): return None
+        if not dict.get('segment0'): return None
+        segments = []
+        i = 0
+        while True:
+            n = dict.get('segment' + str(i))
+            if not n: break
+            segments.append(Segment(n))
+            i = i + 1
+        
+        etime = datetime.datetime.strptime(dict['etime'], '%Y-%m-%d %H:%M:%S')
+        snapshots = mkSnapshots(segments, dict['name'], dict['type'])
+        return ControlInfo(dict['name'], snapshots, 
+                           dict['type'], etime)
 
     @staticmethod
     def read(name):
         (toppath, dbdir) = os.path.split(MASTER_DATA_DIRECTORY)
-        fpath = os.path.join(toppath, '%s@%s.sn2' % (dbdir, name))
-        f = None
-        try:
-            f = open(fpath)
-            return pickle.load(f)
-        except IOError:
-            return None
-        finally: f and f.close()
+        (home, dir, fname) = ctlpath(dbdir, name)
+        cmd = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', '127.0.0.1',
+               'cd %s && cd %s && test -e %s && cat %s'
+               % (home, dir, fname, fname)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        ctl = ControlInfo.parse(p.stdout)
+        p.wait()
+        return ctl
+        
     
     @staticmethod
     def list():
-        fpath = os.path.join(MASTER_DATA_DIRECTORY, '..', '*@*.sn2')
+        (toppath, dbdir) = os.path.split(MASTER_DATA_DIRECTORY)
+        fpath = ctlpath(dbdir, '')
+        fpath = os.path.join(fpath[0], fpath[1], '*@*.sn2')
         p = os.popen('ls -1 %s 2> /dev/null' % fpath)
         out = p.readlines()
         p.close()
@@ -453,7 +462,10 @@ class ControlInfo:
         for fpath in out:
             fpath = fpath.strip()
             f = None
-            try: f = open(fpath); ret.append(pickle.load(f))
+            try: 
+                f = open(fpath); 
+                x = ControlInfo.parse(f)
+                if x: ret.append(x)
             except IOError: pass
             finally: f and f.close()
         
@@ -461,16 +473,16 @@ class ControlInfo:
 
 
 
-def mkSnapshots(segments, name):
+def mkSnapshots(segments, name, type):
     segments = segments[:]
     random.shuffle(segments)
-    if GV.opt['-z']:
-        snapshots = pmap(lambda s: ZfsSnapshot(s, name), segments)
+    if type == 'zfs':
+        snapshots = pmap(lambda s: ZfsSnapshot(name, s), segments)
     else:
-        snapshots = map(lambda s: TgzSnapshot(s, name), segments)
+        snapshots = map(lambda s: TgzSnapshot(name, s), segments)
 
     htab = {}
-    for (fn, s) in pmap(lambda s: (s.fullname, s), snapshots):
+    for (fn, s) in map(lambda s: (s.fullname, s), snapshots):
         htab[fn] = s
 
     return map(lambda k: htab[k], htab.keys())
@@ -505,7 +517,7 @@ def createSnapshot(name):
     runas('gpstop -af')
 
     # make the snapshots objects
-    snapshots = mkSnapshots(segments, name)
+    snapshots = mkSnapshots(segments, name, GV.opt['-z'] and 'zfs' or 'tgz')
 
     # take the snapshots in parallel
     erows = filter(lambda (s, rc): rc,
@@ -521,7 +533,7 @@ def createSnapshot(name):
 
     # create control file
     etime = datetime.datetime.now()
-    ctlInfo = ControlInfo(name, snapshots, stime, etime)
+    ctlInfo = ControlInfo(name, snapshots, GV.opt['-z'] and 'zfs' or 'tgz', etime)
 
     # write the control file to the masters
     masters = filter(lambda s: s.content == '-1', segments)
@@ -617,7 +629,7 @@ def deleteSnapshot(name):
         return                  # assume there isn't any snapshots available
 
     if not confirm("Delete snapshot '%s'" % name):
-        msg("Aborted by user.")
+        die("Aborted by user.")
 
     stime = datetime.datetime.now()
 
@@ -631,6 +643,8 @@ def deleteSnapshot(name):
                 ["  unable to delete %s:%s" % s.fullname for (s, rc) in erows])
         die("\n".join(emsg))
 
+    master_snapshots = filter(lambda s: s.seg.content == '-1', snapshots)
+    pmap(lambda m: (m.seg, ctlInfo.delete(m.seg)), master_snapshots)
     etime = datetime.datetime.now()
     msg("Deleted. Elapsed %s." % humantime(etime - stime))
 

@@ -149,6 +149,40 @@ def psql(sql, echo=False, quiet=True):
     p = psql_open(sql, echo, quiet)
     return psql_wait(p)
 
+############
+def pmap(func, jlist, numThreads = 16):
+    if (numThreads > len(jlist)): 
+        numThreads = len(jlist)
+
+    inq = Queue.Queue(len(jlist))
+    for i in jlist: inq.put(i)
+    
+    outq = Queue.Queue(len(jlist))
+    def work():
+        try:
+            while True: 
+                outq.put((None, func(inq.get_nowait())))
+        except Queue.Empty: pass
+        except:
+            outq.put( (sys.exc_info(), None) )
+            # drain 
+            try:
+                while True: inq.get_nowait()
+            except Queue.Empty: pass
+
+    thread = [threading.Thread(target=work) for i in xrange(numThreads)]
+    for t in thread: t.start()
+    for t in thread: t.join()
+    
+    ret = []
+    try: 
+        while True: 
+            (ex, result) = outq.get_nowait()
+            if ex: 
+                raise ex
+            ret.append(result)
+    except Queue.Empty: pass
+    return ret
 
 ############
 def chk_not_analyzed():
@@ -184,6 +218,7 @@ SELECT '    * ' || rolname
 ############
 def chk_tables_with_big_skew():
     print '-----------------------'
+    print 'LOOKING FOR TABLES WITH BIG SKEW'
     out = psql('''
 select ' '||max(c)||' ' ||min(c)||' '|| avg(c)||' '|| stddev(c)||' '|| (max(c) - min(c))/max(c) as p_diff_max_min
 from (
