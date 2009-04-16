@@ -4,31 +4,31 @@
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
 -- end_matchsubs
-mapreduce_5185_run_1
+mapreduce_72080_run_1
 ERROR:  Could not assign a segment database for "file://invalidhost/path/to/file". There isn't a valid primary segment database on host "invalidhost"
 Error: Execution Failure
-mapreduce_5190_run_1
-ERROR:  unable to resolve host 'invalidhost' in url 'gpfdist://invalidhost:8080/badfile' (url.c:447)  (seg0 slice1 maple:50001 pid=5191)
+mapreduce_72083_run_1
+ERROR:  unable to resolve host 'invalidhost' in url 'gpfdist://invalidhost:8080/badfile' (url.c:547)  (seg0 slice1 maple:50001 pid=72084)
 Error: Execution Failure
-mapreduce_5195_run_1
-NOTICE:  gfile stat /dev/null/badfile failure  (seg0 slice1 maple:50001 pid=5196)
-NOTICE:  fstream unable to open file /dev/null/badfile  (seg0 slice1 maple:50001 pid=5196)
-ERROR:  could not open "file://maple/dev/null/badfile" for reading: 404 Not Found  (seg0 slice1 maple:50001 pid=5196)
+mapreduce_72091_run_1
+NOTICE:  gfile stat /dev/null/badfile failure  (seg0 slice1 maple:50001 pid=72092)
+NOTICE:  fstream unable to open file /dev/null/badfile  (seg0 slice1 maple:50001 pid=72092)
+ERROR:  could not open "file://maple/dev/null/badfile" for reading: 404 file not found  (seg0 slice1 maple:50001 pid=72092)
 Error: Execution Failure
-mapreduce_5200_run_1
-NOTICE:  gfile stat /badfile failure  (seg0 slice1 maple:50001 pid=5201)
-NOTICE:  fstream unable to open file /badfile  (seg0 slice1 maple:50001 pid=5201)
-ERROR:  could not open "file://maple/badfile" for reading: 404 Not Found  (seg0 slice1 maple:50001 pid=5201)
+mapreduce_72094_run_1
+NOTICE:  gfile stat /badfile failure  (seg0 slice1 maple:50001 pid=72095)
+NOTICE:  fstream unable to open file /badfile  (seg0 slice1 maple:50001 pid=72095)
+ERROR:  could not open "file://maple/badfile" for reading: 404 file not found  (seg0 slice1 maple:50001 pid=72095)
 Error: Execution Failure
-mapreduce_5206_run_1
-ERROR:  external table command ended with error: EXITED; rc=126 [raw=0x7e00]  (seg0 slice1 maple:50001 pid=5207)
+mapreduce_72097_run_1
+ERROR:  external table command ended with error: EXITED; rc=126 [raw=0x7e00]  (seg1 slice1 maple:50002 pid=72099)
 DETAIL:  Command: execute:/dev/null
 Error: Execution Failure
 Error: INPUT 'input_bad_table': Table 'invalid_table' not found, at line 56
 Error: Object creation Failure
-Error: RUN 'mapreduce_5221_run_1': SOURCE 'map_not_input' is neither an INPUT nor a TASK, at line 70
+Error: RUN 'mapreduce_72107_run_1': SOURCE 'map_not_input' is neither an INPUT nor a TASK, at line 70
 Error: Object Resolution Failure
-Error: RUN 'mapreduce_5222_run_1': TARGET 'map_not_output' is not defined in document, at line 83
+Error: RUN 'mapreduce_72108_run_1': TARGET 'map_not_output' is not defined in document, at line 83
 Error: Object Resolution Failure
 Error: TRANSITION 'invalid_transition': No such function, at line 90
 Error: Object creation Failure
@@ -42,7 +42,7 @@ Error: TASK 'badref_task': SOURCE 'invalid_input' not found in document, at line
 Error: Object Resolution Failure
 Error: MAP 'invalid_map': No such function, at line 131
 Error: Object creation Failure
-Error: RUN 'mapreduce_5249_run_1': SOURCE 'invalid_input' not found in document, at line 142
+Error: RUN 'mapreduce_72125_run_1': SOURCE 'invalid_input' not found in document, at line 142
 Error: Object Resolution Failure
-Error: RUN 'mapreduce_5250_run_1': TARGET 'invalid_output' is not defined in document, at line 152
+Error: RUN 'mapreduce_72126_run_1': TARGET 'invalid_output' is not defined in document, at line 152
 Error: Object Resolution Failure

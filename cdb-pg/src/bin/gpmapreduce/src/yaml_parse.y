@@ -391,6 +391,21 @@ input_item:
       | _ERROR_LIMIT_ _INTEGER_ { parser_set_error_limit(parser, $2); }
 
     /* Error recovery */
+      | _DELIMITER_   valid_yaml_list { parser_set_delimiter(parser, 0); }
+      | _DELIMITER_   valid_yaml_map  { parser_set_delimiter(parser, 0); }
+      | _NULL_        valid_yaml_list { parser_set_null(parser, 0); }
+      | _NULL_        valid_yaml_map  { parser_set_null(parser, 0); }
+      | _QUOTE_       valid_yaml_list { parser_set_quote(parser, 0); }
+      | _QUOTE_       valid_yaml_map  { parser_set_quote(parser, 0); }
+      | _ESCAPE_      valid_yaml_list { parser_set_escape(parser, 0); }
+      | _ESCAPE_      valid_yaml_map  { parser_set_escape(parser, 0); }
+      | _ENCODING_    valid_yaml_list { parser_set_encoding(parser, 0); }
+      | _ENCODING_    valid_yaml_map  { parser_set_encoding(parser, 0); }
+      | _ERROR_LIMIT_ valid_yaml_list { parser_set_error_limit(parser, 0); }
+      | _ERROR_LIMIT_ valid_yaml_map  { parser_set_error_limit(parser, 0); }
+      | _ERROR_LIMIT_ _STRING_        { parser_set_error_limit(parser, 0); }
+      | _ERROR_LIMIT_ _ID_            { parser_set_error_limit(parser, 0); }
+      | _ERROR_LIMIT_ _VERSION_STRING_ { parser_set_error_limit(parser, 0); }
 	  | doc_keywords      { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
 	  | obj_keywords      { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
       | func_keywords     { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
@@ -415,6 +430,12 @@ output_item:
       | _MODE_ scalar         { parser_set_mode(parser, $2); }
 
     /* Error recovery */
+      | _FILE_      valid_yaml_list     { parser_set_file(parser, 0); }
+      | _FILE_      valid_yaml_map      { parser_set_file(parser, 0); }
+      | _DELIMITER_ valid_yaml_list     { parser_set_delimiter(parser, 0); }
+      | _DELIMITER_ valid_yaml_map      { parser_set_delimiter(parser, 0); }
+      | _MODE_      valid_yaml_list     { parser_set_mode(parser, 0); }
+      | _MODE_      valid_yaml_map      { parser_set_mode(parser, 0); }
 	  | doc_keywords          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | obj_keywords          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
 	  | _FUNCTION_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
@@ -477,6 +498,14 @@ function_item:
            return_list
 
     /* Error recovery */
+      | _LANGUAGE_  valid_yaml_map   { parser_set_language(parser, 0); }
+      | _LANGUAGE_  valid_yaml_list  { parser_set_language(parser, 0); }
+      | _FUNCTION_  valid_yaml_map   { parser_set_function(parser, 0); }
+      | _FUNCTION_  valid_yaml_list  { parser_set_function(parser, 0); }
+      | _MODE_      valid_yaml_map   { parser_set_mode(parser, 0); }
+      | _MODE_      valid_yaml_list  { parser_set_mode(parser, 0); }
+      | _OPTIMIZE_  valid_yaml_map   { parser_set_optimize(parser, 0); }
+      | _OPTIMIZE_  valid_yaml_list  { parser_set_optimize(parser, 0); }
 	  | doc_keywords          { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
 	  | obj_keywords          { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
       | io_keywords           { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
@@ -551,28 +580,28 @@ obj_name:
       _ID_                        { parser_set_name(parser, $1); }
 
     /* Error recovery */
-    | { yaml_yyerror(parser, "Invalid object NAME"); }  _STRING_
-    | { yaml_yyerror(parser, "Invalid object NAME"); }  _INTEGER_
-    | { yaml_yyerror(parser, "Invalid object NAME"); }  _VERSION_STRING_
-    | { yaml_yyerror(parser, "Invalid object NAME"); }  valid_yaml_list             
-    | { yaml_yyerror(parser, "Invalid object NAME"); }  valid_yaml_map
-    | {
-		  yaml_yyerror(parser, "Invalid object NAME");
-		  YYERROR;   /* Can't recover from unknown error */
-	  } error
+    | { parser_set_name(parser, 0); }  _STRING_
+    | { parser_set_name(parser, 0); }  _INTEGER_
+    | { parser_set_name(parser, 0); }  _VERSION_STRING_
+    | { parser_set_name(parser, 0); }  valid_yaml_list
+    | { parser_set_name(parser, 0); }  valid_yaml_map
+    | { 
+         parser_set_name(parser, 0); 
+         YYERROR;    /* Can't recover from unknown error */
+      }  error
     ;
 
 io_table:
       _ID_                        { parser_set_table(parser, $1); }
 
     /* Error recovery */
-    | { yaml_yyerror(parser, "Invalid TABLE name"); }  valid_yaml_list             
-    | { yaml_yyerror(parser, "Invalid TABLE name"); }  valid_yaml_map
-    | { yaml_yyerror(parser, "Invalid TABLE name"); }  _STRING_
-    | { yaml_yyerror(parser, "Invalid TABLE name"); }  _INTEGER_
-    | { yaml_yyerror(parser, "Invalid TABLE name"); }  _VERSION_STRING_
+    | { parser_set_table(parser, 0); }  valid_yaml_list             
+    | { parser_set_table(parser, 0); }  valid_yaml_map
+    | { parser_set_table(parser, 0); }  _STRING_
+    | { parser_set_table(parser, 0); }  _INTEGER_
+    | { parser_set_table(parser, 0); }  _VERSION_STRING_
     | {
-		  yaml_yyerror(parser, "Invalid TABLE name");
+		  parser_set_table(parser, 0);
 		  YYERROR;   /* Can't recover from unknown error */
 	  } error
     ;
@@ -580,11 +609,12 @@ io_table:
 input_query:
       scalar                      { parser_set_query(parser, $1); }
 
-    | valid_yaml_list             { yaml_yyerror(parser, "YAML LIST element found in QUERY"); }
-    | valid_yaml_map              { yaml_yyerror(parser, "YAML_MAPPING element found in QUERY"); }
+      /* Error recovery */
+    | valid_yaml_list             { parser_set_query(parser, 0); }
+    | valid_yaml_map              { parser_set_query(parser, 0); }
     | error           
       {
-		  yaml_yyerror(parser, "Invalid QUERY specification");
+		  parser_set_query(parser, 0);
 		  YYERROR;   /* Can't recover from unknown error */
 	  }
     ;
@@ -592,22 +622,25 @@ input_query:
 input_exec:
       scalar                      { parser_set_exec(parser, $1); }
 
-    | valid_yaml_list             { yaml_yyerror(parser, "YAML LIST element found in EXEC"); }
-    | valid_yaml_map              { yaml_yyerror(parser, "YAML_MAPPING element found in EXEC"); }
+      /* Error recovery */
+    | valid_yaml_list             { parser_set_exec(parser, 0); }
+    | valid_yaml_map              { parser_set_exec(parser, 0); }
     | error           
       {
-		  yaml_yyerror(parser, "Invalid EXEC specification");
+		  parser_set_exec(parser, 0);
 		  YYERROR;   /* Can't recover from unknown error */
 	  }
     ;
 
 io_format:
       scalar                    { parser_set_format(parser, $1); }
-    | valid_yaml_list           { yaml_yyerror(parser, "YAML LIST element found in FORMAT"); }
-    | valid_yaml_map            { yaml_yyerror(parser, "YAML_MAPPING element found in FORMAT"); }
+
+      /* Error recovery */
+    | valid_yaml_list           { parser_set_format(parser, 0); }
+    | valid_yaml_map            { parser_set_format(parser, 0); }
     | error           
       {
-		  yaml_yyerror(parser, "Invalid FORMAT specification");
+		  parser_set_format(parser, 0);
 		  YYERROR;   /* Can't recover from unknown error */
 	  }
     ;
@@ -619,37 +652,42 @@ file_list:
         scalar                { parser_add_file(parser, $1); }
       | START_LIST file_list_2 END_LIST
 	  
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in file list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_file(parser, 0); }
       ;
 
 file_list_2:
       /* empty */
       | file_list_2 scalar    { parser_add_file(parser, $2); }
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in file list"); }
-	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in file list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_file(parser, 0); }
+	  | valid_yaml_list       { parser_add_file(parser, 0); }
       ;
 
 column_list:
         scalar                { parser_add_column(parser, $1); }
       | START_LIST column_list_2 END_LIST
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in column list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_column(parser, 0); }
       ;
 
 column_list_2:
       /* empty */
       | column_list_2 scalar  { parser_add_column(parser, $2); }
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in column list"); }
-	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in column list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_column(parser, 0); }
+	  | valid_yaml_list       { parser_add_column(parser, 0); }
       ;
 
 parameter_list:
         scalar                { parser_add_parameter(parser, $1); }
       | START_LIST parameter_list_2 END_LIST
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in parameter list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_parameter(parser, 0); }
       ;
 
 
@@ -657,8 +695,9 @@ parameter_list_2:
       /* empty */
       | parameter_list_2 scalar { parser_add_parameter(parser, $2); }
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in parameter list"); }
-	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in parameter list"); }
+      /* Error recovery */
+      | valid_yaml_map        { parser_add_parameter(parser, 0); }
+      | valid_yaml_list       { parser_add_parameter(parser, 0); }
       ;
 
 
@@ -666,30 +705,33 @@ return_list:
         scalar                { parser_add_return(parser, $1); }
       | START_LIST return_list_2 END_LIST
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in return list"); }
+	  | valid_yaml_map        { parser_add_return(parser, 0); }
 	  ;
 
 return_list_2:
       /* empty */
       | return_list_2 scalar    { parser_add_return(parser, $2); }
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in return list"); }
-	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in return list"); }
+      /* Error recovery */
+	  | valid_yaml_map          { parser_add_return(parser, 0); }
+	  | valid_yaml_list         { parser_add_return(parser, 0); }
       ;
 
 key_list:
         scalar                { parser_add_key(parser, $1); }
       | START_LIST key_list_2 END_LIST
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in key list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_key(parser, 0); }
 	  ;
 
 key_list_2:
       /* empty */
       | key_list_2 scalar     { parser_add_key(parser, $2); }
 
-	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in key list"); }
-	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in key list"); }
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_key(parser, 0); }
+	  | valid_yaml_list       { parser_add_key(parser, 0); }
       ;
 
 

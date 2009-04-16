@@ -24,14 +24,16 @@ typedef enum {
 } mapred_parser_context_t;
 
 /*
- * Current max context depth = 5
+ * Current max context depth = 7
  *   -DOCUMENT HASH:
  *     - DEFINE LIST:
  *       - ITEM HASH:
  *         - ATTR HASH:
  *           - VALUE LIST
+ *             - KEY/VALUE hash
+ *               - extra level to promote good error messages
  */
-#define MAX_CONTEXT_DEPTH 5
+#define MAX_CONTEXT_DEPTH 7
 
 typedef struct mapred_parser_ {
 	mapred_parser_state_t     state;

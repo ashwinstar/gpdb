@@ -51,18 +51,19 @@ typedef enum {
 	MAPRED_REDUCER      = 8,
 	MAPRED_TASK         = 9,
 	MAPRED_EXECUTION    = 10,
-	MAPRED_ADT          = 11           /* internal use only */
+	MAPRED_ADT          = 11        /* internal use only */
 } mapred_kind_t;
 #define MAPRED_MAXKIND    11
 
 extern const char *mapred_kind_name[];
 
 typedef enum {
-	MAPRED_NO_MODE = 0,
-	MAPRED_SINGLE_MODE,
-	MAPRED_MULTI_MODE,
-	MAPRED_ACCUMULATED_MODE,
-	MAPRED_WINDOWED_MODE           /* not implemented */
+	MAPRED_MODE_NONE = 0,
+	MAPRED_MODE_SINGLE,
+	MAPRED_MODE_MULTI,
+	MAPRED_MODE_ACCUMULATED,        /* not implemented */
+	MAPRED_MODE_WINDOWED,           /* not implemented */
+	MAPRED_MODE_INVALID
 } mapred_mode_t;
 
 typedef enum {
@@ -71,25 +72,29 @@ typedef enum {
 	MAPRED_INPUT_GPFDIST,
 	MAPRED_INPUT_TABLE,
 	MAPRED_INPUT_QUERY,
-	MAPRED_INPUT_EXEC
+	MAPRED_INPUT_EXEC,
+	MAPRED_INPUT_INVALID
 } mapred_input_kind_t;
 
 typedef enum {
 	MAPRED_OUTPUT_NONE = 0,
 	MAPRED_OUTPUT_FILE,
-	MAPRED_OUTPUT_TABLE
+	MAPRED_OUTPUT_TABLE,
+	MAPRED_OUTPUT_INVALID
 } mapred_output_kind_t;
 
 typedef enum {
 	MAPRED_FORMAT_NONE = 0,
 	MAPRED_FORMAT_TEXT,
-	MAPRED_FORMAT_CSV
+	MAPRED_FORMAT_CSV,
+	MAPRED_FORMAT_INVALID
 } mapred_format_t;
 
 typedef enum {
-	MAPRED_OUTPUT_NO_MODE = 0,
-	MAPRED_OUTPUT_REPLACE,
-	MAPRED_OUTPUT_APPEND
+	MAPRED_OUTPUT_MODE_NONE = 0,
+	MAPRED_OUTPUT_MODE_REPLACE,
+	MAPRED_OUTPUT_MODE_APPEND,
+	MAPRED_OUTPUT_MODE_INVALID
 } mapred_output_mode_t;
 
 

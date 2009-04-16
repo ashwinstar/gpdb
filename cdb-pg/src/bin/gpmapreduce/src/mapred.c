@@ -47,8 +47,6 @@ const char *DISTRIBUTION_NOTICE = "NOTICE:  Table doesn't have 'DISTRIBUTED BY' 
 void *         mapred_malloc(int size);
 void             mapred_free(void *ptr);
 
-int         mapred_obj_error(mapred_object_t *obj, char *fmt, ...);
-
 buffer_t *        makebuffer(size_t bufsize, size_t grow);
 void                bufreset(buffer_t *b);
 void                  bufcat(buffer_t **bufp, char* fmt);
@@ -106,7 +104,6 @@ void mapred_free(void *ptr)
 int mapred_obj_error(mapred_object_t *obj, char *fmt, ...)
 {
 	va_list arg;
-	int done;
 
 	if (global_verbose_flag)
 		fprintf(stderr, "    - ");
@@ -118,14 +115,14 @@ int mapred_obj_error(mapred_object_t *obj, char *fmt, ...)
 		fprintf(stderr, "%s: ", mapred_kind_name[obj->kind]);
 
 	va_start(arg, fmt);
-	done = vfprintf(stderr, fmt, arg);
+	vfprintf(stderr, fmt, arg);
 	va_end(arg);
 	if (obj->line > 0)
 		fprintf(stderr, ", at line %d\n", obj->line);
 	else
 		fprintf(stderr, "\n");
 	
-	return done;
+	return MAPRED_PARSE_ERROR;
 }
 
 
@@ -1439,7 +1436,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						exists = true;
 					bufreset(buffer);
 
-					if (exists && output->u.output.mode == MAPRED_OUTPUT_REPLACE)
+					if (exists && output->u.output.mode == MAPRED_OUTPUT_MODE_REPLACE)
 					{
 						bufcat(&buffer, "DROP TABLE ");
 						bufcat(&buffer, output->u.output.desc);
@@ -1472,7 +1469,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						bufcat(&buffer, output->u.output.desc);
 						bufcat(&buffer, " AS ");
 					}
-					else if (output->u.output.mode == MAPRED_OUTPUT_APPEND)
+					else if (output->u.output.mode == MAPRED_OUTPUT_MODE_APPEND)
 					{
 						bufcat(&buffer, "INSERT INTO ");
 						bufcat(&buffer, output->u.output.desc);
@@ -1567,7 +1564,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 					{
 						switch (output->u.output.mode)
 						{
-							case MAPRED_OUTPUT_NO_MODE:
+							case MAPRED_OUTPUT_MODE_NONE:
 								/* check if the file exists */
 								if (access(output->u.output.desc, F_OK) == 0)
 								{
@@ -1577,11 +1574,11 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 								}
 								/* Fallthrough */
 
-							case MAPRED_OUTPUT_REPLACE:
+							case MAPRED_OUTPUT_MODE_REPLACE:
 								outfile = fopen(output->u.output.desc, "wb");
 								break;
 
-							case MAPRED_OUTPUT_APPEND:
+							case MAPRED_OUTPUT_MODE_APPEND:
 								outfile = fopen(output->u.output.desc, "ab");
 								break;
 
@@ -2145,7 +2142,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 
 				/* Handle Return clause */
 				bufcat(&buffer, ")\nRETURNS ");
-				if (obj->u.function.mode == MAPRED_MULTI_MODE)
+				if (obj->u.function.mode == MAPRED_MODE_MULTI)
 					bufcat(&buffer, "SETOF ");
 				bufcat(&buffer, obj->u.function.rtype.name);
 
@@ -2527,7 +2524,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 						 * for SINGLE mode functions, since MULTI mode can 
 						 * control it's own filtering without this.
 						 */
-						if (mapper->u.function.mode != MAPRED_MULTI_MODE)
+						if (mapper->u.function.mode != MAPRED_MODE_MULTI)
 							bufcat(&buffer, "WHERE m is not null");   
 					}
 					else

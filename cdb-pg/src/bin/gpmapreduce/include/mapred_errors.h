@@ -22,4 +22,10 @@
 /* Signals */
 #define USER_INTERUPT          10000   /* SIGINT */
 
+
+struct mapred_parser_;
+struct mapred_object_;
+int       mapred_parse_error(struct mapred_parser_ *parser, char *fmt, ...);
+int         mapred_obj_error(struct mapred_object_ *obj, char *fmt, ...);
+
 #endif

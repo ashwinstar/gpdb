@@ -4,26 +4,18 @@
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
 -- end_matchsubs
-Error: Invalid object NAME, at line 27
-Error: INPUT 'unnamed' - Missing NAME, at line 25
-Error: Invalid object NAME, at line 34
-Error: INPUT 'unnamed' - Missing NAME, at line 32
-Error: Invalid object NAME, at line 41
-Error: INPUT 'unnamed' - Missing NAME, at line 39
-Error: Invalid object NAME, at line 47
-Error: INPUT 'unnamed' - Missing NAME, at line 44
-Error: Invalid object NAME, at line 55
+Error: INPUT: Invalid NAME, at line 27
+Error: INPUT: Invalid NAME, at line 34
+Error: INPUT: Invalid NAME, at line 41
+Error: INPUT: Invalid NAME, at line 47
+Error: INPUT: Invalid NAME, at line 55
 Error: mapping is not a valid INPUT attribute, at line 56
-Error: INPUT 'unnamed' - Missing NAME, at line 53
-Error: Invalid object NAME, at line 66
+Error: INPUT: Invalid NAME, at line 66
 Error: Multiple objects in one list element, at line 67
-Error: INPUT 'unnamed' - Missing NAME, at line 64
-Error: Invalid object NAME, at line 76
+Error: INPUT: Invalid NAME, at line 76
 Error: Invalid Document Attribute, at line 77
-Error: INPUT 'unnamed' - Missing NAME, at line 74
-Error: Document #1 Missing VERSION, at line 5
-Error: Invalid object NAME, at line 92
+Error: DOCUMENT: Missing VERSION, at line 5
+Error: INPUT: Invalid NAME, at line 92
 Error: YAML syntax error - did not find expected key while parsing a block mapping, at line 93
-Error: INPUT 'unnamed' - Missing NAME, at line 90
-Error: Document #2 Missing VERSION, at line 79
+Error: DOCUMENT: Missing VERSION, at line 79
 Error parsing file
