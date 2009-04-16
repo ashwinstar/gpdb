@@ -134,4 +134,4 @@ test: mapred
 test: gpparams
 test: upg2
 test: alter_distribution_policy
-test: gp_delete_as_trunc
+ignore: gp_delete_as_trunc
