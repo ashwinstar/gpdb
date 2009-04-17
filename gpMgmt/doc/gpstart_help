@@ -82,10 +82,9 @@ Starts Greenplum Database in restricted mode (only database
 superusers are allowed to connect).
 
 
--v (show utility version)
+-v (verbose)
 
-Displays the version, status, last updated date, and check sum of 
-this utility.
+Displays detailed status, progress and error messages output by the utility.
 
 
 -y (do not start standby master)

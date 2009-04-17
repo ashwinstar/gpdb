@@ -137,9 +137,9 @@ valid status, and primary or mirror status of all the segment instances.
 Displays the online help.
 
 
--v (show script version)
+-v (verbose)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays detailed status, progress and error messages output by the utility.
 
 
 *****************************************************
