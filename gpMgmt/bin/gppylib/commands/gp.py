@@ -281,7 +281,7 @@ class NewGpStop(Command):
         
 #-----------------------------------------------           
 class GpStop(Command):
-    def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False, datadir=None,ctxt=LOCAL, remoteHost=None):
         self.cmdStr="%s $GPHOME/bin/gpstop -a" % SRC_GPPATH
         if masterOnly:
             self.cmdStr += " -m"
@@ -291,6 +291,8 @@ class GpStop(Command):
             self.cmdStr += " -f"
         if force:
             self.cmdStr += " -z"
+        if datadir:
+            self.cmdStr += " -d %s" % datadir
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
