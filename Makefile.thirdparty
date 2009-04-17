@@ -16,7 +16,7 @@ ifeq "$(BLD_ARCH)" ""
 BLD_ARCH=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 endif
 ifeq "$(BLD_ARCH)" "osx105_x86"
-BLD_ARCH=osx104_x86
+override BLD_ARCH=osx104_x86
 endif
 
 rhel4_x86_64_BLD_BITS=64

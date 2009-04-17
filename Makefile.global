@@ -5,7 +5,7 @@ SHELL=/bin/bash
 ifeq "$(BLD_ARCH)" ""
 BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 ifeq "$(BLD_ARCH)" "osx105_x86"
-BLD_ARCH=osx104_x86
+override BLD_ARCH=osx104_x86
 endif
 endif
 
