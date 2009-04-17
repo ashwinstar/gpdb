@@ -248,6 +248,24 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 
 #---------------------------------------------------------------------
+#---------------------------------------------------------------------
+
+# ship python on Linux, OSX, and Solaris
+osx104_x86_PYTHON=/opt/python-2.5.1
+rhel4_x86_32_PYTHON=/opt/python-2.5.1
+rhel4_x86_64_PYTHON=/opt/python-2.5.1
+rhel5_x86_64_PYTHON=/opt/python-2.5.1
+sol10_x86_64_PYTHON=/opt/python-2.5.1
+sol10_x86_32_PYTHON=/opt/python32-2.5.1
+sol10_sparc_64_PYTHON=/opt/python-2.5.1
+sol10_sparc_32_PYTHON=/opt/python32-2.5.1
+sol9_sparc_32_PYTHON=/opt/python32-2.5.1
+sol8_sparc_32_PYTHON=/opt/python32-2.5.1
+suse10_x86_64_PYTHON=/opt/python-2.5.1
+BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
+
+
+#---------------------------------------------------------------------
 # Platform Verification Kit (PVK)
 #   formerly checkTools
 #
@@ -453,6 +471,10 @@ copylibs : thirdparty-dist
 	    if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
 	    $(call libcopy,`dirname $$lib`,`basename $$lib`,$(INSTLOC)/lib); \
 	done
+	if [ ! -z "$(BLD_PYTHON)" ]; then \
+	    mkdir -p $(INSTLOC)/ext/python; \
+	    (cd $(BLD_PYTHON) && $(TAR) cf - .) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -) \
+	fi
 ifeq "$(AUTH)" "true"
 	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
 	mkdir -p $(INSTLOC)/include
