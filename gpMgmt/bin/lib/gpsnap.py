@@ -27,7 +27,7 @@ if sys.version_info < (2,5,0):
 '''Error %s is supported on Python version 2.5 or greater
 Please upgrade python installed on this machine.''' % progname)
 
-import subprocess, time, datetime, threading, Queue, random
+import subprocess, time, datetime, threading, Queue, random, pickle
 
 
 ############
@@ -87,49 +87,20 @@ def die(s):
     sys.exit('%s ERROR: %s' % (tstamp(), s))
 
 ############
-def ssh2(hostname, cmd, input=''):
-    if input.find('"""') >= 0 or input.find("'''") >= 0:
-        raise 'illegal """ or \'\'\' chars in input'
-    if input.find('%') >= 0:
-        raise 'illegal %% char in input'
-    proxy = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hostname,
-             'bash -c python']
-    vvmsg('  - ssh ' + hostname + ' ' + str(cmd))
-    pycmd = """
-import os,sys,subprocess
-f = open('/tmp/x' + str(os.getpid()), 'a')
-p = subprocess.Popen(['bash', '-c', '''%s'''], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-f.write('writing\\n')
-f.flush()
-p.stdin.write('''%s''')
-f.write('closing\\n')
-f.flush()
-p.stdin.close()
-f.write('reading\\n')
-f.flush()
-sys.stdout.write(p.stdout.read())
-f.write('waiting\\n')
-f.flush()
-rc = p.wait()
-f.write('done\\n')
-f.close()
-sys.exit(rc)
-""" % (cmd, input)
-    p = subprocess.Popen(proxy, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    p.stdin.write(pycmd)
-    p.stdin.close()
-    out = p.stdout.read()
-    rc = p.wait()
-    return (rc, out)
-    
-
-############
 def ssh(hostname, cmd, input=''):
     proxy = ['ssh', '-o', 'BatchMode yes', '-o', 'StrictHostKeyChecking no', hostname,
-             '''bash -c '%s' ''' % cmd]
+             '''bash -c 'exec python -c "import os,sys,pickle,subprocess; (prog, cmd, input) = pickle.load(sys.stdin); exec prog" ' ''']
+    prog = """
+p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+p.stdin.write(input)
+p.stdin.close()
+sys.stdout.write(p.stdout.read())
+sys.exit(p.wait())"""
     vvmsg('  - ssh ' + hostname + ' ' + str(cmd))
     p = subprocess.Popen(proxy, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    p.stdin.write(input)
+    if type(cmd) == type(''):
+        cmd = ['bash', '-c', cmd]
+    pickle.dump( (prog, cmd, input), p.stdin )
     p.stdin.close()
     out = p.stdout.read()
     rc = p.wait()
