@@ -457,7 +457,7 @@
 #autovacuum_vacuum_cost_limit = -1	# default vacuum cost limit for
 					# autovacuum, -1 means use
 					# vacuum_cost_limit
-
+gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation for semantics.
 
 #---------------------------------------------------------------------------
 # CLIENT CONNECTION DEFAULTS
