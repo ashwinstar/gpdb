@@ -40,7 +40,7 @@ volatile int		*ftsAction;
 static volatile bool	*ftsReadOnlyFlag;
 static volatile bool	*ftsAdminRequestedRO;
 
-static bool	local_fts_status_initialized=false;
+static bool		local_fts_status_initialized=false;
 static uint64	local_fts_statusVersion;
 
 static LWLockId ftsQDMirrorLock;
@@ -187,9 +187,11 @@ FtsNotifyProber(void)
 	{
 		struct timeval tv;
 
-		tv.tv_usec = 10000;
+		tv.tv_usec = 50000;
 		tv.tv_sec = 0;
 		select(0, NULL, NULL, NULL, &tv); /* don't care about return value. */
+
+		CHECK_FOR_INTERRUPTS();
 	}
 }
 
