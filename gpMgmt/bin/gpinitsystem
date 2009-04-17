@@ -1649,16 +1649,18 @@ else
 	fi
 fi
 
-if [ x"" != x"$DATABASE_NAME" ]; then
-	CREATE_DATABASE
-fi
-
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 	CREATE_STANDBY_QD
 fi
 
 STOP_QD_PRODUCTION
 START_QD_PRODUCTION
+
+
+if [ x"" != x"$DATABASE_NAME" ]; then
+	CREATE_DATABASE
+fi
+
 SET_GP_USER_PW
 
 SCAN_LOG
