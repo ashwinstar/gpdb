@@ -113,17 +113,17 @@ BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REM
 # the BASE directory structure for you from the //tools depot in Perforce
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE
+	apr/1.2.12
+	apr-util/1.2.12
 	bzip2/1.0.5
 	clapack/3.1.1
 	libedit/2.11
-	yaml/0.1.1
-	zlib/1.2.3
 	libevent/1.4.6
-	apr/1.2.12
-	apr-util/1.2.12
-	sigar/1.5.0.1
 	lighttpd/1.4.19
 	pcre/7.8
+	sigar/1.5.0.1
+	yaml/0.1.1
+	zlib/1.2.3
 endef
 BLD_THIRDPARTY_LIBS_BASE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE))
 
