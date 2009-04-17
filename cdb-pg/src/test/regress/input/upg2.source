@@ -41,6 +41,7 @@ create table old_aggregate_v32 (aggfnoid        regproc  not null,
 								aggsortop       oid      not null,
 								aggtranstype    oid      not null,
 								agginitval      text) with oids;
+create table old_depend_v32 (like pg_catalog.pg_depend);
 
 create table old_description_v32(like pg_catalog.pg_description);
 
@@ -61,6 +62,7 @@ COPY old_namespace_v32
   from '@abs_srcdir@/data/pg_namespace32.data' with oids csv header;
 COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
   csv header; 
+COPY old_depend_v32 from '@abs_srcdir@/data/pg_depend32.data' csv header;
 
 create table public.pg_class(like pg_catalog.pg_class) with oids;
 create table public.pg_attribute(like pg_catalog.pg_attribute);
@@ -71,6 +73,7 @@ create table public.pg_aggregate(like pg_catalog.pg_aggregate);
 create table public.pg_namespace(like pg_catalog.pg_namespace) with oids;
 create table public.pg_conversion(like pg_catalog.pg_conversion);
 create table public.pg_description(like pg_catalog.pg_description);
+create table public.pg_depend(like pg_catalog.pg_depend);
 
 -- pg_partitions from 3.2
 create view public.pg_partitions as
@@ -158,6 +161,9 @@ select oid, * from public.pg_namespace;
 
 create view old_description as select * from old_description_v32 union all
 select * from public.pg_description;
+
+create view old_depend as select * from old_depend_v32 union all
+select * from public.pg_depend;
 
 -- pg_catalog.pg_partitions should be the same as public.pg_partitions
 select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
@@ -264,10 +270,20 @@ except select * from public.old_description where objoid < 10000;
 select * from public.pg_description where objoid < 10000 except
 select * from public.old_description where objoid < 10000;
 
+-- pg_depend
+-- pg_description
+select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
+except select * from public.old_depend where objid < 10000 and refobjid < 10000;
+
+select * from public.pg_depend where objid < 10000 and refobjid < 10000 except
+select * from public.old_depend where objid < 10000 and refobjid < 10000;
+
 drop view old_class, old_type, old_attribute, old_index, old_aggregate,
-	 old_proc, old_namespace, public.pg_partitions, public.old_description;
+	 old_proc, old_namespace, public.pg_partitions, public.old_description,
+	 old_depend;
 drop table public.pg_class, public.pg_attribute, public.pg_type,
 	 public.pg_index, public.pg_aggregate, public.pg_proc, public.pg_namespace,
 	 public.pg_conversion, old_aggregate_v32, old_attribute_v32, old_class_v32,
 	 old_index_v32, old_namespace_v32, old_proc_v32, old_type_v32,
-	 old_description_v32, public.pg_description;
+	 old_description_v32, public.pg_description, public.pg_depend,
+	 old_depend_v32;
