@@ -40,6 +40,7 @@ volatile int		*ftsAction;
 static volatile bool	*ftsReadOnlyFlag;
 static volatile bool	*ftsAdminRequestedRO;
 
+static bool	local_fts_status_initialized=false;
 static uint64	local_fts_statusVersion;
 
 static LWLockId ftsQDMirrorLock;
@@ -1318,7 +1319,15 @@ verifyFtsSyncCount(void)
 	if (ftsProbeInfo->fts_probePid == 0)
 		return true;
 
-	return (local_fts_statusVersion != ftsProbeInfo->fts_statusVersion);
+	if (!local_fts_status_initialized)
+	{
+		local_fts_status_initialized = true;
+		local_fts_statusVersion = ftsProbeInfo->fts_statusVersion;
+
+		return true;
+	}
+
+	return (local_fts_statusVersion == ftsProbeInfo->fts_statusVersion);
 }
 
 /* apply transient state to segdb state */
