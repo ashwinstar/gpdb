@@ -2360,7 +2360,8 @@ ExecInsert(TupleTableSlot *slot,
 		   DestReceiver *dest,
 		   EState *estate)
 {
-	void		*tuple;
+	void		*tuple; 
+    void *tofree = NULL;
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
@@ -2427,6 +2428,7 @@ ExecInsert(TupleTableSlot *slot,
             n = slot_get_isnull(slot);
 
             tuple = memtuple_form_to(resultRelInfo->mt_bind, d, n, NULL, NULL, false); 
+            tofree = tuple;
         }
     }
 	else if(relstorage == RELSTORAGE_AOCS)
@@ -2450,7 +2452,11 @@ ExecInsert(TupleTableSlot *slot,
 		newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
 
 		if (newtuple == NULL)	/* "do nothing" */
+        {
+            if (tofree != NULL)
+                pfree(tofree);
 			return;
+        }
 
 		if (newtuple != tuple)	/* modified by Trigger(s) */
 		{
@@ -2562,6 +2568,10 @@ ExecInsert(TupleTableSlot *slot,
 
 	/* CDB: Restore 'tableOid' sysattr in case slot belongs to our caller. */
 	slot->tts_tableOid = sourceTableOid;
+
+    /* clean up */
+    if (tofree != NULL)
+        pfree(tofree);
 }
 
 /* ----------------------------------------------------------------
