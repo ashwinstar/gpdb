@@ -188,7 +188,7 @@ def runas(cmd):
 def getZfsMountpoint(hostname, datapath): 
 
     cmd = "echo hostname $(hostname); zfs list -t filesystem " + datapath
-    (rc, out) = ssh(cmd)
+    (rc, out) = ssh(hostname, cmd)
     if rc:
         return (None, None)
 	
@@ -447,7 +447,7 @@ class ControlInfo:
         (toppath, dbdir) = os.path.split(MASTER_DATA_DIRECTORY)
         fpath = ctlpath(dbdir, '')
         fpath = os.path.join(fpath[0], fpath[1], '*@*.sn2')
-        p = os.popen('ls -1 %s 2> /dev/null' % fpath)
+        p = os.popen('''bash -c 'ls -1 %s 2> /dev/null' ''' % fpath)
         out = p.readlines()
         p.close()
         
