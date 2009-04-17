@@ -494,6 +494,7 @@ def pstop(segments):
     pmap(lambda s: action(s.hostname), masters)
     vmsg('Suspending Segments')
     pmap(lambda s: action(s.hostname), segments)
+    msg('GPDB suspended.')
 
 ############
 def prun(segments):
@@ -508,6 +509,7 @@ def prun(segments):
     pmap(lambda s: action(s.hostname), segments)
     vmsg('Resuming Masters')
     pmap(lambda s: action(s.hostname), masters)
+    msg('GPDB resumed.')
     
 
 ############
