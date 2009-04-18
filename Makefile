@@ -473,7 +473,7 @@ copylibs : thirdparty-dist
 	done
 	# Create the python directory to flag to build scripts that python has been handled even
 	# on OS X Leopard where we no longer ship Python
-	mkdir -p $(INSTLOC)/ext/python; \
+	mkdir -p $(INSTLOC)/ext/python
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - .) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
