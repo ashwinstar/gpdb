@@ -64,7 +64,7 @@ def parseargs():
 
 
 try:
-    logger=gplog.setup_helper_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+    logger=gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
 
     (options, args) = parseargs()
     if options.verbose:

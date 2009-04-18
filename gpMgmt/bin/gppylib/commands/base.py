@@ -440,7 +440,8 @@ class SQLCommand(Command):
     
     def __init__(self,name):
         self.name=name
-        self.conn = None
+        self.cancel_flag = False
+        self.cancel_conn = None
 
     
     def run(self,validateAfter=False):
@@ -457,13 +458,12 @@ class SQLCommand(Command):
         pass
     
     def cancel(self):
+        # assignment is an atomic operation in python
+        self.cancel_flag = True
+        
         # if self.conn is not set we cannot cancel.
-        if self.conn:
-            DB(self.conn).cancel()
-        else:
-            # Connection hasn't been established yet, nothing to cancel
-            pass
-
+        if self.cancel_conn:
+            DB(self.cancel_conn).cancel()
     
     def was_successful(self):
         raise ExecutionError("TODO:  must implement")

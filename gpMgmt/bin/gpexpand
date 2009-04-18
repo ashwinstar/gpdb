@@ -7,6 +7,7 @@ import datetime
 import os
 import sys
 import socket
+import signal
 from time import strftime, sleep
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
@@ -66,9 +67,7 @@ Remaining TODO items:
      this when the database is stopped and possibly can't be started fully.""",
      
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
-     the system.  should get rid of this requirement. """,
-
-"""* Interview: if not adding new hosts, hostname field is empty in output file """
+     the system.  should get rid of this requirement. """
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -564,9 +563,8 @@ class SegmentTemplate:
             commandsSent[seg.hostname] = 0
         
         newPrimaryCount += self.gparray.get_primary_count()
-        newDbId = self.maxDbId + 1
+
         for seg in self.gparray.getExpansionSegDbList():
-            seg.dbId = newDbId
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segment', seg.datadir, 
                                             seg.port, newPrimaryCount, 
                                             seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
@@ -577,8 +575,6 @@ class SegmentTemplate:
                 sleep(1) 
             self.pool.addCommand(segCfgCmd)
             commandsSent[seg.hostname] += 1
-            
-            newDbId += 1
             
         self.pool.join()
         self.pool.check_results()
@@ -1524,15 +1520,18 @@ class ExpandTable():
                
                
                
-    def mark_started(self,status_conn,table_conn):
+    def mark_started(self,status_conn,table_conn, cancel_flag):
         
         (schema_name, table_name) = self.fq_name.split('.')
-        sql = "SELECT pg_relation_size(quote_ident('%s') || '.' || quote_ident('%s'))" % (schema_name, table_name)         
-        cursor = dbconn.execSQL(table_conn,sql)
-        row = cursor.fetchone()
-        src_bytes = int(row[0])
-        logger.debug(" Table: %s has %d bytes" % (self.fq_name, src_bytes))
-             
+        sql = "SELECT pg_relation_size(quote_ident('%s') || '.' || quote_ident('%s'))" % (schema_name, table_name)
+        if not cancel_flag:         
+            cursor = dbconn.execSQL(table_conn,sql)
+            row = cursor.fetchone()
+            src_bytes = int(row[0])
+            logger.debug(" Table: %s has %d bytes" % (self.fq_name, src_bytes))
+        else:
+            return
+        
         time_str = datetime.datetime.now()       
         sql = """UPDATE %s.%s 
                   SET status = '%s', expansion_started='%s',
@@ -1561,7 +1560,7 @@ class ExpandTable():
         
         
         
-    def expand(self,table_conn):
+    def expand(self,table_conn, cancel_flag):
         foo = self.distrib_policy_names.strip()
         
         (schema_name, table_name) = self.fq_name.split('.')
@@ -1578,8 +1577,10 @@ class ExpandTable():
         logger.info('Expanding %s.%s' % (self.dbname, self.fq_name))  
         logger.debug("Expand SQL: %s" % sql)  
         
-        dbconn.execSQL(table_conn,sql)
-        table_conn.commit()
+        # check is atomic in python
+        if not cancel_flag:
+            dbconn.execSQL(table_conn,sql)
+            table_conn.commit()
     
     
     def mark_finished(self,status_conn,table_conn,finish_time):
@@ -1614,22 +1615,18 @@ class ExpandCommand(SQLCommand):
         table_conn=dbconn.connect(self.table_url)
         
         # Set conn for  cancel
-        self.conn = table_conn     
+        self.cancel_conn = table_conn     
         
-        self.table.mark_started(status_conn,table_conn)
-        
-        canceled = False
         try:
-            self.table.expand(table_conn)
-        except DatabaseError, ex:
-            if ex.__str__().find('canceling statement due to user request') == -1:
+            self.table.mark_started(status_conn,table_conn, self.cancel_flag)        
+            self.table.expand(table_conn,self.cancel_flag)
+        except Exception, ex:
+            if ex.__str__().find('canceling statement due to user request') == -1 and not self.cancel_flag:
                 logger.info("Reseting status_detail for %s.%s" % (self.table.dbname,self.table.fq_name))
                 self.table.reset_started(status_conn)
                 raise
-            else:
-                canceled = True
                 
-        if not canceled:
+        if not self.cancel_flag:
             end_time = datetime.datetime.now()
             #update metadata        
             logger.info("Finished expanding %s.%s" % (self.table.dbname, self.table.fq_name))
@@ -1837,8 +1834,14 @@ except Exception,e:
         gp_expand.shutdown()
     sys.exit(3)
 except KeyboardInterrupt:
+    # Disable SIGINT while we shutdown.
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
+    
     if gp_expand is not None:
         gp_expand.shutdown()
+        
+    # Re-enabled SIGINT
+    signal.signal(signal.SIGINT,signal.default_int_handler)
 
     sys.exit('\nUser Interrupted')
 finally:
