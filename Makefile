@@ -471,9 +471,13 @@ copylibs : thirdparty-dist
 	    if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
 	    $(call libcopy,`dirname $$lib`,`basename $$lib`,$(INSTLOC)/lib); \
 	done
-	if [ ! -z "$(BLD_PYTHON)" ]; then \
+	@if [ ! -z "$(BLD_PYTHON)" ]; then \
+	    echo "Copying python from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
 	    mkdir -p $(INSTLOC)/ext/python; \
-	    (cd $(BLD_PYTHON) && $(TAR) cf - .) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -) \
+	    (cd $(BLD_PYTHON) && $(TAR) cf - .) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
+	    echo "...DONE"; \
+	else \
+	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi
 ifeq "$(AUTH)" "true"
 	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
