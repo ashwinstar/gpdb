@@ -251,7 +251,7 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 #---------------------------------------------------------------------
 
 # ship python on Linux, OSX, and Solaris
-osx104_x86_PYTHON=/opt/python-2.5.1
+#osx104_x86_PYTHON=/opt/python-2.5.1
 rhel4_x86_32_PYTHON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON=/opt/python-2.5.1
 rhel5_x86_64_PYTHON=/opt/python-2.5.1
@@ -471,9 +471,11 @@ copylibs : thirdparty-dist
 	    if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
 	    $(call libcopy,`dirname $$lib`,`basename $$lib`,$(INSTLOC)/lib); \
 	done
+	# Create the python directory to flag to build scripts that python has been handled even
+	# on OS X Leopard where we no longer ship Python
+	mkdir -p $(INSTLOC)/ext/python; \
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \
-	    mkdir -p $(INSTLOC)/ext/python; \
 	    (cd $(BLD_PYTHON) && $(TAR) cf - .) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
 	    echo "...DONE"; \
 	else \
