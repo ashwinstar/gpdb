@@ -419,6 +419,7 @@ cdbdisp_reconfigureFtsIfNecessary(void)
 		 * reconfig mpp connections
 		 */
 		FtsReConfigureMPP();
+		elog(ERROR, "GPDB detected segment reconfiguration.");
 	}
 }	/* cdbdisp_reconfigureFtsIfNecessary */
 

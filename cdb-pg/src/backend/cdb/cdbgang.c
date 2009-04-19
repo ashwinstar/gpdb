@@ -35,6 +35,7 @@ extern char *default_tablespace;
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbgang.h"		/* me */
 #include "cdb/cdbtm.h"			/* discardDtxTransaction() */
 #include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
@@ -3395,14 +3396,20 @@ freeGangsForPortal(char *portal_name)
 		{
 			primaryWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
 			disconnectAndDestroyAllGangs();
-			elog(ERROR, "freeGangsForPortal: Bad primary writer gang");
+
+			elog(LOG, "freeGangsForPortal: Bad primary writer gang");
+			cdbdisp_reconfigureFtsIfNecessary(); /* will throw an error */
+
 			return;
 		}
 		if (!cleanupGang(mirrorWriterGang))
 		{
 			mirrorWriterGang = NULL; /* cleanupGang called disconnectAndDestroyGang() already */
 			disconnectAndDestroyAllGangs();
-			elog(ERROR, "freeGangsForPortal: Bad mirror writer gang");
+
+			elog(LOG, "freeGangsForPortal: Bad mirror writer gang");
+			cdbdisp_reconfigureFtsIfNecessary(); /* will throw an error */
+
 			return;
 		}
 	}
