@@ -15,9 +15,9 @@ LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8h
 
 ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
-all: mkdir mkdbgen
-else
 all: mkdir mklibjson mklibevent mklibapr mklibapu mkdbgen
+else
+all: mkdir mkdbgen
 endif
 
 
