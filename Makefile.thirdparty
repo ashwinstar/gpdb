@@ -260,7 +260,7 @@ thirdparty-delete:
 	@# --- remove base library files one by one based on lists in checksum files ---
 	@if [ x"$(BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE)" != x"" ]; then \
 	    for i in $(foreach tplib,$(BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE),$(subst /,-,$(tplib))); do \
-	        for j in `cat $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i | awk '{print $2}'`; do \
+	        for j in `cat $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i | awk '{print $$2}'`; do \
 	            echo "p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j"; \
 	            p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j; \
 	        done; \
