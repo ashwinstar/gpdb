@@ -17,9 +17,6 @@ from unix import *
 logger = get_default_logger()
 
 GPHOME=os.environ.get('GPHOME')
-SRC_GPPATH="source %s/greenplum_path.sh;" % GPHOME
-PG_CTL="%s/bin/pg_ctl" % GPHOME
-INITDB="%s/bin/initdb" % GPHOME
 
 
 
@@ -51,7 +48,7 @@ INITDB="%s/bin/initdb" % GPHOME
 class InitDB(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db
-        self.cmdStr="%s %s %s" % (SRC_GPPATH,INITDB, db.get_datadir()) 
+        self.cmdStr="$GPHOME/bin/initdb %s" % (db.get_datadir()) 
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -67,7 +64,7 @@ class InitDB(Command):
 class DbStatus(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db        
-        self.cmdStr="%s %s -D %s status" % (SRC_GPPATH,PG_CTL,self.db.datadir)
+        self.cmdStr="$GPHOME/bin/pg_ctl -D %s status" % (self.db.datadir)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
     def is_running(self):
@@ -93,7 +90,7 @@ class DbStatus(Command):
 class ReloadDbConf(Command):
     def __init__(self,name,db,ctxt=LOCAL,remoteHost=None):
         self.db=db
-        cmdStr="%s $GPHOME/bin/pg_ctl reload -D %s" % (SRC_GPPATH,self.db.datadir)
+        cmdStr="$GPHOME/bin/pg_ctl reload -D %s" % (self.db.datadir)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod

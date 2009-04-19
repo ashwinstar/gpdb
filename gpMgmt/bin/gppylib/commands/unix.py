@@ -369,6 +369,7 @@ class PathIsDirectory(Command):
     def isDir(self):
         return bool (self.results.stdout.strip())
 
+#--------------------------
 
 
 class FileDirExists(Command):
@@ -386,7 +387,18 @@ class FileDirExists(Command):
     def filedir_exists(self):
         return self.results.stdout.strip().upper()=='TRUE'
     
+class CreateDirIfNecessary(Command):
+    def __init__(self,name,directory,ctxt=LOCAL,remoteHost=None):
+        self.directory=directory
+        cmdStr="""python -c "import os; if os.path.exists('%s'): os.mkdir('%s')" """ % (directory,directory)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
+    @staticmethod
+    def remote(name,remote_host,directory):
+        cmd=CreateDirIfNecessary(name,directory,ctxt=REMOTE,remoteHost=remote_host)
+        cmd.run(validateAfter=True)
+                
+                
 class DirectoryIsEmpty(Command):
     def __init(self,name,directory,ctxt=LOCAL,remoteHost=None):
         self.directory=directory

@@ -20,7 +20,6 @@ logger = get_default_logger()
 
 #TODO:  need a better way of managing environment variables.
 GPHOME=os.environ.get('GPHOME')
-SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
 
 
@@ -49,12 +48,11 @@ def get_max_dbid(name,conn):
 class PySync(Command):
     def __init__(self,name,srcDir,dstHost,dstDir,ctxt=LOCAL,remoteHost=None, options=None):
         psync_executable=GPHOME + "/bin/lib/pysync.py"
-        self.cmdStr="%s %s %s %s %s:%s" % (SRC_GPPATH,
-                                           psync_executable,
-                                           options if options else "",
-                                           srcDir,
-                                           dstHost,
-                                           dstDir)
+        self.cmdStr="%s %s %s %s:%s" % (psync_executable,
+                                        options if options else "",
+                                        srcDir,
+                                        dstHost,
+                                        dstDir)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
 
@@ -75,8 +73,8 @@ class MasterStart(Command):
         else:
             gp_mode_flags=" -E "    
             
-        cmdfrags=["%s $GPHOME/bin/%s -w -D %s -o \" %s %s -i -p %s" %\
-                  (SRC_GPPATH,"pg_ctl",dataDir,standby,gp_mode_flags,port)]
+        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -o \" %s %s -i -p %s" %\
+                  (dataDir,standby,gp_mode_flags,port)]
         
         
         if restrictedMode:
@@ -99,7 +97,7 @@ class MasterStart(Command):
 class MasterStop(Command):
     def __init__(self,name,dataDir,ctxt=LOCAL,remoteHost=None):
         self.dataDir=dataDir
-        cmdStr="%s $GPHOME/bin/%s -w -D %s stop" % (SRC_GPPATH,"pg_ctl",dataDir)
+        cmdStr="$GPHOME/bin/pg_ctl -w -D %s stop" % (dataDir)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -112,7 +110,7 @@ class MasterStop(Command):
 class SegmentStart(Command):      
     def __init__(self, name, dataDir, utilityMode=False, nowait=False,port=None,ctxt=LOCAL, remoteHost=None):
         self.dataDir=dataDir
-        cmdfrags=['%s %s -D %s -l %s/pg_log/startup.log ' % (SRC_GPPATH,pg.PG_CTL,dataDir,dataDir)]
+        cmdfrags=['$GPHOME/bin/pg_ctl -D %s -l %s/pg_log/startup.log ' % (dataDir,dataDir)]
         portOption = ""
         if port:
             portOption = "-p %s" % port
@@ -138,7 +136,7 @@ class SegmentStart(Command):
 #-----------------------------------------------        
 class SegmentStop(Command):
     def __init__(self, name, dataDir,mode='smart', ctxt=LOCAL, remoteHost=None):        
-        cmdfrags=['%s $GPHOME/bin/pg_ctl stop -D %s -m %s' % (SRC_GPPATH,dataDir,mode)]           
+        cmdfrags=['$GPHOME/bin/pg_ctl stop -D %s -m %s' % (dataDir,mode)]           
         cmdStr=' '.join(cmdfrags)    
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
@@ -163,7 +161,7 @@ class GpSegStartCmd(Command):
         else:
             setverbose=""
             
-        cmdStr="%s $GPHOME/sbin/gpsegstart.py %s -D %s -C %s -V '%s'" % (SRC_GPPATH,setverbose,dirstr,colstr,gpversion)
+        cmdStr="$GPHOME/sbin/gpsegstart.py %s -D %s -C %s -V '%s'" % (setverbose,dirstr,colstr,gpversion)
         
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
@@ -186,8 +184,8 @@ class GpSegStopCmd(Command):
         else:
             setverbose=""
             
-        self.cmdStr="%s $GPHOME/sbin/gpsegstop.py %s -D %s -m %s -V '%s'"  %\
-                        (SRC_GPPATH,setverbose,dirstr,mode,version)
+        self.cmdStr="$GPHOME/sbin/gpsegstop.py %s -D %s -m %s -V '%s'"  %\
+                        (setverbose,dirstr,mode,version)
                         
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
@@ -197,7 +195,7 @@ class GpStandbyStart(Command):
     def __init__(self,name,datadir,port,ctxt=LOCAL, remoteHost=None):
         self.datadir=datadir
         logfile="%s/pg_log/startup.log" % datadir
-        cmdStr="%s exec $GPHOME/bin/gpsyncmaster -D %s -p %d -i  >> %s 2>&1 &" % (SRC_GPPATH,datadir,port,logfile)
+        cmdStr="exec $GPHOME/bin/gpsyncmaster -D %s -p %d -i  >> %s 2>&1 &" % (datadir,port,logfile)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
@@ -205,13 +203,19 @@ class GpStandbyStart(Command):
         cmd=GpStandbyStart(name,datadir,port,ctxt=REMOTE,remoteHost=host)
         cmd.run(validateAfter=True)
         return cmd
+    
+    def validate(self):
+        if self.results.rc != 0:
+            raise ExecutionError("non-zero rc: %d" % self.results.rc, self)
+        if len(self.results.stderr) != 0:
+            raise ExecutionError("messages on stderr: %s" % self.results.stderr, self)
         
 #-----------------------------------------------
 class GpInitSystem(Command):
     def __init__(self,name,configFile,hostsFile, ctxt=LOCAL, remoteHost=None):
         self.configFile=configFile
         self.hostsFile=hostsFile
-        self.cmdStr="%s $GPHOME/bin/gpinitsystem -a -c %s -h %s" % (SRC_GPPATH,configFile,hostsFile)
+        self.cmdStr="$GPHOME/bin/gpinitsystem -a -c %s -h %s" % (configFile,hostsFile)
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 
 #-----------------------------------------------
@@ -219,13 +223,13 @@ class GpDeleteSystem():
     def __init__(self,name,datadir, ctxt=LOCAL, remoteHost=None):
         self.datadir=datadir
         self.input="y\ny\n"
-        self.cmdStr="%s $GPHOME/bin/gpdeletesystem -d %s -f " % (SRC_GPPATH,datadir)
+        self.cmdStr="$GPHOME/bin/gpdeletesystem -d %s -f " % (datadir)
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost,stdin=self.input)
 
 #-----------------------------------------------
 class GpStart(Command):
     def __init__(self, name, masterOnly=False, restricted=False, verbose=False,ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstart -a" % (SRC_GPPATH)
+        self.cmdStr="$GPHOME/bin/gpstart -a" 
         if masterOnly:
             self.cmdStr += " -m"
         if restricted:
@@ -242,7 +246,7 @@ class GpStart(Command):
 #-----------------------------------------------
 class NewGpStart(Command):
     def __init__(self, name, masterOnly=False, restricted=False, verbose=False,nostandby=False,ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstart -a" % (SRC_GPPATH)
+        self.cmdStr="$GPHOME/bin/gpstart -a" 
         if masterOnly:
             self.cmdStr += " -m"
         if restricted:
@@ -261,7 +265,7 @@ class NewGpStart(Command):
 #-----------------------------------------------
 class NewGpStop(Command):
     def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False, verbose=False, ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstop -a" % (SRC_GPPATH)
+        self.cmdStr="$GPHOME/bin/gpstop -a"
         if masterOnly:
             self.cmdStr += " -m"
         if verbose:
@@ -282,7 +286,7 @@ class NewGpStop(Command):
 #-----------------------------------------------           
 class GpStop(Command):
     def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False, datadir=None,ctxt=LOCAL, remoteHost=None):
-        self.cmdStr="%s $GPHOME/bin/gpstop -a" % SRC_GPPATH
+        self.cmdStr="$GPHOME/bin/gpstop -a"
         if masterOnly:
             self.cmdStr += " -m"
         if restart:
@@ -307,7 +311,7 @@ class Psql(Command):
         env = ''
         if utilityMode:
             env = 'PGOPTIONS="-c gp_session_role=utility"'
-        cmdStr = '%s %s $GPHOME/bin/psql -c "%s" %s' % (SRC_GPPATH,env, query, database)
+        cmdStr = '%s $GPHOME/bin/psql -c "%s" %s' % (env, query, database)
         # Need to escape " for REMOTE or it'll interfere with ssh 
         if ctxt == REMOTE:
             cmdStr = cmdStr.replace('"', '\\"')
@@ -331,7 +335,7 @@ class ModifyPostgresqlConfSetting(Command):
 #-----------------------------------------------        
 class ConfigExpansionSeg(Command):
     def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None):
-        cmdStr = '%s $GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (SRC_GPPATH,dataDir, numSegs, contentId, dbId)                
+        cmdStr = '$GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (dataDir, numSegs, contentId, dbId)                
         if port:
             cmdStr += ' -p %s' % port
         if newSegment:
@@ -347,7 +351,7 @@ class ConfigExpansionSeg(Command):
 class GpVersion(Command):
     def __init__(self,name,gphome,ctxt=LOCAL,remoteHost=None):
         self.gphome=gphome
-        self.cmdStr="%s $GPHOME/bin/postgres --gp-version" % SRC_GPPATH
+        self.cmdStr="$GPHOME/bin/postgres --gp-version"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
     def get_version(self):
@@ -550,6 +554,11 @@ def start_standbymaster(host,datadir,port):
         raise Exception("Standby instance running. postmaster.pid and /tmp/.s.PGSQL.%s exists" % port)
     
     #TODO: any other cases to handle
+    
+    
+    #create a pg_log directory if necessary
+    CreateDirIfNecessary.remote('create standby logdir if needed', datadir + "/pg_log")
+    
         
     cmd=GpStandbyStart.remote('start standby master',host,datadir,port)    
     logger.debug("Starting standby: %s" % cmd )

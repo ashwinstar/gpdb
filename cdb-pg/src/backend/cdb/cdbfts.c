@@ -250,23 +250,21 @@ CdbShutdown(void)
 }
 
 static void
-QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax, 
+QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax,
 							  struct timeval *lastLogTimeVal)
 {
-	char msbuf[8];
 	pg_time_t stamp_time = (pg_time_t) lastLogTimeVal->tv_sec;
-	
+	pg_tz	   *tz;
+
 	/*
 	 * The following code is copied from log_line_prefix.
 	 */
-	pg_strftime(logTimeStr, logTimeStrMax,
-	/* leave room for microseconds... */
-			 "%Y-%m-%d %H:%M:%S        %Z",
-			 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
+	tz = log_timezone ? log_timezone : gmt_timezone;
 
-	/* 'paste' milliseconds into place... */
-	sprintf(msbuf, ".%06d", (int) (lastLogTimeVal->tv_usec));
-	strncpy(logTimeStr + 19, msbuf, 7);
+	pg_strftime(logTimeStr, logTimeStrMax,
+				"%Y-%m-%d %H:%M:%S %Z",
+				pg_localtime(&stamp_time, tz));
+
 }
 
 
@@ -508,7 +506,7 @@ QDMirroringUpdate(
 
 				if (state == QDMIRROR_STATE_DISABLED)
 				{
-					detailStateString = 
+					detailStateString =
 						QDMirroringDisabledReasonToString(disabledReason);
 				}
 				else
@@ -660,12 +658,12 @@ CheckForQDMirroringWork(void)
 	disabledReason = ftsQDMirrorInfo->disabledReason;
 	lastLogTimeVal = ftsQDMirrorInfo->lastLogTimeVal;
 	strcpy(errorMessage, ftsQDMirrorInfo->errorMessage);
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 
-	QDMirroringUpdate(updateMask, validFlag, 
+	QDMirroringUpdate(updateMask, validFlag,
 		              state, disabledReason, &lastLogTimeVal, errorMessage);
-	
+
 	LWLockRelease(ftsQDMirrorUpdateConfigLock);
 }
 
@@ -674,17 +672,17 @@ bool QDMirroringWriteCheck(void)
 	bool giveWarning = false;
 	QDMIRRORDisabledReason	disabledReason = QDMIRROR_DISABLEDREASON_NONE;
 	struct timeval lastLogTimeVal = {0, 0};
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_SYNCHRONIZED)
 	{
 		LWLockRelease(ftsQDMirrorLock);
 		return true;
 	}
-	
+
 	if (!QDMirroringNotSynchronizedWarningGiven &&
 		ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 	{
@@ -692,14 +690,14 @@ bool QDMirroringWriteCheck(void)
 		disabledReason = ftsQDMirrorInfo->disabledReason;
 		lastLogTimeVal = ftsQDMirrorInfo->lastLogTimeVal;
 	}
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 
 	if (giveWarning)
 	{
 		char logTimeStr[100];
-		
-		QDMirroringFormatTime(logTimeStr, sizeof(logTimeStr), 
+
+		QDMirroringFormatTime(logTimeStr, sizeof(logTimeStr),
 					          &lastLogTimeVal);
 
 		ereport(WARNING,
@@ -712,7 +710,7 @@ bool QDMirroringWriteCheck(void)
 
 		QDMirroringNotSynchronizedWarningGiven = true;
 	}
-	
+
 	return false;
 }
 
@@ -722,9 +720,9 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 	struct timeval lastLogTimeVal;
 
 	Assert(ftsQDMirrorInfo != NULL);
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	
+
 	/*
 	 * Don't overwrite.
 	 */
@@ -749,11 +747,11 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 							(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							 errmsg("Master mirroring synchronization lost"),
 							 errdetail(detail)));
-				GetLastLogTimeVal(&lastLogTimeVal);		// Get the log message time
-				// from the WARNING we just issued.
+
+				gettimeofday(&lastLogTimeVal, NULL);
 
 				QDMirroringNotSynchronizedWarningGiven = true;
-													
+
 				if (ftsQDMirrorInfo->valid)
 				{
 					/*
@@ -769,7 +767,7 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 				 * Not specified or too long error message string will end up NULL
 				 * in gp_master_mirroring table.
 				 */
-				if (errorMessage == NULL || 
+				if (errorMessage == NULL ||
 					strlen(errorMessage) + 1 >= sizeof(ftsQDMirrorInfo->errorMessage))
 					strcpy(ftsQDMirrorInfo->errorMessage, "");
 				else
@@ -778,12 +776,12 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 
 			case QDMIRROR_DISABLEDREASON_SHUTDOWN:
 				break;
-			
+
 			default:
 				elog(ERROR, "Unknown disabled reason %d", (int)disabledReason);
 		}
 	}
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 }
 
@@ -834,9 +832,9 @@ void
 enableQDMirroring(char *message, char *detail)
 {
 	Assert(ftsQDMirrorInfo != NULL);
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	
+
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_CATCHINGUP)
 	{
 		/*
@@ -845,15 +843,15 @@ enableQDMirroring(char *message, char *detail)
 		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 		{
 			LWLockRelease(ftsQDMirrorLock);
-			
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 				 "Master mirroring already disabled");
 			return;
 		}
 		else
 		{
 			QDMIRRORState state = ftsQDMirrorInfo->state;
-			
+
 			LWLockRelease(ftsQDMirrorLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
@@ -861,22 +859,25 @@ enableQDMirroring(char *message, char *detail)
 						    QDMirroringStateToString(state))));
 		}
 	}
-	
+
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_SYNCHRONIZED;
 	ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
 	ereport(NOTICE,
 			(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			 errmsg(message),
 			 errdetail(detail)));
-	GetLastLogTimeVal(&ftsQDMirrorInfo->lastLogTimeVal);		
+	GetLastLogTimeVal(&ftsQDMirrorInfo->lastLogTimeVal);
+	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
+
+
 	// Get the log message time
 	// from the NOTICE we just issued.
-	
+
 	if (!ftsQDMirrorInfo->valid)
 	{
 		ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_VALIDFLAG;
 	}
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 }
 
@@ -885,10 +886,10 @@ bool
 isQDMirroringEnabled(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_SYNCHRONIZED);
 	LWLockRelease(ftsQDMirrorLock);
@@ -900,10 +901,10 @@ bool
 isQDMirroringCatchingUp(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHINGUP);
 	LWLockRelease(ftsQDMirrorLock);
@@ -915,10 +916,10 @@ bool
 isQDMirroringNotConfigured(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_NOTCONFIGURED);
 	LWLockRelease(ftsQDMirrorLock);
@@ -930,10 +931,10 @@ bool
 isQDMirroringNotKnownYet(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return true;	// Assume.
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_NONE);
 	LWLockRelease(ftsQDMirrorLock);
@@ -945,10 +946,10 @@ bool
 isQDMirroringDisabled(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;	// Don't know yet.
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED);
 	LWLockRelease(ftsQDMirrorLock);
@@ -994,7 +995,7 @@ char *
 QDMirroringStateString(void)
 {
 	QDMIRRORState state;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return "don't know yet";
 
@@ -1041,7 +1042,7 @@ QDMirroringDisabledReasonString(void)
 {
 	QDMIRRORState state;
 	QDMIRRORDisabledReason disabledReason = QDMIRROR_DISABLEDREASON_NONE;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return NULL;
 
@@ -1125,7 +1126,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 			forceRescan = false; /* only force the rescan on the first call. */
         }
     }
-    
+
     if (!realFaultFound)
 	{
 		/* If we successfully tested the gang and didn't notice a
@@ -1172,8 +1173,8 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 		disconnectAndDestroyAllGangs();
 	}
 
-	/* 
-	 * KLUDGE: Do not error out if we are attempting a DTM protocol retry 
+	/*
+	 * KLUDGE: Do not error out if we are attempting a DTM protocol retry
 	 */
 	if (DistributedTransactionContext == DTX_CONTEXT_QD_RETRY_PHASE_2)
 	{
@@ -1387,7 +1388,7 @@ FtsEvaluateTransientState(void)
 		}
 	}
 
-	/* 
+	/*
 	 * If things have recently been marked read-write we may have
 	 * deferred recovery work that needs doing.
 	 */
@@ -1405,10 +1406,10 @@ bool
 isMirrorQDConfigurationChecked(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = ftsQDMirrorInfo->configurationChecked;
 	LWLockRelease(ftsQDMirrorLock);
@@ -1420,10 +1421,10 @@ bool
 isQDMirroringPendingCatchup(void)
 {
 	bool result;
-	
+
 	if (ftsQDMirrorInfo == NULL)
 		return false;
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_CATCHUPPENDING);
 	LWLockRelease(ftsQDMirrorLock);
@@ -1463,13 +1464,13 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	memcpy(ftsQDMirrorInfo->name, dbinfo->hostname, len);
 	ftsQDMirrorInfo->name[len] = 0;
 	ftsQDMirrorInfo->port = dbinfo->port;
-	
+
 	ftsQDMirrorInfo->dbid = dbinfo->dbid;
 	ftsQDMirrorInfo->valid = dbinfo->valid;
 
 	/*
 	 * Connect to our WAL Send server, but not under lock.
-	 * 
+	 *
 	 */
 	ftsQDMirrorInfo->configurationChecked = true;
 	if (Master_mirroring_administrator_disable)
@@ -1478,11 +1479,13 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 		disableQDMirroring_AdministratorDisabled();
 		return;
 	}
-	
+
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CONNECTINGWALSENDSERVER;
 	ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
 	elog(NOTICE, "Master mirroring synchronizing");
-	GetLastLogTimeVal(&ftsQDMirrorInfo->lastLogTimeVal);		
+
+	gettimeofday(&ftsQDMirrorInfo->lastLogTimeVal, NULL);
+
 											// Get the log message time
 											// from the NOTICE we just issued.
 	LWLockRelease(ftsQDMirrorLock);
@@ -1503,21 +1506,21 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 		{
 			LWLockRelease(ftsQDMirrorLock);
-			
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 				 "Master mirroring already disabled (connecting)");
 			return;
 		}
 		else
 		{
 			QDMIRRORState state = ftsQDMirrorInfo->state;
-			
+
 			LWLockRelease(ftsQDMirrorLock);
 			elog(ERROR,"Unexpected master mirroring state '%s'",
 				 QDMirroringStateToString(state));
 		}
 	}
-	
+
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
 	LWLockRelease(ftsQDMirrorLock);
 
@@ -1527,7 +1530,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 		disableQDMirroring_WalSendServerError("Error occurred during the PositionToEnd request to the WAL Send server");
 		return;
 	}
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_POSITIONINGTOEND)
 	{
@@ -1537,15 +1540,15 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 		{
 			LWLockRelease(ftsQDMirrorLock);
-			
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 				 "Master mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
 			return;
 		}
 		else
 		{
 			QDMIRRORState state = ftsQDMirrorInfo->state;
-			
+
 			LWLockRelease(ftsQDMirrorLock);
 			elog(ERROR,"Unexpected master mirror state '%s'",
 				 QDMirroringStateToString(state));
@@ -1562,7 +1565,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
  * are the same and a lock is held so those locations are momentarily stable.
  *
  * We queue the catchup request to the WAL Send server under the lock so the
- * server will get that request from the fifo queue before new log write 
+ * server will get that request from the fifo queue before new log write
  * requests (since we are enabling mirroring here).
  */
 void
@@ -1579,17 +1582,17 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 		LWLockRelease(ftsQDMirrorLock);
 		return;
 	}
-	
+
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP;
 	LWLockRelease(ftsQDMirrorLock);
-	
+
 	walSendServerOk = XLogQDMirrorCatchup(flushedLocation);
 	if (!walSendServerOk)
 	{
 		disableQDMirroring_WalSendServerError("Error occurred during the Catchup request to the WAL Send server");
 		return;
 	}
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
 	{
@@ -1599,28 +1602,28 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
 		{
 			LWLockRelease(ftsQDMirrorLock);
-			
-			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 				 "Master mirroring already disabled (request Catchup -- could not send to WAL Send server)");
 			return;
 		}
 		else
 		{
 			QDMIRRORState state = ftsQDMirrorInfo->state;
-			
+
 			LWLockRelease(ftsQDMirrorLock);
 			elog(ERROR,"Unexpected master mirror state '%s'",
 				 QDMirroringStateToString(state));
 		}
 	}
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
 		 "finished catching up master mirror");
 }
 
 /*
- * Save a new checkpoint location that the QD mirror can safely reply 
+ * Save a new checkpoint location that the QD mirror can safely reply
  * through and release any XLOG files freed up by reply.
  *
  * The location will be saved and sent to the QD mirror on the WAL send
@@ -1630,7 +1633,7 @@ void
 FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation)
 {
 	Assert(newCheckpointLocation != NULL);
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
@@ -1648,7 +1651,7 @@ FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation)
 
 	ftsQDMirrorInfo->haveNewCheckpointLocation = true;
 	ftsQDMirrorInfo->newCheckpointLocation = *newCheckpointLocation;
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 }
 
@@ -1665,13 +1668,13 @@ FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *ne
 
 	*haveNewCheckpointLocation = false;
 	memset(newCheckpointLocation, 0, sizeof(XLogRecPtr));
-	
+
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
 
 	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_SYNCHRONIZED)
 	{
 		LWLockRelease(ftsQDMirrorLock);
-		
+
 		*ready = false;
 		return;
 	}
@@ -1686,9 +1689,9 @@ FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *ne
 
 		ftsQDMirrorInfo->haveNewCheckpointLocation = false;
 	}
-	
+
 	LWLockRelease(ftsQDMirrorLock);
-	
+
 	*ready = true;
 }
 
@@ -1711,7 +1714,7 @@ FtsSetNoQDMirroring(void)
 
 	ftsQDMirrorInfo->configurationChecked = true;
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_NOTCONFIGURED;
-	
+
 	LWLockRelease(ftsQDMirrorLock);
 }
 
@@ -1726,8 +1729,8 @@ FtsDumpQDMirrorInfo(void)
 	}
 
 	elog(LOG, "Master mirror active name (%s:%d), port %d",
-		 ftsQDMirrorInfo->name, 
-		 (int)strlen(ftsQDMirrorInfo->name), 
+		 ftsQDMirrorInfo->name,
+		 (int)strlen(ftsQDMirrorInfo->name),
 		 ftsQDMirrorInfo->port);
 	return;
 }

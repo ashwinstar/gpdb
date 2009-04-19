@@ -203,7 +203,7 @@ class GpStop():
         if total_connections > 0 and self.mode=='smart':
             logger.warning("There are other connections to this instance, shutdown mode smart aborted")
             logger.warning("Either remove connections, or use 'gpstop -M fast' or 'gpstop -M immediate'")
-            logger.warning("See gptop -? for all options")
+            logger.warning("See gpstop -? for all options")
             raise GpStopError("Active connections. Aborting shutdown...")
         
         logger.info("Commencing Master instance shutdown with mode='%s'" % self.mode)
