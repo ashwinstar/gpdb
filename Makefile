@@ -340,27 +340,27 @@ copydocs :
 	fi
 
 mgmtcopy :
-	@#Copy the management utilities
-	@mkdir -p $(INSTLOC)/bin
-	@mkdir -p $(INSTLOC)/lib
-	@mkdir -p $(INSTLOC)/lib/python	
-	@mkdir -p $(INSTLOC)/sbin
-	@#Setup /lib/python contents
-	@cp -rp $(GPMGMT)/bin/gppylib $(INSTLOC)/lib/python
-	@cp -rp $(GPMGMT)/bin/ext/* $(INSTLOC)/lib/python
-	@cp -rp $(GPMGMT)/bin $(INSTLOC)
-	@cp -rp $(GPMGMT)/sbin/* $(INSTLOC)/sbin/.
-	@cp -rp $(GPCC)/build/bin $(INSTLOC)
-	@cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
-	@if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
-	@if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
-	@if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
+	#Copy the management utilities
+	mkdir -p $(INSTLOC)/bin
+	mkdir -p $(INSTLOC)/lib
+	mkdir -p $(INSTLOC)/lib/python	
+	mkdir -p $(INSTLOC)/sbin
+	#Setup /lib/python contents
+	cp -rp $(GPMGMT)/bin/gppylib $(INSTLOC)/lib/python
+	cp -rp $(GPMGMT)/bin/ext/* $(INSTLOC)/lib/python
+	cp -rp $(GPMGMT)/bin $(INSTLOC)
+	cp -rp $(GPMGMT)/sbin/* $(INSTLOC)/sbin/.
+	cp -rp $(GPCC)/build/bin $(INSTLOC)
+	cp $(GPPGDIR)/src/test/regress/*.pl $(INSTLOC)/bin
+	if [ ! -d ${INSTLOC}/docs ] ; then mkdir ${INSTLOC}/docs ; fi
+	if [ -d $(GPMGMT)/doc ]; then cp -rp $(GPMGMT)/doc $(INSTLOC)/docs/cli_help; fi
+	if [ -d $(GPMGMT)/demo/gpdemo ]; then mkdir $(INSTLOC)/demo; gtar --exclude \*CVS\* -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpdemo.tar.gz gpdemo; fi
 	if [ -d $(GPMGMT)/demo/gpmapreduce ]; then \
 	  mkdir -p $(INSTLOC)/demo; \
 	  gtar -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpmapreduce.tar.gz gpmapreduce; \
 	fi
-	@# Set version
-	@perl putversion \
+	# Set version
+	perl putversion \
 		$(INSTLOC)/bin/gpactivatestandby \
 		$(INSTLOC)/bin/gpaddmirrors \
 		$(INSTLOC)/bin/gpcheckos \
@@ -384,16 +384,16 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpstate \
 		$(INSTLOC)/bin/gpstop \
 		$(INSTLOC)/bin/gpsys1
-	@# Remove unwanted files.
-	@rm -rf $(INSTLOC)/bin/CVS
-	@rm -rf $(INSTLOC)/doc/CVS
-	@rm -rf $(INSTLOC)/bin/ext
-	@rm -rf $(INSTLOC)/bin/pythonSrc
-	@rm -rf $(INSTLOC)/bin/Makefile
-	@rm -rf $(INSTLOC)/bin/lib/CVS
-	@rm -rf $(INSTLOC)/bin/lib/.p4ignore
-	@rm -rf $(INSTLOC)/bin/src
-	@rm -rf $(INSTLOC)/bin/gppylib
+	# Remove unwanted files.
+	rm -rf $(INSTLOC)/bin/CVS
+	rm -rf $(INSTLOC)/doc/CVS
+	rm -rf $(INSTLOC)/bin/ext
+	rm -rf $(INSTLOC)/bin/pythonSrc
+	rm -rf $(INSTLOC)/bin/Makefile
+	rm -rf $(INSTLOC)/bin/lib/CVS
+	rm -rf $(INSTLOC)/bin/lib/.p4ignore
+	rm -rf $(INSTLOC)/bin/src
+	rm -rf $(INSTLOC)/bin/gppylib
 
 pkgplr:
 	@if [ ! -z "$(PLRDIR)" ]; then \
