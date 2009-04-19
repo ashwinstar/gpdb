@@ -488,11 +488,17 @@ endif
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi
 ifneq (false, ${AUTH})
-	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
-	mkdir -p $(INSTLOC)/include
-	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
 	mkdir -p $(INSTLOC)/etc
+	mkdir -p $(INSTLOC)/include
+ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
+	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
+	cp -rp $(CURDIR)/openssl/ssl/openssl.cnf $(INSTLOC)/etc/
+else
+	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
+	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
 	cp -rp $(BLD_THIRDPARTY_DIR)/ssl/openssl.cnf $(INSTLOC)/etc/
+endif
 endif
 
 greenplum_path:
