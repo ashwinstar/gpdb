@@ -35,6 +35,8 @@ from pygresql.pg import DB
 
 logger=gplog.get_default_logger()
 
+GPHOME=os.environ.get('GPHOME')
+SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
 
 
 class WorkerPool:
@@ -340,7 +342,7 @@ class RemoteExecutionContext(LocalExecutionContext):
     def execute(self,cmd):
         # Escape " for remote execution otherwise it interferes with ssh
         cmd.cmdStr = cmd.cmdStr.replace('"', '\\"')
-        cmd.cmdStr="ssh  %s \"%s\"" % (self.targetHost,cmd.cmdStr)
+        cmd.cmdStr="ssh  %s \"%s %s\"" % (self.targetHost,SRC_GPPATH,cmd.cmdStr)
         LocalExecutionContext.execute(self,cmd)
         pass
       
