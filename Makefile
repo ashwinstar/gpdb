@@ -140,10 +140,10 @@ CONFIG_LIBRARIES=$(BLD_THIRDPARTY_LIB_DIR)
 ifneq (false, ${AUTH})
 ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(CURDIR)/curl/bin/curl-config
-else
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
 CONFIG_INCLUDES+= $(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include
 CONFIG_LIBRARIES+= $(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib
+else
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
 endif
 endif
 
