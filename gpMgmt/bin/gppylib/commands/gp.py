@@ -557,7 +557,7 @@ def start_standbymaster(host,datadir,port):
     
     
     #create a pg_log directory if necessary
-    CreateDirIfNecessary.remote('create standby logdir if needed', datadir + "/pg_log")
+    CreateDirIfNecessary.remote('create standby logdir if needed', host, datadir + "/pg_log")
     
         
     cmd=GpStandbyStart.remote('start standby master',host,datadir,port)    
