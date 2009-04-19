@@ -423,6 +423,38 @@ RegisterSmgrInvalidation(RelFileNode rnode)
 							   rnode);
 }
 
+#ifdef USE_ASSERT_CHECKING
+static char *
+si_to_str(SharedInvalidationMessage *msg)
+{
+	StringInfoData buf;
+	int i;
+	char *s;
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "message id = %d", msg->id);
+	s = (char *)&(msg->cc);
+	for (i = 0; i < sizeof(SharedInvalCatcacheMsg); i++)
+	{
+		if (i == 0)
+			appendStringInfo(&buf, " CC:");
+
+		appendStringInfo(&buf, " %x", *(s + i));
+
+	}
+	s = (char *)&(msg->rc);
+	for (i = 0; i < sizeof(SharedInvalRelcacheMsg); i++)
+	{
+		if (i == 0)
+			appendStringInfo(&buf, " RC:");
+
+		appendStringInfo(&buf, " %x", *(s + i));
+
+	}
+	return buf.data;
+}
+#endif
+
 /*
  * LocalExecuteInvalidationMessage
  *
@@ -476,7 +508,12 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 		smgrclosenode(msg->sm.rnode);
 	}
 	else
+	{
+#ifdef USE_ASSERT_CHECKING
+		elog(NOTICE, "invalid SI message: %s", si_to_str(msg));
+#endif
 		elog(FATAL, "unrecognized SI message id: %d", msg->id);
+	}
 }
 
 /*
