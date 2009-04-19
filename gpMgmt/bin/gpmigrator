@@ -395,6 +395,9 @@ class GPUpgrade:
             parser.add_option('--internal-isupgrade', dest='upgrade',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--force-dumprestore', dest='forcedumprestore',
+                              action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
             
             if options.version:
@@ -459,6 +462,9 @@ class GPUpgrade:
                 self.upgrade = False
 
         if self.cmd == 'MASTER':
+            if options.forcedumprestore:
+                self.method = "dumprestore"
+
             today = date.today().strftime('%Y%m%d')
             if not os.path.isdir(self.logdir):
                 os.makedirs(self.logdir, 0700)
@@ -1406,12 +1412,13 @@ class GPUpgrade:
             self.upgrade = False    # Downgrade
             raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" % newversion[:3])
 
-        oldvers = ["3.1"]
-        if (self.oldversion[:3] in oldvers or
-            self.newversion[:3] in oldvers):
-            self.method = "dumprestore"
-        else:
-            self.method = "transform"
+        if not self.method:
+            oldvers = ["3.1"]
+            if (self.oldversion[:3] in oldvers or
+                self.newversion[:3] in oldvers):
+                self.method = "dumprestore"
+            else:
+                self.method = "transform"
 
         self.Log('DEBUG', 'Using %s method for migration' % self.method)
 
@@ -2189,7 +2196,7 @@ This issue must be resolved before upgrade can complete.
                 datadirs = [ self.root ]
             else:
                 self.Log('INFO', 'Building upgraded oid Mappings')
-                if u.oldversion[:3] == "3.1":
+                if u.method == "dumprestore":
                     type = 'target'
                     datadirs = [ os.path.join(self.workdir, UPGRADEDIR) ]
                 else:
