@@ -578,15 +578,23 @@ gccVersionCheck :
 	fi
 
 pygres: GPROOTDEP
-	rm -rf PyGreSQL-3.8.1
-	cvs co ThirdPartyTools/src/PyGreSQL-3.8.1 > pygres-3.8.1-co.log 2>&1
-	(cd ThirdPartyTools/src/PyGreSQL-3.8.1 && \
-	python setup.py build --build-lib=libs && \
-	if test -d $(DISTPATH)/lib ; then \
-	    cp -p libs/* $(DISTPATH)/lib ; \
-	else \
-	    cp -p libs/* $(DEVPATH)/lib ; \
-	fi)
+	#
+	# PyGreSQL-3.8.1 is no longer being built.  It was replaced by PyGreSQL-4.0 in the gpMgmt/bin directory but
+	# not removed from the build and both have been being delivered.  This finally brought down the OSX builds
+	# and, so, this 'pygres' target in the top-level Makefile has now been disabled.  It has not been removed
+	# because the current build script will still try to build it.  This is part of the logic that needs to be 
+	# moved into here, the Makefiles, so that developers have complete control over and visibility into the
+	# contents of our product packages.
+	#
+	#rm -rf PyGreSQL-3.8.1
+	#cvs co ThirdPartyTools/src/PyGreSQL-3.8.1 > pygres-3.8.1-co.log 2>&1
+	#(cd ThirdPartyTools/src/PyGreSQL-3.8.1 && \
+	#python setup.py build --build-lib=libs && \
+	#if test -d $(DISTPATH)/lib ; then \
+	#    cp -p libs/* $(DISTPATH)/lib ; \
+	#else \
+	#    cp -p libs/* $(DEVPATH)/lib ; \
+	#fi)
 
 authlibs: GPROOTDEP
 	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
