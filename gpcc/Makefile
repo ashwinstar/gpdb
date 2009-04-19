@@ -11,12 +11,12 @@ CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
-INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
-CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
-APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
-APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
+INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --includes)
+CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
+APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
+APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
 GP_VERSION=$$(< $(GPCC)/../VERSION)
-CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
+CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
 #all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma

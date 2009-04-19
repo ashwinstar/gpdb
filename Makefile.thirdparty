@@ -68,6 +68,8 @@ BLD_THIRDPARTY_LIBS=$(BLD_THIRDPARTY_LIBS_BASE) $(BLD_THIRDPARTY_LIBS_EXCEPTIONS
 # be passed as values for compiler -I flags and linker -L flags and may also be
 # provided to configure scripts.
 # --------------------------------------------------------------------------------
+BLD_THIRDPARTY_DIR=$(BLD_THIRDPARTY)/$(BLD_ARCH)
+BLD_THIRDPARTY_BIN_DIR=$(BLD_THIRDPARTY)/$(BLD_ARCH)/bin
 BLD_THIRDPARTY_INCLUDE_DIR=$(BLD_THIRDPARTY)/$(BLD_ARCH)/include
 BLD_THIRDPARTY_LIB_DIR=$(BLD_THIRDPARTY)/$(BLD_ARCH)/lib
 
@@ -117,9 +119,14 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	apr-util/1.2.12
 	bzip2/1.0.5
 	clapack/3.1.1
+	curl/7.17.1
+	json-c/0.6
+	krb5/1.6.2
 	libedit/2.11
 	libevent/1.4.6
 	lighttpd/1.4.19
+	openldap/2.3.38
+	openssl/0.9.8g
 	pcre/7.8
 	sigar/1.5.0.1
 	yaml/0.1.1

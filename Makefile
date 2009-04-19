@@ -137,10 +137,12 @@ endif
 CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
 CONFIG_LIBRARIES=$(BLD_THIRDPARTY_LIB_DIR)
 
-ifeq (true, ${AUTH})
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(CURDIR)/curl/bin/curl-config
+ifneq (false, ${AUTH})
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
+ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
 CONFIG_INCLUDES+= $(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include
 CONFIG_LIBRARIES+= $(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib
+endif
 endif
 
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
@@ -433,6 +435,7 @@ libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
 
 copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
+ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libk5crypto.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5support.so*,$(INSTLOC)/lib) ; fi
@@ -446,6 +449,7 @@ copylibs : thirdparty-dist
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.0.dylib $(INSTLOC)/lib ; fi
+endif
 	@if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
 	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
@@ -481,12 +485,12 @@ copylibs : thirdparty-dist
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi
-ifeq "$(AUTH)" "true"
-	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
+ifneq (false, ${AUTH})
+	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
 	mkdir -p $(INSTLOC)/include
-	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
+	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
 	mkdir -p $(INSTLOC)/etc
-	cp -rp $(CURDIR)/openssl/ssl/openssl.cnf $(INSTLOC)/etc/
+	cp -rp $(BLD_THIRDPARTY_DIR)/ssl/openssl.cnf $(INSTLOC)/etc/
 endif
 
 greenplum_path:
@@ -597,6 +601,7 @@ pygres: GPROOTDEP
 	#fi)
 
 authlibs: GPROOTDEP
+ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
 	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
 	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openssl-0.9.8g-co.log 2>&1
 	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
@@ -626,3 +631,6 @@ authlibs: GPROOTDEP
 	@echo "export DYLD_LIBRARY_PATH=$(CURDIR)/curl/lib:$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
 
 	@echo "To add the auth libs to your LD_LIBRARY_PATH or DYLD_LIBRARY_PATH source authlib_libpath_setup.sh"
+else
+	@echo "# authlibs are now provided in the ext/ directory on this platform" > authlibs_libpath_setup.sh
+endif
