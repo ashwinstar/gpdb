@@ -228,8 +228,9 @@ class GpStop():
         if self.gparray.standbyMaster:
             standby=self.gparray.standbyMaster
             
-            logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
-            cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',ctxt=base.REMOTE,remoteHost=standby.hostname)
+            #Whem MPP-5600 is fixed we can go back to just fast.
+            logger.info("Stopping gpsyncmaster on standby host %s mode=immediate" % standby.hostname)
+            cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
             cmd.run(validateAfter=True)
             
             if pg.DbStatus.local('checking status of standby master instance',standby.datadir,standby.hostname):
