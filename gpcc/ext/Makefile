@@ -3,6 +3,13 @@
 #   $DateTime: $
 #     $Author: $
 
+# protect this makefile's default target from targets in Makefile.global and Makefile.thirdparty
+default: all
+
+BLD_TOP=../..
+include $(BLD_TOP)/Makefile.global
+include $(BLD_TOP)/Makefile.thirdparty
+
 SHELL=bash
 CC=gcc
 GPCC=$(shell echo `pwd`/..)
@@ -14,6 +21,7 @@ JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8h
 
+$(warning "BLD_ARCH=$(BLD_ARCH)")
 ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
 all: mkdir mklibjson mklibevent mklibapr mklibapu mkdbgen
 else
