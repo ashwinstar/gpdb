@@ -137,14 +137,14 @@ endif
 CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
 CONFIG_LIBRARIES=$(BLD_THIRDPARTY_LIB_DIR)
 
-ifeq (true, ${AUTH})
 ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq (true, ${AUTH})
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(CURDIR)/curl/bin/curl-config
 CONFIG_INCLUDES+= $(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include
 CONFIG_LIBRARIES+= $(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib
+endif
 else
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
-endif
 endif
 
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
@@ -487,18 +487,18 @@ endif
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi
-ifeq (true, ${AUTH})
 	mkdir -p $(INSTLOC)/etc
 	mkdir -p $(INSTLOC)/include
 ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq (true, ${AUTH})
 	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
 	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
 	cp -rp $(CURDIR)/openssl/ssl/openssl.cnf $(INSTLOC)/etc/
+endif
 else
 	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
 	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
 	cp -rp $(BLD_THIRDPARTY_DIR)/ssl/openssl.cnf $(INSTLOC)/etc/
-endif
 endif
 
 greenplum_path:
