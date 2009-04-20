@@ -15,7 +15,7 @@ fi
 cat << EOF
 GPHOME=${GPHOME_PATH}
 # Replace with symlink path if it is present and correct
-if [ -L \${GPHOME}/../greenplum-db ]; then
+if [ -h \${GPHOME}/../greenplum-db ]; then
     GPHOME_BY_SYMLINK=\`(cd \${GPHOME}/../greenplum-db/ && pwd -P)\`
     if [ x"\${GPHOME_BY_SYMLINK}" = x"\${GPHOME}" ]; then
         GPHOME=\`(cd \${GPHOME}/../greenplum-db/ && pwd -L)\`/.

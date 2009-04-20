@@ -4,9 +4,6 @@ SHELL=/bin/bash
 # Determine the default target architecture on this machine, if override not set
 ifeq "$(BLD_ARCH)" ""
 BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
-ifeq "$(BLD_ARCH)" "osx105_x86"
-override BLD_ARCH=osx104_x86
-endif
 endif
 
 # get current working directory with symlinks maintained
@@ -27,38 +24,38 @@ endif
 # take over the path
 ifneq "$(BLD_PATH_FIXED)" "true"
 rhel4_x86_32_PATH_PREPEND=/opt/python-2.5.1/bin
-#sol10_x86_32_PATH_PREPEND=/opt/python32-2.5.1/bin
-#sol10_sparc_64_PATH_PREPEND=/opt/gcc-4.1.1/bin
-#sol10_sparc_32_PATH_PREPEND=/opt/python32-2.5.1/bin:/opt/gcc-4.1.1/bin
-#sol9_sparc_PATH_PREPEND=/usr/local/bin
-#sol9_sparc_64_PATH_PREPEND=/usr/local/bin
-#sol9_sparc_32_PATH_PREPEND=/usr/local/bin
-#sol8_sparc_PATH_PREPEND=/usr/local/bin
-#sol8_sparc_64_PATH_PREPEND=/usr/local/bin
-#sol8_sparc_32_PATH_PREPEND=/usr/local/bin
+sol10_x86_32_PATH_PREPEND=/opt/python32-2.5.1/bin
+sol10_sparc_64_PATH_PREPEND=/opt/gcc-4.1.1/bin
+sol10_sparc_32_PATH_PREPEND=/opt/python32-2.5.1/bin:/opt/gcc-4.1.1/bin
+sol9_sparc_PATH_PREPEND=/usr/local/bin
+sol9_sparc_64_PATH_PREPEND=/usr/local/bin
+sol9_sparc_32_PATH_PREPEND=/usr/local/bin
+sol8_sparc_PATH_PREPEND=/usr/local/bin
+sol8_sparc_64_PATH_PREPEND=/usr/local/bin
+sol8_sparc_32_PATH_PREPEND=/usr/local/bin
 BLD_PATH_PREPEND=$($(BLD_ARCH)_PATH_PREPEND)
 ifneq "$(BLD_PATH_PREPEND)" ""
 export PATH:=$(BLD_PATH_PREPEND):$(PATH)
 endif
 export BLD_PATH_FIXED=true
 endif
-$(warning PATH=$(PATH))
+#$(warning PATH=$(PATH))
 
 # take over the path
 ifneq "$(BLD_LD_LIBRARY_PATH_FIXED)" "true"
 rhel4_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python-2.5.1/lib:/opt/gcc-4.1.1/lib
-#sol10_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
-#sol10_sparc_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
+sol10_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
+sol10_sparc_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
 BLD_LD_LIBRARY_PATH_PREPEND=$($(BLD_ARCH)_LD_LIBRARY_PATH_PREPEND)
 ifneq "$(BLD_LD_LIBRARY_PATH_PREPEND)" ""
 export LD_LIBRARY_PATH:=$(BLD_LD_LIBRARY_PATH_PREPEND):$(LD_LIBRARY_PATH)
 endif
 export BLD_LD_LIBRARY_PATH_FIXED=true
 endif
-$(warning LD_LIBRARY_PATH=$(LD_LIBRARY_PATH))
+#$(warning LD_LIBRARY_PATH=$(LD_LIBRARY_PATH))
 
 # disable our gcc wrapper
-#export NO_M64=1
+export NO_M64=1
 
 # 32-bit/64-bit compiler/linker flag settings
 rhel4_x86_64_BLD_CFLAGS=-m64
@@ -90,7 +87,7 @@ sol10_sparc_BLD_BITS=64
 sol9_sparc_BLD_BITS=32
 sol8_sparc_BLD_BITS=32
 osx104_x86_BLD_BITS=32
-osx105_x86_BLD_BITS=64
+osx105_x86_BLD_BITS=32
 BLD_BITS=$($(BLD_ARCH)_BLD_BITS)
 endif
 
@@ -115,10 +112,25 @@ endif
 
 # ldd by platform
 LDD=ldd
-osx104_x86_LDD=otool -o
-osx104_x86_LDD=otool -o
+osx104_x86_LDD=otool -L
+osx105_x86_LDD=$(osx104_x86_LDD)
 ifneq "$($(BLD_ARCH)_LDD)" ""
 LDD=$($(BLD_ARCH)_LDD)
+endif
+
+LDD_FILTER_NULL=cat
+LDD_FILTER=$(GREP) '\=>' | awk '{print $$3}' | perl -p -i -e 's,\.so.*$$,\.so,'
+osx104_x86_LDD_FILTER=awk '{print $$1}' | perl -p -i -e 's,\.[0-9\.]*\.dylib$$,\.,'
+osx105_x86_LDD_FILTER=$(osx104_x86_LDD_FILTER)
+ifneq "$($(BLD_ARCH)_LDD_FILTER)" ""
+LDD_FILTER=$($(BLD_ARCH)_LDD_FILTER)
+endif
+
+LDD_LIB_SUFFIX=
+osx104_x86_LDD_LIB_SUFFIX=dylib
+osx105_x86_LDD_LIB_SUFFIX=$(osx104_x86_LDD_LIB_SUFFIX)
+ifneq "$($(BLD_ARCH)_LDD_LIB_SUFFIX)" ""
+LDD_LIB_SUFFIX=$($(BLD_ARCH)_LDD_LIB_SUFFIX)
 endif
 
 # tar by platform
