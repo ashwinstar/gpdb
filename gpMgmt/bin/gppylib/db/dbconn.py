@@ -93,7 +93,9 @@ class DbURL:
             self.pgdb = dbname
 
         if username is None:
-            self.pguser = os.environ.get('PGUSER', os.environ['USER'])             
+            self.pguser = os.environ.get('PGUSER', os.environ.get('USER'))             
+            if self.pguser is None:
+                raise Exception('$USER env variable is not set!')
         else:
             self.pguser = username
 
