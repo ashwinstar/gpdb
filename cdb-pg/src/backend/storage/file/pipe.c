@@ -1,6 +1,6 @@
 /* pipe.c */
 
-#include <postgres.h>
+#include "postgres.h"
 #include "c.h"
 #include "storage/pipe.h"
 

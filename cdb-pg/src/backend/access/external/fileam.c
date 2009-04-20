@@ -1029,7 +1029,6 @@ open_external_file(FileScanDesc scan)
 			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostip);
 		else
 			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
-			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);
 	}
 
 	if (MyProcPort)

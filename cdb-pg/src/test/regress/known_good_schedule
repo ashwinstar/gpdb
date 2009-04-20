@@ -118,7 +118,6 @@ test: olap_window_seq
 test: tpch500GB
 test: partition
 test: appendonly
-test: aocs
 test: gp_hashagg
 test: gpic
 test: gpic_bigtup
