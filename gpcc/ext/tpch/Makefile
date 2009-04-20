@@ -77,7 +77,11 @@ CC      = gcc -O3 -funroll-loops -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -W
 #                                  SGI, SUN, U2200, VMS
 # Current values for WORKLOAD are:  TPCH, TPCR
 DATABASE= POSTGRES
+ifeq "$(shell uname -s)" "SunOS"
+MACHINE = SUN
+else
 MACHINE = LINUX
+endif
 WORKLOAD = TPCH
 #
 # add -EDTERABYTE if orderkey will execeed 32 bits (SF >= 300)
