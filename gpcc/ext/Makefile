@@ -54,7 +54,7 @@ mklibapu: mkdir lib/libaprutil-1.a
 lib/libjson.a:
 	@echo     -- json
 	if ! [ -a $(JSON)/Makefile ]; then \
-		gzip -d -c $(JSON).tar.gz | tar xvf - ;\
+		$(TAR) xzf $(JSON).tar.gz;\
 		(cd $(JSON) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" \
 		./configure --enable-shared=no \
 			$(CONFFLAGS) \
@@ -70,7 +70,7 @@ lib/libjson.a:
 lib/libevent.a:
 	@echo     -- libevent
 	if ! [ -a $(LIBEVENT)/Makefile ]; then \
-		gzip -d -c $(LIBEVENT).tar.gz | tar xvf - ;\
+		$(TAR) xzf $(LIBEVENT).tar.gz;\
 		(cd $(LIBEVENT) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" ./configure --enable-shared=no \
 			$(CONFFLAGS) \
 			LDFLAGS=$(LDFLAGS) \
@@ -84,7 +84,7 @@ lib/libevent.a:
 lib/libssl.a:
 	@echo     -- openssl
 	if ! [ -a $(OPENSSL)/Makefile ]; then \
-		gzip -d -c $(OPENSSL).tar.gz | tar xvf - ;\
+		$(TAR) xzf $(OPENSSL).tar.gz;\
 		(cd $(OPENSSL) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" $(CONFIG_OPENSSL) no-shared threads --prefix=$(GPCC)/ext  \
 			CPPFLAGS="$(CPPFLAGS)" $(OSFLAGS)) \
 				;\
@@ -94,7 +94,7 @@ lib/libssl.a:
 lib/libaprutil-1.a: lib/libapr-1.a
 	@echo     -- apu
 	if ! [ -a $(APU)/Makefile ]; then \
-		gzip -d -c $(APU).tar.gz | tar xvf - ;\
+		$(TAR) xzf $(APU).tar.gz;\
 		(cd $(APU) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" ./configure --enable-shared=no \
 			$(CONFFLAGS) \
 			LDFLAGS=$(LDFLAGS) \
@@ -110,7 +110,7 @@ lib/libaprutil-1.a: lib/libapr-1.a
 lib/libapr-1.a:
 	@echo     -- apr
 	if ! [ -a $(APR)/Makefile ]; then \
-		gzip -d -c $(APR).tar.gz | tar xvf - ;\
+		$(TAR) xzf $(APR).tar.gz;\
 		patch $(APR)/configure.in < apr1.patch; \
 		cd $(APR) ; \
 		autoconf ; \

@@ -3,10 +3,18 @@
 # Copyright Greenplum 2006, 2007
 ################################################################################
 
+# protect the default target for this file from the targets in Makefile.global
+# and Makefile.thirdparty
+default: all
+
+BLD_TOP=../..
+include $(BLD_TOP)/Makefile.global
+include $(BLD_TOP)/Makefile.thirdparty
+
 #
 # SOURCE DIRECTORIES
 #
-SRC=`pwd`
+SRC=$(CURDIR)
 PYLIB_SRC=$(SRC)/pythonSrc
 
 
@@ -26,11 +34,11 @@ all: paramiko pycrypto pygresql stream netperf
 NETPERF_DIR=netperf-2.4.3
 netperf:
 	@echo "--- netperf"
-	@if [ ! -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
+	if [ ! -f $(SRC)/src/$(NETPERF_DIR)/Makefile ]; then \
 		(cd $(SRC)/src && gzip -d -c $(NETPERF_DIR).tar.gz | tar xvf - && cd $(NETPERF_DIR) && ./configure) \
 	fi
-	@(cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE))
-	@cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
+	cd $(SRC)/src/$(NETPERF_DIR) && $(MAKE)
+	cp $(SRC)/src/$(NETPERF_DIR)/src/netperf $(SRC)/src/$(NETPERF_DIR)/src/netserver lib/
 
 #
 #  STREAM
@@ -48,12 +56,9 @@ PYGRESQL_VERSION=4.0
 PYGRESQL_DIR=PyGreSQL-$(PYGRESQL_VERSION)
 pygresql:
 	@echo "--- PyGreSQL"
-	@if [ `uname -s` = 'SunOS' ] ; then \
-		(cd $(PYLIB_SRC)/ && gtar -xzf $(PYGRESQL_DIR).tar.gz)\
-	else \
-		(cd $(PYLIB_SRC)/ && tar -xzf $(PYGRESQL_DIR).tar.gz);\
-	fi
-	. $(INSTLOC)/greenplum_path.sh && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYGRESQL_DIR).tar.gz
+	cd $(INSTLOC)/ && . greenplum_path.sh \
+	  && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build
 	mkdir -p $(PYLIB_DIR)/pygresql
 	cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/* $(PYLIB_DIR)/pygresql
 	touch $(PYLIB_DIR)/__init__.py
@@ -65,13 +70,9 @@ PARAMIKO_VERSION=1.6.4.1
 PARAMIKO_DIR=paramiko-$(PARAMIKO_VERSION)
 paramiko:
 	@echo "--- paramiko"
-	@if [ `uname -s` = 'SunOS' ] ; then \
-		(cd $(PYLIB_SRC)/ && gtar -xzf $(PARAMIKO_DIR).tgz)\
-	else  \
-		(cd $(PYLIB_SRC)/ && tar -xzf $(PARAMIKO_DIR).tgz);\
-	fi
-	@(cd $(PYLIB_SRC)/$(PARAMIKO_DIR) && python setup.py build > /dev/null 2>&1 )
-	@cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(PYLIB_DIR)/
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PARAMIKO_DIR).tgz
+	cd $(PYLIB_SRC)/$(PARAMIKO_DIR)/ && python setup.py build
+	cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(PYLIB_DIR)/
 
 
 #
@@ -82,13 +83,9 @@ PYCRYPTO_DIR=pycrypto-$(PYCRYPTO_VERSION)
 
 pycrypto:
 	@echo "--- pycrypto"
-	@if [ `uname -s` = 'SunOS' ] ; then \
-		(cd $(PYLIB_SRC)/ && gtar -xzf $(PYCRYPTO_DIR).tar.gz)\
-	else  \
-		(cd $(PYLIB_SRC)/; tar -xzf $(PYCRYPTO_DIR).tar.gz)\
-	fi
-	@(cd $(PYLIB_SRC)/$(PYCRYPTO_DIR) && python setup.py build > /dev/null 2>&1 )
-	@cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(PYLIB_DIR)
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYCRYPTO_DIR).tar.gz
+	cd $(PYLIB_SRC)/$(PYCRYPTO_DIR)/ && python setup.py build
+	cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(PYLIB_DIR)
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \
