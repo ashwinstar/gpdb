@@ -314,7 +314,7 @@ class LocalExecutionContext(ExecutionContext):
                                        executable='/bin/bash',
                                        stdin=subprocess.PIPE,
                                        stderr=subprocess.PIPE, 
-                                       stdout=subprocess.PIPE, close_fds=False)
+                                       stdout=subprocess.PIPE, close_fds=True)
         
         (rc,stdout_value,stderr_value)=self.proc.communicate2(input=self.stdin)
         self.completed=True
