@@ -46,8 +46,6 @@ and create one.
 Remaining TODO items:
 ====================
 """,
-"""* ability to specify storage options. (John)
-    - verify with jeff that alter table ... set distribution will support.""",
 
 """* handle case of dropped tables.
     - some tables may be dropped by the time expansion gets
@@ -1562,17 +1560,22 @@ class ExpandTable():
         
     def expand(self,table_conn, cancel_flag):
         foo = self.distrib_policy_names.strip()
+        new_storage_options = ''
+        if self.storage_options:
+            new_storage_options = ',' + self.storage_options
         
         (schema_name, table_name) = self.fq_name.split('.')
         
         logger.info("Distribution policy for table %s is '%s' " % (self.fq_name,foo))
+        logger.info("Storage options for table %s is %s" % (self.fq_name, self.storage_options))
+        
         if foo == "" or foo == "None" or foo is None:
-            sql = 'ALTER TABLE ONLY "%s"."%s" SET WITH(REORGANIZE=TRUE) DISTRIBUTED RANDOMLY' % (schema_name, table_name)
+            sql = 'ALTER TABLE ONLY "%s"."%s" SET WITH(REORGANIZE=TRUE%s) DISTRIBUTED RANDOMLY' % (schema_name, table_name,new_storage_options)
         else:
             dist_cols = foo.split(',')
             dist_cols = ['"%s"' % x.strip() for x in dist_cols]
             dist_cols = ','.join(dist_cols)
-            sql = 'ALTER TABLE ONLY "%s"."%s" SET WITH(REORGANIZE=TRUE) DISTRIBUTED BY (%s)' % (schema_name, table_name, dist_cols)
+            sql = 'ALTER TABLE ONLY "%s"."%s" SET WITH(REORGANIZE=TRUE%s) DISTRIBUTED BY (%s)' % (schema_name, table_name, new_storage_options, dist_cols)
         
         logger.info('Expanding %s.%s' % (self.dbname, self.fq_name))  
         logger.debug("Expand SQL: %s" % sql)  
