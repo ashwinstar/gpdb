@@ -1,5 +1,6 @@
 SHELL=/bin/bash
-CC=gcc
+
+default: all
 
 BLD_TOP=$(shell echo `pwd`/../../../)
 include $(BLD_TOP)/Makefile.global
@@ -9,6 +10,7 @@ EXT_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/
 LIBPQ_DIR=$(BLD_TOP)/cdb-pg/src/interfaces/libpq/
 
 osx105_x86_COPT=-Wl,-search_paths_first
+CC=$(strip gcc $(BLD_CFLAGS))
 COPT=$($(BLD_ARCH)_COPT)
 OPT=-g -O3 -Wall
 ifneq ($(CUSTOM_COPT),)
@@ -36,6 +38,8 @@ ifeq (sol,$(findstring sol,$(BLD_ARCH)))
 endif
 
 GPSMON_LIBS+= -lm -lsigar
+
+all: gpsmon gpmmon
 
 gpsmon: $(GPSMON_OBJS)
 	$(CC) -o gpsmon $(COPT) $(GPSMON_OBJS) $(LIBS) $(GPSMON_LIBS)

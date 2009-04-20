@@ -8,17 +8,18 @@ default: all
 
 BLD_TOP=../..
 include $(BLD_TOP)/Makefile.global
+include $(BLD_TOP)/Makefile.thirdparty
 
 # NO_M64 set in Makefile.global turns off default to 64-bit
 # here, select bitness we desire this build for gcc and ld
 export CC=$(strip gcc $(BLD_CFLAGS))
 export LDFLAGS=$(BLD_CFLAGS)
-include $(BLD_TOP)/Makefile.thirdparty
 
 SHELL=bash
 GPCC=$(shell echo `pwd`/..)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 OPT=-g -O3
+
 ifeq "$(BLD_ARCH)" "win32"
 APR=apr-1.3.3
 APU=apr-util-1.3.4
@@ -26,16 +27,19 @@ else
 APR=apr-1.2.12
 APU=apr-util-1.2.12
 endif
+
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8h
-MINGWRANLIB=/usr/local/mingw32/mingw32/bin/ranlib
 
 ifeq "$(BLD_ARCH)" "win32"
+MINGWRANLIB=/usr/local/mingw32/mingw32/bin/ranlib
 CONFFLAGS=--build=x86_64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib
 CC=/usr/local/mingw32/bin/mingw32-gcc
 LDFLAGS=-L/usr/local/mingw32/mingw32/lib
 CPPFLAGS=-I/usr/local/mingw32/mingw32/include
+endif
+
 ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 suse10_x86_64)" "no-match"
 # continue to use this ext/ directory on the remaining platforms
 all: mkdir mklibjson mklibevent mklibapr mklibapu mkdbgen

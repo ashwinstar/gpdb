@@ -58,7 +58,7 @@ pygresql:
 	@echo "--- PyGreSQL"
 	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYGRESQL_DIR).tar.gz
 	cd $(INSTLOC)/ && . greenplum_path.sh \
-	  && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && python setup.py build
+	  && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && CC="$(strip gcc $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
 	mkdir -p $(PYLIB_DIR)/pygresql
 	cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/* $(PYLIB_DIR)/pygresql
 	touch $(PYLIB_DIR)/__init__.py
@@ -84,7 +84,7 @@ PYCRYPTO_DIR=pycrypto-$(PYCRYPTO_VERSION)
 pycrypto:
 	@echo "--- pycrypto"
 	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYCRYPTO_DIR).tar.gz
-	cd $(PYLIB_SRC)/$(PYCRYPTO_DIR)/ && python setup.py build
+	cd $(PYLIB_SRC)/$(PYCRYPTO_DIR)/ && CC="$(strip gcc $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
 	cp -r $(PYLIB_SRC)/$(PYCRYPTO_DIR)/build/lib.*/Crypto $(PYLIB_DIR)
 
 solarisTest:

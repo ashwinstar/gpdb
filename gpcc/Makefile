@@ -69,8 +69,6 @@ mkgpfdist: mkext
 	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
 	mkdir -p src/gpfdist/include
 	cd src/gpfdist/ && \
-	  ln -sf ../../../cdb-pg/src/include/fstream fstream
-	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS_GPFDIST) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist \
 	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 	mkdir -p build/bin
