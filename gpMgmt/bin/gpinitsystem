@@ -1324,8 +1324,13 @@ STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the Greenplum instance in production mode" 1
 		if [ -f $GPSTOP ]; then
+				if [ $DEBUG_LEVEL -eq 0 ]
+				    GPSTOP_OPTS=' -v '
+				else
+				    GPSTOP_OPTS=''
+				fi
 				export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
-				$GPSTOP -a -i -d $MASTER_DATA_DIRECTORY
+				$GPSTOP -a -i -d $MASTER_DATA_DIRECTORY $GPSTOP_OPTS
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new Greenplum instance" ;;
@@ -1364,8 +1369,13 @@ CREATE_STANDBY_QD () {
 START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $GPSTART ]; then
+			    if [ $DEBUG_LEVEL -eq 0 ]
+				    GPSTART_OPTS=' -v '
+				else
+				    GPSTART_OPTS=''
+				fi
 				export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
-				$GPSTART -a -d $MASTER_DATA_DIRECTORY
+				$GPSTART -a -d $MASTER_DATA_DIRECTORY $GPSTART_OPTS
 				ERROR_CHK $? "start new Greenplum instance" 2
 		else
 				ERROR_EXIT "[FATAL]:-$GPSTART not located" 2

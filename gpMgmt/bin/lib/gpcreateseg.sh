@@ -154,11 +154,12 @@ PROCESS_QE () {
 		
 		
 		LOG_MSG "[INFO][$INST_COUNT]:-Starting Functioning instance on segment ${GP_HOSTNAME}"
-		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" start >/dev/null 2>&1"
+		$TRUSTED_SHELL ${GP_HOSTNAME} "$EXPORT_LIB_PATH;export PGPORT=${GP_PORT}; $PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o \"-i -p ${GP_PORT}\" start >> $LOG_FILE 2>&1"
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 			BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
 			BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
+			$TRUSTED_SHELL ${GP_HOSTNAME} "$CAT ${GP_DIR}/pg_log/startup.log "|$TEE -a $LOG_FILE
 			PARA_EXIT $RETVAL "Start segment Mirror instance database"
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
