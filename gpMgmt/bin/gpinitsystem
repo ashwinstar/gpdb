@@ -1324,7 +1324,7 @@ STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the Greenplum instance in production mode" 1
 		if [ -f $GPSTOP ]; then
-				if [ $DEBUG_LEVEL -eq 0 ]
+				if [ $DEBUG_LEVEL -eq 1 ]; then
 				    GPSTOP_OPTS=' -v '
 				else
 				    GPSTOP_OPTS=''
@@ -1369,7 +1369,7 @@ CREATE_STANDBY_QD () {
 START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $GPSTART ]; then
-			    if [ $DEBUG_LEVEL -eq 0 ]
+			    if [ $DEBUG_LEVEL -eq 1 ]; then
 				    GPSTART_OPTS=' -v '
 				else
 				    GPSTART_OPTS=''
