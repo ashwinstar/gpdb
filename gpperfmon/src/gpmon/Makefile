@@ -2,12 +2,14 @@ SHELL=/bin/bash
 CC=gcc
 
 BLD_TOP=$(shell echo `pwd`/../../../)
+include $(BLD_TOP)/Makefile.global
 include $(BLD_TOP)/Makefile.thirdparty
 
 EXT_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/
 LIBPQ_DIR=$(BLD_TOP)/cdb-pg/src/interfaces/libpq/
 
-COPT=
+osx105_x86_COPT=-Wl,-search_paths_first
+COPT=$($(BLD_ARCH)_COPT)
 OPT=-g -O3 -Wall
 ifneq ($(CUSTOM_COPT),)
 	COPT=$(CUSTOM_COPT)
@@ -25,7 +27,7 @@ GPMMON_LIBS=-L$(LIBPQ_DIR) -lpq -lm
 CFLAGS=$(OPT) $$($(EXT_DIR)/bin/apr-1-config --cflags)
 CPPFLAGS=$$($(EXT_DIR)/bin/apr-1-config --cppflags) -DGPPERFMON_VERSION="$(GPPERFMON_VERSION)"
 
-ifeq (osx104_x86, $(BLD_ARCH))
+ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
 	GPSMON_LIBS=-framework CoreServices -framework IOKit
 endif
 

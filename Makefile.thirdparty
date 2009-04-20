@@ -15,9 +15,6 @@ BLD_THIRDPARTY:=$(BLD_TOP)/ext
 ifeq "$(BLD_ARCH)" ""
 BLD_ARCH=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 endif
-ifeq "$(BLD_ARCH)" "osx105_x86"
-override BLD_ARCH=osx104_x86
-endif
 
 rhel4_x86_64_BLD_BITS=64
 rhel4_x86_32_BLD_BITS=32
@@ -106,6 +103,10 @@ endif
 # them out of the BASE library set for you
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE
+	curl/7.17.1
+	krb5/1.6.2
+	openldap/2.3.38
+	openssl/0.9.8g
 endef
 BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE))
 
