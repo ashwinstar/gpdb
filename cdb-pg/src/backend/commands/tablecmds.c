@@ -11473,7 +11473,7 @@ rel_get_table_oid(Relation rel)
 		ScanKeyData key[2];
 		HeapTuple tup;
 		SysScanDesc scan;
-		Relation depRel = heap_open(DependRelationId, ShareLock);
+		Relation depRel = heap_open(DependRelationId, AccessShareLock);
 
 		ScanKeyInit(&key[0],
 					Anum_pg_depend_classid,
@@ -11509,7 +11509,7 @@ rel_get_table_oid(Relation rel)
 			}
 		}
 		systable_endscan(scan);
-		heap_close(depRel, ShareLock);
+		heap_close(depRel, AccessShareLock);
 	}
 	return toid;
 }
