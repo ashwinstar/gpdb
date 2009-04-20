@@ -3,6 +3,12 @@ subdir = src/bin/gpmapreduce
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+BLD_OS := $(shell uname -s)
+BLD_OS_VER := $(shell uname -r)
+ifneq "$(findstring $(BLD_OS)-$(BLD_OS_VER),SunOS-5.8 SunOS-5.9)" ""
+BLD_CPPFLAGS_SOLARIS_OLD_VERSIONS=-D_REENTRANT
+endif
+
 ifdef srcdir
 INCDIR= $(srcdir)/include
 SRCDIR= $(srcdir)/src
@@ -11,11 +17,15 @@ INCDIR= include
 SRCDIR= src
 endif
 
-override CPPFLAGS += -DFRONTEND -D_REENTRANT -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir)
+override CPPFLAGS += $(BLD_CPPFLAGS_SOLARIS_OLD_VERSIONS) -DFRONTEND -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir)
 override LDFLAGS  += -lyaml
 
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
+
+ifneq "$(findstring $(BLD_OS)-$(BLD_OS_VER),SunOS-5.8 SunOS-5.9)" ""
+FILES	+= getopt.o getopt1.o
+endif
 
 OBJS      = $(addprefix $(SRCDIR)/, $(FILES))
 GENOBJS   = $(addprefix $(SRCDIR)/, $(GENFILES))

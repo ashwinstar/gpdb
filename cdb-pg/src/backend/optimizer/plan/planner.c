@@ -2028,8 +2028,8 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 					   double dNumGroups, AggClauseCounts *agg_counts)
 {
 	int			numGroupCols = num_distcols_in_grouplist(root->parse->groupClause);
-	double		cheapest_path_rows;
-	int			cheapest_path_width;
+	double		cheapest_path_rows = 1; /* default */
+	int			cheapest_path_width = 100; /* default */
 	Size		hashentrysize;
 	List	   *current_pathkeys;
 	Path		hashed_p;

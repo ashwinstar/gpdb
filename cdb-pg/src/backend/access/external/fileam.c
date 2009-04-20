@@ -1007,6 +1007,7 @@ open_external_file(FileScanDesc scan)
 			scan->fs_pstate->escape ? 255&*scan->fs_pstate->escape : 0,
 			scan->fs_pstate->quote ? 255&*scan->fs_pstate->quote : 0,
 			scan->fs_pstate->header_line ? 1 : 0);
+	
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
@@ -1018,13 +1019,16 @@ open_external_file(FileScanDesc scan)
 	{
 		CdbComponentDatabases *cdb_component_dbs = getCdbComponentDatabases();
 		CdbComponentDatabaseInfo *qdinfo = &cdb_component_dbs->entry_db_info[0];
+		
 
 		pg_itoa(qdinfo->port, result);
 		extvar.GP_MASTER_PORT = result;
+		
 
 		if (qdinfo->hostip != NULL)
 			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostip);
 		else
+			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);		
 			extvar.GP_MASTER_HOST = pstrdup(qdinfo->hostname);
 	}
 

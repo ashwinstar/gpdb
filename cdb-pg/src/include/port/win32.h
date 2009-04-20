@@ -34,10 +34,6 @@
 #endif
 #undef near
 
-#pragma warning(disable:4142) // Benign redefinition of type
-
-#pragma warning(disable:4273) // Inconsistent dll linkage
-
 /* Must be here to avoid conflicting with prototype in windows.h */
 #define mkdir(a,b)	mkdir(a)
 
@@ -335,6 +331,20 @@ extern int	pgwin32_is_service(void);
 /* in port/win32error.c */
 extern void _dosmaperr(unsigned long);
 
+#ifndef			BIG_ENDIAN
+#define			BIG_ENDIAN		4321
+#endif
+#ifndef			LITTLE_ENDIAN
+#define			LITTLE_ENDIAN	1234
+#endif
+#ifndef			PDP_ENDIAN
+#define			PDP_ENDIAN		3412
+#endif
+
+#ifndef BYTE_ORDER
+#define BYTE_ORDER LITTLE_ENDIAN
+#endif
+
 /* in port/win32env.c */
 extern int pgwin32_putenv(const char *);
 extern void pgwin32_unsetenv(const char *);
@@ -376,20 +386,6 @@ typedef unsigned short mode_t;
 #define isinf(x) ((_fpclass(x) == _FPCLASS_PINF) || (_fpclass(x) == _FPCLASS_NINF))
 #define isnan(x) _isnan(x)
 #define finite(x) _finite(x)
-
-#ifndef			BIG_ENDIAN
-#define			BIG_ENDIAN		4321
-#endif
-#ifndef			LITTLE_ENDIAN
-#define			LITTLE_ENDIAN	1234
-#endif
-#ifndef			PDP_ENDIAN
-#define			PDP_ENDIAN		3412
-#endif
-
-#ifndef BYTE_ORDER
-#define BYTE_ORDER LITTLE_ENDIAN
-#endif
 
 /* Pulled from Makefile.port in mingw */
 #define DLSUFFIX ".dll"

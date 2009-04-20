@@ -330,8 +330,8 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 {
 	Relation		reln = scan->aos_rd;
 	MemoryContext	oldcontext;
-	int				segno;
-	int64			eof;
+	int				segno = -1;
+	int64			eof = 0;
 	bool			finished_all_files = true; /* assume */
 	
 	Assert(scan->aos_need_new_segfile);   /* only call me when last segfile completed */

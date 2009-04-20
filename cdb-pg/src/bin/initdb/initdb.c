@@ -313,21 +313,21 @@ add_assignment(char **lines, const char *varname, const char *fmt, ...)
         char   *cp = lines[isrc];
         bool    comment = false;
 
-        while (isspace(*cp))
+        while (isspace((unsigned char)*cp))
             cp++;
 
         if (*cp == '#')
         {
             cp++;
             comment = true;
-            while (isspace(*cp))
+            while (isspace((unsigned char)*cp))
                 cp++;
         }
 
         if (0 != strncmp(cp, varname, varnamelen))
             continue;
         cp += varnamelen;
-        while (isspace(*cp))
+        while (isspace((unsigned char)*cp))
             cp++;
         if (*cp != '=')
             continue;

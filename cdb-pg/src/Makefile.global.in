@@ -169,6 +169,7 @@ enable_nls	= @enable_nls@
 enable_debug	= @enable_debug@
 enable_dtrace	= @enable_dtrace@
 enable_thread_safety	= @enable_thread_safety@
+enable_largefile	= @enable_largefile@
 
 python_includespec	= @python_includespec@
 python_libdir		= @python_libdir@
@@ -218,9 +219,11 @@ GCC = @GCC@
 SUN_STUDIO_CC = @SUN_STUDIO_CC@
 CFLAGS = @CFLAGS@
 
+ifneq ($(findstring mingw32,$(CC)),mingw32)
 ifeq ($(GCC), yes)
 CFLAGS += -Werror
 endif # GCC
+endif
 
 # Kind-of compilers
 

@@ -18,7 +18,7 @@ PROGRAMS = createdb createlang createuser dropdb droplang dropuser clusterdb vac
 
 override CPPFLAGS := -DFRONTEND -I$(top_srcdir)/src/bin/pg_dump -I$(top_srcdir)/src/bin/psql -I$(libpq_srcdir) $(CPPFLAGS)
 
-all: submake-libpq submake-backend $(PROGRAMS)
+all: submake-libpq submake-libpgport submake-backend $(PROGRAMS)
 
 %: %.o $(WIN32RES)
 	$(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)

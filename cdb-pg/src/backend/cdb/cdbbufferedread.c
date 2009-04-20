@@ -9,9 +9,8 @@
  *
  *-------------------------------------------------------------------------
  */
-#include <unistd.h>				/* for read() */
-
 #include "cdb/cdbbufferedread.h"
+#include <unistd.h>				/* for read() */
 
 static void BufferedReadIo(
     BufferedRead        *bufferedRead);

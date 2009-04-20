@@ -1503,6 +1503,10 @@ fi
 
 if test $ac_cv_func_fseeko = yes; then
 AC_SYS_LARGEFILE
+AC_SUBST(enable_largefile)
+else
+enable_largefile=no
+AC_SUBST(enable_largefile)
 fi
 
 # Check for largefile support (must be after AC_SYS_LARGEFILE)

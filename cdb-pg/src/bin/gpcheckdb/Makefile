@@ -11,6 +11,7 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -DFRONTEND -I$(libpq_srcdir) -g $(CPPFLAGS) 
 
+CXX += $(strip $(findstring -m64,$(CC)) $(findstring -m32,$(CC)))
 
 OBJS= gpcheckdb.o
 

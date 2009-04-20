@@ -2,18 +2,37 @@
 default: all
 
 BLD_TOP=$(shell dirname `pwd`)
+include $(BLD_TOP)/Makefile.global
 include $(BLD_TOP)/Makefile.thirdparty
 
-SHELL=bash
-CC=gcc
+# NO_M64 set in Makefile.global turns off default to 64-bit
+# here, select bitness we desire this build for gcc and ld
+CC=$(strip gcc $(BLD_CFLAGS))
+
 GPCC=$(CURDIR)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include
+GPFDISTFILES=fstream.c gfile.c gpfdist.c
+
+ifeq "$(BLDWIN)" "yes"
+override CC=$(strip /usr/local/mingw32/bin/mingw32-gcc $(BLD_CFLAGS))
+override BLD_CFLAGS += -L/usr/local/mingw32/mingw32/lib -I/usr/local/mingw32/mingw32/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
+override GPFDISTFILES += glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
+GPFDIST_INCLUDES=$(GPCC)/src/gpfdist/include $(GPCC)
+GPFDIST_LIBS=-lws2_32
+else
+GPFDIST_LIBS=-lz -lbz2
+endif
+
+export CC
+export LDFLAGS=$(BLD_CFLAGS)
+
+SHELL=bash
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 
-ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 suse10_x86_64)" "no-match"
 INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
@@ -24,8 +43,12 @@ INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPAR
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
+CPPFLAGS_GPFDIST=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags)
 CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 endif
+
+osx105_x86_GPFDIST_LDFLAGS=-Wl,-search_paths_first
+GPFDIST_LDFLAGS=$($(BLD_ARCH)_GPFDIST_LDFLAGS)
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
 #all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
@@ -42,10 +65,16 @@ mkpaxos: mkdir
 
 mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
-	(cd src/gpfdist;ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .;mkdir -p include;ln -sf ../../../cdb-pg/src/include/fstream fstream; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-Werror -o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) -lz -lbz2)
-	@mkdir -p build/bin
-	@cp -f src/gpfdist/gpfdist build/bin/
+	cd src/gpfdist/ && \
+	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
+	mkdir -p src/gpfdist/include
+	cd src/gpfdist/ && \
+	  ln -sf ../../../cdb-pg/src/include/fstream fstream
+	cd src/gpfdist/ && \
+	  $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS_GPFDIST) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist \
+	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+	mkdir -p build/bin
+	cp -f src/gpfdist/gpfdist build/bin/
 
 mklibchubby: src/build/lib/libchubby.a
 
@@ -105,7 +134,7 @@ mktest: mklibgpcc
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
 			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent -lresolv)
 
-mkext: 
+mkext: mkdir
 	$(MAKE) -C ext
 
 veryclean: clean
@@ -113,5 +142,6 @@ veryclean: clean
 
 clean: 
 	$(MAKE) -C ext veryclean
+	rm -f src/gpfdist/gpfdist
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;

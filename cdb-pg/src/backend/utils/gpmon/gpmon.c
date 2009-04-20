@@ -1,3 +1,4 @@
+#include "postgres.h"
 #include "c.h"
 #include <signal.h>
 #include <fcntl.h>

@@ -1,4 +1,7 @@
 /* compress_nothing.c */
+
+#include "postgres.h"
+
 #include "c.h"
 #include <unistd.h>
 #include <storage/bfz.h>

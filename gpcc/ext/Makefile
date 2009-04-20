@@ -15,18 +15,30 @@ CC=gcc
 GPCC=$(shell echo `pwd`/..)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 OPT=-g -O3
+ifeq "$(BLD_ARCH)" "win32"
+APR=apr-1.3.3
+APU=apr-util-1.3.4
+else
 APR=apr-1.2.12
 APU=apr-util-1.2.12
+endif
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.6-stable
 OPENSSL=openssl-0.9.8h
 
-ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 suse10_x86_64)" "no-match"
+# continue to use this ext/ directory on the remaining platforms
 all: mkdir mklibjson mklibevent mklibapr mklibapu mkdbgen
 else
+# use ../../ext/ directory, instead, on these platforms
 all: mkdir mkdbgen
 endif
 
+ifeq "$(BLD_TARGET)" ""
+CONFIG_OPENSSL=./config
+else
+CONFIG_OPENSSL=./Configure $(BLD_TARGET)
+endif
 
 mkdir:
 	@echo --- ext ------------------------------------------------------
@@ -43,7 +55,12 @@ lib/libjson.a:
 	@echo     -- json
 	if ! [ -a $(JSON)/Makefile ]; then \
 		gzip -d -c $(JSON).tar.gz | tar xvf - ;\
-		(cd $(JSON) && ./configure --enable-shared=no \
+		(cd $(JSON) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" \
+		./configure --enable-shared=no \
+			$(CONFFLAGS) \
+			LDFLAGS=$(LDFLAGS) \
+			CC=$(CC) \
+			CPPFLAGS=$(CPPFLAGS) \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
@@ -54,7 +71,11 @@ lib/libevent.a:
 	@echo     -- libevent
 	if ! [ -a $(LIBEVENT)/Makefile ]; then \
 		gzip -d -c $(LIBEVENT).tar.gz | tar xvf - ;\
-		(cd $(LIBEVENT) && ./configure --enable-shared=no \
+		(cd $(LIBEVENT) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" ./configure --enable-shared=no \
+			$(CONFFLAGS) \
+			LDFLAGS=$(LDFLAGS) \
+			CC=$(CC) \
+			CPPFLAGS=$(CPPFLAGS) \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
@@ -64,7 +85,9 @@ lib/libssl.a:
 	@echo     -- openssl
 	if ! [ -a $(OPENSSL)/Makefile ]; then \
 		gzip -d -c $(OPENSSL).tar.gz | tar xvf - ;\
-		(cd $(OPENSSL) && ./config no-shared threads --prefix=$(GPCC)/ext) ;\
+		(cd $(OPENSSL) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" $(CONFIG_OPENSSL) no-shared threads --prefix=$(GPCC)/ext  \
+			CPPFLAGS="$(CPPFLAGS)" $(OSFLAGS)) \
+				;\
 	fi
 	(cd $(OPENSSL) && $(MAKE)  all install >> make.out 2>&1)
 
@@ -72,7 +95,11 @@ lib/libaprutil-1.a: lib/libapr-1.a
 	@echo     -- apu
 	if ! [ -a $(APU)/Makefile ]; then \
 		gzip -d -c $(APU).tar.gz | tar xvf - ;\
-		(cd $(APU) && ./configure --enable-shared=no \
+		(cd $(APU) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" ./configure --enable-shared=no \
+			$(CONFFLAGS) \
+			LDFLAGS=$(LDFLAGS) \
+			CC=$(CC) \
+			CPPFLAGS=$(CPPFLAGS) \
 			--enable-static=yes --enable-threads \
 			--with-apr=../$(APR) \
 			--prefix=$(GPCC)/ext) ;\
@@ -84,7 +111,15 @@ lib/libapr-1.a:
 	@echo     -- apr
 	if ! [ -a $(APR)/Makefile ]; then \
 		gzip -d -c $(APR).tar.gz | tar xvf - ;\
-		(cd $(APR) && ./configure --enable-shared=no \
+		patch $(APR)/configure.in < apr1.patch; \
+		cd $(APR) ; \
+		autoconf ; \
+		cd .. ; \
+		(cd $(APR) && CC="$(CC)" LDFLAGS="$(LDFLAGS)" ./configure --enable-shared=no \
+			$(CONFFLAGS) \
+			LDFLAGS=$(LDFLAGS) \
+			CC=$(CC) \
+			CPPFLAGS=$(CPPFLAGS) \
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
@@ -92,9 +127,9 @@ lib/libapr-1.a:
 
 mkdbgen:
 	@echo     -- dbgen
-	(cd tpch && $(MAKE) >> make.out)
-	(cd tpch && cp -f dbgen ../../build/bin/)
-	(cd tpch && cp -f dists.dss ../../build/bin/)
+	cd tpch && $(MAKE) CC="$(CC)" LDFLAGS="$(LDFLAGS)"
+	cd tpch && cp -f dbgen ../../build/bin/
+	cd tpch && cp -f dists.dss ../../build/bin/
 
 veryclean:
 	rm -rf lib bin include build1 share ssl build-1

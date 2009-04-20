@@ -15,7 +15,6 @@
 
 #include "postgres.h"
 #include "storage/fd.h"
-#include "cdb/cdbthreadwork.h"
 
 typedef struct BufferedRead
 {

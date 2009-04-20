@@ -19,6 +19,15 @@ REFDOCDIR= $(top_srcdir)/doc/src/sgml/ref
 
 override CPPFLAGS := -DFRONTEND -I$(srcdir) -I$(libpq_srcdir) -I$(top_srcdir)/src/bin/pg_dump $(CPPFLAGS)
 
+# necessary to get flex to play nice with large files on 32bit solaris sparc
+ifeq ($(PORTNAME), solaris)
+#ifeq ($(host_cpu), sparc)
+ifneq ($(enable_largefile), no)
+override CFLAGS := -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1
+endif
+#endif
+endif
+
 OBJS=	command.o common.o help.o input.o stringutils.o mainloop.o copy.o \
 	startup.o prompt.o variables.o large_obj.o print.o describe.o \
 	psqlscan.o tab-complete.o mbprint.o dumputils.o $(WIN32RES)
@@ -45,6 +54,9 @@ else
 $(srcdir)/sql_help.h:
 	@echo "*** Perl is needed to build psql help."
 endif
+
+$(srcdir)/psqlscan.o: psqlscan.c
+
 
 $(srcdir)/psqlscan.c: psqlscan.l
 ifdef FLEX

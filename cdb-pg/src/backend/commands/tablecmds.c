@@ -15,6 +15,8 @@
  */
 #include "postgres.h"
 
+#include <math.h>
+
 #include "access/appendonlywriter.h"
 #include "access/genam.h"
 #include "access/hash.h"
@@ -12080,7 +12082,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
     int searchpoint = 0;
 	int mid = 0;
 	bool matched = false;
-	PartitionRule *rule;
+	PartitionRule *rule = NULL;
 	PartitionNode *pNode = NULL;
 	PartitionRangeState *rs = NULL;
 	MemoryContext oldcxt = NULL;
@@ -12536,7 +12538,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 			if (IsA(pid->partiddef, Integer))
 				idrank = intVal(pid->partiddef);
 			else if (IsA(pid->partiddef, Float))
-				idrank = round(floatVal(pid->partiddef));
+				idrank = floor(floatVal(pid->partiddef));
 			else
 				Assert(false);
 

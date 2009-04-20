@@ -9,9 +9,8 @@
  *
  *-------------------------------------------------------------------------
  */
-#include <unistd.h>				/* for write() */
-
 #include "cdb/cdbbufferedappend.h"
+#include <unistd.h>				/* for write() */
 
 static void BufferedAppendWrite(
     BufferedAppend        *bufferedAppend);
