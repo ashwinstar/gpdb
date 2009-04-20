@@ -190,8 +190,9 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
         if num_hosts <= num_dirs:
             raise Exception("Not enough hosts for spread mirroring.  You must have more hosts then primary segments per host")
         
+        mirror_port = {}
+
         for host in hostlist:
-            port = mirror_portbase
             mirror_host_offset=1
             for dir in mirror_list:
                 fulldir = "%s/%s%d" % (dir,dir_prefix,content)
@@ -200,8 +201,11 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
                     mirror_host_offset += 1
                     mirror_host = hostlist[mirror_host_offset % num_hosts]
                     
-                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,port,fulldir) )
-                port += 1
+                if not mirror_port.has_key(mirror_host):
+                    mirror_port[mirror_host] = mirror_portbase
+                    
+                rows.append( (content,isprimary,dbid,isprimary,'t',mirror_host,mirror_port[mirror_host],fulldir) )
+                mirror_port[mirror_host] += 1
                 content += 1
                 dbid += 1
                 mirror_host_offset += 1
