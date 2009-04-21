@@ -18,12 +18,14 @@ Usage: gpssh-exkeys [--version] [-?v]
              -x hostfile   : a file listing all new hosts for expansion
              
     Each line in a hostfile is expected to contain a single host name.  Blank
-    lines and comment lines (beginning with #) are ignored.  The name of the 
-    local host is ignored with a warning.  Duplicate host names in either the
-    new host list (-h, -f, -x options) or the existing host list (-e option)
-    are ignored with a warning.  The same host name cannot appear in the 
-    both the new and existing host lists.  Host names including a user name or 
-    port (username@hostname:port) are not accepted.
+    lines and comment lines (beginning with #) are ignored.  The name of the
+    local host (as provided by hostname) is included automatically and need not 
+    be specified unless it is the only host to process.  During cluster expansion, 
+    the local host is always considered an existing host and should not be specified
+    in the "new host" list.  Duplicate host names in either the new host list (-h, 
+    -f, -x options) or the existing host list (-e option) are ignored. The same host 
+    name cannot appear in the both the new and existing host lists. Host names 
+    including a user name or port (username@hostname:port) are not accepted.
 '''
 
 from __future__ import with_statement 
@@ -393,7 +395,7 @@ def testAccess(hostname):
     reported by ssh-keyscan.
     '''
     errfile = os.path.join(tempDir, 'sshcheck.err')
-    cmd = 'ssh -o "NumberOfPasswordPrompts=0" -o "StrictHostKeyChecking=no" %s true 2>%s' % (hostname, errfile)
+    cmd = 'ssh -o "BatchMode=yes" -o "StrictHostKeyChecking=no" %s true 2>%s' % (hostname, errfile)
     if GV.opt['-v']: print '[INFO %s]: %s' % (hostname, cmd)
     rc = os.system(cmd)
     if rc != 0:
@@ -459,6 +461,20 @@ def writeKnownHosts(tab, hostsFile=None):
     finally:
         if f: f.close()
 
+def addHost(hostname, hostlist, localhost=False):
+    '''
+    Adds a Host(hostname) entry to hostlist if not a "localhost" and not already in the
+    list (by name).  Returns True if hostname was added; False otherwise.
+    '''
+    if (hostname + '.').startswith("localhost.") or (hostname + '.').startswith("localhost6"):
+        return False
+    for host in hostlist:
+        if host.host() == hostname:
+            return False
+    hostlist.append(Host(hostname, localhost))
+    return True
+
+
 
 tempDir = None
 
@@ -476,7 +492,20 @@ try:
 
     parseCommandLine()
     
-    localhost = Host(socket.gethostname(), True)
+    # Assemble a list of names used by the current host.  SSH is sensitive to both name
+    # and address so recognizing each name can prevent an SSH authenticitiy challenge.
+    #
+    # We start out with the names presented by gethostname and getfqdn (which may be the
+    # same or localhost) and add to this list using gethostbyaddr to discover possible
+    # aliases.
+    localhosts = []
+    for hostname in (socket.gethostname(), socket.getfqdn()):
+        if addHost(hostname, localhosts, True):
+            (primary, aliases, ipaddrs) = socket.gethostbyaddr(hostname)
+            addHost(primary, localhosts, True)
+            for alias in aliases:
+                addHost(alias, localhosts, True)
+    localhosts = tuple(localhosts)
     
     # hostlist is the collection of "new" hosts; it is composed of hosts
     # identified by the -h or -f options for initial exchange processing
@@ -497,16 +526,19 @@ try:
     if GV.opt['-f']: collectHosts(hostlist, GV.opt['-f'])
     if GV.opt['-x']: collectHosts(hostlist, GV.opt['-x'])
 
-    
+    # Check the new host list for (1) the current (local) host and (2) duplicate
+    # host identifiers.  If the local host appears in the new list, leave it for
+    # the time being ... it is removed later.
+    localhostInNew = False
     for host in hostlist.get():
         host = Host(host)
-        if localhost.isSameHost(host):
-            print >> sys.stderr, '[WARNING] ignoring new host \"%s\"; is local host' % host.host()
-            continue
+        for localhost in localhosts:
+            if localhost.host() == host.host():
+                localhostInNew = True
+                host = localhost
+                continue
         for h in GV.newHosts:
-            if h.isSameHost(host):
-                print >> sys.stderr, ('[WARNING] host \"%(host)s\" duplicates new host \"%(h)s\"; ignoring \"%(host)s\"'
-                                      % {'h':h.host(), 'host': host.host()})
+            if h.host() == host.host():
                 break
         else:
             GV.newHosts.append(host)
@@ -520,19 +552,20 @@ try:
     # hostlist is now used for the collection of existing hosts.
     # (The existing hosts list will exist iff the -x option is used
     # for new hosts.)
+    localhostInOld = False
     hostlist = gplib.HostList()
     if GV.opt['-e']: 
         collectHosts(hostlist, GV.opt['-e'])
         
         for host in hostlist.get():
             host = Host(host)
-            if localhost.isSameHost(host):
-                print >> sys.stderr, '[WARNING] ignoring existing host \"%s\"; is local host' % host.host()
-                continue
+            for localhost in localhosts:
+                if localhost.host() == host.host():
+                    localhostInOld = True
+                    host = localhost
+                    continue
             for h in GV.existingHosts:
-                if h.isSameHost(host):
-                    print >> sys.stderr, ('[WARNING] host \"%(host)s\" duplicates existing host \"%(h)s\"; ignoring \"%(host)s\"'
-                                          % {'h':h.host(), 'host': host.host()})
+                if h.host() == host.host():
                     break
             else:
                 GV.existingHosts.append(host)
@@ -547,12 +580,30 @@ try:
         haveError = False
         for existingHost in GV.existingHosts:
             for newHost in GV.newHosts:
-                if existingHost.isSameHost(newHost):
+                if existingHost.host() == newHost.host():
                     print >> sys.stderr, '[ERROR] new host \"%s\" is the same as existing host \"%s\"' % (newHost.host(), existingHost.host())
                     haveError = True
                     break
         if haveError:
             sys.exit(1)
+            
+    # Ensure the local host is in the "proper" host list -- old for expansion, new otherwise
+    if GV.opt['-e']:
+        if localhostInOld:
+            # Current host implicit in old list; remove explicit reference
+            for localhost in localhosts:
+                if localhost in GV.existingHosts:
+                    GV.existingHosts.remove(localhost)
+                if localhost in GV.allHosts:
+                    GV.allHosts.remove(localhost)
+    else:
+        if localhostInNew:
+            # Current host implicit in new list; remove explicit reference
+            for localhost in localhosts:
+                if localhost in GV.newHosts:
+                    GV.newHosts.remove(localhost)
+                if localhost in GV.allHosts:
+                    GV.allHosts.remove(localhost)
 
     # Allocate a temporary directory; if KEEPTEMP is set, allocate the
     # directory in the user's home directory, otherwise use a system temp.
@@ -585,10 +636,24 @@ try:
     if GV.opt['-v']: print '[INFO]: %s' % cmd
     os.system(cmd)
     
-    # Test SSH access to local host to ensure proper inbound access and complete
-    # known_hosts file.
-    if not testAccess(socket.getfqdn()):
-        sys.exit(1)
+    # Ensure the host key(s) for the local host are in known_hosts.  Using ssh-keyscan
+    # takes care of part of it; testAccess takes care of the rest.
+    errfile = os.path.join(tempDir, "keyscan.err")
+    for host in localhosts:
+        cmd = 'ssh-keyscan -t rsa %s >> %s 2>%s' % (host.host(), GV.known_hosts_fname, errfile)
+        if GV.opt['-v']: print '[INFO]', cmd
+        rc = os.system(cmd)
+        if rc != 0:
+            print >> sys.stderr, ('[WARNING] error %s obtaining RSA host key(s) for local host %s'
+                                  % (rc, host))
+            for line in open(errfile):
+                print >> sys.stderr, '    ' + line.rstrip()
+        os.remove(errfile)
+        # Test SSH access to local host to ensure proper inbound access and complete
+        # known_hosts file.
+        if not testAccess(host.host()):
+            print >> sys.stderr, "[ERROR] cannot establish ssh access into the local host"
+            sys.exit(1)
 
     ######################
     #  step 2
