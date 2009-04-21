@@ -78,9 +78,9 @@ class GpSegStop():
             res = cmd.get_results()
             
             if res.rc == 0:
-                results.append(SegStopStatus(dir,True,"Shutdown Succeeded"))                
-            else:
-                results.append(SegStopStatus(dir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s" % 
+                results.append(SegStopStatus(datadir,True,"Shutdown Succeeded"))                
+            else:                
+                results.append(SegStopStatus(datadir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s" % 
                                              (res.rc,res.stdout,res.stderr)))
         
         #Log the results!

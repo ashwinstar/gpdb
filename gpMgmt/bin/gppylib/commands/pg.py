@@ -128,15 +128,15 @@ class ReadPostmasterTempFile(Command):
     
 
     @staticmethod
-    def local(name,db):
-        cmd=ReadPostmasterTempFile(name,db)
+    def local(name,port):
+        cmd=ReadPostmasterTempFile(name,port)
         cmd.run(validateAfter=True)
         return cmd
         
                 
     @staticmethod
-    def remote(name,db,host):
-        cmd=ReadPostmasterTempFile(name,db,ctxt=REMOTE,remoteHost=host)
+    def remote(name,port,host):
+        cmd=ReadPostmasterTempFile(name,port,ctxt=REMOTE,remoteHost=host)
         cmd.run(validateAfter=True)
  
 
