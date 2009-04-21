@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
-[-z] [- M s[mart] | f[ast] | i[mmediate]] [-r] [-m] [-y] 
+[-z] [-M s[mart] | f[ast] | i[mmediate]] [-r] [-m] [-y] 
 [-u] [-a] [-q] [-l logfile_directory] [ -? | -v]
 
 
