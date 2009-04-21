@@ -10,7 +10,7 @@ gpstart [-d <master_data_directory>] [-B <parallel_processes>]
         [-R] [-m] [-y] [-a] [-q] [-l <logfile_directory>] 
         
 
-gpstart  -? | -v]
+gpstart [-? | -v]
 
 
 *****************************************************
