@@ -112,10 +112,12 @@ errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 	headerOffsetInFile = BufferedReadCurrentPosition(&scan->bufferedRead);
 	
 	errcontext( 
-		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
+		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
 		 NameStr(scan->aos_rd->rd_rel->relname),
 		 SCANNED_SEGNO,
 		 headerOffsetInFile,
+		 scan->blockFirstRowNum,
 		 scan->bufferCount);
 
 	return 0;
@@ -168,6 +170,8 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 
 	scan->rowNumber = 0;
 	scan->rowNumberInSegmentFile = 0;
+
+	scan->blockFirstRowNum = 0;
 	
 	pgstat_count_heap_scan(&scan->aos_pgstat_info);
 }
@@ -475,10 +479,12 @@ errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
 	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend);
 	
 	errcontext( 
-		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
+		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
 		 NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
 		 aoInsertDesc->cur_segno,
 		 headerOffsetInFile,
+		 aoInsertDesc->blockFirstRowNum,
 		 aoInsertDesc->bufferCount);
 
 	return 0;
@@ -696,6 +702,7 @@ getNextStorageBlockInFile(
 	}
 
 	scan->bufferCount++;
+	scan->blockFirstRowNum = scan->rowNumberInSegmentFile + 1;
 				
 	if (availableLen != scan->headerLen)
 		ereport(ERROR,
@@ -1236,6 +1243,132 @@ appendonlygettup(AppendOnlyScanDesc scan,
 	
 }
 
+#define HEX_WORDS_PER_LINE 16
+#define BYTES_PER_WORD 4
+#define HEXDIGITS_PER_WORD 8
+#define WORDS_PER_INFO 128
+#define BYTES_PER_INFO WORDS_PER_INFO*BYTES_PER_WORD
+
+static void
+dumpBufferInHex(
+	StringInfoData 	*stringInfoData,
+	uint8 			*buffer,
+	int				bufferLen)
+{
+	int32	*wordBuffer = (int32*)buffer;
+	int32	roundupWordCount;
+	int32   countdownLen;
+	int		i;
+	char	*fmt;
+
+	roundupWordCount = (bufferLen + BYTES_PER_WORD - 1) / BYTES_PER_WORD;
+	countdownLen = bufferLen;
+	
+	for (i = 0; i < roundupWordCount; i++)
+	{
+		/*
+		 * Offset.
+		 */
+//		if (i % HEX_WORDS_PER_LINE == 0)
+//		{
+//			if (i > 0)
+//				appendStringInfo(stringInfoData, "\n");
+//				
+//			appendStringInfo(stringInfoData, "%08X:  ", i*BYTES_PER_WORD);
+//		}
+
+		appendStringInfo(stringInfoData, " ");
+
+		/*
+		 * Whole or partial hex word.
+		 */
+		if (countdownLen >= HEXDIGITS_PER_WORD)
+			appendStringInfo(stringInfoData, "%08X", wordBuffer[i]);
+		else
+		{
+			switch (countdownLen)
+			{
+			case 1:		fmt = "%01X";	break;
+			case 2:		fmt = "%02X";	break;
+			case 3:		fmt = "%03X";	break;
+			case 4:		fmt = "%04X";	break;
+			case 5:		fmt = "%05X";	break;
+			case 6:		fmt = "%06X";	break;
+			case 7:		fmt = "%07X";	break;
+			default:
+				Insist(false);
+			}
+			
+			appendStringInfo(stringInfoData, fmt, 
+							 wordBuffer[i] >> (4*(HEXDIGITS_PER_WORD - countdownLen)));
+			
+		}
+
+		countdownLen -= BYTES_PER_WORD;
+			
+	}
+	
+//	appendStringInfo(stringInfoData, "\n");
+
+}
+
+/*
+ * verifyDumpHex
+ *
+ * Add an INFO containing the hex dump of the buffer.
+ */
+static void
+verifyDumpHex(
+	char		*title,
+	uint8		*buffer,
+	int32		bufferLen)
+{
+	StringInfoData 	stringInfoData;
+	int				infoCount;
+	int				offset;
+	int				infoBytes;
+	int				countdownLen;
+	
+	initStringInfo(&stringInfoData);
+
+	offset = 0;
+	countdownLen = bufferLen;
+	infoCount = (bufferLen + BYTES_PER_INFO - 1) / BYTES_PER_INFO;
+	infoCount /= HEX_WORDS_PER_LINE;
+
+	elog(LOG,
+		 "Dumping hex in following %d messages for '%s' buffer (total of %d bytes)",
+		 infoCount, title, bufferLen);
+	
+	while (true)
+	{
+		if (countdownLen > BYTES_PER_INFO)
+			infoBytes = BYTES_PER_INFO;
+		else
+			infoBytes = bufferLen - offset;
+		
+		appendStringInfo(&stringInfoData, 
+						 "'%s' offsets %06X to %06X    ",
+						 title,
+						 offset, offset + infoBytes - 1);
+		dumpBufferInHex(
+					&stringInfoData,
+					&buffer[offset],
+					infoBytes);
+
+		elog(LOG, stringInfoData.data);
+
+		resetStringInfo(&stringInfoData);
+
+		countdownLen -= infoBytes;
+		if (countdownLen == 0)
+			break;
+		
+		offset += infoBytes;
+	}
+}
+
+
 static void verifyWriteBlock(
 	AppendOnlyInsertDesc 	aoInsertDesc,
 	int64					headerOffsetInFile,
@@ -1283,12 +1416,15 @@ static void verifyWriteBlock(
 												header,
 												&storedChecksum,
 												&computedChecksum))
+		{
+			verifyDumpHex("Write Buffer", header, bufferLen),
 			ereport(ERROR, 
 				    (errmsg("Verify block during write found header checksum does not match.  Expected 0x%X and found 0x%X",
 						    storedChecksum,
 						    computedChecksum),
 					 errdetail_appendonly_insert_block_header(aoInsertDesc),
 					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		}
 		}
 
 	/*
@@ -1299,12 +1435,15 @@ static void verifyWriteBlock(
 											aoInsertDesc->headerLen,
 											&headerKind);
 	if (checkError != AOHeaderCheckOk)
+	{
+		verifyDumpHex("Write Buffer", header, bufferLen),
 		ereport(ERROR, 
 				(errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'",
 						 (int)checkError,
 						 AppendOnlyStorage_GetHeaderCheckErrorStr()),
 				 errdetail_appendonly_insert_block_header(aoInsertDesc),
 				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	}
 
 	/*
 	 * For now, we only have Block headers.
@@ -1326,6 +1465,8 @@ static void verifyWriteBlock(
 											&rowCount,
 											&isCompressed);
 	if (checkError != AOHeaderCheckOk)
+	{
+		verifyDumpHex("Write Buffer", header, bufferLen),
 		ereport(ERROR, 
 		        (errmsg("Verify block during write found bad append-only storage block header. "
  					    "Header check error %d, detail '%s'",
@@ -1333,6 +1474,7 @@ static void verifyWriteBlock(
 			 			AppendOnlyStorage_GetHeaderCheckErrorStr()),
 				 errdetail_appendonly_insert_block_header(aoInsertDesc),
 				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	}
 
 	if (isCompressed)
 	{
@@ -1346,6 +1488,8 @@ static void verifyWriteBlock(
 	}
 	
 	if (dataLen != expectedDataLen)
+	{
+		verifyDumpHex("Write Buffer", header, bufferLen),
 		ereport(ERROR, 
 			    (errmsg("Verify block during write found append-only storage block header. "
 			            "DataLen %d does not equal expected length %d, ",
@@ -1353,9 +1497,12 @@ static void verifyWriteBlock(
  					    expectedDataLen),
 				 errdetail_appendonly_insert_block_header(aoInsertDesc),
 				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	}
 
 	
 	if (compressedLen != expectedCompressedLen)
+	{
+		verifyDumpHex("Write Buffer", header, bufferLen),
 		ereport(ERROR, 
 				(errmsg("Verify block during write found append-only storage block header. "
 					    "CompressedLen %d does not equal expected length %d",
@@ -1363,12 +1510,15 @@ static void verifyWriteBlock(
 					    expectedCompressedLen),
 				 errdetail_appendonly_insert_block_header(aoInsertDesc),
 				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	}
 
 	/*
 	 * Now verify the executor portion of the block.
 	 */
 
 	if (executorBlockKind != expectedExecutorBlockKind)
+	{
+		verifyDumpHex("Write Buffer", header, bufferLen),
 		ereport(ERROR, 
 				(errmsg("Verify block during write found append-only storage block header. "
 			 			"ExecutorBlockKind %d does not equal expected value %d.",
@@ -1376,8 +1526,11 @@ static void verifyWriteBlock(
 					    expectedExecutorBlockKind),
 				 errdetail_appendonly_insert_block_header(aoInsertDesc),
 				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	}
 	
 	if (rowCount != expectedRowCount)
+	{
+		verifyDumpHex("Write Buffer", header, bufferLen),
 		ereport(ERROR, 
 				(errmsg("Verify block during write found append-only storage block header. "
 			 			"RowCount %d does not equal expected value %d",
@@ -1385,6 +1538,7 @@ static void verifyWriteBlock(
 					    expectedRowCount),
 				 errdetail_appendonly_insert_block_header(aoInsertDesc),
 				 errcontext_appendonly_insert_block(aoInsertDesc)));
+	}
 
 	if (Debug_appendonly_print_verify_write_block)
 		AppendOnlyStorage_LogBlockHeader(
@@ -1397,7 +1551,7 @@ static void verifyWriteBlock(
 
 	if (isCompressed)
 	{
-		int test;
+		int i;
 		
 		doDecompress(
 					&header[offset],			// Compressed data in block.
@@ -1413,14 +1567,19 @@ static void verifyWriteBlock(
 		/*
 		 * Compare.
 		 */
-		test = memcmp(aoInsertDesc->uncompressedBuffer, data, dataLen);
-		if (test != 0)
-			ereport(ERROR, 
-					(errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! "
-					        "Memcmp result %d",
-							test),
-					 errdetail_appendonly_insert_block_header(aoInsertDesc),
-					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		for (i = 0; i < dataLen; i++)
+			if (aoInsertDesc->uncompressedBuffer[i] != data[i])
+			{
+				verifyDumpHex("Write Buffer", header, bufferLen);
+				verifyDumpHex("Input Uncompressed Buffer", aoInsertDesc->uncompressedBuffer, dataLen);
+				verifyDumpHex("Verify Uncompressed Buffer", data, dataLen);
+				ereport(ERROR, 
+						(errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! "
+						        "A difference was found at byte offset %d",
+								i),
+						 errdetail_appendonly_insert_block_header(aoInsertDesc),
+						 errcontext_appendonly_insert_block(aoInsertDesc)));
+			}
 		
 	}
 	else
@@ -1434,6 +1593,13 @@ static void verifyWriteBlock(
 		
 		varBlockCheckError = VarBlockIsValid(data, dataLen);
 		if (varBlockCheckError != VarBlockCheckOk)
+		{
+			verifyDumpHex("Write Buffer", header, bufferLen);
+			if (isCompressed)
+			{
+				verifyDumpHex("Input Uncompressed Buffer", aoInsertDesc->uncompressedBuffer, dataLen);
+				verifyDumpHex("Verify Uncompressed Buffer", data, dataLen);
+			}
 			ereport(ERROR,
 					(errmsg("Verify block during write found VarBlock is not valid "
 					        "Valid block check error %d, detail '%s'",
@@ -1441,6 +1607,7 @@ static void verifyWriteBlock(
 							VarBlockGetCheckErrorStr()),
 					 errdetail_appendonly_insert_block_header(aoInsertDesc),
 					 errcontext_appendonly_insert_block(aoInsertDesc)));
+		}
 		
 		/*
 		 * Now use the VarBlock module to extract the items out.
@@ -1453,6 +1620,12 @@ static void verifyWriteBlock(
 
 		if (rowCount != readerItemCount)
 		{
+			verifyDumpHex("Write Buffer", header, bufferLen);
+			if (isCompressed)
+			{
+				verifyDumpHex("Input Uncompressed Buffer", aoInsertDesc->uncompressedBuffer, dataLen);
+				verifyDumpHex("Verify Uncompressed Buffer", data, dataLen);
+			}
 			ereport(ERROR,
 					(errmsg("Verify block during write found row count %d in append-only storage header does not match VarBlock item count %d",
 							rowCount,
@@ -1509,6 +1682,7 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	}
 	
 	aoInsertDesc->bufferCount++;
+	aoInsertDesc->blockFirstRowNum = aoInsertDesc->insertCount + 1;
 }
 
 static void
@@ -1896,6 +2070,7 @@ appendonly_insert_init(Relation rel, int segno)
 	aoInsertDesc->appendFilePathName[0] = '\0';
 
 	aoInsertDesc->bufferCount = 0;
+	aoInsertDesc->blockFirstRowNum = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
 	
@@ -2276,6 +2451,9 @@ tryToCompress(
 	{
 		Insist(compressLevel == 1);
 
+		if (Debug_appendonly_rezero_quicklz_compress_scratch)
+			memset(qlz_scratch_compress, 0, QLZ1_SCRATCH_COMPRESS);			
+
 		compressedSize = qlz1_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
@@ -2307,6 +2485,9 @@ tryToCompress(
 		Insist(compressType == COMPTYPE_QUICKLZ3);
 		Insist(compressLevel == 3);
 		
+		if (Debug_appendonly_rezero_quicklz_compress_scratch)
+			memset(qlz_scratch_compress, 0, QLZ3_SCRATCH_COMPRESS);			
+
 		compressedSize = qlz3_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
@@ -2553,6 +2734,9 @@ doDecompress(
 	}
 	else if(compresstype == COMPTYPE_QUICKLZ1)
 	{
+		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
+			memset(qlz_scratch, 0, QLZ1_SCRATCH_DECOMPRESS);		
+
 		uncompressedSize = qlz1_decompress((const char *)compressed, 
 										  uncompressed, 
 										  qlz_scratch);
@@ -2560,6 +2744,9 @@ doDecompress(
 	else
 	{
 		Insist(compresstype == COMPTYPE_QUICKLZ3);
+
+		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
+			memset(qlz_scratch, 0, QLZ3_SCRATCH_DECOMPRESS);		
 
 		uncompressedSize = qlz3_decompress((const char *)compressed, 
 										  uncompressed, 

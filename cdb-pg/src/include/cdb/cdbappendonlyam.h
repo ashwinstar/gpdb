@@ -57,6 +57,7 @@ typedef struct AppendOnlyInsertDescData
 	BufferedAppend	bufferedAppend;
 	VarBlockMaker	varBlockMaker;
 	int64			bufferCount;
+	int64			blockFirstRowNum;
 	bool			shouldCompress;
 	bool			usingChecksum;
 	int32			headerLen;
@@ -130,6 +131,7 @@ typedef struct AppendOnlyScanDescData
 	int32			safefswritesize;
 
 	int64           bufferCount;
+	int64			blockFirstRowNum;
 	int				readerItemCount;
 	int				currentItemCount;
 	int64			rowNumber;

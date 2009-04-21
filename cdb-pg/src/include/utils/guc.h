@@ -138,6 +138,8 @@ extern int  gp_max_local_distributed_cache;
 extern bool gp_local_distributed_cache_stats;
 extern bool gp_appendonly_verify_block_checksums;
 extern bool gp_appendonly_verify_write_block;
+extern bool	Debug_appendonly_rezero_quicklz_compress_scratch;
+extern bool	Debug_appendonly_rezero_quicklz_decompress_scratch;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;
