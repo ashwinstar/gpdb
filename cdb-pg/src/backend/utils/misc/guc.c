@@ -1689,7 +1689,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&ResourceSelectOnly,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"resource_cleanup_gangs_on_wait", PGC_USERSET, RESOURCES_MGM,
