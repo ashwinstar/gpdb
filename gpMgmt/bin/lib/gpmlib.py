@@ -790,12 +790,6 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
     cmd = makeCommand('mkdir %s/pg_log' % dst_cfg['datadir'])
     (ok, out) = run_warn('%s "%s"' % (gplib.ssh_prefix(host=dst_cfg['hostname']),cmd))
     
-    #make sure nothing is running
-    log_info('stopping segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
-    cmd = makeCommand('%s -w -D %s stop 2>&1' %
-                      (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
-                      dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port']))    
-    
     
     log_info('start segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
     cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s/pg_log/startup.log -o \\"-i -p %d \\" start 2>&1' %

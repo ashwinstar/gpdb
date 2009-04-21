@@ -86,7 +86,7 @@ class GpSegStop():
             else:     
                 #read in /tmp/.s.PGXXX file
                 name="failed segment '%s'" % db
-                (succeeded,PID,file_datadir)=pg.ReadPostmasterTempFile.local(name,port).getResults()
+                (succeeded,pid,file_datadir)=pg.ReadPostmasterTempFile.local(name,port).getResults()
                 
                 if succeeded and file_datadir == datadir:
                     if unix.check_pid(pid):
