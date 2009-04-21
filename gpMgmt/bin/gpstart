@@ -26,6 +26,7 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.gplog import *
 from gppylib.db import dbconn
 from gppylib import gparray
+from gppylib import gphostcache
 from gppylib import userinput
 from gppylib.db import catalog
 from gppylib.commands import unix
@@ -165,7 +166,9 @@ class GpStart():
         
         logger.info("Commencing forced instance shutdown")
         
-        gp.GpStop.local("forcing master shutdown", masterOnly=True, fast=True, 
+        
+        gp.GpStop.local("forcing master shutdown", masterOnly=True, verbose=logging_is_verbose,
+                        quiet=self.quiet, fast=True, 
                         force=True, datadir=self.master_datadir)
         
     
@@ -267,23 +270,23 @@ class GpStart():
         for seg in segs:
             logger.debug("SegDB: %s" % seg)
         
-        invalid_segs=self.gparray.get_invalid_segdbs()    
-        hostdict=gp.build_hostdict(segs,self.gparray,self.pool)                            
+        invalid_segs=self.gparray.get_invalid_segdbs()  
         
+        #read in the hostcache file and make sure we can ping everybody
+        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool)                
+        self.hostcache.print_contents(logger)
+        self.hostcache.ping_hosts(logger,self.pool,self.failed_seg_status)                
         
-        self._print_hostdict(hostdict)
-        
-        self.failed_seg_status.extend(self._ping_segment_hosts(hostdict))
                                     
-        self._start_segments(hostdict)                
-        self.success_seg_status=self._process_segment_start(hostdict,self.failed_seg_status)    
+        self._start_segments()                
+        self.success_seg_status=self._process_segment_start(self.failed_seg_status)    
         self._print_segment_start(segs,self.failed_seg_status,self.success_seg_status)
 
         #make sure we have at least one segment per content
         if not self._verify_enough_segments(self.success_seg_status,self.gparray):
             # go through and remove any segments that we did start so that we keep everything
             # shutdown cleanly
-            self._shutdown_segments(self.success_seg_status,hostdict)
+            self._shutdown_segments(self.success_seg_status)
             
             
             raise GpStartError("Do not have enough valid segments to start the array.")
@@ -297,32 +300,7 @@ class GpStart():
         else:
             return False
     
-    
-    def _shutdown_segments(self,success_seg_status,hostdict):
-        logger.info("Commencing parallel segment instance shutdown, please wait...")
-        dispatch_count=0
-        for key in hostdict.iterkeys():
-            dblist = hostdict[key]
-            
-            #TODO:  future optimization would be to only stop the segments that we actually started.
-            logger.debug("Dispatching command to shutdown segments on host: %s" % key)
-            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % key, self.gphome, dblist,self.gpversion,
-                                mode='immediate', verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
-            self.pool.addCommand(cmd)
-            dispatch_count+=1
-        
-        while self.pool.completed_queue.qsize() < dispatch_count:
-            time.sleep(1)
-        
-            if not self.quiet:
-                sys.stdout.write(".")
-                sys.stdout.flush()
-        
-        if not self.quiet:
-            print " "
-        self.pool.join()                
-        pass
-            
+              
         
     def _verify_enough_segments(self,success_seg_status,gparray):
         content_dict={}
@@ -353,20 +331,7 @@ class GpStart():
         return True
     
     
-    def _print_hostdict(self,hostdict):
-        logger.debug("Construct host-->datadirs mapping:")
-        
-        entries=[]
-        for key in hostdict.iterkeys():
-            dblist = hostdict[key]
-            
-            datadirs=[]            
-            for db in dblist:
-                datadirs.append(db.datadir)
-            
-            entries.append("Host %s has Datadirs: [%s]" % (key,','.join(datadirs)))
-        
-        logger.debug('\n'.join(entries))
+    
 
     ######
     def _get_invalid_segments(self):
@@ -383,16 +348,16 @@ class GpStart():
         
     
     ######
-    def _start_segments(self,hostdict):
+    def _start_segments(self):
         logger.info("Commencing parallel segment instance startup, please wait...")
         dispatch_count=0
-        for key in hostdict.iterkeys():
-            dblist = hostdict[key]
-            
-            logger.debug("Dispatching command to start segments on host: %s" % key)
-            cmd=gp.GpSegStartCmd("remote segment starts on host '%s'" % key, self.gphome, dblist, 
+        
+        for gphost in self.hostcache.get_hosts():
+            hostname=gphost.dbs[0].hostname                
+            logger.debug("Dispatching command to start segments on host: %s " % (hostname))
+            cmd=gp.GpSegStartCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost, 
                                  [self.lc_collate,self.lc_monetary,self.lc_numeric],self.gpversion,
-                                 verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
+                                 verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
             
@@ -408,9 +373,36 @@ class GpStart():
         self.pool.join()
         pass
     
+    ######  
+    def _shutdown_segments(self,success_seg_status):
+        logger.info("Commencing parallel segment instance shutdown, please wait...")
+        dispatch_count=0
+        for gphost in self.hostcache.get_hosts():
+            dblist=gphost.dbs
+            hostname=gphost.dbs[0].hostname
+            
+            #TODO:  future optimization would be to only stop the segments that we actually started.
+            logger.debug("Dispatching command to shutdown segments on host: %s" % hostname)
+            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost,self.gpversion,
+                                mode='immediate', verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+            self.pool.addCommand(cmd)
+            dispatch_count+=1
+        
+        while self.pool.completed_queue.qsize() < dispatch_count:
+            time.sleep(1)
+        
+            if not self.quiet:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        
+        if not self.quiet:
+            print " "
+        self.pool.join()                
+        pass
+
     
     ######
-    def _process_segment_start(self,hostdict,failed_seg_status):
+    def _process_segment_start(self,failed_seg_status):
         logger.info("Process results...")
         success_seg_status=[]
         cmds=self.pool.getCompletedItems()
@@ -431,21 +423,20 @@ class GpStart():
                         else:
                             success=True
                             
-                        dbs = hostdict[cmd.remoteHost]
                         
-                        for db in dbs:                     
+                        for db in cmd.dblist:                     
                             if db.datadir == dir:
                                 if success:                                                         
                                     success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
                                 else:
                                     failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
-            else:
-                dbs = hostdict[cmd.remoteHost]
-                for db in dbs:
+            else:                
+                for db in cmd.dblist:
                     failed_seg_status.append( SegStartStatus(db,started=False,reason=cmd.get_results(),failedCmd=cmd))
                     
         self.pool.empty_completed_items()
         return success_seg_status
+        
         
     ######
     def _print_segment_start(self,segs,failed_seg_status,success_seg_status):
@@ -477,48 +468,6 @@ class GpStart():
             logger.warning("Run gpstate to review current segment instance status")
             logger.info("----------------------------------------------------")
 
-    ######
-    def _ping_segment_hosts(self,hostdict):
-        failedSegs=[]
-                                 
-        for p in unix.Ping.ping_list(hostdict.keys()):
-            self.pool.addCommand(p)
-        self.pool.join()        
-        cmds=self.pool.getCompletedItems()
-        
-        
-        for cmd in cmds:
-            if cmd.get_results().rc != 0:
-                host=cmd.hostToPing
-                logger.warning("Ping to host: '%s' FAILED" % host)
-                logger.debug("  ping details: %s" % cmd)
-                
-                dblist=hostdict[host]
-                del hostdict[host]                
-                
-                alternateHost=None
-                
-                
-                for db in dblist:
-                    pingCmd = unix.Ping("dbid: %d" % db.dbid,db.hostname)
-                    pingCmd.run()
-                    if pingCmd.get_results().rc == 0:
-                        alternateHost=db.hostname
-                        break
-                
-                if alternateHost:
-                    hostdict[alternateHost]=dblist
-                else:
-                    #no interface to reach any of the segments
-                    for db in dblist:
-                        s = SegStartStatus(db,started=False,reason="Failed to Ping Host",failedCmd=cmd)
-                        failedSegs.append(s)
-                    pass
-            
-        self.pool.empty_completed_items()
-    
-        return failedSegs
-    
     
     ######
     def start_final_master(self):
@@ -687,7 +636,10 @@ def main():
         
         if not options.master_only:
             logger.info("Shutting down master")
-            cmd=gp.GpStop("Shutting down master", masterOnly=True, fast=True, datadir=gpstart.get_master_datadir())
+            cmd=gp.GpStop("Shutting down master", masterOnly=True, 
+                          fast=True, quiet=options.quiet,
+                          verbose=options.verbose,
+                          datadir=gpstart.get_master_datadir())
             cmd.run()
             logger.debug("results of forcing master shutdown: %s" % cmd)
             #TODO: check results of command.

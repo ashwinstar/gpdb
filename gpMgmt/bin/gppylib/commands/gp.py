@@ -147,11 +147,12 @@ class SegmentStop(Command):
 
 #-----------------------------------------------
 class GpSegStartCmd(Command):
-    def __init__(self, name, gphome, dblist, collatelist, gpversion,verbose=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, gphost, collatelist, gpversion,verbose=False,ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
-        self.dblist=dblist
+        self.gphost=gphost
+        self.dblist=gphost.dbs
         self.dirlist=[]
-        for db in dblist:
+        for db in self.dblist:
             self.dirlist.append(db.datadir)
             
         dirstr=" -D ".join(self.dirlist)        
@@ -169,13 +170,14 @@ class GpSegStartCmd(Command):
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, dblist, version,mode,verbose=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, gphost, version,mode,verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
-        self.dblist=dblist
+        self.gphost=gphost
+        self.dblist=gphost.dbs
         self.dirlist=[]
         self.mode=mode
         self.version=version
-        for db in dblist:
+        for db in self.dblist:
             self.dirlist.append(db.datadir)
             
         dirstr=" -D ".join(self.dirlist)
@@ -285,7 +287,7 @@ class NewGpStop(Command):
         
 #-----------------------------------------------           
 class GpStop(Command):
-    def __init__(self, name, masterOnly=False, restart=False, fast=False, force=False, datadir=None,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, masterOnly=False, verbose=False, quiet=False, restart=False, fast=False, force=False, datadir=None,ctxt=LOCAL, remoteHost=None):
         self.cmdStr="$GPHOME/bin/gpstop -a"
         if masterOnly:
             self.cmdStr += " -m"
@@ -297,11 +299,15 @@ class GpStop(Command):
             self.cmdStr += " -z"
         if datadir:
             self.cmdStr += " -d %s" % datadir
+        if verbose:
+            self.cmdStr += " -v"
+        if quiet:
+            self.cmdStr += " -q"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
-    def local(name,masterOnly=False, restart=False, fast=False, force=False):
-        cmd=GpStop(name,masterOnly, restart, fast, force)
+    def local(name,masterOnly=False, verbose=False, quiet=False,restart=False, fast=False, force=False, datadir=None):
+        cmd=GpStop(name,masterOnly,verbose,quiet,restart,fast,force,datadir)
         cmd.run(validateAfter=True)
         return cmd
         
@@ -438,46 +444,6 @@ def distribute_tarball(queue,list,tarball):
 
 
 
-def readGpHostCache(gparray,pool):
-    
-    hostcache={}
-    path=os.path.expanduser("~") + "/.gphostcache"
-    if os.path.isfile(path):
-        try:
-            file = open(path, 'r')
-            
-            for line in file:
-                (interface,hostname)=line.split(':')
-                hostcache[interface.strip()]=hostname.strip()                    
-        except IOError:
-            raise Exception(' file %s not found' % path)                    
-        finally:
-            file.close()
-    else:
-        #let's create one
-        hostlist=gparray.get_hostlist()
-        cmdlist=[]
-        for host in hostlist:
-            cmd=Hostname('host lookup',ctxt=REMOTE,remoteHost=host)
-            pool.addCommand(cmd)
-            cmdlist.append(cmd)
-        pool.join()
-        pool.check_results()
-        
-        
-        file = open(path, 'w')
-        
-        for cmd in cmdlist:
-            if cmd.remotehost not in hostcache:
-                file.write("%s:%s\n" % (cmd.remotehost,cmd.get_hostname()))
-                hostcache[cmd.remotehost]=cmd.get_hostname()
-        file.flush()
-        file.close()
-        
-    return hostcache        
-
-
-
 
 class GpError(Exception): pass 
 
@@ -521,23 +487,6 @@ def standby_check(master_datadir):
     if (check_passive_standby('check if passive standby',master_datadir)):
         raise GpError('Cannot run this utility on the standby instance')
   
-######
-def build_hostdict(segs,gparray,pool):
-    hostcache=readGpHostCache(gparray,pool)
-    hostdict={}
-            
-    for db in segs:
-        if db.hostname in hostcache:
-            realhost=hostcache[db.hostname]
-        else:
-            realhost = db.hostname
-            
-        if realhost not in hostdict:                
-            hostdict[realhost] = [db] 
-        else:
-            hostdict[realhost].append(db)
-            
-    return hostdict    
 
     
 #=-=-=-=-=-=-=-=-=-= Bash Migration Helper Functions =-=-=-=-=-=-=-=-

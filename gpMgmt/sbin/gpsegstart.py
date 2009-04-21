@@ -21,9 +21,11 @@ import figleaf
 
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gplog
+from gppylib import gparray
 from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib.commands import gp
+from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib import pgconf
@@ -104,9 +106,6 @@ class GpSegStart():
                 results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
                 self.dblist.remove(dir)
                 failures=True      
-            
-                
-                     
         
             
         logger.info("Starting segments...")       
@@ -161,6 +160,10 @@ class GpSegStart():
         
         return failures
     
+    def cleanup(self):
+        self.pool.haltWork()
+        self.pool.joinWorkers()
+
     
     ######
     def _recovery_startup(self,datadir):
@@ -170,7 +173,19 @@ class GpSegStart():
         if unix.check_pid(pid):
             str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
             logger.info(str)
-            return str
+            
+            logger.info("attempting to shutdown segment with datadir: %s" % datadir )
+            cmd=gp.SegmentStop('segment shutdown' , datadir,mode='fast')
+            cmd.run()
+            
+            db = gparray.GpDB(-100,True,-100,True,True,'bogus',-100,datadir)
+            
+            if pg.DbStatus.local('checking on segment',db):
+                str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
+                logger.info(str)            
+                return str
+            else:
+                logger.info("shutdown of segment successful with datadir: %s" % datadir)
         
         #if we get this far it means we don't have a pid and need to do some cleanup.
         pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")        
@@ -230,7 +245,7 @@ def main():
         figleaf.start()
         
     try:
-        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
         
         options, args = parseargs()
         
@@ -247,6 +262,7 @@ def main():
         
         failures = gpsegstart.start()
         
+        gpsegstart.cleanup()
         if failures:
             sys.exit(1)
         else:    

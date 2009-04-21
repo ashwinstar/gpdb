@@ -78,13 +78,13 @@ class DbStatus(Command):
     @staticmethod
     def local(name,db):
         cmd=DbStatus(name,db)
-        cmd.run(validateAfter=True)
+        cmd.run(validateAfter=False)
         return cmd.is_running()
     
     @staticmethod
     def remote(name,db,remoteHost):
         cmd=DbStatus(name,db,ctxt=REMOTE,remoteHost=remoteHost)
-        cmd.run(validateAfter=True)
+        cmd.run(validateAfter=False)
         return cmd.is_running()
     
 class ReloadDbConf(Command):

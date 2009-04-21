@@ -28,6 +28,7 @@ from gppylib.gplog import *
 from gppylib.db import dbconn
 from gppylib.db import catalog
 from gppylib import gparray
+from gppylib import gphostcache
 from gppylib import userinput
 from gppylib import pgconf
 from gppylib.commands import unix
@@ -228,24 +229,34 @@ class GpStop():
         if self.gparray.standbyMaster:
             standby=self.gparray.standbyMaster
             
-            #Whem MPP-5600 is fixed we can go back to just fast.
+            #When MPP-5600 is fixed we can go back to just fast.
             logger.info("Stopping gpsyncmaster on standby host %s mode=immediate" % standby.hostname)
-            cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
-            cmd.run(validateAfter=True)
-            
-            if pg.DbStatus.local('checking status of standby master instance',standby.datadir,standby.hostname):
-                logger.info("Successfully shutdown sync process on %s" % standby.hostname)
-            else:
-                logger.warning("Process gpsyncmaster still running, will issue fast shutdown with immediate")            
+            try:
                 cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
-                cmd.run(validateAfter=True)
-                
-                if pg.DbStatus.remote('checking status of standby master instance',standby.datadir,standby.hostname):
+                cmd.run(validateAfter=True)                
+            except base.ExecutionError, e:
+                logger.warning("Error occured while stopping the standby master: %s" % e)
+            
+            if not pg.DbStatus.remote('checking status of standby master instance',standby,standby.hostname):
+                logger.info("Successfully shutdown sync process on %s" % standby.hostname)
+                return True
+            else:
+                logger.warning("Process gpsyncmaster still running, will issue fast shutdown with immediate")
+                try:            
+                    cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
+                    cmd.run(validateAfter=True)
+                except base.ExecutionError, e:
+                    logger.warning("Error occured while stopping the standby master: %s" % e)
+                    
+                if not pg.DbStatus.remote('checking status of standby master instance',standby,standby.hostname):
                     logger.info("Successfully shutdown sync process on %s" % standby.hostname)
+                    return True
                 else:
                     logger.error("Unable to stop gpsyncmaster on host: %s" % standby.hostname)
+                    return False
         else:
             logger.info("No standby master host configured")
+            return True
             
     ######
     def stop_segments(self):        
@@ -253,74 +264,33 @@ class GpStop():
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
         
-        hostcache=gp.readGpHostCache(self.gparray,self.pool)
-        
         segs = self.gparray.get_valid_segdbs()
-        invalid_segs=self.gparray.get_invalid_segdbs()                                
-        hostdict=gp.build_hostdict(segs,self.gparray,self.pool)                                           
-        failed_seg_status.extend(self._ping_segment_hosts(hostdict))
         
-                                
-        self._stopseg_cmds(hostdict)                
-        success_seg_status=self._process_segment_stop(hostdict,failed_seg_status)    
+        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool)
+        self.hostcache.print_contents(logger)
+        self.hostcache.ping_hosts(logger,self.pool,failed_seg_status)                
+                                   
+                                    
+        self._stopseg_cmds()                
+        success_seg_status=self._process_segment_stop(failed_seg_status)    
         self._print_segment_stop(segs,failed_seg_status,success_seg_status)
-        
-        
+                
         pass
     
     
-    ######
-    def _ping_segment_hosts(self,hostdict):
-        failedSegs=[]
-                                 
-        for p in unix.Ping.ping_list(hostdict.keys()):
-            self.pool.addCommand(p)
-        self.pool.join()        
-        cmds=self.pool.getCompletedItems()
-        
-        
-        for cmd in cmds:
-            if cmd.get_results().rc != 0:
-                host=cmd.hostToPing
-                logger.info("Ping to host: '%s' FAILED" % host)
-                logger.debug("  ping details: %s" % cmd)
-                
-                dblist=hostdict[host]
-                del hostdict[host]                
-                
-                alternateHost=None
-                
-                for db in dblist:
-                    pingCmd = base.Ping("dbid: %d" % db.dbid,db.hostname)
-                    pingCmd.run()
-                    if pingCmd.get_results().rc == 0:
-                        alternateHost=db.hostname
-                        break
-                
-                if alternateHost:
-                    hostdict[alternateHost]=dblist
-                else:
-                    #no interface to reach any of the segments
-                    for db in dblist:
-                        s = SegStartStatus(db,started=False,reason="Failed to Ping Host",failedCmd=cmd)
-                        failedSegs.append(s)
-                    pass
-            
-        self.pool.empty_completed_items()
-    
-        return failedSegs
-    
+   
     
     ######
-    def _stopseg_cmds(self,hostdict):
+    def _stopseg_cmds(self):
         logger.info("Commencing parallel segment instance shutdown, please wait...")
         dispatch_count=0
-        for key in hostdict.iterkeys():
-            dblist = hostdict[key]
-            
-            logger.debug("Dispatching command to shutdown segments on host: %s" % key)
-            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % key, self.gphome, dblist,self.gpversion,
-                                mode=self.mode, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=key)
+        
+        for gphost in self.hostcache.get_hosts():
+            hostname=gphost.dbs[0].hostname                            
+                
+            logger.debug("Dispatching command to shutdown segments on host: %s" % hostname)
+            cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome, gphost,self.gpversion,
+                                mode=self.mode, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
@@ -340,7 +310,7 @@ class GpStop():
     
     
     ######
-    def _process_segment_stop(self,hostdict,failed_seg_status):
+    def _process_segment_stop(self,failed_seg_status):
         
         
         success_seg_status=[]
@@ -360,17 +330,15 @@ class GpStop():
                             success=False
                         else:
                             success=True
-                            
-                        dbs = hostdict[cmd.remoteHost]
-                        for db in dbs:
+                        
+                        for db in cmd.dblist:                            
                             if db.datadir == dir:
                                 if success:
                                     success_seg_status.append( SegStopStatus(db,stopped=True,reason=reasonStr,failedCmd=cmd) )
                                 else:
                                     failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )                        
             else:
-                dbs = hostdict[cmd.remoteHost]
-                for db in dbs:
+                for db in cmd.dblist:
                     failed_seg_status.append( SegStopStatus(db,stopped=False,reason=cmd.get_results(),failedCmd=cmd))
 
         self.pool.empty_completed_items()

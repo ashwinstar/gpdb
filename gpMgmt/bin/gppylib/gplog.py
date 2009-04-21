@@ -53,10 +53,13 @@ def setup_helper_tool_logging(appName,hostname,userName):
     logger.name="%s:%s" % (hostname,userName)
     return logger
 
-def setup_tool_logging(appName,hostname,userName,logdir=None):
+def setup_tool_logging(appName,hostname,userName,logdir=None,nonuser=False):
     """ sets up the logging as per standard GP Tools should  """
     logger = get_default_logger()
     logger.name="%s:%s" % (hostname,userName)
+    
+    if nonuser:
+        appName=appName + "_" + logger.name
     enable_gpadmin_logging(appName,logdir)
     return logger
 
@@ -78,6 +81,8 @@ def quiet_stdout_logging():
 def logging_is_verbose():
     return LOGGER.getEffectiveLevel() == logging.DEBUG    
     
+def logging_is_quiet():
+    return LOGGER.getEffectiveLevel() == logging.WARN
     
 #------------------------------- Private --------------------------------    
 

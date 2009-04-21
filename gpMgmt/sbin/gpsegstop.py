@@ -93,7 +93,10 @@ class GpSegStop():
         
         return failures
     
-
+    
+    ######
+    def cleanup(self):
+        pass
         
 #-------------------------------------------------------------------------
 def parseargs():
@@ -131,7 +134,7 @@ def main():
         figleaf.start()
         
     try:
-        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+        gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
                             
         options, args = parseargs()
         
@@ -145,6 +148,7 @@ def main():
         gpsegstop = GpSegStop(options.dblist,options.mode,options.gpversion)        
         failures = gpsegstop.stop()
         
+        gpsegstop.cleanup()
         if failures:
             sys.exit(1)
         else:    
