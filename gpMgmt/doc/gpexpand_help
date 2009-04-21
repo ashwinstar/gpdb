@@ -123,11 +123,6 @@ Remove the expansion schema.
 Roll back a failed expansion setup operation.
 
 
--q (quiet)
-
-Supress status messages.
-
-
 -V 
 
 Vacuum catalog tables before creating schema copy.
