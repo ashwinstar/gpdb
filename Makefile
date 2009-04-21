@@ -864,6 +864,7 @@ else
 endif
 
 greenplum_path:
+	mkdir -p $(INSTLOC)
 	releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
 
 HOMEDEP :
