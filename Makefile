@@ -204,6 +204,7 @@ RECONFIG :
 	rm -f $(ISCONFIG)
 
 $(ISCONFIG) : $(GPPGDIR)/configure $(ISCONFIG).in env.sh
+	rm -rf $(INSTLOC)
 	cd $(GPPGDIR) && CC="$(strip gcc $(BLD_CFLAGS))" CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
 
 #---------------------------------------------------------------------
