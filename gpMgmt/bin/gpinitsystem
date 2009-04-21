@@ -162,6 +162,7 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-Greenplum configuration filename [-c] option or [-I] option not provided." 2
 		fi
 
+	
 		if [ x"" != x"$CLUSTER_CONFIG" ] ; then
 		#Check that we have a non-zero configuration file
 		    CHK_FILE $CLUSTER_CONFIG
@@ -187,21 +188,6 @@ CHK_PARAMS () {
 		    READ_INPUT_CONFIG
 		fi
 		
-		#validation
-		if [ x"" != x"${QD_PRIMARY_ARRAY}" ] ; then
-		    if [ x"" != x"${MASTER_PORT}" ] ; then
-		        ERROR_EXIT "[FATAL]:-Problem with configuration. Cannot specify MASTER_PORT and QD_PRIMARY_ARRAY" 2    		
-			fi
-
-			if [ x"" != x"${MASTER_HOSTNAME}" ] ; then
-			    ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_HOSTNAME and QD_PRIMARY_ARRAY" 2    			
-			fi
-
-			if [ x"" != x"${MASTER_DIRECTORY}" ] ; then
-			    ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_DIRECTORY and QD_PRIMARY_ARRAY" 2    			
-			fi
-	    fi
-
 
 		if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
 
@@ -1466,6 +1452,19 @@ READ_INPUT_CONFIG () {
     
     #Make sure old CLUSTER_CONFIG settings are not hanging around.
     unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
+
+    #validation
+    if [ x"" != x"${MASTER_PORT}" ] ; then
+        ERROR_EXIT "[FATAL]:-Problem with configuration. Cannot specify MASTER_PORT and QD_PRIMARY_ARRAY" 2    		
+    fi
+
+    if [ x"" != x"${MASTER_HOSTNAME}" ] ; then
+	ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_HOSTNAME and QD_PRIMARY_ARRAY" 2    			
+    fi
+
+    if [ x"" != x"${MASTER_DIRECTORY}" ] ; then
+	ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_DIRECTORY and QD_PRIMARY_ARRAY" 2    			
+    fi
 
     #Make sure it is not a dos file with CTRL M at end of each line
     $CAT $INPUT_CONFIG|$SED -e 's/^M$//g' > $TMP_FILE
