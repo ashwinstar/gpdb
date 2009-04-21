@@ -491,9 +491,9 @@ class GPDetective:
         if self.start_date:
             if self.start_date.find('-') == -1:
                 start = datetime.date.today() - datetime.timedelta(days=int(self.start_date))
-                opt = '--begin', str(start)
+                opt = '--begin %s' % str(start)
             else:
-                opt = '--begin', self.start_date
+                opt = '--begin %s' % self.start_date
         else:
             opt=''
         return opt
@@ -501,7 +501,7 @@ class GPDetective:
         
     #------------------------------------------------------------
     def grabMasterLog(self,masterlog,dst_file,time_opt):
-        myfile = open(dst_file, 'w')
+        myfile = open(dst_file, 'w')        
         cmd = '%s/gplogfilter --quiet %s %s' % (sys.path[0],time_opt,masterlog)
         p=subprocess.Popen(cmd, stdout=myfile,shell=True)
         p.wait()
@@ -514,10 +514,10 @@ class GPDetective:
     
     
     #------------------------------------------------------------    
-    def grabSegmentLog(self,hostname,segdb,seglog,dst_file):
+    def grabSegmentLog(self,hostname,segdb,seglog,dst_file,time_opt):
         myfile = open(dst_file, 'w')       
         try:
-            segcmd="ssh %s %s %s 2>&1" % (hostname,sys.path[0] + '/gplogfilter --quiet',seglog)
+            segcmd="ssh %s %s %s %s 2>&1" % (hostname,sys.path[0] + '/gplogfilter --quiet',time_opt,seglog)
             p=subprocess.Popen(segcmd,stdout=myfile,shell=True)
             p.wait()
             if p.returncode == 0:
@@ -570,7 +570,7 @@ class GPDetective:
             hostname = m.group(1)            
             out_name='%s/%s_rotated.log' % (m.group(1,3))            
             seglog = "%s/%s/pg_log/*" % m.group(2,3)
-            if not self.grabSegmentLog(hostname,seg,seglog,out_name):
+            if not self.grabSegmentLog(hostname,seg,seglog,out_name,time_opt):
                 os.remove(out_name)
             
             
