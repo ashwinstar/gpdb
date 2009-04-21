@@ -430,6 +430,8 @@ endef
 CLIENT_SCRIPTS = $(strip $(tmpCLIENT_SCRIPTS))
 
 define tmpCLIENT_FILESET
+	pg_dump$(EXE_EXT)
+	pg_dumpall$(EXE_EXT)
 	psql$(EXE_EXT)
 endef
 define Unix_CLIENT_FILESET
