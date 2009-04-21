@@ -86,18 +86,18 @@ class GpSegStop():
             else:     
                 #read in /tmp/.s.PGXXX file
                 name="failed segment '%s'" % db
-                (succeeded,pid,file_datadir)=pg.ReadPostmasterTempFile.local(name,port).getResults()
+                (succeeded,mypid,file_datadir)=pg.ReadPostmasterTempFile.local(name,port).getResults()
                 
                 if succeeded and file_datadir == datadir:
-                    if unix.check_pid(pid):
-                        os.kill(pid,3)  #SIGQUIT
+                    if unix.check_pid(mypid):
+                        os.kill(mypid,3)  #SIGQUIT
                         time.sleep(5)
                         
-                        if unix.check_pid(pid):
-                            os.kill(pid,6)  #SIGABORT  ? should this be 11 SIGSEGV?                      
+                        if unix.check_pid(mypid):
+                            os.kill(mypid,6)  #SIGABORT  ? should this be 11 SIGSEGV?                      
                             time.sleep(5)
                         
-                        if not unix.check_pid(pid):
+                        if not unix.check_pid(mypid):
                             lockfile="/tmp/.s.PGSQL.%s" % port    
                             logger.info("Clearing segment instance lock files")        
                             os.remove(lockfile)
