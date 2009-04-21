@@ -6,7 +6,7 @@
 # Internal Use Function.
 #
 #
-import os, sys
+import os, sys, time
 
 progname = os.path.split(sys.argv[0])[-1]
 
@@ -25,6 +25,7 @@ from gppylib import gplog
 from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib.commands import gp
+from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib import pgconf
@@ -71,7 +72,10 @@ class GpSegStop():
         failures=[]
         
         
-        for datadir in self.dblist:
+        for db in self.dblist:
+            fields=db.split(':')
+            datadir=fields[0]
+            port=fields[1]
             cmd=gp.SegmentStop('segment shutdown' , datadir,mode=self.mode)
             cmd.run()
             
@@ -79,7 +83,25 @@ class GpSegStop():
             
             if res.rc == 0:
                 results.append(SegStopStatus(datadir,True,"Shutdown Succeeded"))                
-            else:                
+            else:     
+                #read in /tmp/.s.PGXXX file
+                name="failed segment '%s'" % db
+                (succeeded,PID,file_datadir)=pg.ReadPostmasterTempFile.local(name,port).getResults()
+                
+                if succeeded and file_datadir == datadir:
+                    if unix.check_pid(pid):
+                        os.kill(pid,3)  #SIGQUIT
+                        time.sleep(5)
+                        
+                        if unix.check_pid(pid):
+                            os.kill(pid,6)  #SIGABORT  ? should this be 11 SIGSEGV?                      
+                            time.sleep(5)
+                        
+                        if not unix.check_pid(pid):
+                            lockfile="/tmp/.s.PGSQL.%s" % port    
+                            logger.info("Clearing segment instance lock files")        
+                            os.remove(lockfile)
+                
                 results.append(SegStopStatus(datadir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s" % 
                                              (res.rc,res.stdout,res.stderr)))
         
@@ -110,7 +132,7 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='help',help='show this help message and exit')
     parser.add_option('-v','--verbose', action='store_true',help='debug output.')
     parser.add_option('-q', '--quiet', action='store_true',help='suppress status messages')
-    parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
+    parser.add_option("-D","--db",dest="dblist", action="append", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                       help="expected software version")
     parser.add_option("-m", "--mode", dest="mode",metavar="<MODE>",

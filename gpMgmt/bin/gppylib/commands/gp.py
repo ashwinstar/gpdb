@@ -174,13 +174,14 @@ class GpSegStopCmd(Command):
         self.gphome=gphome
         self.gphost=gphost
         self.dblist=gphost.dbs
-        self.dirlist=[]
+        self.dirportlist=[]
         self.mode=mode
         self.version=version
         for db in self.dblist:
-            self.dirlist.append(db.datadir)
+            self.dirportlist.append(db.datadir + ':' + str(db.port))
             
-        dirstr=" -D ".join(self.dirlist)
+            
+        dirstr=" -D ".join(self.dirportlist)
         if verbose:
             setverbose=" -v "
         else:

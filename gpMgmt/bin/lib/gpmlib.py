@@ -587,7 +587,7 @@ def get_mirror_type(db, multi_home):
             mir_array = []
             for i in range(seg_per_host):
                 pri_host = first_pri_array[i]['hostname']
-                db.execute("select hostname from gp_configuration where hostname <> '%s' and content = %d" % (pri_host, i))
+                db.execute("select hostname from gp_configuration where isprimary = 'f' and content = %d" % (i))
                 r = db.read_tuple()
                 mir_host = r[0]
                 (ok, out) = run('%s "hostname"' % (gplib.ssh_prefix(host=mir_host)))
@@ -786,6 +786,17 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile,
         fatal('failed to edit postgresql.conf')
 
     # start mirror segment in admin mode
+    log_info('create pg_log directory')
+    cmd = makeCommand('mkdir %s/pg_log' % dst_cfg['datadir'])
+    (ok, out) = run_warn('%s "%s"' % (gplib.ssh_prefix(host=dst_cfg['hostname']),cmd))
+    
+    #make sure nothing is running
+    log_info('stopping segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
+    cmd = makeCommand('%s -w -D %s stop 2>&1' %
+                      (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
+                      dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port']))    
+    
+    
     log_info('start segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
     cmd = makeCommand('env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s/pg_log/startup.log -o \\"-i -p %d \\" start 2>&1' %
                       (os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
