@@ -103,6 +103,7 @@ endif
 # them out of the BASE library set for you
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE
+	libedit/2.11
 endef
 BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE))
 
@@ -119,7 +120,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	curl/7.17.1
 	json-c/0.6
 	krb5/1.6.2
-	libedit/2.11
+	libedit/3.0
 	libevent/1.4.6
 	lighttpd/1.4.19
 	openldap/2.3.38
