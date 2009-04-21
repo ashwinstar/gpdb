@@ -103,10 +103,6 @@ endif
 # them out of the BASE library set for you
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE
-	curl/7.17.1
-	krb5/1.6.2
-	openldap/2.3.38
-	openssl/0.9.8g
 endef
 BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE))
 
@@ -252,7 +248,7 @@ thirdparty-integrate: $(foreach tplib,$(BLD_THIRDPARTY_LIBS_BASE),$(BLD_THIRDPAR
 	@echo "Remember to submit these!"
 
 $(foreach tplib,$(BLD_THIRDPARTY_LIBS_BASE),$(BLD_THIRDPARTY)/$(BLD_ARCH)/$(tplib).base):
-	p4 integrate -d //tools/$(notdir $(@D))/$(basename $(@F))/dist/... $(BLD_THIRDPARTY)/...
+	p4 integrate -d //tools/$(notdir $(@D))/$(basename $(@F))/dist/$(BLD_ARCH)/... $(BLD_THIRDPARTY)/$(BLD_ARCH)/...
 
 $(foreach tplib,$(BLD_THIRDPARTY_LIBS_EXCEPTIONS),$(BLD_THIRDPARTY)/$(BLD_ARCH)/$(BLD_$(tplib)_ID)):
 	p4 integrate -d //tools/$(notdir $(@D))/$(@F)/dist/%%1/... $(BLD_THIRDPARTY)/%%1/$(notdir $(@D))/$(@F)/...
@@ -265,7 +261,7 @@ thirdparty-delete:
 	            echo "p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j"; \
 	            p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/$$j; \
 	        done; \
-	        p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksum.$$i; \
+	        p4 delete $(BLD_THIRDPARTY)/$(BLD_ARCH)/checksums.$$i; \
 	    done; \
 	fi
 	@# --- remove exceptions library files as sets as they each have their own directory structure ---
