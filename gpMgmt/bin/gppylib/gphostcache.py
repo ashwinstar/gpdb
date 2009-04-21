@@ -105,6 +105,7 @@ class GpHostCache():
         #go through all of the pending commands and process them.  
         #  we'll also append to our hostcache file as needed so that we don't have
         #  to do this work nexttime.
+        hosts_added={}
         if len(pending_cmds) > 0:
             #make sure we let all the commands finish.
             pool.join()
@@ -119,8 +120,10 @@ class GpHostCache():
                     cmd.validate()
                     
                     normalized_hostname = cmd.get_hostname()
-                    if self._add_hostname(normalized_hostname,db):                    
-                        file.write("%s:%s\n" % (cmd.remotehost,normalized_hostname))
+                    self._add_hostname(normalized_hostname,db)      
+                    if db.hostname not in hosts_added:              
+                        file.write("%s:%s\n" % (db.hostname,normalized_hostname))
+                        hosts_added[db.hostname]=True
             except IOError:
                 raise Exception(' file %s not found' % path)                    
             finally:
