@@ -181,6 +181,7 @@ class Worker(Thread):
         logger.debug("[%s] haltWork" % self.name)
         self.shouldStop=True
         if self.cmd is not None:
+            self.cmd.interrupt()
             self.cmd.cancel()
     
     def signalPassiveStop(self):
