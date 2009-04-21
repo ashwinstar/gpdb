@@ -430,6 +430,11 @@ define tmpCLIENT_SCRIPTS
 endef
 CLIENT_SCRIPTS = $(strip $(tmpCLIENT_SCRIPTS))
 
+define tmpCLIENT_SQLDOCS
+	html
+endef
+CLIENT_SQLDOCS = $(strip $(tmpCLIENT_SQLDOCS))
+
 define tmpCLIENT_FILESET
 	pg_dump$(EXE_EXT)
 	pg_dumpall$(EXE_EXT)
@@ -539,6 +544,7 @@ VERSION:=$(shell perl -pe 's, ,-,g' VERSION)
 
 clients :
 	# ---- copy GPDB fileset ----
+	if [ ! -z "$(CLIENTINSTLOC)" ] && [ "$(CLIENTINSTLOC)" != "/" ]; then rm -rf $(CLIENTINSTLOC); fi
 	mkdir -p $(CLIENTINSTLOC_BIN)
 	(cd $(INSTLOC)/bin && $(TAR) cf - $(CLIENT_FILESET)) | (cd $(CLIENTINSTLOC_BIN)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(CLIENTINSTLOC_INCLUDE)
@@ -552,7 +558,9 @@ ifneq "$(findstring $(BLD_ARCH),sol8_sparc_32 sol9_sparc_32)" ""
 endif
 	# ---- copy docs fileset ----
 	mkdir -p $(CLIENTINSTLOC)
-	cp -f client/docs/release/GPClientTools$(DOC_TYPE).pdf $(CLIENTINSTLOC)
+	cp -f client/docs/release/GPClientTools$(DOC_TYPE).pdf $(CLIENTINSTLOC)/
+	mkdir -p $(CLIENTINSTLOC_DOCS)
+	cp -rpf client/docs/release/$(CLIENT_SQLDOCS) $(CLIENTINSTLOC_DOCS)/
 	# ---- copy scripts fileset ----
 	mkdir -p $(CLIENTINSTLOC)
 	cp -f client/scripts/greenplum_$@_path$(SCRIPT) $(CLIENTINSTLOC)/
@@ -574,6 +582,7 @@ endif
 
 loaders :
 	# ---- copy GPDB fileset ----
+	if [ ! -z "$(LOADERSINSTLOC)" ] && [ "$(LOADERSINSTLOC)" != "/" ]; then rm -rf $(LOADERSINSTLOC); fi
 	mkdir -p $(LOADERSINSTLOC_BIN)
 	(cd $(INSTLOC)/bin/ && $(TAR) cf - $(LOADERS_FILESET_BIN)) | (cd $(LOADERSINSTLOC_BIN)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(LOADERSINSTLOC_BINEXT)
