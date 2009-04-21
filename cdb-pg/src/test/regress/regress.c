@@ -27,6 +27,8 @@ extern char *reverse_name(char *string);
 extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
+extern Datum gp_str2bytea(PG_FUNCTION_ARGS);
+extern Datum gp_hexstr2bigint(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -1482,4 +1484,53 @@ autoinc(PG_FUNCTION_ARGS)
 	pfree(newvals);
 
 	return PointerGetDatum(rettuple);
+}
+
+/*
+ * Turning a string to bytea.  No escape, quote, nothing.
+ */
+PG_FUNCTION_INFO_V1(gp_str2bytea); 
+Datum
+gp_str2bytea(PG_FUNCTION_ARGS)
+{
+    Datum d = PG_GETARG_DATUM(0);
+    return d;
+}
+
+
+/* 
+ * Turning a hex str to a int.  
+ */
+PG_FUNCTION_INFO_V1(gp_hexstr2bigint); 
+Datum
+gp_hexstr2bigint(PG_FUNCTION_ARGS)
+{
+    char *p = PG_GETARG_CSTRING(0);
+    char *endp;
+    long long val;
+
+    Datum d;
+
+    if (!p || p[0] == 0)
+        ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+                        errmsg("Invalid hex string")
+                    ));
+
+    val = strtoll(p, &endp, 16);
+    if ((errno == ERANGE && (val == LLONG_MAX || val == LLONG_MIN))
+            ||
+        (errno != 0 && val == 0)
+            ||
+        (endp == p)
+            ||
+        (*endp != 0)
+       )
+    {
+        ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+                        errmsg("Invalid hex string")
+                    ));
+    }
+
+    d = val;
+    return d;
 }
