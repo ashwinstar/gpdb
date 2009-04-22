@@ -166,14 +166,26 @@ void GPMemoryProtectInit()
  *
  * FIX ERROR HANDLER!
  */
-static void gp_failed_to_alloc(int ec) 
+static void gp_failed_to_alloc(int ec, int en, int sz, int availmb) 
 {
 	/* Give an extra chunk for error handling. */
 	gpproc_total_malloc_chunk += 1;
-	ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
+    if (ec == 1)
+    {
+	    ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
 				errmsg("Out of memroy"),
-                errdetail("Unexpected error %d while evaluating virtual memory protection limit", ec) 
+                errdetail("Failed to allocate %d bytes, %d MB available",
+                          sz, availmb
+                    )
+                ));
+    }
+    else
+    {
+	    ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
+                errmsg("Failed to allocate memory under virtual memory protection"),
+                errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
                 )); 
+    }
 }
 
 static void *gp_malloc_internal(size_t sz1, size_t sz2, bool ismalloc)
@@ -200,10 +212,16 @@ static void *gp_malloc_internal(size_t sz1, size_t sz2, bool ismalloc)
 		mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
 
 		if(mem_avail > need_chunk)
+        {
 			err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 
-		if(err_code != 0)
-			gp_failed_to_alloc(err_code);
+		    if(err_code != 0)
+			    gp_failed_to_alloc(err_code, errno, 0, 0);
+        }
+        else
+        {
+            gp_failed_to_alloc(1, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+        }
 	}
 
 	if(ismalloc)
@@ -275,10 +293,16 @@ void *gp_realloc(void *ptr, size_t sz, size_t newsz)
 				mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
 
 				if(mem_avail > need_chunk)
+                {
 					err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
+				    if(err_code != 0)
+					    gp_failed_to_alloc(err_code, errno, 0, 0);
+                }
+                else
+                {
+                    gp_failed_to_alloc(1, 0, newsz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+                }
 
-				if(err_code != 0)
-					gp_failed_to_alloc(err_code);
 			}
 		}
 
