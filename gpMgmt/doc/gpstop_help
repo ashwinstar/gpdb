@@ -125,12 +125,6 @@ still written to the log file.
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--t (show default script settings)
-
-Displays the settings that will be used to shut down the system, such as 
-the master data directory and port, and the name, data directory, port, 
-valid status, and primary or mirror status of all the segment instances.
-
 
 -? (help)
 

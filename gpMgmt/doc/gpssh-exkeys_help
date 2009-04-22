@@ -37,8 +37,7 @@ the system that already have SSH keys. The -x option specifies a file
 containing a list of new hosts that need to participate in the SSH 
 key exchange. 
 
-If a user name is not specified in the host file, keys will be 
-exchanged as the currently logged in user. Greenplum recommends 
+Keys are exchanged as the currently logged in user. Greenplum recommends 
 performing the key exchange process twice: once as root and once as 
 the gpadmin user (the user designated to own your Greenplum Database 
 installation). The Greenplum Database management utilities require 
