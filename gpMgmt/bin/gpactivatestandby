@@ -193,7 +193,7 @@ ADMIN_SHUTDOWN () {
 CHK_CATALOG_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Starting standby master instance in admin mode"
-	$GPSTART -bm -d $MASTER_STANDBY_DATA_DIRECTORY
+	$GPSTART -m -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "start standby master in admin mode" 2
 	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
 	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where dbid in ($MASTER_DBID)"`
@@ -260,7 +260,7 @@ STOP_MASTER_DB () {
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of standby master instance, including a call to shutdown segment instances"
 		LOG_MSG "[INFO]:-Ignore any warning messages if gpstop reports problems with shutdown of segment instances"
-		$GPSTOP -qfbya -d $MASTER_STANDBY_DATA_DIRECTORY
+		$GPSTOP -qfya -d $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
