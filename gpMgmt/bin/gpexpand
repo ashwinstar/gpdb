@@ -279,7 +279,7 @@ class GpExpandStatus():
     The status file is placed in the master data directory on both the master and 
     the standby master.  its used to keep track of where we are in the progression.
     """
-    def __init__(self, logger, master_data_directory, master_mirror_hostname=None):
+    def __init__(self, logger, master_data_directory, master_mirror=None):
         self.logger=logger
         
         self._status_values = { 'UNINITIALIZED': 1,
@@ -301,7 +301,7 @@ class GpExpandStatus():
         self._status = []
         self._status_info = []
         self._master_data_directory = master_data_directory
-        self._master_mirror_hostname = master_mirror_hostname
+        self._master_mirror = master_mirror
         self._status_filename = master_data_directory + '/gpexpand.status'
         self._status_standby_filename = master_data_directory + '/gpexpand.standby.status'
         self._fp = None
@@ -346,11 +346,10 @@ class GpExpandStatus():
         """Creates a new gpexpand status file"""
         try:
             self._fp = open(self._status_filename, 'w')
-            if self._master_mirror_hostname:
+            if self._master_mirror:
                 self._fp_standby = open(self._status_standby_filename, 'w')
                 self._fp_standby.write('UNINITIALIZED:None\n')
                 self._fp_standby.flush()
-                self._sync_status_file()
             self._fp.write('UNINITIALIZED:None\n')
             self._fp.flush()
             self._status.append('UNINITIALIZED')
@@ -363,11 +362,10 @@ class GpExpandStatus():
     
     def _sync_status_file(self):
         """Syncs the gpexpand status file with the master mirror"""
-        if self._master_mirror_hostname:
+        if self._master_mirror:
             cpCmd = RemoteCopy('gpexpand copying status file to master mirror', 
-                               self._status_standby_filename, self._master_mirror_hostname,
-                               self._status_filename, ctxt=REMOTE, 
-                               remoteHost=self._master_mirror_hostname)
+                               self._status_standby_filename, self._master_mirror.get_hostname(), 
+                               self._status_filename)
             cpCmd.run(validateAfter=True)
     
     def set_status(self, status, status_info=None):
@@ -385,7 +383,7 @@ class GpExpandStatus():
         if self._status and \
            self._status_values[status] != self._status_values[self._status[-1]] + 1:
                 raise InvalidStatusError('Invalid status transition from %s to %s' % (self._status[-1], status))
-        if self._master_mirror_hostname:
+        if self._master_mirror:
             self._fp_standby.write('%s:%s\n' % (status, status_info))
             self._fp_standby.flush()
             self._sync_status_file()
@@ -418,10 +416,10 @@ class GpExpandStatus():
             os.unlink(self._status_filename)
         if os.path.exists(self._status_standby_filename):
             os.unlink(self._status_standby_filename)
-        if self._master_mirror_hostname:
+        if self._master_mirror:
             RemoveFiles.remote('gpexpand master mirror status file cleanup', 
-                               self._master_data_directory + '/gpexpand.status', 
-                               self._master_mirror_hostname)    
+                               self._master_mirror.get_hostname(), 
+                               self._status_filename) 
         
     def get_temp_dir(self):
         return self._temp_dir

@@ -311,6 +311,8 @@ class GpArray:
         """Return a list of all GpDb objects that make up the array"""
         list=[]
         list.append(self.master)
+        if self.standbyMaster:
+            list.append(self.standbyMaster)
         if includeExpansionSegs:
             list.extend(self.getSegDbList(True))
         else:
