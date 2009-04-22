@@ -809,7 +809,7 @@ libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
 
 copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
-ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libk5crypto.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5support.so*,$(INSTLOC)/lib) ; fi
