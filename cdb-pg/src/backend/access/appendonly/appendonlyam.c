@@ -94,7 +94,9 @@ static void doDecompress(
 							 uint8			*uncompressed,
 							 int32			uncompressedLen,
 							 CompressorType compresstype,   /* the compressor type used */
-							 char		    *qlz_scratch,
+							 char			*qlzScratch,
+							 int32			qlzScratchLen,
+							 int32			qlzScratchGuardLen,
 							 int64		    bufferCount);
 
 static int32 getUsableBlockSize(int32 configBlockSize);
@@ -353,15 +355,17 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	/*
 	 * if quicklz compression used, prepare scratch space for decompression.
 	 */
+	if (Debug_appendonly_guard_end_quicklz_scratch)
+		scan->qlzScratchGuardLen = 1024;
 	switch(scan->aos_compresstype)
 	{
 		case COMPTYPE_QUICKLZ1:
-			scan->qlz_scratch = (char*) palloc(QLZ1_SCRATCH_DECOMPRESS);
-			memset(scan->qlz_scratch, 0, QLZ1_SCRATCH_DECOMPRESS);		
+			scan->qlzScratchLen = QLZ1_SCRATCH_DECOMPRESS;
+			scan->qlzScratch = (char*) palloc0(scan->qlzScratchLen + scan->qlzScratchGuardLen);
 			break;
 		case COMPTYPE_QUICKLZ3:
-			scan->qlz_scratch = (char*) palloc(QLZ3_SCRATCH_DECOMPRESS);
-			memset(scan->qlz_scratch, 0, QLZ3_SCRATCH_DECOMPRESS);		
+			scan->qlzScratchLen = QLZ3_SCRATCH_DECOMPRESS;
+			scan->qlzScratch = (char*) palloc0(scan->qlzScratchLen + scan->qlzScratchGuardLen);
 			break;
 		case COMPTYPE_ZLIB:
 		case COMPTYPE_NONE:
@@ -918,7 +922,9 @@ getNextStorageBlockInFile(
 					scan->uncompressedBuffer,	// Temporary buffer to hold uncompressed data.
 					uncompressedLen,
 					scan->aos_compresstype,
-					scan->qlz_scratch,
+					scan->qlzScratch,
+					scan->qlzScratchLen,
+					scan->qlzScratchGuardLen,
 					scan->bufferCount);
 
 		*dataBuffer = 		scan->uncompressedBuffer;
@@ -1559,7 +1565,9 @@ static void verifyWriteBlock(
 					aoInsertDesc->verifyWriteBuffer,	// Temporary buffer to hold uncompressed data.
 					dataLen,
 					aoInsertDesc->compressType,
-					aoInsertDesc->qlz_scratch_decompress,
+					aoInsertDesc->qlzScratchDecompress,
+					aoInsertDesc->qlzScratchDecompressLen,
+					aoInsertDesc->qlzScratchDecompressGuardLen,
 					aoInsertDesc->bufferCount);
 		
 		data = aoInsertDesc->verifyWriteBuffer;
@@ -2100,15 +2108,19 @@ appendonly_insert_init(Relation rel, int segno)
 		/*
 		 * if quicklz compression used, set up scratch space.
 		 */
+
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			aoInsertDesc->qlzScratchCompressGuardLen = 1024;
+			
 		switch(aoInsertDesc->compressType)
 		{
 			case COMPTYPE_QUICKLZ1:
-				aoInsertDesc->qlz_scratch_compress = (char*) palloc(QLZ1_SCRATCH_COMPRESS);
-				memset(aoInsertDesc->qlz_scratch_compress, 0, QLZ1_SCRATCH_COMPRESS);			
+				aoInsertDesc->qlzScratchCompressLen = QLZ1_SCRATCH_COMPRESS;
+				aoInsertDesc->qlzScratchCompress = (char*) palloc0(aoInsertDesc->qlzScratchCompressLen + aoInsertDesc->qlzScratchCompressGuardLen);
 				break;
 			case COMPTYPE_QUICKLZ3:
-				aoInsertDesc->qlz_scratch_compress = (char*) palloc(QLZ3_SCRATCH_COMPRESS);
-				memset(aoInsertDesc->qlz_scratch_compress, 0, QLZ3_SCRATCH_COMPRESS);			
+				aoInsertDesc->qlzScratchCompressLen = QLZ3_SCRATCH_COMPRESS;
+				aoInsertDesc->qlzScratchCompress = (char*) palloc0(aoInsertDesc->qlzScratchCompressLen + aoInsertDesc->qlzScratchCompressGuardLen);
 				break;
 			case COMPTYPE_ZLIB:
 				break; /* nothing to do */
@@ -2131,7 +2143,7 @@ appendonly_insert_init(Relation rel, int segno)
 	else
 	{
 		aoInsertDesc->uncompressedBuffer = NULL;
-		aoInsertDesc->qlz_scratch_compress = NULL;		
+		aoInsertDesc->qlzScratchCompress = NULL;		
 	}
 
 	if (gp_appendonly_verify_write_block && aoInsertDesc->shouldCompress)
@@ -2141,16 +2153,19 @@ appendonly_insert_init(Relation rel, int segno)
 		/*
 		 * if quicklz compression used, prepare scratch space for decompression.
 		 */
-		aoInsertDesc->qlz_scratch_decompress = NULL;
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			aoInsertDesc->qlzScratchDecompressGuardLen = 1024;
+				
+		aoInsertDesc->qlzScratchDecompress = NULL;
 		switch(aoInsertDesc->compressType)
 		{
 			case COMPTYPE_QUICKLZ1:
-				aoInsertDesc->qlz_scratch_decompress = (char*) palloc(QLZ1_SCRATCH_DECOMPRESS);
-				memset(aoInsertDesc->qlz_scratch_decompress, 0, QLZ1_SCRATCH_DECOMPRESS);		
+				aoInsertDesc->qlzScratchDecompressLen = QLZ1_SCRATCH_DECOMPRESS;
+				aoInsertDesc->qlzScratchDecompress = (char*) palloc0(aoInsertDesc->qlzScratchDecompressLen + aoInsertDesc->qlzScratchDecompressGuardLen);
 				break;
 			case COMPTYPE_QUICKLZ3:
-				aoInsertDesc->qlz_scratch_decompress = (char*) palloc(QLZ3_SCRATCH_DECOMPRESS);
-				memset(aoInsertDesc->qlz_scratch_decompress, 0, QLZ3_SCRATCH_DECOMPRESS);		
+				aoInsertDesc->qlzScratchDecompressLen = QLZ3_SCRATCH_DECOMPRESS;
+				aoInsertDesc->qlzScratchDecompress = (char*) palloc0(aoInsertDesc->qlzScratchDecompressLen + aoInsertDesc->qlzScratchDecompressGuardLen);
 				break;
 			case COMPTYPE_ZLIB:
 			case COMPTYPE_NONE:
@@ -2162,7 +2177,7 @@ appendonly_insert_init(Relation rel, int segno)
 	else
 	{
 		aoInsertDesc->verifyWriteBuffer = NULL;
-		aoInsertDesc->qlz_scratch_decompress = NULL;
+		aoInsertDesc->qlzScratchDecompress = NULL;
 	}
 	
 	aoInsertDesc->maxBufferWithOverrrunLen = aoInsertDesc->usableBlockSize + maxOverrun;
@@ -2377,6 +2392,25 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 }
 
 static void
+verifyQlzScratchGuard(
+	char		*title,
+	char		*qlzScratch, 
+	int32		qlzScratchLen, 
+	int32		qlzScratchGuardLen)
+{
+	int i;
+	
+	if (qlzScratchGuardLen == 0)
+		return;
+
+	for (i = 0; i < qlzScratchGuardLen; i++)
+		if (qlzScratch[qlzScratchLen + i] != 0)
+			elog(ERROR,"Guard area after %d byte scratch buffer for '%s' is not zero at index %d",
+			     qlzScratchLen, title, i);
+}
+
+
+static void
 issueCompressError(
 	int				zlibCompressError,
 	int32			sourceLen)
@@ -2414,7 +2448,9 @@ tryToCompress(
 	 int32		*compressedLen,
 	 int		compressLevel,
 	 CompressorType  compressType,
-	 char		*qlz_scratch_compress)
+	 char		*qlzScratch,
+	 int32		qlzScratchLen,
+	 int32		qlzScratchGuardLen)
 {
 	unsigned long 	compressedSize;
 	
@@ -2451,13 +2487,16 @@ tryToCompress(
 	{
 		Insist(compressLevel == 1);
 
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
 		if (Debug_appendonly_rezero_quicklz_compress_scratch)
-			memset(qlz_scratch_compress, 0, QLZ1_SCRATCH_COMPRESS);			
+			memset(qlzScratch, 0, qlzScratchLen);			
 
 		compressedSize = qlz1_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
-									  qlz_scratch_compress);
+									  qlzScratch);
 	    
 		/*
 		 * Since qlz1_compress never returns an error (unlike zlib) if there was 
@@ -2473,6 +2512,9 @@ tryToCompress(
 			     "QuickLZ qlz1_compress overran extra buffer space (max buffer length %d, compressed length %d)",
 			     compressedBufferWithOverrrunLen, (int)compressedSize);
 		
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+			
 		if ((compressedSize > (unsigned long)maxCompressedLen) ||
 			(compressedSize > sourceLen))
 		{
@@ -2485,13 +2527,16 @@ tryToCompress(
 		Insist(compressType == COMPTYPE_QUICKLZ3);
 		Insist(compressLevel == 3);
 		
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
 		if (Debug_appendonly_rezero_quicklz_compress_scratch)
-			memset(qlz_scratch_compress, 0, QLZ3_SCRATCH_COMPRESS);			
+			memset(qlzScratch, 0, qlzScratchLen);			
 
 		compressedSize = qlz3_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
-									  qlz_scratch_compress);
+									  qlzScratch);
 	    
 		/*
 		 * see comment above below qlz1_compress.
@@ -2500,6 +2545,9 @@ tryToCompress(
 			elog(FATAL, 
 				 "QuickLZ qlz3_compress overran extra buffer space (max buffer length %d, compressed length %d)",
 				 compressedBufferWithOverrrunLen, (int)compressedSize);
+			
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 			
 		if ((compressedSize > (unsigned long)maxCompressedLen) ||
 			(compressedSize > sourceLen))
@@ -2564,7 +2612,9 @@ doCompressAppend(
 					compressedLen,
 					aoInsertDesc->compressLevel,
 					aoInsertDesc->compressType,
-					aoInsertDesc->qlz_scratch_compress);
+					aoInsertDesc->qlzScratchCompress,
+					aoInsertDesc->qlzScratchCompressLen,
+					aoInsertDesc->qlzScratchCompressGuardLen);
 	
 	if (res == Z_OK)
 	{
@@ -2683,7 +2733,9 @@ doDecompress(
 			uint8			*uncompressed,
 			int32			uncompressedLen,
 			CompressorType	compresstype,	/* the compressor type used */
-			char			*qlz_scratch,
+			char			*qlzScratch,
+			int32		    qlzScratchLen,
+			int32			qlzScratchGuardLen,
 			int64			bufferCount)
 {
 	unsigned long compressedSize;
@@ -2734,24 +2786,37 @@ doDecompress(
 	}
 	else if(compresstype == COMPTYPE_QUICKLZ1)
 	{
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz1_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
 		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
-			memset(qlz_scratch, 0, QLZ1_SCRATCH_DECOMPRESS);		
+			memset(qlzScratch, 0, qlzScratchLen);		
 
 		uncompressedSize = qlz1_decompress((const char *)compressed, 
 										  uncompressed, 
-										  qlz_scratch);
+										  qlzScratch);
+		
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz1_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
 	}
 	else
 	{
 		Insist(compresstype == COMPTYPE_QUICKLZ3);
 
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		
 		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
-			memset(qlz_scratch, 0, QLZ3_SCRATCH_DECOMPRESS);		
+			memset(qlzScratch, 0, qlzScratchLen);		
 
 		uncompressedSize = qlz3_decompress((const char *)compressed, 
 										  uncompressed, 
-										  qlz_scratch);
+										  qlzScratch);
 
+		if (Debug_appendonly_guard_end_quicklz_scratch)
+			verifyQlzScratchGuard("qlz3_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+	
 	}
 	
 	resultingUncompressedLen = (int32)uncompressedSize;

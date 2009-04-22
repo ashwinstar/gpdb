@@ -69,7 +69,9 @@ typedef struct AppendOnlyInsertDescData
 
 	/* used for gp_appendonly_verify_write_block GUC */
 	uint8			*verifyWriteBuffer;
-	char			*qlz_scratch_decompress;
+	char			*qlzScratchDecompress;
+	int32			qlzScratchDecompressLen;
+	int32			qlzScratchDecompressGuardLen;
 
 	int32			usableBlockSize;
 	int32			maxDataLen;
@@ -85,7 +87,9 @@ typedef struct AppendOnlyInsertDescData
 	int32			toast_tuple_threshold;
 	int32			toast_tuple_target;
 
-	char 			*qlz_scratch_compress;
+	char 			*qlzScratchCompress;
+	int32			qlzScratchCompressLen;
+	int32			qlzScratchCompressGuardLen;
 
 } AppendOnlyInsertDescData;
 
@@ -121,7 +125,9 @@ typedef struct AppendOnlyScanDescData
 	BufferedRead    bufferedRead;
 	VarBlockReader  varBlockReader;
 	MemoryContext	aoScanInitContext; /* mem context at init time */
-	char			*qlz_scratch;
+	char			*qlzScratch;
+	int32			qlzScratchLen;
+	int32			qlzScratchGuardLen;
 
 	int32			headerLen;
 	uint8			*uncompressedBuffer; /* for decompression */
