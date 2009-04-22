@@ -51,7 +51,7 @@
 typedef struct
 {
 	/* note: field layout chosen with an eye to alignment concerns */
-	int16		id;				/* cache ID --- must be first */
+	int32		id;				/* cache ID --- must be first */
 	ItemPointerData tuplePtr;	/* tuple identifier in cached relation */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	uint32		hashValue;		/* hash value of key for this catcache */
@@ -61,7 +61,7 @@ typedef struct
 
 typedef struct
 {
-	int16		id;				/* type field --- must be first */
+	int32		id;				/* type field --- must be first */
 	Oid			dbId;			/* database ID, or 0 if a shared relation */
 	Oid			relId;			/* relation ID */
 } SharedInvalRelcacheMsg;
@@ -70,13 +70,13 @@ typedef struct
 
 typedef struct
 {
-	int16		id;				/* type field --- must be first */
+	int32		id;				/* type field --- must be first */
 	RelFileNode rnode;			/* physical file ID */
 } SharedInvalSmgrMsg;
 
 typedef union
 {
-	int16		id;				/* type field --- must be first */
+	int32		id;				/* type field --- must be first */
 	SharedInvalCatcacheMsg cc;
 	SharedInvalRelcacheMsg rc;
 	SharedInvalSmgrMsg sm;
