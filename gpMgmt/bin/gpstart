@@ -73,13 +73,14 @@ class SegStartStatus():
 class GpStart():
     
     ######
-    def __init__(self,restricted,start_standby,master_datadir,parallel=DEFAULT_NUM_WORKERS,quiet=False):
+    def __init__(self,restricted,start_standby,master_datadir,parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False):
         self.restricted=restricted
         self.start_standby=start_standby        
         self.pool = None
         self.parallel=parallel
         self.attempt_standby_start=False
         self.quiet=quiet
+        self.masteronly=masteronly
         self.master_datadir=master_datadir
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass
@@ -92,8 +93,11 @@ class GpStart():
             self.master_datadir=gp.get_masterdatadir()
         self.user=gp.get_user()                                    
         gp.check_permissions(self.user)                    
-        self._read_postgresqlconf()                
-        gp.standby_check(self.master_datadir)                 
+        self._read_postgresqlconf()
+          
+        if not self.masteronly:              
+            gp.standby_check(self.master_datadir)
+                             
         self._check_version()
         self._check_master_running()
         
@@ -627,7 +631,8 @@ def main():
                           options.start_standby,
                           master_datadir=options.master_data_directory,
                           parallel=options.parallel,
-                          quiet=options.quiet)
+                          quiet=options.quiet,
+                          masteronly=options.master_only)
         
         gpstart.prepare()
           
