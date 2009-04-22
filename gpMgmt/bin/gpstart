@@ -39,10 +39,7 @@ description = ("""
 Starts a GPDB Array.
 """)
 
-_help = ["""
-TODO: Items""",
-
-"* dump more identification in _process_segment_start()"
+_help = [""""""
 
 ]
 
@@ -533,13 +530,14 @@ def parseargs():
                 description=' '.join(description.split()),
                 version='%prog version $Revision: #12 $')
     parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [options] ')
+    parser.set_usage('%prog [--help] [--usage] [options] ')
     parser.remove_option('-h')
     
-    parser.add_option('-h', '-?', '--help', action='help',
+    parser.add_option('-h', '--help', action='help',
                         help='show this help message and exit')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')
+    parser.add_option('--usage', action="briefhelp")
     
     optgrp2 = OptionGroup(parser, 'Logging options: ')
     parser.add_option_group(optgrp2)
@@ -548,21 +546,21 @@ def parseargs():
                              "[default:- verbose output to screen]")                          
     optgrp2.add_option('-q', '--quiet', action='store_true',
                         help='suppress status messages')
+    
     optgrp2.add_option('-l', '--logfile_directory', type='string', default=None,
                        help="The directory to write the log file. Defaults to ~/gpAdminLogs.")
     
     optgrp4 = OptionGroup(parser, 'Connection options: ')
     parser.add_option_group(optgrp4)
+    optgrp4.add_option('-d', '--master_data_directory', type='string', default=None, metavar="<DATA DIRECTORY>",
+                       help="Optional. The master host data directory. If not specified, the value set"\
+                            "for $MASTER_DATA_DIRECTORY will be used.")
     
     
     optgrp3 = OptionGroup(parser, 'Database startup options: ')
     parser.add_option_group(optgrp3)
-    optgrp3.add_option('-d', '--master_data_directory', type='string', default=None, metavar="<DATA DIRECTORY>",
-                       help="Optional. The master host data directory. If not specified, the value set"\
-                            "for $MASTER_DATA_DIRECTORY will be used.")
     optgrp3.add_option('-m', '--master_only', action='store_true',
-                        help='start master instance only in maintenance mode')
-    
+                        help='start master instance only in maintenance mode')    
     optgrp3.add_option('-y', '--no_standby', dest="start_standby", action='store_false',default=True,
                         help='do not start master standby server')
     optgrp3.add_option('-B', '--parallel', type="int", default=64, metavar="<parallel_processes>",
@@ -583,6 +581,10 @@ def parseargs():
     
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:
+        parser.print_help()
+        parser.exit()
+    
+    if len(args) > 0:
         parser.print_help()
         parser.exit()
         

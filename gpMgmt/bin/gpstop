@@ -42,11 +42,7 @@ Stops a GPDB Array.
 """)
 
 _help = ["""
-TODO: Items""",
-
-"* Handle case where gpstop is called against an already stopped system better."
-
-"* when restart is specified, have a way to display the stdout of gpstart as its happening"
+"""
 ]
 
 EXECNAME = os.path.split(__file__)[-1]
@@ -455,10 +451,11 @@ def parseargs():
     parser.set_usage('%prog [--help] [options] ')
     parser.remove_option('-h')
     
-    parser.add_option('-h', '-?', '--help', action='help',
+    parser.add_option('-h', '--help', action='help',
                         help='show this help message and exit')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')
+    parser.add_option('--usage', action="briefhelp")
     
     optgrp2 = OptionGroup(parser, 'Logging options: ')
     parser.add_option_group(optgrp2)
@@ -467,19 +464,19 @@ def parseargs():
                              "[default:- verbose output to screen]")    
                       
     optgrp2.add_option('-q', '--quiet', action='store_true',
-                        help='suppress status messages')
+                        help='suppress status messages')    
     optgrp2.add_option('-l', '--logfile_directory', type='string', default=None,
                        help="The directory to write the log file. Defaults to ~/gpAdminLogs.")
     
     optgrp4 = OptionGroup(parser, 'Connection options: ')
     parser.add_option_group(optgrp4)
+    optgrp4.add_option('-d', '--master_data_directory', type='string', default=None,
+                       help="Optional. The master host data directory. If not specified, the value set"\
+                            "for $MASTER_DATA_DIRECTORY will be used.")
     
     
     optgrp3 = OptionGroup(parser, 'Instance shutdown options: ')
     parser.add_option_group(optgrp3)
-    optgrp3.add_option('-d', '--master_data_directory', type='string', default=None,
-                       help="Optional. The master host data directory. If not specified, the value set"\
-                            "for $MASTER_DATA_DIRECTORY will be used.")
     optgrp3.add_option('-f', '--fast', action='store_true', default=False,
                         help="<deprecated> Fast shutdown, active transactions interrupted and rolled back")
     optgrp3.add_option('-i', '--immediate', action='store_true',default=False,
@@ -544,7 +541,10 @@ def parseargs():
         parser.print_help()
         parser.exit()
     
-    
+    if len(args) > 0:
+        parser.print_help()
+        parser.exit()
+
     return options, args
 
 

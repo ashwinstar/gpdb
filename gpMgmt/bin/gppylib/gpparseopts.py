@@ -27,7 +27,10 @@ def _setcase(option, opt, value, parser):
 
 #----------------------- Command line option parser ----------------------
 
+    
 class OptParser(OptionParser):
+    
+    
     # OptionParser's help text formatter removes paragraph breaks and
     # preserves excess spaces.  Override its (undocumented) format_help
     # method so our help can have paragraphs.
@@ -41,6 +44,7 @@ class OptParser(OptionParser):
     def setHelp(self,helpStr):
         self.helpStr=helpStr
     
+        
     def print_help(self, file=None):
         helpFileStr=self.read_helpfile()
         if helpFileStr:
@@ -110,7 +114,10 @@ class OptChecker(Option):
     def filterAction(self, dest, opt, value, values, parser, Filter, *args):
         filterlist = values.ensure_value(dest, [])
         filterlist.append(filterize(Filter, value, *args))
-        
+    
+    def brief_help(self, dest, opt, value, values, parser, Filter, *args):
+        OptionParser.print_help(parser,None)  
+        parser.exit()
         
     def optionalSecondArgAction(self, dest, opt, value, values, parser, *args):
         # If the next arg converts successfully to the proper type, consume it.
@@ -136,6 +143,7 @@ class OptChecker(Option):
             
     _addactions = {"MatchRegex"        : (filterAction, MatchRegex),
                    "NoMatchRegex"      : (filterAction, NoMatchRegex),
+                   "briefhelp"         : (brief_help,None),
                    "optionalSecondArg" : (optionalSecondArgAction, None)}
                    
     _addactionnames = tuple(_addactions.keys())
