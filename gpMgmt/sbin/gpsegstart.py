@@ -146,8 +146,6 @@ class GpSegStart():
                 results.append(SegStartStatus(cmd.datadir,False,error_str))
                                
                               
-        self.pool.haltWork()
-        #self.pool.joinWorkers()
         
         
         #Log the results!
@@ -161,8 +159,8 @@ class GpSegStart():
         return failures
     
     def cleanup(self):
-        self.pool.haltWork()
-        self.pool.joinWorkers()
+        if self.pool:
+            self.pool.haltWork()
 
     
     ######
@@ -243,7 +241,8 @@ def main():
     
     if use_figleaf:
         figleaf.start()
-        
+    gpsegstart=None
+    
     try:
         gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
         
@@ -262,7 +261,7 @@ def main():
         
         failures = gpsegstart.start()
         
-        gpsegstart.cleanup()
+        
         if failures:
             sys.exit(1)
         else:    
@@ -274,6 +273,8 @@ def main():
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
     finally:
+        if gpsegstart:
+            gpsegstart.cleanup()
         if use_figleaf:
             figleaf.stop()
             figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)

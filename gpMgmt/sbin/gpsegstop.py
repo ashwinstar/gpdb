@@ -71,6 +71,8 @@ class GpSegStop():
         results=[]
         failures=[]
         
+        logger.info("Issuing shutdown commands to local segments...")
+
         
         for db in self.dblist:
             fields=db.split(':')
@@ -99,8 +101,9 @@ class GpSegStop():
                         
                         if not unix.check_pid(mypid):
                             lockfile="/tmp/.s.PGSQL.%s" % port    
-                            logger.info("Clearing segment instance lock files")        
-                            os.remove(lockfile)
+                            if os.path.exists(lockfile):
+                                logger.info("Clearing segment instance lock files")        
+                                os.remove(lockfile)
                 
                 results.append(SegStopStatus(datadir,False,"Shutdown failed: rc: %d stdout: %s stderr: %s" % 
                                              (res.rc,res.stdout,res.stderr)))
@@ -118,7 +121,9 @@ class GpSegStop():
     
     ######
     def cleanup(self):
-        pass
+        if self.pool:
+            self.pool.haltWork()
+
         
 #-------------------------------------------------------------------------
 def parseargs():
@@ -155,6 +160,8 @@ def main():
     if use_figleaf:
         figleaf.start()
         
+    gpsegstop=None
+    
     try:
         gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),nonuser=True)
                             
@@ -170,7 +177,7 @@ def main():
         gpsegstop = GpSegStop(options.dblist,options.mode,options.gpversion)        
         failures = gpsegstop.stop()
         
-        gpsegstop.cleanup()
+        
         if failures:
             sys.exit(1)
         else:    
@@ -182,6 +189,8 @@ def main():
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
     finally:
+        if gpsegstop:
+            gpsegstop.cleanup()
         if use_figleaf:
             figleaf.stop()
             figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
