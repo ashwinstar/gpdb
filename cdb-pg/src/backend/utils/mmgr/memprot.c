@@ -171,8 +171,9 @@ static void gp_failed_to_alloc(int ec)
 	/* Give an extra chunk for error handling. */
 	gpproc_total_malloc_chunk += 1;
 	ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
-				errmsg("Memory allocation denied, error code %d, kill all gangs", ec)
-				));
+				errmsg("Out of memroy"),
+                errdetail("Unexpected error %d while evaluating virtual memory protection limit", ec) 
+                )); 
 }
 
 static void *gp_malloc_internal(size_t sz1, size_t sz2, bool ismalloc)
