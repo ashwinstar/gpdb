@@ -324,7 +324,10 @@ class LocalExecutionContext(ExecutionContext):
 
     def cancel(self):
         if self.proc:
-            os.kill(self.proc.pid, signal.SIGTERM)
+            try:
+                os.kill(self.proc.pid, signal.SIGTERM)
+            except OSError:
+                pass
 
     def interrupt(self):
         self.halt=True
@@ -425,6 +428,8 @@ class Command:
     def cancel(self):
         self.exec_context.cancel()    
     
+    def interrupt(self):
+        self.exec_context.interrupt()
     
     def was_successful(self):
         if self.results is None:
