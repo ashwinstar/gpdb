@@ -1520,8 +1520,14 @@ READ_INPUT_CONFIG () {
     QE_PRIMARY_ARRAY=(${PRIMARY_ARRAY[@]})
     QE_MIRROR_ARRAY=(${MIRROR_ARRAY[@]})
     ((TOTAL_SEG=${#QE_PRIMARY_ARRAY[@]}))
+    ((TOTAL_MIRRORS=${#MIRROR_ARRAY[@]}))
     MIRROR_TYPE=0
     MULTI_HOME=0
+
+
+   if [ $TOTAL_SEG -ne $TOTAL_MIRRORS ] ; then
+	ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify different number of primary and mirror segments." 2   
+   fi
    
 }
 
