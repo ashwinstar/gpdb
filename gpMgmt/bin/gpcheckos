@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python -Wignore::DeprecationWarning
 
 '''
 gpcheckos -- check os for consistency and compatibility with GPDB.
@@ -38,7 +38,7 @@ def run(cmd):
 
 ###############################
 ###  This is the content of the file ./lib/gpsys.py
-gpsys = '''#!/usr/bin/env python
+gpsys = '''#!/usr/bin/env python -Wignore::DeprecationWarning
 """
 gpsys.py -- print system properties
 
@@ -49,7 +49,7 @@ Usage: gpsys.py [-p] [-t] [-d gphome]
 	-d  : GPHOME dir
 """
 
-import os, platform, sys, getopt, pickle, socket
+import os, platform, sys, getopt, pickle, socket, subprocess
 from datetime import datetime
 
 opt = {}
@@ -88,7 +88,7 @@ def run(cmd):
     ok = False
     out = []
     try:
-        f = os.popen(cmd)
+        f = Popen(cmd, shell=True, bufsize=bufsize, stdout=PIPE).stdout
         for line in f:
             out.append(line)
         ok = not f.close()
@@ -279,7 +279,8 @@ def do_solaris(res):
 	i = i.strip()
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
-    f = os.popen("ls -1 /var/sadm/patch ", "r")
+    cmd = ["ls -1 /var/sadm/patch ", "r"]
+    f = subprocess.Popen(cmd, shell=True, stdout=PIPE).stdout
     files = f.readlines()
     f.close()
     res['solaris.patch_file'] = ' '.join(files)

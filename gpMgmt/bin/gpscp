@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python -Wignore::DeprecationWarning
 
 '''
 gpscp -- scp to multiple hosts at once
@@ -89,7 +89,7 @@ def run(cmd, peer):
     p = popen2.Popen4(cmd)
     p.x_cmd = cmd
     p.x_peer = peer
-    p.tochild.close()
+    p.tochild.close()    
     return p
 
 

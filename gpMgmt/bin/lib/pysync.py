@@ -10,7 +10,7 @@ if sys.hexversion<0x2040400:
 
 import cPickle
 import inspect
-import md5
+import hashlib
 import signal
 import socket
 import subprocess
@@ -468,7 +468,9 @@ class LocalPysync:
         elif what[0]=='getList':
             return self.getList()
         elif what[0]=='getDigest':
-            return md5.new(self.readFile(what[1],what[2],what[3])).digest()
+            m = hashlib.md5()
+            m.update(self.readFile(what[1],what[2],what[3]))
+            return m.digest()
         elif what[0]=='getData':
             self.sendData = self.readFile(what[1],what[2],what[3])
             if self.options.compress:

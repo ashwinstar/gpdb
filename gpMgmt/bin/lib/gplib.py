@@ -1,5 +1,5 @@
 from __future__ import with_statement 
-import os, sys
+import os, sys, subprocess
 
 sys.path.append(sys.path[0] + '/lib')
 import cmd, signal, atexit, threading

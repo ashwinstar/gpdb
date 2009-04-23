@@ -16,7 +16,7 @@ import copy
 import cPickle
 from datetime import datetime
 import errno
-import md5
+import hashlib 
 import socket
 import stat
 import threading
@@ -694,7 +694,9 @@ class RemotePysync:
                                 f.seek(offset)
                                 b = f.read(size)
                                 assert len(b)==size
-                                a = md5.new(b).digest()
+                                m = hashlib.md5()
+                                m.update(b)
+                                a = m.digest()
                                 digest = self.getAnswer()
                             if a==digest:
                                 if not self.options.minusn:
@@ -708,7 +710,9 @@ class RemotePysync:
                             if not self.options.insecure:
                                 if digest==None:
                                     digest = self.doCommand('getDigest',name,offset,size)
-                                if md5.new(data).digest()!=digest:
+                                m = hashlib.md5()
+                                m.update(data)
+                                if m.digest()!=digest:
                                     raise Exception('Digest did not match.')
                             f.seek(offset)
                             f.write(data)
