@@ -36,6 +36,7 @@ if not MASTER_DATA_DIRECTORY:
     sys.exit('MASTER_DATA_DIRECTORY env not defined')
 
 
+
 # we always connect to localhost for snapshot ... must run on master machine
 os.putenv('PGHOST', '')
 os.putenv("PGOPTIONS", '-c gp_session_role=utility')
@@ -85,6 +86,10 @@ def vvmsg(s):
 ############
 def die(s):
     sys.exit('%s ERROR: %s' % (tstamp(), s))
+    
+############
+def strip_trailing_slash(dir):
+	return dir.rstrip('/') if dir else None
 
 ############
 def ssh(hostname, cmd, input=''):
@@ -209,7 +214,7 @@ class Segment:
         (self.content, self.definedprimary, self.dbid,
          self.isprimary, self.valid, self.hostname,
          self.port, self.datapath) = row
-        (self.toppath, self.dbdir) = os.path.split(self.datapath)
+        (self.toppath, self.dbdir) = os.path.split(strip_trailing_slash(self.datapath))
     def __str__(self):
         return "|".join([self.content, self.definedprimary, self.dbid,
                          self.isprimary, self.valid, self.hostname,
@@ -263,11 +268,10 @@ class TgzSnapshot(SnapshotMethod):
     def checkSnapshot(self):
         msg('Checking snapshot %s:%s' % self.fullname)
         cmd = ('({ which gtar > /dev/null && TAR=gtar || TAR=tar; } ; $TAR tfz %s > /dev/null && ls -l %s) 2>&1' 
-                    % (self.tgzpath, self.tgzpath))
+			   % (self.tgzpath, self.tgzpath))
         (rc, out) = ssh(self.seg.hostname, cmd)
-	p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-	lines = out.split('\n')
-	return (rc, lines)
+        lines = out.split('\n')
+        return (rc, lines)
         
     def restoreSnapshot(self):
         msg('Restoring snapshot %s:%s' % self.fullname)
@@ -354,7 +358,7 @@ def pmap(func, jlist, numThreads = 16):
     try: 
         while True: 
             (ex, result) = outq.get_nowait()
-            if ex: 
+            if ex:
                 raise ex
             ret.append(result)
     except Queue.Empty: pass
@@ -604,6 +608,7 @@ def restoreSnapshot(name):
     random.shuffle(snapshots)
     erows = filter(lambda (s,(rc,lines)): rc,
                    pmap(lambda s: (s, s.checkSnapshot()), snapshots))
+    
     if erows:
         emsg = (["Snapshot failure"] +
                 ["  Bad/missing snapshot of %s:%s" % s.fullname for (s, rc) in erows])
@@ -698,6 +703,8 @@ def listSnapshots(name):
 
 ############
 def main():
+    global MASTER_DATA_DIRECTORY
+    MASTER_DATA_DIRECTORY = strip_trailing_slash(MASTER_DATA_DIRECTORY)
     parseCommandLine()
     if GV.opt['-c']:   createSnapshot(GV.snapname)
     elif GV.opt['-r']: restoreSnapshot(GV.snapname)
