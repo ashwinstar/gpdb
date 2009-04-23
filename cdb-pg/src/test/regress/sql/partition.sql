@@ -3049,3 +3049,20 @@ alter table rank set subpartition template (default subpartition def2);
 select * from pg_partition_templates;
 
 drop table rank;
+
+-- MPP-5397
+-- should be able to add partition after dropped a col
+
+create table mpp_5397 (a int, b int, c int) 
+  distributed by (a) 
+  partition by range (b)  
+  (partition a1 start (0) end (5), 
+   partition a2 end (10),  
+   partition a3 end(15));
+
+alter table mpp_5397 drop column c;
+
+-- should work now
+alter table mpp_5397 add partition z end (20);
+
+drop table mpp_5397;

@@ -8763,8 +8763,16 @@ ATExecAddInherit(Relation child_rel, Node *node)
 		int attno;
 
 		for (attno = 0; attno < parent_rel->rd_att->natts; attno++)
-			inhAttrNameList = lappend(inhAttrNameList,
-									  makeString(NameStr(parent_rel->rd_att->attrs[attno]->attname)));
+		{
+			Form_pg_attribute	 attribute = parent_rel->rd_att->attrs[attno];
+			char				*attributeName = NameStr(attribute->attname);
+
+			/* MPP-5397: ignore dropped cols */
+			if (!attribute->attisdropped)
+				inhAttrNameList = 
+						lappend(inhAttrNameList,
+								makeString(attributeName));
+		}
 
 	}
 	inherit_parent(parent_rel, child_rel, is_partition, inhAttrNameList);
