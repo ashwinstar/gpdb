@@ -1024,9 +1024,9 @@ CHK_RESTORE_TABLE () {
 				TAB_COUNT=`${EXPORT_LIB_PATH}; $PSQL -A -t -q -p $MASTER_PORT "$RESTORE_DBNAME" -A -t -c"select count(*) from $RESTORE_ITEM;"` >> $LOG_FILE 2>&1
 				if [ $TAB_COUNT -ne 0 ];then
 					LOG_MSG "[WARN]:-Table $RESTORE_ITEM has $TAB_COUNT records $WARN_MARK" 1
-					TAB_COUNT_ARRAY+=("${RESTORE_ITEM}:$TAB_COUNT")
+					TAB_COUNT_ARRAY[${#TAB_COUNT_ARRAY[@]}]="${RESTORE_ITEM}:$TAB_COUNT"
 				fi
-				RESTORE_LIST+=("$RESTORE_ITEM")
+				RESTORE_LIST[${#RESTORE_LIST[@]}]="$RESTORE_ITEM"
 			fi 
 		else
 			LOG_MSG "[WARN]:-No schema name supplied for $RESTORE_ITEM, removing from list of tables to restore" 1
