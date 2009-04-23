@@ -11,7 +11,7 @@ gprecoverseg [-d <master_data_directory>]
              [-p <new_recover_host> 
               | -s <pri_datadir>,<mir_datadir> 
               | -i <recover_config_file>] 
-             [-B <parallel_processes>] [-f] 
+             [-B <parallel_processes>] [-F] 
              [-z <seg_data_dir>:<seg_hostname> | -S <seg_dbid>] 
              [-a] [-q] [-l <logfile_directory>] 
 
@@ -94,7 +94,7 @@ Optional. The master host data directory. If not specified, the value
 set for $MASTER_DATA_DIRECTORY will be used.
 
 
--f (force shutdown)
+-F (force shutdown)
 
 Optional. Force shutdown and startup of segment instances marked as invalid.
 
