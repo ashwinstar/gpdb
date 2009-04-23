@@ -221,6 +221,13 @@ according to the stanard query formatting rules.
 
   Ends the equivalent region that started with "start_equiv"
 
+=item -- copy_stdout
+
+Marks the start of a "copy" command that writes to stdout.  In this
+case, the directive must be on the same line as the command, e.g:
+
+  copy mystuff to stdout ; -- copy_stdout
+
 =item -- start_matchsubs
 
 Starts a list of match/substitution expressions, where the match and
@@ -1608,8 +1615,11 @@ EOF_formatfix
             # and special case these guys:
             #  copy test1 to stdout
             #  \copy test1 to stdout
+            #
+            # ENGINF-129:
+            # and "copy...;  -- copy_stdout " for copy.out
             my $copysel_regex = 
-            '^\s*((.copy.*test1.*to stdout)|(copy.*test1.*to stdout\;))';
+            '^\s*((.copy.*test1.*to stdout)|(copy.*test1.*to stdout\;)|(copy.*\;\s*\-\-\s*copy\_stdout))';
 
             # regex example: ---- or ---+---
             # need at least 3 dashes to avoid confusion with "--" comments
