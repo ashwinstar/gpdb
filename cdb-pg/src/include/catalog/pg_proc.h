@@ -4760,9 +4760,9 @@ DESCR("window final function");
 DATA(insert OID = 7305 (  ntile_final   PGNSP PGUID 12 f f t f i 2 20 f "1016 20" _null_ _null_ _null_ ntile_final - _null_ ));
 DESCR("window final function");
 
-DATA(insert OID = 7169 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 1 2249 f "26" "{25,25,23,701}" "{i,i,o,o}" "{schema,table,segmentid,tupcount}" get_ao_distribution_oid  - _null_  ));
+DATA(insert OID = 7169 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 1 2249 f "26" "{26,23,701}" "{i,o,o}" "{reloid,segmentid,tupcount}" get_ao_distribution_oid  - _null_  ));
 DESCR("show append only table tuple distribution across segment databases");
-DATA(insert OID = 7170 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 1 2249 f "25" "{25,25,23,701}" "{i,i,o,o}" "{schema,table,segmentid,tupcount}" get_ao_distribution_name  - _null_  ));
+DATA(insert OID = 7170 (  get_ao_distribution    PGNSP PGUID 12 f f f t v 1 2249 f "25" "{25,23,701}" "{i,o,o}" "{relname,segmentid,tupcount}" get_ao_distribution_name  - _null_  ));
 DESCR("show append only table tuple distribution across segment databases");
 DATA(insert OID = 7171 (  get_ao_compression_ratio    PGNSP PGUID 12 f f f f v 1 701 f "26" _null_ _null_ _null_ get_ao_compression_ratio_oid  - _null_  ));
 DESCR("show append only table compression ratio");

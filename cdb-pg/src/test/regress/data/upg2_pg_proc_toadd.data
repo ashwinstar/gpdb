@@ -6,8 +6,8 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 6049|pg_file_unlink|11|10|12|f|f|t|f|v|1|16|f|25|\N|\N|\N|pg_file_unlink|-|\N
 6050|pg_logdir_ls|11|10|12|f|f|t|t|v|0|2249|f||\N|\N|\N|pg_logdir_ls|-|\N
 6051|pg_file_length|11|10|12|f|f|t|f|v|1|20|f|25|\N|\N|\N|pg_file_length|-|\N
-7169|get_ao_distribution|11|10|12|f|f|f|t|v|1|2249|f|26|{25,25,23,701}|{i,i,o,o}|{schema,table,segmentid,tupcount}|get_ao_distribution_oid|-|\N
-7170|get_ao_distribution|11|10|12|f|f|f|t|v|1|2249|f|25|{25,25,23,701}|{i,i,o,o}|{schema,table,segmentid,tupcount}|get_ao_distribution_name|-|\N
+7169|get_ao_distribution|11|10|12|f|f|f|t|v|1|2249|f|26|{26,23,701}|{i,o,o}|{reloid,segmentid,tupcount}|get_ao_distribution_oid|-|\N
+7170|get_ao_distribution|11|10|12|f|f|f|t|v|1|2249|f|25|{25,23,701}|{i,o,o}|{relname,segmentid,tupcount}|get_ao_distribution_name|-|\N
 7171|get_ao_compression_ratio|11|10|12|f|f|f|f|v|1|701|f|26|\N|\N|\N|get_ao_compression_ratio_oid|-|\N
 7172|get_ao_compression_ratio|11|10|12|f|f|f|f|v|1|701|f|25|\N|\N|\N|get_ao_compression_ratio_name|-|\N
 1099|lo_truncate|11|10|12|f|f|t|f|v|2|23|f|23 23|\N|\N|\N|lo_truncate|-|\N

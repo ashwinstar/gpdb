@@ -796,10 +796,7 @@ relation_open(Oid relationId, LOCKMODE lockmode)
 	r = RelationIdGetRelation(relationId);
 
 	if (!RelationIsValid(r))
-	{
-		Assert(!"Catch me");
 		elog(ERROR, "could not open relation with OID %u", relationId);
-	}
 
 	return r;
 }
