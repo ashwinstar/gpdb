@@ -662,6 +662,31 @@ class GpArray:
         directories as the original hosts.  Also adds the mirrors
         based on mirror_type.
         """
+
+        # remove interface numbers if they exist
+        existing_hosts = []
+        for host in self.get_hostlist(True):
+            (host_part, inf_num) = ['-'.join(host.split('-')[:-1]), host.split('-')[-1]]
+            if host_part != '' and inf_num.isdigit():
+                host = host_part    
+            if host not in existing_hosts:        
+                existing_hosts.append(host)
+        
+        new_hosts = []
+        
+        for host in hosts:
+            # see if we already have the host
+            (host_part, inf_num) = ['-'.join(host.split('-')[:-1]), host.split('-')[-1]]
+            if host_part != '' and inf_num.isdigit():
+                host = host_part
+            if host in existing_hosts or host in new_hosts:
+                continue
+            else:
+                new_hosts.append(host)
+
+        if len(new_hosts) == 0:        
+            raise Exception('No new hosts to add')
+        
         primary_dirs = self.get_primary_root_datadirs()
         mirror_dirs = self.get_mirror_root_datadirs()
 
@@ -674,7 +699,7 @@ class GpArray:
         
         prefix = self.get_datadir_prefix()
         
-        rows = createSegmentRows(hosts, primary_dirs, base_primary_port, mirror_type, mirror_dirs, base_mirror_port, prefix)
+        rows = createSegmentRows(new_hosts, primary_dirs, base_primary_port, mirror_type, mirror_dirs, base_mirror_port, prefix)
         
         self._fixup_and_add_expansion_segments(rows, interface_list)
         

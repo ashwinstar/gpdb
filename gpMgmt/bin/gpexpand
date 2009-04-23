@@ -93,7 +93,9 @@ def parseargs():
     parser.add_option('-e','--end', type='datetime', metavar='datetime',
                        help="ending date and time in the format 'YYYY-MM-DD hh:mm:ss'.")
     parser.add_option('-i','--input', dest="filename",
-                        help="input expansion configuration file.", metavar="FILE")        
+                        help="input expansion configuration file.", metavar="FILE")
+    parser.add_option('-f', '--hosts-file', metavar='<hosts_file>',
+                      help='file containing new host names used to generate input file')        
     parser.add_option('-D','--database', dest='database',
                       help='Database to create the gpexpand schema and tables in.  If this ' \
                       'option is not given, PGDATABASE will be used.  The template1 and ' \
@@ -1655,6 +1657,24 @@ class ExpandCommand(SQLCommand):
         
         
 #------------------------------- UI Help --------------------------------
+def read_hosts_file():
+    new_hosts = []
+    try:
+        f = open(options.hosts_file, 'r')
+        try:
+            for l in f:
+                if l.strip().startswith('#') or l.strip() == '':
+                    continue
+                        
+                new_hosts.append(l.strip())
+  
+        finally:
+            f.close()
+    except IOError:
+        raise ExpansionError('Hosts file %s not found' % options.hosts_file)
+
+    return new_hosts
+    
 def interview_setup(gparray):
     #TODO: add func to gpexpand to try and guess a default set of portbases
     #      for primaries and mirrors.
@@ -1686,7 +1706,12 @@ before continuing by re-running this utility and providing the input file. """
 
     tmp_validator = lambda str, ingore1, ignore2: str
 
-    num_new_hosts = ask_int(None, "\nHow many new hosts do you want to add to the array?", None, 0, 0, 128)
+    if options.hosts_file:
+        new_hosts=read_hosts_file()
+    else:
+        new_hosts=ask_list(None,
+                           "\nEnter a comma separated list of new hosts you want\n"\
+                           "to add to your array.  Do not include interface hostnames ", [])
     
     mirror_type = 'none'
     
@@ -1698,44 +1723,49 @@ before continuing by re-running this utility and providing the input file. """
                                "mirrored host.  You must be adding at least 2 hosts in order to use this.\n\n",
                                "What type of mirroring strategy would you like?",
                                'grouped', ['spread','grouped','none'])
-    
-    if num_new_hosts > 0:
-        new_hosts=ask_list(None,
-                           "\nEnter a comma separated list of new hosts you want\n"\
-                           "to add to your array.  Do not include interface hostnames ", [])
-        if len(new_hosts) != num_new_hosts:
-            raise ExpansionError('The number of hostnames entered does not match the number requested')
 
-        gparray.addExpansionHosts(new_hosts, mirror_type)
+    gparray.addExpansionHosts(new_hosts, mirror_type)
 
     help = """
-The expansion process can increase the number of segments per host.  These new 
-segments will be added to existing hosts as well.  If you put 0, the number of 
-segments per host will remain the same.
+    By default, new hosts are configured with the same number of
+    primary as existing hosts.  Optionally, you can increase the number 
+    of segments per host.
+    
+    For example, if existing hosts have two primary, entering a value of 2 
+    will initialize two additional segments on existing hosts, and four
+    segments on new hosts.  In addition, mirror segments will be added for
+    these new primary segments.
     """
     num_new_datadirs = ask_int(help, "How many new primary segments per host do you want to add?", None, 0, 0, 128)
+    print 'Number of new data dirs: %d' % num_new_datadirs
+    
     if num_new_datadirs > 0:
         new_datadirs = []
         new_mirrordirs = []
-        new_datadirs=ask_list(None,
-                              "\nEnter a comma separated list of the new primary data directories\n" \
-                              "you want to use for the new segments. ", [])
+        
+        print range(1,num_new_datadirs + 1)
+        for i in range(1,num_new_datadirs + 1):
+            new_datadir = ask_input(None,'Enter new primary data directory %d' % i, '', 
+                                    '/data/gpdb_p%d' % i, tmp_validator, None)
+            new_datadirs.append(new_datadir)
+                
         if len(new_datadirs) != num_new_datadirs:
             raise ExpansionError('The number of data directories entered does not match the number of primary segments added')
-        
-        if mirror_type != 'none':
-            new_mirrordirs=ask_list(None,
-                                  "\nEnter a comma separated list of the new mirror data directories\n" \
-                                  "you want to use for the new segments. ", [])
-            if len(new_mirrordirs) != num_new_datadirs:
-                raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
+
+        if gparray.get_mirroring_enabled():
+            for i in range(1,num_new_datadirs + 1):
+                new_mirrordir = ask_input(None,'Enter new mirror data directory %d' % i, '', 
+                                          '/data/gpdb_m%d' % i, tmp_validator, None)
+                new_mirrordirs.append(new_mirrordir)
+
+                if len(new_mirrordirs) != num_new_datadirs:
+                    raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
                 
 
         gparray.addExpansionDatadirs(new_datadirs, new_mirrordirs, mirror_type)
             
     print "\nGenerating configuration file...\n"
-            
-            
+
     outfile=gp_expand.generate_inputfile()
     print """\nInput configuration file was written to:
 '%s'.  Please review the file and make sure that its correct then re-run 
