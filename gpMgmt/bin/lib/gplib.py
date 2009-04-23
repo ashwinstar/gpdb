@@ -230,7 +230,12 @@ class Session(cmd.Cmd):
 
     def close(self):
         self.clean()
-        
+    
+    def reset(self):
+        '''reads from all the ssh connections to make sure we dont have any pending cruft'''
+        for s in self.pxssh:
+            s.readlines()
+                
     def clean(self):
         self.closePxsshList(self.pxssh)
         self.pxssh = []

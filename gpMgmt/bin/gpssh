@@ -147,6 +147,7 @@ def interactive():
                 pass
         except KeyboardInterrupt:
             print '\n[Interrupt...]'
+            GV.session.reset()
             pass
 
 #############
