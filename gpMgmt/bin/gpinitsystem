@@ -980,10 +980,14 @@ DISPLAY_CONFIG () {
 				((NUM_MIRROR_DIRECTORY=${#MIRROR_DATA_DIRECTORY[@]}))
 				LOG_MSG "[INFO]:-Mirror segment #           = $NUM_MIRROR_DIRECTORY" 1
 				LOG_MSG "[INFO]:-Mirroring config           = ON" 1
-				if [ $MIRROR_TYPE -eq 0 ];then
-				LOG_MSG "[INFO]:-Mirroring type             = Group" 1
+				if [ x"$INPUT_CONFIG" != x"" ];then
+					LOG_MSG "[INFO]:-Mirroring type             = Custom" 1
 				else
-				LOG_MSG "[INFO]:-Mirroring type             = Spread" 1
+					if [ $MIRROR_TYPE -eq 0 ];then
+						LOG_MSG "[INFO]:-Mirroring type             = Group" 1
+					else
+						LOG_MSG "[INFO]:-Mirroring type             = Spread" 1
+					fi
 				fi
 			else
 				LOG_MSG "[INFO]:-Mirroring config           = OFF" 1
