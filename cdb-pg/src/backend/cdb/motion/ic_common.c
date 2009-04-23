@@ -137,7 +137,7 @@ int		UDP_listenerFd;
 
 /* Socket file descriptor for the sequence server. */
 int		seqserverFd = -1;
-char	*seqServerHost;
+char	*seqServerHost = NULL;
 int		seqServerPort;
 
 /*
@@ -620,6 +620,11 @@ SetupSequenceServer(struct SliceTable *mySliceTable)
 	{
 		seqServerHost = mySliceTable->seqServerHost;
 		seqServerPort = mySliceTable->seqServerPort;
+	}
+
+	else
+	{
+		seqServerHost = NULL;
 	}
 }
 
