@@ -72,7 +72,7 @@ class SegStopStatus():
 class GpStop():
     
     ######
-    def __init__(self,mode,cancel_active_connections,master_datadir=None,parallel=DEFAULT_NUM_WORKERS,quiet=False,force=False):
+    def __init__(self,mode,cancel_active_connections,master_datadir=None,parallel=DEFAULT_NUM_WORKERS,quiet=False):
         self.mode=mode
         self.cancel_active_connections=cancel_active_connections        
         self.master_datadir=master_datadir
@@ -80,7 +80,6 @@ class GpStop():
         self.parallel=parallel
         self.quiet=quiet
         self.pid=0
-        self.force=force
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass       
         
@@ -486,8 +485,8 @@ def parseargs():
     optgrp3.add_option('-z', '--force', action='store_true',default=False,
                         help="<deprecated> Force shutdown of segment instances marked as invalid. Kill postmaster PID, "\
                              "delete /tmp lock files and remove segment instance postmaster.pid file.")
-    optgrp3.add_option('-M', '--mode', type='choice', choices=['fast', 'immediate', 'smart', 'force'],
-                       metavar='fast|immediate|smart|force', action='store', default='smart',
+    optgrp3.add_option('-M', '--mode', type='choice', choices=['fast', 'immediate', 'smart'],
+                       metavar='fast|immediate|smart', action='store', default='smart',
                        help='set the method of shutdown')
     
     optgrp3.add_option('-r', '--restart', action='store_true',
@@ -587,8 +586,7 @@ def main():
                         options.cancel_active_connections,
                         master_datadir=options.master_data_directory,
                         parallel=options.parallel,
-                        quiet=options.quiet,
-                        force=options.force)
+                        quiet=options.quiet)
         gpstop.prepare()
           
         

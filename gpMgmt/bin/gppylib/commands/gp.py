@@ -278,7 +278,7 @@ class NewGpStop(Command):
         if restart:
             self.cmdStr += " -r"
         if force:
-            self.cmdStr += " -z"
+            self.cmdStr += " -M immediate"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
@@ -297,7 +297,7 @@ class GpStop(Command):
         if fast:
             self.cmdStr += " -f"
         if force:
-            self.cmdStr += " -z"
+            self.cmdStr += " -M immediate"
         if datadir:
             self.cmdStr += " -d %s" % datadir
         if verbose:
