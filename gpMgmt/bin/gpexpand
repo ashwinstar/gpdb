@@ -1712,6 +1712,7 @@ before continuing by re-running this utility and providing the input file. """
         new_hosts=ask_list(None,
                            "\nEnter a comma separated list of new hosts you want\n"\
                            "to add to your array.  Do not include interface hostnames ", [])
+        new_hosts = [host.strip() for host in new_hosts]
     
     mirror_type = 'none'
     
