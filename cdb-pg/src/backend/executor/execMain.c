@@ -434,7 +434,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				/*
 				 * Reconfigure the cluster if needed.
 				 */
-				cdbdisp_reconfigureFtsIfNecessary();
+				cdbdisp_reconfigureFtsIfNecessary(true);
 
 				setCurrentDtxTwoPhase("ExecutorStart", "(none)");
 			}

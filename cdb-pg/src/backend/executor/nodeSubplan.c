@@ -1049,7 +1049,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				/*
 				 * Reconfigure the cluster if needed.
 				 */
-				cdbdisp_reconfigureFtsIfNecessary();
+				cdbdisp_reconfigureFtsIfNecessary(true);
 			}
 		
 			/*
