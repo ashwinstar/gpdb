@@ -19,8 +19,10 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_conversion.h"
@@ -37,6 +39,7 @@
 #include "storage/ipc.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
@@ -158,6 +161,7 @@ static void InitTempTableNamespace(void);
 static void RemoveTempRelations(Oid tempNamespaceId);
 static void RemoveTempRelationsCallback(int code, Datum arg);
 static void NamespaceCallback(Datum arg __attribute__((unused)) , Oid relid __attribute__((unused)) );
+static bool TempNamespaceValid(void);
 
 /* These don't really need to appear in any header file */
 Datum		pg_table_is_visible(PG_FUNCTION_ARGS);
@@ -1277,7 +1281,7 @@ LookupExplicitNamespace(const char *nspname)
 	/* check for pg_temp alias */
 	if (strcmp(nspname, "pg_temp") == 0)
 	{
-		if (OidIsValid(myTempNamespace))
+		if (TempNamespaceValid())
 			return myTempNamespace;
 		/*
 		 * Since this is used only for looking up existing objects, there
@@ -1495,7 +1499,7 @@ NameListToQuotedString(List *names)
 bool
 isTempNamespace(Oid namespaceId)
 {
-	if (OidIsValid(myTempNamespace) && myTempNamespace == namespaceId)
+	if (TempNamespaceValid() && myTempNamespace == namespaceId)
 		return true;
 	return false;
 }
@@ -1706,7 +1710,8 @@ recomputeNamespacePath(void)
 		else if (strcmp(curname, "pg_temp") == 0)
 		{
 			/* pg_temp --- substitute temp namespace, if any */
-			if (OidIsValid(myTempNamespace))
+
+			if (TempNamespaceValid())
 			{
 				if (!list_member_oid(oidlist, myTempNamespace))
 					oidlist = lappend_oid(oidlist, myTempNamespace);
@@ -1750,7 +1755,7 @@ recomputeNamespacePath(void)
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
 
-	if (OidIsValid(myTempNamespace) &&
+	if (TempNamespaceValid() &&
 		!list_member_oid(oidlist, myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
 
@@ -1876,7 +1881,7 @@ InitTempTableNamespace(void)
 bool
 ExistsCommittedTempNamespace(void)
 {
-	return OidIsValid(myTempNamespace) &&
+	return TempNamespaceValid() &&
 		   (myTempNamespaceSubID == InvalidSubTransactionId);
 }
 
@@ -2009,18 +2014,26 @@ RemoveTempRelations(Oid tempNamespaceId)
 static void
 RemoveTempRelationsCallback(int code, Datum arg)
 {
-	if (OidIsValid(myTempNamespace))	/* should always be true */
+	if (OidIsValid(myTempNamespace))
 	{
 		/* Need to ensure we have a usable transaction. */
 		AbortOutOfAnyTransaction();
 		StartTransactionCommand();
 
-		RemoveTempRelations(myTempNamespace);
+		/* 
+		 * Make sure that the schema hasn't been removed. We must do this after
+		 * we start a new transaction (see previous two lines), otherwise we
+		 * wont have a valid CurrentResourceOwner.
+		 */
+		if (TempNamespaceValid())
+		{
+			RemoveTempRelations(myTempNamespace);
 
-		/* MPP-3390: drop pg_temp_N schema entry from pg_namespace */
-		RemoveSchemaById (myTempNamespace);
-		elog (DEBUG1, " Remove schema entry %u from pg_namespace", 
-									 myTempNamespace); 
+			/* MPP-3390: drop pg_temp_N schema entry from pg_namespace */
+			RemoveSchemaById(myTempNamespace);
+			elog(DEBUG1, "Remove schema entry %u from pg_namespace", 
+				 myTempNamespace); 
+		}
 
 		CommitTransactionCommand();
 	}
@@ -2149,6 +2162,32 @@ NamespaceCallback(Datum arg, Oid relid)
 {
 	/* Force search path to be recomputed on next use */
 	namespaceSearchPathValid = false;
+}
+
+/* double check that temp name space is valid. */
+static bool
+TempNamespaceValid()
+{
+	if (!OidIsValid(myTempNamespace))
+		return false;
+	else
+	{
+		Oid namespaceId = GetSysCacheOid(NAMESPACEOID,
+									 	 ObjectIdGetDatum(myTempNamespace),
+									 	 0, 0, 0);
+
+		if (OidIsValid(namespaceId))
+			return true;
+		else if (proc_exit_inprogress)
+			return false;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_SCHEMA),
+					 errmsg("temporary table schema removed while session "
+							"still in progress")));
+	}
+	/* quieten GCC */
+	return false;
 }
 
 /*
