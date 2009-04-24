@@ -2371,17 +2371,21 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 		Dl_info dli;
 		int symbol_len;
 		
-		if (dladdr(stackarray[stack_no], &dli) == 0)
+		if (dladdr(stackarray[stack_no], &dli) != 0 &&
+			dli.dli_fname != NULL &&
+			dli.dli_fname[0] != '\0')
+		{
+			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
+								  stack_no, stackarray[stack_no], dli.dli_fname,
+								  (dli.dli_sname != NULL ? dli.dli_sname : ""),
+								  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
+		}
+		else
 		{
 			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: <not found>\n",
 								  stack_no, stackarray[stack_no]);
 		}
-		else
-		{
-			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
-								  stack_no, stackarray[stack_no], dli.dli_fname, dli.dli_sname,
-								  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
-		}
+
 		if (buffer != NULL)
 		{
 			append_string_to_pipe_chunk(buffer, symbol);
