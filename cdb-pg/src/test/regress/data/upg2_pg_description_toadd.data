@@ -7,7 +7,6 @@ objoid|classoid|objsubid|description
 6049|1255|0|Delete (unlink) a file
 6050|1255|0|ls the log dir
 6051|1255|0|Get the length of a file (via stat)
-6106|2615|0|Reserved schema for Append Only Column Store segment list and eof tables
 7169|1255|0|show append only table tuple distribution across segment databases
 7170|1255|0|show append only table tuple distribution across segment databases
 7171|1255|0|show append only table compression ratio
