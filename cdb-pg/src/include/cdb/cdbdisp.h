@@ -164,7 +164,7 @@ typedef struct CdbDispatchCmdThreads
 
 /* Reconfigure the cluster if needed. */
 void
-cdbdisp_reconfigureFtsIfNecessary(void);
+cdbdisp_reconfigureFtsIfNecessary(bool create_new_gangs);
 
 /*--------------------------------------------------------------------*/
 

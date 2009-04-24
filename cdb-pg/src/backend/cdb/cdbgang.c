@@ -3398,7 +3398,7 @@ freeGangsForPortal(char *portal_name)
 			disconnectAndDestroyAllGangs();
 
 			elog(LOG, "freeGangsForPortal: Bad primary writer gang");
-			cdbdisp_reconfigureFtsIfNecessary(); /* will throw an error */
+			cdbdisp_reconfigureFtsIfNecessary(false); /* will throw an error */
 
 			return;
 		}
@@ -3408,7 +3408,7 @@ freeGangsForPortal(char *portal_name)
 			disconnectAndDestroyAllGangs();
 
 			elog(LOG, "freeGangsForPortal: Bad mirror writer gang");
-			cdbdisp_reconfigureFtsIfNecessary(); /* will throw an error */
+			cdbdisp_reconfigureFtsIfNecessary(false); /* will throw an error */
 
 			return;
 		}

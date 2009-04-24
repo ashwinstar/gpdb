@@ -218,7 +218,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, bool fullScan)
  * the right configuration.
  */
 void
-FtsReConfigureMPP(void)
+FtsReConfigureMPP(bool create_new_gangs)
 {
 	/* Has the version been bumped ? */
 	if (local_fts_statusVersion != ftsProbeInfo->fts_statusVersion)
@@ -231,8 +231,11 @@ FtsReConfigureMPP(void)
 	elog(LOG, "FTS: reconfiguration is in progress");
 	disconnectAndDestroyAllGangs();
 
-	allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
-	allocateWriterGang(GANGTYPE_MIRROR_WRITER);
+	if (create_new_gangs)
+	{
+		allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+		allocateWriterGang(GANGTYPE_MIRROR_WRITER);
+	}
 
 	/* rollback current DTM transaction */
 	AbortCurrentTransaction();
@@ -1087,7 +1090,7 @@ FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 		}
 		else
 		{
-			FtsReConfigureMPP();
+			FtsReConfigureMPP(true);
 		}
 	}
 

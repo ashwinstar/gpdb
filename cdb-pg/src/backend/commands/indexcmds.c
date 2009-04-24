@@ -571,7 +571,7 @@ DefineIndex(RangeVar *heapRelation,
 		 * which can cause a non-local deadlock if we've already
 		 * dispatched 
 		 */
-		cdbdisp_reconfigureFtsIfNecessary();
+		cdbdisp_reconfigureFtsIfNecessary(true);
 
 		indexRelationId =
 			index_create(relationId, indexRelationName, indexRelationId,
