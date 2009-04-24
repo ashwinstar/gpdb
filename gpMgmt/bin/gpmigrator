@@ -287,9 +287,9 @@ class GPUpgrade:
             u.Log('INFO', 'Beginning upgrade')
             u.Log('INFO', 'Checking configuration')
 
-            if not self.masterdir:
+            if not self.masterdir or len(self.masterdir) == 0:
                 raise UpgradeError('MASTER_DATA_DIRECTORY is not defined')
-            self.masterdir.rstrip('/')
+            self.masterdir = self.masterdir.rstrip('/')
 
             # The configuration file
             conf = os.path.join(self.masterdir, 'postgresql.conf')
@@ -321,7 +321,8 @@ class GPUpgrade:
             self.oldenv    = self.SetupEnv(self.oldhome, self.masterdir)
             self.newenv    = self.SetupEnv(self.newhome, self.newmaster)
 
-            # Find the SEG_PREFIX (everything except the trailing "-1" on the masterdir)
+            # Find the SEG_PREFIX (everything except the trailing "-1" on
+            # the masterdir)
             self.config['SEG_PREFIX'] = masterdir[:-2]
 
             # Setup the pool of worker threads
@@ -3472,19 +3473,26 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                        ORDER BY dbname
                     ''', port=port)
 
-                    # Build up the list of mapping objects
+                    # Build up the list of catalog entries
                     files = {}
                     for db in databases:
                         first = True
-                        l = self.Select('''select relfilenode, d.oid as datoid,
-                                relname
-                                from pg_class c, pg_database d 
-                                where relnamespace = 11 and d.datname = '%s'
-                                and c.relkind in ('r', 't', 'i') and 
-                                relisshared = 'f';''' % db['dbname'],
+                        l = self.Select('''select d.oid as datoid,
+                                c1.relname as rel1, c1.relfilenode as node1,
+                                c2.relname as rel2, c2.relfilenode as node2,
+                                c3.relname as rel3, c3.relfilenode as node3
+                                from pg_class c1 left outer join pg_class c2
+                                  on (c1.reltoastrelid = c2.oid)
+                                left outer join pg_class c3
+                                  on (c2.reltoastidxid = c3.oid),
+                                pg_database d 
+                                where c1.relnamespace = 11 and d.datname = '%s'
+                                and c1.relkind in ('r', 'i') and 
+                                c1.relisshared = 'f';''' % db['dbname'],
                                 port=port, db=db['dbname'])
                 
                         f = []
+                        nlist = ["1", "2", "3"]
                         for row in l:
                             if first:
                                 first = False
@@ -3492,12 +3500,16 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                                                     'PG_VERSION')
                                 f.append(file)
 
-                            file = os.path.join('base', str(row['datoid']),
-                                               str(row['relfilenode']))
-                            dfile = os.path.join(dir, file)
-                            if not os.path.exists(dfile):
-                                raise UpgradeError('found path "%s" for table "%s" but file does not exist' % (dfile, row['relname']))
-                            f.append(file)
+                            for n in nlist:
+                                if row.get("rel" + n):
+                                    file = os.path.join('base',
+                                                        str(row['datoid']),
+                                                        str(row['node' + n]))
+                                    dfile = os.path.join(dir, file)
+                                    if not os.path.exists(dfile):
+                                        raise UpgradeError(
+'found path "%s" for table "%s" but file does not exist' % (dfile, row['rel'+n]))
+                                    f.append(file)
                         files[db['dbname']] = f
                 
                     # add template0
@@ -3948,7 +3960,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         releases = {"3.0": "200703112",
              "3.1": "200712072",
              "3.2": "200808253",
-             "3.3": "200904131"}
+             "3.3": "200904231"}
         
         self.CheckDown()
 
