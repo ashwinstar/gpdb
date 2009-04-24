@@ -100,10 +100,12 @@ def parseargs():
                       help='Database to create the gpexpand schema and tables in.  If this ' \
                       'option is not given, PGDATABASE will be used.  The template1 and ' \
                       'template0 database cannot be used.')
+    parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
+                      help='Expansion configuraiton batch size')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
                         help='number of tables to expand at a time. Valid values are 1-128.')
-    parser.add_option('-b', '--batch-size', type='int', default=8, metavar="<batch_size>",
-                      help='Batch size of remote commands per host before delay.  Valid values are 1-128.')
+    parser.add_option('-m', '--max-per-host', type='int', default=8, metavar="<max_per_host>",
+                      help='Number of commands to send per host before pausing.  Valid values are 1-128.')
     parser.add_option('-v','--verbose', action='store_true',
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
@@ -120,8 +122,8 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
-    if options.batch_size > 128 or options.batch_size < 1:
-        logger.error('Invalid argument.  batch-size value must be >= 1 and <= 128')
+    if options.max_per_host > 128 or options.max_per_host < 1:
+        logger.error('Invalid argument.  max_per_host value must be >= 1 and <= 128')
         parser.print_help()
         parser.exit()
         
@@ -568,7 +570,7 @@ class SegmentTemplate:
                                             seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
                                             verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname)
  
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             self.pool.addCommand(segCfgCmd)
@@ -660,7 +662,7 @@ class SegmentTemplate:
             if removeDataDirs:
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
-                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                     logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                     sleep(1) 
                 
@@ -700,8 +702,12 @@ class gpexpand:
         
         self.statusLogger = GpExpandStatus(logger, gparray.master.datadir, gparray.standbyMaster)
 
-        #TODO: we want more threads most likely for segment addition
-        self.pool = WorkerPool()
+        # Adjust batch size if it's too high given the number of segments
+        seg_count = len(gparray.getSegDbList())
+        if options.batch_size > seg_count:
+            options.batch_size = seg_count
+        self.pool = WorkerPool(numWorkers=options.batch_size)
+        
         self.tempDir = self.statusLogger.get_temp_dir()
         if not self.tempDir:
             self.tempDir = '%s/gpexpand_%s_%d' % (os.getcwd(), 
@@ -912,7 +918,7 @@ class gpexpand:
             cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
 
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             
@@ -936,7 +942,7 @@ class gpexpand:
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -967,7 +973,7 @@ class gpexpand:
                                             seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
                                             ctxt=REMOTE, remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1011,7 +1017,7 @@ class gpexpand:
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, 
                                remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1028,7 +1034,7 @@ class gpexpand:
                                            seg.content, seg.dbid, ctxt=REMOTE, 
                                            remoteHost=seg.hostname) 
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.batch_size == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
