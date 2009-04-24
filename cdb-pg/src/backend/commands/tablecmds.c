@@ -399,6 +399,8 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts);
+static void ATPartitionCheck(Relation rel, AlterTableType typ);
+
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -3181,6 +3183,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DropColumn:		/* DROP COLUMN */
 		case AT_DropColumnRecurse:
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			/* Recursion occurs during execution phase */
 			/* No command-specific prep needed except saving recurse flag */
 			if (recurse)
@@ -3220,6 +3223,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			/* Performs own recursion */
 			ATPrepAlterColumnType(wqueue, tab, rel, recurse, recursing, cmd);
 			pass = AT_PASS_ALTER_TYPE;
@@ -3241,6 +3245,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_DropOids:		/* SET WITHOUT OIDS */
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			/* Performs own recursion */
 			if (rel->rd_rel->relhasoids)
 			{
@@ -3280,6 +3285,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_AddInherit:		/* INHERIT / NO INHERIT */
 		case AT_DropInherit:
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			/* These commands never recurse */
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
@@ -3293,6 +3299,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			Relation			 newrel = NULL;
 			int					 i;
 
+			ATPartitionCheck(rel, cmd->subtype);
 			pass = AT_PASS_MISC;
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -3455,6 +3462,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			List			   *source_rels = NIL;
 			Relation			target = NULL;
 
+			ATPartitionCheck(rel, cmd->subtype);
+
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -3549,6 +3558,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			PgPartRule		   *prule2	= NULL;
 			PgPartRule		   *prule3	= NULL;
 			Relation			target = NULL;
+
+			ATPartitionCheck(rel, cmd->subtype);
 
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -3980,6 +3991,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartAddInternal:		/* internal partition creation */
 		case AT_PartModify:             /* Modify */
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 				/* XXX XXX XXX */
 			/* This command never recurses */
 			/* No command-specific prep needed */
@@ -5022,6 +5034,31 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 	*wqueue = lappend(*wqueue, tab);
 
 	return tab;
+}
+
+/*
+ * If this is a child partition in a partition set, error out.
+ */
+static void
+ATPartitionCheck(Relation rel, AlterTableType typ)
+{
+	if ((typ == AT_AddInherit || typ == AT_DropInherit) &&
+		(rel_is_child_partition(RelationGetRelid(rel)) ||
+		 rel_is_partitioned(RelationGetRelid(rel))))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is a member of a partitioning configuration",
+						RelationGetRelationName(rel))));
+	}
+	else if (rel_is_child_partition(RelationGetRelid(rel)))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is a member of a partitioning configuration",
+						RelationGetRelationName(rel)),
+				 errhint("Perform the operation on the master table.")));
+	}
 }
 
 /*
@@ -7185,6 +7222,40 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 
 		childCmd->subtype = AT_DropConstraintQuietly;
 		ATSimpleRecursion(wqueue, rel, childCmd, recurse);
+	}
+
+	/* 
+	 * If this is a partition child, make sure the user isn't dropping the
+	 * partitioning rule.
+	 */
+	if (rel_is_child_partition(RelationGetRelid(rel)))
+	{
+		Relation conrel = heap_open(ConstraintRelationId, AccessShareLock);
+		Oid masteroid = rel_partition_get_master(RelationGetRelid(rel));
+		Relation masterrel = heap_open(masteroid, AccessShareLock);
+		PartitionNode *pn = RelationBuildPartitionDesc(masterrel, false);
+		List *attnos = get_partition_attrs(pn);
+		List *cons = get_part_constraints(attnos, conrel, rel);
+		ListCell *lc;
+
+		foreach(lc, cons)
+		{
+			HeapTuple tup = lfirst(lc);
+			Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tup);
+
+			if (strcmp(NameStr(con->conname), cmd->name) == 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot remove constraint \"%s\" on \"%s\" "
+								"as it is part of a partitioning configuration",
+								cmd->name, RelationGetRelationName(rel))));
+		
+			}
+		}
+		heap_close(conrel, AccessShareLock);
+		heap_close(masterrel, AccessShareLock);
+		list_free_deep(cons);
 	}
 }
 

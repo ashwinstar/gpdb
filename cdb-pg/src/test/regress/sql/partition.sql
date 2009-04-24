@@ -3066,3 +3066,15 @@ alter table mpp_5397 drop column c;
 alter table mpp_5397 add partition z end (20);
 
 drop table mpp_5397;
+
+-- MPP-4987 -- make sure we can't damage a partitioning configuration
+create table rank (i int, j int) with oids partition by range(j) (start(1) end(10)
+every(1));
+-- should all fail
+alter table rank_1_prt_1 no inherit rank;
+create table rank2(like rank);
+alter table rank_1_prt_1 inherit rank2;
+alter table rank_1_prt_1 alter column i type bigint;
+alter table rank_1_prt_1 set without oids;
+alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
+drop table rank, rank2;

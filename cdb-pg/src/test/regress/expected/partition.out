@@ -6909,3 +6909,30 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 NOTICE:  CREATE TABLE will create partition "mpp_5397_1_prt_z" for table "mpp_5397"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 drop table mpp_5397;
+-- MPP-4987 -- make sure we can't damage a partitioning configuration
+create table rank (i int, j int) with oids partition by range(j) (start(1) end(10)
+every(1));
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_1" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_2" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_3" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_4" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_5" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_6" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_7" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_8" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_9" for table "rank"
+-- should all fail
+alter table rank_1_prt_1 no inherit rank;
+ERROR:  "rank_1_prt_1" is a member of a partitioning configuration
+create table rank2(like rank);
+alter table rank_1_prt_1 inherit rank2;
+ERROR:  "rank_1_prt_1" is a member of a partitioning configuration
+alter table rank_1_prt_1 alter column i type bigint;
+ERROR:  "rank_1_prt_1" is a member of a partitioning configuration
+HINT:  Perform the operation on the master table.
+alter table rank_1_prt_1 set without oids;
+ERROR:  "rank_1_prt_1" is a member of a partitioning configuration
+HINT:  Perform the operation on the master table.
+alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
+ERROR:  cannot remove constraint "rank_1_prt_1_check" on "rank_1_prt_1" as it is part of a partitioning configuration
+drop table rank, rank2;
