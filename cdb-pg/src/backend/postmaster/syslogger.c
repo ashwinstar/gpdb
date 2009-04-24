@@ -868,18 +868,44 @@ int syslogger_write_str(const char *data, int len, bool csv)
     return cnt;
 }
 
-    static void
-syslogger_write_str_from_chunk(CSVChunkStr *chunkstr, bool csv, bool append_comma)
+/*
+ * Write a string, ended with '\0', in a specific chunk to the log.
+ *
+ * If csv is true, this function puts double-quotes around the string.
+ * If both csv and quote_empty_string are true, this function puts
+ * double-quotes around an empty string.
+ * If append_comma is true, this function appends a comma after the string.
+ */
+static void
+syslogger_write_str_from_chunk(CSVChunkStr *chunkstr, bool csv,
+							   bool quote_empty_string, bool append_comma)
 {
     int wlen = 0; 
-    int len;
+    int len = 0;
+	bool is_empty_string = false;
 
-    if (chunkstr->chunk == NULL)
-        return;
+    if (chunkstr->chunk != NULL)
+	{
+		len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);
 
-    len = chunkstr->chunk->hdr.len - (chunkstr->p - chunkstr->chunk->data);  
+		/* Check if the string is an empty string */
+		if (len > 0 && chunkstr->p[0] == '\0')
+			is_empty_string = true;
+		if (len == 0 && chunkstr->chunk->hdr.next >= 0)
+		{
+			PipeProtoChunk *next_chunk = &saved_chunks[chunkstr->chunk->hdr.next];
+			if (next_chunk->hdr.len > 0 && next_chunk->data[0] == '\0')
+				is_empty_string = true;
+		}
+	}
 
-    if(csv)
+	else
+	{
+		Assert(chunkstr->p == NULL);
+		is_empty_string = true;
+	}
+
+    if(csv && (!is_empty_string || quote_empty_string))
         write_syslogger_file_binary("\"", 1);
 
     while(chunkstr->p)
@@ -916,7 +942,7 @@ syslogger_write_str_from_chunk(CSVChunkStr *chunkstr, bool csv, bool append_comm
             break;
     }
 
-    if(csv)
+    if(csv && (!is_empty_string || quote_empty_string))
         write_syslogger_file_binary("\"", 1);
 
     if (append_comma)
@@ -944,8 +970,8 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
 
     if(chunk->hdr.log_format == 't')
     {
-        CSVChunkStr chunkstr = { chunk, chunk->data + sizeof(GpErrorDataFixFields) };
-        syslogger_write_str_from_chunk(&chunkstr, false, false);
+        CSVChunkStr chunkstr = { chunk, chunk->data };
+        syslogger_write_str_from_chunk(&chunkstr, false, false, false);
     }
     else
     {
@@ -957,19 +983,19 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_append_current_timestamp();
 
         /* username */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
 
         /* databasename */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
 
         /* Process id, thread id */
         syslogger_write_int32(false, "p", chunk->hdr.pid, true);
         syslogger_write_int32(false, "th", chunk->hdr.thid, true);
 
         /* Remote host */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* Remote port */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
 
         /* session start timestamp */
         syslogger_append_timestamp(pfixed->session_start_time, true);
@@ -987,33 +1013,33 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_write_int32(true, "sx", pfixed->subtrans_id, true); 
 
         /* error severity */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* sql state code */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* errmsg */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* errdetail */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* errhint */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* internal query */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* internal query pos */
         syslogger_write_int32(true, "", pfixed->internal_query_pos, true);
         /* err ctxt */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* user query */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* cursor pos */
         syslogger_write_int32(false, "", pfixed->error_cursor_pos, true); 
         /* func name */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* file name */
-        syslogger_write_str_from_chunk(&chunkstr, true, true);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* line number */
         syslogger_write_int32(true, "", pfixed->error_fileline, true);
         /* stack trace */
-        syslogger_write_str_from_chunk(&chunkstr, true, false);
+        syslogger_write_str_from_chunk(&chunkstr, true, false, false);
 
         /* EOL */
         write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
