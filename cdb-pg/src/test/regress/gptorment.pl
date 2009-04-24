@@ -536,7 +536,7 @@ sub do_ps_pids
 
         for my $lin (@lines)
         {
-			my $lin =~ s/^\s+//; # ENGINF-184: weird solaris format bug?
+			$lin =~ s/^\s+//; # ENGINF-184: weird solaris format bug?
 
             my @foo = split(/\s+/, $lin, 2);
         
