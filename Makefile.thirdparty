@@ -103,7 +103,6 @@ endif
 # them out of the BASE library set for you
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE
-	libedit/2.11
 endef
 BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REMOVE))
 
