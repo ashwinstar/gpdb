@@ -24,13 +24,13 @@ CREATE TABLE tenk_heap (
 CREATE TABLE tenk_ao1 (like tenk_heap) with (appendonly=true, checksum=true) distributed by(unique1);
 CREATE TABLE tenk_ao2 (like tenk_heap) with (appendonly=true, compresslevel=0, blocksize=262144) distributed by(unique1);
 CREATE TABLE tenk_ao3 (like tenk_heap) with (appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_ao4 (like tenk_heap) with (appendonly=true, compresslevel=1, compresstype=quicklz) distributed by(unique1);
+CREATE TABLE tenk_ao4 (like tenk_heap) with (appendonly=true, compresslevel=1, compresstype=zlib) distributed by(unique1);
 CREATE TABLE tenk_ao5 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
 -- invalid
 CREATE TABLE tenk_ao6 (like tenk_heap) with (appendonly=false, compresslevel=6, checksum=true) distributed by(unique1);
 ERROR:  invalid option 'compresslevel' for base relation. Only valid for Append Only relations
 CREATE TABLE tenk_ao7 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=quicklz) distributed by(unique1);
-ERROR:  compresslevel=6 is out of range for quicklz (should be 1 or 3)
+ERROR:  invalid compresstype "quicklz". currently supported: "zlib"
 CREATE TABLE tenk_ao8 (like tenk_heap) with (appendonly=true, blocksize=100) distributed by(unique1);
 ERROR:  block size must be between 8KB and 2MB and be an 8KB multiple. Got 100
 CREATE TABLE tenk_ao9 (like tenk_heap) with (appendonly=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
@@ -45,7 +45,7 @@ SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM 
  tenk_ao1 |     32768 |              |             0 | t
  tenk_ao2 |    262144 |              |             0 | f
  tenk_ao3 |   1048576 | zlib         |             6 | t
- tenk_ao4 |     32768 | quicklz      |             1 | f
+ tenk_ao4 |     32768 | zlib         |             1 | f
  tenk_ao5 |   1048576 | zlib         |             6 | t
 (5 rows)
 
@@ -354,7 +354,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 CREATE TABLE tenk_ao3 with(appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=zlib) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
@@ -363,7 +363,7 @@ SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM 
  tenk_ao1 |     32768 |              |             0 | t
  tenk_ao2 |    262144 |              |             0 | f
  tenk_ao3 |   1048576 | zlib         |             6 | t
- tenk_ao4 |     32768 | quicklz      |             1 | f
+ tenk_ao4 |     32768 | zlib         |             1 | f
  tenk_ao5 |   1048576 | zlib         |             6 | t
 (5 rows)
 

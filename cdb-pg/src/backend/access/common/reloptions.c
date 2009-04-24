@@ -347,12 +347,20 @@ default_reloptions(Datum reloptions, bool validate,
 		
 		compresstype = values[3];
 		
+		if (pg_strcasecmp(compresstype, "zlib") != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid compresstype \"%s\". currently supported: "
+								 "\"zlib\" ", compresstype)));
+
+		/* TODO: re-enable when quicklz is supported again
 		if ((pg_strcasecmp(compresstype, "zlib") != 0) && 
 			(pg_strcasecmp(compresstype, "quicklz") != 0))
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid compresstype \'%s\'. valid values are "
 							"\'zlib\' and \'quicklz\'", compresstype)));
+		*/
 	}
 	else
 	{
@@ -617,13 +625,19 @@ void validateAppendOnlyRelOptions(bool ao,
 				 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
 						complevel)));	
 	
+	if (comptype && (pg_strcasecmp(comptype, "zlib") != 0))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid compresstype \"%s\". currently supported: "
+							 "\"zlib\" ", comptype)));
+	/* TODO: re-enable this check when quicklz is supported again
 	if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) && 
 		(complevel != 1) && (complevel != 3))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("compresslevel=%d is out of range for quicklz "
 						 "(should be 1 or 3)", complevel)));
-
+	*/
 	if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||
 	    blocksize % MIN_APPENDONLY_BLOCK_SIZE != 0)
 		ereport(ERROR,

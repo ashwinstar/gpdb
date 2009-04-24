@@ -25,7 +25,7 @@ CREATE TABLE tenk_heap (
 CREATE TABLE tenk_ao1 (like tenk_heap) with (appendonly=true, checksum=true) distributed by(unique1);
 CREATE TABLE tenk_ao2 (like tenk_heap) with (appendonly=true, compresslevel=0, blocksize=262144) distributed by(unique1);
 CREATE TABLE tenk_ao3 (like tenk_heap) with (appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_ao4 (like tenk_heap) with (appendonly=true, compresslevel=1, compresstype=quicklz) distributed by(unique1);
+CREATE TABLE tenk_ao4 (like tenk_heap) with (appendonly=true, compresslevel=1, compresstype=zlib) distributed by(unique1);
 CREATE TABLE tenk_ao5 (like tenk_heap) with (appendonly=true, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
 -- invalid
 CREATE TABLE tenk_ao6 (like tenk_heap) with (appendonly=false, compresslevel=6, checksum=true) distributed by(unique1);
@@ -186,7 +186,7 @@ DROP TABLE tenk_ao4;
 CREATE TABLE tenk_ao1 with(appendonly=true, checksum=true) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_ao2 with(appendonly=true, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_ao3 with(appendonly=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=quicklz) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_ao4 with(appendonly=true, compresslevel=1, compresstype=zlib) AS SELECT * FROM tenk_heap;
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_ao%' AND c.oid=a.relid ORDER BY c.relname;
 SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
