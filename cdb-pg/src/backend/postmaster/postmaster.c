@@ -1134,10 +1134,9 @@ PostmasterMain(int argc, char *argv[])
 #endif
 
 	/*
-	 * If enabled, start up syslogger collection subprocess
+	 * Start up syslogger collection subprocess
 	 */
-    if (!SyncMaster)
-	   SysLoggerPID = SysLogger_Start();
+	SysLoggerPID = SysLogger_Start();
 
 	/*
 	 * Reset whereToSendOutput from DestDebug (its starting state) to
@@ -1471,7 +1470,7 @@ ServerLoop(void)
 		}
 
 		/* If we have lost the system logger, try to start a new one */
-		if (SysLoggerPID == 0 && Redirect_stderr && !SyncMaster)
+		if (SysLoggerPID == 0 && Redirect_stderr)
 		{
 			SysLoggerPID = SysLogger_Start();
 			if (Debug_print_server_processes)
