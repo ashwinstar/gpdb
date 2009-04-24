@@ -73,8 +73,8 @@ class MasterStart(Command):
         else:
             gp_mode_flags=" -E "    
             
-        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -o \" %s %s -i -p %s" %\
-                  (dataDir,standby,gp_mode_flags,port)]
+        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s  -l %s/pg_log/startup.log -o \" %s %s -i -p %s" %\
+                  (dataDir,dataDir,standby,gp_mode_flags,port)]
         
         
         if restrictedMode:
