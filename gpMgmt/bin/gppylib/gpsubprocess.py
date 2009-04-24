@@ -113,15 +113,15 @@ class Popen(subprocess.Popen):
     def _read_files(self,timeout,output,error):
         readList=[]
         readList.append(self.stdout)
+        readList.append(self.stderr)
         writeList = []
         errorList=[]
-        errorList.append(self.stderr)
         (rset,wset,eset) = self.__select(readList,writeList, errorList, timeout)
 
         if self.stdout in rset:
             output.append(os.read(self.stdout.fileno(),8192))
 
-        if self.stderr in eset:
+        if self.stderr in rset:
             error.append(os.read(self.stderr.fileno(),8192))
 
 

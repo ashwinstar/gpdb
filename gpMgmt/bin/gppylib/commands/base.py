@@ -438,9 +438,9 @@ class Command:
             return self.results.wasSuccessful()
     
         
-    def validate(self):
+    def validate(self,expected_rc=0):
         """Plain vanilla validation which expects a 0 return code."""        
-        if self.results.rc != 0:
+        if self.results.rc != expected_rc:
             raise ExecutionError("non-zero rc: %d" % self.results.rc, self)            
         
 

@@ -121,9 +121,7 @@ class GpSegStop():
     
     ######
     def cleanup(self):
-        if self.pool:
-            self.pool.haltWork()
-
+        pass
         
 #-------------------------------------------------------------------------
 def parseargs():
