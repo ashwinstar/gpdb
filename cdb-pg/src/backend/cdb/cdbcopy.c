@@ -241,7 +241,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	Assert(serializedQuerytree != NULL);
 	
 	/* Reconfigure the cluster if needed. */
-	cdbdisp_reconfigureFtsIfNecessary();
+	cdbdisp_reconfigureFtsIfNecessary(true);
 	
 	if (c->copy_in)
 	{
