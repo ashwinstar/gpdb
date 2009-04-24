@@ -31,6 +31,8 @@ from gppylib.db import dbconn
 from gppylib import pgconf
 
 description = (""" 
+This utility is NOT SUPPORTED and is for internal-use only.
+
 stops a set of one or more segment databases.
 """)
 

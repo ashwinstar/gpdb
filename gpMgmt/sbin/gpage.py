@@ -22,9 +22,9 @@ from gppylib.db import dbconn
 from gppylib import logfilter
 
 description = (""" 
-used to priority age running queries.
-""")
+This utility is NOT SUPPORTED and is for internal-use only.
 
+It is used to priority age running queries.""")
 _help = ["""
 """]
 
