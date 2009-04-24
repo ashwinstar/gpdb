@@ -169,7 +169,7 @@ class GpStart():
         
         
         gp.GpStop.local("forcing master shutdown", masterOnly=True, verbose=logging_is_verbose,
-                        quiet=self.quiet, fast=True, 
+                        quiet=self.quiet, fast=False, 
                         force=True, datadir=self.master_datadir)
         
     
