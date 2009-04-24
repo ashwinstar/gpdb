@@ -456,6 +456,13 @@ class GpArray:
         
         return max_mirror_port
 
+    def _get_host_interface(self, full_hostname):
+        (host_part, inf_num) = ['-'.join(full_hostname.split('-')[:-1]), 
+                                full_hostname.split('-')[-1]]
+        if host_part == '' or not inf_num.isdigit:
+            return (full_hostname, None)
+        else:
+            return (host_part, inf_num)
     
     def get_interface_numbers(self):
         """Returns interface numbers in the array.  Assumes that nodes are named
@@ -464,7 +471,7 @@ class GpArray:
         # Get the first segment hostname minus the interface number
         interface_nums = []
         primary_hostname = self.segments[0].primaryDB.hostname
-        (host_part, inf_num) = ['-'.join(primary_hostname.split('-')[:-1]), primary_hostname.split('-')[-1]]
+        (host_part, inf_num) = self._get_host_interface(primary_hostname)
         if host_part == '' or not inf_num.isdigit():
             return []
         
@@ -472,7 +479,7 @@ class GpArray:
         
         # get the interface numbers for host_part
         for db in self.getDbList():
-            (host_part, inf_num) = ['-'.join(db.hostname.split('-')[:-1]), db.hostname.split('-')[-1]]
+            (host_part, inf_num) = self._get_host_interface(db.hostname)
             if host_part == search_host_part:
                 if not inf_num.isdigit():
                     # We have an unexpected formatted hostname
@@ -593,7 +600,7 @@ class GpArray:
         dbids = []
         content = []
         expansion_seg_count = 0
-       
+        
         # make sure we have added at least one segment
         if len(self.expansionSegments) == 0:
             raise Exception('No expansion segments defined')
@@ -645,16 +652,28 @@ class GpArray:
         if valid_content != content:
             raise Exception('Invalid content ids')
         
-        # Check for redefinition of original segments
-        original_datadirs = {}
-        for segdb in self.getDbList():
-            original_datadirs[segdb.get_hostname() + segdb.get_datadir()] = True
-            
-        for segdb in self.getExpansionSegDbList():
-            if original_datadirs.has_key(segdb.get_hostname() + segdb.get_datadir()):
-                raise Exception('Segment %s:%s existed in the original array' % (sebdb.get_hostname(), segdb.get_datadir()))
-        
-        pass
+        # Check for redefinition data dirs and ports
+        datadirs = {}
+        used_ports = {}
+        for db in self.getDbList(True):
+            (hostname,inf) = self._get_host_interface(db.get_hostname())
+            datadir = db.get_datadir()
+            if datadirs.has_key(hostname):
+                if datadir in datadirs[hostname]:
+                    raise Exception('Data directory %s used multiple time on host %s' % (datadir, db.hostname))
+                else:
+                    datadirs[hostname].append(datadir)
+            else:
+                datadirs[hostname] = []
+                datadirs[hostname].append(datadir)
+            if used_ports.has_key(hostname):
+                if db.port in used_ports[hostname]:
+                    raise Exception('Port %d is used multiple times on host %s' % (db.port, db.get_hostname()))
+                else:
+                    used_ports[hostname].append(db.port)
+            else:
+                used_ports[hostname] = []
+                used_ports[hostname].append(db.port)
     
     
     def addExpansionHosts(self, hosts, mirror_type):
@@ -666,23 +685,19 @@ class GpArray:
         # remove interface numbers if they exist
         existing_hosts = []
         for host in self.get_hostlist(True):
-            (host_part, inf_num) = ['-'.join(host.split('-')[:-1]), host.split('-')[-1]]
-            if host_part != '' and inf_num.isdigit():
-                host = host_part    
-            if host not in existing_hosts:        
-                existing_hosts.append(host)
+            (host_part, inf_num) = self._get_host_interface(host)
+            if host_part not in existing_hosts:        
+                existing_hosts.append(host_part)
         
         new_hosts = []
         
         for host in hosts:
             # see if we already have the host
-            (host_part, inf_num) = ['-'.join(host.split('-')[:-1]), host.split('-')[-1]]
-            if host_part != '' and inf_num.isdigit():
-                host = host_part
-            if host in existing_hosts or host in new_hosts:
+            (host_part, inf_num) = self._get_host_interface(host)
+            if host_part in existing_hosts or host_part in new_hosts:
                 continue
             else:
-                new_hosts.append(host)
+                new_hosts.append(host_part)
 
         if len(new_hosts) == 0:        
             raise Exception('No new hosts to add')
