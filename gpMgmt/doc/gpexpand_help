@@ -6,11 +6,12 @@ Expands an existing Greenplum Database across new hosts in the array.
 SYNOPSIS
 ******************************************************
 
-gpexpand [-i <configuration_file>] [-d <[hh][mm[ss]]][-b]> 
-[ -c] [-e <YYYY-MM-DD hh:mm:ss>] [-h][-q] [-b <batch_size>] 
+gpexpand [-i <configuration_file>] [-f <hosts_file>] [-d <[hh][mm[ss]]]
+[ -c] [-e <YYYY-MM-DD hh:mm:ss>] [-h] [-b <batch_size>] 
 [-D <database_name>][-r] [-n <parallel_processes>]
 
 gpexpand -? | -v
+
 
 Prerequisites:
 
@@ -25,8 +26,6 @@ Prerequisites:
   largest database schema (excluding indexes). The utility will verify that you 
   have the required free disk space before it begins the expansion. 
 
-* The environment variable PGDATABASE must be set to a valid, non-template 
-  database value. 
 
 
 *******************************************************
@@ -34,12 +33,21 @@ DESCRIPTION
 *******************************************************
 
 The gpexpand utility performs array expansion in two phases: initialization, 
-and reorganization. In the initialization phase, gpexpand runs with an input 
+and redistribution. 
+
+In the initialization phase, gpexpand runs with an input 
 file that specifies data directories, dbid values, and other characteristics 
 of the new segments. You can create the input file manually, or by following 
 the prompts in an interactive interview triggered by running the utility with 
-no options. In either case, you begin initialization by running 
-gpexpand -i <input_file>.
+no options. 
+
+If you choose to create the file using the interactive interview (recommended), 
+you can optionally specify a file containing a list of expansion hosts with 
+-f <hosts_file>.  This may be necessary if your platform or command shell limits 
+the length of the list of hostnames prompted in the interview.  The utility will
+add these hosts to the input file as required.
+
+In either case, you begin initialization by running gpexpand -i <input_file>.   
 
 In addition to initializing the segments, the initialization phase performs 
 these actions: 
