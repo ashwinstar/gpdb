@@ -17,10 +17,15 @@ import sys
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 # import GPDB modules
-from gppylib.gpparseopts import *
-from gppylib.gpparseopts import _setcase
-from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
-from gppylib.logfilter import *
+try:
+    from gppylib.gpparseopts import *
+    from gppylib.gpparseopts import _setcase
+    from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
+    from gppylib.logfilter import *
+except ImportError, e:    
+    sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+
 
 
 description = ("""

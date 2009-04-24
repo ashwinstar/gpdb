@@ -14,26 +14,31 @@ Please upgrade python installed on this machine.''' % progname)
 import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
+
+#do it again for a gppylib module just in case
 try:
     import figleaf
+    
+    from gppylib.db import dbconn
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib import gparray
+    from gppylib import gphostcache
+    from gppylib import userinput
+    from gppylib.db import catalog
+    from gppylib.commands import unix
+    from gppylib.commands import gp
+    from gppylib.commands import base
+    from gppylib.commands import pg
+    from gppylib import pgconf
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 
     
-from gppylib.db import dbconn
-from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.gplog import *
-from gppylib.db import dbconn
-from gppylib import gparray
-from gppylib import gphostcache
-from gppylib import userinput
-from gppylib.db import catalog
-from gppylib.commands import unix
-from gppylib.commands import gp
-from gppylib.commands import base
-from gppylib.commands import pg
-from gppylib import pgconf
+
+
 
 description = (""" 
 Starts a GPDB Array.

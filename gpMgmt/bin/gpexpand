@@ -13,17 +13,23 @@ from time import strftime, sleep
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 from subprocess import Popen, PIPE
 
-from gppylib.commands.unix import *
-from gppylib.commands.gp import *
-from gppylib.gparray import *
-from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.gplog import *
-from gppylib.db import dbconn
-from gppylib.db import catalog
-from gppylib.segcopy import GpSegCopy, SegcopyError
-from gppylib.userinput import *
-from pygresql.pgdb import DatabaseError
-from pygresql import pg
+try:
+    from gppylib.commands.unix import *
+    from gppylib.commands.gp import *
+    from gppylib.gparray import *
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib.db import catalog
+    from gppylib.segcopy import GpSegCopy, SegcopyError
+    from gppylib.userinput import *
+    from pygresql.pgdb import DatabaseError
+    from pygresql import pg
+except ImportError, e:    
+    sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+
+
 
 
 

@@ -18,23 +18,23 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 
 try:
     import figleaf
+
+    from gppylib.db import dbconn
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib.db import catalog
+    from gppylib import gparray
+    from gppylib import gphostcache
+    from gppylib import userinput
+    from gppylib import pgconf
+    from gppylib.commands import unix
+    from gppylib.commands import gp
+    from gppylib.commands import base
+    from gppylib.commands import pg
 except ImportError, e:    
-    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+    sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
-
-from gppylib.db import dbconn
-from gppylib.gpparseopts import OptParser, OptChecker
-from gppylib.gplog import *
-from gppylib.db import dbconn
-from gppylib.db import catalog
-from gppylib import gparray
-from gppylib import gphostcache
-from gppylib import userinput
-from gppylib import pgconf
-from gppylib.commands import unix
-from gppylib.commands import gp
-from gppylib.commands import base
-from gppylib.commands import pg
 
 
 description = (""" 
