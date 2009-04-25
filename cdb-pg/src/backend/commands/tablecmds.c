@@ -325,6 +325,7 @@ static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
 static void ATExecSetDistributedBy(Relation rel, Node *node, 
 								   AlterTableCmd *cmd);
+static bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
 
 /* ALTER TABLE ... PARTITION */
 static char *
@@ -15001,6 +15002,34 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 			rel2 = heap_open(prule->topRule->parchildrelid,
 							 AccessExclusiveLock);
 
+			/* MPP-5524: check if can change distribution policy */
+			if (atc->subtype == AT_SetDistributedBy) 
+			{
+				List *dist_cnames = NIL;
+				Assert(IsA(atc->def, List));
+                         
+				dist_cnames = lsecond((List*)atc->def);
+
+				/*	might be null if no policy set, e.g. just a change
+				 *	of storage options... 
+				 */
+				if (dist_cnames)
+				{
+					Assert(IsA(dist_cnames, List)); 
+					
+					if (! can_implement_dist_on_part(rel, dist_cnames) )
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cannot ALTER PARTITION ... SET " 
+										"DISTRIBUTED BY for %s",
+										prule->relname),
+										errhint("distribution policy of "
+												"partition must match parent")
+										));
+				}
+
+			}
+
 			/* give the notice first, because it looks weird if it
 			 * comes after a failure message 
 			 */
@@ -19427,3 +19456,56 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 
 }
 
+/* Determine whether we can implement a requested distribution on a part of
+ * the specified partitioned table.
+ *
+ * In 3.3 
+ *   DISTRIBUTED RANDOMLY or distributed just like the whole partitioned
+ *   table is implementable.  Anything else is not.
+ *
+ * rel              Pointer to cache entry for the whole partitioned table
+ * dist_cnames      List of column names proposed for distribution some part
+ */
+bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
+{
+	ListCell *lc;
+	int i;
+							     
+	/* Random is okay.  It is represented by a list of one empty list. */
+	if ( list_length(dist_cnames) == 1 && linitial(dist_cnames) == NIL )
+			return true;
+	
+	/* Require an exact match to the policy of the parent. */
+	if ( list_length(dist_cnames) != rel->rd_cdbpolicy->nattrs )
+			return false;
+	
+	i = 0;
+	foreach(lc, dist_cnames)
+	{
+		AttrNumber     attnum;
+		char *cname;
+		HeapTuple tuple;
+		Node *item = lfirst(lc);
+		bool ok = false;
+			
+		if ( !(item && IsA(item, String)) )
+				return false;
+			
+		cname = strVal((Value *)item);
+		tuple = SearchSysCacheAttName(RelationGetRelid(rel), cname);
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+							cname, 
+							RelationGetRelationName(rel))));
+			
+		attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+		ok = attnum == rel->rd_cdbpolicy->attrs[i++];
+		ReleaseSysCache(tuple);
+			
+		if ( ! ok )
+			return false;
+	}	
+	return true;
+}	
