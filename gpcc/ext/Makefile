@@ -40,7 +40,7 @@ LDFLAGS=-L/usr/local/mingw32/mingw32/lib
 CPPFLAGS=-I/usr/local/mingw32/mingw32/include
 endif
 
-ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
 # continue to use this ext/ directory on the remaining platforms
 all: mkdir mklibjson mklibevent mklibapr mklibapu mkdbgen
 else

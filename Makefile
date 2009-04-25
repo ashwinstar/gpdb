@@ -182,7 +182,7 @@ endif
 CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
 CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR))
 
-ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
 ifeq (true, ${AUTH})
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(CURDIR)/curl/bin/curl-config
 CONFIG_INCLUDES+= $(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include
@@ -809,7 +809,7 @@ libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
 
 copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
-ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libk5crypto.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5support.so*,$(INSTLOC)/lib) ; fi
@@ -861,7 +861,7 @@ endif
 	fi
 	mkdir -p $(INSTLOC)/etc
 	mkdir -p $(INSTLOC)/include
-ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
 ifeq (true, ${AUTH})
 	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
 	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
