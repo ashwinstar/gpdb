@@ -40,6 +40,9 @@ create table old_aggregate_v32 (aggfnoid        regproc  not null,
 								agginitval      text) with oids;
 create table old_depend_v32 (like pg_catalog.pg_depend);
 create table old_description_v32(like pg_catalog.pg_description);
+create table old_shdepend_v32 (like pg_catalog.pg_shdepend);
+create table old_shdescription_v32(like pg_catalog.pg_shdescription);
+create table old_rewrite_v32(like pg_catalog.pg_rewrite) with oids;
 -- load the "old" catalog
 COPY old_attribute_v32 
   from '@abs_srcdir@/data/pg_attribute32.data'  csv header;
@@ -58,6 +61,10 @@ COPY old_namespace_v32
 COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
   csv header; 
 COPY old_depend_v32 from '@abs_srcdir@/data/pg_depend32.data' csv header;
+COPY old_shdepend_v32 from '/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/data/pg_shdepend32.data' csv header;
+COPY old_shdescription_v32 from '/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/data/pg_shdescription32.data' 
+  csv header; 
+COPY old_rewrite_v32 from '/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/data/pg_rewrite32.data' oids csv header; 
 create table public.pg_class(like pg_catalog.pg_class) with oids;
 create table public.pg_attribute(like pg_catalog.pg_attribute);
 create table public.pg_type(like pg_catalog.pg_type) with oids;
@@ -68,6 +75,9 @@ create table public.pg_namespace(like pg_catalog.pg_namespace) with oids;
 create table public.pg_conversion(like pg_catalog.pg_conversion);
 create table public.pg_description(like pg_catalog.pg_description);
 create table public.pg_depend(like pg_catalog.pg_depend);
+create table public.pg_shdescription(like pg_catalog.pg_shdescription);
+create table public.pg_shdepend(like pg_catalog.pg_shdepend);
+create table public.pg_rewrite(like pg_catalog.pg_rewrite) with oids;
 -- pg_partitions from 3.2
 create view public.pg_partitions as
 SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel, 
@@ -574,20 +584,26 @@ alter table public.pg_appendonly add column compresstype text;
 update public.pg_appendonly set compresstype = 'quicklz', compresslevel = compresslevel - 10 where compresslevel > 10;
 update public.pg_appendonly set compresstype = 'zlib' where compresslevel < 10;
 -- upgrade pg_partitions.parantpartitioname
-update pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = 'public.pg_partitions'::regclass;
-update pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = 'public.pg_partitions'::regclass;
+update public.pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = 'public.pg_partitions'::regclass;
+update public.pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = 'public.pg_partitions'::regclass;
+-- Drop the old function "gp_update_ao_master_stats" (oid 7156)
 delete from public.pg_proc where oid = 7156;
+delete from public.pg_description where objoid = 7156;
+delete from public.pg_depend where refobjid = 7156;
+-- We no longer track dependencies on table implementation types, toast tables or indices
+delete from public.pg_shdepend using public.pg_class c where classid='pg_type'::regclass and objid = reltype and relkind != 'c';
+delete from public.pg_shdepend using public.pg_class c where classid='pg_class'::regclass and objid = c.oid and relkind in ('t', 'i');
 commit;
 reindex table public.pg_appendonly;
 -- will error out in regression tests, this is expected
-reindex table gp_configuration_history;
-psql:@abs_srcdir@/sql/loadcat33.sql:27: ERROR:  shared table "gp_configuration_history" can only be reindexed in stand-alone mode
+reindex table public.gp_configuration_history;
+psql:/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/sql/loadcat33.sql:35: ERROR:  relation "public.gp_configuration_history" does not exist
 -- will error out in regression tests, this is expected
-reindex table gp_db_interfaces;
-psql:@abs_srcdir@/sql/loadcat33.sql:29: ERROR:  shared table "gp_db_interfaces" can only be reindexed in stand-alone mode
+reindex table public.gp_db_interfaces;
+psql:/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/sql/loadcat33.sql:37: ERROR:  relation "public.gp_db_interfaces" does not exist
 -- will error out in regression tests, this is expected
-reindex table gp_interfaces;
-psql:@abs_srcdir@/sql/loadcat33.sql:31: ERROR:  shared table "gp_interfaces" can only be reindexed in stand-alone mode
+reindex table public.gp_interfaces;
+psql:/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/sql/loadcat33.sql:39: ERROR:  relation "public.gp_interfaces" does not exist
 create view old_class as
 select oid, relname, relnamespace, reltype, relowner,
 	   relam, relfilenode, reltablespace,
@@ -630,6 +646,12 @@ create view old_description as select * from old_description_v32 union all
 select * from public.pg_description;
 create view old_depend as select * from old_depend_v32 union all
 select * from public.pg_depend;
+create view old_shdescription as select * from old_shdescription_v32 union all
+select * from public.pg_shdescription;
+create view old_shdepend as select * from old_shdepend_v32 union all
+select * from public.pg_shdepend;
+create view old_rewrite as select oid, * from old_rewrite_v32 union all
+select oid, * from public.pg_rewrite;
 -- pg_catalog.pg_partitions should be the same as public.pg_partitions
 select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
 from pg_rewrite a, pg_rewrite b
@@ -3806,8 +3828,8 @@ select * from old_proc where oid < 10000 order by oid;
   7170 | get_ao_distribution                |           11 |       10 |      12 | f        | f         | f           | t         | v           |        1 |       2249 | f        | 25                                      | {25,23,701}                    | {i,o,o}         | {relname,segmentid,tupcount}                              | get_ao_distribution_name                                                                                                                                                           | -      | 
   7171 | get_ao_compression_ratio           |           11 |       10 |      12 | f        | f         | f           | f         | v           |        1 |        701 | f        | 26                                      |                                |                 |                                                           | get_ao_compression_ratio_oid                                                                                                                                                       | -                          | 
   7172 | get_ao_compression_ratio           |           11 |       10 |      12 | f        | f         | f           | f         | v           |        1 |        701 | f        | 25                                      |                                |                 |                                                           | get_ao_compression_ratio_name                                                                                                                                                      | -                          | 
-  7173 | gp_update_ao_master_stats          |           11 |       10 |      12 | f        | f         | f           | f         | v           |        1 |        701 | f        | 26                                      |                                |                 |                                                           | gp_update_ao_master_stats _oid                                                                                                                                                     | -      | 
-  7174 | gp_update_ao_master_stats          |           11 |       10 |      12 | f        | f         | f           | f         | v           |        1 |        701 | f        | 25                                      |                                |                 |                                                           | gp_update_ao_master_stats _name                                                                                                                                                    | -      | 
+  7173 | gp_update_ao_master_stats          |           11 |       10 |      12 | f        | f         | f           | f         | v           |        1 |        701 | f        | 26                                      |                                |                 |                                                           | gp_update_ao_master_stats_oid                                                                                                                                                     | -      | 
+  7174 | gp_update_ao_master_stats          |           11 |       10 |      12 | f        | f         | f           | f         | v           |        1 |        701 | f        | 25                                      |                                |                 |                                                           | gp_update_ao_master_stats_name                                                                                                                                                    | -      | 
   7204 | cume_dist_prelim                   |           11 |       10 |      12 | f        | f         | t           | f         | i           |        1 |         20 | f        | 2281                                    |                                |                 |                                                           | cume_dist_prelim                                                                                                                                                                   | -                          | 
   7205 | ntile_prelim_int                   |           11 |       10 |      12 | f        | f         | t           | f         | i           |        2 |       1016 | f        | 2281 23                                 |                                |                 |                                                           | ntile_prelim_int                                                                                                                                                                   | -                          | 
   7206 | ntile_prelim_bigint                |           11 |       10 |      12 | f        | f         | t           | f         | i           |        2 |       1016 | f        | 2281 20                                 |                                |                 |                                                           | ntile_prelim_bigint                                                                                                                                                                | -                          | 
@@ -7117,7 +7139,6 @@ select * from public.old_description where objoid < 10000;
 (0 rows)
 
 -- pg_depend
--- pg_description
 select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
 except select * from public.old_depend where objid < 10000 and refobjid < 10000;
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
@@ -7130,12 +7151,52 @@ select * from public.old_depend where objid < 10000 and refobjid < 10000;
 ---------+-------+----------+------------+----------+-------------+---------
 (0 rows)
 
+-- pg_shdescription
+select * from pg_catalog.pg_shdescription where objoid < 10000
+except select * from public.old_shdescription where objoid < 10000;
+ objoid | classoid | description 
+--------+----------+-------------
+(0 rows)
+
+select * from public.pg_shdescription where objoid < 10000 except
+select * from public.old_shdescription where objoid < 10000;
+ objoid | classoid | description 
+--------+----------+-------------
+(0 rows)
+
+-- pg_shdepend
+select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000
+except select * from public.old_shdepend where objid < 10000 and refobjid < 10000;
+ dbid | classid | objid | refclassid | refobjid | deptype 
+------+---------+-------+------------+----------+---------
+(0 rows)
+
+select * from public.pg_shdepend where objid < 10000 and refobjid < 10000 except
+select * from public.old_shdepend where objid < 10000 and refobjid < 10000;
+ dbid | classid | objid | refclassid | refobjid | deptype 
+------+---------+-------+------------+----------+---------
+(0 rows)
+
+-- begin_equivalent
+-- compare old and new pg_rewrite
+select * from pg_catalog.pg_rewrite where oid < 10000;
+ rulename | ev_class | ev_attr | ev_type | is_instead | ev_qual | ev_action 
+----------+----------+---------+---------+------------+---------+-----------
+(0 rows)
+
+select * from public.old_rewrite where oid < 10000;
+ oid | rulename | ev_class | ev_attr | ev_type | is_instead | ev_qual | ev_action 
+-----+----------+----------+---------+---------+------------+---------+-----------
+(0 rows)
+
+-- end_equivalent
 drop view old_class, old_type, old_attribute, old_index, old_aggregate,
-	 old_proc, old_namespace, public.pg_partitions, public.old_description,
-	 old_depend;
+	 old_proc, old_namespace, public.pg_partitions, old_description,
+	 old_depend, old_shdescription, old_shdepend, old_rewrite;
 drop table public.pg_class, public.pg_attribute, public.pg_type,
 	 public.pg_index, public.pg_aggregate, public.pg_proc, public.pg_namespace,
 	 public.pg_conversion, old_aggregate_v32, old_attribute_v32, old_class_v32,
 	 old_index_v32, old_namespace_v32, old_proc_v32, old_type_v32,
 	 old_description_v32, public.pg_description, public.pg_depend,
-	 old_depend_v32;
+	 old_depend_v32, old_shdescription_v32, public.pg_shdescription,
+	 public.pg_shdepend, old_shdepend_v32, public.pg_rewrite, old_rewrite_v32;

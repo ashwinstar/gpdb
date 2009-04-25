@@ -42,8 +42,10 @@ create table old_aggregate_v32 (aggfnoid        regproc  not null,
 								aggtranstype    oid      not null,
 								agginitval      text) with oids;
 create table old_depend_v32 (like pg_catalog.pg_depend);
-
 create table old_description_v32(like pg_catalog.pg_description);
+create table old_shdepend_v32 (like pg_catalog.pg_shdepend);
+create table old_shdescription_v32(like pg_catalog.pg_shdescription);
+create table old_rewrite_v32(like pg_catalog.pg_rewrite) with oids;
 
 -- load the "old" catalog
 COPY old_attribute_v32 
@@ -63,6 +65,10 @@ COPY old_namespace_v32
 COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
   csv header; 
 COPY old_depend_v32 from '@abs_srcdir@/data/pg_depend32.data' csv header;
+COPY old_shdepend_v32 from '@abs_srcdir@/data/pg_shdepend32.data' csv header;
+COPY old_shdescription_v32 from '@abs_srcdir@/data/pg_shdescription32.data' 
+  csv header; 
+COPY old_rewrite_v32 from '@abs_srcdir@/data/pg_rewrite32.data' oids csv header; 
 
 create table public.pg_class(like pg_catalog.pg_class) with oids;
 create table public.pg_attribute(like pg_catalog.pg_attribute);
@@ -74,6 +80,9 @@ create table public.pg_namespace(like pg_catalog.pg_namespace) with oids;
 create table public.pg_conversion(like pg_catalog.pg_conversion);
 create table public.pg_description(like pg_catalog.pg_description);
 create table public.pg_depend(like pg_catalog.pg_depend);
+create table public.pg_shdescription(like pg_catalog.pg_shdescription);
+create table public.pg_shdepend(like pg_catalog.pg_shdepend);
+create table public.pg_rewrite(like pg_catalog.pg_rewrite) with oids;
 
 -- pg_partitions from 3.2
 create view public.pg_partitions as
@@ -164,6 +173,16 @@ select * from public.pg_description;
 
 create view old_depend as select * from old_depend_v32 union all
 select * from public.pg_depend;
+
+create view old_shdescription as select * from old_shdescription_v32 union all
+select * from public.pg_shdescription;
+
+create view old_shdepend as select * from old_shdepend_v32 union all
+select * from public.pg_shdepend;
+
+create view old_rewrite as select oid, * from old_rewrite_v32 union all
+select oid, * from public.pg_rewrite;
+
 
 -- pg_catalog.pg_partitions should be the same as public.pg_partitions
 select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
@@ -271,19 +290,40 @@ select * from public.pg_description where objoid < 10000 except
 select * from public.old_description where objoid < 10000;
 
 -- pg_depend
--- pg_description
 select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
 except select * from public.old_depend where objid < 10000 and refobjid < 10000;
 
 select * from public.pg_depend where objid < 10000 and refobjid < 10000 except
 select * from public.old_depend where objid < 10000 and refobjid < 10000;
 
+-- pg_shdescription
+select * from pg_catalog.pg_shdescription where objoid < 10000
+except select * from public.old_shdescription where objoid < 10000;
+
+select * from public.pg_shdescription where objoid < 10000 except
+select * from public.old_shdescription where objoid < 10000;
+
+-- pg_shdepend
+select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000
+except select * from public.old_shdepend where objid < 10000 and refobjid < 10000;
+
+select * from public.pg_shdepend where objid < 10000 and refobjid < 10000 except
+select * from public.old_shdepend where objid < 10000 and refobjid < 10000;
+
+-- begin_equivalent
+-- compare old and new pg_rewrite
+select * from pg_catalog.pg_rewrite where oid < 10000;
+
+select * from public.old_rewrite where oid < 10000;
+-- end_equivalent
+
 drop view old_class, old_type, old_attribute, old_index, old_aggregate,
-	 old_proc, old_namespace, public.pg_partitions, public.old_description,
-	 old_depend;
+	 old_proc, old_namespace, public.pg_partitions, old_description,
+	 old_depend, old_shdescription, old_shdepend, old_rewrite;
 drop table public.pg_class, public.pg_attribute, public.pg_type,
 	 public.pg_index, public.pg_aggregate, public.pg_proc, public.pg_namespace,
 	 public.pg_conversion, old_aggregate_v32, old_attribute_v32, old_class_v32,
 	 old_index_v32, old_namespace_v32, old_proc_v32, old_type_v32,
 	 old_description_v32, public.pg_description, public.pg_depend,
-	 old_depend_v32;
+	 old_depend_v32, old_shdescription_v32, public.pg_shdescription,
+	 public.pg_shdepend, old_shdepend_v32, public.pg_rewrite, old_rewrite_v32;

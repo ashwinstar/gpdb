@@ -7,6 +7,7 @@ copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd.d
 copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd.data' oids null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
 copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd.data' null as E'\\N' csv delimiter '|' header;
+
 -- fix up pg_appendonly
 alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
 
@@ -15,18 +16,24 @@ update @gpupgradeschemaname@.pg_appendonly set compresstype = 'quicklz', compres
 update @gpupgradeschemaname@.pg_appendonly set compresstype = 'zlib' where compresslevel < 10;
 
 -- upgrade pg_partitions.parantpartitioname
-update pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
-update pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
+update @gpupgradeschemaname@.pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
+-- Drop the old function "gp_update_ao_master_stats" (oid 7156)
 delete from @gpupgradeschemaname@.pg_proc where oid = 7156;
+delete from @gpupgradeschemaname@.pg_description where objoid = 7156;
+delete from @gpupgradeschemaname@.pg_depend where refobjid = 7156;
+
+-- We no longer track dependencies on table implementation types, toast tables or indices
+delete from @gpupgradeschemaname@.pg_shdepend using @gpupgradeschemaname@.pg_class c where classid='pg_type'::regclass and objid = reltype and relkind != 'c';
+delete from @gpupgradeschemaname@.pg_shdepend using @gpupgradeschemaname@.pg_class c where classid='pg_class'::regclass and objid = c.oid and relkind in ('t', 'i');
 
 commit;
 
 reindex table @gpupgradeschemaname@.pg_appendonly;
 -- will error out in regression tests, this is expected
-reindex table gp_configuration_history;
+reindex table @gpupgradeschemaname@.gp_configuration_history;
 -- will error out in regression tests, this is expected
-reindex table gp_db_interfaces;
+reindex table @gpupgradeschemaname@.gp_db_interfaces;
 -- will error out in regression tests, this is expected
-reindex table gp_interfaces;
-
+reindex table @gpupgradeschemaname@.gp_interfaces;
