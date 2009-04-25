@@ -242,6 +242,9 @@ UPDATE_CATALOG () {
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to continue, unable to update $CONFIG_TABLE catalog" 2
 	fi
+	
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"update pg_catalog.gp_master_mirroring set summary_state='Not Synchronized' , log_time = now()"
+	
 	LOG_MSG "[INFO]:-Deleting original master host details"
 	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
 	RETVAL=$?
