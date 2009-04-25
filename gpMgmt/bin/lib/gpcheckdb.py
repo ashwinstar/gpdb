@@ -1,4 +1,4 @@
-#!/usr/bin/env python -Wignore::DeprecationWarning
+#!/usr/bin/env python 
 
 '''
 gpcheckdb - checks db for required upkeep actions

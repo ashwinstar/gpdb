@@ -1,4 +1,4 @@
-#!/usr/bin/env python -Wignore::DeprecationWarning
+#!/usr/bin/env python 
 
 '''
 gpgetconfig -- obtain gp_configuration

@@ -1,4 +1,4 @@
-#!/usr/bin/env python -Wignore::DeprecationWarning
+#!/usr/bin/env python 
 '''
 gprsync.py -- perform an ad-hoc rsync operation
 
