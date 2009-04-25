@@ -871,6 +871,7 @@ def get_mirror_details(db, failed_dbids):
     for dbid in failed_dbids:
         db.execute("select definedprimary, hostname, port, datadir, dbid, content from gp_configuration where dbid=%d" % dbid)
         r = db.read_dict()
+        failed_content = r['content']
         failed_instance_array.append(r)
 
         db.execute('''select dbid from %s as _gp_pg_view where content in 
@@ -885,6 +886,11 @@ def get_mirror_details(db, failed_dbids):
                       and dbid <> %d''' % (active_dbid, dbid))
 
         r = db.read_dict()
+        if r is None:
+            gpmlib.log_error('Both primary and mirror segments for content id %d have failed.' % failed_content)
+            gpmlib.log_error('Try restarting Greenplum DB and running gprecoverseg again.')
+            return ([], [])
+
         active_instance_array.append(r)
 
     return (failed_instance_array, active_instance_array)
@@ -1269,6 +1275,7 @@ def test_access(failed_instance_array, active_instance_array):
             gpmlib.fatal('Write file to remote host %s failed' % failed_qe['hostname'])
 
         tmpfile2 = '/tmp/remote_test2.$$'
+
         (ok, out) = gpmlib.run_warn('%s "%s %s && rm -f %s"' % 
                                (gplib.ssh_prefix(host=active_qe['hostname']),
                                 ENV.TOUCH, tmpfile2, tmpfile2))        
@@ -1585,6 +1592,8 @@ try:
             
                 # get details of failed and its segment
                 (failed_instance_array, active_instance_array) = get_mirror_details(db, failed_dbids)
+                if len(failed_instance_array) == 0 and len(active_instance_array) == 0:
+                    gpmlib.fatal('Unable to continue segment recovery')
 
                 if fault_action == 'readonly' and opt['-F'] == False:
                     gpmlib.log_info('The following segments are marking as invalid:')
