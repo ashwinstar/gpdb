@@ -28,7 +28,6 @@ extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
 extern Datum gp_str2bytea(PG_FUNCTION_ARGS);
-extern Datum gp_hexstr2bigint(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -1498,6 +1497,8 @@ gp_str2bytea(PG_FUNCTION_ARGS)
 }
 
 
+#if 0
+extern Datum gp_hexstr2bigint(PG_FUNCTION_ARGS);
 /* 
  * Turning a hex str to a int.  
  */
@@ -1534,3 +1535,4 @@ gp_hexstr2bigint(PG_FUNCTION_ARGS)
     d = val;
     return d;
 }
+#endif
