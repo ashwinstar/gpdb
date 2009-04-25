@@ -249,18 +249,6 @@
 
 # - Where to Log -
 
-#log_destination = 'stderr'		# Valid values are combinations of
-					# stderr, syslog and eventlog,
-					# depending on platform.
-
-# This is used when logging to stderr:
-#redirect_stderr = on			# Enable capturing of stderr into log
-					# files
-					# (change requires restart)
-
-# These are only used if redirect_stderr is on:
-#log_directory = 'pg_log'		# Directory where log files are written
-					# Can be absolute or relative to PGDATA
 #log_filename = 'gpdb-%Y-%m-%d.log' # Log file name pattern.
 					# Can include strftime() escapes
 #log_truncate_on_rotation = off # If on, any existing log file of the same
@@ -277,11 +265,6 @@
 #log_rotation_size = 0		# Automatic rotation of logfiles will
 					# happen after that much log
 					# output.  0 to disable.
-
-# These are relevant when logging to syslog:
-#syslog_facility = 'LOCAL0'
-#syslog_ident = 'postgres'
-
 
 # - When to Log -
 
@@ -344,51 +327,7 @@
 #log_disconnections = off
 #log_duration = off
 #log_hostname = off
-#log_line_prefix = '%m|%u|%d|%p|%I|:-'		# Special values:
-					#   %u = user name
-					#   %d = database name
-					#   %r = remote host and port
-					#   %h = remote host
-					#   %p = PID
-					#   %t = timestamp (no milliseconds)
-					#   %m = timestamp with milliseconds
-					#   %i = command tag
-					#   %c = session id
-					#   %l = session line number
-					#   %s = session start timestamp
-					#   %x = transaction id
-					#   %q = stop here in non-session
-					#		 processes
-					#   %% = '%'
-					# e.g. '<%u%%%d> '
-					#
-					# Greenplum specific substitutions allowed 
-					# in log_line_prefix:
-					#   %C  content id (or segment index)
-					#   %I  process description and status.  For example:
-					#		'con99 cmd42'			   QD (query dispatcher or entry process) for
-					#									client connection number 99 (gp_session_id);
-					#									its 42nd command (gp_command_count) is
-					#									in progress or finished
-					#		'con99 cmd42 slice1'	   QD working on slice number 1 of the
-					#									query execution plan for the
-					#									42nd command of client session 99
-					#		'con99 seg0'			   QE (query executor or worker process)
-					#									for segment 0, idle
-					#		'con99 mir0'			   QE for mirror of segment 0, idle
-					#		'con99 cmd42 seg0'		   QE for segment 0, working on the
-					#									42nd command of client session 99
-					#		'con99 cmd42 seg0 slice1'  QE for segment 0, working on slice
-					#									number 1 of the 42nd command
-					#		'postmaster'			   A postmaster process
-					#   %P  if the content database is the primary or not.
-					#		   'P' if primary, 'M' if mirror. blank if n/a.
-					#   %R  role (dispatch, execute, utility, postmaster).
-					#   %S  slice index when applicable otherwise empty.
-					#   %T  process Type. prints:
-					#		  'qd' if QueryDispatcher
-					#		  'qe' if QueryExecutor
-					#		  empty if other.
+
 #log_statement = 'none'			# none, mod, ddl, all
 #log_timezone = unknown			# actually, defaults to TZ environment
 					# setting

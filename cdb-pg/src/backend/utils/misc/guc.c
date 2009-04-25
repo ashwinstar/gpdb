@@ -473,6 +473,11 @@ const char *const config_group_names[] =
 	gettext_noop("Customized Options"),
 	/* DEVELOPER_OPTIONS */
 	gettext_noop("Developer Options"),
+	/* DEPRECATED_OPTIONS */
+	gettext_noop("Deprecated Options"),
+	/* DEFUNCT_OPTIONS */
+	gettext_noop("Defunct Options"),
+
 	/* help_config wants this array to be null-terminated */
 	NULL
 };
@@ -1101,9 +1106,10 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	{
-		{"redirect_stderr", PGC_POSTMASTER, LOGGING_WHERE,
-			gettext_noop("Start a subprocess to capture stderr output into log files."),
-			NULL
+		{"redirect_stderr", PGC_POSTMASTER, DEFUNCT_OPTIONS,
+			gettext_noop("Defunct: start a subprocess to capture stderr output into log files."),
+		 	NULL,
+		 	GUC_NO_SHOW_ALL
 		},
 		&Redirect_stderr,
 		true, NULL, NULL
@@ -3493,9 +3499,10 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"log_line_prefix", PGC_SIGHUP, LOGGING_WHAT,
-			gettext_noop("Controls information prefixed to each log line"),
-			gettext_noop("if blank no prefix is used")
+		{"log_line_prefix", PGC_SIGHUP, DEFUNCT_OPTIONS,
+			gettext_noop("Defunct: controls information prefixed to each log line"),
+		 	gettext_noop("if blank no prefix is used"),
+		 	GUC_NO_SHOW_ALL
 		},
 		&Log_line_prefix,
 //		"%m|%u|%d|%p|%I|:-", NULL, NULL
@@ -3725,21 +3732,21 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"log_destination", PGC_SIGHUP, LOGGING_WHERE,
-			gettext_noop("Sets the destination for server log output."),
+		{"log_destination", PGC_SIGHUP, DEFUNCT_OPTIONS,
+			gettext_noop("Defunct: sets the destination for server log output."),
 			gettext_noop("Valid values are combinations of \"stderr\", \"syslog\", "
 						 "and \"eventlog\", depending on the platform."),
-			GUC_LIST_INPUT
+			GUC_LIST_INPUT | GUC_NO_SHOW_ALL
 		},
 		&log_destination_string,
 		"stderr", assign_log_destination, NULL
 	},
 	{
-		{"log_directory", PGC_SIGHUP, LOGGING_WHERE,
-			gettext_noop("Sets the destination directory for log files."),
+		{"log_directory", PGC_SIGHUP, DEFUNCT_OPTIONS,
+			gettext_noop("Defunct: sets the destination directory for log files."),
 			gettext_noop("May be specified as relative to the data directory "
 						 "or as absolute path."),
-			GUC_SUPERUSER_ONLY
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL
 		},
 		&Log_directory,
 		"pg_log", assign_canonical_path, NULL
@@ -3757,7 +3764,7 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_log_format", PGC_POSTMASTER, LOGGING_WHERE,
 		 gettext_noop("Sets the format for log files."),
-		 gettext_noop("Valid values are TEXT, CVS.")
+		 gettext_noop("Valid values are TEXT, CSV.")
 		},
 		&gp_log_format_string,
 		"csv", assign_gp_log_format, NULL
@@ -3765,7 +3772,7 @@ static struct config_string ConfigureNamesString[] =
 
 #ifdef HAVE_SYSLOG
 	{
-		{"syslog_facility", PGC_SIGHUP, LOGGING_WHERE,
+		{"syslog_facility", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Sets the syslog \"facility\" to be used when syslog enabled."),
 			gettext_noop("Valid values are LOCAL0, LOCAL1, LOCAL2, LOCAL3, "
 						 "LOCAL4, LOCAL5, LOCAL6, LOCAL7.")
@@ -3774,7 +3781,7 @@ static struct config_string ConfigureNamesString[] =
 		"LOCAL0", assign_syslog_facility, NULL
 	},
 	{
-		{"syslog_ident", PGC_SIGHUP, LOGGING_WHERE,
+		{"syslog_ident", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Sets the program name used to identify PostgreSQL "
 						 "messages in syslog."),
 			NULL
@@ -5864,6 +5871,21 @@ set_config_option(const char *name, const char *value,
 			break;
 	}
 
+	/* Print out warnings for the attempt to set the GUC in DEPRECATED_OPTIONS. */
+	if (record->group == DEPRECATED_OPTIONS)
+	{
+		elog(WARNING, "\"%s\": setting is deprecated, and may be removed"
+			 " in a future release.", name);
+	}
+
+	/* Ignore attempted set if the config_group is DEFUNCT_OPTIONS.*/
+	if (record->group == DEFUNCT_OPTIONS)
+	{
+		elog(WARNING, "\"%s\": setting is ignored because it is defunct",
+			 name);
+		return true;
+	}
+	
 	/*
 	 * Should we set reset/stacked values?	(If so, the behavior is not
 	 * transactional.)

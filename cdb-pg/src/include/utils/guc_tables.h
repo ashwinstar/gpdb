@@ -88,7 +88,18 @@ enum config_group
 	GP_ERROR_HANDLING,				   /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
-	DEVELOPER_OPTIONS
+	DEVELOPER_OPTIONS,
+	/*
+	 * GPDB: deprecated GUCs. In this group, the GUCs are still functioning,
+	 * but we don't recommend customers to use them. They may be defunct in
+	 * the future release.
+	 */
+	DEPRECATED_OPTIONS,
+	/*
+	 * GPDB: defunct GUCs. In this group, the GUCs are defunct. The GUCs are still
+	 * there, but attempting to change their values will not have any effects.
+	 */
+	DEFUNCT_OPTIONS
 };
 
 /*
