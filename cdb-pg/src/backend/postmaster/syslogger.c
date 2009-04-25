@@ -791,7 +791,7 @@ syslogger_append_timestamp(pg_time_t stamp_time, bool amsyslogger, bool append_c
 #else
                 "%Y-%m-%d %H:%M:%S",
 #endif
-                pg_localtime(&stamp_time, log_timezone));
+                pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 		if (amsyslogger)
 			write_syslogger_file_binary(strbuf, strlen(strbuf));
 		else
@@ -836,7 +836,7 @@ syslogger_append_current_timestamp(bool amsyslogger)
 #else
             "%Y-%m-%d %H:%M:%S        ",
 #endif
-            pg_localtime(&stamp_time, log_timezone));
+            pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
     /* 'paste' milliseconds into place... */
     sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
