@@ -232,7 +232,6 @@ export LD_LIBRARY_PATH=$(BLD_LD_LIBRARY_PATH)
 #$(warning LD_LIBRARY_PATH=$(LD_LIBRARY_PATH))
 
 # how much of GPDB to build by platform (default is "full")
-rhel5_x86_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
 sol10_sparc_32_GPDB_BUILDSET=partial
 sol9_sparc_32_GPDB_BUILDSET=partial
