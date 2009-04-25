@@ -1036,7 +1036,7 @@ export PATH:=$(tmpPATH)
 endif
 
 authlibs: env.sh
-ifeq "no-match$(findstring $(BLD_ARCH),suse10_x86_64)" "no-match"
+ifeq "no-match$(findstring $(BLD_ARCH),rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
 	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
 	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openssl-0.9.8g-co.log 2>&1
 	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
