@@ -671,22 +671,16 @@ CHK_EXISTS_TABLE () {
 	TABLENAME="${SQL_NAME[1]}"
 	QUOTED_TABLENAME="${SQL_NAME[3]}"
 	if [ "${SCHEMA_NAME}" ];then
-	    LOG_MSG "[JGE] CHK_EXISTS_TABLE schema name"
 		TMP_OUT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-		LOG_MSG "[JGE] TMP_OUT=$TMP_OUT"
 		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
-		LOG_MSG "[JGE] TAB_COUNT: $TAB_COUNT"
 		if [ $TAB_COUNT -eq 1 ];then
 			LOG_MSG "[INFO]:-Found table ${QUOTED_SCHEMA_NAME}.${QUOTED_TABLENAME} in database $QD_DBNAME"
 			CHK_EXTERNAL
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		fi
 	else
-	    LOG_MSG "[JGE] CHK_EXISTS_TABLE no schema name"
 	    TMP_OUT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';"`
-	    LOG_MSG "[JGE] TMP_OUT:$TMP_OUT"
 		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';" |$WC -l`
-		LOG_MSG "[JGE] TAB_COUNT: $TAB_COUNT"
 		if [ $TAB_COUNT -eq 1 ];then
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
 			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT -d "$QD_DBNAME" -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
@@ -1823,14 +1817,21 @@ case $OS_TYPE in
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
-#Set up GP_LIBRARY_PATH
+
+
 GP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
 PY_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/ext/python/lib
-export LD_LIBRARY_PATH=$GP_LIBRARY_PATH:$PY_LIBRARY_PATH:$LD_LIBRARY_PATH
 SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share
 SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/bin
 
-export $LIB_TYPE=$GP_LIBRARY_PATH:\$$LIB_TYPE
-EXPORT_LIB_PATH='export '${LIB_TYPE}'='$GP_LIBRARY_PATH':'$PY_LIBRARY_PATH':$'$LIB_TYPE
+
+##
+# we setup some EXPORT foo='blah' commands for when we dispatch to segments and standby master
+##
 EXPORT_GPHOME='export GPHOME='$GPHOME
 EXPORT_PYBIN='export PATH='${GPHOME}'/ext/python/bin:$PATH'
+if [ x"$LIB_TYPE" == x"LD_LIBRARY_PATH" ]; then
+    EXPORT_LIB_PATH="export LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+else
+    EXPORT_LIB_PATH="export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
+fi
