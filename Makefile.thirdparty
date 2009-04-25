@@ -223,15 +223,14 @@ thirdparty-dist-base: $(BLD_THIRDPARTY_BASE_SHARED_OBJECTS_INSTALLED) ;
 thirdparty-dist-exceptions: $(BLD_THIRDPARTY_EXCEPTIONS_INSTALLED) ;
 
 $(INSTLOC)/lib/%: $(BLD_THIRDPARTY_LIB_DIR)/%
-	(cd $(?D) && gtar cf - $(@F)) | (cd $(@D) && gtar xf -)
+	@echo "Copying $(?D)/$(@F) to $(@D)..."
+	@(cd $(?D) && $(TAR) cf - $(@F)) | (cd $(@D) && $(TAR) xf -)$(check_pipe_for_errors)
 
 $(INSTLOC)/lib/%: $(BLD_THIRDPARTY_EXCEPTIONS_DIRS)/lib/%
-	for i in $?; do \
-	    (cd `dirname $$i` && gtar cf - $(@F)) | (cd $(@D) && gtar xvf -); \
+	@for i in $?; do \
+	    echo "Copying $(?D)/$(@F) to $(@D)..."; \
+	    (cd `dirname $$i` && $(TAR) cf - $(@F)) | (cd $(@D) && $(TAR) xvf -)$(check_pipe_for_errors); \
 	done
-
-ignore_me:
-	(cd $(<D) && gtar cf - $(@F)) | (cd $(@D) && gtar xvf -)
 
 
 # ------------------------------------------------------------------------------------------------

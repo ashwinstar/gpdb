@@ -804,7 +804,7 @@ ifneq "$($(BLD_ARCH)_LDD_FILTER)" ""
 BLD_LDD_FILTER=$($(BLD_ARCH)_LDD_FILTER)
 endif
 
-libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
+libcopy=(cd $(1) && $(TAR) cf - $(2)) | (cd $(3) && $(TAR) xvf -)$(check_pipe_for_errors)
 
 copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
@@ -843,10 +843,11 @@ endif
 	if [ -z "$${lib_wildcards}" ]; then exit 0; fi; \
 	lib_list=`ls $${lib_wildcards}` export lib_list; \
 	for lib in $${lib_list}; do \
-	  echo "Copying $$lib to $(subst $(CURDIR)/,,$(INSTLOC)/lib)..."; \
-	    if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then echo "...already there."; continue; fi; \
+	    echo -n "Copying $$lib to $(subst $(CURDIR)/,,$(INSTLOC)/lib)..."; \
+	    if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then echo "already there."; continue; fi; \
 	    if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-	    $(call libcopy,`dirname $$lib`,`basename $$lib`,$(INSTLOC)/lib); \
+	    (cd `dirname $$lib` && $(TAR) cf - `basename $$lib`) | (cd $(INSTLOC)/lib/ && $(TAR) xpf -)$(check_pipe_for_errors); \
+	    echo "done."; \
 	done
 	# Create the python directory to flag to build scripts that python has been handled even
 	# on OS X Leopard where we no longer ship Python
