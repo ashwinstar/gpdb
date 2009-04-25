@@ -88,7 +88,7 @@ def run(cmd):
     ok = False
     out = []
     try:
-        f = Popen(cmd, shell=True, bufsize=bufsize, stdout=PIPE).stdout
+        f = os.popen(cmd)
         for line in f:
             out.append(line)
         ok = not f.close()
@@ -280,7 +280,7 @@ def do_solaris(res):
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
     cmd = ["ls -1 /var/sadm/patch ", "r"]
-    f = subprocess.Popen(cmd, shell=True, stdout=PIPE).stdout
+    f = os.popen("ls -1 /var/sadm/patch ", "r")
     files = f.readlines()
     f.close()
     res['solaris.patch_file'] = ' '.join(files)
