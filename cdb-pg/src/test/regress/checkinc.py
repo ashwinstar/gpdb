@@ -33,6 +33,7 @@ fileset = {
     'libintl.h':         [],
     'libc.h':            [],
     'mutex.h':           [],
+    'ntsecapi.h':        [],
     'openssl/ssl.h':     [],
     'openssl/err.h':     [],
     'pipe.h':            [],
