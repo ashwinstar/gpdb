@@ -120,6 +120,7 @@ class GpStop():
                 logger.warning("Have a postmaster.pid file but no Master segment process running")
                 logger.info("Clearing postmaster.pid file and /tmp lock files")
                 
+                lockfile="/tmp/.s.PGSQL.%s" % self.port
                 logger.info("Clearing Master instance lock files")        
                 os.remove(lockfile)
         
@@ -224,10 +225,10 @@ class GpStop():
         if self.gparray.standbyMaster:
             standby=self.gparray.standbyMaster
             
-            #When MPP-5600 is fixed we can go back to just fast.
-            logger.info("Stopping gpsyncmaster on standby host %s mode=immediate" % standby.hostname)
+            
+            logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
             try:
-                cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
+                cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',ctxt=base.REMOTE,remoteHost=standby.hostname)
                 cmd.run(validateAfter=True)                
             except base.ExecutionError, e:
                 logger.warning("Error occured while stopping the standby master: %s" % e)
@@ -259,7 +260,7 @@ class GpStop():
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
         
-        segs = self.gparray.get_valid_segdbs()
+        segs = self.gparray.getSegDbList()
         
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool)
         self.hostcache.print_contents(logger)
@@ -334,10 +335,16 @@ class GpStop():
                                 if success:
                                     success_seg_status.append( SegStopStatus(db,stopped=True,reason=reasonStr,failedCmd=cmd) )
                                 else:
-                                    failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )                        
+                                    #dbs that are marked invalid are 'skipped' but we dispatch to them
+                                    #anyway since we want to try and shutdown any runaway pg processes.
+                                    if db.valid:
+                                        failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )                        
             else:
                 for db in cmd.dblist:
-                    failed_seg_status.append( SegStopStatus(db,stopped=False,reason=cmd.get_results(),failedCmd=cmd))
+                    #dbs that are marked invalid are 'skipped' but we dispatch to them
+                    #anyway since we want to try and shutdown any runaway pg processes.
+                    if db.valid:
+                        failed_seg_status.append( SegStopStatus(db,stopped=False,reason=cmd.get_results(),failedCmd=cmd))
 
         self.pool.empty_completed_items()
         return success_seg_status        

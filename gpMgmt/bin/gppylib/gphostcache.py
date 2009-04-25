@@ -87,18 +87,18 @@ class GpHostCache():
         pending_cmds={}  
         for seg in self.gparray.segments:
             for db in seg.get_dbs():
-                if db.valid:
-                    if db.hostname in self.hostcache:                        
-                        normalized_hostname=self.hostcache[db.hostname]
-                        self._add_hostname(normalized_hostname,db)
-                    else:
-                        #we don't have an entry, so farm off a command to figure it out.
-                        # we just queue up the commands here and let the pool start to 
-                        # execute them.  later we'll process through and farm the results.
-                        cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=db.hostname)
-                        pool.addCommand(cmd)
-                        pending_cmds[cmd]=db
-                        pass
+                #we process both valid and invalid db's                
+                if db.hostname in self.hostcache:                        
+                    normalized_hostname=self.hostcache[db.hostname]
+                    self._add_hostname(normalized_hostname,db)
+                else:
+                    #we don't have an entry, so farm off a command to figure it out.
+                    # we just queue up the commands here and let the pool start to 
+                    # execute them.  later we'll process through and farm the results.
+                    cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=db.hostname)
+                    pool.addCommand(cmd)
+                    pending_cmds[cmd]=db
+                    pass
         
                     
                     
