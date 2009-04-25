@@ -341,11 +341,9 @@ class ModifyPostgresqlConfSetting(Command):
 
 #-----------------------------------------------        
 class ConfigExpansionSeg(Command):
-    def __init__(self, name, dataDir, port, numSegs, contentId, dbId, newSegment=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None):
-        cmdStr = '$GPHOME/bin/lib/gpconfexpseg -d %s -s %s -c %d -i %d' % (dataDir, numSegs, contentId, dbId)                
-        if port:
-            cmdStr += ' -p %s' % port
-        if newSegment:
+    def __init__(self, name, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None):
+        cmdStr = '$GPHOME/bin/lib/gpconfexpseg -c \"%s\"' % (confinfo)                
+        if newSegments:
             cmdStr += ' -n'
         if tarFile:
             cmdStr += ' -t %s' % tarFile

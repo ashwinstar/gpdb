@@ -8,15 +8,127 @@ from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.commands.gp import ModifyPostgresqlConfSetting, SegmentStart, SegmentStop, Chmod
 from gppylib.db import dbconn
 from gppylib.db import catalog
-from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib import gplog
+from gppylib.commands.base import *
 
 description = (""" 
 Adds additional segments to a pre-existing GPDB Array.
 """)
 
 EXECNAME = os.path.split(__file__)[-1]
+
+class ConfExpSegCmd(Command):
+    def __init__(self, name, cmdstr, datadir, port, numsegs, 
+                 content, dbid, newseg, tarfile, verbose=False):
+        self.datadir = datadir
+        self.port = int(port)
+        self.numsegs = int(numsegs)
+        self.content = int(content)
+        self.dbid = int(dbid)
+        self.newseg = newseg
+        self.tarfile = tarfile
+        self.verbose = verbose
+        Command.__init__(self, name, cmdstr)
+        
+        
+    def __str__(self):
+        if self.results:
+            return "%s cmdStr='%s'  had result: %s" % (self.name,self.cmdStr,self.results)
+        else:
+            return "%s cmdStr='%s'" % (self.name,self.cmdStr)
+        
+    def run(self):
+        try:
+            # update postgresql.conf
+            if self.newseg:
+                if os.path.exists(self.datadir):
+                    #it better be empty
+                    if len(os.listdir(self.datadir)) == 0:
+                        os.chmod(self.datadir,0700)
+                    else:
+                        raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
+                else:
+                    os.mkdir(self.datadir,0700)
+        
+        
+                logger.info("extract tar file to new segment")    
+                extractTarCmd = unix.ExtractTar('extract tar file to new segment', self.tarfile, self.datadir )
+                try:
+                    extractTarCmd.run(validateAfter=True)
+                except:
+                    self.set_results(extractTarCmd.get_results())
+                    raise
+        
+        
+                logger.info("Updating %s/postgresql.conf" % self.datadir)
+                modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % self.datadir,
+                                                                      self.datadir + '/postgresql.conf',
+                                                                      'port', self.port, optType='number')
+                try:
+                    modifyPostgresqlConfCmd.run(validateAfter=True)
+                except:
+                    self.set_results(modifyPostgresqlConfCmd.get_results())
+                    raise
+    
+            # start up segment in utility
+            logger.info("starting expansion segment")
+            startCmd = SegmentStart('Start expansion segment', 
+                                    self.datadir, utilityMode=True)
+            try:
+                startCmd.run(validateAfter=True)
+            except:
+                self.set_results(startCmd.get_results())
+                raise
+            
+            # update gp_id
+            dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=self.port,dbname='template1')
+            conn = dbconn.connect(dbUrl, utility=True)
+            
+            gpid_tbl = catalog.GpIdTable(conn)
+            gpid_tbl.set(dbid=self.dbid,content=int(self.content),numsegments=self.numsegs)
+            dbconn.execSQL(conn,gpid_tbl.get_update_sql())
+            
+            conn.commit()
+            conn.close()
+
+            # stop segment
+            logger.info("stopping expansion segment")
+            stopCmd = SegmentStop('Stop expansion segment', self.datadir)
+            
+            try:
+                stopCmd.run(validateAfter=True)
+            except:
+                self.set_results(stopCmd.get_results())
+                raise
+        except Exception, e:
+            return
+        else:
+            self.set_results(CommandResult(0,'','',True,False))
+
+    def set_results(self,results):
+        self.results=results
+        
+    def get_results(self):
+        return self.results
+
+    def cancel(self):
+        self.exec_context.cancel()    
+    
+    def interrupt(self):
+        self.exec_context.interrupt()
+    
+    def was_successful(self):
+        if self.results is None:
+            return False
+        else:
+            return self.results.wasSuccessful()
+    
+        
+    def validate(self):
+        """Plain vanilla validation which expects a 0 return code."""        
+        if self.results.rc != 0:
+            raise ExecutionError("non-zero rc: %d" % self.results.rc, self)  
 
 def parseargs():
     parser = OptParser(option_class=OptChecker,
@@ -26,96 +138,69 @@ def parseargs():
     parser.remove_option('-h')
     
     parser.add_option('-v','--verbose', action='store_true',help='debug output.')
-    parser.add_option('-p','--port', type='int')
-    parser.add_option('-d', '--datadir', type='string')                        
-    parser.add_option('-s','--numsegs', type='int')
-    parser.add_option('-c', '--content', type='int')
-    parser.add_option('-i', '--dbid', type='int')
-    parser.add_option('-n', '--newsegment', action='store_true')
+    parser.add_option('-c', '--confinfo', type='string')                        
     parser.add_option('-t', '--tarfile', type='string')
-  
+    parser.add_option('-n', '--newsegments', action='store_true')
+    parser.add_option('-B', '--batch-size', type='int', default=16, metavar='<batch_size>')  
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
     
-    
     # Parse the command line arguments
     (options, args) = parser.parse_args()
+
+    if not options.confinfo:
+        raise Exception('Missing --confinfo argument.')
+
+    if options.batch_size <= 0:
+        logger.warn('batch_size was less than zero.  Setting to 1.')
+        batch_size = 1
+
+    if options.newsegments and not options.tarfile:
+        raise Exception('-n option requires -t option to be specified')
+
+    seg_info = []
+    conf_lines = options.confinfo.split(',')
+    for line in conf_lines:
+        conf_vals = line.split(':')
+        if len(conf_vals) != 5:
+            raise Exception('Invalid configuration value: %s' % conf_vals)
+        if conf_vals[0] == '':
+            raise Exception('Missing data directory in: %s' % conf_vals)
+        if conf_vals[1] < 1024:
+            raise Exception('Invalid port in: %s' % conf_vals)
+        if conf_vals[2] <= 0:
+            raise Exception('Invalid number of segments in: %s' % conf_vals)
+        if conf_vals[3] < 0:
+            raise Exception('Invalid content id in: %s' % conf_vals)
+        if conf_vals[4] <= 0:
+            raise Exception('Invalid dbid in: %s' % conf_vals)
+        seg_info.append(conf_vals)
     
-    #-n sanity check
-    if options.numsegs <= 0:
-        raise Exception("Invalid numsegs arg: '%s'" % options.numsegs)
-        
-    if options.content < 0:
-        raise Exception('Invalid contentid arg')
-        
-    if options.dbid <= 0:
-        raise Exception('Invalid dbid arg')
+    if len(seg_info) == 0:
+        raise Exception('No segment configuration values found in --confinfo argument')
 
-    if options.port and options.port < 1024:
-        raise Exception('Invalid port arg')
-
-    if not options.datadir:
-        raise Exception('Invalid datadir arg')
-    
-    if options.newsegment and not options.tarfile:
-        raise Exception('-t must be specified if -n is used')
-
-    return options, args
+    return options, args, seg_info
 
 
 try:
     logger=gplog.setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
 
-    (options, args) = parseargs()
+    (options, args, seg_info) = parseargs()
     if options.verbose:
         gplog.enable_verbose_logging()
         
     logger.info("Starting gpconfexpseg with args: %s" % ' '.join(sys.argv[1:]))
     
-    # update postgresql.conf
-    if options.newsegment:
-        
-        if os.path.exists(options.datadir):
-            #it better be empty
-            if len(os.listdir(options.datadir)) == 0:
-                os.chmod(options.datadir,0700)
-            else:
-                raise Exception('Segment directory %s exists but is not empty!' % options.datadir)
-        else:
-            os.mkdir(options.datadir,0700)
-        
-        
-        logger.info("extract tar file to new segment")    
-        extractTarCmd = unix.ExtractTar('extract tar file to new segment', options.tarfile, options.datadir )
-        extractTarCmd.run(validateAfter=True)
-        
-        logger.info("Updating %s/postgresql.conf" % options.datadir)
-        modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % options.datadir,
-                                                              options.datadir + '/postgresql.conf',
-                                                              'port', options.port, optType='number')
-        modifyPostgresqlConfCmd.run(validateAfter=True)
+    pool = WorkerPool(numWorkers=options.batch_size)
     
-    # start up segment in utility
-    logger.info("starting expansion segment")
-    startCmd = SegmentStart('Start expansion segment', 
-                                options.datadir, utilityMode=True)
-    startCmd.run(validateAfter=True)
-    
-    # update gp_id
-    dbUrl = dbconn.DbURL(hostname='127.0.0.1', port=options.port,dbname='template1')
-    conn = dbconn.connect(dbUrl, utility=True)
-            
-    gpid_tbl = catalog.GpIdTable(conn)
-    gpid_tbl.set(dbid=options.dbid,content=int(options.content),numsegments=options.numsegs)
-    dbconn.execSQL(conn,gpid_tbl.get_update_sql())
-            
-    conn.commit()
-    conn.close()
+    for seg in seg_info:
+        cmd = ConfExpSegCmd('Configure expansion segment', ' '.join(sys.argv), seg[0], seg[1], seg[2], seg[3], 
+                            seg[4], options.newsegments, options.tarfile,
+                            options.verbose)
+        pool.addCommand(cmd)
 
-    # stop segment
-    logger.info("stopping expansion segment")
-    stopCmd = SegmentStop('Stop expansion segment', options.datadir)
-    stopCmd.run(validateAfter=True)
+    pool.join()
+    sys.exit()
 
 
 except Exception, msg:

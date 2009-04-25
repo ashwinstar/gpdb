@@ -110,8 +110,6 @@ def parseargs():
                       help='Expansion configuraiton batch size')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
                         help='number of tables to expand at a time. Valid values are 1-128.')
-    parser.add_option('-m', '--max-per-host', type='int', default=8, metavar="<max_per_host>",
-                      help='Number of commands to send per host before pausing.  Valid values are 1-128.')
     parser.add_option('-v','--verbose', action='store_true',
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
@@ -125,11 +123,6 @@ def parseargs():
     #-n sanity check
     if options.parallel > 128 or options.parallel < 1:
         logger.error('Invalid argument.  parallel value must be >= 1 and <= 128')
-        parser.print_help()
-        parser.exit()
-        
-    if options.max_per_host > 128 or options.max_per_host < 1:
-        logger.error('Invalid argument.  max_per_host value must be >= 1 and <= 128')
         parser.print_help()
         parser.exit()
         
@@ -560,27 +553,29 @@ class SegmentTemplate:
         and setting up the gp_id table"""
         
         self.logger.info('Configuring new segments')
-        
-        commandsSent = {}
         newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
             if seg.definedprimary and seg.content != -1:             
                 newPrimaryCount += 1
-            commandsSent[seg.hostname] = 0
         
         newPrimaryCount += self.gparray.get_primary_count()
 
+        new_segment_info = {}
         for seg in self.gparray.getExpansionSegDbList():
-            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segment', seg.datadir, 
-                                            seg.port, newPrimaryCount, 
-                                            seg.content, seg.dbid, newSegment=True, tarFile=self.schema_tar_file,
-                                            verbose=gplog.logging_is_verbose() ,ctxt=REMOTE, remoteHost=seg.hostname)
- 
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
-                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
-                sleep(1) 
+            (hostname, inf) = get_host_interface(seg.get_hostname())
+            if new_segment_info.has_key(hostname):
+                new_segment_info[hostname] += ',%s:%d:%d:%d:%d' % (seg.get_datadir(), seg.port, newPrimaryCount,
+                                                                   seg.content, seg.dbid)
+            else:
+                # datadir, port, numsegs, content, dbid, newseg, tarfile, verbose=False
+                new_segment_info[hostname] = '%s:%d:%d:%d:%d' % (seg.get_datadir(), seg.port, newPrimaryCount,
+                                                                 seg.content, seg.dbid)
+            
+        for host in iter(new_segment_info):
+            # ame, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None
+            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', new_segment_info[host], tarFile=self.schema_tar_file,
+                                           newSegments=True, verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
-            commandsSent[seg.hostname] += 1
             
         self.pool.join()
         self.pool.check_results()
@@ -668,7 +663,7 @@ class SegmentTemplate:
             if removeDataDirs:
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
-                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
+                if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % 8 == 0:
                     logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                     sleep(1) 
                 
@@ -924,7 +919,7 @@ class gpexpand:
             cpCmd = RemoteCopy('gpexpand back up pg_hba.conf file on original segments', 
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, remoteHost=seg.hostname)
 
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % 8 == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
             
@@ -948,7 +943,7 @@ class gpexpand:
                                self.tempDir + '/pg_hba.conf', seg.hostname, 
                                seg.datadir)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % 8 == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -971,20 +966,28 @@ class gpexpand:
         self.newPrimaryCount += self.gparray.get_primary_count()
 
         self.logger.info('Configuring original segments')
-        for seg in self.old_segments:            
-            if seg.content == -1 or not seg.valid:            
-                continue            
-            segCfgCmd = ConfigExpansionSeg('gpexpand configure original segment', seg.datadir, 
-                                            seg.port, self.newPrimaryCount, 
-                                            seg.content, seg.dbid, verbose=gplog.logging_is_verbose(),
-                                            ctxt=REMOTE, remoteHost=seg.hostname)
+
+        orig_segment_info = {}
+        for seg in self.gparray.getSegDbList():
+            (hostname, inf) = get_host_interface(seg.get_hostname())
+            if orig_segment_info.has_key(hostname):
+                orig_segment_info[hostname] += ',%s:%d:%d:%d:%d' % (seg.get_datadir(), 
+                                                                    seg.port, 
+                                                                    self.newPrimaryCount,
+                                                                    int(seg.content), 
+                                                                    seg.dbid)
+            else:
+                # datadir, port, numsegs, content, dbid, newseg, tarfile, verbose=False
+                orig_segment_info[hostname] = '%s:%d:%d:%d:%d' % (seg.get_datadir(), 
+                                                                  seg.port, 
+                                                                  self.newPrimaryCount,
+                                                                  int(seg.content), 
+                                                                  seg.dbid)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
-                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
-                sleep(1) 
-                
-            commandsSent[seg.hostname] += 1
-             
+        for host in iter(orig_segment_info):
+            # ame, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None
+            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
+                                           verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -1023,7 +1026,7 @@ class gpexpand:
                                srcFile, seg.hostname, dstFile, ctxt=REMOTE, 
                                remoteHost=seg.hostname)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
+            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % 8 == 0:
                 logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
                 sleep(1) 
                 
@@ -1034,18 +1037,27 @@ class gpexpand:
         self.pool.join()
         
         self.logger.info('Restoring original segments catalog tables')
+        orig_segment_info = {}
         for seg in originalArray.getSegDbList():            
-            segCfgCmd = ConfigExpansionSeg('gpexpand restore original segment catalog tables', 
-                                           seg.datadir, seg.port, originalPrimaryCount, 
-                                           seg.content, seg.dbid, ctxt=REMOTE, 
-                                           remoteHost=seg.hostname) 
+            (hostname, inf) = get_host_interface(seg.get_hostname())
+            if orig_segment_info.has_key(hostname):
+                orig_segment_info[hostname] += ',%s:%d:%d:%d:%d' % (seg.get_datadir(), 
+                                                                       seg.port, 
+                                                                       originalPrimaryCount,
+                                                                       int(seg.content), 
+                                                                       seg.dbid)
+            else:
+                # datadir, port, numsegs, content, dbid, newseg, tarfile, verbose=False
+                orig_segment_info[hostname] = '%s:%d:%d:%d:%d' % (seg.get_datadir(), 
+                                                                     seg.port, 
+                                                                     originalPrimaryCount,
+                                                                     int(seg.content), 
+                                                                     seg.dbid)
             
-            if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % options.max_per_host == 0:
-                logger.debug('Sleeping for 1 second to allow sshd to catch up for host %s' % seg.hostname)
-                sleep(1) 
-                
-            commandsSent[seg.hostname] += 1
-            
+        for host in iter(orig_segment_info):
+            # ame, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None
+            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
+                                           verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -1769,8 +1781,8 @@ before continuing by re-running this utility and providing the input file. """
                                           '/data/gpdb_m%d' % i, tmp_validator, None)
                 new_mirrordirs.append(new_mirrordir.strip())
 
-                if len(new_mirrordirs) != num_new_datadirs:
-                    raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
+            if len(new_mirrordirs) != num_new_datadirs:
+                raise ExpansionError('The number of new mirror data directories entered does not match the number of segments added')
                 
 
         gparray.addExpansionDatadirs(new_datadirs, new_mirrordirs, mirror_type)

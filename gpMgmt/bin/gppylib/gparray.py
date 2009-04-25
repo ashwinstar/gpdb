@@ -245,6 +245,14 @@ def parseTrueFalse(value):
     else:
         return True
 
+def get_host_interface(full_hostname):
+    (host_part, inf_num) = ['-'.join(full_hostname.split('-')[:-1]), 
+                            full_hostname.split('-')[-1]]
+    if host_part == '' or not inf_num.isdigit:
+        return (full_hostname, None)
+    else:
+        return (host_part, inf_num)
+
     
 class GpArray:
     """ TODO: 
@@ -456,14 +464,6 @@ class GpArray:
         
         return max_mirror_port
 
-    def _get_host_interface(self, full_hostname):
-        (host_part, inf_num) = ['-'.join(full_hostname.split('-')[:-1]), 
-                                full_hostname.split('-')[-1]]
-        if host_part == '' or not inf_num.isdigit:
-            return (full_hostname, None)
-        else:
-            return (host_part, inf_num)
-    
     def get_interface_numbers(self):
         """Returns interface numbers in the array.  Assumes that nodes are named
         <hostname>-<int_num>.  If the nodes just have <hostname> then an empty
@@ -471,7 +471,7 @@ class GpArray:
         # Get the first segment hostname minus the interface number
         interface_nums = []
         primary_hostname = self.segments[0].primaryDB.hostname
-        (host_part, inf_num) = self._get_host_interface(primary_hostname)
+        (host_part, inf_num) = get_host_interface(primary_hostname)
         if host_part == '' or not inf_num.isdigit():
             return []
         
@@ -479,7 +479,7 @@ class GpArray:
         
         # get the interface numbers for host_part
         for db in self.getDbList():
-            (host_part, inf_num) = self._get_host_interface(db.hostname)
+            (host_part, inf_num) = get_host_interface(db.hostname)
             if host_part == search_host_part:
                 if not inf_num.isdigit():
                     # We have an unexpected formatted hostname
@@ -656,7 +656,7 @@ class GpArray:
         datadirs = {}
         used_ports = {}
         for db in self.getDbList(True):
-            (hostname,inf) = self._get_host_interface(db.get_hostname())
+            (hostname,inf) = get_host_interface(db.get_hostname())
             datadir = db.get_datadir()
             if datadirs.has_key(hostname):
                 if datadir in datadirs[hostname]:
@@ -685,7 +685,7 @@ class GpArray:
         # remove interface numbers if they exist
         existing_hosts = []
         for host in self.get_hostlist(True):
-            (host_part, inf_num) = self._get_host_interface(host)
+            (host_part, inf_num) = get_host_interface(host)
             if host_part not in existing_hosts:        
                 existing_hosts.append(host_part)
         
@@ -693,7 +693,7 @@ class GpArray:
         
         for host in hosts:
             # see if we already have the host
-            (host_part, inf_num) = self._get_host_interface(host)
+            (host_part, inf_num) = get_host_interface(host)
             if host_part in existing_hosts or host_part in new_hosts:
                 continue
             else:
