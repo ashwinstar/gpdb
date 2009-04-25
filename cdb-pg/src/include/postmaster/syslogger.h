@@ -144,10 +144,11 @@ extern int	SysLogger_Start(void);
 
 extern void write_syslogger_file(const char *buffer, int count);
 
-extern void syslogger_append_timestamp(pg_time_t stamp_time, bool append_comma);
-extern void syslogger_append_current_timestamp(void);
-extern void syslogger_write_int32(bool test0, const char *prefix, int32 i, bool append_comma);
-extern int syslogger_write_str(const char *data, int len, bool csv);
+extern void syslogger_append_timestamp(pg_time_t stamp_time, bool amsyslogger, bool append_comma);
+extern void syslogger_append_current_timestamp(bool amsyslogger);
+extern void syslogger_write_int32(bool test0, const char *prefix, int32 i,
+								  bool amsyslogger, bool append_comma);
+extern int syslogger_write_str(const char *data, int len, bool amsyslogger, bool csv);
 
 #ifdef EXEC_BACKEND
 extern void SysLoggerMain(int argc, char *argv[]);

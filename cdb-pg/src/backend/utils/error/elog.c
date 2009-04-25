@@ -2347,18 +2347,19 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 }
 
 /*
- * Append the backtrace to the given PipeProtoChunk or the syslogger file.
+ * Append the backtrace to the given PipeProtoChunk or the syslogger file or stderr.
  *
  * We can not use the default backtrace_symbols since it calls malloc, which
  * is not async-safe, to allocate space for symbols. Even though we don't
  * really support async-safe error logging yet, the malloc has caused several
  * deadlock issues in the past, we should avoid using them in our error handler.
  * 
- * if buffer is NULL, the stack is written to the syslogger file.
+ * If buffer is NULL, the stack is written to the syslogger file if amsyslogger is true.
+ * Otherwise, write to stderr.
  */
 static inline void
 append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray, 
-				  int stacksize)
+				  int stacksize, bool amsyslogger)
 {
 #ifndef WIN32
 #if (!defined(__darwin__))
@@ -2398,82 +2399,100 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 		}
 		
 		else
-			write_syslogger_file_binary(symbol, symbol_len);
+		{
+			if (amsyslogger)
+				write_syslogger_file_binary(symbol, symbol_len);
+			else
+				write(fileno(stderr), symbol, symbol_len);
+		}
 	}
 #endif
 #endif
 }
 
 /*
- * Directly write a string to the syslogger file.
+ * Directly write a string to the syslogger file or stderr.
  */
 static inline void
-write_syslogger_file_string(const char *str, bool append_comma)
+write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma)
 {
-	if (str != NULL)
+	if (str != NULL && str[0] != '\0')
 	{
-		write_syslogger_file_binary("\"", 1);
-		syslogger_write_str(str, strlen(str), true);
-		write_syslogger_file_binary("\"", 1);
+		if (amsyslogger)
+		{
+			write_syslogger_file_binary("\"", 1);
+			syslogger_write_str(str, strlen(str), true, true);
+			write_syslogger_file_binary("\"", 1);
+		}
+		else
+		{
+			write(fileno(stderr), "\"", 1);
+			syslogger_write_str(str, strlen(str), false, true);
+			write(fileno(stderr), "\"", 1);
+		}
 	}
 
 	if (append_comma)
-		write_syslogger_file_binary(",", 1);
+	{
+		if (amsyslogger)
+			write_syslogger_file_binary(",", 1);
+		else
+			write(fileno(stderr), ",", 1);
+	}
 }
 
 
 /*
- * Directly write the message in CSV format to the syslogger file.
+ * Directly write the message in CSV format to the syslogger file or stderr.
  */
 static void
-write_syslogger_in_csv(ErrorData *edata)
+write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
 {
-	Assert(am_syslogger);
-	
 	/* timestamp_with_millisecond */
-	syslogger_append_current_timestamp();
+	syslogger_append_current_timestamp(amsyslogger);
 
 	/* username */
 	if (MyProcPort != NULL && MyProcPort->user_name != NULL)
-		write_syslogger_file_string(MyProcPort->user_name, true);
+		write_syslogger_file_string(MyProcPort->user_name, amsyslogger, true);
 	else
-		write_syslogger_file_string(NULL, true);
+		write_syslogger_file_string(NULL, amsyslogger, true);
 	
 	/* databasename */
 	if (MyProcPort != NULL && MyProcPort->database_name != NULL)
-		write_syslogger_file_string(MyProcPort->database_name, true);
+		write_syslogger_file_string(MyProcPort->database_name, amsyslogger, true);
 	else
-		write_syslogger_file_string(NULL, true);
+		write_syslogger_file_string(NULL, amsyslogger, true);
 	
 	/* Process id, thread id */
-	syslogger_write_int32(false, "p", MyProcPid, true);
-	syslogger_write_int32(false, "th", mythread(), true);
+	syslogger_write_int32(false, "p", MyProcPid, amsyslogger, true);
+	syslogger_write_int32(false, "th", mythread(), amsyslogger, true);
 	
 	/* Remote host, remote port */
 	if (MyProcPort != NULL && MyProcPort->remote_host != NULL)
-		write_syslogger_file_string(MyProcPort->remote_host, true);
+		write_syslogger_file_string(MyProcPort->remote_host, amsyslogger, true);
 	else
-		write_syslogger_file_string(NULL, true);
+		write_syslogger_file_string(NULL, amsyslogger, true);
 	if (MyProcPort != NULL && MyProcPort->remote_port != NULL)
-		write_syslogger_file_string(MyProcPort->remote_port, true);
+		write_syslogger_file_string(MyProcPort->remote_port, amsyslogger, true);
 	else
-		write_syslogger_file_string(NULL, true);
+		write_syslogger_file_string(NULL, amsyslogger, true);
 	
 	/* session start timestamp */
 	syslogger_append_timestamp((MyProcPort != NULL ?
-								(pg_time_t) timestamptz_to_time_t(MyProcPort->SessionStartTime): 0), true);
+								(pg_time_t) timestamptz_to_time_t(MyProcPort->SessionStartTime): 0),
+							   amsyslogger, true);
 	
 	/* transaction id */
 	if (MyProcPort != NULL && IsTransactionState())
-		syslogger_write_int32(false, "", GetTopTransactionId(), true);
+		syslogger_write_int32(false, "", GetTopTransactionId(), amsyslogger, true);
 	else
-		syslogger_write_int32(false, "", InvalidTransactionId, true);
+		syslogger_write_int32(false, "", InvalidTransactionId, amsyslogger, true);
 
 	/* GPDB specific options */
-	syslogger_write_int32(true, "con", gp_session_id, true); 
-	syslogger_write_int32(true, "cmd", gp_command_count, true); 
-	syslogger_write_int32(false, Gp_is_primary ? "seg" : "mir", Gp_segment, true); 
-	syslogger_write_int32(true, "slice", currentSliceId, true); 
+	syslogger_write_int32(true, "con", gp_session_id, amsyslogger, true); 
+	syslogger_write_int32(true, "cmd", gp_command_count, amsyslogger, true); 
+	syslogger_write_int32(false, Gp_is_primary ? "seg" : "mir", Gp_segment, amsyslogger, true); 
+	syslogger_write_int32(true, "slice", currentSliceId, amsyslogger, true); 
 	{
 		DistributedTransactionId dist_trans_id;
 		TransactionId local_trans_id;
@@ -2483,49 +2502,49 @@ write_syslogger_in_csv(ErrorData *edata)
 							  &local_trans_id,
 							  &subtrans_id);
 
-		syslogger_write_int32(true, "dx", dist_trans_id, true);
-		syslogger_write_int32(true, "x", local_trans_id, true); 
-		syslogger_write_int32(true, "sx", subtrans_id, true); 
+		syslogger_write_int32(true, "dx", dist_trans_id, amsyslogger, true);
+		syslogger_write_int32(true, "x", local_trans_id, amsyslogger, true); 
+		syslogger_write_int32(true, "sx", subtrans_id, amsyslogger, true); 
 	}
 
 	/* error severity */
-	write_syslogger_file_string(error_severity(edata->elevel), true);
+	write_syslogger_file_string(error_severity(edata->elevel), amsyslogger, true);
 	
 	/* sql state code */
-	write_syslogger_file_string(unpack_sql_state(edata->sqlerrcode), true);
+	write_syslogger_file_string(unpack_sql_state(edata->sqlerrcode), amsyslogger, true);
 	
 	/* error message */
-	write_syslogger_file_string(edata->message, true);
+	write_syslogger_file_string(edata->message, amsyslogger, true);
 	
 	/* errdetail */
-	write_syslogger_file_string(edata->detail, true);
+	write_syslogger_file_string(edata->detail, amsyslogger, true);
 
 	/* errhint */
-	write_syslogger_file_string(edata->hint, true);
+	write_syslogger_file_string(edata->hint, amsyslogger, true);
 
 	/* internal query */
-	write_syslogger_file_string(edata->internalquery, true);
+	write_syslogger_file_string(edata->internalquery, amsyslogger, true);
 
 	/* internal query pos */
-	syslogger_write_int32(true, "", edata->internalpos, true); 
+	syslogger_write_int32(true, "", edata->internalpos, amsyslogger, true); 
 
 	/* error context */
-	write_syslogger_file_string(edata->context, true);
+	write_syslogger_file_string(edata->context, amsyslogger, true);
 	
 	/* user query */
-	write_syslogger_file_string(debug_query_string, true);
+	write_syslogger_file_string(debug_query_string, amsyslogger, true);
 
 	/* cursor pos */
-	syslogger_write_int32(true, "", edata->cursorpos, true); 
+	syslogger_write_int32(true, "", edata->cursorpos, amsyslogger, true); 
 
 	/* func name */
-	write_syslogger_file_string(edata->funcname, true);
+	write_syslogger_file_string(edata->funcname, amsyslogger, true);
 
 	/* file name */
-	write_syslogger_file_string(edata->filename, true);
+	write_syslogger_file_string(edata->filename, amsyslogger, true);
 
 	/* line number */
-	syslogger_write_int32(true, "", edata->lineno, true); 
+	syslogger_write_int32(true, "", edata->lineno, amsyslogger, true); 
 
 	/* stack trace */
 #if (!defined(__darwin__))
@@ -2536,14 +2555,14 @@ write_syslogger_in_csv(ErrorData *edata)
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
 	{
-		append_stacktrace(NULL, edata->stacktracearray, edata->stacktracesize);
+		append_stacktrace(NULL, edata->stacktracearray, edata->stacktracesize, amsyslogger);
 	}
 	else
 	{
 		
 #endif
 #endif
-		append_stacktrace(NULL, NULL, 0);
+		append_stacktrace(NULL, NULL, 0, amsyslogger);
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
@@ -2552,7 +2571,10 @@ write_syslogger_in_csv(ErrorData *edata)
 #endif
 
 	/* EOL */
-	write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+	if (amsyslogger)
+		write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+	else
+		write(fileno(stderr), LOG_EOL, strlen(LOG_EOL));
 }
 
 /*
@@ -2697,14 +2719,14 @@ write_message_to_server_log(int elevel,
         stacktracesize > 0 &&
         stacktracearray != NULL)
 	{
-		append_stacktrace(&buffer, stacktracearray, stacktracesize);
+		append_stacktrace(&buffer, stacktracearray, stacktracesize, false);
 	}
 	else
 	{
 		
 #endif
 #endif
-		append_stacktrace(&buffer, NULL, 0);
+		append_stacktrace(&buffer, NULL, 0, false);
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
@@ -2729,27 +2751,35 @@ send_message_to_server_log(ErrorData *edata)
 
 	if (Log_destination & LOG_DESTINATION_STDERR)
 	{
-		if (redirection_done && gp_log_format == 1)
+		if (Redirect_stderr && gp_log_format == 1)
 		{
-			if (!am_syslogger)
-				write_message_to_server_log(edata->elevel,
-											edata->sqlerrcode,
-											edata->message,
-											edata->detail,
-											edata->hint,
-											edata->cursorpos,
-											edata->internalpos,
-											edata->internalquery,
-											edata->context,
-											edata->funcname,
-											edata->show_funcname,
-											edata->filename,
-											edata->lineno,
-											edata->stacktracesize,
-											edata->omit_location,
-											edata->stacktracearray);
+			if (redirection_done)
+			{
+				if (!am_syslogger)
+					write_message_to_server_log(edata->elevel,
+												edata->sqlerrcode,
+												edata->message,
+												edata->detail,
+												edata->hint,
+												edata->cursorpos,
+												edata->internalpos,
+												edata->internalquery,
+												edata->context,
+												edata->funcname,
+												edata->show_funcname,
+												edata->filename,
+												edata->lineno,
+												edata->stacktracesize,
+												edata->omit_location,
+												edata->stacktracearray);
+				else
+					write_syslogger_in_csv(edata, true);
+			}
 			else
-				write_syslogger_in_csv(edata);
+			{
+				write_syslogger_in_csv(edata, false);
+			}
+			
 			return;
 		}
 	}
@@ -3422,7 +3452,10 @@ write_stderr(const char *fmt,...)
 			edata.elevel = LOG;
 			edata.message = errbuf;
 			edata.omit_location = true;
-			write_syslogger_in_csv(&edata);
+			if (redirection_done)
+				write_syslogger_in_csv(&edata, true);
+			else
+				write_syslogger_in_csv(&edata, false);
 		}
 
 		va_end(ap);

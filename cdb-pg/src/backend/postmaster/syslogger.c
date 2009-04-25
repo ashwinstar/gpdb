@@ -778,7 +778,7 @@ syslogger_parseArgs(int argc, char *argv[])
  * Write a given timestamp to the log file.
  */
     void
-syslogger_append_timestamp(pg_time_t stamp_time, bool append_comma)
+syslogger_append_timestamp(pg_time_t stamp_time, bool amsyslogger, bool append_comma)
 {
     if(stamp_time != 0)
     {
@@ -792,15 +792,24 @@ syslogger_append_timestamp(pg_time_t stamp_time, bool append_comma)
                 "%Y-%m-%d %H:%M:%S",
 #endif
                 pg_localtime(&stamp_time, log_timezone));
-        write_syslogger_file_binary(strbuf, strlen(strbuf));
+		if (amsyslogger)
+			write_syslogger_file_binary(strbuf, strlen(strbuf));
+		else
+			write(fileno(stderr), strbuf, strlen(strbuf));
     }
 
     if (append_comma)
-        write_syslogger_file_binary(",", 1);
+	{
+		if (amsyslogger)
+			write_syslogger_file_binary(",", 1);
+		else
+			write(fileno(stderr), ",", 1);
+	}
 }
 
 /*
- * Write the current timestamp with milliseconds to the log file.
+ * Write the current timestamp with milliseconds to the syslogger file or
+ * stderr.
  *
  * It is not safe to call strftime since it is not async-safe, and it
  * is expensive to call strftime to get timezone everytime, we use
@@ -808,8 +817,8 @@ syslogger_append_timestamp(pg_time_t stamp_time, bool append_comma)
  * instead a settable timezone as PostgreSQL does, since we want all
  * log messages to have the same time format. See MPP-2591.
  */
-    void
-syslogger_append_current_timestamp(void)
+void
+syslogger_append_current_timestamp(bool amsyslogger)
 {
     struct timeval tv;
     pg_time_t	stamp_time;
@@ -833,9 +842,16 @@ syslogger_append_current_timestamp(void)
     sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
     strncpy(strbuf + 19, msbuf, 7);
 
-    /* concatenate time and milliseconds into place... */
-    write_syslogger_file_binary(strbuf, strlen(strbuf));
-    write_syslogger_file_binary(",", 1);
+	if (amsyslogger)
+	{
+		write_syslogger_file_binary(strbuf, strlen(strbuf));
+		write_syslogger_file_binary(",", 1);
+	}
+	else
+	{
+		write(fileno(stderr), strbuf, strlen(strbuf));
+		write(fileno(stderr), ",", 1);
+	}
 }
 
 typedef struct CSVChunkStr
@@ -848,7 +864,7 @@ typedef struct CSVChunkStr
  * We use the PostgreSQL defaults for CSV, i.e. quote = escape = '"'
  * If it's NULL, append nothing.
  */
-int syslogger_write_str(const char *data, int len, bool csv)
+int syslogger_write_str(const char *data, int len, bool amsyslogger, bool csv)
 {
     int cnt = 0;
 
@@ -859,8 +875,17 @@ int syslogger_write_str(const char *data, int len, bool csv)
     while (cnt < len && data[cnt] != '\0')
     {
         if (csv && data[cnt] == '"')
-            write_syslogger_file_binary("\"", 1);
-        write_syslogger_file_binary(data+cnt, 1);
+		{
+			if (amsyslogger)
+				write_syslogger_file_binary("\"", 1);
+			else
+				write(fileno(stderr), "\"", 1);
+		}
+		
+		if (amsyslogger)
+			write_syslogger_file_binary(data+cnt, 1);
+		else
+			write(fileno(stderr), data+cnt, 1);
 
         cnt+=1;
     }
@@ -911,7 +936,7 @@ syslogger_write_str_from_chunk(CSVChunkStr *chunkstr, bool csv,
     while(chunkstr->p)
     {
         bool done = false;
-        wlen = syslogger_write_str(chunkstr->p, len, csv);
+        wlen = syslogger_write_str(chunkstr->p, len, true, csv);
 
         /* Write OK, don't forget to account for the trailing 0 */
         if(wlen < len)
@@ -950,7 +975,7 @@ syslogger_write_str_from_chunk(CSVChunkStr *chunkstr, bool csv,
 }
 
     void
-syslogger_write_int32(bool test0, const char *prefix, int32 i, bool append_comma)
+syslogger_write_int32(bool test0, const char *prefix, int32 i, bool amsyslogger, bool append_comma)
 {
     char buf[1024];
     int len;
@@ -958,10 +983,18 @@ syslogger_write_int32(bool test0, const char *prefix, int32 i, bool append_comma
     if (!test0 || i > 0)
     {
         len = sprintf(buf, "%s%d", prefix, i);
-        write_syslogger_file_binary(buf, len);
+		if (amsyslogger)
+			write_syslogger_file_binary(buf, len);
+		else
+			write(fileno(stderr), buf, len);
     }
     if (append_comma)
-        write_syslogger_file_binary(",", 1);
+	{
+		if (amsyslogger)
+			write_syslogger_file_binary(",", 1);
+		else
+			write(fileno(stderr), ",", 1);
+	}
 }
 
 void syslogger_log_chunk_list(PipeProtoChunk *chunk)
@@ -980,7 +1013,7 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         /*
          * timestamp_with_milliseconds 
          */
-        syslogger_append_current_timestamp();
+        syslogger_append_current_timestamp(true);
 
         /* username */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
@@ -989,8 +1022,8 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
 
         /* Process id, thread id */
-        syslogger_write_int32(false, "p", chunk->hdr.pid, true);
-        syslogger_write_int32(false, "th", chunk->hdr.thid, true);
+        syslogger_write_int32(false, "p", chunk->hdr.pid, true, true);
+        syslogger_write_int32(false, "th", chunk->hdr.thid, true, true);
 
         /* Remote host */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
@@ -998,19 +1031,20 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
 
         /* session start timestamp */
-        syslogger_append_timestamp(pfixed->session_start_time, true);
+        syslogger_append_timestamp(pfixed->session_start_time, true, true);
 
         /* Transaction id */
-        syslogger_write_int32(false, "", pfixed->top_trans_id, true);
+        syslogger_write_int32(false, "", pfixed->top_trans_id, true, true);
 
         /* GPDB specific options. */
-        syslogger_write_int32(true, "con", pfixed->gp_session_id, true); 
-        syslogger_write_int32(true, "cmd", pfixed->gp_command_count, true); 
-        syslogger_write_int32(false, pfixed->gp_is_primary == 't'? "seg" : "mir", pfixed->gp_segment_id, true); 
-        syslogger_write_int32(true, "slice", pfixed->slice_id, true); 
-        syslogger_write_int32(true, "dx", pfixed->dist_trans_id, true);
-        syslogger_write_int32(true, "x", pfixed->local_trans_id, true); 
-        syslogger_write_int32(true, "sx", pfixed->subtrans_id, true); 
+        syslogger_write_int32(true, "con", pfixed->gp_session_id, true, true); 
+        syslogger_write_int32(true, "cmd", pfixed->gp_command_count, true, true); 
+        syslogger_write_int32(false, pfixed->gp_is_primary == 't'? "seg" : "mir", pfixed->gp_segment_id,
+							  true, true); 
+        syslogger_write_int32(true, "slice", pfixed->slice_id, true, true); 
+        syslogger_write_int32(true, "dx", pfixed->dist_trans_id, true, true);
+        syslogger_write_int32(true, "x", pfixed->local_trans_id, true, true); 
+        syslogger_write_int32(true, "sx", pfixed->subtrans_id, true, true); 
 
         /* error severity */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
@@ -1025,19 +1059,19 @@ void syslogger_log_chunk_list(PipeProtoChunk *chunk)
         /* internal query */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* internal query pos */
-        syslogger_write_int32(true, "", pfixed->internal_query_pos, true);
+        syslogger_write_int32(true, "", pfixed->internal_query_pos, true, true);
         /* err ctxt */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* user query */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* cursor pos */
-        syslogger_write_int32(false, "", pfixed->error_cursor_pos, true); 
+        syslogger_write_int32(false, "", pfixed->error_cursor_pos, true, true); 
         /* func name */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* file name */
         syslogger_write_str_from_chunk(&chunkstr, true, false, true);
         /* line number */
-        syslogger_write_int32(true, "", pfixed->error_fileline, true);
+        syslogger_write_int32(true, "", pfixed->error_fileline, true, true);
         /* stack trace */
         syslogger_write_str_from_chunk(&chunkstr, true, false, false);
 
