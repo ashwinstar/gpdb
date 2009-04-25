@@ -288,7 +288,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-v | -V]\n\n"
+						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V]\n\n"
 						"       gpfdist [-? | --help] | --version\n\n"
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
