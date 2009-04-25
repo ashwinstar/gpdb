@@ -32,6 +32,8 @@ from gppylib import pgconf
 
 
 description = (""" 
+This utility is NOT SUPPORTED and is for internal-use only.
+
 Starts a set of one or more segment databases.
 """)
 
