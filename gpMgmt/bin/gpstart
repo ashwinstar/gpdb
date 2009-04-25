@@ -276,7 +276,9 @@ class GpStart():
         for seg in segs:
             logger.debug("SegDB: %s" % seg)
         
-        invalid_segs=self.gparray.get_invalid_segdbs()  
+        invalid_segs=self.gparray.get_invalid_segdbs() 
+        for seg in invalid_segs:
+            logger.warning("Skipping startup of %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
         
         #read in the hostcache file and make sure we can ping everybody
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool)                
@@ -448,7 +450,8 @@ class GpStart():
     def _print_segment_start(self,segs,failed_seg_status,success_seg_status):
         started = len(segs) - len(failed_seg_status)
         failed = len(failed_seg_status)
-        
+        invalid = self.gparray.get_invalid_segdbs()
+
         if failed > 0 or logging_is_verbose():             
             logger.info("----------------------------------------------------")
             if failed > 0:
@@ -462,18 +465,40 @@ class GpStart():
         if failed > 0:
             flag="<<<<<"
         logger.info("----------------------------------------------------")
-        logger.info("Total processes marked as completed       = %d" % started)
-        logger.info("Total processes marked as failed          = %d %s" % (failed,flag))
+        logger.info("Total processes marked as completed             = %d" % started)
+        logger.info("Total processes marked as failed                = %d %s" % (failed,flag))
         logger.info("----------------------------------------------------")
+        if len(invalid) > 0:
+            logger.warning("Total instances marked invalid and bypassed  = %d <<<<< " % len(invalid))
+        else:
+            logger.info("Total instances marked invalid and bypassed     = 0 ")
+            
         logger.info("Successfully started %d of %d segment instances %s" % (started,len(segs),flag))
         logger.info("----------------------------------------------------")
 
-        if failed > 0:
+            
+        if failed > 0 or len(invalid) > 0:
+            flag="<<<<<"
+            total_errors=failed+len(invalid)
+            logger.warning("Segment instance startup failures reported")
+            logger.warning("Failed start %d of %d segment instances %s" % (total_errors,len(segs),flag))
+            logger.warning("A total of %d errors were encountered" % total_errors)
             logger.warning("Review %s" % get_logfile())
             logger.warning("For more details on segment startup failure(s)")
             logger.warning("Run gpstate to review current segment instance status")
             logger.info("----------------------------------------------------")
-
+        
+                           
+        
+        if len(invalid) > 0:
+            logger.warning("****************************************************************************")
+            logger.warning("There are        %d segment(s) marked as invalid" % len(invalid))
+            logger.warning("The GPDB gp_fault_action parameter is set to continue in the event of failure")
+            logger.warning("To recover from this current invalid state, review usage of gprecoverseg")
+            logger.warning("management utility, which will recover failed segment instance databases")
+            logger.warning("As gp_fault_action is set to continue, recovery will need to shutdown the")
+            logger.warning("GPDB database to ensure a consistent recovery can be completed")
+            logger.warning("****************************************************************************")
     
     ######
     def start_final_master(self):
@@ -490,10 +515,14 @@ class GpStart():
         if pg.DbStatus.local('master instance',self.gparray.master):
             logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
             
+            seg_failures=len(self.failed_seg_status) + len(self.gparray.get_invalid_segdbs())
+            standby_failure=not self.standby_was_started and self.attempt_standby_start
             
-            if not self.standby_was_started and self.attempt_standby_start:
+            if standby_failure:
                 logger.warning("Standby Master could not be started")
-                logger.warning("Database started but warnings generated.")
+            
+            if standby_failure or seg_failures>0:            
+                logger.warning("Database started but warnings generated       <<<<<")
                 logger.info("Check status of database with gpstate utility")
             else:            
                 logger.info("Database successfully started with no errors reported")

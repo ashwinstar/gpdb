@@ -265,7 +265,10 @@ class GpStop():
         self.hostcache.print_contents(logger)
         self.hostcache.ping_hosts(logger,self.pool,failed_seg_status)                
                                    
-                                    
+        invalid_segs=self.gparray.get_invalid_segdbs() 
+        for seg in invalid_segs:
+            logger.warning("Not processing %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
+            
         self._stopseg_cmds()                
         success_seg_status=self._process_segment_stop(failed_seg_status)    
         self._print_segment_stop(segs,failed_seg_status,success_seg_status)
@@ -342,9 +345,10 @@ class GpStop():
     
     ######
     def _print_segment_stop(self,segs,failed_seg_status,success_seg_status):
-        started = len(segs) - len(failed_seg_status)         
+        stopped = len(segs) - len(failed_seg_status)         
         failed = len(failed_seg_status)
-        
+        invalid = self.gparray.get_invalid_segdbs()
+        total_segs = len(self.gparray.getSegDbList())
         logger.info("------------------------------------------------")
         logger.info("Parallel process exit status")
         
@@ -362,18 +366,25 @@ class GpStop():
             flag="<<<<<"
         
         logger.info("------------------------------------------------")
-        logger.info("Total processes marked as completed       = %d" % started)
-        logger.info("Total processes marked as failed          = %d %s" % (failed,flag))
-        logger.info("------------------------------------------------")
-        logger.info("Successfully shutdown %d of %d segment instances %s" % (started,len(segs),flag))
-            
-            
-        if len(failed_seg_status) > 0:
+        logger.info("Total processes marked as completed         = %d" % stopped)
+        logger.info("Total processes marked as failed            = %d %s" % (failed,flag))
+        logger.info("------------------------------------------------")        
+        if len(invalid) > 0:
+            logger.warning("Total instances marked invalid and bypassed = %d %s" % (len(invalid),flag))
+        else:            
+            logger.info("Total instances marked invalid and bypassed = 0 ")
+        logger.info("Successfully shutdown %d of %d segment instances %s" % (stopped,total_segs,flag))
+         
+        total_failures=failed + len(invalid)
+        if total_failures > 0:
             self.hadFailures=True
-            logger.info("------------------------------------------------")
-            logger.info("Segment instance shutdown failures reported")
-            logger.info("Review logfile for more details on segment startup failure(s)")
-            logger.info("------------------------------------------------")
+            logger.warning("------------------------------------------------")
+            logger.warning("Segment instance shutdown failures reported")
+            logger.warning("Failed to shutdown %d of %d segment instances <<<<<" % (total_failures,total_segs))
+            logger.warning("A total of %d errors were encountered" % total_failures)
+            logger.warning("Review logfile %s" % get_logfile())
+            logger.warning("For more details on segment shutdown failure(s)")
+            logger.warning("------------------------------------------------")
         else:
             self.hadFailures=False
             logger.info("Database successfully shutdown with no errors reported")
