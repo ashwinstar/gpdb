@@ -207,9 +207,8 @@
 
 /*
  * Define this to cause pfree()'d memory to be cleared immediately, to
- * facilitate catching bugs that refer to already-freed values.  XXX
- * Right now, this gets defined automatically if --enable-cassert.	In
- * the long term it probably doesn't need to be on by default.
+ * facilitate catching bugs that refer to already-freed values.
+ * Right now, this gets defined automatically if --enable-cassert.
  */
 #ifdef USE_ASSERT_CHECKING
 #define CLOBBER_FREED_MEMORY
@@ -218,8 +217,7 @@
 /*
  * Define this to check memory allocation errors (scribbling on more
  * bytes than were allocated).	Right now, this gets defined
- * automatically if --enable-cassert.  In the long term it probably
- * doesn't need to be on by default.
+ * automatically if --enable-cassert.
  */
 #ifdef USE_ASSERT_CHECKING
 #define MEMORY_CONTEXT_CHECKING

@@ -23,10 +23,10 @@
 #ifndef MISCADMIN_H
 #define MISCADMIN_H
 
-#include <time.h>				/* for time_t */
 #include "pgtime.h"				/* for pg_time_t */
 
 #define PG_VERSIONSTR "postgres (Greenplum Database) " PG_VERSION "\n"
+#define PG_BACKEND_VERSIONSTR "postgres (Greenplum Database) " PG_VERSION "\n"
 
 
 /*****************************************************************************

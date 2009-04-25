@@ -9,8 +9,8 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/c.h,v 1.222 2008/01/01 19:45:56 momjian Exp $
@@ -892,9 +892,6 @@ extern int	vsnprintf(char *str, size_t count, const char *fmt, va_list args);
 #define memmove(d, s, c)		bcopy(s, d, c)
 #endif
 
-#ifndef DLLIMPORT
-#define DLLIMPORT				/* no special DLL markers on most ports */
-#endif
 #ifndef PGDLLIMPORT
 #define PGDLLIMPORT				/* no special DLL markers on most ports */
 #endif
