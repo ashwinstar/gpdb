@@ -11,5 +11,5 @@ oid|proname|pronamespace|proowner|prolang|proisagg|prosecdef|proisstrict|prorets
 7171|get_ao_compression_ratio|11|10|12|f|f|f|f|v|1|701|f|26|\N|\N|\N|get_ao_compression_ratio_oid|-|\N
 7172|get_ao_compression_ratio|11|10|12|f|f|f|f|v|1|701|f|25|\N|\N|\N|get_ao_compression_ratio_name|-|\N
 1099|lo_truncate|11|10|12|f|f|t|f|v|2|23|f|23 23|\N|\N|\N|lo_truncate|-|\N
-7173|gp_update_ao_master_stats|11|10|12|f|f|f|f|v|1|701|f|26|\N|\N|\N|gp_update_ao_master_stats _oid|-|\N
-7174|gp_update_ao_master_stats|11|10|12|f|f|f|f|v|1|701|f|25|\N|\N|\N|gp_update_ao_master_stats _name|-|\N
+7173|gp_update_ao_master_stats|11|10|12|f|f|f|f|v|1|701|f|26|\N|\N|\N|gp_update_ao_master_stats_oid|-|\N
+7174|gp_update_ao_master_stats|11|10|12|f|f|f|f|v|1|701|f|25|\N|\N|\N|gp_update_ao_master_stats_name|-|\N
