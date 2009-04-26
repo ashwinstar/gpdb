@@ -181,6 +181,7 @@ def is_gpexpand_running(master_data_directory):
 def gpexpand_status_file_exists(master_data_directory):
     return os.path.exists(master_data_directory + '/gpexpand.status')
 
+
 #-------------------------------------------------------------------------
 #expansion schema
 
@@ -337,7 +338,7 @@ class GpExpandStatus():
                 elif status == 'EXPANSION_PREPARE_STARTED':
                     self._input_filename = status_info
                 elif status == 'UPDATE_OLD_SEGMENTS_STARTED':
-                    self._original_primary_count = status_info
+                    self._original_primary_count = int(status_info)
                 elif status == 'UPDATE_MASTER_STARTED':
                     self._gp_configuration_backup = status_info
                     
@@ -722,6 +723,9 @@ class gpexpand:
     
     @staticmethod
     def prepare_gpdb_state(logger, dburl):
+        """ Gets GPDB in the appropriate state for an expansion.
+        This state will depend on if this is a new expansion setup,
+        a continuation of a previous expansion or a rollback """
         # Get the database in the expected state for the expansion/rollback
         gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport) == (True, True, True)
         status_file_exists = os.path.exists(options.master_data_directory + '/gpexpand.status')
@@ -766,6 +770,7 @@ class gpexpand:
 
     @staticmethod
     def get_status_from_db(dburl):
+        """Gets gpexpand status from the gpexpand schema"""
         conn = None
         gpexpand_db_status = None
         if get_local_db_mode(options.master_data_directory) == 'NORMAL':
@@ -783,7 +788,37 @@ class gpexpand:
         
         return gpexpand_db_status
     
+    def validate_database_settings(self):
+        """Validates settings to help check that gpexpand can run 
+        successfully given the options passed in"""
+        
+        # get the max_connections value to check if it's
+        # too small for parallel arg
+        conn = None
+        max_connections = 0
+        fts_mode = None
+        try:
+            conn = dbconn.connect(dburl)
+            max_connections = int(catalog.getSessionGUC(conn, 'max_connections'))
+        except DatabaseError,ex:
+            if options.verbose:
+                logger.exception(ex)
+            logger.error('Failed to retrieve max_connections GUC')
+            raise ex
+        finally:
+            if conn: conn.close()
+            
+        if max_connections < options.parallel * 2 + 1:
+            self.logger.error('max_connections is too small to expand %d tables at' % options.parallel)
+            self.logger.error('a time.  This will lead to connection errors.  Either')
+            self.logger.error('reduce the value for -n passed to gpexpand or raise')
+            self.logger.error('max_connections in postgresql.conf')
+            return False
+        
+        return True
+    
     def rollback(self):
+        """Rolls back and expansion setup that didn't successfully complete"""
         cleanSchema = False
         status_history = self.statusLogger.get_status_history()
         if not status_history:
@@ -838,9 +873,12 @@ class gpexpand:
             os.unlink(options.master_data_directory + '/gpexpand.gp_configuration')
     
     def get_state(self):
+        """Returns expansion state from status logger"""
         return self.statusLogger.get_current_status()[0]
     
-    def generate_inputfile(self):        
+    def generate_inputfile(self):
+        """Writes a gpexpand input file based on expansion segments
+        added to gparray by the gpexpand interview"""
         outputfile = 'gpexpand_inputfile_' + strftime("%Y%m%d_%H%M%S")
         outfile = open(outputfile, 'w')
         
@@ -858,6 +896,8 @@ class gpexpand:
 
 
     def read_input_file(self, inputFilename=None):
+        """Reads and validates line format of the input file passed
+        in on the command line via the -i arg"""
         if not options.filename and not inputFilename:
             raise ExpansionError('Missing input file')
         
@@ -893,6 +933,7 @@ class gpexpand:
             raise ExpansionError('Invalid input file: %s' % e)
         
     def add_segments(self):
+        """Starts the process of adding the new segments to the array"""
         self.segTemplate = SegmentTemplate(self.logger, self.statusLogger, self.pool,
                                            self.gparray, options.master_data_directory, 
                                            self.dburl,self.conn, options.novacuum, self.tempDir)
@@ -904,6 +945,8 @@ class gpexpand:
 
         
     def update_original_segments(self):
+        """Updates the pg_hba.conf file and updates the gp_id catalog table
+        of existing hosts"""
         self.statusLogger.set_status('UPDATE_OLD_SEGMENTS_STARTED', self.gparray.get_primary_count())
 
         self.logger.info('Backing up pg_hba.conf file on original segments')
@@ -1006,6 +1049,9 @@ class gpexpand:
             
 
     def restore_original_segments(self):
+        """ Restores the original segments back to their state prior the expansion
+        setup.  This is only possible if the expansion setup has not completed
+        successfully."""
         self.logger.info('Restoring original segments')
         gp_configuration_backup_file = self.statusLogger.get_gp_configuration_backup();
         if gp_configuration_backup_file:
@@ -1069,9 +1115,9 @@ class gpexpand:
         except ExecutionError:
             raise ExpansionError('Failed to restore original segments')   
 
-    
-
     def update_master(self):
+        """ Updates the gp_configuration catalog table on the master
+        to include the expansion segments"""
         dumpToFile(gparray, options.master_data_directory + '/gpexpand.gp_configuration')
         self.statusLogger.set_status('UPDATE_MASTER_STARTED', 
                                      options.master_data_directory + '/gpexpand.gp_configuration')
@@ -1105,6 +1151,7 @@ class gpexpand:
         self.conn = dbconn.connect(self.dburl)
         
     def restore_master(self):
+        """Restores the gp_configuration catalog table for rollback"""
         originalPrimaryCount = self.statusLogger.get_original_primary_count()
         backupFile = self.statusLogger.get_gp_configuration_backup()
         
@@ -1120,11 +1167,13 @@ class gpexpand:
 
     
     def start_prepare(self):
+        """Inserts into gpexpand.status that expansion preparation has started."""
         if options.filename:
             self.statusLogger.create_status_file()
             self.statusLogger.set_status('EXPANSION_PREPARE_STARTED', os.path.abspath(options.filename))
         
     def finalize_prepare(self):
+        """Removes the gpexpand status file"""
         self.statusLogger.remove_status_file()
         
     def setup_schema(self):
@@ -1143,6 +1192,7 @@ class gpexpand:
         self.statusLogger.set_status('SETUP_EXPANSION_SCHEMA_DONE')
         
     def prepare_schema(self):
+        """Prepares the gpexpand schema"""
         self.statusLogger.set_status('PREPARE_EXPANSION_SCHEMA_STARTED')
         
         if not self.conn:
@@ -1850,6 +1900,9 @@ try:
         logger.error('and that your environment is correct, then rerun')
         logger.error('gexpand ' + ' '.join(sys.argv[1:]))
         sys.exit(1)
+
+
+            
         
     gp_expand = gpexpand(logger,gparray,dburl,parallel=options.parallel)   
 
@@ -1871,6 +1924,9 @@ try:
             logger.error(e)
     
     if gpexpand_db_status == 'SETUP DONE' or gpexpand_db_status == 'EXPANSION STOPPED':
+        if not gp_expand.validate_database_settings():
+            logger.info('Exiting...')
+            sys.exit(1)
         gp_expand.perform_expansion()
         if table_expand_error == True:
             logger.warn('One or more tables failed to expand successfully.')
