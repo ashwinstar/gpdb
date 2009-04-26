@@ -372,3 +372,17 @@ select gp_segment_id, * from pt_3;
 -- make sure we're not seeing things
 select * from pt order by 1, 2, 3, 4;
 drop table pt, pt_1, pt_2, pt_3;
+
+-- Make sure all array types work
+create table mpp5746 (c _int4);
+create table mpp5746_2 (c int4[]);
+insert into mpp5746 select array[i] from generate_series(1, 100) i;
+insert into mpp5746_2 select array[i] from generate_series(1, 100) i;
+select gp_segment_id, * from mpp5746 except
+select gp_segment_id, * from mpp5746_2;
+drop table mpp5746_2;
+
+create table mpp5746_2 as select * from mpp5746;
+select gp_segment_id, * from mpp5746 except
+select gp_segment_id, * from mpp5746_2;
+drop table mpp5746, mpp5746_2;

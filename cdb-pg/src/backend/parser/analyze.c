@@ -2243,7 +2243,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		return;
 	}
 
-	policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
+	policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
+								 sizeof(policy->attrs[0]));
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
 	policy->attrs[0] = 1;
@@ -2471,12 +2472,11 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				{
 					Form_pg_attribute inhattr = rel->rd_att->attrs[count];
 					Oid typeOid = inhattr->atttypid;
-					bool isArray = inhattr->attndims > 0;
 
 					if (inhattr->attisdropped)
 						continue;
 					colindex++;
-					if(isGreenplumDbHashable(typeOid) || isArray)
+					if(isGreenplumDbHashable(typeOid))
 					{
 						char	   *inhname = NameStr(inhattr->attname);
 						policy->attrs[0] = colindex;
@@ -2500,26 +2500,22 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		}
 
-
-
-
 		if (!assignedDefault)
+		{
 			foreach(columns, cxt->columns)
 			{
 				Oid typeOid;
-				bool isArray;
 
 				column = (ColumnDef *) lfirst(columns);
 				colindex++;
 
 				typeOid = typenameTypeId(NULL, column->typname);
-				isArray = (column->typname->arrayBounds == NIL ? false : true);
 
 				/*
 				 * if we can hash on this type, or if it's an array type (which
 				 * we can always hash) this column with be our default key.
 				 */
-				if(isGreenplumDbHashable(typeOid) || isArray)
+				if(isGreenplumDbHashable(typeOid))
 				{
 					policy->attrs[0] = colindex;
 					assignedDefault = true;
@@ -2534,6 +2530,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				}
 
 			}
+		}
 
 		if(!assignedDefault)
 		{
@@ -2601,47 +2598,46 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					}
 					heap_close(rel, NoLock);
 					if (found)
-						elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
+						elog(DEBUG1, "DISTRIBUTED BY clause refers to columns of inherited table");
 
 					if (found)
 						break;
-
-
 				}
 			}
 
 			if (!found)
 			{
-			foreach(columns, cxt->columns)
-			{
-				column = (ColumnDef *) lfirst(columns);
-				Assert(IsA(column, ColumnDef));
-				colindex++;
-
-				if (strcmp(column->colname, key) == 0)
+				foreach(columns, cxt->columns)
 				{
-					Oid typeOid = typenameTypeId(NULL, column->typname);
-					bool isArray = (column->typname->arrayBounds == NIL ? false : true);
-
-					/*
-					 * To be a part of a distribution key, this type must be supported
-					 * for hashing internally in Greenplum Database. We check if the base type is
-					 * supported for hashing or if it is an array type (we support
-					 * hashing on all array types).
-					 */
-					if(!isGreenplumDbHashable(typeOid) && !isArray)
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+	
+					if (strcmp(column->colname, key) == 0)
 					{
-						ereport(ERROR,
-								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typname->names)))));
+						Oid typeOid = typenameTypeId(NULL, column->typname);
+	
+						/*
+						 * To be a part of a distribution key, this type must 
+						 * be supported for hashing internally in Greenplum
+						 * Database. We check if the base type is supported
+						 * for hashing or if it is an array type (we support
+						 * hashing on all array types).
+						 */
+						if (!isGreenplumDbHashable(typeOid))
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+									 errmsg("type \"%s\" can't be a part of a "
+											"distribution key",
+											format_type_be(typeOid))));
+						}
+	
+						found = true;
+						break;
 					}
-
-					found = true;
-					break;
 				}
-			}
-			}
+				}
 
 			if (found)
 			{

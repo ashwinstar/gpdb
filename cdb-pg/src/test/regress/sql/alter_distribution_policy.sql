@@ -243,3 +243,14 @@ generate_series(1,1000);
 alter table only atsdb set with(reorganize=true) distributed by (generate_series);
 select count(*) from atsdb;
 drop table atsdb;
+
+-- MPP-5746
+create table mpp5746 (c int[], t text);
+insert into mpp5746 select array[i], i from generate_series(1, 100) i;
+alter table mpp5746 set with (reorganize=true, appendonly = true);
+select * from mpp5746 order by 1;
+alter table mpp5746 drop column t;
+select * from mpp5746 order by 1;
+alter table mpp5746 set with (reorganize=true, appendonly = false);
+select * from mpp5746 order by 1;
+drop table mpp5746;

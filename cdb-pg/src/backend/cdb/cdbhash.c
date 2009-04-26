@@ -18,6 +18,7 @@
 #include <assert.h>
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
+#include "parser/parse_type.h"
 #include "utils/numeric.h"
 #include "utils/inet.h"
 #include "utils/timestamp.h"
@@ -30,7 +31,9 @@
 #include "utils/acl.h"
 #include "fmgr.h"
 #include "optimizer/geqo_random.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "cdb/cdbhash.h"
 
 
@@ -633,8 +636,31 @@ cdbhashreduce(CdbHash *h)
 	return result;
 }
 
+static bool
+typeIsArrayType(Oid typeoid)
+{
+	Type tup = typeidType(typeoid);
+	Form_pg_type typeform;
+	bool res = false;
+
+	typeform = (Form_pg_type)GETSTRUCT(tup);
+	
+	if (typeform->typelem != InvalidOid &&
+		typeform->typtype != 'd' &&
+		NameStr(typeform->typname)[0] == '_' &&
+		typeform->typinput == F_ARRAY_IN)
+		res = true;
+
+	ReleaseSysCache(tup);
+	return res;
+}
+
+
 bool isGreenplumDbHashable(Oid typid)
 {
+	/* we can hash all arrays */
+	if (typeIsArrayType(typid))
+		return true;
 	/*
 	 * if this type is a domain type, get its base type.
 	 */
