@@ -1499,8 +1499,19 @@ NameListToQuotedString(List *names)
 bool
 isTempNamespace(Oid namespaceId)
 {
+	/* 
+	 * We know these namespaces aren't temporary. We need this bootstrapping to
+	 * avoid complex situations where we're actively trying to rebuild
+	 * pg_namespace's catalog cache but continue to recurse because
+	 * TempNamespaceValid() wants to rebuild the catalog cache for us. Chicken
+	 * and egg...
+	 */
+	if (IsBuiltInNameSpace(namespaceId))
+		return false;
+
 	if (TempNamespaceValid() && myTempNamespace == namespaceId)
 		return true;
+
 	return false;
 }
 

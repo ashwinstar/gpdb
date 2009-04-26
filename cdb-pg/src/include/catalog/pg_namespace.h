@@ -84,6 +84,14 @@ DATA(insert OID = 6104 ( "pg_aoseg" PGUID _null_ ));
 DESCR("Reserved schema for Append Only segment list and eof tables");
 #define PG_AOSEGMENT_NAMESPACE 6104
 
+#define IsBuiltInNameSpace(namespaceId) \
+	(namespaceId == PG_CATALOG_NAMESPACE || \
+	 namespaceId == PG_TOAST_NAMESPACE || \
+	 namespaceId == PG_BITMAPINDEX_NAMESPACE || \
+	 namespaceId == PG_PUBLIC_NAMESPACE || \
+	 namespaceId == PG_AOSEGMENT_NAMESPACE)
+
+
 /*
  * prototypes for functions in pg_namespace.c
  */
