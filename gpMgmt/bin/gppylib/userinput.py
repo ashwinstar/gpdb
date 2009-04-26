@@ -25,6 +25,8 @@ def ask_yesno(bg_info,msg,default):
 
 #################
 def validate_list(input,default):
+    if input == '':
+        return default
     return input.split(',')
     
 
