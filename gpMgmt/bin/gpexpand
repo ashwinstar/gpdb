@@ -138,6 +138,10 @@ def parseargs():
         logger.error(msg)
         parser.exit()
         
+    if not os.path.exists(options.master_data_directory):
+         logger.error('Master data directory does not exist.')
+         parser.exit()
+        
     options.pgport = int(os.getenv('PGPORT', 5432))
 
     return options, args
