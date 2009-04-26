@@ -254,3 +254,12 @@ select * from mpp5746 order by 1;
 alter table mpp5746 set with (reorganize=true, appendonly = false);
 select * from mpp5746 order by 1;
 drop table mpp5746;
+
+-- MPP-5738
+create table mpp5738 (a int, b int, c int, d int)
+partition by range(d) (start(1) end(10) inclusive every(1));
+insert into mpp5738 select i, i+1, i+2, i from generate_series(1, 10) i;
+select * from mpp5738;
+alter table mpp5738 alter partition for(rank(1)) set with (appendonly=true);
+select * from mpp5738;
+drop table mpp5738;

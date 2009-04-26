@@ -9400,7 +9400,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	}
 	*tmprv = tmprel;
 
-#ifdef NOT_USED
+#if  0
 	elog_node_display(NOTICE, "f", n, true);
 #endif
 
@@ -9665,7 +9665,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
 			cd->typname = tname;
 			cs->tableElts = lappend(cs->tableElts, cd);
 		}
-#ifdef NOT_USED
+#if 0
 		elog_node_display(NOTICE, "CREATE STATEMENT", cs, true);
 #endif
 		parsetrees = parse_analyze((Node *)cs, NULL, NULL, 0);
@@ -10206,6 +10206,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	reindex_relation(tarrelid, false, false /* ao_segs ? */,
 					 &oid_map, Gp_role == GP_ROLE_DISPATCH);
 
+#if 0
+	elog_node_display(NOTICE, "f", oid_map, true);
+#endif
 	/* Step (f) */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -14928,7 +14931,8 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 	}
 
 	/* let split and exchange through */
-	if (!(atc->subtype == AT_PartExchange || atc->subtype == AT_PartSplit) &&
+	if (!(atc->subtype == AT_PartExchange || atc->subtype == AT_PartSplit ||
+		  AT_SetDistributedBy) &&
 		Gp_role != GP_ROLE_DISPATCH)
 		return;
 
@@ -14981,7 +14985,6 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot ALTER PARTITION for relation \"%s\"",
 							RelationGetRelationName(rel))));
-
 		if (bPartitionCmd)
 		{
 			/* build the IDRule for the nested ALTER PARTITION cmd ... */
@@ -14998,6 +15001,12 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		}
 		else /* treat as a table */
 		{
+			/* Update PID for use on QEs */
+			pid2->idtype = AT_AP_IDRule;
+			pid2->partiddef = (Node *)list_make2((Node *)prule, pid);
+			pid2->location  = -1;
+			pc->partid = (Node *)pid2;
+
 			/* get the child table relid */
 			rel2 = heap_open(prule->topRule->parchildrelid,
 							 AccessExclusiveLock);
@@ -15030,21 +15039,30 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 
 			}
 
-			/* give the notice first, because it looks weird if it
+			/* 
+			 * Give the notice first, because it looks weird if it
 			 * comes after a failure message 
 			 */
 			ereport(NOTICE,
-					(errmsg("ALTERing table \"%s\" "
+					(errmsg("altering table \"%s\" "
 							"(%s)",
 							RelationGetRelationName(rel2),
 							prule->relname)));
 		}
 	}
+	else if (Gp_role == GP_ROLE_EXECUTE && atc->subtype == AT_SetDistributedBy)
+	{
+		Assert(IsA(pid->partiddef, List));
+		prule = (PgPartRule *)linitial((List *)pid->partiddef);
+		/* get the child table relid */
+		rel2 = heap_open(prule->topRule->parchildrelid,
+						 AccessExclusiveLock);
+		bPartitionCmd = false;
+	}
 	/* execute the command */
 	ATExecCmd(tab, rel2, atc);
 
-	if (!bPartitionCmd &&
-		(Gp_role == GP_ROLE_DISPATCH))
+	if (!bPartitionCmd)
 	{
 		/* NOTE: for the case of Set Distro,
 		 * ATExecSetDistributedBy rebuilds the relation, so rel2

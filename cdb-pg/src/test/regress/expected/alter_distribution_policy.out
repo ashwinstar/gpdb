@@ -1113,3 +1113,49 @@ select * from mpp5746 order by 1;
 (100 rows)
 
 drop table mpp5746;
+-- MPP-5738
+create table mpp5738 (a int, b int, c int, d int)
+partition by range(d) (start(1) end(10) inclusive every(1));
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_1" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_2" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_3" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_4" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_5" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_6" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_7" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_8" for table "mpp5738"
+NOTICE:  CREATE TABLE will create partition "mpp5738_1_prt_9" for table "mpp5738"
+insert into mpp5738 select i, i+1, i+2, i from generate_series(1, 10) i;
+select * from mpp5738;
+ a  | b  | c  | d  
+----+----+----+----
+  1 |  2 |  3 |  1
+  2 |  3 |  4 |  2
+  3 |  4 |  5 |  3
+  4 |  5 |  6 |  4
+  5 |  6 |  7 |  5
+  6 |  7 |  8 |  6
+  7 |  8 |  9 |  7
+  8 |  9 | 10 |  8
+  9 | 10 | 11 |  9
+ 10 | 11 | 12 | 10
+(10 rows)
+
+alter table mpp5738 alter partition for(rank(1)) set with (appendonly=true);
+NOTICE:  altering table "mpp5738_1_prt_1" (partition for rank 1 of relation "mpp5738")
+select * from mpp5738;
+ a  | b  | c  | d  
+----+----+----+----
+  1 |  2 |  3 |  1
+  2 |  3 |  4 |  2
+  3 |  4 |  5 |  3
+  4 |  5 |  6 |  4
+  5 |  6 |  7 |  5
+  6 |  7 |  8 |  6
+  7 |  8 |  9 |  7
+  8 |  9 | 10 |  8
+  9 | 10 | 11 |  9
+ 10 | 11 | 12 | 10
+(10 rows)
+
+drop table mpp5738;
