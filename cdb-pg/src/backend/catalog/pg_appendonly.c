@@ -20,6 +20,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
 
@@ -151,8 +152,8 @@ GetAppendOnlyEntry(Oid relid)
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("append-only table relid \"%d\" does not existin pg_appendonly",
-						relid)));
+				 errmsg("missing pg_appendonly entry for relation \"%s\"",
+						get_rel_name(relid))));
 	
 	
 	aoentry = (AppendOnlyEntry *) palloc(sizeof(AppendOnlyEntry));
