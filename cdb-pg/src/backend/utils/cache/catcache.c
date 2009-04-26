@@ -423,6 +423,18 @@ CatalogCacheIdInvalidate(int cacheId,
 	/*
 	 * sanity checks
 	 */
+#ifdef USE_ASSERT_CHECKING
+	/* Add some debug info for MPP-5739 */
+	if (!ItemPointerIsValid(pointer))
+	{
+		elog(LOG, "CatalogCacheIdInvalidate: cacheId %d, hash %u IP %p", cacheId, hashValue, pointer);
+		if (pointer != NULL)
+		{
+			elog(LOG, "CatalogCacheIdInvalidate: bogus item (?): (blkid.hi %d blkid.lo %d posid %d)",
+				 pointer->ip_blkid.bi_hi, pointer->ip_blkid.bi_lo, pointer->ip_posid);
+		}
+	}
+#endif
 	Assert(ItemPointerIsValid(pointer));
 	CACHE1_elog(DEBUG2, "CatalogCacheIdInvalidate: called");
 
