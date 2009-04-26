@@ -179,20 +179,13 @@ CONFIGFLAGS+= --with-r
 endif
 endif
 
+# Configure in thirdparty libraries from the ext/ directory
 CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
 CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR))
-
-ifeq "no-match$(findstring $(BLD_ARCH),rhel4_x86_32 rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
-ifeq (true, ${AUTH})
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(CURDIR)/curl/bin/curl-config
-CONFIG_INCLUDES+= $(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include
-CONFIG_LIBRARIES+= $(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib
-endif
-else
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
-endif
-
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
+
+# Configure in "authlibs"
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
 
 # Windows-specific config flags
 win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
@@ -329,13 +322,11 @@ both : dbg opt ;
 
 dbg:
 	rsync -rlvt --exclude=devel*/ --exclude=dist*/ --exclude=LOG.* ./ devel$(BLD_BITS)/
-	cd devel$(BLD_BITS) && if [ ! -f authlib_libpath_setup.sh ]; then $(MAKE) authlibs; fi
-	cd devel$(BLD_BITS) && . ./authlib_libpath_setup.sh && $(MAKE) HOME=`pwd` AUTH=true PG_LANG=true devel
+	cd devel$(BLD_BITS) && $(MAKE) HOME=`pwd` PG_LANG=true devel
 
 opt:
 	rsync -rlvt --exclude=devel*/ --exclude=dist*/ --exclude=LOG.* ./ dist$(BLD_BITS)/
-	cd dist$(BLD_BITS) && if [ ! -f authlib_libpath_setup.sh ]; then $(MAKE) authlibs; fi
-	cd dist$(BLD_BITS) && . ./authlib_libpath_setup.sh && $(MAKE) GPROOT=`pwd` AUTH=true PG_LANG=true dist
+	cd dist$(BLD_BITS) && $(MAKE) GPROOT=`pwd` PG_LANG=true dist
 
 #---------------------------------------------------------------------
 # Development builds
@@ -807,28 +798,18 @@ endif
 libcopy=(cd $(1) && $(TAR) cf - $(2)) | (cd $(3) && $(TAR) xvf -)$(check_pipe_for_errors)
 
 copylibs : thirdparty-dist
-	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
-ifeq "no-match$(findstring $(BLD_ARCH),rhel4_x86_32 rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
-	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libk5crypto.so*,$(INSTLOC)/lib) ; fi
-	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5.so*,$(INSTLOC)/lib) ; fi
-	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5support.so*,$(INSTLOC)/lib) ; fi
-	if [ -f $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libgssapi_krb5.so*,$(INSTLOC)/lib) ; fi
-	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.so.0 $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.so.0 $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/openssl/lib/libssl.so.0.9.8 ] ; then $(call libcopy,$(CURDIR)/openssl/lib,libssl.so*,$(INSTLOC)/lib) ; fi
-	if [ -f $(CURDIR)/krb5/lib/libk5crypto.3.1.dylib ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.3.1.dylib $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/krb5/lib/libkrb5support.1.1.dylib ] ; then cp -p $(CURDIR)/krb5/lib/libkrb5support.1.1.dylib $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.0.dylib $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.0.dylib $(INSTLOC)/lib ; fi
-endif
-	@if [ `uname -s` = 'Darwin' ] ; then \
+	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
+	if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
 	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
 	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
-	        cp -p $$lib $(INSTLOC)/lib ; \
+	        if [ -f $(BLD_THIRDPARTY_LIB_DIR)/`basename $$lib` ]; then \
+	            echo "cp -p $(BLD_THIRDPARTY_LIB_DIR)/`basename $$lib` $(INSTLOC)/lib/" ; \
+	            cp -p $(BLD_THIRDPARTY_LIB_DIR)/`basename $$lib` $(INSTLOC)/lib/ ; \
+	        else \
+	            echo "cp -p $$lib $(INSTLOC)/lib/" ; \
+	            cp -p $$lib $(INSTLOC)/lib/ ; \
+	        fi ; \
 	    done ; \
 	fi
 	@if [ `uname -s` != 'Darwin' ] ; then \
@@ -861,17 +842,10 @@ endif
 	fi
 	mkdir -p $(INSTLOC)/etc
 	mkdir -p $(INSTLOC)/include
-ifeq "no-match$(findstring $(BLD_ARCH),rhel4_x86_32 rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
-ifeq (true, ${AUTH})
-	cp -rp $(CURDIR)/openssl/bin/openssl $(INSTLOC)/bin/
-	cp -rp $(CURDIR)/openssl/include/openssl $(INSTLOC)/include/
-	cp -rp $(CURDIR)/openssl/ssl/openssl.cnf $(INSTLOC)/etc/
-endif
-else
+	# Copy in openssl files needed by gpperfmon
 	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
 	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
 	cp -rp $(BLD_THIRDPARTY_DIR)/ssl/openssl.cnf $(INSTLOC)/etc/
-endif
 
 greenplum_path:
 	mkdir -p $(INSTLOC)
@@ -983,101 +957,20 @@ pygres: GPROOTDEP
 	#    cp -p libs/* $(DEVPATH)/lib ; \
 	#fi)
 
+# comment this out, for now, until we know if it affects more than just the authlibs target
+#sol9_sparc_64_LD_LIBRARY_PATH=/usr/local/lib/sparcv9
+#sol8_sparc_64_LD_LIBRARY_PATH=/usr/local/lib/sparcv9
+#BLD_LD_LIBRARY_PATH:=$($(BLD_ARCH)_LD_LIBRARY_PATH):$(LD_LIBRARY_PATH)
+#export LD_LIBRARY_PATH=$(BLD_LD_LIBRARY_PATH)
 
-rhel5_x86_32_TARGET_OPENSSL=linux-elf -m32
-sol10_x86_32_TARGET_OPENSSL=solaris-x86-cc
-sol10_sparc_TARGET_OPENSSL=solaris64-sparcv9-gcc
-sol10_sparc_32_TARGET_OPENSSL=solaris-sparcv9-gcc
-sol10_sparc_64_TARGET_OPENSSL=solaris64-sparcv9-gcc -m64 -mcpu=v9
-sol9_sparc_TARGET_OPENSSL=solaris-sparcv9-gcc
-sol9_sparc_32_TARGET_OPENSSL=solaris-sparcv9-gcc
-sol9_sparc_64_TARGET_OPENSSL=solaris64-sparcv9-gcc -m64 -mcpu=v9
-sol8_sparc_TARGET_OPENSSL=solaris-sparcv9-gcc
-sol8_sparc_32_TARGET_OPENSSL=solaris-sparcv9-gcc
-sol8_sparc_64_TARGET_OPENSSL=solaris64-sparcv9-gcc -m64 -mcpu=v9
-BLD_TARGET_OPENSSL=$($(BLD_ARCH)_TARGET_OPENSSL)
+# comment this out, for now, until we know if it affects more than just the authlibs target
+## put the default gcc in front of the /releng/bin/gcc to get 32-bit support
+## DO NOT do this for 3.2.0.x releases (and maybe not for 3.2.x.x releases)
+## where BLD_ARCH equals rhel5_x86_64
+#ifeq "$(BLD_ARCH)" "rhel5_x86_32"
+#tmpPATH=$(subst /releng/bin:,/usr/bin:/releng/bin:,$(PATH))
+#export PATH:=$(tmpPATH)
+#endif
 
-sol10_x86_32_PATH_OPENSSL=PATH=/opt/SUNWspro.movedbecauseofbuildissues/bin:$(PATH)
-BLD_PATH_OPENSSL=$($(BLD_ARCH)_PATH_OPENSSL)
-
-sol9_sparc_64_LD_LIBRARY_PATH=/usr/local/lib/sparcv9
-sol8_sparc_64_LD_LIBRARY_PATH=/usr/local/lib/sparcv9
-BLD_LD_LIBRARY_PATH:=$($(BLD_ARCH)_LD_LIBRARY_PATH):$(LD_LIBRARY_PATH)
-export LD_LIBRARY_PATH=$(BLD_LD_LIBRARY_PATH)
-
-openldapCC=gcc
-rhel4_x86_64_CC=cc
-rhel4_x86_32_CC=cc
-ifneq "$($(BLD_ARCH)_CC)" ""
-openldapCC=$($(BLD_ARCH)_CC)
-endif
-
-rhel5_x86_32_TARGET_OPENLDAP=--host=i686-pc-linux-gnu
-sol10_x86_32_TARGET_OPENLDAP=
-BLD_TARGET_OPENLDAP=$($(BLD_ARCH)_TARGET_OPENLDAP)
-
-rhel5_x86_32_TARGET_KRB5=--host=i686-pc-linux-gnu
-sol10_x86_32_TARGET_KRB5=
-BLD_TARGET_KRB5=$($(BLD_ARCH)_TARGET_KRB5)
-
-rhel5_x86_32_TARGET_CURL=--host=i686-pc-linux-gnu
-sol10_x86_32_TARGET_CURL=
-BLD_TARGET_CURL=$($(BLD_ARCH)_TARGET_CURL)
-
-sol10_sparc_32_CURL_TEST_ENV=LANG=C
-BLD_CURL_TEST_ENV=$($(BLD_ARCH)_CURL_TEST_ENV)
-
-# put the default gcc in front of the /releng/bin/gcc to get 32-bit support
-# DO NOT do this for 3.2.0.x releases (and maybe not for 3.2.x.x releases)
-# where BLD_ARCH equals rhel5_x86_64
-ifeq "$(BLD_ARCH)" "rhel5_x86_32"
-tmpPATH=$(subst /releng/bin:,/usr/bin:/releng/bin:,$(PATH))
-export PATH:=$(tmpPATH)
-endif
-
-authlibs: env.sh
-ifeq "no-match$(findstring $(BLD_ARCH),rhel4_x86_32 rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
-	cvs co -d openldap-2.3.38 ThirdPartyTools/src/openldap-2.3.38 > openldap-2.3.38-co.log 2>&1
-	cvs co -d openssl-0.9.8g ThirdPartyTools/src/openssl-0.9.8g > openssl-0.9.8g-co.log 2>&1
-	cvs co -d krb5-1.6.2 ThirdPartyTools/src/krb5-1.6.2 > krb5-1.6.2-co.log 2>&1
-	cvs co -d curl-7.17.1 ThirdPartyTools/curl-7.17.1 > curl-7.17.1-co.log 2>&1
-
-	@echo "Building libraries required for authentication"
-
-	@echo "Building openssl"
-ifeq "$(BLD_TARGET_OPENSSL)" ""
-	(cd ${CURDIR}/openssl-0.9.8g && ./config --prefix=$(CURDIR)/openssl shared && make && make install)
-else
-	(cd ${CURDIR}/openssl-0.9.8g && ./Configure $(BLD_TARGET_OPENSSL) --prefix=$(CURDIR)/openssl shared && $(BLD_PATH_OPENSSL) make && make install)
-endif
-	#-(cd ${CURDIR}/openssl-0.9.8g && make test) >LOG.openssl.test.$(BLD_ARCH) 2>&1
-
-	@echo "Building openldap"
-	(cd ${CURDIR}/openldap-2.3.38 && CC="$(strip $(openldapCC) $(BLD_CFLAGS))" ./configure $(BLD_TARGET_OPENLDAP) LDFLAGS="-L$(CURDIR)/openssl/lib" CPPFLAGS="-I$(CURDIR)/openssl/include" --prefix=$(CURDIR)/openldap --enable-slapd=no && make && make install)
-	#-(cd ${CURDIR}/openldap-2.3.38 && make test) >LOG.openldap.test.$(BLD_ARCH) 2>&1
-
-	@echo "Building krb5"
-	(cd ${CURDIR}/krb5-1.6.2/src && CC="gcc $(BLD_CFLAGS)" ./configure $(BLD_TARGET_KRB5) --prefix=$(CURDIR)/krb5 --without-tcl && make && make install)
-	#-(cd ${CURDIR}/krb5-1.6.2/src && make -k check) >LOG.krb5.test.$(BLD_ARCH) 2>&1
-
-	@echo "Building curl"
-	(cd $(CURDIR)/curl-7.17.1 && CC="gcc $(BLD_CFLAGS)" CFLAGS="-I$(BLD_THIRDPARTY_INCLUDE_DIR)" LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LD_LIBRARY_PATH=$(BLD_THIRDPARTY_LIB_DIR):$${LD_LIBRARY_PATH} ./configure $(BLD_TARGET_CURL) --prefix=$(CURDIR)/curl --disable-ldap --disable-ipv6 --without-ssl && make && make install)
-	#-(cd $(CURDIR)/curl-7.17.1 && $(BLD_CURL_TEST_ENV) make test) >LOG.curl.test.$(BLD_ARCH) 2>&1
-
-	@echo ""
-	@echo "openssl installed at $(CURDIR)/openssl"
-	@echo "openldap installed at $(CURDIR)/openldap"
-	@echo "krb5 installed at $(CURDIR)/krb5"
-	@echo "curl installed at $(CURDIR)/curl"
-	@echo ""
-
-	@echo "PATH=$(CURDIR)/curl/bin:\$$PATH" > authlib_libpath_setup.sh
-	@echo "export PATH" >> authlib_libpath_setup.sh
-	@echo "LD_LIBRARY_PATH=$(CURDIR)/curl/lib:$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$LD_LIBRARY_PATH" >> authlib_libpath_setup.sh
-	@echo "export LD_LIBRARY_PATH" >> authlib_libpath_setup.sh
-	@echo "DYLD_LIBRARY_PATH=$(CURDIR)/curl/lib:$(CURDIR)/openssl/lib:$(CURDIR)/openldap/lib:$(CURDIR)/krb5/lib:\$$DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
-	@echo "export DYLD_LIBRARY_PATH" >> authlib_libpath_setup.sh
-	@echo "To add the auth libs to your LD_LIBRARY_PATH or DYLD_LIBRARY_PATH source authlib_libpath_setup.sh"
-else
+authlibs:
 	@echo "# authlibs are now provided in the ext/ directory on this platform" > authlib_libpath_setup.sh
-endif

@@ -32,20 +32,12 @@ LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 
-ifeq "no-match$(findstring $(BLD_ARCH),osx105_x86 rhel4_x86_32 rhel5_x86_64 rhel5_x86_32 suse10_x86_64)" "no-match"
-INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
-CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
-APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
-APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
-CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
-else
 INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
 CPPFLAGS_GPFDIST=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags)
 CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
-endif
 
 osx105_x86_GPFDIST_LDFLAGS=-Wl,-search_paths_first
 GPFDIST_LDFLAGS=$($(BLD_ARCH)_GPFDIST_LDFLAGS)
