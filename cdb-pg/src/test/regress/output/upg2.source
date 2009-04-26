@@ -61,10 +61,10 @@ COPY old_namespace_v32
 COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
   csv header; 
 COPY old_depend_v32 from '@abs_srcdir@/data/pg_depend32.data' csv header;
-COPY old_shdepend_v32 from '/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/data/pg_shdepend32.data' csv header;
-COPY old_shdescription_v32 from '/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/data/pg_shdescription32.data' 
+COPY old_shdepend_v32 from '@abs_srcdir@/data/pg_shdepend32.data' csv header;
+COPY old_shdescription_v32 from '@abs_srcdir@/data/pg_shdescription32.data' 
   csv header; 
-COPY old_rewrite_v32 from '/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/data/pg_rewrite32.data' oids csv header; 
+COPY old_rewrite_v32 from '@abs_srcdir@/data/pg_rewrite32.data' oids csv header; 
 create table public.pg_class(like pg_catalog.pg_class) with oids;
 create table public.pg_attribute(like pg_catalog.pg_attribute);
 create table public.pg_type(like pg_catalog.pg_type) with oids;
@@ -597,13 +597,13 @@ commit;
 reindex table public.pg_appendonly;
 -- will error out in regression tests, this is expected
 reindex table public.gp_configuration_history;
-psql:/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/sql/loadcat33.sql:35: ERROR:  relation "public.gp_configuration_history" does not exist
+psql:@abs_srcdir@/sql/loadcat33.sql:35: ERROR:  relation "public.gp_configuration_history" does not exist
 -- will error out in regression tests, this is expected
 reindex table public.gp_db_interfaces;
-psql:/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/sql/loadcat33.sql:37: ERROR:  relation "public.gp_db_interfaces" does not exist
+psql:@abs_srcdir@/sql/loadcat33.sql:37: ERROR:  relation "public.gp_db_interfaces" does not exist
 -- will error out in regression tests, this is expected
 reindex table public.gp_interfaces;
-psql:/Users/cwelton/dev-full/cdb2/main/cdb-pg/src/test/regress/sql/loadcat33.sql:39: ERROR:  relation "public.gp_interfaces" does not exist
+psql:@abs_srcdir@/sql/loadcat33.sql:39: ERROR:  relation "public.gp_interfaces" does not exist
 create view old_class as
 select oid, relname, relnamespace, reltype, relowner,
 	   relam, relfilenode, reltablespace,
