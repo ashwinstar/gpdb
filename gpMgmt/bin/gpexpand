@@ -1640,8 +1640,19 @@ class ExpandCommand(SQLCommand):
      
     def run(self,validateAfter=False):
         #connect.
-        status_conn=dbconn.connect(self.status_url)
-        table_conn=dbconn.connect(self.table_url)
+        status_conn = None
+        table_conn = None
+        try:
+            status_conn=dbconn.connect(self.status_url)
+            table_conn=dbconn.connect(self.table_url)
+        except DatabaseError, ex:
+            if options.verbose:
+                logger.exception(ex)
+            logger.error(ex.__str__().strip())
+            if status_conn: status_conn.close()
+            if table_conn: table_conn.close()
+            table_expand_error = True
+            return
         
         # Set conn for  cancel
         self.cancel_conn = table_conn     
@@ -1656,7 +1667,9 @@ class ExpandCommand(SQLCommand):
                 table_expand_error=True
                 if options.verbose:
                     logger.exception(ex)
-                logger.error('Table %s.%s failed to expand: %s' % (self.table.dbname, self.table.fq_name, ex))
+                logger.error('Table %s.%s failed to expand: %s' % (self.table.dbname, 
+                                                                   self.table.fq_name, 
+                                                                   ex.__str__().strip()))
             else:
                 logger.info('ALTER TABLE of %s.%s canceled' % (self.table.dbname, self.table.fq_name))
                 
