@@ -11,7 +11,7 @@ logger=gplog.get_default_logger()
 #################
 def validate_yesno( input,default ):
     if input == '':
-        return default
+        return True if default.upper() == 'Y' else False
     elif input.upper().rstrip() in ('Y', 'YES'):
         return True
     elif input.upper().rstrip() in ('N', 'YES'):
