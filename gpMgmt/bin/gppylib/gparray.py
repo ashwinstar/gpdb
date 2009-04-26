@@ -472,7 +472,7 @@ class GpArray:
         interface_nums = []
         primary_hostname = self.segments[0].primaryDB.hostname
         (host_part, inf_num) = get_host_interface(primary_hostname)
-        if host_part == '' or not inf_num.isdigit():
+        if host_part == '' or inf_num is None or not inf_num.isdigit():
             return []
         
         search_host_part = host_part
@@ -481,7 +481,7 @@ class GpArray:
         for db in self.getDbList():
             (host_part, inf_num) = get_host_interface(db.hostname)
             if host_part == search_host_part:
-                if not inf_num.isdigit():
+                if inf_num is None or not inf_num.isdigit():
                     # We have an unexpected formatted hostname
                     return []
                 else:
@@ -495,8 +495,7 @@ class GpArray:
         primary_datadirs = []
 
         seg0_hostname = self.segments[0].primaryDB.get_hostname()
-        if len(self.get_interface_numbers()) > 0:
-            seg0_hostname = seg0_hostname[:seg0_hostname.rfind('-')]
+        (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
         
         for db in self.getDbList():
             if db.definedprimary and db.content != -1 and \
@@ -511,8 +510,7 @@ class GpArray:
         mirror_datadirs = []
 
         seg0_hostname = self.segments[0].primaryDB.get_hostname()
-        if len(self.get_interface_numbers()) > 0:
-            seg0_hostname = seg0_hostname[:seg0_hostname.rfind('-')]
+        (seg0_hostname, inf_num) = get_host_interface(seg0_hostname)
 
         for db in self.getDbList():
             if not db.definedprimary and db.content != -1 and \
@@ -681,7 +679,6 @@ class GpArray:
         directories as the original hosts.  Also adds the mirrors
         based on mirror_type.
         """
-
         # remove interface numbers if they exist
         existing_hosts = []
         for host in self.get_hostlist(True):
@@ -704,9 +701,7 @@ class GpArray:
         
         primary_dirs = self.get_primary_root_datadirs()
         mirror_dirs = self.get_mirror_root_datadirs()
-
         interface_list = self.get_interface_numbers()
-        
         base_primary_port = self.get_min_primary_port()
         base_mirror_port = 0
         if mirror_type != 'none':
@@ -769,7 +764,6 @@ class GpArray:
         current_interface = 0
         curr_dbid = self.get_max_dbid(True) + 1
         curr_content = self.get_max_contentid(True) + 1
-        
         # Fix up the rows with correct dbids, contentids, datadirs and interfaces
         for row in rows:
             hostname = row[5]
