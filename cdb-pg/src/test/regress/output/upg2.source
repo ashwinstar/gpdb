@@ -675,7 +675,7 @@ and c.oid < 10000
 and c.relkind = 'r'
 order by c.relname, a.attnum;
          relname          |              attname              | attnum |     typname     | typlen | atttypmod 
---------------------------+--------------------+--------+-------------+--------+-----------
+----------------------------+--------------------+--------+-------------+--------+-----------
  gp_configuration         | content                           |      1 | int2            |      2 |        -1
  gp_configuration         | definedprimary                    |      2 | bool            |      1 |        -1
  gp_configuration         | dbid                              |      3 | int2            |      2 |        -1
@@ -754,6 +754,10 @@ order by c.relname, a.attnum;
  pg_appendonly            | majorversion                      |      5 | int2            |      2 |        -1
  pg_appendonly            | minorversion                      |      6 | int2            |      2 |        -1
  pg_appendonly            | checksum                          |      7 | bool            |      1 |        -1
+ pg_appendonly_alter_column | relid                           |      1 | oid             |      4 |        -1
+ pg_appendonly_alter_column | changenum                       |      2 | int4            |      4 |        -1
+ pg_appendonly_alter_column | segfilenums                     |      3 | _int4           |     -1 |        -1
+ pg_appendonly_alter_column | highwaterrownums                |      4 | bytea           |     -1 |        -1
  pg_attrdef               | adrelid                           |      1 | oid             |      4 |        -1
  pg_attrdef               | adnum                             |      2 | int2            |      2 |        -1
  pg_attrdef               | adbin                             |      3 | text            |     -1 |        -1
@@ -1080,7 +1084,7 @@ order by c.relname, a.attnum;
  pg_window                | winpretype                        |      8 | oid             |      4 |        -1
  pg_window                | winfinfunc                        |      9 | regproc         |      4 |        -1
  pg_window                | winkind                           |     10 | char            |      1 |        -1
-(404 rows)
+(408 rows)
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
 from pg_attribute a,
@@ -1092,7 +1096,7 @@ and c.oid < 10000
 and c.relkind = 'r'
 order by c.relname, a.attnum;
          relname          |              attname              | attnum |     typname     | typlen | atttypmod 
---------------------------+--------------------+--------+-------------+--------+-----------
+----------------------------+--------------------+--------+-------------+--------+-----------
  gp_configuration         | content                           |      1 | int2            |      2 |        -1
  gp_configuration         | definedprimary                    |      2 | bool            |      1 |        -1
  gp_configuration         | dbid                              |      3 | int2            |      2 |        -1
@@ -1172,6 +1176,10 @@ order by c.relname, a.attnum;
  pg_appendonly            | minorversion                      |      6 | int2            |      2 |        -1
  pg_appendonly            | checksum                          |      7 | bool            |      1 |        -1
  pg_appendonly            | compresstype                      |      8 | text            |     -1 |        -1
+ pg_appendonly_alter_column | relid                           |      1 | oid         |      4 |        -1
+ pg_appendonly_alter_column | changenum                       |      2 | int4        |      4 |        -1
+ pg_appendonly_alter_column | segfilenums                     |      3 | _int4       |     -1 |        -1
+ pg_appendonly_alter_column | highwaterrownums                |      4 | bytea       |     -1 |        -1
  pg_attrdef               | adrelid                           |      1 | oid             |      4 |        -1
  pg_attrdef               | adnum                             |      2 | int2            |      2 |        -1
  pg_attrdef               | adbin                             |      3 | text            |     -1 |        -1
@@ -1498,9 +1506,55 @@ order by c.relname, a.attnum;
  pg_window                | winpretype                        |      8 | oid             |      4 |        -1
  pg_window                | winfinfunc                        |      9 | regproc         |      4 |        -1
  pg_window                | winkind                           |     10 | char            |      1 |        -1
-(405 rows)
+(409 rows)
 
 -- end_equivalent
+-- make sure nothing is missing
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from old_attribute a,
+	 old_class c,
+	 old_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_attribute a,
+	 pg_class c,
+	 pg_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r';
+ relname | attname | attnum | typname | typlen | atttypmod 
+---------+---------+--------+---------+--------+-----------
+(0 rows)
+
+-- we expect one difference here: the only table for which we alter a column:
+-- pg_appendonly
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_attribute a,
+	 pg_class c,
+	 pg_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from old_attribute a,
+	 old_class c,
+	 old_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r';
+    relname    |   attname    | attnum | typname | typlen | atttypmod 
+---------------+--------------+--------+---------+--------+-----------
+ pg_appendonly | compresstype |      8 | text    |     -1 |        -1
+(1 row)
+
 -- begin_equivalent 
 -- compare old vs new catalog views
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
@@ -1707,6 +1761,7 @@ select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
        5016 |     5011 |        1 | f           | f            | f              | t          | 2        | 1989                |          | 
        5017 |     5010 |        3 | f           | f            | f              | t          | 1 3 4    | 1989 1976 424       |          | 
        5026 |     5011 |        3 | f           | f            | f              | t          | 1 3 6    | 1989 1989 1976      |          | 
+       5031 |     6110 |        2 | t           | f            | f              | t          | 1 2      | 1989 1978           |          | 
        6027 |     6026 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
        6028 |     6026 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
        6029 |     1260 |        1 | f           | f            | f              | t          | 12       | 1989                |          | 
@@ -1716,7 +1771,7 @@ select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
        6103 |     5002 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
        6108 |     5029 |        1 | f           | f            | f              | t          | 1        | 1976                |          | 
        6109 |     5030 |        1 | t           | f            | f              | t          | 1        | 1976                |          | 
-(87 rows)
+(88 rows)
 
 -- end_equivalent
 -- begin_equivalent

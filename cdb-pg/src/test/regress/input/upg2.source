@@ -213,9 +213,46 @@ and t.oid = a.atttypid
 and c.oid < 10000
 and c.relkind = 'r'
 order by c.relname, a.attnum;
-
-
 -- end_equivalent
+
+-- make sure nothing is missing
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from old_attribute a,
+	 old_class c,
+	 old_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_attribute a,
+	 pg_class c,
+	 pg_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r';
+
+-- we expect one difference here: the only table for which we alter a column:
+-- pg_appendonly
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_attribute a,
+	 pg_class c,
+	 pg_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from old_attribute a,
+	 old_class c,
+	 old_type t
+	 where c.oid = a.attrelid and a.attnum > 0
+	 and t.oid = a.atttypid
+	 and c.oid < 10000
+	 and c.relkind = 'r';
 
 -- begin_equivalent 
 

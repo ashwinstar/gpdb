@@ -264,6 +264,8 @@ DECLARE_INDEX(pg_partition_rule_parchildrelid_index, 5016, on pg_partition_rule 
 #define PartitionRuleParchildrelidIndexId 5016
 DECLARE_INDEX(pg_partition_rule_paroid_parentrule_ruleord_index, 5026, on pg_partition_rule using btree(paroid oid_ops, parparentrule oid_ops, parruleord int2_ops));
 #define PartitionRuleParoidParentRuleOrdIndexId 5026
+DECLARE_UNIQUE_INDEX(pg_appendonly_alter_column_relid_index, 5031, on pg_appendonly_alter_column using btree(relid oid_ops, changenum int4_ops));
+#define AppendOnlyAlterColumnRelidIndexId  5031
 
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
