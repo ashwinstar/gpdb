@@ -3960,7 +3960,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         releases = {"3.0": "200703112",
              "3.1": "200712072",
              "3.2": "200808253",
-             "3.3": "200904231"}
+             "3.3": "200904261"}
         
         self.CheckDown()
 
