@@ -591,9 +591,15 @@ class GpStart():
         if pg.DbStatus.local('master instance',self.gparray.master):
             logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
             
-            masterconn = dbconn.connect(self.dburl)
-            masterconn.close()
-            
+            try:
+                masterconn = dbconn.connect(self.dburl)
+                masterconn.close()
+            except Exception,e:
+                ''' we do nothing here since certain fts scenarios will trigger initial connection failures
+                    and other goodies.
+                '''
+                logger.debug("Encountered problem while connecting to master: %s" % str(e))
+                pass
             
             seg_failures=len(self.failed_seg_status) + len(self.gparray.get_invalid_segdbs())
             standby_failure=not self.standby_was_started and self.attempt_standby_start
