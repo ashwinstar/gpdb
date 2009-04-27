@@ -123,7 +123,6 @@ static char *probeDatabase = NULL;
 #define FTS_BM_SET(id, bm) ((bm)[FTS_BM_WORD(id)] = ((bm)[FTS_BM_WORD(id)]) | FTS_BM_BIT(id))
 #define FTS_BM_CLR(id, bm) ((bm)[FTS_BM_WORD(id)] &= ~FTS_BM_BIT(id))
 
-
 #define FTS_BM_TEST(id, bm) (((bm)[FTS_BM_WORD(id)] & FTS_BM_BIT(id)) ? true : false)
 
 typedef uint64 fts_bitmap_t[FTS_BM_WORD_COUNT];
@@ -482,6 +481,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 {
    	PGconn		*conn;
 	char		*errorMsg;
+	int			msgLen;
 	bool		ret = true;
 	PQExpBuffer	buffer = createPQExpBuffer();
 
@@ -535,10 +535,16 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		{
 			if (LOG >= log_min_messages)
 				write_log("FTS: test connection can't parse error message");
+			errorMsg = "";
 		}
 
+		msgLen = strlen(errorMsg);
+
 		if (DEBUG3 >= log_min_messages)
-			write_log("FtsTestConnection: connection failed with message (%s)", errorMsg);
+		{
+			write_log("FtsTestConnection: connection failed with message ('%s':%d)",
+					  errorMsg, msgLen);
+		}
 
 		/*
 		 * If we get a network error (do we really need a
@@ -560,7 +566,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		{
 			/* non-fatal connection errors are ignored */
 			if (DEBUG3 >= log_min_messages)
-				write_log("FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
+				write_log("FtsTestConnection: nonfatal error, ignoring (%d, '%s':%d)", PQsocket(conn), errorMsg, msgLen);
 
 			ret = true;
 			break;
@@ -588,8 +594,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 
 		/* This is a real failure for which a reconfigure may be warranted */
 		if (LOG >= log_min_messages)
-			write_log("FTS: test connection failed, dbid %d dbname %s error message %s",
-					  dbInfo->dbid, dbName, PQerrorMessage(conn));
+			write_log("FTS: test connection failed, dbid %d dbname %s error message '%s':%d",
+					  dbInfo->dbid, dbName, errorMsg, msgLen);
 
 		ret = false;
 	} while (0);
