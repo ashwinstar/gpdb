@@ -11,31 +11,19 @@ otherwise noted.
                       system and optionally specifies a new backup 
                       master host.
 
-* gpaddpart  - Adds new child table partitions to a parent table that was 
-               previously partitioned using gpcreatepart.
-
 * gpaddmirrors - Adds mirror segments to a Greenplum Database system that
                  was initially configured without mirroring.
 
-* gp_bash_functions.sh - NOT RUN DIRECTLY. This is sourced by the other 
-                         management scripts and contains global parameters 
-                         and functions.
+* gpchecknet - Verifies the network performance between the specified hosts.
 
 * gpcheckos - Checks the operating system environment of the specified hosts 
               to make sure the configuration is compatible with Greenplum Database.
 
-
 * gpcheckperf - Verifies the baseline hardware performance of the specified 
                 hosts. Checks disk I/O and memory bandwidth.
 
-
 * gpinitsystem - Initializes a Greenplum Database system using 
 		     values in a configuration file.
-
-* gpcreatepart - Partitions a table by creating inherited child tables, 
-                 defining check constraints, creating rewrite rules, and 
-                 moving existing data from the parent table into the 
-                 correct child table.
 
 * gpcrondump - A wrapper script for gp_dump, which allows you to schedule
                routine database dumps using cron.
@@ -46,10 +34,8 @@ otherwise noted.
 * gpdeletesystem - Deletes a Greenplum Database system that was 
                    initialized using gpinitsystem.
 
-* gpdeletepart - Drops date partitioned child tables from a parent table 
-                 that was previously partitioned using gpdeletepart or 
-                 gpaddpart (used to maintain a rolling window of date 
-                 partitioned data).
+* gpexpand - Expands an existing Greenplum Database across new hosts in 
+             the array.
 
 * gpfdist - Serves external table files to Greenplum Database segments.
 
@@ -59,15 +45,20 @@ otherwise noted.
 * gpinitstandby - Adds and/or initializes a standby Greenplum master host
                   for a Greenplum Database system.
 
+* gplogfilter - Searches through Greenplum Database log files for specified 
+                entries.
+
+* gpmapreduce - Runs Greenplum MapReduce jobs as defined in a YAML 
+                specification document.
+
+* gpmigrator - Upgrades an existing Greenplum system to the current release.
+
 * gprebuildsystem - Rebuilds a Greenplum Database master using a SQL 
                     script file containing the Greenplum Database schema 
                     and Greenplum system catalog information, and then 
                     recreates all of the segment instances using the 
                     information found in the Greenplum system catalog 
-                    tables.
-
-* gprebuildseg - Rebuilds segment instances from the Greenplum system 
-                 catalog tables of a Greenplum Database master.
+                    tables
 
 * gprecoverseg - Recovers a failed primary or mirror segment.
 
