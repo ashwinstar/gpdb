@@ -3717,32 +3717,35 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                         (dbname, f) = line.split(':')
                         f = f[:-1]
                         do_copy(src, dst, f)
-                    # master needs pg_hba.conf and pg_ident.conf
+
+                    def overwrite(frm, to):
+                        if not os.path.exists(frm): return
+
+                        ishba = False
+                        bn = os.path.basename(frm)
+                        if bn == 'pg_hba.conf'+LOCKEXT:
+                            ishba = True
+
+                        f = open(frm, 'r')
+                        t = open(to, 'w')
+                        for line in f:
+                            # translate to new pg_hba.conf format
+                            if self.upgrade:
+                                line = line.replace('ident sameuser', 'ident')
+                            else:
+                                line = line.replace('ident', 'ident sameuser')
+                            t.write(line)
+                        f.close()
+                        t.close()
+
+                    ext = ''
+                    # master needs locked pg_hba.conf
                     if self.cmd == 'MASTER':
-                        def overwrite(frm, to):
-                            if not os.path.exists(frm): return
-
-                            ishba = False
-                            bn = os.path.basename(frm)
-                            if bn == 'pg_hba.conf'+LOCKEXT:
-                                ishba = True
-
-                            f = open(frm, 'r')
-                            t = open(to, 'w')
-                            for line in f:
-                                # translate to new pg_hba.conf format
-                                if self.upgrade:
-                                    line = line.replace('ident sameuser', 'ident')
-                                else:
-                                    line = line.replace('ident', 'ident sameuser')
-                                t.write(line)
-                            f.close()
-                            t.close()
-
-                        overwrite(os.path.join(src, 'pg_hba.conf'+LOCKEXT),
-                                  os.path.join(dst, 'pg_hba.conf'))
-                        overwrite(os.path.join(src, 'pg_ident.conf'+LOCKEXT),
-                                  os.path.join(dst, 'pg_ident.conf'))
+                        ext = LOCKEXT
+                    overwrite(os.path.join(src, 'pg_hba.conf'+ext),
+                              os.path.join(dst, 'pg_hba.conf'))
+                    overwrite(os.path.join(src, 'pg_ident.conf'+ext),
+                              os.path.join(dst, 'pg_ident.conf'))
 
                     # set highest oid
                     # XXX: should check that this oid is higher!
