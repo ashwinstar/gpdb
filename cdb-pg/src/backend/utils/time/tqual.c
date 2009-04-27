@@ -331,7 +331,6 @@ retry:
 	arrayP->numSlots++;
 	
 	/* initialize some things. */
-/*found: */
 	slot->slotid = slotId;
 	slot->xid = 0;
 	slot->pid = 0;
@@ -353,40 +352,67 @@ GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots)
 	*maxSlots = sharedSnapshotArray->maxSlots;
 }
 
-/* Used by "reader" qExecs to find the slot in the sharedsnapshotArray with the
+/*
+ * Used by "reader" qExecs to find the slot in the sharedsnapshotArray with the
  * specified slotId.  In general, we should always be able to find the specified
  * slot unless something unexpected.  If the slot is not found, then NULL is 
  * returned.
+ *
+ * MPP-4599: rety in the same pattern as the writer.
  */
 static SharedSnapshotSlot *
 SharedSnapshotLookup(int4 slotId)
 {
 	SharedSnapshotSlot *slot = NULL;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
+	int retryCount = gp_snapshotadd_timeout * 10; /* .1 s per wait */
 	int index;
 
-	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
-	
-	for (index=0; index < arrayP->maxSlots; index++)
+	for (;;)
 	{
-		SharedSnapshotSlot *testSlot;
-		
-		/* need to do byte addressing to find the right slot */
-		testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (index*slotSize));
-		
-		if (testSlot->slotindex > arrayP->maxSlots)
-			elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
-			
-		
-		if (testSlot->slotid == slotId)
+		LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+	
+		for (index=0; index < arrayP->maxSlots; index++)
 		{
-			slot = testSlot;
+			SharedSnapshotSlot *testSlot;
+		
+			/* need to do byte addressing to find the right slot */
+			testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (index*slotSize));
+		
+			if (testSlot->slotindex > arrayP->maxSlots)
+			{
+				LWLockRelease(SharedSnapshotLock);
+				elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
+			}
+
+			if (testSlot->slotid == slotId)
+			{
+				slot = testSlot;
+				break;
+			}
+		}
+	
+		LWLockRelease(SharedSnapshotLock);
+
+		if (slot != NULL)
+		{
 			break;
 		}
+		else
+		{
+			if (retryCount > 0)
+			{
+				retryCount--;
+
+				pg_usleep(100000); /* 100ms, wait gp_snapshotadd_timeout seconds max. */
+			}
+			else
+			{
+				break;
+			}
+		}
 	}
-	
-	LWLockRelease(SharedSnapshotLock);
-	
+
 	return slot;
 }
 
