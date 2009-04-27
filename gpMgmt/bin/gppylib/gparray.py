@@ -242,8 +242,9 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
 def parseTrueFalse(value):
     if value.lower() == 'f':
         return False
-    else:
+    elif value.lower() == 't':
         return True
+    raise Exception('Invalid true/false value')
 
 def get_host_interface(full_hostname):
     (host_part, inf_num) = ['-'.join(full_hostname.split('-')[:-1]), 
