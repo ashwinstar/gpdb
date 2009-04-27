@@ -429,6 +429,14 @@ default_reloptions(Datum reloptions, bool validate,
 					 errmsg("invalid option \'checksum\' for base relation. "
 							"Only valid for Append Only relations")));
 		
+		if (!(pg_strcasecmp(values[5], "true") == 0 ||
+			  pg_strcasecmp(values[5], "false") == 0))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid parameter value for \"checksum\": \"%s\"",
+							values[5])));
+		}
 		checksum = (pg_strcasecmp(values[5], "true") == 0 ? true : false);
 	}
 	else
@@ -444,7 +452,16 @@ default_reloptions(Datum reloptions, bool validate,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'columnstore\' for base relation. "
 							"Only valid for Append Only relations")));
-      		
+      	
+		if (!(pg_strcasecmp(values[6], "true") == 0 ||
+			  pg_strcasecmp(values[6], "false") == 0))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid parameter value for \"columnstore\": \"%s\"",
+							values[6])));
+		}
+
 		columnstore = (pg_strcasecmp(values[6], "true") == 0 ? true : false);
 	}
 	else
