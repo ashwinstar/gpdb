@@ -45,6 +45,7 @@ try:
     import getopt, time, getpass, logging
     import tempfile, filecmp
     import array, socket, subprocess
+    from gppylib.commands import unix
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -62,7 +63,10 @@ class Global:
     opt['-x'] = False           # new hosts for expansion
     opt['-e'] = False           # existing hosts file for expansion
     passwd = []
-    homeDir = os.environ['HOME']
+    # ssh commands don't respect $HOME; they always use the home
+    # directory supplied in /etc/passwd so sshd can find the same
+    # directory.
+    homeDir = os.path.expanduser("~" + unix.getUserName())
     authorized_keys_fname = '%s/.ssh/authorized_keys' % homeDir
     known_hosts_fname = '%s/.ssh/known_hosts' % homeDir
     id_rsa_fname = '%s/.ssh/id_rsa' % homeDir
@@ -401,7 +405,8 @@ def testAccess(hostname):
     if rc != 0:
         print >> sys.stderr, '[ERROR %s] authentication check failed:' % hostname
         with open(errfile) as efile:
-            print >> sys.stderr, '    ', line.rstrip()
+            for line in efile:
+                print >> sys.stderr, '    ', line.rstrip()
         return False
     
     return True
@@ -627,7 +632,8 @@ try:
     authorizeLocalID(localID)
     
     # Ensure the local host's .ssh directory is prepared for password-less SSH login
-    cmd = ('chmod 0700 .ssh; ' +
+    cmd = ('cd ' + GV.homeDir + '; ' +
+           'chmod 0700 .ssh; ' +
            'touch .ssh/authorized_keys; ' +
            'touch .ssh/known_hosts; ' +
            'touch .ssh/config; ' +
