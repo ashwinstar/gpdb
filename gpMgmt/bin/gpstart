@@ -90,12 +90,7 @@ class GpStart():
     ######
     def prepare(self):
         logger.info("Gathering information and validating the environment...")
-        self.gphome=gp.get_gphome()
-        if self.master_datadir is None:
-            self.master_datadir=gp.get_masterdatadir()
-        self.user=gp.get_user()                                    
-        gp.check_permissions(self.user)                    
-        self._read_postgresqlconf()
+        self._basic_setup()
           
         if not self.masteronly:              
             gp.standby_check(self.master_datadir)
@@ -105,11 +100,87 @@ class GpStart():
         
         if not os.path.exists(self.master_datadir + '/pg_log'):
             os.mkdir(self.master_datadir + '/pg_log')
-
+    
+    ######
+    def _basic_setup(self):
+        self.gphome=gp.get_gphome()
+        if self.master_datadir is None:
+            self.master_datadir=gp.get_masterdatadir()
+        self.user=gp.get_user()                                    
+        gp.check_permissions(self.user)                    
+        self._read_postgresqlconf()
+         
     
     ######
     def get_master_datadir(self):
         return self.master_datadir
+    
+    ######
+    def recover(self):
+        ''' Attempts to start any downed segments and bring them back into the GPDB array.
+        
+        This is only to be used in read-only mode.          
+        
+        '''
+        
+        
+        self._basic_setup()
+        
+        logger.info("connecting to database to retrieve offline segments")
+        self.dburl = dbconn.DbURL(port=self.port,dbname='template1')
+        self.conn = dbconn.connect(self.dburl, utility=True)
+        self.ftsmode = catalog.getSessionGUC(self.conn,'gp_fault_action')
+        probe_interval = catalog.getSessionGUC(self.conn,'gp_fts_probe_interval')                        
+        sql = '''
+        SELECT p.dbid,p.isprimary,p.content,p.valid,p.definedprimary,c.hostname,c.port,c.datadir 
+        FROM pg_catalog.gp_pgdatabase p, pg_catalog.gp_configuration c 
+        WHERE p.valid = 'f' AND p.dbid = c.dbid
+        '''
+        rows = catalog.basicSQLExec(self.conn,sql)
+        self.conn.close()
+        
+        total_count=len(rows)
+        started = 0
+        
+        if self.ftsmode != 'readonly':
+            raise Exception('gpstart --recover can only be run when gp_fault_action=readonly')
+        
+        
+        downed_segs=[] 
+        for row in rows:
+            (dbid,isprimary,content,valid,definedprimary,hostname,port,datadir)=row
+            logger.info("Found offline segment with dbid=%d on host: %s datadirectory: %s" % (dbid,hostname,datadir))
+            downed_segs.append(gparray.GpDB(content,definedprimary,dbid,isprimary,valid,hostname,port,datadir))
+        
+        for seg in downed_segs:
+            logger.info("Attempting to restart segment on host: %s datadir: %s " % (seg.hostname,seg.datadir))
+            logger.info("Trying to ping host: %s" % seg.hostname )
+            cmd = unix.Ping('ping test',seg.hostname)
+            cmd.run()
+            
+            if cmd.get_results().rc == 0:
+                logger.info("Ping successful. Attempting to bring up the segment database...")
+                #if we can ping it, lets try and start it.
+                start_cmd=gp.SegmentStart('start seg',seg.datadir,utilityMode=False,nowait=False,port=seg.port,ctxt=base.REMOTE, remoteHost=seg.hostname)
+                start_cmd.run()
+                
+                logger.debug(start_cmd.get_results())
+                
+                if start_cmd.get_results().rc == 0:
+                    logger.info("SUCCESS... was able to start segment on host: %s datadir: %s" % (seg.hostname,seg.datadir))
+                    started += 1
+                else:
+                    logger.warning("FAIL... unable to start segment on host: %s datadir: %s " % (seg.hostname,seg.datadir))
+                pass
+            else:
+                logger.warning("FAIL... Unable to ping host: %s.  Cannot start segment on host: %s " % seg.hostname,seg.datadir)
+        
+        logger.info("----------------------------------------------------")
+        logger.info("Successfully started %d of %d downed segment instances." % (started,total_count))
+        logger.info("----------------------------------------------------")
+        if started > 0:
+            logger.info("The started segments will be brought back into the system by the fault_prober within %s" % probe_interval)            
+        pass
     
     ######
     def _read_postgresqlconf(self):
@@ -598,7 +669,9 @@ def parseargs():
     optgrp4.add_option('-d', '--master_data_directory', type='string', default=None, metavar="<DATA DIRECTORY>",
                        help="Optional. The master host data directory. If not specified, the value set"\
                             "for $MASTER_DATA_DIRECTORY will be used.")
-    
+    optgrp4.add_option('--recover', action="store_true", default=False, 
+                        help="attempt to start any downed segments if in read-only mode")
+
     
     optgrp3 = OptionGroup(parser, 'Database startup options: ')
     parser.add_option_group(optgrp3)
@@ -678,6 +751,10 @@ def main():
                           parallel=options.parallel,
                           quiet=options.quiet,
                           masteronly=options.master_only)
+        
+        if options.recover:
+            gpstart.recover()
+            sys.exit(0)
         
         gpstart.prepare()
           
