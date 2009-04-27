@@ -93,7 +93,9 @@ def parseargs():
     parser.add_option('-r', '--rollback', action='store_true',
                       help='rollback failed expansion setup.')
     parser.add_option('-V', '--novacuum', action='store_true', 
-                      help='Do not vacuum catalog tables before creating schema copy.')                        
+                      help='Do not vacuum catalog tables before creating schema copy.')
+    parser.add_option('-a', '--noanalyze', action='store_true',
+                      help='Do not analyze the expanded table after redistribution.')                        
     parser.add_option('-d','--duration', type='duration', metavar='[h][:m[:s]]',
                       help='duration from beginning to end.')
     parser.add_option('-e','--end', type='datetime', metavar='datetime',
@@ -1660,6 +1662,10 @@ class ExpandTable():
         if not cancel_flag:
             dbconn.execSQL(table_conn,sql)
             table_conn.commit()
+            if not options.noanalyze:
+                sql = 'ANALYZE "%s"."%s"' % (schema_name, table_name)
+                logger.info('Analyzing %s.%s' % (schema_name, table_name))
+                dbconn.execSQL(table_conn, sql)
     
     
     def mark_finished(self,status_conn,table_conn,finish_time):
