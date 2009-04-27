@@ -263,3 +263,21 @@ select * from mpp5738;
 alter table mpp5738 alter partition for(rank(1)) set with (appendonly=true);
 select * from mpp5738;
 drop table mpp5738;
+
+drop table if exists mpp5754;
+CREATE TABLE mpp5754 (
+             N_NATIONKEY INTEGER,
+             N_NAME CHAR(25),
+             N_REGIONKEY INTEGER,
+             N_COMMENT VARCHAR(152)
+             ) with (appendonly = true, checksum = true);
+
+copy mpp5754 from stdin with delimiter '|';
+0|ALGERIA|0| haggle. carefully final deposits detect slyly agai
+\.
+select * from mpp5754 order by n_nationkey;
+alter table mpp5754 set distributed randomly;
+select count(*) from mpp5754;
+alter table mpp5754 set distributed by (n_nationkey);
+select * from mpp5754 order by n_nationkey;
+drop table mpp5754;

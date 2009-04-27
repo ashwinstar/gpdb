@@ -9378,7 +9378,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 
 			if (opts->checksum)
 				wo = lappend(wo, makeDefElem("checksum",
-											 (Node *)makeString("yes")));
+											 (Node *)makeString("true")));
 		}
 	}
 
@@ -9400,7 +9400,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	}
 	*tmprv = tmprel;
 
-#if  0
+#if 0
 	elog_node_display(NOTICE, "f", n, true);
 #endif
 
