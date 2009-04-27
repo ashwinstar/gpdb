@@ -29,7 +29,8 @@ except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 
-
+# contants
+MAX_PARALLEL_EXPANDS=16
 
 
 
@@ -111,7 +112,7 @@ def parseargs():
     parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
                       help='Expansion configuraiton batch size')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
-                        help='number of tables to expand at a time. Valid values are 1-128.')
+                        help='number of tables to expand at a time. Valid values are 1-%d.' % MAX_PARALLEL_EXPANDS)
     parser.add_option('-v','--verbose', action='store_true',
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
@@ -123,8 +124,8 @@ def parseargs():
     (options, args) = parser.parse_args()
     
     #-n sanity check
-    if options.parallel > 128 or options.parallel < 1:
-        logger.error('Invalid argument.  parallel value must be >= 1 and <= 128')
+    if options.parallel > MAX_PARALLEL_EXPANDS or options.parallel < 1:
+        logger.error('Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_EXPANDS)
         parser.print_help()
         parser.exit()
         
@@ -242,7 +243,7 @@ UNION
 
 SELECT 
     'Estimated Expansion Rate' AS Name,
-    (SUM(source_bytes) / (extract(epoch FROM (max(expansion_finished) - min(expansion_started))) + 1) / 1024 / 1024)::text || ' MB/s' AS Value 
+    (SUM(source_bytes) / (1 + extract(epoch FROM (max(expansion_finished) - min(expansion_started)))) / 1024 / 1024)::text || ' MB/s' AS Value 
 FROM %s.%s 
 WHERE status = '%s' 
 AND 
@@ -253,7 +254,7 @@ UNION
 SELECT
 'Estimated Time to Completion' AS Name,
 CAST((SUM(source_bytes) / (
-SELECT SUM(source_bytes) / (extract(epoch FROM (max(expansion_finished) - min(expansion_started))) + 1) 
+SELECT 1 + SUM(source_bytes) / (1 + (extract(epoch FROM (max(expansion_finished) - min(expansion_started))))) 
 FROM %s.%s 
 WHERE status = '%s' 
 AND 
