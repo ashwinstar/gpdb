@@ -278,12 +278,17 @@ class GpStart():
         
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
-            logger.warning("Skipping startup of %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
+            logger.warning("Skipping startup of segdb on %s directory %s marked invalid <<<<<" % (seg.hostname,seg.datadir)) 
         
         #read in the hostcache file and make sure we can ping everybody
-        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool)                
+        failed_pings=gphostcache.ping_segment_hosts(self.gparray,self.pool)
+        for db in failed_pings:            
+            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname,db.datadir))
+            self.failed_seg_status.append(SegStartStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
+            
+        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,failed_pings)                
         self.hostcache.print_contents(logger)
-        self.hostcache.ping_hosts(logger,self.pool,self.failed_seg_status)                
+                            
         
                                     
         self._start_segments()                
@@ -514,6 +519,10 @@ class GpStart():
         
         if pg.DbStatus.local('master instance',self.gparray.master):
             logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
+            
+            masterconn = dbconn.connect(self.dburl)
+            masterconn.close()
+            
             
             seg_failures=len(self.failed_seg_status) + len(self.gparray.get_invalid_segdbs())
             standby_failure=not self.standby_was_started and self.attempt_standby_start

@@ -57,17 +57,23 @@ class GpHost:
 
 class GpHostCache():
     
-    def __init__(self,gparray,pool):
+    def __init__(self,gparray,pool,skiplist=None):
         self.gparray=gparray
         self.hostcache={}
         self.gphost_map={}
         
-        self._readfile(pool)
+        #these are any db's that should be skipped.
+        self.skipmap={}
+        for db in skiplist:
+            self.skipmap[db.dbid]=db
+        
+        failed_hosts=self._readfile(pool)
         
         pass
     
     
     def _readfile(self,pool):
+        failed_hosts=[]
         
         if os.path.isfile(CACHEFILE):
             #file exists so we read it in.
@@ -87,18 +93,19 @@ class GpHostCache():
         pending_cmds={}  
         for seg in self.gparray.segments:
             for db in seg.get_dbs():
-                #we process both valid and invalid db's                
-                if db.hostname in self.hostcache:                        
-                    normalized_hostname=self.hostcache[db.hostname]
-                    self._add_hostname(normalized_hostname,db)
-                else:
-                    #we don't have an entry, so farm off a command to figure it out.
-                    # we just queue up the commands here and let the pool start to 
-                    # execute them.  later we'll process through and farm the results.
-                    cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=db.hostname)
-                    pool.addCommand(cmd)
-                    pending_cmds[cmd]=db
-                    pass
+                #we process both valid and invalid db's 
+                if db.dbid not in self.skipmap:              
+                    if db.hostname in self.hostcache:                        
+                        normalized_hostname=self.hostcache[db.hostname]
+                        self._add_hostname(normalized_hostname,db)
+                    else:
+                        #we don't have an entry, so farm off a command to figure it out.
+                        # we just queue up the commands here and let the pool start to 
+                        # execute them.  later we'll process through and farm the results.
+                        cmd=unix.Hostname('host lookup',ctxt=base.REMOTE,remoteHost=db.hostname)
+                        pool.addCommand(cmd)
+                        pending_cmds[cmd]=db
+                        pass
         
                     
                     
@@ -116,18 +123,21 @@ class GpHostCache():
                     cmd=key
                     db=pending_cmds[key]
                     
-                    #make sure the command completed succesfully.                    
-                    cmd.validate()
-                    
-                    normalized_hostname = cmd.get_hostname()
-                    self._add_hostname(normalized_hostname,db)      
-                    if db.hostname not in hosts_added:              
-                        file.write("%s:%s\n" % (db.hostname,normalized_hostname))
-                        hosts_added[db.hostname]=True
+                    #make sure the command completed succesfully.
+                    if cmd.get_results().rc != 0:                    
+                        self._add_hostname(db.hostname, db)
+                    else:
+                        normalized_hostname = cmd.get_hostname()
+                        self._add_hostname(normalized_hostname,db)      
+                        if db.hostname not in hosts_added:              
+                            file.write("%s:%s\n" % (db.hostname,normalized_hostname))
+                            hosts_added[db.hostname]=True
             except IOError:
-                raise Exception(' file %s not found' % path)                    
+                raise Exception(' file %s not found' % path)        
             finally:
                 file.close()    
+        pool.empty_completed_items()
+        return failed_hosts
             
     ######
     def _add_hostname(self,normalized_hostname,db):
@@ -178,13 +188,13 @@ class GpHostCache():
             del self.hostdict[host]
 
     #####
-    def ping_hosts(self,logger,pool,failed_segs):
+    def ping_hosts(self,logger,pool):
         ''' go through all of the gphosts and try and ping all of the hosts.  if any fail
         then go back to using the interface names for those segments.  
         
         throws an Exception if still can't ping on the interface names. 
         '''
-        
+        failed_segs=[]
         for key in self.gphost_map.keys():
             gphost=self.gphost_map[key]
             p = unix.Ping('ping',gphost.dbs[0].hostname)
@@ -221,12 +231,30 @@ class GpHostCache():
                 else:
                     #no interface to reach any of the segments
                     for db in dblist:
-                        s = SegStartStatus(db,started=False,reason="Failed to Ping Host",failedCmd=cmd)
+                        s = (db,False,"Failed to Ping Host",cmd)                        
                         failed_segs.append(s)
                     pass
                 
         pool.empty_completed_items()
         
+
+######
+def ping_segment_hosts(gparray,pool):
+    failedSegs=[]
+    hosts_pinged={}
+
+    pool.empty_completed_items()
+    for db in gparray.get_valid_segdbs():
+        if db.hostname not in hosts_pinged:
+            pool.addCommand(unix.Ping('ping test',db.hostname,obj=db))
+            hosts_pinged[db.hostname]=db                             
+                                 
+    pool.join()        
+    cmds=pool.getCompletedItems()
         
-        
+    for cmd in cmds:
+        if cmd.get_results().rc != 0:
+            failedSegs.append(cmd.obj)                        
+            logger.info("Ping to host: '%s' FAILED" % cmd.obj.hostname)
+    return failedSegs
         

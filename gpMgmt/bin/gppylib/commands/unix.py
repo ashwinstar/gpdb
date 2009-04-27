@@ -216,8 +216,9 @@ class FreeBsdPlatform(GenericPlatform):
         
 #---------------ping--------------------
 class Ping(Command):
-    def __init__(self,name,hostToPing,ctxt=LOCAL,remoteHost=None):        
+    def __init__(self,name,hostToPing,ctxt=LOCAL,remoteHost=None,obj=None):        
         self.hostToPing=hostToPing
+        self.obj=obj
         cmdStr = "%s -c 1 %s" % (findCmdInPath('ping'),hostToPing)        
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     

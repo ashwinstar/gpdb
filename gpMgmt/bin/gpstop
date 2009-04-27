@@ -261,10 +261,18 @@ class GpStop():
         self.pool = base.WorkerPool(numWorkers=workers)
         
         segs = self.gparray.getSegDbList()
-        
-        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool)
+                        
+        #read in the hostcache file and make sure we can ping everybody
+        failed_pings=gphostcache.ping_segment_hosts(self.gparray,self.pool)
+        for db in failed_pings:            
+            logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname,db.datadir))
+            failed_seg_status.append(SegStopStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
+            
+        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,failed_pings)                
         self.hostcache.print_contents(logger)
-        self.hostcache.ping_hosts(logger,self.pool,failed_seg_status)                
+         
+         
+         
                                    
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
