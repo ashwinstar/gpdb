@@ -1929,6 +1929,7 @@ try:
             sys.exit(0)
         except ExpansionError,e:
             logger.error(e)
+            sys.exit(1)
     
     if gpexpand_db_status == 'SETUP DONE' or gpexpand_db_status == 'EXPANSION STOPPED':
         if not gp_expand.validate_database_settings():
