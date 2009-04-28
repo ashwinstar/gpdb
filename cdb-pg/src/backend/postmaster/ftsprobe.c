@@ -131,6 +131,7 @@ static bool probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_componen
 
 struct segmentStatusChange {
 	int	dbid;
+	int16 segindex;
 	uint8 oldStatus;
 	uint8 newStatus;
 	bool persist;
@@ -911,6 +912,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 
 					segStatus = ftsProbeInfo->fts_status[segInfo->dbid];
 					changes[primaryChange].dbid = segInfo->dbid;
+					changes[primaryChange].segindex = segInfo->segindex;
 					changes[primaryChange].oldStatus = segStatus;
 					changes[primaryChange].newStatus = segStatus & ~FTS_STATUS_ALIVE;
 
@@ -955,6 +957,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 
 							segStatus = ftsProbeInfo->fts_status[mirror->dbid];
 							changes[mirrorChange].dbid = mirror->dbid;
+							changes[mirrorChange].segindex = mirror->segindex;
 							changes[mirrorChange].oldStatus = segStatus;
 							changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
 
@@ -1000,6 +1003,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 
 					segStatus = ftsProbeInfo->fts_status[segInfo->dbid];
 					changes[primaryChange].dbid = segInfo->dbid;
+					changes[primaryChange].segindex = segInfo->segindex;
 					changes[primaryChange].oldStatus = segStatus;
 					changes[primaryChange].newStatus = segStatus | FTS_STATUS_ALIVE;
 					changes[primaryChange].persist = false;
@@ -1019,6 +1023,7 @@ probePublishUpdateToSharedMemory(CdbComponentDatabases *cdb_component_dbs,  fts_
 
 							segStatus = ftsProbeInfo->fts_status[mirror->dbid];
 							changes[mirrorChange].dbid = mirror->dbid;
+							changes[mirrorChange].segindex = mirror->segindex;
 							changes[mirrorChange].oldStatus = segStatus;
 							changes[mirrorChange].newStatus = segStatus & ~FTS_STATUS_PRIMARY;
 							changes[mirrorChange].persist = false;
@@ -1233,8 +1238,8 @@ addChangeHistory(PGconn *entryConn, struct segmentStatusChange *change, char *ti
 	primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
 
 	count = snprintf(cmd, sizeof(cmd),
-					 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: fault mode %s marking as valid=%c isprimary=%c persist=%c')",
-					 time_str, change->dbid,
+					 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault mode %s marking as valid=%c isprimary=%c persist=%c')",
+					 time_str, change->dbid, change->segindex,
 					 (*ftsAction != FTS_READONLY) ? "\"RW\"" : "\"RO\"",
 					 valid ? 't' : 'f',
 					 primary ? 't' : 'f',
