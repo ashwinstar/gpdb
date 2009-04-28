@@ -182,7 +182,7 @@ static TransactionId FreezeLimit;
 static List *get_rel_oids(List *relids, const RangeVar *vacrel,
 			 const char *stmttype, bool *expanded);
 static void vac_truncate_clog(TransactionId frozenXID);
-static void vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
+static void vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_stats);
 static void full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
 static void scan_heap(VRelStats *vacrelstats, Relation onerel,
 		  VacPageList vacuum_pages, VacPageList fraged_pages);
@@ -407,6 +407,8 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		{
 			Oid			relid = lfirst_oid(cur);
 			Relation    onerel;
+			LOCKMODE    lmode = NoLock;
+			LockRelId	onerelid;
 
 			if (use_own_xacts)
 			{
@@ -496,9 +498,25 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				dispatchVacuum(vacstmt, &stats_context);
 			}
 
+			onerelid = onerel->rd_lockInfo.lockRelId;
+
 			if (vacstmt->vacuum)
 			{
-				vacuum_rel(onerel, vacstmt, stats_context.updated_stats);
+				lmode = vacstmt->full ? AccessExclusiveLock : ShareUpdateExclusiveLock;
+				
+				/*
+				 * Get a session-level lock too. This will protect our access to the
+				 * relation across multiple transactions, so that we can vacuum the
+				 * relation's TOAST table (if any) secure in the knowledge that no one is
+				 * deleting the parent relation.
+				 *
+				 * NOTE: this cannot block, even if someone else is waiting for access,
+				 * because the lock manager knows that both lock requests are from the
+				 * same process.
+				 */
+				LockRelationIdForSession(&onerelid, lmode);
+
+				vacuum_rel(onerel, vacstmt, lmode, stats_context.updated_stats);
 			}
 
 			if (vacstmt->analyze)
@@ -559,6 +577,14 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			if (use_own_xacts)
 			{
 				CommitTransactionCommand();
+			}
+
+			if (vacstmt->vacuum)
+			{
+				/*
+				 * Now release the session-level lock on the master table.
+				 */
+				UnlockRelationIdForSession(&onerelid, lmode);
 			}
 		}
 	}
@@ -1148,10 +1174,8 @@ vac_truncate_clog(TransactionId frozenXID)
  *		us to lock the entire database during one pass of the vacuum cleaner.
  */
 static void
-vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
+vacuum_rel(Relation onerel, VacuumStmt *vacstmt, LOCKMODE lmode, List *updated_stats)
 {
-	LOCKMODE	lmode;
-	LockRelId	onerelid;
 	Oid			toast_relid;
 	Oid			aoseg_relid;
 	Oid			save_userid;
@@ -1162,21 +1186,6 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	 * transaction, so xact.c doesn't issue useless WARNING.
 	 */
 	CHECK_FOR_INTERRUPTS();
-
-	lmode = vacstmt->full ? AccessExclusiveLock : ShareUpdateExclusiveLock;
-
-	/*
-	 * Get a session-level lock too. This will protect our access to the
-	 * relation across multiple transactions, so that we can vacuum the
-	 * relation's TOAST table (if any) secure in the knowledge that no one is
-	 * deleting the parent relation.
-	 *
-	 * NOTE: this cannot block, even if someone else is waiting for access,
-	 * because the lock manager knows that both lock requests are from the
-	 * same process.
-	 */
-	onerelid = onerel->rd_lockInfo.lockRelId;
-	LockRelationIdForSession(&onerelid, lmode);
 
 	/*
 	 * Remember the relation's TOAST and AO segments relations for later
@@ -1224,7 +1233,7 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 																RELKIND_TOASTVALUE);
 		if (toast_rel != NULL)
 		{
-			vacuum_rel(toast_rel, vacstmt, updated_stats);
+			vacuum_rel(toast_rel, vacstmt, lmode, updated_stats);
 
 			/* all done with this class, but hold lock until commit */
 			relation_close(toast_rel, NoLock);
@@ -1238,17 +1247,12 @@ vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 																RELKIND_AOSEGMENTS);
 		if (aoseg_rel != NULL)
 		{
-			vacuum_rel(aoseg_rel, vacstmt, updated_stats);
+			vacuum_rel(aoseg_rel, vacstmt, lmode, updated_stats);
 
 			/* all done with this class, but hold lock until commit */
 			relation_close(aoseg_rel, NoLock);
 		}
 	}
-
-	/*
-	 * Now release the session-level lock on the master table.
-	 */
-	UnlockRelationIdForSession(&onerelid, lmode);
 }
 
 
@@ -3947,7 +3951,7 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
 	int nindexes;
 	int index_no;
 	
-	vac_open_indexes(onerel, AccessExclusiveLock, &nindexes, &Irel);
+	vac_open_indexes(onerel, AccessShareLock, &nindexes, &Irel);
 	if (Irel == NULL)
 		return;
 
@@ -3977,7 +3981,7 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
 		}
 	}
 	
-	vac_close_indexes(nindexes, Irel, AccessExclusiveLock);
+	vac_close_indexes(nindexes, Irel, AccessShareLock);
 }
 
 /*

@@ -856,8 +856,10 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 	vacrelstats->pages_removed = old_rel_pages - new_rel_pages;
 
 	/*
-	 * We keep the exclusive lock until commit (perhaps not necessary)?
+	 * We can't keep the exclusive lock until commit, since this will cause
+	 * deadlock, see MPP-5733.
 	 */
+	UnlockRelation(onerel, AccessExclusiveLock);
 
 	ereport(elevel,
 			(errmsg("\"%s\": truncated %u to %u pages",
