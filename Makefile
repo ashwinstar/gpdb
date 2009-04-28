@@ -458,7 +458,8 @@ sol10_sparc_64_PYTHON=/opt/python-2.5.1
 sol10_sparc_32_PYTHON=/opt/python32-2.5.1
 sol9_sparc_32_PYTHON=/opt/python32-2.5.1
 sol8_sparc_32_PYTHON=/opt/python32-2.5.1
-suse10_x86_64_PYTHON=/opt/python-2.5.1
+suse10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
+BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
 BLD_OS=Windows
@@ -609,24 +610,6 @@ else
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
 endif
-
-
-#---------------------------------------------------------------------
-#---------------------------------------------------------------------
-
-# ship python on Linux, OSX, and Solaris
-#osx104_x86_PYTHON=/opt/python-2.5.1
-rhel4_x86_32_PYTHON=/opt/python-2.5.1
-rhel4_x86_64_PYTHON=/opt/python-2.5.1
-rhel5_x86_64_PYTHON=/opt/python-2.5.1
-sol10_x86_64_PYTHON=/opt/python-2.5.1
-sol10_x86_32_PYTHON=/opt/python32-2.5.1
-sol10_sparc_64_PYTHON=/opt/python-2.5.1
-sol10_sparc_32_PYTHON=/opt/python32-2.5.1
-sol9_sparc_32_PYTHON=/opt/python32-2.5.1
-sol8_sparc_32_PYTHON=/opt/python32-2.5.1
-suse10_x86_64_PYTHON=/opt/python-2.5.1
-BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 
 
 #---------------------------------------------------------------------

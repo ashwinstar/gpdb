@@ -125,6 +125,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	openldap/2.3.38
 	openssl/0.9.8g
 	pcre/7.8
+	python/2.6.2
 	sigar/1.5.0.1
 	yaml/0.1.1
 	zlib/1.2.3
