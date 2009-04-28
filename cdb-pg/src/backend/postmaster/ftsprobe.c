@@ -559,8 +559,13 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		 * "could not get" -- getsockopt error
 		 * "could not set" -- setsockopt error
 		 * "could not send" -- libpq protocol error
+		 *
+		 * MPP-5751: some timeouts (real failures) fail to set a real
+		 * message, so we check msgLen for that case. If we don't have
+		 * a message, assume that this is a real failure.
 		 */
-		if (strstr(errorMsg, "FATAL:") == NULL &&
+		if (msgLen > 0 &&
+			strstr(errorMsg, "FATAL:") == NULL &&
 			strstr(errorMsg, "could not ") == NULL &&
 			strcmp(errorMsg, "timeout expired\n") != 0)
 		{
