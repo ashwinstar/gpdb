@@ -1,5 +1,5 @@
 objoid|classoid|objsubid|description
-1099|1255|0|truncate large object
+828|1255|0|truncate large object
 6045|1255|0|Read text from a file
 6046|1255|0|Rotate log file
 6047|1255|0|Write text to a file

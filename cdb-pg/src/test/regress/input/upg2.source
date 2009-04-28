@@ -354,6 +354,32 @@ select * from pg_catalog.pg_rewrite where oid < 10000;
 select * from public.old_rewrite where oid < 10000;
 -- end_equivalent
 
+-- Check for duplicate oids
+SELECT oid, count(*) 
+FROM (          SELECT oid FROM pg_authid
+      UNION ALL SELECT oid FROM pg_type
+      UNION ALL SELECT oid FROM pg_proc
+      UNION ALL SELECT oid FROM pg_class
+      UNION ALL SELECT oid FROM pg_attrdef
+      UNION ALL SELECT oid FROM pg_constraint
+      UNION ALL SELECT oid FROM pg_operator
+      UNION ALL SELECT oid FROM pg_opclass
+	  UNION ALL SELECT oid FROM pg_am
+	  UNION ALL SELECT oid FROM pg_language
+	  UNION ALL SELECT oid FROM pg_rewrite
+	  UNION ALL SELECT oid FROM pg_trigger
+	  UNION ALL SELECT oid FROM pg_cast
+	  UNION ALL SELECT oid FROM pg_namespace
+	  UNION ALL SELECT oid FROM pg_conversion
+	  UNION ALL SELECT oid FROM pg_tablespace
+	  UNION ALL SELECT oid FROM pg_resqueue
+	  UNION ALL SELECT oid FROM pg_partition
+	  UNION ALL SELECT oid FROM pg_partition_rule
+	  UNION ALL SELECT oid FROM pg_database
+     ) oid_tables
+GROUP BY oid
+HAVING count(*) > 1;
+
 drop view old_class, old_type, old_attribute, old_index, old_aggregate,
 	 old_proc, old_namespace, public.pg_partitions, old_description,
 	 old_depend, old_shdescription, old_shdepend, old_rewrite;

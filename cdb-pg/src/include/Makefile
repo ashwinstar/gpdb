@@ -13,7 +13,7 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
 
-all: pg_config.h pg_config_os.h
+all: pg_config.h pg_config_os.h checkoids
 
 
 # Subdirectories containing headers for server-side dev
@@ -63,6 +63,8 @@ uninstall:
 # heuristic...
 	rm -rf $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS) *.h)
 
+checkoids:
+	(cd catalog && duplicate_oids) 
 
 clean:
 	rm -f utils/fmgroids.h parser/parse.h
