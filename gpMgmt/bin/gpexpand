@@ -107,8 +107,8 @@ def parseargs():
                       help='file containing new host names used to generate input file')        
     parser.add_option('-D','--database', dest='database',
                       help='Database to create the gpexpand schema and tables in.  If this ' \
-                      'option is not given, PGDATABASE will be used.  The template1 and ' \
-                      'template0 database cannot be used.')
+                      'option is not given, PGDATABASE will be used.  The template1, ' \
+                      'template0 and postgres database cannot be used.')
     parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
                       help='Expansion configuraiton batch size')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
@@ -144,6 +144,14 @@ def parseargs():
     if not os.path.exists(options.master_data_directory):
          logger.error('Master data directory does not exist.')
          parser.exit()
+         
+    if options.database and (options.database.lower() == 'template0' 
+                             or options.database.lower() == 'template1'
+                             or options.database.lower() == 'postgres'):
+        logger.error('%s cannot be used to store the gpexpand schema and tables' % options.database)
+        parser.exit()
+    elif not options.database:
+        options.database = os.getenv('PGDATABASE')
         
     options.pgport = int(os.getenv('PGPORT', 5432))
 
@@ -704,9 +712,11 @@ class gpexpand:
         self.old_segments = gparray.getSegDbList()
                 
         if dburl.pgdb == 'template0' or dburl.pgdb == 'template1' or dburl.pgdb == 'postgres':
+            gpexpand.prepare_gpdb_state(logger, dburl, True)
             raise ExpansionError("Invalid database '%s' specified.  Cannot use a template database.\n"
-                                 "Please set the environment variable PGDATABASE to a different database and re-run" % dburl.pgdb)            
-        
+                                 "Please set the environment variable PGDATABASE to a different "
+                                 "database and re-run" % dburl.pgdb)
+
         self.statusLogger = GpExpandStatus(logger, gparray.master.datadir, gparray.standbyMaster)
 
         # Adjust batch size if it's too high given the number of segments
@@ -725,7 +735,7 @@ class gpexpand:
         pass
     
     @staticmethod
-    def prepare_gpdb_state(logger, dburl):
+    def prepare_gpdb_state(logger, dburl, start_only=False):
         """ Gets GPDB in the appropriate state for an expansion.
         This state will depend on if this is a new expansion setup,
         a continuation of a previous expansion or a rollback """
@@ -758,6 +768,8 @@ class gpexpand:
                     NewGpStop.local('Stop GPDB', masterOnly=True, fast=True)
                     logger.info('Starting Greenplum Database')
                     NewGpStart.local('Start GPDB')
+            if start_only:
+                return None
             
             logger.info('Querying gpexpand schema for current expansion state')
             gpexpand_db_status = gpexpand.get_status_from_db(dburl)
@@ -1906,6 +1918,7 @@ try:
         logger.error('Greenplum instance you wish to expand is running')
         logger.error('and that your environment is correct, then rerun')
         logger.error('gexpand ' + ' '.join(sys.argv[1:]))
+        gpexpand.prepare_gpdb_state(logger, dburl, True)
         sys.exit(1)
 
 
@@ -1924,6 +1937,14 @@ try:
         
     if options.rollback:
         try:
+            if gpexpand_db_status:
+                logger.error('A previous expansion is either in progress or has')
+                logger.error('completed.  Since the setup portion of the expansion')
+                logger.error('has finished successfully there is nothing to rollback.')
+                sys.exit(1)
+            if gpexpand_file_status is None:
+                logger.error('There is no partially completed setup to rollback.')
+                sys.exit(1)
             gp_expand.rollback()
             logger.info('Rollback complete.  Greenplum Database can now be started')
             sys.exit(0)
