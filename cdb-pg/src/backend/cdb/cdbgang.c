@@ -3079,17 +3079,17 @@ static List* cleanupPortalGangList(List *gplist, int cachelimit)
 
         while(curr)
         {
-            bool distroy = ngang > cachelimit; 
+            bool destroy = ngang > cachelimit; 
             gp = lfirst(curr);
 
-            if (!distroy)
+            if (!destroy)
             {
                 int64 maxmop = getMaxGangMop(gp);
                 if ((maxmop >> 20) > gp_vmem_protect_gang_cache_limit) 
-                    distroy = true;
+                    destroy = true;
             }
 
-            if (distroy)
+            if (destroy)
             {
 			    disconnectAndDestroyGang(gp);
                 gplist = list_delete_cell(gplist, curr, prev);
