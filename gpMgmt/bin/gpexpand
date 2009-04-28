@@ -54,10 +54,6 @@ Remaining TODO items:
 ====================
 """,
 
-"""* handle case of dropped tables.
-    - some tables may be dropped by the time expansion gets
-        around to them. """,
-
 """* smarter heuristics on setting ranks. """,
 
 """* make sure system isn't in "readonly mode" during setup. """,
@@ -115,6 +111,8 @@ def parseargs():
                         help='number of tables to expand at a time. Valid values are 1-%d.' % MAX_PARALLEL_EXPANDS)
     parser.add_option('-v','--verbose', action='store_true',
                       help='debug output.')
+    parser.add_option('-u', '--usage', action='store_true',
+                      help='Display gpexpand usage')
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit.')
         
@@ -122,6 +120,10 @@ def parseargs():
     
     # Parse the command line arguments
     (options, args) = parser.parse_args()
+    
+    if options.usage:
+        OptionParser.print_help(parser)
+        parser.exit()
     
     #-n sanity check
     if options.parallel > MAX_PARALLEL_EXPANDS or options.parallel < 1:
@@ -199,6 +201,7 @@ def gpexpand_status_file_exists(master_data_directory):
 undone_status = "NOT STARTED"
 start_status = "IN PROGRESS"
 done_status = "COMPLETED"
+does_not_exist_status = 'NO LONGER EXISTS'
 
 gpexpand_schema='gpexpand'
 create_schema_sql = "CREATE SCHEMA " + gpexpand_schema 
@@ -1692,6 +1695,18 @@ class ExpandTable():
         dbconn.execSQL(status_conn,sql)
         status_conn.commit()
         
+    def mark_does_not_exist(self, status_conn, finish_time):
+        sql = """UPDATE %s.%s
+                  SET status = '%s', expansion_finished='%s'
+                  WHERE dbname = '%s' AND schema_oid = %s 
+                  AND table_oid = %s """ % (gpexpand_schema,status_detail_table,
+                                            does_not_exist_status, finish_time,
+                                            self.dbname,self.schema_oid,self.table_oid) 
+        logger.debug(sql)
+        dbconn.execSQL(status_conn,sql)
+        status_conn.commit()
+        
+        
                 
 #-----------------------------------------------
 class ExpandCommand(SQLCommand):
@@ -1723,12 +1738,29 @@ class ExpandCommand(SQLCommand):
             table_expand_error = True
             return
         
-        # Set conn for  cancel
-        self.cancel_conn = table_conn     
-        
+        # validate table hasn't been dropped
         try:
-            self.table.mark_started(status_conn,table_conn, self.cancel_flag)        
-            self.table.expand(table_conn,self.cancel_flag)
+            (schema_name, table_name) = self.table.fq_name.split('.')
+            sql = """select * from pg_class c, pg_namespace n 
+            where c.relname = '%s' and n.oid = c.relnamespace and n.nspname='%s'""" % (table_name, schema_name)
+        
+            cursor = dbconn.execSQL(status_conn, sql)
+        
+            if cursor.rowcount == 0:
+                logger.info('%s.%s no longer exists in database %s' % (schema_name,
+                                                                       table_name,
+                                                                       self.table.dbname))
+                
+                self.table.mark_does_not_exist(status_conn, datetime.datetime.now())
+                status_conn.close()
+                table_conn.close()
+                return
+            else:
+                # Set conn for  cancel
+                self.cancel_conn = table_conn     
+                
+                self.table.mark_started(status_conn,table_conn, self.cancel_flag)        
+                self.table.expand(table_conn,self.cancel_flag)
         except Exception, ex:
             if ex.__str__().find('canceling statement due to user request') == -1 and not self.cancel_flag:
                 logger.info("Reseting status_detail for %s.%s" % (self.table.dbname,self.table.fq_name))
