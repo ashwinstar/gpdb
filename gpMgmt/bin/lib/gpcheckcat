@@ -317,7 +317,8 @@ def checkDistribPolicy():
                       join gp_distribution_policy d on (rel.oid = d.localoid)
                       where pk.contype in ('p', 'u') and
                        (d.attrnums is null or not 
-                       d.attrnums <@ pk.conkey[1:array_upper(d.attrnums, 1)]);'''
+                       d.attrnums operator(pg_catalog.<@)
+                       pk.conkey);'''
 
     db.execute(qry)
 
