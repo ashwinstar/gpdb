@@ -348,6 +348,8 @@ pqParseInput3(PGconn *conn)
 
 						if (pqGetInt(&(conn->motion_listener), 4, conn))
 							return;
+                        if (pqGetInt64(&(conn->mop_high_watermark), conn))
+                            return;
 						if (pqGetInt(&version_len, 4, conn))
 							return;
 						conn->qe_version = malloc(version_len);

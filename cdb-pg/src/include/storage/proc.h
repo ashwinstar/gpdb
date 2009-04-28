@@ -42,7 +42,6 @@ struct XidCache
 	TransactionId xids[PGPROC_MAX_CACHED_SUBXIDS];
 };
 
-
 /*
  * Each backend has a PGPROC struct in shared memory.  There is also a list of
  * currently-unused PGPROC structs that will be reallocated to new backends.
@@ -115,11 +114,9 @@ struct PGPROC
 	 * be waiting on.
 	 */
 	uint32		waitPortalId;	/* portal id we are waiting on */
-
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
-
 
 extern PGDLLIMPORT PGPROC *MyProc;
 
@@ -184,5 +181,4 @@ extern void ResLockWaitCancel(void);
 extern bool ProcGetMppLocalProcessCounter(int *mppLocalProcessCounter);
 extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
-
 #endif   /* PROC_H */

@@ -3046,6 +3046,70 @@ cleanupIdleReaderGangs(void)
 	return;
 }
 
+static int64 getMaxGangMop(Gang *g)
+{
+    int64 maxmop = 0;
+    int i;
+
+    for (i=0; i<g->size; ++i)
+    {
+		SegmentDatabaseDescriptor *segdbDesc = &(g->db_descriptors[i]);
+        if (!segdbDesc)
+            continue;
+        if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
+        {
+            int err = PQgetQEdetail(segdbDesc->conn, true);
+            if (err != -1 && segdbDesc->conn->mop_high_watermark > maxmop)
+                maxmop = segdbDesc->conn->mop_high_watermark;
+        }
+    }
+
+    return maxmop;
+}
+    
+static List* cleanupPortalGangList(List *gplist, int cachelimit)
+{
+    Gang *gp;
+
+	if (gplist != NIL)
+	{
+        int ngang = list_length(gplist); 
+        ListCell *prev = NULL;
+        ListCell *curr = list_head(gplist); 
+
+        while(curr)
+        {
+            bool distroy = ngang > cachelimit; 
+            gp = lfirst(curr);
+
+            if (!distroy)
+            {
+                int64 maxmop = getMaxGangMop(gp);
+                if ((maxmop >> 20) > gp_vmem_protect_gang_cache_limit) 
+                    distroy = true;
+            }
+
+            if (distroy)
+            {
+			    disconnectAndDestroyGang(gp);
+                gplist = list_delete_cell(gplist, curr, prev);
+                if (!prev)
+                    curr = list_head(gplist); 
+                else
+                    curr = lnext(prev);
+                --ngang;
+            }
+            else
+            {
+                prev = curr;
+                curr = lnext(prev);
+            }
+        }
+    }
+
+    return gplist;
+}
+
 /*
  * Portal drop... Clean up what gangs we hold
  */
@@ -3054,7 +3118,6 @@ cleanupPortalGangs(Portal portal)
 {
 	MemoryContext oldContext;
 	const char *portal_name;
-	Gang * gp;
 	
 	if (portal->name && strcmp(portal->name,"")!=0)
 	{
@@ -3073,35 +3136,8 @@ cleanupPortalGangs(Portal portal)
 	else
 		oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	
-	if (availableReaderGangsN != NIL)
-	{
-		gp = linitial(availableReaderGangsN);
-		while (gp != NULL && list_length(availableReaderGangsN) > gp_cached_gang_threshold)
-		{
-			disconnectAndDestroyGang(gp);
-			availableReaderGangsN = list_delete_first(availableReaderGangsN);
-			if (availableReaderGangsN != NIL)
-				gp = linitial(availableReaderGangsN);
-			else
-				gp = NULL;
-		}
-	}
-	
-	if (availableReaderGangs1 != NIL)
-	{
-		
-		gp = linitial(availableReaderGangs1);
-		while (gp != NULL && list_length(availableReaderGangs1) > MAX_CACHED_1_GANGS)
-		{
-			disconnectAndDestroyGang(gp);
-			availableReaderGangs1 = list_delete_first(availableReaderGangs1);
-			if (availableReaderGangs1 != NIL)
-				gp = linitial(availableReaderGangs1);
-			else
-				gp = NULL;
-		}
-	}
+    availableReaderGangsN = cleanupPortalGangList(availableReaderGangsN, gp_cached_gang_threshold);
+    availableReaderGangs1 = cleanupPortalGangList(availableReaderGangs1, MAX_CACHED_1_GANGS);
 	
 	elog(DEBUG4, "cleanupPortalGangs '%s'. Reader gang inventory: "
 	             "allocatedN=%d availableN=%d allocated1=%d available1=%d",

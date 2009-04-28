@@ -360,7 +360,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
          * Wait for it to respond giving us the TCP port number
          * where it listens for connections from the gang below.
          */
-        segdbDesc->motionListener = PQgetQEdetail(segdbDesc->conn);
+        segdbDesc->motionListener = PQgetQEdetail(segdbDesc->conn, false);
         
         segdbDesc->backendPid = PQbackendPID(segdbDesc->conn);
 

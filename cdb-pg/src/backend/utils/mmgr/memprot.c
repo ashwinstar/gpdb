@@ -88,14 +88,52 @@ static int gpsema_vmem_prot_max;
 static int gp_memprot_chunksize_shift = 20; 
 
 /* total allocation in bytes */
-static size_t gpproc_total_malloc;
-static size_t gpproc_total_malloc_chunk; 
+static volatile int64 mop_bytes;         /* bytes allocated */
+static volatile int mop_hld_cnt;          /* mop hold counter */
+
+#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1)) 
+static int64 mop_add_bytes(int64 val)
+{
+    return __sync_fetch_and_add(&mop_bytes, val);
+}
+static int mop_add_hld_cnt(int val)
+{
+    return __sync_fetch_and_add(&mop_hld_cnt, val);
+}
+#else
+#include <pthread.h>
+static pthread_mutex_t mop_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int64 mop_add_bytes(int64 val)
+{
+    int64 ret;
+    pthread_mutex_lock(&mop_mutex);
+    ret = mop_bytes; 
+    mop_bytes += val;
+    pthread_mutex_unlock(&mop_mutex);
+    return ret;
+}
+
+static int mop_add_hld_cnt(int val)
+{
+    int ret;
+    pthread_mutex_lock(&mop_mutex);
+    ret = mop_hld_cnt; 
+    mop_hld_cnt += val;
+    pthread_mutex_unlock(&mop_mutex);
+    return ret;
+}   
+#endif
+
+int64 getMOPHighWaterMark(void)
+{
+    int64 hwm = mop_add_hld_cnt(0);
+    return hwm << gp_memprot_chunksize_shift;
+}
 
 static bool gp_mp_inited = false;
-
 static inline bool gp_memprot_enabled()
 {
-	if(!gp_mp_inited)
+	if(!gp_mp_inited || Gp_role != GP_ROLE_EXECUTE)
 		return false;
 
 #ifdef USE_FAULT_INJECTION
@@ -113,6 +151,9 @@ void GPMemoryProtectReset()
 /* Initialization */
 void GPMemoryProtectInit()
 {
+    mop_bytes = 0; 
+    mop_hld_cnt = 0; 
+
 	/* 
 	 * NOTES:
 	 * 
@@ -122,28 +163,27 @@ void GPMemoryProtectInit()
 	 * the max to 16 * 1024 here.  Each inc/dec of the semaphore corresponds to 
 	 * chunksize of bytes memory allocation.  Chunk size default to 1MB. 
 	 */
+    if(!IsUnderPostmaster)
+    {
+        Assert(gp_memprot_chunksize_shift == 20);
 
-	Assert(gp_memprot_chunksize_shift == 20);
-
-	gpsema_vmem_prot_max = gp_vmem_protect_limit;
-	while(gpsema_vmem_prot_max > (16 * 1024))
-	{
-		gp_memprot_chunksize_shift++;
-		gpsema_vmem_prot_max >>= 1;
-	}
+        gpsema_vmem_prot_max = gp_vmem_protect_limit;
+        while(gpsema_vmem_prot_max > (16 * 1024))
+        {
+            gp_memprot_chunksize_shift++;
+            gpsema_vmem_prot_max >>= 1;
+        }
 
 #ifdef USE_FAULT_INJECTION
-	PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
-	PGSemaphoreCreateInitVal(&gpsema_mp_fault, gpsema_vmem_prot_max);
+        PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
+        PGSemaphoreCreateInitVal(&gpsema_mp_fault, gpsema_vmem_prot_max);
 #else
-	if(gpsema_vmem_prot_max != 0)
-		PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
+        if(gpsema_vmem_prot_max != 0)
+            PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
 #endif
+    }
 
-	gpproc_total_malloc = 0;
-	gpproc_total_malloc_chunk = 0;
-
-	gp_mp_inited = true;
+    gp_mp_inited = true;
 }
 
 /* 
@@ -169,11 +209,11 @@ void GPMemoryProtectInit()
 static void gp_failed_to_alloc(int ec, int en, int sz, int availmb) 
 {
 	/* Give an extra chunk for error handling. */
-	gpproc_total_malloc_chunk += 1;
+    mop_add_hld_cnt(1);
     if (ec == 1)
     {
 	    ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
-				errmsg("Out of memroy"),
+				errmsg("Out of memory"),
                 errdetail("Failed to allocate %d bytes, %d MB available",
                           sz, availmb
                     )
@@ -188,27 +228,29 @@ static void gp_failed_to_alloc(int ec, int en, int sz, int availmb)
     }
 }
 
-static void *gp_malloc_internal(size_t sz1, size_t sz2, bool ismalloc)
+static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 {
-	size_t newsz_chunk;
-	size_t sz = sz1;
+	int64 newsz_chunk;
+	int64 sz = sz1;
 	int need_chunk = 0;
 
 	void *ret = NULL;
+    int64 total_malloc = mop_add_bytes(0);
+    int hldcnt = mop_add_hld_cnt(0);
 
 	if(!ismalloc)
 		sz *= sz2;
 
 	Assert(sz >=0 && sz <= 0x7fffffff);
 
-	newsz_chunk = (gpproc_total_malloc + sz) >> gp_memprot_chunksize_shift;
+	newsz_chunk = (total_malloc + sz) >> gp_memprot_chunksize_shift;
 
-	if(newsz_chunk > gpproc_total_malloc_chunk)
+	if(newsz_chunk > hldcnt) 
 	{
 		int mem_avail;
 		int err_code = -1;
 
-		need_chunk = newsz_chunk - gpproc_total_malloc_chunk; 
+		need_chunk = newsz_chunk - hldcnt; 
 		mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
 
 		if(mem_avail > need_chunk)
@@ -237,13 +279,12 @@ static void *gp_malloc_internal(size_t sz1, size_t sz2, bool ismalloc)
 		return NULL;
 	}
 
-	gpproc_total_malloc += sz;
-	gpproc_total_malloc_chunk += need_chunk;
-
+    mop_add_bytes(sz);
+    mop_add_hld_cnt(need_chunk);
 	return ret;
 }
 
-void *gp_malloc(size_t sz)
+void *gp_malloc(int64 sz)
 {
 	void *ret;
 
@@ -252,44 +293,45 @@ void *gp_malloc(size_t sz)
 
 	ret = malloc(sz);
 	if(ret)
-		gpproc_total_malloc += sz;
+        mop_add_bytes(sz);
 
 	return ret;
 }
 
-void *gp_calloc(size_t sz1, size_t sz2)
+void *gp_calloc(int64 sz1, int64 sz2)
 {
 	void *ret;
 
-	if(gp_mp_inited && gp_memprot_enabled())
+	if(gp_memprot_enabled())
 		return gp_malloc_internal(sz1, sz2, false);
 
 	ret = calloc(sz1, sz2);
 	if(ret)
-		gpproc_total_malloc += sz1 * sz2;
-
+        mop_add_bytes(sz1 * sz2); 
 	return ret;
 }
 
-void *gp_realloc(void *ptr, size_t sz, size_t newsz)
+void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 {
-	size_t newsz_chunk;
+	int newsz_chunk;
 	int need_chunk = 0;
+    int64 total_malloc = mop_add_bytes(0);
+    int hldcnt = mop_add_hld_cnt(0);
 
 	void *ret = NULL;
 
-	if(gp_mp_inited && gp_memprot_enabled())
+	if(gp_memprot_enabled())
 	{
 		if(newsz > sz)
 		{
-			newsz_chunk = (gpproc_total_malloc - sz + newsz) >> gp_memprot_chunksize_shift;
+			newsz_chunk = (total_malloc - sz + newsz) >> gp_memprot_chunksize_shift;
 
-			if(newsz_chunk > gpproc_total_malloc_chunk)
+			if(newsz_chunk > hldcnt) 
 			{
 				int mem_avail;
 				int err_code = -1;
 
-				need_chunk = newsz_chunk - gpproc_total_malloc_chunk; 
+				need_chunk = newsz_chunk - hldcnt; 
 				mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
 
 				if(mem_avail > need_chunk)
@@ -316,9 +358,8 @@ void *gp_realloc(void *ptr, size_t sz, size_t newsz)
 			return NULL;
 		}
 
-		gpproc_total_malloc += (newsz - sz);
-		gpproc_total_malloc_chunk += need_chunk;
-
+        mop_add_bytes(newsz - sz);
+        mop_add_hld_cnt(need_chunk);
 		return ret;
 	}
 	else
@@ -326,7 +367,7 @@ void *gp_realloc(void *ptr, size_t sz, size_t newsz)
 		ret = realloc(ptr, newsz);
 
 		if(ret)
-			gpproc_total_malloc += (newsz - sz);
+            mop_add_bytes(newsz - sz);
 		return ret;
 	}
 
@@ -334,10 +375,10 @@ void *gp_realloc(void *ptr, size_t sz, size_t newsz)
 	return NULL; 
 }
 
-void gp_free2(void *ptr, size_t sz)
+void gp_free2(void *ptr, int64 sz)
 {
 	free(ptr);
-	gpproc_total_malloc -= sz;
+    mop_add_bytes(-sz);
 }
 
 int gpmemprot_up_sem(PGSemaphoreData *psem, int n, bool undo)
@@ -396,9 +437,9 @@ int64 gp_mp_fault(int32 reason, int64 arg)
 		case GP_FAULT_USER_MP_CONFIG:
 			return (int64) gp_vmem_protect_limit;
 		case GP_FAULT_USER_MP_ALLOC:
-			return (int64) (gpproc_total_malloc >> 20);
+			return (int64) (mop_add_bytes(0) >> 20);
 		case GP_FAULT_USER_MP_HIGHWM:
-			return chunk_to_mb(gpproc_total_malloc_chunk); 
+			return chunk_to_mb(mop_add_bytes(0)); 
 		case GP_FAULT_SEG_AVAILABLE:
 			{
 				int avail = gpmemprot_peek_sem(&gpsema_vmem_prot);

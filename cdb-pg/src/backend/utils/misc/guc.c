@@ -3194,6 +3194,16 @@ static struct config_int ConfigureNamesInt[] =
 #endif 
             0, INT_MAX / 2, NULL, NULL
 	},
+
+	{
+		{"gp_vmem_protect_gang_cache_limit", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Max virtual memory limit (in MB) for a gang to be cachable."), 
+			NULL,
+		},
+		&gp_vmem_protect_gang_cache_limit,
+        500, 1, INT_MAX / 2, NULL, NULL
+	},
+
 	{
 		{"gp_autostats_on_change_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Threshold for number of tuples added to table by CTAS or Insert-to to trigger autostats in on_change mode. See gp_autostats_mode."),

@@ -24,8 +24,8 @@
 #define GP_FAULT_USER_MP_ALLOC 	 	101 /* Show allocation */
 #define GP_FAULT_USER_MP_HIGHWM 	102 /* Show high water mark */
 #define GP_FAULT_SEG_AVAILABLE 		103 /* Show segment available */
-#define GP_FAULT_SEG_SET_VMEMMAX 	104 /* Set new vmem max */
-#define GP_FAULT_SEG_GET_VMEMMAX 	105 /* Get current vmem max */
+#define GP_FAULT_SEG_GET_VMEMMAX 	104 /* Get current vmem max */
+#define GP_FAULT_SEG_SET_VMEMMAX 	105 /* Set new vmem max */
 
 /* Fault group 3: Test logging */
 #define GP_FAULT_LOG_LONGMSG            200 /* log a long message */

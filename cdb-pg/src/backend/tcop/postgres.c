@@ -5387,6 +5387,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				
 					pq_beginmessage(&buf, 'w');
 					pq_sendint(&buf, (int32) Gp_listener_port, sizeof(int32));			
+                    pq_sendint64(&buf, getMOPHighWaterMark());
 					pq_sendint(&buf, sizeof(PG_VERSION_STR), sizeof(int32));
 					pq_sendbytes(&buf, PG_VERSION_STR, sizeof(PG_VERSION_STR));
 					pq_endmessage(&buf);

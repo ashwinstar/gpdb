@@ -122,4 +122,5 @@ int gp_vmem_protect_limit = 0;
 #else
 int gp_vmem_protect_limit = 8192;
 #endif
+int gp_vmem_protect_gang_cache_limit = 500;
 

@@ -2625,14 +2625,17 @@ PQoptions(const PGconn *conn)
 }
 
 /* GPDB function to retrieve QE-backend details (motion listener) */
-int	PQgetQEdetail(PGconn *conn)
+int	PQgetQEdetail(PGconn *conn, bool alwaysFetch)
 {
 	if (!conn)
 		return -1;
 	
 	/* return it immediately if we've already fetched it. */
-	if (conn->motion_listener != 0)
+	if (!alwaysFetch && conn->motion_listener != 0)
 		return conn->motion_listener;
+
+    /* reset to 0 */
+    conn->motion_listener = 0;
 	
 	/* send a request to fetch the motion listener port. */
 	pqPacketSend(conn, 'W', NULL, 0 );

@@ -248,10 +248,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	{
 		/* Set up process table */
 		InitProcGlobal(PostmasterGetMppLocalProcessCounter());
-
-		/* Setup Mem Protection */
-		GPMemoryProtectInit();
 	}
+
+    /* Setup Mem Protection */
+    GPMemoryProtectInit();
 
 	CreateSharedProcArray();
 	LocalDistribXact_ShmemCreate();

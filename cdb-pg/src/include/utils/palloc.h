@@ -143,12 +143,13 @@ extern void pgport_pfree(void *pointer);
 /* Mem Protection */
 extern void GPMemoryProtectInit(void);
 extern void GPMemoryProtectReset(void);
+extern int64 getMOPHighWaterMark(void);
 
 #ifdef USE_SYSV_SEMAPHORES
-extern void *gp_malloc(size_t sz); 
-extern void *gp_calloc(size_t nmemb, size_t sz); 
-extern void *gp_realloc(void *ptr, size_t sz, size_t newsz); 
-extern void gp_free2(void *ptr, size_t sz); 
+extern void *gp_malloc(int64 sz); 
+extern void *gp_calloc(int64 nmemb, int64 sz); 
+extern void *gp_realloc(void *ptr, int64 sz, int64 newsz); 
+extern void gp_free2(void *ptr, int64 sz); 
 #else
 #define gp_malloc(sz) malloc(sz)
 #define gp_calloc(sz1, sz2) calloc((sz1), (sz2))
