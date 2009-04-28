@@ -91,7 +91,7 @@ static int gp_memprot_chunksize_shift = 20;
 static volatile int64 mop_bytes;         /* bytes allocated */
 static volatile int mop_hld_cnt;          /* mop hold counter */
 
-#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1)) 
+#if SIZEOF_VOID_P == 8 && defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1)) 
 static int64 mop_add_bytes(int64 val)
 {
     return __sync_fetch_and_add(&mop_bytes, val);
