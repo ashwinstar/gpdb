@@ -162,6 +162,7 @@ def parseargs():
 #-------------------------------------------------------------------------
 # process information functions
 def create_pid_file(master_data_directory):
+    """Creates gpexpand pid file"""
     try:
         fp = open(master_data_directory + '/gpexpand.pid', 'w')
         fp.write(str(os.getpid()))
@@ -171,12 +172,14 @@ def create_pid_file(master_data_directory):
         if fp: fp.close()
 
 def remove_pid_file(master_data_directory):
+    """Removes gpexpand pid file"""
     try:
         os.unlink(master_data_directory + '/gpexpand.pid')
     except:
         pass
 
 def is_gpexpand_running(master_data_directory):
+    """Checks if there is another instance of gpexpand running"""
     is_running = False
     try:
         fp = open(master_data_directory + '/gpexpand.pid', 'r')
@@ -192,6 +195,7 @@ def is_gpexpand_running(master_data_directory):
 
 
 def gpexpand_status_file_exists(master_data_directory):
+    """Checks if gpexpand.pid exists"""
     return os.path.exists(master_data_directory + '/gpexpand.status')
 
 
@@ -444,21 +448,28 @@ class GpExpandStatus():
                                self._status_filename) 
         
     def get_temp_dir(self):
+        """Gets temp dir that was used during template creation"""
         return self._temp_dir
     
     def get_input_filename(self):
+        """Gets input file that was used by expansion setup"""
         return self._input_filename
     
     def get_tar_filename(self):
+        """Gets tar file that was used during template creation"""
         return self._tar_filename
     
     def get_original_primary_count(self):
+        """Returns the original number of primary segments"""
         return self._original_primary_count
     
     def get_gp_configuration_backup(self):
+        """Gets the filename of the gp_configuration backup file 
+        created during expansion setup"""
         return self._gp_configuration_backup
     
     def is_standby(self):
+        """Returns True if running on standby"""
         return os.path.exists(self._master_data_directory + self._status_standby_filename)
 
 #-------------------------------------------------------------------------
@@ -468,7 +479,8 @@ class SegmentTemplateError(Exception): pass
 
 #-------------------------------------------------------------------------
 class SegmentTemplate:
-    """TODO:  docs """
+    """Class for creating, distributing and deploying new segments to an
+    existing GPDB array"""
     
     def __init__(self, logger, statusLogger, pool, 
                  gparray, masterDataDirectory, 
@@ -538,7 +550,9 @@ class SegmentTemplate:
             raise SegmentTemplateError(msg)
 
     
-    def _select_src_segment(self):            
+    def _select_src_segment(self):
+        """Gets a segment to use as a source for pg_hba.conf 
+        and postgresql.conf files"""
         seg = self.gparray.segments[0]
         if seg.primaryDB.valid:            
             self.srcSegHostname = seg.primaryDB.hostname
@@ -556,9 +570,8 @@ class SegmentTemplate:
       
         self._distribute_tarfile()
         
-        
-    
     def _distribute_tarfile(self):  
+        """Distributes template tar file to hosts"""
         for host in self.hosts:
             cpCmd = RemoteCopy('gpexpand distribute tar file to new hosts', self.schema_tar_file, host, '.')
             self.pool.addCommand(cpCmd)
@@ -970,6 +983,7 @@ class gpexpand:
         self.logger.info('Backing up pg_hba.conf file on original segments')
         commandsSent = {}
         
+        # backup pg_hba.conf file on original segments
         for seg in self.old_segments:
             if seg.content == -1 or not seg.valid:            
                 continue
@@ -998,6 +1012,7 @@ class gpexpand:
             raise ExpansionError('Failed to configure original segments: %s' % msg)
             
 
+        # Copy the new pg_hba.conf file to original segments
         self.logger.info('Copying new pg_hba.conf file to original segments')
         for seg in self.old_segments:
             if seg.content == -1 or not seg.valid:            
@@ -1021,6 +1036,7 @@ class gpexpand:
         except ExecutionError, msg:
             raise ExpansionError('Failed to configure original segments: %s' % msg)
 
+        # Update the gp_id of original segments
         self.newPrimaryCount = 0;
         for seg in self.gparray.getExpansionSegDbList():
             if seg.definedprimary and seg.content != -1: 
@@ -1040,7 +1056,6 @@ class gpexpand:
                                                                     int(seg.content), 
                                                                     seg.dbid)
             else:
-                # datadir, port, numsegs, content, dbid, newseg, tarfile, verbose=False
                 orig_segment_info[hostname] = '%s:%d:%d:%d:%d' % (seg.get_datadir(), 
                                                                   seg.port, 
                                                                   self.newPrimaryCount,
@@ -1048,7 +1063,6 @@ class gpexpand:
                                                                   seg.dbid)
             
         for host in iter(orig_segment_info):
-            # ame, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
                                            verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
@@ -1081,6 +1095,7 @@ class gpexpand:
         
         commandsSent = {}
         
+        # Restore pg_hba.conf file from backup
         self.logger.info('Restoring pg_hba.conf file on original segments')
         for seg in originalArray.getSegDbList():
             if not commandsSent.has_key(seg.hostname):
@@ -1102,6 +1117,7 @@ class gpexpand:
         
         self.pool.join()
         
+        # Restore gp_id table back to original number of primary segments
         self.logger.info('Restoring original segments catalog tables')
         orig_segment_info = {}
         for seg in originalArray.getSegDbList():            
@@ -1113,7 +1129,6 @@ class gpexpand:
                                                                        int(seg.content), 
                                                                        seg.dbid)
             else:
-                # datadir, port, numsegs, content, dbid, newseg, tarfile, verbose=False
                 orig_segment_info[hostname] = '%s:%d:%d:%d:%d' % (seg.get_datadir(), 
                                                                      seg.port, 
                                                                      originalPrimaryCount,
@@ -1121,7 +1136,6 @@ class gpexpand:
                                                                      seg.dbid)
             
         for host in iter(orig_segment_info):
-            # ame, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
                                            verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
