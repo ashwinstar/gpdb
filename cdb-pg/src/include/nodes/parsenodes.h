@@ -2163,6 +2163,12 @@ typedef struct VacuumStmt
 
 	/* Object IDs for relations which expand from partition definitions */
 	List	   *expanded_relids;
+
+	/*
+	 * OIDs for relfilenode, the internal heap and index relfilenodes for a bitmap index.
+	 * We need these since vacuuming a bitmap index is done through reindex.
+	 */
+	List *extra_oids;
 } VacuumStmt;
 
 /* ----------------------

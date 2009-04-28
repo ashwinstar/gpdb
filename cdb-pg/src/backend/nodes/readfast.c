@@ -2959,6 +2959,7 @@ _readVacuumStmt(const char ** str)
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(va_cols);
 	READ_NODE_FIELD(expanded_relids);
+	READ_NODE_FIELD(extra_oids);
 
 	READ_DONE();
 }

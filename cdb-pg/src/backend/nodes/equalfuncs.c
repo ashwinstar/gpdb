@@ -1368,6 +1368,7 @@ _equalVacuumStmt(VacuumStmt *a, VacuumStmt *b)
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(va_cols);
 	COMPARE_NODE_FIELD(expanded_relids);
+	COMPARE_NODE_FIELD(extra_oids);
 
 	return true;
 }

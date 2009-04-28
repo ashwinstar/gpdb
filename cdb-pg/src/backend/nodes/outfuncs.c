@@ -3233,6 +3233,8 @@ _outVacuumStmt(StringInfo str, VacuumStmt *node)
 	WRITE_INT_FIELD(freeze_min_age);
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(va_cols);
+	WRITE_NODE_FIELD(expanded_relids);
+	WRITE_NODE_FIELD(extra_oids);
 }
 
 

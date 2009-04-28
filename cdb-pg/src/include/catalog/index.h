@@ -64,6 +64,8 @@ typedef struct IndexInfoOpaque
 	Oid        comptypeOid; /* the complex type oid for the lov heap. */
 	Oid        heapOid;  /* Oid for the lov heap in the bitmap index. */
 	Oid        indexOid; /* Oid for the lov index in the bitmap index. */
+	Oid        heapRelfilenode; /* Oid for the relfilenode of the lov heap in the bitmap index. */
+	Oid        indexRelfilenode;/* Oid for the relfilenode of the lov index in the bitmap index. */
 } IndexInfoOpaque;
 
 /* Typedef for callback function for IndexBuildHeapScan */
@@ -116,7 +118,7 @@ extern double IndexBuildHeapScan(Relation heapRelation,
 
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
-extern Oid reindex_index(Oid indexId, Oid newrelfilenode);
+extern Oid reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids);
 extern bool reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 							 List **oidmap, bool build_map);
 

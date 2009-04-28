@@ -1321,6 +1321,7 @@ ReindexIndex(ReindexStmt *stmt)
 	HeapTuple	tuple;
 	Oid			newOid;
 	Oid			mapoid = InvalidOid;
+	List        *extra_oids = NIL;
 
 	indOid = RangeVarGetRelid(stmt->relation, false);
 	tuple = SearchSysCache(RELOID,
@@ -1355,18 +1356,34 @@ ReindexIndex(ReindexStmt *stmt)
 				if (ind == indOid)
 				{
 					mapoid = lsecond_oid(map);
+
+					if (list_length(map) > 2)
+					{
+						Assert(list_length(map) == 4);
+						
+						extra_oids = lappend_oid(extra_oids, lthird_oid(map));
+						extra_oids = lappend_oid(extra_oids, lfourth_oid(map));
+					}
+						
 					break;
 				}	
 			}
 			Assert(OidIsValid(mapoid));
 		}
 	}
-	newOid = reindex_index(indOid, mapoid);
+	newOid = reindex_index(indOid, mapoid, &extra_oids);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		List *map = list_make2_oid(indOid, newOid);
 	
+		if (extra_oids != NULL)
+		{
+			Assert(list_length(extra_oids) == 2);
+			map = lappend_oid(map, linitial_oid(extra_oids));
+			map = lappend_oid(map, lsecond_oid(extra_oids));
+		}
+
 		stmt->new_ind_oids = lappend(stmt->new_ind_oids, map);
 	}
 }

@@ -715,7 +715,9 @@ extern void _bitmap_init_bitmappage(Relation rel, Buffer buf);
 extern void _bitmap_init_buildstate(Relation index, BMBuildState* bmstate);
 extern void _bitmap_cleanup_buildstate(Relation index, BMBuildState* bmstate);
 extern void _bitmap_init(Relation rel, Oid comptypeOid,
-						 Oid heapOid, Oid indexOid, bool use_wal);
+						 Oid heapOid, Oid indexOid,
+						 Oid heapRelfilenode, Oid indexRelfilenode,
+						 bool use_wal);
 
 /* bitmapinsert.c */
 extern void _bitmap_buildinsert(Relation rel, ItemPointerData ht_ctid, 
@@ -789,7 +791,9 @@ extern void _bitmap_findbitmaps(IndexScanDesc scan, ScanDirection dir);
 extern void _bitmap_create_lov_heapandindex(Relation rel,
 											Oid lovComptypeOid,
 											Oid *lovHeapOid,
-											Oid *lovIndexOid);
+											Oid *lovIndexOid,
+											Oid lovHeapRelfilenode,
+											Oid lovIndexRelfilenode);
 extern void _bitmap_open_lov_heapandindex(Relation rel, BMMetaPage metapage,
 						 Relation *lovHeapP, Relation *lovIndexP,
 						 LOCKMODE lockMode);

@@ -329,7 +329,9 @@ _bitmap_cleanup_buildstate(Relation index, BMBuildState *bmstate)
  */
 void
 _bitmap_init(Relation rel, Oid comptypeOid,
-			 Oid heapOid, Oid indexOid, bool use_wal)
+			 Oid heapOid, Oid indexOid,
+			 Oid heapRelfilenode, Oid indexRelfilenode,
+			 bool use_wal)
 {
 	BMMetaPage		metapage;
 	Buffer			metabuf;
@@ -355,7 +357,9 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 	/* initialize the LOV metadata */
 	_bitmap_create_lov_heapandindex(rel, comptypeOid,
 									&(heapOid),
-									&(indexOid));
+									&(indexOid),
+									heapRelfilenode,
+									indexRelfilenode);
 
 	START_CRIT_SECTION();
 

@@ -226,6 +226,8 @@ extern void vacuum_delay_point(void);
 extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats);
 extern void vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull);
 extern void vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull);
+extern void gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel);
+extern List *get_oids_for_bitmap(List *all_extra_oids, Relation Irel);
 
 /* in commands/analyze.c */
 extern void analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_context);

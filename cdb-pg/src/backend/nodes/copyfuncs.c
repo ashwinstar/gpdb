@@ -3070,6 +3070,7 @@ _copyVacuumStmt(VacuumStmt *from)
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(va_cols);
 	COPY_NODE_FIELD(expanded_relids);
+	COPY_NODE_FIELD(extra_oids);
 
 	return newnode;
 }

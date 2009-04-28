@@ -48,7 +48,9 @@ void
 _bitmap_create_lov_heapandindex(Relation rel,
 								Oid lovComptypeOid,
 								Oid *lovHeapOid,
-								Oid *lovIndexOid)
+								Oid *lovIndexOid,
+								Oid lovHeapRelfilenode,
+								Oid lovIndexRelfilenode)
 {
 	char		lovHeapName[NAMEDATALEN];
 	char		lovIndexName[NAMEDATALEN];
@@ -100,8 +102,14 @@ _bitmap_create_lov_heapandindex(Relation rel,
 		lovHeap = heap_open(heapid, AccessExclusiveLock);
 		lovIndex = index_open(idxid, AccessExclusiveLock);
 
-		setNewRelfilenode(lovHeap);
-		setNewRelfilenode(lovIndex);
+		if (OidIsValid(lovHeapRelfilenode))
+			setNewRelfilenodeToOid(lovHeap, lovHeapRelfilenode);
+		else
+			setNewRelfilenode(lovHeap);
+		if (OidIsValid(lovIndexRelfilenode))
+			setNewRelfilenodeToOid(lovIndex, lovIndexRelfilenode);
+		else
+			setNewRelfilenode(lovIndex);
 
 		/*
 		 * After creating the new relfilenode for a btee index, this is not

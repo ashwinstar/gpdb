@@ -58,6 +58,7 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbanalyze.h"
+#include "cdb/cdboidsync.h"
 
 /* state info for validate_index bulkdelete callback */
 typedef struct
@@ -1838,6 +1839,7 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 	ivinfo.vacuum_full = false;
 	ivinfo.message_level = DEBUG2;
 	ivinfo.num_heap_tuples = -1;
+	ivinfo.extra_oids = NIL;
 
 	if(gp_enable_mk_sort)
 		state.tuplesort = tuplesort_begin_datum_mk(TIDOID,
@@ -2111,9 +2113,14 @@ IndexGetRelation(Oid indexId)
  *
  * GPDB: we return the new relfilenode for transmission to QEs. If
  * newrelfilenode is valid, we use that Oid instead.
+ *
+ * XXX The bitmap index requires two additional oids for its internal
+ * heap and index. We pass those in as extra_oids. If there are no
+ * such oids, this function generates them and pass them out to
+ * the caller.
  */
 Oid
-reindex_index(Oid indexId, Oid newrelfilenode)
+reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 {
 	Relation	iRel,
 				heapRelation,
@@ -2195,10 +2202,41 @@ reindex_index(Oid indexId, Oid newrelfilenode)
 			if (OidIsValid(newrelfilenode))
 			{
 				setNewRelfilenodeToOid(iRel, newrelfilenode);
-				retrelfilenode = newrelfilenode;	
+				retrelfilenode = newrelfilenode;
+
+				/* Store extra_oids into indexInfo->opaque */
+				if (*extra_oids != NULL &&
+					list_length(*extra_oids) > 0)
+				{
+					Assert(list_length(*extra_oids) == 2);
+					indexInfo->opaque = (void*)palloc0(sizeof(IndexInfoOpaque));
+					((IndexInfoOpaque *)indexInfo->opaque)->heapRelfilenode =
+						linitial_oid(*extra_oids);
+					((IndexInfoOpaque *)indexInfo->opaque)->indexRelfilenode =
+						lsecond_oid(*extra_oids);
+				}
 			}
 			else
+			{
 				retrelfilenode = setNewRelfilenode(iRel);
+
+				/*
+				 * If this is a bitmap index, we generate two more relfilenodes
+				 * for its internal heap and index.
+				 */
+				if (iRel->rd_rel->relam == BITMAP_AM_OID)
+				{
+					Assert(*extra_oids == NULL);
+					*extra_oids = lappend_oid(*extra_oids,
+											  GetNewRelFileNode(iRel->rd_rel->reltablespace,
+																iRel->rd_rel->relisshared,
+																NULL));
+					*extra_oids = lappend_oid(*extra_oids,
+											  GetNewRelFileNode(iRel->rd_rel->reltablespace,
+																iRel->rd_rel->relisshared,
+																NULL));
+				}
+			}
 		}
 
 		/* Initialize the index and rebuild */
@@ -2314,6 +2352,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 		Oid			indexOid = lfirst_oid(indexId);
 		Oid			newrelfilenode;
 		Oid			mapoid = InvalidOid;
+		List        *extra_oids = NIL;
 
 		if (is_pg_class)
 			RelationSetIndexList(rel, doneIndexes, InvalidOid);
@@ -2332,6 +2371,15 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 				if (ind == indexOid)
 				{
 					mapoid = lsecond_oid(map);
+
+					if (list_length(map) > 2)
+					{
+						Assert(list_length(map) == 4);
+						
+						extra_oids = lappend_oid(extra_oids, lthird_oid(map));
+						extra_oids = lappend_oid(extra_oids, lfourth_oid(map));
+					}
+					
 					break;
 				}	
 			}
@@ -2341,7 +2389,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 		elog(DEBUG5, "reindexing index with OID %u (supplied %u as new OID)",
 			 indexOid, mapoid);
 
-		newrelfilenode = reindex_index(indexOid, mapoid);
+		newrelfilenode = reindex_index(indexOid, mapoid, &extra_oids);
 
 		Assert(!OidIsValid(mapoid) || newrelfilenode == mapoid);
 
@@ -2350,6 +2398,13 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 		if (oidmap && build_map)
 		{
 			List *map = list_make2_oid(indexOid, newrelfilenode);
+
+			if (extra_oids != NULL)
+			{
+				Assert(list_length(extra_oids) == 2);
+				map = lappend_oid(map, linitial_oid(extra_oids));
+				map = lappend_oid(map, lsecond_oid(extra_oids));
+			}
 			
 			*oidmap = lappend(*oidmap, map);
 		}

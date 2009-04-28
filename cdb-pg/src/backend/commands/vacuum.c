@@ -28,6 +28,7 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_index.h"
@@ -187,7 +188,7 @@ static void scan_heap(VRelStats *vacrelstats, Relation onerel,
 		  VacPageList vacuum_pages, VacPageList fraged_pages);
 static void repair_frag(VRelStats *vacrelstats, Relation onerel,
 			VacPageList vacuum_pages, VacPageList fraged_pages,
-			int nindexes, Relation *Irel, List *updated_stats);
+			int nindexes, Relation *Irel, List *updated_stats, List *all_extra_oids);
 static void move_chain_tuple(Relation rel,
 				 Buffer old_buf, Page old_page, HeapTuple old_tup,
 				 Buffer dst_buf, Page dst_page, VacPage dst_vacpage,
@@ -203,7 +204,8 @@ static void vacuum_heap(VRelStats *vacrelstats, Relation onerel,
 			VacPageList vacpagelist);
 static void vacuum_page(Relation onerel, Buffer buffer, VacPage vacpage);
 static void vacuum_index(VacPageList vacpagelist, Relation indrel,
-			 double num_tuples, int keep_tuples, List *updated_stats);
+						 double num_tuples, int keep_tuples, List *updated_stats,
+						 List *extra_oids);
 static void scan_index(Relation indrel, double num_tuples, List *updated_stats);
 static bool tid_reaped(ItemPointer itemptr, void *state);
 static void vac_update_fsm(Relation onerel, VacPageList fraged_pages,
@@ -488,6 +490,9 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				stats_context.updated_stats = NIL;
 				stats_context.vac_stats = NULL;
 				
+				/* Generate extra oids for relfilenodes to be used in bitmap indexes if any. */
+				gen_oids_for_bitmaps(vacstmt, onerel);
+
 				dispatchVacuum(vacstmt, &stats_context);
 			}
 
@@ -531,6 +536,8 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			{
 				list_free_deep(stats_context.updated_stats);
 				stats_context.updated_stats = NIL;
+				list_free(vacstmt->extra_oids);
+				vacstmt->extra_oids = NIL;
 			}
 			
 			/*
@@ -1319,8 +1326,13 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 			if (vacuum_pages.num_pages > 0)
 			{
 				for (i = 0; i < nindexes; i++)
+				{
+					List *extra_oids = get_oids_for_bitmap(vacstmt->extra_oids, Irel[i]);
+					
 					vacuum_index(&vacuum_pages, Irel[i],
-								 vacrelstats->rel_tuples, 0, updated_stats);
+								 vacrelstats->rel_tuples, 0, updated_stats, extra_oids);
+					list_free(extra_oids);
+				}
 			}
 			else
 			{
@@ -1334,7 +1346,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		{
 			/* Try to shrink heap */
 			repair_frag(vacrelstats, onerel, &vacuum_pages, &fraged_pages,
-						nindexes, Irel, updated_stats);
+						nindexes, Irel, updated_stats, vacstmt->extra_oids);
 			vac_close_indexes(nindexes, Irel, NoLock);
 		}
 		else
@@ -1788,7 +1800,8 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 static void
 repair_frag(VRelStats *vacrelstats, Relation onerel,
 			VacPageList vacuum_pages, VacPageList fraged_pages,
-			int nindexes, Relation *Irel, List *updated_stats)
+			int nindexes, Relation *Irel, List *updated_stats,
+			List *all_extra_oids)
 {
 	TransactionId myXID = GetCurrentTransactionId();
 	Buffer		dst_buffer = InvalidBuffer;
@@ -2595,8 +2608,13 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			 */
 			Assert(keep_tuples >= 0);
 			for (i = 0; i < nindexes; i++)
+			{
+				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
+				
 				vacuum_index(&Nvacpagelist, Irel[i],
-							 vacrelstats->rel_tuples, keep_tuples, updated_stats);
+							 vacrelstats->rel_tuples, keep_tuples, updated_stats, extra_oids);
+				list_free(extra_oids);
+			}
 		}
 
 		/*
@@ -3159,6 +3177,7 @@ scan_index(Relation indrel, double num_tuples, List *updated_stats)
 	ivinfo.vacuum_full = true;
 	ivinfo.message_level = elevel;
 	ivinfo.num_heap_tuples = num_tuples;
+	ivinfo.extra_oids = NIL;
 
 	stats = index_vacuum_cleanup(&ivinfo, NULL);
 
@@ -3212,7 +3231,7 @@ scan_index(Relation indrel, double num_tuples, List *updated_stats)
  */
 static void
 vacuum_index(VacPageList vacpagelist, Relation indrel,
-			 double num_tuples, int keep_tuples, List *updated_stats)
+			 double num_tuples, int keep_tuples, List *updated_stats, List *extra_oids)
 {
 	IndexBulkDeleteResult *stats;
 	IndexVacuumInfo ivinfo;
@@ -3224,6 +3243,7 @@ vacuum_index(VacPageList vacpagelist, Relation indrel,
 	ivinfo.vacuum_full = true;
 	ivinfo.message_level = elevel;
 	ivinfo.num_heap_tuples = num_tuples + keep_tuples;
+	ivinfo.extra_oids = extra_oids;
 
 	/* Do bulk deletion */
 	stats = index_bulk_delete(&ivinfo, NULL, tid_reaped, (void *) vacpagelist);
@@ -3910,3 +3930,94 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 
 	return onerel;
 }
+
+/*
+ * Generate three oids for each bitmap index in a given relation.
+ *
+ * These oids will be used in QD and QEs for new relfilenodes during
+ * reindexing a bitmap index.
+ *
+ * The index oid along with these three oids will be stored consecutively
+ * in vacstmt->extra_oids.
+ */
+void
+gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
+{
+	Relation *Irel = NULL;
+	int nindexes;
+	int index_no;
+	
+	vac_open_indexes(onerel, AccessExclusiveLock, &nindexes, &Irel);
+	if (Irel == NULL)
+		return;
+
+	Assert(nindexes > 0);
+	for (index_no = 0; index_no < nindexes; index_no++)
+	{
+		/*
+		 * If this relation is a bitmap index, we generate three OIDs
+		 * for relfilenodes needed for vacuuming a bitmap index.
+		 */
+		if (Irel[index_no]->rd_rel->relam == BITMAP_AM_OID)
+		{
+			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+											  RelationGetRelid(Irel[index_no]));
+			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+											  GetNewRelFileNode(onerel->rd_rel->reltablespace,
+																onerel->rd_rel->relisshared,
+																NULL));
+			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+											  GetNewRelFileNode(onerel->rd_rel->reltablespace,
+																onerel->rd_rel->relisshared,
+																NULL));
+			vacstmt->extra_oids = lappend_oid(vacstmt->extra_oids,
+											  GetNewRelFileNode(onerel->rd_rel->reltablespace,
+																onerel->rd_rel->relisshared,
+																NULL));
+		}
+	}
+	
+	vac_close_indexes(nindexes, Irel, AccessExclusiveLock);
+}
+
+/*
+ * Obtain three oids for a given index.
+ *
+ * If the given index is a bitmap index, three oids are returned. Otherwise,
+ * NIL is returned.
+ *
+ * The caller is responsible to free the space.
+ */
+List *
+get_oids_for_bitmap(List *all_extra_oids, Relation Irel)
+{
+	List *extra_oids = NIL;
+	int count = 0;
+	bool found = false;
+	ListCell *lc;
+	
+	if (Irel->rd_rel->relam != BITMAP_AM_OID)
+		return extra_oids;
+	
+	foreach(lc, all_extra_oids)
+	{
+		if (found)
+		{
+			extra_oids = lappend_oid(extra_oids, lfirst_oid(lc));
+			if (count % 4 == 3)
+				break;
+		}
+		
+		if (count%4 == 0 &&
+			lfirst_oid(lc) == RelationGetRelid(Irel))
+		{
+			found = true;
+		}
+
+		count++;
+	}
+
+	Assert(extra_oids != NULL && list_length(extra_oids) == 3);
+	return extra_oids;
+}
+

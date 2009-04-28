@@ -120,11 +120,12 @@ static TransactionId FreezeLimit;
 
 /* non-export function prototypes */
 static void lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
-			   Relation *Irel, int nindexes, List *updated_stats);
+			   Relation *Irel, int nindexes, List *updated_stats, List *all_extra_oids);
 static void lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats);
 static void lazy_vacuum_index(Relation indrel,
-				  IndexBulkDeleteResult **stats,
-				  LVRelStats *vacrelstats);
+							  IndexBulkDeleteResult **stats,
+							  LVRelStats *vacrelstats,
+							  List *extra_oids);
 static void lazy_cleanup_index(Relation indrel,
 							   IndexBulkDeleteResult *stats,
 							   LVRelStats *vacrelstats,
@@ -200,7 +201,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		vacrelstats->hasindex = (nindexes > 0);
 
 		/* Do the vacuuming */
-		lazy_scan_heap(onerel, vacrelstats, Irel, nindexes, updated_stats);
+		lazy_scan_heap(onerel, vacrelstats, Irel, nindexes, updated_stats, vacstmt->extra_oids);
 
 		/* Done with indexes */
 		vac_close_indexes(nindexes, Irel, NoLock);
@@ -247,7 +248,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
  */
 static void
 lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
-			   Relation *Irel, int nindexes, List *updated_stats)
+			   Relation *Irel, int nindexes, List *updated_stats, List *all_extra_oids)
 {
 	BlockNumber nblocks,
 				blkno;
@@ -306,9 +307,16 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		{
 			/* Remove index entries */
 			for (i = 0; i < nindexes; i++)
+			{
+				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
+				
 				lazy_vacuum_index(Irel[i],
 								  &indstats[i],
-								  vacrelstats);
+								  vacrelstats,
+								  extra_oids);
+				list_free(extra_oids);
+			}
+			
 			/* Remove tuples from heap */
 			lazy_vacuum_heap(onerel, vacrelstats);
 			/* Forget the now-vacuumed tuples, and press on */
@@ -516,9 +524,16 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 	{
 		/* Remove index entries */
 		for (i = 0; i < nindexes; i++)
+		{
+			List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
+			
 			lazy_vacuum_index(Irel[i],
 							  &indstats[i],
-							  vacrelstats);
+							  vacrelstats,
+							  extra_oids);
+			list_free(extra_oids);
+		}
+		
 		/* Remove tuples from heap */
 		lazy_vacuum_heap(onerel, vacrelstats);
 	}
@@ -675,7 +690,8 @@ lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 static void
 lazy_vacuum_index(Relation indrel,
 				  IndexBulkDeleteResult **stats,
-				  LVRelStats *vacrelstats)
+				  LVRelStats *vacrelstats,
+				  List *extra_oids)
 {
 	IndexVacuumInfo ivinfo;
 	PGRUsage	ru0;
@@ -687,6 +703,7 @@ lazy_vacuum_index(Relation indrel,
 	ivinfo.message_level = elevel;
 	/* We don't yet know rel_tuples, so pass -1 */
 	ivinfo.num_heap_tuples = -1;
+	ivinfo.extra_oids = extra_oids;
 
 	/* Do bulk deletion */
 	*stats = index_bulk_delete(&ivinfo, *stats,
@@ -717,6 +734,7 @@ lazy_cleanup_index(Relation indrel,
 	ivinfo.vacuum_full = false;
 	ivinfo.message_level = elevel;
 	ivinfo.num_heap_tuples = vacrelstats->rel_tuples;
+	ivinfo.extra_oids = NIL;
 
 	stats = index_vacuum_cleanup(&ivinfo, stats);
 

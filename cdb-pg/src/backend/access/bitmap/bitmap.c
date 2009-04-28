@@ -61,6 +61,8 @@ bmbuild(PG_FUNCTION_ARGS)
 	Oid comptypeOid = InvalidOid;
 	Oid indexOid = InvalidOid;
 	Oid heapOid = InvalidOid;
+	Oid indexRelfilenode = InvalidOid;
+	Oid heapRelfilenode = InvalidOid;
 
 	if (indexInfo->ii_Concurrent)
 		elog(ERROR, "CONCURRENTLY is not supported when creating bitmap indexes");
@@ -80,7 +82,9 @@ bmbuild(PG_FUNCTION_ARGS)
 
 		if (!(OidIsValid(opaque->comptypeOid) &&
 			  OidIsValid(opaque->heapOid) &&
-			  OidIsValid(opaque->indexOid)))
+			  OidIsValid(opaque->indexOid)) &&
+			!(OidIsValid(opaque->heapRelfilenode) &&
+			  OidIsValid(opaque->indexRelfilenode)))
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("oids for bitmap index \"%s\" do not exist",
@@ -89,10 +93,12 @@ bmbuild(PG_FUNCTION_ARGS)
 		comptypeOid = opaque->comptypeOid;
 		heapOid = opaque->heapOid;
 		indexOid = opaque->indexOid;
+		heapRelfilenode = opaque->heapRelfilenode;
+		indexRelfilenode = opaque->indexRelfilenode;
 	}
 
 	/* initialize the bitmap index. */
-	_bitmap_init(index, comptypeOid, heapOid, indexOid,
+	_bitmap_init(index, comptypeOid, heapOid, indexOid, heapRelfilenode, indexRelfilenode,
 				 XLogArchivingActive() && !index->rd_istemp);
 
 	/* initialize the build state. */
@@ -482,16 +488,23 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 	IndexBulkDeleteResult* volatile result =
 		(IndexBulkDeleteResult *) PG_GETARG_POINTER(1);
 	Oid new_relfilenode;
+	List *extra_oids = NIL;
+
+	Assert(info->extra_oids != NULL && list_length(info->extra_oids) == 3);
+	
+	new_relfilenode = linitial_oid(info->extra_oids);
+	extra_oids = lappend_oid(extra_oids, lsecond_oid(info->extra_oids));
+	extra_oids = lappend_oid(extra_oids, lthird_oid(info->extra_oids));
+
+	Assert(OidIsValid(new_relfilenode));
 
 	/* allocate stats if first time through, else re-use existing struct */
 	if (result == NULL)
 		result = (IndexBulkDeleteResult *)
 			palloc0(sizeof(IndexBulkDeleteResult));	
 
-	new_relfilenode = reindex_index(RelationGetRelid(rel), InvalidOid);
+	new_relfilenode = reindex_index(RelationGetRelid(rel), new_relfilenode, &extra_oids);
 	CommandCounterIncrement();
-
-	Assert(OidIsValid(new_relfilenode));
 
 	rel->rd_node.relNode = new_relfilenode;
 
@@ -500,6 +513,8 @@ bmbulkdelete(PG_FUNCTION_ARGS)
 	/* Since we re-build the index, set this to number of heap tuples. */
 	result->num_index_tuples = info->num_heap_tuples;
 	result->tuples_removed = 0;
+
+	list_free(extra_oids);
 	
 	PG_RETURN_POINTER(result);
 }
