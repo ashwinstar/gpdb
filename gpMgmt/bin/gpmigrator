@@ -22,7 +22,9 @@ import urllib    # for passing strings across gpssh
 import shutil    # for copying
 
 EXECNAME = os.path.split(__file__)[-1]
-libdir = sys.path[0] + '/lib/'
+libdir = os.path.join(sys.path[0], 'lib/')
+sys.path.append(libdir)
+libdir = os.path.join(sys.path[0], '..', 'lib', 'python')
 sys.path.append(libdir)
 try: 
     import pg8000
