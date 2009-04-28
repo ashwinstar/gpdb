@@ -104,7 +104,7 @@ def parseargs():
     parser.add_option('-D','--database', dest='database',
                       help='Database to create the gpexpand schema and tables in.  If this ' \
                       'option is not given, PGDATABASE will be used.  The template1, ' \
-                      'template0 and postgres database cannot be used.')
+                      'template0 and postgres databases cannot be used.')
     parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
                       help='Expansion configuraiton batch size')
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
@@ -1758,7 +1758,7 @@ class ExpandCommand(SQLCommand):
             sql = """select * from pg_class c, pg_namespace n 
             where c.relname = '%s' and n.oid = c.relnamespace and n.nspname='%s'""" % (table_name, schema_name)
         
-            cursor = dbconn.execSQL(status_conn, sql)
+            cursor = dbconn.execSQL(table_conn, sql)
         
             if cursor.rowcount == 0:
                 logger.info('%s.%s no longer exists in database %s' % (schema_name,
