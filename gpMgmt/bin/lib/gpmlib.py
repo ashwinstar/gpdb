@@ -7,6 +7,11 @@ if sys.version_info < (2, 5, 0):
 '''Error: %s is supported on Python versions 2.5.0 or greater
 Please upgrade python installed on this machine.''' % progname)
 
+#turning off Deprecation warnings (for now)
+import warnings
+warnings.simplefilter('ignore', DeprecationWarning)
+
+
 import platform,  gplib, socket, random, popen2
 import threading
 from time import localtime, strftime

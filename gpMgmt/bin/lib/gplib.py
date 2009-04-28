@@ -5,6 +5,11 @@ sys.path.append(sys.path[0] + '/lib')
 import cmd, signal, atexit, threading
 import pxssh, pexpect
 
+#disable deprecationwarnings
+import warnings
+warnings.simplefilter('ignore', DeprecationWarning)
+
+
 progname = os.path.split(sys.argv[0])[-1]
 
 class VersionError(Exception):
