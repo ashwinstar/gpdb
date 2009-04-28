@@ -24,6 +24,8 @@ insert into @gpupgradeschemaname@.pg_depend select 2607, oid, 0, 1255, conproc, 
 
 -- these fill fail during regression testing but succeed for the upgrade
 
+update @gpupgradeschemaname@.gp_version_at_initdb SET productversion = substring(version(), 'Greenplum Database ([^)]*)');
+
 COMMENT ON FUNCTION @gpupgradeschemaname@.ascii_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SQL_ASCII to MULE_INTERNAL';
 COMMENT ON FUNCTION @gpupgradeschemaname@.mic_to_ascii(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to SQL_ASCII';
 COMMENT ON FUNCTION @gpupgradeschemaname@.koi8r_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8R to MULE_INTERNAL';

@@ -135,168 +135,170 @@ insert into public.pg_conversion values('utf8_to_euc_jis_2004', '11', '10', '6',
 insert into public.pg_conversion values('utf8_to_shift_jis_2004', '11', '10', '6', '41', 'utf8_to_shift_jis_2004', 't');
 insert into public.pg_depend select 2607, oid, 0, 1255, conproc, 0, 'n' from pg_catalog.pg_conversion where conname in('euc_jis_2004_to_shift_jis_2004', 'euc_jis_2004_to_utf8', 'koi8_u_to_utf8', 'utf8_to_koi8_u', 'shift_jis_2004_to_utf8', 'shift_jis_2004_to_euc_jis_2004', 'utf8_to_euc_jis_2004', 'utf8_to_shift_jis_2004');
 -- these fill fail during regression testing but succeed for the upgrade
+update public.gp_version_at_initdb SET productversion = substring(version(), 'Greenplum Database ([^)]*)');
+psql:@abs_srcdir@/data/upgrade_conversion.sql:27: ERROR:  relation "gp_version_at_initdb" does not exist (parse_clause.c:735)
 COMMENT ON FUNCTION public.ascii_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SQL_ASCII to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:27: ERROR:  function public.ascii_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:29: ERROR:  function public.ascii_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_ascii(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to SQL_ASCII';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:28: ERROR:  function public.mic_to_ascii(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:30: ERROR:  function public.mic_to_ascii(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.koi8r_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8R to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:29: ERROR:  function public.koi8r_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:31: ERROR:  function public.koi8r_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_koi8r(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:30: ERROR:  function public.mic_to_koi8r(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:32: ERROR:  function public.mic_to_koi8r(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.iso_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for ISO-8859-5 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:31: ERROR:  function public.iso_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:33: ERROR:  function public.iso_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_iso(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:32: ERROR:  function public.mic_to_iso(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:34: ERROR:  function public.mic_to_iso(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win1251_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1251 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:33: ERROR:  function public.win1251_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:35: ERROR:  function public.win1251_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_win1251(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:34: ERROR:  function public.mic_to_win1251(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:36: ERROR:  function public.mic_to_win1251(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win866_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN866 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:35: ERROR:  function public.win866_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:37: ERROR:  function public.win866_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_win866(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:36: ERROR:  function public.mic_to_win866(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:38: ERROR:  function public.mic_to_win866(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.koi8r_to_win1251(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8R to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:37: ERROR:  function public.koi8r_to_win1251(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:39: ERROR:  function public.koi8r_to_win1251(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win1251_to_koi8r(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1251 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:38: ERROR:  function public.win1251_to_koi8r(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:40: ERROR:  function public.win1251_to_koi8r(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.koi8r_to_win866(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8R to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:39: ERROR:  function public.koi8r_to_win866(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:41: ERROR:  function public.koi8r_to_win866(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win866_to_koi8r(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN866 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:40: ERROR:  function public.win866_to_koi8r(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:42: ERROR:  function public.win866_to_koi8r(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win866_to_win1251(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN866 to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:41: ERROR:  function public.win866_to_win1251(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:43: ERROR:  function public.win866_to_win1251(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win1251_to_win866(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1251 to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:42: ERROR:  function public.win1251_to_win866(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:44: ERROR:  function public.win1251_to_win866(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.iso_to_koi8r(integer, integer, cstring, internal, integer)  IS 'internal conversion function for ISO-8859-5 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:43: ERROR:  function public.iso_to_koi8r(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:45: ERROR:  function public.iso_to_koi8r(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.koi8r_to_iso(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8R to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:44: ERROR:  function public.koi8r_to_iso(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:46: ERROR:  function public.koi8r_to_iso(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.iso_to_win1251(integer, integer, cstring, internal, integer)  IS 'internal conversion function for ISO-8859-5 to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:45: ERROR:  function public.iso_to_win1251(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:47: ERROR:  function public.iso_to_win1251(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win1251_to_iso(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1251 to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:46: ERROR:  function public.win1251_to_iso(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:48: ERROR:  function public.win1251_to_iso(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.iso_to_win866(integer, integer, cstring, internal, integer)  IS 'internal conversion function for ISO-8859-5 to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:47: ERROR:  function public.iso_to_win866(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:49: ERROR:  function public.iso_to_win866(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win866_to_iso(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN866 to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:48: ERROR:  function public.win866_to_iso(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:50: ERROR:  function public.win866_to_iso(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_cn_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_CN to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:49: ERROR:  function public.euc_cn_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:51: ERROR:  function public.euc_cn_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_euc_cn(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to EUC_CN';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:50: ERROR:  function public.mic_to_euc_cn(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:52: ERROR:  function public.mic_to_euc_cn(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_jp_to_sjis(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_JP to SJIS';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:51: ERROR:  function public.euc_jp_to_sjis(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:53: ERROR:  function public.euc_jp_to_sjis(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.sjis_to_euc_jp(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SJIS to EUC_JP';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:52: ERROR:  function public.sjis_to_euc_jp(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:54: ERROR:  function public.sjis_to_euc_jp(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_jp_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_JP to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:53: ERROR:  function public.euc_jp_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:55: ERROR:  function public.euc_jp_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.sjis_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SJIS to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:54: ERROR:  function public.sjis_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:56: ERROR:  function public.sjis_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_euc_jp(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to EUC_JP';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:55: ERROR:  function public.mic_to_euc_jp(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:57: ERROR:  function public.mic_to_euc_jp(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_sjis(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to SJIS';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:56: ERROR:  function public.mic_to_sjis(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:58: ERROR:  function public.mic_to_sjis(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_kr_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_KR to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:57: ERROR:  function public.euc_kr_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:59: ERROR:  function public.euc_kr_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_euc_kr(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to EUC_KR';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:58: ERROR:  function public.mic_to_euc_kr(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:60: ERROR:  function public.mic_to_euc_kr(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_tw_to_big5(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_TW to BIG5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:59: ERROR:  function public.euc_tw_to_big5(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:61: ERROR:  function public.euc_tw_to_big5(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.big5_to_euc_tw(integer, integer, cstring, internal, integer)  IS 'internal conversion function for BIG5 to EUC_TW';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:60: ERROR:  function public.big5_to_euc_tw(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:62: ERROR:  function public.big5_to_euc_tw(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_tw_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_TW to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:61: ERROR:  function public.euc_tw_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:63: ERROR:  function public.euc_tw_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.big5_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for BIG5 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:62: ERROR:  function public.big5_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:64: ERROR:  function public.big5_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_euc_tw(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to EUC_TW';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:63: ERROR:  function public.mic_to_euc_tw(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:65: ERROR:  function public.mic_to_euc_tw(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_big5(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to BIG5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:64: ERROR:  function public.mic_to_big5(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:66: ERROR:  function public.mic_to_big5(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.latin2_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for LATIN2 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:65: ERROR:  function public.latin2_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:67: ERROR:  function public.latin2_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_latin2(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to LATIN2';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:66: ERROR:  function public.mic_to_latin2(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:68: ERROR:  function public.mic_to_latin2(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win1250_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1250 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:67: ERROR:  function public.win1250_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:69: ERROR:  function public.win1250_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_win1250(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to WIN1250';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:68: ERROR:  function public.mic_to_win1250(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:70: ERROR:  function public.mic_to_win1250(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.latin2_to_win1250(integer, integer, cstring, internal, integer)  IS 'internal conversion function for LATIN2 to WIN1250';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:69: ERROR:  function public.latin2_to_win1250(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:71: ERROR:  function public.latin2_to_win1250(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win1250_to_latin2(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1250 to LATIN2';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:70: ERROR:  function public.win1250_to_latin2(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:72: ERROR:  function public.win1250_to_latin2(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.latin1_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for LATIN1 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:71: ERROR:  function public.latin1_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:73: ERROR:  function public.latin1_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_latin1(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to LATIN1';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:72: ERROR:  function public.mic_to_latin1(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:74: ERROR:  function public.mic_to_latin1(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.latin3_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for LATIN3 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:73: ERROR:  function public.latin3_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:75: ERROR:  function public.latin3_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_latin3(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to LATIN3';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:74: ERROR:  function public.mic_to_latin3(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:76: ERROR:  function public.mic_to_latin3(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.latin4_to_mic(integer, integer, cstring, internal, integer)  IS 'internal conversion function for LATIN4 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:75: ERROR:  function public.latin4_to_mic(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:77: ERROR:  function public.latin4_to_mic(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.mic_to_latin4(integer, integer, cstring, internal, integer)  IS 'internal conversion function for MULE_INTERNAL to LATIN4';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:76: ERROR:  function public.mic_to_latin4(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:78: ERROR:  function public.mic_to_latin4(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.ascii_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SQL_ASCII to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:77: ERROR:  function public.ascii_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:79: ERROR:  function public.ascii_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_ascii(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to SQL_ASCII';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:78: ERROR:  function public.utf8_to_ascii(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:80: ERROR:  function public.utf8_to_ascii(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.big5_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for BIG5 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:79: ERROR:  function public.big5_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:81: ERROR:  function public.big5_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_big5(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to BIG5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:80: ERROR:  function public.utf8_to_big5(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:82: ERROR:  function public.utf8_to_big5(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_koi8r(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:81: ERROR:  function public.utf8_to_koi8r(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:83: ERROR:  function public.utf8_to_koi8r(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.koi8r_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8R to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:82: ERROR:  function public.koi8r_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:84: ERROR:  function public.koi8r_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_koi8u(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to KOI8U';
 COMMENT ON FUNCTION public.koi8u_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for KOI8U to UTF8';
 COMMENT ON FUNCTION public.utf8_to_win(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to WIN1258';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:85: ERROR:  function public.utf8_to_win(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:87: ERROR:  function public.utf8_to_win(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.win_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for WIN1258 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:86: ERROR:  function public.win_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:88: ERROR:  function public.win_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_cn_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_CN to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:87: ERROR:  function public.euc_cn_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:89: ERROR:  function public.euc_cn_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_euc_cn(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to EUC_CN';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:88: ERROR:  function public.utf8_to_euc_cn(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:90: ERROR:  function public.utf8_to_euc_cn(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_jp_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_JP to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:89: ERROR:  function public.euc_jp_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:91: ERROR:  function public.euc_jp_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_euc_jp(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to EUC_JP';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:90: ERROR:  function public.utf8_to_euc_jp(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:92: ERROR:  function public.utf8_to_euc_jp(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_kr_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_KR to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:91: ERROR:  function public.euc_kr_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:93: ERROR:  function public.euc_kr_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_euc_kr(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to EUC_KR';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:92: ERROR:  function public.utf8_to_euc_kr(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:94: ERROR:  function public.utf8_to_euc_kr(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_tw_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_TW to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:93: ERROR:  function public.euc_tw_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:95: ERROR:  function public.euc_tw_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_euc_tw(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to EUC_TW';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:94: ERROR:  function public.utf8_to_euc_tw(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:96: ERROR:  function public.utf8_to_euc_tw(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.gb18030_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for GB18030 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:95: ERROR:  function public.gb18030_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:97: ERROR:  function public.gb18030_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_gb18030(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to GB18030';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:96: ERROR:  function public.utf8_to_gb18030(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:98: ERROR:  function public.utf8_to_gb18030(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.gbk_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for GBK to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:97: ERROR:  function public.gbk_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:99: ERROR:  function public.gbk_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_gbk(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to GBK';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:98: ERROR:  function public.utf8_to_gbk(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:100: ERROR:  function public.utf8_to_gbk(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_iso8859(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to ISO-8859-8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:99: ERROR:  function public.utf8_to_iso8859(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:101: ERROR:  function public.utf8_to_iso8859(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.iso8859_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for ISO-8859-8 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:100: ERROR:  function public.iso8859_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:102: ERROR:  function public.iso8859_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.iso8859_1_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for LATIN1 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:101: ERROR:  function public.iso8859_1_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:103: ERROR:  function public.iso8859_1_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_iso8859_1(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to LATIN1';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:102: ERROR:  function public.utf8_to_iso8859_1(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:104: ERROR:  function public.utf8_to_iso8859_1(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.johab_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for JOHAB to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:103: ERROR:  function public.johab_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:105: ERROR:  function public.johab_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_johab(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to JOHAB';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:104: ERROR:  function public.utf8_to_johab(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:106: ERROR:  function public.utf8_to_johab(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.sjis_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SJIS to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:105: ERROR:  function public.sjis_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:107: ERROR:  function public.sjis_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_sjis(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to SJIS';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:106: ERROR:  function public.utf8_to_sjis(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:108: ERROR:  function public.utf8_to_sjis(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.uhc_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UHC to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:107: ERROR:  function public.uhc_to_utf8(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:109: ERROR:  function public.uhc_to_utf8(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.utf8_to_uhc(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to UHC';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:108: ERROR:  function public.utf8_to_uhc(integer, integer, cstring, internal, integer) does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:110: ERROR:  function public.utf8_to_uhc(integer, integer, cstring, internal, integer) does not exist
 COMMENT ON FUNCTION public.euc_jis_2004_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_JIS_2004 to UTF8';
 COMMENT ON FUNCTION public.utf8_to_euc_jis_2004(integer, integer, cstring, internal, integer)  IS 'internal conversion function for UTF8 to EUC_JIS_2004';
 COMMENT ON FUNCTION public.shift_jis_2004_to_utf8(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SHIFT_JIS_2004 to UTF8';
@@ -304,269 +306,269 @@ COMMENT ON FUNCTION public.utf8_to_shift_jis_2004(integer, integer, cstring, int
 COMMENT ON FUNCTION public.euc_jis_2004_to_shift_jis_2004(integer, integer, cstring, internal, integer)  IS 'internal conversion function for EUC_JIS_2004 to SHIFT_JIS_2004';
 COMMENT ON FUNCTION public.shift_jis_2004_to_euc_jis_2004(integer, integer, cstring, internal, integer)  IS 'internal conversion function for SHIFT_JIS_2004 to EUC_JIS_2004';
 COMMENT ON CONVERSION public.ascii_to_mic IS 'conversion for SQL_ASCII to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:116: ERROR:  conversion "public.ascii_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:118: ERROR:  conversion "public.ascii_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_ascii IS 'conversion for MULE_INTERNAL to SQL_ASCII';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:117: ERROR:  conversion "public.mic_to_ascii" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:119: ERROR:  conversion "public.mic_to_ascii" does not exist
 COMMENT ON CONVERSION public.koi8_r_to_mic IS 'conversion for KOI8R to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:118: ERROR:  conversion "public.koi8_r_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:120: ERROR:  conversion "public.koi8_r_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_koi8_r IS 'conversion for MULE_INTERNAL to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:119: ERROR:  conversion "public.mic_to_koi8_r" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:121: ERROR:  conversion "public.mic_to_koi8_r" does not exist
 COMMENT ON CONVERSION public.iso_8859_5_to_mic IS 'conversion for ISO-8859-5 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:120: ERROR:  conversion "public.iso_8859_5_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:122: ERROR:  conversion "public.iso_8859_5_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_iso_8859_5 IS 'conversion for MULE_INTERNAL to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:121: ERROR:  conversion "public.mic_to_iso_8859_5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:123: ERROR:  conversion "public.mic_to_iso_8859_5" does not exist
 COMMENT ON CONVERSION public.windows_1251_to_mic IS 'conversion for WIN1251 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:122: ERROR:  conversion "public.windows_1251_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:124: ERROR:  conversion "public.windows_1251_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_windows_1251 IS 'conversion for MULE_INTERNAL to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:123: ERROR:  conversion "public.mic_to_windows_1251" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:125: ERROR:  conversion "public.mic_to_windows_1251" does not exist
 COMMENT ON CONVERSION public.windows_866_to_mic IS 'conversion for WIN866 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:124: ERROR:  conversion "public.windows_866_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:126: ERROR:  conversion "public.windows_866_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_windows_866 IS 'conversion for MULE_INTERNAL to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:125: ERROR:  conversion "public.mic_to_windows_866" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:127: ERROR:  conversion "public.mic_to_windows_866" does not exist
 COMMENT ON CONVERSION public.koi8_r_to_windows_1251 IS 'conversion for KOI8R to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:126: ERROR:  conversion "public.koi8_r_to_windows_1251" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:128: ERROR:  conversion "public.koi8_r_to_windows_1251" does not exist
 COMMENT ON CONVERSION public.windows_1251_to_koi8_r IS 'conversion for WIN1251 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:127: ERROR:  conversion "public.windows_1251_to_koi8_r" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:129: ERROR:  conversion "public.windows_1251_to_koi8_r" does not exist
 COMMENT ON CONVERSION public.koi8_r_to_windows_866 IS 'conversion for KOI8R to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:128: ERROR:  conversion "public.koi8_r_to_windows_866" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:130: ERROR:  conversion "public.koi8_r_to_windows_866" does not exist
 COMMENT ON CONVERSION public.windows_866_to_koi8_r IS 'conversion for WIN866 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:129: ERROR:  conversion "public.windows_866_to_koi8_r" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:131: ERROR:  conversion "public.windows_866_to_koi8_r" does not exist
 COMMENT ON CONVERSION public.windows_866_to_windows_1251 IS 'conversion for WIN866 to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:130: ERROR:  conversion "public.windows_866_to_windows_1251" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:132: ERROR:  conversion "public.windows_866_to_windows_1251" does not exist
 COMMENT ON CONVERSION public.windows_1251_to_windows_866 IS 'conversion for WIN1251 to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:131: ERROR:  conversion "public.windows_1251_to_windows_866" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:133: ERROR:  conversion "public.windows_1251_to_windows_866" does not exist
 COMMENT ON CONVERSION public.iso_8859_5_to_koi8_r IS 'conversion for ISO-8859-5 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:132: ERROR:  conversion "public.iso_8859_5_to_koi8_r" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:134: ERROR:  conversion "public.iso_8859_5_to_koi8_r" does not exist
 COMMENT ON CONVERSION public.koi8_r_to_iso_8859_5 IS 'conversion for KOI8R to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:133: ERROR:  conversion "public.koi8_r_to_iso_8859_5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:135: ERROR:  conversion "public.koi8_r_to_iso_8859_5" does not exist
 COMMENT ON CONVERSION public.iso_8859_5_to_windows_1251 IS 'conversion for ISO-8859-5 to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:134: ERROR:  conversion "public.iso_8859_5_to_windows_1251" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:136: ERROR:  conversion "public.iso_8859_5_to_windows_1251" does not exist
 COMMENT ON CONVERSION public.windows_1251_to_iso_8859_5 IS 'conversion for WIN1251 to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:135: ERROR:  conversion "public.windows_1251_to_iso_8859_5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:137: ERROR:  conversion "public.windows_1251_to_iso_8859_5" does not exist
 COMMENT ON CONVERSION public.iso_8859_5_to_windows_866 IS 'conversion for ISO-8859-5 to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:136: ERROR:  conversion "public.iso_8859_5_to_windows_866" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:138: ERROR:  conversion "public.iso_8859_5_to_windows_866" does not exist
 COMMENT ON CONVERSION public.windows_866_to_iso_8859_5 IS 'conversion for WIN866 to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:137: ERROR:  conversion "public.windows_866_to_iso_8859_5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:139: ERROR:  conversion "public.windows_866_to_iso_8859_5" does not exist
 COMMENT ON CONVERSION public.euc_cn_to_mic IS 'conversion for EUC_CN to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:138: ERROR:  conversion "public.euc_cn_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:140: ERROR:  conversion "public.euc_cn_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_euc_cn IS 'conversion for MULE_INTERNAL to EUC_CN';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:139: ERROR:  conversion "public.mic_to_euc_cn" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:141: ERROR:  conversion "public.mic_to_euc_cn" does not exist
 COMMENT ON CONVERSION public.euc_jp_to_sjis IS 'conversion for EUC_JP to SJIS';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:140: ERROR:  conversion "public.euc_jp_to_sjis" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:142: ERROR:  conversion "public.euc_jp_to_sjis" does not exist
 COMMENT ON CONVERSION public.sjis_to_euc_jp IS 'conversion for SJIS to EUC_JP';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:141: ERROR:  conversion "public.sjis_to_euc_jp" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:143: ERROR:  conversion "public.sjis_to_euc_jp" does not exist
 COMMENT ON CONVERSION public.euc_jp_to_mic IS 'conversion for EUC_JP to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:142: ERROR:  conversion "public.euc_jp_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:144: ERROR:  conversion "public.euc_jp_to_mic" does not exist
 COMMENT ON CONVERSION public.sjis_to_mic IS 'conversion for SJIS to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:143: ERROR:  conversion "public.sjis_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:145: ERROR:  conversion "public.sjis_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_euc_jp IS 'conversion for MULE_INTERNAL to EUC_JP';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:144: ERROR:  conversion "public.mic_to_euc_jp" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:146: ERROR:  conversion "public.mic_to_euc_jp" does not exist
 COMMENT ON CONVERSION public.mic_to_sjis IS 'conversion for MULE_INTERNAL to SJIS';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:145: ERROR:  conversion "public.mic_to_sjis" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:147: ERROR:  conversion "public.mic_to_sjis" does not exist
 COMMENT ON CONVERSION public.euc_kr_to_mic IS 'conversion for EUC_KR to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:146: ERROR:  conversion "public.euc_kr_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:148: ERROR:  conversion "public.euc_kr_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_euc_kr IS 'conversion for MULE_INTERNAL to EUC_KR';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:147: ERROR:  conversion "public.mic_to_euc_kr" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:149: ERROR:  conversion "public.mic_to_euc_kr" does not exist
 COMMENT ON CONVERSION public.euc_tw_to_big5 IS 'conversion for EUC_TW to BIG5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:148: ERROR:  conversion "public.euc_tw_to_big5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:150: ERROR:  conversion "public.euc_tw_to_big5" does not exist
 COMMENT ON CONVERSION public.big5_to_euc_tw IS 'conversion for BIG5 to EUC_TW';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:149: ERROR:  conversion "public.big5_to_euc_tw" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:151: ERROR:  conversion "public.big5_to_euc_tw" does not exist
 COMMENT ON CONVERSION public.euc_tw_to_mic IS 'conversion for EUC_TW to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:150: ERROR:  conversion "public.euc_tw_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:152: ERROR:  conversion "public.euc_tw_to_mic" does not exist
 COMMENT ON CONVERSION public.big5_to_mic IS 'conversion for BIG5 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:151: ERROR:  conversion "public.big5_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:153: ERROR:  conversion "public.big5_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_euc_tw IS 'conversion for MULE_INTERNAL to EUC_TW';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:152: ERROR:  conversion "public.mic_to_euc_tw" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:154: ERROR:  conversion "public.mic_to_euc_tw" does not exist
 COMMENT ON CONVERSION public.mic_to_big5 IS 'conversion for MULE_INTERNAL to BIG5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:153: ERROR:  conversion "public.mic_to_big5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:155: ERROR:  conversion "public.mic_to_big5" does not exist
 COMMENT ON CONVERSION public.iso_8859_2_to_mic IS 'conversion for LATIN2 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:154: ERROR:  conversion "public.iso_8859_2_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:156: ERROR:  conversion "public.iso_8859_2_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_iso_8859_2 IS 'conversion for MULE_INTERNAL to LATIN2';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:155: ERROR:  conversion "public.mic_to_iso_8859_2" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:157: ERROR:  conversion "public.mic_to_iso_8859_2" does not exist
 COMMENT ON CONVERSION public.windows_1250_to_mic IS 'conversion for WIN1250 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:156: ERROR:  conversion "public.windows_1250_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:158: ERROR:  conversion "public.windows_1250_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_windows_1250 IS 'conversion for MULE_INTERNAL to WIN1250';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:157: ERROR:  conversion "public.mic_to_windows_1250" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:159: ERROR:  conversion "public.mic_to_windows_1250" does not exist
 COMMENT ON CONVERSION public.iso_8859_2_to_windows_1250 IS 'conversion for LATIN2 to WIN1250';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:158: ERROR:  conversion "public.iso_8859_2_to_windows_1250" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:160: ERROR:  conversion "public.iso_8859_2_to_windows_1250" does not exist
 COMMENT ON CONVERSION public.windows_1250_to_iso_8859_2 IS 'conversion for WIN1250 to LATIN2';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:159: ERROR:  conversion "public.windows_1250_to_iso_8859_2" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:161: ERROR:  conversion "public.windows_1250_to_iso_8859_2" does not exist
 COMMENT ON CONVERSION public.iso_8859_1_to_mic IS 'conversion for LATIN1 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:160: ERROR:  conversion "public.iso_8859_1_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:162: ERROR:  conversion "public.iso_8859_1_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_iso_8859_1 IS 'conversion for MULE_INTERNAL to LATIN1';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:161: ERROR:  conversion "public.mic_to_iso_8859_1" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:163: ERROR:  conversion "public.mic_to_iso_8859_1" does not exist
 COMMENT ON CONVERSION public.iso_8859_3_to_mic IS 'conversion for LATIN3 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:162: ERROR:  conversion "public.iso_8859_3_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:164: ERROR:  conversion "public.iso_8859_3_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_iso_8859_3 IS 'conversion for MULE_INTERNAL to LATIN3';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:163: ERROR:  conversion "public.mic_to_iso_8859_3" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:165: ERROR:  conversion "public.mic_to_iso_8859_3" does not exist
 COMMENT ON CONVERSION public.iso_8859_4_to_mic IS 'conversion for LATIN4 to MULE_INTERNAL';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:164: ERROR:  conversion "public.iso_8859_4_to_mic" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:166: ERROR:  conversion "public.iso_8859_4_to_mic" does not exist
 COMMENT ON CONVERSION public.mic_to_iso_8859_4 IS 'conversion for MULE_INTERNAL to LATIN4';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:165: ERROR:  conversion "public.mic_to_iso_8859_4" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:167: ERROR:  conversion "public.mic_to_iso_8859_4" does not exist
 COMMENT ON CONVERSION public.ascii_to_utf8 IS 'conversion for SQL_ASCII to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:166: ERROR:  conversion "public.ascii_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:168: ERROR:  conversion "public.ascii_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_ascii IS 'conversion for UTF8 to SQL_ASCII';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:167: ERROR:  conversion "public.utf8_to_ascii" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:169: ERROR:  conversion "public.utf8_to_ascii" does not exist
 COMMENT ON CONVERSION public.big5_to_utf8 IS 'conversion for BIG5 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:168: ERROR:  conversion "public.big5_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:170: ERROR:  conversion "public.big5_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_big5 IS 'conversion for UTF8 to BIG5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:169: ERROR:  conversion "public.utf8_to_big5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:171: ERROR:  conversion "public.utf8_to_big5" does not exist
 COMMENT ON CONVERSION public.utf8_to_koi8_r IS 'conversion for UTF8 to KOI8R';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:170: ERROR:  conversion "public.utf8_to_koi8_r" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:172: ERROR:  conversion "public.utf8_to_koi8_r" does not exist
 COMMENT ON CONVERSION public.koi8_r_to_utf8 IS 'conversion for KOI8R to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:171: ERROR:  conversion "public.koi8_r_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:173: ERROR:  conversion "public.koi8_r_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_koi8_u IS 'conversion for UTF8 to KOI8U';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:172: ERROR:  conversion "public.utf8_to_koi8_u" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:174: ERROR:  conversion "public.utf8_to_koi8_u" does not exist
 COMMENT ON CONVERSION public.koi8_u_to_utf8 IS 'conversion for KOI8U to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:173: ERROR:  conversion "public.koi8_u_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:175: ERROR:  conversion "public.koi8_u_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1258 IS 'conversion for UTF8 to WIN1258';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:174: ERROR:  conversion "public.utf8_to_windows_1258" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:176: ERROR:  conversion "public.utf8_to_windows_1258" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1257 IS 'conversion for UTF8 to WIN1257';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:175: ERROR:  conversion "public.utf8_to_windows_1257" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:177: ERROR:  conversion "public.utf8_to_windows_1257" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1256 IS 'conversion for UTF8 to WIN1256';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:176: ERROR:  conversion "public.utf8_to_windows_1256" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:178: ERROR:  conversion "public.utf8_to_windows_1256" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1255 IS 'conversion for UTF8 to WIN1255';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:177: ERROR:  conversion "public.utf8_to_windows_1255" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:179: ERROR:  conversion "public.utf8_to_windows_1255" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1254 IS 'conversion for UTF8 to WIN1254';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:178: ERROR:  conversion "public.utf8_to_windows_1254" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:180: ERROR:  conversion "public.utf8_to_windows_1254" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1253 IS 'conversion for UTF8 to WIN1253';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:179: ERROR:  conversion "public.utf8_to_windows_1253" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:181: ERROR:  conversion "public.utf8_to_windows_1253" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1252 IS 'conversion for UTF8 to WIN1252';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:180: ERROR:  conversion "public.utf8_to_windows_1252" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:182: ERROR:  conversion "public.utf8_to_windows_1252" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1251 IS 'conversion for UTF8 to WIN1251';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:181: ERROR:  conversion "public.utf8_to_windows_1251" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:183: ERROR:  conversion "public.utf8_to_windows_1251" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_1250 IS 'conversion for UTF8 to WIN1250';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:182: ERROR:  conversion "public.utf8_to_windows_1250" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:184: ERROR:  conversion "public.utf8_to_windows_1250" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_874 IS 'conversion for UTF8 to WIN874';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:183: ERROR:  conversion "public.utf8_to_windows_874" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:185: ERROR:  conversion "public.utf8_to_windows_874" does not exist
 COMMENT ON CONVERSION public.utf8_to_windows_866 IS 'conversion for UTF8 to WIN866';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:184: ERROR:  conversion "public.utf8_to_windows_866" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:186: ERROR:  conversion "public.utf8_to_windows_866" does not exist
 COMMENT ON CONVERSION public.windows_1258_to_utf8 IS 'conversion for WIN1258 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:185: ERROR:  conversion "public.windows_1258_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:187: ERROR:  conversion "public.windows_1258_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1257_to_utf8 IS 'conversion for WIN1257 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:186: ERROR:  conversion "public.windows_1257_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:188: ERROR:  conversion "public.windows_1257_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1256_to_utf8 IS 'conversion for WIN1256 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:187: ERROR:  conversion "public.windows_1256_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:189: ERROR:  conversion "public.windows_1256_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1255_to_utf8 IS 'conversion for WIN1255 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:188: ERROR:  conversion "public.windows_1255_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:190: ERROR:  conversion "public.windows_1255_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1254_to_utf8 IS 'conversion for WIN1254 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:189: ERROR:  conversion "public.windows_1254_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:191: ERROR:  conversion "public.windows_1254_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1253_to_utf8 IS 'conversion for WIN1253 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:190: ERROR:  conversion "public.windows_1253_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:192: ERROR:  conversion "public.windows_1253_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1252_to_utf8 IS 'conversion for WIN1252 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:191: ERROR:  conversion "public.windows_1252_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:193: ERROR:  conversion "public.windows_1252_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1251_to_utf8 IS 'conversion for WIN1251 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:192: ERROR:  conversion "public.windows_1251_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:194: ERROR:  conversion "public.windows_1251_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_1250_to_utf8 IS 'conversion for WIN1250 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:193: ERROR:  conversion "public.windows_1250_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:195: ERROR:  conversion "public.windows_1250_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_874_to_utf8 IS 'conversion for WIN874 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:194: ERROR:  conversion "public.windows_874_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:196: ERROR:  conversion "public.windows_874_to_utf8" does not exist
 COMMENT ON CONVERSION public.windows_866_to_utf8 IS 'conversion for WIN866 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:195: ERROR:  conversion "public.windows_866_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:197: ERROR:  conversion "public.windows_866_to_utf8" does not exist
 COMMENT ON CONVERSION public.euc_cn_to_utf8 IS 'conversion for EUC_CN to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:196: ERROR:  conversion "public.euc_cn_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:198: ERROR:  conversion "public.euc_cn_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_euc_cn IS 'conversion for UTF8 to EUC_CN';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:197: ERROR:  conversion "public.utf8_to_euc_cn" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:199: ERROR:  conversion "public.utf8_to_euc_cn" does not exist
 COMMENT ON CONVERSION public.euc_jp_to_utf8 IS 'conversion for EUC_JP to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:198: ERROR:  conversion "public.euc_jp_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:200: ERROR:  conversion "public.euc_jp_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_euc_jp IS 'conversion for UTF8 to EUC_JP';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:199: ERROR:  conversion "public.utf8_to_euc_jp" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:201: ERROR:  conversion "public.utf8_to_euc_jp" does not exist
 COMMENT ON CONVERSION public.euc_kr_to_utf8 IS 'conversion for EUC_KR to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:200: ERROR:  conversion "public.euc_kr_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:202: ERROR:  conversion "public.euc_kr_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_euc_kr IS 'conversion for UTF8 to EUC_KR';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:201: ERROR:  conversion "public.utf8_to_euc_kr" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:203: ERROR:  conversion "public.utf8_to_euc_kr" does not exist
 COMMENT ON CONVERSION public.euc_tw_to_utf8 IS 'conversion for EUC_TW to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:202: ERROR:  conversion "public.euc_tw_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:204: ERROR:  conversion "public.euc_tw_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_euc_tw IS 'conversion for UTF8 to EUC_TW';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:203: ERROR:  conversion "public.utf8_to_euc_tw" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:205: ERROR:  conversion "public.utf8_to_euc_tw" does not exist
 COMMENT ON CONVERSION public.gb18030_to_utf8 IS 'conversion for GB18030 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:204: ERROR:  conversion "public.gb18030_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:206: ERROR:  conversion "public.gb18030_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_gb18030 IS 'conversion for UTF8 to GB18030';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:205: ERROR:  conversion "public.utf8_to_gb18030" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:207: ERROR:  conversion "public.utf8_to_gb18030" does not exist
 COMMENT ON CONVERSION public.gbk_to_utf8 IS 'conversion for GBK to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:206: ERROR:  conversion "public.gbk_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:208: ERROR:  conversion "public.gbk_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_gbk IS 'conversion for UTF8 to GBK';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:207: ERROR:  conversion "public.utf8_to_gbk" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:209: ERROR:  conversion "public.utf8_to_gbk" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_8 IS 'conversion for UTF8 to ISO-8859-8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:208: ERROR:  conversion "public.utf8_to_iso_8859_8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:210: ERROR:  conversion "public.utf8_to_iso_8859_8" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_7 IS 'conversion for UTF8 to ISO-8859-7';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:209: ERROR:  conversion "public.utf8_to_iso_8859_7" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:211: ERROR:  conversion "public.utf8_to_iso_8859_7" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_6 IS 'conversion for UTF8 to ISO-8859-6';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:210: ERROR:  conversion "public.utf8_to_iso_8859_6" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:212: ERROR:  conversion "public.utf8_to_iso_8859_6" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_5 IS 'conversion for UTF8 to ISO-8859-5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:211: ERROR:  conversion "public.utf8_to_iso_8859_5" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:213: ERROR:  conversion "public.utf8_to_iso_8859_5" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_16 IS 'conversion for UTF8 to LATIN10';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:212: ERROR:  conversion "public.utf8_to_iso_8859_16" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:214: ERROR:  conversion "public.utf8_to_iso_8859_16" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_15 IS 'conversion for UTF8 to LATIN9';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:213: ERROR:  conversion "public.utf8_to_iso_8859_15" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:215: ERROR:  conversion "public.utf8_to_iso_8859_15" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_14 IS 'conversion for UTF8 to LATIN8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:214: ERROR:  conversion "public.utf8_to_iso_8859_14" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:216: ERROR:  conversion "public.utf8_to_iso_8859_14" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_13 IS 'conversion for UTF8 to LATIN7';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:215: ERROR:  conversion "public.utf8_to_iso_8859_13" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:217: ERROR:  conversion "public.utf8_to_iso_8859_13" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_10 IS 'conversion for UTF8 to LATIN6';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:216: ERROR:  conversion "public.utf8_to_iso_8859_10" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:218: ERROR:  conversion "public.utf8_to_iso_8859_10" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_9 IS 'conversion for UTF8 to LATIN5';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:217: ERROR:  conversion "public.utf8_to_iso_8859_9" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:219: ERROR:  conversion "public.utf8_to_iso_8859_9" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_4 IS 'conversion for UTF8 to LATIN4';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:218: ERROR:  conversion "public.utf8_to_iso_8859_4" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:220: ERROR:  conversion "public.utf8_to_iso_8859_4" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_3 IS 'conversion for UTF8 to LATIN3';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:219: ERROR:  conversion "public.utf8_to_iso_8859_3" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:221: ERROR:  conversion "public.utf8_to_iso_8859_3" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_2 IS 'conversion for UTF8 to LATIN2';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:220: ERROR:  conversion "public.utf8_to_iso_8859_2" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:222: ERROR:  conversion "public.utf8_to_iso_8859_2" does not exist
 COMMENT ON CONVERSION public.iso_8859_8_to_utf8 IS 'conversion for ISO-8859-8 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:221: ERROR:  conversion "public.iso_8859_8_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:223: ERROR:  conversion "public.iso_8859_8_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_7_to_utf8 IS 'conversion for ISO-8859-7 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:222: ERROR:  conversion "public.iso_8859_7_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:224: ERROR:  conversion "public.iso_8859_7_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_6_to_utf8 IS 'conversion for ISO-8859-6 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:223: ERROR:  conversion "public.iso_8859_6_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:225: ERROR:  conversion "public.iso_8859_6_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_5_to_utf8 IS 'conversion for ISO-8859-5 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:224: ERROR:  conversion "public.iso_8859_5_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:226: ERROR:  conversion "public.iso_8859_5_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_16_to_utf8 IS 'conversion for LATIN10 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:225: ERROR:  conversion "public.iso_8859_16_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:227: ERROR:  conversion "public.iso_8859_16_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_15_to_utf8 IS 'conversion for LATIN9 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:226: ERROR:  conversion "public.iso_8859_15_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:228: ERROR:  conversion "public.iso_8859_15_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_14_to_utf8 IS 'conversion for LATIN8 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:227: ERROR:  conversion "public.iso_8859_14_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:229: ERROR:  conversion "public.iso_8859_14_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_13_to_utf8 IS 'conversion for LATIN7 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:228: ERROR:  conversion "public.iso_8859_13_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:230: ERROR:  conversion "public.iso_8859_13_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_10_to_utf8 IS 'conversion for LATIN6 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:229: ERROR:  conversion "public.iso_8859_10_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:231: ERROR:  conversion "public.iso_8859_10_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_9_to_utf8 IS 'conversion for LATIN5 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:230: ERROR:  conversion "public.iso_8859_9_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:232: ERROR:  conversion "public.iso_8859_9_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_4_to_utf8 IS 'conversion for LATIN4 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:231: ERROR:  conversion "public.iso_8859_4_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:233: ERROR:  conversion "public.iso_8859_4_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_3_to_utf8 IS 'conversion for LATIN3 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:232: ERROR:  conversion "public.iso_8859_3_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:234: ERROR:  conversion "public.iso_8859_3_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_2_to_utf8 IS 'conversion for LATIN2 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:233: ERROR:  conversion "public.iso_8859_2_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:235: ERROR:  conversion "public.iso_8859_2_to_utf8" does not exist
 COMMENT ON CONVERSION public.iso_8859_1_to_utf8 IS 'conversion for LATIN1 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:234: ERROR:  conversion "public.iso_8859_1_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:236: ERROR:  conversion "public.iso_8859_1_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_iso_8859_1 IS 'conversion for UTF8 to LATIN1';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:235: ERROR:  conversion "public.utf8_to_iso_8859_1" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:237: ERROR:  conversion "public.utf8_to_iso_8859_1" does not exist
 COMMENT ON CONVERSION public.johab_to_utf8 IS 'conversion for JOHAB to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:236: ERROR:  conversion "public.johab_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:238: ERROR:  conversion "public.johab_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_johab IS 'conversion for UTF8 to JOHAB';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:237: ERROR:  conversion "public.utf8_to_johab" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:239: ERROR:  conversion "public.utf8_to_johab" does not exist
 COMMENT ON CONVERSION public.sjis_to_utf8 IS 'conversion for SJIS to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:238: ERROR:  conversion "public.sjis_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:240: ERROR:  conversion "public.sjis_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_sjis IS 'conversion for UTF8 to SJIS';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:239: ERROR:  conversion "public.utf8_to_sjis" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:241: ERROR:  conversion "public.utf8_to_sjis" does not exist
 COMMENT ON CONVERSION public.uhc_to_utf8 IS 'conversion for UHC to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:240: ERROR:  conversion "public.uhc_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:242: ERROR:  conversion "public.uhc_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_uhc IS 'conversion for UTF8 to UHC';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:241: ERROR:  conversion "public.utf8_to_uhc" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:243: ERROR:  conversion "public.utf8_to_uhc" does not exist
 COMMENT ON CONVERSION public.euc_jis_2004_to_utf8 IS 'conversion for EUC_JIS_2004 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:242: ERROR:  conversion "public.euc_jis_2004_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:244: ERROR:  conversion "public.euc_jis_2004_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_euc_jis_2004 IS 'conversion for UTF8 to EUC_JIS_2004';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:243: ERROR:  conversion "public.utf8_to_euc_jis_2004" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:245: ERROR:  conversion "public.utf8_to_euc_jis_2004" does not exist
 COMMENT ON CONVERSION public.shift_jis_2004_to_utf8 IS 'conversion for SHIFT_JIS_2004 to UTF8';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:244: ERROR:  conversion "public.shift_jis_2004_to_utf8" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:246: ERROR:  conversion "public.shift_jis_2004_to_utf8" does not exist
 COMMENT ON CONVERSION public.utf8_to_shift_jis_2004 IS 'conversion for UTF8 to SHIFT_JIS_2004';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:245: ERROR:  conversion "public.utf8_to_shift_jis_2004" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:247: ERROR:  conversion "public.utf8_to_shift_jis_2004" does not exist
 COMMENT ON CONVERSION public.euc_jis_2004_to_shift_jis_2004 IS 'conversion for EUC_JIS_2004 to SHIFT_JIS_2004';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:246: ERROR:  conversion "public.euc_jis_2004_to_shift_jis_2004" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:248: ERROR:  conversion "public.euc_jis_2004_to_shift_jis_2004" does not exist
 COMMENT ON CONVERSION public.shift_jis_2004_to_euc_jis_2004 IS 'conversion for SHIFT_JIS_2004 to EUC_JIS_2004';
-psql:@abs_srcdir@/data/upgrade_conversion.sql:247: ERROR:  conversion "public.shift_jis_2004_to_euc_jis_2004" does not exist
+psql:@abs_srcdir@/data/upgrade_conversion.sql:249: ERROR:  conversion "public.shift_jis_2004_to_euc_jis_2004" does not exist
 -- new tables and attributes. 
 \i @abs_srcdir@/sql/loadcat33.sql
 begin;

@@ -4489,11 +4489,18 @@ try:
             # + Mark install valid
             u.ReleaseLockdown(u.newenv)
 
-            # Finally, drop the upgrade user (temporarily disabled)
-            # u.Startup(u.newenv)
-            # u.Log('INFO', "Removing user '%s'" % MIGRATIONUSER)
-            # u.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
-            # u.Shutdown()
+            # Finally, drop the upgrade user:
+            #  - The migrator user shouldn't own anything, but if the
+            #    "dumprestore" method was ever used on this database
+            #    then it might.
+            u.Log('INFO', "Removing upgrade user");
+            try:
+                u.Update('DROP USER ' + MIGRATIONUSER)
+            except:
+                u.Log('WARN', 'Objects owned by gpmigrator reassigned to dba')
+                admin = u.Select('SELECT rolname from pg_authid where oid = 10');
+                u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin)
+                u.Update('DROP USER ' + MIGRATIONUSER)
 
             if u.warnings:
                 u.Log('WARN', '***************************************')
