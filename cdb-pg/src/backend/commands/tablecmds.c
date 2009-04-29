@@ -9823,6 +9823,20 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				}
 			}
 			lwith = nlist;
+
+			/* AO doesn't support indexes */
+			if (is_ao)
+			{
+				List *inds = RelationGetIndexList(rel);
+
+				if (inds)
+					ereport(ERROR,
+							(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+							 errmsg("cannot convert relation \"%s\" to append only storage as it has indexes",
+									RelationGetRelationName(rel)),
+							 errhint("Indexes are not supported on append only tables. To convert the table to "
+									 "append only storage, drop the index(es) on the table and try again.")));
+			}
 	
 			/* 
 			 * If there are other storage options, but REORGANIZE is not
