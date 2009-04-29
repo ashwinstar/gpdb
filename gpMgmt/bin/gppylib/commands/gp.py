@@ -15,7 +15,7 @@ from base import *
 from unix import *
 import pg
 from gppylib import pgconf
-from gppylib import gparray
+
 
 logger = get_default_logger()
 
@@ -529,9 +529,7 @@ def recovery_startup(datadir):
         cmd=SegmentStop('db shutdown' , datadir,mode='fast')
         cmd.run()
         
-        db = gparray.GpDB(-100,True,-100,True,True,'bogus',-100,datadir)
-        
-        if pg.DbStatus.local('checking on db',db):
+        if check_pid(pid)
             str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
             logger.info(str)            
             return str
