@@ -15,6 +15,7 @@ from base import *
 from unix import *
 import pg
 from gppylib import pgconf
+from gppylib import gparray
 
 logger = get_default_logger()
 
