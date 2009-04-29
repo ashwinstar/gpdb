@@ -42,22 +42,27 @@ class ConfExpSegCmd(Command):
         try:
             # update postgresql.conf
             if self.newseg:
-                if os.path.exists(self.datadir):
-                    #it better be empty
-                    if len(os.listdir(self.datadir)) == 0:
-                        os.chmod(self.datadir,0700)
+                try:
+                    if os.path.exists(self.datadir):
+                        #it better be empty
+                        if len(os.listdir(self.datadir)) == 0:
+                            os.chmod(self.datadir,0700)
+                        else:
+                            raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
                     else:
-                        raise Exception('Segment directory %s exists but is not empty!' % self.datadir)
-                else:
-                    os.mkdir(self.datadir,0700)
-        
+                        os.mkdir(self.datadir,0700)
+                except Exception, e:
+                    self.set_results(CommandResult(1,'',e,True,False))
+                    raise
         
                 logger.info("extract tar file to new segment")    
                 extractTarCmd = unix.ExtractTar('extract tar file to new segment', self.tarfile, self.datadir )
                 try:
+                    logger.debug('Extracting tar file %s to %s' % (self.tarfile, self.datadir))
                     extractTarCmd.run(validateAfter=True)
                 except:
                     self.set_results(extractTarCmd.get_results())
+                    logger.error(extractTarCmd.get_results())
                     raise
         
         
@@ -79,6 +84,7 @@ class ConfExpSegCmd(Command):
                 startCmd.run(validateAfter=True)
             except:
                 self.set_results(startCmd.get_results())
+                logger.error(startCmd.get_results())
                 raise
             
             # update gp_id
@@ -100,8 +106,11 @@ class ConfExpSegCmd(Command):
                 stopCmd.run(validateAfter=True)
             except:
                 self.set_results(stopCmd.get_results())
+                logger.error(stopCmd.get_results())
                 raise
         except Exception, e:
+            if self.verbose:
+                logger.exception(e)
             return
         else:
             self.set_results(CommandResult(0,'','',True,False))
@@ -200,10 +209,19 @@ try:
         pool.addCommand(cmd)
 
     pool.join()
-    sys.exit()
 
+    try:
+        pool.check_results()
+    except Exception,e:
+        if options.verbose:
+            logger.exception(e)
+        logger.error(e)
+        print >> sys.stderr, e
+        sys.exit(1)
+
+    sys.exit(0)
 
 except Exception, msg:
-    logger.exception(msg)
+    logger.error(msg)
     print >> sys.stderr, msg
     sys.exit(1)
