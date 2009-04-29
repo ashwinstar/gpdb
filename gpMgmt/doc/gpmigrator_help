@@ -1,6 +1,6 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 3.1.1.5 - 3.1.1.12 system to 3.2.
+Upgrades an existing Greenplum Database 3.1.1.5 - 3.1.1.12 system to 3.3.
 
 *****************************************************
 SYNOPSIS
@@ -26,9 +26,9 @@ The following tasks should be performed prior to executing an upgrade:
 * Make sure you are logged in to the master host as the 
   Greenplum Database superuser (gpadmin).
 
-* Install the Greenplum Database 3.2 binaries on all Greenplum hosts.
+* Install the Greenplum Database 3.3 binaries on all Greenplum hosts.
 
-* Copy any custom modules from your 3.1 installation to your 3.2 
+* Copy any custom modules from your 3.1 installation to your 3.3 
   installation on all Greenplum hosts. For example, shared library files 
   for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
   (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
@@ -38,17 +38,18 @@ The following tasks should be performed prior to executing an upgrade:
 
 * Verify the integrity of your 3.1 system catalogs using the 
   --prepare step of gpmigrator. This will check your system catalogs 
-  and indexes and initialize a temporary 3.2 system. If problems are 
+  and indexes and initialize a temporary 3.3 system. If problems are 
   found, contact Greenplum customer support.
 
-* Backup your 3.1.1.x databases (gpcrondump or ZFS snapshots).
-
+* Backup your 3.1.1.x databases (gpcrondump or ZFS snapshots). If you find
+  any issues when testing your upgraded system, you can restore this backup.
+ 
 * Remove the standby master from your system configuration 
   (gpinitstandby -r).
 
 * Do a clean shutdown of your 3.1.1.x system (gpstop).
 
-* Update your environment to point to the new 3.2 installation.
+* Update your environment to point to the new 3.3 installation.
 
 * Inform all database users of the upgrade and lockout time frame. 
   Once the upgrade is in process, users will not be allowed on the 
@@ -60,7 +61,7 @@ DESCRIPTION
 *****************************************************
 
 The gpmigrator utility upgrades an existing Greenplum Database 
-3.1.1.5 -3.1.1.12 system to 3.2. This utility updates the system catalog 
+3.1.1.5 -3.1.1.12 system to 3.3. This utility updates the system catalog 
 and internal version number, but not the actual software binaries.
 
 During the migration process, all client connections to the master 
@@ -75,7 +76,7 @@ in prepare mode to perform some pre-upgrade validation without
 actually executing the upgrade. The prepare phase does three things; 
 it runs a utility called gpcheckcat to verify your system catalogs, 
 it checks for invalid indexes that need rebuilding, and it initializes 
-a temporary 3.2 system.
+a temporary 3.3 system.
 
 
 *****************************************************
@@ -102,19 +103,17 @@ perform some pre-upgrade validation, but not execute the upgrade.
 The prepare phase does three things; it runs a utility called 
 gpcheckcat to verify your system catalogs, it checks for invalid 
 indexes that need rebuilding, and it initializes a temporary 
-3.2 system. 
+3.3 system. 
 
 
 --master_port <port>
 --port_base <port>
 --mirror_port_base <port>
 
-Used with the --prepare option to supply a temporary master 
+Optional. Used with the --prepare option to supply a temporary master 
 port, primary segment port base, and mirror segment port base 
-for the temporary 3.2 system to be initialized. These must be 
-different than what your current 3.1.1.x system is using. If not 
-supplied on the command-line, then gpmigrator will prompt you 
-for them if your 3.1.1.x system is up and running.
+for the temporary 3.3 system to be initialized. These must be 
+different than what your current 3.1.1.x system is using. 
 
 
 -d <master_data_directory>
@@ -155,20 +154,21 @@ EXAMPLES
 *****************************************************
 
 Perform pre-upgrade validation on your current system, 
-but do not execute the upgrade:
+but do not execute the upgrade (this command must be
+specified on a single, unbroken line):
 
-/usr/local/greenplum-db-3.2.1.0/bin/gpmigrator --prepare \
+/usr/local/greenplum-db-3.3.0.0/bin/gpmigrator --prepare \
 /usr/local/greenplum-db-3.1.1.9 \
-/usr/local/greenplum-db-3.2.1.0
+/usr/local/greenplum-db-3.3.0.0
 
 
-Upgrade to version 3.2 from version 3.1.1.9 
-(first make sure you are using the 3.2 software version):
+Upgrade to version 3.3 from version 3.1.1.9 
+(first make sure you are using the 3.3 software version):
 
-source /usr/local/greenplum-db-3.2.1.0/greenplum_path.sh
+source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
 
 gpmigrator /usr/local/greenplum-db-3.1.1.9 
-/usr/local/greenplum-db-3.2.1.0
+/usr/local/greenplum-db-3.3.0.0
 
 
 *****************************************************
