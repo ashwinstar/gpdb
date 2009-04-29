@@ -216,30 +216,21 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, bool fullScan)
  * Re-Configure the system: if someone has noticed that the status
  * version has been updated, they call this to verify that they've got
  * the right configuration.
+ *
+ * NOTE: This *always* destroys gangs. And also attempts to inform the
+ * fault-prober to do a full scan.
  */
 void
 FtsReConfigureMPP(bool create_new_gangs)
 {
-	/* Has the version been bumped ? */
-	if (local_fts_statusVersion != ftsProbeInfo->fts_statusVersion)
-	{
-		/* need to scan to pick up the latest view */
-		detectFailedConnections();
-		local_fts_statusVersion = ftsProbeInfo->fts_statusVersion;
-	}
+	/* need to scan to pick up the latest view */
+	detectFailedConnections();
+	local_fts_statusVersion = ftsProbeInfo->fts_statusVersion;
 
 	elog(LOG, "FTS: reconfiguration is in progress");
 	disconnectAndDestroyAllGangs();
 
-	if (create_new_gangs)
-	{
-		allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
-		allocateWriterGang(GANGTYPE_MIRROR_WRITER);
-	}
-
-	/* rollback current DTM transaction */
-	AbortCurrentTransaction();
-
+	/* Caller should throw an error. */
 	return;
 }
 

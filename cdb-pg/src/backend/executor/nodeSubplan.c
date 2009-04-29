@@ -1044,13 +1044,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		if (shouldDispatch)
 		{			
 			needDtxTwoPhase = isCurrentDtxTwoPhase();
-			if (needDtxTwoPhase)
-			{
-				/*
-				 * Reconfigure the cluster if needed.
-				 */
-				cdbdisp_reconfigureFtsIfNecessary(true);
-			}
 		
 			/*
 			 * This call returns after launching the threads that send the

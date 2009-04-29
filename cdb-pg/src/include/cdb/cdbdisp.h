@@ -162,12 +162,6 @@ typedef struct CdbDispatchCmdThreads
 
 /*--------------------------------------------------------------------*/
 
-/* Reconfigure the cluster if needed. */
-void
-cdbdisp_reconfigureFtsIfNecessary(bool create_new_gangs);
-
-/*--------------------------------------------------------------------*/
-
 /*
  * cdbdisp_dispatchToGang:
  * Send the strCommand SQL statement to the subset of all segdbs in the cluster

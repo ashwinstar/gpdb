@@ -431,11 +431,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
 			if (needDtxTwoPhase)
 			{
-				/*
-				 * Reconfigure the cluster if needed.
-				 */
-				cdbdisp_reconfigureFtsIfNecessary(true);
-
 				setCurrentDtxTwoPhase("ExecutorStart", "(none)");
 			}
 			

@@ -2593,7 +2593,10 @@ allocateWriterGang(GangType type)
 
 	/* sanity check the gang */
 	if (!gangOK(writer_gang))
-		elog(ERROR, "Segment connection failed: allocateWriterGang attempted to return a bad gang.");
+	{
+		elog(LOG, "Segment connection failed: allocateWriterGang attempted to return a bad gang.");
+		elog(ERROR, "GPDB performed segment reconfiguration.");
+	}
 
 	if (type == GANGTYPE_PRIMARY_WRITER)
 		primaryWriterGang = writer_gang;
@@ -3434,8 +3437,7 @@ freeGangsForPortal(char *portal_name)
 			disconnectAndDestroyAllGangs();
 
 			elog(LOG, "freeGangsForPortal: Bad primary writer gang");
-			cdbdisp_reconfigureFtsIfNecessary(false); /* will throw an error */
-
+			elog(ERROR, "GPDB detected segment reconfiguration.");
 			return;
 		}
 		if (!cleanupGang(mirrorWriterGang))
@@ -3444,8 +3446,7 @@ freeGangsForPortal(char *portal_name)
 			disconnectAndDestroyAllGangs();
 
 			elog(LOG, "freeGangsForPortal: Bad mirror writer gang");
-			cdbdisp_reconfigureFtsIfNecessary(false); /* will throw an error */
-
+			elog(ERROR, "GPDB detected segment reconfiguration.");
 			return;
 		}
 	}
@@ -4069,7 +4070,6 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 
 	return true;
 }
-
 
 /*
  * Set segdb states, called by FtsReConfigureMPP.

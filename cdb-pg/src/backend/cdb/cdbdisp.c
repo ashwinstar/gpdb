@@ -404,30 +404,6 @@ write_log(const char *fmt,...)
 
 /*--------------------------------------------------------------------*/
 
-
-/* Invoke FTS reconfiguration if needed. */
-void
-cdbdisp_reconfigureFtsIfNecessary(bool create_new_gangs)
-{
-
-	/*
-	 * check fts sync count
-	 */
-	if (!verifyFtsSyncCount())
-	{
-		/*
-		 * reconfig mpp connections
-		 */
-		FtsReConfigureMPP(create_new_gangs);
-		elog(ERROR, "GPDB detected segment reconfiguration.");
-	}
-}	/* cdbdisp_reconfigureFtsIfNecessary */
-
-
-
-/*--------------------------------------------------------------------*/
-
-
 /*
  * cdbdisp_dispatchToGang:
  * Send the strCommand SQL statement to the subset of all segdbs in the cluster
@@ -3060,12 +3036,8 @@ CdbDoCommand(const char *strCommand,
 		
 	if (needTwoPhase)
 	{
-		/* Reconfigure the cluster if needed. */
-		cdbdisp_reconfigureFtsIfNecessary(true);
-		
 		/* Mark this txn as needing a two-phase distributed transaction */
 		setCurrentDtxTwoPhase("CdbDoCommand", strCommand);
-
 	}
 
 	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase, 
@@ -3096,9 +3068,6 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 
 	if (needTwoPhase)
 	{
-		/* Reconfigure the cluster if needed. */
-		cdbdisp_reconfigureFtsIfNecessary(true);
-		
 		/* mark this txn as dirty */
 		setCurrentDtxTwoPhase("CdbDoCommandOnAllGangs", strCommand);
 	}
@@ -4254,9 +4223,6 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
 		 (needTwoPhase ? "true" : "false"), debugCaller);
 	
-	/* Reconfigure the cluster if needed. */
-	cdbdisp_reconfigureFtsIfNecessary(true);
-
 	cdbdisp_dispatchUtilityStatement(stmt, 
 									 true /* cancelOnError */, 
 									 needTwoPhase, 

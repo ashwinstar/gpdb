@@ -694,20 +694,6 @@ DefineRelation_int(CreateStmt *stmt,
              stmt->relation->schemaname ? stmt->relation->schemaname : "",
              shouldDispatch);
 
-    if (shouldDispatch)
-	{
-		/*
-		 * Mark the DTX as distributed and reconfigure the cluster if needed.
-		 *
-		 * We defer the dispatch of the utility command until after
-		 * heap_create_with_catalog(), because that call will *wait*
-		 * for any other transactions touching this new relation,
-		 * which can cause a non-local deadlock if we've already
-		 * dispatched
-		 */
-		cdbdisp_reconfigureFtsIfNecessary(true);
-	}
-
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
