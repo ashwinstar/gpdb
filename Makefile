@@ -730,7 +730,6 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpssh \
 		$(INSTLOC)/bin/gpssh-exkeys \
 		$(INSTLOC)/bin/gpstart \
-		$(INSTLOC)/bin/gpstart.py \
 		$(INSTLOC)/bin/gpstate \
 		$(INSTLOC)/bin/gpstop \
 		$(INSTLOC)/bin/gpsys1
