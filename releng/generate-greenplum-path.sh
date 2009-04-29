@@ -59,7 +59,7 @@ fi
 
 #setup PYTHONPATH
 cat <<EOF
-PYTHONPATH=\$GPHOME/lib/python:\$PYTHONPATH
+PYTHONPATH=\$GPHOME/lib/python
 EOF
 
 cat <<EOF
