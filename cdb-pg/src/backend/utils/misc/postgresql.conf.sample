@@ -238,7 +238,6 @@
 #from_collapse_limit = 8
 #join_collapse_limit = 8		# 1 disables collapsing of explicit
 					# JOINs
-#gp_hashagg_rewrite_limit = 1.0
 #gp_segments_for_planner = 0     # if 0, actual number of segments is used
 
 #---------------------------------------------------------------------------
