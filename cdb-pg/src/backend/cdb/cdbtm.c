@@ -708,30 +708,39 @@ doNotifyingAbort(void)
 
 	if (currentGxact->state == DTX_STATE_NOTIFYING_ABORT_NO_PREPARED)
 	{
-		succeeded = doDispatchDtxProtocolCommand(
-						DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, /* flags */ 0,  
-						currentGxact->gid, currentGxact->gxid,
-						/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
-		if (!succeeded)
+		if (gangsExist())
 		{
-			elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.",
-				 currentGxact->gid);
+			succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, /* flags */ 0,  
+													 currentGxact->gid, currentGxact->gxid,
+													 /* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+			if (!succeeded)
+			{
+				elog(WARNING, "The distributed transaction 'Abort' broadcast failed to one or more segments for gid = %s.",
+					 currentGxact->gid);
 			
-			/*
-			 * Reset the dispatch logic and disconnect from any segment that didn't respond to our abort.
-			 */
-			elog(NOTICE,"Releasing gangs to finish aborting the transaction.");
-			disconnectAndDestroyAllGangs();
+				/*
+				 * Reset the dispatch logic and disconnect from any segment that didn't respond to our abort.
+				 */
+				elog(NOTICE,"Releasing gangs to finish aborting the transaction.");
+				disconnectAndDestroyAllGangs();
 			
-			/*
-			 * This call will at a minimum change the session id so we will
-			 * not have SharedSnapshotAdd colissions.
-			 */
-			CheckForResetSession();
+				/*
+				 * This call will at a minimum change the session id so we will
+				 * not have SharedSnapshotAdd colissions.
+				 */
+				CheckForResetSession();
+			}
+			else
+			{
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),
+					 "The distributed transaction 'Abort' broadcast succeeded to all the segments for gid = %s.",
+					 currentGxact->gid);
+			}
 		}
 		else
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "The distributed transaction 'Abort' broadcast succeeded to all the segments for gid = %s.",
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),
+				 "The distributed transaction 'Abort' broadcast was omitted (gangs already dead) gid = %s.",
 				 currentGxact->gid);
 		}
 	}
@@ -755,9 +764,9 @@ doNotifyingAbort(void)
 		}
 		
 		succeeded = doDispatchDtxProtocolCommand(
-						dtxProtocolCommand, /* flags */ 0,
-						currentGxact->gid, currentGxact->gxid,
-						/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+			dtxProtocolCommand, /* flags */ 0,
+			currentGxact->gid, currentGxact->gxid,
+			/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
 		if (!succeeded)
 		{
 			elog(WARNING, "The distributed transaction '%s' broadcast failed to one or more segments for gid = %s.",
@@ -830,110 +839,110 @@ doDtxPhase2Retry(void)
 
 	switch (currentGxact->state)
 	{
-	case DTX_STATE_RETRY_COMMIT_PREPARED:
-	case DTX_STATE_RETRY_ABORT_PREPARED:
-		if (currentGxact->retryPhase2RecursionStop)
-		{
-			/*
-			 * Take down GP Array.
-			 */
-			elog(PANIC,"Unable to complete '%s Prepared' broadcast for gid = %s",
-				 (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED ? "Commit" : "Abort"),
-				 currentGxact->gid);
-		}
-		PG_TRY();
-		{
-			bool commit = (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED);
-			DtxProtocolCommand dtxProtocolCommand;
-			char *prepareKind;
-			
-			if (commit)
+		case DTX_STATE_RETRY_COMMIT_PREPARED:
+		case DTX_STATE_RETRY_ABORT_PREPARED:
+			if (currentGxact->retryPhase2RecursionStop)
 			{
-				dtxProtocolCommand = DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED;
-				prepareKind = "Commit";
+				/*
+				 * Take down GP Array.
+				 */
+				elog(PANIC,"Unable to complete '%s Prepared' broadcast for gid = %s",
+					 (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED ? "Commit" : "Abort"),
+					 currentGxact->gid);
 			}
-			else
+			PG_TRY();
 			{
-				dtxProtocolCommand = DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED;
-				prepareKind = "Abort";
-			}
+				bool commit = (currentGxact->state == DTX_STATE_RETRY_COMMIT_PREPARED);
+				DtxProtocolCommand dtxProtocolCommand;
+				char *prepareKind;
 			
-			/*
-			 * KLUDGE: FtsHandleGangConnectionFailure will need a special
-			 * transaction context to tell it not to raise an ERROR...
-			 */
-			DistributedTransactionContext = DTX_CONTEXT_QD_RETRY_PHASE_2;
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "doDtxPhase2Retry setting DistributedTransactionContext to '%s' for retry of '%s Prepared'.",
-						 DtxContextToString(DistributedTransactionContext), prepareKind);
-
-			StartTransactionCommand();
-
-			currentGxact->retryPhase2RecursionStop = true;
+				if (commit)
+				{
+					dtxProtocolCommand = DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED;
+					prepareKind = "Commit";
+				}
+				else
+				{
+					dtxProtocolCommand = DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED;
+					prepareKind = "Abort";
+				}
 			
-			succeeded = doDispatchDtxProtocolCommand(
-							dtxProtocolCommand, /* flags */ 0,  
-							currentGxact->gid, currentGxact->gxid,
-							/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
-			if (!succeeded)
-			{
-				elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.",
+				/*
+				 * KLUDGE: FtsHandleGangConnectionFailure will need a special
+				 * transaction context to tell it not to raise an ERROR...
+				 */
+				DistributedTransactionContext = DTX_CONTEXT_QD_RETRY_PHASE_2;
+				elog((Debug_print_full_dtm ? LOG : DEBUG5), "doDtxPhase2Retry setting DistributedTransactionContext to '%s' for retry of '%s Prepared'.",
+					 DtxContextToString(DistributedTransactionContext), prepareKind);
+
+				StartTransactionCommand();
+
+				currentGxact->retryPhase2RecursionStop = true;
+			
+				succeeded = doDispatchDtxProtocolCommand(
+					dtxProtocolCommand, /* flags */ 0,  
+					currentGxact->gid, currentGxact->gxid,
+					/* dispatchToMirrors */ true, &badGangs, /* raiseError */ false);
+				if (!succeeded)
+				{
+					elog(FATAL, "A retry of the distributed transaction '%s Prepared' broadcast failed to one or more segments for gid = %s.",
+						 prepareKind, currentGxact->gid);
+				}
+				elog(NOTICE, "Retry of the distributed transaction '%s Prepared' broadcast succeeded to the segments for gid = %s.",
 					 prepareKind, currentGxact->gid);
-			}
-			elog(NOTICE, "Retry of the distributed transaction '%s Prepared' broadcast succeeded to the segments for gid = %s.",
-				 prepareKind, currentGxact->gid);
 
-			/*
-			 * Global locking order: ProcArrayLock then DTM lock since
-			 * calls doInsertForgetCommitted calls releaseGxact.
-			 */
-			LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+				/*
+				 * Global locking order: ProcArrayLock then DTM lock since
+				 * calls doInsertForgetCommitted calls releaseGxact.
+				 */
+				LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 			
-			getTmLock();
+				getTmLock();
 
-			if (commit)
-			{
-				doInsertForgetCommitted();
-			}
-			else
-			{
-				releaseGxact_UnderLocks();
-			}
-			Assert(currentGxact == NULL);
-			releaseTmLock();
+				if (commit)
+				{
+					doInsertForgetCommitted();
+				}
+				else
+				{
+					releaseGxact_UnderLocks();
+				}
+				Assert(currentGxact == NULL);
+				releaseTmLock();
 			
-			LWLockRelease(ProcArrayLock);
+				LWLockRelease(ProcArrayLock);
 			
-			CommitTransactionCommand();
-			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
-		}
-		PG_CATCH();
-		{
-			DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-		break;
+				CommitTransactionCommand();
+				Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
+			}
+			PG_CATCH();
+			{
+				DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+			break;
 		
-	case DTX_STATE_ACTIVE_NOT_DISTRIBUTED:
-	case DTX_STATE_ACTIVE_DISTRIBUTED:
-	case DTX_STATE_PREPARING:
-	case DTX_STATE_PREPARED:
-	case DTX_STATE_FORCED_COMMITTED:
-	case DTX_STATE_NOTIFYING_COMMIT_PREPARED:
-	case DTX_STATE_NOTIFYING_ABORT_PREPARED:
-	case DTX_STATE_INSERTING_COMMITTED:
-	case DTX_STATE_INSERTED_COMMITTED:
-	case DTX_STATE_INSERTING_FORGET_COMMITTED:
-	case DTX_STATE_INSERTED_FORGET_COMMITTED:
-	case DTX_STATE_CRASH_COMMITTED:
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "doDtxPhase2Retry dtx state \"%s\" not applicable here",
-			 DtxStateToString(currentGxact->state));
-		break;
+		case DTX_STATE_ACTIVE_NOT_DISTRIBUTED:
+		case DTX_STATE_ACTIVE_DISTRIBUTED:
+		case DTX_STATE_PREPARING:
+		case DTX_STATE_PREPARED:
+		case DTX_STATE_FORCED_COMMITTED:
+		case DTX_STATE_NOTIFYING_COMMIT_PREPARED:
+		case DTX_STATE_NOTIFYING_ABORT_PREPARED:
+		case DTX_STATE_INSERTING_COMMITTED:
+		case DTX_STATE_INSERTED_COMMITTED:
+		case DTX_STATE_INSERTING_FORGET_COMMITTED:
+		case DTX_STATE_INSERTED_FORGET_COMMITTED:
+		case DTX_STATE_CRASH_COMMITTED:
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "doDtxPhase2Retry dtx state \"%s\" not applicable here",
+				 DtxStateToString(currentGxact->state));
+			break;
 		
-	default:
-		elog(PANIC, "Unrecognized dtx state: %d",
-			(int) currentGxact->state);
-		break;
+		default:
+			elog(PANIC, "Unrecognized dtx state: %d",
+				 (int) currentGxact->state);
+			break;
 	}
 }
 
