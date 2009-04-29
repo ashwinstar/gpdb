@@ -970,5 +970,6 @@ extern SeqServerControlBlock *seqServerCtl;
  */
 extern void write_log(const char *fmt,...) __attribute__((format(printf, 1, 2)));
 
-
+/* wire off SET WITH() for alter table distributed by */
+extern bool gp_disable_atsdb_set_with;
 #endif   /* GPVARS_H */

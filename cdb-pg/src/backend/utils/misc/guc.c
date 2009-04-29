@@ -2047,6 +2047,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_statistics_pullup_from_child_partition,
 		true, NULL, NULL
 	},
+	{
+		{"gp_disable_atsdb_set_with", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Disable support for all parameters other than REORGANIZE for ALTER TABLE SET WITH()."),	
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+	    },
+		&gp_disable_atsdb_set_with,
+		true, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

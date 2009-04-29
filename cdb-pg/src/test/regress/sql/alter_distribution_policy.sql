@@ -1,5 +1,6 @@
 -- ALTER TABLE ... SET DISTRIBUTED BY
 -- This is the main interface for system expansion
+set gp_disable_atsdb_set_with = false;
 
 \set DATA values(1, 2), (2, 3), (3, 4)
 -- Basic sanity tests
@@ -281,3 +282,21 @@ select count(*) from mpp5754;
 alter table mpp5754 set distributed by (n_nationkey);
 select * from mpp5754 order by n_nationkey;
 drop table mpp5754;
+
+
+-- Test GUC
+set gp_disable_atsdb_set_with = true;
+create table guc_test (i int);
+-- should fail
+alter table guc_test set with(appendonly = true);
+-- should fail
+alter table guc_test set with(appendonly = true) distributed randomly;
+-- should work
+alter table guc_test set with(reorganize = true);
+alter table guc_test set distributed randomly;
+alter table guc_test set with(reorganize = true);
+drop table guc_test;
+
+create table guc_test (i int) with(appendonly = true);
+alter table guc_test set with (compresslevel = 4);
+drop table guc_Test;
