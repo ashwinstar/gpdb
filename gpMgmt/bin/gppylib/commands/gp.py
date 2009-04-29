@@ -529,7 +529,7 @@ def recovery_startup(datadir):
         cmd=SegmentStop('db shutdown' , datadir,mode='fast')
         cmd.run()
         
-        if check_pid(pid)
+        if check_pid(pid):
             str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
             logger.info(str)            
             return str
