@@ -141,9 +141,6 @@ class Worker(Thread):
     
     
     def run(self):
-        """ 
-            TODO:  ERROR HANDLING SILLY!
-        """
         try_count = 0
         while True:
             try:
@@ -159,7 +156,6 @@ class Worker(Thread):
                 
                 if self.cmd is not None and not self.shouldStop:
                     logger.debug("[%s] got cmd: %s" % (self.name,self.cmd.cmdStr))
-                    #TODO:  catch Exception (especially ExecutionException)                        
                     self.cmd.run()
                     logger.debug("[%s] finished cmd: %s" % (self.name, self.cmd))
                     self.pool.addFinishedWorkItem(self.cmd)
@@ -175,6 +171,14 @@ class Worker(Thread):
                 if self.shouldStop:
                     logger.debug("[%s] stopping" % self.name)
                     return
+            except Exception,e:
+                logger.exception(e)
+                if self.cmd:
+                    logger.debug("[%s] finished cmd with exception: %s" % (self.name, self.cmd))
+                    self.pool.addFinishedWorkItem(self.cmd)
+                    self.cmd=None
+                    try_count = 0
+                    
                     
     
     def haltWork(self):

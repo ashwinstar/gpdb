@@ -98,7 +98,7 @@ class GpSegStart():
                     
                 if os.path.exists(dir + '/postmaster.pid'):
                     logger.warning("postmaster.pid file exists, checking if recovery startup required")
-                    res = self._recovery_startup(dir)
+                    res = gp.recovery_startup(dir)
                     if res:
                         results.append(SegStartStatus(dir,False,res))
                         self.dblist.remove(dir)
@@ -113,7 +113,8 @@ class GpSegStart():
         logger.info("Starting segments...")       
         for dir in self.dblist:
             cmd=gp.SegmentStart("Starting seg at dir %s" % dir,dir)
-            self.pool.addCommand(cmd)    
+            self.pool.addCommand(cmd)  
+              
         self.pool.join()
         
         cmds=self.pool.getCompletedItems()
@@ -163,52 +164,7 @@ class GpSegStart():
     def cleanup(self):
         if self.pool:
             self.pool.haltWork()
-
     
-    ######
-    def _recovery_startup(self,datadir):
-        """ investigate a segment that may still be running """
-        
-        pid=gp.read_postmaster_pidfile(datadir)
-        if unix.check_pid(pid):
-            str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
-            logger.info(str)
-            
-            logger.info("attempting to shutdown segment with datadir: %s" % datadir )
-            cmd=gp.SegmentStop('segment shutdown' , datadir,mode='fast')
-            cmd.run()
-            
-            db = gparray.GpDB(-100,True,-100,True,True,'bogus',-100,datadir)
-            
-            if pg.DbStatus.local('checking on segment',db):
-                str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
-                logger.info(str)            
-                return str
-            else:
-                logger.info("shutdown of segment successful with datadir: %s" % datadir)
-        
-        #if we get this far it means we don't have a pid and need to do some cleanup.
-        pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")        
-        port = pgconf_dict.int('port')  
-        
-        lockfile="/tmp/.s.PGSQL.%s" % port
-        tmpfile_exists = os.path.exists(lockfile)
-        
-        
-        logger.info("No segment instance process, entering recovery startup mode")
-        
-        if tmpfile_exists:
-            logger.info("Clearing segment instance lock files")        
-            os.remove(lockfile)
-        
-        postmaster_pid_file = "%s/postmaster.pid" % datadir
-        if os.path.exists(postmaster_pid_file): 
-            logger.info("Clearing segment instance pid file")
-            os.remove("%s/postmaster.pid" % datadir)
-    
-        return None
-            
-        
 #-------------------------------------------------------------------------
 def parseargs():
     parser = OptParser(option_class=OptChecker,

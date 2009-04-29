@@ -494,16 +494,11 @@ def start_standbymaster(host,datadir,port):
     logger.info("Starting standby master")
     
     logger.info("Checking if standby master is running on host: %s  in directory: %s" % (host,datadir))
-    pidfileexists=FileDirExists.remote('check for standby PID file',host,datadir + '/postmaster.pid')
-    lockfileexists=FileDirExists.remote('check for standby lock file',host,"/tmp/.s.PGSQL.%s" % port)
+    res = recovery_startup(datadir)
     
-    #TODO:  should we throw an exception here or do something else?
-    if pidfileexists and lockfileexists:
-        raise Exception("Standby instance running. postmaster.pid and /tmp/.s.PGSQL.%s exists" % port)
-    
-    #TODO: any other cases to handle
-    
-    
+    if res:
+        logger.warning("Unable to cleanup previously started standby: '%s'" % res)
+        
     #create a pg_log directory if necessary
     CreateDirIfNecessary.remote('create standby logdir if needed', host, datadir + "/pg_log")
     
@@ -519,6 +514,50 @@ def start_standbymaster(host,datadir,port):
         return False
     
     pass
+
+######
+def recovery_startup(datadir):
+    """ investigate a db that may still be running """
+        
+    pid=read_postmaster_pidfile(datadir)
+    if check_pid(pid):
+        str="found postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
+        logger.info(str)
+        
+        logger.info("attempting to shutdown db with datadir: %s" % datadir )
+        cmd=SegmentStop('db shutdown' , datadir,mode='fast')
+        cmd.run()
+        
+        db = gparray.GpDB(-100,True,-100,True,True,'bogus',-100,datadir)
+        
+        if pg.DbStatus.local('checking on db',db):
+            str="unable to stop postmaster with pid: %d for datadir: %s still running" % (pid,datadir)
+            logger.info(str)            
+            return str
+        else:
+            logger.info("shutdown of db successful with datadir: %s" % datadir)
+            return None
+    else:
+        #if we get this far it means we don't have a pid and need to do some cleanup.
+        pgconf_dict = pgconf.readfile(datadir + "/postgresql.conf")        
+        port = pgconf_dict.int('port')  
+        
+        lockfile="/tmp/.s.PGSQL.%s" % port
+        tmpfile_exists = os.path.exists(lockfile)
+        
+        
+        logger.info("No db instance process, entering recovery startup mode")
+        
+        if tmpfile_exists:
+            logger.info("Clearing db instance lock files")        
+            os.remove(lockfile)
+        
+        postmaster_pid_file = "%s/postmaster.pid" % datadir
+        if os.path.exists(postmaster_pid_file): 
+            logger.info("Clearing db instance pid file")
+            os.remove("%s/postmaster.pid" % datadir)
+    
+        return None
 
 
 # these match names from gp_bash_functions.sh
