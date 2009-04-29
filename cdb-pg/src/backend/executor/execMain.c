@@ -338,77 +338,77 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	 * errors to shut it down -- so we have to wrap InitPlan in a PG_TRY() block. */
 	PG_TRY();
 	{
-	/*
-	 * Initialize the plan state tree
-	 */
-	InitPlan(queryDesc, eflags);
-
-	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
-	{
-		/* Assign gang descriptions to the root slices of the slice forest. */
-		InitRootSlices(queryDesc);
-
-		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
-		{
-			/*
-			 * Since we intend to execute the plan, inventory the slice tree,
-			 * allocate gangs, and associate them with slices.
-			 *
-			 * For now, always use segment 'gp_singleton_segindex' for
-             * singleton gangs.
-			 *
-			 * On return, gangs have been allocated and CDBProcess lists have
-			 * been filled in in the slice table.)
-			 */
-			AssignGangs(queryDesc, gp_singleton_segindex);
-			
-			/* Add sequence server info to the plan's SliceTable. */
-			SetSeqServerInfo(queryDesc);
-
-		}
-	}
-
-	if (Debug_print_slice_table && Gp_role == GP_ROLE_DISPATCH)
-		elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
-
-	/*
-	 * If we're running as a QE and there's a slice table in our queryDesc,
-	 * then we need to finish the EState setup we prepared for back in
-	 * CdbExecQuery.
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE && estate->es_sliceTable != NULL)
-	{
-		MotionState *motionstate = NULL;
-		
 		/*
-		 * Note that, at this point on a QE, the estate is setup (based on the
-		 * slice table transmitted from the QD via MPPEXEC) so that fields
-		 * es_sliceTable, cur_root_idx and es_cur_slice_idx are correct for
-		 * the QE.
-		 *
-		 * If responsible for a non-root slice, arrange to enter the plan at the
-		 * slice's sending Motion node rather than at the top.
+		 * Initialize the plan state tree
 		 */
-		if (estate->es_cur_slice_idx != estate->es_cur_root_idx)
+		InitPlan(queryDesc, eflags);
+
+		if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 		{
-			motionstate = estate->es_slice_map[estate->es_cur_slice_idx];
-			Assert(motionstate != NULL && IsA(motionstate, MotionState));
+			/* Assign gang descriptions to the root slices of the slice forest. */
+			InitRootSlices(queryDesc);
+
+			if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
+			{
+				/*
+				 * Since we intend to execute the plan, inventory the slice tree,
+				 * allocate gangs, and associate them with slices.
+				 *
+				 * For now, always use segment 'gp_singleton_segindex' for
+				 * singleton gangs.
+				 *
+				 * On return, gangs have been allocated and CDBProcess lists have
+				 * been filled in in the slice table.)
+				 */
+				AssignGangs(queryDesc, gp_singleton_segindex);
 			
-			/* Patch Motion node so it looks like a top node. */
-			motionstate->ps.plan->nMotionNodes = estate->es_sliceTable->nMotions;
-			motionstate->ps.plan->nParamExec = estate->es_sliceTable->nSubplans;
+				/* Add sequence server info to the plan's SliceTable. */
+				SetSeqServerInfo(queryDesc);
+
+			}
 		}
-		
-		if (Debug_print_slice_table)
+
+		if (Debug_print_slice_table && Gp_role == GP_ROLE_DISPATCH)
 			elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
+
+		/*
+		 * If we're running as a QE and there's a slice table in our queryDesc,
+		 * then we need to finish the EState setup we prepared for back in
+		 * CdbExecQuery.
+		 */
+		if (Gp_role == GP_ROLE_EXECUTE && estate->es_sliceTable != NULL)
+		{
+			MotionState *motionstate = NULL;
 		
-        if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG1, "%s%d executing slice%d under root slice%d",
-			     (Gp_is_primary ? "seg" : "mir"),
-			     Gp_segment,
-			     estate->es_cur_slice_idx,
-			     estate->es_cur_root_idx);
-	}
+			/*
+			 * Note that, at this point on a QE, the estate is setup (based on the
+			 * slice table transmitted from the QD via MPPEXEC) so that fields
+			 * es_sliceTable, cur_root_idx and es_cur_slice_idx are correct for
+			 * the QE.
+			 *
+			 * If responsible for a non-root slice, arrange to enter the plan at the
+			 * slice's sending Motion node rather than at the top.
+			 */
+			if (estate->es_cur_slice_idx != estate->es_cur_root_idx)
+			{
+				motionstate = estate->es_slice_map[estate->es_cur_slice_idx];
+				Assert(motionstate != NULL && IsA(motionstate, MotionState));
+			
+				/* Patch Motion node so it looks like a top node. */
+				motionstate->ps.plan->nMotionNodes = estate->es_sliceTable->nMotions;
+				motionstate->ps.plan->nParamExec = estate->es_sliceTable->nSubplans;
+			}
+		
+			if (Debug_print_slice_table)
+				elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
+		
+			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				elog(DEBUG1, "%s%d executing slice%d under root slice%d",
+					 (Gp_is_primary ? "seg" : "mir"),
+					 Gp_segment,
+					 estate->es_cur_slice_idx,
+					 estate->es_cur_root_idx);
+		}
 	
 		/*
 		 * Are we going to dispatch this plan parallel?  Only if we're running as
@@ -532,16 +532,16 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	PG_END_TRY();
 	
 	if (DEBUG1 >= log_min_messages)
-				{
-					char		msec_str[32];
-					switch (check_log_duration(msec_str, false))
-					{
-						case 1:
-						case 2:
-							ereport(LOG, (errmsg("duration to ExecutorStart end: %s ms", msec_str)));
-							break;
-					}
-				}
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG, (errmsg("duration to ExecutorStart end: %s ms", msec_str)));
+				break;
+		}
+	}
 	
 	MemoryContextSwitchTo(oldcontext);
 }
