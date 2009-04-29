@@ -4498,8 +4498,12 @@ try:
                 u.Update('DROP USER ' + MIGRATIONUSER)
             except:
                 u.Log('WARN', 'Objects owned by gpmigrator reassigned to dba')
-                admin = u.Select('SELECT rolname from pg_authid where oid = 10');
-                u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin)
+                admin = u.Select('''select rolname from pg_authid 
+                                    where oid = 10''')[0];
+                dbs = u.Select('''select datname from pg_database
+                                  where datname != 'template0' ''')
+                for db in dbs:
+                    u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
                 u.Update('DROP USER ' + MIGRATIONUSER)
 
             if u.warnings:
