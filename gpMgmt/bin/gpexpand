@@ -1526,6 +1526,10 @@ UPDATE gp_distribution_policy
             cursor = dbconn.execSQL(self.conn, sql)
             self.conn.commit()
             logger.info('You can resume expansion by running gpexpand again')
+        elif table_expand_error:
+            sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
+            cursor = dbconn.execSQL(self.conn, sql)
+            self.conn.commit()            
         else:
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION COMPLETE', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
             cursor = dbconn.execSQL(self.conn, sql)
