@@ -449,6 +449,9 @@ class Command:
         
 
 class SQLCommand(Command):
+    """Base class for commands that execute SQL statements.  Classes
+    that inherit from SQLCOmmand should set cancel_conn to the pygresql 
+    connection they wish to cancel and check self.cancel_flag."""
     
     def __init__(self,name):
         self.name=name
@@ -458,12 +461,6 @@ class SQLCommand(Command):
     
     def run(self,validateAfter=False):
         raise ExecutionError("programmer error.  implementors of SQLCommand must implement run()")
-    
-    def set_results(self,results):
-        raise ExecutionError("TODO:  must implement")
-    
-    def get_results(self):
-        raise ExecutionError("TODO:  must implement")
     
     def interrupt(self):
         # No execution context for SQLCommands
@@ -477,10 +474,5 @@ class SQLCommand(Command):
         if self.cancel_conn:
             DB(self.cancel_conn).cancel()
     
-    def was_successful(self):
-        raise ExecutionError("TODO:  must implement")
-    
-    def validate(self):
-        raise ExecutionError("TODO:  must implement")
     
     
