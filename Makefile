@@ -669,7 +669,7 @@ mkgpcc:
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE)
 	rm -f $(INSTLOC)/greenplum-perfmon-*.zip
-	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/
+	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/..
 
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
