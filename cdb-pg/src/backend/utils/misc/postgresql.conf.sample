@@ -226,7 +226,7 @@
 #random_page_cost = 100			# same scale as above
 
 #cpu_tuple_cost = 0.01			# same scale as above
-#cpu_index_tuple_cost = 0.001		# same scale as above
+#cpu_index_tuple_cost = 0.005		# same scale as above
 #cpu_operator_cost = 0.0025		# same scale as above
 #gp_motion_cost_per_row = 0.0  # (same) (if 0, 2*cpu_tuple_cost is used)
 
