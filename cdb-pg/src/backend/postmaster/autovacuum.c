@@ -52,7 +52,8 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
-
+#include "utils/acl.h"
+#include "catalog/catalog.h"
 #ifdef WIN32
 typedef unsigned int uint;
 #endif
@@ -1045,7 +1046,21 @@ const char *autostats_cmdtype_to_string(AutoStatsCmdType cmdType);
 void autostats_issue_analyze(Oid relationOid) 
 {
 	VacuumStmt *analyzeStmt = NULL;
-	RangeVar   *relation = makeRangeVar(get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid));
+	RangeVar   *relation = NULL;
+
+	/**
+	 * If this user does not own the table, then auto-stats will not issue the analyze.
+	 */
+	if (!(pg_class_ownercheck(relationOid, GetUserId()) ||
+		  (pg_database_ownercheck(MyDatabaseId, GetUserId()) && !IsSharedRelation(relationOid))))
+	{
+		elog(DEBUG3, "Auto-stats did not issue ANALYZE on tableoid %d since the user does not have table-owner level permissions.", 
+						relationOid);
+
+		return;
+	}
+
+	relation = makeRangeVar(get_namespace_name(get_rel_namespace(relationOid)), get_rel_name(relationOid));
 	analyzeStmt = makeNode(VacuumStmt);
 	/* Set up command parameters */
 	analyzeStmt->vacuum = false;
