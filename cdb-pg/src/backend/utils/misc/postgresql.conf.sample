@@ -503,7 +503,7 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 
 gp_fault_action = readonly         # none for disabling Fault Tolerance feature,
                                      # other valid parameters are readonly, continue
-#gp_set_read_only = false           # sets the system read only
+#gp_set_read_only = off           # sets the system read only
 
 
 #---------------------------------------------------------------------------
