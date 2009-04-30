@@ -112,5 +112,6 @@ extern void partition_get_policies_attrs(PartitionNode *pn,
 										 GpPolicy *master_policy,
 							             List **cols);
 extern bool rel_needs_long_lock(Oid relid);
+extern bool rel_is_leaf_partition(Oid relid);
 
 #endif   /* TABLECMDS_H */

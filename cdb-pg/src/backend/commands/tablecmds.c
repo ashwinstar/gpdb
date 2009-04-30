@@ -11670,6 +11670,96 @@ rel_is_child_partition(Oid relid)
 	return found;
 }
 
+/*
+ * Is relid a leaf node of a partitioning hierarchy? If no, it does not follow
+ * that it is the root.
+ *
+ * To determine if it is a leaf or not, we need to find the depth of our
+ * partition and compare this to the maximum depth of the partition set itself.
+ * If they're equal, we have a leaf, otherwise, something else.
+ */
+bool
+rel_is_leaf_partition(Oid relid)
+{
+	Relation rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple tuple;
+	Oid paroid = InvalidOid;
+	int maxdepth = 0;
+	int mylevel = 0;
+	Oid partitioned_rel = InvalidOid; /* OID of the root table of the partition set */
+
+	/* 
+	 * Find the pg_partition_rule entry to see if this is a child at all and, if
+	 * so, to locate the OID for the pg_partition entry.
+	 */
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(rel, PartitionRuleParchildrelidIndexId, true,
+							  SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tuple))
+		paroid = ((Form_pg_partition_rule)GETSTRUCT(tuple))->paroid;
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	if (!OidIsValid(paroid))
+		return false;
+
+	rel = heap_open(PartitionRelationId, AccessShareLock);
+
+	/* now look up pg_partitions by OID */
+	ScanKeyInit(&key,
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(paroid));
+
+	scan = systable_beginscan(rel, PartitionOidIndexId, true,
+							  SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+
+	Insist(HeapTupleIsValid(tuple));
+
+	mylevel = ((Form_pg_partition)GETSTRUCT(tuple))->parlevel;
+	partitioned_rel = ((Form_pg_partition)GETSTRUCT(tuple))->parrelid;
+	systable_endscan(scan);
+
+	/* We have the depth, now we must lookup how deep the partition set is */
+	ScanKeyInit(&key,
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(partitioned_rel));
+
+	scan = systable_beginscan(rel, PartitionParrelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	/* 
+	 * Of course, we could just maxdepth++ but this seems safer -- we don't have
+	 * to worry about the starting depth being 0, 1 or something else.
+	 */
+	while ((tuple = systable_getnext(scan)))
+	{
+		/* not interested in templates */
+		if (((Form_pg_partition)GETSTRUCT(tuple))->paristemplate == false)
+		{
+			int depth = ((Form_pg_partition)GETSTRUCT(tuple))->parlevel;
+			maxdepth = Max(maxdepth, depth);
+		}
+	}
+	
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	return maxdepth == mylevel;
+}
+
 static Oid
 get_opfuncid_by_opname(List *opname, Oid lhsid, Oid rhsid)
 {
