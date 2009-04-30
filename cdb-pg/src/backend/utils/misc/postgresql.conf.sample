@@ -248,7 +248,7 @@
 
 # - Where to Log -
 
-#log_filename = 'gpdb-%Y-%m-%d.csv' # Log file name pattern.
+#log_filename = 'gpdb-%Y-%m-%d_%H%M%S.csv' # Log file name pattern.
 					# Can include strftime() escapes
 #log_truncate_on_rotation = off # If on, any existing log file of the same
 					# name as the new log file will be
