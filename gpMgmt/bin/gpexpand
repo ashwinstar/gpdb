@@ -398,7 +398,6 @@ class GpExpandStatus():
         """Sets the current status.  gpexpand status must be set in
            proper order.  Any out of order status result in an
            InvalidStatusError exception"""
-        #TODO:  have it display a string.   
         self.logger.debug("Transitioning from %s to %s" % (self._status[-1],status))
         
         if not self._fp:
@@ -498,15 +497,38 @@ class SegmentTemplate:
         self.masterDataDirectory = masterDataDirectory
         self.schema_tar_file = schemaTarFile
         self.maxDbId = self.gparray.get_max_dbid()
-        # Reduce multiple interfaces to common hostname
-        self.hosts = []
-        for seg in self.gparray.getExpansionSegDbList():
-            hostnameCmd = Hostname('gpexpand associating hostnames with segments', ctxt=REMOTE, remoteHost=seg.hostname)
-            hostnameCmd.run(validateAfter=True)            
-            if not hostnameCmd.get_hostname() in self.hosts:
-                self.logger.debug('Adding %s to host list' % hostnameCmd.get_hostname())
-                self.hosts.append(hostnameCmd.get_hostname())
-    
+        
+        hosts = []
+        for seg in gparray.getExpansionSegDbList():
+            hosts.append(seg.get_hostname())
+        self.hosts = SegmentTemplate.consolidate_hosts(pool, hosts)
+        logger.debug('Hosts: %s' % self.hosts)
+
+    @staticmethod
+    def consolidate_hosts(pool, hosts):
+        tmpHosts = {}
+        consolidatedHosts = []
+        
+        for host in hosts:
+            tmpHosts[host] = 0
+             
+        for host in tmpHosts.keys():
+            hostnameCmd = Hostname('gpexpand associating hostnames with segments', ctxt=REMOTE, remoteHost=host)
+            pool.addCommand(hostnameCmd)
+
+        pool.join()
+            
+        finished_cmds = pool.getCompletedItems()
+
+        for cmd in finished_cmds:
+            if not cmd.was_successful():
+                raise SegmentTemplateError(cmd.get_results())
+            if cmd.get_hostname() not in consolidatedHosts:
+                logger.debug('Adding %s to host list' % cmd.get_hostname())
+                consolidatedHosts.append(cmd.get_hostname())
+
+        return consolidatedHosts
+
     
     def build_segment_template(self):
         """Builds segment template tar file"""
@@ -573,6 +595,7 @@ class SegmentTemplate:
     def _distribute_tarfile(self):  
         """Distributes template tar file to hosts"""
         for host in self.hosts:
+            logger.debug('Copying tar file to %s' % host)
             cpCmd = RemoteCopy('gpexpand distribute tar file to new hosts', self.schema_tar_file, host, '.')
             self.pool.addCommand(cpCmd)
             
@@ -672,25 +695,27 @@ class SegmentTemplate:
 
     
     @staticmethod
-    def cleanup_build_new_segments(pool, tarFile, gparray, removeDataDirs=False):
+    def cleanup_build_new_segments(pool, tarFile, gparray, hosts=None, removeDataDirs=False):
         """Cleans up the work done by build_new_segments.  Deletes remote tar files and
         and removes remote data directories"""
-
-        hosts = []
         commandsSent = {}
-        
-        for seg in gparray.getExpansionSegDbList():
-            if not commandsSent.has_key(seg.hostname):
-                commandsSent[seg.hostname] = 0
+
+        if not hosts:
+            hosts = []
+            for seg in gparray.getExpansionSegDbList():
+                hosts.append(seg.get_hostname())
                 
-            hostnameCmd = Hostname('gpexpand cleanup new segments associate hostnames with segments', 
-                                   ctxt=REMOTE, remoteHost=seg.hostname)
-            hostnameCmd.run(validateAfter=True)
-                        
-            if not hostnameCmd.get_hostname() in hosts:
-                hosts.append(hostnameCmd.get_hostname())
+        # Remove template tar file
+        for host in hosts:
+            rmCmd = RemoveFiles('gpexpand remove segment template file on host: %s' % host, 
+                                tarFile, ctxt=REMOTE, remoteHost=host)
+            pool.addCommand(rmCmd)            
+        
+        if removeDataDirs:        
+            for seg in gparray.getExpansionSegDbList():
+                if not commandsSent.has_key(seg.hostname):
+                    commandsSent[seg.hostname] = 0
             
-            if removeDataDirs:
                 rmCmd = RemoveFiles('gpexpand remove new segment data directory: %s:%s' % (seg.hostname, seg.datadir), 
                                     seg.datadir, ctxt=REMOTE, remoteHost=seg.hostname)
                 if commandsSent[seg.hostname] != 0 and commandsSent[seg.hostname] % 8 == 0:
@@ -699,11 +724,6 @@ class SegmentTemplate:
                 
                 commandsSent[seg.hostname] += 1
                 pool.addCommand(rmCmd)
-
-        for host in hosts:
-            rmCmd = RemoveFiles('gpexpand remove segment template file on host: %s' % host, 
-                                tarFile, ctxt=REMOTE, remoteHost=host)
-            pool.addCommand(rmCmd)            
             
         pool.join()
         pool.check_results()
@@ -714,7 +734,7 @@ class SegmentTemplate:
 
         self.logger.info('Cleaning up temporary template files')
         SegmentTemplate.cleanup_build_segment_template(self.schema_tar_file, self.tempDir)
-        SegmentTemplate.cleanup_build_new_segments(self.pool, self.schema_tar_file, self.gparray)
+        SegmentTemplate.cleanup_build_new_segments(self.pool, self.schema_tar_file, self.gparray, self.hosts)
 
 
 class gpexpand:
@@ -870,7 +890,7 @@ class gpexpand:
                 self.logger.info('Rolling back building of new segments')
                 self.read_input_file(self.statusLogger.get_input_filename())
                 SegmentTemplate.cleanup_build_new_segments(self.pool, self.statusLogger.get_tar_filename(), 
-                                                           self.gparray, True)
+                                                           self.gparray, removeDataDirs=True)
 
             elif status[0] == 'UPDATE_OLD_SEGMENTS_STARTED':
                 self.logger.info('Rolling back update of original segments')
@@ -879,6 +899,7 @@ class gpexpand:
             elif status[0] == 'UPDATE_MASTER_STARTED':
                 self.logger.info('Rolling back master update')
                 self.restore_master()
+                self.gparray = createGPDBFromDB(dburl,utility=True)
 
             elif status[0] == 'SETUP_EXPANSION_SCHEMA_STARTED':
                 cleanSchema = True
@@ -959,7 +980,7 @@ class gpexpand:
             raise ExpansionError('Input file %s not found' % options.filename)
         
         try:
-            gparray.validateExpansionSegs()
+            self.gparray.validateExpansionSegs()
         except Exception, e:
             raise ExpansionError('Invalid input file: %s' % e)
         
@@ -1679,7 +1700,7 @@ class ExpandTable():
         (schema_name, table_name) = self.fq_name.split('.')
         
         logger.info("Distribution policy for table %s is '%s' " % (self.fq_name,foo))
-        logger.info("Storage options for table %s is %s" % (self.fq_name, self.storage_options))
+        #logger.info("Storage options for table %s is %s" % (self.fq_name, self.storage_options))
         
         if foo == "" or foo == "None" or foo is None:
             sql = 'ALTER TABLE ONLY "%s"."%s" SET WITH(REORGANIZE=TRUE%s) DISTRIBUTED RANDOMLY' % (schema_name, table_name,new_storage_options)
