@@ -312,6 +312,10 @@ class GPUpgrade:
             if self.masterport == None:
                 raise UpgradeError('Could not determine master port from ' + conf)
 
+            self.sock_dir = getconf('unix_socket_directory')
+            if not self.sock_dir:
+                self.sock_dir = '/tmp/'
+
             # Verify that (max_connections == superuser_reserved_connections)
             # max_conn = getconf('max_connections')
             # reserved = getconf('superuser_reserved_connections')
@@ -799,17 +803,29 @@ class GPUpgrade:
         conn = None
         try:
             self.Log('DEBUG', "making database connection: user = %s, "
-                     "dbname = %s port = %i" % (user, db, port))
+                     "dbname = %s port = %i, unix socket connection" % (user, db, port))
             conn = pg8000.Connection(user=user,
-                                     host='localhost',
+                                     unix_sock=os.path.join(self.sock_dir, '.s.PGSQL.%i' % port),
                                      database=db, 
                                      options=options,
                                      port=port,
                                      socket_timeout=5000)
         except Exception, e:
-            self.Log('FATAL', 'Could not establish connection to ' +
+            # could be an issue with using UNIX sockets, try a host based
+            # connection
+            try:
+                self.Log('DEBUG', "could not connect using unix socket, trying "
+                         "host based connection")
+                conn = pg8000.Connection(user=user,
+                                         host='localhost',
+                                         database=db, 
+                                         options=options,
+                                         port=port,
+                                         socket_timeout=5000)
+            except Exception, e:
+                self.Log('FATAL', 'Could not establish connection to ' +
                               'database "%s" port %d' % (db, port))
-            raise ConnectionError(str(e))
+                raise ConnectionError(str(e))
 
         try:
             conn.execute(qry)
@@ -1414,6 +1430,10 @@ class GPUpgrade:
         else:
             self.upgrade = False    # Downgrade
             raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" % newversion[:3])
+
+        if self.upgrade and newversion[:3] == "3.2":
+            raise UpgradeError(
+"""Upgrade from %s to %s not supported. Target version should be Greenplum Database 3.3""" % (reverse_canon_ver(oldversion), reverse_canon_ver(newversion)))
 
         if not self.method:
             oldvers = ["3.1"]
