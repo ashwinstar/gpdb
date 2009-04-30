@@ -160,15 +160,6 @@ CondSetMPPReadonly(void)
 	}
 }
 
-/*
- * Re-Connect segDB
- */
-static bool
-FtsReConnectDB(void *failedDB)
-{
-	return reconnectSegDB(failedDB);
-}
-
 static void
 FtsNotifyProber(void)
 {
@@ -1055,34 +1046,20 @@ QDMirroringDisabledReasonString(void)
 void
 FtsHandleNetFailure(SegmentDatabaseDescriptor ** segDB, int numOfFailed)
 {
-	int i;
-	SegmentDatabaseDescriptor *failedDB;
+	elog(LOG, "FtsHandleNetFailure: numOfFailed %d", numOfFailed);
 
-	elog(DEBUG3, "FtsHandleNetFailure: numOfFailed %d", numOfFailed);
-
-	for (i = 0; i < numOfFailed; i++)
+	/* we have a real failure, if we're supposed to shutdown,
+	 * that's all we need to do. Otherwise, we need to continue
+	 * scanning and connecting as long as we have more failures */
+	if (*ftsAction == FTS_SHUTDOWN)
 	{
-		failedDB = segDB[i];
-
-		if (FtsReConnectDB(failedDB))
-			continue;
-
-		if (!isFTSEnabled())
-			continue;
-
-		/* we have a real failure, if we're supposed to shutdown,
-		 * that's all we need to do. Otherwise, we need to continue
-		 * scanning and connecting as long as we have more failures */
-		if (*ftsAction == FTS_SHUTDOWN)
-		{
-			elog(LOG, "MPP detects segment failures, system is shut down");
-			CdbShutdown();
-			break;
-		}
-		else
-		{
-			FtsReConfigureMPP(true);
-		}
+		elog(LOG, "MPP detects segment failures, system is shut down");
+		CdbShutdown();
+		/* not reached */
+	}
+	else
+	{
+		FtsReConfigureMPP(true);
 	}
 
 	elog(ERROR, "MPP detected %d segment failures, system is reconnected", numOfFailed);
