@@ -2656,6 +2656,8 @@ recoverTM(void)
 	elog(LOG,"DTM Started");
 }
 
+static bool deferredRecoveryActive=false;
+
 /*
  * When running in readonly-mode, we may wind up in a state where we've deferred
  * recovery waiting for a segment to come online.
@@ -2663,12 +2665,19 @@ recoverTM(void)
 void
 cdbtm_performDeferredRecovery(void)
 {
+	if (deferredRecoveryActive)
+		return;
+
 	if (*shmDtmRecoveryDeferred)
 	{
 		getTmLock();
 		if (*shmDtmRecoveryDeferred)
 		{
+			deferredRecoveryActive=true;
+
 			recoverInDoubtTransactions();
+
+			deferredRecoveryActive=false;
 
 			*shmDtmRecoveryDeferred = false;
 			elog(NOTICE,"Releasing gangs for deferred recovery.");
