@@ -193,3 +193,90 @@ dotnode(void *node, const char *fname)
 	fprintf(ofile, "}\n");
 	fclose(ofile);
 }
+
+/* 
+ * dump a tupledesc
+ */
+void dump_tupdesc(TupleDesc tupdesc, const char *fname)
+{
+	FILE *ofile = fopen(fname, "w+");
+    int i;
+
+    fprintf(ofile, "TupleDesc: natts %d, hasoid %s\n", tupdesc->natts, tupdesc->tdhasoid ? "true" : "false");
+    fprintf(ofile, "Name\t\tattlen\tattbyval\tattalign\n");
+    fprintf(ofile, "==================================\n");
+    for (i=0; i<tupdesc->natts; ++i)
+    {
+        Form_pg_attribute attr = tupdesc->attrs[i]; 
+        fprintf(ofile, "%s, %d, %s, %c\n", 
+                    attr->attname.data, attr->attlen,
+                    attr->attbyval ? "true" : "false",
+                    attr->attalign
+               );
+    }
+    
+    fclose(ofile);
+}
+
+/* 
+ * dump a memtuple binding 
+ */
+void dump_mt_bind(MemTupleBinding *mt_bind, const char *fname)
+{
+    FILE *ofile = fopen(fname, "w+");
+    int i;
+
+    fprintf(ofile, "Mt_bind: column_align %d, nbm_extra_size %d\n",
+            mt_bind->column_align, mt_bind->null_bitmap_extra_size);
+    fprintf(ofile, "TupleDesc: natts %d, hasoid %s\n", 
+                    mt_bind->tupdesc->natts, 
+                    mt_bind->tupdesc->tdhasoid ? "true" : "false");
+
+    fprintf(ofile, " Small binding: vastart %d\n", mt_bind->bind.var_start);
+    fprintf(ofile, "Name\t\tattlen\tattbyval\tattalign\toffset\tlen\tflag\tnb\tnm\tns\n");
+    fprintf(ofile, "==================================\n");
+    for (i=0; i<mt_bind->tupdesc->natts; ++i)
+    {
+        Form_pg_attribute attr = mt_bind->tupdesc->attrs[i]; 
+
+        fprintf(ofile, "%s, %d, %s, %c, %d, %d, %d, %d, %d, %d\n", 
+                    attr->attname.data, attr->attlen,
+                    attr->attbyval ? "true" : "false",
+                    attr->attalign,
+                    mt_bind->bind.bindings[i].offset,
+                    mt_bind->bind.bindings[i].len, 
+                    mt_bind->bind.bindings[i].flag, 
+                    mt_bind->bind.bindings[i].null_byte, 
+                    mt_bind->bind.bindings[i].null_mask, 
+                    mt_bind->bind.null_saves[i]
+               );
+    }
+    
+    fprintf(ofile, "\n\n Large binding: vastart %d\n", mt_bind->large_bind.var_start);
+    fprintf(ofile, "Name\t\tattlen\tattbyval\tattalign\toffset\tlen\tflag\tnb\tnm\tns\n");
+    fprintf(ofile, "==================================\n");
+    for (i=0; i<mt_bind->tupdesc->natts; ++i)
+    {
+        Form_pg_attribute attr = mt_bind->tupdesc->attrs[i]; 
+
+        fprintf(ofile, "%s, %d, %s, %c, %d, %d, %d, %d, %d, %d\n", 
+                    attr->attname.data, attr->attlen,
+                    attr->attbyval ? "true" : "false",
+                    attr->attalign,
+                    mt_bind->large_bind.bindings[i].offset,
+                    mt_bind->large_bind.bindings[i].len, 
+                    mt_bind->large_bind.bindings[i].flag, 
+                    mt_bind->large_bind.bindings[i].null_byte, 
+                    mt_bind->large_bind.bindings[i].null_mask, 
+                    mt_bind->large_bind.null_saves[i]
+               );
+    }
+}
+    
+
+    
+
+                        
+    
+    
+    
