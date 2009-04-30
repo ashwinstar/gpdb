@@ -7,7 +7,7 @@ SYNOPSIS
 ******************************************************
 
 gpexpand [-i <configuration_file>] [-f <hosts_file>] [-d <[hh][mm[ss]]]
-[ -c] [-e <YYYY-MM-DD hh:mm:ss>] [-h] [-b <batch_size>] 
+[ -c] [-e <YYYY-MM-DD hh:mm:ss>] [-h] [-B <batch_size>] [-a]
 [-D <database_name>][-r] [-n <parallel_processes>]
 
 gpexpand -? | -v
@@ -23,8 +23,7 @@ Prerequisites:
   user account, and exchanging SSH keys. 
 
 * Enough disk space on your segment hosts to temporarily hold a copy of your 
-  largest database schema (excluding indexes). The utility will verify that you 
-  have the required free disk space before it begins the expansion. 
+  largest table 
 
 
 
@@ -38,14 +37,14 @@ and redistribution.
 In the initialization phase, gpexpand runs with an input 
 file that specifies data directories, dbid values, and other characteristics 
 of the new segments. You can create the input file manually, or by following 
-the prompts in an interactive interview triggered by running the utility with 
-no options. 
+the prompts in an interactive interview. 
 
-If you choose to create the file using the interactive interview (recommended), 
-you can optionally specify a file containing a list of expansion hosts with 
--f <hosts_file>.  This may be necessary if your platform or command shell limits 
-the length of the list of hostnames prompted in the interview.  The utility will
-add these hosts to the input file as required.
+If you choose to create the input file using the interactive interview, 
+you can optionally specify a file containing a list of expansion hosts. 
+This host file has the same format as the file used to specify hosts with 
+gpssh-exkeys,so you can use the same file. If your platform or command 
+shell limits the length of the list of hostnames that you can type when 
+prompted in the interview, specifying the hosts with -f may be mandatory. 
 
 In either case, you begin initialization by running gpexpand -i <input_file>.   
 
@@ -100,8 +99,17 @@ Ending date and time for the expansion session.
 
 Specify the expansion configuration file.
 
+-f <hosts_file>
 
--b <batch_size>
+Specifies the name of a file that contains a list of hosts that will participate in 
+the SSH key exchange. Each line of the file must contain a single host name. 
+
+This file can contain hostnames with or without interfaces specified. The gpexpand 
+utility handles either case, adding interface numbers to end of the hostname if the 
+original nodes are configured with multiple interfaces.
+
+
+-B <batch_size>
 
 The number of commands to send to a given host before making a one-second pause. 
 Default is 8.  Valid values are 1-128.
@@ -118,7 +126,18 @@ such as 'ssh_exchange_identification: Connection closed by remote host.'
 
 -n <parallel_processes>
 
-The number of tables to redistribute simultaneously. Valid values are 1 - 128.
+The number of tables to redistribute simultaneously. Valid values are 1 - 16.
+
+Each table redistribution process requires two database connections: one to alter 
+the table, and another to update the table’s status in the expansion schema. 
+Before increasing -n, check the current value of the server configuration parameter 
+max_connections and make sure the maximum connection limit is not exceeded
+
+
+-a (no analyze)
+
+At the completion of each table redistribution operation, gpexpand runs ANALYZE to 
+update the table statistics.  To prevent statistics collection, specify -a.  
 
 
 -c (clean)
