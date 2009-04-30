@@ -3220,7 +3220,23 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			{
-				if (rel_is_partitioned(RelationGetRelid(rel)))
+				bool do_recurse = false;
+				if (Gp_role == GP_ROLE_DISPATCH)
+				{
+					if (rel_is_partitioned(RelationGetRelid(rel)))
+					{
+						do_recurse = true;
+						/* tell QE to recurse */
+						cmd->def = (Node *)makeInteger(1);
+					}
+				}
+				else if (Gp_role == GP_ROLE_EXECUTE)
+				{
+					if (cmd->def && intVal(cmd->def))
+						do_recurse = true;
+				}
+
+				if (do_recurse)
 					ATSimpleRecursion(wqueue, rel, cmd, recurse);
 
 				pass = AT_PASS_MISC;
