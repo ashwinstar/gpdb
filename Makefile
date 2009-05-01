@@ -128,7 +128,7 @@ ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 INLINE_FLAGS=-finline-limit=1800
 
-ifeq (sol10_x86_64, ${BLD_ARCH_HOST})
+ifeq "$(BLD_ARCH)" "sol10_x86_64"
 	TRACE_CFG_FLAG=--enable-dtrace DTRACEFLAGS=-64
 	TRACE_GCC_FLAG=-m64
 else
