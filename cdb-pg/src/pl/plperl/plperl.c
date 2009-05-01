@@ -1346,7 +1346,10 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		 * because SPI_finish would free it).
 		 ************************************************************/
 		if (SPI_finish() != SPI_OK_FINISH)
+		{
+			SvREFCNT_dec(call_data->perlret);
 			elog(ERROR, "SPI_finish() failed");
+		}
 		current_call_data = NULL;
 
 		/* 
@@ -1360,6 +1363,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 				 SvTYPE(SvRV(call_data->perlret)) != SVt_PVAV))
 			{
 				/* Not an arrayref */
+				SvREFCNT_dec(call_data->perlret);
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("set-returning PL/Perl function must return "
@@ -1384,6 +1388,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			perlret = *svp;
 			if (!SvOK(perlret))
 			{
+				SvREFCNT_dec(call_data->perlret);
 				ereport(ERROR,
 						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 						 errmsg("function returning set of rows cannot return null value")));
@@ -1415,6 +1420,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		if (!SvOK(perlret) || SvTYPE(perlret) != SVt_RV ||
 			SvTYPE(SvRV(perlret)) != SVt_PVHV)
 		{
+			SvREFCNT_dec(call_data->perlret);
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("composite-returning Perl function "
@@ -1423,6 +1429,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 
 		if (!call_data->attinmeta)
 		{
+			SvREFCNT_dec(call_data->perlret);
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("function returning record called in context "
@@ -1441,8 +1448,6 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			SvTYPE(SvRV(perlret)) == SVt_PVAV)
 		{
 			SV *array_ret = array_ret = plperl_convert_to_pg_array(perlret);
-			if (!call_data->prodesc->fn_retisset)
-				SvREFCNT_dec(perlret);
 			perlret = array_ret;
 		}
 
@@ -1451,6 +1456,9 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		retval = InputFunctionCall(&call_data->prodesc->result_in_func, val,
 								   call_data->prodesc->result_typioparam, -1);
 	}
+
+	if (!call_data->prodesc->fn_retisset)
+		SvREFCNT_dec(perlret);
 
 	restore_context(trusted_context);
 
