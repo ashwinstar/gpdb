@@ -3722,7 +3722,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 touch_files(new_files)
         
             # run postgres in single user mode, feed in scripts
-            cmd = ' '.join(['postgres', '--single', '-O', '-P', 
+            cmd = ' '.join(['postgres', '--single', '-O',
                             '-c', 'gp_session_role=utility',
                             '-c', 'exit_on_error=true',
                             '-E', '-D', path, dbname])
