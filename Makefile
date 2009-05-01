@@ -469,8 +469,9 @@ BLD_OS=Windows
 else
 BLD_OS:=$(shell uname -s)
 endif
-Linux_LOADERS_LIBS=libz.so*
-SunOS_LOADERS_LIBS=libgcc_s.so.1 libz.so*
+Darwin_LOADERS_LIBS=libcrypto.so.* libssl.so.*
+Linux_LOADERS_LIBS=libcrypto.so* libssl.so.* libz.so*
+SunOS_LOADERS_LIBS=libcrypto.so* libssl.so.* libgcc_s.so.1 libz.so*
 define tmpLOADERS_FILESET_LIB
 	$($(BLD_OS)_LOADERS_LIBS)
 endef
