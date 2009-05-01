@@ -3106,3 +3106,25 @@ START ('2009-04-29 07:00:00'::timestamp) INCLUSIVE END ('2009-04-29
 08:00:00'::timestamp) EXCLUSIVE INTO ( PARTITION P2009042907 ,
 PARTITION st_default );
 drop table sg_cal_event_silvertail_hour;
+
+-- Make sure we inherit master's storage settings
+create table foo (i int, j int, k text)
+with (appendonly = true, compresslevel = 5)
+partition by range(j) (start(1) end(10) every(1), default partition def);
+insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
+alter table foo split default partition start (10) end(20) 
+into (partition p10_20, partition def);
+select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
+select count(distinct k) from foo;
+drop table foo;
+
+create table foo (i int, j int, k text)
+partition by range(j) (start(1) end(10) every(1), default partition def
+with(appendonly = true));
+insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
+alter table foo split default partition start (10) end(20) 
+into (partition p10_20, partition def);
+select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
+select reloptions from pg_class where relname = 'foo_1_prt_def';
+select count(distinct k) from foo;
+drop table foo;

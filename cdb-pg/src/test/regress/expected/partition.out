@@ -6967,3 +6967,76 @@ NOTICE:  dropped partition "st_default" for relation "sg_cal_event_silvertail_ho
 NOTICE:  CREATE TABLE will create partition "sg_cal_event_silvertail_hour_1_prt_p2009042907" for table "sg_cal_event_silvertail_hour"
 NOTICE:  CREATE TABLE will create partition "sg_cal_event_silvertail_hour_1_prt_st_default" for table "sg_cal_event_silvertail_hour"
 drop table sg_cal_event_silvertail_hour;
+-- Make sure we inherit master's storage settings
+create table foo (i int, j int, k text)
+with (appendonly = true, compresslevel = 5)
+partition by range(j) (start(1) end(10) every(1), default partition def);
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_def" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_10" for table "foo"
+insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
+alter table foo split default partition start (10) end(20) 
+into (partition p10_20, partition def);
+NOTICE:  exchanged partition "def" of relation "foo" with relation "pg_temp_458208"
+NOTICE:  dropped partition "def" for relation "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p10_20" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_def" for table "foo"
+select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
+                             reloptions                              
+---------------------------------------------------------------------
+ {appendonly=true,blocksize=32768,compresslevel=5,compresstype=zlib}
+(1 row)
+
+select count(distinct k) from foo;
+ count 
+-------
+     1
+(1 row)
+
+drop table foo;
+create table foo (i int, j int, k text)
+partition by range(j) (start(1) end(10) every(1), default partition def
+with(appendonly = true));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_def" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_10" for table "foo"
+insert into foo select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
+alter table foo split default partition start (10) end(20) 
+into (partition p10_20, partition def);
+NOTICE:  exchanged partition "def" of relation "foo" with relation "pg_temp_458752"
+NOTICE:  dropped partition "def" for relation "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p10_20" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_def" for table "foo"
+select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
+ reloptions 
+------------
+ 
+(1 row)
+
+select reloptions from pg_class where relname = 'foo_1_prt_def';
+            reloptions             
+-----------------------------------
+ {appendonly=true,blocksize=32768}
+(1 row)
+
+select count(distinct k) from foo;
+ count 
+-------
+     1
+(1 row)
+
+drop table foo;

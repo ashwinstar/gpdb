@@ -9350,6 +9350,45 @@ relopts_for_ctas(Relation rel)
 	return out;
 }
 
+static List *
+stdoptions_to_list(Relation rel, StdRdOptions *opts)
+{
+	List *wo = NIL;
+
+	/* WITH options */
+	if (rel->rd_rel->relhasoids)
+		wo = lappend(wo, defWithOids(true));
+	if (opts)
+	{
+		if (!opts->appendonly)
+		{
+			if (opts->fillfactor)
+					wo = lappend(wo, makeDefElem("fillfactor",
+												 (Node *)makeInteger(opts->fillfactor)));
+
+		}
+		else
+		{
+			wo = lappend(wo, makeDefElem("appendonly",
+										 (Node *)makeString("true")));
+			if (opts->blocksize)
+				wo = lappend(wo, makeDefElem("blocksize",
+											 (Node *)makeInteger(opts->blocksize)));
+			if (opts->compresslevel)
+				wo = lappend(wo, makeDefElem("compresslevel",
+											 (Node *)makeInteger(opts->compresslevel)));
+			if (opts->compresstype)
+				wo = lappend(wo, makeDefElem("compresstype",
+											 (Node *)makeString(pstrdup(opts->compresstype))));
+
+			if (opts->checksum)
+				wo = lappend(wo, makeDefElem("checksum",
+											 (Node *)makeString("true")));
+		}
+	}
+	return wo;
+}
+
 /*
  * Build:
  *
@@ -9392,38 +9431,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 								* tables is added to the parent!
 								*/
 	s->fromClause = list_make1(from_tbl);
-
-	/* WITH options */
-	if (rel->rd_rel->relhasoids)
-		wo = lappend(wo, defWithOids(true));
-	if (opts)
-	{
-		if (!opts->appendonly)
-		{
-			if (opts->fillfactor)
-					wo = lappend(wo, makeDefElem("fillfactor",
-												 (Node *)makeInteger(opts->fillfactor)));
-
-		}
-		else
-		{
-			wo = lappend(wo, makeDefElem("appendonly",
-										 (Node *)makeString("true")));
-			if (opts->blocksize)
-				wo = lappend(wo, makeDefElem("blocksize",
-											 (Node *)makeInteger(opts->blocksize)));
-			if (opts->compresslevel)
-				wo = lappend(wo, makeDefElem("compresslevel",
-											 (Node *)makeInteger(opts->compresslevel)));
-			if (opts->compresstype)
-				wo = lappend(wo, makeDefElem("compresstype",
-											 (Node *)makeString(pstrdup(opts->compresstype))));
-
-			if (opts->checksum)
-				wo = lappend(wo, makeDefElem("checksum",
-											 (Node *)makeString("true")));
-		}
-	}
+	wo = stdoptions_to_list(rel, opts);
 
 	pre_built = prebuild_temp_table(rel, tmprel, dist_clause, wo);
 	if (pre_built)
@@ -17426,6 +17434,8 @@ ATPExecPartSplit(Relation rel,
 	HeapScanDesc heapscan = NULL;
 	AppendOnlyScanDesc aoscan = NULL;
 	MemoryContext oldCxt;
+	AppendOnlyInsertDesc aoinsertdesc_a = NULL;
+	AppendOnlyInsertDesc aoinsertdesc_b = NULL;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -17459,6 +17469,9 @@ ATPExecPartSplit(Relation rel,
 		int default_pos = 0;
 		Oid rel_to_drop = InvalidOid;
 		AlterPartitionId *aapid = NULL; /* just for alter partition pids */
+		Relation existrel;
+		List *existstorage_opts;
+		StdRdOptions *existopts;
 
 		/* Get target meta data */
 		prule = get_part_rule(rel, pid, true, true,
@@ -17635,6 +17648,11 @@ ATPExecPartSplit(Relation rel,
 		else if (prule->topRule->parisdefault)
 			into_exists = 2;
 
+		existrel = heap_open(prule->topRule->parchildrelid, NoLock);
+		existopts = relopts_for_ctas(existrel);
+		existstorage_opts = stdoptions_to_list(existrel, existopts);
+		heap_close(existrel, NoLock);
+
 		/* 1) Create temp table */
 		rv = makeRangeVar(nspname, relname);
 		inh->relation = copyObject(rv);
@@ -17806,6 +17824,26 @@ ATPExecPartSplit(Relation rel,
 			AlterPartitionId *intopid = NULL;
 			PartitionElem *pelem = makeNode(PartitionElem);
 			Oid newchildrelid = InvalidOid;
+			AlterPartitionCmd *storenode = NULL;
+			List *intostorage_opts;
+			StdRdOptions *intoopts;
+
+			/* use storage options for existing rel */
+			if (into_exists == i)
+				intostorage_opts = existstorage_opts;
+			else
+			{
+				intoopts = relopts_for_ctas(rel);
+				intostorage_opts = stdoptions_to_list(rel, intoopts);
+			}
+
+			if (intostorage_opts)
+			{
+				storenode = makeNode(AlterPartitionCmd);
+				storenode->arg1 = (Node *)intostorage_opts;
+				storenode->location = -1;
+			}
+			pelem->storeAttr = (Node *)storenode;
 
 			if (pc2)
 			{
@@ -18181,7 +18219,7 @@ ATPExecPartSplit(Relation rel,
 
 	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
-	while(1)
+	while (true)
 	{
 		ExprContext *econtext = GetPerTupleExprContext(estate);
 
@@ -18217,17 +18255,48 @@ ATPExecPartSplit(Relation rel,
 			if (ExecQual((List *)achk, econtext, true))
 			{
 				/* insert into intoa */
-				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+				if (intoa->rd_rel->relstorage == RELSTORAGE_AO)
+				{
+					MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
 
-				simple_heap_insert(intoa, tuple);
+					if (!aoinsertdesc_a)
+					{
+						MemoryContextSwitchTo(oldCxt);
+						aoinsertdesc_a = appendonly_insert_init(intoa, RESERVED_SEGNO);
+						MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+					}
+
+					appendonly_insert(aoinsertdesc_a, mtuple);
+				}
+				else
+				{
+					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+
+					simple_heap_insert(intoa, tuple);
+				}
 			}
 			else
 			{
 				/* belongs in intob */
-				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+				if (intob->rd_rel->relstorage == RELSTORAGE_AO)
+				{
+					MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
 
-				simple_heap_insert(intob, tuple);
+					if (!aoinsertdesc_b)
+					{
+						MemoryContextSwitchTo(oldCxt);
+						aoinsertdesc_b = appendonly_insert_init(intob, RESERVED_SEGNO);
+						MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+					}
 
+					appendonly_insert(aoinsertdesc_b, mtuple);
+				}
+				else
+				{
+					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+
+					simple_heap_insert(intob, tuple);
+				}
 			}
 		}
 		else
@@ -18251,6 +18320,11 @@ ATPExecPartSplit(Relation rel,
 		}
 		ResetExprContext(econtext);
 	}
+
+	if (aoinsertdesc_a)
+		appendonly_insert_finish(aoinsertdesc_a);
+	if (aoinsertdesc_b)
+		appendonly_insert_finish(aoinsertdesc_b);
 
 	MemoryContextSwitchTo(oldCxt);
 	ExecDropSingleTupleTableSlot(tts);
