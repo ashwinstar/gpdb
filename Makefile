@@ -469,7 +469,7 @@ BLD_OS=Windows
 else
 BLD_OS:=$(shell uname -s)
 endif
-Darwin_LOADERS_LIBS=libcrypto.so.* libssl.so.*
+Darwin_LOADERS_LIBS=libcrypto.*.dylib libssl.*.dylib
 Linux_LOADERS_LIBS=libcrypto.so* libssl.so.* libz.so*
 SunOS_LOADERS_LIBS=libcrypto.so* libssl.so.* libgcc_s.so.1 libz.so*
 define tmpLOADERS_FILESET_LIB
