@@ -3661,7 +3661,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						l1 = ri->partRangeVal;
 					}
 
-					if (IsA(linitial(l1), A_Const))
+					if (IsA(linitial(l1), A_Const) || IsA(linitial(l1), TypeCast) ||
+						IsA(linitial(l1), FuncExpr) || IsA(linitial(l1), OpExpr))
 					{
 						List *new = NIL;
 						ListCell *lc;
@@ -3672,6 +3673,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						l1 = new;
 						rollup_vals = true;
 					}
+					else
+						Insist(IsA(linitial(l1), List));
 
 					foreach(lc, l1)
 					{

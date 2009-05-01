@@ -3078,3 +3078,31 @@ alter table rank_1_prt_1 alter column i type bigint;
 alter table rank_1_prt_1 set without oids;
 alter table rank_1_prt_1 drop constraint rank_1_prt_1_check;
 drop table rank, rank2;
+
+-- MPP-5831, type cast in SPLIT
+CREATE TABLE sg_cal_event_silvertail_hour (
+caldt date NOT NULL,
+calhr smallint NOT NULL,
+ip character varying(128),
+transactionid character varying(32),
+transactiontime timestamp(2) without time zone
+)
+WITH (appendonly=true, compresslevel=5)
+distributed by (ip) PARTITION BY RANGE(transactiontime)
+(
+
+PARTITION "P2009041607"
+START ('2009-04-16 07:00:00'::timestamp without time zone)
+END ('2009-04-16 08:00:00'::timestamp without time zone),
+PARTITION "P2009041608"
+START ('2009-04-16 08:00:00'::timestamp without time zone)
+END ('2009-04-16 09:00:00'::timestamp without time zone),
+DEFAULT PARTITION st_default
+
+);
+
+ALTER TABLE SG_CAL_EVENT_SILVERTAIL_HOUR SPLIT DEFAULT PARTITION
+START ('2009-04-29 07:00:00'::timestamp) INCLUSIVE END ('2009-04-29
+08:00:00'::timestamp) EXCLUSIVE INTO ( PARTITION P2009042907 ,
+PARTITION st_default );
+drop table sg_cal_event_silvertail_hour;
