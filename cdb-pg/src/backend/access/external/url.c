@@ -686,7 +686,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		if (sz < 0)
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "illegal URL: %s", file->url);
 		}
 
@@ -704,7 +704,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* initialize a curl session and get a libcurl handle for it */
         if (! (file->u.curl.handle = curl_easy_init()))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_init failed");
 		}
 
@@ -712,48 +712,48 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error (%d - %s)",
 				 file->u.curl.curl_url,
 				 e, curl_easy_strerror(e));
 		}
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_VERBOSE error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* set callback for each header received from server */
 		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HEADERFUNCTION, header_callback)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* 'file' is the application variable that gets passed to header_callback */
 		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEHEADER, file)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* set callback for each data block received from server */
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		/* 'file' is the application variable that gets passed to write_callback */
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
 		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
@@ -778,13 +778,13 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 			set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID) ||
 			set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: some variable value is too long");
 		}
 
 		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
         }
@@ -793,7 +793,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		{
             if (! (multi_handle = curl_multi_init()))
 			{
-				url_fclose(file, false);
+				url_fclose(file, false, pstate->cur_relname);
 				elog(ERROR, "internal error: curl_multi_init failed");
 			}
 		}
@@ -802,7 +802,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		{
 			if (CURLM_CALL_MULTI_PERFORM != e)
 			{
-				url_fclose(file, false);
+				url_fclose(file, false, pstate->cur_relname);
 				elog(ERROR, "internal error: curl_multi_add_handle failed (%d - %s)",
 					 e, curl_easy_strerror(e));
 			}
@@ -814,7 +814,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 
 		if (e != CURLE_OK)
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
@@ -825,7 +825,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		/* check the connection */
 		if (check_response(file, response_code, response_string))
 		{
-			url_fclose(file, false);
+			url_fclose(file, false, pstate->cur_relname);
 			return NULL;
 		}
     }
@@ -840,9 +840,11 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
  * command termination is not reflected until close is called.  If failOnClose is
  * false, close errors are just logged.  failOnClose should be false when closure
  * is due to LIMIT clause satisfaction.
+ * 
+ * relname is passed in for being available in data messages only.
  */
 int
-url_fclose(URL_FILE *file, bool failOnError)
+url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 {
 	enum fcurl_type_e type = file->type;
     int ret=0;/* default is good return */
@@ -870,7 +872,8 @@ url_fclose(URL_FILE *file, bool failOnError)
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 								errmsg("cannot close external table command: %m"),
-								errdetail("Command: %s", url)));
+								errdetail("Table: \'%s\', Command: %s", relname, 
+										  url)));
 			}
 			else
 			{
@@ -882,7 +885,8 @@ url_fclose(URL_FILE *file, bool failOnError)
 				if (failOnError) free(file);
 				ereport( (failOnError ? ERROR : LOG),
 						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-								errmsg("external table command ended with error: %s",
+								errmsg("external table \'%s\' command ended with error: %s",
+										relname,
 										interpretExitCode(ret, buf, sizeof(buf)/sizeof(char))),
 								errdetail("Command: %s", url)));
 			}
@@ -1313,7 +1317,7 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 
 
 void
-url_rewind(URL_FILE *file)
+url_rewind(URL_FILE *file, const char *relname)
 {
 	char *url = file->url;
     switch(file->type)
@@ -1325,10 +1329,10 @@ url_rewind(URL_FILE *file)
 		case CFTYPE_EXEC:
 			/* we'll need to execute the command again */
 			assert(0); /* There is no way the following code is right. */
-			url_fclose(file, true);
+			url_fclose(file, true, relname);
 
 			/* most of these are null fo us. */
-			url_fopen(url, NULL, NULL,NULL,NULL,0);
+			url_fopen(url, NULL, NULL, NULL, NULL, 0);
 			break;
 
 		case CFTYPE_CURL:

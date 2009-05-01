@@ -70,7 +70,7 @@ static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
-static void close_external_file(FILE *dataSource, bool failOnError);
+static void close_external_file(FILE *dataSource, bool failOnError, const char *relname);
 static void parseFormatString(CopyState pstate, char *fmtstr);
 
 
@@ -267,7 +267,7 @@ file_rescan(FileScanDesc scan)
 			open_external_file(scan);
 
 		/* seek to beginning of data source so we can start over */
-		url_rewind((URL_FILE*)scan->fs_file);
+		url_rewind((URL_FILE*)scan->fs_file, RelationGetRelationName(scan->fs_rd));
 	}
 
 	/* reset some parse state variables */
@@ -288,6 +288,8 @@ file_rescan(FileScanDesc scan)
 void
 file_endscan(FileScanDesc scan)
 {
+	char *relname = pstrdup(RelationGetRelationName(scan->fs_rd));
+	
 	/*
 	 * decrement relation reference count and free scan descriptor storage
 	 */
@@ -322,7 +324,7 @@ file_endscan(FileScanDesc scan)
 	/*
 	 * if SREH was active:
 	 * 1) QEs: send a libpq message to QD with num of rows rejected in this segment
-	 * 2) Free SREH resources (includes closeing the error table if used).
+	 * 2) Free SREH resources (includes closing the error table if used).
 	 */
 	if (scan->fs_pstate->errMode != ALL_OR_NOTHING)
 	{
@@ -350,10 +352,11 @@ file_endscan(FileScanDesc scan)
 	 */
 	if (!scan->fs_noop && scan->fs_file)
 	{
-		close_external_file(scan->fs_file, true);
+		close_external_file(scan->fs_file, true, (const char*)relname);
 		scan->fs_file = NULL;
 	}
 
+	pfree(relname);
 	pfree(scan);
 }
 
@@ -370,7 +373,7 @@ file_stopscan(FileScanDesc scan)
 	 */
 	if (!scan->fs_noop && scan->fs_file)
 	{
-		close_external_file(scan->fs_file, false);
+		close_external_file(scan->fs_file, false, RelationGetRelationName(scan->fs_rd));
 		scan->fs_file = NULL;
 	}
 }
@@ -1088,7 +1091,7 @@ open_external_file(FileScanDesc scan)
  * server log.
  */
 static void
-close_external_file(FILE *dataSource, bool failOnError)
+close_external_file(FILE *dataSource, bool failOnError, const char *relname)
 {
 	FILE *f = dataSource;
 
@@ -1096,7 +1099,7 @@ close_external_file(FILE *dataSource, bool failOnError)
 
 	if (f)
 	{
-		url_fclose((URL_FILE*) f, failOnError);
+		url_fclose((URL_FILE*) f, failOnError, relname);
 	}
 }
 
@@ -1216,7 +1219,7 @@ void readHeaderLine(CopyState pstate)
  */
 void AtAbort_ExtTables(void)
 {
-	close_external_file(g_dataSource, false);
+	close_external_file(g_dataSource, false, NULL);
 	g_dataSource = NULL;
 }
 
