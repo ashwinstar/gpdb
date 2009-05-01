@@ -401,6 +401,9 @@ class GPUpgrade:
             parser.add_option('--force-dumprestore', dest='forcedumprestore',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--nocheckcat', dest='nocheckcat',
+                              action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
             
             if options.version:
@@ -461,6 +464,10 @@ class GPUpgrade:
                 self.upgrade = True
             else:
                 self.upgrade = False
+        if options.nocheckcat:
+            self.checkcat = False
+        else:
+            self.checkcat = True
 
         if self.cmd == 'MASTER':
             if options.forcedumprestore:
@@ -4079,7 +4086,7 @@ try:
                 u.SetState('CREATE_DIRS')
 
             # Check the catalog
-            if 'CHECKCAT' not in current_state:
+            if 'CHECKCAT' not in current_state and u.checkcat:
                 u.CheckCatalog()
                 u.SetState('CHECKCAT')
 
