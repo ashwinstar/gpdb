@@ -2674,10 +2674,18 @@ cdbtm_performDeferredRecovery(void)
 		if (*shmDtmRecoveryDeferred)
 		{
 			deferredRecoveryActive=true;
+			PG_TRY();
+			{
+				recoverInDoubtTransactions();
 
-			recoverInDoubtTransactions();
-
-			deferredRecoveryActive=false;
+				deferredRecoveryActive=false;
+			}
+			PG_CATCH();
+			{
+				deferredRecoveryActive=false;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			*shmDtmRecoveryDeferred = false;
 			elog(NOTICE,"Releasing gangs for deferred recovery.");
