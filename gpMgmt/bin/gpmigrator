@@ -248,7 +248,6 @@ class GPUpgrade:
         self.quiet      = False
         self.revert     = False
         self.checkschema = True
-        self.validate   = False
         self.warnings   = False
         self.oldversion = None
         self.newversion = None
@@ -377,11 +376,8 @@ class GPUpgrade:
 
             parser.add_option('--debug', action='store_true',
                               help=optparse.SUPPRESS_HELP)
-            parser.add_option('--internal-disable-checkschema',                              
+            parser.add_option('--internal-disable-checkschema',
                               dest='nocheckschema', action='store_true',
-                              help=optparse.SUPPRESS_HELP)
-            parser.add_option('--internal-enable-validation',                              
-                              dest='validate', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-command', dest='command',
                               help=optparse.SUPPRESS_HELP)
@@ -457,8 +453,6 @@ class GPUpgrade:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
         if options.nocheckschema:
             self.checkschema = False
-        if options.validate:
-            self.validate = True
         if self.cmd != 'MASTER':
             self.oldversion = options.oldversion
             self.newversion = options.newversion
@@ -1405,18 +1399,15 @@ class GPUpgrade:
             except:
                 raise UpgradeError("Unrecognised Greenplum Version '%s'" % v)
 
-            # Acceptable versions are 3.1.1.5 - 3.3.x
-            if ((vs[0] < 3) or
-                (vs[0] == 3 and vs[1] < 1) or
-                (vs[0] == 3 and vs[1] == 1 and vs[2] < 1) or
-                (vs[0] == 3 and vs[1] == 1 and vs[2] == 1 and vs[3] < 5)):
+            # Acceptable versions are 3.2.x - 3.3.x
+            if ((vs[0] < 3) or (vs[0] == 3 and vs[1] < 2)):
                 raise UpgradeError(
                     "Greenplum Version '%s' not supported for upgrade" % v)
             if ((vs[0] > 3) or (vs[0] == 3 and vs[1] > 3)):
                 raise UpgradeError(
                     "To upgrade to Greenplum Version '%s' use the upgrade tool "
                     "shipped with that release" % v)
-            
+        
         checkversion(oldversion)
         checkversion(newversion)
 
@@ -2428,116 +2419,6 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
               ) to '%s/pg_stat_%d.csv' with CSV ESCAPE E'\\\\' ''' % \
                             (self.workdir, count), db=db)
             count += 1
-
-    #------------------------------------------------------------
-    def CollectValidation(self):
-        '''
-        Executes queries to construct a view of how the data should
-        look.  We validate that it still looks the same once the upgrade
-        is complete.
-        '''
-        if not self.validate:
-            return
-
-        self.Log('INFO', 'Collecting validation information')
-        self.CheckUp()
-        [env, utility] = self.dbup
-
-        # The upgrader already guarantees that there is a 1:1 mapping of
-        # database objects that have disk files, but for object types 
-        # that have no disk files (views, functions, etc) we have to 
-        # add additional checks.
-        sourcename = os.path.join(self.workdir, 'source_verify')
-        targetname = os.path.join(self.workdir, 'target_verify')
-        if env == self.oldenv:
-            filename = sourcename
-        else:
-            filename = targetname
-        file = open(filename, 'w')
-
-        databases = self.Select(
-            '''
-               SELECT datname FROM pg_database
-               WHERE datname != 'template0'
-               ORDER by datname
-            ''')
-
-        # Check 1: generate a list of types and views.  
-        file.write('-- Types and Views\n')
-        for db in databases:
-            qry = self.Select(
-                '''
-                   SELECT '"' || n.nspname || '"."' || c.relname || '"' as name, 
-                          pg_get_userbyid(c.relowner) as owner,
-                          array_out(c.relacl) as acl,
-                          c.relkind as kind
-                   FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
-                   WHERE c.relkind in ('v', 'c')
-                     AND n.nspname not in ('information_schema', 'pg_catalog')
-                   ORDER BY n.nspname, c.relname
-                ''', db=db)
-        for row in qry:
-            file.write('%s.%s,%s,%s,%s\n' %
-                       (db, row['name'], row['owner'], row['acl'], row['kind']))
-        file.write('\n')
-
-        # Check 2: Validation for sequences
-        file.write('-- Sequences\n')
-        for db in databases:
-            objs = self.Select(
-                '''
-                   SELECT '"' || n.nspname || '"."' || c.relname || '"' as name
-                   FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
-                   WHERE c.relkind in ('S')
-                   ORDER BY name
-                ''', db=db)
-
-            for name in objs:
-                qry = self.Select(
-                    '''SELECT
-                          last_value::numeric, increment_by::numeric, max_value::numeric, 
-                          min_value::numeric, is_cycled, is_called
-                       FROM %s
-                    ''' % name, db=db)
-                for row in qry:
-                    file.write('%s.%s,%s,%s,%s,%s,%s,%s\n' %
-                               (db, name,
-                                row['last_value'],
-                                row['increment_by'],
-                                row['max_value'],
-                                row['min_value'],
-                                row['is_cycled'],
-                                row['is_called']))
-        file.write('\n')
-
-        # Check 3: Validation for tables
-        file.write('-- Tables\n')
-        for db in databases:
-            objs = self.Select(
-                '''
-                   SELECT '"' || n.nspname || '"."' || c.relname || '"' as name
-                   FROM pg_class c JOIN pg_namespace n on (c.relnamespace = n.oid)
-                   WHERE c.relkind in ('a', 'r')
-                     AND n.nspname !~ '(information_schema|pg_.*)'
-                   ORDER BY name
-                ''', db=db)
-            for name in objs:
-                qry = self.Select("SELECT count(*)::numeric from " + name, db=db)
-                for row in qry:
-                    file.write('%s.%s,%s\n' % (db, name, row))
-        
-        # Compare validation information
-        file.close()
-        if env != self.oldenv:
-            self.Log('INFO', 'Confirming Validation')
-            cmd = 'diff %s %s' % (sourcename, targetname)
-            try:
-                self.RunCmd(cmd)
-            except CmdError, e:
-                self.Log('FATAL', 'Validation failed:')
-                self.Log('FATAL', '  ' + cmd)
-                raise UpgradeError('Data Validation Failed')
-            self.Log('INFO', 'Data Validation Confirmed')
 
 
     #------------------------------------------------------------
@@ -4284,7 +4165,6 @@ try:
 	        # gather information from them.
 	        if ('MAPPINGS' not in current_state   or
 	            'STATISTICS' not in current_state or
-	            'VALIDATION' not in current_state or
 	            'DUMP_SCHEMA' not in current_state):
 	
 	            u.Startup(u.oldenv)
@@ -4300,16 +4180,6 @@ try:
 	            if 'STATISTICS' not in current_state:
 	                u.DumpStatistics()
 	                u.SetState('STATISTICS')
-	
-	            # Collect validation info so that we can verify that at the end
-	            # of the upgrade the data still has the right visibility
-	            # + Requires running old db on all hosts
-	            # + Requires created directories so we can store the validation file
-	            # + Requires execution on all hosts
-	            # + Requires Lockdown
-	            if 'VALIDATION' not in current_state:
-	                u.CollectValidation()
-	                u.SetState('VALIDATION')
 	
 	            # Call pg_dumpall and put results in a file
 	            # + Requires running old db
@@ -4395,9 +4265,6 @@ try:
                 dbs[str(d['oid'])] = d['datname']
 
             # business end
-            if 'VALIDATION' not in current_state:
-                u.CollectValidation()
-                u.SetState('VALIDATION')
             if 'MAPPINGS' not in current_state:
                 u.BuildMappings()
                 u.SetState('MAPPINGS')
@@ -4497,16 +4364,10 @@ try:
             u.DeepLink('INSTALL')
             u.FixConfig()
 
-            # Validate upgraded instance
-            u.Startup(u.newenv)
-            if u.validate:
-                u.Log('INFO', 'Validating upgraded instance')
-                u.CheckCatalog()
-                u.CollectValidation()
-
             # Everything upgraded and validated
             # + Release the lockdown
             # + Mark install valid
+            u.Startup(u.newenv)
             u.ReleaseLockdown(u.newenv)
 
             # Finally, drop the upgrade user:
