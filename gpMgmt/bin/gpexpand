@@ -121,6 +121,10 @@ def parseargs():
     # Parse the command line arguments
     (options, args) = parser.parse_args()
     
+    if len(args) > 0:
+        logger.error('Unknown argument %s' % args[0])
+        parser.exit()
+    
     if options.usage:
         OptionParser.print_help(parser)
         parser.exit()
@@ -130,7 +134,12 @@ def parseargs():
         logger.error('Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_EXPANDS)
         parser.print_help()
         parser.exit()
-        
+
+    # OptParse can return date instead of datetime so we might need to convert
+    if options.end and isinstance(options.end, date):
+        options.end = datetime.datetime.combine(options.end, datetime.time(0))
+
+    
     if options.end and options.end < datetime.datetime.now():
         logger.error('End time occurs in the past')
         parser.print_help()
@@ -751,7 +760,7 @@ class gpexpand:
             gpexpand.prepare_gpdb_state(logger, dburl, True)
             raise ExpansionError("Invalid database '%s' specified.  Cannot use a template database.\n"
                                  "Please set the environment variable PGDATABASE to a different "
-                                 "database and re-run" % dburl.pgdb)
+                                 "database or use the -D option to specify a database and re-run" % dburl.pgdb)
 
         self.statusLogger = GpExpandStatus(logger, gparray.master.datadir, gparray.standbyMaster)
 
@@ -1953,12 +1962,27 @@ with: gpexpand -i %s
                 """ % (outfile,outfile)
     
     
+def sig_handler(sig, arg):
+    if gp_expand is not None:
+        gp_expand.shutdown()
+
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+    # raise sig
+    os.kill(os.getpid(), sig)
+
+    
 #------------------------------- Mainline --------------------------------
 gp_expand=None
 remove_pid=True
 table_expand_error=False
 
 try:
+    # setup signal handlers so we can clean up correctly
+    signal.signal(signal.SIGTERM, sig_handler)
+    signal.signal(signal.SIGHUP, sig_handler)
+
     logger = get_default_logger()
     setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
     
@@ -2028,12 +2052,17 @@ try:
             logger.info('Exiting...')
             sys.exit(1)
         gp_expand.perform_expansion()
-        if table_expand_error == True:
-            logger.warn('One or more tables failed to expand successfully.')
-            logger.warn('Please check the log file, correct the problem and')
-            logger.warn('run gpexpand again to finish the expansion process')
-    elif gpexpand_db_status == 'EXPANSION DONE':
-        logger.info('Expansion has already completed.  Exiting...')
+    elif gpexpand_db_status == 'EXPANSION STARTED':
+        logger.info('It appears the last run of gpexpand did not exit cleanly.')
+        logger.info('Resuming the expansion process...')
+        if not gp_expand.validate_database_settings():
+            logger.info('Exiting...')
+            sys.exit(1)
+        gp_expand.perform_expansion()        
+    elif gpexpand_db_status == 'EXPANSION COMPLETE':
+        logger.info('Expansion has already completed.')
+        logger.info('If you want to expand again, run gpexpand -c to remove')
+        logger.info('the gpexpand schema and begin a new expansion')
     elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:            
         gp_expand.read_input_file()
         gp_expand.start_prepare()
@@ -2054,6 +2083,14 @@ try:
     else:
         logger.error('The last gpexpand setup did not complete successfully.')
         logger.error('Please run gpexpand -r to rollback to the original state.')
+
+    if table_expand_error == True:
+        logger.warn('**************************************************')                     
+        logger.warn('One or more tables failed to expand successfully.')
+        logger.warn('Please check the log file, correct the problem and')
+        logger.warn('run gpexpand again to finish the expansion process')
+        logger.warn('**************************************************')                     
+
 
     logger.info("Exiting...")
     sys.exit(0)

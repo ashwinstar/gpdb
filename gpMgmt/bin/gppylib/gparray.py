@@ -188,7 +188,7 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
         num_hosts = len(hostlist)
         num_dirs=len(primary_list)
         if num_hosts <= num_dirs:
-            raise Exception("Not enough hosts for spread mirroring.  You must have more hosts then primary segments per host")
+            raise Exception("Not enough hosts for spread mirroring.  You must have more hosts than primary segments per host")
         
         mirror_port = {}
 
