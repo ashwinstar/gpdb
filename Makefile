@@ -184,11 +184,15 @@ CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
 CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR))
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
-# Configure in "authlibs"
+# Configure in "authlibs"...
+# ...without an ext/ dir copy of curl-config on Tiger
 ifneq "$(BLD_ARCH)" "osx104_x86"
 BLD_CURL_CONFIG=CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
 endif
+# ...and do not include the authlibs on Windows
+ifeq "$(findstring $(BLD_ARCH),win32 win64)" ""
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(BLD_CURL_CONFIG)
+endif
 
 # Windows-specific config flags
 win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
