@@ -408,7 +408,7 @@ static void ATPartitionCheck(Relation rel, AlterTableType typ);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
-#define parkindIsList(c)   ((c) == 'r')
+#define parkindIsList(c)   ((c) == 'l')
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -3119,7 +3119,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	 * numbers in different children).
 	 */
 	if (recursing)
-	cmd = copyObject(cmd);
+		cmd = copyObject(cmd);
 
 	/*
 	 * Do permissions checking, recursion to child tables if needed, and any
@@ -8403,6 +8403,35 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 
 	datum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions, &isnull);
 
+	/* MPP-5777: disallow all options except fillfactor.
+	 * Future work: could convert from SET to SET WITH codepath which
+	 * can support additional reloption types
+	 */
+	if ((defList != NIL)
+/*		&& ((rel->rd_rel->relkind == RELKIND_RELATION)
+		|| (rel->rd_rel->relkind == RELKIND_TOASTVALUE)) */
+			)
+	{
+		ListCell   *cell;	
+
+		foreach(cell, defList)
+		{
+			DefElem    *def = lfirst(cell);
+			int			kw_len = strlen(def->defname);
+			char	   *text_str = "fillfactor";
+			int			text_len = strlen(text_str);
+
+			if ((text_len != kw_len) ||
+				(pg_strncasecmp(text_str, def->defname, kw_len) != 0))
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot SET reloption \"%s\"",
+								def->defname)));
+
+		}
+	}
+
+
 	/* Generate new proposed reloptions (text array) */
 	newOptions = transformRelOptions(isnull ? (Datum) 0 : datum,
 									 defList, false, isReset);
@@ -8416,8 +8445,8 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 			if(relstorage_is_ao(rel->rd_rel->relstorage))
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("altering reloptions for append only tables is not "
-								"permitted")));
+						 errmsg("altering reloptions for append only tables" 
+								" is not permitted")));
 
 			(void) heap_reloptions(rel->rd_rel->relkind, newOptions, true);
 			break;
