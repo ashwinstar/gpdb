@@ -454,7 +454,6 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 	}
 	else
 	{
-		
 #ifdef HAVE_INT64_TIMESTAMP
 #if 0
 		if (fillzeros)
@@ -1363,6 +1362,7 @@ DecodeDateTime(char **field, int *ftype, int nf,
 						break;
 
 					case UNKNOWN_FIELD:
+
 						/*
 						 * Before giving up and declaring error, check to see
 						 * if it is an all-alpha timezone name.
@@ -2046,6 +2046,7 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 						break;
 
 					case UNKNOWN_FIELD:
+
 						/*
 						 * Before giving up and declaring error, check to see
 						 * if it is an all-alpha timezone name.
@@ -2864,6 +2865,7 @@ ClearPgTm(struct pg_tm *tm, fsec_t *fsec)
 	*fsec       = 0;
 }
 
+
 /* DecodeInterval()
  * Interpret previously parsed fields for general time interval.
  * Returns 0 if successful, DTERR code if bogus input detected.
@@ -2890,7 +2892,6 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 	double		fval;
 
 	*dtype = DTK_DELTA;
-
 	type = IGNORE_DTF;
 	ClearPgTm(tm,fsec);
 
@@ -3048,6 +3049,7 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 #else
 						*fsec += fval;
 #endif
+
 						/*
 						 * If any subseconds were specified, consider this
 						 * microsecond and millisecond input as well.
@@ -4031,7 +4033,6 @@ EncodeInterval(struct pg_tm * tm, fsec_t fsec, int style, char *str)
 		int			sec  = tm->tm_sec;
 		bool		is_before = FALSE;
 		bool		is_zero = TRUE;
-
 
 	/*
 	 * The sign of year and month are guaranteed to match, since they are

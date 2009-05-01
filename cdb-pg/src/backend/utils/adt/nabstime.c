@@ -634,6 +634,12 @@ reltimein(PG_FUNCTION_ARGS)
 	if (dterr == 0)
 			dterr = DecodeInterval(field, ftype, nf, INTERVAL_FULL_RANGE,
 								   &dtype, tm, &fsec);
+
+	/* if those functions think it's a bad format, try ISO8601 style */
+	if (dterr == DTERR_BAD_FORMAT)
+	    dterr = DecodeISO8601Interval(str,
+									  &dtype, tm, &fsec);
+
 	if (dterr != 0)
 	{
 		if (dterr == DTERR_FIELD_OVERFLOW)
@@ -832,12 +838,7 @@ interval_reltime(PG_FUNCTION_ARGS)
 	int			year,
 				month,
 				day;
-
-#ifdef HAVE_INT64_TIMESTAMP
-	int64		span;
-#else
-	double		span;
-#endif
+	TimeOffset	span;
 
 	year = interval->month / MONTHS_PER_YEAR;
 	month = interval->month % MONTHS_PER_YEAR;
