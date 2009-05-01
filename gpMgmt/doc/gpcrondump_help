@@ -74,7 +74,7 @@ to dump.
 
 Clear out old dump files before doing the dump. The default is not 
 to clear out old dump files. This will remove the oldest dump directory 
-except not the current date’s dump directory. All dump sets within 
+except not the current date's dump directory. All dump sets within 
 that directory will be removed.
 
 
@@ -173,7 +173,7 @@ Do not output commands to set object privileges (GRANT/REVOKE commands).
 -o (clear old dump files only)
 
 Clear out old dump files only, but do not run a dump. This will 
-remove the oldest dump directory except not the current date’s 
+remove the oldest dump directory except not the current date's 
 dump directory. All dump sets within that directory will be removed.
 
 
@@ -252,7 +252,7 @@ of this utility.
 -w <dbid>[,...] (backup certain segments only)
 
 Specifies a set of segment instances to back up as a 
-comma-separated list of the segments’ dbid. The master is 
+comma-separated list of the segments' dbid. The master is 
 added to the list automatically. The default is to 
 backup only the primary (or active) segment instances.
 

@@ -31,7 +31,7 @@ about this configuration file. Before running this utility, make sure
 that you have installed the Greenplum Database software on all the 
 hosts in the array.
 
-The functionality of gpinitsystem is analogous to PostgreSQL’s 
+The functionality of gpinitsystem is analogous to PostgreSQL's 
 initdb utility, which creates the data storage directories, generates 
 the shared catalog tables and configuration files, and creates a 
 template database, which is a template used to create other databases. 

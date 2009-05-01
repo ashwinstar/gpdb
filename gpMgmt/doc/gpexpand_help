@@ -114,7 +114,7 @@ original nodes are configured with multiple interfaces.
 The number of commands to send to a given host before making a one-second pause. 
 Default is 8.  Valid values are 1-128.
 
-The gpexpand utility issues a number of setup commands that may exceed the host’s 
+The gpexpand utility issues a number of setup commands that may exceed the host's 
 maximum threshold for authenticated connections as defined by MaxStartups in the 
 SSH daemon configuration. The one-second pause allows authentications to be completed 
 before gpexpand issues any more commands. 
@@ -162,7 +162,7 @@ Verbose debugging output.
 
 --version
 
-Display the utility’s version number and exit.
+Display the utility's version number and exit.
 
 
 -? | h (help)

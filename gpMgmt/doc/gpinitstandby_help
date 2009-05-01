@@ -36,7 +36,7 @@ The utility will perform the following steps:
 * Start the synchronization process
 * Restart your Greenplum Database system
 
-A backup master host serves as a ‘warm standby’ in the event of the 
+A backup master host serves as a 'warm standby' in the event of the 
 primary master host becoming unoperational. The backup master is kept 
 up to date by a transaction log replication process (gpsyncagent), 
 which runs on the backup master host and keeps the data between the 

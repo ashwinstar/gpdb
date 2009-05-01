@@ -51,12 +51,12 @@ configured segment hosts and have enough disk space to accommodate the
 failed segments.
 
 The Greenplum Database can run in two modes with regards to mirroring and 
-fault tolerance — continue (read-write) mode and readonly mode. This mode 
+fault tolerance: continue (read-write) mode and readonly mode. This mode 
 is set with the gp_fault_action parameter in postgresql.conf.
 
 If the system is in continue (read-write) mode, this utility will shutdown 
 the system, copy the data directory of the active segment to the failed 
-segment, update the segment dbid and port on the failed segment’s local 
+segment, update the segment dbid and port on the failed segment's local 
 catalog after the copy, mark the failed segment as valid again in the 
 global system catalog, and restart the system.
 

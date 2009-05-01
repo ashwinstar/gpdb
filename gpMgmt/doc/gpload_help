@@ -41,7 +41,7 @@ DESCRIPTION
 *****************************************************
 
 gpload is a data loading utility that acts as an interface to 
-Greenplum Database’s external table parallel loading feature. 
+Greenplum Database's parallel loading feature. 
 Using a load specification defined in a YAML formatted control file, 
 gpload executes a load by invoking the Greenplum parallel file 
 server (gpfdist), creating an external table definition based on 
@@ -243,10 +243,10 @@ SOURCE - Required. The SOURCE block of an INPUT specification defines
 
 LOCAL_HOSTNAME - Optional. Specifies the host name or IP address of the 
                  local machine on which gpload is running. If this machine 
-                 is configured with multiple network interface cards (NICs), 
+                 is configured with multiple network interface cards(s), 
                  you can specify the host name or IP of each individual NIC 
                  to allow network traffic to use all NICs simultaneously. 
-                 The default is to use the local machine’s primary host 
+                 The default is to use the local machine's primary host 
                  name or IP only. 
 
 PORT - Optional. Specifies the specific port number that the gpfdist 

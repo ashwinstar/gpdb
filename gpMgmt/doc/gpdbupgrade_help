@@ -125,7 +125,7 @@ the value set for $MASTER_DATA_DIRECTORY will be used.
 Do not upgrade the pg_control files used by the write-ahead 
 log (WAL). The aim of WAL is to ensure that a log is written 
 before database records are altered. After a checkpoint has 
-been made and the log is flushed, the checkpoint’s position is 
+been made and the log is flushed, the checkpoint's position is 
 saved in the file pg_control. The default is to allow the 
 upgrade utility to modify pg_control.
 
