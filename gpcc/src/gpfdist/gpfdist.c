@@ -1853,8 +1853,8 @@ int main(int argc, const char* const argv[])
 	 */
 	apr_signal(SIGTERM, process_signal);
 	if (opt.V)
-		setenv("EVENT_SHOW_METHOD", "1", 1);
-	setenv("EVENT_NOKQUEUE", "1", 1);
+		putenv("EVENT_SHOW_METHOD=1");
+	putenv("EVENT_NOKQUEUE=1");
 
 	event_init();
 	http_setup();
