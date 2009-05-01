@@ -3873,7 +3873,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
         releases = {"3.0": "200703112",
              "3.1": "200712072",
              "3.2": "200808253",
-             "3.3": "200904261"}
+             "3.3": "200905011"}
         
         self.CheckDown()
 
@@ -4128,16 +4128,19 @@ try:
         # + Database is left down
         if u.execute:
             u.SetupLockdown()
-            u.Shutdown()
-        elif shutdown:
-            u.Shutdown()
-
-        # Make sure error handling doesn't shutdown the database if anything
-        # should fail.
-        u.dbup = None
         
         # different path for 3.1 to 3.2
         if u.method == "dumprestore":
+
+	        if u.execute:
+	            u.Shutdown()
+	        elif shutdown:
+	            u.Shutdown()
+
+	        # Make sure error handling doesn't shutdown the database if anything
+	        # should fail.
+	        u.dbup = None
+
 	        # Write configuration files for new db
 	        # + Requires configuration info collected in ExtractInfo
 	        # + Requires working directory on master node
@@ -4259,10 +4262,11 @@ try:
         else:
             # transform case
             if not u.execute:
+                if shutdown:
+                    u.Shutdown()
+
                 u.Log('INFO', 'Preparation successfully completed')
                 sys.exit(0)
-
-            u.Startup(u.oldenv)
 
             # get the set of databases
             db = u.Select('''select oid, datname from pg_database order by

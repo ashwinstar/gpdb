@@ -560,6 +560,8 @@ DATA(insert OID = 6434 ( gp_configuration_history	PGNSP PGUID -1 f c t \054 5006
 #define GP_CONFIG_HISTORY_RELTYPE_OID 6434
 DATA(insert OID = 6436 ( gp_db_interfaces	PGNSP PGUID -1 f c t \054 5029 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define GP_DB_INTERFACES_RELTYPE_OID 6436
+DATA(insert OID = 6437 ( pg_appendonly_alter_column	PGNSP PGUID -1 f c t \054 6110  0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
+#define PG_APPENDONLY_ALTER_COLUMN_OID 6437
 
 /*
  * macros

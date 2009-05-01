@@ -30,6 +30,7 @@
 #include "catalog/gp_configuration.h"
 #include "catalog/heap.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_appendonly_alter_column.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
@@ -226,6 +227,9 @@ Boot_CreateStmt:
 								break;
 							case GpDbInterfacesRelationId:
 								typid = GP_DB_INTERFACES_RELTYPE_OID; 
+								break;
+							case AppendOnlyAlterColumnRelationId:
+								typid = PG_APPENDONLY_ALTER_COLUMN_OID;
 								break;
 							default:
 								break;
