@@ -3518,11 +3518,13 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                                    db=db, port=port)
 
                         if aos:
+                            f.write('begin;\n')
                             for a in aos:
                                 self.Log('DEBUG', a)
                                 # need to add newline as postgres --single
                                 # uses it as a delimiter
                                 f.write(a + '\n')
+                            f.write('commit;\n')
                         f.close()
 
                     # just once
