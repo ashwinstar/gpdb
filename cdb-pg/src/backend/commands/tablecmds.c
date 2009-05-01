@@ -3278,6 +3278,46 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_MISC;
 			break;
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
+			if ( !recursing ) /* MPP-5772 */
+			{
+				Oid relid = rel->rd_node.relNode;
+				
+				if ( recurse )
+				{
+					/* Normal (non-ONLY) case. 
+					 * Reject interior branches of partitioned tables.  
+					 */
+					if ( rel_is_child_partition(relid) &&
+						! rel_is_leaf_partition(relid) )
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								 errmsg("can't set the distribution policy of \"%s\"",
+										RelationGetRelationName(rel)),
+								 errhint("Distribution policy may be set for an entire partitioned table" 
+										 " or one of its leaf parts; not for an interior branch."
+								 )));
+					}
+				}
+				else
+				{
+					/* ONLY specified.  
+					 * Reject non-leaves of partitioned tables.  
+					 */
+					if ( !rel_is_leaf_partition(relid) && 
+						( rel_is_partitioned(relid) || 
+						 rel_is_child_partition(relid) ) )
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								 errmsg("can't set the distribution policy of ONLY \"%s\"",
+										RelationGetRelationName(rel)),
+								 errhint("Distribution policy may be set for an entire partitioned table" 
+										 " or one of its leaf parts."
+										 )));
+					}
+				}
+			}
 			ATSimplePermissions(rel, false);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			pass = AT_PASS_MISC;
