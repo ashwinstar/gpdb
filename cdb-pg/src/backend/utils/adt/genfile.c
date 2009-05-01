@@ -550,7 +550,7 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
 		    if (strlen(de->d_name) != 26
 			    || strncmp(de->d_name, "gpdb-", 5) != 0
 			    || de->d_name[15] != '_'
-			    || (strcmp(de->d_name + 22, ".log") != 0 && strcmp(de->d_name + 22, ".csv") != 0)
+			    || (strcmp(de->d_name + 22, ".log") != 0 && strcmp(de->d_name + 22, ".csv") != 0))
             {
 			    
                 /* 
@@ -560,7 +560,7 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
                 if (strlen(de->d_name) != 26
 			    || strncmp(de->d_name, "gpdb-", 5) != 0
 			    || de->d_name[15] != '_'
-			    || (strcmp(de->d_name + 22, ".log") != 0 && strcmp(de->d_name + 22, ".csv") != 0)
+			    || (strcmp(de->d_name + 22, ".log") != 0 && strcmp(de->d_name + 22, ".csv") != 0))
                     continue;
 
                 end = 10;
