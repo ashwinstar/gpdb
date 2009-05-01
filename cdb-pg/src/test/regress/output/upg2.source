@@ -1670,6 +1670,7 @@ select * from old_index where indexrelid < 10000 order by indexrelid, indrelid;
        5016 |     5011 |        1 | f           | f            | f              | t          | 2        | 1989                |          | 
        5017 |     5010 |        3 | f           | f            | f              | t          | 1 3 4    | 1989 1976 424       |          | 
        5026 |     5011 |        3 | f           | f            | f              | t          | 1 3 6    | 1989 1989 1976      |          | 
+       5031 |     6110 |        2 | t           | f            | f              | t          | 1 2      | 1989 1978           |          | 
        6027 |     6026 |        1 | t           | f            | f              | t          | -2       | 1989                |          | 
        6028 |     6026 |        1 | t           | f            | f              | t          | 1        | 1986                |          | 
        6029 |     1260 |        1 | f           | f            | f              | t          | 12       | 1989                |          | 
@@ -1679,7 +1680,7 @@ select * from old_index where indexrelid < 10000 order by indexrelid, indrelid;
        6103 |     5002 |        1 | t           | f            | f              | t          | 1        | 1989                |          | 
        6108 |     5029 |        1 | f           | f            | f              | t          | 1        | 1976                |          | 
        6109 |     5030 |        1 | t           | f            | f              | t          | 1        | 1976                |          | 
-(87 rows)
+(88 rows)
 
 select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
 	   indrelid;
