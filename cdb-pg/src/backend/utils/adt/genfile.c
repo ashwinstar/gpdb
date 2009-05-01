@@ -476,16 +476,22 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	struct dirent *de;
 	directory_fctx *fctx;
+    bool prefix_is_gpdb = true;
 
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 (errmsg("only superuser can list the log directory"))));
 
-	if (strcmp(Log_filename, "postgresql-%Y-%m-%d_%H%M%S.log") != 0)
+	if (strcmp(Log_filename, "gpdb-%Y-%m-%d_%H%M%S.csv") != 0 &&
+        strcmp(Log_filename, "gpdb-%Y-%m-%d_%H%M%S.log") != 0 &&
+        strcmp(Log_filename, "postgresql-%Y-%m-%d_%H%M%S.log") != 0 )
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 (errmsg("the log_filename parameter must equal 'postgresql-%%Y-%%m-%%d_%%H%%M%%S.log'"))));
+				 (errmsg("the log_filename parameter must equal 'gpdb-%%Y-%%m-%%d_%%H%%M%%S.csv'"))));
+
+    if (strncmp(Log_filename, "gpdb", 4) != 0)
+        prefix_is_gpdb = false;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -535,18 +541,50 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
 		int			tz = 0;
 		struct pg_tm date;
 
-		/*
-		 * Default format: postgresql-YYYY-MM-DD_HHMMSS.log
-		 */
-		if (strlen(de->d_name) != 32
-			|| strncmp(de->d_name, "postgresql-", 11) != 0
-			|| de->d_name[21] != '_'
-			|| strcmp(de->d_name + 28, ".log") != 0)
-			continue;
+        if (prefix_is_gpdb)
+        {
+            int end = 17;
+            /*
+		     * Default format: gpdb-YYYY-MM-DD_HHMMSS.log or gpdb-YYYY-MM-DD_HHMMSS.csv
+		     */
+		    if (strlen(de->d_name) != 26
+			    || strncmp(de->d_name, "gpdb-", 5) != 0
+			    || de->d_name[15] != '_'
+			    || (strcmp(de->d_name + 22, ".log") != 0 && strcmp(de->d_name + 22, ".csv") != 0)
+            {
+			    
+                /* 
+                 * Not our normal format.  Maybe old format without TIME fields?
+                 */
+             
+                if (strlen(de->d_name) != 26
+			    || strncmp(de->d_name, "gpdb-", 5) != 0
+			    || de->d_name[15] != '_'
+			    || (strcmp(de->d_name + 22, ".log") != 0 && strcmp(de->d_name + 22, ".csv") != 0)
+                    continue;
 
-		/* extract timestamp portion of filename */
-		strcpy(timestampbuf, de->d_name + 11);
-		timestampbuf[17] = '\0';
+                end = 10;
+
+            }
+		    /* extract timestamp portion of filename */
+		    strcpy(timestampbuf, de->d_name + 5);
+		    timestampbuf[end] = '\0';
+        }
+        else
+        {
+		    /*
+		     * Default format: postgresql-YYYY-MM-DD_HHMMSS.log
+		     */
+		    if (strlen(de->d_name) != 32
+			    || strncmp(de->d_name, "postgresql-", 11) != 0
+			    || de->d_name[21] != '_'
+			    || strcmp(de->d_name + 28, ".log") != 0)
+			    continue;
+
+		    /* extract timestamp portion of filename */
+		    strcpy(timestampbuf, de->d_name + 11);
+		    timestampbuf[17] = '\0';
+        }
 
 		/* parse and decode expected timestamp to verify it's OK format */
 		if (ParseDateTime(timestampbuf, lowstr, MAXDATELEN, field, ftype, MAXDATEFIELDS, &nf))
