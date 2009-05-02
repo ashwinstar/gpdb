@@ -928,7 +928,7 @@ def sync_on_error(fn):
     return _fn
 
 class Connection(object):
-    def __init__(self, unix_sock=None, host=None, port=5432, socket_timeout=60, ssl=False):
+    def __init__(self, unix_sock=None, host=None, port=5432, socket_timeout=60, ssl=False, records=False):
         self._client_encoding = "ascii"
         self._integer_datetimes = False
         self._record_field_names = {}
@@ -936,6 +936,7 @@ class Connection(object):
         self._sock_buf_pos = 0
         self._send_sock_buf = []
         self._block_size = 8192
+        self.user_wants_records = records
         if unix_sock == None and host != None:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         elif unix_sock != None:
@@ -1043,6 +1044,9 @@ class Connection(object):
         self._backend_key_data = msg
 
     def _cache_record_attnames(self):
+        if not self.user_wants_records:
+            return
+
         parse_retval = self.parse("",
             """SELECT
                 pg_type.oid, attname

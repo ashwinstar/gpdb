@@ -2417,6 +2417,9 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                                 self.Log('FATAL', 'error encountered in mappings thread')
                         threads = []
 
+        for th in threads:
+            th.join()
+
         if errors > 0:
             raise UpgradeError('You must drop or reindex malformed objects prior to upgrade')
 
