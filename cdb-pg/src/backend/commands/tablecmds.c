@@ -9607,6 +9607,7 @@ make_typname(Form_pg_attribute att)
 	int2 attlen = att->attlen;
 	Value *typname = NULL;
 
+
 	if (attlen == -1)
 	{
 		if (att->attalign == 'i')
@@ -9620,45 +9621,65 @@ make_typname(Form_pg_attribute att)
 			typname = makeString(pstrdup("path"));
 	}
 	else if (attlen == 1)
+    {
+        Assert(att->attalign == 'c');
 		typname = makeString(pstrdup("char"));
+    }
 	else if (attlen == 2)
+    {
+        Assert(att->attalign == 's');
 		typname = makeString(pstrdup("int2"));
+    }
 	else if (attlen == 4)
+    {
+        Assert(att->attalign == 'i');
 		typname = makeString(pstrdup("int4"));
+    }
 	else if (attlen == 6)
-		typname = makeString(pstrdup("tid"));
+    {
+        if (att->attalign == 's')
+            typname = makeString(pstrdup("tid"));
+        else
+        {
+            Assert(att->attalign == 'i');
+            typname = makeString(pstrdup("macaddr"));
+        }
+    }
 	else if (attlen == 8)
+    {
+        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("int8"));
+    }
 	else if (attlen == 12)
+    {
+        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("timetz"));
+    }
 	else if (attlen == 16)
+    {
+        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("interval"));
-	else if (attlen == 32)
+    }
+	else if (attlen == 24)
+    {
+        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("circle"));
+    }
+	else if (attlen == 32)
+    {
+        Assert(att->attalign == 'd');
+		typname = makeString(pstrdup("box"));
+    }
 	else if (attlen == 64)
+    {
+        Assert(att->attalign == 'i');
 		typname = makeString(pstrdup("name"));
+    }
 	else
 	{
-		/* alignment is the only important thing */
-		switch (att->attalign)
-		{
-			case 'i':
-				typname = makeString(pstrdup("int4"));
-				break;
-			case 'd':
-				typname = makeString(pstrdup("int8"));
-				break;
-			case 'c':
-				typname = makeString(pstrdup("char"));
-				break;
-			case 's':
-				typname = makeString(pstrdup("short"));
-				break;
-			default:
-				elog(ERROR, "unknown alignment '%c'", att->attalign);
-				break;
-		}
-	}
+        Assert(!"Unkown attlen, we really messed up");
+        elog(ERROR, "unknown attlen %d", attlen); 
+    }
 
 	tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
 	tname->typmod = att->atttypmod;
