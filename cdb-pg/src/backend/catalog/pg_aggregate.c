@@ -332,7 +332,7 @@ AggregateCreateWithOid(const char *aggName,
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
 	/* Depends on inverse transition function, if any */
-	if (OidIsValid(prelimfn))
+	if (OidIsValid(invtransfn))
 	{
 		referenced.classId = ProcedureRelationId;
 		referenced.objectId = invtransfn;
