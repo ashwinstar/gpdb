@@ -1375,7 +1375,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		}
 	}
 	
-	Assert(newGangDefinition->size = seg_count || type == GANGTYPE_MIRROR_WRITER);
+	Assert(newGangDefinition->size == seg_count || type == GANGTYPE_MIRROR_WRITER);
 	newGangDefinition->size = seg_count;
 	return newGangDefinition;
 }
