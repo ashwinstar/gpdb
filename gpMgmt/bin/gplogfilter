@@ -175,11 +175,6 @@ def parseargs():
 
     parser.set_defaults(verbose=True, filters=[], slice=(None, None))
 
-    # If no args, display help message.
-    if len(sys.argv) <= 1:
-        parser.print_help()
-        parser.exit()
-
     # Parse the command line arguments
     (options, args) = parser.parse_args()
 
@@ -252,7 +247,7 @@ def openOutputFile(ifn, zname, options):
 
         # if ofn refers to a directory, append name of input file
         if os.path.isdir(ofn):
-            ofn = os.path.join(ofn, zname)
+            ofn = os.path.join(ofn, zname + ".out")
 
         # append .gz suffix if compressing
         if zipout and not ofn.endswith('.gz'):
@@ -335,7 +330,7 @@ try:
                 for logfile in os.listdir(s + "/pg_log"):
                     args.append(s + "/pg_log/" + logfile)
             else:
-                raise IOError('specify input file or "-" for standard input')
+                raise IOError('Specify input file or "-" for standard input')
         else:
             raise IOError('specify input file or "-" for standard input')
 
