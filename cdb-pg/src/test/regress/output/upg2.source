@@ -569,6 +569,8 @@ COMMENT ON CONVERSION public.euc_jis_2004_to_shift_jis_2004 IS 'conversion for E
 psql:@abs_srcdir@/data/upgrade_conversion.sql:248: ERROR:  conversion "public.euc_jis_2004_to_shift_jis_2004" does not exist
 COMMENT ON CONVERSION public.shift_jis_2004_to_euc_jis_2004 IS 'conversion for SHIFT_JIS_2004 to EUC_JIS_2004';
 psql:@abs_srcdir@/data/upgrade_conversion.sql:249: ERROR:  conversion "public.shift_jis_2004_to_euc_jis_2004" does not exist
+update public.sql_implementation_info set character_value='08.02.0013' where implementation_info_id=18;
+psql:@abs_srcdir@/data/upgrade_conversion.sql:251: ERROR:  relation "sql_implementation_info" does not exist (parse_clause.c:735)
 -- new tables and attributes. 
 \i @abs_srcdir@/sql/loadcat33.sql
 begin;

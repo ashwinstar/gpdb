@@ -102,44 +102,44 @@ class MappingsWorker(Thread):
             dbname = dboids[0]
             oids = dboids[1]
             for o in oids:
-	            # Check that the relfilenode actually exists! 
-	            #   There is a bug that can cause diskfiles to go missing from
-	            #   bitmap indices.  We want to generate a comprehensable error
-	            #   message for these.
-	            file = os.path.join(self.dir, 'base', str(oid), str(o['filenode']))
-	            if not os.path.exists(file):
-	                # name is either "schema"."parentschema"."parent_name"_"kind"
-	                #      or        "schema"."name"."kind"
-	                # where the first form is used for objects that embed oids
-	                # in their names (append only segments, bitmap indexes)
-	
-	                kind = o['name'][-1:]
-	                name = o['name'][:-2]
-	
-	                if name[:14] == 'pg_bitmapindex':
-	                    msg = "Bitmap index '%s'" % name[15:]
-	                elif name[:8] == 'pg_aoseg':
-	                    msg = "Append only segment for '%s'" % name[9:]
-	                elif kind == 'a' or kind == 'r':
-	                    msg = "Table '%s'" % name
-	                elif kind == 'i':
-	                    msg = "Index '%s'" % name
-	                elif kind == 'S':
-	                    msg = "Sequence '%s'" % name
-	                else:
-	                    msg = "Object '%s'" % name
-	                msg += " missing relfile on segment '%s'\n" % seg
-	                self.upgrade.Log('FATAL', msg)
-	                self.upgrade.Log('FATAL', 'missing relfile: ' + file)
-	                self.errors += 1
-	
-	            # Prefix each name with the database it's in
-	            mapfile.write('%s.%s,%s,%s,%s,%s\n' %
-	                          (dbname.encode('utf-8'), o['name'].encode('utf-8'),
-	                           oid, 
-	                           o['filenode'], 
-	                           o['toast'], 
-	                           o['toast_index']))
+                # Check that the relfilenode actually exists! 
+                #   There is a bug that can cause diskfiles to go missing from
+                #   bitmap indices.  We want to generate a comprehensable error
+                #   message for these.
+                file = os.path.join(self.dir, 'base', str(oid), str(o['filenode']))
+                if not os.path.exists(file):
+                    # name is either "schema"."parentschema"."parent_name"_"kind"
+                    #      or        "schema"."name"."kind"
+                    # where the first form is used for objects that embed oids
+                    # in their names (append only segments, bitmap indexes)
+    
+                    kind = o['name'][-1:]
+                    name = o['name'][:-2]
+    
+                    if name[:14] == 'pg_bitmapindex':
+                        msg = "Bitmap index '%s'" % name[15:]
+                    elif name[:8] == 'pg_aoseg':
+                        msg = "Append only segment for '%s'" % name[9:]
+                    elif kind == 'a' or kind == 'r':
+                        msg = "Table '%s'" % name
+                    elif kind == 'i':
+                        msg = "Index '%s'" % name
+                    elif kind == 'S':
+                        msg = "Sequence '%s'" % name
+                    else:
+                        msg = "Object '%s'" % name
+                    msg += " missing relfile on segment '%s'\n" % self.upgrade.host
+                    self.upgrade.Log('FATAL', msg)
+                    self.upgrade.Log('FATAL', 'missing relfile: ' + file)
+                    self.errors += 1
+    
+                # Prefix each name with the database it's in
+                mapfile.write('%s.%s,%s,%s,%s,%s\n' %
+                              (dbname.encode('utf-8'), o['name'].encode('utf-8'),
+                               oid, 
+                               o['filenode'], 
+                               o['toast'], 
+                               o['toast_index']))
 
 
         mapfile.close()
@@ -343,8 +343,8 @@ class GPUpgrade:
 
         # Extract path from input master directory
         if self.cmd == 'MASTER':
-            u.Log('INFO', 'Beginning upgrade')
-            u.Log('INFO', 'Checking configuration')
+            self.Log('INFO', 'Beginning upgrade')
+            self.Log('INFO', 'Checking configuration')
 
             if not self.masterdir or len(self.masterdir) == 0:
                 raise UpgradeError('MASTER_DATA_DIRECTORY is not defined')
@@ -1251,7 +1251,7 @@ class GPUpgrade:
 
         # If we are only doing --prepare then we may shutdown the newdb with the olddb
         # still running, so the CheckDown() shouldn't be run
-        if u.execute:
+        if self.execute:
             self.CheckDown();
 
     #------------------------------------------------------------
@@ -1535,7 +1535,7 @@ class GPUpgrade:
 
         # For the moment everything goes:
         #   - Additional checks will be made once the old database is up
-        self.Log('INFO', 'Versions are compatable')        
+        self.Log('INFO', 'Versions are compatible')        
 
 
     #------------------------------------------------------------
@@ -2286,7 +2286,7 @@ This issue must be resolved before upgrade can complete.
                 datadirs = [ self.root ]
             else:
                 self.Log('INFO', 'Building upgraded oid Mappings')
-                if u.method == "dumprestore":
+                if self.method == "dumprestore":
                     type = 'target'
                     datadirs = [ os.path.join(self.workdir, UPGRADEDIR) ]
                 else:
@@ -2360,8 +2360,7 @@ This issue must be resolved before upgrade can complete.
                     '''
                        SELECT
                           datname        as dbname,
-                          oid            as oid,
-                          datlastsysoid  as max_sysoid
+                          oid            as oid
                        FROM pg_database 
                        WHERE datname != 'template0'
                        ORDER BY dbname
@@ -2372,10 +2371,7 @@ This issue must be resolved before upgrade can complete.
 
                     # Build up the list of mapping objects
                     rks = ['a', 'r', 't', 'i', 'S']
-                    if u.method == "dumprestore":
-                        exschema = "pg_(toast|temp.*)"
-                    else:
-                        exschema = "pg_temp.*"
+                    if self.method != "dumprestore":
                         rks.append('o')
 
                     rkstr = ', '.join(map(lambda x: "'%s'" % x, rks))
@@ -2383,17 +2379,13 @@ This issue must be resolved before upgrade can complete.
                     oidmap = {}
                     for db in databases:
                         oidmap[db['oid']] = [db['dbname']]
-                        if u.method == 'dumprestore':
-                            objs = "c.oid >= %s" % db['max_sysoid']
-                        else:
-                            objs = "(c.oid >= %s OR " % db['max_sysoid']
-                            objs += "n.nspname='information_schema')"
                         oids = self.Select(
                         '''
                            SELECT
                               case when parent.oid is not null
-then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
-             else n.nspname || '.' || c.relname || '_' || c.relkind
+                                   then n.nspname || '.' || pn.nspname || '.' ||
+                                        parent.relname || '_' || c.relkind
+                                   else n.nspname || '.' || c.relname || '_' || c.relkind
                               end as name,
                               c.relfilenode as filenode,
                               c2.relfilenode as toast,
@@ -2407,17 +2399,18 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                 left outer join pg_class c3 on c2.reltoastidxid=c3.oid
                 left outer join pg_class parent on parent.oid = c.parentoid
                 left outer join pg_namespace pn on parent.relnamespace = pn.oid
-                           WHERE %s
-                             AND c.relkind in (%s)
+                           WHERE c.relkind in (%s)
                              AND c.relnamespace = n.oid 
-                             AND n.nspname !~ '%s'
+                             AND n.nspname !~ 'pg_temp.*'
+                             AND n.nspname != 'pg_toast'
+                             AND n.nspname != 'pg_catalog'
+                             AND n.nspname != 'information_schema'
                            ORDER BY name;
-                        ''' % (objs, rkstr, exschema), 
-                        db=db['dbname'],
-                        port=port)
+                        ''' % rkstr, db=db['dbname'], port=port)
+
                         oidmap[db['oid']].append(oids)
 
-                    t = MappingsWorker(u, dir, mapfilename, oidmap)
+                    t = MappingsWorker(self, dir, mapfilename, oidmap)
                     t.start()
                     self.Log('DEBUG', 'started MappingsWorker thread: %s' % t.getName())
                     threads.append(t)
@@ -2427,9 +2420,13 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                             if th.errors:
                                 self.Log('FATAL', 'error encountered in mappings thread')
                         threads = []
-
+                        
+        # Wait for all threads to be done before proceding to next stage
         for th in threads:
             th.join()
+            if th.errors:
+                self.Log('FATAL', 'error encountered in mappings thread')
+            threads = []
 
         if errors > 0:
             raise UpgradeError('You must drop or reindex malformed objects prior to upgrade')
@@ -2457,7 +2454,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                  s.staattnum,    s.stanullfrac, s.stawidth,     s.stadistinct,
                  s.stakind1,     s.stakind2,    s.stakind3,     s.stakind4,
                  s.staop1::regoperator,         s.staop2::regoperator,
-                 s.staop3::regoperator,         s.staop4::regoperator,		 
+                 s.staop3::regoperator,         s.staop4::regoperator,
                  s.stanumbers1,  s.stanumbers2, s.stanumbers3,  s.stanumbers4,
                  s.stavalues1,   s.stavalues2,  s.stavalues3,   s.stavalues4
               FROM   pg_class c
@@ -3418,32 +3415,37 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                     # Get a list of databases
                     databases = self.Select(
                     '''
-                       SELECT
-                          datname        as dbname,
-                          oid            as oid,
-                          datlastsysoid  as max_sysoid
+                       SELECT 
+                          datname 
                        FROM pg_database 
                        WHERE datname != 'template0'
-                       ORDER BY dbname
+                       ORDER BY datname
                     ''', port=port)
 
                     # Build up the list of catalog entries
                     files = {}
                     for db in databases:
                         first = True
-                        l = self.Select('''select d.oid as datoid,
-                                c1.relname as rel1, c1.relfilenode as node1,
-                                c2.relname as rel2, c2.relfilenode as node2,
-                                c3.relname as rel3, c3.relfilenode as node3
-                                from pg_class c1 left outer join pg_class c2
-                                  on (c1.reltoastrelid = c2.oid)
-                                left outer join pg_class c3
-                                  on (c2.reltoastidxid = c3.oid),
-                                pg_database d 
-                                where c1.relnamespace = 11 and d.datname = '%s'
-                                and c1.relkind in ('r', 'i') and 
-                                c1.relisshared = 'f';''' % db['dbname'],
-                                port=port, db=db['dbname'])
+                        l = self.Select(
+                        '''
+                           SELECT d.oid as datoid,
+                                  c1.relname as rel1, c1.relfilenode as node1,
+                                  c2.relname as rel2, c2.relfilenode as node2,
+                                  c3.relname as rel3, c3.relfilenode as node3
+                           FROM pg_class c1 
+                              left outer join pg_namespace n
+                                on (c1.relnamespace = n.oid)
+                              left outer join pg_class c2
+                                on (c1.reltoastrelid = c2.oid)
+                              left outer join pg_class c3
+                                on (c2.reltoastidxid = c3.oid),
+                              pg_database d
+                           WHERE d.datname = '%s' and 
+                              (nspname = 'pg_catalog' or
+                               nspname = 'information_schema') and
+                              c1.relkind in ('r', 'i') and 
+                              not c1.relisshared
+                        ''' % db, port=port, db=db)
                 
                         f = []
                         nlist = ["1", "2", "3"]
@@ -3464,7 +3466,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
                                         raise UpgradeError(
 'found path "%s" for table "%s" but file does not exist' % (dfile, row['rel'+n]))
                                     f.append(file)
-                        files[db['dbname']] = f
+                        files[db] = f
                 
                     # add template0
                     r = self.Select("""select oid from pg_database where 
@@ -3814,6 +3816,7 @@ then n.nspname || '.' || pn.nspname || '.' || parent.relname || '_' || c.relkind
             self.Log('DEBUG', "created temporary directory " + tmpdir)
             # strings to find and the data to replace those strings with
             transforms = [['@gpupgradeschemaname@', 'pg_catalog'],
+                          ['@gpinfoschemaname@', 'information_schema'],
                           ['@gpupgradedatadir@', tmpdir],
                           ['@gpcurusername@', user]
                          ]
@@ -4186,132 +4189,132 @@ try:
         # different path for 3.1 to 3.2
         if u.method == "dumprestore":
 
-	        if u.execute:
-	            u.Shutdown()
-	        elif shutdown:
-	            u.Shutdown()
+            if u.execute:
+                u.Shutdown()
+            elif shutdown:
+                u.Shutdown()
 
-	        # Make sure error handling doesn't shutdown the database if anything
-	        # should fail.
-	        u.dbup = None
+            # Make sure error handling doesn't shutdown the database if anything
+            # should fail.
+            u.dbup = None
 
-	        # Write configuration files for new db
-	        # + Requires configuration info collected in ExtractInfo
-	        # + Requires working directory on master node
-	        if 'CONFIG_FILES' not in current_state:
-	            u.GenerateConfigFiles()
-	            u.SetState('CONFIG_FILES')
-	
-	        # Initalize the new database
-	        # + Requires working directories on all nodes
-	        # + Requires generated configuration file
-	        if ('INITDB' not in current_state):
-	            u.InitNewDB()
-	            u.SetState('INITDB')
-	            u.Shutdown()
-	
-	        # Prepare done, anything done after this point may allow modifying
-	        # the olddb
-	        if not u.execute:
-	            u.Log('INFO', 'Preparation successfully completed')
-	            sys.exit(0)
-	
-	        # Make sure that the database isn't running
-	        u.CheckDown()
-	
-	        # Set the ports for the upgrade server to the correct values
-	        #  OLD METHOD - needs review
-	        # if 'REMAP_PORTS' not in current_state:
-	        #    u.RemapPorts()
-	        #    u.SetState('REMAP_PORTS')
-	
-	        # Start the database back up on all hosts so that we can 
-	        # gather information from them.
-	        if ('MAPPINGS' not in current_state   or
-	            'STATISTICS' not in current_state or
-	            'DUMP_SCHEMA' not in current_state):
-	
-	            u.Startup(u.oldenv)
-	
-	            # Build up Source database OID/relfile mappings
-	            # + Requires running old db on all hosts
-	            # + Requires created directories so we can store the mapping file
-	            # + Requires execution on all hosts
-	            # + Requires Lockdown
-	            if 'MAPPINGS' not in current_state:
-	                u.BuildMappings()
-	                u.SetState('MAPPINGS')
-	            if 'STATISTICS' not in current_state:
-	                u.DumpStatistics()
-	                u.SetState('STATISTICS')
-	
-	            # Call pg_dumpall and put results in a file
-	            # + Requires running old db
-	            # + Requires working directory on master node
-	            # + Requires Lockdown
-	            if 'DUMP_SCHEMA' not in current_state:
-	                u.DumpSchema()
-	                u.SetState('DUMP_SCHEMA')
-	
-	            # All information collected, shutdown old database
-	            u.Shutdown()
-	            
-	        # Initalize the new database
-	        # + Requires working directories on all nodes
-	        # + Requires generated configuration file
-	        #u.InitNewDB()
-	
-	        # Lockdown the newDB
-	        # + Requires the database to be up
-	        # + Shuts the database down
-	        if 'NEWDB_LOCKDOWN' not in current_state:
-	            u.Startup(u.newenv)
-	            u.SetupLockdown()
-	            u.Shutdown()
-	            u.SetState('NEWDB_LOCKDOWN')
-	
-	        # Import schema and build the mappings
-	        if ('IMPORT_SCHEMA' not in current_state or
-	            'MAPPINGS2' not in current_state):
-	            u.Startup(u.newenv)
-	
-	            if 'IMPORT_SCHEMA' not in current_state:
-	                u.ImportSchema()
-	                u.SetState('IMPORT_SCHEMA')
-	
-	            if 'MAPPINGS2' not in current_state:
-	                u.BuildMappings()
-	                u.SetState('MAPPINGS2')
-	            u.Shutdown()
-	
-	
-	
-	        # Distribute the dummy seg to all the segments and re-adjust 
-	        # gp_configuration on the master node.
-	        if 'EXPAND_SYS' not in current_state:
-	            u.ExpandSystem()
-	            u.SetState('EXPAND_SYS')
-	
-	        # Reset the Xlogs
-	        if 'RESET_XLOGS' not in current_state:
-	            u.ResetXLogs()
-	            u.SetState('RESET_XLOGS')
-	
-	        # Remap oids for the new database
-	        # + Requires working directories on all hosts
-	        # + Requires new db initialized
-	        if 'REMAP_OID' not in current_state:
-	            u.RemapOID()
-	            u.SetState('REMAP_OID')
-	
-	        # Confirm that the resync/remapping was successful
-	        # + Restore statistics must either be after resetXlogs or
-	        #   requires an additional vacuum step.
-	        if 'RESTORE_STATISTICS' not in current_state:
-	            u.Startup(u.newenv, utility=True)
-	            u.RestoreStatistics()
-	            u.SetState('RESTORE_STATISTICS')
-	            u.Shutdown()
+            # Write configuration files for new db
+            # + Requires configuration info collected in ExtractInfo
+            # + Requires working directory on master node
+            if 'CONFIG_FILES' not in current_state:
+                u.GenerateConfigFiles()
+                u.SetState('CONFIG_FILES')
+    
+            # Initalize the new database
+            # + Requires working directories on all nodes
+            # + Requires generated configuration file
+            if ('INITDB' not in current_state):
+                u.InitNewDB()
+                u.SetState('INITDB')
+                u.Shutdown()
+    
+            # Prepare done, anything done after this point may allow modifying
+            # the olddb
+            if not u.execute:
+                u.Log('INFO', 'Preparation successfully completed')
+                sys.exit(0)
+    
+            # Make sure that the database isn't running
+            u.CheckDown()
+    
+            # Set the ports for the upgrade server to the correct values
+            #  OLD METHOD - needs review
+            # if 'REMAP_PORTS' not in current_state:
+            #    u.RemapPorts()
+            #    u.SetState('REMAP_PORTS')
+    
+            # Start the database back up on all hosts so that we can 
+            # gather information from them.
+            if ('MAPPINGS' not in current_state   or
+                'STATISTICS' not in current_state or
+                'DUMP_SCHEMA' not in current_state):
+    
+                u.Startup(u.oldenv)
+    
+                # Build up Source database OID/relfile mappings
+                # + Requires running old db on all hosts
+                # + Requires created directories so we can store the mapping file
+                # + Requires execution on all hosts
+                # + Requires Lockdown
+                if 'MAPPINGS' not in current_state:
+                    u.BuildMappings()
+                    u.SetState('MAPPINGS')
+                if 'STATISTICS' not in current_state:
+                    u.DumpStatistics()
+                    u.SetState('STATISTICS')
+    
+                # Call pg_dumpall and put results in a file
+                # + Requires running old db
+                # + Requires working directory on master node
+                # + Requires Lockdown
+                if 'DUMP_SCHEMA' not in current_state:
+                    u.DumpSchema()
+                    u.SetState('DUMP_SCHEMA')
+    
+                # All information collected, shutdown old database
+                u.Shutdown()
+                
+            # Initalize the new database
+            # + Requires working directories on all nodes
+            # + Requires generated configuration file
+            #u.InitNewDB()
+    
+            # Lockdown the newDB
+            # + Requires the database to be up
+            # + Shuts the database down
+            if 'NEWDB_LOCKDOWN' not in current_state:
+                u.Startup(u.newenv)
+                u.SetupLockdown()
+                u.Shutdown()
+                u.SetState('NEWDB_LOCKDOWN')
+    
+            # Import schema and build the mappings
+            if ('IMPORT_SCHEMA' not in current_state or
+                'MAPPINGS2' not in current_state):
+                u.Startup(u.newenv)
+    
+                if 'IMPORT_SCHEMA' not in current_state:
+                    u.ImportSchema()
+                    u.SetState('IMPORT_SCHEMA')
+    
+                if 'MAPPINGS2' not in current_state:
+                    u.BuildMappings()
+                    u.SetState('MAPPINGS2')
+                u.Shutdown()
+    
+    
+    
+            # Distribute the dummy seg to all the segments and re-adjust 
+            # gp_configuration on the master node.
+            if 'EXPAND_SYS' not in current_state:
+                u.ExpandSystem()
+                u.SetState('EXPAND_SYS')
+    
+            # Reset the Xlogs
+            if 'RESET_XLOGS' not in current_state:
+                u.ResetXLogs()
+                u.SetState('RESET_XLOGS')
+    
+            # Remap oids for the new database
+            # + Requires working directories on all hosts
+            # + Requires new db initialized
+            if 'REMAP_OID' not in current_state:
+                u.RemapOID()
+                u.SetState('REMAP_OID')
+    
+            # Confirm that the resync/remapping was successful
+            # + Restore statistics must either be after resetXlogs or
+            #   requires an additional vacuum step.
+            if 'RESTORE_STATISTICS' not in current_state:
+                u.Startup(u.newenv, utility=True)
+                u.RestoreStatistics()
+                u.SetState('RESTORE_STATISTICS')
+                u.Shutdown()
 
         else:
             # transform case

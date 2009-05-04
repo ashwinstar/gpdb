@@ -247,3 +247,5 @@ COMMENT ON CONVERSION @gpupgradeschemaname@.shift_jis_2004_to_utf8 IS 'conversio
 COMMENT ON CONVERSION @gpupgradeschemaname@.utf8_to_shift_jis_2004 IS 'conversion for UTF8 to SHIFT_JIS_2004';
 COMMENT ON CONVERSION @gpupgradeschemaname@.euc_jis_2004_to_shift_jis_2004 IS 'conversion for EUC_JIS_2004 to SHIFT_JIS_2004';
 COMMENT ON CONVERSION @gpupgradeschemaname@.shift_jis_2004_to_euc_jis_2004 IS 'conversion for SHIFT_JIS_2004 to EUC_JIS_2004';
+
+update @gpinfoschemaname@.sql_implementation_info set character_value='08.02.0013' where implementation_info_id=18;

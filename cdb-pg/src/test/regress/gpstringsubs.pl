@@ -307,6 +307,7 @@ if (1)
     my $psexp   = '\\@ps_pidfirst\\@';
 	my $unexp = '\\@gpcurusername\\@';
 	my $schema = '\\@gpupgradeschemaname\\@';
+	my $infoschema = '\\@gpinfoschemaname\\@';
 	my $ugdir = '\\@gpupgradedatadir\\@';
 
     my $locps   = 'ps axww';
@@ -350,7 +351,7 @@ if (1)
 	chomp $curdir;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; \' $filnam\n";
 
     # replace all "which" expressions with binary
     if (defined($gpwhich_all) && length($gpwhich_all))
