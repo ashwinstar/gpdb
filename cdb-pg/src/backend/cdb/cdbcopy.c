@@ -87,7 +87,7 @@ makeCdbCopy(bool is_copy_in)
 		c->segdb_state[seg][0] = SEGDB_IDLE;	/* Primary can't be OUT */
 		
 		/* we are interested in mirrors only for copy_in */
-		if(c->copy_in)
+		if (c->copy_in)
 			c->segdb_state[seg][1] = (c->mirror_map[seg] == 1 ? SEGDB_OUT : SEGDB_IDLE);
 		else
 			c->segdb_state[seg][1] = SEGDB_OUT;
@@ -98,7 +98,7 @@ makeCdbCopy(bool is_copy_in)
 	c->mirror_writer = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 	
 	/* init seg list for copy out */
-	if(!c->copy_in)
+	if (!c->copy_in)
 	{
 		int i;
 		for (i = 0; i < c->total_segs; i++)
@@ -445,7 +445,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 			q = getSegmentDescriptorFromGang(gp, source_seg);
 			
 			/* send a query cancel request to that segdb */
-			if(copy_cancel)
+			if (copy_cancel)
 				PQrequestCancel(q->conn);
 			
 			/* get 1 row of COPY data */
@@ -491,7 +491,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 				c->outseglist = list_delete_int(c->outseglist, source_seg);
 				
 				/* no more segments with data on the list. we are done */
-				if(list_length(c->outseglist) == 0)
+				if (list_length(c->outseglist) == 0)
 					return true; /* done */
 				
 				/* start over from first seg as we just changes the seg list */
@@ -519,7 +519,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 					c->outseglist = list_delete_int(c->outseglist, source_seg);
 					
 					/* no more segments with data on the list. we are done */
-					if(list_length(c->outseglist) == 0)
+					if (list_length(c->outseglist) == 0)
 						return true; /* done */
 					
 					/* start over from first seg as we just changes the seg list */
@@ -530,7 +530,7 @@ bool cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 			}
 		}
 		
-		if(c->copy_out_buf.len > COPYOUT_CHUNK_SIZE)
+		if (c->copy_out_buf.len > COPYOUT_CHUNK_SIZE)
 			break;
 	}
 
@@ -580,7 +580,7 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 				c->outseglist = list_delete_int(c->outseglist, source_seg);
 				
 				/* no more segments with data on the list. we are done */
-				if(list_length(c->outseglist) == 0)
+				if (list_length(c->outseglist) == 0)
 					return true; /* done */
 				
 				break;
@@ -588,7 +588,7 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 				
 			
 			/* send a query cancel request to that segdb */
-			if(copy_cancel)
+			if (copy_cancel)
 				PQrequestCancel(q->conn);
 			
 			/* get 1 row of COPY data */
@@ -635,7 +635,7 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 				c->outseglist = list_delete_int(c->outseglist, source_seg);
 				
 				/* no more segments with data on the list. we are done */
-				if(list_length(c->outseglist) == 0)
+				if (list_length(c->outseglist) == 0)
 					return true; /* done */
 				
 				/* start over from first seg as we just changes the seg list */
@@ -663,7 +663,7 @@ bool cdbCopyRelayData(CdbCopy *c,  bool copy_cancel, uint64 *rows_processed)
 					c->outseglist = list_delete_int(c->outseglist, source_seg);
 					
 					/* no more segments with data on the list. we are done */
-					if(list_length(c->outseglist) == 0)
+					if (list_length(c->outseglist) == 0)
 						return true; /* done */
 					
 					/* start over from first seg as we just changes the seg list */
@@ -760,13 +760,12 @@ cdbCopyEnd(CdbCopy *c)
 			 * Otherwise, the next time a command is sent to that connection,
 			 * it will return an error that there's a command pending.
 			 */
-			while (NULL != (res = PQgetResult(q->conn)))
+			while ((res = PQgetResult(q->conn)) != NULL && PQstatus(q->conn) != CONNECTION_BAD)
 			{
-				elog(DEBUG1,"PQgetResult got status %d seg %d    ",PQresultStatus(res),q->segindex);
+				elog(DEBUG1,"PQgetResult got status %d seg %d    ", PQresultStatus(res),q->segindex);
 				/* if the COPY command had a data error */
 				if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 				{
-				 
 					primary_had_error = true;
 					
 					/* 
@@ -779,14 +778,17 @@ cdbCopyEnd(CdbCopy *c)
 					 * We get the error message in pieces so that we could append
 					 * whoami to the primary error message only.
 					 */
-					if(first_error)
+					if (first_error)
 					{
 						char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
 						char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
 						char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
-												
-						appendStringInfo(&(c->err_msg), "%s", pri);
-						
+
+						if (pri)
+							appendStringInfo(&(c->err_msg), "%s", pri);
+						else
+							appendStringInfo(&(c->err_msg), "Unknown primary error.");
+
 						if (q->whoami)
 							appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
 						
@@ -821,7 +823,7 @@ cdbCopyEnd(CdbCopy *c)
 				}
 
 				/* in SREH mode, check if this seg rejected (how many) rows */
-				if(res->numRejected > 0)
+				if (res->numRejected > 0)
 					segment_rows_rejected = res->numRejected;
 				
 				/* Get AO tuple counts */
@@ -840,7 +842,7 @@ cdbCopyEnd(CdbCopy *c)
 			 * add number of rows rejected from this segment to the 
 			 * total of rejected rows. Only count from primary segs.
 			 */
-			if( segment_rows_rejected > 0)
+			if (segment_rows_rejected > 0)
 				total_rows_rejected += segment_rows_rejected;
 			
 			segment_rows_rejected = 0;
@@ -855,7 +857,7 @@ cdbCopyEnd(CdbCopy *c)
 
 				/* command error */
 				c->io_errors = true;
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, with error: %s\n", "primary",
+				appendStringInfo(&(c->err_msg), "primary segment %d, dbid %d, with error: %s\n",
 				seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
 
 				/* Free the PGconn object. */
@@ -926,13 +928,16 @@ cdbCopyEnd(CdbCopy *c)
 					 * We get the error message in pieces so that we could append
 					 * whoami to the primary error message only.
 					 */
-					if( ( !primary_had_error) && first_error)
+					if ((!primary_had_error) && first_error)
 					{
 						char   *pri = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
 						char   *dtl = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
 						char   *ctx = PQresultErrorField(res, PG_DIAG_CONTEXT);
 												
-						appendStringInfo(&(c->err_msg), "%s", pri);
+						if (pri)
+							appendStringInfo(&(c->err_msg), "%s", pri);
+						else
+							appendStringInfo(&(c->err_msg), "Unknown mirror error.");
 						
 						if (q->whoami)
 							appendStringInfo(&(c->err_msg),"  (%s)", q->whoami);
@@ -981,7 +986,7 @@ cdbCopyEnd(CdbCopy *c)
 
 				/* command error */
 				c->io_errors = true;
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, with error: %s\n", "mirror",
+				appendStringInfo(&(c->err_msg), "mirror segment %d, dbid %d, with error: %s\n",
 				seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
 
 				/* Free the PGconn object. */
