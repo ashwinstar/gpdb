@@ -817,7 +817,10 @@ class gpexpand:
                 return None
             
             logger.info('Querying gpexpand schema for current expansion state')
-            gpexpand_db_status = gpexpand.get_status_from_db(dburl)
+            try:
+                gpexpand_db_status = gpexpand.get_status_from_db(dburl)
+            except Exception, e:
+                raise Exception('Error while trying to query the gpexpand schema: %s' % e)
             logger.debug('Expansion status returned is %s' % gpexpand_db_status)
 
             if (not gpexpand_db_status and options.filename) and not options.clean:
@@ -831,21 +834,47 @@ class gpexpand:
     @staticmethod
     def get_status_from_db(dburl):
         """Gets gpexpand status from the gpexpand schema"""
-        conn = None
+        status_conn = None
         gpexpand_db_status = None
         if get_local_db_mode(options.master_data_directory) == 'NORMAL':
             try:
-                conn = dbconn.connect(dburl)
+                status_conn = dbconn.connect(dburl)
                 # Get the last status entry
-                cursor = dbconn.execSQL(conn,'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
+                cursor = dbconn.execSQL(status_conn,'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
                 if cursor.rowcount == 1:
                     gpexpand_db_status = cursor.fetchone()[0]
-            except:
+            except Exception, e:
                 # expansion schema doesn't exists or there was a connection failure.
                 pass
-            finally: 
-                if conn: conn.close()    
-        
+            finally:
+                if status_conn: status_conn.close()
+
+        # make sure gpexpand schema doesn't exist since it wasn't in DB provided
+        if not gpexpand_db_status:
+            status_conn = dbconn.connect(dburl)
+            db_list = catalog.getDatabaseList(status_conn)
+            status_conn.close()
+            
+            for db in db_list:
+                dbname=db[0]
+                if dbname in ['template0', 'template1', 'postgres', dburl.pgdb]:
+                    continue
+                logger.debug('Looking for gpexpand schema in %s' % dbname)
+                test_url = copy.deepcopy(dburl)
+                test_url.pgdb = dbname
+                c = dbconn.connect(test_url)
+                try:
+                    cursor = dbconn.execSQL(c, 'SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1')
+                except:
+                    # Not in here
+                    pass
+                else:
+                    raise ExpansionError("""gpexpand schema exists in database %s, not in %s.  
+Set PGDATABASE or use the -D option to specificy the correct database to use.""" % (dbname, options.database))
+                finally:
+                    if c: 
+                        c.close()
+            
         return gpexpand_db_status
     
     def validate_database_settings(self):
@@ -1560,6 +1589,11 @@ UPDATE gp_distribution_policy
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
             cursor = dbconn.execSQL(self.conn, sql)
             self.conn.commit()            
+            logger.warn('**************************************************')                     
+            logger.warn('One or more tables failed to expand successfully.')
+            logger.warn('Please check the log file, correct the problem and')
+            logger.warn('run gpexpand again to finish the expansion process')
+            logger.warn('**************************************************')   
         else:
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION COMPLETE', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
             cursor = dbconn.execSQL(self.conn, sql)
@@ -2082,15 +2116,7 @@ try:
         interview_setup(gparray)            
     else:
         logger.error('The last gpexpand setup did not complete successfully.')
-        logger.error('Please run gpexpand -r to rollback to the original state.')
-
-    if table_expand_error == True:
-        logger.warn('**************************************************')                     
-        logger.warn('One or more tables failed to expand successfully.')
-        logger.warn('Please check the log file, correct the problem and')
-        logger.warn('run gpexpand again to finish the expansion process')
-        logger.warn('**************************************************')                     
-
+        logger.error('Please run gpexpand -r to rollback to the original state.')                  
 
     logger.info("Exiting...")
     sys.exit(0)
