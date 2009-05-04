@@ -55,7 +55,7 @@ def pretty_version(v):
     if m: return str(3 + (float(m.group(1))/100))
     else: return str(v)
 
-__version__ = pretty_version('$Revision: #10 $')
+__version__ = pretty_version('$Revision$')
 
 #============================================================
 def cli_help():
