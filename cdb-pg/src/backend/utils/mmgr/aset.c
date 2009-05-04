@@ -623,7 +623,11 @@ AllocSetAlloc(MemoryContext context, Size size)
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
+#if defined(__darwin__)
+		elog(ERROR,"palloc called from thread (OS-X pthread_sigmask is broken: MPP-4923)");
+#else
 		elog(ERROR,"palloc called from thread");
+#endif
 	}
 #endif
 
@@ -968,7 +972,11 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster  && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
+#if defined(__darwin__)
+		elog(ERROR,"prealloc called from thread (OS-X pthread_sigmask is broken: MPP-4923)");
+#else
 		elog(ERROR,"prealloc called from thread");
+#endif
 	}
 #endif
 #ifdef MEMORY_CONTEXT_CHECKING

@@ -1118,7 +1118,11 @@ elog_start(const char *filename, int lineno, const char *funcname)
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
 	{
+#if defined(__darwin__)
+		write_log("elog called from thread (OS-X pthread_sigmask is broken: MPP-4923)\n");
+#else
 		write_log("elog called from thread (%s:%d)\n", filename, lineno);
+#endif
 	}
 #endif
 }
