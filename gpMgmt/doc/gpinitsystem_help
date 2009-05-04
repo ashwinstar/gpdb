@@ -7,15 +7,13 @@ specified in the supplied configuration file.
 SYNOPSIS
 *****************************************************
 
-gpinitsystem -c <gp_init_config_file> | -I <array_config_file>
+gpinitsystem -c <gp_init_config_file>  
              [-h <host_file>] [-r | -B <parallel_processes>] 
              [-p <postgresql_conf_param_file>] 
              { [-s <standby_master_host>] [-i] } 
              [-o] [-m <max_connections>] [-b <shared_buffer_size>] 
              [-e <superuser_password>] [-n <locale>] [-S] [-a] [-q] 
              [-l <logfile_directory>] [-D]
-
-gpinitsystem -c <gp_init_config_file> -O <output_sample_array_config>
 
 gpinitsystem -? | -v
 
@@ -130,35 +128,6 @@ master hosts. The default is to start the
 synchronization process.
 
 
--I <array_config_file>
-
-Either one of -c or -I are required. The full path and 
-filename of a detailed array configuration file in the 
-following format: 
-ARRAY_NAME=<name>
-TRUSTED_SHELL=ssh
-CHECK_POINT_SEGMENTS=<number>
-ENCODING=<encoding>
-SEG_PREFIX=<prefix>
-QD_PRIMARY_ARRAY=<master_hostname>:<port>:<datadir>:<dbid>:<content_id>
-declare -a PRIMARY_ARRAY=(<segment_hostname>:<port>:<datadir>:<dbid>:<content_id>
-... )
-declare -a MIRROR_ARRAY=(
-<mirror_hostname>:<port>:<datadir>:<dbid>:<content_id>
-... )
-You can generate a sample array configuration file using the -c 
-and -O options and then edit it as needed. Use this type of 
-configuration file to configure an array with the same segment 
-host layout as used in a prior Greenplum Database instance. The 
-way gpinitsystem maps segments to segment hosts has changed between 
-releases 3.1.1.x and 3.2.x.x. If you are upgrading using a dump 
-of a 3.1.1.x release to restore into a 3.2.x.x system, use this 
-option to make sure the array layout stays the same as your 
-previous instance. All of the configuration information for an 
-array can be found by looking in the gp_configuration system 
-catalog table.
-
-
 -l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
@@ -182,13 +151,6 @@ sure that the locale you specify exists on your operating system
 
 Creates a master instance only. Does not configure any 
 segment hosts.
-
-
--O <output_sample_array_config>
-
-Use with the -c option to generate a sample array 
-configuration file. This file can then be edited as needed 
-and then used as the input configuration file to the -I option.
 
 
 -p <postgresql_conf_param_file>
@@ -243,21 +205,9 @@ Displays the online help.
 EXAMPLES
 *****************************************************
 
-Initialize a Greenplum Database array using the regular 
-configuration file:
+Initialize a Greenplum Database array:
 
 gpinitsystem -c gp_init_config
-
-
-Initialize a Greenplum Database array using a detailed array 
-configuration file:
-
-gpinitsystem -h host_file -I detailed_array_config
-
-
-Output a sample detailed array configuration file:
-
-gpinitsystem -c gp_init_config -O sample_array_config
 
 
 Initialize a Greenplum Database array and set the superuser 
