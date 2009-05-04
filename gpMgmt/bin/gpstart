@@ -332,6 +332,8 @@ class GpStart():
     def start(self):     
         """ returns whether all segments were started successfully """   
         self.failed_seg_status = []
+        self.success_seg_status = []
+        
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
         
@@ -363,8 +365,8 @@ class GpStart():
         
                                     
         self._start_segments()                
-        self.success_seg_status=self._process_segment_start(self.failed_seg_status)    
-        self._print_segment_start(segs,self.failed_seg_status,self.success_seg_status)
+        self._process_segment_start()
+        self._print_segment_start(segs)
 
         #make sure we have at least one segment per content
         if not self._verify_enough_segments(self.success_seg_status,self.gparray):
@@ -403,13 +405,17 @@ class GpStart():
             if curr_content != (prev_content + 1):
                 #means we have a gap and so don't have enough segments
                 logger.error("No segment started for content: %d.  curr_content=%d" % (prev_content+1,curr_content))
+                logger.info("dumping success segments: %s" % success_seg_status)
+                logger.info("dumping mapping: %s" % content_dict)
                 return False
             prev_content=curr_content
         
         #content is 0-based.
         if (curr_content+1) != gparray.get_segment_count():
             #we must have lost one at the end... so don't have enough
-            logger.error("No segment started for content: %d.  curr_content=%d" % (gparray.get_segment_count()-1,curr_content))
+            logger.error("No segment started for content: %d.   curr_content=%d" % (gparray.get_segment_count()-1,curr_content))
+            logger.info("dumping success segments: %s" % success_seg_status)
+            logger.info("dumping mapping: %s" % content_dict)            
             return False
             
         return True
@@ -486,9 +492,8 @@ class GpStart():
 
     
     ######
-    def _process_segment_start(self,failed_seg_status):
+    def _process_segment_start(self):
         logger.info("Process results...")
-        success_seg_status=[]
         cmds=self.pool.getCompletedItems()
         for cmd in cmds:
             if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:                            
@@ -511,29 +516,29 @@ class GpStart():
                         for db in cmd.dblist:                     
                             if db.datadir == dir:
                                 if success:                                                         
-                                    success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
+                                    self.success_seg_status.append( SegStartStatus(db,started=True,reason=reasonStr,failedCmd=cmd) )
                                 else:
-                                    failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
+                                    self.failed_seg_status.append( SegStartStatus(db,started=False,reason=reasonStr,failedCmd=cmd) )                        
             else:                
                 for db in cmd.dblist:
-                    failed_seg_status.append( SegStartStatus(db,started=False,reason=cmd.get_results(),failedCmd=cmd))
+                    self.failed_seg_status.append( SegStartStatus(db,started=False,reason=cmd.get_results(),failedCmd=cmd))
                     
         self.pool.empty_completed_items()
-        return success_seg_status
+
         
         
     ######
-    def _print_segment_start(self,segs,failed_seg_status,success_seg_status):
-        started = len(segs) - len(failed_seg_status)
-        failed = len(failed_seg_status)
+    def _print_segment_start(self,segs):
+        started = len(segs) - len(self.failed_seg_status)
+        failed = len(self.failed_seg_status)
         invalid = self.gparray.get_invalid_segdbs()
 
         if failed > 0 or logging_is_verbose():             
             logger.info("----------------------------------------------------")
             if failed > 0:
-                for failure in failed_seg_status:
+                for failure in self.failed_seg_status:
                     logger.info(failure)
-            for stat in success_seg_status:
+            for stat in self.success_seg_status:
                 logger.debug(stat)            
             logger.info("----------------------------------------------------\n\n")
             
@@ -650,7 +655,7 @@ def parseargs():
                 description=' '.join(description.split()),
                 version='%prog version $Revision: #12 $')
     parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [--usage] [options] ')
+    parser.set_usage('%prog [--help] [--version] [--usage] [options] ')
     parser.remove_option('-h')
     
     parser.add_option('-h', '--help', action='help',
