@@ -5967,20 +5967,43 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 			break;
 		case 'l':
 			{
-				ListCell *lc;
-				List *l1;
+				ListCell	*lc;
+				List		*l1;
+				int2		 nkeys  = part->parnatts;
+				int2		 parcol = 0;
 
 				appendStringInfo(&str, "VALUES(");
 
 				l1 = (List *)rule->parlistvalues;
+
+				/* MPP-5878: print multiple columns if > 1 key cols */
 				foreach(lc, l1)
 				{
-					Const *con = linitial(lfirst(lc));
+					List		*vals = lfirst(lc);
+					ListCell	*lcv  = list_head(vals);
 
 					if (lc != list_head(l1))
 						appendStringInfoString(&str, ", ");
 
-					get_const_expr(con, &c, -1);
+					if (nkeys > 1) /* extra parens if group multiple cols */
+						appendStringInfoString(&str, " (");
+
+					for (parcol = 0; parcol < nkeys; parcol++)
+					{
+						Const *con = lfirst(lcv);
+
+						if (lcv != list_head(vals))
+							appendStringInfoString(&str, ", ");
+
+						get_const_expr(con, &c, -1);
+
+						lcv = lnext(lcv);
+					}
+
+					if (nkeys > 1) /* extra parens if group multiple cols */
+						appendStringInfoString(&str, ")");
+
+
 				}
 				appendStringInfoString(&str, ")");
 				needspace = true;
