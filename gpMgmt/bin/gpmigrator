@@ -1250,7 +1250,7 @@ class GPUpgrade:
         '''
 
         if not self.execute:
-            raise UpgradeError('gpmigrator [-R] is not compatable with --prepare')
+            raise UpgradeError('gpmigrator [-R] is not compatible with --prepare')
 
         self.Shutdown()
         self.CheckDown()
