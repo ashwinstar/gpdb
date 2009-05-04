@@ -1364,9 +1364,9 @@ ServerLoop(void)
 	fd_set		readmask;
 	int			nSockets;
 	time_t		now,
-				last_touch_time;
+		last_touch_time;
 	struct timeval earlier,
-				later;
+		later;
 
 	gettimeofday(&earlier, NULL);
 	last_touch_time = time(NULL);
@@ -1402,8 +1402,8 @@ ServerLoop(void)
 
 		selres = select(nSockets, &rmask, NULL, NULL, &timeout);
 
-                if(need_call_reaper)
-                        do_reaper();
+		if (need_call_reaper)
+			do_reaper();
 
 		/*
 		 * Block all signals until we wait again.  (This makes it safe for our
@@ -2437,7 +2437,7 @@ static void do_reaper()
 	int			pid;			/* process id of dead backend */
 
 	PG_SETMASK(&BlockSig);
-        need_call_reaper = 0;
+	need_call_reaper = 0;
 
 	ereport(DEBUG4,
 			(errmsg_internal("reaping dead processes")));
@@ -2587,6 +2587,13 @@ static void do_reaper()
 					if (StartupPID == 0 &&
 						!FatalError && Shutdown == NoShutdown)
 					{
+						/*
+						 * Before we attempt a restart -- let's make
+						 * sure that any backend Proc structures are
+						 * tidied up.
+						 */
+						CleanupBackend(pid, exitstatus);
+
 						subProc->pid =
 							(subProc->serverStart)();
 						if (Debug_print_server_processes)
