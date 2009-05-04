@@ -1587,13 +1587,13 @@ try:
                 if len(failed_dbids) > len(qes):
                     gpmlib.log_fatal('Insufficient remaining active instances to be able to recover instance')
                     gpmlib.fatal('Unable to continue')
-                else:
-                    gpmlib.log_info('Sufficient active instances to be able to start recovery')
             
                 # get details of failed and its segment
                 (failed_instance_array, active_instance_array) = get_mirror_details(db, failed_dbids)
                 if len(failed_instance_array) == 0 and len(active_instance_array) == 0:
                     gpmlib.fatal('Unable to continue segment recovery')
+
+                gpmlib.log_info('Sufficient active instances to be able to start recovery')
 
                 if fault_action == 'readonly' and opt['-F'] == False:
                     gpmlib.log_info('The following segments are marking as invalid:')
