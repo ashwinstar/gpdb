@@ -468,6 +468,14 @@ sol8_sparc_32_PYTHON=/opt/python32-2.5.1
 suse10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 
+# if PYTHON was specified above, use it for the build
+ifneq "$(BLD_PYTHON)" ""
+tmpPATH=$(BLD_PYTHON)/bin:$(PATH)
+export PATH:=$(tmpPATH)
+tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(MAC_PREFIX)LD_LIBRARY_PATH)
+export $(MAC_PREFIX)LD_LIBRARY_PATH:=$(tmpLD_LIBRARY_PATH)
+endif
+
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
 BLD_OS=Windows
 else
