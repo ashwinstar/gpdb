@@ -167,7 +167,7 @@ class GpStop():
         logger.info("Commencing Master instance shutdown with mode=%s" % self.mode)
         logger.info("Master segment instance directory=%s" % self.master_datadir)
         
-        cmd=gp.SegmentStop("stopping master", self.master_datadir, mode=self.mode)
+        cmd=gp.MasterStop("stopping master", self.master_datadir, mode=self.mode)
         cmd.run(validateAfter=True)
         
         logger.debug("Successfully shutdown the Master instance in admin mode")
@@ -473,7 +473,7 @@ def parseargs():
                 description=' '.join(description.split()),
                 version='%prog version $Revision: #12 $')
     parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [options] ')
+    parser.set_usage('%prog [--version] [--help] [options] ')
     parser.remove_option('-h')
     
     parser.add_option('-h', '--help', action='help',

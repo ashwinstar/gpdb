@@ -96,9 +96,9 @@ class MasterStart(Command):
 
 #-----------------------------------------------
 class MasterStop(Command):
-    def __init__(self,name,dataDir,ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,dataDir,mode='smart',ctxt=LOCAL,remoteHost=None):
         self.dataDir=dataDir
-        cmdStr="$GPHOME/bin/pg_ctl -w -D %s stop" % (dataDir)
+        cmdStr="$GPHOME/bin/pg_ctl -w -D %s -m %s stop" % (dataDir,mode)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
