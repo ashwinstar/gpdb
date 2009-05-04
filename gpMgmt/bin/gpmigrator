@@ -946,15 +946,26 @@ class GPUpgrade:
 
         conn = None
         try:
+            # try unix socket first
             conn = pg8000.Connection(user=user, 
-                                     host='localhost',
+                                     unix_sock=os.path.join(self.sock_dir, '.s.PGSQL.%i' % port),
                                      database=db, 
                                      options=options,
                                      port=port,
                                      socket_timeout=5000)
         except Exception, e:
-            self.Log('FATAL', 'Could not establish connection to database')
-            raise ConnectionError(str(e))
+            try:
+                self.Log('DEBUG', "could not connect using unix socket, trying "
+                         "host based connection")
+                conn = pg8000.Connection(user=user,
+                                         host='localhost',
+                                         database=db, 
+                                         options=options,
+                                         port=port,
+                                         socket_timeout=5000)
+            except Exception, e:
+                self.Log('FATAL', 'Could not establish connection to database')
+                raise ConnectionError(str(e))
 
         try:
             conn.execute(qry)
