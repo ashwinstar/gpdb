@@ -348,7 +348,7 @@ class GPUpgrade:
         self.mirrors    = []       # list of mirrors
         self.dbup       = None
         self.interupted = False    # SIGINT recieved
-
+        self.faultinjection = None
 
     #------------------------------------------------------------
     def Setup(self):
@@ -490,6 +490,8 @@ class GPUpgrade:
             parser.add_option('--nocheckcat', dest='nocheckcat',
                               action='store_true',
                               help=optparse.SUPPRESS_HELP)
+            parser.add_option('--fault-injection', dest='faultinjection',
+                              type='int', help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
             
             if options.version:
@@ -554,6 +556,7 @@ class GPUpgrade:
             self.checkcat = False
         else:
             self.checkcat = True
+        self.faultinjection = options.faultinjection
 
         if self.cmd == 'MASTER':
             if options.forcedumprestore:
@@ -709,7 +712,7 @@ class GPUpgrade:
         for h in self.hosts: 
             exec_cmd += ' -h %s' % h
 
-        if self.upgrade:
+        if self.upgrade or self.revert:
             env = self.newenv
             exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.newhome, EXECNAME)
         else:
@@ -1248,9 +1251,20 @@ class GPUpgrade:
         if not self.execute:
             raise UpgradeError('gpmigrator [-R] is not compatible with --prepare')
 
-        self.Shutdown()
-        self.CheckDown()
+        try:
+            if u.faultinjection == -1:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
+            self.Shutdown()
+            self.CheckDown()
+        except BaseException, e:
+            u.Log('FATAL', '***************************************')
+            u.Log('FATAL', str(e))
+            u.Log('FATAL', '***************************************')
+            raise UpgradeError("Unable to REVERT\nShutdown the running " +
+                               "database and rerun gpmigrator with '-R'")
+            
         self.Log('INFO', 'Reverting to Backup')
+        self.revert = True
 
         statefile = os.path.join(self.workdir, 'state')
         if not os.path.exists(statefile):
@@ -1258,9 +1272,6 @@ class GPUpgrade:
             self.Log('INFO', 'Revert aborted')
             sys.exit(0)
         state = self.RunCmd('cat ' + statefile)
-
-        # Truncate the statefile
-        open(statefile, 'w').truncate()
 
         needrevert = False
         for line in state.split('\n'):
@@ -1341,6 +1352,10 @@ class GPUpgrade:
             self.Log('INFO', 'Restoring directories')
             self.DeepLink('REVERT')
 
+        # Truncate the statefile
+        # + Must occur AFTER actual Revert is processed
+        open(statefile, 'w').truncate()
+
         if needunlock:
             self.ReleaseLockdown(self.oldenv)
 
@@ -1351,6 +1366,7 @@ class GPUpgrade:
         
         # done
         self.Log('INFO', 'Revert Successful')
+        self.revert = False
 
 
     #------------------------------------------------------------
@@ -2228,6 +2244,7 @@ This issue must be resolved before upgrade can complete.
         if self.dbup:
             userset = False
             if env == self.newenv:
+                userset = True
                 env['PGUSER'] = MIGRATIONUSER
 
             self.RunCmd('gpstop -u -l %s' % self.logdir, env=env)
@@ -4079,6 +4096,19 @@ if __name__ == '__main__':
             if u.prepare:
                 current_state = {}
             
+            # Test failure before we bring up the database
+            if u.faultinjection == 1:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
+            # Test failure due to a bad lockfile in /tmp
+            # For this injection we are assuming that the segments are running
+            # on the local machine and using port 50000, not necessarily true
+            # but should be good enough for testing.
+            if u.faultinjection == 2:    # XXX
+                u.Shutdown()
+                u.Log("FATAL", "faultinjection=%d" % u.faultinjection)
+                open('/tmp/.s.PGSQL.50001.lock', 'w')
+
             # We always pull the current configuration from the old instance.
             # (It may be nice to rewrite to allow caching state information)
             shutdown = None
@@ -4097,6 +4127,12 @@ if __name__ == '__main__':
                 except:
                     shutdown = True
                     u.Startup(u.oldenv)
+
+                # Test failure after we bring up the database
+                #   - we should stop it again
+                #   - unless we are running --prepare and it wasn't running
+                if u.faultinjection == 3:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
     
                 # The way things are structured we will only issue selects against
                 # the database that's "up" so mark the oldenv as running.
@@ -4154,6 +4190,11 @@ if __name__ == '__main__':
             if u.execute:
                 u.SetupLockdown()
             
+            # Test failure after we have locked the database
+            #   - we should unlock it
+            if u.faultinjection == 4:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
             # different path for 3.1 to 3.2
             if u.method == "dumprestore":
     
@@ -4292,6 +4333,16 @@ if __name__ == '__main__':
     
                     u.Log('INFO', 'Preparation successfully completed')
                     sys.exit(0)
+
+                # Write configuration files 
+                # + Required for Revert() to work correctly
+                if 'CONFIG_FILES' not in current_state:
+                    u.new_master_port = u.config['MASTER_PORT']
+                    u.new_port_base   = u.config['PORT_BASE']
+                    if len(u.mirrors) > 0:
+                        u.new_mirror_port_base = u.config['MIRROR_PORT_BASE']
+                    u.GenerateConfigFiles()
+                    u.SetState('CONFIG_FILES')
     
                 # get the set of databases
                 db = u.Select('''select oid, datname from pg_database order by
@@ -4315,6 +4366,11 @@ if __name__ == '__main__':
     
                 # All information collected, shutdown old database
                 u.Shutdown()
+
+                # Test failure
+                #  - unlock database
+                if u.faultinjection == 5:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
     
                 if 'GETHIGHESTOID' not in current_state:
                     u.GetHighestOid()
@@ -4335,6 +4391,12 @@ if __name__ == '__main__':
                     u.SetState('TRANSFORMCAT')
     
                 u.TouchupConfig()
+
+                # Test failure
+                #  - unlock database
+                if u.faultinjection == 6:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
                 # Lockdown the newDB
                 # + Requires the database to be up
                 # + Shuts the database down
@@ -4357,6 +4419,11 @@ if __name__ == '__main__':
                     u.RemapOID()
                     u.SetState('REMAP_OID')
     
+                # Test failure
+                #  - unlock database
+                if u.faultinjection == 7:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
             if 'NEWDB_VALID' not in current_state:
                 u.SetState('NEWDB_VALID')
     
@@ -4382,12 +4449,27 @@ if __name__ == '__main__':
                 u.ReleaseLockdown(u.oldenv)
             else:
                 u.ReleaseLockdown(u.newenv)
+                
+            # Test failure after releasing the lockdown
+            if u.faultinjection == 8:
+                raise UpgradeError("faultinjection=%d" % u.faultinjection)
     
             if 'BACKUP_VALID' not in current_state:
                 u.DeepLink('BACKUP')
                 u.SetState('BACKUP_VALID')
     
             try:
+
+                # Test failure after installing the backup
+                #   - Revert is necessary
+                if u.faultinjection == 9:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
+                # Test failure during Revert
+                #   - See Revert()
+                if u.faultinjection == -1:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+
                 # --------
                 # Stage 2:
                 # -------- 
@@ -4399,6 +4481,11 @@ if __name__ == '__main__':
                 # => Adjust new pg_configuration to point to DATA_DIR
                 u.DeepLink('INSTALL')
                 u.FixConfig()
+
+                # Test failure after installing the newdb
+                #   - Revert is necessary
+                if u.faultinjection == 10:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
     
                 # Everything upgraded and validated
                 # + Release the lockdown
@@ -4422,7 +4509,13 @@ if __name__ == '__main__':
                     for db in dbs:
                         u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
                     u.Update('DROP USER ' + MIGRATIONUSER)
-    
+
+                # Test failure after installing the newdb
+                #   - Revert is necessary
+                #   - gpmigrator user no longer exists
+                if u.faultinjection == 11:
+                    raise UpgradeError("faultinjection=%d" % u.faultinjection)
+        
                 if u.warnings:
                     u.Log('WARN', '***************************************')
                     u.Log('WARN', 'Warnings encountered during upgrade.')
