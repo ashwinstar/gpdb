@@ -1178,6 +1178,8 @@ class GPUpgrade:
             if utility:  cmd = 'gpstop -am -s'
             else:        cmd = 'gpstop -a -s'
 
+            cmd += ' -l %s' % self.logdir
+
             locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                                   'pg_hba.conf'+LOCKEXT)
             try:
@@ -2169,7 +2171,7 @@ This issue must be resolved before upgrade can complete.
             # With the new lockfiles in place force the server to reload
             self.Log('INFO', '...Syncing')
             self.Log('DEBUG', 'calling gpstop -u with env: %s' % str(env))
-            self.RunCmd('gpstop -u -a', env=env)
+            self.RunCmd('gpstop -u -a -l %s' % self.logdir, env=env)
             self.Log('INFO', 'Database Locked')
 
 
@@ -2243,7 +2245,7 @@ This issue must be resolved before upgrade can complete.
             if env == self.newenv:
                 env['PGUSER'] = MIGRATIONUSER
 
-            self.RunCmd('gpstop -u', env=env)
+            self.RunCmd('gpstop -u -l %s' % self.logdir, env=env)
 
             if userset:
                 del env['PGUSER']
