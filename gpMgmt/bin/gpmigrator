@@ -2053,13 +2053,12 @@ This issue must be resolved before upgrade can complete.
                  % (frm, to, str(upgrdfmt)))
         for line in f:
             # translate to new pg_hba.conf format
-            if "3.3" in [self.oldversion[:3], self.newversion[:3]]:
-                if upgrdfmt:
-                    line = re.compile('ident sameuser$').sub('ident', line)
-                    line = re.compile('ident (.*)$').sub('ident map=\\1', line)
-                else:
-                    line = re.compile('ident$').sub('ident sameuser', line)
-                    line = re.compile('ident map=(.*)$').sub('ident \\1', line)
+            if upgrdfmt:
+                line = re.compile('ident sameuser$').sub('ident', line)
+                line = re.compile('ident (.*)$').sub('ident map=\\1', line)
+            else:
+                line = re.compile('ident$').sub('ident sameuser', line)
+                line = re.compile('ident map=(.*)$').sub('ident \\1', line)
 
             self.Log('DEBUG', 'writing to %s line %s' % (to, line))
             t.write(line)
