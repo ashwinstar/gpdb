@@ -12,7 +12,7 @@ Options:
 '''
 
 #============================================================
-import sys, os, signal, subprocess, types, csv
+import sys, os, subprocess, csv
 import optparse, tempfile, re, traceback
 from datetime import date
 from time import localtime, strftime, sleep, time
@@ -196,16 +196,16 @@ class Worker(Thread):
                         self.harness.queue.task_done()
                         return
 
-                    if task[0] == 'REMOTE':
-                        host = task[1]
-                        cmd  = task[2]
-                 
+#                    if task[0] == 'REMOTE':
+#                        host = task[1]
+#                        cmd  = task[2]
+#                 
 #                        # use paramiko to invoke SSH to run the command.
 #                        p = SSHClient()
 #                        p.load_system_host_keys()
 #                        p.connect(host)
 #                        (cin, cout, cerr) = p.exec_command(cmd)
-                        raise UpgradeError('remote thread exec not implemented')
+#                        raise UpgradeError('remote thread exec not implemented')
 
                     elif task[0] == 'LOCAL':
                         cmd  = task[1]
@@ -643,9 +643,6 @@ class GPUpgrade:
             except Exception, e:
                 raise UpgradeError('Error writing to statefile: (%s)' % str(e))
         else:
-            seg_prefix = self.option2
-            seg_re = re.compile('^%s\d+$' % seg_prefix)
-
             for d in filter(os.path.exists, self.datadirs):
                 statefile = os.path.join(d, WORKDIR, 'state')
                 file = open(statefile, 'a')
@@ -757,13 +754,10 @@ class GPUpgrade:
     def CheckDirectories(self):
         if self.cmd == 'MASTER':
             datadirs = [ self.root ]
-            seg_prefix = self.config['SEG_PREFIX'] + '-'
         else:
             datadirs = self.datadirs
-            seg_prefix   = self.option
 
         err = False
-        seg_re = re.compile('^%s\d+$' % seg_prefix)
         for d in filter(os.path.exists, datadirs):
             p = os.path.join(d, WORKDIR)
             if os.path.exists(p):
@@ -1045,7 +1039,7 @@ class GPUpgrade:
             env = self.newenv
 
         if not env:
-            self.Log('Postmaster not running')
+            self.Log('FATAL', 'Postmaster not running')
             raise UpgradeError("Postmaster failed to start")
 
         if tryconn:
@@ -1053,9 +1047,9 @@ class GPUpgrade:
                 self.Log('DEBUG', 'trying to establish connection to database')
                 self.Log('DEBUG', 'user = %s, db = template1, port = %i, dir = %s'
                     % (self.user, self.masterport, self.sock_dir))
-                conn = make_conn(self, self.user, 'template1', '', self.masterport, '',
+                conn = make_conn(self, self.user, 'template1', '', self.masterport,
                                  self.sock_dir)
-            except Exception, e:
+            except Exception:
                 raise UpgradeError("Found a postmaster.pid but postmaster " +
                                    "running")
             conn.close()
@@ -1530,7 +1524,7 @@ class GPUpgrade:
 
 
     #------------------------------------------------------------
-    def RemoveDirectories(self, force=False, silent=False):
+    def RemoveDirectories(self, force=False):
         '''
         Removes upgrade/ and backup/ directories on all segments
         '''
@@ -1539,18 +1533,14 @@ class GPUpgrade:
         # whether we created them or they were created by another process.
         # If force is not set then we will throw an exception when we are
         # done if there were directories that we failed to remove.
-        failures = False
         doerror = False
         if self.cmd == 'MASTER':
             self.Log('INFO', 'Removing temporary directories')
             self.CallSlaves('RMDIR', force, self.config['SEG_PREFIX'])
             datadirs = [self.root]
-            seg_prefix   = self.config['SEG_PREFIX'] + '-'
         else:
             datadirs = self.datadirs
-            seg_prefix = self.option2
 
-        seg_re = re.compile('^%s\d+$' % seg_prefix)
         for d in filter(os.path.exists, datadirs):
             dir = os.path.join(d, WORKDIR)
             if not os.path.exists(dir):
@@ -1562,27 +1552,22 @@ class GPUpgrade:
                     dpid = self.RunCmd('cat ' + flag)
                     dpid = int(dpid)
                 except Exception, e:
-                    if not silent:
-                        self.Log('WARN', 'Read error on file:  ' + str(e))
-                        doerror = True
-                    failures = True
+                    self.Log('WARN', 'Read error on file:  ' + str(e))
+                    doerror = True
                     continue
 
                 if dpid != self.pid:
-                    if not silent:
-                        self.Log('WARN', 'Directory %s owned by pid %s' 
-                                 % (dir, dpid))
-                        doerror = True
-                    failures = True
+                    self.Log('WARN', 'Directory %s owned by pid %s' 
+                             % (dir, dpid))
+                    doerror = True
                     continue
                 
-            # Regardless of the setting of force or silent, if there is
-            # an active process running, we won't remove the directory.
+            # Regardless of the setting of force, if there is an active 
+            # process running, we won't remove the directory.
             running = self.RunCmd('find %s -name postmaster.pid -print' % dir)
             if (running):
                 self.Log('INFO', running)
                 self.Log('FATAL', 'Active processes running')
-                failures = True
                 doerror = True
             else:
                 self.RunCmd('rm -rf ' + dir)
@@ -1658,9 +1643,7 @@ class GPUpgrade:
         else:
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
-            seg_prefix = self.option
 
-            seg_re = re.compile('^%s\d+$' % seg_prefix)
             for d in filter(os.path.exists, self.datadirs):
                 # Creating directories is an atomic operation, if mkdir 
                 # succeeds then it did not exist previously making it ours
@@ -1891,7 +1874,7 @@ Cannot downgrade a database with append only tables     <<<<<
 ''')
 
         if (not self.upgrade and self.newversion < '3.3.0.0' and
-            (self.oldversion >= '3.3.0.0' or self.oldersion == 'main')):
+            (self.oldversion >= '3.3.0.0' or self.oldversion == 'main')):
             c = 0
             for db in databases:
                 c = self.Select('SELECT COUNT(*)::numeric FROM pg_catalog.pg_aocs;', db=db)
@@ -1940,6 +1923,8 @@ Cannot downgrade a database with 3.3 column storage    <<<<<
             raise UpgradeError('Too many master segments, aborting')
         if len(segments) == 0:
             raise UpgradeError('No segments found')
+        if len(standbymaster) > 0:
+            raise UpgradeError('Cannot upgrade while standbymaster is running')
 
         master = master[0]
 
@@ -1965,7 +1950,7 @@ Cannot downgrade a database with 3.3 column storage    <<<<<
         # We also keep track of a SET() of data and mirror dirs without
         # the /upgrade suffix
         dirs = set();
-        data_dir = ''
+        #data_dir = ''
         for seg in segments:
             newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
             dirs.add(newdir)
@@ -2011,7 +1996,7 @@ Cannot downgrade a database with 3.3 column storage    <<<<<
             self.config['MIRROR_PORT_BASE'] = port_base
 
             # MIRROR_DATA_DIRECTORY, use any mirror
-            mirror_data_dir = ''
+            # mirror_data_dir = ''
             for seg in mirrors:
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
 
@@ -2298,7 +2283,6 @@ This issue must be resolved before upgrade can complete.
             datadirs   = self.datadirs
 
         errors = 0
-        port_re = re.compile('^\s*port=(\d+)')
         seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)
 
         threads = []
@@ -2656,7 +2640,6 @@ This issue must be resolved before upgrade can complete.
         
         self.Log('INFO', 'Expanding cluster')
         self.Log('INFO', '...This may take a while')
-        pids = []
 
         try:
             dummyseg = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
@@ -3677,11 +3660,6 @@ This issue must be resolved before upgrade can complete.
                     def overwrite(frm, to):
                         if not os.path.exists(frm): return
 
-                        ishba = False
-                        bn = os.path.basename(frm)
-                        if bn == 'pg_hba.conf'+LOCKEXT:
-                            ishba = True
-
                         f = open(frm, 'r')
                         t = open(to, 'w')
                         for line in f:
@@ -4052,426 +4030,426 @@ This issue must be resolved before upgrade can complete.
         self.Log('DEBUG', "highest oid found: %d" % self.highestoid)
 
 #============================================================
-
-# Create a new GPUpgrade - should never throw exception
-u = GPUpgrade()
-
-# parses and validates input
-try:
-    u.Setup()
-except Exception, e:
-    u.Log('FATAL', str(e))
-    sys.exit(1)
-
-# GPUpgrade calls itself on individual hosts, we switch behavior based
-# on the way that it gets called.  These options are not listed in
-# the usage information because they are strictly an internal interface.
-try:
-
-    # MASTER - the main case, run on master only
-    if u.cmd == 'MASTER':
-
-        u.Log('INFO', 'gpmigrator version ' + __version__)
-        u.Log('INFO', 'Python version %d.%d.%d %s %d' % sys.version_info)
-
-        # User requested a revert to previous version
-        if u.revert:
-            u.Revert()
-            sys.exit(0)
-
-        # Read the statefile if we are trying to restart (--execute)
-        current_state = {}
-        statefile = os.path.join(u.workdir, 'state')
-        if os.path.exists(statefile):
-            u.state = open(statefile, 'r')
-            for line in u.state:
-                current_state[line.strip()] = True
-            u.state = open(statefile, 'a')
-
-        # Be careful if the last upgrade died in an unstable state
-        if 'BACKUP_VALID' in current_state and u.prepare:
-            u.Revert()
-
-        # Check that we can do the upgrade between the versions
-        u.CheckVersions()
-
-        # if we aren't trying to restart an upgrade or if the previous
-        # run was just from --prepare then ignore the contents of the
-        # statefile.
-        if u.prepare:
-            current_state = {}
-        
-        # We always pull the current configuration from the old instance.
-        # (It may be nice to rewrite to allow caching state information)
-        shutdown = None
-        lockfile = os.path.join(u.oldenv['MASTER_DATA_DIRECTORY'],
-                                'pg_hba.conf'+LOCKEXT)
-        if os.path.exists(lockfile):
-            raise UpgradeError("migration lock file already exists at: %s"
-                                % lockfile)
-        try:
-            try:
-                env = u.CheckUp(True)
-                shutdown = False
-                u.dbup = [env, False]
-                if env == u.newenv:
-                    u.Log('FATAL', 'Cannot prepare with running new db')
-            except:
-                shutdown = True
-                u.Startup(u.oldenv)
-
-            # The way things are structured we will only issue selects against
-            # the database that's "up" so mark the oldenv as running.
-            u.ExtractInfo()
-
-            # Create working directories on all hosts
-            # + Requires configuration info collected in ExtractInfo
-            # + Requires Execution on all hosts
-            if 'CREATE_DIRS' not in current_state and not u.noinit:
-                u.CreateDirectories()
-                u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
-                u.SetState('CREATE_DIRS')
-
-            # Check the catalog
-            if 'CHECKCAT' not in current_state and u.checkcat:
-                u.CheckCatalog()
-                u.SetState('CHECKCAT')
-
-        # Whe have an extra layer of interupt handling around the --prepare
-        # logic because we don't want to errors to cause an automatic Shutdown
-        # which would occur going through the regular Cleanup logic
-        except KeyboardInterrupt:
-            if shutdown:
-                u.Shutdown()
-            u.Log('FATAL', '***************************************')
-            u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
-            u.Log('FATAL', '***************************************')
-            sys.exit(1)
-
-        except Exception, e:
-            if shutdown:
-                u.Shutdown()
-            u.Log('FATAL', str(e))
-            u.Log('FATAL', '***************************************')
-            u.Log('FATAL', '==  Upgrade Failed ==                    <<<<< ')
-            u.Log('FATAL', '***************************************')
-
-            sys.exit(1)
-
-        # Prepare done, anything done after this point may allow modifying
-        # the olddb
-        if u.noinit and not u.execute:
-            u.Log('INFO', 'Preparation successfully completed')
-            sys.exit(0)
-        if u.noinit:
-            u.Log('INFO', '--noinit is only supported with --prepare')
-            sys.exit(1)
-
-        # SetupLockdown:
-        # + Requires the database to be up
-        # + Creates the upgrade user
-        # + Shuts the database down
-        # + Adjusts hba_conf to only allow upgrade user access
-        # + Database is left down
-        if u.execute:
-            u.SetupLockdown()
-        
-        # different path for 3.1 to 3.2
-        if u.method == "dumprestore":
-
-            if u.execute:
-                u.Shutdown()
-            elif shutdown:
-                u.Shutdown()
-
-            # Make sure error handling doesn't shutdown the database if anything
-            # should fail.
-            u.dbup = None
-
-            # Write configuration files for new db
-            # + Requires configuration info collected in ExtractInfo
-            # + Requires working directory on master node
-            if 'CONFIG_FILES' not in current_state:
-                u.GenerateConfigFiles()
-                u.SetState('CONFIG_FILES')
+if __name__ == '__main__':
+    # Create a new GPUpgrade - should never throw exception
+    u = GPUpgrade()
     
-            # Initalize the new database
-            # + Requires working directories on all nodes
-            # + Requires generated configuration file
-            if ('INITDB' not in current_state):
-                u.InitNewDB()
-                u.SetState('INITDB')
-                u.Shutdown()
+    # parses and validates input
+    try:
+        u.Setup()
+    except Exception, e:
+        u.Log('FATAL', str(e))
+        sys.exit(1)
+    
+    # GPUpgrade calls itself on individual hosts, we switch behavior based
+    # on the way that it gets called.  These options are not listed in
+    # the usage information because they are strictly an internal interface.
+    try:
+    
+        # MASTER - the main case, run on master only
+        if u.cmd == 'MASTER':
+    
+            u.Log('INFO', 'gpmigrator version ' + __version__)
+            u.Log('INFO', 'Python version %d.%d.%d %s %d' % sys.version_info)
+    
+            # User requested a revert to previous version
+            if u.revert:
+                u.Revert()
+                sys.exit(0)
+    
+            # Read the statefile if we are trying to restart (--execute)
+            current_state = {}
+            statefile = os.path.join(u.workdir, 'state')
+            if os.path.exists(statefile):
+                u.state = open(statefile, 'r')
+                for line in u.state:
+                    current_state[line.strip()] = True
+                u.state = open(statefile, 'a')
+    
+            # Be careful if the last upgrade died in an unstable state
+            if 'BACKUP_VALID' in current_state and u.prepare:
+                u.Revert()
+    
+            # Check that we can do the upgrade between the versions
+            u.CheckVersions()
+    
+            # if we aren't trying to restart an upgrade or if the previous
+            # run was just from --prepare then ignore the contents of the
+            # statefile.
+            if u.prepare:
+                current_state = {}
+            
+            # We always pull the current configuration from the old instance.
+            # (It may be nice to rewrite to allow caching state information)
+            shutdown = None
+            lockfile = os.path.join(u.oldenv['MASTER_DATA_DIRECTORY'],
+                                    'pg_hba.conf'+LOCKEXT)
+            if os.path.exists(lockfile):
+                raise UpgradeError("migration lock file already exists at: %s"
+                                    % lockfile)
+            try:
+                try:
+                    env = u.CheckUp(True)
+                    shutdown = False
+                    u.dbup = [env, False]
+                    if env == u.newenv:
+                        u.Log('FATAL', 'Cannot prepare with running new db')
+                except:
+                    shutdown = True
+                    u.Startup(u.oldenv)
+    
+                # The way things are structured we will only issue selects against
+                # the database that's "up" so mark the oldenv as running.
+                u.ExtractInfo()
+    
+                # Create working directories on all hosts
+                # + Requires configuration info collected in ExtractInfo
+                # + Requires Execution on all hosts
+                if 'CREATE_DIRS' not in current_state and not u.noinit:
+                    u.CreateDirectories()
+                    u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+                    u.SetState('CREATE_DIRS')
+    
+                # Check the catalog
+                if 'CHECKCAT' not in current_state and u.checkcat:
+                    u.CheckCatalog()
+                    u.SetState('CHECKCAT')
+    
+            # Whe have an extra layer of interupt handling around the --prepare
+            # logic because we don't want to errors to cause an automatic Shutdown
+            # which would occur going through the regular Cleanup logic
+            except KeyboardInterrupt:
+                if shutdown:
+                    u.Shutdown()
+                u.Log('FATAL', '***************************************')
+                u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
+                u.Log('FATAL', '***************************************')
+                sys.exit(1)
+    
+            except Exception, e:
+                if shutdown:
+                    u.Shutdown()
+                u.Log('FATAL', str(e))
+                u.Log('FATAL', '***************************************')
+                u.Log('FATAL', '==  Upgrade Failed ==                    <<<<< ')
+                u.Log('FATAL', '***************************************')
+    
+                sys.exit(1)
     
             # Prepare done, anything done after this point may allow modifying
             # the olddb
-            if not u.execute:
+            if u.noinit and not u.execute:
                 u.Log('INFO', 'Preparation successfully completed')
                 sys.exit(0)
+            if u.noinit:
+                u.Log('INFO', '--noinit is only supported with --prepare')
+                sys.exit(1)
     
-            # Make sure that the database isn't running
-            u.CheckDown()
+            # SetupLockdown:
+            # + Requires the database to be up
+            # + Creates the upgrade user
+            # + Shuts the database down
+            # + Adjusts hba_conf to only allow upgrade user access
+            # + Database is left down
+            if u.execute:
+                u.SetupLockdown()
+            
+            # different path for 3.1 to 3.2
+            if u.method == "dumprestore":
     
-            # Set the ports for the upgrade server to the correct values
-            #  OLD METHOD - needs review
-            # if 'REMAP_PORTS' not in current_state:
-            #    u.RemapPorts()
-            #    u.SetState('REMAP_PORTS')
+                if u.execute:
+                    u.Shutdown()
+                elif shutdown:
+                    u.Shutdown()
     
-            # Start the database back up on all hosts so that we can 
-            # gather information from them.
-            if ('MAPPINGS' not in current_state   or
-                'STATISTICS' not in current_state or
-                'DUMP_SCHEMA' not in current_state):
+                # Make sure error handling doesn't shutdown the database if anything
+                # should fail.
+                u.dbup = None
     
-                u.Startup(u.oldenv)
+                # Write configuration files for new db
+                # + Requires configuration info collected in ExtractInfo
+                # + Requires working directory on master node
+                if 'CONFIG_FILES' not in current_state:
+                    u.GenerateConfigFiles()
+                    u.SetState('CONFIG_FILES')
+        
+                # Initalize the new database
+                # + Requires working directories on all nodes
+                # + Requires generated configuration file
+                if ('INITDB' not in current_state):
+                    u.InitNewDB()
+                    u.SetState('INITDB')
+                    u.Shutdown()
+        
+                # Prepare done, anything done after this point may allow modifying
+                # the olddb
+                if not u.execute:
+                    u.Log('INFO', 'Preparation successfully completed')
+                    sys.exit(0)
+        
+                # Make sure that the database isn't running
+                u.CheckDown()
+        
+                # Set the ports for the upgrade server to the correct values
+                #  OLD METHOD - needs review
+                # if 'REMAP_PORTS' not in current_state:
+                #    u.RemapPorts()
+                #    u.SetState('REMAP_PORTS')
+        
+                # Start the database back up on all hosts so that we can 
+                # gather information from them.
+                if ('MAPPINGS' not in current_state   or
+                    'STATISTICS' not in current_state or
+                    'DUMP_SCHEMA' not in current_state):
+        
+                    u.Startup(u.oldenv)
+        
+                    # Build up Source database OID/relfile mappings
+                    # + Requires running old db on all hosts
+                    # + Requires created directories so we can store the mapping file
+                    # + Requires execution on all hosts
+                    # + Requires Lockdown
+                    if 'MAPPINGS' not in current_state:
+                        u.BuildMappings()
+                        u.SetState('MAPPINGS')
+                    if 'STATISTICS' not in current_state:
+                        u.DumpStatistics()
+                        u.SetState('STATISTICS')
+        
+                    # Call pg_dumpall and put results in a file
+                    # + Requires running old db
+                    # + Requires working directory on master node
+                    # + Requires Lockdown
+                    if 'DUMP_SCHEMA' not in current_state:
+                        u.DumpSchema()
+                        u.SetState('DUMP_SCHEMA')
+        
+                    # All information collected, shutdown old database
+                    u.Shutdown()
+                    
+                # Initalize the new database
+                # + Requires working directories on all nodes
+                # + Requires generated configuration file
+                #u.InitNewDB()
+        
+                # Lockdown the newDB
+                # + Requires the database to be up
+                # + Shuts the database down
+                if 'NEWDB_LOCKDOWN' not in current_state:
+                    u.Startup(u.newenv)
+                    u.SetupLockdown()
+                    u.Shutdown()
+                    u.SetState('NEWDB_LOCKDOWN')
+        
+                # Import schema and build the mappings
+                if ('IMPORT_SCHEMA' not in current_state or
+                    'MAPPINGS2' not in current_state):
+                    u.Startup(u.newenv)
+        
+                    if 'IMPORT_SCHEMA' not in current_state:
+                        u.ImportSchema()
+                        u.SetState('IMPORT_SCHEMA')
+        
+                    if 'MAPPINGS2' not in current_state:
+                        u.BuildMappings()
+                        u.SetState('MAPPINGS2')
+                    u.Shutdown()
+        
+        
+        
+                # Distribute the dummy seg to all the segments and re-adjust 
+                # gp_configuration on the master node.
+                if 'EXPAND_SYS' not in current_state:
+                    u.ExpandSystem()
+                    u.SetState('EXPAND_SYS')
+        
+                # Reset the Xlogs
+                if 'RESET_XLOGS' not in current_state:
+                    u.ResetXLogs()
+                    u.SetState('RESET_XLOGS')
+        
+                # Remap oids for the new database
+                # + Requires working directories on all hosts
+                # + Requires new db initialized
+                if 'REMAP_OID' not in current_state:
+                    u.RemapOID()
+                    u.SetState('REMAP_OID')
+        
+                # Confirm that the resync/remapping was successful
+                # + Restore statistics must either be after resetXlogs or
+                #   requires an additional vacuum step.
+                if 'RESTORE_STATISTICS' not in current_state:
+                    u.Startup(u.newenv, utility=True)
+                    u.RestoreStatistics()
+                    u.SetState('RESTORE_STATISTICS')
+                    u.Shutdown()
     
-                # Build up Source database OID/relfile mappings
-                # + Requires running old db on all hosts
-                # + Requires created directories so we can store the mapping file
-                # + Requires execution on all hosts
-                # + Requires Lockdown
+            else:
+                # transform case
+                if not u.execute:
+                    if shutdown:
+                        u.Shutdown()
+    
+                    u.Log('INFO', 'Preparation successfully completed')
+                    sys.exit(0)
+    
+                # get the set of databases
+                db = u.Select('''select oid, datname from pg_database order by
+                                 datname''')
+                dbs = {}
+                for d in db:
+                    dbs[str(d['oid'])] = d['datname']
+    
+                # business end
                 if 'MAPPINGS' not in current_state:
                     u.BuildMappings()
                     u.SetState('MAPPINGS')
-                if 'STATISTICS' not in current_state:
-                    u.DumpStatistics()
-                    u.SetState('STATISTICS')
     
-                # Call pg_dumpall and put results in a file
-                # + Requires running old db
-                # + Requires working directory on master node
-                # + Requires Lockdown
-                if 'DUMP_SCHEMA' not in current_state:
-                    u.DumpSchema()
-                    u.SetState('DUMP_SCHEMA')
+                if 'EXTRACTCATFILES' not in current_state:
+                    u.ExtractCatFiles()
+                    u.SetState('EXTRACTCATFILES')
+    
+                if 'EXTRACTAOSEGS' not in current_state:
+                    u.ExtractAosegs()
+                    u.SetState('EXTRACTAOSEGS')
     
                 # All information collected, shutdown old database
                 u.Shutdown()
-                
-            # Initalize the new database
-            # + Requires working directories on all nodes
-            # + Requires generated configuration file
-            #u.InitNewDB()
     
-            # Lockdown the newDB
-            # + Requires the database to be up
-            # + Shuts the database down
-            if 'NEWDB_LOCKDOWN' not in current_state:
-                u.Startup(u.newenv)
-                u.SetupLockdown()
-                u.Shutdown()
-                u.SetState('NEWDB_LOCKDOWN')
+                if 'GETHIGHESTOID' not in current_state:
+                    u.GetHighestOid()
+                    u.SetState('GETHIGHESTOID')
     
-            # Import schema and build the mappings
-            if ('IMPORT_SCHEMA' not in current_state or
-                'MAPPINGS2' not in current_state):
-                u.Startup(u.newenv)
+                if 'BUILDSKEL' not in current_state:
+                    u.BuildSkel()
+                    u.SetState('BUILDSKEL')
     
-                if 'IMPORT_SCHEMA' not in current_state:
-                    u.ImportSchema()
-                    u.SetState('IMPORT_SCHEMA')
+                sov = u.oldversion[:3]
+                snv = u.newversion[:3]
+                if 'SETCATVERSION' not in current_state:
+                    u.SetCatVersion(sov, snv)
+                    u.SetState('SETCATVERSION')
+    
+                if 'TRANSFORMCAT' not in current_state:
+                    u.TransformDbs(dbs)
+                    u.SetState('TRANSFORMCAT')
+    
+                u.TouchupConfig()
+                # Lockdown the newDB
+                # + Requires the database to be up
+                # + Shuts the database down
+                if 'NEWDB_LOCKDOWN' not in current_state:
+                    u.Startup(u.newenv)
+                    u.SetupLockdown()
+                    u.Shutdown()
+                    u.SetState('NEWDB_LOCKDOWN')
     
                 if 'MAPPINGS2' not in current_state:
+                    u.Startup(u.newenv)
                     u.BuildMappings()
                     u.SetState('MAPPINGS2')
-                u.Shutdown()
-    
-    
-    
-            # Distribute the dummy seg to all the segments and re-adjust 
-            # gp_configuration on the master node.
-            if 'EXPAND_SYS' not in current_state:
-                u.ExpandSystem()
-                u.SetState('EXPAND_SYS')
-    
-            # Reset the Xlogs
-            if 'RESET_XLOGS' not in current_state:
-                u.ResetXLogs()
-                u.SetState('RESET_XLOGS')
-    
-            # Remap oids for the new database
-            # + Requires working directories on all hosts
-            # + Requires new db initialized
-            if 'REMAP_OID' not in current_state:
-                u.RemapOID()
-                u.SetState('REMAP_OID')
-    
-            # Confirm that the resync/remapping was successful
-            # + Restore statistics must either be after resetXlogs or
-            #   requires an additional vacuum step.
-            if 'RESTORE_STATISTICS' not in current_state:
-                u.Startup(u.newenv, utility=True)
-                u.RestoreStatistics()
-                u.SetState('RESTORE_STATISTICS')
-                u.Shutdown()
-
-        else:
-            # transform case
-            if not u.execute:
-                if shutdown:
                     u.Shutdown()
-
-                u.Log('INFO', 'Preparation successfully completed')
-                sys.exit(0)
-
-            # get the set of databases
-            db = u.Select('''select oid, datname from pg_database order by
-                             datname''')
-            dbs = {}
-            for d in db:
-                dbs[str(d['oid'])] = d['datname']
-
-            # business end
-            if 'MAPPINGS' not in current_state:
-                u.BuildMappings()
-                u.SetState('MAPPINGS')
-
-            if 'EXTRACTCATFILES' not in current_state:
-                u.ExtractCatFiles()
-                u.SetState('EXTRACTCATFILES')
-
-            if 'EXTRACTAOSEGS' not in current_state:
-                u.ExtractAosegs()
-                u.SetState('EXTRACTAOSEGS')
-
-            # All information collected, shutdown old database
-            u.Shutdown()
-
-            if 'GETHIGHESTOID' not in current_state:
-                u.GetHighestOid()
-                u.SetState('GETHIGHESTOID')
-
-            if 'BUILDSKEL' not in current_state:
-                u.BuildSkel()
-                u.SetState('BUILDSKEL')
-
-            sov = u.oldversion[:3]
-            snv = u.newversion[:3]
-            if 'SETCATVERSION' not in current_state:
-                u.SetCatVersion(sov, snv)
-                u.SetState('SETCATVERSION')
-
-            if 'TRANSFORMCAT' not in current_state:
-                u.TransformDbs(dbs)
-                u.SetState('TRANSFORMCAT')
-
-            u.TouchupConfig()
-            # Lockdown the newDB
-            # + Requires the database to be up
-            # + Shuts the database down
-            if 'NEWDB_LOCKDOWN' not in current_state:
-                u.Startup(u.newenv)
-                u.SetupLockdown()
-                u.Shutdown()
-                u.SetState('NEWDB_LOCKDOWN')
-
-            if 'MAPPINGS2' not in current_state:
-                u.Startup(u.newenv)
-                u.BuildMappings()
-                u.SetState('MAPPINGS2')
-                u.Shutdown()
+        
+                # Remap oids for the new database
+                # + Requires working directories on all hosts
+                # + Requires new db initialized
+                if 'REMAP_OID' not in current_state:
+                    u.RemapOID()
+                    u.SetState('REMAP_OID')
     
-            # Remap oids for the new database
-            # + Requires working directories on all hosts
-            # + Requires new db initialized
-            if 'REMAP_OID' not in current_state:
-                u.RemapOID()
-                u.SetState('REMAP_OID')
-
-        if 'NEWDB_VALID' not in current_state:
-            u.SetState('NEWDB_VALID')
-
-        # We haven't modified anything under the master directory yet.
-        # If anything has gone wrong up to this point it is pretty much
-        # safe to blow away everything under 'upgrade/' and 'backup/'
-        # (The only thing to be careful about is that we shutdown the
-        #  new db before we remove the storage from under it.)
-            
-        # To install the new db under the old master path we go through
-        # pains to make it as robust as possible.  This is done via a
-        # combination of redundancy and hard links.
-
-        # --------
-        # Stage 1:
-        # -------- 
-        # The current state of the world is as follows
-        #    DATA_DIR/         = untouched original db
-        #    DATA_DIR/upgrade  = fully upgraded new db
-        #    DATA_DIR/backup   = empty except for the state and flag files.
-        # => Make a deep hardlink copy of DATA_DIR -> DATA_DIR/backup
-        if u.upgrade:
-            u.ReleaseLockdown(u.oldenv)
-        else:
-            u.ReleaseLockdown(u.newenv)
-
-        if 'BACKUP_VALID' not in current_state:
-            u.DeepLink('BACKUP')
-            u.SetState('BACKUP_VALID')
-
-        try:
+            if 'NEWDB_VALID' not in current_state:
+                u.SetState('NEWDB_VALID')
+    
+            # We haven't modified anything under the master directory yet.
+            # If anything has gone wrong up to this point it is pretty much
+            # safe to blow away everything under 'upgrade/' and 'backup/'
+            # (The only thing to be careful about is that we shutdown the
+            #  new db before we remove the storage from under it.)
+                
+            # To install the new db under the old master path we go through
+            # pains to make it as robust as possible.  This is done via a
+            # combination of redundancy and hard links.
+    
             # --------
-            # Stage 2:
+            # Stage 1:
             # -------- 
             # The current state of the world is as follows
-            #    DATA_DIR/         = contents unreliable
+            #    DATA_DIR/         = untouched original db
+            #    DATA_DIR/upgrade  = fully upgraded new db
+            #    DATA_DIR/backup   = empty except for the state and flag files.
+            # => Make a deep hardlink copy of DATA_DIR -> DATA_DIR/backup
+            if u.upgrade:
+                u.ReleaseLockdown(u.oldenv)
+            else:
+                u.ReleaseLockdown(u.newenv)
+    
+            if 'BACKUP_VALID' not in current_state:
+                u.DeepLink('BACKUP')
+                u.SetState('BACKUP_VALID')
+    
+            try:
+                # --------
+                # Stage 2:
+                # -------- 
+                # The current state of the world is as follows
+                #    DATA_DIR/         = contents unreliable
+                #    DATA_DIR/upgrade  = fully upgraded new db
+                #    DATA_DIR/backup   = untouched original db
+                # => Make a deep hard link copy of DATA_DIR/upgrade -> DATA_DIR
+                # => Adjust new pg_configuration to point to DATA_DIR
+                u.DeepLink('INSTALL')
+                u.FixConfig()
+    
+                # Everything upgraded and validated
+                # + Release the lockdown
+                # + Mark install valid
+                u.Startup(u.newenv)
+                u.ReleaseLockdown(u.newenv)
+    
+                # Finally, drop the upgrade user:
+                #  - The migrator user shouldn't own anything, but if the
+                #    "dumprestore" method was ever used on this database
+                #    then it might.
+                u.Log('INFO', "Removing upgrade user");
+                try:
+                    u.Update('DROP USER ' + MIGRATIONUSER)
+                except:
+                    u.Log('WARN', 'Objects owned by gpmigrator reassigned to dba')
+                    admin = u.Select('''select rolname from pg_authid 
+                                        where oid = 10''')[0];
+                    dbs = u.Select('''select datname from pg_database
+                                      where datname != 'template0' ''')
+                    for db in dbs:
+                        u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
+                    u.Update('DROP USER ' + MIGRATIONUSER)
+    
+                if u.warnings:
+                    u.Log('WARN', '***************************************')
+                    u.Log('WARN', 'Warnings encountered during upgrade.')
+                    u.Log('WARN', '***************************************')
+    
+            except Exception, e:
+                u.Log('FATAL', str(e))
+                u.Revert()
+                raise e
+    
+            # --------
+            # Stage 3:
+            # -------- 
+            # The current state of the world is as follows
+            #    DATA_DIR/         = fully upgraded new db
             #    DATA_DIR/upgrade  = fully upgraded new db
             #    DATA_DIR/backup   = untouched original db
-            # => Make a deep hard link copy of DATA_DIR/upgrade -> DATA_DIR
-            # => Adjust new pg_configuration to point to DATA_DIR
-            u.DeepLink('INSTALL')
-            u.FixConfig()
-
-            # Everything upgraded and validated
-            # + Release the lockdown
-            # + Mark install valid
-            u.Startup(u.newenv)
-            u.ReleaseLockdown(u.newenv)
-
-            # Finally, drop the upgrade user:
-            #  - The migrator user shouldn't own anything, but if the
-            #    "dumprestore" method was ever used on this database
-            #    then it might.
-            u.Log('INFO', "Removing upgrade user");
-            try:
-                u.Update('DROP USER ' + MIGRATIONUSER)
-            except:
-                u.Log('WARN', 'Objects owned by gpmigrator reassigned to dba')
-                admin = u.Select('''select rolname from pg_authid 
-                                    where oid = 10''')[0];
-                dbs = u.Select('''select datname from pg_database
-                                  where datname != 'template0' ''')
-                for db in dbs:
-                    u.Update('REASSIGN OWNED BY gpmigrator TO ' + admin, db)
-                u.Update('DROP USER ' + MIGRATIONUSER)
-
-            if u.warnings:
-                u.Log('WARN', '***************************************')
-                u.Log('WARN', 'Warnings encountered during upgrade.')
-                u.Log('WARN', '***************************************')
-
-        except Exception, e:
-            u.Log('FATAL', str(e))
-            u.Revert()
-            raise e
-
-        # --------
-        # Stage 3:
-        # -------- 
-        # The current state of the world is as follows
-        #    DATA_DIR/         = fully upgraded new db
-        #    DATA_DIR/upgrade  = fully upgraded new db
-        #    DATA_DIR/backup   = untouched original db
-        # => Remove redundant DATA_DIR/upgrade
-        # => Remove historical DATA_DIR/backup
-        u.RemoveDirectories(force=True)
-
-        # -----------------
-        # Upgrade Complete:
-        # -----------------
-        # The current state of the world is as follows
-        #    DATA_DIR/         = fully upgraded new db
-        u.Log('INFO', 
+            # => Remove redundant DATA_DIR/upgrade
+            # => Remove historical DATA_DIR/backup
+            u.RemoveDirectories(force=True)
+    
+            # -----------------
+            # Upgrade Complete:
+            # -----------------
+            # The current state of the world is as follows
+            #    DATA_DIR/         = fully upgraded new db
+            u.Log('INFO', 
 '''
 ---------------------------------------------------
 Upgrade Successful
@@ -4482,109 +4460,109 @@ instructions to complete environment configuration
 ''')
 
 
-#---------------------------------------------------------
-# The rest of the options are executed on a per-host basis
-    elif u.cmd == 'SETSTATE':
-        u.SetState(u.option)
-    elif u.cmd == 'CHKDIR':
-        try:
-            u.CheckDirectories()
-        except UpgradeError, e:
-            if str(e) == 'Directories exist':
-                sys.exit(1)
-            raise e
-    elif u.cmd == 'CHKDOWN':
-        u.CheckDown()
-    elif u.cmd == 'LOCKDOWN':
-        u.SetupLockdown()
-    elif u.cmd == 'UNLOCK':
-        u.ReleaseLockdown(None)
-    elif u.cmd == 'MKDIR':
-        u.CreateDirectories()
-    elif u.cmd == 'RMDIR':
-        if u.option == 'False':
-            u.RemoveDirectories(False)
+    #---------------------------------------------------------
+    # The rest of the options are executed on a per-host basis
+        elif u.cmd == 'SETSTATE':
+            u.SetState(u.option)
+        elif u.cmd == 'CHKDIR':
+            try:
+                u.CheckDirectories()
+            except UpgradeError, e:
+                if str(e) == 'Directories exist':
+                    sys.exit(1)
+                raise e
+        elif u.cmd == 'CHKDOWN':
+            u.CheckDown()
+        elif u.cmd == 'LOCKDOWN':
+            u.SetupLockdown()
+        elif u.cmd == 'UNLOCK':
+            u.ReleaseLockdown(None)
+        elif u.cmd == 'MKDIR':
+            u.CreateDirectories()
+        elif u.cmd == 'RMDIR':
+            if u.option == 'False':
+                u.RemoveDirectories(False)
+            else:
+                u.RemoveDirectories(True)
+        elif u.cmd == 'RESETXLOG':
+            u.ResetXLogs()
+        elif u.cmd == 'MAPPINGS':
+            u.BuildMappings()
+        elif u.cmd == 'REMAPOID':
+            u.RemapOID()
+        elif u.cmd == 'DEEPLINK':
+            u.DeepLink(u.option)
+        elif u.cmd == 'EXTRACTCATFILES':
+            u.ExtractCatFiles()
+        elif u.cmd == 'BUILDSKEL':
+            u.BuildSkel()
+        elif u.cmd == 'SETCATVERSION':
+            u.SetCatVersion(u.oldversion[:3], u.newversion[:3])
+        elif u.cmd == 'TRANSFORMCAT':
+            u.TransformDbs(u.option2)
+        elif u.cmd == 'EXTRACTAOSEGS':
+            u.ExtractAosegs()
+        elif u.cmd == 'GETHIGHESTOID':
+            u.GetHighestOid()
         else:
-            u.RemoveDirectories(True)
-    elif u.cmd == 'RESETXLOG':
-        u.ResetXLogs()
-    elif u.cmd == 'MAPPINGS':
-        u.BuildMappings()
-    elif u.cmd == 'REMAPOID':
-        u.RemapOID()
-    elif u.cmd == 'DEEPLINK':
-        u.DeepLink(u.option)
-    elif u.cmd == 'EXTRACTCATFILES':
-        u.ExtractCatFiles()
-    elif u.cmd == 'BUILDSKEL':
-        u.BuildSkel()
-    elif u.cmd == 'SETCATVERSION':
-        u.SetCatVersion(u.oldversion[:3], u.newversion[:3])
-    elif u.cmd == 'TRANSFORMCAT':
-        u.TransformDbs(u.option2)
-    elif u.cmd == 'EXTRACTAOSEGS':
-        u.ExtractAosegs()
-    elif u.cmd == 'GETHIGHESTOID':
-        u.GetHighestOid()
-    else:
-        raise Exception('Unknown cmd: ' + str(u.cmd))
-
-    if u.threadpool:
-        t = u.threadpool
-        u.threadpool = None
-        del t
-
-# Any error that can happen
-except KeyboardInterrupt:
-    try:    u.Cleanup()
-    except Exception, e2: 
-        u.Log('FATAL', str(e2))
-    u.Log('FATAL', '***************************************')
-    u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
-    u.Log('FATAL', '***************************************')
-    sys.exit(1)
-
-except ConnectionError, e:
-    try:   u.Cleanup()
-    except Exception, e2: 
-        u.Log('FATAL', str(e2))
-    u.Log('FATAL', '***************************************')
-    u.Log('FATAL', str(e))
-    u.Log('FATAL', '***************************************')
-    sys.exit(1)
-
-except UpgradeError, e:
-    try:   u.Cleanup()
-    except Exception, e2: 
-        u.Log('FATAL', str(e2))
-    u.Log('FATAL', '***************************************')
-    u.Log('FATAL', str(e))
-    u.Log('FATAL', '***************************************')
-    sys.exit(1)
-
-except CmdError, e:
-    try:   u.Cleanup()
-    except Exception, e2:
-        u.Log('FATAL', str(e2))
-    u.Log('FATAL', '***************************************')
-    u.Log('FATAL', 'Error executing command:')
-    u.Log('FATAL', '  ' + str(e.cmd))
-    u.Log('FATAL', '  ' + str(e.stderr))
-    u.Log('FATAL', '***************************************')
-    sys.exit(1)
-
-# Shouldn't get any of these, if they occur it is probably a bug in
-# the upgrader.
-except Exception, e:
-    try:   u.Cleanup()
-    except Exception, e2: 
-        u.Log('FATAL', str(e2))
-    u.Log('FATAL', '***************************************')
-    u.Log('FATAL', str(e))
-    u.Log('FATAL', '***************************************')
-    sys.stderr.write(traceback.format_exc())
-    sys.exit(1)
-
-# This shouldn't need to be explicit, but if something goes wrong in
-# thread shutdown it forces the issue.
-sys.exit(0)
+            raise Exception('Unknown cmd: ' + str(u.cmd))
+    
+        if u.threadpool:
+            t = u.threadpool
+            u.threadpool = None
+            del t
+    
+    # Any error that can happen
+    except KeyboardInterrupt:
+        try:    u.Cleanup()
+        except Exception, e2: 
+            u.Log('FATAL', str(e2))
+        u.Log('FATAL', '***************************************')
+        u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
+        u.Log('FATAL', '***************************************')
+        sys.exit(1)
+    
+    except ConnectionError, e:
+        try:   u.Cleanup()
+        except Exception, e2: 
+            u.Log('FATAL', str(e2))
+        u.Log('FATAL', '***************************************')
+        u.Log('FATAL', str(e))
+        u.Log('FATAL', '***************************************')
+        sys.exit(1)
+    
+    except UpgradeError, e:
+        try:   u.Cleanup()
+        except Exception, e2: 
+            u.Log('FATAL', str(e2))
+        u.Log('FATAL', '***************************************')
+        u.Log('FATAL', str(e))
+        u.Log('FATAL', '***************************************')
+        sys.exit(1)
+    
+    except CmdError, e:
+        try:   u.Cleanup()
+        except Exception, e2:
+            u.Log('FATAL', str(e2))
+        u.Log('FATAL', '***************************************')
+        u.Log('FATAL', 'Error executing command:')
+        u.Log('FATAL', '  ' + str(e.cmd))
+        u.Log('FATAL', '  ' + str(e.stderr))
+        u.Log('FATAL', '***************************************')
+        sys.exit(1)
+    
+    # Shouldn't get any of these, if they occur it is probably a bug in
+    # the upgrader.
+    except Exception, e:
+        try:   u.Cleanup()
+        except Exception, e2: 
+            u.Log('FATAL', str(e2))
+        u.Log('FATAL', '***************************************')
+        u.Log('FATAL', str(e))
+        u.Log('FATAL', '***************************************')
+        sys.stderr.write(traceback.format_exc())
+        sys.exit(1)
+    
+    # This shouldn't need to be explicit, but if something goes wrong in
+    # thread shutdown it forces the issue.
+    sys.exit(0)
