@@ -21,6 +21,9 @@ try:
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
+GPHOME=os.environ.get('GPHOME')
+SRC_GPPATH=". %s/greenplum_path.sh;" % GPHOME
+
 #============================================================
 def pretty_version(v):
     '''
@@ -517,12 +520,19 @@ class GPDetective:
     def grabSegmentLog(self,hostname,segdb,seglog,dst_file,time_opt):
         myfile = open(dst_file, 'w')       
         try:
-            segcmd="ssh %s %s %s %s 2>&1" % (hostname,sys.path[0] + '/gplogfilter --quiet',time_opt,seglog)
-            p=subprocess.Popen(segcmd,stdout=myfile,shell=True)
+            cmdstr = "gplogfilter --quiet %s %s 2>&1" % (time_opt,seglog)
+            segcmd="ssh %s \"%s %s\" " % (hostname,SRC_GPPATH,cmdstr)
+            p=subprocess.Popen(segcmd,stdout=myfile,shell=True)            
             p.wait()
             if p.returncode == 0:
                 found = True
             else:
+                self.log('could not find the segment log on host: %s in dir: %s' % (hostname,seglog))
+                myfile.close()
+                f = open(dst_file,'r')
+                str=f.readlines()
+                self.log('command returned: %s' % str)
+                f.close()
                 found = False
         except OSError,e:
             self.log('' + str(e))            
@@ -822,6 +832,8 @@ try:
         d.crashReport()
         d.finishup()
     except Exception, e:
+        print 'ERROR: %s' % e
+        print "  details: %s" % traceback.format_exc()        
         d.error = e
         d.finishup()
         exit(1)
