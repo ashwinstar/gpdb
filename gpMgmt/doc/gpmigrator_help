@@ -1,6 +1,6 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 3.1.1.5 - 3.1.1.12 system to 3.3.
+Upgrades an existing Greenplum Database 3.2.x.x system to 3.3.
 
 *****************************************************
 SYNOPSIS
@@ -8,11 +8,15 @@ SYNOPSIS
 
 gpmigrator <old_GPHOME_path> <new_GPHOME_path> 
            [-d <master_data_directory>] [-l <logfile_directory>] [-q]
+           [--debug] [-R]
 
 gpmigrator --prepare 
           [--master_port <port> --port_base <port> --mirror_port_base <port>] 
           <old_GPHOME_path> <new_GPHOME_path> 
           [-d <master_data_directory>] [-l <logfile_directory>] [-q]
+
+gpmigrator old_GPHOME_path new_GPHOME_path -R 
+
 
 gpmigrator --version | --help
 
@@ -28,7 +32,7 @@ The following tasks should be performed prior to executing an upgrade:
 
 * Install the Greenplum Database 3.3 binaries on all Greenplum hosts.
 
-* Copy any custom modules from your 3.1 installation to your 3.3 
+* Copy any custom modules from your current installation to your 3.3 
   installation on all Greenplum hosts. For example, shared library files 
   for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
   (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
@@ -36,18 +40,18 @@ The following tasks should be performed prior to executing an upgrade:
 * Check for and recover any failed segments in your current 
   Greenplum Database system (gpstate, gprecoverseg).
 
-* Verify the integrity of your 3.1 system catalogs using the 
+* Verify the integrity of your current system catalogs using the 
   --prepare step of gpmigrator. This will check your system catalogs 
   and indexes and initialize a temporary 3.3 system. If problems are 
   found, contact Greenplum customer support.
 
-* Backup your 3.1.1.x databases (gpcrondump or ZFS snapshots). If you find
+* Backup your current databases (gpcrondump or ZFS snapshots). If you find
   any issues when testing your upgraded system, you can restore this backup.
  
 * Remove the standby master from your system configuration 
   (gpinitstandby -r).
 
-* Do a clean shutdown of your 3.1.1.x system (gpstop).
+* Do a clean shutdown of your current system (gpstop).
 
 * Update your environment to point to the new 3.3 installation.
 
@@ -55,13 +59,16 @@ The following tasks should be performed prior to executing an upgrade:
   Once the upgrade is in process, users will not be allowed on the 
   system until the upgrade is complete.
 
+IMPORTANT: Failing to meet any of these prerequisites can result in an aborted upgrade, 
+placing your system in an unusable or even unrecoverable state. Make sure you meet 
+all the prerequisites before running gpmigrator.
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
 The gpmigrator utility upgrades an existing Greenplum Database 
-3.1.1.5 -3.1.1.12 system to 3.3. This utility updates the system catalog 
+3.2.x.x system to 3.3. This utility updates the system catalog 
 and internal version number, but not the actual software binaries.
 
 During the migration process, all client connections to the master 
@@ -105,7 +112,6 @@ gpcheckcat to verify your system catalogs, it checks for invalid
 indexes that need rebuilding, and it initializes a temporary 
 3.3 system. 
 
-
 --master_port <port>
 --port_base <port>
 --mirror_port_base <port>
@@ -113,7 +119,24 @@ indexes that need rebuilding, and it initializes a temporary
 Optional. Used with the --prepare option to supply a temporary master 
 port, primary segment port base, and mirror segment port base 
 for the temporary 3.3 system to be initialized. These must be 
-different than what your current 3.1.1.x system is using. 
+different than what your current system is using. 
+
+
+-R (revert)
+
+Restores the backup directory in the event of a failed upgrade.
+ 
+If the migration procedure fails and you cannot start the system using 
+the prior version’s binary files, it is probable that gpmigrator was not 
+able to revert automatically. In these cases, you can run gpmigrator -R 
+to attempt to restore the backup directory. 
+
+Cases in which the migration is not automatically reverted include:
+
+* The gpmigrator process is killed with a command such as kill -9
+* The system crashes during the migration procedure
+
+If a ZFS snapshot is available, backing up from those resources is preferred.
 
 
 -d <master_data_directory>
@@ -158,17 +181,22 @@ but do not execute the upgrade (this command must be
 specified on a single, unbroken line):
 
 /usr/local/greenplum-db-3.3.0.0/bin/gpmigrator --prepare \
-/usr/local/greenplum-db-3.1.1.9 \
+/usr/local/greenplum-db-3.2.0.6 \
 /usr/local/greenplum-db-3.3.0.0
 
 
-Upgrade to version 3.3 from version 3.1.1.9 
+Upgrade to version 3.3 from version 3.2.0.6 
 (first make sure you are using the 3.3 software version):
 
 source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
 
-gpmigrator /usr/local/greenplum-db-3.1.1.9 
+gpmigrator /usr/local/greenplum-db-3.2.0.6 \
 /usr/local/greenplum-db-3.3.0.0
+
+Revert a failed upgrade that was not automatically reverted:
+
+gpmigrator /usr/local/greenplum-db-3.2.0.6 \
+/usr/local/greenplum-db-3.3.0.0 -R
 
 
 *****************************************************
