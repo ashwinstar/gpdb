@@ -99,6 +99,8 @@ def parseargs():
                       help='ending date and time')
     optgrp.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
                       help='duration from beginning to end')
+    optgrp.add_option('--prunefiles', action='store_true', default=False, 
+                        help="Discard files based on filename of the form gpdb-%Y-%m-%d_%H%M%S.csv")
     parser.add_option_group(optgrp)
 
     optgrp = OptionGroup(parser, 'Pattern and string matching',
@@ -164,6 +166,8 @@ def parseargs():
                             '9 = maximum compression'))
     optgrp.add_option('-a', '--append',   action='store_true',
                       help="when output file already exists, append to it; don't overwrite")
+    optgrp.add_option('--flatten', action='store_true', default=False, 
+                      help="convert the CSV log lines to old style log entries.")
     parser.add_option_group(optgrp)
 
     optgrp = OptionGroup(parser, 'Message options')
@@ -214,7 +218,8 @@ def openInputFile(ifn, options):
 
     if zname.endswith('.csv'):
         fileIn = csv.reader(fileIn,delimiter=',',quotechar='"')
-        fileIn = CsvFlatten(fileIn)
+        if options.flatten:
+            fileIn = CsvFlatten(fileIn)
         
     return fileIn, filesToClose, ifn, zname
 
@@ -364,6 +369,19 @@ try:
 
             # Open next input file
             fileIn, inputFilesToClose, ifn, zname = openInputFile(ifn, options)
+            
+            # if we can skip the whole file, let's do so
+            if zname.startswith('gpdb') and zname.endswith('.csv'):
+                filedate=datetime.strptime(zname[5:-4],'%Y-%m-%d_%H%M%S')                
+                if begin and filedate < begin:
+                    if end and filedate > end:
+                        print >>sys.stderr,"SKIP file: %s" % zname
+                        for f in inputFilesToClose:
+                            f.close()
+                        inputFilesToClose = []
+                        continue
+
+            
 
             # Announce each input file *before* its output file if --out is dir
             if options.verbose and outputFilePerInputFile:
@@ -388,8 +406,12 @@ try:
 
             # Write filtered lines to output file.  Don't append \n to
             # each line, because the original line ends are still there.
-            for line in filteredInput:
-                print >>fileOut, line,
+            if zname.endswith('.csv') and not options.flatten:
+                writer = csv.writer(fileOut,delimiter=',',quotechar='"',quoting=csv.QUOTE_ALL)
+                writer.writerows(filteredInput)
+            else:
+                for line in filteredInput:
+                    print >>fileOut, line,
 
             # Close input and output files
             for file in inputFilesToClose:
