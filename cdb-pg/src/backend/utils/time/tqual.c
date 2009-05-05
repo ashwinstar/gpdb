@@ -1,15 +1,14 @@
 /*-------------------------------------------------------------------------
  *
  * tqual.c
- *	  POSTGRES "time" qualification code, ie, tuple visibility rules.
- *
- * The caller must hold at least a shared buffer context lock on the buffer
- * containing the tuple.  (VACUUM FULL assumes it's sufficient to have
- * exclusive lock on the containing relation, instead.)
+ *	  POSTGRES "time qualification" code, ie, tuple visibility rules.
  *
  * NOTE: all the HeapTupleSatisfies routines will update the tuple's
  * "hint" status bits if we see that the inserting or deleting transaction
- * has now committed or aborted.
+ * has now committed or aborted (and it is safe to set the hint bits).
+ * If the hint bits are changed, SetBufferCommitInfoNeedsSave is called on
+ * the passed-in buffer.  The caller must hold not only a pin, but at least
+ * shared buffer content lock on the buffer containing the tuple.
  *
  * NOTE: must check TransactionIdIsInProgress (which looks in PGPROC array)
  * before TransactionIdDidCommit/TransactionIdDidAbort (which look in
@@ -27,8 +26,27 @@
  * subtransactions of our own main transaction and so there can't be any
  * race condition.
  *
+ * Summary of visibility functions:
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ *   HeapTupleSatisfiesMVCC()
+ *        visible to supplied snapshot, excludes current command
+ *   HeapTupleSatisfiesNow()
+ *        visible to instant snapshot, excludes current command
+ *   HeapTupleSatisfiesUpdate()
+ *        like HeapTupleSatisfiesNow(), but with user-supplied command
+ *        counter and more complex result
+ *   HeapTupleSatisfiesSelf()
+ *        visible to instant snapshot and current command
+ *   HeapTupleSatisfiesDirty()
+ *        like HeapTupleSatisfiesSelf(), but includes open transactions
+ *   HeapTupleSatisfiesVacuum()
+ *        visible to any running transaction, used by VACUUM
+ *   HeapTupleSatisfiesToast()
+ *        visible unless part of interrupted vacuum, used for TOAST
+ *   HeapTupleSatisfiesAny()
+ *        all tuples are visible
+ *
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION

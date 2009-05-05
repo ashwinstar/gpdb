@@ -3,12 +3,12 @@
  * datum.c
  *	  POSTGRES Datum (abstract data type) manipulation routines.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/datum.c,v 1.33 2007/01/05 22:19:40 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/datum.c,v 1.37 2009/01/01 17:23:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -47,7 +47,7 @@
  * Find the "real" size of a datum, given the datum value,
  * whether it is a "by value", and the declared type length.
  *
- * This is essentially an out-of-line version of the att_addlength()
+ * This is essentially an out-of-line version of the att_addlength_datum()
  * macro in access/tupmacs.h.  We do a tad more error checking though.
  *-------------------------------------------------------------------------
  */

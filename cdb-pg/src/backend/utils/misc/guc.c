@@ -7,7 +7,7 @@
  *
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
- * Copyright (c) 2000-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
@@ -176,6 +176,7 @@ static const char *assign_timezone_abbreviations(const char *newval, bool doit, 
 static bool assign_tcp_keepalives_idle(int newval, bool doit, GucSource source);
 static bool assign_tcp_keepalives_interval(int newval, bool doit, GucSource source);
 static bool assign_tcp_keepalives_count(int newval, bool doit, GucSource source);
+static const char *show_IntervalStyle(void);
 static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
@@ -3485,7 +3486,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_REPORT
 		},
 		&IntervalStyle_string,
-		INTSTYLE_POSTGRES, assign_IntervalStyle, NULL
+		INTSTYLE_POSTGRES, assign_IntervalStyle, show_IntervalStyle
 	},
 	
 	{
@@ -8410,6 +8411,21 @@ assign_IntervalStyle(const char *newval, bool doit, GucSource source)
 	return newval;
 	
 }
+
+static const char *
+show_IntervalStyle(void)
+{
+	switch(IntervalStyle)
+	{
+	case INTSTYLE_POSTGRES:  return "postgres";
+	case INTSTYLE_POSTGRES_VERBOSE:  return "postgres_verbose";
+	case INTSTYLE_SQL_STANDARD:  return "sql_standard";
+	case INTSTYLE_ISO_8601:  return "ISO_8601";
+	};
+	return NULL;
+	
+}
+
 static const char *
 assign_log_error_verbosity(const char *newval, bool doit, GucSource source)
 {

@@ -1,7 +1,7 @@
 /*
  * This file contains public functions for conversion between
- * client encoding and server internal encoding.
- * (currently mule internal code (mic) is used)
+ * client encoding and server (database) encoding.
+ *
  * Tatsuo Ishii
  *
  * $PostgreSQL: pgsql/src/backend/utils/mb/mbutils.c,v 1.59 2006/10/04 00:30:02 momjian Exp $
@@ -198,7 +198,8 @@ InitializeClientEncoding(void)
 }
 
 /*
- * returns the current client encoding */
+ * returns the current client encoding
+ */
 int
 pg_get_client_encoding(void)
 {

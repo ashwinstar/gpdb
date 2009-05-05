@@ -6,34 +6,37 @@
 #
 #   name = value
 #
-# (The '=' is optional.)  White space may be used.  Comments are introduced
-# with '#' anywhere on a line.  The complete list of option names and
-# allowed values can be found in the PostgreSQL documentation.  The
-# commented-out settings shown in this file represent the default values.
+# (The "=" is optional.)  Whitespace may be used.  Comments are introduced with
+# "#" anywhere on a line.  The complete list of parameter names and allowed
+# values can be found in the PostgreSQL documentation.
 #
-# Please note that re-commenting a setting is NOT sufficient to revert it
-# to the default value, unless you restart the server.
+# The commented-out settings shown in this file represent the default values.
+# Re-commenting a setting is NOT sufficient to revert it to the default value;
+# you need to reload the server.
 #
-# Any option can also be given as a command line switch to the server,
-# e.g., 'postgres -c log_connections=on'.  Some options can be changed at
-# run-time with the 'SET' SQL command.
+# This file is read on server startup and when the server receives a SIGHUP
+# signal.  If you edit the file on a running system, you have to SIGHUP the
+# server for the changes to take effect, or use "pg_ctl reload".  Some
+# parameters, which are marked below, require a server shutdown and restart to
+# take effect.
 #
-# This file is read on server startup and when the server receives a
-# SIGHUP.  If you edit the file on a running system, you have to SIGHUP the
-# server for the changes to take effect, or use "pg_ctl reload". Some
-# settings, which are marked below, require a server shutdown and restart
-# to take effect.
+# Any parameter can also be given as a command-line option to the server, e.g.,
+# "postgres -c log_connections=on".  Some parameters can be changed at run time
+# with the "SET" SQL command.
 #
-# Memory units:  kB = kilobytes MB = megabytes GB = gigabytes
-# Time units:    ms = milliseconds s = seconds min = minutes h = hours d = days
+# Memory units:  kB = kilobytes        Time units:  ms  = milliseconds
+#                MB = megabytes                     s   = seconds
+#                GB = gigabytes                     min = minutes
+#                                                   h   = hours
+#                                                   d   = days
 
 
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # FILE LOCATIONS
-#---------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
-# The default values of these variables are driven from the -D command line
-# switch or PGDATA environment variable, represented here as ConfigDir.
+# The default values of these variables are driven from the -D command-line
+# option or PGDATA environment variable, represented here as ConfigDir.
 
 #data_directory = 'ConfigDir'		# use data in another directory
 					# (change requires restart)
@@ -78,12 +81,12 @@
 #superuser_reserved_connections = 3	# (change requires restart)
 #unix_socket_directory = ''		# (change requires restart)
 #unix_socket_group = ''			# (change requires restart)
-#unix_socket_permissions = 0777		# octal
+#unix_socket_permissions = 0777		# begin with 0 to use octal notation
 					# (change requires restart)
 #bonjour_name = ''			# defaults to the computer name
 					# (change requires restart)
 
-# - Security & Authentication -
+# - Security and Authentication -
 
 #authentication_timeout = 1min		# 1s-600s
 #ssl = off				# (change requires restart)
@@ -98,7 +101,7 @@
 #krb_caseins_users = off
 
 # - TCP Keepalives -
-# see 'man 7 tcp' for details
+# see "man 7 tcp" for details
 
 #tcp_keepalives_idle = 0		# TCP_KEEPIDLE, in seconds;
 					# 0 selects the system default
@@ -140,11 +143,11 @@
 
 # - Cost-Based Vacuum Delay -
 
-#vacuum_cost_delay = 0			# 0-1000 milliseconds
+#vacuum_cost_delay = 0ms		# 0-100 milliseconds
 #vacuum_cost_page_hit = 1		# 0-10000 credits
 #vacuum_cost_page_miss = 10		# 0-10000 credits
 #vacuum_cost_page_dirty = 20		# 0-10000 credits
-#vacuum_cost_limit = 200		# 0-10000 credits
+#vacuum_cost_limit = 200		# 1-10000 credits
 
 # - Background writer -
 
@@ -308,7 +311,9 @@
 					#   panic (effectively off)
 
 #log_min_duration_statement = -1	# -1 is disabled, 0 logs all statements
-					# and their durations.
+					# and their durations, > 0 logs only
+					# statements running at least this number
+					# of milliseconds
 
 #silent_mode = off			# DO NOT USE without syslog or
 					# redirect_stderr
@@ -415,20 +420,21 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 # - Locale and Formatting -
 
 #datestyle = 'iso, mdy'
-#timezone = unknown			# actually, defaults to TZ
-					# environment setting
-#timezone_abbreviations = 'Default'     # select the set of available timezone
+#intervalstyle = 'postgres'
+#timezone = unknown			# actually, defaults to TZ environment
+					# setting
+#timezone_abbreviations = 'Default'     # Select the set of available time zone
 					# abbreviations. Currently, there are
 					#   Default
 					#   Australia
 					#   India
-					# However you can also create your own
-					# file in share/timezonesets/.
+					# You can create your own file in
+					# share/timezonesets/.
 #extra_float_digits = 0			# min -15, max 2
 #client_encoding = sql_ascii		# actually, defaults to database
 					# encoding
 
-# These settings are initialized by initdb -- they might be changed
+# These settings are initialized by initdb, but they can be changed.
 #lc_messages = 'C'			# locale for system error message
 					# strings
 #lc_monetary = 'C'			# locale for monetary formatting
@@ -481,7 +487,7 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 # VERSION/PLATFORM COMPATIBILITY
 #---------------------------------------------------------------------------
 
-# - Previous Postgres Versions -
+# - Previous PostgreSQL Versions -
 
 #add_missing_from = off
 #array_nulls = on
@@ -492,7 +498,7 @@ gp_autostats_mode=on_no_stats		# none, on_no_stats, on_change. see documentation
 #regex_flavor = advanced		# advanced, extended, or basic
 #sql_inheritance = on
 
-# - Other Platforms & Clients -
+# - Other Platforms and Clients -
 
 #transform_null_equals = off
 
