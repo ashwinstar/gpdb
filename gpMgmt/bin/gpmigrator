@@ -46,6 +46,34 @@ UPGRADEDIR    = 'upgrade'
 PARALLELISM   = 16
 MAIN          = "3.3.99.99" # version number for main
 
+def make_conn(ug, user, db, options, port, sockdir):
+    try:
+        ug.Log('DEBUG', "making database connection: user = %s, "
+                 "dbname = %s port = %i, unix socket connection" % (user, db, port))
+        conn = pg8000.Connection(user=user,
+                                 unix_sock=os.path.join(sockdir, '.s.PGSQL.%i' % port),
+                                 database=db, 
+                                 options=options,
+                                 port=port,
+                                 socket_timeout=5000)
+    except Exception, e:
+        # could be an issue with using UNIX sockets, try a host based
+        # connection
+        try:
+            ug.Log('DEBUG', "could not connect using unix socket (%s), trying host based connection" % str(e))
+            conn = pg8000.Connection(user=user,
+                                     host='localhost',
+                                     database=db, 
+                                     options=options,
+                                     port=port,
+                                     socket_timeout=5000)
+        except Exception, e:
+            ug.Log('FATAL', 'Could not establish connection to ' +
+                          'database "%s" port %d: %s' % (db, port, str(e)))
+            raise ConnectionError(str(e))
+    return conn
+
+
 #============================================================
 def pretty_version(v):
     '''
@@ -859,32 +887,11 @@ class GPUpgrade:
         else:
             options = ''
 
-        conn = None
-        try:
-            self.Log('DEBUG', "making database connection: user = %s, "
-                     "dbname = %s port = %i, unix socket connection" % (user, db, port))
-            conn = pg8000.Connection(user=user,
-                                     unix_sock=os.path.join(self.sock_dir, '.s.PGSQL.%i' % port),
-                                     database=db, 
-                                     options=options,
-                                     port=port,
-                                     socket_timeout=5000)
-        except Exception, e:
-            # could be an issue with using UNIX sockets, try a host based
-            # connection
-            try:
-                self.Log('DEBUG', "could not connect using unix socket, trying "
-                         "host based connection")
-                conn = pg8000.Connection(user=user,
-                                         host='localhost',
-                                         database=db, 
-                                         options=options,
-                                         port=port,
-                                         socket_timeout=5000)
-            except Exception, e:
-                self.Log('FATAL', 'Could not establish connection to ' +
-                              'database "%s" port %d' % (db, port))
-                raise ConnectionError(str(e))
+        if self.__dict__.get('sock_dir'):
+            sockdir = self.sock_dir
+        else:
+            sockdir = '/tmp/'
+        conn = make_conn(self, user, db, options, port, sockdir)
 
         try:
             conn.execute(qry)
@@ -944,28 +951,7 @@ class GPUpgrade:
         if utility:  options = '-c gp_session_role=utility'
         else:        options = ''
 
-        conn = None
-        try:
-            # try unix socket first
-            conn = pg8000.Connection(user=user, 
-                                     unix_sock=os.path.join(self.sock_dir, '.s.PGSQL.%i' % port),
-                                     database=db, 
-                                     options=options,
-                                     port=port,
-                                     socket_timeout=5000)
-        except Exception, e:
-            try:
-                self.Log('DEBUG', "could not connect using unix socket, trying "
-                         "host based connection")
-                conn = pg8000.Connection(user=user,
-                                         host='localhost',
-                                         database=db, 
-                                         options=options,
-                                         port=port,
-                                         socket_timeout=5000)
-            except Exception, e:
-                self.Log('FATAL', 'Could not establish connection to database')
-                raise ConnectionError(str(e))
+        conn = make_conn(self, user, db, options, port, self.sock_dir)
 
         try:
             conn.execute(qry)
@@ -1052,20 +1038,23 @@ class GPUpgrade:
         env = None
 
         if olddir and os.path.exists('%s/postmaster.pid' % olddir):
+            self.Log('DEBUG', 'CheckUp: found old postmaster running')
             env = self.oldenv
         if newdir and os.path.exists('%s/postmaster.pid' % newdir):
+            self.Log('DEBUG', 'CheckUp: found new postmaster running')
             env = self.newenv
 
         if not env:
+            self.Log('Postmaster not running')
             raise UpgradeError("Postmaster failed to start")
 
         if tryconn:
             try:
-                conn = pg8000.Connection(user=self.user,
-                                     host='localhost',
-                                     database="template1", 
-                                     port=self.masterport,
-                                     socket_timeout=5000)
+                self.Log('DEBUG', 'trying to establish connection to database')
+                self.Log('DEBUG', 'user = %s, db = template1, port = %i, dir = %s'
+                    % (self.user, self.masterport, self.sock_dir))
+                conn = make_conn(self, self.user, 'template1', '', self.masterport, '',
+                                 self.sock_dir)
             except Exception, e:
                 raise UpgradeError("Found a postmaster.pid but postmaster " +
                                    "running")
@@ -2491,8 +2480,8 @@ This issue must be resolved before upgrade can complete.
         else:
             user = env['USER']
 
-        exec_cmd = libdir + '/gpcheckcat -p %d -U %s ' % \
-            (self.masterport, user)
+        exec_cmd = libdir + '/gpcheckcat -p %d -U %s -B %i' % \
+            (self.masterport, user, PARALLELISM)
 
         for db in databases:
             cmd = exec_cmd + db
