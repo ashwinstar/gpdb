@@ -40,7 +40,11 @@ LDFLAGS=-L/usr/local/mingw32/mingw32/lib
 CPPFLAGS=-I/usr/local/mingw32/mingw32/include
 endif
 
+ifeq "$(BLD_ARCH)" "win32"
+all: mkdir mkdbgen mklibapr mklibapu mklibevent mklibjson
+else
 all: mkdir mkdbgen
+endif
 
 # ------------------------------------------------------------------------------------------------
 #

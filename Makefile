@@ -841,6 +841,7 @@ copylibs : thirdparty-dist
 	mkdir -p $(INSTLOC)/etc
 	mkdir -p $(INSTLOC)/include
 	# Copy in openssl files needed by gpperfmon
+ifneq "$(BLD_ARCH)" "win32"
 ifneq "$(BLD_ARCH)" "osx104_x86"
 	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
 	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
@@ -849,6 +850,7 @@ else
 	cp -rp /usr/bin/openssl $(INSTLOC)/bin/
 	cp -rp /usr/include/openssl $(INSTLOC)/include/
 	cp -rp /System/Library/OpenSSL/openssl.cnf $(INSTLOC)/etc/
+endif
 endif
 
 greenplum_path:

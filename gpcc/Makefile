@@ -13,12 +13,13 @@ GPCC=$(CURDIR)
 CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 GPFDISTFILES=fstream.c gfile.c gpfdist.c
 
-ifeq "$(BLDWIN)" "yes"
+ifeq "$(BLD_ARCH)" "win32"
 override CC=$(strip /usr/local/mingw32/bin/mingw32-gcc $(BLD_CFLAGS))
 override BLD_CFLAGS += -L/usr/local/mingw32/mingw32/lib -I/usr/local/mingw32/mingw32/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
 override GPFDISTFILES += glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
-GPFDIST_INCLUDES=$(GPCC)/src/gpfdist/include $(GPCC)
-GPFDIST_LIBS=-lws2_32
+GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
+GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32
+EXT_EXE=.exe
 else
 GPFDIST_LIBS=-lz -lbz2
 endif
@@ -32,6 +33,10 @@ LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 
+# use gpcc/ext/ copies of libraries until prebuilt ones are ready
+ifeq "$(BLD_ARCH)" "win32"
+BLD_THIRDPARTY_BIN_DIR=$(GPCC)/ext/bin
+endif
 INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
@@ -61,10 +66,10 @@ mkgpfdist: mkext
 	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
 	mkdir -p src/gpfdist/include
 	cd src/gpfdist/ && \
-	  $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS_GPFDIST) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist \
+	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(CPPFLAGS_GPFDIST) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
 	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 	mkdir -p build/bin
-	cp -f src/gpfdist/gpfdist build/bin/
+	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
 
 mklibchubby: src/build/lib/libchubby.a
 

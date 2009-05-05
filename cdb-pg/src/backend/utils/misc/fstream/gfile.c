@@ -298,8 +298,8 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 		   const char **response_string)
 {
 	const char* s = strrchr(fpath, '.');
-	struct 		stat sta;
 #ifndef WIN32
+	struct 		stat sta;
 	char is_win_pipe = 0;
 #else
 	BOOL is_win_pipe = FALSE;
@@ -372,7 +372,8 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 			}
  	   }
 	}
-#endif
+
+#else
 
 	if (!is_win_pipe)
 	{
@@ -414,6 +415,8 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 		}
 		ssize = sta.st_size;
 	}
+
+#endif
 
 	fd->compressed_size = ssize;
 

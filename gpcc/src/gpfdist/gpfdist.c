@@ -157,7 +157,7 @@ static void block_fill_header(block_t* b,
 	p += 4;
 	memcpy(p, fos->fname, fname_len);
 	p += fname_len;
-	TR(("F %d %s\n", ntohl(len), fos->fname));
+	TR(("F %d %s\n", (int)ntohl(len), fos->fname));
 
 	/* OFFSET: 'O' + len + foff */
 	*p++ = 'O';
@@ -183,7 +183,7 @@ static void block_fill_header(block_t* b,
 	len = htonl(b->top-b->bot);
 	memcpy(p, &len, 4);
 	p += 4;
-	TR(("D %d\n",ntohl(len)));
+	TR(("D %d\n", (int)ntohl(len)));
 	h->htop = p - h->hbyte;
 	if (h->htop > sizeof(h->hbyte))
 		gfatal(FLINE, "assert failed, h->htop = %d, max = %d\n", h->htop,
@@ -1866,9 +1866,13 @@ int main(int argc, const char* const argv[])
 	if (opt.l)
 	{
 		freopen(opt.l, "a", stderr);
+#ifndef WIN32
 		setlinebuf(stderr);
+#endif
 		freopen(opt.l, "a", stdout);
+#ifndef WIN32
 		setlinebuf(stdout);
+#endif
 	}
 
 	return event_dispatch();
