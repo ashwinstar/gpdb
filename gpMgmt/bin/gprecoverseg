@@ -1655,6 +1655,17 @@ try:
 
         # force a transaction log checkpoint
         postgres_checkpoint(db)
+        
+        if opt['-F'] and fault_action == 'readonly':
+            #if we are in readonly mode and are forcing recovery then we *need* to mark that segment as down.
+            # this protects us against failures or ctrl-c's during recoverseg that would leave only a partial
+            # copy of a restored segment.  Previously, this would be marked as valid and would be attempted
+            # to be started by gpstart.
+            for qe in failed_instance_array:                
+                db.begin()
+                db.execute("UPDATE gp_configuration SET valid = 'f' where dbid = CAST(%d AS smallint)" % qe['dbid'])
+                db.commit()
+            
 
     except pg8000.errors.InterfaceError, e:
         gpmlib.error(e)
