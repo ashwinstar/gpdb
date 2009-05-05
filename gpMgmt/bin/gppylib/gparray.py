@@ -192,8 +192,11 @@ def createSegmentRows(hostlist,primary_list,primary_portbase,mirror_type,mirror_
         
         mirror_port = {}
 
+        mirror_host_offset=1
+        last_mirror_offset=1
         for host in hostlist:
-            mirror_host_offset=1
+            mirror_host_offset = last_mirror_offset + 1
+            last_mirror_offset += 1
             for dir in mirror_list:
                 fulldir = "%s/%s%d" % (dir,dir_prefix,content)
                 mirror_host = hostlist[mirror_host_offset % num_hosts]
