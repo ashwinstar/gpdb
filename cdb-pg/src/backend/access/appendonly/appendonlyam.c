@@ -109,18 +109,55 @@ static int32 getUsableBlockSize(int32 configBlockSize);
 static int
 errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 {
-	int64	headerOffsetInFile;
-
-	headerOffsetInFile = BufferedReadCurrentPosition(&scan->bufferedRead);
+	char	*relationName = NameStr(scan->aos_rd->rd_rel->relname);
+	int		segmentFileNum = SCANNED_SEGNO;
+	int64	headerOffsetInFile = BufferedReadCurrentPosition(&scan->bufferedRead);
+	int64	blockFirstRowNum = scan->blockFirstRowNum;
+	int64	bufferCount = scan->bufferCount;
+	StringInfoData 	stringInfoData;
 	
-	errcontext( 
-		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
-		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-		 NameStr(scan->aos_rd->rd_rel->relname),
-		 SCANNED_SEGNO,
-		 headerOffsetInFile,
-		 scan->blockFirstRowNum,
-		 scan->bufferCount);
+	initStringInfo(&stringInfoData);
+
+#ifdef USE_ASSERT_CHECKING
+	if (scan->bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
+		errcontext("Debug buffer count is 1 but the offset is not 0");
+	
+	if (scan->debugTrackReadPosition != headerOffsetInFile)
+		errcontext("Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!! (#1)",
+		           scan->debugTrackReadPosition, headerOffsetInFile);
+#endif
+
+	/*
+	 * Format this manually since we were getting a funny value formatted for "block first row number".
+	 */
+//	errcontext( 
+//		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
+//		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+//		 relationName,
+//		 segmentFileNum,
+//		 headerOffsetInFile,
+//		 blockFirstRowNum,
+//		 bufferCount);
+
+	appendStringInfo(&stringInfoData, 
+					 "Append-Only table '%s'",
+					 relationName);
+	appendStringInfo(&stringInfoData, 
+					 ", segment file #%d",
+					 segmentFileNum);
+	appendStringInfo(&stringInfoData, 
+					 ", block header offset in file = " INT64_FORMAT,
+					 headerOffsetInFile);
+	appendStringInfo(&stringInfoData, 
+					 ", block first row number " INT64_FORMAT,
+					 blockFirstRowNum);
+	appendStringInfo(&stringInfoData, 
+					 ", bufferCount  " INT64_FORMAT,
+					 bufferCount);
+
+	errcontext("%s", stringInfoData.data);
+
+	pfree(stringInfoData.data);
 
 	return 0;
 }
@@ -317,6 +354,11 @@ doSkipPadding(AppendOnlyScanDesc scan,
 							scan->bufferCount)));			
 		}
 		
+#ifdef USE_ASSERT_CHECKING
+		scan->debugTrackReadPosition += scan->debugTrackAvailableLen;
+		scan->debugTrackAvailableLen = availableLen;
+#endif
+		
 		// UNDONE: For verification purposes, we should verify the
 		// UNDONE: reminder is all zeroes.
 		
@@ -458,6 +500,11 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	scan->aos_need_new_segfile = false;
 
 	scan->rowNumberInSegmentFile = 0;
+
+#ifdef USE_ASSERT_CHECKING
+	scan->debugTrackReadPosition = INT64CONST(0);
+	scan->debugTrackAvailableLen = 0;
+#endif
 	
 	if (Debug_appendonly_print_scan)
 		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, maximum buffer length %d, large read length %d)",
@@ -707,6 +754,12 @@ getNextStorageBlockInFile(
 
 	scan->bufferCount++;
 	scan->blockFirstRowNum = scan->rowNumberInSegmentFile + 1;
+
+#ifdef USE_ASSERT_CHECKING
+	scan->debugTrackReadPosition += scan->debugTrackAvailableLen;
+	scan->debugTrackAvailableLen = availableLen;
+#endif
+			
 				
 	if (availableLen != scan->headerLen)
 		ereport(ERROR,
@@ -765,6 +818,11 @@ getNextStorageBlockInFile(
 							    SCANNED_SEGNO,
 								*headerOffsetInFile,
 								scan->bufferCount)));			
+#ifdef USE_ASSERT_CHECKING
+			scan->debugTrackReadPosition += scan->debugTrackAvailableLen;
+			scan->debugTrackAvailableLen = availableLen;
+#endif
+					
 			break;
 		}
 	}
@@ -865,6 +923,10 @@ getNextStorageBlockInFile(
 				 errdetail_appendonly_scan_block_header(scan),
 				 errcontext_appendonly_scan_block(scan)));
 
+#ifdef USE_ASSERT_CHECKING
+	// Compensate for adjusting the buffer length.
+	scan->debugTrackAvailableLen = availableLen;
+#endif
 
 	if (scan->aos_checksum &&
 		gp_appendonly_verify_block_checksums)
