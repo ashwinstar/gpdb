@@ -282,6 +282,11 @@ class DiskFree(Command):
         dfCmd.run(validateAfter=True)
         return dfCmd.get_bytes_free()
     
+    @staticmethod
+    def get_size(name,directory):
+        dfCmd=DiskFree(name,directory)
+        dfCmd.run(validateAfter=True)
+        return dfCmd.get_bytes_free()
        
     
     def get_bytes_free(self):
