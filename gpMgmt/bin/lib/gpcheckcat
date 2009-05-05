@@ -17,6 +17,7 @@ Usage: gpcheckcat <option> [dbname]
 import sys, os, subprocess, tempfile, stat
 from threading import Thread
 from datetime import datetime
+from time import localtime, strftime
 import getopt
 
 try:
@@ -47,6 +48,7 @@ class Global():
     opt['-v'] = False
     opt['-V'] = False
     opt['-o'] = False
+    opt['-t'] = False
 
     dt = datetime.now()
     opt['-g'] = 'gpcheckcat.repair.' + dt.strftime('%Y-%m-%d.%H.%M.%S')
@@ -79,12 +81,18 @@ def usage(exitarg = None):
 
 
 ###############################
+def prntmsg(x):
+    if GV.opt['-t']: x = strftime('%Y%m%d:%H:%M:%S', localtime()) + ": " + x   
+    print x
+
 def verbose(x):
+    if GV.opt['-t']: x = strftime('%Y%m%d:%H:%M:%S', localtime()) + ": " + x
     if GV.opt['-v'] or GV.opt['-V']: print x
 
 
 ###############################
 def veryverbose(x):
+    if GV.opt['-t']: x = strftime('%Y%m%d:%H:%M:%S', localtime()) + ": " + x
     if GV.opt['-V']: print x
 
 def getversion():
@@ -107,14 +115,14 @@ def getversion():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVog:')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVog:t')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':	  usage(0)
         elif switch[1] in 'hpBPUg': GV.opt[switch] = val
-        elif switch[1] in 'vVo':   GV.opt[switch] = True
+        elif switch[1] in 'vVot':   GV.opt[switch] = True
 
     def setdef(x, v):
         if not GV.opt[x]:
@@ -146,7 +154,7 @@ def parseCommandLine():
     else:
         GV.dbname = args[0]
     
-    print ('[INFO] master at host %s, port %s, user %s, database %s' % 
+    prntmsg('[INFO] master at host %s, port %s, user %s, database %s' % 
            (GV.opt['-h'], GV.opt['-p'], GV.opt['-U'], GV.dbname))
 
     try:
@@ -170,6 +178,7 @@ def connect(user=None, password=None, host=None, port=None,
     if not port: port = GV.opt['-p']
     if not database: database = GV.dbname
     try:
+        veryverbose('[INFO] connecting to %s:%s %s' % (host, port, database))
         db = pg8000.Connection(user=user, password=password, host=host,
                                 port=port, database=database, options=options,
                                 socket_timeout=120)
@@ -178,7 +187,8 @@ def connect(user=None, password=None, host=None, port=None,
         print "SQL code: ", p[1]
         print p[2]
         sys.exit(1)
-         
+    
+    veryverbose('[INFO] connected with %s:%s %s' % (host, port, database))     
     return db
 
 #############
@@ -274,8 +284,8 @@ def getGPConfiguration():
     return cfg
 
 def checkDistribPolicy():
-    print '-----------------------------------'
-    print 'Checking constraints on randomly distributed tables'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking constraints on randomly distributed tables')
     qry = '''select n.nspname, rel.relname,
           pk.conname as constraint
           from pg_constraint pk
@@ -292,19 +302,19 @@ def checkDistribPolicy():
         err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
     if not err:
-        print '[OK] randomly distributed tables'
+        prntmsg('[OK] randomly distributed tables')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_constraint has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_constraint has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
                                       cons['constraint'])
 
-    print '-----------------------------------'
-    print 'Checking that unique constraints are only on distribution columns'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking that unique constraints are only on distribution columns')
 
     # final part of the WHERE clause here is a little tricky: we want to make
     # sure that the set of distribution columns is a left subset of the
@@ -327,12 +337,12 @@ def checkDistribPolicy():
         err.append([GV.cfg[1], ('nspname', 'relname', 'constraint'), row])
 
     if not err:
-        print '[OK] randomly distributed tables'
+        prntmsg('[OK] randomly distributed tables')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_constraint has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_constraint has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
@@ -342,8 +352,8 @@ def checkDistribPolicy():
 
 #############
 def checkPGClass():
-    print '-----------------------------------'
-    print 'Checking pg_class ...'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking pg_class ...')
     qry = '''SELECT relname, relkind, tc.oid as oid,
               reltoastrelid, reltoastidxid 
          FROM pg_class tc left outer join 
@@ -351,12 +361,12 @@ def checkPGClass():
         WHERE ta.attrelid is NULL'''
     err = connect2run(qry, ('relname', 'relkind', 'oid'))
     if not err:
-        print '[OK] pg_class'
+        prntmsg('[OK] pg_class')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_class has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_class has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -374,20 +384,20 @@ def checkPGClass():
 
 #############
 def checkPGAttribute():
-    print '-----------------------------------'
-    print 'Checking pg_attribute ...'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking pg_attribute ...')
     qry = '''SELECT ta.attrelid, ta.attname 
         FROM pg_attribute ta left outer join
              pg_class tc on (tc.oid = ta.attrelid)
        WHERE tc.relname is NULL'''
     err = connect2run(qry, ('attrelid', 'attname'))
     if not err:
-        print '[OK] pg_attribute'
+        prntmsg('[OK] pg_attribute')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_attribute has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_attribute has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
 
         relids = {}
         for e in err:
@@ -407,20 +417,20 @@ def checkPGAttribute():
 
 #############
 def checkPGType():
-    print '-----------------------------------'
-    print 'Checking pg_type ...'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking pg_type ...')
     qry = '''SELECT typname, typtype, typrelid
          FROM pg_type tt left outer join 
               pg_class tc on (tt.typname = tc.relname) 
         WHERE tt.typtype = 'c' and tc.relname is NULL'''
     err = connect2run(qry, ('typname', 'typtype'))
     if not err:
-        print '[OK] pg_type'
+        prntmsg('[OK] pg_type')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_type has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_type has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -438,20 +448,20 @@ def checkPGType():
 
 #############
 def checkPGExtTable():
-    print '-----------------------------------'
-    print 'Checking pg_exttable ...'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking pg_exttable ...')
     qry = '''SELECT reloid
          FROM pg_exttable te left outer join 
               pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
         WHERE tc.oid is NULL'''
     err = connect2run(qry, ('reloid',))
     if not err:
-        print '[OK] pg_exttable'
+        prntmsg('[OK] pg_exttable')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_exttable has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_exttable has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
@@ -470,25 +480,25 @@ def checkPGExtTable():
 
 #############
 def checkPGClassToast():
-    print '-----------------------------------'
-    print 'Checking pg_class.reltoastrelid'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking pg_class.reltoastrelid')
     qry = '''SELECT c1.reltoastrelid 
          FROM pg_class c1 left outer join 
               pg_class c2 on (c1.reltoastrelid = c2.oid)
         WHERE c1.reltoastrelid <> 0 AND c2.oid is NULL'''
     err = connect2run(qry, ('reltoastrelid',))
     if not err:
-        print '[OK] pg_class.reltoastrelid'
+        prntmsg('[OK] pg_class.reltoastrelid')
     else:
         GV.retcode = 1
-        print '[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        prntmsg('[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err))
+        prntmsg('[ERROR] %s' % qry)
+        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
 
 #############
 def checkPGNamespace():
-    print '-----------------------------------'
-    print 'Checking missing schema definitions ...'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking missing schema definitions ...')
 # doesn't work in 3.1.1.* -- we get an Abort()
 #    qry = '''SELECT o.nsp
 #         FROM pg_namespace n right outer join 
@@ -531,12 +541,12 @@ def checkPGNamespace():
         qry = errrow[1]
         count += 1
         if not err:
-            print '[OK] schema test %i' % count
+            prntmsg('[OK] schema test %i' % count)
         else:
             GV.retcode = 1
-            print '[ERROR] schema test %i has %d issue(s)' % (count, len(err))
-            print '[ERROR] %s' % qry
-            for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+            prntmsg('[ERROR] schema test %i has %d issue(s)' % (count, len(err)))
+            prntmsg('[ERROR] %s' % qry)
+            for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
             schemaids = {}
             for e in err:
                 seg = e[0]['dbid'] 
@@ -733,11 +743,9 @@ def row2str(row):
 	return strout
 
 def crossDbCheck():
-    print """
--------------------------------------------
-Performing cross database consistency tests
--------------------------------------------
-"""
+    prntmsg('-------------------------------------------')
+    prntmsg('Performing cross database consistency tests')
+    prntmsg('-------------------------------------------')
 
     # If we have specified "-o" then we want all the OIDs to be idenitical
     # between segments, otherwise the queries should all be oid/relfile neutral
@@ -809,7 +817,7 @@ ORDER BY nspname
     # check each catalog in turn
     error = False
     for cid in catalogs:
-        print '  - Comparing %s on master to all segments' % cid
+        prntmsg('  - Comparing %s on master to all segments' % cid)
 
         threads = []
         i = 1
@@ -849,11 +857,11 @@ ORDER BY nspname
                 lines += line
 
             if len(lines) > 0:
-                print '\n'
-                print '[ERROR] inconsistency between master and seg %i' % \
-                        dbid
-                #print "return code %i\n" % pipe.returncode
-                print lines
+                prntmsg('\n')
+                prntmsg('[ERROR] inconsistency between master and seg %i' % \
+                         dbid)
+                #prntmsg("return code %i\n" % pipe.returncode)
+                prntmsg(lines)
                 error = True
                 GV.retcode = 1
 
@@ -862,7 +870,7 @@ ORDER BY nspname
         os.unlink('%s/gpcheckcat_m' % GV.tmpdir)
 
     if error == False:
-        print '[OK]'
+        prntmsg('[OK]')
 
 class fileCheckThread(Thread):
     # connect to host and look for oidlist for each segment on the host
@@ -913,7 +921,7 @@ class fileCheckThread(Thread):
                                     stderr=subprocess.PIPE, close_fds=True)
             result  = pipe.communicate();
         except OSError, e:
-            print '%s, %s' % (' '.join(cmd),  str(e))
+            prntmsg('%s, %s' % (' '.join(cmd),  str(e)))
             raise
     
         veryverbose('directory listing:\n%s' % result[0])
@@ -953,8 +961,8 @@ class fileCheckThread(Thread):
 
 
 def checkBitmapIndexes():
-    print '-----------------------------------'
-    print 'Checking bitmap indexes'
+    prntmsg('-----------------------------------')
+    prntmsg('Checking bitmap indexes')
 
     db = connect2(GV.cfg[1])
     db.execute('''
@@ -965,7 +973,7 @@ def checkBitmapIndexes():
     and d.datname = current_database();
             ''')
     if db.row_count == 0:
-        print '[OK] not bitmaps to check'
+        prntmsg('[OK] not bitmaps to check')
         return
 
     # same path as gpinitsystem
@@ -1027,13 +1035,13 @@ def checkBitmapIndexes():
             reindex.append(row['nspname'] + '.' + row['relname'])
 
         a = list(set(reindex))
-        print '[ERROR] %d bitmap issue(s)' % len(a)
+        prntmsg('[ERROR] %d bitmap issue(s)' % len(a))
         for index in a:
-            print '[ERROR] %s' % index
+            prntmsg('[ERROR] %s' % index)
             Reindex.append(index)
 
     else:
-        print '[OK] bitmap indexes'
+        prntmsg('[OK] bitmap indexes')
 
 def closeDbs():
     for key, db in GV.db.iteritems():
@@ -1054,15 +1062,13 @@ if __name__ == '__main__':
         GV.tmpdir = tempfile.mkdtemp()
         veryverbose('[INFO] Created temporary working directory %s' % GV.tmpdir)
     except Exception, e:
-        print '[ERROR] ' + str(e)
-        print '[ERROR] Unable to create temporary directory'
+        prntmsg('[ERROR] ' + str(e))
+        prntmsg('[ERROR] Unable to create temporary directory')
         sys.exit(1)
 
-    print """
-----------------------------------------------
-Performing segment specific consistency checks
-----------------------------------------------
-"""
+    prntmsg('----------------------------------------------')
+    prntmsg('Performing segment specific consistency checks')
+    prntmsg('----------------------------------------------')
     checkPGClass()
     checkPGAttribute()
     checkPGType()
@@ -1083,8 +1089,7 @@ Performing segment specific consistency checks
             if not os.path.exists(GV.opt['-g']):
                 os.mkdir(GV.opt['-g'])
         except Exception, e:
-            print '[FATAL] unable to create directory "%s": %s' % (GV.opt['-g'],
-                  str(e))
+            prntmsg('[FATAL] unable to create directory "%s": %s' % (GV.opt['-g'], str(e)))
             sys.exit(1)
                    
         verbose('Building catalog repair scripts')
@@ -1101,8 +1106,8 @@ Performing segment specific consistency checks
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                print '[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e))
+                prntmsg('[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e)))
                 sys.exit(1)
 
             #unique
@@ -1129,8 +1134,8 @@ Performing segment specific consistency checks
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                print '[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e))
+                prntmsg('[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e)))
                 sys.exit(1)
 
             for r in Reindex:
@@ -1149,8 +1154,8 @@ Performing segment specific consistency checks
             try:
                 file = open(fullpath, 'w')
             except Exception, e:
-                print '[FATAL] unable to create file "%s": %s' %  \
-                        (fullpath, str(e))
+                prntmsg('[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e)))
                 sys.exit(1)
 
             for r in Constraints:
@@ -1170,9 +1175,9 @@ Performing segment specific consistency checks
             file.close()
             os.chmod(path, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)
         except Exception, e:
-            print '[FATAL] could not write script: %s' % str(e)
+            prntmsg('[FATAL] could not write script: %s' % str(e))
             sys.exit(1)
 
-        print '[INFO] repair scripts generated in directory %s' % GV.opt['-g']
+        prntmsg('[INFO] repair scripts generated in directory %s' % GV.opt['-g'])
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
     sys.exit(GV.retcode)
