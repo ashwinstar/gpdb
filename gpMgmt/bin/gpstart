@@ -358,8 +358,10 @@ class GpStart():
         for db in failed_pings:            
             logger.warning("Skipping startup of segdb on %s directory %s Ping Failed <<<<<<" % (db.hostname,db.datadir))
             self.failed_seg_status.append(SegStartStatus(db,False,'Failed to Ping on host: %s' % db.hostname))
+        
+        invalid_segs.extend(failed_pings)
             
-        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,failed_pings)                
+        self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,invalid_segs)                
         self.hostcache.print_contents(logger)
                             
         
