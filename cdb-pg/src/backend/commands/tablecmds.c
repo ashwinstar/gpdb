@@ -396,6 +396,10 @@ static List *exchange_part_constraints(List *pcols, Relation oldrel,
 static List *get_part_constraints(List *part, Relation pgcon, Relation rel);
 
 static Oid  rel_partition_get_master(Oid relid);
+static List *rel_get_part_path(Relation rel, Oid relid);
+static char *rel_get_part_path_pretty(Relation rel, Oid relid, 
+									  char *separator, 
+									  char *lastsep);
 
 static List *
 atpxRenameList(Relation rel, PartitionNode *pNode,
@@ -2508,7 +2512,9 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	/* if this is a child table of a partitioning configuration, complain */
 	if (stmt && rel_is_child_partition(myrelid) && !stmt->bAllowPartn)
 	{
-		Oid master = rel_partition_get_master(myrelid);
+		Oid		 master = rel_partition_get_master(myrelid);
+
+		if (1)
 		ereport(ERROR,
 				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 				errmsg("cannot rename partition \"%s\" directly",
@@ -2516,6 +2522,24 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 				errhint("Table \"%s\" is a child partition of table "
 						"\"%s\".  To rename it, use ALTER TABLE.",
 						get_rel_name(myrelid), get_rel_name(master))));
+		else
+		{
+		char	*pretty	= rel_get_part_path_pretty(targetrelation,
+														   myrelid, 
+												   " ALTER PARTITION ", 
+												   " RENAME PARTITION ");
+
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				errmsg("cannot rename partition \"%s\" directly",
+					   get_rel_name(myrelid)),
+				errhint("Table \"%s\" is a child partition of table "
+						"\"%s\".  To rename it, use ALTER TABLE \"%s\"%s...",
+						get_rel_name(myrelid), get_rel_name(master),
+						get_rel_name(master), pretty ? pretty : "" )));
+
+		}
+
 	}
 
 	oldrelname = pstrdup(RelationGetRelationName(targetrelation));
@@ -9677,7 +9701,7 @@ make_typname(Form_pg_attribute att)
     }
 	else
 	{
-        Assert(!"Unkown attlen, we really messed up");
+        Assert(!"Unknown attlen, we really messed up");
         elog(ERROR, "unknown attlen %d", attlen); 
     }
 
@@ -11655,7 +11679,308 @@ rel_partition_get_master(Oid relid)
 
 	return masteroid;
 
-}
+} /* end rel_partition_get_master */
+
+/* given a relid, build a path list from the master tablename down to
+ * the partition for that relation, using partition names if possible,
+ * else rank or value expressions.
+ */
+static List *rel_get_part_path1(Oid relid)
+{
+	Relation	 rel    = heap_open(PartitionRuleRelationId, AccessShareLock);
+	ScanKeyData	 key;
+	SysScanDesc	 scan;
+	HeapTuple	 tuple;
+	Oid			 paroid		   = InvalidOid;
+	Oid			 parparentrule = InvalidOid; 
+	List		*lrelid		   = NIL;
+
+	/* use the relid of the table to find the first rule */
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(rel, PartitionRuleParchildrelidIndexId, true,
+							  SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tuple))
+	{
+		Form_pg_partition_rule rule_desc =
+				(Form_pg_partition_rule)GETSTRUCT(tuple);
+
+		paroid = rule_desc->paroid;
+		parparentrule = rule_desc->parparentrule;
+
+		/* prepend relid of child table to list */
+		lrelid = lcons_oid(rule_desc->parchildrelid, lrelid);
+		
+	}
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	if (!OidIsValid(paroid))
+		return NIL;
+
+	/* walk up the tree using the parent rule oid */
+
+	while (OidIsValid(parparentrule))
+	{
+		rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+
+		ScanKeyInit(&key,
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(parparentrule));
+		scan = systable_beginscan(rel, PartitionRuleOidIndexId, true,
+								  SnapshotNow, 1, &key);
+
+		tuple = systable_getnext(scan);
+
+		if (HeapTupleIsValid(tuple))
+		{
+			Form_pg_partition_rule rule_desc =
+					(Form_pg_partition_rule)GETSTRUCT(tuple);
+			
+			paroid = rule_desc->paroid;
+			parparentrule = rule_desc->parparentrule;
+
+			/* prepend relid of child table to list */
+			lrelid = lcons_oid(rule_desc->parchildrelid, lrelid);
+		}
+		else
+			parparentrule = InvalidOid; /* we are done */
+
+		heap_close(rel, AccessShareLock);
+	}
+
+	return lrelid;
+	
+} /* end rel_get_part_path1 */
+
+static List *rel_get_part_path(Relation rel, Oid relid)
+{
+	PartitionNode 		*pNode	   = NULL;
+	Partition			*part	   = NULL;
+	MemoryContext		 mcxt	   = CurrentMemoryContext;
+	List				*lrelid	   = NIL;
+	List				*lnamerank = NIL;
+	List				*lnrv	   = NIL;
+	ListCell			*lc, *lc2;
+	Oid					 masteroid = InvalidOid;
+
+	masteroid = rel_partition_get_master(relid);
+
+	if (!OidIsValid(masteroid))
+		return NIL;
+
+	/* call the guts of RelationBuildPartitionDesc */
+	pNode = get_parts(masteroid, 0, 0, false, mcxt);
+
+	if (!pNode)
+		return NIL;
+
+	part = pNode->part;
+
+	/* get the relids for each table that corresponds to the partition
+	 * heirarchy from the master to the specified partition 
+	 */
+	lrelid = rel_get_part_path1(relid);
+
+	/* walk the partition tree, finding the partition for each relid,
+	 * and extract useful information (name, rank, value) 
+	 */
+	foreach(lc, lrelid)
+	{
+		Oid parrelid = lfirst_oid(lc);
+		PartitionRule *prule;
+		int rulerank = 1;
+
+		Assert(pNode);
+
+		part = pNode->part;
+
+		rulerank = 1;
+
+		foreach (lc2, pNode->rules)
+		{
+			prule = (PartitionRule *)lfirst(lc2);
+
+			if (parrelid == prule->parchildrelid)
+			{
+				pNode = prule->children;
+				goto L_rel_get_part_path_match;
+			}
+			rulerank++;
+		}
+
+		/* if we get here, then must match the default partition */
+		prule = pNode->default_part;
+
+		Assert(parrelid == prule->parchildrelid);
+
+		/* default partition must have a name (and no rank) */
+		Assert (prule->parname && strlen(prule->parname));
+		
+		pNode = prule->children;
+		rulerank = 0;
+
+	L_rel_get_part_path_match:
+
+		if (!rulerank) /* must be default, so it has a name, but no
+						* rank or value */
+		{
+			lnrv = list_make3(prule->parname, NULL, NULL);
+		}
+		else if (part->parkind == 'l') /* list partition by value */
+		{
+			char				*idval	= NULL;				
+			ListCell			*lc3;
+			List				*l1		= (List *)prule->parlistvalues;
+			StringInfoData       sid1;
+			int2				 nkeys  = part->parnatts;
+			int2				 parcol = 0;
+
+			initStringInfo(&sid1);
+				
+/*			foreach(lc3, l1) */
+			/* don't loop -- just need first set of values */
+
+			lc3 = list_head(l1);
+
+			if (lc3)
+			{	
+				List		*vals = lfirst(lc3);
+				ListCell	*lcv  = list_head(vals);
+
+				/* Note: similar code in
+				 * ruleutils.c:partition_rule_def_worker 
+				 */
+
+				for (parcol = 0; parcol < nkeys; parcol++)
+				{
+					Const *con = lfirst(lcv);
+
+					if (lcv != list_head(vals))
+							appendStringInfoString(&sid1, ", ");
+
+					idval =
+							deparse_expression((Node*)con,
+                           deparse_context_for(RelationGetRelationName(rel),
+                                               RelationGetRelid(rel)),
+										   false, false);
+
+					appendStringInfo(&sid1, "%s", idval);
+
+					lcv = lnext(lcv);
+				} /* end for parcol */
+			}
+			/* list - no rank */
+			lnrv = list_make3(prule->parname, NULL, sid1.data);
+		}
+		else /* range (or hash) - use rank (though rank is not really
+			  * appropriate for hash) 
+			  */
+		{
+			char *rtxt = palloc(NAMEDATALEN);
+
+			sprintf(rtxt, "%d", rulerank);
+
+			/* not list - rank, but no value */
+			lnrv = list_make3(prule->parname, rtxt, NULL);
+		}
+
+		/* build the list of (lists of name, rank, value) for each level */
+		lnamerank = lappend(lnamerank, lnrv);
+
+	} /* end foreach lc (walking list of relids) */
+	
+	return lnamerank;
+} /* end rel_get_part_path */
+
+static char *rel_get_part_path_pretty(Relation rel, Oid relid, 
+									  char *separator, 
+									  char *lastsep)
+{
+	List				*lnamerank = NIL;
+	List				*lnrv	   = NIL;
+	ListCell			*lc, *lc2;
+	int maxlen;
+	StringInfoData      	 sid1, sid2;
+
+	lnamerank = rel_get_part_path(rel, relid);
+
+	maxlen = list_length(lnamerank);
+
+	if (!maxlen)
+		return NULL;
+
+	Assert(separator);
+	Assert(lastsep);
+
+	initStringInfo(&sid1);
+	initStringInfo(&sid2);
+
+	foreach(lc, lnamerank)
+	{
+		int lcnt = 0;
+
+		lnrv = (List *)lfirst(lc);
+
+		maxlen--;
+
+		appendStringInfo(&sid1, "%s", maxlen ? separator : lastsep);
+
+		lcnt = 0;
+
+		foreach (lc2, lnrv)
+		{
+			char *str = (char *)lfirst(lc2);
+
+			truncateStringInfo(&sid2, 0);
+
+			switch(lcnt)
+			{
+				case 0:
+					if (str && strlen(str))
+					{
+						appendStringInfo(&sid2, "\"%s\"", str);
+						goto l_pretty;
+					}
+					break;
+
+				case 1:
+					if (str && strlen(str))					
+					{
+						appendStringInfo(&sid2, "FOR(RANK(%s))", str);
+						goto l_pretty;
+					}
+					break;
+
+				case 2:
+					if (str && strlen(str))					
+					{
+						appendStringInfo(&sid2, "FOR(%s)", str);
+						goto l_pretty;
+					}
+					break;
+				default:
+					break;
+			}
+			lcnt++;
+		}
+			
+		l_pretty:
+
+		appendStringInfo(&sid1, "%s", sid2.data);
+	}
+
+	return sid1.data;
+} /* end rel_get_part_path_pretty */
+
 
 /*
  * rel could be a toast table, toast table index or index on a
@@ -11805,11 +12130,13 @@ rel_is_leaf_partition(Oid relid)
 	Oid paroid = InvalidOid;
 	int maxdepth = 0;
 	int mylevel = 0;
-	Oid partitioned_rel = InvalidOid; /* OID of the root table of the partition set */
+	Oid partitioned_rel = InvalidOid; /* OID of the root table of the
+									   * partition set 
+									   */
 
 	/* 
-	 * Find the pg_partition_rule entry to see if this is a child at all and, if
-	 * so, to locate the OID for the pg_partition entry.
+	 * Find the pg_partition_rule entry to see if this is a child at
+	 * all and, if so, to locate the OID for the pg_partition entry.
 	 */
 	ScanKeyInit(&key,
 				Anum_pg_partition_rule_parchildrelid,
@@ -11859,8 +12186,9 @@ rel_is_leaf_partition(Oid relid)
 							  true, SnapshotNow, 1, &key);
 
 	/* 
-	 * Of course, we could just maxdepth++ but this seems safer -- we don't have
-	 * to worry about the starting depth being 0, 1 or something else.
+	 * Of course, we could just maxdepth++ but this seems safer -- we
+	 * don't have to worry about the starting depth being 0, 1 or
+	 * something else.
 	 */
 	while ((tuple = systable_getnext(scan)))
 	{
