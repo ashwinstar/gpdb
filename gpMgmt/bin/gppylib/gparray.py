@@ -252,7 +252,7 @@ def parseTrueFalse(value):
 def get_host_interface(full_hostname):
     (host_part, inf_num) = ['-'.join(full_hostname.split('-')[:-1]), 
                             full_hostname.split('-')[-1]]
-    if host_part == '' or not inf_num.isdigit:
+    if host_part == '' or not inf_num.isdigit():
         return (full_hostname, None)
     else:
         return (host_part, inf_num)
