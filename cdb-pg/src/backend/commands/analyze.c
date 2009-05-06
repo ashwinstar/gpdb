@@ -2131,7 +2131,6 @@ compute_minimal_stats(VacAttrStatsP stats,
 				mcv_freqs[i] = (double) track[i].count / (double) samplerows;
 			}
 			MemoryContextSwitchTo(old_context);
-			elog(NOTICE, "num_mcv = %d", num_mcv);
 			stats->pgstat.stakind[0] = STATISTIC_KIND_MCV;
 			stats->pgstat.staop[0] = mystats->eqopr;
 			stats->pgstat.stanumbers[0] = mcv_freqs;
