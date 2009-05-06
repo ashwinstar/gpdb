@@ -2482,7 +2482,7 @@ This issue must be resolved before upgrade can complete.
         else:
             user = env['USER']
 
-        exec_cmd = libdir + '/gpcheckcat -p %d -U %s -B %i' % \
+        exec_cmd = libdir + '/gpcheckcat -p %d -U %s -B %i ' % \
             (self.masterport, user, PARALLELISM)
 
         for db in databases:
