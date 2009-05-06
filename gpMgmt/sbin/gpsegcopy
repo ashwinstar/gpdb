@@ -18,11 +18,12 @@ from gppylib.gplog import *
 from gppylib.segcopy import *
 
 description = (""" 
+This utility is NOT SUPPORTED and is for internal-use only.
+
 Creates a copy of a GPDB segment.
 """)
 
 _help = ["""
-TODO: add txt for gpsegcopy!
 """]
 
 

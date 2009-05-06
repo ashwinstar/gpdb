@@ -115,6 +115,7 @@ def parseargs():
                       help='Display gpexpand usage')
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit.')
+    parser.add_option('--usage', action="briefhelp")
         
     parser.set_defaults(verbose=False,filters=[], slice=(None, None))
     

@@ -660,7 +660,7 @@ def parseargs():
     parser.set_usage('%prog [--help] [--version] [--usage] [options] ')
     parser.remove_option('-h')
     
-    parser.add_option('-h', '--help', action='help',
+    parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit')
     parser.add_option('-v','--verbose', action='store_true',
                         help='debug output.')

@@ -171,8 +171,9 @@ def parseargs():
     optgrp = OptionGroup(parser, 'Message options')
     optgrp.add_option('-q', '--quiet',    dest='verbose', action='store_false',
                       help='suppress status messages')
-    optgrp.add_option('-h', '--help',     action='help',
+    optgrp.add_option('-h', '-?','--help',     action='help',
                       help='show this help message and exit')
+    optgrp.add_option('--usage', action="briefhelp")
     parser.add_option_group(optgrp)
 
     parser.set_defaults(verbose=True, filters=[], slice=(None, None))
