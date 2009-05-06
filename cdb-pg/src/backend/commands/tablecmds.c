@@ -9624,13 +9624,79 @@ make_temp_table_name(Relation rel, BackendId id)
 	return makeRangeVar(nspname, pstrdup(tmpname));
 }
 
+/* Fill-in the names field of the given TypeName node with the name
+ * of an existing type that matches the given internal length, and alignment.
+ *
+ * If none can be found, return NULL, else return the given TypeName
+ * pointer.  
+ *
+ * It may seem as if we should include by-value in the test, but built-in
+ * types cover the allowable internal lengths for these and we don't want
+ * to second guess.
+ *
+ * Specifically for use by make_typename.
+ */
+static TypeName *
+pick_name_of_similar_type(TypeName *tname, int2 typlen, char typalign)
+{
+	Relation	catalogRelation;
+	SysScanDesc scan;
+	ScanKeyData key[2];
+	HeapTuple	tuple;
+	
+	catalogRelation = heap_open(TypeRelationId, RowExclusiveLock);
+	
+	ScanKeyInit(&key[0],
+				Anum_pg_type_typlen,
+				InvalidStrategy, F_INT2EQ,
+				Int16GetDatum(typlen));
+	
+	ScanKeyInit(&key[1],
+				Anum_pg_type_typalign,
+				InvalidStrategy, F_CHAREQ,
+				CharGetDatum(typalign));
+	
+	scan = systable_beginscan(catalogRelation, InvalidOid, false,
+							  SnapshotNow, 2, &key[0]);
+	
+	tuple = systable_getnext(scan);
+	if (HeapTupleIsValid(tuple))
+	{
+		Form_pg_type typtuple = (Form_pg_type)GETSTRUCT(tuple);
+		tname->names = 
+			list_make2(makeString(get_namespace_name(typtuple->typnamespace)),
+					   makeString(pstrdup(NameStr(typtuple->typname))));
+	}
+	else
+		tname = NULL;
+	
+	systable_endscan(scan);
+	heap_close(catalogRelation, RowExclusiveLock);
+	return tname;
+}
+
+
+/* Allocate and return a pointer to a TypeName node specifying the 
+ * qualified name of an existing type that matches the internal length
+ * and alignment of the given pg_attribute tuple.
+ *
+ * First we try a few hard-coded builtin types. Internal types exist for
+ *    select distinct typlen, typalign 
+ *    from pg_type where typlen > 0;
+ * on a new catalog.  Names are not unique.
+ *
+ * MPP-5483: If that fails, we look in pg_type for a match.  If even that 
+ * fails, we issue an error.
+ *
+ * Specifically for use by prebuilt_temp_table.
+ */
 static TypeName *
 make_typname(Form_pg_attribute att)
 {
 	TypeName *tname = makeNode(TypeName);
 	int2 attlen = att->attlen;
 	Value *typname = NULL;
-
+	bool dig_in_catalog = false;
 
 	if (attlen == -1)
 	{
@@ -9644,68 +9710,76 @@ make_typname(Form_pg_attribute att)
 		else if (att->attalign == 'd')
 			typname = makeString(pstrdup("path"));
 	}
-	else if (attlen == 1)
+	else if (attlen == 1 && att->attalign == 'c')
     {
-        Assert(att->attalign == 'c');
 		typname = makeString(pstrdup("char"));
     }
-	else if (attlen == 2)
+	else if (attlen == 2 && att->attalign == 's')
     {
-        Assert(att->attalign == 's');
 		typname = makeString(pstrdup("int2"));
     }
-	else if (attlen == 4)
+	else if (attlen == 4 && att->attalign == 'i')
     {
-        Assert(att->attalign == 'i');
 		typname = makeString(pstrdup("int4"));
     }
-	else if (attlen == 6)
+	else if (attlen == 6 && att->attalign == 's')
     {
-        if (att->attalign == 's')
             typname = makeString(pstrdup("tid"));
-        else
-        {
-            Assert(att->attalign == 'i');
+	}
+    else if (attlen == 6 && att->attalign == 'i')
+	{
             typname = makeString(pstrdup("macaddr"));
-        }
     }
-	else if (attlen == 8)
+	else if (attlen == 8 && att->attalign == 'd')
     {
-        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("int8"));
     }
-	else if (attlen == 12)
+	else if (attlen == 12 && att->attalign == 'd')
     {
-        Assert(att->attalign == 'd');
-		typname = makeString(pstrdup("timetz"));
+			typname = makeString(pstrdup("timetz"));
+	}
+	else if (attlen == 12 && att->attalign == 'i')
+	{
+		typname = makeString(pstrdup("tinterval"));
     }
-	else if (attlen == 16)
+	else if (attlen == 16 && att->attalign == 'd')
     {
-        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("interval"));
     }
-	else if (attlen == 24)
+	else if (attlen == 24 && att->attalign == 'd')
     {
-        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("circle"));
     }
-	else if (attlen == 32)
+	else if (attlen == 32 && att->attalign == 'd')
     {
-        Assert(att->attalign == 'd');
 		typname = makeString(pstrdup("box"));
     }
-	else if (attlen == 64)
+	else if (attlen == 64 && att->attalign == 'i')
     {
-        Assert(att->attalign == 'i');
 		typname = makeString(pstrdup("name"));
     }
 	else
 	{
-        Assert(!"Unknown attlen, we really messed up");
-        elog(ERROR, "unknown attlen %d", attlen); 
+		dig_in_catalog = true;
     }
-
-	tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
+	
+	if ( dig_in_catalog )
+	{
+		tname = pick_name_of_similar_type(tname, attlen, att->attalign);
+		if ( ! tname )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("Cannot construct temporary table for reorganization"),
+					 errhint("No existing type matches length %d "
+							 "and alignment '%c'", attlen, att->attalign)));
+		}
+	}
+	else
+	{	
+		tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
+	}
+	
 	tname->typmod = att->atttypmod;
 	tname->location = -1;
 	return tname;
@@ -9716,6 +9790,9 @@ make_typname(Form_pg_attribute att)
  * drop the columns before we can dispatch the select statement.
  * Return true if we do it, false if we do not. If we return false,
  * there are no dropped columns and we can do a SELECT INTO later.
+ * If we need to do it, but fail, issue an error. (See make_type.)
+ *
+ * Specifically for build_ctas_with_dist.
  */
 static bool
 prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
