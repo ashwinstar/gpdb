@@ -203,7 +203,8 @@ static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
-
+static void get_partition_recursive(PartitionNode *pn, deparse_context *head, deparse_context *body,
+									int16 *leveldone);
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
 
@@ -5892,7 +5893,33 @@ partition_rule_range(deparse_context *c, List *start, bool startinc,
 }
 
 static char *
-partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
+make_par_name(char *parname, bool isevery)
+{
+	if (isevery)
+	{
+		char *str = pstrdup(parname);
+		int len = strlen(parname) - 1;
+
+		while (len >= 0)
+		{
+			if (isdigit((int)str[len]))
+			{
+				len--;
+				continue;
+			}
+
+			str[len] = '\0';
+			break;
+		}
+		return str;
+	}
+	else
+		return parname;
+}
+
+static char *
+partition_rule_def_worker(PartitionRule *rule, Node *start, Node *end, Node *every,
+						  Partition *part, bool handleevery, int prettyFlags)
 {
 	StringInfoData str;
 	deparse_context c;
@@ -5901,7 +5928,7 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 
 	if (OidIsValid(rule->parchildrelid))
 		reloptions = flatten_reloptions(rule->parchildrelid);
-	else if(PointerIsValid(rule->parreloptions))
+	else if (PointerIsValid(rule->parreloptions))
 	{
 		ListCell *lc;
 		List *opts;
@@ -5948,7 +5975,7 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 	if (rule->parname && rule->parname[0] != '\0')
 		appendStringInfo(&str, "%sPARTITION %s ",
 						 part->parlevel > 0 ? "SUB" : "",
-						 quote_identifier(rule->parname));
+						 quote_identifier(make_par_name(rule->parname, handleevery)));
 			
 	switch (part->parkind)
 	{
@@ -5957,11 +5984,11 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 
 		case 'r':
 			{
-				partition_rule_range(&c, (List *)rule->parrangestart, 
+				partition_rule_range(&c, (List *)start, 
 									 rule->parrangestartincl,
-									 (List *)rule->parrangeend,
+									 (List *)end,
 									 rule->parrangeendincl,
-									 (List *)rule->parrangeevery);
+									 (List *)every);
 				needspace = true;
 			}
 			break;
@@ -6020,6 +6047,46 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 }
 
 static void
+write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, Node *end, Node *every,
+			   deparse_context *head, deparse_context *body, bool handleevery, bool *needcomma,
+			   bool *first_rule, int16 *leveldone, PartitionNode *children)
+{
+	char *str;
+
+	if (!*first_rule)
+	{
+		appendStringInfoString(body->buf, ", ");
+		*needcomma = false;
+	}
+
+	if (PRETTY_INDENT(body))
+	{
+		appendStringInfoChar(body->buf, '\n');
+		appendStringInfoSpaces(body->buf, 
+							   Max(body->indentLevel, 0) + 2);
+	}
+
+   	str = partition_rule_def_worker(rule, start, end, every, pn->part, handleevery,
+									body->prettyFlags);
+	if (str && strlen(str))
+	{
+		if (strlen(body->buf->data) && !first_rule && 
+			!PRETTY_INDENT(body))
+			appendStringInfoString(body->buf, " ");
+
+		appendStringInfoString(body->buf, str);
+		*needcomma = true;
+	}
+	pfree(str);
+
+	get_partition_recursive(children, head, body, leveldone);
+
+	if (*first_rule)
+		*first_rule = false;
+}
+
+
+static void
 get_partition_recursive(PartitionNode *pn, deparse_context *head,
 						deparse_context *body,
 						int16 *leveldone)
@@ -6029,6 +6096,8 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 	int i;
 	bool needcomma = false;
 	bool first_rule = true;
+	PartitionRule *first_every_rule = NULL;
+	PartitionRule *prev_rule = NULL;
 
 	if (!pn)
 		return;
@@ -6080,9 +6149,6 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 
 	foreach(lc, pn->rules)
 	{
-		char *str;
-		bool rule_done = false;
-
 		rule = lfirst(lc);
 
 		/* 
@@ -6094,59 +6160,59 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 		if (pn->part->parkind == 'h' && !strlen(rule->parname))
 			break;
 
-		if (!rule_done)
+		if (pn->part->parkind == 'r')
 		{
-			if (!first_rule)
+			if (!first_every_rule)
 			{
-				appendStringInfoString(body->buf, ", ");
-				needcomma = false;
+				if (rule->parrangeevery)
+				{
+					first_every_rule = rule;
+					continue;
+				}
 			}
-			if (PRETTY_INDENT(body))
+			else if (first_every_rule->parrangeevery)
 			{
-				appendStringInfoChar(body->buf, '\n');
-				appendStringInfoSpaces(body->buf, 
-									   Max(body->indentLevel, 0) + 2);
+				if (equal(first_every_rule->parrangeevery, rule->parrangeevery))
+				{
+					prev_rule = rule;
+					continue;
+				}
+				else
+				{
+					write_out_rule(rule, pn, first_every_rule->parrangestart,
+								   prev_rule->parrangeend,
+								   first_every_rule->parrangeevery,
+			   					   head, body, true, &needcomma, &first_rule, leveldone,
+								   first_every_rule->children);
+					if (rule->parrangeevery)
+					{
+						prev_rule = first_every_rule = rule;
+						continue;
+					}
+				}
 			}
-	
-		   	str = partition_rule_def_worker(rule, pn->part,
-											body->prettyFlags);
-			if (str && strlen(str))
-			{
-				if (strlen(body->buf->data) && !first_rule && 
-					!PRETTY_INDENT(body))
-					appendStringInfoString(body->buf, " ");
-
-				appendStringInfoString(body->buf, str);
-				needcomma = true;
-			}
-			pfree(str);
 		}
 
-		get_partition_recursive(rule->children, head, body, leveldone);
+		write_out_rule(rule, pn, rule->parrangestart, rule->parrangeend,
+					   rule->parrangeevery, head, body, false, &needcomma,
+					   &first_rule, leveldone,
+					   rule->children);
+	}
 
-		if (first_rule)
-			first_rule = false;
+	if (first_every_rule)
+	{
+		write_out_rule(first_every_rule, pn, first_every_rule->parrangestart,
+					   prev_rule->parrangeend,
+					   first_every_rule->parrangeevery,
+   					   head, body, true, &needcomma, &first_rule, leveldone,
+					   first_every_rule->children);
 	}
 
 	if (pn->default_part)
 	{
-		char *str;
-
-		if (pn->rules && strlen(body->buf->data))
-			appendStringInfoChar(body->buf, ',');
-
-		if (PRETTY_INDENT(body))
-		{
-			appendStringInfoChar(body->buf, '\n');
-			appendStringInfoSpaces(body->buf, 
-								   Max(body->indentLevel, 0) + 2);
-		}
-		str = partition_rule_def_worker(pn->default_part, pn->part,
-										body->prettyFlags);
-
-		appendStringInfoString(body->buf, str);
-		pfree(str);
-		get_partition_recursive(pn->default_part->children, head, body, leveldone);
+		write_out_rule(pn->default_part, pn, NULL, NULL, NULL, head, body, false,
+					   &needcomma,
+					   &first_rule, leveldone, pn->default_part->children);
 	}
 
 #if 0
@@ -6259,7 +6325,8 @@ get_rule_def_common(Oid partid, int prettyFlags)
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
-	return partition_rule_def_worker(rule, part, prettyFlags);
+	return partition_rule_def_worker(rule, rule->parrangestart, rule->parrangeend,
+									 rule->parrangeevery, part, false, prettyFlags);
 }
 
 Datum
