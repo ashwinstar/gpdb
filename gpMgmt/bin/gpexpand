@@ -571,7 +571,7 @@ class SegmentTemplate:
 
         self.oldSegCount = self.gparray.get_segment_count()
              
-        NewGpStop.local('gpexpand _create_template stop gpdb', masterOnly=True, fast=True)
+        GpStop.local('gpexpand _create_template stop gpdb', masterOnly=True, fast=True)
 
         try:    
             gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
@@ -797,23 +797,23 @@ class gpexpand:
             if gpdb_running:
                 if gpdb_mode != 'UTILITY':
                     logger.info('Stopping Greenplum Database')
-                    NewGpStop.local('Stop GPDB', fast=True)
+                    GpStop.local('Stop GPDB', fast=True)
                     logger.info('Starting Greenplum Database in master only mode')
-                    NewGpStart.local('Start GPDB', masterOnly=True)
+                    GpStart.local('Start GPDB', masterOnly=True)
             else:
                 logger.info('Starting Greenplum Database in master only mode')
-                NewGpStart.local('Start GPDB', masterOnly=True)
+                GpStart.local('Start GPDB', masterOnly=True)
         else:
             # Need to check db for db status so we need full db up
             if not gpdb_running:
                 logger.info('Starting Greenplum Database')
-                NewGpStart.local('Start GPDB')
+                GpStart.local('Start GPDB')
             else:
                 if gpdb_mode == 'UTILITY':
                     logger.info('Stopping Greenplum Database master')
-                    NewGpStop.local('Stop GPDB', masterOnly=True, fast=True)
+                    GpStop.local('Stop GPDB', masterOnly=True, fast=True)
                     logger.info('Starting Greenplum Database')
-                    NewGpStart.local('Start GPDB')
+                    GpStart.local('Start GPDB')
             if start_only:
                 return None
             
@@ -827,8 +827,8 @@ class gpexpand:
             if (not gpexpand_db_status and options.filename) and not options.clean:
                 # New expansion, need to be in master only
                 logger.info('Readying Greenplum Database for a new expansion')
-                NewGpStop.local('Stop GPDB', fast=True)
-                NewGpStart.local('Sart GPDB', masterOnly=True)
+                GpStop.local('Stop GPDB', fast=True)
+                GpStart.local('Start GPDB', masterOnly=True)
             
         return gpexpand_db_status
 
@@ -871,7 +871,7 @@ class gpexpand:
                     pass
                 else:
                     raise ExpansionError("""gpexpand schema exists in database %s, not in %s.  
-Set PGDATABASE or use the -D option to specificy the correct database to use.""" % (dbname, options.database))
+Set PGDATABASE or use the -D option to specify the correct database to use.""" % (dbname, options.database))
                 finally:
                     if c: 
                         c.close()
@@ -945,10 +945,10 @@ Set PGDATABASE or use the -D option to specificy the correct database to use."""
             else:
                 self.logger.debug('Skipping %s' % status[0])
 
-        NewGpStop.local('gpexpand rollback', masterOnly=True, fast=True)
+        GpStop.local('gpexpand rollback', masterOnly=True, fast=True)
 
         if cleanSchema:
-            NewGpStart.local('gpexpand rollback start database restricted', restricted=True)
+            GpStart.local('gpexpand rollback start database restricted', restricted=True)
             self.logger.info('Dropping expansion expansion schema')
             schema_conn = dbconn.connect(self.dburl)
             try:
@@ -957,7 +957,7 @@ Set PGDATABASE or use the -D option to specificy the correct database to use."""
                 schema_conn.close()
             except:
                 pass # schema wasn't created yet.
-            NewGpStop('gpexpand rollback stop database', fast=True)
+            GpStop('gpexpand rollback stop database', fast=True)
             
         self.statusLogger.remove_status_file()
         if os.path.exists(options.master_data_directory + '/gpexpand.gp_configuration'):
@@ -1217,7 +1217,7 @@ Set PGDATABASE or use the -D option to specificy the correct database to use."""
         # Update gp_configuration on the master
         self.logger.info('Starting master in utility mode')
 
-        startCmd = NewGpStart('gpexpand update master start database master only', masterOnly=True)
+        startCmd = GpStart('gpexpand update master start database master only', masterOnly=True)
         startCmd.run(validateAfter=True)
 
         self.logger.info('Updating gp_configuration')
@@ -1231,12 +1231,12 @@ Set PGDATABASE or use the -D option to specificy the correct database to use."""
         self.conn.close()
         
         self.logger.info('Stopping master in utility mode')
-        NewGpStop.local('gpexpand update master stop database', masterOnly=True, fast=True)
+        GpStop.local('gpexpand update master stop database', masterOnly=True, fast=True)
         
         self.statusLogger.set_status('UPDATE_MASTER_DONE')
         
         self.logger.info('Starting Greenplum Database in restricted mode')
-        startCmd = NewGpStart('gpexpand update master start database restricted', restricted=True)
+        startCmd = GpStart('gpexpand update master start database restricted', restricted=True)
         startCmd.run(validateAfter=True)
         
         # Need to restore the connection used by the expansion
@@ -1324,7 +1324,7 @@ Set PGDATABASE or use the -D option to specificy the correct database to use."""
         self.finalize_prepare()
         
         self.logger.info('Stopping Greenplum Database')
-        NewGpStop.local('gpexpand setup complete', fast=True)
+        GpStop.local('gpexpand setup complete', fast=True)
     
     
     def _populate_regular_tables(self,dbname,table_conn):
@@ -2107,7 +2107,7 @@ try:
         gp_expand.setup_schema()
         gp_expand.prepare_schema()
         logger.info('Starting Greenplum Database')
-        NewGpStart.local('gpexpand expansion prepare final start')
+        GpStart.local('gpexpand expansion prepare final start')
         logger.info('************************************************')                     
         logger.info('Initialization of the system expansion complete.')
         logger.info('To begin table expansion onto the new segments')
