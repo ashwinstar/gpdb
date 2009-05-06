@@ -1356,17 +1356,13 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	}
 
 	/*
-	 * Assert( seg_count == cdb_component_dbs->total_segments );
+	 * Mirror-writer-gangs may have gang definitions with 0 or more
+	 * segments -- 0 segments for clusters which don't have mirrors --
+	 * fewer than N for a cluster operating with failed segments.
 	 */
-
-	if (type == GANGTYPE_PRIMARY_WRITER &&
-		seg_count != cdb_component_dbs->total_segments)
+	if (type == GANGTYPE_MIRROR_WRITER)
 	{
-		elog(FATAL, "Not all primary segment instances are active and connected");
-	}
-	else if (type == GANGTYPE_MIRROR_WRITER)
-	{
-		/* setup mirroring */
+		/* if no mirrors active, return NULL. */
 		if (seg_count == 0)
 		{
 			disableFTS();
@@ -1374,9 +1370,18 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 			return NULL;
 		}
 	}
-	
-	Assert(newGangDefinition->size == seg_count || type == GANGTYPE_MIRROR_WRITER);
-	newGangDefinition->size = seg_count;
+
+	/* 
+	 * All other gangs (N-readers, primary-writers, and 1-readers)
+	 * should be the requested size, or we throw an error.
+	 */
+	if (newGangDefinition->size != seg_count)
+	{
+		FtsReConfigureMPP(false);
+		elog(ERROR, "Not all primary segment instances are active and connected");
+		/* not reached */
+	}
+
 	return newGangDefinition;
 }
 
