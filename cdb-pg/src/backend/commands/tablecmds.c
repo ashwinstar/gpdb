@@ -10060,11 +10060,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 * the query CREATE TABLE tmp_table_name AS SELECT * FROM cur_table
 	 * DISTRIBUTED BY (policy)
 	 * c) Execute the query across all nodes
-	 * d) Update our parse tree to include the details of the newly created
+	 * d) Update the ownership of the temporary table
+	 * e) Update our parse tree to include the details of the newly created
 	 * table
-	 * e) Swap the relfilenodes of the existing table and the temporary table
-	 * f) Update the policy on the QD to reflect the underlying data
-	 * g) Drop the temporary table -- and with it, the old copy of the data
+	 * f) Swap the relfilenodes of the existing table and the temporary table
+	 * g) Update the policy on the QD to reflect the underlying data
+	 * h) Drop the temporary table -- and with it, the old copy of the data
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -10206,8 +10207,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		FreeQueryDesc(queryDesc);
 
 		CommandCounterIncrement(); /* see the effects of the command */
+
 		/*
-		 * Step (d) - tell the seg nodes about the temporary relation. This
+		 * Step (d) - Correct ownership on temporary table:
+		 *   necessary so that the toast tables/indices have the correct
+		 *   owner after we swap them.
+		 */
+		ATExecChangeOwner(RangeVarGetRelid(tmprv, false), 
+						  rel->rd_rel->relowner, true);
+		CommandCounterIncrement(); /* see the effects of the command */
+
+		/*
+		 * Step (e) - tell the seg nodes about the temporary relation. This
 		 * involves stomping on the node we've been given
 		 */
 		qe_data = lappend(qe_data, makeInteger(MyBackendId));
@@ -10348,7 +10359,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	}
 
 	/*
-	 * Step (e) - swap relfilenodes
+	 * Step (f) - swap relfilenodes
 	 *
 	 * Just lookup the Oid and pass it to swap_relation_files(). To do this
 	 * we must close the rel, since it needs to be forgotten by the cache, we
@@ -10366,7 +10377,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 #if 0
 	elog_node_display(NOTICE, "f", oid_map, true);
 #endif
-	/* Step (f) */
+	/* Step (g) */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (change_policy)
@@ -10378,7 +10389,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		lprime = lappend(lprime, makeInteger(is_ao ? 1 : 0));
 	}
 
-	/* Step (g) Drop the table */
+	/* Step (h) Drop the table */
 	{
 		ObjectAddress object;
 		object.classId = RelationRelationId;

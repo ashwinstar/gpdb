@@ -300,3 +300,24 @@ drop table guc_test;
 create table guc_test (i int) with(appendonly = true);
 alter table guc_test set with (compresslevel = 4);
 drop table guc_Test;
+
+-- MPP-5918
+create role atsdb;
+create table owner_test(i int, toast text) distributed randomly;
+alter table owner_test owner to atsdb;
+alter table owner_test set with (reorganize = true) distributed by (i);
+-- verify, atsdb should own all three
+select a.relname, 
+       x.rolname as relowner, 
+       y.rolname as toastowner,
+	   z.rolname as toastidxowner
+from pg_class a, pg_class b, pg_class c, 
+     pg_authid x, pg_authid y, pg_authid z
+where a.reltoastrelid = b.oid 
+  and b.reltoastidxid=c.oid
+  and a.relname='owner_test'
+  and x.oid = a.relowner
+  and y.oid = b.relowner
+  and z.oid = c.relowner;
+drop table owner_test;
+drop role atsdb;
