@@ -1118,9 +1118,13 @@ internal_flush(void)
 			if (errno != last_reported_send_errno)
 			{
 				last_reported_send_errno = errno;
+				
+				HOLD_INTERRUPTS();
+
 				ereport(COMMERROR,
 						(errcode_for_socket_access(),
 						 errmsg("could not send data to client: %m")));
+				RESUME_INTERRUPTS();
 			}
 
 			/*
