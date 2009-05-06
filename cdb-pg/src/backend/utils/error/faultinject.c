@@ -96,6 +96,9 @@ static char * longmsg =
 static char *multiline = "1234567890\n1234567890\n";
 static char *quotestr = "\"\"\nXXX\nYYY\"\"\n\r\n\"\tZZZ\t\"\"\\\\\"";
 
+bool gp_fault_inject_segment_failure = false;
+int gp_fault_inject_segment_failure_segment_id = -1;
+
 int64 gp_fault_inject_impl(int32 reason, int64 arg)
 {
 	switch(reason)
@@ -183,6 +186,15 @@ int64 gp_fault_inject_impl(int32 reason, int64 arg)
                                 write(2, &hdr, sizeof(PipeProtoHeader));
                          }
                          break;
+
+		case GP_FAULT_INJECT_SEGMENT_FAILURE:
+			{
+				gp_fault_inject_segment_failure = true;
+				gp_fault_inject_segment_failure_segment_id = (int)arg;
+				elog(LOG, "Inject a segment failure for segment %d", (int)arg);
+			}
+			break;
+
 		default:
 			elog(ERROR, "Invalid user fault injection code");
 	}

@@ -31,6 +31,7 @@
 
 #include "postmaster/service.h"
 #include "postmaster/walsendserver.h"
+#include "utils/faultinjection.h"
 
 FtsProbeInfo *ftsProbeInfo = NULL; /* Probe process updates this structure */
 volatile bool	*ftsEnabled;
@@ -1324,6 +1325,15 @@ applyTransientState(CdbComponentDatabases *cdb_component_dbs)
 
 		segDbInfo->valid = FTS_STATUS_ISALIVE(segDbInfo->dbid, ftsProbeInfo->fts_status);
 		segDbInfo->isprimary = FTS_STATUS_ISPRIMARY(segDbInfo->dbid, ftsProbeInfo->fts_status);
+
+#ifdef USE_FAULT_INJECTION
+		if (gp_fault_inject_segment_failure && gp_fault_inject_segment_failure_segment_id == segDbInfo->segindex)
+		{
+			segDbInfo->valid = false;
+			if (*ftsAction == FTS_READONLY)
+				*ftsReadOnlyFlag = true;
+		}
+#endif
 	}
 	ftsUnlock();
 

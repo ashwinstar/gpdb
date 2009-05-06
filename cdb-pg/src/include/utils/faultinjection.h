@@ -33,9 +33,15 @@
 #define GP_FAULT_LOG_3RDPARTY_LONGMSG   202 /* directly write to stderr */
 #define GP_FAULT_LOG_CRASH              203 /* crash the logger process */
 
+/* Fault group 4: inject failure */
+#define GP_FAULT_INJECT_SEGMENT_FAILURE 300 /* inject a segment failure */
+
 #ifdef USE_FAULT_INJECTION
 extern int64 gp_fault_inject_impl(int32 reason, int64 arg); 
 extern int64 gp_mp_fault(int32 reason, int64 arg);
+
+extern bool gp_fault_inject_segment_failure;
+extern int gp_fault_inject_segment_failure_segment_id;
 #endif
 
 #endif

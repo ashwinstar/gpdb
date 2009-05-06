@@ -45,6 +45,7 @@
 #include "libpq/ip.h"
 #include "postmaster/bgwriter.h"
 #include "catalog/indexing.h"
+#include "utils/faultinjection.h"
 
 /*
  * Helper Functions
@@ -375,6 +376,14 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		pRow->isprimary = isprimary;
 		pRow->valid = valid;
 		pRow->definedprimary = definedprimary;
+
+#ifdef USE_FAULT_INJECTION
+		if (gp_fault_inject_segment_failure && gp_fault_inject_segment_failure_segment_id == pRow->segindex)
+		{
+			pRow->valid = false;
+			elog(LOG, "Insert a failure to segment %d", gp_fault_inject_segment_failure_segment_id);
+		}
+#endif
 
 		/*
 		 * hostname
