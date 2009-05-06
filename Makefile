@@ -161,13 +161,7 @@ DEFPORT=5432
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
-CONFIGFLAGS_THREAD_SAFETY=--enable-thread-safety
-win32_CONFIGFLAGS_THREAD_SAFETY=" "
-ifneq "$($(BLD_ARCH)_CONFIGFLAGS_THREAD_SAFETY)" ""
-CONFIGFLAGS_THREAD_SAFETY=$($(BLD_ARCH)_CONFIGFLAGS_THREAD_SAFETY)
-endif
-
-CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(CONFIGFLAGS_THREAD_SAFETY) --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG))
+CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) --enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG))
 
 ifneq (false, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python

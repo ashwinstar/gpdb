@@ -4010,7 +4010,7 @@ IFS=$ac_save_IFS
 #
 echo "$as_me:$LINENO: checking allow thread-safe client libraries" >&5
 echo $ECHO_N "checking allow thread-safe client libraries... $ECHO_C" >&6
-#(see MPP-5903)if test "$PORTNAME" != "win32"; then
+if test "$PORTNAME" != "win32"; then
 
 pgac_args="$pgac_args enable_thread_safety"
 
@@ -4037,10 +4037,35 @@ else
 
 fi;
 
-#(see MPP-5903)else
-#(see MPP-5903)Win32 should always use threads
-#(see MPP-5903)PGAC_ARG_BOOL(enable, thread-safety, yes, [  --enable-thread-safety  make client libraries thread-safe])
-#(see MPP-5903)fi
+else
+# Win32 should always use threads
+
+pgac_args="$pgac_args enable_thread_safety"
+
+# Check whether --enable-thread-safety or --disable-thread-safety was given.
+if test "${enable_thread_safety+set}" = set; then
+  enableval="$enable_thread_safety"
+
+  case $enableval in
+    yes)
+      :
+      ;;
+    no)
+      :
+      ;;
+    *)
+      { { echo "$as_me:$LINENO: error: no argument expected for --enable-thread-safety option" >&5
+echo "$as_me: error: no argument expected for --enable-thread-safety option" >&2;}
+   { (exit 1); exit 1; }; }
+      ;;
+  esac
+
+else
+  enable_thread_safety=yes
+
+fi;
+
+fi
 
 
 pgac_args="$pgac_args enable_thread_safety_force"
@@ -19204,8 +19229,7 @@ esac
 # libraries, and whether the normal C function names are thread-safe.
 # See the comment at the top of src/port/thread.c for more information.
 # WIN32 doesn't need the pthread tests;  it always uses threads
-#(see MPP-5903)if test "$enable_thread_safety" = yes -a "$PORTNAME" != "win32"; then
-if test "$enable_thread_safety" = yes; then
+if test "$enable_thread_safety" = yes -a "$PORTNAME" != "win32"; then
 
 
 
@@ -19740,7 +19764,7 @@ _LIBS="$LIBS"
 CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
 LIBS="$LIBS $PTHREAD_LIBS"
 
-# (see MPP-5903) if test "$PORTNAME" != "win32"; then
+if test "$PORTNAME" != "win32"; then
 if test "${ac_cv_header_pthread_h+set}" = set; then
   echo "$as_me:$LINENO: checking for pthread.h" >&5
 echo $ECHO_N "checking for pthread.h... $ECHO_C" >&6
@@ -19887,7 +19911,7 @@ echo "$as_me: error: pthread.h not found, required for --enable-thread-safety" >
 fi
 
 
-# (see MPP-5903) fi
+fi
 
 
 

@@ -36,6 +36,8 @@ OBJS= execute.o typename.o descriptor.o data.o error.o prepare.o memory.o \
 # thread.c is needed only for non-WIN32 implementation of path.c
 ifneq ($(PORTNAME), win32)
 OBJS += thread.o
+else
+PTHREAD_LIBS=-lpthread
 endif
 
 SHLIB_LINK = -L../pgtypeslib -lpgtypes $(libpq) -lm $(PTHREAD_LIBS)
