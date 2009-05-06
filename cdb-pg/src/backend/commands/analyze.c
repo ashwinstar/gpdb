@@ -2131,7 +2131,7 @@ compute_minimal_stats(VacAttrStatsP stats,
 				mcv_freqs[i] = (double) track[i].count / (double) samplerows;
 			}
 			MemoryContextSwitchTo(old_context);
-
+			elog(NOTICE, "num_mcv = %d", num_mcv);
 			stats->pgstat.stakind[0] = STATISTIC_KIND_MCV;
 			stats->pgstat.staop[0] = mystats->eqopr;
 			stats->pgstat.stanumbers[0] = mcv_freqs;
@@ -2297,7 +2297,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 
 				if(f_cmpfn.fn_addr == bpcharcmp)
 				{
-					for(; len > 1 && p[len] == ' '; --len)
+					for(; len > 0 && p[len-1] == ' '; --len)
 						;
 				}
 
@@ -2317,10 +2317,10 @@ compute_scalar_stats(VacAttrStatsP stats,
 				llen = (int) strxfrm(values[i].ptr, pbuf, len * 3);
 				if(llen >= len * 3)
 				{
-					values[i].ptr = repalloc(values[i].ptr, llen);
-					len = llen;
+					values[i].ptr = repalloc(values[i].ptr, llen + 1);
+					len = llen + 1;
 					llen = (int) strxfrm(values[i].ptr, pbuf, len);
-					Assert(llen <= len);
+					Assert(llen < len);
 				}
 
 				if(tofree)
@@ -2732,8 +2732,8 @@ compare_scalars(const void *a, const void *b, void *arg)
 
 			if(cxt->cmpFn->fn_addr == bpcharcmp)
 			{
-				for(; len0 > 1 && p0[len0] == ' '; --len0);
-				for(; len1 > 1 && p1[len1] == ' '; --len1);
+				for(; len0 > 0 && p0[len0-1] == ' '; --len0);
+				for(; len1 > 0 && p1[len1-1] == ' '; --len1);
 			}
 
 			compare = strncmp(p0, p1, Min(len0, len1));
