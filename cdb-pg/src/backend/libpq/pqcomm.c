@@ -401,7 +401,7 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 		}
 #endif
 
-#if (IPV6_V6ONLY==1)
+#ifdef IPV6_V6ONLY
 		if (addr->ai_family == AF_INET6)
 		{
 			if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY,
