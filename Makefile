@@ -452,6 +452,7 @@ LOADERS_FILESET_BINEXT = $(strip $(tmpLOADERS_FILESET_BINEXT))
 osx104_x86_PYTHON=/opt/python-2.5.1
 rhel4_x86_32_PYTHON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON=/opt/python-2.5.1
+rhel5_x86_32_PYTHON=/opt/python-2.5.1
 rhel5_x86_64_PYTHON=/opt/python-2.5.1
 sol10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_32_PYTHON=/opt/python32-2.5.1
