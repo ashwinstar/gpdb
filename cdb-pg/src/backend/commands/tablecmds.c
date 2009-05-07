@@ -406,7 +406,7 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 			   char *old_parentname, const char *new_parentname, int *skipped);
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
-								List *opts);
+								List *opts, List **hidden_types);
 static void ATPartitionCheck(Relation rel, AlterTableType typ);
 
 
@@ -9508,7 +9508,7 @@ stdoptions_to_list(Relation rel, StdRdOptions *opts)
  */
 static QueryDesc *
 build_ctas_with_dist(Relation rel, List *dist_clause,
-					 StdRdOptions *newopts, RangeVar **tmprv)
+					 StdRdOptions *newopts, RangeVar **tmprv, List **hidden_types)
 {
 	Query *q;
 	SelectStmt *s = makeNode(SelectStmt);
@@ -9544,7 +9544,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	s->fromClause = list_make1(from_tbl);
 	wo = stdoptions_to_list(rel, opts);
 
-	pre_built = prebuild_temp_table(rel, tmprel, dist_clause, wo);
+	pre_built = prebuild_temp_table(rel, tmprel, dist_clause, wo, hidden_types);
 	if (pre_built)
 	{
 		InsertStmt *i = makeNode(InsertStmt);
@@ -9722,6 +9722,156 @@ pick_name_of_similar_type(TypeName *tname, int2 typlen, char typalign)
 	return tname;
 }
 
+/*
+ * Build the basic CreateFunctionStmt statement for dispatch as part of
+ * build_hidden_type().
+ */
+static CreateFunctionStmt *
+build_iofunc(char *newname, char *iotype, char *baseio, char *returns)
+{
+	CreateFunctionStmt *iofunc;
+	char ioname[NAMEDATALEN];
+	FunctionParameter *param;
+	List *args;
+   
+	if (strcmp("in", iotype) == 0)
+	   args = list_make2(makeString("pg_catalog"), makeString("cstring"));
+	else
+		args = list_make1(makeString(newname));
+
+	/* 
+	 * CREATE FUNCTION F(cstring) RETURNS shelltype AS 'int4(cstring)' language
+	 * internal;
+	 */
+	iofunc = makeNode(CreateFunctionStmt);
+	snprintf(ioname, NAMEDATALEN, "%s_%s", newname, iotype);
+	iofunc->funcname = list_make1(makeString(pstrdup(ioname)));
+	param = makeNode(FunctionParameter);
+	param->argType = makeTypeNameFromNameList(args);
+	param->mode = FUNC_PARAM_IN;
+	iofunc->parameters = list_make1(param);
+	iofunc->returnType = makeTypeName(returns);
+	iofunc->options = list_make2(makeDefElem("as", (Node *)list_make1(makeString(baseio))),
+								 makeDefElem("language", (Node *)makeString("internal")));
+
+#if 0
+	elog_node_display(NOTICE, "f", iofunc, true);
+#endif
+	return iofunc;
+}
+
+/*
+ * Build a temporary hidden type for dropped columns for which there is no
+ * suitable pg_type entry. We find these "ghost types" when a user has created a
+ * type, dropped a column using it and THEN dropped the type. There is a kind of
+ * "homeopathic echo" here, where we have the structural details of the type in
+ * pg_attribute but no way of pin pointing the type configuration by name.
+ *
+ * Procedure:
+ * a) Build a shell type
+ * b) Create IO functions
+ * c) Fill out the shell type with IO functions and correct length and alignment
+ * data
+ *
+ * The IO functions do not have to do anything because all values in the column
+ * will be NULL, the functions will never be called.
+ */
+static TypeName *
+build_hidden_type(Form_pg_attribute att)
+{
+	DefineStmt *newtype;
+	CreateFunctionStmt *iofunc;
+	Value *inputname;
+	Value *outputname;
+	List *parsetrees;
+	DestReceiver *dest = None_Receiver;
+	Query *q;
+	char *alignname;
+	TypeName *typname;
+	char newname[NAMEDATALEN];
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+
+	snprintf(newname, NAMEDATALEN, "pg_atsdb_%u_%i_%u", att->attrelid,
+			 att->attnum, MyBackendId);
+
+	/* shell type */
+	newtype = makeNode(DefineStmt);
+	newtype->kind = OBJECT_TYPE;
+	newtype->defnames = list_make1(makeString(newname));
+
+	/* that's all that's needed for the shell! */
+	parsetrees = parse_analyze((Node *)newtype, NULL, NULL, 0);
+	Assert(list_length(parsetrees) == 1);
+	q = (Query *)linitial(parsetrees);
+	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	CommandCounterIncrement();
+
+	/* 
+	 * Now for the input function.
+	 */
+	iofunc = build_iofunc(newname, "in", "int4in", newname);
+	inputname = copyObject(linitial(iofunc->funcname));
+	parsetrees = parse_analyze((Node *)iofunc, NULL, NULL, 0);
+	q = (Query *)linitial(parsetrees);
+	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	CommandCounterIncrement();
+
+	/* and then output */
+	/* output function accepts shellname as its argument */
+	iofunc = build_iofunc(newname, "out", "int4out", "cstring");
+	outputname = copyObject(linitial(iofunc->funcname));
+	parsetrees = parse_analyze((Node *)iofunc, NULL, NULL, 0);
+	q = (Query *)linitial(parsetrees);
+	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	CommandCounterIncrement();
+
+	/* now build full type */
+	newtype = makeNode(DefineStmt);
+	newtype->kind = OBJECT_TYPE;
+	newtype->defnames = list_make1(makeString(newname));
+
+	newtype->definition = lappend(newtype->definition, makeDefElem("input", (Node *)inputname));
+	newtype->definition = lappend(newtype->definition, makeDefElem("output", (Node *)outputname));
+
+	if (att->attbyval)
+		newtype->definition = lappend(newtype->definition, makeDefElem("passedbyvalue",
+																	   (Node *)makeInteger(1)));
+
+	if (att->attlen == -1)
+		newtype->definition = lappend(newtype->definition, makeDefElem("internallength",
+																	   (Node *)makeString("variable")));
+	else
+		newtype->definition = lappend(newtype->definition, makeDefElem("internallength",
+																	   (Node *)makeInteger(att->attlen)));
+
+	if (att->attalign == 'd')
+		alignname = "double";
+	else if (att->attalign == 'i')
+		alignname = "int4";
+	else if (att->attalign == 's')
+		alignname = "int2";
+	else if (att->attalign == 'c')
+		alignname = "char";
+	else
+		Assert(false); /* shouldn't get here */
+
+	newtype->definition = lappend(newtype->definition, makeDefElem("alignment",
+																   (Node *)makeString(alignname)));
+
+#if 0
+	elog_node_display(NOTICE, "type", newtype, true);
+#endif
+	parsetrees = parse_analyze((Node *)newtype, NULL, NULL, 0);
+	q = (Query *)linitial(parsetrees);
+	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+	CommandCounterIncrement();
+
+	typname = makeNode(TypeName);
+	typname->names = list_make1(makeString(pstrdup(newname)));
+
+	return typname;
+}
 
 /* Allocate and return a pointer to a TypeName node specifying the 
  * qualified name of an existing type that matches the internal length
@@ -9738,7 +9888,7 @@ pick_name_of_similar_type(TypeName *tname, int2 typlen, char typalign)
  * Specifically for use by prebuilt_temp_table.
  */
 static TypeName *
-make_typname(Form_pg_attribute att)
+make_typname(Form_pg_attribute att, bool *built)
 {
 	TypeName *tname = makeNode(TypeName);
 	int2 attlen = att->attlen;
@@ -9756,6 +9906,8 @@ make_typname(Form_pg_attribute att)
 		}
 		else if (att->attalign == 'd')
 			typname = makeString(pstrdup("path"));
+		else
+			dig_in_catalog = true;
 	}
 	else if (attlen == 1 && att->attalign == 'c')
     {
@@ -9810,20 +9962,18 @@ make_typname(Form_pg_attribute att)
 		dig_in_catalog = true;
     }
 	
+	*built = false; /* assume we found an existing type */
 	if ( dig_in_catalog )
 	{
 		tname = pick_name_of_similar_type(tname, attlen, att->attalign);
-		if ( ! tname )
+		if (!tname)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("Cannot construct temporary table for reorganization"),
-					 errhint("No existing type matches length %d "
-							 "and alignment '%c'", attlen, att->attalign)));
+			*built = true;
+			tname = build_hidden_type(att);
 		}
 	}
 	else
-	{	
+	{
 		tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
 	}
 	
@@ -9842,7 +9992,8 @@ make_typname(Form_pg_attribute att)
  * Specifically for build_ctas_with_dist.
  */
 static bool
-prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
+prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
+					List **hidden_types)
 {
 	bool need_rebuild = false;
 	int attno = 0;
@@ -9882,11 +10033,15 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts)
 			if (att->attisdropped)
 			{
 				NameData alias;
+				bool built;
 
-				tname = make_typname(att);
+				tname = make_typname(att, &built);
 				snprintf(NameStr(alias), sizeof(alias), "%s%d", dstr, attno);
 				cd->colname = pstrdup(NameStr(alias));
 				drop_atts = lappend_int(drop_atts, attno);
+
+				if (built)
+					*hidden_types = lappend(*hidden_types, tname->names);
 			}
 			else
 			{
@@ -9994,6 +10149,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
 	bool		is_ao = false;
+	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
 
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
@@ -10322,7 +10478,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		}
 
 		/* Step (b) - build CTAS */
-		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv);
+		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv, &hidden_types);
 
 		/* Step (c) - run on all nodes */
 		ExecutorStart(queryDesc, 0);
@@ -10367,6 +10523,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		backend_id = intVal(linitial(qe_data));
 		tmprv = make_temp_table_name(rel, backend_id);
 		oid_map = lsecond(qe_data);
+		if (list_length(qe_data) == 3)
+			hidden_types = lthird(qe_data);
+
 		if (list_length(lprime) == 3)
 		{
 			Value *v = lthird(lprime);
@@ -10508,6 +10667,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			GpPolicyReplace(tarrelid, policy);
 
 		qe_data = lappend(qe_data, oid_map);
+
+		if (hidden_types)
+			qe_data = lappend(qe_data, hidden_types);
 		linitial(lprime) = lwith;
 		lsecond(lprime) = qe_data;
 		lprime = lappend(lprime, makeInteger(is_ao ? 1 : 0));
@@ -10521,6 +10683,22 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		object.objectSubId = 0;
 
 		performDeletion(&object, DROP_RESTRICT);
+
+		if (hidden_types)
+		{
+			object.classId = TypeRelationId;
+
+			foreach(lc, hidden_types)
+			{
+				TypeName *tname = makeTypeNameFromNameList(lfirst(lc));
+				Oid typid = typenameTypeId(NULL, tname);
+
+				object.objectId = typid;
+
+				/* cascade to get rid of functions */
+				performDeletion(&object, DROP_CASCADE);
+			}
+		}
 	}
 }
 

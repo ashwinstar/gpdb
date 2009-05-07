@@ -1305,3 +1305,6651 @@ where a.reltoastrelid = b.oid
 
 drop table owner_test;
 drop role atsdb;
+-- MPP-5928
+-- We want to test a whole bunch of different type configurations and whether
+-- ATSDB can handle them as dropped types
+-- Here's a script to generate all this:
+--align="int2 int4 char double"
+--length="variable 1 3 4 11 17 19 23 32 196"
+--pbv="true false"
+--storage="true false"
+--
+--for a in $align
+--do
+--	for l in $length
+--	do
+--		for p in $pbv
+--		do
+--			for s in $storage
+--			do
+--				if [ $p == "true" ] && [ $l != "variable" ] && [ $l -gt 8 ];
+--				then
+--					continue
+--				fi
+--				if [ $p == "true" ] && [ $l == "variable" ];
+--				then
+--					continue
+--				fi
+--				echo "
+--drop table g;
+--create type break;
+--create function breakin (cstring) returns break as 'textin' language internal;
+--create function breakout (break) returns cstring as 'textout' language internal;"
+--
+--				echo "create type break (input = breakin, output = breakout, internallength = $l, passedbyvalue = $p, alignment = $a);"
+--				echo "
+--create table g (i int, j break, k text) with (appendonly = $s);
+--insert into g (i, k) select i, i from generate_series(1, 10) i;
+--alter table g drop column j;
+--select * from g order by 1;
+--alter table g set with(reorganize = true) distributed randomly;
+--select * from g order by 1;
+--drop type break cascade;
+--alter table g set with(reorganize = true) distributed randomly;
+--select * from g order by 1;"
+--			done
+--		done
+--	done
+--done
+drop table g;
+ERROR:  table "g" does not exist
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_497565_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_497565_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_497565_2_2_out(pg_atsdb_497565_2_2)
+NOTICE:  drop cascades to function pg_atsdb_497565_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_497700_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_497700_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_497700_2_2_out(pg_atsdb_497700_2_2)
+NOTICE:  drop cascades to function pg_atsdb_497700_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_497829_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_497829_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_497829_2_2_out(pg_atsdb_497829_2_2)
+NOTICE:  drop cascades to function pg_atsdb_497829_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_497964_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_497964_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_497964_2_2_out(pg_atsdb_497964_2_2)
+NOTICE:  drop cascades to function pg_atsdb_497964_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498093_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498093_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498093_2_2_out(pg_atsdb_498093_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498093_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498228_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498228_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498228_2_2_out(pg_atsdb_498228_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498228_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498357_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498357_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498357_2_2_out(pg_atsdb_498357_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498357_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498492_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498492_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498492_2_2_out(pg_atsdb_498492_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498492_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498621_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498621_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498621_2_2_out(pg_atsdb_498621_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498621_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498756_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498756_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498756_2_2_out(pg_atsdb_498756_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498756_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_498885_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_498885_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_498885_2_2_out(pg_atsdb_498885_2_2)
+NOTICE:  drop cascades to function pg_atsdb_498885_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499020_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499020_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499020_2_2_out(pg_atsdb_499020_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499020_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499149_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499149_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499149_2_2_out(pg_atsdb_499149_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499149_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499284_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499284_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499284_2_2_out(pg_atsdb_499284_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499284_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499413_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499413_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499413_2_2_out(pg_atsdb_499413_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499413_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499548_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499548_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499548_2_2_out(pg_atsdb_499548_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499548_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499677_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499677_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499677_2_2_out(pg_atsdb_499677_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499677_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499812_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499812_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499812_2_2_out(pg_atsdb_499812_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499812_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_499941_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_499941_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_499941_2_2_out(pg_atsdb_499941_2_2)
+NOTICE:  drop cascades to function pg_atsdb_499941_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500076_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500076_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500076_2_2_out(pg_atsdb_500076_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500076_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500205_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500205_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500205_2_2_out(pg_atsdb_500205_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500205_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500340_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500340_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500340_2_2_out(pg_atsdb_500340_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500340_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500469_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500469_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500469_2_2_out(pg_atsdb_500469_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500469_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500604_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500604_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500604_2_2_out(pg_atsdb_500604_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500604_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500733_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500733_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500733_2_2_out(pg_atsdb_500733_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500733_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int2);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_500868_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_500868_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_500868_2_2_out(pg_atsdb_500868_2_2)
+NOTICE:  drop cascades to function pg_atsdb_500868_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_501253_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_501253_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_501253_2_2_out(pg_atsdb_501253_2_2)
+NOTICE:  drop cascades to function pg_atsdb_501253_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_501388_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_501388_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_501388_2_2_out(pg_atsdb_501388_2_2)
+NOTICE:  drop cascades to function pg_atsdb_501388_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_501517_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_501517_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_501517_2_2_out(pg_atsdb_501517_2_2)
+NOTICE:  drop cascades to function pg_atsdb_501517_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_501652_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_501652_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_501652_2_2_out(pg_atsdb_501652_2_2)
+NOTICE:  drop cascades to function pg_atsdb_501652_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_501781_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_501781_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_501781_2_2_out(pg_atsdb_501781_2_2)
+NOTICE:  drop cascades to function pg_atsdb_501781_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_501916_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_501916_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_501916_2_2_out(pg_atsdb_501916_2_2)
+NOTICE:  drop cascades to function pg_atsdb_501916_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_502045_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_502045_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_502045_2_2_out(pg_atsdb_502045_2_2)
+NOTICE:  drop cascades to function pg_atsdb_502045_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_502180_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_502180_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_502180_2_2_out(pg_atsdb_502180_2_2)
+NOTICE:  drop cascades to function pg_atsdb_502180_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_502821_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_502821_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_502821_2_2_out(pg_atsdb_502821_2_2)
+NOTICE:  drop cascades to function pg_atsdb_502821_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_502956_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_502956_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_502956_2_2_out(pg_atsdb_502956_2_2)
+NOTICE:  drop cascades to function pg_atsdb_502956_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503085_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503085_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503085_2_2_out(pg_atsdb_503085_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503085_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503220_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503220_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503220_2_2_out(pg_atsdb_503220_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503220_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503349_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503349_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503349_2_2_out(pg_atsdb_503349_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503349_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503484_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503484_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503484_2_2_out(pg_atsdb_503484_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503484_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503613_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503613_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503613_2_2_out(pg_atsdb_503613_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503613_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503748_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503748_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503748_2_2_out(pg_atsdb_503748_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503748_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_503877_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_503877_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_503877_2_2_out(pg_atsdb_503877_2_2)
+NOTICE:  drop cascades to function pg_atsdb_503877_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_504012_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_504012_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_504012_2_2_out(pg_atsdb_504012_2_2)
+NOTICE:  drop cascades to function pg_atsdb_504012_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_504141_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_504141_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_504141_2_2_out(pg_atsdb_504141_2_2)
+NOTICE:  drop cascades to function pg_atsdb_504141_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = int4);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_504276_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_504276_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_504276_2_2_out(pg_atsdb_504276_2_2)
+NOTICE:  drop cascades to function pg_atsdb_504276_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_504405_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_504405_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_504405_2_2_out(pg_atsdb_504405_2_2)
+NOTICE:  drop cascades to function pg_atsdb_504405_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_504540_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_504540_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_504540_2_2_out(pg_atsdb_504540_2_2)
+NOTICE:  drop cascades to function pg_atsdb_504540_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505181_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505181_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505181_2_2_out(pg_atsdb_505181_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505181_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505316_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505316_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505316_2_2_out(pg_atsdb_505316_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505316_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505445_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505445_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505445_2_2_out(pg_atsdb_505445_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505445_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505580_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505580_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505580_2_2_out(pg_atsdb_505580_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505580_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505709_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505709_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505709_2_2_out(pg_atsdb_505709_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505709_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505844_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505844_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505844_2_2_out(pg_atsdb_505844_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505844_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_505973_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_505973_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_505973_2_2_out(pg_atsdb_505973_2_2)
+NOTICE:  drop cascades to function pg_atsdb_505973_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506108_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506108_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506108_2_2_out(pg_atsdb_506108_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506108_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506237_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506237_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506237_2_2_out(pg_atsdb_506237_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506237_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506372_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506372_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506372_2_2_out(pg_atsdb_506372_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506372_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506501_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506501_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506501_2_2_out(pg_atsdb_506501_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506501_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506636_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506636_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506636_2_2_out(pg_atsdb_506636_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506636_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506765_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506765_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506765_2_2_out(pg_atsdb_506765_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506765_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_506900_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_506900_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_506900_2_2_out(pg_atsdb_506900_2_2)
+NOTICE:  drop cascades to function pg_atsdb_506900_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_507029_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_507029_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_507029_2_2_out(pg_atsdb_507029_2_2)
+NOTICE:  drop cascades to function pg_atsdb_507029_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_507164_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_507164_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_507164_2_2_out(pg_atsdb_507164_2_2)
+NOTICE:  drop cascades to function pg_atsdb_507164_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_507293_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_507293_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_507293_2_2_out(pg_atsdb_507293_2_2)
+NOTICE:  drop cascades to function pg_atsdb_507293_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_507428_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_507428_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_507428_2_2_out(pg_atsdb_507428_2_2)
+NOTICE:  drop cascades to function pg_atsdb_507428_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_507557_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_507557_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_507557_2_2_out(pg_atsdb_507557_2_2)
+NOTICE:  drop cascades to function pg_atsdb_507557_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = char);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_507692_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_507692_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_507692_2_2_out(pg_atsdb_507692_2_2)
+NOTICE:  drop cascades to function pg_atsdb_507692_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = variable, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508077_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508077_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508077_2_2_out(pg_atsdb_508077_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508077_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = true, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508212_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508212_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508212_2_2_out(pg_atsdb_508212_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508212_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508341_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508341_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508341_2_2_out(pg_atsdb_508341_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508341_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 1, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508476_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508476_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508476_2_2_out(pg_atsdb_508476_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508476_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508605_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508605_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508605_2_2_out(pg_atsdb_508605_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508605_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = true, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508740_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508740_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508740_2_2_out(pg_atsdb_508740_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508740_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_508869_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_508869_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_508869_2_2_out(pg_atsdb_508869_2_2)
+NOTICE:  drop cascades to function pg_atsdb_508869_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 3, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509004_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509004_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509004_2_2_out(pg_atsdb_509004_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509004_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509133_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509133_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509133_2_2_out(pg_atsdb_509133_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509133_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = true, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509268_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509268_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509268_2_2_out(pg_atsdb_509268_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509268_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509397_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509397_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509397_2_2_out(pg_atsdb_509397_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509397_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 4, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509532_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509532_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509532_2_2_out(pg_atsdb_509532_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509532_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509661_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509661_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509661_2_2_out(pg_atsdb_509661_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509661_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 11, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509796_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509796_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509796_2_2_out(pg_atsdb_509796_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509796_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_509925_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_509925_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_509925_2_2_out(pg_atsdb_509925_2_2)
+NOTICE:  drop cascades to function pg_atsdb_509925_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 17, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_510060_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_510060_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_510060_2_2_out(pg_atsdb_510060_2_2)
+NOTICE:  drop cascades to function pg_atsdb_510060_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_510189_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_510189_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_510189_2_2_out(pg_atsdb_510189_2_2)
+NOTICE:  drop cascades to function pg_atsdb_510189_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 19, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_510324_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_510324_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_510324_2_2_out(pg_atsdb_510324_2_2)
+NOTICE:  drop cascades to function pg_atsdb_510324_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_510453_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_510453_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_510453_2_2_out(pg_atsdb_510453_2_2)
+NOTICE:  drop cascades to function pg_atsdb_510453_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 23, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_510588_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_510588_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_510588_2_2_out(pg_atsdb_510588_2_2)
+NOTICE:  drop cascades to function pg_atsdb_510588_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 32, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = true);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_510973_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_510973_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_510973_2_2_out(pg_atsdb_510973_2_2)
+NOTICE:  drop cascades to function pg_atsdb_510973_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;
+create type break;
+create function breakin (cstring) returns break as 'textin' language internal;
+NOTICE:  return type break is only a shell
+create function breakout (break) returns cstring as 'textout' language internal;
+NOTICE:  argument type break is only a shell
+create type break (input = breakin, output = breakout, internallength = 196, passedbyvalue = false, alignment = double);
+create table g (i int, j break, k text) with (appendonly = false);
+insert into g (i, k) select i, i from generate_series(1, 10) i;
+alter table g drop column j;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+alter table g set with(reorganize = true) distributed randomly;
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop type break cascade;
+NOTICE:  drop cascades to function breakout(break)
+NOTICE:  drop cascades to function breakin(cstring)
+alter table g set with(reorganize = true) distributed randomly;
+NOTICE:  return type pg_atsdb_511108_2_2 is only a shell
+NOTICE:  argument type pg_atsdb_511108_2_2 is only a shell
+NOTICE:  drop cascades to function pg_atsdb_511108_2_2_out(pg_atsdb_511108_2_2)
+NOTICE:  drop cascades to function pg_atsdb_511108_2_2_in(cstring)
+select * from g order by 1;
+ i  | k  
+----+----
+  1 | 1
+  2 | 2
+  3 | 3
+  4 | 4
+  5 | 5
+  6 | 6
+  7 | 7
+  8 | 8
+  9 | 9
+ 10 | 10
+(10 rows)
+
+drop table g;

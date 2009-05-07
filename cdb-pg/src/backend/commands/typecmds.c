@@ -475,7 +475,6 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 	Oid			typeoid;
 	HeapTuple	tup;
 	ObjectAddress object;
-	Form_pg_type typ;
 
 	/* Make a TypeName so we can use standard type lookup machinery */
 	typname = makeTypeNameFromNameList(names);
@@ -516,38 +515,6 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   TypeNameToString(typname));
 	
-	/* MPP-5483: For the nonce, disallow dropping a fixed-length type
-	 *           not known to have a matching internal type.
-	 *
-	 * Internal types exist for
-	 *    select distinct typlen, typalign 
-	 *    from pg_type where typlen > 0;
-	 * on a new catalog.  Names are just examples.
-	 */
-	typ = (Form_pg_type)GETSTRUCT(tup);
-	if ( typ->typlen > 0 && !
-		( (typ->typlen == 1 && typ->typalign == 'c') /* char */
-		 || (typ->typlen == 2 && typ->typalign == 's') /* int2 */
-		 || (typ->typlen == 4 && typ->typalign == 'i') /* int4 */
-		 || (typ->typlen == 6 && typ->typalign == 's') /* tid */
-		 || (typ->typlen == 6 && typ->typalign == 'i') /* macaddr */
-		 || (typ->typlen == 8 && typ->typalign == 'd') /* int8 */
-		 || (typ->typlen == 12 && typ->typalign == 'd') /* timetz */
-		 || (typ->typlen == 12 && typ->typalign == 'i') /* tinterval */
-		 || (typ->typlen == 16 && typ->typalign == 'd') /* interval */
-		 || (typ->typlen == 24 && typ->typalign == 'd') /* circle */
-		 || (typ->typlen == 32 && typ->typalign == 'd') /* box */
-		 || (typ->typlen == 64 && typ->typalign == 'i') /* name */
-		 ) )
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-				 errmsg("Cannot drop certain fixed length types."),
-				 errhint("No built-in type has length %d and alignment '%c'. "
-						 "Type %s may be required for internal reorganization.", 
-						 typ->typlen, typ->typalign, NameStr(typ->typname))));		
-	}
-
 	ReleaseSysCache(tup);
 
 	/*
