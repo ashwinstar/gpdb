@@ -3319,25 +3319,55 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_MISC;
 			break;
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
-			if ( !recursing ) /* MPP-5772 */
+			if ( !recursing ) /* MPP-5772, MPP-5784 */
 			{
 				Oid relid = RelationGetRelid(rel);
 				
 				if ( recurse )
 				{
-					/* Normal (non-ONLY) case. 
-					 * Reject interior branches of partitioned tables.  
-					 */
-					if ( rel_is_child_partition(relid) &&
-						! rel_is_leaf_partition(relid) )
+					/* Normal (non-ONLY) case. */
+					if ( rel_is_child_partition(relid) )
 					{
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-								 errmsg("can't set the distribution policy of \"%s\"",
-										RelationGetRelationName(rel)),
-								 errhint("Distribution policy may be set for an entire partitioned table" 
-										 " or one of its leaf parts; not for an interior branch."
-								 )));
+						if ( ! rel_is_leaf_partition(relid) )
+						{					 
+							/*Reject interior branches of partitioned tables.*/
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("can't set the distribution"
+											" policy of \"%s\"",
+											RelationGetRelationName(rel)),
+									 errhint("Distribution policy may be set"
+											 " for an entire partitioned table" 
+											 " or one of its leaf parts;"
+											 " not for an interior branch."
+									 )));
+						}
+						else /*This is a leaf partition */
+						{
+							Oid ptrelid = rel_partition_get_master(relid);
+							List *dist_cnames = lsecond((List*)cmd->def);
+							
+							/*	might be null if no policy set, e.g. just 
+							 *  a change of storage options... 
+							 */
+							if (dist_cnames)
+							{
+								Relation ptrel = heap_open(ptrelid, AccessShareLock);
+								Assert(IsA(dist_cnames, List)); 
+								
+								if (! can_implement_dist_on_part(ptrel, dist_cnames) )
+									ereport(ERROR,
+											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											 errmsg("cannot SET DISTRIBUTED BY for %s",
+													RelationGetRelationName(rel)),
+											 errhint("Leaf distribution policy"
+													 " must be random or match"
+													 " that of the entire"
+													 " partitioned table.")
+											 ));
+								heap_close(ptrel, AccessShareLock);
+							}
+						}
 					}
 				}
 				else
@@ -11706,6 +11736,14 @@ all_partition_relids(PartitionNode *pn)
 	}
 }
 
+/* Is the given relation the top relation of a partitioned table?
+ *
+ *   exists (select *
+ *           from pg_partition
+ *           where parrelid = relid)
+ *
+ * False for interior branches and leaves.
+ */
 bool
 rel_is_partitioned(Oid relid)
 {
@@ -11732,6 +11770,16 @@ rel_is_partitioned(Oid relid)
 	return found;
 }
 
+/* Get the top relation of the partitioned table of which the given
+ * relation is a part, or error.
+ *
+ *   select parrelid
+ *   from pg_partition
+ *   where oid = (
+ *     select paroid 
+ *     from pg_partition_rule
+ *     where parchildrelid = relid);
+ */
 static Oid
 rel_partition_get_master(Oid relid)
 {
