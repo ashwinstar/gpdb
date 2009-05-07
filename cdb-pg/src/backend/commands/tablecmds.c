@@ -396,8 +396,8 @@ static List *exchange_part_constraints(List *pcols, Relation oldrel,
 static List *get_part_constraints(List *part, Relation pgcon, Relation rel);
 
 static Oid  rel_partition_get_master(Oid relid);
-static List *rel_get_part_path(Relation rel, Oid relid);
-static char *rel_get_part_path_pretty(Relation rel, Oid relid, 
+static List *rel_get_part_path(Oid relid);
+static char *rel_get_part_path_pretty(Oid relid, 
 									  char *separator, 
 									  char *lastsep);
 
@@ -1073,6 +1073,7 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 	{
 		Oid master = rel_partition_get_master(relOid);
 
+		if (1)
 		ereport(ERROR,
 				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 				 errmsg("cannot drop child partition \"%s\" directly",
@@ -1080,6 +1081,23 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 				 errhint("Table \"%s\" is a child partition of table "
 						 "\"%s\".  To drop it, use ALTER TABLE.",
 						 get_rel_name(relOid), get_rel_name(master))));
+		else
+		{
+		char	*pretty	= rel_get_part_path_pretty(relOid, 
+												   " ALTER PARTITION ", 
+												   " DROP PARTITION ");
+
+		ereport(ERROR,
+				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+				errmsg("cannot drop partition \"%s\" directly",
+					   get_rel_name(relOid)),
+				errhint("Table \"%s\" is a child partition of table "
+						"\"%s\".  To drop it, use ALTER TABLE \"%s\"%s...",
+						get_rel_name(relOid), get_rel_name(master),
+						get_rel_name(master), pretty ? pretty : "" )));
+
+		}
+
 	}
 
 	object.classId = RelationRelationId;
@@ -2524,8 +2542,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 						get_rel_name(myrelid), get_rel_name(master))));
 		else
 		{
-		char	*pretty	= rel_get_part_path_pretty(targetrelation,
-														   myrelid, 
+		char	*pretty	= rel_get_part_path_pretty(myrelid, 
 												   " ALTER PARTITION ", 
 												   " RENAME PARTITION ");
 
@@ -11849,7 +11866,7 @@ static List *rel_get_part_path1(Oid relid)
 	
 } /* end rel_get_part_path1 */
 
-static List *rel_get_part_path(Relation rel, Oid relid)
+static List *rel_get_part_path(Oid relid)
 {
 	PartitionNode 		*pNode	   = NULL;
 	Partition			*part	   = NULL;
@@ -11957,9 +11974,9 @@ static List *rel_get_part_path(Relation rel, Oid relid)
 
 					idval =
 							deparse_expression((Node*)con,
-                           deparse_context_for(RelationGetRelationName(rel),
-                                               RelationGetRelid(rel)),
-										   false, false);
+							   deparse_context_for(get_rel_name(relid),
+												   relid),
+											   false, false);
 
 					appendStringInfo(&sid1, "%s", idval);
 
@@ -11989,7 +12006,7 @@ static List *rel_get_part_path(Relation rel, Oid relid)
 	return lnamerank;
 } /* end rel_get_part_path */
 
-static char *rel_get_part_path_pretty(Relation rel, Oid relid, 
+static char *rel_get_part_path_pretty(Oid relid, 
 									  char *separator, 
 									  char *lastsep)
 {
@@ -11999,7 +12016,7 @@ static char *rel_get_part_path_pretty(Relation rel, Oid relid,
 	int maxlen;
 	StringInfoData      	 sid1, sid2;
 
-	lnamerank = rel_get_part_path(rel, relid);
+	lnamerank = rel_get_part_path(relid);
 
 	maxlen = list_length(lnamerank);
 

@@ -3128,3 +3128,20 @@ select reloptions from pg_class where relname = 'foo_1_prt_p10_20';
 select reloptions from pg_class where relname = 'foo_1_prt_def';
 select count(distinct k) from foo;
 drop table foo;
+
+
+-- MPP-5878 - display correct partition boundary 
+
+create table mpp5878 (a int, b char, d char)
+partition by list (b,d)
+(
+values (('a','b'),('c','d')),
+values (('e','f'),('g','h'))
+);
+
+select partitionlistvalues from pg_partitions where tablename like 'mpp5878%';
+
+select partitionboundary from pg_partitions where tablename like 'mpp5878%';
+
+drop table mpp5878;
+
