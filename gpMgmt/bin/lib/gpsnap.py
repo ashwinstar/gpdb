@@ -359,7 +359,7 @@ def pmap(func, jlist, numThreads = 16):
         while True: 
             (ex, result) = outq.get_nowait()
             if ex:
-                raise ex
+                raise ex[0], ex[1], ex[2]
             ret.append(result)
     except Queue.Empty: pass
     return ret
