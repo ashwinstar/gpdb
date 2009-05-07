@@ -21,6 +21,10 @@ OBJS =  fe-exec.o pqexpbuffer.o \
     fe-auth.o   \
     fe-connect.o fe-misc.o fe-protocol3.o
 
+ifeq ($(PORTNAME), win32)
+OBJS += win32.o 
+endif
+
 
 all: SUBSYS.o
 
