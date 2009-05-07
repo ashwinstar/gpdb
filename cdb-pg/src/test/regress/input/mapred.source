@@ -60,7 +60,7 @@ SELECT * FROM env WHERE var in (
 -- All of these checks should return a single row because it should produce
 -- a constant across all segments and the master.
 --
--- The current expected version is 2.5.1
+-- The current expected version is 2.6.2
 --
 CREATE OR REPLACE FUNCTION python_version() returns text as $$
 import sys
