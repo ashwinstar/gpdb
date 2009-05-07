@@ -31,7 +31,9 @@ except ImportError, e:
 
 # contants
 MAX_PARALLEL_EXPANDS=16
-
+GPDB_STOPPED=1
+GPDB_STARTED=2
+GPDB_UTILITY=3
 
 
 description = (""" 
@@ -300,6 +302,35 @@ WHERE status = '%s'
                          gpexpand_schema, status_detail_table,
                          start_status, undone_status)
 
+unalterable_table_sql = """
+SELECT
+    current_database() AS database,
+    pg_catalog.quote_ident(nspname) || '.' ||
+    pg_catalog.quote_ident(relname) AS table,
+    attnum,
+    attlen,
+    attbyval,
+    attstorage,
+    attalign,
+    atttypmod,
+    attndims,
+    reltoastrelid != 0 AS istoasted
+FROM
+    pg_catalog.pg_attribute,
+    pg_catalog.pg_class,
+    pg_catalog.pg_namespace
+WHERE
+    attisdropped
+    AND attnum >= 0
+    AND attrelid = pg_catalog.pg_class.oid
+    AND relnamespace = pg_catalog.pg_namespace.oid
+    AND (attlen, attbyval, attalign, attstorage) NOT IN
+        (SELECT typlen, typbyval, typalign, typstorage
+        FROM pg_catalog.pg_type
+        WHERE typisdefined AND typtype='b' )
+ORDER BY
+    attrelid, attnum
+"""
 
 #-------------------------------------------------------------------------
 class InvalidStatusError(Exception): pass
@@ -755,7 +786,7 @@ class gpexpand:
         self.old_segments = gparray.getSegDbList()
                 
         if dburl.pgdb == 'template0' or dburl.pgdb == 'template1' or dburl.pgdb == 'postgres':
-            gpexpand.prepare_gpdb_state(logger, dburl, True)
+            gpexpand.get_gpdb_in_state(GPDB_STARTED)
             raise ExpansionError("Invalid database '%s' specified.  Cannot use a template database.\n"
                                  "Please set the environment variable PGDATABASE to a different "
                                  "database or use the -D option to specify a database and re-run" % dburl.pgdb)
@@ -778,41 +809,19 @@ class gpexpand:
         pass
     
     @staticmethod
-    def prepare_gpdb_state(logger, dburl, start_only=False):
+    def prepare_gpdb_state(logger, dburl):
         """ Gets GPDB in the appropriate state for an expansion.
         This state will depend on if this is a new expansion setup,
         a continuation of a previous expansion or a rollback """
         # Get the database in the expected state for the expansion/rollback
-        gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport) == (True, True, True)
         status_file_exists = os.path.exists(options.master_data_directory + '/gpexpand.status')
-        if gpdb_running:
-            gpdb_mode = get_local_db_mode(options.master_data_directory)
         gpexpand_db_status = None
         
         if status_file_exists:
             # gpexpand status file exists so the last run of gpexpand didn't finish properly
-            if gpdb_running:
-                if gpdb_mode != 'UTILITY':
-                    logger.info('Stopping Greenplum Database')
-                    GpStop.local('Stop GPDB', fast=True)
-                    logger.info('Starting Greenplum Database in master only mode')
-                    GpStart.local('Start GPDB', masterOnly=True)
-            else:
-                logger.info('Starting Greenplum Database in master only mode')
-                GpStart.local('Start GPDB', masterOnly=True)
+            gpexpand.get_gpdb_in_state(GPDB_UTILITY)
         else:
-            # Need to check db for db status so we need full db up
-            if not gpdb_running:
-                logger.info('Starting Greenplum Database')
-                GpStart.local('Start GPDB')
-            else:
-                if gpdb_mode == 'UTILITY':
-                    logger.info('Stopping Greenplum Database master')
-                    GpStop.local('Stop GPDB', masterOnly=True, fast=True)
-                    logger.info('Starting Greenplum Database')
-                    GpStart.local('Start GPDB')
-            if start_only:
-                return None
+            gpexpand.get_gpdb_in_state(GPDB_STARTED)
             
             logger.info('Querying gpexpand schema for current expansion state')
             try:
@@ -824,10 +833,33 @@ class gpexpand:
             if (not gpexpand_db_status and options.filename) and not options.clean:
                 # New expansion, need to be in master only
                 logger.info('Readying Greenplum Database for a new expansion')
-                GpStop.local('Stop GPDB', fast=True)
-                GpStart.local('Start GPDB', masterOnly=True)
+                gpexpand.get_gpdb_in_state(GPDB_UTILITY)
             
         return gpexpand_db_status
+
+    @staticmethod
+    def get_gpdb_in_state(state):
+        gpdb_running = chk_local_db_running(options.master_data_directory, options.pgport) == (True, True, True)
+        if gpdb_running:
+            gpdb_mode = get_local_db_mode(options.master_data_directory)
+
+        if state == GPDB_STARTED:
+            if gpdb_running:
+                 if gpdb_mode != 'UTILITY':
+                     return
+                 else:
+                     GpStop.local('Stop GPDB', masterOnly=True, fast=True)
+            GpStart.local('Start GPDB')
+        elif state == GPDB_STOPPED:
+            GpStart.local('Start GPDB')
+        elif state == GPDB_UTILITY:
+            if gpdb_running:
+                if gpdb_mode == 'UTILITY':
+                    return
+                GpStop.local('Stop GPDB', fast=True)
+            GpStart.local('Start GPDB in master only mode', masterOnly=True)
+        else:
+            raise Exception('Unkown gpdb state')
 
     @staticmethod
     def get_status_from_db(dburl):
@@ -875,7 +907,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             
         return gpexpand_db_status
     
-    def validate_database_settings(self):
+    def validate_database_settings(self, checkMaxConnect=True, checkUnalterableTables=True):
         """Validates settings to help check that gpexpand can run 
         successfully given the options passed in"""
         
@@ -883,23 +915,51 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         # too small for parallel arg
         conn = None
         max_connections = 0
-        fts_mode = None
+        unalterable_tables = []
+
         try:
-            conn = dbconn.connect(dburl)
-            max_connections = int(catalog.getSessionGUC(conn, 'max_connections'))
+            conn = dbconn.connect(self.dburl, utility=True)
+            if checkMaxConnect:
+                max_connections = int(catalog.getSessionGUC(conn, 'max_connections'))
+            
+            if checkUnalterableTables:
+                databases = catalog.getDatabaseList(conn)
+                conn.close()
+            
+                tempurl = copy.deepcopy(self.dburl)
+                for db in databases:
+                    if db[0] == 'template0':
+                        continue
+                    self.logger.info('Checking database %s for unalterable tables...' % db[0])
+                    tempurl.pgdb = db[0]
+                    conn = dbconn.connect(tempurl, utility=True)
+                    cursor = dbconn.execSQL(conn, unalterable_table_sql)
+                    for row in cursor:
+                        unalterable_tables.append(row)
+                    cursor.close()
+                    conn.close()
+            
         except DatabaseError,ex:
             if options.verbose:
                 logger.exception(ex)
-            logger.error('Failed to retrieve max_connections GUC')
-            raise ex
-        finally:
+            logger.error('Failed to check database settings.')
             if conn: conn.close()
+            raise ex
             
-        if max_connections < options.parallel * 2 + 1:
+        if checkMaxConnect and max_connections < options.parallel * 2 + 1:
             self.logger.error('max_connections is too small to expand %d tables at' % options.parallel)
             self.logger.error('a time.  This will lead to connection errors.  Either')
             self.logger.error('reduce the value for -n passed to gpexpand or raise')
             self.logger.error('max_connections in postgresql.conf')
+            return False
+
+        if checkUnalterableTables and len(unalterable_tables) > 0:
+            self.logger.error('The following tables cannot be altered because they contain')
+            self.logger.error('dropped columns of user defined types:')
+            for t in unalterable_tables:
+                self.logger.error('\t%s.%s' % (t[0], t[1]))
+            self.logger.error('Please consult the documentation for instructions on how to')
+            self.logger.error('correct this issue, then run gpexpand again')
             return False
         
         return True
@@ -2045,11 +2105,8 @@ try:
         logger.error('Greenplum instance you wish to expand is running')
         logger.error('and that your environment is correct, then rerun')
         logger.error('gexpand ' + ' '.join(sys.argv[1:]))
-        gpexpand.prepare_gpdb_state(logger, dburl, True)
+        gpexpand.get_gpdb_in_state(GPDB_STARTED)
         sys.exit(1)
-
-
-            
         
     gp_expand = gpexpand(logger,gparray,dburl,parallel=options.parallel)   
 
@@ -2080,14 +2137,14 @@ try:
             sys.exit(1)
     
     if gpexpand_db_status == 'SETUP DONE' or gpexpand_db_status == 'EXPANSION STOPPED':
-        if not gp_expand.validate_database_settings():
+        if not gp_expand.validate_database_settings(True, False):
             logger.info('Exiting...')
             sys.exit(1)
         gp_expand.perform_expansion()
     elif gpexpand_db_status == 'EXPANSION STARTED':
         logger.info('It appears the last run of gpexpand did not exit cleanly.')
         logger.info('Resuming the expansion process...')
-        if not gp_expand.validate_database_settings():
+        if not gp_expand.validate_database_settings(True, False):
             logger.info('Exiting...')
             sys.exit(1)
         gp_expand.perform_expansion()        
@@ -2095,7 +2152,10 @@ try:
         logger.info('Expansion has already completed.')
         logger.info('If you want to expand again, run gpexpand -c to remove')
         logger.info('the gpexpand schema and begin a new expansion')
-    elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:            
+    elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:
+        if not gp_expand.validate_database_settings(False, True):
+            logger.info('Exiting...')
+            sys.exit(1)              
         gp_expand.read_input_file()
         gp_expand.start_prepare()
         gp_expand.add_segments()
