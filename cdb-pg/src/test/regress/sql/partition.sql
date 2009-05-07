@@ -3145,3 +3145,102 @@ select partitionboundary from pg_partitions where tablename like 'mpp5878%';
 
 drop table mpp5878;
 
+-- MPP-5941: work with many levels of templates
+
+CREATE TABLE mpp5941 (a int, b date, c char, 
+	   		 		 d char(4), e varchar(20), f timestamp)
+partition by range (b)
+subpartition by list (a) 
+subpartition template ( 
+subpartition l1 values (1,2,3,4,5), 
+subpartition l2 values (6,7,8,9,10) ),
+subpartition by list (e) 
+subpartition template ( 
+subpartition ll1 values ('Engineering'), 
+subpartition ll2 values ('QA') ),
+subpartition by list (c) 
+subpartition template ( 
+subpartition lll1 values ('M'), 
+subpartition lll2 values ('F') )
+(
+  start (date '2007-01-01')
+  end (date '2010-01-01') every (interval '1 year')
+);
+
+-- just truncate for fun to see that everything is there
+alter table mpp5941 alter partition for ('2008-01-01') 
+alter partition for (1) alter partition for ('QA')
+truncate partition for ('M');
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+alter partition for (1) truncate partition for ('QA');
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+truncate partition for (1);
+
+alter table mpp5941 truncate partition for ('2008-01-01') ;
+
+truncate table mpp5941;
+
+-- now look at the templates that we have
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- clear level 1
+
+alter table mpp5941 set subpartition template ();
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- clear level 2
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+set subpartition template ();
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- clear level 3
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+alter partition for (1)
+set subpartition template ();
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- no level 4 (error)
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+alter partition for (1) alter partition for ('QA')
+set subpartition template ();
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- no level 5 (error)
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+alter partition for (1) alter partition for ('QA')
+alter partition for ('M')
+set subpartition template ();
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+drop table mpp5941;
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -18031,19 +18031,29 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
                        AlterPartitionCmd *pc)
 {
 	AlterPartitionId	*pid   = (AlterPartitionId *)pc->partid;
-/*	PgPartRule			*prule = NULL; */
+	PgPartRule			*prule = NULL; 
 	int					 lvl   = 1;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	/* set template for top level table */
-/*	if (pid && (pid->idtype != AT_AP_IDNone)) */
-	if (pid && (pid->idtype != AT_AP_IDName)) 
-	{
+    if (pid && (pid->idtype != AT_AP_IDName))
+    {
 		Assert((pid->idtype == AT_AP_IDRule) && IsA(pid->partiddef, List));
 
-		lvl = list_length((List *)pid->partiddef);
+		/* MPP-5941: work correctly with many levels of templates */
+		/* wah! the idrule is invalid, so can't use get_part_rule.  
+		 * So pull the pgpartrule directly from the idrule (yuck!)
+		 */
+		prule = (PgPartRule *)linitial((List*)pid->partiddef);
+
+		Assert(prule);
+
+		/* current pnode level is one below current (our parent), and
+		 * we want the one above us (our subpartition), so add 2
+		 */
+		lvl = prule->pNode->part->parlevel + 2;
 
 		Assert (lvl > 1);
 	}
