@@ -113,7 +113,6 @@ sub mkvcbuild
         $plperl->AddLibrary($solution->{options}->{perl} . '\lib\CORE\perl58.lib');
         }
     }
-    }
 
     if ($solution->{options}->{python})
     {
@@ -138,7 +137,6 @@ sub mkvcbuild
         {
         $pltcl->AddLibrary($solution->{options}->{tcl} . '\lib\tcl84.lib');
         }
-    }
     }
 
     $libpq = $solution->AddProject('libpq','dll','interfaces','src\interfaces\libpq');
