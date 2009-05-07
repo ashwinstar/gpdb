@@ -9,6 +9,7 @@
 #include <unistd.h>
 #ifdef WIN32
 #include <io.h>
+#define snprintf _snprintf
 #else
 #define O_BINARY 0
 #endif

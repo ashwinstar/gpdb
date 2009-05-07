@@ -6,11 +6,11 @@
  * These routines represent a fairly thin layer on top of SysV shared
  * memory functionality.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/sysv_shmem.c,v 1.47.2.1 2007/07/02 20:12:00 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/sysv_shmem.c,v 1.54 2009/01/01 17:23:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -195,15 +195,12 @@ PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
 {
 	IpcMemoryId shmId = (IpcMemoryId) id2;
 	struct shmid_ds shmStat;
-
-#ifndef WIN32
 	struct stat statbuf;
 	PGShmemHeader *hdr;
-#endif
 
 	/*
 	 * We detect whether a shared memory segment is in use by seeing whether
-	 * it (a) exists and (b) has any processes are attached to it.
+	 * it (a) exists and (b) has any processes attached to it.
 	 */
 	if (shmctl(shmId, IPC_STAT, &shmStat) < 0)
 	{
@@ -250,11 +247,8 @@ PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
 	/*
 	 * Try to attach to the segment and see if it matches our data directory.
 	 * This avoids shmid-conflict problems on machines that are running
-	 * several postmasters under the same userid.  On Windows, which doesn't
-	 * have useful inode numbers, we can't do this so we punt and assume there
-	 * is a conflict.
+	 * several postmasters under the same userid.
 	 */
-#ifndef WIN32
 	if (stat(DataDir, &statbuf) < 0)
 		return true;			/* if can't stat, be conservative */
 
@@ -277,7 +271,6 @@ PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
 
 	/* Trouble --- looks a lot like there's still live backends */
 	shmdt((void *) hdr);
-#endif
 
 	return true;
 }
@@ -308,10 +301,7 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port)
 	void	   *memAddress;
 	PGShmemHeader *hdr;
 	IpcMemoryId shmid;
-
-#ifndef WIN32
 	struct stat statbuf;
-#endif
 
 	/* Room for a header? */
 	Assert(size > MAXALIGN(sizeof(PGShmemHeader)));
@@ -384,7 +374,6 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port)
 	hdr->creatorPID = getpid();
 	hdr->magic = PGShmemMagic;
 
-#ifndef WIN32
 	/* Fill in the data directory ID info, too */
 	if (stat(DataDir, &statbuf) < 0)
 		ereport(FATAL,
@@ -393,7 +382,6 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port)
 						DataDir)));
 	hdr->device = statbuf.st_dev;
 	hdr->inode = statbuf.st_ino;
-#endif
 
 	/*
 	 * Initialize space allocation status for segment.

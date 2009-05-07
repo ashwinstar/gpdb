@@ -60,12 +60,12 @@ ReleaseSemaphores(int code, Datum arg)
 }
 
 /*
- * PGSemaphoreCreate
+ * PGSemaphoreCreateInitVal
  *
- * Initialize a PGSemaphore structure to represent a sema with count 1
+ * Initialize a PGSemaphore structure to represent a sema with count of initval
  */
 void
-PGSemaphoreCreate(PGSemaphore sema)
+PGSemaphoreCreateInitVal(PGSemaphore sema, int initval)
 {
 	HANDLE		cur_handle;
 	SECURITY_ATTRIBUTES sec_attrs;
@@ -82,7 +82,7 @@ PGSemaphoreCreate(PGSemaphore sema)
 	sec_attrs.bInheritHandle = TRUE;
 
 	/* We don't need a named semaphore */
-	cur_handle = CreateSemaphore(&sec_attrs, 1, 32767, NULL);
+	cur_handle = CreateSemaphore(&sec_attrs, initval, 32767, NULL);
 	if (cur_handle)
 	{
 		/* Successfully done */

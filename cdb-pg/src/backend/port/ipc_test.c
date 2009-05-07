@@ -16,12 +16,12 @@
  *	   the parallel regression tests for a more complete test.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/ipc_test.c,v 1.21 2006/07/14 05:28:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/ipc_test.c,v 1.26 2009/01/01 17:23:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -114,9 +114,9 @@ ProcessInterrupts(void)
 }
 
 int
-ExceptionalCondition(char *conditionName,
-					 char *errorType,
-					 char *fileName,
+ExceptionalCondition(const char *conditionName,
+					 const char *errorType,
+					 const char *fileName,
 					 int lineNumber)
 {
 	fprintf(stderr, "TRAP: %s(\"%s\", File: \"%s\", Line: %d)\n",
@@ -180,6 +180,13 @@ errmsg_internal(const char *fmt,...)
 
 int
 errdetail(const char *fmt,...)
+{
+	fprintf(stderr, "DETAIL: %s\n", fmt);
+	return 0;					/* return value does not matter */
+}
+
+int
+errdetail_log(const char *fmt,...)
 {
 	fprintf(stderr, "DETAIL: %s\n", fmt);
 	return 0;					/* return value does not matter */

@@ -5,7 +5,7 @@
 #endif
 
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0500
+#define _WIN32_WINNT 0x0501
 #endif
 
 /*
@@ -21,8 +21,8 @@
 
 #undef ERROR
 #define _WINSOCKAPI_
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #include <ws2tcpip.h>
 #undef small
 #include <process.h>
@@ -87,42 +87,6 @@
 #define GETVAL 65536
 #define SETVAL 131072
 #define GETPID 262144
-
-/*
- *	Shared memory
- */
-struct shmid_ds
-{
-	int			dummy;
-	int			shm_nattch;
-};
-
-int			shmdt(const void *shmaddr);
-void	   *shmat(int memId, void *shmaddr, int flag);
-int			shmctl(int shmid, int flag, struct shmid_ds * dummy);
-int			shmget(int memKey, int size, int flag);
-
-
-/*
- *	Semaphores
- */
-union semun
-{
-	int			val;
-	struct semid_ds *buf;
-	unsigned short *array;
-};
-
-struct sembuf
-{
-	int			sem_flg;
-	int			sem_op;
-	int			sem_num;
-};
-
-int			semctl(int semId, int semNum, int flag, union semun);
-int			semget(int semKey, int semNum, int flags);
-int			semop(int semId, struct sembuf * sops, int flag);
 
 
 /*
@@ -228,6 +192,7 @@ struct itimerval
 	struct timeval it_interval;
 	struct timeval it_value;
 };
+
 int			setitimer(int which, const struct itimerval * value, struct itimerval * ovalue);
 
 /*
@@ -351,10 +316,10 @@ extern void pgwin32_unsetenv(const char *);
 #define putenv(x) pgwin32_putenv(x)
 #define unsetenv(x) pgwin32_unsetenv(x)
 
-/* Things that exist in MingW headers, but need to be added to MSVC */
+/* Things that exist in MingW headers, but need to be added to MSVC & BCC */
 #ifdef WIN32_ONLY_COMPILER
-#ifndef __BORLANDC__
 typedef long ssize_t;
+#ifndef __BORLANDC__
 typedef unsigned short mode_t;
 #endif
 
@@ -389,5 +354,23 @@ typedef unsigned short mode_t;
 
 /* Pulled from Makefile.port in mingw */
 #define DLSUFFIX ".dll"
+
+#ifdef __BORLANDC__
+
+/* for port/dirent.c */
+#ifndef INVALID_FILE_ATTRIBUTES
+#define INVALID_FILE_ATTRIBUTES ((DWORD) -1)
+#endif
+
+/* for port/open.c */
+#ifndef O_RANDOM
+#define O_RANDOM		0x0010	/* File access is primarily random */
+#define O_SEQUENTIAL	0x0020	/* File access is primarily sequential */
+#define O_TEMPORARY	0x0040	/* Temporary file bit */
+#define O_SHORT_LIVED	0x1000	/* Temporary storage file, try not to flush */
+#define _O_SHORT_LIVED	O_SHORT_LIVED
+#endif /* ifndef O_RANDOM */
+
+#endif /* __BORLANDC__ */
 
 #endif

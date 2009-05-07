@@ -47,11 +47,16 @@ typedef struct _resultmap
  * out where "make install" will put stuff under the temp_install directory.
  * In non-temp_install mode, the only thing we need is the location of psql,
  * which we expect to find in psqldir, or in the PATH if psqldir isn't given.
+ *
+ * XXX Because pg_regress is not installed in bindir, we can't support
+ * this for relocatable trees as it is.  --psqldir would need to be
+ * specified in those cases.
  */
 char *bindir = PGBINDIR;
 char *libdir = LIBDIR;
 char *datadir = PGSHAREDIR;
 char *host_platform = HOST_TUPLE;
+
 #ifndef WIN32_ONLY_COMPILER
 static char *makeprog = MAKEPROG;
 #endif
@@ -70,7 +75,7 @@ _stringlist *dblist = NULL;
 bool debug = false;
 char *inputdir = ".";
 char *outputdir = ".";
-char *psqldir = NULL;
+char	   *psqldir = PGBINDIR;
 static _stringlist *loadlanguage = NULL;
 static int	max_connections = 0;
 static char *encoding = NULL;
@@ -140,11 +145,12 @@ static void
 unlimit_core_size(void)
 {
 	struct rlimit lim;
+
 	getrlimit(RLIMIT_CORE,&lim);
 	if (lim.rlim_max == 0)
 	{
 		fprintf(stderr,
-				_("%s: cannot set core size,: disallowed by hard limit.\n"), 
+				_("%s: could not set core size: disallowed by hard limit\n"),
 				progname);
 		return;
 	}
@@ -201,6 +207,7 @@ split_to_stringlist(const char *s, const char *delim, _stringlist **listhead)
 {
 	char *sc = strdup(s);
 	char *token = strtok(sc, delim);
+
 	while (token)
 	{
 		add_stringlist_item(listhead, token);
@@ -269,6 +276,7 @@ stop_postmaster(void)
 	{
 		/* We use pg_ctl to issue the kill and wait for stop */
 		char		buf[MAXPGPATH * 2];
+		int			r;
 
 		/* On Windows, system() seems not to force fflush, so... */
 		fflush(stdout);
@@ -277,7 +285,14 @@ stop_postmaster(void)
 		snprintf(buf, sizeof(buf),
 				 SYSTEMQUOTE "\"%s/pg_ctl\" stop -D \"%s/data\" -s -m fast" SYSTEMQUOTE,
 				 bindir, temp_install);
-		system(buf);			/* ignore exit status */
+		r = system(buf);
+		if (r != 0)
+		{
+			fprintf(stderr, _("\n%s: could not stop postmaster: exit code was %d\n"),
+					progname, r);
+			exit(2);   /* not exit_nicely(), that would be recursive */
+		}
+
 		postmaster_running = false;
 	}
 }
@@ -525,11 +540,11 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 
 	/*
 	 * If we didn't process any files, complain because it probably means
-	 * somebody neglected to pass the needed --srcdir argument.
+	 * somebody neglected to pass the needed --inputdir argument.
 	 */
 	if (count <= 0)
 	{
-		fprintf(stderr, _("%s: no *.source files found in %s\n"),
+		fprintf(stderr, _("%s: no *.source files found in \"%s\"\n"),
 				progname, indir);
 		exit_nicely(2);
 	}
@@ -652,7 +667,8 @@ load_resultmap(void)
  * Check in resultmap if we should be looking at a different file
  */
 static
-const char *get_expectfile(const char *testname, const char *file)
+const char *
+get_expectfile(const char *testname, const char *file)
 {
 	char *file_type;
 	_resultmap *rm;
@@ -721,22 +737,32 @@ initialize_environment(void)
 {
 	char	   *tmp;
 
+	if (nolocale)
+	{
 	/*
 	 * Clear out any non-C locale settings
 	 */
 	unsetenv("LC_COLLATE");
 	unsetenv("LC_CTYPE");
 	unsetenv("LC_MONETARY");
-	unsetenv("LC_MESSAGES");
 	unsetenv("LC_NUMERIC");
 	unsetenv("LC_TIME");
-	unsetenv("LC_ALL");
 	unsetenv("LANG");
-	unsetenv("LANGUAGE");
 	/* On Windows the default locale cannot be English, so force it */
 #if defined(WIN32) || defined(__CYGWIN__)
 	putenv("LANG=en");
 #endif
+	}
+
+	/*
+	 * Set translation-related settings to English; otherwise psql
+	 * will produce translated messages and produce diffs.  (XXX If we
+	 * ever support translation of pg_regress, this needs to be moved
+	 * elsewhere, where psql is actually called.)
+	 */
+	unsetenv("LANGUAGE");
+	unsetenv("LC_ALL");
+	putenv("LC_MESSAGES=C");
 
 	/*
 	 * Set multibyte as requested
@@ -1162,10 +1188,15 @@ get_alternative_expectfile(const char *expectfile, int i)
 	int ssize = strlen(expectfile) + 2 + 1;
 	char *tmp = (char *)malloc(ssize);
 	char *s = (char *)malloc(ssize);
+
 	strcpy(tmp, expectfile);
 	last_dot = strrchr(tmp,'.');
 	if (!last_dot)
+	{
+		free(tmp);
+		free(s);
 		return NULL;
+	}
 	*last_dot = '\0';
 	snprintf(s, ssize, "%s_%d.%s", tmp, i, last_dot+1);
 	free(tmp);
@@ -1235,10 +1266,10 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 		 * platform_expectfile contains.
 		 */
 		char *p = strrchr(expectfile, '/');
+
 		if (p)
 			strcpy(++p, platform_expectfile);
 	}
-
 
 	/* Name to use for temporary diff file */
 	snprintf(diff, sizeof(diff), "%s.diff", resultsfile);
@@ -1339,7 +1370,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 /*
  * Wait for specified subprocesses to finish
  *
- * If names isn't NULL, report each subprocess as it finishes
+ * If names isn't NULL, print each subprocess's name as it finishes
  *
  * Note: it's OK to scribble on the pids array, but not on the names array
  */
@@ -1722,6 +1753,7 @@ static void
 create_database(const char *dbname)
 {
 	_stringlist *sl;
+
 	/*
 	 * We use template0 so that any installation-local cruft in template1 will
 	 * not mess up the tests.
@@ -1863,11 +1895,13 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 				help();
 				exit_nicely(0);
 			case 'V':
-				printf("pg_regress (PostgreSQL %s)\n", PG_VERSION);
+				puts("pg_regress (PostgreSQL) " PG_VERSION);
 				exit_nicely(0);
 			case 1:
-				/* If a default database was specified, we need to remove it before we add
-				 * the specified one.
+
+				/*
+				 * If a default database was specified, we need to remove it
+				 * before we add the specified one.
 				 */
 				free_stringlist(&dblist);
 				split_to_stringlist(strdup(optarg), ", ", &dblist);

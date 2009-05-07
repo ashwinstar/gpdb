@@ -435,6 +435,14 @@ PGSemaphoreLock(PGSemaphore sema, bool interruptOK)
 	 * did all the necessary state updates. It's not true for SysV semaphores
 	 * used to implement LW locks or emulate spinlocks --- but the wait time
 	 * for such locks should not be very long, anyway.)
+	 *
+	 * On some platforms, signals marked SA_RESTART (which is most, for us)
+	 * will not interrupt the semop(); it will just keep waiting.  Therefore
+	 * it's necessary for cancel/die interrupts to be serviced directly by
+	 * the signal handler.  On these platforms the behavior is really the same
+	 * whether the signal arrives just before the semop() begins, or while it
+	 * is waiting.  The loop on EINTR is thus important only for other types
+	 * of interrupts.
 	 */
 	do
 	{

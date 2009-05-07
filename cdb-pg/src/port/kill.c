@@ -3,13 +3,13 @@
  * kill.c
  *	  kill()
  *
- * Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  *	This is a replacement version of kill for Win32 which sends
  *	signals that the backend can recognize.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/kill.c,v 1.7.2.1 2009/02/15 13:58:20 mha Exp $
+ *	  $PostgreSQL: pgsql/src/port/kill.c,v 1.12 2009/02/15 13:58:18 mha Exp $
  *
  *-------------------------------------------------------------------------
  */

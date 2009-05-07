@@ -3,7 +3,7 @@ package Mkvcbuild;
 #
 # Package that generates build files for msvc build
 #
-# $PostgreSQL: pgsql/src/tools/msvc/Mkvcbuild.pm,v 1.13 2007/06/12 18:31:28 mha Exp $
+# $PostgreSQL: pgsql/src/tools/msvc/Mkvcbuild.pm,v 1.39 2009/04/07 19:35:57 mha Exp $
 #
 use Carp;
 use Win32;
@@ -57,6 +57,7 @@ sub mkvcbuild
     $postgres = $solution->AddProject('postgres','exe','','src\backend');
     $postgres->AddIncludeDir('src\backend');
     $postgres->AddIncludeDir('src\backend\gp_libpq_fe');
+    $postgres->AddIncludeDir('src\port');
     $postgres->AddDir('src\backend\port\win32');
     $postgres->AddFile('src\backend\utils\fmgrtab.c');
     $postgres->ReplaceFile('src\backend\port\dynloader.c','src\backend\port\dynloader\win32.c');
@@ -110,6 +111,7 @@ sub mkvcbuild
         else
         {
         $plperl->AddLibrary($solution->{options}->{perl} . '\lib\CORE\perl58.lib');
+        }
     }
     }
 
@@ -135,6 +137,7 @@ sub mkvcbuild
         else
         {
         $pltcl->AddLibrary($solution->{options}->{tcl} . '\lib\tcl84.lib');
+        }
     }
     }
 
@@ -287,7 +290,6 @@ sub mkvcbuild
        push @contrib_excludes,'uuid-ossp';
     }
 
-
     # Pgcrypto makefile too complex to parse....
     my $pgcrypto = $solution->AddProject('pgcrypto','dll','crypto');
     $pgcrypto->AddFiles(
@@ -334,7 +336,6 @@ sub mkvcbuild
     {
         my $mf = Project::read_file('src\backend\utils\mb\conversion_procs\\' . $sub . '\Makefile');
         my $p = $solution->AddProject($sub, 'dll', 'conversion procs');
-        
         $p->AddFile('src\backend\utils\mb\conversion_procs\\' . $sub . '\\' . $sub . '.c');
         if ($mf =~ m{^SRCS\s*\+=\s*(.*)\s*$}m)
         {

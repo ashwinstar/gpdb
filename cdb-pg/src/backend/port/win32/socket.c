@@ -3,10 +3,10 @@
  * socket.c
  *	  Microsoft Windows Win32 Socket Functions
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/win32/socket.c,v 1.14.2.3 2007/06/04 13:39:41 mha Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/win32/socket.c,v 1.21 2009/01/01 17:23:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -103,7 +103,8 @@ pgwin32_poll_signals(void)
 }
 
 static int
-isDataGram(SOCKET s) {
+isDataGram(SOCKET s)
+{
 	int type;
 	int typelen = sizeof(type);
 
@@ -158,13 +159,11 @@ pgwin32_waitforsinglesocket(SOCKET s, int what, int timeout)
 	events[1] = waitevent;
 
 	/* 
-	 * Just a workaround of unknown locking problem with writing
-	 * in UDP socket under high load: 
-	 * Client's pgsql backend sleeps infinitely in 
-	 * WaitForMultipleObjectsEx, pgstat process sleeps in 
-	 * pgwin32_select().  So, we will wait with small 
-	 * timeout(0.1 sec) and if sockect is still blocked, 
-	 * try WSASend (see comments in pgwin32_select) and wait again.
+	 * Just a workaround of unknown locking problem with writing in UDP socket
+	 * under high load: Client's pgsql backend sleeps infinitely in
+	 * WaitForMultipleObjectsEx, pgstat process sleeps in pgwin32_select().
+	 * So, we will wait with small timeout(0.1 sec) and if sockect is still
+	 * blocked, try WSASend (see comments in pgwin32_select) and wait again.
 	 */
 	if ((what & FD_WRITE) && isUDP)
 	{
@@ -326,10 +325,11 @@ pgwin32_recv(SOCKET s, char *buf, int len, int f)
 			{
 				/*
 				 * There seem to be cases on win2k (at least) where WSARecv
-				 * can return WSAEWOULDBLOCK even when pgwin32_waitforsinglesocket
-				 * claims the socket is readable. In this case, just sleep for a
-				 * moment and try again. We try up to 5 times - if it fails more than
-				 * that it's not likely to ever come back.
+				 * can return WSAEWOULDBLOCK even when
+				 * pgwin32_waitforsinglesocket claims the socket is readable.
+				 * In this case, just sleep for a moment and try again. We try
+				 * up to 5 times - if it fails more than that it's not likely
+				 * to ever come back.
 				 */
 				pg_usleep(10000);
 				continue;
@@ -359,11 +359,11 @@ pgwin32_send(SOCKET s, char *buf, int len, int flags)
 	wbuf.buf = buf;
 
 	/*
-	 * Readiness of socket to send data to UDP socket 
-	 * may be not true: socket can become busy again! So loop
-	 * until send or error occurs.
+	 * Readiness of socket to send data to UDP socket may be not true: socket
+	 * can become busy again! So loop until send or error occurs.
 	 */
-	for(;;) {
+	for (;;)
+	{
 		r = WSASend(s, &wbuf, 1, &b, flags, NULL, NULL);
 		if (r != SOCKET_ERROR && b > 0)
 			/* Write succeeded right away */

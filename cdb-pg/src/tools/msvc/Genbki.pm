@@ -6,12 +6,12 @@
 #    files.  These .bki files are used to initialize the postgres template
 #    database.
 #
-# Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/tools/msvc/Genbki.pm,v 1.2 2007/03/17 13:54:34 mha Exp $
+#    $PostgreSQL: pgsql/src/tools/msvc/Genbki.pm,v 1.6 2009/01/01 17:24:05 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -65,7 +65,6 @@ sub genbki
     $indata =~ s{^TransactionId}{xid}gm;
     $indata =~ s{\(TransactionId}{(xid}g;
     $indata =~ s{PGUID}{$bootstrapsuperuserid}g;
-   # $indata =~ s{NAMEDATALEN}{$namedatalen}g;
     $indata =~ s{PGNSP}{$pgcatalognamespace}g;
 
     #print $indata;

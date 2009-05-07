@@ -4,9 +4,9 @@
  *	   Win32 open() replacement
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/open.c,v 1.26 2008/01/01 19:46:00 momjian Exp $
+ * $PostgreSQL: pgsql/src/port/open.c,v 1.27 2009/01/01 17:24:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,11 +23,6 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#ifdef O_DIRECT
-#define PG_O_DIRECT				O_DIRECT
-#else
-#define PG_O_DIRECT				0
-#endif
 
 static int
 openFlagsToCreateFileFlags(int openFlags)
@@ -74,7 +69,7 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 	/* Check that we can handle the request */
 	assert((fileFlags & ((O_RDONLY | O_WRONLY | O_RDWR) | O_APPEND |
 						 (O_RANDOM | O_SEQUENTIAL | O_TEMPORARY) |
-						 _O_SHORT_LIVED | O_DSYNC | PG_O_DIRECT |
+						 _O_SHORT_LIVED | O_DSYNC | O_DIRECT |
 		  (O_CREAT | O_TRUNC | O_EXCL) | (O_TEXT | O_BINARY))) == fileFlags);
 
 	sa.nLength = sizeof(sa);
@@ -94,7 +89,7 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 			   ((fileFlags & O_SEQUENTIAL) ? FILE_FLAG_SEQUENTIAL_SCAN : 0) |
 			  ((fileFlags & _O_SHORT_LIVED) ? FILE_ATTRIBUTE_TEMPORARY : 0) |
 				((fileFlags & O_TEMPORARY) ? FILE_FLAG_DELETE_ON_CLOSE : 0) |
-					  ((fileFlags & PG_O_DIRECT) ? FILE_FLAG_NO_BUFFERING : 0) |
+					  ((fileFlags & O_DIRECT) ? FILE_FLAG_NO_BUFFERING : 0) |
 						((fileFlags & O_DSYNC) ? FILE_FLAG_WRITE_THROUGH : 0),
 						NULL)) == INVALID_HANDLE_VALUE)
 	{

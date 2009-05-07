@@ -178,8 +178,6 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         {
             print O "#define HAVE_UUID_H\n";
         }
-
-
         if ($self->{options}->{xml})
         {
             print O "#define HAVE_LIBXML2\n";
@@ -377,7 +375,7 @@ sub AddProject
     {
         $proj->AddIncludeDir($self->{options}->{zlib} . '\include');
         $proj->AddLibrary($self->{options}->{zlib} . '\lib\zlib.lib');
-	$proj->AddLibrary($self->{options}->{zlib} . '\lib\libcurl.lib');
+	    $proj->AddLibrary($self->{options}->{zlib} . '\lib\libcurl.lib');
     }
 	if ($self->{options}->{bzlib})
     {

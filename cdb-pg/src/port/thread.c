@@ -5,9 +5,9 @@
  *		  Prototypes and macros around system calls, used to help make
  *		  threaded libraries reentrant and safe to use from threaded applications.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/thread.c,v 1.38 2008/01/01 19:46:00 momjian Exp $
+ * $PostgreSQL: pgsql/src/port/thread.c,v 1.41 2009/01/14 21:18:30 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,13 +15,6 @@
 #include "c.h"
 
 #include <pwd.h>
-#if defined(FRONTEND) && defined(ENABLE_THREAD_SAFETY)
-#ifdef WIN32
-#include "pthread-win32.h"
-#else
-#include <pthread.h>
-#endif
-#endif
 
 
 /*
