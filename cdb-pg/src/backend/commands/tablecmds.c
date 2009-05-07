@@ -3304,7 +3304,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_SetDistributedBy:	/* SET DISTRIBUTED BY */
 			if ( !recursing ) /* MPP-5772 */
 			{
-				Oid relid = rel->rd_node.relNode;
+				Oid relid = RelationGetRelid(rel);
 				
 				if ( recurse )
 				{
