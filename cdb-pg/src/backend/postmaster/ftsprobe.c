@@ -521,12 +521,9 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		} 
 		else if (PQstatus(conn) != CONNECTION_BAD)
 		{
-			if (LOG >= log_min_messages)
-			{
-				/* Don't use elog, it's not thread-safe */
-				write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
-						  dbInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
-			}
+			/* Don't use elog, it's not thread-safe */
+			write_log("FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
+					  dbInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
 			ret = true;
 			break;
 		}
@@ -534,8 +531,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		errorMsg = PQerrorMessage(conn);
 		if (errorMsg == NULL)
 		{
-			if (LOG >= log_min_messages)
-				write_log("FTS: test connection can't parse error message");
+			write_log("FTS: test connection can't parse error message");
 			errorMsg = "";
 		}
 
@@ -599,9 +595,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		}
 
 		/* This is a real failure for which a reconfigure may be warranted */
-		if (LOG >= log_min_messages)
-			write_log("FTS: test connection failed, dbid %d dbname %s error message '%s':%d",
-					  dbInfo->dbid, dbName, errorMsg, msgLen);
+		write_log("FTS: test connection failed, dbid %d dbname %s error message '%s':%d",
+				  dbInfo->dbid, dbName, errorMsg, msgLen);
 
 		ret = false;
 	} while (0);
@@ -713,6 +708,9 @@ probeSegments(CdbComponentDatabases *cdb_component_dbs)
 		{
 			CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
 
+			if (shutdown_requested)
+				break;
+
 			/* if this is worth scanning, then scan it. */
 			if (segInfo->valid)
 			{
@@ -813,7 +811,7 @@ probeSegmentFromThread(void *arg)
 		}
 		pthread_mutex_unlock(&worker_thread_mutex);
 
-		if (i == worker_info->dbs->total_segment_dbs)
+		if (i == worker_info->dbs->total_segment_dbs || shutdown_requested)
 		{
 			/* no work left to do */
 			break;
