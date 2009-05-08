@@ -9786,7 +9786,7 @@ build_hidden_type(Form_pg_attribute att)
 	List *parsetrees;
 	DestReceiver *dest = None_Receiver;
 	Query *q;
-	char *alignname;
+	char *alignname = NULL;
 	TypeName *typname;
 	char newname[NAMEDATALEN];
 
