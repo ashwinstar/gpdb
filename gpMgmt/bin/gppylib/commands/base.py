@@ -19,12 +19,15 @@ for executing this set of commands.
 from Queue import  Queue,Empty
 from threading import Thread
 
-import subprocess
+
 import logging
 import os
+import signal
+import subprocess
+import sys
 import time
 import unittest
-import signal
+
 
 
 
@@ -73,6 +76,18 @@ class WorkerPool:
         self.work_queue.put(cmd)
         self.num_assigned += 1
     
+    def wait_and_printdots(self,command_count,quiet=True):
+        while self.completed_queue.qsize() < command_count:
+            time.sleep(1)
+            
+            if not quiet:
+                sys.stdout.write(".")
+                sys.stdout.flush()
+        if not quiet:
+            print " "    
+        self.join()
+        
+        
     
     def join(self):
         self.work_queue.join()

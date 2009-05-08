@@ -15,7 +15,7 @@ import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
 
-#do it again for a gppylib module just in case
+
 try:
     import figleaf
     
@@ -34,9 +34,6 @@ try:
     from gppylib import pgconf
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
-
-
-    
 
 
 
@@ -75,7 +72,8 @@ class SegStartStatus():
 class GpStart():
     
     ######
-    def __init__(self,restricted,start_standby,master_datadir,parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False):
+    def __init__(self,restricted,start_standby,master_datadir,parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,
+                  interactive=False):
         self.restricted=restricted
         self.start_standby=start_standby        
         self.pool = None
@@ -84,36 +82,42 @@ class GpStart():
         self.quiet=quiet
         self.masteronly=masteronly
         self.master_datadir=master_datadir
+        self.interactive=interactive
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass
     
     ######
-    def prepare(self):
-        logger.info("Gathering information and validating the environment...")
-        self._basic_setup()
+    def system_start(self):
+        self._prepare()
           
-        if not self.masteronly:              
-            gp.standby_check(self.master_datadir)
-                             
-        self._check_version()
-        self._check_master_running()
+        self._startMaster()    
+        logger.info("Master Started...")
         
-        if not os.path.exists(self.master_datadir + '/pg_log'):
-            os.mkdir(self.master_datadir + '/pg_log')
+        if not self.masteronly:
+            logger.info("Shutting down master")
+            cmd=gp.GpStop("Shutting down master", masterOnly=True, 
+                          fast=True, quiet=logging_is_quiet(),
+                          verbose=logging_is_verbose(),
+                          datadir=self._get_master_datadir())
+            cmd.run()
+            logger.debug("results of forcing master shutdown: %s" % cmd)
+            #TODO: check results of command.
+        
+            if self.interactive:
+                self._summarize_actions()
+                check_to_continue()
+            
+        
+        if self.masteronly:
+            pass                        
+        else:
+            success=self._start()
+            
+            if not success:
+                return False
+        
+        return True
     
-    ######
-    def _basic_setup(self):
-        self.gphome=gp.get_gphome()
-        if self.master_datadir is None:
-            self.master_datadir=gp.get_masterdatadir()
-        self.user=gp.get_user()                                    
-        gp.check_permissions(self.user)                    
-        self._read_postgresqlconf()
-         
-    
-    ######
-    def get_master_datadir(self):
-        return self.master_datadir
     
     ######
     def recover(self):
@@ -122,8 +126,7 @@ class GpStart():
         This is only to be used in read-only mode.          
         
         '''
-        
-        
+                
         self._basic_setup()
         
         logger.info("connecting to database to retrieve offline segments")
@@ -183,6 +186,43 @@ class GpStart():
         pass
     
     ######
+    def cleanup(self):
+        if self.pool:
+            self.pool.haltWork()
+
+#------------------------------- Internal Helper --------------------------------
+
+    ######
+    def _prepare(self):
+        logger.info("Gathering information and validating the environment...")
+        self._basic_setup()
+          
+        if not self.masteronly:              
+            gp.standby_check(self.master_datadir)
+                             
+        self._check_version()
+        self._check_master_running()
+        
+        if not os.path.exists(self.master_datadir + '/pg_log'):
+            os.mkdir(self.master_datadir + '/pg_log')
+    
+    
+    ######
+    def _basic_setup(self):
+        self.gphome=gp.get_gphome()
+        if self.master_datadir is None:
+            self.master_datadir=gp.get_masterdatadir()
+        self.user=gp.get_user()                                    
+        gp.check_permissions(self.user)                    
+        self._read_postgresqlconf()
+         
+    
+    ######
+    def _get_master_datadir(self):
+        return self.master_datadir
+    
+    
+    ######
     def _read_postgresqlconf(self):
         logger.debug("Obtaining master's port from master data directory")
         pgconf_dict = pgconf.readfile(self.master_datadir + "/postgresql.conf")        
@@ -206,6 +246,7 @@ class GpStart():
             self._recovery_startup()
         
         self._remove_postmaster_tmpfile(self.port)
+     
            
     ######
     def _recovery_startup(self):
@@ -239,7 +280,7 @@ class GpStart():
             logger.info("Clearing Master instance pid file")
             os.remove("%s/postmaster.pid" % self.master_datadir)
         
-        self.startMaster()
+        self._startMaster()
         
         logger.info("Commencing forced instance shutdown")
         
@@ -248,7 +289,8 @@ class GpStart():
                         quiet=self.quiet, fast=False, 
                         force=True, datadir=self.master_datadir)
         
-    
+        
+    ######
     def _remove_postmaster_tmpfile(self,port):
         lockfile="/tmp/.s.PGSQL.%s" % port
         tmpfile_exists = os.path.exists(lockfile)
@@ -258,8 +300,9 @@ class GpStart():
             os.remove(lockfile)
         pass
     
+    
     ######
-    def summarize_actions(self):
+    def _summarize_actions(self):
         logger.info("--------------------------")
         logger.info("Master instance parameters")
         logger.info("--------------------------")
@@ -301,7 +344,7 @@ class GpStart():
     
     
     ######
-    def startMaster(self):    
+    def _startMaster(self):    
         logger.info("Starting Master instance in admin mode")    
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,self.port,utilityMode=True)
         cmd.run()
@@ -327,10 +370,13 @@ class GpStart():
         self.conn.close()
         pass
     
-    
+        
     ######
-    def start(self):     
-        """ returns whether all segments were started successfully """   
+    def _start(self):     
+        """ starts the standby master, all of the segments, and the master
+            
+            returns whether all segments were started successfully 
+        """   
         self.failed_seg_status = []
         self.success_seg_status = []
         
@@ -341,8 +387,30 @@ class GpStart():
             raise GpStartError("Found a System Expansion Setup in progress. Please run 'gpexpand --rollback'")
         
         
-        self.standby_was_started = self._start_standby()
+        self.standby_was_started = self._start_standby()                
+        self._prepare_segment_start()           
+        self._start_segments()                
+        self._process_segment_start()
+        self._print_segment_start()
+
+        #make sure we have at least one segment per content
+        if not self._verify_enough_segments(self.success_seg_status,self.gparray):
+            # go through and remove any segments that we did start so that we keep everything
+            # shutdown cleanly
+            self._shutdown_segments(self.success_seg_status)
+            raise GpStartError("Do not have enough valid segments to start the array.")
         
+        self._start_final_master()        
+        self.cleanup()
+        
+        if len(self.failed_seg_status) == 0:
+            return True
+        else:
+            return False
+    
+    
+    ######
+    def _prepare_segment_start(self):
         segs = self.gparray.get_valid_segdbs()
         
         logger.debug("gp_configuration indicates following valid segments")
@@ -363,33 +431,10 @@ class GpStart():
             
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,invalid_segs)                
         self.hostcache.print_contents(logger)
-                            
         
-                                    
-        self._start_segments()                
-        self._process_segment_start()
-        self._print_segment_start(segs)
-
-        #make sure we have at least one segment per content
-        if not self._verify_enough_segments(self.success_seg_status,self.gparray):
-            # go through and remove any segments that we did start so that we keep everything
-            # shutdown cleanly
-            self._shutdown_segments(self.success_seg_status)
-            
-            
-            raise GpStartError("Do not have enough valid segments to start the array.")
         
-        self.start_final_master()        
-
-        self.cleanup()
-        
-        if len(self.failed_seg_status) == 0:
-            return True
-        else:
-            return False
-    
               
-        
+    ####    
     def _verify_enough_segments(self,success_seg_status,gparray):
         content_dict={}
         
@@ -420,9 +465,7 @@ class GpStart():
             logger.info("dumping mapping: %s" % content_dict)            
             return False
             
-        return True
-    
-    
+        return True    
     
 
     ######
@@ -453,17 +496,9 @@ class GpStart():
             self.pool.addCommand(cmd)
             dispatch_count+=1
             
-        while self.pool.completed_queue.qsize() < dispatch_count:
-            time.sleep(1)
-            
-            if not self.quiet:
-                sys.stdout.write(".")
-                sys.stdout.flush()
-        
-        if not self.quiet:
-            print " "    
-        self.pool.join()
+        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
         pass
+
     
     ######  
     def _shutdown_segments(self,success_seg_status):
@@ -480,21 +515,14 @@ class GpStart():
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
-        while self.pool.completed_queue.qsize() < dispatch_count:
-            time.sleep(1)
-        
-            if not self.quiet:
-                sys.stdout.write(".")
-                sys.stdout.flush()
-        
-        if not self.quiet:
-            print " "
-        self.pool.join()                
+        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
         pass
 
     
     ######
     def _process_segment_start(self):
+        ''' go through all of the gpsegstart commands and figure out what happened
+        '''
         logger.info("Process results...")
         cmds=self.pool.getCompletedItems()
         for cmd in cmds:
@@ -514,7 +542,6 @@ class GpStart():
                         else:
                             success=True
                             
-                        
                         for db in cmd.dblist:                     
                             if db.datadir == dir:
                                 if success:                                                         
@@ -527,10 +554,10 @@ class GpStart():
                     
         self.pool.empty_completed_items()
 
-        
-        
+             
     ######
-    def _print_segment_start(self,segs):
+    def _print_segment_start(self):
+        segs = self.gparray.get_valid_segdbs()
         started = len(segs) - len(self.failed_seg_status)
         failed = len(self.failed_seg_status)
         invalid = self.gparray.get_invalid_segdbs()
@@ -570,9 +597,6 @@ class GpStart():
             logger.warning("For more details on segment startup failure(s)")
             logger.warning("Run gpstate to review current segment instance status")
             logger.info("----------------------------------------------------")
-        
-                           
-        
         if len(invalid) > 0:
             logger.warning("****************************************************************************")
             logger.warning("There are        %d segment(s) marked as invalid" % len(invalid))
@@ -582,10 +606,17 @@ class GpStart():
             logger.warning("As gp_fault_action is set to continue, recovery will need to shutdown the")
             logger.warning("GPDB database to ensure a consistent recovery can be completed")
             logger.warning("****************************************************************************")
+
     
     ######
-    def start_final_master(self):
+    def _start_final_master(self):
+        ''' Last item in the startup sequence is to start the master. 
         
+            After starting the master we connect to it.  This is done both as a check that the system is 
+            actually started but its also done because certain backend processes don't get kickstarted
+            until the first connection.  The DTM is an example of this and it allows those initialization
+            messages to end up in the gpstart log as opposed to the user's psql session.
+        '''
         if self.restricted:
             restrict_txt = "in RESTRICTED mode"
         else:
@@ -613,7 +644,6 @@ class GpStart():
             
             if standby_failure:
                 logger.warning("Standby Master could not be started")
-            
             if standby_failure or seg_failures>0:            
                 logger.warning("Database started but warnings generated       <<<<<")
                 logger.info("Check status of database with gpstate utility")
@@ -623,14 +653,14 @@ class GpStart():
             logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port)) 
         
         
-    ######
-    def cleanup(self):
-        if self.pool:
-            self.pool.haltWork()
     
     
     ######
     def _start_standby(self):
+        ''' used to start the standbymaster if necessary.  
+        
+            returns if the standby master was started or not
+        '''
         if self.start_standby and self.gparray.standbyMaster is not None:
             try:
                 self.attempt_standby_start=True
@@ -641,17 +671,12 @@ class GpStart():
             except base.ExecutionError, e:
                 logger.warning("Error occured while starting the standby master: %s" % e)
                 return False
-            
         else:
             logger.info("No standby master configured.  skipping...")
             return False
         
     
-          
-    
-    
 #----------------------- Command line option parser ----------------------
-
 def parseargs():
     parser = OptParser(option_class=OptChecker,
                 description=' '.join(description.split()),
@@ -763,43 +788,19 @@ def main():
                           master_datadir=options.master_data_directory,
                           parallel=options.parallel,
                           quiet=options.quiet,
-                          masteronly=options.master_only)
+                          masteronly=options.master_only,
+                          interactive=options.interactive)
+        
         
         if options.recover:
             gpstart.recover()
             sys.exit(0)
-        
-        gpstart.prepare()
-          
-        gpstart.startMaster()    
-        logger.info("Master Started...")
-        
-        if not options.master_only:
-            logger.info("Shutting down master")
-            cmd=gp.GpStop("Shutting down master", masterOnly=True, 
-                          fast=True, quiet=options.quiet,
-                          verbose=options.verbose,
-                          datadir=gpstart.get_master_datadir())
-            cmd.run()
-            logger.debug("results of forcing master shutdown: %s" % cmd)
-            #TODO: check results of command.
-        
-            if options.interactive:
-                gpstart.summarize_actions()
-                check_to_continue()
-            
-        
-        if options.master_only:
-            pass                        
         else:
-            success=gpstart.start()
-            
-            if not success:
+            if gpstart.system_start():
+                sys.exit(0)
+            else:
                 sys.exit(1)
-        
-        sys.exit(0)
-        
-            
+    
     except base.ExecutionError, e:
         logger.fatal("Error occurred: %s\n Command was: '%s'\n"
                      "rc=%d, stdout='%s', stderr='%s'" %\

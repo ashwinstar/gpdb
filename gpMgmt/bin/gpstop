@@ -15,7 +15,6 @@ Please upgrade python installed on this machine.''' % progname)
 import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-
 try:
     import figleaf
 
@@ -72,7 +71,9 @@ class SegStopStatus():
 class GpStop():
     
     ######
-    def __init__(self,mode,cancel_active_connections,master_datadir=None,parallel=DEFAULT_NUM_WORKERS,quiet=False):
+    def __init__(self,mode,cancel_active_connections,master_datadir=None,
+                 parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,sighup=False,
+                 interactive=False,stopstandby=False,restart=False):
         self.mode=mode
         self.cancel_active_connections=cancel_active_connections        
         self.master_datadir=master_datadir
@@ -80,12 +81,49 @@ class GpStop():
         self.parallel=parallel
         self.quiet=quiet
         self.pid=0
+        self.masteronly=masteronly
+        self.sighup=sighup
+        self.interactive=interactive
+        self.stopstandby=stopstandby
+        self.restart=restart
         logger.debug("Setting level of parallelism to: %d" % self.parallel)
         pass       
         
         
+    #####
+    def stop(self):
+        self._prepare()
+        
+        if self.masteronly:
+            self._stop_master()                                 
+        else:
+            if self.sighup:
+                self._sighup_master()
+            else:
+                if self.interactive:
+                    self._summarize_actions()
+                    check_to_continue()
+                self._stop_master()                                
+                self._stop_standby()            
+                self._stop_segments()                                
+                self.cleanup()
+                
+                if self.restart:                    
+                    logger.info("Restarting System...")                    
+                    gp.NewGpStart.local('restarting system',verbose=logging_is_verbose(),nostandby=not self.stopstandby)                    
+         
+                if self.hadFailures:
+                    return False                    
+        return True
+    
+    
     ######
-    def prepare(self):
+    def cleanup(self):
+        if self.pool:
+            self.pool.haltWork()    
+        
+    ######
+    def _prepare(self):
         logger.info("Gathering information and validating the environment...")        
         self.gphome=gp.get_gphome()
         if self.master_datadir is None:
@@ -146,21 +184,16 @@ class GpStop():
         self.gparray = gparray.GpArray(rows)        
         conn.close()
     
-    
-   
-        
         
     ######
-    def stop_master(self,masterOnly=False):
+    def _stop_master(self,masterOnly=False):
+        ''' shutsdown the master '''
         
-        
-        self.conn = dbconn.connect(self.dburl, utility=True)
-        
+        self.conn = dbconn.connect(self.dburl, utility=True)        
         if masterOnly:
             self._stop_master_only_checks()
         else:
             self._stop_master_checks()
-            
             
         self.conn.close()
     
@@ -171,7 +204,6 @@ class GpStop():
         cmd.run(validateAfter=True)
         
         logger.debug("Successfully shutdown the Master instance in admin mode")
-        pass
     
     
     ######
@@ -220,11 +252,13 @@ class GpStop():
     
     
     ######
-    def stop_standby(self):
+    def _stop_standby(self):
         """ assumes prepare() has been called """
+        if not self.stopstandby:
+            return True
+        
         if self.gparray.standbyMaster:
             standby=self.gparray.standbyMaster
-            
             
             logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
             try:
@@ -254,8 +288,9 @@ class GpStop():
             logger.info("No standby master host configured")
             return True
             
+            
     ######
-    def stop_segments(self):        
+    def _stop_segments(self):        
         failed_seg_status = []
         workers=min(len(self.gparray.get_hostlist()),self.parallel)
         self.pool = base.WorkerPool(numWorkers=workers)
@@ -270,9 +305,6 @@ class GpStop():
             
         self.hostcache=gphostcache.GpHostCache(self.gparray,self.pool,failed_pings)                
         self.hostcache.print_contents(logger)
-         
-         
-         
                                    
         invalid_segs=self.gparray.get_invalid_segdbs() 
         for seg in invalid_segs:
@@ -280,12 +312,9 @@ class GpStop():
             
         self._stopseg_cmds()                
         success_seg_status=self._process_segment_stop(failed_seg_status)    
-        self._print_segment_stop(segs,failed_seg_status,success_seg_status)
-                
+        self._print_segment_stop(segs,failed_seg_status,success_seg_status)            
         pass
     
-    
-   
     
     ######
     def _stopseg_cmds(self):
@@ -301,25 +330,13 @@ class GpStop():
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
-        while self.pool.completed_queue.qsize() < dispatch_count:
-            time.sleep(1)
-        
-            if not self.quiet:
-                sys.stdout.write(".")
-                sys.stdout.flush()
-        
-        if not self.quiet:
-            print " "
-        self.pool.join()                
+        self.pool.wait_and_printdots(dispatch_count,self.quiet)    
         pass
         
     
-    
-    
     ######
     def _process_segment_stop(self,failed_seg_status):
-        
-        
+        '''reviews results of gpsegstop commands '''
         success_seg_status=[]
         cmds=self.pool.getCompletedItems()
         for cmd in cmds:
@@ -407,7 +424,7 @@ class GpStop():
     
     
     ######
-    def sighup_master(self):
+    def _sighup_master(self):
         """ assumes prepare() has been called """
         logger.info("Signalling Master postmaster process to reload")        
         pg.ReloadDbConf.local("reload master postgresql.conf",self.gparray.master)
@@ -415,7 +432,7 @@ class GpStop():
     
     
     ######
-    def summarize_actions(self):        
+    def _summarize_actions(self):        
         logger.info("--------------------------------------------")
         logger.info("Master instance parameters")
         logger.info("--------------------------------------------")
@@ -425,7 +442,7 @@ class GpStop():
         logger.info("Master directory                             = %s" % self.master_datadir )
         logger.info("Shutdown mode                                = %s" % self.mode)
         
-        if self.gparray.standbyMaster and self.stop_standby:
+        if self.gparray.standbyMaster and self.stopstandby:
             logger.info("Shutdown Master standby host                 = On")
         else:
             logger.info("Shutdown Master standby host                 = Off")
@@ -439,8 +456,6 @@ class GpStop():
         logger.info(format_string % ("Host","Datadir","Port","Status"))
         for db in self.gparray.getSegDbList():                
             logger.info(format_string % (db.hostname,db.datadir,db.port,db.get_status()))
-    
-    
     
     
     ######
@@ -458,12 +473,6 @@ class GpStop():
         
         return "%-" + str(host_len) + "s  %-" + str(dir_len) + "s  %-" + str(port_len) + "s  %s"
 
-
-    ######
-    def cleanup(self):
-        if self.pool:
-            self.pool.haltWork()
-    
   
   
 #----------------------- Command line option parser ----------------------
@@ -612,44 +621,18 @@ def main():
                         options.cancel_active_connections,
                         master_datadir=options.master_data_directory,
                         parallel=options.parallel,
-                        quiet=options.quiet)
-        gpstop.prepare()
-          
+                        quiet=options.quiet,
+                        masteronly=options.master_only,
+                        sighup=options.request_sighup,
+                        interactive=options.interactive,
+                        stopstandby=options.stop_standby,
+                        restart=options.restart)
         
-        
-        if options.master_only:
-            gpstop.stop_master()                                 
+        if gpstop.stop():
+            sys.exit(0)
         else:
-            if options.request_sighup:
-                gpstop.sighup_master()
-            else:
-                
-                if options.interactive:
-                    gpstop.summarize_actions()
-                    check_to_continue()
-        
-                gpstop.stop_master()
-                
-                if options.stop_standby:
-                    gpstop.stop_standby()
-            
-                gpstop.stop_segments()
-                
-                gpstop.cleanup()
-                
-                if options.restart:
-                    #TODO:  need a way of capturing stdout/stderr from command.
-                    logger.info("Restarting System...")
-                    dont_stop_standby = not options.stop_standby
-                    gp.NewGpStart.local('restarting system',verbose=options.verbose,nostandby=dont_stop_standby)                    
-                    pass
-                
-                                
-                
-                if gpstop.hadFailures:
-                    sys.exit(1)
-                    
-        sys.exit(0)    
+            sys.exit(1)
+ 
     except base.ExecutionError, e:
         logger.fatal("Error occurred: %s\n Command was: '%s'\n"
                      "rc=%d, stdout='%s', stderr='%s'" %\
