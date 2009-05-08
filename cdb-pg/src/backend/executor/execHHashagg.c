@@ -1890,13 +1890,13 @@ void destroy_agg_hash_table(AggState *aggstate)
 	
 	if ( agg->aggstrategy == AGG_HASHED && aggstate->hhashtable != NULL )
 	{
-		reset_agg_hash_table(aggstate);
-
 		elog(HHA_MSG_LVL,
 			"HashAgg: destroying hash table -- ngroup=" INT64_FORMAT " ntuple=" INT64_FORMAT,
 			aggstate->hhashtable->num_ht_groups,
 			aggstate->hhashtable->num_tuples);
 		
+		reset_agg_hash_table(aggstate);
+
 		/* destroy_batches(aggstate->hhashtable); */
 		pfree(aggstate->hhashtable->buckets);
 		pfree(aggstate->hhashtable->bloom);
