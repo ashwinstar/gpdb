@@ -1135,7 +1135,7 @@ if __name__ == '__main__':
                    
         verbose('Building catalog repair scripts')
         # build a script to run these files     
-        script = '#!/bin/sh\n'
+        script = '#!/bin/sh\ncd $(dirname $0)\n'
 
         for seg in Remove:
             # dbid.host.port.dbname.sql
