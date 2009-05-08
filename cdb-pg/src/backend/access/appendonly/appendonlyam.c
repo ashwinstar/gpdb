@@ -921,10 +921,8 @@ getNextStorageBlockInFile(
 				 errdetail_appendonly_scan_block_header(scan),
 				 errcontext_appendonly_scan_block(scan)));
 
-#ifdef USE_ASSERT_CHECKING
 	// Compensate for adjusting the buffer length.
 	scan->debugTrackAvailableLen = availableLen;
-#endif
 
 	if (scan->aos_checksum &&
 		gp_appendonly_verify_block_checksums)
