@@ -1055,7 +1055,7 @@ def checkOwners():
 
     prntmsg('-----------------------------------')
     prntmsg('Checking table ownership')
-    if not GV.version == "8.2.13":
+    if not (GV.version == "8.2.13" or GV.version == "8.2.10"):
         prntmsg('Skipping...')
 
     db = connect2(GV.cfg[1], utilityMode=False)
