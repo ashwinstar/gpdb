@@ -6,11 +6,18 @@ Expands an existing Greenplum Database across new hosts in the array.
 SYNOPSIS
 ******************************************************
 
-gpexpand [-i <configuration_file>] [-f <hosts_file>] [-d <[hh][mm[ss]]]
-[ -c] [-e <YYYY-MM-DD hh:mm:ss>] [-h] [-B <batch_size>] [-a]
-[-D <database_name>][-r] [-n <parallel_processes>]
+gpexpand [-f hosts_file] [-D database_name]
 
-gpexpand -? | -v
+gpexpand -i input_file [-D database_name] [-B batch_size] [-V]
+
+gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']] 
+         [-a] [-n parallel_processes] [-D database_name]
+
+gpexpand -r [-D database_name]
+
+gpexpand -c [-D database_name]
+
+gpexpand -? | -h | --help --verbose | -v
 
 
 Prerequisites:
@@ -101,8 +108,8 @@ Specify the expansion configuration file.
 
 -f <hosts_file>
 
-Specifies the name of a file that contains a list of hosts that will participate in 
-the SSH key exchange. Each line of the file must contain a single host name. 
+Specifies the name of a file that contains a list of new hosts for system 
+expansion. Each line of the file must contain a single host name. 
 
 This file can contain hostnames with or without interfaces specified. The gpexpand 
 utility handles either case, adding interface numbers to end of the hostname if the 
@@ -150,9 +157,9 @@ Remove the expansion schema.
 Roll back a failed expansion setup operation.
 
 
--V 
+-V (no vacuum)
 
-Vacuum catalog tables before creating schema copy.
+Do not vacuum catalog tables before creating schema copy.
 
 
 -v (verbose)
