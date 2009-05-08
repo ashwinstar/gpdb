@@ -74,6 +74,9 @@ Reindex = []
 # constraints which are actually uninforcable
 Constraints = []
 
+# ownership fixups
+Owners = []
+
 ###############################
 def usage(exitarg = None):
     print __doc__
@@ -192,18 +195,19 @@ def connect(user=None, password=None, host=None, port=None,
     return db
 
 #############
-def connect2(cfgrec, user=None, password=None, database=None):
+def connect2(cfgrec, user=None, password=None, database=None, utilityMode=True):
     host = cfgrec['hostname']
     port = cfgrec['port']
     datadir = cfgrec['datadir']
     veryverbose('[INFO] connect %s:%s:%s' % (host, port, datadir))
-    key = "%s.%s.%s.%s.%s.%s" % (host, port, datadir, user, password, database)
+    key = "%s.%s.%s.%s.%s.%s.%s" % (host, port, datadir, user, password, database,
+                                 str(utilityMode))
     conn = GV.db.get(key)
     if conn:
         return conn
 
     conn = connect(host=host, port=port, user=user, password=password, 
-                   database=database, utilityMode=True)
+                   database=database, utilityMode=utilityMode)
     if conn:
         conn.x_cfgrec = cfgrec
         GV.db[key] = conn
@@ -973,7 +977,7 @@ def checkBitmapIndexes():
     and d.datname = current_database();
             ''')
     if db.row_count == 0:
-        prntmsg('[OK] not bitmaps to check')
+        prntmsg('[OK] no bitmaps to check')
         return
 
     # same path as gpinitsystem
@@ -1043,6 +1047,41 @@ def checkBitmapIndexes():
     else:
         prntmsg('[OK] bitmap indexes')
 
+def fixupowners(nspname, relname, rolename):
+    Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % (nspname, relname,
+                                                           rolename))
+
+def checkOwners():
+
+    prntmsg('-----------------------------------')
+    prntmsg('Checking table ownership')
+    if not GV.version == "8.2.13":
+        prntmsg('Skipping...')
+
+    db = connect2(GV.cfg[1], utilityMode=False)
+    qry = '''
+    select distinct n.nspname, c.relname, a.rolname from
+    gp_dist_random('pg_class') r, pg_class c, pg_namespace n, pg_authid a where
+    r.oid = c.oid and r.relowner <> c.relowner and c.relnamespace = n.oid and
+    c.relowner = a.oid;
+    '''
+    db.execute(qry)
+
+    rows = []
+    for row in db.iterate_dict():
+        rows.append(row)
+
+    if len(rows) == 0:
+        prntmsg('[OK] table ownership')
+    else:
+        GV.retcode = 1
+        prntmsg('[ERROR] there are %d ownership issue(s)' % len(rows))
+        prntmsg('[ERROR] %s' % qry)
+        for row in rows:
+            prntmsg('[ERROR] %s %s %s'
+                % (row['nspname'], row['relname'], row['rolname']))
+            fixupowners(row['nspname'], row['relname'], row['rolname'])
+
 def closeDbs():
     for key, db in GV.db.iteritems():
         db.close()
@@ -1076,6 +1115,7 @@ if __name__ == '__main__':
     checkPGClassToast()
     checkPGNamespace()
     checkDistribPolicy()
+    checkOwners()
 
     checkBitmapIndexes()
 
@@ -1083,7 +1123,8 @@ if __name__ == '__main__':
 
     crossDbCheck()
     
-    fixes = (len(Remove) > 0 or len(Reindex) > 0 or len(Constraints))
+    fixes = (len(Remove) > 0 or len(Reindex) > 0 or len(Constraints) or
+             len(Owners))
     if GV.opt['-g'] != None and fixes:
         try:
             if not os.path.exists(GV.opt['-g']):
@@ -1163,6 +1204,27 @@ if __name__ == '__main__':
             file.close()
 
             script += 'echo "Dropping invalid unique constraints"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+        if len(Owners) > 0:
+            Owners = list(set(Owners))
+            filename = 'fixowners.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                prntmsg('[FATAL] unable to create file "%s": %s' %  \
+                        (fullpath, str(e)))
+                sys.exit(1)
+
+            for r in Owners:
+                file.write('%s\n' % r)
+            file.close()
+
+            script += 'echo "Correcting table ownership"\n'
             c = GV.cfg[1]
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
