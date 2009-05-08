@@ -125,11 +125,11 @@ errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 	
 	if (scan->debugTrackReadPosition != headerOffsetInFile)
 		elog(ERROR, 
-		     "Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!! (#1)",
+		     "Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!!",
 		     scan->debugTrackReadPosition, headerOffsetInFile);
 
 	/*
-	 * Format this manually since we were getting a funny value formatted for "block first row number".
+	 * Format this manually since we were getting a funny value formatted for "block header offset in file".
 	 */
 //	errcontext( 
 //		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
@@ -284,6 +284,8 @@ doPadOutRemainder(AppendOnlyInsertDesc aoInsertDesc,
 			     nextWritePosition,
 			     safeWriteRemainder);
 		
+		// Debug checking logic for MPP-5775
+		aoInsertDesc->debugTrackWritePosition += safeWriteRemainder;
 	}
 }
 
@@ -524,18 +526,56 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 static int
 errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
 {
-	int64	headerOffsetInFile;
-
-	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend);
+	char	*relationName = NameStr(aoInsertDesc->aoi_rel->rd_rel->relname);
+	int		segmentFileNum = aoInsertDesc->cur_segno;
+	int64	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend);
+	int64	blockFirstRowNum = aoInsertDesc->blockFirstRowNum;
+	int64	bufferCount = aoInsertDesc->bufferCount;
+	StringInfoData 	stringInfoData;
 	
-	errcontext( 
-		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
-		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-		 NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-		 aoInsertDesc->cur_segno,
-		 headerOffsetInFile,
-		 aoInsertDesc->blockFirstRowNum,
-		 aoInsertDesc->bufferCount);
+	initStringInfo(&stringInfoData);
+	
+	// Debug checking logic for MPP-5775
+	if (aoInsertDesc->bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
+		elog(ERROR, 
+		     "Debug buffer count is 1 but the offset is not 0");
+	
+	if (aoInsertDesc->debugTrackWritePosition != headerOffsetInFile)
+		elog(ERROR, 
+		     "Debug write position " INT64_FORMAT " does not match " INT64_FORMAT " !!!",
+		     aoInsertDesc->debugTrackWritePosition, headerOffsetInFile);
+
+	/*
+	 * Format this manually since we were getting a funny value formatted for "block header offset in file".
+	 */
+//	errcontext( 
+//		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
+//		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+//		 NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+//		 aoInsertDesc->cur_segno,
+//		 headerOffsetInFile,
+//		 aoInsertDesc->blockFirstRowNum,
+//		 aoInsertDesc->bufferCount);
+
+	appendStringInfo(&stringInfoData, 
+					 "Append-Only table '%s'",
+					 relationName);
+	appendStringInfo(&stringInfoData, 
+					 ", segment file #%d",
+					 segmentFileNum);
+	appendStringInfo(&stringInfoData, 
+					 ", block header offset in file = " INT64_FORMAT,
+					 headerOffsetInFile);
+	appendStringInfo(&stringInfoData, 
+					 ", block first row number " INT64_FORMAT,
+					 blockFirstRowNum);
+	appendStringInfo(&stringInfoData, 
+					 ", bufferCount  " INT64_FORMAT,
+					 bufferCount);
+
+	errcontext("%s", stringInfoData.data);
+
+	pfree(stringInfoData.data);
 
 	return 0;
 }
@@ -1923,6 +1963,10 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 							bufferLen,
 							aoInsertDesc->headerLen + AOStorage_RoundUp(dataLen) /* non-compressed size */);
 	}
+
+	// Debug checking logic for MPP-5775
+	aoInsertDesc->debugTrackWritePosition += bufferLen;
+
 }
 
 /* ----------------------------------------------------------------
@@ -2157,6 +2201,9 @@ appendonly_insert_init(Relation rel, int segno)
 		 				aoInsertDesc->headerLen;
 
 	aoInsertDesc->nonCompressedHeader = NULL;
+
+	// Debug checking logic for MPP-5775
+	aoInsertDesc->debugTrackWritePosition = INT64CONST(0);
 
 	maxOverrun = 0;		// Assume none.
 	if (aoInsertDesc->shouldCompress)

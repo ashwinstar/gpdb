@@ -91,6 +91,9 @@ typedef struct AppendOnlyInsertDescData
 	int32			qlzScratchCompressLen;
 	int32			qlzScratchCompressGuardLen;
 
+
+	// Debug checking variables for MPP-5775
+	int64			debugTrackWritePosition;
 } AppendOnlyInsertDescData;
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;
