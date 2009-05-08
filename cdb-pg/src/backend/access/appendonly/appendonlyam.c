@@ -118,14 +118,15 @@ errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 	
 	initStringInfo(&stringInfoData);
 
-#ifdef USE_ASSERT_CHECKING
+	// Debug checking logic for MPP-5775
 	if (scan->bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
-		errcontext("Debug buffer count is 1 but the offset is not 0");
+		elog(ERROR, 
+		     "Debug buffer count is 1 but the offset is not 0");
 	
 	if (scan->debugTrackReadPosition != headerOffsetInFile)
-		errcontext("Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!! (#1)",
-		           scan->debugTrackReadPosition, headerOffsetInFile);
-#endif
+		elog(ERROR, 
+		     "Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!! (#1)",
+		     scan->debugTrackReadPosition, headerOffsetInFile);
 
 	/*
 	 * Format this manually since we were getting a funny value formatted for "block first row number".
@@ -354,10 +355,9 @@ doSkipPadding(AppendOnlyScanDesc scan,
 							scan->bufferCount)));			
 		}
 		
-#ifdef USE_ASSERT_CHECKING
+		// Debug checking logic for MPP-5775
 		scan->debugTrackReadPosition += scan->debugTrackAvailableLen;
 		scan->debugTrackAvailableLen = availableLen;
-#endif
 		
 		// UNDONE: For verification purposes, we should verify the
 		// UNDONE: reminder is all zeroes.
@@ -501,10 +501,9 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 	scan->rowNumberInSegmentFile = 0;
 
-#ifdef USE_ASSERT_CHECKING
+	// Debug checking logic for MPP-5775
 	scan->debugTrackReadPosition = INT64CONST(0);
 	scan->debugTrackAvailableLen = 0;
-#endif
 	
 	if (Debug_appendonly_print_scan)
 		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, maximum buffer length %d, large read length %d)",
@@ -755,10 +754,9 @@ getNextStorageBlockInFile(
 	scan->bufferCount++;
 	scan->blockFirstRowNum = scan->rowNumberInSegmentFile + 1;
 
-#ifdef USE_ASSERT_CHECKING
+	// Debug checking variables for MPP-5775
 	scan->debugTrackReadPosition += scan->debugTrackAvailableLen;
 	scan->debugTrackAvailableLen = availableLen;
-#endif
 			
 				
 	if (availableLen != scan->headerLen)
@@ -817,11 +815,11 @@ getNextStorageBlockInFile(
 							    NameStr(scan->aos_rd->rd_rel->relname),
 							    SCANNED_SEGNO,
 								*headerOffsetInFile,
-								scan->bufferCount)));			
-#ifdef USE_ASSERT_CHECKING
+								scan->bufferCount)));
+			
+			// Debug checking logic for MPP-5775
 			scan->debugTrackReadPosition += scan->debugTrackAvailableLen;
 			scan->debugTrackAvailableLen = availableLen;
-#endif
 					
 			break;
 		}

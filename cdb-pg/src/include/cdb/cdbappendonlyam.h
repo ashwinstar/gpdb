@@ -158,10 +158,9 @@ typedef struct AppendOnlyScanDescData
 
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */
 	
-#ifdef USE_ASSERT_CHECKING
+	// Debug checking variables for MPP-5775
 	int64		debugTrackReadPosition;
 	int32		debugTrackAvailableLen;
-#endif
 }	AppendOnlyScanDescData;
 
 typedef AppendOnlyScanDescData *AppendOnlyScanDesc;
