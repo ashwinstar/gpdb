@@ -201,7 +201,21 @@ CHK_PARAMS () {
 			ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		    fi
 		fi
+		
+		if [ x"" != x"$QD_PRIMARY_ARRAY" ] ; then
+		    if [ x"" != x"${MASTER_PORT}" ] ; then
+		        ERROR_EXIT "[FATAL]:-Problem with configuration. Cannot specify MASTER_PORT and QD_PRIMARY_ARRAY" 2    		
+		    fi
 
+		    if [ x"" != x"${MASTER_HOSTNAME}" ] ; then
+				ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_HOSTNAME and QD_PRIMARY_ARRAY" 2    			
+		    fi
+
+		    if [ x"" != x"${MASTER_DIRECTORY}" ] ; then
+				ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_DIRECTORY and QD_PRIMARY_ARRAY" 2    			
+		    fi
+		fi
+		
 		#Check for required definitions in the CLUSTER_CONFIG file
 		if [ x"" = x"$PORT_BASE" ]; then
 				ERROR_EXIT "[FATAL]:-PORT_BASE not specified in $CLUSTER_CONFIG file, is this the correct instance configuration file." 2
