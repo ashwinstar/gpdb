@@ -495,6 +495,14 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				/* Generate extra oids for relfilenodes to be used in bitmap indexes if any. */
 				gen_oids_for_bitmaps(vacstmt, onerel);
 
+				/*
+				 * We have to acquire a ShareLock for the relation which has bitmap indexes,
+				 * since reindex is used later. Otherwise, concurrent vacuum and insert may
+				 * cause deadlock, see MPP-5960.
+				 */
+				if (vacstmt->extra_oids != NULL)
+					LockRelation(onerel, ShareLock);
+
 				dispatchVacuum(vacstmt, &stats_context);
 			}
 
