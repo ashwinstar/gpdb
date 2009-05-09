@@ -25,12 +25,15 @@ try:
     from gppylib.userinput import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
+    import figleaf
 except ImportError, e:    
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 
-# contants
+# constants
 MAX_PARALLEL_EXPANDS=16
+MAX_BATCH_SIZE=128
+
 GPDB_STOPPED=1
 GPDB_STARTED=2
 GPDB_UTILITY=3
@@ -50,7 +53,9 @@ to add with the format:
 If an input file is not specified, gpexpand will ask a series of questions 
 and create one.
 """,
-"""
+]
+
+_TODO = ["""
 
 Remaining TODO items:
 ====================
@@ -65,13 +70,23 @@ Remaining TODO items:
     keeping matches reality. we don't have a perfect transactional
     model since the tables can be in a different database from
     where the gpexpand schema is kept. """,
-
-"""* running --clean requires you to have your database started.  often times you run
-     this when the database is stopped and possibly can't be started fully.""",
      
 """* currently requires that GPHOME and PYTHONPATH be set on all of the remote hosts of
      the system.  should get rid of this requirement. """
 ]
+
+_usage = """gpexpand [-f hosts_file] [-D database_name]
+
+gpexpand -i input_file [-D database_name] [-B batch_size] [-V]
+
+gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']] 
+         [-a] [-n parallel_processes] [-D database_name]
+
+gpexpand -r [-D database_name]
+
+gpexpand -c [-D database_name]
+
+gpexpand -? | -h | --help --verbose | -v"""
 
 EXECNAME = os.path.split(__file__)[-1]
 
@@ -84,7 +99,7 @@ def parseargs():
                 description=' '.join(description.split()),
                 version='%prog version $Revision: #12 $')
     parser.setHelp(_help)
-    parser.set_usage('%prog [--help] [options] ')
+    parser.set_usage('%prog ' + _usage)
     parser.remove_option('-h')
     
     parser.add_option('-c','--clean', action='store_true',
@@ -108,7 +123,7 @@ def parseargs():
                       'option is not given, PGDATABASE will be used.  The template1, ' \
                       'template0 and postgres databases cannot be used.')
     parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
-                      help='Expansion configuraiton batch size')
+                      help='Expansion configuration batch size. Valid values are 1-%d' % MAX_BATCH_SIZE)
     parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
                         help='number of tables to expand at a time. Valid values are 1-%d.' % MAX_PARALLEL_EXPANDS)
     parser.add_option('-v','--verbose', action='store_true',
@@ -126,13 +141,18 @@ def parseargs():
         logger.error('Unknown argument %s' % args[0])
         parser.exit()
     
-    if options.usage:
-        OptionParser.print_help(parser)
-        parser.exit()
-    
     #-n sanity check
     if options.parallel > MAX_PARALLEL_EXPANDS or options.parallel < 1:
         logger.error('Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_EXPANDS)
+        parser.print_help()
+        parser.exit()
+
+    proccount=os.environ.get('GP_MGMT_PROCESS_COUNT')
+    if options.batch_size == 16 and proccount is not None:
+        options.batch_size = int(proccount)
+        
+    if options.batch_size < 1 or options.batch_size > 128:
+        logger.error('Invalid argument.  -B value must be >= 1 and <= %s' % MAX_BATCH_SIZE)
         parser.print_help()
         parser.exit()
 
@@ -907,53 +927,57 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             
         return gpexpand_db_status
     
-    def validate_database_settings(self, checkMaxConnect=True, checkUnalterableTables=True):
-        """Validates settings to help check that gpexpand can run 
-        successfully given the options passed in"""
+    def validate_max_connections(self):
+        try:
+            conn = dbconn.connect(self.dburl, utility=True)
+            max_connections = int(catalog.getSessionGUC(conn, 'max_connections'))
+        except DatabaseError,ex:
+            if options.verbose:
+                logger.exception(ex)
+            logger.error('Failed to check max_connections GUC')
+            if conn: conn.close()
+            raise ex
+            
+        if max_connections < options.parallel * 2 + 1:
+            self.logger.error('max_connections is too small to expand %d tables at' % options.parallel)
+            self.logger.error('a time.  This will lead to connection errors.  Either')
+            self.logger.error('reduce the value for -n passed to gpexpand or raise')
+            self.logger.error('max_connections in postgresql.conf')
+            return False
         
-        # get the max_connections value to check if it's
-        # too small for parallel arg
+        return True
+
+    def validate_unalterable_tables(self):
         conn = None
         max_connections = 0
         unalterable_tables = []
 
         try:
             conn = dbconn.connect(self.dburl, utility=True)
-            if checkMaxConnect:
-                max_connections = int(catalog.getSessionGUC(conn, 'max_connections'))
+            databases = catalog.getDatabaseList(conn)
+            conn.close()
             
-            if checkUnalterableTables:
-                databases = catalog.getDatabaseList(conn)
+            tempurl = copy.deepcopy(self.dburl)
+            for db in databases:
+                if db[0] == 'template0':
+                    continue
+                self.logger.info('Checking database %s for unalterable tables...' % db[0])
+                tempurl.pgdb = db[0]
+                conn = dbconn.connect(tempurl, utility=True)
+                cursor = dbconn.execSQL(conn, unalterable_table_sql)
+                for row in cursor:
+                    unalterable_tables.append(row)
+                cursor.close()
                 conn.close()
-            
-                tempurl = copy.deepcopy(self.dburl)
-                for db in databases:
-                    if db[0] == 'template0':
-                        continue
-                    self.logger.info('Checking database %s for unalterable tables...' % db[0])
-                    tempurl.pgdb = db[0]
-                    conn = dbconn.connect(tempurl, utility=True)
-                    cursor = dbconn.execSQL(conn, unalterable_table_sql)
-                    for row in cursor:
-                        unalterable_tables.append(row)
-                    cursor.close()
-                    conn.close()
             
         except DatabaseError,ex:
             if options.verbose:
                 logger.exception(ex)
-            logger.error('Failed to check database settings.')
+            logger.error('Failed to check for unalterable tables.')
             if conn: conn.close()
             raise ex
-            
-        if checkMaxConnect and max_connections < options.parallel * 2 + 1:
-            self.logger.error('max_connections is too small to expand %d tables at' % options.parallel)
-            self.logger.error('a time.  This will lead to connection errors.  Either')
-            self.logger.error('reduce the value for -n passed to gpexpand or raise')
-            self.logger.error('max_connections in postgresql.conf')
-            return False
 
-        if checkUnalterableTables and len(unalterable_tables) > 0:
+        if len(unalterable_tables) > 0:
             self.logger.error('The following tables cannot be altered because they contain')
             self.logger.error('dropped columns of user defined types:')
             for t in unalterable_tables:
@@ -1712,10 +1736,9 @@ UPDATE gp_distribution_policy
             dbconn.execSQL(self.conn, copy_gpexpand_status_detail_sql)
         
         self.logger.info("Removing gpexpand schema")
-        dbconn.execSQL(self.conn,drop_schema_sql) 
-        self.conn.commit()
-        pass
-
+        c = dbconn.connect(self.dburl)
+        dbconn.execSQL(c,drop_schema_sql) 
+        c.commit()
 
     def connect_database(self,dbname):
         test_url = copy.deepcopy(self.dburl)
@@ -2074,6 +2097,12 @@ try:
     # setup signal handlers so we can clean up correctly
     signal.signal(signal.SIGTERM, sig_handler)
     signal.signal(signal.SIGHUP, sig_handler)
+    
+    use_figleaf=os.getenv('USE_FIGLEAF', None)
+    
+    if use_figleaf:
+        figleaf.start()
+
 
     logger = get_default_logger()
     setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
@@ -2137,14 +2166,14 @@ try:
             sys.exit(1)
     
     if gpexpand_db_status == 'SETUP DONE' or gpexpand_db_status == 'EXPANSION STOPPED':
-        if not gp_expand.validate_database_settings(True, False):
+        if not gp_expand.validate_max_connections():
             logger.info('Exiting...')
             sys.exit(1)
         gp_expand.perform_expansion()
     elif gpexpand_db_status == 'EXPANSION STARTED':
         logger.info('It appears the last run of gpexpand did not exit cleanly.')
         logger.info('Resuming the expansion process...')
-        if not gp_expand.validate_database_settings(True, False):
+        if not gp_expand.validate_max_connections():
             logger.info('Exiting...')
             sys.exit(1)
         gp_expand.perform_expansion()        
@@ -2153,7 +2182,7 @@ try:
         logger.info('If you want to expand again, run gpexpand -c to remove')
         logger.info('the gpexpand schema and begin a new expansion')
     elif gpexpand_db_status == None and gpexpand_file_status == None and options.filename:
-        if not gp_expand.validate_database_settings(False, True):
+        if not gp_expand.validate_unalterable_tables():
             logger.info('Exiting...')
             sys.exit(1)              
         gp_expand.read_input_file()
@@ -2204,3 +2233,6 @@ finally:
             remove_pid_file(options.master_data_directory)
     except NameError:
         pass
+    if use_figleaf:
+        figleaf.stop()
+        figleaf.write_coverage(os.path.expanduser("~") + '/.figleaf',append=True)
