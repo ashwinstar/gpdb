@@ -428,10 +428,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	if (GangContext == NULL)
 	{ 
 		GangContext = AllocSetContextCreate(TopMemoryContext,
-											 "Gang Context",
-											 ALLOCSET_DEFAULT_MINSIZE,
-											 ALLOCSET_DEFAULT_INITSIZE,
-											 ALLOCSET_DEFAULT_MAXSIZE);
+											"Gang Context",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
 	}
 
 	oldContext = MemoryContextSwitchTo(GangContext);
@@ -464,9 +464,9 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	Assert(segdb_count > 0);
 	
 	if (portal)
-			dispatchagents = portal->dispatchagents;
+		dispatchagents = portal->dispatchagents;
 	else
-			dispatchagents = unnamedPortalDispatchAgents;
+		dispatchagents = unnamedPortalDispatchAgents;
 	/*
 	 * If we are using Dispatch Agents, assign the segDBs to the agents, and ask them to set 
 	 * up the gang.
@@ -557,7 +557,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			if (PQresultStatus(result)!=PGRES_COMMAND_OK)
 			{
 				elog(ERROR,"Dispatch Agent unable to create gang, %s %s",PQresStatus(PQresultStatus(result)),
-						PQresultErrorMessage(result));
+					 PQresultErrorMessage(result));
 			}
 			
 			 
@@ -569,8 +569,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			for (i = 0; i< conninfo->nsegs; i++)
 			{
 				elog(LOG,"DA %d: Gang_id %d Result %d MotionListener %d/%d  pid %d",whichagent, gang_id,i, 
-						(gresp[i].motionListener & 0x0ffff),
-						((gresp[i].motionListener>>16) & 0x0ffff), gresp[i].pid); 
+					 (gresp[i].motionListener & 0x0ffff),
+					 ((gresp[i].motionListener>>16) & 0x0ffff), gresp[i].pid); 
 			}
 			
 			/*
@@ -637,20 +637,20 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		newGangDefinition->active = false;
 		
 		if (DEBUG1 >= log_min_messages)
+		{
+			char		msec_str[32];
+			switch (check_log_duration(msec_str, false))
 			{
-				char		msec_str[32];
-				switch (check_log_duration(msec_str, false))
-				{
-					case 1:
-					case 2:
-						ereport(LOG, (errmsg("duration to gang_id %d created: %s ms", gang_id,msec_str)));
-						break;
-				}
+				case 1:
+				case 2:
+					ereport(LOG, (errmsg("duration to gang_id %d created: %s ms", gang_id,msec_str)));
+					break;
 			}
+		}
 		
 		MemoryContextSwitchTo(oldContext);
 		
-		return newGangDefinition;
+		return newGangDefinition; /* dispatch-agents are finished */
 	}
 	
 	/*
@@ -672,12 +672,10 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	else
 		max_threads = 1 + (segdb_count - 1) / gp_connections_per_thread;
 	Assert(max_threads > 0);
-	doConnectParmsAr = (DoConnectParms *)
-		palloc0(max_threads * sizeof(DoConnectParms));
+	doConnectParmsAr = (DoConnectParms *)palloc0(max_threads * sizeof(DoConnectParms));
 	segdbs_in_thread_pool = 0;
 
 	newGangDefinition->active = true;
-
 
 	/*
 	 * In this loop, we check each segdb.  If it's marked as valid, and is not
@@ -693,15 +691,15 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		 */
 		segdbDesc = &newGangDefinition->db_descriptors[i];
 
+		elog(DEBUG2, "createGang: segment %d/%d descriptor %p (gangdef size %d)", i, segdb_count, segdbDesc, newGangDefinition->size);
+
 		/*
 		 * This function handles putting the segdbDesc into the proper thread's Parms
 		 * structure, based on gp_connections_per_thread.
 		 * It does this based on the value of segdbs_in_thread_pool,
 		 * which it increments each time it is called.
 		 */
-		addSegDBToConnThreadPool(doConnectParmsAr, &segdbs_in_thread_pool,
-								 segdbDesc);
-
+		addSegDBToConnThreadPool(doConnectParmsAr, &segdbs_in_thread_pool, segdbDesc);
 	}
 
 	/*
@@ -816,7 +814,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			 * are taken care of later.
 			 */
 			ereport(LOG, (errcode(segdbDesc->errcode),
-					  errmsg("Warning: %s", segdbDesc->error_message.data)));
+						  errmsg("Warning: %s", segdbDesc->error_message.data)));
 			ereport(WARNING, (errcode(ERRCODE_WARNING_GP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
@@ -894,11 +892,23 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	{
 		bool		errorOut;
 
-		if (type == GANGTYPE_MIRROR_WRITER && successful_connections == 0)
-			mirroringNotConfigured = true;
+		if (type == GANGTYPE_MIRROR_WRITER)
+		{
+			/*
+			 * In the presence of failures a mirror-writer will
+			 * *always* have fewer than the requested number of
+			 * segments.
+			 */
+			if (successful_connections == 0)
+			{
+				mirroringNotConfigured = true;
+				newGangDefinition = NULL;
+			}
 
-		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors,
-												  newGangDefinition->size);
+			return newGangDefinition;
+		}
+
+		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors, newGangDefinition->size);
 
 		disconnectAndDestroyGang(newGangDefinition);
 		CheckForResetSession();
@@ -1235,8 +1245,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	newGangDefinition->db_descriptors =
 		(SegmentDatabaseDescriptor *) palloc0(cdb_component_dbs->
 											  total_segments *
-											  sizeof
-											  (SegmentDatabaseDescriptor));
+											  sizeof(SegmentDatabaseDescriptor));
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
 
@@ -1369,6 +1378,11 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 			mirroringNotConfigured = true;
 			return NULL;
 		}
+
+		elog(DEBUG1, "buildGangDefinition: newGangDefinition size %d seg_count %d", newGangDefinition->size, seg_count);
+		newGangDefinition->size = seg_count;
+
+		return newGangDefinition;
 	}
 
 	/* 
@@ -1419,14 +1433,13 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 		firsttime = (*segdbCount) == 0;
 	else
 		firsttime = (*segdbCount) % gp_connections_per_thread == 0;
+
 	if (firsttime)
 	{
 		Assert(gp_connections_per_thread >= 0);
 		pParms->segdbDescPtrArray =
 			(SegmentDatabaseDescriptor **) palloc0((gp_connections_per_thread == 0 ? getgpsegmentCount() : gp_connections_per_thread) *
-												   sizeof
-												   (SegmentDatabaseDescriptor
-													*));
+												   sizeof(SegmentDatabaseDescriptor*));
 		MemSet(&pParms->thread, 0, sizeof(pthread_t));
 		pParms->db_count = 0;
 	}
@@ -1671,10 +1684,16 @@ thread_DoConnect(void *arg)
 	 */
 	for (i = 0; i < db_count; i++)
 	{
-
 		PQExpBufferData buffer;
 
 		segdbDesc = segdbDescPtrArray[i];
+
+		if (segdbDesc == NULL || segdbDesc->segment_database_info == NULL)
+		{
+			write_log("thread_DoConnect: bad segment definition during gang creation %d/%d\n", i, db_count);
+			continue;
+		}
+
 		q = segdbDesc->segment_database_info;
 
 		/*
@@ -1693,10 +1712,9 @@ thread_DoConnect(void *arg)
 
 		build_gpqeid_params(&buffer);
 
-
 		err = addOptions(&buffer,
-				(pParms->type == GANGTYPE_PRIMARY_WRITER || pParms->type == GANGTYPE_MIRROR_WRITER),
-				q->segindex,q->isprimary,pParms->i_am_superuser);
+						 (pParms->type == GANGTYPE_PRIMARY_WRITER || pParms->type == GANGTYPE_MIRROR_WRITER),
+						 q->segindex, q->isprimary, pParms->i_am_superuser);
 
 		if (err <= 0)
 		{
@@ -1705,7 +1723,7 @@ thread_DoConnect(void *arg)
 
 			segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
 			appendPQExpBuffer(&segdbDesc->error_message,
-					"Internal error: AddOption %s failed\n", errguc->name);
+							  "Internal error: AddOption %s failed\n", errguc->name);
 			PQfinish(segdbDesc->conn);
 			segdbDesc->conn = NULL;
 		}
@@ -1717,8 +1735,8 @@ thread_DoConnect(void *arg)
 				{
 					segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
 					appendPQExpBuffer(&segdbDesc->error_message,
-							"Internal error: No motion listener port for %s\n",
-							segdbDesc->whoami);
+									  "Internal error: No motion listener port for %s\n",
+									  segdbDesc->whoami);
 					PQfinish(segdbDesc->conn);
 					segdbDesc->conn = NULL;
 				}
