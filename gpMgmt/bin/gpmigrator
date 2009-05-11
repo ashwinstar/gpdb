@@ -2065,7 +2065,7 @@ This issue must be resolved before upgrade can complete.
             # translate to new pg_hba.conf format
             if upgrdfmt:
                 line = re.compile('ident sameuser$').sub('ident', line)
-                line = re.compile('ident (.*)$').sub('ident map=\\1', line)
+                line = re.compile('ident (?!map=)(.*)$').sub('ident map=\\1', line)
             else:
                 line = re.compile('ident$').sub('ident sameuser', line)
                 line = re.compile('ident map=(.*)$').sub('ident \\1', line)
