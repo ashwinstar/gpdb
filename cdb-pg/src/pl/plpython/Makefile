@@ -24,8 +24,12 @@ endif
 # Darwin (OS X) has its own ideas about how to do this.
 ifeq ($(PORTNAME), darwin)
 shared_libpython = yes
-override python_libspec := -framework Python
-override python_additional_libs :=
+# Replaced to allow use of Greenplum-provided Python
+#override python_libspec := -framework Python
+#override python_additional_libs :=
+# sys.prefix reflects the runtime location of the python tree;
+# the GP install has the dylib in the lib directory of that tree.
+override python_libspec := -L$(shell ${PYTHON} -c "import sys, os; print os.path.join(sys.prefix, 'lib')") -lpython${python_version}
 endif
 
 # If we don't have a shared library and the platform doesn't allow it

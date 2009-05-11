@@ -57,9 +57,10 @@ EOF
     fi
 fi
 
-#setup PYTHONPATH
+#setup PYTHONPATH & PYTHONHOME
 cat <<EOF
 PYTHONPATH=\$GPHOME/lib/python
+PYTHONHOME=\$GPHOME/ext/python
 EOF
 
 cat <<EOF
@@ -79,4 +80,5 @@ fi
 
 cat <<EOF
 export PYTHONPATH
+export PYTHONHOME
 EOF

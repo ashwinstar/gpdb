@@ -450,6 +450,7 @@ LOADERS_FILESET_BINEXT = $(strip $(tmpLOADERS_FILESET_BINEXT))
 
 # ship python on Linux, OSX, and Solaris
 osx104_x86_PYTHON=/opt/python-2.5.1
+osx105_x86_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel4_x86_32_PYTHON=/opt/python-2.5.1
 rhel4_x86_64_PYTHON=/opt/python-2.5.1
 rhel5_x86_32_PYTHON=/opt/python-2.5.1
@@ -467,8 +468,8 @@ BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 ifneq "$(BLD_PYTHON)" ""
 tmpPATH=$(BLD_PYTHON)/bin:$(PATH)
 export PATH:=$(tmpPATH)
-tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(MAC_PREFIX)LD_LIBRARY_PATH)
-export $(MAC_PREFIX)LD_LIBRARY_PATH:=$(tmpLD_LIBRARY_PATH)
+tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_MAC_PREFIX)LD_LIBRARY_PATH)
+export $(BLD_MAC_PREFIX)LD_LIBRARY_PATH:=$(tmpLD_LIBRARY_PATH)
 endif
 
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
@@ -590,8 +591,8 @@ loaders :
 	mkdir -p $(LOADERSINSTLOC_BINEXT)
 	(cd $(GPMGMT)/bin/ext/ && $(TAR) cf - $(LOADERS_FILESET_BINEXT)) | (cd $(LOADERSINSTLOC_BINEXT)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 ifneq "$($(BLD_ARCH)_PYTHON)" ""
-	mkdir -p $(LOADERSINSTLOC_EXT)/python-2.5.1
-	(cd $($(BLD_ARCH)_PYTHON) && $(TAR) cf - .) | (cd $(LOADERSINSTLOC_EXT)/python-2.5.1/ && $(TAR) xpf -)$(check_pipe_for_errors)
+	mkdir -p $(LOADERSINSTLOC_EXT)/python
+	(cd $($(BLD_ARCH)_PYTHON) && $(TAR) cf - .) | (cd $(LOADERSINSTLOC_EXT)/python/ && $(TAR) xpf -)$(check_pipe_for_errors)
 endif
 	mkdir -p $(LOADERSINSTLOC_LIB)
 ifneq "$(LOADERS_FILESET_LIB)" ""
@@ -823,8 +824,7 @@ copylibs : thirdparty-dist
 	    (cd `dirname $$lib` && $(TAR) cf - `basename $$lib`) | (cd $(INSTLOC)/lib/ && $(TAR) xpf -)$(check_pipe_for_errors); \
 	    echo "done."; \
 	done
-	# Create the python directory to flag to build scripts that python has been handled even
-	# on OS X Leopard where we no longer ship Python
+	# Create the python directory to flag to build scripts that python has been handled
 	mkdir -p $(INSTLOC)/ext/python
 	@if [ ! -z "$(BLD_PYTHON)" ]; then \
 	    echo "Copying python from $(BLD_PYTHON) into $(INSTLOC)/ext/python..."; \

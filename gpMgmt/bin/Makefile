@@ -57,7 +57,7 @@ PYGRESQL_DIR=PyGreSQL-$(PYGRESQL_VERSION)
 pygresql:
 	@echo "--- PyGreSQL"
 	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PYGRESQL_DIR).tar.gz
-	cd $(INSTLOC)/ && . greenplum_path.sh \
+	cd $(INSTLOC)/ && . greenplum_path.sh && unset PYTHONHOME \
 	  && cd $(PYLIB_SRC)/$(PYGRESQL_DIR) && CC="$(strip gcc $(BLD_CFLAGS))" LDFLAGS="$(BLD_CFLAGS)" python setup.py build
 	mkdir -p $(PYLIB_DIR)/pygresql
 	cp -r $(PYLIB_SRC)/$(PYGRESQL_DIR)/build/lib.*/* $(PYLIB_DIR)/pygresql
