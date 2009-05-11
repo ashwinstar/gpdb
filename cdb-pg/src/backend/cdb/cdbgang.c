@@ -910,6 +910,15 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors, newGangDefinition->size);
 
+		/*
+		 * don't error out if our DTM isn't started yet. See
+		 * MPP-5764: ideally this would be fixed in
+		 * FtsHandleGangConnectionFailure.
+		 * 
+		 */
+		if (shmDtmStarted != NULL && !*shmDtmStarted)
+			errorOut = false;
+
 		disconnectAndDestroyGang(newGangDefinition);
 		CheckForResetSession();
 
@@ -1213,8 +1222,8 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		
         /* Build segdb descriptor. */
         segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(*segdbDesc));
-		cdbconn_initSegmentDescriptor(segdbDesc,
-									  cdbinfo);
+		cdbconn_initSegmentDescriptor(segdbDesc, cdbinfo);
+
 	    newGangDefinition->size = 1;
 	    newGangDefinition->segdb_count = 1;
 	    newGangDefinition->db_descriptors = segdbDesc;
@@ -1243,9 +1252,8 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 
 
 	newGangDefinition->db_descriptors =
-		(SegmentDatabaseDescriptor *) palloc0(cdb_component_dbs->
-											  total_segments *
-											  sizeof(SegmentDatabaseDescriptor));
+		(SegmentDatabaseDescriptor *)palloc0(cdb_component_dbs->total_segments *
+											 sizeof(SegmentDatabaseDescriptor));
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
 
@@ -1392,6 +1400,13 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	if (newGangDefinition->size != seg_count)
 	{
 		FtsReConfigureMPP(false);
+
+		if (shmDtmStarted != NULL && !*shmDtmStarted)
+		{
+			elog(LOG, "Fault detected prior to dtm-startup squelching error.");
+			return NULL;
+		}
+
 		elog(ERROR, "Not all primary segment instances are active and connected");
 		/* not reached */
 	}
