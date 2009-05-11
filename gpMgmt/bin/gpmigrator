@@ -513,6 +513,13 @@ class GPUpgrade:
             usage()
             raise UpgradeError('Error parsing input: ' + str(e))
 
+        if options.quiet and options.debug:
+            parser.error('cannot specify -q and --debug at the same time')
+        elif options.prepare and options.revert:
+            parser.error('cannot specify --prepare and -R at the same time')
+        elif options.execute and options.revert:
+            parser.error('cannot specify --execute and -R at the same time')
+
         if options.revert:
             self.revert = True
 
