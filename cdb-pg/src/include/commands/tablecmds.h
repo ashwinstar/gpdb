@@ -20,6 +20,7 @@
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/relation.h"
+#include "parser/parse_node.h"
 
 extern Oid	DefineRelation(CreateStmt *stmt, char relkind);
 
