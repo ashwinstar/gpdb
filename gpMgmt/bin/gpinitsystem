@@ -181,8 +181,12 @@ CHK_PARAMS () {
 		    $CAT $CLUSTER_CONFIG|$GREP -v "^#" >> $LOG_FILE
 		    LOG_MSG "[INFO]:-Completed $CLUSTER_CONFIG dump to logfile"
 		#Source the cluster configuration file
-		    LOG_MSG "[INFO]:-Reading Greenplum configuration file $CLUSTER_CONFIG"
+		    LOG_MSG "[INFO]:-Reading Greenplum configuration file $CLUSTER_CONFIG" 1
 		    . $CLUSTER_CONFIG
+			
+		    if [ x"" != x"$QD_PRIMARY_ARRAY" ] ; then
+			ERROR_EXIT "[FATAL]:-Cannot specify QD_PRIMARY_ARRAY in '-c <config file>'.  Only valid with '-I <input file>'" 2
+		    fi
 		else
 		    LOG_MSG "[INFO]:-Reading Greenplum input configuration file $INPUT_CONFIG"
 		    READ_INPUT_CONFIG
@@ -202,19 +206,7 @@ CHK_PARAMS () {
 		    fi
 		fi
 		
-		if [ x"" != x"$QD_PRIMARY_ARRAY" ] ; then
-		    if [ x"" != x"${MASTER_PORT}" ] ; then
-		        ERROR_EXIT "[FATAL]:-Problem with configuration. Cannot specify MASTER_PORT and QD_PRIMARY_ARRAY" 2    		
-		    fi
-
-		    if [ x"" != x"${MASTER_HOSTNAME}" ] ; then
-				ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_HOSTNAME and QD_PRIMARY_ARRAY" 2    			
-		    fi
-
-		    if [ x"" != x"${MASTER_DIRECTORY}" ] ; then
-				ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify MASTER_DIRECTORY and QD_PRIMARY_ARRAY" 2    			
-		    fi
-		fi
+	
 		
 		#Check for required definitions in the CLUSTER_CONFIG file
 		if [ x"" = x"$PORT_BASE" ]; then
@@ -1543,8 +1535,10 @@ READ_INPUT_CONFIG () {
     MULTI_HOME=0
 
 
-   if [ $TOTAL_SEG -ne $TOTAL_MIRRORS ] ; then
-	ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify different number of primary and mirror segments." 2   
+   if [ $TOTAL_MIRRORS -ne 0 ] ; then
+	    if [ $TOTAL_SEG -ne $TOTAL_MIRRORS ] ; then
+	        ERROR_EXIT "[FATAL]:-Problem with configuration file. Cannot specify different number of primary and mirror segments." 2   
+		fi
    fi
    
 }
