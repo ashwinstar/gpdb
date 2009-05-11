@@ -1730,15 +1730,16 @@ UPDATE gp_distribution_policy
                 sys.exit(0)
 
         # See if user wants to dump the status_detail table to file
+        c = dbconn.connect(self.dburl)
         if ask_yesno('', "Do you want to dump the gpexpand.status_detail table to file?",'Y'):
             self.logger.info("Dumping gpexpand.status_detail to %s/gpexpand.status_detail" % options.master_data_directory)
             copy_gpexpand_status_detail_sql = "COPY gpexpand.status_detail TO '%s/gpexpand.status_detail'" %options.master_data_directory
-            dbconn.execSQL(self.conn, copy_gpexpand_status_detail_sql)
+            dbconn.execSQL(c, copy_gpexpand_status_detail_sql)
         
         self.logger.info("Removing gpexpand schema")
-        c = dbconn.connect(self.dburl)
         dbconn.execSQL(c,drop_schema_sql) 
         c.commit()
+        c.close()
 
     def connect_database(self,dbname):
         test_url = copy.deepcopy(self.dburl)
