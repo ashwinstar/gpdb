@@ -129,6 +129,12 @@ typedef struct
 	List *allListVals;
 } partValidationState;
 
+typedef struct
+{
+	ParseState *pstate;
+	int location;
+} range_partition_ctx;
+
 static List *do_parse_analyze(Node *parseTree, ParseState *pstate);
 static void parse_analyze_error_callback(void *parsestate);     /*CDB*/
 static Query *transformStmt(ParseState *pstate, Node *stmt,
@@ -4728,6 +4734,54 @@ preprocess_range_spec(partValidationState *vstate)
 	spec->partElem = sort_range_elems(vstate->pBy->keyopclass, newelts);
 }
 
+static bool
+range_partition_walker(Node *node, void *context)
+{
+	range_partition_ctx *ctx = (range_partition_ctx *)context;
+	if (node == NULL)
+		return false;
+	else if (IsA(node, Const))
+	{
+		Const *c = (Const *)node;
+
+		if (c->constisnull)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot use NULL with range partition specification"),
+					 parser_errposition(ctx->pstate, ctx->location)));
+		return false;
+	}
+	else if (IsA(node, A_Const))
+	{
+		A_Const *c = (A_Const *)node;
+		if (IsA(&c->val, Null))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot use NULL with range partition specification"),
+					 parser_errposition(ctx->pstate, ctx->location)));
+		return false;
+	}
+	return expression_tree_walker(node, range_partition_walker, ctx);
+}
+
+void
+PartitionRangeItemIsValid(ParseState *pstate, PartitionRangeItem *pri)
+{
+	ListCell *lc;
+	range_partition_ctx ctx;
+
+	if (!pri)
+		return;
+
+	ctx.pstate = pstate;
+	ctx.location = pri->location;
+
+	foreach(lc, pri->partRangeVal)
+	{
+		range_partition_walker(lfirst(lc), &ctx);
+	}
+}
+
 /*
  * Basic partition validation:
  * Check that PARTITIONS matches specification (for HASH). Perform basic error
@@ -4739,7 +4793,6 @@ validate_range_partition(partValidationState *vstate)
 	bool bAppendRange = false;
 	PartitionBoundSpec *prevBSpec = NULL;
 	PartitionBoundSpec *spec = (PartitionBoundSpec *)vstate->spec;
-
 
 	vstate->spec = (Node *)spec;
 
@@ -4839,6 +4892,7 @@ validate_range_partition(partValidationState *vstate)
 
 	if (spec->partStart)
 	{
+		PartitionRangeItemIsValid(vstate->pstate, (PartitionRangeItem *)spec->partStart);
 		if (!prevBSpec->partEnd)
 		{
 			PartitionRangeItem *pRI = (PartitionRangeItem *)(spec->partStart);
@@ -4963,6 +5017,7 @@ L_setprevElem:
 		PartitionRangeItem *pRI2 =
 				(PartitionRangeItem *)spec->partEnd;
 
+		PartitionRangeItemIsValid(vstate->pstate, (PartitionRangeItem *)spec->partEnd);
 		compareRc =
 				partition_range_compare(vstate->pstate,
 										vstate->cxt, vstate->stmt,

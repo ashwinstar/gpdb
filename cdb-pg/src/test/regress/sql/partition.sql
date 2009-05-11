@@ -3232,15 +3232,39 @@ where tablename = 'mpp5941';
 
 drop table mpp5941;
 
-
-
-
-
-
-
-
-
-
-
-
-
+-- MPP-5984
+CREATE TABLE partsupp ( ps_partkey integer,
+ps_suppkey integer, ps_availqty integer,
+ps_supplycost numeric, ps_comment character varying(199) )
+PARTITION BY RANGE(ps_partkey)
+(
+partition nnull start (300) end (NULL)
+);
+CREATE TABLE partsupp ( ps_partkey integer,
+ps_suppkey integer, ps_availqty integer,
+ps_supplycost numeric, ps_comment character varying(199) )
+PARTITION BY RANGE(ps_partkey)
+(
+partition nnull start (300) end (NULL::int)
+);
+CREATE TABLE partsupp ( ps_partkey integer,
+ps_suppkey integer, ps_availqty integer,
+ps_supplycost numeric, ps_comment character varying(199) )
+PARTITION BY RANGE(ps_partkey)
+(
+partition p1 start(1) end(10),
+partition p2 start(10) end(20),
+default partition def
+);
+alter table partsupp split partition p2 at (NULL);
+alter table partsupp split default partition start(null) end(200);
+drop table partsupp;
+CREATE TABLE partsupp ( ps_partkey integer,
+ps_suppkey integer, ps_availqty integer,
+ps_supplycost numeric, ps_comment character varying(199) )
+PARTITION BY RANGE(ps_partkey)
+(
+partition nnull start (300) end (400)
+);
+alter table partsupp add partition foo start(500) end(NULL);
+drop table partsupp;

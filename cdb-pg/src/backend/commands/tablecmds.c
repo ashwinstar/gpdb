@@ -14593,6 +14593,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 					Node *n1;
 					PartitionRangeItem *ri =
 							(PartitionRangeItem *)pbs->partEnd;
+					PartitionRangeItemIsValid(NULL, ri);
 
 					n1 = (Node *)copyObject(ri->partRangeVal);
 					n1 = (Node *)transformExpressionList(pstate,
@@ -14724,6 +14725,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 					PartitionRangeItem *ri =
 							(PartitionRangeItem *)pbs->partStart;
 
+					PartitionRangeItemIsValid(NULL, ri);
 					n1 = (Node *)copyObject(ri->partRangeVal);
 					n1 = (Node *)transformExpressionList(pstate,
 														 (List *)n1);
@@ -14835,6 +14837,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				/* check the start */
 
 				ri = (PartitionRangeItem *)pbs->partStart;
+				PartitionRangeItemIsValid(NULL, ri);
 
 				pid.partiddef = (Node *)copyObject(ri->partRangeVal);
 				pid.partiddef =
@@ -15070,6 +15073,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				   opposite of START > last partition) */
 
 				ri = (PartitionRangeItem *)pbs->partEnd;
+				PartitionRangeItemIsValid(NULL, ri);
 
 				pid.partiddef = (Node *)copyObject(ri->partRangeVal);
 				pid.partiddef =
