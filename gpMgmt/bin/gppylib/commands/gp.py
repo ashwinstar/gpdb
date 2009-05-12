@@ -198,8 +198,8 @@ class GpSegStopCmd(Command):
 class GpStandbyStart(Command):
     def __init__(self,name,datadir,port,ctxt=LOCAL, remoteHost=None):
         self.datadir=datadir
-        logfile="%s/pg_log/startup.log" % datadir
-        cmdStr="exec $GPHOME/bin/gpsyncmaster -D %s -p %d -i  >> %s 2>&1 &" % (datadir,port,logfile)
+        self.port=port        
+        cmdStr="exec $GPHOME/sbin/gpstandbystart.sh %s %d" % (datadir,port)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod
