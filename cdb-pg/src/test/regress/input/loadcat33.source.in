@@ -15,9 +15,12 @@ alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
 update @gpupgradeschemaname@.pg_appendonly set compresstype = 'quicklz', compresslevel = compresslevel - 10 where compresslevel > 10;
 update @gpupgradeschemaname@.pg_appendonly set compresstype = 'zlib' where compresslevel between 1 and 10;
 
--- upgrade pg_partitions.parantpartitioname
+-- upgrade pg_partitions.parentpartitioname
 update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
 update @gpupgradeschemaname@.pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = '@gpupgradeschemaname@.pg_partitions'::regclass;
+
+-- fixup attislocal
+update @gpupgradeschemaname@.pg_attribute set attislocal = 'f' from pg_catalog.pg_partitions where attislocal = 't' and attrelid = (partitionschemaname || '.' || partitiontablename)::regclass and attnum > 0;
 
 -- Drop the old function "gp_update_ao_master_stats" (oid 7156)
 delete from @gpupgradeschemaname@.pg_proc where oid = 7156;
