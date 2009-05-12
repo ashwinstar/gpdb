@@ -237,3 +237,20 @@ def killPgProc(db,procname,signal):
     cmd=Kill.remote("kill "+procname,procPID,signal,db.hostname)
     return (parentPID,procPID)
 
+class PgControlData(Command):
+    def __init__(self, name, datadir, ctxt=LOCAL, remoteHost=None):
+        self.datadir = datadir
+        self.remotehost=remoteHost
+        self.data = None
+        Command.__init__(self, name, "$GPHOME/bin/pg_controldata %s" % self.datadir, ctxt, remoteHost)
+
+    def get_value(self, name):
+        if not self.results:
+            raise Exception, 'Command not yet executed'
+        if not self.data:
+            self.data = {}
+            for l in self.results.stdout.split('\n'):
+                if len(l) > 0:
+                    (n,v) = l.split(':', 1)
+                    self.data[n.strip()] = v.strip() 
+        return self.data[name]

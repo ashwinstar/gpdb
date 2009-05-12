@@ -76,6 +76,15 @@ class ConfExpSegCmd(Command):
                     self.set_results(modifyPostgresqlConfCmd.get_results())
                     raise
     
+            # We might need to stop the segment if the last setup failed past this point
+            if os.path.exists('%s/postmaster.pid' % self.datadir):
+                logger.info('%s/postmaster.pid exists.  Stopping segment' % self.datadir)
+                stopCmd = SegmentStop('Stop expansion segment', self.datadir)
+                try:
+                    stopCmd.run(validateAfter=True)
+                except:
+                    pass
+                    
             # start up segment in utility
             logger.info("starting expansion segment")
             startCmd = SegmentStart('Start expansion segment', 

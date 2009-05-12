@@ -16,6 +16,7 @@ from subprocess import Popen, PIPE
 try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
+    from gppylib.commands.pg import PgControlData
     from gppylib.gparray import *
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
@@ -620,7 +621,19 @@ class SegmentTemplate:
         self.oldSegCount = self.gparray.get_segment_count()
              
         GpStop.local('gpexpand _create_template stop gpdb', masterOnly=True, fast=True)
-
+        
+        # Verify that we actually stopped
+        self.logger.debug('Validating array state')
+        pgControlDataCmd = PgControlData('Validate stopped', self.masterDataDirectory)
+        state = None
+        try:
+            pgControlDataCmd.run(validateAfter=True)
+        except Exception, e:
+            raise SegmentTemplateError(e)
+        state = pgControlDataCmd.get_value('Database cluster state')
+        if state != 'shut down':
+            raise SegmentTemplateError('Failed to stop the array.  pg_controldata return state of %s' % state)
+        
         try:    
             gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
                                    self.gparray.master.hostname, self.tempDir, True, True, 'sync',

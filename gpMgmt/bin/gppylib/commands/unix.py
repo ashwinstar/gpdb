@@ -117,6 +117,9 @@ class GenericPlatform():
     
     def getDiskFreeCmd(self):
         return findCmdInPath('df') + " -k"  
+    
+    def getTarCmd(self):
+        return findCmdInPath('tar')
         
 class LinuxPlatform(GenericPlatform):
     
@@ -143,6 +146,9 @@ class SolarisPlatform(GenericPlatform):
     
     def getDiskFreeCmd(self):
         return findCmdInPath('df') + " -b"
+    
+    def getTarCmd(self):
+        return findCmdInPath('gtar')
 
 
 class DarwinPlatform(GenericPlatform):
@@ -450,11 +456,7 @@ class ExtractTar(Command):
     def __init__(self,name,srcTarFile,dstDirectory,ctxt=LOCAL,remoteHost=None):        
         self.srcTarFile=srcTarFile
         self.dstDirectory=dstDirectory        
-        tarCmd = None
-        try:
-            tarCmd = findCmdInPath('gtar')
-        except CommandNotFoundException:
-            tarCmd = findCmdInPath('tar')        
+        tarCmd = SYSTEM.getTarCmd()       
         cmdStr="%s -C %s -xf %s" % (tarCmd, dstDirectory, srcTarFile)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 

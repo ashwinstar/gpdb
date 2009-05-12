@@ -331,7 +331,6 @@ class ModifyPostgresqlConfSetting(Command):
     def __init__(self, name, file, optName, optVal, optType='string', ctxt=LOCAL, remoteHost=None):
         cmdStr = None
         if optType == 'number':
-#            cmdStr = 'perl -p -i.bak -e \'s/^%s[ ]*=[ ]*\\d+/%s=%d/\' %s' % (optName, optName, optVal, file)
             cmdStr = "perl -p -i.bak -e 's/^%s[ ]*=[ ]*\\d+/%s=%d/' %s" % (optName, optName, optVal, file)
         elif optType == 'string':
             cmdStr = "perl -i -p -e \"s/^%s[ ]*=[ ]*'[^']*'/%s='%s'/\" %s" % (optName, optName, optVal, file)
