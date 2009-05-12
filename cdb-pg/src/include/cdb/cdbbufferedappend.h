@@ -45,6 +45,8 @@ typedef struct BufferedAppend
     char				 *filePathName;
     int64                fileLen;
     int64				 fileLen_uncompressed; /* for calculating compress ratio */
+
+	int64				initialSetFilePosition;
 } BufferedAppend;
 
 /*

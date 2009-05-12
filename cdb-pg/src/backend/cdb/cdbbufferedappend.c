@@ -102,6 +102,7 @@ void BufferedAppendSetFile(
 	Assert(bufferedAppend->file == -1);
 	Assert(bufferedAppend->fileLen == 0);
 	Assert(bufferedAppend->fileLen_uncompressed == 0);
+	Assert(bufferedAppend->initialSetFilePosition == 0);
 
 	Assert(file >= 0);
 	Assert(eof >= 0);
@@ -111,6 +112,8 @@ void BufferedAppendSetFile(
 	bufferedAppend->filePathName = filePathName;
 	bufferedAppend->fileLen = eof;
 	bufferedAppend->fileLen_uncompressed = eof_uncompressed;
+
+	bufferedAppend->initialSetFilePosition = eof;
 }
 
 
@@ -402,6 +405,8 @@ void BufferedAppendCompleteFile(
 	bufferedAppend->fileLen_uncompressed = 0;
 	bufferedAppend->file = -1;
 	bufferedAppend->filePathName = NULL;
+
+	bufferedAppend->initialSetFilePosition = 0;
 }
 
 /*

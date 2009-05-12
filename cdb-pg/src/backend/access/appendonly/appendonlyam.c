@@ -114,12 +114,9 @@ errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 	int64	headerOffsetInFile = BufferedReadCurrentPosition(&scan->bufferedRead);
 	int64	blockFirstRowNum = scan->blockFirstRowNum;
 	int64	bufferCount = scan->bufferCount;
-	StringInfoData 	stringInfoData;
-	
-	initStringInfo(&stringInfoData);
 
 	// Debug checking logic for MPP-5775
-	if (scan->bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
+	if (bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
 		elog(ERROR, 
 		     "Debug buffer count is 1 but the offset is not 0");
 	
@@ -128,37 +125,14 @@ errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 		     "Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!!",
 		     scan->debugTrackReadPosition, headerOffsetInFile);
 
-	/*
-	 * Format this manually since we were getting a funny value formatted for "block header offset in file".
-	 */
-//	errcontext( 
-//		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
-//		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-//		 relationName,
-//		 segmentFileNum,
-//		 headerOffsetInFile,
-//		 blockFirstRowNum,
-//		 bufferCount);
-
-	appendStringInfo(&stringInfoData, 
-					 "Append-Only table '%s'",
-					 relationName);
-	appendStringInfo(&stringInfoData, 
-					 ", segment file #%d",
-					 segmentFileNum);
-	appendStringInfo(&stringInfoData, 
-					 ", block header offset in file = " INT64_FORMAT,
-					 headerOffsetInFile);
-	appendStringInfo(&stringInfoData, 
-					 ", block first row number " INT64_FORMAT,
-					 blockFirstRowNum);
-	appendStringInfo(&stringInfoData, 
-					 ", bufferCount  " INT64_FORMAT,
-					 bufferCount);
-
-	errcontext("%s", stringInfoData.data);
-
-	pfree(stringInfoData.data);
+	errcontext( 
+		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
+		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 relationName,
+		 segmentFileNum,
+		 headerOffsetInFile,
+		 blockFirstRowNum,
+		 bufferCount);
 
 	return 0;
 }
@@ -519,6 +493,25 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 }
 
 /*
+ * errcontext_appendonly_insert_block_user_limit
+ *
+ * Add an errcontext() line showing the table name but little else because this is a user
+ * caused error.
+ */
+static int
+errcontext_appendonly_insert_block_user_limit(AppendOnlyInsertDesc aoInsertDesc)
+{
+	char	*relationName = NameStr(aoInsertDesc->aoi_rel->rd_rel->relname);
+	
+	errcontext( 
+		 "Append-Only table '%s'",
+		 relationName);
+
+	return 0;
+}
+
+
+/*
  * errcontext_appendonly_insert_block
  *
  * Add an errcontext() line showing the table, segment file, offset in file, block count of the block being inserted.
@@ -531,12 +524,9 @@ errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
 	int64	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend);
 	int64	blockFirstRowNum = aoInsertDesc->blockFirstRowNum;
 	int64	bufferCount = aoInsertDesc->bufferCount;
-	StringInfoData 	stringInfoData;
-	
-	initStringInfo(&stringInfoData);
 	
 	// Debug checking logic for MPP-5775
-	if (aoInsertDesc->bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
+	if (bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
 		elog(ERROR, 
 		     "Debug buffer count is 1 but the offset is not 0 (more: expected write position " INT64_FORMAT ", write position " INT64_FORMAT ")",
 			aoInsertDesc->debugTrackWritePosition, headerOffsetInFile);
@@ -546,37 +536,14 @@ errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
 		     "Debug write position " INT64_FORMAT " does not match " INT64_FORMAT " !!!",
 		     aoInsertDesc->debugTrackWritePosition, headerOffsetInFile);
 
-	/*
-	 * Format this manually since we were getting a funny value formatted for "block header offset in file".
-	 */
-//	errcontext( 
-//		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
-//		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-//		 NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-//		 aoInsertDesc->cur_segno,
-//		 headerOffsetInFile,
-//		 aoInsertDesc->blockFirstRowNum,
-//		 aoInsertDesc->bufferCount);
-
-	appendStringInfo(&stringInfoData, 
-					 "Append-Only table '%s'",
-					 relationName);
-	appendStringInfo(&stringInfoData, 
-					 ", segment file #%d",
-					 segmentFileNum);
-	appendStringInfo(&stringInfoData, 
-					 ", block header offset in file = " INT64_FORMAT,
-					 headerOffsetInFile);
-	appendStringInfo(&stringInfoData, 
-					 ", block first row number " INT64_FORMAT,
-					 blockFirstRowNum);
-	appendStringInfo(&stringInfoData, 
-					 ", bufferCount  " INT64_FORMAT,
-					 bufferCount);
-
-	errcontext("%s", stringInfoData.data);
-
-	pfree(stringInfoData.data);
+	errcontext( 
+		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
+		 "block first row number " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+		 relationName,
+		 segmentFileNum,
+		 headerOffsetInFile,
+		 blockFirstRowNum,
+		 bufferCount);
 
 	return 0;
 }
@@ -609,6 +576,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	FileSegInfo		*fsinfo;
 	int64			eof,
 					eof_uncompressed,
+					varblockcount,
 					result;
 
 	/* Open the 'segment' file */
@@ -626,6 +594,7 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	Assert(fsinfo);
 	eof = (int64)fsinfo->eof;
 	eof_uncompressed = (int64)fsinfo->eof_uncompressed;
+	varblockcount = (int64)fsinfo->varblockcount;
 	pfree(fsinfo);
 	fsinfo = NULL;
 			
@@ -654,6 +623,16 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	/* reset counts */
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
+
+	/* 
+	 * Use the current block count from the segfile info so our system log error messages are
+	 * accurate.
+	 */
+	aoInsertDesc->bufferCount = varblockcount;
+
+	// Debug checking logic for MPP-5775
+	aoInsertDesc->debugTrackWritePosition = eof;
+
 }
 
 /*
@@ -2203,9 +2182,6 @@ appendonly_insert_init(Relation rel, int segno)
 
 	aoInsertDesc->nonCompressedHeader = NULL;
 
-	// Debug checking logic for MPP-5775
-	aoInsertDesc->debugTrackWritePosition = INT64CONST(0);
-
 	maxOverrun = 0;		// Assume none.
 	if (aoInsertDesc->shouldCompress)
 	{
@@ -2424,11 +2400,17 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	if (itemPtr == NULL)
 	{		
 		if (VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker) == 0)
+		{
+			/*
+			 * Use a different errcontext when user input (tuple contents) cause the
+			 * error.
+			 */
 			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Item too long (#1): length %d, maxBufferLen %d", 
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
 					        itemLen, aoInsertDesc->varBlockMaker.maxBufferLen),
-					 errcontext_appendonly_insert_block(aoInsertDesc)));
+					 errcontext_appendonly_insert_block_user_limit(aoInsertDesc)));
+		}
 
 		finishWriteBlock(aoInsertDesc);
 		
@@ -2437,11 +2419,17 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 		itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
 
 		if (itemPtr == NULL)
+		{
+			/*
+			 * Use a different errcontext when user input (tuple contents) cause the
+			 * error.
+			 */
 			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Item too long (#2): length %d, maxBufferLen %d", 
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
 					        itemLen, aoInsertDesc->varBlockMaker.maxBufferLen),
-					 errcontext_appendonly_insert_block(aoInsertDesc)));			
+					 errcontext_appendonly_insert_block_user_limit(aoInsertDesc)));
+		}
 
 	}
 		
