@@ -588,7 +588,7 @@ copy public.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd.data' null a
 alter table public.pg_appendonly add column compresstype text;
 -- adjust 3.2 quicklz
 update public.pg_appendonly set compresstype = 'quicklz', compresslevel = compresslevel - 10 where compresslevel > 10;
-update public.pg_appendonly set compresstype = 'zlib' where compresslevel < 10;
+update public.pg_appendonly set compresstype = 'zlib' where compresslevel between 1 and 10;
 -- upgrade pg_partitions.parantpartitioname
 update public.pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = 'public.pg_partitions'::regclass;
 update public.pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = 'public.pg_partitions'::regclass;

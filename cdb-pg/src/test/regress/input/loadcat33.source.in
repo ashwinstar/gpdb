@@ -13,7 +13,7 @@ alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
 
 -- adjust 3.2 quicklz
 update @gpupgradeschemaname@.pg_appendonly set compresstype = 'quicklz', compresslevel = compresslevel - 10 where compresslevel > 10;
-update @gpupgradeschemaname@.pg_appendonly set compresstype = 'zlib' where compresslevel < 10;
+update @gpupgradeschemaname@.pg_appendonly set compresstype = 'zlib' where compresslevel between 1 and 10;
 
 -- upgrade pg_partitions.parantpartitioname
 update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, 'parentpartitioname','parentpartitionname') where ev_class = '@gpupgradeschemaname@.pg_partitions'::regclass;
