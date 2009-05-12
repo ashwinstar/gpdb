@@ -538,7 +538,8 @@ errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
 	// Debug checking logic for MPP-5775
 	if (aoInsertDesc->bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
 		elog(ERROR, 
-		     "Debug buffer count is 1 but the offset is not 0");
+		     "Debug buffer count is 1 but the offset is not 0 (more: expected write position " INT64_FORMAT ", write position " INT64_FORMAT ")",
+			aoInsertDesc->debugTrackWritePosition, headerOffsetInFile);
 	
 	if (aoInsertDesc->debugTrackWritePosition != headerOffsetInFile)
 		elog(ERROR, 
