@@ -20,7 +20,7 @@ update @gpupgradeschemaname@.pg_rewrite set ev_action = replace(ev_action, 'pare
 update @gpupgradeschemaname@.pg_attribute set attname = 'parentpartitionname' where attname = 'parentpartitioname' and attrelid = '@gpupgradeschemaname@.pg_partitions'::regclass;
 
 -- fixup attislocal
-update @gpupgradeschemaname@.pg_attribute set attislocal = 'f' from pg_catalog.pg_partitions where attislocal = 't' and attrelid = (partitionschemaname || '.' || partitiontablename)::regclass and attnum > 0;
+update @gpupgradeschemaname@.pg_attribute set attislocal = 'f' from pg_catalog.pg_partitions where attislocal = 't' and attrelid = (quote_ident(partitionschemaname) || '.' || quote_ident(partitiontablename))::regclass and attnum > 0;
 
 -- Drop the old function "gp_update_ao_master_stats" (oid 7156)
 delete from @gpupgradeschemaname@.pg_proc where oid = 7156;
