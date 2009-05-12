@@ -2681,7 +2681,9 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 				{
 					ereport(WARNING,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("renamed %d partitions, skipped %d child partitions due to name truncation",
+							 errmsg("renamed %d partitions, "
+									"skipped %d child partitions "
+									"due to name truncation",
 									renamed, skipped)));
 
 				}
@@ -3336,13 +3338,13 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 									 errmsg("can't set the distribution"
 											" policy of \"%s\"",
 											RelationGetRelationName(rel)),
-									 errhint("Distribution policy may be set"
-											 " for an entire partitioned table" 
-											 " or one of its leaf parts;"
-											 " not for an interior branch."
+								 errhint("Distribution policy may be set"
+										 " for an entire partitioned table" 
+										 " or one of its leaf parts;"
+										 " not for an interior branch."
 									 )));
 						}
-						else /*This is a leaf partition */
+						else /* This is a leaf partition */
 						{
 							Oid ptrelid = rel_partition_get_master(relid);
 							List *dist_cnames = lsecond((List*)cmd->def);
@@ -3352,14 +3354,17 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							 */
 							if (dist_cnames)
 							{
-								Relation ptrel = heap_open(ptrelid, AccessShareLock);
+								Relation ptrel = heap_open(ptrelid, 
+														   AccessShareLock);
 								Assert(IsA(dist_cnames, List)); 
 								
-								if (! can_implement_dist_on_part(ptrel, dist_cnames) )
+								if (! can_implement_dist_on_part(ptrel, 
+																 dist_cnames) )
 									ereport(ERROR,
-											(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-											 errmsg("cannot SET DISTRIBUTED BY for %s",
-													RelationGetRelationName(rel)),
+									   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											 errmsg("cannot SET DISTRIBUTED BY"
+													" for %s",
+												RelationGetRelationName(rel)),
 											 errhint("Leaf distribution policy"
 													 " must be random or match"
 													 " that of the entire"
@@ -3381,9 +3386,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-								 errmsg("can't set the distribution policy of ONLY \"%s\"",
+								 errmsg("can't set the distribution policy "
+										"of ONLY \"%s\"",
 										RelationGetRelationName(rel)),
-								 errhint("Distribution policy may be set for an entire partitioned table" 
+								 errhint("Distribution policy may be set "
+										 "for an entire partitioned table" 
 										 " or one of its leaf parts."
 										 )));
 					}
@@ -3439,7 +3446,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					/* cannot exchange a hash partition */
 					if ('h' == prule->pNode->part->parkind)
 						ereport(ERROR,
-								(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+							(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 								 errmsg("cannot exchange HASH partition%s "
 									    "of relation \"%s\"", prule->partIdStr,
 										RelationGetRelationName(rel))));
@@ -3486,7 +3493,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot exchange relation which is not a table")));
+						 errmsg("cannot exchange relation "
+								"which is not a table")));
 
 
 			}
@@ -3511,8 +3519,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						   NAMEDATALEN) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("relation \"%s\" must have the same column "
-									"names and column order as \"%s\"",
+							 errmsg("relation \"%s\" must have the same "
+									"column names and column order as \"%s\"",
 									RelationGetRelationName(newrel),
 									RelationGetRelationName(rel))));
 
@@ -3601,7 +3609,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				{
 					AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
 
-					prule3 = get_part_rule(rel, (AlterPartitionId *)pc2->partid,
+					prule3 = get_part_rule(rel, 
+										   (AlterPartitionId *)pc2->partid,
 										   true, true,
 										   CurrentMemoryContext, NULL, false);
 				}
@@ -3611,9 +3620,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					/* cannot exchange a hash partition */
 					if ('h' == prule1->pNode->part->parkind)
 						ereport(ERROR,
-								(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+							(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 								 errmsg("cannot merge HASH partition%s "
-									    "of relation \"%s\"", prule1->partIdStr,
+									    "of relation \"%s\"", 
+										prule1->partIdStr,
 										RelationGetRelationName(rel))));
 				}
 
@@ -3670,11 +3680,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 		case AT_PartSplit:				/* Split */
 		{
-			AlterPartitionCmd  *pc    	= (AlterPartitionCmd *) cmd->def;
-			PgPartRule   	   *prule1	= NULL;
-			PgPartRule		   *prule2	= NULL;
-			PgPartRule		   *prule3	= NULL;
-			Relation			target = NULL;
+			AlterPartitionCmd	*pc    	= (AlterPartitionCmd *) cmd->def;
+			PgPartRule			*prule1	= NULL;
+			PgPartRule			*prule2	= NULL;
+			PgPartRule			*prule3	= NULL;
+			Relation			 target = NULL;
 
 			ATPartitionCheck(rel, cmd->subtype);
 
@@ -3734,14 +3744,15 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("cannot SPLIT DEFAULT PARTITION "
 									"with LIST"),
-							 errhint("Use SPLIT with the AT clause instead.")));
+							errhint("Use SPLIT with the AT clause instead.")));
 
 				}
 
 				if (prule1->pNode->part->parkind == 'h')
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-							 errmsg("SPLIT is not supported for HASH partitions")));
+							 errmsg("SPLIT is not supported for "
+									"HASH partitions")));
 
 				if (linitial((List *)pc->arg1))
 					is_at = false;
@@ -3772,8 +3783,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						l1 = ri->partRangeVal;
 					}
 
-					if (IsA(linitial(l1), A_Const) || IsA(linitial(l1), TypeCast) ||
-						IsA(linitial(l1), FuncExpr) || IsA(linitial(l1), OpExpr))
+					if (IsA(linitial(l1), A_Const) || 
+						IsA(linitial(l1), TypeCast) ||
+						IsA(linitial(l1), FuncExpr) || 
+						IsA(linitial(l1), OpExpr))
 					{
 						List *new = NIL;
 						ListCell *lc;
@@ -3799,11 +3812,13 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							AttrNumber parnatts = prule1->pNode->part->parnatts;
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("partition being split has %i column%s but parameter has %i column%s",
+									 errmsg("partition being split has "
+											"%i column%s but parameter "
+											"has %i column%s",
 											parnatts,
 											parnatts > 1 ? "s" : "",
 											list_length(vals),
-											list_length(vals) > 1 ? "s" : "")));
+										   list_length(vals) > 1 ? "s" : "")));
 						}
 
 						vals = (List *)transformExpressionList(pstate, vals);
@@ -3811,9 +3826,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						foreach(lc2, vals)
 						{
 							Node *n = lfirst(lc2);
-							AttrNumber attnum = prule1->pNode->part->paratts[i];
-							Oid typid = rel->rd_att->attrs[attnum - 1]->atttypid;
-							int32 typmod = rel->rd_att->attrs[attnum - 1]->atttypmod;
+							AttrNumber attnum = 
+									prule1->pNode->part->paratts[i];
+							Oid typid = 
+									rel->rd_att->attrs[attnum - 1]->atttypid;
+							int32 typmod = 
+									rel->rd_att->attrs[attnum - 1]->atttypmod;
 							char parkind = prule1->pNode->part->parkind;
 							PartitionByType t = (parkind == 'r') ?
 												 PARTTYP_RANGE : PARTTYP_LIST;
@@ -3901,7 +3919,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 									Oid opclass =
 										prule1->pNode->part->parclass[parcol];
 									Oid funcid = get_opclass_proc(opclass, 0,
-																  BTORDER_PROC);
+																 BTORDER_PROC);
 									Const *v = lfirst(lcv);
 									Const *c = lfirst(lcc);
 									Datum d;
@@ -3971,7 +3989,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						Const *end = NULL;
 						Const *atval = NULL;
 						Oid opclass = prule1->pNode->part->parclass[0];
-						Oid funcid = get_opclass_proc(opclass, 0, BTORDER_PROC);
+						Oid funcid = get_opclass_proc(opclass, 0, 
+													  BTORDER_PROC);
 						Node *n;
 						Datum res;
 						int32 ret;
@@ -4006,7 +4025,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							if (prule1->topRule->parrangeend)
 							{
 								end = linitial((List *)prule1->topRule->parrangeend);
-								res = OidFunctionCall2(funcid, atval->constvalue,
+								res = OidFunctionCall2(funcid, 
+													   atval->constvalue,
 											   		   end->constvalue);
 
 								ret = DatumGetInt32(res);
@@ -4039,7 +4059,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				{
 					cmd2 = (AlterPartitionCmd *)pc->arg2;
 
-					prule2 = get_part_rule(rel, (AlterPartitionId *)cmd2->partid,
+					prule2 = get_part_rule(rel, 
+										   (AlterPartitionId *)cmd2->partid,
 										   false, false, CurrentMemoryContext,
 										   NULL, false);
 
@@ -4055,7 +4076,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							ereport(ERROR,
 								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 								 errmsg("partition \"%s\" already exists",
-								get_rel_name(prule2->topRule->parchildrelid))));
+							   get_rel_name(prule2->topRule->parchildrelid))));
 					}
 
 					prule3 = get_part_rule(rel, (AlterPartitionId *)cmd2->arg1,
@@ -4069,7 +4090,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							ereport(ERROR,
 								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 								 errmsg("partition \"%s\" already exists",
-								get_rel_name(prule3->topRule->parchildrelid))));
+							   get_rel_name(prule3->topRule->parchildrelid))));
 					}
 
 					/* both can't exist */
@@ -4077,14 +4098,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("both INTO partitions already exist")));
+								 errmsg("both INTO partitions "
+										"already exist")));
 					}
 					else if (prule1->topRule->parisdefault &&
 							 !prule2 && !prule3)
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("default partition name missing from INTO clause")));
+								 errmsg("default partition name missing "
+										"from INTO clause")));
 
 					}
 				}
@@ -4844,7 +4867,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 								if (OidIsValid(tab->exchange_relid))
 									ereport(ERROR,
 											(errcode(ERRCODE_CHECK_VIOLATION),
-											 errmsg("exchange table contains a row which violates the partitioning specification of \"%s\"",
+											 errmsg("exchange table contains "
+													"a row which violates the "
+													"partitioning "
+													"specification of \"%s\"",
 													get_rel_name(tab->relid))));
 								else
 									ereport(ERROR,
@@ -4999,95 +5025,96 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		}
 		else if(relstorage == RELSTORAGE_AOCS && Gp_role != GP_ROLE_DISPATCH)
 		{
-                        int segno = RESERVED_SEGNO;
-                        AOCSInsertDesc idesc = NULL;
-                        AOCSScanDesc sdesc = NULL;
-                        int nvp = oldrel->rd_att->natts;
-                        bool *proj = palloc(sizeof(bool) * nvp);
+			int segno = RESERVED_SEGNO;
+			AOCSInsertDesc idesc = NULL;
+			AOCSScanDesc sdesc = NULL;
+			int nvp = oldrel->rd_att->natts;
+			bool *proj = palloc(sizeof(bool) * nvp);
 
-                        memset(proj, true, nvp);
+			memset(proj, true, nvp);
 
-                        if(newrel)
-                                idesc = aocs_insert_init(newrel, segno);
+			if(newrel)
+					idesc = aocs_insert_init(newrel, segno);
 
-                        sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
-
-
-                        aocs_getnext(sdesc, ForwardScanDirection, oldslot);
-                
-                        while(!TupIsNull(oldslot))
-                        {
-                                oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-                                econtext->ecxt_scantuple = oldslot;
-
-                                if(newrel)
-                                {
-                                        Datum *slotvalues = slot_get_values(oldslot);
-                                        bool  *slotnulls = slot_get_isnull(oldslot);
+			sdesc = aocs_beginscan(oldrel, SnapshotNow, 0, NULL, proj);
 
 
-                                        /* aocs does not do oid yet */
-                                        Assert(!oldTupDesc->tdhasoid);
-                                        Assert(!newTupDesc->tdhasoid);
+			aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+            
+			while(!TupIsNull(oldslot))
+			{
+				oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+				econtext->ecxt_scantuple = oldslot;
 
-                                        /* Dropped att should be set correctly by aocs_getnext */
+				if(newrel)
+				{
+					Datum *slotvalues = slot_get_values(oldslot);
+					bool  *slotnulls = slot_get_isnull(oldslot);
 
-                                        /* Process supplied expressions */
-                                        foreach(l, tab->newvals)
-                                        {
-                                                NewColumnValue *ex = lfirst(l);
+
+					/* aocs does not do oid yet */
+					Assert(!oldTupDesc->tdhasoid);
+					Assert(!newTupDesc->tdhasoid);
+
+					/* Dropped att should be set correctly by aocs_getnext */
+
+					/* Process supplied expressions */
+					foreach(l, tab->newvals)
+					{
+						NewColumnValue *ex = lfirst(l);
                                                 
-                                                slotvalues[ex->attnum-1] = ExecEvalExpr(ex->exprstate,
-                                                                econtext,
-                                                                &slotnulls[ex->attnum-1],
-                                                                NULL
-                                                                );
-                                        }
-                                }
+						slotvalues[ex->attnum-1] = 
+								ExecEvalExpr(ex->exprstate,
+											 econtext,
+											 &slotnulls[ex->attnum-1],
+											 NULL
+										);
+					}
+				}
 
-                                /* Check constraints */
-                                foreach (l, tab->constraints)
-                                {
-                                        NewConstraint *con = lfirst(l);
-                                        switch(con->contype)
-                                        {
-                                                case CONSTR_CHECK:
-                                                        if(!ExecQual(con->qualstate, econtext, true))
-                                                                ereport(ERROR, 
-                                                                        (errcode(ERRCODE_CHECK_VIOLATION),
-                                                                         errmsg("check constraint \"%s\" is violated",
-                                                                                 con->name
-                                                                               )));
-                                                        break;
-                                                case CONSTR_FOREIGN:
-                                                        /* Nothing to do */
-                                                        break;
-                                                default:
-                                                        elog(ERROR, "Unrecognized constraint type: %d",
-                                                                        (int) con->contype);
-                                        }
-                                }
+				/* Check constraints */
+				foreach (l, tab->constraints)
+				{
+					NewConstraint *con = lfirst(l);
+					switch(con->contype)
+					{
+						case CONSTR_CHECK:
+							if(!ExecQual(con->qualstate, econtext, true))
+									ereport(ERROR, 
+											(errcode(ERRCODE_CHECK_VIOLATION),
+											 errmsg("check constraint \"%s\" is violated",
+													con->name
+													 )));
+							break;
+						case CONSTR_FOREIGN:
+							/* Nothing to do */
+							break;
+						default:
+							elog(ERROR, "Unrecognized constraint type: %d",
+								 (int) con->contype);
+					}
+				}
 
-                                if(newrel)
-                                {
-                                        MemoryContextSwitchTo(oldCxt);
-                                        aocs_insert(idesc, oldslot);
-                                }
+				if(newrel)
+				{
+					MemoryContextSwitchTo(oldCxt);
+					aocs_insert(idesc, oldslot);
+				}
 
-                                ResetExprContext(econtext);
-                                CHECK_FOR_INTERRUPTS();
+				ResetExprContext(econtext);
+				CHECK_FOR_INTERRUPTS();
 
-                                MemoryContextSwitchTo(oldCxt);
-                                aocs_getnext(sdesc, ForwardScanDirection, oldslot);
-                        }
+				MemoryContextSwitchTo(oldCxt);
+				aocs_getnext(sdesc, ForwardScanDirection, oldslot);
+			}
 
-                        aocs_endscan(sdesc);
+			aocs_endscan(sdesc);
 
-                        if(newrel)
-                                aocs_insert_finish(idesc);
-
-                        pfree(proj);
-                }
+			if(newrel)
+				aocs_insert_finish(idesc);
+			
+			pfree(proj);
+		}
 		else if(relstorage_is_ao(relstorage) && Gp_role == GP_ROLE_DISPATCH)
 		{
 			/*
@@ -6200,7 +6227,9 @@ ATExecDropColumn(Relation rel, const char *colName,
 				if (Gp_role != GP_ROLE_EXECUTE)
 				    ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Dropping a column that is part of the distribution policy forces a NULL distribution policy")));
+						 errmsg("Dropping a column that is part of the "
+								"distribution policy forces a "
+								"NULL distribution policy")));
 			}
 		}
 	}
@@ -6240,10 +6269,10 @@ ATExecDropColumn(Relation rel, const char *colName,
 			if (recurse)
 			{
 				/*
-				 * If the child column has other definition sources, just
-				 * decrement its inheritance count; if not or if this is part of
-				 * a partition configuration, recurse to delete
-				 * it.
+				 * If the child column has other definition sources,
+				 * just decrement its inheritance count; 
+				 * if not or if this is part of a partition
+				 * configuration, recurse to delete it.
 				 */
 				if ((childatt->attinhcount == 1 && !childatt->attislocal) ||
 					pn)
@@ -7374,7 +7403,7 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot remove constraint \"%s\" on \"%s\" "
-								"as it is part of a partitioning configuration",
+							"as it is part of a partitioning configuration",
 								cmd->name, RelationGetRelationName(rel))));
 		
 			}
@@ -8335,7 +8364,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 				ATExecChangeOwner(tuple_class->reltoastrelid, newOwnerId,
 								  true);
 
-			/* If it has an AO segment table, recurse to change its ownership */
+			/* If it has an AO segment table, recurse to change its
+			 * ownership */
 			if (tuple_class->relaosegrelid != InvalidOid)
 				ATExecChangeOwner(tuple_class->relaosegrelid, newOwnerId,
 								  true);
@@ -10255,10 +10285,15 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				if (inds)
 					ereport(ERROR,
 							(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-							 errmsg("cannot convert relation \"%s\" to append only storage as it has indexes",
+							 errmsg("cannot convert relation \"%s\" to "
+									"append only storage as it has indexes",
 									RelationGetRelationName(rel)),
-							 errhint("Indexes are not supported on append only tables. To convert the table to "
-									 "append only storage, drop the index(es) on the table and try again.")));
+							 errhint("Indexes are not supported on "
+									 "append only tables. "
+									 "To convert the table to "
+									 "append only storage, drop the "
+									 "index(es) on the table and "
+									 "try again.")));
 			}
 	
 			/* 
@@ -10335,10 +10370,10 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 * policy is the hard bit. For that, we must do the following:
 	 *
 	 * a) Ensure that the proposed policy is sensible
-	 * b) Create a temporary table and reorganise data according to our desired
-	 * distribution policy. To do this, we build a Query node which expresses
-	 * the query CREATE TABLE tmp_table_name AS SELECT * FROM cur_table
-	 * DISTRIBUTED BY (policy)
+	 * b) Create a temporary table and reorganise data according to
+	 * our desired distribution policy. To do this, we build a Query
+	 * node which expresses the query CREATE TABLE tmp_table_name AS
+	 * SELECT * FROM cur_table DISTRIBUTED BY (policy)
 	 * c) Execute the query across all nodes
 	 * d) Update the ownership of the temporary table
 	 * e) Update our parse tree to include the details of the newly created
@@ -10388,7 +10423,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 					if (attnum <= 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot distribute by system column \"%s\"",
+						    errmsg("cannot distribute by system column \"%s\"",
 									colName)));
 
 					policy->attrs[policy->nattrs++] = attnum;
@@ -10478,7 +10513,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		}
 
 		/* Step (b) - build CTAS */
-		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv, &hidden_types);
+		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv, 
+										 &hidden_types);
 
 		/* Step (c) - run on all nodes */
 		ExecutorStart(queryDesc, 0);
@@ -10626,7 +10662,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			{
 				Insist(HeapTupleIsValid(tuple));
 				tuple = heaptuple_copy_to(tuple, NULL, NULL);
-				((Form_pg_appendonly)GETSTRUCT(tuple))->relid = RelationGetRelid(rel);
+				((Form_pg_appendonly)GETSTRUCT(tuple))->relid = 
+						RelationGetRelid(rel);
 				simple_heap_insert(class, tuple);
 				CatalogUpdateIndexes(class, tuple);
 			}
@@ -10644,10 +10681,10 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	/*
 	 * Step (f) - swap relfilenodes
 	 *
-	 * Just lookup the Oid and pass it to swap_relation_files(). To do this
-	 * we must close the rel, since it needs to be forgotten by the cache, we
-	 * keep the lock though. ATRewriteCatalogs() knows that we've closed the
-	 * relation here.
+	 * Just lookup the Oid and pass it to swap_relation_files(). To do
+	 * this we must close the rel, since it needs to be forgotten by
+	 * the cache, we keep the lock though. ATRewriteCatalogs() knows
+	 * that we've closed the relation here.
 	 */
 	heap_close(rel, NoLock);
    	tmprelid = RangeVarGetRelid(tmprv, false);
@@ -15594,8 +15631,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 		ListCell		*lc;
 		int 			 ii					 = 0;
 		bool			 bFixFirstATS		 = true;
-		bool			 bFirst_TemplateOnly = true;
-
+		bool			 bFirst_TemplateOnly = true;   /* ignore dummy entry */
+		int 			 pby_templ_depth	 = 0;	   /* template partdepth */
 
 		ct->partitionBy = (Node *)pBy;
 
@@ -15758,23 +15795,41 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 						if (ac2->subtype == AT_PartAddInternal)
 						{
+							PartitionBy *templ_pby = 
+									(PartitionBy *)ac2->def;
+
+							Assert(IsA(templ_pby, PartitionBy));
+
 							/* skip the first one because it's the
 							 * fake parent partition definition for
 							 * the subpartition template entries
 							 */
+
 							if (bFirst_TemplateOnly)
+							{
 								bFirst_TemplateOnly = false;
+
+								/* MPP-5992: only set one level of
+								 * templates -- we might have
+								 * templates for subpartitions of the
+								 * subpartitions, which would add
+								 * duplicate templates into the table.
+								 * Only add templates of the specified
+								 * depth and skip deeper template
+								 * definitions.
+								 */
+								pby_templ_depth = templ_pby->partDepth + 1;
+
+							}
 							else
-								add_part_to_catalog(RelationGetRelid(rel),
-													(PartitionBy *)ac2->def,
-													 true);
+							{
+								if (templ_pby->partDepth == pby_templ_depth)
+									add_part_to_catalog(
+											RelationGetRelid(rel),
+											(PartitionBy *)ac2->def,
+											true);
+							}
 								
-							if (0)
-								ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("cannot SET SUBPARTITION TEMPLATE "
-											"for relation \"%s\"",
-											RelationGetRelationName(rel))));
 						}
 					} /* end foreach lc2 l2 */
 				}

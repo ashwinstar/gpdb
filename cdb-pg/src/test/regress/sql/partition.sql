@@ -3230,6 +3230,49 @@ set subpartition template ();
 select tablename, partitionname, partitionlevel from pg_partition_templates 
 where tablename = 'mpp5941';
 
+-- set level 1 (error, because no templates for level 2, 3)
+
+alter table mpp5941 set subpartition template (
+subpartition l1 values (1,2,3,4,5), 
+subpartition l2 values (6,7,8,9,10) );
+
+-- MPP-5992 - add deep templates correctly
+
+-- Note: need to re-add the templates from deepest to shallowest,
+-- because adding a template has a dependency on the existence of the
+-- deeper template.
+
+-- set level 3
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+alter partition for (1)
+set subpartition template (
+subpartition lll1 values ('M'), 
+subpartition lll2 values ('F') );
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- set level 2
+
+alter table mpp5941 alter partition for ('2008-01-01') 
+set subpartition template (
+subpartition ll1 values ('Engineering'), 
+subpartition ll2 values ('QA') );
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+-- set level 1
+
+alter table mpp5941 set subpartition template (
+subpartition l1 values (1,2,3,4,5), 
+subpartition l2 values (6,7,8,9,10) );
+
+select tablename, partitionname, partitionlevel from pg_partition_templates 
+where tablename = 'mpp5941';
+
+
 drop table mpp5941;
 
 -- MPP-5984
