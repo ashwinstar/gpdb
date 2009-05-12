@@ -1049,7 +1049,7 @@ class GPUpgrade:
             env = self.newenv
 
         if not env:
-            self.Log('FATAL', 'Postmaster not running')
+            self.Log('INFO', 'Postmaster not running')
             raise UpgradeError("Postmaster failed to start")
 
         if tryconn:
