@@ -67,18 +67,7 @@
 
 #include "utils/memutils.h"
 
-#ifdef USE_ASSERT_CHECKING
 #include "miscadmin.h"
-#include <pthread.h>
-extern pthread_t main_tid;
-#ifndef _WIN32
-#define mythread() ((unsigend long) pthread_self())
-#define mainthread() ((unsigned long) main_tid)
-#else
-#define mythread() ((unsigned long) pthread_self().p)
-#define mainthread() ((unsigned long) main_tid.p)
-#endif 
-#endif
 
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
