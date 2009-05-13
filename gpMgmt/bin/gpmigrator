@@ -171,6 +171,78 @@ class MappingsWorker(Thread):
 
 
         mapfile.close()
+
+class RemapOidWorker(Thread):
+    def __init__(self, mapspec, olddir, newdir, method):
+        self.mapspec = mapspec
+        self.olddir = olddir
+        self.newdir = newdir
+        self.method = method
+        self.errors = 0
+        self.errstr = ""
+        Thread.__init__(self)
+
+    def run(self):
+        oldmapfile = open(self.mapspec+'_source_mapping', 'r')
+        newmapfile = open(self.mapspec+'_target_mapping', 'r')
+        for oldline in oldmapfile:
+            newline = newmapfile.next()
+
+            # trim off the newlines
+            oldline = oldline[0:-1]
+            newline = newline[0:-1]
+
+            (oldname, olddb, oldoid, oldtoast, oldtidx) = \
+                oldline.split(',')
+            (newname, newdb, newoid, newtoast, newtidx) = \
+                newline.split(',')                        
+
+            if oldname != newname:
+                self.errors += 1
+                self.errstr = "Mapping failure on %s" % oldname
+                raise UpgradeError(self.errstr)
+
+            def makemapping(name,olddb,oldoid,newdb,newoid,msg):
+                if oldoid == 'None' and newoid == 'None':
+                    return
+                if oldoid == 'None' or newoid == 'None':
+                    raise UpgradeError("Mapping failure on %s %s" % (name, msg))
+                mapping[os.path.join(olddb,oldoid)] = os.path.join(newdb, newoid)
+
+            mapping = {}
+            makemapping(oldname, olddb, oldoid, newdb, newoid, '')
+            makemapping(oldname, olddb, oldtoast, newdb, newtoast, 'toast')
+            makemapping(oldname, olddb, oldtidx, newdb, newtidx, 'toast index')
+
+            for oldoid in mapping:
+                newoid = mapping[oldoid]
+                oldfile = os.path.join(self.olddir, 'base', oldoid)
+                newfile = os.path.join(self.newdir, 'base', newoid)
+
+                # Both old and new file should exist
+                if not os.path.exists(oldfile):
+                    self.errors += 1
+                    self.errstr = oldfile + ' not found'
+                    raise UpgradeError(self.errstr)
+                # we don't want to test if the file exists if this
+                # is a transform style 'grade
+                if (self.method == 'dumprestore' and 
+                    not os.path.exists(newfile)):
+                    self.errors += 1
+                    self.errstr = newfile + ' not found'
+                    raise UpgradeError(self.errstr)
+
+                if os.path.exists(newfile):
+                    os.remove(newfile)
+                os.link(oldfile, newfile)
+
+                # Large tables will have additional extensions, these
+                # are named 'relfilenode.extension#'.
+                ext = 1
+                while (os.path.exists(oldfile + '.' + str(ext))):
+                    os.link('%s.%s' % (oldfile, str(ext)),
+                            '%s.%s' % (newfile, str(ext)))
+                    ext = ext + 1
         
 class Worker(Thread):
     def __init__(self, harness):
@@ -3104,6 +3176,15 @@ This issue must be resolved before upgrade can complete.
         #   + On slaves its the DATA_DIRECTORY and MIRROR_DATA_DIRECTORY
 
         # Check the mapping in all data directories
+        def wait_for_threads(threads):
+            for t in threads:
+                t.join()
+                if t.errors:
+                    raise UpgradeError('FATAL',
+                        'error encountered in remap thread: %s' %
+                            t.errstr)
+
+        th = []
         for d in datadirs:
             # Find the segments for this directory, we base this on 
             # directories under the upgrade directory that match
@@ -3115,65 +3196,14 @@ This issue must be resolved before upgrade can complete.
                     
                     # Read the mapping files to produce oid->oid pairs
                     mapspec = os.path.join(d, WORKDIR, file)
-                    oldmapfile = open(mapspec+'_source_mapping', 'r')
-                    newmapfile = open(mapspec+'_target_mapping', 'r')
-                    for oldline in oldmapfile:
-                        newline = newmapfile.next()
+                    t = RemapOidWorker(mapspec, olddir, newdir, self.method)
+                    t.start()
+                    th.append(t)
+                    if (len(th) % PARALLELISM) == 0:
+                        wait_for_threads(th)
+                        th = []
 
-                        # trim off the newlines
-                        oldline = oldline[0:-1]
-                        newline = newline[0:-1]
-
-                        (oldname, olddb, oldoid, oldtoast, oldtidx) = \
-                            oldline.split(',')
-                        (newname, newdb, newoid, newtoast, newtidx) = \
-                            newline.split(',')                        
-
-                        if oldname != newname:
-                            raise UpgradeError("Mapping failure on %s" % oldname)
-
-                        def makemapping(name,olddb,oldoid,newdb,newoid,msg):
-                            if oldoid == 'None' and newoid == 'None':
-                                return
-                            if oldoid == 'None' or newoid == 'None':
-                                raise UpgradeError("Mapping failure on %s %s" % (name, msg))
-                            mapping[os.path.join(olddb,oldoid)] = os.path.join(newdb, newoid)
-
-                        mapping = {}
-                        makemapping(oldname, olddb, oldoid, newdb, newoid, '')
-                        makemapping(oldname, olddb, oldtoast, newdb, newtoast, 'toast')
-                        makemapping(oldname, olddb, oldtidx, newdb, newtidx, 'toast index')
-
-                        for oldoid in mapping:
-                            newoid = mapping[oldoid]
-                            oldfile = os.path.join(olddir, 'base', oldoid)
-                            newfile = os.path.join(newdir, 'base', newoid)
-
-                            # Both old and new file should exist
-                            if not os.path.exists(oldfile):
-                                raise UpgradeError(oldfile + ' not found')
-                            # we don't want to test if the file exists if this
-                            # is a transform style 'grade
-                            if (self.method == 'dumprestore' and 
-                                not os.path.exists(newfile)):
-                                raise UpgradeError(newfile + ' not found')
-
-                            # Remove the new file, hard link to the old file
-                            #self.Log('DEBUG', 'Linking %s => %s' % (oldfile, newfile))
-
-                            if os.path.exists(newfile):
-                                os.remove(newfile)
-                            os.link(oldfile, newfile)
-
-                            # Large tables will have additional extensions, these
-                            # are named 'relfilenode.extension#'.
-                            ext = 1
-                            while (os.path.exists(oldfile + '.' + str(ext))):
-                                os.link('%s.%s' % (oldfile, str(ext)),
-                                        '%s.%s' % (newfile, str(ext)))
-                                ext = ext + 1
-
-
+        wait_for_threads(th)
 
     #------------------------------------------------------------
     def DeepLink(self, style):
@@ -3576,7 +3606,14 @@ This issue must be resolved before upgrade can complete.
                                     i = 1
                                     f.write('commit;\nbegin;\n')
                             f.write('commit;\n')
+                        if db == 'template1':
+                            f.write('vacuum freeze;\n')
+
                         f.close()
+                    fname = os.path.join(logdir, 'aoseg_template0_rewrite.sql')
+                    f = open(fname, 'w')
+                    f.write('vacuum freeze;\n')
+                    f.close()
 
                     # just once
                     break
@@ -3894,7 +3931,11 @@ This issue must be resolved before upgrade can complete.
                         self.Log('INFO', 'Pass 1')
                         transform(dir, dbs, fs[0])
 
-                    # ao file too
+                    self.Log('INFO', 'Pass 2')
+                    transform(dir, dbs, conv[0])
+
+                    # ao file too -- must be last because we
+                    # use this file to VACUUM FREEZE template databases
                     for dboid, dbname in dbs.iteritems():
                         # no need to rewrite AO in template0
                         if dbname == 'template0':
@@ -3906,8 +3947,6 @@ This issue must be resolved before upgrade can complete.
                         self.Log('DEBUG', "ao upgrade %s" % f)
                         transform_db(dir, dbname, dboid, aofile)
                         
-                    self.Log('INFO', 'Pass 2')
-                    transform(dir, dbs, conv[0])
 
     def SetCatVersion(self, frm, to):
         '''
