@@ -233,7 +233,8 @@ static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, bool istemp,
 				List **supOids, List **supconstr, int *supOidCount);
 static void MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel);
-static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAttrNameList);
+static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAttrNameList,
+										bool is_partition);
 static void add_nonduplicate_constraint(Constraint *cdef,
 										ConstrCheck *check, int *ncheck);
 static bool change_varattnos_walker(Node *node, const AttrNumber *newattno);
@@ -8938,7 +8939,7 @@ inherit_parent(Relation parent_rel, Relation child_rel, bool is_partition, List 
 						RelationGetRelationName(parent_rel))));
 
 	/* Match up the columns and bump attinhcount and attislocal */
-	MergeAttributesIntoExisting(child_rel, parent_rel, inhAttrNameList);
+	MergeAttributesIntoExisting(child_rel, parent_rel, inhAttrNameList, is_partition);
 
 	/* Match up the constraints and make sure they're present in child */
 	MergeConstraintsIntoExisting(child_rel, parent_rel);
@@ -9091,7 +9092,8 @@ decompile_conbin(HeapTuple contup, TupleDesc tupdesc)
  * the child must be as well. Defaults are not compared, however.
  */
 static void
-MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAttrNameList)
+MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAttrNameList,
+							bool is_partition)
 {
 	Relation	attrrel;
 	AttrNumber	parent_attno;
@@ -9179,13 +9181,19 @@ MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAt
 			 */
 			if (childatt->attislocal)
 			{
-				foreach( attNameCell, inhAttrNameList )
+				/* never local when we're doing partitioning */
+				if (is_partition)
+					childatt->attislocal = false;
+				else
 				{
-					char *inhAttrName = strVal((Value *)lfirst(attNameCell));
-					if (strcmp(attributeName, inhAttrName) == 0)
+					foreach( attNameCell, inhAttrNameList )
 					{
-						childatt->attislocal = false;
-						break;
+						char *inhAttrName = strVal((Value *)lfirst(attNameCell));
+						if (strcmp(attributeName, inhAttrName) == 0)
+						{
+							childatt->attislocal = false;
+							break;
+						}
 					}
 				}
 			}
