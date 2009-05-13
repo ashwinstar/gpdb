@@ -12,12 +12,15 @@ gpexpand -i input_file [-D database_name] [-B batch_size] [-V]
 
 gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']] 
          [-a] [-n parallel_processes] [-D database_name]
+         [-v | --verbose]
 
 gpexpand -r [-D database_name]
 
 gpexpand -c [-D database_name]
 
-gpexpand -? | -h | --help --verbose | -v
+gpexpand -? | -h | --help 
+
+gpexpand --version | -v
 
 
 Prerequisites:
@@ -168,7 +171,7 @@ Roll back a failed expansion setup operation.
 Do not vacuum catalog tables before creating schema copy.
 
 
--v (verbose)
+--verbose | -v (verbose) 
 
 Verbose debugging output.
 
