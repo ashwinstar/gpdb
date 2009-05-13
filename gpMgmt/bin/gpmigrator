@@ -3687,11 +3687,6 @@ This issue must be resolved before upgrade can complete.
                         f = open(frm, 'r')
                         t = open(to, 'w')
                         for line in f:
-                            # translate to new pg_hba.conf format
-                            if self.upgrade:
-                                line = line.replace('ident sameuser', 'ident')
-                            else:
-                                line = line.replace('ident', 'ident sameuser')
                             t.write(line)
                         f.close()
                         t.close()
@@ -3700,8 +3695,9 @@ This issue must be resolved before upgrade can complete.
                     # master needs locked pg_hba.conf
                     if self.cmd == 'MASTER':
                         ext = LOCKEXT
-                    overwrite(os.path.join(src, 'pg_hba.conf'+ext),
-                              os.path.join(dst, 'pg_hba.conf'))
+                    self.copy_rewrite_hba(os.path.join(src, 'pg_hba.conf'+ext),
+                                          os.path.join(dst, 'pg_hba.conf'),
+                                          self.upgrade)
                     overwrite(os.path.join(src, 'pg_ident.conf'+ext),
                               os.path.join(dst, 'pg_ident.conf'))
 
