@@ -80,16 +80,6 @@
 #include "utils/debugbreak.h"
 
 #include "miscadmin.h"
-#include <pthread.h>
-extern pthread_t main_tid;
-#ifndef _WIN32
-#define mythread() ((unsigned long) pthread_self())
-#define mainthread() ((unsigned long) main_tid)
-#else
-#define mythread() ((unsigned long) pthread_self().p)
-#define mainthread() ((unsigned long) main_tid.p)
-#endif 
-
 #if defined(pg_on_solaris) || (!defined (__darwin__) && defined(__GLIBC__))
 #include <dlfcn.h>
 #endif

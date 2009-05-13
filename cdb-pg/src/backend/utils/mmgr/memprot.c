@@ -206,25 +206,67 @@ void GPMemoryProtectInit()
  *
  * FIX ERROR HANDLER!
  */
+#define MOP_FAIL_REACHED_LIMIT 1
+#define MOP_FAIL_SYSTEM        2
+
+static bool is_main_thread()
+{
+    return pthread_equal(main_tid, pthread_self());
+}
+
 static void gp_failed_to_alloc(int ec, int en, int sz, int availmb) 
 {
 	/* Give an extra chunk for error handling. */
     mop_add_hld_cnt(1);
-    if (ec == 1)
+
+    if (ec == MOP_FAIL_REACHED_LIMIT)
     {
-	    ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
-				errmsg("Out of memory"),
-                errdetail("Failed to allocate %d bytes, %d MB available",
-                          sz, availmb
-                    )
-                ));
+        if(is_main_thread())
+        {
+            /* Hit MOP limit */
+            ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
+                        errmsg("Out of memory"),
+                        errdetail("VM Protect failed to allocate %d bytes, %d MB available",
+                            sz, availmb
+                            )
+                        ));
+        }
+        else
+        {
+            write_log("Out of memory: Hit VM Protect limit");
+        }
+    }
+    else if (ec == MOP_FAIL_SYSTEM)
+    {
+        /* MOP OK, but system allocation failed */ 
+        if(is_main_thread())
+        {
+            ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
+                        errmsg("Out of memory"),
+                        errdetail("VM protect failed to allocate %d bytes from system, VM Protect %d MB available",
+                            sz, availmb
+                            )
+                        ));
+        }
+        else
+        {
+            write_log("Out of memory: Alloc from system failed");
+        }
     }
     else
     {
-	    ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
-                errmsg("Failed to allocate memory under virtual memory protection"),
-                errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
-                )); 
+        if(is_main_thread())
+        {
+            /* SemOp error.  */
+            ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
+                        errmsg("Failed to allocate memory under virtual memory protection"),
+                        errdetail("Error %d, errno %d, %s", ec, en, strerror(en)) 
+                        )); 
+        }
+        else
+        {
+            write_log("Out of memory: MOP semaphore error."); 
+        }
     }
 }
 
@@ -252,17 +294,26 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 
 		need_chunk = newsz_chunk - hldcnt; 
 		mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
+        if (mem_avail < 0)
+            return NULL;
 
 		if(mem_avail > need_chunk)
         {
 			err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 
 		    if(err_code != 0)
+            {
 			    gp_failed_to_alloc(err_code, errno, 0, 0);
+                return NULL;
+            }
         }
         else
         {
-            gp_failed_to_alloc(1, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+            gp_failed_to_alloc(MOP_FAIL_REACHED_LIMIT, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+            /* Must return.  if not called from main thread, gp_failed_to_alloc
+             * actually will not throw.
+             */
+            return NULL;
         }
 	}
 
@@ -276,6 +327,15 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 		/* Try my best to be honest with allocation */
 		if(need_chunk > 0)
 			gpmemprot_up_sem(&gpsema_vmem_prot, need_chunk, true);
+
+        /*
+        gp_failed_to_alloc(MOP_FAIL_SYSTEM, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+        */
+        if (is_main_thread())
+            elog(LOG, "VM Protect: failed to allocate memory from system");
+        else
+            write_log("VM Protect: failed to allocate memory from system");
+
 		return NULL;
 	}
 
@@ -333,16 +393,22 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 
 				need_chunk = newsz_chunk - hldcnt; 
 				mem_avail = gpmemprot_peek_sem(&gpsema_vmem_prot);
+                if (mem_avail < 0)
+                    return NULL;
 
 				if(mem_avail > need_chunk)
                 {
 					err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 				    if(err_code != 0)
+                    {
 					    gp_failed_to_alloc(err_code, errno, 0, 0);
+                        return NULL;
+                    }
                 }
                 else
                 {
-                    gp_failed_to_alloc(1, 0, newsz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+                    gp_failed_to_alloc(MOP_FAIL_REACHED_LIMIT, 0, newsz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+                    return NULL;
                 }
 
 			}
@@ -355,8 +421,17 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 			/* Try my best to be honest with allocation */
 			if(need_chunk > 0)
 				gpmemprot_up_sem(&gpsema_vmem_prot, need_chunk, true);
-			return NULL;
-		}
+
+            /*
+               gp_failed_to_alloc(MOP_FAIL_SYSTEM, 0, sz, mem_avail << (gp_memprot_chunksize_shift - 20)); 
+             */
+            if (is_main_thread())
+                elog(LOG, "VM Protect: failed to allocate memory from system");
+            else
+                write_log("VM Protect: failed to allocate memory from system");
+
+            return NULL;
+        }
 
         mop_add_bytes(newsz - sz);
         mop_add_hld_cnt(need_chunk);
@@ -413,8 +488,12 @@ int gpmemprot_peek_sem(PGSemaphoreData *psem)
 
 	ret = semctl(psem->semId, psem->semNum, GETVAL, s);
 	if(ret < 0)
-		elog(ERROR, "Greenplum memory protection failed to get memory counter: %m");
-	
+    {
+        if(is_main_thread())
+            elog(ERROR, "Greenplum memory protection failed to get memory counter: %m");
+        else
+            write_log("Greenplum memory protection failed to get memory counter: %m");
+    }
 	return ret;
 }
 
