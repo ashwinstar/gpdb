@@ -1389,3 +1389,16 @@ select cn, pn, case when 1=2 then rank() over (partition by cn order by pn) end,
 rank() over (partition by cn order by pn) from sale; --mvd 1,2->4
 select pn, vn, case when 1=2 then rank() over (partition by cn order by pn) end,
 rank() over (partition by pn order by vn) from sale; --mvd 1,2->4
+
+-- MPP-6027
+drop table if exists test;
+create table test (i int, j bigint, k int, l int, m int);
+insert into test select i, i%100, i%123, i%234, i%345 from generate_series(1, 500) i;
+-- begin equivalent
+select j, sum(k), row_number() over (partition by j order by sum(k)) from test group by j order by j limit 10;
+
+select j, sum, row_number() over (partition by j order by sum) from (select j, sum(k) as sum from test group by j) tmp
+order by j limit 10;
+
+-- end equivalent
+drop table test;
