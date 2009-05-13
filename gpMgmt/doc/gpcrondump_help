@@ -198,8 +198,8 @@ screen, but is still written to the log file.
 
 -r (no rollback on failure)
 
-Do not rollback the dump files (delete a partial dump) if a failure is detected. The 
-default is to rollback (delete partial dump files).
+Do not rollback the dump files (delete a partial dump) if a failure is 
+detected. The default is to rollback (delete partial dump files).
 
 
 -R <post_dump_script>
@@ -312,7 +312,8 @@ database (and global objects) nightly at one past midnight
 01 0 * * * SHELL=/bin/bash GPHOME=/usr/local/greenplum-db \
 PATH=$PATH:$GPHOME/bin HOME=/export/home/gpadmin \
 MASTER_DATA_DIRECTORY=/data/gpdb_p1/gp-1 \
-/usr/local/greenplum-db/bin/gpcrondump -x sales -c -g -G -a -q >> gp_salesdump.log
+/usr/local/greenplum-db/bin/gpcrondump -x sales -c -g -G  \
+-a -q >> gp_salesdump.log
 
 *****************************************************
 SEE ALSO

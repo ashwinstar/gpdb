@@ -49,7 +49,7 @@ data distribution.
 Allows a WHERE constraint to be applied when the utility does a 
 SELECT count(*) to count the records on a segment. This is useful 
 for checking child tables that are partitioned by date. For example: 
-gpskew –t schema.table –w "date between '2007-01-01' and '2007-01-12'"
+gpskew -t schema.table -w "date between '2007-01-01' and '2007-01-12'"
 
 
 -h (show child table hierarchy)

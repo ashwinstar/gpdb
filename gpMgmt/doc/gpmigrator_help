@@ -59,9 +59,9 @@ The following tasks should be performed prior to executing an upgrade:
   Once the upgrade is in process, users will not be allowed on the 
   system until the upgrade is complete.
 
-IMPORTANT: Failing to meet any of these prerequisites can result in an aborted upgrade, 
-placing your system in an unusable or even unrecoverable state. Make sure you meet 
-all the prerequisites before running gpmigrator.
+IMPORTANT: Failing to meet any of these prerequisites can result in an 
+aborted upgrade, placing your system in an unusable or even unrecoverable 
+state. Make sure you meet all the prerequisites before running gpmigrator.
 
 *****************************************************
 DESCRIPTION
@@ -127,7 +127,7 @@ different than what your current system is using.
 Restores the backup directory in the event of a failed upgrade.
  
 If the migration procedure fails and you cannot start the system using 
-the prior version’s binary files, it is probable that gpmigrator was not 
+the prior version's binary files, it is probable that gpmigrator was not 
 able to revert automatically. In these cases, you can run gpmigrator -R 
 to attempt to restore the backup directory. 
 

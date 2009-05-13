@@ -111,7 +111,7 @@ creating them.
 Dump data as INSERT commands (rather than COPY). This will make restoration 
 very slow; it is mainly useful for making dumps that can be loaded into 
 non-PostgreSQL based databases. Note that the restore may fail altogether 
-if you have rearranged column order. The -D option is safer, though even slower. 
+if you have rearranged column order. The -D option is safer, though slower. 
 
 
 -D

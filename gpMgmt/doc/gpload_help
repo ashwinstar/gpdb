@@ -348,8 +348,9 @@ ERROR_TABLE - Optional when ERROR_LIMIT is declared. Specifies an error
               table where rows with formatting errors will be logged when 
               running in single row error isolation mode. You can then 
               examine this error table to see error rows that were not loaded 
-              (if any). If the error_table specified already exists, it will 
-              be used. If it does not exist, it will be automatically generated.
+              (if any). If the error_table specified already exists, it 
+              will be used. If it does not exist, it will be 
+              automatically generated.
 
 OUTPUT - Required. Defines the target table and final data column values 
          that are to be loaded into the database.
@@ -406,8 +407,8 @@ MAPPING - Optional. If a mapping is specified, it overrides the default
            or
             target_column_name: 'expression'
           Where expression is any expression that you would specify in the 
-          SELECT list of a query, such as a constant value, a column reference, 
-          an operator invocation, a function call, and so on.
+          SELECT list of a query, such as a constant value, a column 
+          reference, an operator invocation, a function call, and so on.
 
 
 *****************************************************
