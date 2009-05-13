@@ -1625,7 +1625,8 @@ UPDATE gp_distribution_policy
 
                         
     def perform_expansion(self):
-        """Performs the actual table re-organiations"""        
+        """Performs the actual table re-organiations"""  
+        global table_expand_error
         expansionStart = datetime.datetime.now()
         
         #setup a threadpool
@@ -1681,14 +1682,20 @@ UPDATE gp_distribution_policy
             self.conn.commit()
             logger.info('You can resume expansion by running gpexpand again')
         elif table_expand_error:
-            sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
-            cursor = dbconn.execSQL(self.conn, sql)
-            self.conn.commit()            
             logger.warn('**************************************************')                     
             logger.warn('One or more tables failed to expand successfully.')
             logger.warn('Please check the log file, correct the problem and')
             logger.warn('run gpexpand again to finish the expansion process')
             logger.warn('**************************************************')   
+            # We'll try to update the status, but if the errors were caused by
+            # going into read only mode, this will fail.  That's ok though as
+            # gpexpand will resume next run
+            try:
+                sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
+                cursor = dbconn.execSQL(self.conn, sql)
+                self.conn.commit()
+            except:
+                pass            
         else:
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION COMPLETE', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
             cursor = dbconn.execSQL(self.conn, sql)
@@ -1900,6 +1907,7 @@ class ExpandCommand(SQLCommand):
     
      
     def run(self,validateAfter=False):
+        global table_expand_error
         #connect.
         status_conn = None
         table_conn = None
@@ -2007,7 +2015,7 @@ Before initiating a System Expansion, you need to provision and burn-in
 the new hardware.  Please be sure to run gpcheckperf/gpcheckos to make
 sure the new hardware is working properly.
                         
-Please refer to the Admin Guide <TODO: chapter?> for more information."""
+Please refer to chapter 22 in the Admin Guide for more information."""
             
     if not ask_yesno(help,"Would you like to initiate a new System Expansion",'N'):                            
         logger.info("User Aborted. Exiting...")
