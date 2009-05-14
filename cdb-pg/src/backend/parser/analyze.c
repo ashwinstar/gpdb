@@ -4868,6 +4868,11 @@ validate_range_partition(partValidationState *vstate)
 
 	vstate->prevHadName  = !!(vstate->pElem->partName); /* bool t/f */
 
+	if (spec->partStart)
+		PartitionRangeItemIsValid(vstate->pstate, (PartitionRangeItem *)spec->partStart);
+	if (spec->partEnd)
+		PartitionRangeItemIsValid(vstate->pstate, (PartitionRangeItem *)spec->partEnd);
+
 	/*
 	 * Fixup boundaries for previous partition ending if necessary
 	 */
@@ -4892,7 +4897,6 @@ validate_range_partition(partValidationState *vstate)
 
 	if (spec->partStart)
 	{
-		PartitionRangeItemIsValid(vstate->pstate, (PartitionRangeItem *)spec->partStart);
 		if (!prevBSpec->partEnd)
 		{
 			PartitionRangeItem *pRI = (PartitionRangeItem *)(spec->partStart);
