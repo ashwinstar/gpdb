@@ -1147,147 +1147,152 @@ acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
 					   double *totalrows, double *totaldeadrows,
 					   double *totalbytes)
 {
-        int				numrows = 0;	/* # rows collected */
-	double				liverows = 0;	/* # rows seen */
-	double				deadrows = 0;	/* # dead rows seen */
-	double				rowstoskip = -1;	/* -1 means not set yet */
+    int				numrows = 0;	/* # rows collected */
+    double				liverows = 0;	/* # rows seen */
+    double				deadrows = 0;	/* # dead rows seen */
+    double				rowstoskip = -1;	/* -1 means not set yet */
 
-	double				rstate;
+    double				rstate;
 
-	AOCSScanDesc	        scandesc = NULL;
-	TupleTableSlot		*slot;
-        
-        int nvp = onerel->rd_att->natts;
-        int totalseg;
-        AOCSFileSegInfo         **allseg;
-        bool *proj;
+    AOCSScanDesc	        scandesc = NULL;
+    TupleTableSlot		*slot;
 
-        int i, j;
-	
-	Assert(targrows > 1);
-	
-        *totalbytes = 0;
-        *totalrows = 0;
+    int nvp = onerel->rd_att->natts;
+    int totalseg;
+    AOCSFileSegInfo         **allseg;
+    bool *proj;
 
-	/* early exit - no data on the QD */
-	if(Gp_role == GP_ROLE_DISPATCH)
-		return 0;
-	
-	/* get table level statistics from the pg_aoseg table */
-        allseg = GetAllAOCSFileSegInfo(onerel, SnapshotNow, &totalseg);
+    int i, j;
 
-        for(i = 0; i<totalseg; ++i) 
+    Assert(targrows > 1);
+
+    *totalbytes = 0;
+    *totalrows = 0;
+
+    /* early exit - no data on the QD */
+    if(Gp_role == GP_ROLE_DISPATCH)
+        return 0;
+
+    /* get table level statistics from the pg_aoseg table */
+    allseg = GetAllAOCSFileSegInfo(onerel, SnapshotNow, &totalseg);
+    if (!allseg)
+    {
+        /* empty ao table. */
+        return 0;
+    }
+
+    for(i = 0; i<totalseg; ++i) 
+    {
+        for(j=0; j<nvp; ++j)
         {
-                for(j=0; j<nvp; ++j)
-                {
-                        AOCSVPInfoEntry *e = getAOCSVPEntry(allseg[i], j);
-                        *totalbytes += e->eof_uncompressed;
-                }
-                
-                *totalrows += allseg[i]->tupcount;
+            AOCSVPInfoEntry *e = getAOCSVPEntry(allseg[i], j);
+            *totalbytes += e->eof_uncompressed;
         }
-	
-	
-	/* Prepare for sampling rows */
-	rstate = init_selection_state(targrows);
 
-        proj = palloc(sizeof(bool) * nvp);
-        for(i=0; i<nvp; ++i)
-                proj[i] = true;
-	
-	scandesc = aocs_beginscan(onerel, SnapshotNow, 0, NULL, proj);
-	slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
+        *totalrows += allseg[i]->tupcount;
+    }
 
-	for(;;)
-	{
-                aocs_getnext(scandesc, ForwardScanDirection, slot);
 
-                if(TupIsNull(slot))
-                        break;
-		
-		/* check for interrupts once in a while */
-		if((int)liverows % 400 == 0)
-			vacuum_delay_point();
-		
-		/*
-		 * The first targrows live rows are simply copied into the
-		 * reservoir. Then we start replacing tuples in the sample
-		 * until we reach the end of the relation.	This algorithm is
-		 * from Jeff Vitter's paper (see full citation below). It
-		 * works by repeatedly computing the number of tuples to skip
-		 * before selecting a tuple, which replaces a randomly chosen
-		 * element of the reservoir (current set of tuples).  At all
-		 * times the reservoir is a true random sample of the tuples
-		 * we've passed over so far, so when we fall off the end of
-		 * the relation we're done.
-		 */
-		if (numrows < targrows)
-			rows[numrows++] = ExecCopySlotHeapTuple(slot);
-		else
-		{
-			/*
-			 * t in Vitter's paper is the number of records already
-			 * processed.  If we need to compute a new S value, we
-			 * must use the not-yet-incremented value of liverows as
-			 * t.
-			 */
-			if (rowstoskip < 0)
-				rowstoskip = get_next_S(liverows, targrows, &rstate);
-			
-			if (rowstoskip <= 0)
-			{
-				/*
-				 * Found a suitable tuple, so save it, replacing one
-				 * old tuple at random
-				 */
-				int			k = (int) (targrows * random_fract());
-				
-				Assert(k >= 0 && k < targrows);
-				heap_freetuple(rows[k]);
-				rows[k] = ExecCopySlotHeapTuple(slot); 
-			}
-			
-			rowstoskip -= 1;
-		}
-		
-		liverows += 1;
-	}
-	
-	ExecDropSingleTupleTableSlot(slot);
-	
-	aocs_endscan(scandesc);			
+    /* Prepare for sampling rows */
+    rstate = init_selection_state(targrows);
 
-	/* 
-	 * In the heap table version acquire_sample_rows will now sort the sample 
-	 * tuples by position (itempointer). However with AO tables we can't sort
-	 * because we have no valid TIDs to use. Kurt explains why this is ok to 
-	 * skip: The sort is used to give a (poor) indication of whether an index 
-	 * scan, in key order, will cause base rel pages to be accessed sequentially
-	 * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
-	 */
-	 	
-	/*
-	 * Set total numbers of rows in relation.
-	 */
-	*totaldeadrows = 0;
+    proj = palloc(sizeof(bool) * nvp);
+    for(i=0; i<nvp; ++i)
+        proj[i] = true;
 
-	/*
-	 * Emit some interesting relation info
-	 */
-	ereport(elevel,
-			(errmsg("\"%s\": "
-					"containing %.0f live rows and %.0f dead rows; "
-					"%d rows in sample, %.0f total rows",
-					RelationGetRelationName(onerel),
-					liverows, deadrows,
-					numrows, *totalrows)));
-	
-        pfree(proj);
-        for(i = 0; i<totalseg; ++i) 
-                pfree(allseg[i]);
-        pfree(allseg);
+    scandesc = aocs_beginscan(onerel, SnapshotNow, 0, NULL, proj);
+    slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
 
-	return numrows;
+    for(;;)
+    {
+        aocs_getnext(scandesc, ForwardScanDirection, slot);
+
+        if(TupIsNull(slot))
+            break;
+
+        /* check for interrupts once in a while */
+        if((int)liverows % 400 == 0)
+            vacuum_delay_point();
+
+        /*
+         * The first targrows live rows are simply copied into the
+         * reservoir. Then we start replacing tuples in the sample
+         * until we reach the end of the relation.	This algorithm is
+         * from Jeff Vitter's paper (see full citation below). It
+         * works by repeatedly computing the number of tuples to skip
+         * before selecting a tuple, which replaces a randomly chosen
+         * element of the reservoir (current set of tuples).  At all
+         * times the reservoir is a true random sample of the tuples
+         * we've passed over so far, so when we fall off the end of
+         * the relation we're done.
+         */
+        if (numrows < targrows)
+            rows[numrows++] = ExecCopySlotHeapTuple(slot);
+        else
+        {
+            /*
+             * t in Vitter's paper is the number of records already
+             * processed.  If we need to compute a new S value, we
+             * must use the not-yet-incremented value of liverows as
+             * t.
+             */
+            if (rowstoskip < 0)
+                rowstoskip = get_next_S(liverows, targrows, &rstate);
+
+            if (rowstoskip <= 0)
+            {
+                /*
+                 * Found a suitable tuple, so save it, replacing one
+                 * old tuple at random
+                 */
+                int			k = (int) (targrows * random_fract());
+
+                Assert(k >= 0 && k < targrows);
+                heap_freetuple(rows[k]);
+                rows[k] = ExecCopySlotHeapTuple(slot); 
+            }
+
+            rowstoskip -= 1;
+        }
+
+        liverows += 1;
+    }
+
+    ExecDropSingleTupleTableSlot(slot);
+
+    aocs_endscan(scandesc);			
+
+    /* 
+     * In the heap table version acquire_sample_rows will now sort the sample 
+     * tuples by position (itempointer). However with AO tables we can't sort
+     * because we have no valid TIDs to use. Kurt explains why this is ok to 
+     * skip: The sort is used to give a (poor) indication of whether an index 
+     * scan, in key order, will cause base rel pages to be accessed sequentially
+     * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
+     */
+
+    /*
+     * Set total numbers of rows in relation.
+     */
+    *totaldeadrows = 0;
+
+    /*
+     * Emit some interesting relation info
+     */
+    ereport(elevel,
+            (errmsg("\"%s\": "
+                    "containing %.0f live rows and %.0f dead rows; "
+                    "%d rows in sample, %.0f total rows",
+                    RelationGetRelationName(onerel),
+                    liverows, deadrows,
+                    numrows, *totalrows)));
+
+    pfree(proj);
+    for(i = 0; i<totalseg; ++i) 
+        pfree(allseg[i]);
+    pfree(allseg);
+
+    return numrows;
 }
 
 /* Select a random value R uniformly distributed in (0 - 1) */

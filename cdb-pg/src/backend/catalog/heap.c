@@ -858,10 +858,7 @@ heap_create_with_catalog(const char *relname,
 	if(appendOnlyRel)
 	{
 		if(stdRdOptions->columnstore)
-        {
-            elog(ERROR, "Column store is not supported in this release");
             relstorage = RELSTORAGE_AOCS;
-        }
 		else
 			relstorage = RELSTORAGE_AO;
 	}
