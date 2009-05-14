@@ -19,9 +19,11 @@ export GPHOME
 PATH=$GPHOME/bin:$GPHOME/ext/python/bin:$PATH
 export PATH
 
-# Set PYTHONPATH
+# Set PYTHONPATH and HOME
 PYTHONPATH=$GPHOME/lib/python
 export PYTHONPATH
+PYTHONHOME=$GPHOME/ext/python
+export PYTHONHOME
 
 # Add in library paths apropriate for this system
 case `uname` in
