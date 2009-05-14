@@ -526,15 +526,6 @@ _outNestLoop(StringInfo str, NestLoop *node)
 	WRITE_BOOL_FIELD(singleton_outer); /*CDB-OLAP*/
 }
 
-static void
-_outAdaptiveNestLoop(StringInfo str, AdaptiveNestLoop *node)
-{
-	WRITE_NODE_TYPE("ADAPTIVENESTLOOP");
-
-	_outPlanInfo(str, (Plan *) node);
-
-    WRITE_INT_FIELD(nl_strategy_threshold);
-}
 
 static void
 _outMergeJoin(StringInfo str, MergeJoin *node)
@@ -3171,9 +3162,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_NestLoop:
 				_outNestLoop(str, obj);
-				break;
-			case T_AdaptiveNestLoop:
-				_outAdaptiveNestLoop(str, obj);
 				break;
 			case T_MergeJoin:
 				_outMergeJoin(str, obj);

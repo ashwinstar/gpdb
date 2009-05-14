@@ -134,10 +134,7 @@ ExecHashJoin(HashJoinState *node)
 			{
 				TupleTableSlot *slot;
 
-				if (node->outer_q != NULL)
-					slot = dequeueTQ(node->outer_q);
-				else
-					slot = ExecProcNode(outerNode);
+                slot = ExecProcNode(outerNode);
 
 				node->hj_FirstOuterTupleSlot = slot;
 				if (TupIsNull(node->hj_FirstOuterTupleSlot))
@@ -394,8 +391,6 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	 */
 	ExecAssignExprContext(estate, &hjstate->js.ps);
 
-	hjstate->outer_q = NULL;
-	
 	if ( node->hashqualclauses != NIL )
 	{
 		/* CDB: This must be an IS NOT DISTINCT join!  */
@@ -678,20 +673,7 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 				hjstate->hj_FirstOuterTupleSlot = NULL;
 			else
 			{
-				if (hjstate->outer_q != NULL)
-				{
-					slot = dequeueTQ(hjstate->outer_q);
-					if (slot == NULL)
-					{
-						/* exhausted queued tuples */
-						pfree(hjstate->outer_q);
-						hjstate->outer_q = NULL;
-
-						slot = ExecProcNode(outerNode);
-					}
-				}
-				else
-					slot = ExecProcNode(outerNode);
+                slot = ExecProcNode(outerNode);
 			}
 
 			if (TupIsNull(slot))
@@ -1140,76 +1122,6 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	 */
 	if (((PlanState *) node)->lefttree->chgParam == NULL)
 		ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
-}
-
-executorTupleQueue *
-makeTQ(int size, struct Instrumentation *instr)
-{
-	int tq_size;
-	executorTupleQueue *tq = NULL;
-
-	tq_size = sizeof(executorTupleQueue) + ((size-1) * sizeof(HeapTuple));
-
-	if (tq_size > (work_mem*1024))
-		return NULL;
-
-    if (instr)
-        instr->workmemused = Max(instr->workmemused, tq_size);
-
-	tq = palloc0(tq_size);
-
-	tq->maxsize = size;
-	tq->size = 0;
-	tq->pos = 0;
-	tq->slot = NULL;
-
-	return tq;
-}
-
-void
-enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot)
-{
-	Assert(tq != NULL);
-	Assert(tq->size < tq->maxsize);
-
-	if (slot == NULL)
-		return;
-
-	if (tq->slot == NULL)
-		tq->slot = slot;
-
-	tq->tuples[tq->size] = ExecCopyGenericTuple(slot);
-	tq->size++;
-}
-
-TupleTableSlot *dequeueTQ(executorTupleQueue *tq)
-{
-	HeapTuple curtup;
-	TupleTableSlot *tts;
-
-	Assert(tq != NULL);
-
-	if (tq->pos >= tq->size)
-		return NULL;
-
-	curtup = tq->tuples[tq->pos];
-	if (curtup == NULL)
-		return NULL;
-
-	tq->pos++;
-
-	tts = ExecStoreGenericTuple(curtup, tq->slot, true); 
-	return tts;
-}
-
-void releaseTQ(executorTupleQueue *tq)
-{
-	TupleTableSlot *tts;
-
-	while ((tts = dequeueTQ(tq)) != NULL)
-	{
-		ExecClearTuple(tts);
-	}
 }
 
 /* Is this an IS-NOT-DISTINCT-join qual list (as opposed the an equijoin)?

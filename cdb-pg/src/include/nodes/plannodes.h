@@ -502,18 +502,6 @@ typedef struct HashJoin
 	List	   *hashqualclauses;
 } HashJoin;
 
-/* ----------------
- *		adaptive nest loop node: not a proper join node, has joins as child plans
- * ----------------
- */
-typedef struct AdaptiveNestLoop
-{
-	Plan		plan;
-
-	/* Plan-B structures */
-	int			nl_strategy_threshold; /* how many outer tuples before we change join strategy */
-} AdaptiveNestLoop;
-
 /*
  * Share type of sharing a node.
  */

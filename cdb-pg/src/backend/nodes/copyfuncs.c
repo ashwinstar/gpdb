@@ -548,22 +548,6 @@ _copyNestLoop(NestLoop *from)
 }
 
 /*
- * _copyAdaptiveNestLoop
- */
-static AdaptiveNestLoop *
-_copyAdaptiveNestLoop(AdaptiveNestLoop *from)
-{
-	AdaptiveNestLoop   *newnode = makeNode(AdaptiveNestLoop);
-
-	CopyPlanFields((Plan *) from, (Plan *) newnode);
-
-    COPY_SCALAR_FIELD(nl_strategy_threshold);
-
-    return newnode;
-}
-
-
-/*
  * _copyMergeJoin
  */
 static MergeJoin *
@@ -3667,9 +3651,6 @@ copyObject(void *from)
 			break;
 		case T_NestLoop:
 			retval = _copyNestLoop(from);
-			break;
-		case T_AdaptiveNestLoop:
-			retval = _copyAdaptiveNestLoop(from);
 			break;
 		case T_MergeJoin:
 			retval = _copyMergeJoin(from);

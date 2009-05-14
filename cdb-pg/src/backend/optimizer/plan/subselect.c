@@ -1116,7 +1116,6 @@ finalize_plan(Plan *plan, List *rtable,
 							  &context);
 			break;
 
-		case T_AdaptiveNestLoop:
 		case T_Hash:
 		case T_Agg:
 		case T_Window:

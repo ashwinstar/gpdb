@@ -280,28 +280,6 @@ set_plan_references(Plan *plan, set_plan_ref_context *ctxt)
 			fix_expr_references(plan, (Node *) plan->qual, ctxt);
 			fix_expr_references(plan, (Node *) ((Join *) plan)->joinqual, ctxt);
 			break;
-		case T_AdaptiveNestLoop:
-        {
-            Plan   *nj_plan = plan->lefttree;
-            Plan   *hj_plan = plan->righttree;
-
-            /* HJ has no outer subplan of its own. */
-            Assert(IsA(hj_plan, HashJoin) &&
-                   hj_plan->lefttree == NULL);
-
-            /* NJ has outer subplan for both.  At runtime HJ can borrow it. */
-            Assert(IsA(nj_plan, NestLoop) &&
-                   nj_plan->lefttree != NULL);
-
-            /* Build temporary fake outer subplan for HJ, nought but a tlist. */
-            hj_plan->lefttree = makeNode(Plan);
-            hj_plan->lefttree->targetlist = copyObject(nj_plan->lefttree->targetlist);
-
-            /* Build phony tlist for EXPLAIN.  NJ & HJ tlists are equivalent. */
-            plan->targetlist = cdb_build_identity_tlist(NIL, nj_plan, OUTER);
-            Assert(plan->qual == NIL);
-			break;
-        }
         case T_Plan:
             /*
              * Occurs only as a temporary fake outer subplan (created just
@@ -924,7 +902,6 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			adjust_expr_varnos((Node *) ((HashJoin *) plan)->hashqualclauses,
 							   rtoffset);
 			break;
-		case T_AdaptiveNestLoop:
 		case T_Hash:
 		case T_Material:
 		case T_Sort:

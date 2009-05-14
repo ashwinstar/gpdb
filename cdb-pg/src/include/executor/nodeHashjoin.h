@@ -30,11 +30,6 @@ extern void ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalu
 					              struct HashJoinBatchSide *batchside,
 								  MemoryContext bfCxt);
 
-extern executorTupleQueue *makeTQ(int size, struct Instrumentation *instr);
-extern void enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot);
-extern TupleTableSlot *dequeueTQ(executorTupleQueue *tq);
-extern void releaseTQ(executorTupleQueue *tq);
-
 enum 
 {
 	GPMON_HASHJOIN_SPILLBATCH = GPMON_QEXEC_M_NODE_START,

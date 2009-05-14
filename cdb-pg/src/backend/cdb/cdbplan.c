@@ -333,11 +333,6 @@ plan_tree_walker(Node *node,
 
 			break;
 
-		case T_AdaptiveNestLoop:
-			if (walk_plan_node_fields((Plan *) node, walker, context))
-				return true;
-			break;
-
 		case T_ShareInputScan:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
@@ -804,21 +799,6 @@ plan_tree_mutator(Node *node,
 
 				/* A NestLoop is really just a Join. */
 				return (Node *) newloopscan;
-			}
-			break;
-		case T_AdaptiveNestLoop:
-			/* This may walk the shared_outer twice; but it has copied
-			 * it as part of the mutate, so the underlying nodes don't
-			 * get confused
-			 */
-			{
-				AdaptiveNestLoop   *loop = (AdaptiveNestLoop *) node;
-				AdaptiveNestLoop   *newloop;
-
-				FLATCOPY(newloop, loop, AdaptiveNestLoop);
-				PLANMUTATE(newloop, loop);
-
-				return (Node *) newloop;
 			}
 			break;
 		case T_MergeJoin:

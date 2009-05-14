@@ -19,7 +19,7 @@ OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        execUtils.o \
        functions.o \
        instrument.o \
-       nodeAdaptiveNestloop.o nodeAppend.o nodeAppendOnlyscan.o nodeAgg.o nodeAOCSScan.o \
+       nodeAppend.o nodeAppendOnlyscan.o nodeAgg.o nodeAOCSScan.o \
        nodeBitmapAnd.o nodeBitmapOr.o \
        nodeBitmapHeapscan.o nodeBitmapIndexscan.o \
        nodeExternalscan.o \

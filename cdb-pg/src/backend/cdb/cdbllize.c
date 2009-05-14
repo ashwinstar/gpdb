@@ -1078,9 +1078,6 @@ motion_sanity_walker(Node *node, int *result)
 			if (((HashJoin *)node)->join.prefetch_inner)
 				deadlock_safe = true;
 			break;
-		case T_AdaptiveNestLoop:
-			branch_label = "ANL";
-			break;
 		case T_NestLoop: /* Nested loop joins are safe only if the
 						  * prefetch flag is set */
 			branch_label = "NL";
@@ -1135,7 +1132,6 @@ motion_sanity_walker(Node *node, int *result)
 			break;
 
 		case T_HashJoin:
-		case T_AdaptiveNestLoop:
 		case T_NestLoop:
 		case T_MergeJoin:
 		{

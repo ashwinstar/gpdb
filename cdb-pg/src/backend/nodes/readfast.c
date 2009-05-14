@@ -2601,21 +2601,6 @@ _readNestLoop(const char ** str)
 }
 
 /*
- * _readAdaptiveNestLoop
- */
-static AdaptiveNestLoop *
-_readAdaptiveNestLoop(const char ** str)
-{
-	READ_LOCALS(AdaptiveNestLoop);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_INT_FIELD(nl_strategy_threshold);
-
-    READ_DONE();
-}
-
-/*
  * _readMergeJoin
  */
 static MergeJoin *
@@ -3311,9 +3296,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_NestLoop:
 				return_value = _readNestLoop(str);
-				break;
-			case T_AdaptiveNestLoop:
-				return_value = _readAdaptiveNestLoop(str);
 				break;
 			case T_MergeJoin:
 				return_value = _readMergeJoin(str);

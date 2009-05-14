@@ -34,7 +34,6 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
-#include "executor/nodeAdaptiveNestloop.h"
 #include "executor/nodeResult.h"
 #include "executor/nodeSeqscan.h"
 #include "executor/nodeSetOp.h"
@@ -168,10 +167,6 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_NestLoopState:
 			ExecReScanNestLoop((NestLoopState *) node, exprCtxt);
-			break;
-
-		case T_AdaptiveNestLoopState:
-			ExecReScanAdaptiveNestLoop((AdaptiveNestLoopState *) node, exprCtxt);
 			break;
 
 		case T_MergeJoinState:

@@ -806,9 +806,6 @@ explain_outNode(StringInfo str,
 		case T_BitmapOr:
 			pname = "BitmapOr";
 			break;
-		case T_AdaptiveNestLoop:
-			pname = "Adaptive Join Choice";
-			break;
 		case T_NestLoop:
 			if (((NestLoop *)plan)->shared_outer)
 			{
@@ -1265,12 +1262,6 @@ explain_outNode(StringInfo str,
 							"outer", OUTER, outerPlan(plan),
 							"inner", INNER, innerPlan(plan),
 							str, indent, es);
-			break;
-		case T_AdaptiveNestLoop:
-	        for (i = 0; i < indent; i++)
-		        appendStringInfo(str, "  ");
-            appendStringInfo(str, "  Hash Join will be chosen if outer row count >= %d\n",
-							 ((AdaptiveNestLoop *)plan)->nl_strategy_threshold);
 			break;
 		case T_Agg:
 			show_upper_qual(plan->qual,

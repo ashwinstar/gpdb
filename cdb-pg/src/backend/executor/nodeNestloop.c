@@ -158,28 +158,11 @@ ExecNestLoop(NestLoopState *node)
 		 */
 		if (node->nl_NeedNewOuter)
 		{
-			if (node->outer_q == NULL)
-			{
-				ENL1_printf("getting new outer tuple");
-				outerTupleSlot = ExecProcNode(outerPlan);
-				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTERTUPLE);
-				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSIN); 
-			}
-			else
-			{
-				/* retrieve from our queue of reserved outer tuples */
-				outerTupleSlot = dequeueTQ(node->outer_q);
-				if (outerTupleSlot == NULL)
-				{
-					/* queued tuples exhausted */ 
-					pfree(node->outer_q);
-					node->outer_q = NULL;
+            ENL1_printf("getting new outer tuple");
+            outerTupleSlot = ExecProcNode(outerPlan);
+            Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTERTUPLE);
+            Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSIN); 
 
-					if (node->nl_Untouched)
-						ExecSquelchNode(innerPlan);
-					return NULL;
-				}
-			}
 			/*
 			 * if there are no more outer tuples, then the join is complete..
 			 */
@@ -354,8 +337,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate = makeNode(NestLoopState);
 	nlstate->js.ps.plan = (Plan *) node;
 	nlstate->js.ps.state = estate;
-
-	nlstate->outer_q = NULL;
 
 	nlstate->shared_outer = node->shared_outer;
 

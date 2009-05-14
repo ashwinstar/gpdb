@@ -149,11 +149,6 @@ static ValuesScan *make_valuesscan(List *qptlist, List *qpqual,
 				Index scanrelid);
 static BitmapAnd *make_bitmap_and(List *bitmapplans);
 static BitmapOr *make_bitmap_or(List *bitmapplans);
-static AdaptiveNestLoop *
-make_adaptivenestloop(List     *tlist,
-					  Plan     *lefttree,
-					  Plan     *righttree,
-                      int       outer_lookahead_rows);
 static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
@@ -2444,30 +2439,14 @@ create_nestloop_plan(CreatePlanContext *ctx,
 	if (prefetch)
 		join_plan->join.prefetch_inner = true;
 
-    /*
-     * Adaptive NJ:  Add AdaptiveNestLoop node above NJ and HJ.
+    /* The NLJ has an alternative (HashJoin).  Always use HJ, because it
+     * will not be much worse anyway.  Safe choice.
      */
     if (best_path->alternate != NULL)
 	{
         Path       *alternate_path = (Path *)best_path->alternate;
-		Plan       *alternate_plan;
-		AdaptiveNestLoop *anl_plan;
-
-        /* Alternate (HJ) path has no outer subpath. */
-        Assert(IsA(alternate_path, HashPath));
-        Assert(best_path->alternate->jpath.outerjoinpath == NULL);
-        Assert(best_path->jpath.path.parent == alternate_path->parent);
-
-	    join_plan->shared_outer = true;
-
-		alternate_plan = create_subplan(ctx, alternate_path);
-
-		anl_plan = make_adaptivenestloop(tlist,
-                                         (Plan *)join_plan,
-                                         alternate_plan,
-                                         best_path->outer_lookahead_rows);
-		copy_path_costsize((Plan *)anl_plan, &best_path->jpath.path);
-		return (Plan *)anl_plan;
+		Plan       *alternate_plan = create_subplan(ctx, alternate_path);
+        return alternate_plan;
 	}
 
 	return (Plan *)join_plan;
@@ -3433,24 +3412,6 @@ make_nestloop(List *tlist,
 	node->join.joinqual = joinclauses;
 
     node->outernotreferencedbyinner = false;    /*CDB*/
-
-	return node;
-}
-
-static AdaptiveNestLoop *
-make_adaptivenestloop(List     *tlist,
-					  Plan     *lefttree,
-					  Plan     *righttree,
-                      int       outer_lookahead_rows)
-{
-	AdaptiveNestLoop	*node = makeNode(AdaptiveNestLoop);
-
-	node->plan.targetlist = tlist;
-	node->plan.qual = NIL;
-	node->plan.lefttree = lefttree;
-	node->plan.righttree = righttree;
-
-    node->nl_strategy_threshold = outer_lookahead_rows;
 
 	return node;
 }
@@ -4634,7 +4595,6 @@ is_projection_capable_plan(Plan *plan)
 		case T_Limit:
 		case T_Append:
 		case T_Motion:
-        case T_AdaptiveNestLoop:
 		case T_ShareInputScan:
 			return false;
 		default:
