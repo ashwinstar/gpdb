@@ -500,6 +500,7 @@ tmpPATH=$(BLD_PYTHON)/bin:$(PATH)
 export PATH:=$(tmpPATH)
 tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_MAC_PREFIX)LD_LIBRARY_PATH)
 export $(BLD_MAC_PREFIX)LD_LIBRARY_PATH:=$(tmpLD_LIBRARY_PATH)
+export PYTHONHOME=$(BLD_PYTHON)
 endif
 
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
