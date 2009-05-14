@@ -8,7 +8,7 @@ SYNOPSIS
 
 
 gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>]  
-[-v | -V]
+[-v | -V] [-m <bytes>]
 
 gpfdist [-? | --help] | --version
 
@@ -71,6 +71,12 @@ establish a connection to a gpfdist process. Default is 5 seconds.
 Valid values are 2 to 30 seconds.  May need to be increased on 
 systems with a lot of network traffic.
 
+-m <len>
+
+Sets the maximum allowed data row length in bytes. Default is 32768.
+Should be used when user data includes very wide rows, i.e when
+"line too long" error message is receieved. Should not be used otherwise
+as it increases resource allocation. Valid range is 32K to 1MB.
 
 -v (verbose)
 

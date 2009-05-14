@@ -32,7 +32,7 @@ struct fstream_t
 	int 			buffer_size;
 	const char*		ferror; /* error string */
 	struct fstream_options options;
-	char 			buffer[FSTREAM_BLOCKSIZE];
+	char* 			buffer;
 };
 
 /*
@@ -168,6 +168,9 @@ scan_csv_records(char *p, char *q, int one, fstream_t *fs)
 /* close the file stream */
 void fstream_close(fstream_t* fs)
 {
+	if(fs->buffer)
+		gfile_free(fs->buffer);
+
 	glob_and_copyfree(&fs->glob);
 	gfile_close(&fs->fd);
 	gfile_free(fs);
@@ -299,7 +302,8 @@ fstream_open(const char *path, const struct fstream_options *options,
 
 	memset(fs, 0, sizeof *fs);
 	fs->options = *options;
-
+	fs->buffer = gfile_malloc(options->bufsize);
+	
 	/*
 	 * get a list of all files that were requested to be read and include them
 	 * in our fstream. This includes any wildcard pattern matching.
@@ -447,12 +451,12 @@ int fstream_read(fstream_t *fs,
 			char* 	q = p + fs->buffer_size;
 			size_t 	len = 0;
 
-			assert(fs->buffer_size < sizeof fs->buffer);
+		    assert(fs->buffer_size < fs->options.bufsize);
 
 			/*
 			 * read data from the source file and fill up the file stream buffer
 			 */
-			len = sizeof fs->buffer - fs->buffer_size;
+			len = fs->options.bufsize - fs->buffer_size;
 			s = gfile_read(&fs->fd, q, len);
 
 			if (s < 0)
@@ -481,7 +485,7 @@ int fstream_read(fstream_t *fs,
 
 			if (!p)
 			{
-				if (fs->buffer_size == sizeof fs->buffer)
+				if (fs->buffer_size == fs->options.bufsize)
 				{
 					gfile_printf_then_putc_newline(
 							"fstream ERROR: header too long in file %s",
@@ -513,7 +517,7 @@ int fstream_read(fstream_t *fs,
 		{
 			char	*p;
 
-			assert(size >= FSTREAM_BLOCKSIZE);
+			assert(size >= fs->options.bufsize);
 
 			s = fs->buffer_size;
 
@@ -592,7 +596,7 @@ int fstream_read(fstream_t *fs,
 			/*
 			 * could we not find even one complete row in this buffer? error.
 			 */
-			if (!p || (char*) buffer + size >= p + FSTREAM_BLOCKSIZE)
+			if (!p || (char*) buffer + size >= p + fs->options.bufsize)
 			{
 				gfile_printf_then_putc_newline(
 						"fstream ERROR: line too long in file %s near (%lld bytes)",

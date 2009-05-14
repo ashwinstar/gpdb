@@ -661,6 +661,7 @@ url_fopen(char *url, const char *operation, extvar_t *ev, CopyState pstate, int 
 		fo.quote = pstate->quote ? *pstate->quote : 0;
 		fo.escape = pstate->escape ? *pstate->escape : 0;
 		fo.header = pstate->header_line;
+		fo.bufsize = 32 * 1024;
 		pstate->header_line = 0;
 
 		/*

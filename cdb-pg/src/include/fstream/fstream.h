@@ -7,8 +7,6 @@
 typedef __int64 int64_t;
 #endif
 
-#define FSTREAM_BLOCKSIZE	(1024*64)
-
 /* A file stream - data may come from several files */
 typedef struct fstream_t fstream_t;
 
@@ -18,6 +16,7 @@ struct fstream_options{
     int verbose;
     char quote;		/* quote char */
     char escape;	/* escape char */
+    int bufsize;
 };
 
 struct fstream_filename_and_offset{
@@ -26,7 +25,7 @@ struct fstream_filename_and_offset{
     int64_t foff;
 };
 
-// If read_whole_lines, then size must be at least FSTREAM_BLOCKSIZE. */
+// If read_whole_lines, then size must be at least the value of -m (blocksize). */
 int fstream_read(fstream_t* fs, void* buffer, int size,
 				 struct fstream_filename_and_offset* fo,
 				 const int read_whole_lines);

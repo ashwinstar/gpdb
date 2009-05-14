@@ -40,16 +40,16 @@
 typedef struct blockhdr_t blockhdr_t;
 struct blockhdr_t
 {
-	char hbyte[293];
-	int hbot, htop;
+	char 	hbyte[293];
+	int 	hbot, htop;
 };
 
 typedef struct block_t block_t;
 struct block_t
 {
-	blockhdr_t hdr;
-	int bot, top;
-	char byte[FSTREAM_BLOCKSIZE];
+	blockhdr_t 	hdr;
+	int 		bot, top;
+	char*      	byte;
 };
 
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
@@ -117,8 +117,8 @@ static struct
 	int 		g; /* gp_proto (0 or 1) (internal, not documented) */
 	int 		t; /* timeout in seconds */
 	int 		b;
-} opt =
-{ 8080, 8080, 0, 0, ".", 0, 0, -1, 5, 0 };
+    int 		m; /* max data line len */
+} opt = { 8080,8080, 0, 0, ".", 0,0, -1, 5, 0, 32768 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -288,7 +288,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V]\n\n"
+						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <bytes>]\n\n"
 						"       gpfdist [-? | --help] | --version\n\n"
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
@@ -297,6 +297,7 @@ static void usage_error(const char* msg, int print_usage)
 						"        -d dir     : serve files under the specified directory,  default is '.'\n"
 						"        -l logfn   : log filename\n"
 					    "        -t tm      : timeout in seconds \n"
+						"        -m len     : max data row length expected, in bytes. default is 32768"
 						"        --version  : print version information\n\n");
 		}
 	}
@@ -345,6 +346,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'l', 1, "log filename" },
 	{ NULL, 't', 5, "timeout in seconds" },
 	{ NULL, 'g', 1, "internal - gp_proto number" },
+	{ NULL, 'm', 1, "max data row length expected" },
 	{ "version", 256, 0, "print version number" },
 	{ 0 } };
 
@@ -397,6 +399,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'b':
 			opt.b = atoi(arg);
 			break;
+		case 'm': 
+			opt.m = atoi(arg); 
+			break;
 		case 256:
 			print_version();
 			break;
@@ -416,9 +421,10 @@ static void parse_command_line(int argc, const char* const argv[],
 	}
 
 	if (! (2 <= opt.t && opt.t <= 30))
-	{
 		usage_error("Error:-t tmout must be between 2 and 30", 0);
-	}
+
+    if (! ((32*1024) <= opt.m && opt.m <= (1024*1024)))
+    	usage_error("Error: -m max row length must be between 32KB and 1MB", 0);
 
 	/* validate opt.d */
 	{
@@ -737,9 +743,8 @@ session_get_block(session_t* s, block_t* retblock)
 	gcb.read_bytes -= fstream_get_compressed_position(s->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	size = fstream_read(s->fstream, retblock->byte, sizeof retblock->byte,
-						&fos, whole_rows);
-
+	size = fstream_read(s->fstream, retblock->byte, opt.m, &fos, whole_rows);
+	
 	if (size == 0)
 	{
 		gcb.read_bytes += fstream_get_compressed_size(s->fstream);
@@ -907,6 +912,7 @@ static void session_attach(request_t* r)
 		/* parse csvopt header */
 		memset(&fstream_options, 0, sizeof fstream_options);
 		fstream_options.verbose = opt.v;
+		fstream_options.bufsize = opt.m;
 
 		{
 			int quote = 0;
@@ -1435,6 +1441,8 @@ static void do_accept(int fd, short event, void* arg)
 	r = apr_pcalloc(pool, sizeof(request_t));
 	r->pool = pool;
 	r->sock = sock;
+
+    r->out.byte = apr_palloc(pool, opt.m); /* use the block size specified by -m option */
 
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
