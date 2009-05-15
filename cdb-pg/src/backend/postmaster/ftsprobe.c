@@ -53,6 +53,8 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/catalog.h"
 
+#include "storage/backendid.h"
+
 #include "pgtime.h"
 
 /*
@@ -91,34 +93,6 @@ static char *probeDatabase = NULL;
 #define FTS_BM_WORD_COUNT ((FTS_MAX_DBS) / 64) /* one bit per db, 64-bit "words" */
 #define FTS_BM_WORD(id) ((id)>>6)
 #define FTS_BM_BIT(id) ((uint64)1 << ((id) & 0x3f))
-
-#if 0
-#define FTS_BM_SET(id, bm)							\
-	do {											\
-		uint64 *bma;								\
-		uint64 w;									\
-		int index;									\
-													\
-		index = FTS_BM_WORD(id);					\
-		bma = (uint64 *)(bm);						\
-		w = bma[index];								\
-		w |= FTS_BM_BIT(id);						\
-		bma[index] = w;								\
-	} while (0)
-
-#define FTS_BM_CLR(id, bm)							\
-	do {											\
-		uint64 *bma;								\
-		uint64 w;									\
-		int index;									\
-													\
-		index = FTS_BM_WORD(id);					\
-		bma = (uint64 *)(bm);						\
-		w = bma[index];								\
-		w &= ~FTS_BM_BIT(id);						\
-		bma[index] = w;								\
-	} while (0)
-#endif
 
 #define FTS_BM_SET(id, bm) ((bm)[FTS_BM_WORD(id)] = ((bm)[FTS_BM_WORD(id)]) | FTS_BM_BIT(id))
 #define FTS_BM_CLR(id, bm) ((bm)[FTS_BM_WORD(id)] &= ~FTS_BM_BIT(id))
@@ -290,7 +264,7 @@ FtsProbeMain(int argc, char *argv[])
 	pqsignal(SIGALRM, handle_sig_alarm);
 
 	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, CatchupInterruptHandler);
+	pqsignal(SIGUSR1, SIG_IGN);
 	/* We don't listen for async notifies */
 	pqsignal(SIGUSR2, RequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);
@@ -348,6 +322,33 @@ FtsProbeMain(int argc, char *argv[])
 	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
 
 	SetDatabasePath(fullpath);
+
+	/*
+	 * Finish filling in the PGPROC struct, and add it to the ProcArray. (We
+	 * need to know MyDatabaseId before we can do this, since it's entered
+	 * into the PGPROC struct.)
+	 *
+	 * Once I have done this, I am visible to other backends!
+	 */
+	InitProcessPhase2();
+
+	/*
+	 * Initialize my entry in the shared-invalidation manager's array of
+	 * per-backend data.
+	 *
+	 * Sets up MyBackendId, a unique backend identifier.
+	 */
+	MyBackendId = InvalidBackendId;
+
+	InitBackendSharedInvalidationState();
+
+	if (MyBackendId > MaxBackends || MyBackendId <= 0)
+		elog(FATAL, "bad backend id: %d", MyBackendId);
+
+	/*
+	 * bufmgr needs another initialization call too
+	 */
+	InitBufferPoolBackend();
 
 	/* heap access requires the rel-cache */
 	RelationCacheInitialize();
