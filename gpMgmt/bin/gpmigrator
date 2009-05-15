@@ -3606,8 +3606,6 @@ This issue must be resolved before upgrade can complete.
                                     i = 1
                                     f.write('commit;\nbegin;\n')
                             f.write('commit;\n')
-                        if db == 'template1':
-                            f.write('vacuum freeze;\n')
 
                         f.close()
                     fname = os.path.join(logdir, 'aoseg_template0_rewrite.sql')
@@ -4533,6 +4531,10 @@ if __name__ == '__main__':
                 # + Release the lockdown
                 # + Mark install valid
                 u.Startup(u.newenv)
+
+                # VACUUM FREEZE template1, since we haven't already
+                u.Update('VACUUM FREEZE;', db='template1')
+            
                 u.ReleaseLockdown(u.newenv)
     
                 # Finally, drop the upgrade user:
