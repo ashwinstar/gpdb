@@ -8,7 +8,7 @@ SYNOPSIS
 
 gpexpand [-f hosts_file] [-D database_name]
 
-gpexpand -i input_file [-D database_name] [-B batch_size] [-V]
+gpexpand -i input_file [-D database_name] [-B batch_size] [-V | --novacuum]
 
 gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']] 
          [-a] [-n parallel_processes] [-D database_name]
@@ -124,18 +124,10 @@ of the hostname if the original nodes are configured with multiple interfaces.
 
 -B <batch_size>
 
-The number of commands to send to a given host before making a one-second 
-pause. Default is 8.  Valid values are 1-128.
-
-The gpexpand utility issues a number of setup commands that may exceed the 
-host's maximum threshold for authenticated connections as defined by 
-MaxStartups in the SSH daemon configuration. The one-second pause allows 
-authentications to be completed before gpexpand issues any more commands. 
-
-The default value does not normally need to be changed. However, it may be 
-necessary to reduce the maximum number of commands if gpexpand fails with 
-connection errors such as 'ssh_exchange_identification: Connection closed by 
-remote host.'
+The number of worker threads for initializing new segments. Default is 8.  
+Valid values are 1-128.  If the number of segments per host or number
+of new hosts added is higher than 8, adjust -B to match the greater
+number.
 
 
 -n <parallel_processes>
@@ -166,7 +158,7 @@ Remove the expansion schema.
 Roll back a failed expansion setup operation.
 
 
--V (no vacuum)
+-V | --novacuum
 
 Do not vacuum catalog tables before creating schema copy.
 
