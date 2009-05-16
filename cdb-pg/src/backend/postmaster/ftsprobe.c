@@ -663,17 +663,41 @@ retrieveUserAndDb(char **probeUser, char **probeDatabase)
 	{
 		Datum	attrOid;
 		Datum	attrName;
+		Datum	attrAllowConns;
 		Oid		db_oid;
+		bool	allowconns;
+		char *dbName;
+
+		attrAllowConns = heap_getattr(db_tup, Anum_pg_database_datallowconn, db_rel->rd_att, &isNull);
+		Assert(!isNull);
+
+		allowconns = DatumGetBool(attrAllowConns);
+		if (!allowconns)
+			continue;
 
 		attrOid = heap_getattr(db_tup, ObjectIdAttributeNumber, db_rel->rd_att, &isNull);
 		Assert(!isNull);
 		db_oid = DatumGetObjectId(attrOid);
 
 		if (db_oid == TemplateDbOid)
+			continue;
+
+		attrName = heap_getattr(db_tup, Anum_pg_database_datname, db_rel->rd_att, &isNull);
+		Assert(!isNull);
+		dbName = DatumGetCString(attrName);
+
+		if (strcasecmp(dbName, "postgres") == 0)
 		{
-			attrName = heap_getattr(db_tup, Anum_pg_database_datname, db_rel->rd_att, &isNull);
-			Assert(!isNull);
 			*probeDatabase = pstrdup(DatumGetCString(attrName));
+
+			/* MPP-6058 */
+			MyDatabaseId = db_oid;
+
+			LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+			MyProc->databaseId = MyDatabaseId;
+			LWLockRelease(ProcArrayLock);
+
+			break;
 		}
 	}
 	heap_endscan(db_scan);
