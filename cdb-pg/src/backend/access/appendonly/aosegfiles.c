@@ -703,7 +703,6 @@ gp_update_ao_master_stats_internal(Oid relid)
 	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
-	char			*relname = NULL;
 	char			relstorage;
 	int 			proc;
 	int 			ret;
@@ -722,7 +721,8 @@ gp_update_ao_master_stats_internal(Oid relid)
 	if(!relstorage_is_ao(relstorage))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("'%s' is not an append-only relation", relname)));
+				errmsg("'%s' is not an append-only relation", 
+						RelationGetRelationName(parentrel))));
 
 	/*
 	 * get the name of the aoseg relation
