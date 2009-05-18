@@ -1546,10 +1546,12 @@ class GPUpgrade:
 
         # Versions supported by this version of the upgrader
         #  [3.1.0.0 - 3.3.0.0] + (main) by default
-        def checkversion(v):
+        def checkversion(v, frm):
             if v == 'main': return
             vs = v.split('.')
 
+            if frm: upstr = "upgrade"
+            else: upstr = "downgrade"
             try:
                 vs = map(int, vs)
             except:
@@ -1558,14 +1560,14 @@ class GPUpgrade:
             # Acceptable versions are 3.2.x - 3.3.x
             if ((vs[0] < 3) or (vs[0] == 3 and vs[1] < 2)):
                 raise UpgradeError(
-                    "Greenplum Version '%s' not supported for upgrade" % v)
+                    "Greenplum Version '%s' not supported for %s" % (v, upstr))
             if ((vs[0] > 3) or (vs[0] == 3 and vs[1] > 3)):
                 raise UpgradeError(
-                    "To upgrade to Greenplum Version '%s' use the upgrade tool "
-                    "shipped with that release" % v)
+                    "To upgrade to Greenplum Version '%s' use the %s tool "
+                    "shipped with that release" % (v, upstr))
         
-        checkversion(oldversion)
-        checkversion(newversion)
+        checkversion(oldversion, True)
+        checkversion(newversion, False)
 
         if newversion == oldversion:
             raise UpgradeError("Greenplum Database is already version %s"
