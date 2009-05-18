@@ -452,11 +452,11 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		int			minbatch;
 
 		lbuckets = (hash_table_bytes / tupsize) / gp_hashjoin_tuples_per_bucket;
-		lbuckets = Min(lbuckets, INT_MAX);
+		lbuckets = Min(lbuckets, INT_MAX / 32);
 		nbuckets = (int) lbuckets;
 
 		dbatch = ceil(inner_rel_bytes / hash_table_bytes);
-		dbatch = Min(dbatch, INT_MAX / 2);
+		dbatch = Min(dbatch, INT_MAX / 32);
 		minbatch = (int) dbatch;
 		nbatch = 2;
 		while (nbatch < minbatch)
