@@ -587,6 +587,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		 * system is busy, not that we're down.
 		 */
 		if (strstr(errorMsg, "Out of memory") != NULL ||
+			strstr(errorMsg, "could not fork new process") != NULL ||
 			strstr(errorMsg, "connection limit exceeded for non-superusers") != NULL ||
 			strstr(errorMsg, "too many clients already") != NULL)
 		{
