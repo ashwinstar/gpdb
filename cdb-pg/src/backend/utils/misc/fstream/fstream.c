@@ -29,10 +29,10 @@ struct fstream_t
 	int64_t 		compressed_size;
 	int64_t 		compressed_position;
 	int 			skip_header_line;
-	int 			buffer_size;
-	const char*		ferror; /* error string */
+	char* 			buffer;			 /* buffer to store data read from file */
+	int 			buffer_cur_size; /* number of bytes in buffer currently */
+	const char*		ferror; 		 /* error string */
 	struct fstream_options options;
-	char* 			buffer;
 };
 
 /*
@@ -426,17 +426,20 @@ static int nextFile(fstream_t*fs)
  * filestream file we are reading from.
  */
 int fstream_read(fstream_t *fs,
-				 void *buffer,
+				 void *dest,
 				 int size,
 				 struct fstream_filename_and_offset *fo,
 				 const int read_whole_lines)
 {
+	int buffer_capacity = fs->options.bufsize;
+	
 	if (fs->ferror)
 		return -1;
 
 	for (;;)
 	{
-		ssize_t s, t;
+		ssize_t bytesread; 		/* num bytes read from filestream */
+		ssize_t bytesread2;		/* same, but when reading a second round */
 
 		if (!size || fs->fidx == fs->glob.gl_pathc)
 			return 0;
@@ -448,26 +451,26 @@ int fstream_read(fstream_t *fs,
 		if (fs->skip_header_line)
 		{
 			char* 	p = fs->buffer;
-			char* 	q = p + fs->buffer_size;
+			char* 	q = p + fs->buffer_cur_size;
 			size_t 	len = 0;
 
-		    assert(fs->buffer_size < fs->options.bufsize);
+		    assert(fs->buffer_cur_size < buffer_capacity);
 
 			/*
 			 * read data from the source file and fill up the file stream buffer
 			 */
-			len = fs->options.bufsize - fs->buffer_size;
-			s = gfile_read(&fs->fd, q, len);
+			len = buffer_capacity - fs->buffer_cur_size;
+			bytesread = gfile_read(&fs->fd, q, len);
 
-			if (s < 0)
+			if (bytesread < 0)
 			{
 				fs->ferror = "cannot read file";
 				return -1;
 			}
 
 			/* update the buffer size according to new byte count we just read */
-			fs->buffer_size += s;
-			q += s;
+			fs->buffer_cur_size += bytesread;
+			q += bytesread;
 
 			if (fs->options.is_csv)
 			{
@@ -479,17 +482,18 @@ int fstream_read(fstream_t *fs,
 				/* text header */
 				for (; p < q && *p != '\n'; p++)
 					;
-				p = p < q ? p + 1 : 0;
+				p = (p < q ? p + 1 : 0);
 				fs->line_number++;
 			}
 
 			if (!p)
 			{
-				if (fs->buffer_size == fs->options.bufsize)
+				if (fs->buffer_cur_size == buffer_capacity)
 				{
 					gfile_printf_then_putc_newline(
 							"fstream ERROR: header too long in file %s",
 							fs->glob.gl_pathv[fs->fidx]);
+					
 					fs->ferror = "line too long in file";
 					return -1;
 				}
@@ -502,8 +506,8 @@ int fstream_read(fstream_t *fs,
 			 * we now bypassed the header data and can continue to real data.
 			 */
 			fs->foff += p - fs->buffer;
-			fs->buffer_size = q - p;
-			memmove(fs->buffer, p, fs->buffer_size);
+			fs->buffer_cur_size = q - p;
+			memmove(fs->buffer, p, fs->buffer_cur_size);
 			fs->skip_header_line = 0;
 		}
 
@@ -516,42 +520,40 @@ int fstream_read(fstream_t *fs,
 		if (read_whole_lines)
 		{
 			char	*p;
+			ssize_t total_bytes = fs->buffer_cur_size;
+			
+			assert(size >= buffer_capacity);
 
-			assert(size >= fs->options.bufsize);
-
-			s = fs->buffer_size;
-
-			if (s)
+			if (total_bytes > 0)
 			{
 				/*
 				 * source buffer is not empty. copy the data from the beginning
 				 * up to the current length before moving on to reading more
 				 */
-				fs->buffer_size = 0;
+				fs->buffer_cur_size = 0;
 				updateCurFileState(fs, fo);
-				memcpy(buffer, fs->buffer, s);
+				memcpy(dest, fs->buffer, total_bytes);
 			}
 
 			/* read more data from source file into destination buffer */
-			t = gfile_read(&fs->fd, (char*) buffer + s, size - s);
+			bytesread2 = gfile_read(&fs->fd, (char*) dest + total_bytes, size - total_bytes);
 
-			if (t < 0)
+			if (bytesread2 < 0)
 			{
 				fs->ferror = "cannot read file";
 				return -1;
 			}
 
-			if (t < size - s)
+			if (bytesread2 < size - total_bytes)
 			{
 				/*
 				 * We didn't read as much as we asked for. Check why.
 				 * We could be done reading data, we may need to move
 				 * on the reading the next data file (if any).
 				 */
-
-				if (s == 0)
+				if (total_bytes == 0)
 				{
-					if (t == 0)
+					if (bytesread2 == 0)
 					{
 						if (nextFile(fs))
 							return -1; /* found next file but failed to open */
@@ -565,20 +567,20 @@ int fstream_read(fstream_t *fs,
 				 * bytes read to buffer earlier, if next file was found but
 				 * could not open return -1
 				 */
-				return nextFile(fs) ? -1 : s + t;
+				return nextFile(fs) ? -1 : total_bytes + bytesread2;
 			}
 
 			updateCurFileState(fs, fo);
 
 			/*
-			 * Now that we have enough data in our buffer, get a chunk of
-			 * whole rows and copy it into our filestream buffer to be sent
+			 * Now that we have enough data in our filestream buffer, get a 
+			 * chunk of whole rows and copy it into our dest buffer to be sent
 			 * out later.
 			 */
 			if (fs->options.is_csv)
 			{
 				/* CSV: go slow, scan byte-by-byte for record boundary */
-				p = scan_csv_records(buffer, (char*) buffer + size, 0, fs);
+				p = scan_csv_records(dest, (char*)dest + size, 0, fs);
 			}
 			else
 			{
@@ -586,17 +588,16 @@ int fstream_read(fstream_t *fs,
 				 * TEXT: go fast, scan for \n for record boundary
 				 * find the last \n from the back
 				 */
-				for (p = (char*) buffer + size; (char*) buffer <= --p && *p
-						!= '\n';)
+				for (p = (char*)dest + size; (char*)dest <= --p && *p != '\n';)
 					;
-				p = (char*) buffer <= p ? p + 1 : 0;
+				p = (char*)dest <= p ? p + 1 : 0;
 				fs->line_number = 0;
 			}
 
 			/*
 			 * could we not find even one complete row in this buffer? error.
 			 */
-			if (!p || (char*) buffer + size >= p + fs->options.bufsize)
+			if (!p || (char*)dest + size >= p + buffer_capacity)
 			{
 				gfile_printf_then_putc_newline(
 						"fstream ERROR: line too long in file %s near (%lld bytes)",
@@ -606,11 +607,11 @@ int fstream_read(fstream_t *fs,
 			}
 
 			/* copy the result chunk of data into our buffer and we're done */
-			fs->buffer_size = (char*) buffer + size - p;
-			memcpy(fs->buffer, p, fs->buffer_size);
-			fs->foff += p - (char*) buffer;
+			fs->buffer_cur_size = (char*)dest + size - p;
+			memcpy(fs->buffer, p, fs->buffer_cur_size);
+			fs->foff += p - (char*)dest;
 
-			return p - (char*) buffer;
+			return p - (char*)dest;
 		}
 
 		/*
@@ -620,37 +621,39 @@ int fstream_read(fstream_t *fs,
 		 * buffer by buffer and then parses the lines internally).
 		 */
 
-		if (fs->buffer_size)
+		if (fs->buffer_cur_size)
 		{
+			ssize_t total_bytes = fs->buffer_cur_size;
+			
 			updateCurFileState(fs, fo);
-			s = fs->buffer_size;
-			if (s > size)
-				s = size;
 
-			memcpy(buffer, fs->buffer, s);
-			fs->buffer_size -= s;
-			memmove(fs->buffer, fs->buffer + s, fs->buffer_size);
+			if (total_bytes > size)
+				total_bytes = size;
 
-			fs->foff += s;
+			memcpy(dest, fs->buffer, total_bytes);
+			fs->buffer_cur_size -= total_bytes;
+			memmove(fs->buffer, fs->buffer + total_bytes, fs->buffer_cur_size);
+
+			fs->foff += total_bytes;
 			fs->line_number = 0;
 
-			return s;
+			return total_bytes;
 		}
 
-		s = gfile_read(&fs->fd, buffer, size);
+		bytesread = gfile_read(&fs->fd, dest, size);
 
-		if (s < 0)
+		if (bytesread < 0)
 		{
 			fs->ferror = "cannot read file";
 			return -1;
 		}
 
-		if (s)
+		if (bytesread)
 		{
 			updateCurFileState(fs, fo);
-			fs->foff += s;
+			fs->foff += bytesread;
 			fs->line_number = 0;
-			return s;
+			return bytesread;
 		}
 
 		if (nextFile(fs))
@@ -692,7 +695,7 @@ int fstream_rewind(fstream_t *fs)
 	fs->line_number = 1;
 	fs->ferror = 0;
 	fs->skip_header_line = fs->options.header;
-	fs->buffer_size = 0;
+	fs->buffer_cur_size = 0;
 	fs->compressed_position = 0;
 
 	gfile_close(&fs->fd);

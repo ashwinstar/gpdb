@@ -44,12 +44,15 @@ struct blockhdr_t
 	int 	hbot, htop;
 };
 
+/*
+ * Data that is sent from server to client
+ */
 typedef struct block_t block_t;
 struct block_t
 {
 	blockhdr_t 	hdr;
 	int 		bot, top;
-	char*      	byte;
+	char*      	data;
 };
 
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
@@ -244,7 +247,7 @@ struct request_t
 		gnet_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
 	} in;
 
-	block_t out; /* next block to send out */
+	block_t outblock; /* next block to send out */
 };
 
 /* send gp-proto==1 ctl info */
@@ -496,6 +499,10 @@ static void parse_command_line(int argc, const char* const argv[],
 		usage_error("Error: illegal arguments", 1);
 }
 
+/* http error codes used by gpfdist */
+#define FDIST_OK 200
+#define FDIST_BAD_REQUEST 400
+#define FDIST_INTERNAL_ERROR 500
 
 /* send an error response */
 static void http_error(request_t* r, int code, const char* msg)
@@ -618,7 +625,7 @@ static void request_end(request_t* r, int error, const char* errmsg)
 	TR(("[%d] request end\n", r->sock));
 
 	/* If we still have a block outstanding, the session is corrupted. */
-	if (r->out.top != r->out.bot)
+	if (r->outblock.top != r->outblock.bot)
 	{
 		gwarning(FLINE, "request failure resulting in session failure");
 		if (s)
@@ -726,7 +733,7 @@ static void gp1_send_errmsg(request_t* r, const char* errmsg)
  * header (metadata for client such as filename, etc) and the data itself.
  */
 static const char*
-session_get_block(session_t* s, block_t* retblock)
+session_get_block(session_t* session, block_t* retblock)
 {
 	int 		size;
 	const int 	whole_rows = 1; /* gpfdist must not read data with partial rows */
@@ -734,30 +741,30 @@ session_get_block(session_t* s, block_t* retblock)
 
 	retblock->bot = retblock->top = 0;
 
-	if (s->is_error || 0 == s->fstream)
+	if (session->is_error || 0 == session->fstream)
 	{
-		session_end(s, 0);
+		session_end(session, 0);
 		return 0;
 	}
 
-	gcb.read_bytes -= fstream_get_compressed_position(s->fstream);
+	gcb.read_bytes -= fstream_get_compressed_position(session->fstream);
 
 	/* read data from our filestream as a chunk with whole data rows */
-	size = fstream_read(s->fstream, retblock->byte, opt.m, &fos, whole_rows);
+	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows);
 	
 	if (size == 0)
 	{
-		gcb.read_bytes += fstream_get_compressed_size(s->fstream);
-		session_end(s, 0);
+		gcb.read_bytes += fstream_get_compressed_size(session->fstream);
+		session_end(session, 0);
 		return 0;
 	}
 
-	gcb.read_bytes += fstream_get_compressed_position(s->fstream);
+	gcb.read_bytes += fstream_get_compressed_position(session->fstream);
 
 	if (size < 0)
 	{
-		const char* ferror = fstream_get_error(s->fstream);
-		session_end(s, 1);
+		const char* ferror = fstream_get_error(session->fstream);
+		session_end(session, 1);
 		return ferror;
 	}
 
@@ -770,55 +777,55 @@ session_get_block(session_t* s, block_t* retblock)
 }
 
 /* finish the session - close the file */
-static void session_end(session_t* s, int error)
+static void session_end(session_t* session, int error)
 {
 	if (error)
-		s->is_error = error;
+		session->is_error = error;
 
-	if (s->fstream)
+	if (session->fstream)
 	{
-		fstream_close(s->fstream);
-		s->fstream = 0;
+		fstream_close(session->fstream);
+		session->fstream = 0;
 	}
 }
 
 /* deallocate session, remove from hashtable */
-static void session_free(session_t* s)
+static void session_free(session_t* session)
 {
-	gprint("free session %s\n", s->key);
+	gprint("free session %s\n", session->key);
 
-	if (s->fstream)
+	if (session->fstream)
 	{
-		fstream_close(s->fstream);
-		s->fstream = 0;
+		fstream_close(session->fstream);
+		session->fstream = 0;
 	}
 
-	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, 0);
-	apr_pool_destroy(s->pool);
+	apr_hash_set(gcb.session.tab, session->key, APR_HASH_KEY_STRING, 0);
+	apr_pool_destroy(session->pool);
 }
 
 /* detach a request from a session */
 static void session_detach(request_t* r)
 {
-	session_t* s = r->session;
+	session_t* session = r->session;
 
 	r->session = 0;
 
-	if (s)
+	if (session)
 	{
-		if (s->nrequest <= 0)
+		if (session->nrequest <= 0)
 			gfatal(FLINE, "assert failed");
 
-		s->nrequest--;
-		s->mtime = apr_time_now();
+		session->nrequest--;
+		session->mtime = apr_time_now();
 
 		/* for auto-tid sessions, we can free it now */
-		if (0 == strncmp("auto-tid.", s->tid, 9))
+		if (0 == strncmp("auto-tid.", session->tid, 9))
 		{
-			if (s->nrequest != 0)
+			if (session->nrequest != 0)
 				gfatal(FLINE, "assert failed");
 
-			session_free(s);
+			session_free(session);
 		}
 	}
 }
@@ -872,7 +879,7 @@ static void sessions_cleanup(void)
 static void session_attach(request_t* r)
 {
 	char key[1024];
-	session_t* s = 0;
+	session_t* session = 0;
 
 	/*
 	 * create the session key (tid:path)
@@ -880,15 +887,15 @@ static void session_attach(request_t* r)
 	if (sizeof(key) - 1 == apr_snprintf(key, sizeof(key), "%s:%s",
 										r->tid, r->path))
 	{
-		http_error(r, 400, "path too long");
+		http_error(r, FDIST_BAD_REQUEST, "path too long");
 		request_end(r, 1, 0);
 		return;
 	}
 
 	/* check if such session already exists in hashtable */
-	s = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
+	session = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
 
-	if (!s)
+	if (!session)
 	{
 		/* not in hashtable - create new session */
 
@@ -904,7 +911,7 @@ static void session_attach(request_t* r)
 		if (apr_pool_create(&pool, gcb.pool))
 		{
 			gwarning(FLINE, "out of memory");
-			http_error(r, 500, "internal error - out of memory");
+			http_error(r, FDIST_INTERNAL_ERROR, "internal error - out of memory");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -940,63 +947,63 @@ static void session_attach(request_t* r)
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
 
 		/* allocate session */
-		s = apr_palloc(pool, sizeof(session_t));
+		session = apr_palloc(pool, sizeof(session_t));
 
-		if (s == 0)
+		if (session == 0)
 			gfatal(FLINE, "out of memory");
 
-		memset(s, 0, sizeof(*s));
+		memset(session, 0, sizeof(*session));
 
 		/* initialize session values */
-		s->tid = apr_pstrdup(pool, r->tid);
-		s->path = apr_pstrdup(pool, r->path);
-		s->key = apr_pstrdup(pool, key);
-		s->fstream = fstream;
-		s->pool = pool;
+		session->tid = apr_pstrdup(pool, r->tid);
+		session->path = apr_pstrdup(pool, r->path);
+		session->key = apr_pstrdup(pool, key);
+		session->fstream = fstream;
+		session->pool = pool;
 
-		if (s->tid == 0 || s->path == 0 || s->key == 0)
+		if (session->tid == 0 || session->path == 0 || session->key == 0)
 		{
 			gfatal(FLINE, "out of memory");
 		}
 
 		/* insert into hashtable */
-		apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
+		apr_hash_set(gcb.session.tab, session->key, APR_HASH_KEY_STRING, session);
 
-		gprint("new session (%s, %s)\n", s->path, s->tid);
+		gprint("new session (%s, %s)\n", session->path, session->tid);
 	}
 
 	/* found a session in hashtable*/
 
 	/* if error, send an error and close */
-	if (s->is_error)
+	if (session->is_error)
 	{
-		http_error(r, 500, "session error");
+		http_error(r, FDIST_INTERNAL_ERROR, "session error");
 		request_end(r, 1, 0);
 		return;
 	}
 
 	/* session already ended. send an empty response, and close. */
-	if (0 == s->fstream)
+	if (0 == session->fstream)
 	{
 		http_empty(r);
 		request_end(r, 0, 0);
 		return;
 	}
 
-	gprint("joined session (%s, %s)\n", s->path, s->tid);
+	gprint("joined session (%s, %s)\n", session->path, session->tid);
 
 	/* setup so receive EV_WRITE events to write to socket */
 	if (setup_write(r))
 	{
-		http_error(r, 500, "internal error");
+		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 		request_end(r, 1, 0);
 		return;
 	}
 
 	/* one more request for session */
-	s->nrequest++;
-	s->mtime = apr_time_now();
-	r->session = s;
+	session->nrequest++;
+	session->mtime = apr_time_now();
+	r->session = session;
 
 	/* finally, tell peer that we are ready to send data */
 	if (0 != http_ok(r))
@@ -1012,7 +1019,7 @@ static void do_write(int fd, short event, void* arg)
 {
 	request_t* 	r = (request_t*) arg;
 	int 		n, i;
-	block_t* 	b;
+	block_t* 	datablock;
 
 	if (fd != r->sock)
 		gfatal(FLINE, "assert failed");
@@ -1021,47 +1028,47 @@ static void do_write(int fd, short event, void* arg)
 	for (i = 0; i < 3; i++)
 	{
 		/* get a block (or find a remaining block) */
-		if (r->out.top == r->out.bot)
+		if (r->outblock.top == r->outblock.bot)
 		{
-			const char* ferror = session_get_block(r->session, &r->out);
+			const char* ferror = session_get_block(r->session, &r->outblock);
 
 			if (ferror)
 			{
 				request_end(r, 1, ferror);
 				return;
 			}
-			if (!r->out.top)
+			if (!r->outblock.top)
 			{
 				request_end(r, 0, 0);
 				return;
 			}
 		}
 
-		b = &r->out;
+		datablock = &r->outblock;
 
 		/*
 		 * If PROTO-1: first write out the block header (metadata).
 		 */
 		if (r->gp_proto == 1)
 		{
-			n = b->hdr.htop - b->hdr.hbot;
+			n = datablock->hdr.htop - datablock->hdr.hbot;
 
 			if (n > 0)
 			{
-				n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
+				n = local_send(fd, datablock->hdr.hbyte + datablock->hdr.hbot, n);
 				if (n < 0)
 				{
 					if (errno == EPIPE || errno == ECONNRESET)
-						r->out.bot = r->out.top;
+						r->outblock.bot = r->outblock.top;
 					request_end(r, 1, 0);
 					return;
 				}
 
 				TR(("[%d] send header bytes %d .. %d (top %d)\n",
-					fd, b->hdr.hbot, b->hdr.hbot + n, b->hdr.htop));
+					fd, datablock->hdr.hbot, datablock->hdr.hbot + n, datablock->hdr.htop));
 
-				b->hdr.hbot += n;
-				n = b->hdr.htop - b->hdr.hbot;
+				datablock->hdr.hbot += n;
+				n = datablock->hdr.htop - datablock->hdr.hbot;
 				if (n > 0)
 					break; /* network chocked */
 			}
@@ -1070,11 +1077,11 @@ static void do_write(int fd, short event, void* arg)
 		/*
 		 * write out the block data
 		 */
-		n = b->top - b->bot;
+		n = datablock->top - datablock->bot;
 		/* if (n == 0)
 		   gfatal(FLINE, "internal error: 0 bytes");
 		 */
-		n = local_send(fd, b->byte + b->bot, n);
+		n = local_send(fd, datablock->data + datablock->bot, n);
 		if (n < 0)
 		{
 			/*
@@ -1087,17 +1094,17 @@ static void do_write(int fd, short event, void* arg)
 			 * anyway, so it is okay if we don't poison the session.
 			 */
 			if (errno == EPIPE || errno == ECONNRESET)
-				r->out.bot = r->out.top;
+				r->outblock.bot = r->outblock.top;
 			request_end(r, 1, 0);
 			return;
 		}
 
 		TR(("[%d] send data bytes off buf %d .. %d (top %d)\n",
-			fd, b->bot, b->bot + n, b->top));
+			fd, datablock->bot, datablock->bot + n, datablock->top));
 
-		b->bot += n;
+		datablock->bot += n;
 
-		if (b->top != b->bot)
+		if (datablock->top != datablock->bot)
 		{ /* network chocked */
 			TR(("[%d] network full\n", fd));
 			break;
@@ -1126,7 +1133,7 @@ static void do_read(int fd, short event, void* arg)
 	/* If we timeout, close the request. */
 	if (event & EV_TIMEOUT)
 	{
-		http_error(r, 400, "time out");
+		http_error(r, FDIST_BAD_REQUEST, "time out");
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1135,7 +1142,7 @@ static void do_read(int fd, short event, void* arg)
 	n = r->in.hbufmax - r->in.hbuftop;
 	if (n <= 0)
 	{
-		http_error(r, 500, "internal error");
+		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1173,7 +1180,7 @@ static void do_read(int fd, short event, void* arg)
 		if (!r->in.req && r->in.hbuftop >= r->in.hbufmax)
 		{
 			/* not available, but headerbuf is full - send error and close */
-			http_error(r, 400, "forbidden");
+			http_error(r, FDIST_BAD_REQUEST, "forbidden");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1185,7 +1192,7 @@ static void do_read(int fd, short event, void* arg)
 	{
 		if (setup_read(r))
 		{
-			http_error(r, 500, "internal error");
+			http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 			request_end(r, 1, 0);
 		}
 		return;
@@ -1211,7 +1218,7 @@ static void do_read(int fd, short event, void* arg)
 	if (r->in.req->argc != 3)
 	{
 		gwarning(FLINE, "reject invalid request from %s", r->peer);
-		http_error(r, 400, "invalid request");
+		http_error(r, FDIST_BAD_REQUEST, "invalid request");
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1219,7 +1226,7 @@ static void do_read(int fd, short event, void* arg)
 	{
 		gwarning(FLINE, "reject invalid protocol from %s [%s]", r->peer,
 				r->in.req->argv[2]);
-		http_error(r, 400, "invalid request");
+		http_error(r, FDIST_BAD_REQUEST, "invalid request");
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1227,7 +1234,7 @@ static void do_read(int fd, short event, void* arg)
 	{
 		gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
 				r->in.req->argv[0], r->in.req->argv[1]);
-		http_error(r, 400, "invalid request");
+		http_error(r, FDIST_BAD_REQUEST, "invalid request");
 		request_end(r, 1, 0);
 		return;
 	}
@@ -1270,7 +1277,7 @@ static void do_read(int fd, short event, void* arg)
 							r->in.req->argv[0],
 							r->in.req->argv[1]);
 
-			http_error(r, 400, "invalid request due to relative path");
+			http_error(r, FDIST_BAD_REQUEST, "invalid request due to relative path");
 			request_end(r, 1, 0);
 
 			return;
@@ -1310,7 +1317,7 @@ static void do_read(int fd, short event, void* arg)
 
 		if (!r->path)
 		{
-			http_error(r, 400, "invalid request (unable to set path)");
+			http_error(r, FDIST_BAD_REQUEST, "invalid request (unable to set path)");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1353,7 +1360,7 @@ static void do_read(int fd, short event, void* arg)
 					"reject invalid request from %s [%s %s] - X-GP-PROTO "
 					"invalid '%s'",
 					r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
-			http_error(r, 400, "invalid request (invalid gp-proto)");
+			http_error(r, FDIST_BAD_REQUEST, "invalid request (invalid gp-proto)");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1372,7 +1379,7 @@ static void do_read(int fd, short event, void* arg)
 					 "reject invalid request from %s [%s %s] - missing X-GP-* "
 					 "header",
 					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-			http_error(r, 400, "invalid request (missing X-GP-* header)");
+			http_error(r, FDIST_BAD_REQUEST, "invalid request (missing X-GP-* header)");
 			request_end(r, 1, 0);
 			return;
 		}
@@ -1442,7 +1449,7 @@ static void do_accept(int fd, short event, void* arg)
 	r->pool = pool;
 	r->sock = sock;
 
-    r->out.byte = apr_palloc(pool, opt.m); /* use the block size specified by -m option */
+    r->outblock.data = apr_palloc(pool, opt.m); /* use the block size specified by -m option */
 
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
@@ -1454,7 +1461,7 @@ static void do_accept(int fd, short event, void* arg)
 	/* set up for callback when socket ready for reading */
 	if (setup_read(r))
 	{
-		http_error(r, 500, "internal error");
+		http_error(r, FDIST_INTERNAL_ERROR, "internal error");
 		request_end(r, 1, 0);
 	}
 
