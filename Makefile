@@ -171,6 +171,11 @@ BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
 CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) --enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG))
 
+# PL/Python does not compile on Tiger
+ifeq "$(BLD_ARCH)" "osx104_x86"
+PG_LANG=false
+endif
+
 ifneq (false, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python
 ifdef TCL_CFG
