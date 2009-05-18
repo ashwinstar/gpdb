@@ -3173,6 +3173,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			/* Performs own recursion */
 			ATPrepAddColumn(wqueue, rel, recurse, cmd);
 			pass = AT_PASS_ADD_COL;
@@ -3186,18 +3187,21 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * rules.
 			 */
 			ATSimplePermissions(rel, true);
+			ATPartitionCheck(rel, cmd->subtype);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = cmd->def ? AT_PASS_ADD_CONSTR : AT_PASS_DROP;
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = AT_PASS_DROP;
 			break;
 		case AT_SetNotNull:		/* ALTER COLUMN SET NOT NULL */
 			ATSimplePermissions(rel, false);
+			ATPartitionCheck(rel, cmd->subtype);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = AT_PASS_ADD_CONSTR;
@@ -3265,8 +3269,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			{
 				bool do_recurse = false;
+
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
+					ATPartitionCheck(rel, cmd->subtype);
 					if (rel_is_partitioned(RelationGetRelid(rel)))
 					{
 						do_recurse = true;
