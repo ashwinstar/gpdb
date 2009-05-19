@@ -687,9 +687,13 @@ retrieveUserAndDb(char **probeUser, char **probeDatabase)
 		Assert(!isNull);
 		dbName = DatumGetCString(attrName);
 
+
 		if (strcasecmp(dbName, "postgres") == 0)
 		{
 			*probeDatabase = pstrdup(DatumGetCString(attrName));
+
+			heap_endscan(db_scan);
+			heap_close(db_rel, AccessShareLock);
 
 			/* MPP-6058 */
 			MyDatabaseId = db_oid;
@@ -698,7 +702,7 @@ retrieveUserAndDb(char **probeUser, char **probeDatabase)
 			MyProc->databaseId = MyDatabaseId;
 			LWLockRelease(ProcArrayLock);
 
-			break;
+			return;
 		}
 	}
 	heap_endscan(db_scan);
