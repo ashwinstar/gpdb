@@ -1383,23 +1383,28 @@ ao_compression_ratio_internal(Oid relid)
 			 * table eofuncompressed column, and in that case we return -1
 			 * to indicate "ratio N/A" (set by default at declare time).
 			 */
-			if(val_eof_uncomp)
+			if(val_eof_uncomp != NULL && val_eof != NULL)
 			{
-				char  buf[8];
 				Datum eof = DirectFunctionCall1(float8in, CStringGetDatum(val_eof));
 				Datum eof_uncomp = DirectFunctionCall1(float8in, CStringGetDatum(val_eof_uncomp));
 
-				/* calculate the compression ratio */
-				float8 compress_ratio_raw = DatumGetFloat8(DirectFunctionCall2(float8div,
-																			eof_uncomp,
-																			eof));
-
-				/* format to 2 digits past the decimal point */
-				sprintf(buf, "%.2f", compress_ratio_raw);
-
-				/* format to 2 digit decimal precision */
-				compress_ratio = DatumGetFloat8(DirectFunctionCall1(float8in,
-												CStringGetDatum(buf)));
+				/* guard against division by zero */
+				if(DatumGetFloat8(eof) > 0.0)
+				{
+					char  buf[8];
+					
+					/* calculate the compression ratio */
+					float8 compress_ratio_raw = DatumGetFloat8(DirectFunctionCall2(float8div,
+																				eof_uncomp,
+																				eof));
+	
+					/* format to 2 digits past the decimal point */
+					sprintf(buf, "%.2f", compress_ratio_raw);
+	
+					/* format to 2 digit decimal precision */
+					compress_ratio = DatumGetFloat8(DirectFunctionCall1(float8in,
+													CStringGetDatum(buf)));
+				}
 			}
 
 			MemoryContextSwitchTo(cxt_save);
