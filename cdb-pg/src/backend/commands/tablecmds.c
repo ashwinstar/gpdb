@@ -99,7 +99,14 @@
 #include "cdb/cdboidsync.h"
 #include "cdb/cdbsreh.h"
 
-
+typedef enum
+{
+	PART_STATUS_NONE,	/* a regular table */
+	PART_STATUS_ROOT,	/* a partitioned table */
+	PART_STATUS_INTERIOR,	/* a non-leaf part of a partitioned table */
+	PART_STATUS_LEAF	/* a leaf part of a partitioned table */
+} PartStatus;
+		
 
 /*
  * ON COMMIT action list
@@ -329,6 +336,7 @@ static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
 static void ATExecSetDistributedBy(Relation rel, Node *node, 
 								   AlterTableCmd *cmd);
+static PartStatus rel_part_status(Oid relid);
 static bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
 
 /* ALTER TABLE ... PARTITION */
@@ -3331,75 +3339,80 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			if ( !recursing ) /* MPP-5772, MPP-5784 */
 			{
 				Oid relid = RelationGetRelid(rel);
+				PartStatus ps = rel_part_status(relid);
 				
-				if ( recurse )
+				if ( recurse ) /* Normal ALTER TABLE */
 				{
-					/* Normal (non-ONLY) case. */
-					if ( rel_is_child_partition(relid) )
+					switch (ps)
 					{
-						if ( ! rel_is_leaf_partition(relid) )
-						{					 
+						case PART_STATUS_NONE:
+						case PART_STATUS_ROOT:
+						case PART_STATUS_LEAF:
+							break;
+							
+						case PART_STATUS_INTERIOR: 
 							/*Reject interior branches of partitioned tables.*/
 							ereport(ERROR,
 									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 									 errmsg("can't set the distribution"
 											" policy of \"%s\"",
 											RelationGetRelationName(rel)),
-								 errhint("Distribution policy may be set"
-										 " for an entire partitioned table" 
-										 " or one of its leaf parts;"
-										 " not for an interior branch."
-									 )));
-						}
-						else /* This is a leaf partition */
-						{
-							Oid ptrelid = rel_partition_get_master(relid);
-							List *dist_cnames = lsecond((List*)cmd->def);
-							
-							/*	might be null if no policy set, e.g. just 
-							 *  a change of storage options... 
-							 */
-							if (dist_cnames)
-							{
-								Relation ptrel = heap_open(ptrelid, 
-														   AccessShareLock);
-								Assert(IsA(dist_cnames, List)); 
-								
-								if (! can_implement_dist_on_part(ptrel, 
-																 dist_cnames) )
-									ereport(ERROR,
-									   (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-											 errmsg("cannot SET DISTRIBUTED BY"
-													" for %s",
-												RelationGetRelationName(rel)),
-											 errhint("Leaf distribution policy"
-													 " must be random or match"
-													 " that of the entire"
-													 " partitioned table.")
-											 ));
-								heap_close(ptrel, AccessShareLock);
-							}
-						}
+									 errhint("Distribution policy may be set"
+											 " for an entire partitioned table" 
+											 " or one of its leaf parts;"
+											 " not for an interior branch."
+											 )));
+							break; /* tidy */
 					}
 				}
-				else
+				else /* ALTER TABLE ONLY */
 				{
-					/* ONLY specified.  
-					 * Reject non-leaves of partitioned tables.  
-					 */
-					if ( !rel_is_leaf_partition(relid) && 
-						( rel_is_partitioned(relid) || 
-						 rel_is_child_partition(relid) ) )
+					switch (ps)
 					{
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-								 errmsg("can't set the distribution policy "
-										"of ONLY \"%s\"",
-										RelationGetRelationName(rel)),
-								 errhint("Distribution policy may be set "
-										 "for an entire partitioned table" 
-										 " or one of its leaf parts."
-										 )));
+						case PART_STATUS_NONE:
+						case PART_STATUS_LEAF:
+							break;
+							
+						case PART_STATUS_ROOT:
+						case PART_STATUS_INTERIOR:
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("can't set the distribution policy "
+											"of ONLY \"%s\"",
+											RelationGetRelationName(rel)),
+									 errhint("Distribution policy may be set "
+											 "for an entire partitioned table" 
+											 " or one of its leaf parts."
+											 )));
+							break; /* tidy */
+					}
+				}
+				
+				if ( ps == PART_STATUS_LEAF )
+				{
+					Oid ptrelid = rel_partition_get_master(relid);
+					List *dist_cnames = lsecond((List*)cmd->def);
+					
+					/*	might be null if no policy set, e.g. just 
+					 *  a change of storage options... 
+					 */
+					if (dist_cnames)
+					{
+						Relation ptrel = heap_open(ptrelid, 
+												   AccessShareLock);
+						Assert(IsA(dist_cnames, List)); 
+						
+						if (! can_implement_dist_on_part(ptrel, 
+														 dist_cnames) )
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("cannot SET DISTRIBUTED BY for %s",
+											RelationGetRelationName(rel)),
+									 errhint("Leaf distribution policy must be"
+											 " random or match that of the"
+											 " entire partitioned table.")
+									 ));
+						heap_close(ptrel, AccessShareLock);
 					}
 				}
 			}
@@ -20507,6 +20520,26 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
 
 	return result;
 
+}
+
+/* Determine the status of the given table with respect to partitioning.
+ *
+ */
+PartStatus rel_part_status(Oid relid)
+{
+	if ( rel_is_partitioned(relid) )
+	{
+		Assert( !rel_is_child_partition(relid) && !rel_is_leaf_partition(relid) );
+		return PART_STATUS_ROOT;
+	}
+	else /* not an actual partitioned table root */
+	{
+		if ( rel_is_child_partition(relid) )
+			return rel_is_leaf_partition(relid) ? PART_STATUS_LEAF : PART_STATUS_INTERIOR;
+		else /* not a part of a partitioned table */
+			Assert( !rel_is_child_partition(relid) );
+	}
+	return PART_STATUS_NONE;
 }
 
 /* Determine whether we can implement a requested distribution on a part of
