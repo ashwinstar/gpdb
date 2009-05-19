@@ -5533,7 +5533,13 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 
 	if(rel->rd_rel->relstorage == RELSTORAGE_AOCS)
 	{
-		elog(ERROR, "AOCS does not support add column yet");
+        ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				 errmsg("Append only column store table does not support add column yet"),
+				 errhint("Use a DEFAULT value, or use INSERT...SELECT to move "
+						 "data to a newly created table with the new column.")));
+
+
 	}
 
 	/*
@@ -5548,10 +5554,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("ADD COLUMN with no default value in append-only tables"
-						" is not yet supported."),
-				 errhint("Use a DEFAULT value, or use INSERT...SELECT to move "
-						 "data to a newly created table with the new column.")));
-
+						" is not yet supported.")
+                ));
 	}
 
 	attrdesc = heap_open(AttributeRelationId, RowExclusiveLock);

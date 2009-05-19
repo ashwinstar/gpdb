@@ -24,7 +24,7 @@ extern void regress_lseg_construct(LSEG *lseg, Point *pt1, Point *pt2);
 extern Datum overpaid(PG_FUNCTION_ARGS);
 extern Datum boxarea(PG_FUNCTION_ARGS);
 extern char *reverse_name(char *string);
-extern int	oldstyle_length(int n, text *t);
+extern Datum oldstyle_length(Datum dn, Datum dt); 
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
 extern Datum gp_str2bytea(PG_FUNCTION_ARGS);
@@ -315,15 +315,17 @@ reverse_name(char *string)
  * This rather silly function is just to test that oldstyle functions
  * work correctly on toast-able inputs.
  */
-int
-oldstyle_length(int n, text *t)
+Datum
+oldstyle_length(Datum dn, Datum dt)
 {
-	int			len = 0;
+	int32 n = DatumGetInt32(dn); 
+    text* t = DatumGetTextP(dt);    
+    int32 len = 0;
 
 	if (t)
 		len = VARSIZE(t) - VARHDRSZ;
 
-	return n + len;
+	return Int32GetDatum(n + len);
 }
 
 #include "executor/spi.h"		/* this is what you need to work with SPI */

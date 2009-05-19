@@ -474,20 +474,22 @@ SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid ac
 --------------------
 -- DELETE (not supported)
 DELETE FROM tenk_aocs1 WHERE unique1 = 1;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg2 minithump4:19004 pid=3788)
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 127.0.0.1:19002 pid=61949)
 -- UPDATE (not supported)
 UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 minithump4:19002 pid=3784)
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 127.0.0.1:19002 pid=61949)
 -- CREATE INDEX (not supported)
 CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
 ERROR:  cannot create indexes on append only tables yet.
 -- ALTER
 ALTER TABLE tenk_aocs1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
-ERROR:  AOCS does not support add column yet (tablecmds.c:5530)
+ERROR:  Append only column store table does not support add column yet
+HINT:  Use a DEFAULT value, or use INSERT...SELECT to move data to a newly created table with the new column.
 ALTER TABLE tenk_renamed ALTER COLUMN twothousand SET NOT NULL;
 ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
-ERROR:  AOCS does not support add column yet (tablecmds.c:5530)
+ERROR:  Append only column store table does not support add column yet
+HINT:  Use a DEFAULT value, or use INSERT...SELECT to move data to a newly created table with the new column.
 SELECT count(*) FROM tenk_renamed;
  count 
 -------
