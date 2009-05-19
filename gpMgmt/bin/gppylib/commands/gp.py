@@ -136,8 +136,10 @@ class SegmentStart(Command):
 
 #-----------------------------------------------        
 class SegmentStop(Command):
-    def __init__(self, name, dataDir,mode='smart', ctxt=LOCAL, remoteHost=None):        
-        cmdfrags=['$GPHOME/bin/pg_ctl stop -D %s -m %s' % (dataDir,mode)]           
+    def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, remoteHost=None):        
+        cmdfrags=['$GPHOME/bin/pg_ctl stop -D %s -m %s' % (dataDir,mode)]
+        if not nowait:
+            cmdfrags.append('-w')           
         cmdStr=' '.join(cmdfrags)    
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
         
@@ -341,7 +343,8 @@ class ModifyPostgresqlConfSetting(Command):
 
 #-----------------------------------------------        
 class ConfigExpansionSeg(Command):
-    def __init__(self, name, confinfo, newSegments=False, tarFile=None, verbose=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, confinfo, newSegments=False, tarFile=None, 
+                 batchSize=None, verbose=False,ctxt=LOCAL, remoteHost=None):
         cmdStr = '$GPHOME/bin/lib/gpconfexpseg -c \"%s\"' % (confinfo)                
         if newSegments:
             cmdStr += ' -n'
@@ -349,6 +352,8 @@ class ConfigExpansionSeg(Command):
             cmdStr += ' -t %s' % tarFile
         if verbose:
             cmdStr += ' -v '
+        if batchSize:
+            cmdStr += ' -B %s' % batchSize
             
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 

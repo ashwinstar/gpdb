@@ -697,8 +697,10 @@ class SegmentTemplate:
                                                                  seg.content, seg.dbid)
             
         for host in iter(new_segment_info):
-            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', new_segment_info[host], tarFile=self.schema_tar_file,
-                                           newSegments=True, verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
+            segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', new_segment_info[host], 
+                                           tarFile=self.schema_tar_file, newSegments=True, 
+                                           verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
+                                           ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -729,6 +731,17 @@ class SegmentTemplate:
         rmCmd.run(validateAfter=True)
         rmCmd = RemoveFiles('gpexpand remove logs from template', 
                             self.tempDir + '/pg_log/*')
+        rmCmd.run(validateAfter=True)
+        
+        #other files not needed
+        rmCmd = RemoveFiles('gpexpand remove postmaster.opt from template',
+                            self.tempDir + '/postmaster.opts')
+        rmCmd.run(validateAfter=True)
+        rmCmd = RemoveFiles('gpexpand remove postmaster.pid from template',
+                            self.tempDir + '/postmaster.pid')
+        rmCmd.run(validateAfter=True)
+        rmCmd = RemoveFiles('gpexpand remove gpexpand files from template',
+                            self.tempDir + '/gpexpand.*')
         rmCmd.run(validateAfter=True)
         
         self.logger.info('Adding new segments into template pg_hba.conf')
@@ -1218,7 +1231,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             
         for host in iter(orig_segment_info):
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
-                                           verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
+                                           verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
+                                           ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
@@ -1291,7 +1305,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             
         for host in iter(orig_segment_info):
             segCfgCmd = ConfigExpansionSeg('gpexpand configure new segments', orig_segment_info[host],
-                                           verbose=gplog.logging_is_verbose(), ctxt=REMOTE, remoteHost=host)
+                                           verbose=gplog.logging_is_verbose(), batchSize=options.batch_size,
+                                           ctxt=REMOTE, remoteHost=host)
             self.pool.addCommand(segCfgCmd)
             
         self.pool.join()
