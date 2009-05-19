@@ -597,8 +597,12 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 		}
 
 		/* This is a real failure for which a reconfigure may be warranted */
-		write_log("FTS: test connection failed, dbid %d dbname %s error message '%s':%d",
-				  dbInfo->dbid, dbName, errorMsg, msgLen);
+		if (msgLen > 0)
+			write_log("FTS: test connection failed, dbid %d dbname %s error message '%s':%d",
+					  dbInfo->dbid, dbName, errorMsg, msgLen);
+		else
+			write_log("FTS: test connection failed, dbid %d dbname %s: Segment Connect Timeout (timeout set to %d)",
+					  dbInfo->dbid, dbName, gp_segment_connect_timeout);
 
 		ret = false;
 	} while (0);
