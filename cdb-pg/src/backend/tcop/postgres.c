@@ -2316,25 +2316,6 @@ exec_bind_message(StringInfo input_message)
 					  plan_list,
 					  qContext);
 	
-	/*
-	 * If this is a cursor query - before starting the portal, we need to 
-	 * make sure that the shared snapshot is already set by a writer gang, 
-	 * or the cursor query readers will timeout waiting for one that may not 
-	 * exist (in some cases). Therefore we insert a small hack here and 
-	 * dispatch a SET query that will do it for us. (This is also done in 
-	 * performOpenCursor() for the simple query protocol).
-	 */
-	if (portal->is_cursor)
-	{
-		/*
-		 * If we're about to open an explicit transaction, we don't
-		 * need to do the verify (and, in fact, the verify will get in
-		 * the way).
-		 */
-		if (strncmp(pstmt->query_string, "BEGIN", strlen("BEGIN")) != 0)
-			verify_shared_snapshot_ready();
-	}
-	
 	PortalStart(portal, params, InvalidSnapshot);
 
 	/*

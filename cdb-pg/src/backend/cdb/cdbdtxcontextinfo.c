@@ -249,8 +249,11 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 			 "DtxContextInfo_Serialize only copied InvalidDistributedTransactionId");
 	}
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "Serializing snapshot with segmateSync: %u", dtxContextInfo->segmateSync);
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG3),
+		 "DtxContextInfo_Serialize distributedTimeStamp %u, distributedXid = %u, curcid %d segmateSync %u",
+		 dtxContextInfo->distributedTimeStamp, dtxContextInfo->distributedXid, 
+		 dtxContextInfo->curcid, dtxContextInfo->segmateSync);
 
 	memcpy(p, &dtxContextInfo->segmateSync, sizeof(uint32));
 	p += sizeof(uint32);
@@ -428,8 +431,10 @@ DtxContextInfo_Deserialize(
 		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
 		p += sizeof(bool);
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			 "Deserializing snapshot with segmateSync: %u", dtxContextInfo->segmateSync);
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),
+			 "DtxContextInfo_Deserialize distributedTimeStamp %u, distributedXid = %u, curcid %d segmateSync %u as %s",
+			 dtxContextInfo->distributedTimeStamp, dtxContextInfo->distributedXid, 
+			 dtxContextInfo->curcid, dtxContextInfo->segmateSync, (Gp_is_writer ? "WRITER" : "READER"));
 
 		if (dtxContextInfo->haveDistributedSnapshot)
 		{
