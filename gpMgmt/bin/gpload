@@ -1169,13 +1169,15 @@ class gpload:
 
 
         self.pg8000.NoticeReceived += notice_processor
-        sql = 'insert into %s' % dest
-        sql += '(%s)'%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[0]),cols))
-        sql += 'select %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2], self.from_columns), cols))
-        sql += 'from ext_%s'%self.name
-        p = Progress(self,self.ports)
-        p.start()
-        self.threads.append(p)
+        sql = 'INSERT INTO %s' % dest
+        sql += ' (%s)'%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[0]),cols))
+        sql += ' SELECT %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2], self.from_columns), cols))
+        sql += ' FROM ext_%s'%self.name
+
+        # cktan: progress thread is not reliable. revisit later.
+        #progress = Progress(self,self.ports)
+        #progress.start()
+        #self.threads.append(progress)
         self.log(self.LOG, sql)
         if not self.options.D:
             try:
@@ -1208,10 +1210,10 @@ class gpload:
                                  u'encountered while running %s' % (sql))
 
 
-        p.condition.acquire()
-        p.number = 1
-        p.condition.wait()
-        p.condition.release()
+        #progress.condition.acquire()
+        #progress.number = 1
+        #progress.condition.wait()
+        #progress.condition.release()
         self.report_errors()
 
     def do_method_insert(self):
