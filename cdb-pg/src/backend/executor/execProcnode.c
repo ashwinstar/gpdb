@@ -396,6 +396,33 @@ ExecSliceDependencyNode(PlanState *node)
 	ExecSliceDependencyNode(innerPlanState(node));
 }
 
+#include "utils/datum.h"
+static void CheckTuple(TupleTableSlot *slot)
+{
+    Datum *d;
+    bool *n;
+    int i;
+
+    if(TupIsNull(slot))
+        return;
+
+    slot_getallattrs(slot);
+    d = slot_get_values(slot);
+    n = slot_get_isnull(slot);
+
+    for(i=0; i<slot->PRIVATE_tts_nvalid; ++i)
+    {
+        bool byval = slot->tts_tupleDescriptor->attrs[i]->attbyval;
+        int typlen = slot->tts_tupleDescriptor->attrs[i]->attlen; 
+
+        if(!n[i])
+        {
+            Size sz = datumGetSize(d[i], byval, typlen);
+            Assert(sz < 10000000);
+        }
+    }
+}
+    
 /* ----------------------------------------------------------------
  *		ExecProcNode
  *
@@ -733,6 +760,7 @@ Exec_Jmp_Done:
 	ExecCdbTraceNode(node, false, result);
 #endif   /* CDB_TRACE_EXECUTOR */
 
+    CheckTuple(result);
 	return result;
 }
 
