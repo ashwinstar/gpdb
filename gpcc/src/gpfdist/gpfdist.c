@@ -291,7 +291,7 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <bytes>]\n\n"
+						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]\n\n"
 						"       gpfdist [-? | --help] | --version\n\n"
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
@@ -300,7 +300,7 @@ static void usage_error(const char* msg, int print_usage)
 						"        -d dir     : serve files under the specified directory,  default is '.'\n"
 						"        -l logfn   : log filename\n"
 					    "        -t tm      : timeout in seconds \n"
-						"        -m len     : max data row length expected, in bytes. default is 32768"
+						"        -m maxlen  : max data row length expected, in bytes. default is 32768"
 						"        --version  : print version information\n\n");
 		}
 	}
