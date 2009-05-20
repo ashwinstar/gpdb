@@ -255,9 +255,9 @@ check_response(URL_FILE *file, int *rc, const char **response_string)
 							 (int) oserrno, strerror((int)oserrno));
 			}
 			
-			elog(ERROR, "connection with gpfdist failed for %s. %s. "
-						"effective url: %s", file->url, 
-						(oserrno != 0 ? connmsg : ""), effective_url);
+			elog(ERROR, "connection with gpfdist failed for %s. "
+						"effective url: %s. %s", file->url, effective_url,
+						(oserrno != 0 ? connmsg : ""));
 		}
 		else
 		{
