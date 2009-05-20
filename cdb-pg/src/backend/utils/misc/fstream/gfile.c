@@ -430,7 +430,7 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 
 	if (!fd->is_win_pipe && -1 == fd->fd.filefd) 
 	{
-		static char buf[128];
+		static char buf[256];
 		gfile_printf_then_putc_newline("gfile open failed %s: %s",
 					  				  fpath, strerror(errno));
 		*response_code = 404;
