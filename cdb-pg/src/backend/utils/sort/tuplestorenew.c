@@ -415,7 +415,7 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 
 				if(nts->page_cnt >= page_max)
 				{
-					free(page_next);
+					gp_free2(page_next, sizeof(NTupleStorePage));
 					--nts->page_cnt;
 				}
 				else
