@@ -300,7 +300,7 @@ static void usage_error(const char* msg, int print_usage)
 						"        -d dir     : serve files under the specified directory,  default is '.'\n"
 						"        -l logfn   : log filename\n"
 					    "        -t tm      : timeout in seconds \n"
-						"        -m maxlen  : max data row length expected, in bytes. default is 32768"
+						"        -m maxlen  : max data row length expected, in bytes. default is 32768\n"
 						"        --version  : print version information\n\n");
 		}
 	}
