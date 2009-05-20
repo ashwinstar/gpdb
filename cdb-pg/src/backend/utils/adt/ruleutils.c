@@ -6144,22 +6144,29 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 
 	if (pn->part->parlevel > 0)
 		appendStringInfoChar(body->buf, ' ');
-	if (pn->rules)
+	if (pn->rules || pn->default_part)
 		appendContextKeyword(body, "(", PRETTYINDENT_STD, 0, 2);
 
+	/* iterate through partitions */
 	foreach(lc, pn->rules)
 	{
 		rule = lfirst(lc);
 
 		/* 
 		 * If we're doing hash partitioning and the first rule doesn't have
-		 * a parname, none will so error stop
+		 * a parname, none will so break out.
+		 *
+		 * XXX: when we support hash, do need to dump these in case they have
+		 * children.
 		 */
-
-		/* XXX: what about sub partitions? */
 		if (pn->part->parkind == 'h' && !strlen(rule->parname))
 			break;
 
+		/* 
+		 * RANGE partitions are the interesting case. If the partitions use
+		 * EVERY(), we want to dump a single rule which generates all the rules
+		 * we've expanded from EVERY(), rather than a bunch of rules.
+		 */
 		if (pn->part->parkind == 'r')
 		{
 			if (!first_every_rule)
@@ -6193,6 +6200,8 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 			}
 		}
 
+		/*
+		 * Note that this handles the LIST and HASH cases too */
 		write_out_rule(rule, pn, rule->parrangestart, rule->parrangeend,
 					   rule->parrangeevery, head, body, false, &needcomma,
 					   &first_rule, leveldone,
@@ -6215,14 +6224,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					   &first_rule, leveldone, pn->default_part->children);
 	}
 
-#if 0
-	if (pn->part->paristemplate && 0)
-	{
-		appendStringInfo(head, " SUBPARTITION TEMPLATE (%s)", head->data);
-	}
-#endif
-
-	if (pn->rules)
+	if (pn->rules || pn->default_part)
 		appendContextKeyword(body, ")", 0, -PRETTYINDENT_STD, 2);
 }
 
