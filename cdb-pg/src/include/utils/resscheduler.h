@@ -144,8 +144,6 @@ extern void				ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock,
 extern ResQueue			GetResQueueFromLock(LOCK *lock);
 extern void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
 extern bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
-extern void				ResCleanUpLock(LOCK *lock, PROCLOCK *proclock,
-									   uint32 hashcode, bool wakeupNeeded);
 extern void				ResWaitOnLock(LOCALLOCK *locallock, 
 									  ResourceOwner owner);
 extern void				ResProcLockWakeup(LOCK *lock);

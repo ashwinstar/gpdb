@@ -41,6 +41,8 @@
 #include "utils/resowner.h"
 #include "utils/resscheduler.h"
 
+static void ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, bool wakeupNeeded);
+
 
 /* Columns in pg_resqueue_status() */
 #define	NUM_QUEUE_STATUS_ELEM	(3 + NUM_RES_LIMIT_TYPES)
@@ -908,13 +910,14 @@ ResUnGrantLock(LOCK *lock, PROCLOCK *proclock)
 /*
  * ResCleanUpLock -- lock cleanup, remove entry from lock queues and start
  *	waking up waiters.
+ *
+ * MPP-6055/MPP-6144: we get called more than once; if we've already cleaned
+ * up, don't walk off the end of lists; or panic when we can't find our hashtable
+ * entries.
  */
-void
-ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, 
-			   bool wakeupNeeded)
+static void
+ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, bool wakeupNeeded)
 {
-	/*LOCKMODE	lockmode = ExclusiveLock; */
-
 	/*
 	 * If this was my last hold on this lock, delete my entry in the proclock
 	 * table.
@@ -923,15 +926,15 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode,
 	{
 		uint32		proclock_hashcode;
 
-		SHMQueueDelete(&proclock->lockLink);
-		SHMQueueDelete(&proclock->procLink);
+		if (proclock->lockLink.next != INVALID_OFFSET)
+			SHMQueueDelete(&proclock->lockLink);
+
+		if (proclock->procLink.next != INVALID_OFFSET)
+			SHMQueueDelete(&proclock->procLink);
+
 		proclock_hashcode = ProcLockHashCode(&proclock->tag, hashcode);
-		if (!hash_search_with_hash_value(LockMethodProcLockHash,
-						 				 (void *) &(proclock->tag),
-						 			 	 proclock_hashcode,
-										 HASH_REMOVE,
-										 NULL))
-			elog(PANIC, "proclock table corrupted");
+		hash_search_with_hash_value(LockMethodProcLockHash, (void *) &(proclock->tag),
+									proclock_hashcode, HASH_REMOVE, NULL);
 	}
    
 	if (lock->nRequested == 0)
@@ -941,11 +944,7 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode,
 		 * object.
 		 */
 		Assert(SHMQueueEmpty(&(lock->procLocks)));
-		if (!hash_search(LockMethodLockHash,
-						 (void *) &(lock->tag),
-						 HASH_REMOVE, NULL))
-			 elog(PANIC, "lock table corrupted");
-
+		hash_search(LockMethodLockHash, (void *) &(lock->tag), HASH_REMOVE, NULL);
 	}
 
 	/*
@@ -1040,10 +1039,8 @@ ResProcLockWakeup(LOCK *lock)
 
 	proc = (PGPROC *) MAKE_PTR(waitQueue->links.next);
 
-
 	while (queue_size-- > 0)
 	{
-
 		/*
 		 * Get the portal we are waiting on, and then its set of increments.
 		 */
@@ -1061,10 +1058,8 @@ ResProcLockWakeup(LOCK *lock)
 			partitionLock = LockHashPartitionLock(hashcode);
 
 			LWLockRelease(partitionLock);
-			elog(ERROR, "no increment data for  portal id %u and pid %d",
-				 proc->waitPortalId, proc->pid);
+			elog(ERROR, "no increment data for  portal id %u and pid %d", proc->waitPortalId, proc->pid);
 		}
-
 
 		/*
 		 * See if it is ok to wake this guy. (note that the wakeup writes to
@@ -1080,13 +1075,12 @@ ResProcLockWakeup(LOCK *lock)
 
 		}
 		else
-		/* Otherwise move on to the next guy. */
+			/* Otherwise move on to the next guy. */
 		{
 			proc = (PGPROC *) MAKE_PTR(proc->links.next);
 		}
 
 	}
-
 
 	Assert(waitQueue->size >= 0);
 	
