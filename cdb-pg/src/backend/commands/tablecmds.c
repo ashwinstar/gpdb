@@ -3181,7 +3181,13 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype);
+
+			/* 
+			 * test that this is allowed for partitioning, but only if we aren't
+			 * recursing.
+			 */
+			if (!recursing)
+				ATPartitionCheck(rel, cmd->subtype);
 			/* Performs own recursion */
 			ATPrepAddColumn(wqueue, rel, recurse, cmd);
 			pass = AT_PASS_ADD_COL;
