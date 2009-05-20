@@ -14141,7 +14141,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		bool isDefault = intVal(pc->arg1);
 
 		/* DEFAULT checks */
-		if (!isDefault && (pNode->default_part) && !is_split)
+		if (!isDefault && (pNode->default_part) && 
+			!is_split && !bSetTemplate) /* MPP-6093: ok to reset template */
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot add %s partition%s to "
@@ -14163,7 +14164,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 								namBuf,
 								lrelname)));
 
-			if (pNode->default_part)
+			/* MPP-6093: ok to reset template */
+			if (pNode->default_part && !bSetTemplate)
 				ereport(ERROR,
 						(errcode(ERRCODE_DUPLICATE_OBJECT),
 						 errmsg("DEFAULT partition \"%s\" for "

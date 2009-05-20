@@ -324,6 +324,7 @@ my $glob_ignore_whitespace;
 my $glob_init;
 
 my $glob_verbose;
+my $glob_fqo;
 
 # array of "expected" rows from first query of equiv region
 my $equiv_expected_rows;
@@ -337,6 +338,7 @@ BEGIN
     $glob_init                = 0;
 
 	$glob_verbose             = 0;
+	$glob_fqo                 = {count => 0};
 }
 
 BEGIN {
@@ -882,10 +884,17 @@ sub format_explain
 # reformat the query output according to the directive hash
 sub format_query_output
 {
-    my ($has_order, $outarr, $directive) = @_;
+    my ($fqostate, $has_order, $outarr, $directive) = @_;
     my $prefix = "";
 
     $directive = {} unless (defined($directive));
+
+	$fqostate->{count} += 1;
+
+	if ($glob_verbose)
+	{
+		print "GP_IGNORE: start fqo $fqostate->{count}\n";
+	}
 
     if (exists($directive->{make_equiv_expected}))
     {
@@ -904,6 +913,12 @@ sub format_query_output
 			{
 				push @{$equiv_expected_rows}, @{$outarr};
 			}
+
+			if ($glob_verbose)
+			{
+				print "GP_IGNORE: end fqo $fqostate->{count}\n";
+			}
+
 			return ;
 
 		}
@@ -923,6 +938,10 @@ sub format_query_output
     if (exists($directive->{explain}))
     {
        format_explain($outarr, $directive);
+	   if ($glob_verbose)
+	   {
+		   print "GP_IGNORE: end fqo $fqostate->{count}\n";
+	   }
 	   return;
     }
 
@@ -944,6 +963,11 @@ sub format_query_output
         {
 #            print "No tablelizer hash for $lines, $firstline\n";
 #            print STDERR "No tablelizer hash for $lines, $firstline\n";
+
+			if ($glob_verbose)
+			{
+				print "GP_IGNORE: end fqo $fqostate->{count}\n";
+			}
 
             return;
         }
@@ -1273,6 +1297,11 @@ sub format_query_output
             }
         }
 
+		if ($glob_verbose)
+		{
+			print "GP_IGNORE: end fqo $fqostate->{count}\n";
+		}
+
         return;
     } # end order
 
@@ -1337,7 +1366,10 @@ sub format_query_output
         }
     }
 
-
+	if ($glob_verbose)
+	{
+		print "GP_IGNORE: end fqo $fqostate->{count}\n";
+	}
 }
 
 
@@ -1475,7 +1507,8 @@ EOF_formatfix
             if ($ini =~ m/^\s*\(\d+\s+row(s)*\)\s*$/)
             {
 
-                format_query_output($has_order, \@outarr, $directive);
+                format_query_output($glob_fqo,
+									$has_order, \@outarr, $directive);
 
                 $directive = {};
                 @outarr = ();
