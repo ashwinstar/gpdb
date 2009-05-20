@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 '''
-Usage: gpmigrator [options] old-gphome new-gphome
+gpmigrator [options] old-gphome new-gphome
 
 Options:
   -h, --help            show this help message and exit
@@ -9,6 +9,9 @@ Options:
   -q                    quiet mode
   -d DIRECTORY          the master host data directory
   -l DIRECTORY          log file directory
+  -R                    revert a previous gpmigrator run
+  --debug               debugging information
+  --prepare             verify the system's integrity but do not migrate
 '''
 
 #============================================================
