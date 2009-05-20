@@ -255,6 +255,7 @@ bool		gp_mk_sort_check = false;
 #endif
 bool 		trace_sort = false;
 int		gp_sort_flags = 0;
+int		gp_dbg_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 
 bool		gp_enable_hash_partitioned_tables = FALSE;

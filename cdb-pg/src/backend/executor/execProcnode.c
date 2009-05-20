@@ -403,10 +403,12 @@ static void CheckTuple(TupleTableSlot *slot)
     bool *n;
     int i;
 
-    if(TupIsNull(slot))
+    if(gp_dbg_flags == 0 || TupIsNull(slot))
         return;
 
-    slot_getallattrs(slot);
+    if(gp_dbg_flags & 1)
+        slot_getallattrs(slot);
+
     d = slot_get_values(slot);
     n = slot_get_isnull(slot);
 

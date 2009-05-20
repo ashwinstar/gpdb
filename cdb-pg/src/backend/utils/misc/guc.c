@@ -3236,6 +3236,16 @@ static struct config_int ConfigureNamesInt[] =
 		32, 0, 1024, NULL, NULL
 	},
 
+	{
+		{"gp_dbg_flags", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Experimental feature: Generic sort flags."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_dbg_flags,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

@@ -791,7 +791,7 @@ extern bool trace_sort;
  *
  */
 extern int gp_sort_flags;
-
+extern int gp_dbg_flags;
 /* If Greenplum is discarding duplicate rows in sort, switch back to
  * standard sort if the number of distinct values exceeds max_distinct.
  * (If the number of distinct values is too large the behavior of the
