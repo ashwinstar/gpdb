@@ -3286,7 +3286,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					ATPartitionCheck(rel, cmd->subtype);
+					if (!recursing)
+						ATPartitionCheck(rel, cmd->subtype);
 					if (rel_is_partitioned(RelationGetRelid(rel)))
 					{
 						do_recurse = true;
