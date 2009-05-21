@@ -1285,6 +1285,12 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         
         self.pool.join()
         
+        try:
+            self.pool.check_results()
+        except:
+            # Setup didn't get this far so no backup to restore.
+            self.pool.empty_completed_items()
+        
         # Restore gp_id table back to original number of primary segments
         self.logger.info('Restoring original segments catalog tables')
         orig_segment_info = {}
@@ -1640,7 +1646,7 @@ UPDATE gp_distribution_policy
 
                         
     def perform_expansion(self):
-        """Performs the actual table re-organiations"""  
+        """Performs the actual table re-organiations"""        
         global table_expand_error
         expansionStart = datetime.datetime.now()
         
@@ -1689,7 +1695,7 @@ UPDATE gp_distribution_policy
         self.pool.joinWorkers()
         self.queue.haltWork()              
         self.queue.joinWorkers()
-
+        
         if stoppedEarly:
             logger.info('End time reached.  Stopping expansion.')
             sql = "INSERT INTO %s.%s VALUES ( 'EXPANSION STOPPED', '%s' ) " % (gpexpand_schema,status_table,expansionStopped)
@@ -1840,7 +1846,7 @@ class ExpandTable():
         
     def reset_started(self, status_conn):        
         sql = """UPDATE %s.%s 
-                 SET status = '%s', expansion_started=NULL
+                 SET status = '%s', expansion_started=NULL, expansion_finished=NULL
                  WHERE dbname = '%s' AND schema_oid = %s 
                  AND table_oid = %s """ % (gpexpand_schema,status_detail_table, undone_status,
                                            self.dbname, self.schema_oid,self.table_oid) 
@@ -1926,6 +1932,8 @@ class ExpandCommand(SQLCommand):
         #connect.
         status_conn = None
         table_conn = None
+        table_exp_success = False
+        
         try:
             status_conn=dbconn.connect(self.status_url)
             table_conn=dbconn.connect(self.table_url)
@@ -1961,10 +1969,9 @@ class ExpandCommand(SQLCommand):
                 
                 self.table.mark_started(status_conn,table_conn, self.cancel_flag)        
                 self.table.expand(table_conn,self.cancel_flag)
+                table_exp_success = True
         except Exception, ex:
             if ex.__str__().find('canceling statement due to user request') == -1 and not self.cancel_flag:
-                logger.info("Reseting status_detail for %s.%s" % (self.table.dbname,self.table.fq_name))
-                self.table.reset_started(status_conn)
                 table_expand_error=True
                 if options.verbose:
                     logger.exception(ex)
@@ -1974,7 +1981,7 @@ class ExpandCommand(SQLCommand):
             else:
                 logger.info('ALTER TABLE of %s.%s canceled' % (self.table.dbname, self.table.fq_name))
                 
-        if not self.cancel_flag:
+        if table_exp_success:
             end_time = datetime.datetime.now()
             #update metadata        
             logger.info("Finished expanding %s.%s" % (self.table.dbname, self.table.fq_name))
