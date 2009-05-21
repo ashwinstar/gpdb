@@ -882,6 +882,7 @@ class GPUpgrade:
         env['LD_LIBRARY_PATH'] = lpath
         env['DYLD_LIBRARY_PATH'] = dypath
         env['PYTHONPATH'] = os.path.join(gphome, 'lib', 'python')
+        env['PYTHONHOME'] = os.path.join(gphome, 'ext', 'python')
         if masterdir:
             env['MASTER_DATA_DIRECTORY'] = masterdir
             env['PGPORT'] = str(self.masterport)
