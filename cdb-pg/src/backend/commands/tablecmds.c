@@ -1080,18 +1080,7 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 	/* MPP-3260: disallow direct DROP TABLE of a partition */
 	if (stmt && rel_is_child_partition(relOid) && !stmt->bAllowPartn)
 	{
-		Oid master = rel_partition_get_master(relOid);
-
-		if (1)
-		ereport(ERROR,
-				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				 errmsg("cannot drop child partition \"%s\" directly",
-						get_rel_name(relOid)),
-				 errhint("Table \"%s\" is a child partition of table "
-						 "\"%s\".  To drop it, use ALTER TABLE.",
-						 get_rel_name(relOid), get_rel_name(master))));
-		else
-		{
+		Oid		 master = rel_partition_get_master(relOid);
 		char	*pretty	= rel_get_part_path_pretty(relOid, 
 												   " ALTER PARTITION ", 
 												   " DROP PARTITION ");
@@ -1104,8 +1093,6 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 						"\"%s\".  To drop it, use ALTER TABLE \"%s\"%s...",
 						get_rel_name(relOid), get_rel_name(master),
 						get_rel_name(master), pretty ? pretty : "" )));
-
-		}
 
 	}
 
@@ -2540,17 +2527,6 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	if (stmt && rel_is_child_partition(myrelid) && !stmt->bAllowPartn)
 	{
 		Oid		 master = rel_partition_get_master(myrelid);
-
-		if (1)
-		ereport(ERROR,
-				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-				errmsg("cannot rename partition \"%s\" directly",
-					   get_rel_name(myrelid)),
-				errhint("Table \"%s\" is a child partition of table "
-						"\"%s\".  To rename it, use ALTER TABLE.",
-						get_rel_name(myrelid), get_rel_name(master))));
-		else
-		{
 		char	*pretty	= rel_get_part_path_pretty(myrelid, 
 												   " ALTER PARTITION ", 
 												   " RENAME PARTITION ");
@@ -2563,9 +2539,6 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 						"\"%s\".  To rename it, use ALTER TABLE \"%s\"%s...",
 						get_rel_name(myrelid), get_rel_name(master),
 						get_rel_name(master), pretty ? pretty : "" )));
-
-		}
-
 	}
 
 	oldrelname = pstrdup(RelationGetRelationName(targetrelation));
