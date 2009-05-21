@@ -1366,7 +1366,7 @@ dumpBufferInHex(
 		/*
 		 * Whole or partial hex word.
 		 */
-		if (countdownLen >= HEXDIGITS_PER_WORD)
+		if (countdownLen >= BYTES_PER_WORD)
 			appendStringInfo(stringInfoData, "%08X", wordBuffer[i]);
 		else
 		{
