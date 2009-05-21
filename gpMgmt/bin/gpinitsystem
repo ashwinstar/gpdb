@@ -129,9 +129,6 @@ USAGE () {
 		$ECHO "      -r, run utility in serial mode [default parallel segment instance build"
 		$ECHO "      -B, <number> run this batch of create segment processes in parallel [default $BATCH_DEFAULT]"
 		$ECHO "      -S, configure spread mirroring [default group]"
-		$ECHO "      -I, input configuration [optional]"
-		$ECHO "          Supplies exact Greenplum configuration information. Input configuration file which is generated from -O option"
-		$ECHO "      -O, output configuration file"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 - No problems encountered with requested operation"
