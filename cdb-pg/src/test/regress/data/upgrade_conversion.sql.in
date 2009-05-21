@@ -252,3 +252,8 @@ update @gpinfoschemaname@.sql_implementation_info set character_value='08.02.001
 
 -- MPP-5788 - delete pg_depend entries between aggregates and functions that don't exist
 delete from @gpupgradeschemaname@.pg_depend d using @gpupgradeschemaname@.pg_proc p where (p.oid = d.objid) and p.proisagg and (d.refclassid = 'pg_proc'::regclass) and (d.refobjid not in (select oid from pg_proc));
+
+-- MPP-4008, MPP-6155 - Fix owners and dependency information for user defined types
+-- Both updates should update zero rows in the upg2 test
+update @gpupgradeschemaname@.pg_class set relowner=typowner from @gpupgradeschemaname@.pg_type t where relkind='c' and t.oid=reltype;
+update @gpupgradeschemaname@.pg_depend set classid='pg_type'::regclass, objid=reltype from @gpupgradeschemaname@.pg_class where refclassid='pg_namespace'::regclass and objid=oid and relkind='c';
