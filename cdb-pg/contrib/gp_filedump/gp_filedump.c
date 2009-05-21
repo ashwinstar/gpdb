@@ -410,7 +410,7 @@ GetBlockSize ()
     localSize = (unsigned int) PageGetPageSize (&localCache);
   else
     printf ("Error: Unable to read full page header from block 0.\n"
-	    "  ===> Read %u bytes", bytesRead);
+	    "  ===> Read %u bytes\n", bytesRead);
   return (localSize);
 }
 
