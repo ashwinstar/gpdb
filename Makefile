@@ -587,7 +587,7 @@ VERSION:=$(shell perl -pe 's, ,-,g' VERSION)
 connectivity :
 ifeq "$(findstring connectivity,$(BLD_TARGETS))" ""
 	# ---- build and packaging of the Connectivity package is currently disabled;
-	# ---- set BLD_TARGET_CONNECTIVITY to enable them.
+	# ---- set BLD_TARGETS="connectivity" to enable them.
 else
 	# ---- load LD_LIBRARY_PATH with the GPDB library set and build the ODBC drivers ----
 	AUTHLIBS_HOME=`pwd`; export AUTHLIBS_HOME ; \
@@ -640,6 +640,10 @@ endif
 endif
 
 clients :
+ifeq "$(findstring clients,$(BLD_TARGETS))" ""
+	# ---- build and packaging of the Clients package is currently disabled;
+	# ---- set BLD_TARGETS="clients" to enable them.
+else
 	# ---- copy GPDB fileset ----
 	if [ ! -z "$(CLIENTINSTLOC)" ] && [ "$(CLIENTINSTLOC)" != "/" ]; then rm -rf $(CLIENTINSTLOC); fi
 	mkdir -p $(CLIENTINSTLOC_BIN)
@@ -676,8 +680,13 @@ else
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
 endif
+endif
 
 loaders :
+ifeq "$(findstring loaders,$(BLD_TARGETS))" ""
+	# ---- build and packaging of the Loaders package is currently disabled;
+	# ---- set BLD_TARGETS="loaders" to enable them.
+else
 	# ---- copy GPDB fileset ----
 	if [ ! -z "$(LOADERSINSTLOC)" ] && [ "$(LOADERSINSTLOC)" != "/" ]; then rm -rf $(LOADERSINSTLOC); fi
 	mkdir -p $(LOADERSINSTLOC_BIN)
@@ -716,8 +725,13 @@ else
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
 endif
+endif
 
 pwx :
+ifeq "$(findstring pwx,$(BLD_TARGETS))" ""
+	# ---- build and packaging of the PWX package is currently disabled;
+	# ---- set BLD_TARGETS="pwx" to enable them.
+else
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
 	# ---- create the installer ----
 	cd client/install/src/unix/ && \
@@ -738,6 +752,7 @@ else
 	ssh build@harpy 'cd packaging/src/windows/ && make PACKAGE=greenplum-$@ VERSION=$(VERSION)'
 	scp build@harpy:packaging/greenplum-$@-$(VERSION)-WinXP-x86_32.msi .
 	chmod 755 greenplum-$@-$(VERSION)-WinXP-x86_32.msi
+endif
 endif
 
 
