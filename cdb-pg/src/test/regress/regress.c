@@ -319,7 +319,7 @@ Datum
 oldstyle_length(Datum dn, Datum dt)
 {
 	int32 n = DatumGetInt32(dn); 
-    text* t = DatumGetTextP(dt);    
+    text* t = (text *) DatumGetPointer(dt);    
     int32 len = 0;
 
 	if (t)
