@@ -182,7 +182,7 @@ createDispatchAgents(Portal portal)
 	if (portal == NULL || strcmp(portal->name,"")==0)
 	{
 		if (unnamedPortalDispatchAgents && dispatchagentsOk(unnamedPortalDispatchAgents))
-				return unnamedPortalDispatchAgents;
+			return unnamedPortalDispatchAgents;
 	}
 
 	elog(DEBUG1,"createDispatchAgents");
@@ -203,10 +203,10 @@ createDispatchAgents(Portal portal)
 	if (GangContext == NULL)
 	{ 
 		GangContext = AllocSetContextCreate(TopMemoryContext,
-											 "Gang Context",
-											 ALLOCSET_DEFAULT_MINSIZE,
-											 ALLOCSET_DEFAULT_INITSIZE,
-											 ALLOCSET_DEFAULT_MAXSIZE);
+											"Gang Context",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
 	}
 
 	oldContext = MemoryContextSwitchTo(GangContext);
@@ -259,7 +259,7 @@ createDispatchAgents(Portal portal)
 		while ((!q->isprimary  || !q->valid || 
 				q->port != segDB_port || 
 				strcmp(lasthost,q->hostname)==0) && 
-					j < cdb_component_dbs->total_segment_dbs)
+			   j < cdb_component_dbs->total_segment_dbs)
 			q = &cdb_component_dbs->segment_db_info[j++];
 		
 		if (j >= cdb_component_dbs->total_segment_dbs)
@@ -287,23 +287,22 @@ createDispatchAgents(Portal portal)
 			i =0;
 			continue;
 		}
-	 
+
 		if (strcmp(q->hostname,"localhost")!=0)
 			strcpy(lasthost, q->hostname);
-		
+
 		if (portal == NULL || strcmp(portal->name,"")==0)
 			elog(LOG,"Using dispatch agent on %s %d segindex %d",q->hostname,q->port,q->segindex);
 		else
 			elog(LOG,"Portal %s using dispatch agent on %s %d segindex %d",portal->name,q->hostname,q->port,q->segindex);
-		 
+
 		cdbconn_initSegmentDescriptor(&dispatchagents->db_descriptors[i],  q);
-		
+
 		dispatchagents->size++;
 		//dispatchagents->db_descriptors[i]->segindex = -2;
-	
-	
+
 		initPQExpBuffer(&buffer);
-		
+
 		/*
 		 * Build the connection string
 		 */
@@ -311,7 +310,7 @@ createDispatchAgents(Portal portal)
 	
 		{
 			int err = addOptions(&buffer,
-				true /* writer? */, q->segindex /* segindex */,true /* primary? */ , superuser());
+								 true /* writer? */, q->segindex /* segindex */,true /* primary? */ , superuser_arg(MyProc->roleId));
 
 			if(err <= 0)
 			{
@@ -344,16 +343,16 @@ createDispatchAgents(Portal portal)
     largest_gangsize = dispatchagents->size;
     
     if (DEBUG1 >= log_min_messages)
-    	{
-    		char		msec_str[32];
-    		switch (check_log_duration(msec_str, false))
-    		{
-    			case 1:
-    			case 2:
-    				ereport(LOG, (errmsg("duration to dispatch agents created: %s ms", msec_str)));
-    				break;
-    		}
-    	}
+	{
+		char		msec_str[32];
+		switch (check_log_duration(msec_str, false))
+		{
+			case 1:
+			case 2:
+				ereport(LOG, (errmsg("duration to dispatch agents created: %s ms", msec_str)));
+				break;
+		}
+	}
 	
 	MemoryContextSwitchTo(oldContext);
 	
@@ -399,6 +398,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	int			segdb_count;
 	int			i;
 	Portal		portal = NULL;
+	bool		connectAsSuperUser = false;
 
 	Assert(size == 1 || size == getgpsegmentCount());
 
@@ -421,6 +421,8 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
 		createDispatchAgents(portal);
+
+	connectAsSuperUser = superuser_arg(MyProc->roleId);
 
 	/*
 	 * MemoryContexts used in this routine.
@@ -720,7 +722,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 		/* set the gangType. */
 		pParms->type = type;
 		
-		pParms->i_am_superuser = superuser();
+		pParms->i_am_superuser = connectAsSuperUser;
 
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
@@ -1587,7 +1589,7 @@ static bool addOneOption(PQExpBufferData *buffer, struct config_generic *guc)
  * Return -index (<=0) into get_guc_variables on failure, so that caller
  * will be able to print a nice error message.
  */
-static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
+static int addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
 {
 	struct config_generic **gucs = get_guc_variables();
 	int ngucs = get_num_guc_variables();
@@ -1637,32 +1639,27 @@ static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, boo
 	 * string "readcommitted" etc.  (space stripped).  However, I do not 
 	 * want to change this piece of code unless I know it is broken.
 	 */
-	if(DefaultXactIsoLevel != XACT_READ_COMMITTED)
+	if (DefaultXactIsoLevel != XACT_READ_COMMITTED)
 	{
-		if(DefaultXactIsoLevel == XACT_SERIALIZABLE)
+		if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
 			appendPQExpBuffer(buffer, " -c default_transaction_isolation=serializable");
 	}
 
-	if(XactIsoLevel != XACT_READ_COMMITTED)
+	if (XactIsoLevel != XACT_READ_COMMITTED)
 	{
 		if(XactIsoLevel == XACT_SERIALIZABLE)
 			appendPQExpBuffer(buffer, " -c transaction_isolation=serializable");
 	}
 
-	for(i=0; i<ngucs; ++i)
+	for (i=0; i<ngucs; ++i)
 	{
 		struct config_generic *guc = gucs[i];
 
-		if((guc->flags & GUC_GPDB_ADDOPT)
-			&&
-			(guc->context == PGC_USERSET
-			 ||
-			 i_am_superuser
-			)
-		  )
+		if ((guc->flags & GUC_GPDB_ADDOPT) &&
+			(guc->context == PGC_USERSET || i_am_superuser))
 		{
 			bool fOK = addOneOption(buffer, guc);
-			if(!fOK)
+			if (!fOK)
 				return -i;
 		}
 	}
@@ -2050,8 +2047,9 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 	int			segdb_count;
 
 	GpSegmentConnectionResponse *r;
- 
-	
+
+	bool		connectAsSuperUser = superuser_arg(MyProc->roleId);
+
 	Assert(conninfo->nsegs > 0 && conninfo->nsegs < 10000);
 	
 	if (conninfo->nsegs > largest_gangsize)
@@ -2155,7 +2153,7 @@ createGangFragment(GpSegmentConnectionInfoSet *conninfo, int * outsize)
 		/* set the gangType. */
 		pParms->type = conninfo->type;
 		
-		pParms->i_am_superuser = superuser();
+		pParms->i_am_superuser = connectAsSuperUser;
 
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		    elog(DEBUG5, "createGang creating thread %d of %d for libpq connections",
