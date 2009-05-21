@@ -4151,7 +4151,12 @@ if __name__ == '__main__':
             # on the local machine and using port 50000, not necessarily true
             # but should be good enough for testing.
             if u.faultinjection == 2:    # XXX
-                u.Shutdown()
+                try:
+                    env = u.CheckUp()
+                    u.dbup = [env, False]
+                    u.Shutdown()
+                except:
+                    pass
                 u.Log("FATAL", "faultinjection=%d" % u.faultinjection)
                 open('/tmp/.s.PGSQL.50001.lock', 'w')
 
