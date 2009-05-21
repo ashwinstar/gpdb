@@ -76,7 +76,7 @@ Remaining TODO items:
      the system.  should get rid of this requirement. """
 ]
 
-_usage = """gpexpand [-f hosts_file] [-D database_name]
+_usage = """[-f hosts_file] [-D database_name]
 
 gpexpand -i input_file [-D database_name] [-B batch_size] [-V]
 
@@ -87,7 +87,7 @@ gpexpand -r [-D database_name]
 
 gpexpand -c [-D database_name]
 
-gpexpand -? | -h | --help --verbose | -v"""
+gpexpand -? | -h | --help | --verbose | -v"""
 
 EXECNAME = os.path.split(__file__)[-1]
 
