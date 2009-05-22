@@ -30,6 +30,9 @@ GRANT USAGE ON SCHEMA %%JETPACK_SCHEMA%% TO public;
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX%%%%JETPACK_NAME%%_version
+-- @in:	
+-- @out:
+--		text - version string
 --
 -- @doc:
 --		Returns current version of %%JETPACK_NAME%%
@@ -358,7 +361,7 @@ REVOKE ALL ON TABLE %%JETPACK_PREFIX%%log_system FROM public;
 
 
 --------------------------------------------------------------------------------
--- @function: 
+-- @view: 
 --		%%JETPACK_PREFIX%%log_database
 --
 -- @doc:
@@ -375,7 +378,7 @@ REVOKE ALL ON TABLE %%JETPACK_PREFIX%%log_database FROM public;
 
 
 --------------------------------------------------------------------------------
--- @function: 
+-- @view: 
 --		%%JETPACK_PREFIX%%log_master_concise
 --
 -- @doc:
@@ -476,6 +479,12 @@ AS
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX_AUX%%guc_local_setting
+-- @in:
+--		varchar - name of GUC
+-- @out:
+--		int - segment id
+--		text - name of GUC
+--		text - value of GUC
 --
 -- @doc:
 --		Evaluate current_setting for a GUC; function is immutable and may be
@@ -497,6 +506,12 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%guc_local_setting(varchar) TO pu
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX%%guc_setting
+-- @in:
+--		varchar - name of GUC
+-- @out:
+--		int - segment id
+--		text - name of GUC
+--		text - value of GUC
 --
 -- @doc:
 --		Collect value of a GUC from all segments
@@ -555,6 +570,12 @@ AS
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX%%skew_details
+-- @in:
+--		oid - oid of table for which to determine distribution
+-- @out:
+--		oid - input oid
+--		int - segment id
+--		bigint - number of rows on segment
 --
 -- @doc:
 --		Get details for skew
@@ -575,8 +596,8 @@ DECLARE
 BEGIN
 
 	SELECT INTO skewrec * 
-	FROM pg_catalog.pg_appendonly pga
-	WHERE pga.relid = $1::regclass;
+	FROM pg_catalog.pg_appendonly pga, pg_catalog.pg_roles pgr
+	WHERE pga.relid = $1::regclass and pgr.rolname = current_user and pgr.rolsuper = 't';
 
 	IF FOUND THEN
 		-- append only table
@@ -650,6 +671,11 @@ AS
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX%%skew_coefficient
+-- @in:
+--		oid - oid of table for which to compute skew coefficient
+-- @out:
+--		oid - input oid
+--		numeric - skew coefficient
 --
 -- @doc:
 --		Compute coefficient of variance given an array of rowcounts;
@@ -682,6 +708,10 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX%%skew_coefficient(oid, OUT oid, OUT n
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX_AUX%%skew_coefficients
+-- @in:
+-- @out:
+--		oid - oid of analyzed table
+--		numeric - skew coefficient of table
 --
 -- @doc:
 --		Wrapper to call coefficient function on all user tables
@@ -729,6 +759,11 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX%%skew_coefficients TO public;
 --------------------------------------------------------------------------------
 -- @view: 
 --		%%JETPACK_PREFIX%%skew_idle_fraction
+-- @in:
+--		oid - oid of table for which to compute idle fraction due to skew
+-- @out:
+--		oid - input oid
+--		numeric - idle fraction
 --
 -- @doc:
 --		Compute skew area quotient for a given table
@@ -760,6 +795,10 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX%%skew_idle_fraction(oid, OUT oid, OUT
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX_AUX%%skew_idle_fractions
+-- @in:
+-- @out:
+--		oid - oid of analyzed table
+--		numeric - idle fraction
 --
 -- @doc:
 --		Wrapper to call fraction calculation on all user tables
@@ -789,7 +828,7 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%skew_idle_fractions() TO public;
 
 
 --------------------------------------------------------------------------------
--- @function: 
+-- @view:
 --		%%JETPACK_PREFIX%%skew_idle_fractions
 --
 -- @doc:
@@ -873,7 +912,7 @@ EXECUTE E'python -c "from gppylib.commands import unix; print ''%s, %s'' % (''$G
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
--- @function: 
+-- @view: 
 --		%%JETPACK_PREFIX%%bloat_expected_pages
 --
 -- @doc:
@@ -917,6 +956,13 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX%%bloat_expected_pages TO public;
 --------------------------------------------------------------------------------
 -- @function: 
 --		%%JETPACK_PREFIX%%bloat_diag
+-- @in:
+--		int - actual number of pages according to statistics
+--		int - expecte number of pages
+--		bool - is AO table?
+-- @out:
+--		int - bloat indicator
+--		text - textual version of bloat indicator
 --
 -- @doc:
 --		diagnose table bloat based on expected and actual number of pages
