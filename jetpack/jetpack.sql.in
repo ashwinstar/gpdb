@@ -104,7 +104,7 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX_AUX%%fullname TO public;
 --		%%JETPACK_PREFIX_AUX%%user_namespaces
 --
 -- @doc:
---		Short-hand for namespaces that contain user data
+--		Shorthand for namespaces that contain user data
 --		
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX_AUX%%user_namespaces
@@ -127,7 +127,7 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX_AUX%%user_namespaces TO public;
 --		%%JETPACK_PREFIX_AUX%%user_tables
 --
 -- @doc:
---		Short-hand for tables in user namespaces
+--		Shorthand for tables in user namespaces
 --		
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX_AUX%%user_tables
@@ -159,7 +159,7 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX_AUX%%user_tables TO public;
 --		%%JETPACK_PREFIX_AUX%%user_data_tables
 --
 -- @doc:
---		Short-hand for tables in user namespaces that may hold data
+--		Shorthand for tables in user namespaces that may hold data
 --		
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX_AUX%%user_data_tables
@@ -180,7 +180,7 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX_AUX%%user_data_tables TO public;
 --		%%JETPACK_PREFIX_AUX%%user_data_tables_readable
 --
 -- @doc:
---		Short-hand for tables in user namespaces that may hold data and are 
+--		Shorthand for tables in user namespaces that may hold data and are 
 --		readable by current user
 --		
 --------------------------------------------------------------------------------
@@ -365,7 +365,7 @@ REVOKE ALL ON TABLE %%JETPACK_PREFIX%%log_system FROM public;
 --		%%JETPACK_PREFIX%%log_database
 --
 -- @doc:
---		Short-hand to view error logs of current database only;
+--		Shorthand to view error logs of current database only;
 --		requires superuser privilege
 --		
 --------------------------------------------------------------------------------
@@ -382,7 +382,7 @@ REVOKE ALL ON TABLE %%JETPACK_PREFIX%%log_database FROM public;
 --		%%JETPACK_PREFIX%%log_master_concise
 --
 -- @doc:
---		Short-hand to view most important columns of master log only;
+--		Shorthand to view most important columns of master log only;
 --		requires superuser privilege
 --		
 --------------------------------------------------------------------------------
@@ -1008,7 +1008,7 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX%%bloat_diag(int, int, bool, OUT int, 
 --		%%JETPACK_PREFIX%%bloat_diag
 --
 -- @doc:
---		Short-hand for running bloat diag over all tables, incl. catalog
+--		Shorthand for running bloat diag over all tables, incl. catalog
 --		
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX%%bloat_diag
