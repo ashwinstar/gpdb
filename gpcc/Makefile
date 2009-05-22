@@ -41,7 +41,6 @@ INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPAR
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
-CPPFLAGS_GPFDIST=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags)
 CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
 
 osx105_x86_GPFDIST_LDFLAGS=-Wl,-search_paths_first
@@ -66,7 +65,7 @@ mkgpfdist: mkext
 	  ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .
 	mkdir -p src/gpfdist/include
 	cd src/gpfdist/ && \
-	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(CPPFLAGS_GPFDIST) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
+	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
 	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 	mkdir -p build/bin
 	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
