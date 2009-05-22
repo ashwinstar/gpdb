@@ -495,7 +495,7 @@ rhel5_x86_32_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 rhel5_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_x86_32_PYTHON=/opt/python32-2.5.1
-sol10_sparc_64_PYTHON=/opt/python-2.5.1
+sol10_sparc_64_PYTHON=$(BLD_THIRDPARTY_DIR)/python-2.6.2
 sol10_sparc_32_PYTHON=/opt/python32-2.5.1
 sol9_sparc_32_PYTHON=/opt/python32-2.5.1
 sol8_sparc_32_PYTHON=/opt/python32-2.5.1
@@ -509,6 +509,7 @@ export PATH:=$(tmpPATH)
 tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_MAC_PREFIX)LD_LIBRARY_PATH)
 export $(BLD_MAC_PREFIX)LD_LIBRARY_PATH:=$(tmpLD_LIBRARY_PATH)
 export PYTHONHOME=$(BLD_PYTHON)
+#$(warning $(BLD_MAC_PREFIX)LD_LIBRARY_PATH=$($(BLD_MAC_PREFIX)LD_LIBRARY_PATH))
 endif
 
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
