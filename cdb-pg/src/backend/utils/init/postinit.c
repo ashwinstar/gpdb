@@ -50,7 +50,7 @@
 #include "pgstat.h"
 
 
-static bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
+extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 static void CheckMyDatabase(const char *name, bool am_superuser);
 static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
@@ -74,7 +74,7 @@ static bool ThereIsAtLeastOneRole(void);
  * transaction infrastructure started, we have to recheck the information;
  * see InitPostgres.
  */
-static bool
+bool
 FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
 {
 	bool		result = false;

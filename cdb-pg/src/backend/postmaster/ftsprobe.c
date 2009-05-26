@@ -69,10 +69,12 @@ NON_EXEC_STATIC void FtsProbeMain(int argc, char *argv[]);
 static void FtsProbeLoop(void);
 static bool FtsTestOneSegment(CdbComponentDatabaseInfo *failedDBInfo, char *dbName, char *userName);
 
-static void retrieveUserAndDb(char **probeUser, char **probeDatabase);
+static void retrieveUserAndDb(char **probeUser);
 static bool probeSegments(CdbComponentDatabases *cdb_component_dbs);
 
 static void *probeSegmentFromThread(void *arg);
+
+extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
 static bool am_ftsprobe = false;
 
@@ -80,7 +82,7 @@ static volatile bool shutdown_requested = false;
 static volatile bool rescan_requested = false;
 
 static char *probeUser = NULL;
-static char *probeDatabase = NULL;
+static char *probeDatabase = "postgres";
 
 /*
  * macros for manipulations of fts-probe bitmaps
@@ -222,7 +224,7 @@ fp_quickdie(SIGNAL_ARGS)
 }
 
 /*
- * AutoVacMain
+ * FtsProbeMain
  */
 NON_EXEC_STATIC void
 FtsProbeMain(int argc, char *argv[])
@@ -279,7 +281,7 @@ FtsProbeMain(int argc, char *argv[])
 	BaseInit();
 
 	/* See InitPostgres()... */
-    InitProcess();	
+	InitProcess();	
 	InitBufferPoolBackend();
 	InitXLOGAccess();
 
@@ -318,6 +320,10 @@ FtsProbeMain(int argc, char *argv[])
 	 */
 	MyDatabaseId = TemplateDbOid;
 	MyDatabaseTableSpace = DEFAULTTABLESPACE_OID;
+
+	if (!FindMyDatabase(probeDatabase, &MyDatabaseId, &MyDatabaseTableSpace))
+		ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE),
+			errmsg("database 'postgres' does not exist")));
 
 	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
 
@@ -369,7 +375,7 @@ FtsProbeMain(int argc, char *argv[])
 	 * Before we can open probe connections, we need a username. (This
 	 * will access catalog tables).
 	 */
-	retrieveUserAndDb(&probeUser, &probeDatabase);
+	retrieveUserAndDb(&probeUser);
 
 	elog(LOG, "probeUser %s probeDatabase %s", probeUser, probeDatabase);
 	
@@ -613,20 +619,15 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 }
 
 static void
-retrieveUserAndDb(char **probeUser, char **probeDatabase)
+retrieveUserAndDb(char **probeUser)
 {
 	Relation auth_rel;
 	HeapTuple	auth_tup;
 	HeapScanDesc auth_scan;
 
-	Relation db_rel;
-	HeapTuple	db_tup;
-	HeapScanDesc db_scan;
-
 	bool	isNull;
 
 	Assert(probeUser != NULL);
-	Assert(probeDatabase != NULL);
 
 	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
 	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 0, NULL);
@@ -661,58 +662,6 @@ retrieveUserAndDb(char **probeUser, char **probeDatabase)
 	heap_close(auth_rel, AccessShareLock);
 
 	Assert(*probeUser != NULL);
-
-	db_rel = heap_open(DatabaseRelationId, AccessShareLock);
-	db_scan = heap_beginscan(db_rel, SnapshotNow, 0, NULL);
-	while (HeapTupleIsValid(db_tup = heap_getnext(db_scan, ForwardScanDirection)))
-	{
-		Datum	attrOid;
-		Datum	attrName;
-		Datum	attrAllowConns;
-		Oid		db_oid;
-		bool	allowconns;
-		char *dbName;
-
-		attrAllowConns = heap_getattr(db_tup, Anum_pg_database_datallowconn, db_rel->rd_att, &isNull);
-		Assert(!isNull);
-
-		allowconns = DatumGetBool(attrAllowConns);
-		if (!allowconns)
-			continue;
-
-		attrOid = heap_getattr(db_tup, ObjectIdAttributeNumber, db_rel->rd_att, &isNull);
-		Assert(!isNull);
-		db_oid = DatumGetObjectId(attrOid);
-
-		if (db_oid == TemplateDbOid)
-			continue;
-
-		attrName = heap_getattr(db_tup, Anum_pg_database_datname, db_rel->rd_att, &isNull);
-		Assert(!isNull);
-		dbName = DatumGetCString(attrName);
-
-
-		if (strcasecmp(dbName, "postgres") == 0)
-		{
-			*probeDatabase = pstrdup(DatumGetCString(attrName));
-
-			heap_endscan(db_scan);
-			heap_close(db_rel, AccessShareLock);
-
-			/* MPP-6058 */
-			MyDatabaseId = db_oid;
-
-			LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
-			MyProc->databaseId = MyDatabaseId;
-			LWLockRelease(ProcArrayLock);
-
-			return;
-		}
-	}
-	heap_endscan(db_scan);
-	heap_close(db_rel, AccessShareLock);
-
-	Assert(*probeDatabase != NULL);
 }
 
 pthread_t *threads=NULL;
