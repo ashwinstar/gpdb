@@ -750,7 +750,9 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%skew_coefficients() TO public;
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX%%skew_coefficients
 AS
-	SELECT * 
+	SELECT 
+		skewoid AS skcoid,
+		skewval AS skccoeff
 	FROM %%JETPACK_PREFIX_AUX%%skew_coefficients();
 
 GRANT SELECT ON TABLE %%JETPACK_PREFIX%%skew_coefficients TO public;
@@ -779,7 +781,7 @@ $$
 			WHEN MIN(skewmax) = 0 THEN 0
 			ELSE (SUM(skewmax - segtupcount) / (MIN(skewmax) * MIN(numsegments)))
 		END
-		AS sif
+		AS siffraction
 	FROM
 	(
 		SELECT segid, segtupcount, COUNT(segid) OVER () AS numsegments, MAX(segtupcount) OVER () AS skewmax
@@ -837,7 +839,9 @@ GRANT EXECUTE ON FUNCTION %%JETPACK_PREFIX_AUX%%skew_idle_fractions() TO public;
 --------------------------------------------------------------------------------
 CREATE VIEW %%JETPACK_PREFIX%%skew_idle_fractions
 AS
-	SELECT * 
+	SELECT
+		skewoid AS sifoid,
+		skewval AS siffraction
 	FROM %%JETPACK_PREFIX_AUX%%skew_idle_fractions();
 
 GRANT SELECT ON TABLE %%JETPACK_PREFIX%%skew_idle_fractions TO public;
