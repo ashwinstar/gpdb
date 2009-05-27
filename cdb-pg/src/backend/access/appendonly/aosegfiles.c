@@ -170,7 +170,7 @@ GetFileSegInfo(Relation parentrel, int segno, SegfileLockStrategy lockstrategy)
 	FileSegInfo 	*fsinfo;
 	bool			forupdate = (lockstrategy != SegfileNoLock);
 	LOCKMODE		lockmode = (forupdate ? RowExclusiveLock : AccessShareLock);
-	Snapshot 		usesnapshot = (forupdate ? SnapshotDirty : GetTransactionSnapshot());
+	Snapshot 		usesnapshot = (forupdate ? SnapshotSelf : GetTransactionSnapshot());
 	Buffer			buffer;
 	ItemPointerData update_ctid;
 	TransactionId 	update_xmax;
