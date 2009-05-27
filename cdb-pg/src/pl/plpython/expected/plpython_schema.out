@@ -13,21 +13,19 @@ CREATE INDEX users_lname_idx ON users(lname);
 CREATE INDEX users_userid_idx ON users(userid);
 CREATE TABLE taxonomy (
 	id serial primary key,
-	name text unique
+	name text
 	) ;
 NOTICE:  CREATE TABLE will create implicit sequence "taxonomy_id_seq" for serial column "taxonomy.id"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "taxonomy_pkey" for table "taxonomy"
-NOTICE:  CREATE TABLE / UNIQUE will create implicit index "taxonomy_name_key" for table "taxonomy"
 CREATE TABLE entry (
 	accession text not null primary key,
-	eid serial unique,
-	txid int2 not null references taxonomy(id)
+	eid serial,
+	txid int2 not null
 	) ;
 NOTICE:  CREATE TABLE will create implicit sequence "entry_eid_seq" for serial column "entry.eid"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "entry_pkey" for table "entry"
-NOTICE:  CREATE TABLE / UNIQUE will create implicit index "entry_eid_key" for table "entry"
 CREATE TABLE sequences (
-	eid int4 not null references entry(eid),
+	eid int4 not null,
 	pid serial primary key,
 	product text not null,
 	sequence text not null,
@@ -37,18 +35,18 @@ NOTICE:  CREATE TABLE will create implicit sequence "sequences_pid_seq" for seri
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "sequences_pkey" for table "sequences"
 CREATE INDEX sequences_product_idx ON sequences(product) ;
 CREATE TABLE xsequences (
-	pid int4 not null references sequences(pid),
+	pid int4 not null,
 	sequence text not null
-	) ;
+	) DISTRIBUTED BY (pid);
 CREATE INDEX xsequences_pid_idx ON xsequences(pid) ;
 CREATE TABLE unicode_test (
 	testvalue  text NOT NULL
-);
+) DISTRIBUTED BY (testvalue);
 CREATE TABLE table_record (
 	first text,
 	second int4
-	) ;
+	) DISTRIBUTED BY (first);
 CREATE TYPE type_record AS (
 	first text,
 	second int4
-	) ;
+	);
