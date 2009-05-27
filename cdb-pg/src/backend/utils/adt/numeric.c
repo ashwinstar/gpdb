@@ -2967,7 +2967,7 @@ static inline NumericAvgTransData *num_avg_store_sum(NumericAvgTransData* tr, Nu
 		newlen = make_result_inplace(var, num_sum, newlen + 10);
 		Assert(newlen == 0);
 
-		/* pfree(oldtr); */
+		pfree(oldtr);
 	}
 
 	return tr;
@@ -2982,7 +2982,8 @@ numeric_avg_accum_decum(NumericAvgTransData *tr, Numeric newval, bool acc)
 		int len = offsetof(NumericAvgTransData, sum) + VARSIZE(newval) + 10;
 		
 		Assert(acc);
-
+		
+		newval = DatumGetNumericCopy(NumericGetDatum(newval));
 		tr = (NumericAvgTransData *) palloc(len); 
 		SET_VARSIZE(tr, len); 
 		tr->count = 1;
@@ -3031,7 +3032,11 @@ numeric_avg_accum(PG_FUNCTION_ARGS)
 
 	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
 	result = numeric_avg_accum_decum(tr, newval, true);
-	pfree(newval);
+	/* pfree(newval);
+	 *  Removed to fix MPP-6135.  Other (numeric,numeric) --> numeric
+	 *  accumulators don't free their value argument (2nd numeric).
+	 *  Why should this one?
+	 */
 	return result;
 }
 
@@ -3044,7 +3049,10 @@ numeric_avg_decum(PG_FUNCTION_ARGS)
 
 	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
 	result = numeric_avg_accum_decum(tr, newval, false);
-	pfree(newval);
+	/* pfree(newval);
+	 *  See comment in numeric_avg_accum.  This didn't actually occur as
+	 *  part of MPP-6135, but symmetry suggests it can cause a problem.
+	 */
 	return result;
 }
 
