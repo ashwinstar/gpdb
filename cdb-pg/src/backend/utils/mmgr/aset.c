@@ -751,7 +751,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 
 				chunk->size = availchunk;
 #ifdef MEMORY_CONTEXT_CHECKING
-				chunk->requested_size = 0;		/* mark it free */
+				chunk->requested_size = 0xFFFFFFFF;	/* mark it free */
 #endif
 				chunk->aset = (void *) set->freelist[a_fidx];
 				set->freelist[a_fidx] = chunk;
@@ -879,6 +879,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */
+    Assert(chunk->requested_size != 0xFFFFFFFF);
 	if (chunk->requested_size < chunk->size)
 		if (((char *) pointer)[chunk->requested_size] != 0x7E)
 		{
@@ -938,7 +939,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 
 #ifdef MEMORY_CONTEXT_CHECKING
 		/* Reset requested_size to 0 in chunks that are on freelist */
-		chunk->requested_size = 0;
+		chunk->requested_size = 0xFFFFFFFF;
 #endif
 		set->freelist[fidx] = chunk;
                 Assert(chunk->size > 0);
@@ -970,6 +971,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 #endif
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */
+    Assert(chunk->requested_size != 0xFFFFFFFF);
 	if (chunk->requested_size < oldsize)
 		if (((char *) pointer)[chunk->requested_size] != 0x7E)
 		{
@@ -1280,7 +1282,7 @@ AllocSetCheck(MemoryContext context)
 			/*
 			 * Check chunk size
 			 */
-			if (dsize > chsize)
+			if (dsize != 0xFFFFFFFF && dsize > chsize)
 			{
 				Assert(!"Memory Context error");
 				elog(WARNING, "problem in alloc set %s: req size > alloc size for chunk %p in block %p (%s:%d)",
@@ -1307,7 +1309,7 @@ AllocSetCheck(MemoryContext context)
 			 * free, the aset is the freelist pointer, which we can't check as
 			 * easily...)
 			 */
-			if (dsize > 0 && chunk->aset != (void *) set)
+			if (dsize != 0xFFFFFFFF && chunk->aset != (void *) set)
 			{
 				Assert(!"Memory context error");
 				elog(WARNING, "problem in alloc set %s: bogus aset link in block %p, chunk %p (%s:%d)",
@@ -1317,7 +1319,8 @@ AllocSetCheck(MemoryContext context)
 			/*
 			 * Check for overwrite of "unallocated" space in chunk
 			 */
-			if (dsize > 0 && dsize < chsize && *chdata_end != 0x7E)
+			if (dsize != 0xFFFFFFFF && dsize != 0
+                    && dsize < chsize && *chdata_end != 0x7E)
 			{
 				Assert(!"Memory context error");
 				elog(WARNING, "problem in alloc set %s: detected write past chunk end in block %p, chunk %p (%s:%d)",
