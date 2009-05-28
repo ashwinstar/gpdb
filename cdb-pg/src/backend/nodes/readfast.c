@@ -1709,6 +1709,7 @@ _readPartitionBy(const char **str)
 	READ_NODE_FIELD(subPart);
 	READ_NODE_FIELD(partSpec);
 	READ_INT_FIELD(partDepth);
+	READ_INT_FIELD(partQuiet);
 	READ_INT_FIELD(location);
 
 	READ_DONE();

@@ -2473,6 +2473,7 @@ _copyPartitionBy(PartitionBy *from)
 	COPY_NODE_FIELD(partSpec);
 	COPY_SCALAR_FIELD(partDepth);
 	COPY_NODE_FIELD(parentRel);
+	COPY_SCALAR_FIELD(partQuiet);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;

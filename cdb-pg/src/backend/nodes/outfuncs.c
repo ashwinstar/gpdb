@@ -2191,6 +2191,7 @@ _outPartitionBy(StringInfo str, PartitionBy *node)
 	WRITE_NODE_FIELD(subPart);
 	WRITE_NODE_FIELD(partSpec);
 	WRITE_INT_FIELD(partDepth);
+	WRITE_INT_FIELD(partQuiet);
 	WRITE_INT_FIELD(location);
 }
 
