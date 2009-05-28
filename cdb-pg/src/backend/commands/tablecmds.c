@@ -11242,7 +11242,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 		}
 
 		/* Find our parent */
-		if (!bTemplate_Only && (pby->partDepth != 0))
+		if (!bTemplate_Only && (pby->partDepth > 0))
 		{
 			Form_pg_inherits inh;
 			Oid inhoid;
@@ -14254,6 +14254,7 @@ atpxPart_validate_spec(
 	pBy->subPart  = NULL;
 	pBy->partSpec = (Node *)spec;
 	pBy->partDepth = pNode->part->parlevel;
+	/* Note: pBy->partQuiet already set by caller */
 	pBy->parentRel =
 			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 						 pstrdup(RelationGetRelationName(rel)));
@@ -14365,6 +14366,7 @@ atpxPart_validate_spec(
 					pBy2->subPart  	= NULL;
 					pBy2->partSpec 	= NULL;
 					pBy2->partDepth = pNode2->part->parlevel;
+					pBy2->partQuiet = pBy->partQuiet;
 					pBy2->parentRel =
 							makeRangeVar(
 									get_namespace_name(
@@ -14573,6 +14575,13 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	ct = (CreateStmt *)linitial(utils);
 	Assert(IsA(ct, CreateStmt));
+
+	if (bSetTemplate)
+		/* if creating a template, silence partition name messages */
+		pBy->partQuiet = PART_VERBO_NOPARTNAME;
+	else
+		/* just silence distribution policy messages */
+		pBy->partQuiet = PART_VERBO_NODISTRO;
 
 	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
 
@@ -18135,8 +18144,20 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 		switch (del_part_template(RelationGetRelid(rel), lvl, 0))
 		{
 			case 0:
-				if (!pc->arg1)
+				if (pc->arg1)
 				{
+					/* no prior template - just add new one */
+					ereport(NOTICE,
+							(errmsg("%s level %d "
+									"subpartition template specification "
+									"for relation \"%s\"",
+									"adding",
+									lvl,
+									RelationGetRelationName(rel))));
+				}
+				else
+				{
+					/* tried to drop non-existent template */
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_OBJECT),
 							 errmsg("relation \"%s\" does not have a "
@@ -18147,14 +18168,17 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 				}
 				break;
 			case 1:
-				ereport(NOTICE,
-						(errmsg("dropped "
-								"level %d "
-								"subpartition template specification "
-								"for relation \"%s\"",
-								lvl,
-								RelationGetRelationName(rel))));
-
+					/* if have new spec, 
+					 * note old spec is being replaced, 
+					 * else just note it is dropped
+					 */
+					ereport(NOTICE,
+							(errmsg("%s level %d "
+									"subpartition template specification "
+									"for relation \"%s\"",
+									(pc->arg1) ? "replacing" : "dropped",
+									lvl,
+									RelationGetRelationName(rel))));
 				break;
 			default:
 					elog(ERROR,

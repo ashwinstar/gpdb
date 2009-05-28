@@ -4016,6 +4016,7 @@ OptTabPartitionBy:
 
 					n->partSpec = $9;
 					n->partDepth = 0;
+					n->partQuiet = PART_VERBO_NODISTRO;
 					n->location  = @3;
 					n->partDefault = NULL;
 					$$ = (Node *)n;
@@ -4103,6 +4104,7 @@ TabSubPartitionBy:
                         n->subPart  = NULL;
                         n->partSpec = NULL;
                         n->partDepth = 0;
+						n->partQuiet = PART_VERBO_NODISTRO;
                         n->location  = @3;
                         n->partDefault = NULL;
                         $$ = (Node *)n;
@@ -11833,6 +11835,7 @@ makeAddPartitionCreateStmt(Node *n, Node *subSpec)
 
         pBy->partSpec = subSpec;
         pBy->partDepth = 0;
+		pBy->partQuiet = PART_VERBO_NODISTRO;
         pBy->location  = -1;
         pBy->partDefault = NULL;
         pBy->parentRel = copyObject(ct->relation);

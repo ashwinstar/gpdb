@@ -185,7 +185,10 @@ static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
-		   CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policy, List *likeDistributedBy);
+								   CreateStmtContext *cxt, 
+								   List *distributedBy, 
+								   GpPolicy ** policy, List *likeDistributedBy,
+								   bool bQuiet);
 static void transformPartitionBy(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt,
 		 Node *partitionBy, GpPolicy *policy);
@@ -1330,6 +1333,8 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	Query	   *q;
 	ListCell   *elements;
 	List  	   *likeDistributedBy = NIL;
+	bool	    bQuiet = false;	/* shut up transformDistributedBy messages */
+
 
 	cxt.stmtType = "CREATE TABLE";
 	cxt.relation = stmt->relation;
@@ -1448,8 +1453,24 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	/*
 	 * Postprocess Greenplum Database distribution columns
 	 */
+	if (stmt->is_part_child ||
+		(stmt->partitionBy && 
+		 (
+			 /* be very quiet if set subpartn template */
+			 (((PartitionBy *)(stmt->partitionBy))->partQuiet ==
+			  PART_VERBO_NOPARTNAME) ||
+			 (
+				 /* quiet for partitions of depth > 0 */
+				 (((PartitionBy *)(stmt->partitionBy))->partDepth != 0) &&
+				 (((PartitionBy *)(stmt->partitionBy))->partQuiet != 
+				  PART_VERBO_NORMAL)
+					 )
+				 )
+				))
+			bQuiet = true; /* silence distro messages for partitions */
+
 	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy,
-						   likeDistributedBy);
+						   likeDistributedBy, bQuiet);
 
 	/*
 	 * Process table partitioning clause
@@ -2230,7 +2251,8 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 static void
 transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					   List *distributedBy, GpPolicy **policyp,
-					   List *likeDistributedBy)
+					   List *likeDistributedBy,
+					   bool bQuiet)
 {
 	ListCell   *keys = NULL;
 	GpPolicy  *policy = NULL;
@@ -2411,7 +2433,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					/* strewn parent */
 					distributedBy = lappend(distributedBy, (Node *)NULL);
 				}
-				elog(NOTICE, "Table has parent, setting distribution columns "
+				if (!bQuiet)
+				 elog(NOTICE, "Table has parent, setting distribution columns "
 					 "to match parent table");
 			}
 			pfree(oldTablePolicy);
@@ -2421,8 +2444,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	if (distributedBy == NIL && likeDistributedBy != NIL)
 	{
 		distributedBy = likeDistributedBy;
-		elog(NOTICE, "Table doesn't have 'distributed by' clause, "
-			 "defaulting to distribution columns from LIKE table");
+		if (!bQuiet)
+			elog(NOTICE, "Table doesn't have 'distributed by' clause, "
+				 "defaulting to distribution columns from LIKE table");
 	}
 
 	if (distributedBy == NIL)
@@ -2487,7 +2511,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 						char	   *inhname = NameStr(inhattr->attname);
 						policy->attrs[0] = colindex;
 						assignedDefault = true;
-						ereport(NOTICE,
+						if (!bQuiet)
+							ereport(NOTICE,
 								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column "
 										"named '%s' from parent table as the Greenplum Database data distribution key for this "
@@ -2525,7 +2550,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 				{
 					policy->attrs[0] = colindex;
 					assignedDefault = true;
-					ereport(NOTICE,
+					if (!bQuiet)
+						ereport(NOTICE,
 							(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 							 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column "
 									"named '%s' as the Greenplum Database data distribution key for this "
@@ -2546,7 +2572,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			 * tuples coming into the system will be randomly assigned a bucket.
 			 */
 			policy->nattrs = 0;
-			elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
+			if (!bQuiet)
+				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
 		}
 
 	}
@@ -6729,7 +6756,7 @@ static void
 make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 			   	PartitionBy *curPby, Node *newSub,
 				Node *pRuleCatalog, Node *pPostCreate, Node *pConstraint,
-				Node *pStoreAttr, char *prtstr)
+				Node *pStoreAttr, char *prtstr, bool bQuiet)
 {
 	RangeVar *parent_tab_name = makeNode(RangeVar);
 	RangeVar *child_tab_name = makeNode(RangeVar);
@@ -6749,11 +6776,12 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->relation = child_tab_name;
 	child_tab_stmt->is_part_child = true;
 
-	ereport(NOTICE,
-			(errmsg("%s will create partition \"%s\" for "
-					"table \"%s\"",
-					cxt->stmtType, child_tab_name->relname,
-					cxt->relation->relname)));
+	if (!bQuiet)
+		ereport(NOTICE,
+				(errmsg("%s will create partition \"%s\" for "
+						"table \"%s\"",
+						cxt->stmtType, child_tab_name->relname,
+						cxt->relation->relname)));
 
 	/* set the "Post Create" rule if it exists */
 	child_tab_stmt->postCreate = pPostCreate;
@@ -7313,14 +7341,21 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		PartitionBy	*newSub = NULL;
 		PartitionElem *pElem = lc ? (PartitionElem *)lfirst(lc) : NULL;
-		Node		*pRuleCatalog  = NULL;
-		Node		*pPostCreate = NULL;
-		Node		*pConstraint  = NULL;
-		Node		*pStoreAttr = NULL;
-		char 		*relname;
-		PartitionBoundSpec	*pBSpec = NULL;
-		Node 		*every = NULL;
-		PartitionBy *curPby = NULL;
+		Node					*pRuleCatalog = NULL;
+		Node					*pPostCreate  = NULL;
+		Node					*pConstraint  = NULL;
+		Node					*pStoreAttr	  = NULL;
+		char					*relname;
+		PartitionBoundSpec		*pBSpec		  = NULL;
+		Node					*every		  = NULL;
+		PartitionBy				*curPby		  = NULL;
+		bool					 bQuiet		  = false;
+
+		/* silence partition name messages if really generating a
+		 * subpartition template
+		 */
+		if (pBy->partQuiet == PART_VERBO_NOPARTNAME)
+			bQuiet = true;
 
 		if (pElem)
 		{
@@ -7425,6 +7460,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				newSub->subPart	  = psubBy->subPart;
 				newSub->partSpec  = pElem->subSpec; /* use the subspec */
 				newSub->partDepth = psubBy->partDepth;
+				newSub->partQuiet = pBy->partQuiet;
 
 				if (pElem->subSpec) /* get a good location for error msg */
 				{
@@ -7558,6 +7594,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 			curPby->partSpec = (Node *)tmppspec;
 			curPby->partDepth = pBy->partDepth;
+			curPby->partQuiet = pBy->partQuiet;
 			curPby->parentRel = copyObject(pBy->parentRel);
 		}
 
@@ -7569,7 +7606,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		make_child_node(stmt, cxt, relname, curPby, (Node *)newSub,
 						pRuleCatalog, pPostCreate, pConstraint, pStoreAttr,
-						prtstr);
+						prtstr, bQuiet);
 
 		if (pBSpec)
 			prevEvery = pBSpec->partEvery;

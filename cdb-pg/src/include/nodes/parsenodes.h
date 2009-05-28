@@ -1419,6 +1419,14 @@ typedef enum PartitionByType			/* types of Partitions */
 	PARTTYP_REFERENCE /* for future use... */
 } PartitionByType;
 
+typedef enum PartitionByVerbosity		/* control Partition messaging */
+{
+	PART_VERBO_NORMAL, 		/* normal (all messages) */
+	PART_VERBO_NODISTRO, 	/* NO DISTRIBution policy messages */
+	PART_VERBO_NOPARTNAME   /* NO distro or partition name messages 
+							   (for SET SUBPARTITION TEMPLATE) */
+} PartitionByVerbosity;
+
 typedef struct PartitionBy			/* the Partition By clause */
 {
 	NodeTag				type;
@@ -1432,6 +1440,7 @@ typedef struct PartitionBy			/* the Partition By clause */
 	int				    partDepth;	/* depth (starting at zero) */
 	RangeVar		   *parentRel;	/* parent relation */
 	bool				bKeepMe;    /* keep the top-level pby [nefarious] */
+	int				    partQuiet;	/* PartitionByVerbosity */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 
