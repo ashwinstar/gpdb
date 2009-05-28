@@ -462,7 +462,6 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 	Assert(newGangDefinition != NULL);
 
-
 	/*
 	 * Loop through the segment_database_descriptors items inside newGangDefinition.
 	 * For each segdb , attempt to get
@@ -949,6 +948,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 		newGangDefinition = NULL;
 	}
+
 	return newGangDefinition;
 }
 
@@ -976,6 +976,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 	Assert(CurrentMemoryContext == GangContext);
 	Assert(size > 0);
 
+
 	/*
 	 * Get the structure representing the configured segment
 	 * databases.  This structure is fetched into a permanent memory
@@ -998,7 +999,6 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 		const char *pn1 = "";
 		const char *pn2 = "";
 		const char *pn3 = "";
-
 
 		switch (type)
 		{
@@ -1031,10 +1031,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 
 	newGangDefinition->all_valid_segdbs_connected = false;
 
-
-
 	Assert(newGangDefinition->segdb_count > 0);
-
 
 	newGangDefinition->db_descriptors =
 		(SegmentDatabaseDescriptor *) palloc0(conninfo->nsegs *
@@ -1044,7 +1041,6 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 
 	for (i = 0; i < conninfo->nsegs; i++)
 	{
-
 		CdbComponentDatabaseInfo *cdbinfo = palloc0(sizeof(CdbComponentDatabaseInfo));
 
 		segdbDesc = &newGangDefinition->db_descriptors[i];
@@ -1062,7 +1058,7 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 			char		portNumberStr[32];
 			char	   *service;
 			struct addrinfo *addrs = NULL,
-				*addr;
+					   *addr;
 			struct addrinfo hint;
 
 			/* Initialize hint structure */
@@ -1108,7 +1104,6 @@ buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * conninfo)
 #endif
 
 			pg_freeaddrinfo_all(hint.ai_family, addrs);
-
 		}
 
 
@@ -1426,7 +1421,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	{
 		FtsReConfigureMPP(false);
 
-		if (shmDtmStarted != NULL && !*shmDtmStarted)
+		if (shmDtmStarted != NULL && !*shmDtmStarted && isFTSEnabled())
 		{
 			elog(LOG, "Fault detected prior to dtm-startup squelching error.");
 			return NULL;
