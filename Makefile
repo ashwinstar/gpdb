@@ -261,6 +261,7 @@ define BUILD_STEPS
 	@$(MAKE) mkgpcc
 	@$(MAKE) mkgpperfmon INSTLOC=$(INSTLOC)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTINSTLOC=$(CLIENTINSTLOC)
