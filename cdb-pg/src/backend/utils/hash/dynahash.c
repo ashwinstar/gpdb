@@ -1051,7 +1051,8 @@ hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)
 	status->hashp = hashp;
 	status->curBucket = 0;
 	status->curEntry = NULL;
-	if (!hashp->frozen)
+
+	if (hashp && !hashp->frozen)
 		register_seq_scan(hashp);
 }
 
@@ -1082,6 +1083,9 @@ hash_seq_search(HASH_SEQ_STATUS *status)
 	 */
 	curBucket = status->curBucket;
 	hashp = status->hashp;
+	if(!hashp)
+		return NULL;
+
 	hctl = hashp->hctl;
 	ssize = hashp->ssize;
 	max_bucket = hctl->max_bucket;
