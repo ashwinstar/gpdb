@@ -22,7 +22,7 @@ Options:
 
 import sys
 if sys.hexversion<0x2040400:
-    sys.stderr.write("gpload needs python version at least 2.4.4")
+    sys.stderr.write("gpload needs python 2.4.4 or higher\n")
     sys.exit(2)
 
 try:
@@ -905,7 +905,9 @@ class gpload:
 
                 self.setup_connection(recurse)
             else: 
-                self.log(self.ERROR, "could not connect to database: %s"%e)
+                self.log(self.ERROR, "could not connect to database: %s. Is " \
+                    "the Greenplum Database running on port %i?" % (e[0],
+                    self.options.p))
         except pg8000.errors.ProgrammingError, e:
             self.log(self.ERROR, "could not connect to database: %s" % e[2])
 
