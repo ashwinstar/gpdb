@@ -3,10 +3,10 @@
  * timestamp.h
  *	  Definitions for the SQL92 "timestamp" and "interval" types.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.64 2006/10/04 00:30:11 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.79 2009/01/01 17:24:02 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,12 +42,14 @@
  */
 
 #ifdef HAVE_INT64_TIMESTAMP
+
 typedef int64 Timestamp;
 typedef int64 TimestampTz;
 typedef int64 TimeOffset;
 typedef int32 fsec_t;			/* fractional seconds (in microseconds) */
 
 #else
+
 typedef double Timestamp;
 typedef double TimestampTz;
 typedef double TimeOffset;
@@ -151,6 +153,7 @@ typedef struct
 #define DT_NOBEGIN		(-DBL_MAX)
 #define DT_NOEND		(DBL_MAX)
 #endif
+
 #endif   /* HAVE_INT64_TIMESTAMP */
 
 

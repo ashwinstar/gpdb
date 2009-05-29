@@ -3,11 +3,11 @@
  * fe-auth.c
  *	   The front-end (client) authorization routines
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.137 2008/01/31 18:58:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.141 2009/03/22 18:06:35 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -157,14 +157,6 @@ pg_password_sendauth(PGconn *conn, const char *password, AuthRequest areq)
 				}
 				break;
 			}
-		case AUTH_REQ_CRYPT:
-			{
-				char		salt[3];
-
-				strlcpy(salt, conn->cryptSalt, sizeof(salt));
-				crypt_pwd = crypt(password, salt);
-				break;
-			}
 		case AUTH_REQ_PASSWORD:
 			/* discard const so we can assign it */
 			crypt_pwd = (char *) password;
@@ -215,8 +207,12 @@ pg_fe_sendauth(AuthRequest areq, PGconn *conn)
 					   libpq_gettext("SSPI authentication not supported\n"));
 			return STATUS_ERROR;
 
-		case AUTH_REQ_MD5:
 		case AUTH_REQ_CRYPT:
+			printfPQExpBuffer(&conn->errorMessage,
+				 libpq_gettext("Crypt authentication not supported\n"));
+			return STATUS_ERROR;
+
+		case AUTH_REQ_MD5:
 		case AUTH_REQ_PASSWORD:
 			conn->password_needed = true;
 			if (conn->pgpass == NULL || conn->pgpass[0] == '\0')
@@ -270,8 +266,7 @@ pg_fe_getauthname(PQExpBuffer errorMessage)
 #endif
 
 	/*
-	 * pglock_thread() really only needs to be called around
-	 * pg_krb5_authname(), but some users are using configure
+	 * Some users are using configure
 	 * --enable-thread-safety-force, so we might as well do the locking within
 	 * our library to protect pqGetpwuid(). In fact, application developers
 	 * can use getpwuid() in their application if they use the locking call we

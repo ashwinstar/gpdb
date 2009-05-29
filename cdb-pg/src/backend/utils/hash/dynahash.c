@@ -21,12 +21,12 @@
  * lookup key's hash value as a partition number --- this will work because
  * of the way calc_bucket() maps hash values to bucket numbers.
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/hash/dynahash.c,v 1.73.2.1 2007/04/26 23:24:57 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/hash/dynahash.c,v 1.79 2009/01/01 17:23:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -416,7 +416,7 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 
 	/* Build the hash directory structure */
 	if (!init_htab(hashp, nelem))
-		elog(ERROR, "failed to initialize hash table");
+		elog(ERROR, "failed to initialize hash table \"%s\"", hashp->tabname);
 
 	/*
 	 * For a shared hash table, preallocate the requested number of elements.
@@ -909,7 +909,8 @@ hash_search_with_hash_value(HTAB *hashp,
 
 			/* disallow inserts if frozen */
 			if (hashp->frozen)
-				elog(ERROR, "cannot insert into a frozen hashtable");
+				elog(ERROR, "cannot insert into frozen hashtable \"%s\"",
+					 hashp->tabname);
 
 			currBucket = get_hash_entry(hashp);
 			if (currBucket == NULL)
@@ -1050,8 +1051,7 @@ hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)
 	status->hashp = hashp;
 	status->curBucket = 0;
 	status->curEntry = NULL;
-
-	if (hashp && !hashp->frozen)
+	if (!hashp->frozen)
 		register_seq_scan(hashp);
 }
 
@@ -1082,9 +1082,6 @@ hash_seq_search(HASH_SEQ_STATUS *status)
 	 */
 	curBucket = status->curBucket;
 	hashp = status->hashp;
-	if(!hashp)
-		return NULL;
-
 	hctl = hashp->hctl;
 	ssize = hashp->ssize;
 	max_bucket = hctl->max_bucket;
@@ -1158,9 +1155,10 @@ void
 hash_freeze(HTAB *hashp)
 {
 	if (hashp->isshared)
-		elog(ERROR, "cannot freeze shared hashtable");
+		elog(ERROR, "cannot freeze shared hashtable \"%s\"", hashp->tabname);
 	if (!hashp->frozen && has_seq_scans(hashp))
-		elog(ERROR, "cannot freeze hashtable with active scans");
+		elog(ERROR, "cannot freeze hashtable \"%s\" because it has active scans",
+			 hashp->tabname);
 	hashp->frozen = true;
 }
 
@@ -1436,7 +1434,8 @@ static void
 register_seq_scan(HTAB *hashp)
 {
 	if (num_seq_scans >= MAX_SEQ_SCANS)
-		elog(ERROR, "too many active hash_seq_search scans");
+		elog(ERROR, "too many active hash_seq_search scans, cannot start one on \"%s\"",
+			 hashp->tabname);
 	seq_scan_tables[num_seq_scans] = hashp;
 	seq_scan_level[num_seq_scans] = GetCurrentTransactionNestLevel();
 	num_seq_scans++;

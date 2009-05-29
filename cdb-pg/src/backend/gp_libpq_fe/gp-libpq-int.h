@@ -9,10 +9,11 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
+ * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-int.h,v 1.141 2009/04/24 09:43:10 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,11 +35,6 @@
 #include <signal.h>
 #endif
 
-#ifdef WIN32_ONLY_COMPILER
-typedef int ssize_t;			/* ssize_t doesn't exist in VC (at least not
-								 * VC6) */
-#endif
-
 /* include stuff common to fe and be */
 #include "getaddrinfo.h"
 #include "libpq/pqcomm.h"
@@ -55,6 +51,9 @@ typedef int ssize_t;			/* ssize_t doesn't exist in VC (at least not
 
 #ifdef ENABLE_SSPI
 #define SECURITY_WIN32
+#if defined(WIN32) && !defined(WIN32_ONLY_COMPILER)
+#include <ntsecapi.h>
+#endif
 #include <security.h>
 #undef SECURITY_WIN32
 
@@ -105,19 +104,6 @@ union pgresult_data
 	char		space[1];		/* dummy for accessing block as bytes */
 };
 
-/* Data about a single attribute (column) of a query result */
-
-typedef struct pgresAttDesc
-{
-	char	   *name;			/* column name */
-	Oid			tableid;		/* source table, if known */
-	int			columnid;		/* source column, if known */
-	int			format;			/* format code for value (text/binary) */
-	Oid			typid;			/* type id */
-	int			typlen;			/* type size */
-	int			atttypmod;		/* type-specific modifier info */
-} PGresAttDesc;
-
 /* Data about a single parameter of a prepared statement */
 typedef struct pgresParamDesc
 {
@@ -166,6 +152,17 @@ typedef struct
 	PQnoticeProcessor noticeProc;		/* notice message processor */
 	void	   *noticeProcArg;
 } PGNoticeHooks;
+
+#if 0
+typedef struct PGEvent
+{
+	PGEventProc	proc;			/* the function to call on events */
+	char	   *name;			/* used only for error messages */
+	void	   *passThrough;	/* pointer supplied at registration time */
+	void	   *data;			/* optional state (instance) data */
+	bool		resultInitialized;	/* T if RESULTCREATE/COPY succeeded */
+} PGEvent;
+#endif
 
 /* CDB: Statistical response message list element */
 typedef struct pgCdbStatCell
@@ -332,8 +329,12 @@ struct pg_conn
 	char	   *dbName;			/* database name */
 	char	   *pguser;			/* Postgres username and password, if any */
 	char	   *pgpass;
-	bool		pgpass_from_client;	/* did password come from connect args? */
 	char	   *sslmode;		/* SSL mode (require,prefer,allow,disable) */
+	char	   *sslkey;			/* client key filename */
+	char	   *sslcert;		/* client certificate filename */
+	char	   *sslrootcert;	/* root certificate filename */
+	char	   *sslcrl;			/* certificate revocation list filename */
+
 #if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	char	   *krbsrvname;		/* Kerberos service name */
 #endif
@@ -398,7 +399,6 @@ struct pg_conn
 	char		*qe_version;
 	
 	char		md5Salt[4];		/* password salt received from backend */
-	char		cryptSalt[2];	/* password salt received from backend */
 	pgParameterStatus *pstatus; /* ParameterStatus data */
 	int			client_encoding;	/* encoding id */
 	bool		std_strings;	/* standard_conforming_strings */
@@ -502,13 +502,19 @@ extern bool pqGetHomeDirectory(char *buf, int bufsize);
 #ifdef ENABLE_THREAD_SAFETY
 extern pgthreadlock_t pg_g_threadlock;
 
+#define PGTHREAD_ERROR(msg) \
+	do { \
+		fprintf(stderr, "%s\n", msg); \
+		exit(1); \
+	} while (0)
+
+
 #define pglock_thread()		pg_g_threadlock(true)
 #define pgunlock_thread()	pg_g_threadlock(false)
 #else
 #define pglock_thread()		((void) 0)
 #define pgunlock_thread()	((void) 0)
 #endif
-
 
 /* === in fe-exec.c === */
 
@@ -568,11 +574,12 @@ extern PGresult *pqFunctionCall3(PGconn *conn, Oid fnid,
   * Get, EOF merely means the buffer is exhausted, not that there is
   * necessarily any error.
   */
-extern int	pqCheckOutBufferSpace(int bytes_needed, PGconn *conn);
-extern int	pqCheckInBufferSpace(int bytes_needed, PGconn *conn);
+extern int	pqCheckOutBufferSpace(size_t bytes_needed, PGconn *conn);
+extern int	pqCheckInBufferSpace(size_t bytes_needed, PGconn *conn);
 extern int	pqGetc(char *result, PGconn *conn);
 extern int	pqPutc(char c, PGconn *conn);
 extern int	pqGets(PQExpBuffer buf, PGconn *conn);
+extern int	pqGets_append(PQExpBuffer buf, PGconn *conn);
 extern int	pqPuts(const char *s, PGconn *conn);
 extern int	pqGetnchar(char *s, size_t len, PGconn *conn);
 extern int	pqPutnchar(const char *s, size_t len, PGconn *conn);

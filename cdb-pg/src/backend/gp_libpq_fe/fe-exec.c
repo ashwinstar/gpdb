@@ -6,12 +6,12 @@
  *   and doesn't support protocol2.
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.194.2.1 2008/09/10 17:01:17 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.202 2009/05/27 14:16:51 meskes Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,7 +24,6 @@
 #include "gp-libpq-int.h"
 
 #include "mb/pg_wchar.h"
-#include <limits.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -67,6 +66,7 @@ static bool PQexecStart(PGconn *conn);
 static PGresult *PQexecFinish(PGconn *conn);
 static int PQsendDescribe(PGconn *conn, char desc_type,
 			   const char *desc_target);
+static int check_field_number(const PGresult *res, int field_num);
 
 
 /* ----------------
@@ -132,13 +132,12 @@ static int PQsendDescribe(PGconn *conn, char desc_type,
  * PQmakeEmptyPGresult
  *	 returns a newly allocated, initialized PGresult with given status.
  *	 If conn is not NULL and status indicates an error, the conn's
- *	 errorMessage is copied.
+ *	 errorMessage is copied.  Also, any PGEvents are copied from the conn.
  *
  * Note this is exported --- you wouldn't think an application would need
  * to build its own PGresults, but this has proven useful in both libpgtcl
  * and the Perl5 interface, so maybe it's not so unreasonable.
  */
-
 PGresult *
 PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 {
@@ -227,6 +226,307 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	}
 
 	return result;
+}
+
+/*
+ * PQsetResultAttrs
+ *
+ * Set the attributes for a given result.  This function fails if there are
+ * already attributes contained in the provided result.  The call is
+ * ignored if numAttributes is is zero or attDescs is NULL.  If the
+ * function fails, it returns zero.  If the function succeeds, it
+ * returns a non-zero value.
+ */
+int
+PQsetResultAttrs(PGresult *res, int numAttributes, PGresAttDesc *attDescs)
+{
+	int i;
+
+	/* If attrs already exist, they cannot be overwritten. */
+	if (!res || res->numAttributes > 0)
+		return FALSE;
+
+	/* ignore no-op request */
+	if (numAttributes <= 0 || !attDescs)
+		return TRUE;
+
+	res->attDescs = (PGresAttDesc *)
+		PQresultAlloc(res, numAttributes * sizeof(PGresAttDesc));
+
+	if (!res->attDescs)
+		return FALSE;
+
+	res->numAttributes = numAttributes;
+	memcpy(res->attDescs, attDescs, numAttributes * sizeof(PGresAttDesc));
+
+	/* deep-copy the attribute names, and determine format */
+	res->binary = 1;
+	for (i = 0; i < res->numAttributes; i++)
+	{
+		if (res->attDescs[i].name)
+			res->attDescs[i].name = pqResultStrdup(res, res->attDescs[i].name);
+		else
+			res->attDescs[i].name = res->null_field;
+
+		if (!res->attDescs[i].name)
+			return FALSE;
+
+		if (res->attDescs[i].format == 0)
+			res->binary = 0;
+	}
+
+	return TRUE;
+}
+
+/*
+ * PQcopyResult
+ *
+ * Returns a deep copy of the provided 'src' PGresult, which cannot be NULL.
+ * The 'flags' argument controls which portions of the result will or will
+ * NOT be copied.  The created result is always put into the
+ * PGRES_TUPLES_OK status.  The source result error message is not copied,
+ * although cmdStatus is.
+ *
+ * To set custom attributes, use PQsetResultAttrs.  That function requires
+ * that there are no attrs contained in the result, so to use that
+ * function you cannot use the PG_COPYRES_ATTRS or PG_COPYRES_TUPLES
+ * options with this function.
+ *
+ * Options:
+ *   PG_COPYRES_ATTRS - Copy the source result's attributes
+ *
+ *   PG_COPYRES_TUPLES - Copy the source result's tuples.  This implies
+ *   copying the attrs, seeeing how the attrs are needed by the tuples.
+ *
+ *   PG_COPYRES_EVENTS - Copy the source result's events.
+ *
+ *   PG_COPYRES_NOTICEHOOKS - Copy the source result's notice hooks.
+ */
+PGresult *
+PQcopyResult(const PGresult *src, int flags)
+{
+	PGresult *dest;
+	//int i;
+
+	if (!src)
+		return NULL;
+
+	dest = PQmakeEmptyPGresult(NULL, PGRES_TUPLES_OK);
+	if (!dest)
+		return NULL;
+
+	/* Always copy these over.  Is cmdStatus really useful here? */
+	dest->client_encoding = src->client_encoding;
+	strcpy(dest->cmdStatus, src->cmdStatus);
+
+	/* Wants attrs? */
+	if (flags & (PG_COPYRES_ATTRS | PG_COPYRES_TUPLES))
+	{
+		if (!PQsetResultAttrs(dest, src->numAttributes, src->attDescs))
+		{
+			PQclear(dest);
+			return NULL;
+		}
+	}
+
+	/* Wants to copy tuples? */
+	if (flags & PG_COPYRES_TUPLES)
+	{
+		int tup, field;
+
+		for (tup = 0; tup < src->ntups; tup++)
+		{
+			for (field = 0; field < src->numAttributes; field++)
+			{
+				if (!PQsetvalue(dest, tup, field,
+								src->tuples[tup][field].value,
+								src->tuples[tup][field].len))
+				{
+					PQclear(dest);
+					return NULL;
+				}
+			}
+		}
+	}
+
+	/* Wants to copy notice hooks? */
+	if (flags & PG_COPYRES_NOTICEHOOKS)
+		dest->noticeHooks = src->noticeHooks;
+
+#if 0
+	/* Wants to copy PGEvents? */
+	if ((flags & PG_COPYRES_EVENTS) && src->nEvents > 0)
+	{
+		dest->events = dupEvents(src->events, src->nEvents);
+		if (!dest->events)
+		{
+			PQclear(dest);
+			return NULL;
+		}
+		dest->nEvents = src->nEvents;
+	}
+
+	/* Okay, trigger PGEVT_RESULTCOPY event */
+	for (i = 0; i < dest->nEvents; i++)
+	{
+		if (src->events[i].resultInitialized)
+		{
+			PGEventResultCopy evt;
+
+			evt.src = src;
+			evt.dest = dest;
+			if (!dest->events[i].proc(PGEVT_RESULTCOPY, &evt,
+									  dest->events[i].passThrough))
+			{
+				PQclear(dest);
+				return NULL;
+			}
+			dest->events[i].resultInitialized = TRUE;
+		}
+	}
+#endif
+
+	return dest;
+}
+
+#if 0
+/*
+ * Copy an array of PGEvents (with no extra space for more).
+ * Does not duplicate the event instance data, sets this to NULL.
+ * Also, the resultInitialized flags are all cleared.
+ */
+static PGEvent *
+dupEvents(PGEvent *events, int count)
+{
+	PGEvent *newEvents;
+	int i;
+
+	if (!events || count <= 0)
+		return NULL;
+
+	newEvents = (PGEvent *) malloc(count * sizeof(PGEvent));
+	if (!newEvents)
+		return NULL;
+
+	for (i = 0; i < count; i++)
+	{
+		newEvents[i].proc = events[i].proc;
+		newEvents[i].passThrough = events[i].passThrough;
+		newEvents[i].data = NULL;
+		newEvents[i].resultInitialized = FALSE;
+		newEvents[i].name = strdup(events[i].name);
+		if (!newEvents[i].name)
+		{
+			while (--i >= 0)
+				free(newEvents[i].name);
+			free(newEvents);
+			return NULL;
+		}
+	}
+
+	return newEvents;
+}
+#endif
+
+
+/*
+ * Sets the value for a tuple field.  The tup_num must be less than or
+ * equal to PQntuples(res).  If it is equal, a new tuple is created and
+ * added to the result.
+ * Returns a non-zero value for success and zero for failure.
+ */
+int
+PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, int len)
+{
+	PGresAttValue *attval;
+
+	if (!check_field_number(res, field_num))
+		return FALSE;
+
+	/* Invalid tup_num, must be <= ntups */
+	if (tup_num < 0 || tup_num > res->ntups)
+		return FALSE;
+
+	/* need to grow the tuple table? */
+	if (res->ntups >= res->tupArrSize)
+	{
+		int n = res->tupArrSize ? res->tupArrSize * 2 : 128;
+		PGresAttValue **tups;
+
+		if (res->tuples)
+			tups = (PGresAttValue **) realloc(res->tuples, n * sizeof(PGresAttValue *));
+		else
+			tups = (PGresAttValue **) malloc(n * sizeof(PGresAttValue *));
+
+		if (!tups)
+			return FALSE;
+
+		memset(tups + res->tupArrSize, 0,
+			   (n - res->tupArrSize) * sizeof(PGresAttValue *));
+		res->tuples = tups;
+		res->tupArrSize = n;
+	}
+
+	/* need to allocate a new tuple? */
+	if (tup_num == res->ntups && !res->tuples[tup_num])
+	{
+		PGresAttValue *tup;
+		int i;
+
+		tup = (PGresAttValue *)
+			pqResultAlloc(res, res->numAttributes * sizeof(PGresAttValue),
+						  TRUE);
+
+		if (!tup)
+			return FALSE;
+
+		/* initialize each column to NULL */
+		for (i = 0; i < res->numAttributes; i++)
+		{
+			tup[i].len = NULL_LEN;
+			tup[i].value = res->null_field;
+		}
+
+		res->tuples[tup_num] = tup;
+		res->ntups++;
+	}
+
+	attval = &res->tuples[tup_num][field_num];
+
+	/* treat either NULL_LEN or NULL value pointer as a NULL field */
+	if (len == NULL_LEN || value == NULL)
+	{
+		attval->len = NULL_LEN;
+		attval->value = res->null_field;
+	}
+	else if (len <= 0)
+	{
+		attval->len = 0;
+		attval->value = res->null_field;
+	}
+	else
+	{
+		attval->value = (char *) pqResultAlloc(res, len + 1, TRUE);
+		if (!attval->value)
+			return FALSE;
+		attval->len = len;
+		memcpy(attval->value, value, len);
+		attval->value[len] = '\0';
+	}
+
+	return TRUE;
+}
+
+/*
+ * pqResultAlloc - exported routine to allocate local storage in a PGresult.
+ *
+ * We force all such allocations to be maxaligned, since we don't know
+ * whether the value might be binary.
+ */
+void *
+PQresultAlloc(PGresult *res, size_t nBytes)
+{
+	return pqResultAlloc(res, nBytes, TRUE);
 }
 
 /*
@@ -387,6 +687,7 @@ void
 PQclear(PGresult *res)
 {
 	PGresult_data *block;
+	//int i;
 
 	if (!res)
 		return;
@@ -571,8 +872,7 @@ pqInternalNotice(const PGNoticeHooks * hooks, const char *fmt,...)
 /*
  * pqAddTuple
  *	  add a row pointer to the PGresult structure, growing it if necessary
- *	  Returns TRUE if OK, FALSE if not enough memory to add the row or 
- *    the result counter overflows.
+ *	  Returns TRUE if OK, FALSE if not enough memory to add the row
  */
 int
 pqAddTuple(PGresult *res, PGresAttValue *tup)
@@ -611,7 +911,6 @@ pqAddTuple(PGresult *res, PGresAttValue *tup)
 		res->tuples = newTuples;
 	}
 	res->tuples[res->ntups] = tup;
-
 	res->ntups++;
 	return TRUE;
 }
@@ -1397,12 +1696,13 @@ PQsendQueryGuts(PGconn *conn,
 			goto sendFailed;
 	}
 
-	/* construct the Bind message */
+	/* Construct the Bind message */
 	if (pqPutMsgStart('B', false, conn) < 0 ||
 		pqPuts("", conn) < 0 ||
 		pqPuts(stmtName, conn) < 0)
 		goto sendFailed;
 
+	/* Send parameter formats */
 	if (nParams > 0 && paramFormats)
 	{
 		if (pqPutInt(nParams, 2, conn) < 0)
@@ -1422,6 +1722,7 @@ PQsendQueryGuts(PGconn *conn,
 	if (pqPutInt(nParams, 2, conn) < 0)
 		goto sendFailed;
 
+	/* Send parameters */
 	for (i = 0; i < nParams; i++)
 	{
 		if (paramValues && paramValues[i])
@@ -2102,7 +2403,8 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 		{
 			if (pqFlush(conn) < 0)
 				return -1;
-			if (pqCheckOutBufferSpace(conn->outCount + 5 + nbytes, conn))
+			if (pqCheckOutBufferSpace(conn->outCount + 5 + (size_t) nbytes,
+									  conn))
 				return pqIsnonblocking(conn) ? 0 : -1;
 		}
 		/* Send the data (too simple to delegate to fe-protocol files) */
@@ -2137,8 +2439,7 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 {
 	if (!conn)
 		return -1;
-	if (conn->asyncStatus != PGASYNC_COPY_IN &&
-		conn->asyncStatus != PGASYNC_COPY_OUT)
+	if (conn->asyncStatus != PGASYNC_COPY_IN)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("no COPY in progress\n"));
@@ -2312,7 +2613,6 @@ PQgetlineAsync(PGconn *conn, char *buffer, int bufsize)
 
 	return pqGetlineAsync3(conn, buffer, bufsize);
 }
-
 
 /*
  * PQputline -- sends a string to the backend during COPY IN.

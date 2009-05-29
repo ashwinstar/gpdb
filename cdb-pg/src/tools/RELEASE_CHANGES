@@ -2,8 +2,6 @@ For All Releases (major, minor, beta, RC)
 ================
 
 * Release version number changes
-	o update doc/FAQ and doc/src/FAQ/FAQ.html
-	o copy FAQs from HEAD to top-most branch
 	o run src/tools/version_stamp.pl, then run autoconf
 	  (by packager) (beta)
 
@@ -33,8 +31,9 @@ For Major Releases
 	o src/interfaces/*/*/Makefile
 
 * Release notes
-	o check that dashed items from the TODO list are complete
-	o remove dashed TODO items
+	o check completion of items that have been marked as completed at
+	  http://wiki.postgresql.org/wiki/Todo
+	o remove completed TODO items
 	o group items into categories
 	o select major features
 	o select incompatibilities
@@ -48,6 +47,7 @@ For Major Releases
 
 * Ports
 	o update config.guess and config.sub at the start of beta
+	  (from http://savannah.gnu.org/projects/config)
 	o update ports list in doc/src/sgml/installation.sgml
 	o update platform-specific FAQ's, if needed
 
@@ -69,15 +69,14 @@ Creating Back-Branch Release Notes
 
 * Do 'cvs log' on each back-branch and run pgcvslog
 
-* Edit and create SGML markup for the most recent branch
+* In CVS HEAD, edit and create SGML markup for the most recent branch
+  in that branch's release-N.N.sgml file
 
-* Make copies of the SGML for each branch, then remove items
-  that do not apply based on cvs logs for that branch
+* Copy this into older branches' release-N.N.sgml files, then remove
+  items that do not apply based on cvs logs for that branch (and add
+  any that are needed)
 
-* Copy the SGML for each branch into release.sgml in CVS HEAD
-
-* Use src/tools/major_release_split to create a release.sgml for
-  each branch and copy them to the branch's CVS
+* Copy the appropriate release-N.N.sgml files into each back CVS branch
 
 
 ---------------------------------------------------------------------------

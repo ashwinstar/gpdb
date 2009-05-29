@@ -73,9 +73,6 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#ifdef HAVE_ENDIAN_H
-#include <endian.h>
-#endif
 
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -188,7 +185,6 @@ void
 pq_sendstring(StringInfo buf, const char *str)
 {
 	int			slen = strlen(str);
-
 	char	   *p;
 
 	p = pg_server_to_client(str, slen);

@@ -15,8 +15,8 @@
  * a usable vsnprintf(), then a copy of our own implementation of it will
  * be linked into libpq.
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.h,v 1.19 2008/01/01 19:46:00 momjian Exp $
@@ -36,6 +36,10 @@
  *				string size (including the terminating '\0' char) that we can
  *				currently store in 'data' without having to reallocate
  *				more space.  We must always have maxlen > len.
+ *
+ * An exception occurs if we failed to allocate enough memory for the string
+ * buffer.  In that case data points to a statically allocated empty string,
+ * and len = maxlen = 0.
  *-------------------------
  */
 typedef struct PQExpBufferData
@@ -46,6 +50,15 @@ typedef struct PQExpBufferData
 } PQExpBufferData;
 
 typedef PQExpBufferData *PQExpBuffer;
+
+/*------------------------
+ * Test for a broken (out of memory) PQExpBuffer.
+ * When a buffer is "broken", all operations except resetting or deleting it
+ * are no-ops.
+ *------------------------
+ */
+#define PQExpBufferBroken(str)  \
+	((str) == NULL || (str)->maxlen == 0)
 
 /*------------------------
  * Initial size of the data buffer in a PQExpBuffer.
@@ -104,6 +117,8 @@ extern void termPQExpBuffer(PQExpBuffer str);
 /*------------------------
  * resetPQExpBuffer
  *		Reset a PQExpBuffer to empty
+ *
+ * Note: if possible, a "broken" PQExpBuffer is returned to normal.
  */
 extern void resetPQExpBuffer(PQExpBuffer str);
 
@@ -112,7 +127,8 @@ extern void resetPQExpBuffer(PQExpBuffer str);
  * Make sure there is enough space for 'needed' more bytes in the buffer
  * ('needed' does not include the terminating null).
  *
- * Returns 1 if OK, 0 if failed to enlarge buffer.
+ * Returns 1 if OK, 0 if failed to enlarge buffer.  (In the latter case
+ * the buffer is left in "broken" state.)
  */
 extern int	enlargePQExpBuffer(PQExpBuffer str, size_t needed);
 

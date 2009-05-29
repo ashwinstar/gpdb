@@ -3,6 +3,8 @@
  * version.c
  *	 Returns the PostgreSQL version string
  *
+ * Copyright (c) 1998-2009, PostgreSQL Global Development Group
+ *
  * IDENTIFICATION
  *
  * $PostgreSQL: pgsql/src/backend/utils/adt/version.c,v 1.13 2003/11/29 19:52:00 pgsql Exp $

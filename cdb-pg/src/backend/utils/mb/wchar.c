@@ -453,6 +453,7 @@ unicode_to_utf8(pg_wchar c, unsigned char *utf8string)
 	return utf8string;
 }
 
+
 /*
  * Return the byte length of a UTF8 character pointed to by s
  *

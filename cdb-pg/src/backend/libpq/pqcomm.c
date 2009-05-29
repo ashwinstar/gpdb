@@ -101,6 +101,7 @@ char	   *Unix_socket_group;
 /* Where the Unix socket file is */
 static char sock_path[MAXPGPATH];
 
+
 /*
  * Buffers for low-level I/O
  */
@@ -376,6 +377,7 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 		}
 
 #ifndef WIN32
+
 		/*
 		 * Without the SO_REUSEADDR flag, a new postmaster can't be started
 		 * right away after a stop or crash, giving "address already in use"

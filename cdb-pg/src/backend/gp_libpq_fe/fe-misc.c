@@ -19,11 +19,11 @@
  * routines.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-misc.c,v 1.133.2.1 2008/08/20 11:53:51 mha Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-misc.c,v 1.139 2009/05/21 12:54:27 meskes Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -62,11 +62,6 @@
 #include "mb/pg_wchar.h"
 #include "pg_config_paths.h"
 
-#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
-static int	pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending);
-static void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
-				 bool got_epipe);
-#endif
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);
@@ -114,14 +109,14 @@ pqPutc(char c, PGconn *conn)
 
 
 /*
- * pqGets:
+ * pqGets[_append]:
  * get a null-terminated string from the connection,
  * and store it in an expansible PQExpBuffer.
  * If we run out of memory, all of the string is still read,
  * but the excess characters are silently discarded.
  */
-int
-pqGets(PQExpBuffer buf, PGconn *conn)
+static int
+pqGets_internal(PQExpBuffer buf, PGconn *conn, bool resetbuffer)
 {
 	/* Copy conn data to locals for faster search loop */
 	char	   *inBuffer = conn->inBuffer;
@@ -137,7 +132,9 @@ pqGets(PQExpBuffer buf, PGconn *conn)
 
 	slen = inCursor - conn->inCursor;
 
+	if (resetbuffer)
 	resetPQExpBuffer(buf);
+
 	appendBinaryPQExpBuffer(buf, inBuffer + conn->inCursor, slen);
 
 	conn->inCursor = ++inCursor;
@@ -147,6 +144,18 @@ pqGets(PQExpBuffer buf, PGconn *conn)
 				buf->data);
 
 	return 0;
+}
+
+int
+pqGets(PQExpBuffer buf, PGconn *conn)
+{
+	return pqGets_internal(buf, conn, true);
+}
+
+int
+pqGets_append(PQExpBuffer buf, PGconn *conn)
+{
+	return pqGets_internal(buf, conn, false);
 }
 
 
@@ -322,12 +331,12 @@ pqPutInt(int value, size_t bytes, PGconn *conn)
  * Returns 0 on success, EOF if failed to enlarge buffer
  */
 int
-pqCheckOutBufferSpace(int bytes_needed, PGconn *conn)
+pqCheckOutBufferSpace(size_t bytes_needed, PGconn *conn)
 {
 	int			newsize = conn->outBufSize;
 	char	   *newbuf;
 
-	if (bytes_needed <= newsize)
+	if (bytes_needed <= (size_t) newsize)
 		return 0;
 
 	/*
@@ -340,9 +349,9 @@ pqCheckOutBufferSpace(int bytes_needed, PGconn *conn)
 	do
 	{
 		newsize *= 2;
-	} while (bytes_needed > newsize && newsize > 0);
+	} while (newsize > 0 && bytes_needed > (size_t) newsize);
 
-	if (bytes_needed <= newsize)
+	if (newsize > 0 && bytes_needed <= (size_t) newsize)
 	{
 		newbuf = realloc(conn->outBuffer, newsize);
 		if (newbuf)
@@ -358,9 +367,9 @@ pqCheckOutBufferSpace(int bytes_needed, PGconn *conn)
 	do
 	{
 		newsize += 8192;
-	} while (bytes_needed > newsize && newsize > 0);
+	} while (newsize > 0 && bytes_needed > (size_t) newsize);
 
-	if (bytes_needed <= newsize)
+	if (newsize > 0 && bytes_needed <= (size_t) newsize)
 	{
 		newbuf = realloc(conn->outBuffer, newsize);
 		if (newbuf)
@@ -385,12 +394,12 @@ pqCheckOutBufferSpace(int bytes_needed, PGconn *conn)
  * Returns 0 on success, EOF if failed to enlarge buffer
  */
 int
-pqCheckInBufferSpace(int bytes_needed, PGconn *conn)
+pqCheckInBufferSpace(size_t bytes_needed, PGconn *conn)
 {
 	int			newsize = conn->inBufSize;
 	char	   *newbuf;
 
-	if (bytes_needed <= newsize)
+	if (bytes_needed <= (size_t) newsize)
 		return 0;
 
 	/*
@@ -403,9 +412,9 @@ pqCheckInBufferSpace(int bytes_needed, PGconn *conn)
 	do
 	{
 		newsize *= 2;
-	} while (bytes_needed > newsize && newsize > 0);
+	} while (newsize > 0 && bytes_needed > (size_t) newsize);
 
-	if (bytes_needed <= newsize)
+	if (newsize > 0 && bytes_needed <= (size_t) newsize)
 	{
 		newbuf = realloc(conn->inBuffer, newsize);
 		if (newbuf)
@@ -421,9 +430,9 @@ pqCheckInBufferSpace(int bytes_needed, PGconn *conn)
 	do
 	{
 		newsize += 8192;
-	} while (bytes_needed > newsize && newsize > 0);
+	} while (newsize > 0 && bytes_needed > (size_t) newsize);
 
-	if (bytes_needed <= newsize)
+	if (newsize > 0 && bytes_needed <= (size_t) newsize)
 	{
 		newbuf = realloc(conn->inBuffer, newsize);
 		if (newbuf)
@@ -616,7 +625,7 @@ pqReadData(PGconn *conn)
 	 */
 	if (conn->inBufSize - conn->inEnd < 8192)
 	{
-		if (pqCheckInBufferSpace(conn->inEnd + 8192, conn))
+		if (pqCheckInBufferSpace(conn->inEnd + (size_t) 8192, conn))
 		{
 			/*
 			 * We don't insist that the enlarge worked, but we need some room
@@ -837,8 +846,6 @@ pqSendSome(PGconn *conn, int len)
 		int			sent;
 		char		sebuf[256];
 		
-	    DISABLE_SIGPIPE(return -1);
-		
 #ifndef WIN32
 		sent = send(conn->sock, ptr, len, 0);
 #else
@@ -850,10 +857,6 @@ pqSendSome(PGconn *conn, int len)
 		sent = send(conn->sock, ptr, Min(len, 65536), 0);
 #endif
 
-		REMEMBER_EPIPE(sent < 0 && SOCK_ERRNO == EPIPE);
-
-		RESTORE_SIGPIPE();
-				
 		if (sent < 0)
 		{
 			/*

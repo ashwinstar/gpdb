@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.200 2009/01/01 17:24:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.202 2009/05/27 14:16:51 meskes Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -132,7 +132,6 @@ static int check_field_number(const PGresult *res, int field_num);
  *	 If conn is not NULL and status indicates an error, the conn's
  *	 errorMessage is copied.  Also, any PGEvents are copied from the conn.
  */
-
 PGresult *
 PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 {

@@ -417,11 +417,7 @@ TrimTrailingZeros(char *str)
 {
 	int			len = strlen(str);
 
-	//while (len > 1 && *(str + len - 1) == '0' && *(str + len - 2) != '.')
-	
-	// Do it the old way for now, as we don't want to break regression tests.
-	/* chop off trailing zeros... but leave at least 2 fractional digits */
-	while (*(str + len - 1) == '0' && *(str + len - 3) != '.')
+	while (len > 1 && *(str + len - 1) == '0' && *(str + len - 2) != '.')
 	{
 		len--;
 		*(str + len) = '\0';
@@ -3687,11 +3683,10 @@ fast_encode_date(struct pg_tm * tm, char *str, int *pos)
 /* EncodeDateOnly()
  * Encode date as local time.
  */
-int
+void
 EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 {
-	if (tm->tm_mon < 1 || tm->tm_mon > MONTHS_PER_YEAR)
-		return -1;
+	Assert(tm->tm_mon >= 1 && tm->tm_mon <= MONTHS_PER_YEAR);
 
 	switch (style)
 	{
@@ -3744,20 +3739,15 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 				sprintf(str + 5, "-%04d %s", -(tm->tm_year - 1), "BC");
 			break;
 	}
-
-	return TRUE;
-}	/* EncodeDateOnly() */
+}
 
 
 /* EncodeTimeOnly()
  * Encode time fields only.
  */
-int
+void
 EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 {
-	if (tm->tm_hour < 0 || tm->tm_hour > HOURS_PER_DAY)
-		return -1;
-
 #if 0
 	sprintf(str, "%02d:%02d:", tm->tm_hour, tm->tm_min);
 #else
@@ -3775,9 +3765,7 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 
 	if (tzp != NULL)
 		EncodeTimezone(str, *tzp, style);
-
-	return TRUE;
-}	/* EncodeTimeOnly() */
+}
 
 
 /* EncodeDateTime()
@@ -3792,7 +3780,7 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
  *	US - mm/dd/yyyy
  *	European - dd/mm/yyyy
  */
-int
+void
 EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, char *str)
 {
 	int			day;
@@ -3939,8 +3927,6 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 				sprintf(str + strlen(str), " BC");
 			break;
 	}
-
-	return TRUE;
 }
 
 
@@ -4020,7 +4006,7 @@ AddVerboseIntPart(char *cp, int value, const char *units,
  * "year-month literal"s (that look like '2-3') and
  * "day-time literal"s (that look like ('4 5:6:7')
  */
-int
+void
 EncodeInterval(struct pg_tm * tm, fsec_t fsec, int style, char *str)
 {
 	char	   *cp = str;
@@ -4197,9 +4183,7 @@ EncodeInterval(struct pg_tm * tm, fsec_t fsec, int style, char *str)
 			strcat(cp, " ago");
 		break;
 	}
-
-	return 0;
-}	/* EncodeInterval() */
+}
 
 
 /*

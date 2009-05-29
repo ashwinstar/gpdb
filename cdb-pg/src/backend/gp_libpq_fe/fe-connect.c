@@ -4,12 +4,12 @@
  *	  functions related to setting up a connection to the backend
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.356.2.1 2008/10/23 16:17:22 mha Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.374 2009/05/18 16:15:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -153,11 +153,25 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	"Backend-Debug-Options", "D", 40},
 
 	/*
-	 * "sslmode" option is allowed even without client SSL support because the
-	 * client can still handle SSL modes "disable" and "allow".
+	 * ssl options are allowed even without client SSL support because the
+	 * client can still handle SSL modes "disable" and "allow". Other parameters
+	 * have no effect on non-SSL connections, so there is no reason to exclude them
+	 * since none of them are mandatory.
 	 */
 	{"sslmode", "PGSSLMODE", DefaultSSLMode, NULL,
 	"SSL-Mode", "", 8},			/* sizeof("disable") == 8 */
+
+	{"sslcert", "PGSSLCERT", NULL, NULL,
+	"SSL-Client-Cert", "", 64},
+
+	{"sslkey", "PGSSLKEY", NULL, NULL,
+	"SSL-Client-Key", "", 64},
+
+	{"sslrootcert", "PGSSLROOTCERT", NULL, NULL,
+	"SSL-Root-Certificate", "", 64},
+
+	{"sslcrl", "PGSSLCRL", NULL, NULL,
+	"SSL-Revocation-List", "", 64},
 
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
     {"gpqeid", NULL, "", NULL,
@@ -205,7 +219,7 @@ static PGconn *makeEmptyPGconn(void);
 static void freePGconn(PGconn *conn);
 static void closePGconn(PGconn *conn);
 static PQconninfoOption *conninfo_parse(const char *conninfo,
-			   PQExpBuffer errorMessage, bool *password_from_string);
+			   PQExpBuffer errorMessage, bool use_defaults);
 static char *conninfo_getval(PQconninfoOption *connOptions,
 				const char *keyword);
 static void defaultNoticeReceiver(void *arg, const PGresult *res);
@@ -349,8 +363,7 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	/*
 	 * Parse the conninfo string
 	 */
-	connOptions = conninfo_parse(conninfo, &conn->errorMessage,
-								 &conn->pgpass_from_client);
+	connOptions = conninfo_parse(conninfo, &conn->errorMessage, true);
 	if (connOptions == NULL)
 	{
 		conn->status = CONNECTION_BAD;
@@ -386,6 +399,14 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->connect_timeout = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "sslmode");
 	conn->sslmode = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslkey");
+	conn->sslkey = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslcert");
+	conn->sslcert = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslrootcert");
+	conn->sslrootcert = tmp ? strdup(tmp) : NULL;
+	tmp = conninfo_getval(connOptions, "sslcrl");
+	conn->sslcrl = tmp ? strdup(tmp) : NULL;
 
 	tmp = conninfo_getval(connOptions, "gpqeid");
 	conn->gpqeid = tmp ? strdup(tmp) : NULL;
@@ -437,7 +458,6 @@ connectOptions2(PGconn *conn)
 										conn->dbName, conn->pguser);
 		if (conn->pgpass == NULL)
 			conn->pgpass = strdup(DefaultPassword);
-		conn->pgpass_from_client = false;
 	}
 
 	/*
@@ -459,7 +479,9 @@ connectOptions2(PGconn *conn)
 		if (strcmp(conn->sslmode, "disable") != 0
 			&& strcmp(conn->sslmode, "allow") != 0
 			&& strcmp(conn->sslmode, "prefer") != 0
-			&& strcmp(conn->sslmode, "require") != 0)
+			&& strcmp(conn->sslmode, "require") != 0
+			&& strcmp(conn->sslmode, "verify-ca") != 0
+			&& strcmp(conn->sslmode, "verify-full") != 0)
 		{
 			conn->status = CONNECTION_BAD;
 			printfPQExpBuffer(&conn->errorMessage,
@@ -480,6 +502,7 @@ connectOptions2(PGconn *conn)
 				break;
 
 			case 'r':			/* "require" */
+			case 'v':			/* "verify-ca" or "verify-full" */
 				conn->status = CONNECTION_BAD;
 				printfPQExpBuffer(&conn->errorMessage,
 								  libpq_gettext("sslmode value \"%s\" invalid when SSL support is not compiled in\n"),
@@ -504,7 +527,9 @@ connectOptions2(PGconn *conn)
  *		PQconndefaults
  *
  * Parse an empty string like PQconnectdb() would do and return the
- * working connection options array.
+ * resulting connection options array, ie, all the default values that are
+ * available from the environment etc.  On error (eg out of memory),
+ * NULL is returned.
  *
  * Using this function, an application may determine all possible options
  * and their current default values.
@@ -519,11 +544,12 @@ PQconninfoOption *
 PQconndefaults(void)
 {
 	PQExpBufferData errorBuf;
-	bool		password_from_string;
 	PQconninfoOption *connOptions;
 
 	initPQExpBuffer(&errorBuf);
-	connOptions = conninfo_parse("", &errorBuf, &password_from_string);
+	if (PQExpBufferBroken(&errorBuf))
+		return NULL;			/* out of memory already :-( */
+	connOptions = conninfo_parse("", &errorBuf, true);
 	termPQExpBuffer(&errorBuf);
 	return connOptions;
 }
@@ -624,7 +650,6 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		if (conn->pgpass)
 			free(conn->pgpass);
 		conn->pgpass = strdup(pwd);
-		conn->pgpass_from_client = true;
 	}
 
 	/*
@@ -661,7 +686,7 @@ connectNoDelay(PGconn *conn)
 	{
 		char		sebuf[256];
 
-		printfPQExpBuffer(&conn->errorMessage,
+		appendPQExpBuffer(&conn->errorMessage,
 			libpq_gettext("could not set socket to TCP no delay mode: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 		return 0;
@@ -691,7 +716,7 @@ connectFailureMessage(PGconn *conn, int errorno)
 						   NULL, 0,
 						   service, sizeof(service),
 						   NI_NUMERICSERV);
-		printfPQExpBuffer(&conn->errorMessage,
+		appendPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("could not connect to server: %s\n"
 							"\tIs the server running locally and accepting\n"
 							"\tconnections on Unix domain socket \"%s\"?\n"),
@@ -701,7 +726,7 @@ connectFailureMessage(PGconn *conn, int errorno)
 	else
 #endif   /* HAVE_UNIX_SOCKETS */
 	{
-		printfPQExpBuffer(&conn->errorMessage,
+		appendPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("could not connect to server: %s\n"
 					 "\tIs the server running on host \"%s\" and accepting\n"
 										"\tTCP/IP connections on port %s?\n"),
@@ -791,11 +816,11 @@ connectDBStart(PGconn *conn)
 	if (ret || !addrs)
 	{
 		if (node)
-			printfPQExpBuffer(&conn->errorMessage,
+			appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("could not translate host name \"%s\" to address: %s\n"),
 							  node, gai_strerror(ret));
 		else
-			printfPQExpBuffer(&conn->errorMessage,
+			appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("could not translate Unix-domain socket path \"%s\" to address: %s\n"),
 							  portstr, gai_strerror(ret));
 		if (addrs)
@@ -878,6 +903,8 @@ connectDBComplete(PGconn *conn)
 		switch (flag)
 		{
 			case PGRES_POLLING_OK:
+				/* Reset stored error messages since we now have a working connection */
+				resetPQExpBuffer(&conn->errorMessage);
 				return 1;		/* success! */
 
 			case PGRES_POLLING_READING:
@@ -987,7 +1014,7 @@ PQconnectPoll(PGconn *conn)
 			break;
 
 		default:
-			printfPQExpBuffer(&conn->errorMessage,
+			appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext(
 											"invalid connection state, "
 								 "probably indicative of memory corruption\n"
@@ -1031,7 +1058,7 @@ keep_going:						/* We will come back to here until there is
 							conn->addr_cur = addr_cur->ai_next;
 							continue;
 						}
-						printfPQExpBuffer(&conn->errorMessage,
+						appendPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("could not create socket: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 						break;
@@ -1054,7 +1081,7 @@ keep_going:						/* We will come back to here until there is
 					}
 					if (!pg_set_noblock(conn->sock))
 					{
-						printfPQExpBuffer(&conn->errorMessage,
+						appendPQExpBuffer(&conn->errorMessage,
 										  libpq_gettext("could not set socket to non-blocking mode: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 						closesocket(conn->sock);
@@ -1066,7 +1093,7 @@ keep_going:						/* We will come back to here until there is
 #ifdef F_SETFD
 					if (fcntl(conn->sock, F_SETFD, FD_CLOEXEC) == -1)
 					{
-						printfPQExpBuffer(&conn->errorMessage,
+						appendPQExpBuffer(&conn->errorMessage,
 										  libpq_gettext("could not set socket to close-on-exec mode: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 						closesocket(conn->sock);
@@ -1153,7 +1180,7 @@ keep_going:						/* We will come back to here until there is
 				if (getsockopt(conn->sock, SOL_SOCKET, SO_ERROR,
 							   (char *) &optval, &optlen) == -1)
 				{
-					printfPQExpBuffer(&conn->errorMessage,
+					appendPQExpBuffer(&conn->errorMessage,
 					libpq_gettext("could not get socket error status: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					goto error_return;
@@ -1191,7 +1218,7 @@ keep_going:						/* We will come back to here until there is
 								(struct sockaddr *) & conn->laddr.addr,
 								&conn->laddr.salen) < 0)
 				{
-					printfPQExpBuffer(&conn->errorMessage,
+					appendPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext("could not get client address from socket: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					goto error_return;
@@ -1217,6 +1244,7 @@ keep_going:						/* We will come back to here until there is
 														EnvironmentOptions);
 				if (!startpacket)
 				{
+					/* will not appendbuffer here, since it's likely to also run out of memory */
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext("out of memory\n"));
 					goto error_return;
@@ -1230,7 +1258,7 @@ keep_going:						/* We will come back to here until there is
 				 */
 				if (pqPacketSend(conn, 0, startpacket, packetlen) != STATUS_OK)
 				{
-					printfPQExpBuffer(&conn->errorMessage,
+					appendPQExpBuffer(&conn->errorMessage,
 						libpq_gettext("could not send startup packet: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					free(startpacket);
@@ -1287,7 +1315,7 @@ keep_going:						/* We will come back to here until there is
 				 */
 				if (!(beresp == 'R' || beresp == 'E'))
 				{
-					printfPQExpBuffer(&conn->errorMessage,
+					appendPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
 									  "expected authentication request from "
 												"server, but received %c\n"),
@@ -1320,7 +1348,7 @@ keep_going:						/* We will come back to here until there is
 				 */
 				if (beresp == 'R' && (msgLength < 8 || msgLength > 2000))
 				{
-					printfPQExpBuffer(&conn->errorMessage,
+					appendPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
 									  "expected authentication request from "
 												"server, but received %c\n"),
@@ -1332,7 +1360,7 @@ keep_going:						/* We will come back to here until there is
 				{
 					/* Handle error from a pre-3.0 server */
 					conn->inCursor = conn->inStart + 1; /* reread data */
-					if (pqGets(&conn->errorMessage, conn))
+					if (pqGets_append(&conn->errorMessage, conn))
 					{
 						/* We'll come back when there is more data */
 						return PGRES_POLLING_READING;
@@ -1364,7 +1392,8 @@ keep_going:						/* We will come back to here until there is
 					 * needed to hold the whole message; see notes in
 					 * pqParseInput3.
 					 */
-					if (pqCheckInBufferSpace(conn->inCursor + msgLength, conn))
+					if (pqCheckInBufferSpace(conn->inCursor + (size_t) msgLength,
+											 conn))
 						goto error_return;
 					/* We'll come back when there is more data */
 					return PGRES_POLLING_READING;
@@ -1383,7 +1412,7 @@ keep_going:						/* We will come back to here until there is
 					}
 					else
 					{
-						if (pqGets(&conn->errorMessage, conn))
+						if (pqGets_append(&conn->errorMessage, conn))
 						{
 							/* We'll come back when there is more data */
 							return PGRES_POLLING_READING;
@@ -1408,15 +1437,6 @@ keep_going:						/* We will come back to here until there is
 				{
 					if (pqGetnchar(conn->md5Salt,
 								   sizeof(conn->md5Salt), conn))
-					{
-						/* We'll come back when there are more data */
-						return PGRES_POLLING_READING;
-					}
-				}
-				if (areq == AUTH_REQ_CRYPT)
-				{
-					if (pqGetnchar(conn->cryptSalt,
-								   sizeof(conn->cryptSalt), conn))
 					{
 						/* We'll come back when there are more data */
 						return PGRES_POLLING_READING;
@@ -1493,7 +1513,7 @@ keep_going:						/* We will come back to here until there is
 				if (res)
 				{
 					if (res->resultStatus != PGRES_FATAL_ERROR)
-						printfPQExpBuffer(&conn->errorMessage,
+						appendPQExpBuffer(&conn->errorMessage,
 										  libpq_gettext("unexpected message from server during startup\n"));
 
 					/*
@@ -1628,8 +1648,8 @@ makeEmptyPGconn(void)
 
 	if (conn->inBuffer == NULL ||
 		conn->outBuffer == NULL ||
-		conn->errorMessage.data == NULL ||
-		conn->workBuffer.data == NULL)
+		PQExpBufferBroken(&conn->errorMessage) ||
+		PQExpBufferBroken(&conn->workBuffer))
 	{
 		/* out of memory already :-( */
 		freePGconn(conn);
@@ -1685,6 +1705,14 @@ freePGconn(PGconn *conn)
 		free(conn->pgpass);
 	if (conn->sslmode)
 		free(conn->sslmode);
+	if (conn->sslcert)
+		free(conn->sslcert);
+	if (conn->sslkey)
+		free(conn->sslkey);
+	if (conn->sslrootcert)
+		free(conn->sslrootcert);
+	if (conn->sslcrl)
+		free(conn->sslcrl);
 
     if (conn->gpqeid)			/* CDB */
         free(conn->gpqeid);
@@ -1723,6 +1751,7 @@ freePGconn(PGconn *conn)
 		free(conn->outBuffer);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
+
 	free(conn);
 
 #ifdef WIN32
@@ -2275,17 +2304,51 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 
 
 /*
+ *		PQconninfoParse
+ *
+ * Parse a string like PQconnectdb() would do and return the
+ * resulting connection options array.  NULL is returned on failure.
+ * The result contains only options specified directly in the string,
+ * not any possible default values.
+ *
+ * If errmsg isn't NULL, *errmsg is set to NULL on success, or a malloc'd
+ * string on failure (use PQfreemem to free it).  In out-of-memory conditions
+ * both *errmsg and the result could be NULL.
+ *
+ * NOTE: the returned array is dynamically allocated and should
+ * be freed when no longer needed via PQconninfoFree().
+ */
+PQconninfoOption *
+PQconninfoParse(const char *conninfo, char **errmsg)
+{
+	PQExpBufferData errorBuf;
+	PQconninfoOption *connOptions;
+
+	if (errmsg)
+		*errmsg = NULL;			/* default */
+	initPQExpBuffer(&errorBuf);
+	if (PQExpBufferBroken(&errorBuf))
+		return NULL;			/* out of memory already :-( */
+	connOptions = conninfo_parse(conninfo, &errorBuf, false);
+	if (connOptions == NULL && errmsg)
+		*errmsg = errorBuf.data;
+	else
+		termPQExpBuffer(&errorBuf);
+	return connOptions;
+}
+
+/*
  * Conninfo parser routine
  *
  * If successful, a malloc'd PQconninfoOption array is returned.
  * If not successful, NULL is returned and an error message is
  * left in errorMessage.
- * *password_from_string is set TRUE if we got a password from the
- * conninfo string, otherwise FALSE.
+ * Defaults are supplied (from a service file, environment variables, etc)
+ * for unspecified options, but only if use_defaults is TRUE.
  */
 static PQconninfoOption *
 conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
-			   bool *password_from_string)
+			   bool use_defaults)
 {
 	char	   *pname;
 	char	   *pval;
@@ -2296,8 +2359,6 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 	PQconninfoOption *options;
 	PQconninfoOption *option;
 	
-	*password_from_string = false;			/* default result */
-
 	/* Make a working copy of PQconninfoOptions */
 	options = malloc(sizeof(PQconninfoOptions));
 	if (options == NULL)
@@ -2454,16 +2515,16 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
 			free(buf);
 			return NULL;
 		}
-
-		/*
-		 * Special handling for password
-		 */
-		if (strcmp(option->keyword, "password") == 0)
-			*password_from_string = (option->val[0] != '\0');
 	}
 
 	/* Done with the modifiable input string */
 	free(buf);
+
+	/*
+	 * Stop here if caller doesn't want defaults filled in.
+	 */
+	if (!use_defaults)
+		return options;
 
 	/*
 	 * If there's a service spec, use it to obtain any not-explicitly-given
@@ -2758,7 +2819,7 @@ PQconnectionUsedPassword(const PGconn *conn)
 {
 	if (!conn)
 		return false;
-	if (conn->password_needed && conn->pgpass_from_client)
+	if (conn->password_needed)
 		return true;
 	else
 		return false;
@@ -2925,7 +2986,7 @@ pwdfMatchesString(char *buf, char *token)
 		return NULL;
 	tbuf = buf;
 	ttok = token;
-	if (*tbuf == '*')
+	if (tbuf[0] == '*' && tbuf[1] == ':')
 		return tbuf + 2;
 	while (*tbuf != 0)
 	{
@@ -2996,11 +3057,10 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	}
 
 	/* If password file cannot be opened, ignore it. */
-	if (stat(pgpassfile, &stat_buf) == -1)
+	if (stat(pgpassfile, &stat_buf) != 0)
 		return NULL;
 
 #ifndef WIN32
-
 	if (!S_ISREG(stat_buf.st_mode))
 	{
 		fprintf(stderr,
@@ -3013,7 +3073,7 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	if (stat_buf.st_mode & (S_IRWXG | S_IRWXO))
 	{
 		fprintf(stderr,
-				libpq_gettext("WARNING: password file \"%s\" has world or group read access; permission should be u=rw (0600)\n"),
+				libpq_gettext("WARNING: password file \"%s\" has group or world access; permissions should be u=rw (0600) or less\n"),
 				pgpassfile);
 		return NULL;
 	}
@@ -3114,14 +3174,23 @@ default_threadlock(int acquire)
 		while (InterlockedExchange(&mutex_initlock, 1) == 1)
 			 /* loop, another thread own the lock */ ;
 		if (singlethread_lock == NULL)
-			pthread_mutex_init(&singlethread_lock, NULL);
+		{
+			if (pthread_mutex_init(&singlethread_lock, NULL))
+				PGTHREAD_ERROR("failed to initialize mutex");
+		}
 		InterlockedExchange(&mutex_initlock, 0);
 	}
 #endif
 	if (acquire)
-		pthread_mutex_lock(&singlethread_lock);
+	{
+		if (pthread_mutex_lock(&singlethread_lock))
+			PGTHREAD_ERROR("failed to lock mutex");
+	}
 	else
-		pthread_mutex_unlock(&singlethread_lock);
+	{
+		if (pthread_mutex_unlock(&singlethread_lock))
+			PGTHREAD_ERROR("failed to unlock mutex");
+	}
 #endif
 }
 
