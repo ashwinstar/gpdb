@@ -1088,24 +1088,18 @@ class gpload:
             sql += "header "
         if format=='csv':
             sql += "quote as%s" % quote(self.getconfig('gpload:input:quote', 
-                    unicode, extraStuff=' for csv formatted data'))
-            esc = self.getconfig('gpload:input:escape', unicode,
-                                 extraStuff = ' for csv formatted data')
-            if len(esc) > 1:
-                self.log(self.ERROR, "in CSV mode, gpload:input:escape must " +
-                         "be a single character")
-            esc = " as %s" % quote(esc)
+                    unicode, extraStuff='for csv formatted data'))
 
-            sql += "escape %s" % esc
-        else:
-            esc = self.getconfig('gpload:input:escape', None, None)
-            if esc:
-                if type(esc) != unicode:
-                    self.log(self.ERROR, "gpload:input:escape must be a string")
-                if esc == 'off':
-                    sql += 'escape off'
-                else:
-                    sql += 'escape as ' + quote(esc)
+        esc = self.getconfig('gpload:input:escape', None, None)
+        if esc:
+            if type(esc) != unicode and type(esc) != str:
+                self.log(self.ERROR, "gpload:input:escape must be a string")
+            if esc.lower() == 'off':
+                if format == 'csv':
+                    self.log(self.ERROR, "ESCAPE cannot be set to OFF for in CSV mode")
+                sql += "escape 'off'"
+            else:
+                sql += 'escape as ' + quote(esc)
 
         force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
         if force_not_null_columns:
