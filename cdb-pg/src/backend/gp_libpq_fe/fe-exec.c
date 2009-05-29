@@ -19,6 +19,7 @@
 
 #include <ctype.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
