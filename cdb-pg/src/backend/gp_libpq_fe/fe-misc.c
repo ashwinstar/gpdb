@@ -774,50 +774,6 @@ definitelyFailed:
 }
 
 /*
- * Macros to handle disabling and then restoring the state of SIGPIPE handling.
- * Note that DISABLE_SIGPIPE() must appear at the start of a block.
- */
-
-#ifndef WIN32
-#ifdef ENABLE_THREAD_SAFETY
-
-#define DISABLE_SIGPIPE(failaction) \
-	sigset_t	osigmask; \
-	bool		sigpipe_pending = false; \
-	bool		got_epipe = false; \
-\
-	if (pq_block_sigpipe(&osigmask, &sigpipe_pending) < 0) \
-		failaction
-
-#define REMEMBER_EPIPE(cond) \
-	do { \
-		if (cond) \
-			got_epipe = true; \
-	} while (0)
-
-#define RESTORE_SIGPIPE() \
-	pq_reset_sigpipe(&osigmask, sigpipe_pending, got_epipe)
-
-#else	/* !ENABLE_THREAD_SAFETY */
-
-#define DISABLE_SIGPIPE(failaction) \
-	pqsigfunc	oldsighandler = pqsignal(SIGPIPE, SIG_IGN)
-
-#define REMEMBER_EPIPE(cond)
-
-#define RESTORE_SIGPIPE() \
-	pqsignal(SIGPIPE, oldsighandler)
-
-#endif	/* ENABLE_THREAD_SAFETY */
-#else	/* WIN32 */
-
-#define DISABLE_SIGPIPE(failaction)
-#define REMEMBER_EPIPE(cond)
-#define RESTORE_SIGPIPE()
-
-#endif	/* WIN32 */
-
-/*
  * pqSendSome: send data waiting in the output buffer.
  *
  * len is how much to try to send (typically equal to outCount, but may
