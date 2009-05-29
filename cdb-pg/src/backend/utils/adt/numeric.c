@@ -2967,7 +2967,12 @@ static inline NumericAvgTransData *num_avg_store_sum(NumericAvgTransData* tr, Nu
 		newlen = make_result_inplace(var, num_sum, newlen + 10);
 		Assert(newlen == 0);
 
-		pfree(oldtr);
+		/* Per comments in review CR-206 don't free this.  Let it live as
+		 * long as its memory context.  Fix the leak iff it is reported 
+		 * as a problem.
+		 *
+		 *   pfree(oldtr);
+		 */
 	}
 
 	return tr;
@@ -2983,7 +2988,10 @@ numeric_avg_accum_decum(NumericAvgTransData *tr, Numeric newval, bool acc)
 		
 		Assert(acc);
 		
-		newval = DatumGetNumericCopy(NumericGetDatum(newval));
+		/* Per comments in review CR-206 we assume that the newval arguement
+		 * is a plain (untoasted) 4-byte-header Datum, so we can copy the
+		 * Datum plus contiguous storage and not worry about anything else.
+		 */
 		tr = (NumericAvgTransData *) palloc(len); 
 		SET_VARSIZE(tr, len); 
 		tr->count = 1;
