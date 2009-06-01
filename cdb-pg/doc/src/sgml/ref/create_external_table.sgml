@@ -24,7 +24,7 @@ CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<
       LOCATION ('file://<replaceable class="PARAMETER">seghost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
           | ('gpfdist://<replaceable class="PARAMETER">filehost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/file_pattern</replaceable>' [, ...])
       FORMAT 'TEXT | CSV' 
-             [( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>']
+             [( [DELIMITER [AS] '<replaceable class="PARAMETER">delimiter</replaceable>' | '<replaceable class="PARAMETER">OFF</replaceable>']
                [NULL [AS] '<replaceable class="PARAMETER">null string</replaceable>']
                [ESCAPE [AS] '<replaceable class="PARAMETER">escape</replaceable>' | 'OFF']
                [HEADER]
