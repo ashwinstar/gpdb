@@ -765,7 +765,10 @@ ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route)
 
 	pthread_mutex_lock(&rx_thread_mutex);
 
-	put_rx_buffer(conn);
+	if (conn->pBuff != NULL)
+		put_rx_buffer(conn);
+	else
+		elog(LOG, "ml_put_rx_buffer: NULL pBuff");
 
 	pthread_mutex_unlock(&rx_thread_mutex);
 }
