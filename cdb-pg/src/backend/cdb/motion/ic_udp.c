@@ -713,9 +713,9 @@ put_rx_buffer(MotionConn *conn)
 
 	buf = (struct icpkthdr *)conn->pBuff;
 
-	Assert(buf != NULL);
+	Insist(buf != NULL);
 
-	Assert((uint8 *)buf == conn->pkt_q[conn->pkt_q_head]);
+	Insist((uint8 *)buf == conn->pkt_q[conn->pkt_q_head]);
 
 	/* advance queue head. */
 	conn->pkt_q[conn->pkt_q_head] = NULL;
