@@ -10457,12 +10457,28 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 					for (i = 0; i < policy->nattrs; i++)
 					{
-						if (policy->attrs[i] != rel->rd_cdbpolicy->attrs[i])
+						int j;
+						bool found = false;
+					
+						/* 
+						 * See if the given attribute appears in the existing
+						 * policy anywhere.
+						 */	
+						for (j = 0; j < rel->rd_cdbpolicy->nattrs; j++)
+						{
+							if (policy->attrs[i] == rel->rd_cdbpolicy->attrs[j])
+							{
+								found = true;
+								break;
+							}
+						}
+						if (!found)
 						{
 							diff = true;
 							break;
 						}
 					}
+
 					if (!diff)
 					{
 						char *dist =
