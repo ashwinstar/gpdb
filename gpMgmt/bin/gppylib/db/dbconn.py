@@ -100,7 +100,7 @@ class DbURL:
             self.pguser = username
 
         if password is None:
-            self.pgpass = os.environ.get('PGPASS', None)
+            self.pgpass = os.environ.get('PGPASSWORD', None)
         else:
             self.pgpass = password
 
