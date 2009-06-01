@@ -1270,7 +1270,7 @@ class gpload:
             try:
                 self.pg8000.execute(sql.encode('utf-8'))
             except pg8000.ProgrammingError, p:
-                self.log(self.ERROR, 'error encountered executing SQL "%s"' % sql)
+                self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, p[2]))
 
     def get_table_dist_key(self):
         sql = "select attname from pg_attribute a, gp_distribution_policy p "+\
@@ -1322,8 +1322,22 @@ class gpload:
         self.table_supports_update()
         a = self.getconfig('gpload:output:update_columns', list)
 
-        sql = 'create temp table temp_%s(like %s)' % \
-              (self.name, self.table_quoted)
+        # it would be tempting to use LIKE here but we cannot as it
+        # inherits NOT NULL and other constraints from the target table
+        # which might not actually be violated by this update 
+        sql = 'create temp table temp_%s' % self.name
+        if not self.from_cols_from_user:
+            # don't put values serial columns
+            from_cols = filter(lambda a: a[3] != True,
+                               self.from_columns)
+        else:
+            from_cols = self.from_columns
+        
+        cols = map(lambda a:'%s %s' %
+                   (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols)
+
+        sql += "(%s)" % ','.join(cols)
+
         self.log(self.LOG, sql)
 
         if not self.options.D:
