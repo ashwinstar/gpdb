@@ -147,7 +147,8 @@ class GpSegCopy:
             table_names = [
                            'pg_catalog.gp_configuration', 
                            'pg_catalog.gp_distribution_policy',
-                           #'pg_catalog.gp_id',
+                           'pg_catalog.pg_partition',
+                           'pg_catalog.pg_partition_def',
                            'pg_catalog.gp_master_mirroring',
                            ]
             # Can't truncate system catalog table
