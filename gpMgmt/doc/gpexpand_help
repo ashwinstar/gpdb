@@ -20,7 +20,7 @@ gpexpand -c [-D database_name]
 
 gpexpand -? | -h | --help 
 
-gpexpand --version | -v
+gpexpand --version
 
 
 Prerequisites:
