@@ -20533,6 +20533,13 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols)
  */
 PartStatus rel_part_status(Oid relid)
 {
+	if (Gp_role != GP_ROLE_DISPATCH)
+	{
+		ereport(DEBUG1,
+				(errmsg("requesting part status outside dispatch - returning none")));
+		return PART_STATUS_NONE;
+	}
+	
 	if ( rel_is_partitioned(relid) )
 	{
 		Assert( !rel_is_child_partition(relid) && !rel_is_leaf_partition(relid) );
@@ -20562,7 +20569,14 @@ bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
 {
 	ListCell *lc;
 	int i;
-							     
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+	{
+		ereport(DEBUG1,
+				(errmsg("requesting redistribution outside dispatch - returning no")));
+		return false;
+	}
+	
 	/* Random is okay.  It is represented by a list of one empty list. */
 	if ( list_length(dist_cnames) == 1 && linitial(dist_cnames) == NIL )
 			return true;
