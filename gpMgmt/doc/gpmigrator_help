@@ -40,10 +40,16 @@ The following tasks should be performed prior to executing an upgrade:
 * Check for and recover any failed segments in your current 
   Greenplum Database system (gpstate, gprecoverseg).
 
+* Update your environment to source your Greenplum Database 3.3 
+  installation
+
 * Verify the integrity of your current system catalogs using the 
   --prepare step of gpmigrator. This will check your system catalogs 
   and indexes and initialize a temporary 3.3 system. If problems are 
   found, contact Greenplum customer support.
+
+* Update your environment to temporarily source your Greenplum Database 3.2 
+  installation (required to back up and shut down the 3.2 system).
 
 * Backup your current databases (gpcrondump or ZFS snapshots). If you find
   any issues when testing your upgraded system, you can restore this backup.
@@ -53,7 +59,8 @@ The following tasks should be performed prior to executing an upgrade:
 
 * Do a clean shutdown of your current system (gpstop).
 
-* Update your environment to point to the new 3.3 installation.
+* Update your environment to source your Greenplum Database 3.3 
+  installation
 
 * Inform all database users of the upgrade and lockout time frame. 
   Once the upgrade is in process, users will not be allowed on the 
@@ -112,14 +119,14 @@ gpcheckcat to verify your system catalogs, it checks for invalid
 indexes that need rebuilding, and it initializes a temporary 
 3.3 system. 
 
---master_port <port>
---port_base <port>
---mirror_port_base <port>
+--master_port port
+--port_base port
+--mirror_port_base port
 
-Optional. Used with the --prepare option to supply a temporary master 
-port, primary segment port base, and mirror segment port base 
-for the temporary 3.3 system to be initialized. These must be 
-different than what your current system is using. 
+Optional. Used with the --prepare option to supply a temporary 
+master port, primary segment port base, and mirror segment port 
+base for the temporary 3.3 system to be initialized. These must 
+be different than what your current system is using. 
 
 
 -R (revert)
@@ -177,8 +184,10 @@ EXAMPLES
 *****************************************************
 
 Perform pre-upgrade validation on your current system, 
-but do not execute the upgrade (this command must be
-specified on a single, unbroken line):
+but do not execute the upgrade (first make sure you are 
+using the 3.3 software version):  
+
+source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh 
 
 /usr/local/greenplum-db-3.3.0.0/bin/gpmigrator --prepare \
 /usr/local/greenplum-db-3.2.0.6 \
@@ -193,10 +202,14 @@ source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
 gpmigrator /usr/local/greenplum-db-3.2.0.6 \
 /usr/local/greenplum-db-3.3.0.0
 
+
 Revert a failed upgrade that was not automatically reverted:
 
 gpmigrator /usr/local/greenplum-db-3.2.0.6 \
 /usr/local/greenplum-db-3.3.0.0 -R
+
+NOTE: These commands must be specified on a single, 
+unbroken line.
 
 
 *****************************************************
