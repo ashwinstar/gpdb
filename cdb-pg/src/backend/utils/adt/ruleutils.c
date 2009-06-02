@@ -5908,7 +5908,8 @@ make_par_name(char *parname, bool isevery)
 				continue;
 			}
 
-			str[len] = '\0';
+			if (str[len] == '_')
+				str[len] = '\0';
 			break;
 		}
 		return str;
@@ -6047,9 +6048,10 @@ partition_rule_def_worker(PartitionRule *rule, Node *start, Node *end, Node *eve
 }
 
 static void
-write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, Node *end, Node *every,
-			   deparse_context *head, deparse_context *body, bool handleevery, bool *needcomma,
-			   bool *first_rule, int16 *leveldone, PartitionNode *children)
+write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start, Node *end,
+			   Node *every, deparse_context *head, deparse_context *body,
+			   bool handleevery, bool *needcomma, bool *first_rule, int16 *leveldone,
+			   PartitionNode *children)
 {
 	char *str;
 
@@ -6211,7 +6213,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 	if (first_every_rule)
 	{
 		write_out_rule(first_every_rule, pn, first_every_rule->parrangestart,
-					   prev_rule->parrangeend,
+					   prev_rule ? prev_rule->parrangeend : first_every_rule->parrangeend,
 					   first_every_rule->parrangeevery,
    					   head, body, true, &needcomma, &first_rule, leveldone,
 					   first_every_rule->children);
