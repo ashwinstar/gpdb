@@ -581,12 +581,8 @@ class LocalPysync:
         PATH = os.environ.get('PATH') or '.'
         LIBPATH = os.environ.get('LD_LIBRARY_PATH') or '.'
         
-        cmd = ('''bash -c "GPHOME=%s PATH=%s/ext/python/bin:%s LD_LIBRARY_PATH=%s/ext/python/lib:%s python -u -c '%s'"''' 
-               % (os.environ.get('GPHOME'), 
-                  os.environ.get('GPHOME'), 
-                  PATH, 
-                  os.environ.get('GPHOME'), 
-                  LIBPATH, 
+        cmd = ('''. %s/greenplum_path.sh && bash -c "python -u -c '%s'"''' 
+               % (os.environ.get('GPHOME'),  
                   bootstrapSource))
         args = []
         args.append('ssh')
