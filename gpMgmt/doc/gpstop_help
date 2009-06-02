@@ -8,10 +8,16 @@ SYNOPSIS
 *****************************************************
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
-[-M smart | fast | immediate] [-r] [-m] [-y] 
-[-u] [-a] [-q] [-l logfile_directory] 
+[-M smart | fast | immediate] [-r] [-y] 
+[-a] [-l logfile_directory] [-C] [-v]
 
-[ -? | -v]
+gpstop -q
+
+gpstop -m
+
+gpstop -u
+
+gpstop  -?  
 
 *****************************************************
 DESCRIPTION
