@@ -2059,9 +2059,12 @@ before continuing by re-running this utility and providing the input file. """
     else:
         new_hosts=ask_list(None,
                            "\nEnter a comma separated list of new hosts you want\n"\
-                           "to add to your array.  Do not include interface hostnames ", [])
+                           "to add to your array.  Do not include interface hostnames.\n"\
+                           "**Enter a blank line to only add segments to existing hosts**", [])
         new_hosts = [host.strip() for host in new_hosts]
-    
+        
+    num_new_hosts = len(new_hosts)
+  
     mirror_type = 'none'
     
     if gparray.get_mirroring_enabled():
@@ -2073,16 +2076,24 @@ before continuing by re-running this utility and providing the input file. """
                                "What type of mirroring strategy would you like?",
                                'grouped', ['spread','grouped','none'])
 
-    if len(new_hosts) > 0:
+    try:
         gparray.addExpansionHosts(new_hosts, mirror_type)
+    except Exception, ex:
+        num_new_hosts = 0
+        if ex.__str__() == 'No new hosts to add':
+            print
+            print '** No hostnames were given that do not already exist in the **'
+            print '** array. Additional segments will be added existing hosts. **'
+        else:
+            raise
 
     help = """
-    By default, new hosts are configured with the same number of
-    primary as existing hosts.  Optionally, you can increase the number 
+    By default, new hosts are configured with the same number of primary
+    segments as existing hosts.  Optionally, you can increase the number 
     of segments per host.
     
-    For example, if existing hosts have two primary, entering a value of 2 
-    will initialize two additional segments on existing hosts, and four
+    For example, if existing hosts have two primary segments, entering a value  
+    of 2 will initialize two additional segments on existing hosts, and four
     segments on new hosts.  In addition, mirror segments will be added for
     these new primary segments.
     """
@@ -2111,6 +2122,8 @@ before continuing by re-running this utility and providing the input file. """
                 
 
         gparray.addExpansionDatadirs(new_datadirs, new_mirrordirs, mirror_type)
+    elif num_new_hosts == 0:
+        raise ExpansionError('No new hosts or segments were entered.')
             
     print "\nGenerating configuration file...\n"
 
