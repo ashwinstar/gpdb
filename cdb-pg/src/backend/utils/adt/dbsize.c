@@ -340,52 +340,107 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 
 /*
  * calculate size of a relation
- * 
- * This is done by sequentially incrementing the segment number and checking
- * for file existance. Before AO tables we would quit if we reach a non
- * existing segment file. However since AO segment files are non sequential
- * in number, and so we must check for all possibly existing AO relfiles
- * and calculate their size as well (0 >= segno < MAX_AOREL_CONCURRENCY)
+ *
+ * Iterator over all files belong to the relation and do stat.
+ * The obviously better way is to use glob.  For whatever reason,
+ * glob is extremely slow if there are lots of relations in the
+ * database.  So we handle all cases, instead. 
  */
 static int64
-calculate_relation_size(RelFileNode *rfn)
+calculate_relation_size(Relation rel)
 {
 	int64		totalsize = 0;
 	char	   *relationpath;
 	char		pathname[MAXPGPATH];
+
+    char relstorage; 
     struct stat fst;
     int i;
-    glob_t g;
 
-	relationpath = relpath(*rfn);
+	relationpath = relpath(rel->rd_node);
+    relstorage = rel->rd_rel->relstorage;
 
-    /* Get first one, without . */
-    snprintf(pathname, MAXPGPATH, "%s", relationpath);
-    if (stat(pathname, &fst) >= 0)
-        totalsize += fst.st_size;
-
-    /* What ever has the form relationpath.*  This will cover 
-     * 1. the postgres 1G chunking, relationpath.chunkno 
-     * 2. AO.  relationpath.segno
-     * 3. AOCS relationpath.col.segno
-     */
-    snprintf(pathname, MAXPGPATH, "%s.*", relationpath);
-    i = glob(pathname, 0, 0, &g);
-
-    if(i==0)
+    if(relstorage == RELSTORAGE_HEAP)
     {
-        /* glob success */
-        size_t n;
-        for(n=0; n<g.gl_pathc; ++n)
+        /* Ordinary relation, including heap and index.
+         * They take form of relationpath, or relationpath.%d
+         * There will be no holes, therefore, we can stop we
+         * we reach the first non-exist file.
+         */
+        for(i=0; ; ++i)
         {
-            if(stat(g.gl_pathv[n], &fst) >= 0)
-                totalsize += fst.st_size;
-        }
+            if (i==0)
+                snprintf(pathname, MAXPGPATH, "%s", relationpath); 
+            else
+                snprintf(pathname, MAXPGPATH, "%s.%d", relationpath, i);
 
-        globfree(&g);
+            if (stat(pathname, &fst) >= 0)
+                totalsize += fst.st_size;
+            else
+            {
+                if (errno == ENOENT)
+                    break;
+                else
+                    ereport(ERROR, (errcode_for_file_access(), 
+                                    errmsg("could not stat file %s: %m", pathname)
+                                ));
+            }
+        }
     }
-		
-	return totalsize;
+    else if (relstorage == RELSTORAGE_AO)
+    {
+        /* AO: same as heap, it will look like relationpath, or relationpath.%d,
+         * but it may contains holes.  We need to looping till reach MAX_AOREL_CONCURRENCY.
+         */
+        for(i=0; i<MAX_AOREL_CONCURRENCY; ++i)
+        {
+            if (i==0)
+                snprintf(pathname, MAXPGPATH, "%s", relationpath); 
+            else
+                snprintf(pathname, MAXPGPATH, "%s.%d", relationpath, i);
+
+            if (stat(pathname, &fst) >= 0)
+                totalsize += fst.st_size;
+            else 
+            {
+                if (errno != ENOENT)
+                    ereport(ERROR, (errcode_for_file_access(), 
+                                    errmsg("could not stat file %s: %m", pathname)
+                                ));
+            }
+        }
+    }
+    else if (relstorage == RELSTORAGE_AOCS)
+    {
+        /* AOCS: It looks like relpath.col.segno.  Also, segno may have
+         * holes, so we will test till MAX_AOREL_CONCURRENCY. 
+         */
+        int nvp = rel->rd_att->natts;
+        int j = 0;
+
+        for(i=0; i<MAX_AOREL_CONCURRENCY; ++i)
+        {
+            for(j=0; j<nvp; ++j)
+            {
+                snprintf(pathname, MAXPGPATH, "%s.%d.%d", relationpath, j, i);
+ 
+                if (stat(pathname, &fst) >= 0)
+                    totalsize += fst.st_size;
+                else 
+                {
+                    if (errno == ENOENT)
+                        break;
+                    else
+                        ereport(ERROR, (errcode_for_file_access(), 
+                                    errmsg("could not stat file %s: %m", pathname)
+                                    ));
+                }
+            }
+        }
+    }
+           
+    /* RELSTORAGE_VIRTUAL has no space usage */
+    return totalsize;
 }
 
 Datum
@@ -400,7 +455,7 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 	if (relOid == 0 || rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(rel->rd_node));
+		size = calculate_relation_size(rel); 
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -473,7 +528,7 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	if (rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(rel->rd_node));
+		size = calculate_relation_size(rel); 
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -517,7 +572,7 @@ calculate_total_relation_size(Oid Relid)
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(heapRel->rd_node));
+		size = calculate_relation_size(heapRel); 
 
 	/* Include any dependent indexes */
 	if (heapRel->rd_rel->relhasindex)
@@ -531,7 +586,7 @@ calculate_total_relation_size(Oid Relid)
 
 			iRel = relation_open(idxOid, AccessShareLock);
 
-			size += calculate_relation_size(&(iRel->rd_node));
+			size += calculate_relation_size(iRel); 
 
 			relation_close(iRel, AccessShareLock);
 		}
