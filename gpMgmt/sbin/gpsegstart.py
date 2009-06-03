@@ -189,7 +189,6 @@ def parseargs():
     parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                         help="expected software version")      
-    parser.add_option('-P', '--ports', dest="ports", action="append", type="string")
 
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
     
