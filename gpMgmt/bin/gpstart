@@ -452,8 +452,8 @@ class GpStart():
             if curr_content != (prev_content + 1):
                 #means we have a gap and so don't have enough segments
                 logger.error("No segment started for content: %d.  curr_content=%d" % (prev_content+1,curr_content))
-                logger.info("dumping success segments: %s" % success_seg_status)
-                logger.info("dumping mapping: %s" % content_dict)
+                logger.info("dumping success segments: %s" % [s.__str__() for s in success_seg_status])
+                logger.info("dumping mapping: %s" % ['%s: %s' % (k, content_dict[k].__str__()) for k in content_dict])
                 return False
             prev_content=curr_content
         
@@ -461,8 +461,8 @@ class GpStart():
         if (curr_content+1) != gparray.get_segment_count():
             #we must have lost one at the end... so don't have enough
             logger.error("No segment started for content: %d.   curr_content=%d" % (gparray.get_segment_count()-1,curr_content))
-            logger.info("dumping success segments: %s" % success_seg_status)
-            logger.info("dumping mapping: %s" % content_dict)            
+            logger.info("dumping success segments: %s" % [s.__str__() for s in success_seg_status])
+            logger.info("dumping mapping: %s" % ['%s: %s' % (k, content_dict[k].__str__()) for k in content_dict])
             return False
             
         return True    

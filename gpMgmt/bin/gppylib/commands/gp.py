@@ -408,7 +408,11 @@ class GpSegCheckLocaleAndConnect(Command):
             self.error_str += "Segment's value of lc_numeric does not match the master.\n" \
                               " Master had value: '%s' while this segment has: '%s'" %\
                               (self.expected_lc_numeric,lc_numeric)
-                
+        seg_datadir = catalog.getSessionGUC(conn, 'data_directory')
+        if seg_datadir != self.datadir:
+            self.error_str += "Segment's data directory does not match.\n" \
+                              "Expected value: '%s'\n" \
+                              "Actual value: '%s'" % (self.datadir, seg_datadir)        
         conn.close()
         logger.debug("%s connection closed" % self.datadir)
         
