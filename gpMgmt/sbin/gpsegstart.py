@@ -90,8 +90,13 @@ class GpSegStart():
     def start(self): 
         results=[]
         failures=False
+        dirportmap = {}
 
-        for dir in self.dblist:
+        for itm in self.dblist:
+            (dir, port) = itm.split(':')
+            dirportmap[dir] = port
+
+        for dir in dirportmap.keys():
             if os.path.isdir(dir):
                 if not os.path.exists(dir + '/pg_log'):
                     os.mkdir(dir + '/pg_log')
@@ -101,18 +106,18 @@ class GpSegStart():
                     res = gp.recovery_startup(dir)
                     if res:
                         results.append(SegStartStatus(dir,False,res))
-                        self.dblist.remove(dir)
+                        del dirportmap[dir]
                         failures=True                                              
             else:
                 logger.info("Segment data directory does not exist for: '%s'" % dir)
                 results.append(SegStartStatus(dir,False,"segment data directory does not exist"))
-                self.dblist.remove(dir)
+                del dirportmap[dir]
                 failures=True      
         
             
         logger.info("Starting segments...")       
-        for dir in self.dblist:
-            cmd=gp.SegmentStart("Starting seg at dir %s" % dir,dir)
+        for dir, port in dirportmap.iteritems():
+            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, dir, port=port)
             self.pool.addCommand(cmd)  
               
         self.pool.join()
@@ -124,14 +129,16 @@ class GpSegStart():
                 #TODO: read in last entries in startup.log
                 status=SegStartStatus(cmd.dataDir,False,"PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr))
                 results.append(status)
-                self.dblist.remove(cmd.dataDir)
+                del dirportmap[cmd.dataDir]
                 failures=True
         
         self.pool.empty_completed_items()
         
         logger.info("Validating segments...")
-        for datadir in self.dblist:
-            cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,datadir,
+        for datadir,port in dirportmap.iteritems():
+            cmd = gp.GpSegCheckLocaleAndConnect('check on %s' % datadir,
+                                                datadir,
+                                                port,
                                                 self.expected_lc_collate,
                                                 self.expected_lc_monetary,
                                                 self.expected_lc_numeric)
@@ -182,6 +189,7 @@ def parseargs():
     parser.add_option("-D","--datadir",dest="dblist", action="append", type="string")
     parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
                         help="expected software version")      
+    parser.add_option('-P', '--ports', dest="ports", action="append", type="string")
 
     parser.set_defaults(verbose=False, filters=[], slice=(None, None))
     

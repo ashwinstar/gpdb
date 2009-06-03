@@ -156,7 +156,7 @@ class GpSegStartCmd(Command):
         self.dblist=gphost.dbs
         self.dirlist=[]
         for db in self.dblist:
-            self.dirlist.append(db.datadir)
+            self.dirlist.append(db.datadir + ':' + str(db.port))
             
         dirstr=" -D ".join(self.dirlist)        
         colstr=":".join(collatelist)
@@ -376,9 +376,10 @@ class GpVersion(Command):
     
 #-----------------------------------------------
 class GpSegCheckLocaleAndConnect(Command):
-    def __init__(self,name,datadir,expected_lc_collate,expected_lc_monetary,expected_lc_numeric):
+    def __init__(self,name,datadir,port,expected_lc_collate,expected_lc_monetary,expected_lc_numeric):
         self.name=name
         self.datadir=datadir
+        self.port=port
         self.expected_lc_collate=expected_lc_collate
         self.expected_lc_monetary=expected_lc_monetary
         self.expected_lc_numeric=expected_lc_numeric
@@ -389,9 +390,7 @@ class GpSegCheckLocaleAndConnect(Command):
     
     
     def run(self,validateAfter=False):
-        pgconf_dict = pgconf.readfile(self.datadir + "/postgresql.conf")        
-        port = pgconf_dict.int('port')
-        dburl = dbconn.DbURL(port=port,dbname='template1')
+        dburl = dbconn.DbURL(port=self.port,dbname='template1')
         
         logger.debug("%s connecting to %s" % (self.datadir,dburl))
         conn = dbconn.connect(dburl, utility=True)
