@@ -1796,32 +1796,144 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 }
 
 /*
+ * Entry is through is_dummy_plan().
+ *
  * Detect whether a plan node is a "dummy" plan created when a relation
  * is deemed not to need scanning due to constraint exclusion.
  *
- * Currently, such dummy plans are Result nodes with constant FALSE
- * filter quals.
+ * At bottom, such dummy plans are Result nodes with constant FALSE
+ * filter quals.  However, we also recognize simple plans that are
+ * known to return no rows because they contain a dummy.
+ *
+ * BTW The plan_tree_walker framework is overkill here, but it's good to 
+ *     do things the standard way.
  */
+
+static bool
+is_dummy_plan_walker(Node *node, bool *context)
+{
+	/*
+	 * We are only interested in Plan nodes.
+	 */
+	if ( node == NULL || !is_plan_node(node) )
+		return false;
+	
+	switch (nodeTag(node))
+	{
+		case T_Result:
+			/* 
+			 * This tests the base case of a dummy plan which is a Result
+			 * node with a constant FALSE filter quals.  (This is the case
+			 * constructed as an empty Append path by set_plain_rel_pathlist
+			 * in allpaths.c and made into a Result plan by create_append_plan
+			 * in createplan.c.
+			 */
+		{
+			List *rcqual = (List *) ((Result *) node)->resconstantqual;
+			
+			if (list_length(rcqual) == 1)
+			{
+				Const	   *constqual = (Const *) linitial(rcqual);
+				
+				if (constqual && IsA(constqual, Const))
+				{
+					if (!constqual->constisnull &&
+						!DatumGetBool(constqual->constvalue))
+						*context = true;
+					return true;
+				}
+			}
+		}
+			return false;
+			
+		case T_SubqueryScan:
+			/* 
+			 * A SubqueryScan is dummy, if its subplan is dummy.
+			 */
+		{
+			SubqueryScan *subqueryscan = (SubqueryScan *) node;
+			Plan	   *subplan = subqueryscan->subplan;
+			
+			if ( is_dummy_plan(subplan) )
+			{
+				*context = true;
+				return true;
+			}				
+		}
+			return false;
+			
+		case T_NestLoop:
+		case T_MergeJoin:
+		case T_HashJoin:
+			/*
+			 * Joins with dummy inner and/or outer plans are dummy or not 
+			 * based on the type of join.
+			 */
+		{
+			switch ( ((Join*)node)->jointype )
+			{
+				case JOIN_INNER: /* either */
+					*context = is_dummy_plan(innerPlan(node))
+					|| is_dummy_plan(outerPlan(node));
+					break;
+					
+				case JOIN_LEFT:
+				case JOIN_FULL:
+				case JOIN_RIGHT: /* both */
+					*context = is_dummy_plan(innerPlan(node))
+					&& is_dummy_plan(outerPlan(node));
+					break;
+					
+				case JOIN_IN:
+				case JOIN_LASJ: /* outer */
+					*context = is_dummy_plan(outerPlan(node));
+					break;
+					
+				default:
+					break;
+			}
+			
+			return true;
+		}
+			
+		/* It may seem that we should check for Append or SetOp nodes with all
+		 * dummy branches, but that case should not occur.  It would cause big
+		 * problems elsewhere in the code.
+		 */
+			
+		case T_Hash:
+		case T_Material:
+		case T_Sort:
+		case T_Unique:
+		    /* 
+		     * Some node types are dummy, if their outer plan is dummy 
+		     * so we just recur.
+		     *
+		     * We don't include "tricky" nodes like Motion that might
+		     * affect plan topology, even though we know they will return
+		     * no rows from a dummy.
+		     */
+		    return plan_tree_walker(node, is_dummy_plan_walker, context);
+		    
+		default:
+		    /* 
+		     * Other node types are "opaque" so we choose a conservative
+		     * course and terminate the walk.
+		     */
+			return true;
+	}
+    /* not reached */
+}
+
+
 static bool
 is_dummy_plan(Plan *plan)
 {
-	if (IsA(plan, Result))
-	{
-		List	   *rcqual = (List *) ((Result *) plan)->resconstantqual;
-
-		if (list_length(rcqual) == 1)
-		{
-			Const	   *constqual = (Const *) linitial(rcqual);
-
-			if (constqual && IsA(constqual, Const))
-			{
-				if (!constqual->constisnull &&
-					!DatumGetBool(constqual->constvalue))
-					return true;
-			}
-		}
-	}
-	return false;
+    bool is_dummy = false;
+    
+    is_dummy_plan_walker((Node*)plan, &is_dummy);
+    
+    return is_dummy;
 }
 
 /*
