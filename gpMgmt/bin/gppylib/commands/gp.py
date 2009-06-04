@@ -74,7 +74,7 @@ class MasterStart(Command):
         else:
             gp_mode_flags=" -E "    
             
-        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s  -l %s/pg_log/startup.log -o \" %s %s -i -p %s" %\
+        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s  -l %s/pg_log/startup.log -o \" %s %s -i -p %s --silent-mode=true" %\
                   (dataDir,dataDir,standby,gp_mode_flags,port)]
         
         
