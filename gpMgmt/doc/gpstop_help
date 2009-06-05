@@ -9,15 +9,17 @@ SYNOPSIS
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
 [-M smart | fast | immediate] [-r] [-y] 
-[-a] [-l logfile_directory] [-C] [-v]
+[-a] [-l logfile_directory] [-C] [-v | -q]
 
-gpstop -q
+gpstop -m [-d master_data_directory] [-y] 
+[-l logfile_directory] [-C] [-v | -q]
 
-gpstop -m
+gpstop -u [-m] [-d master_data_directory] [-l logfile_directory]  
+[-v | -q]
 
-gpstop -u
+gpstop  --version
 
-gpstop  -?  
+gpstop {-? | -h | --help}
 
 *****************************************************
 DESCRIPTION
