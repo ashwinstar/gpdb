@@ -880,9 +880,10 @@ test_rel_for_autovac(Oid relid, PgStat_StatTabEntry *tabentry,
 			*vacuum_tables = lappend(*vacuum_tables, tab);
 		}
 	}
-	else
-	{
-		Assert(classForm->relkind == RELKIND_TOASTVALUE);
+	else if (classForm->relkind != RELKIND_AOSEGMENTS)
+	{   
+        if (classForm->relkind != RELKIND_TOASTVALUE)
+            elog(ERROR,"Expected relkind to be 't' (toast), but was '%c'.",classForm->relkind);
 		if (dovacuum)
 			*toast_table_ids = lappend_oid(*toast_table_ids, relid);
 	}
