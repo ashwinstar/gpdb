@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/timestamp.c,v 1.197 2009/03/15 20:31:19 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/timestamp.c,v 1.200 2009/06/01 23:55:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -958,13 +958,32 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 
 	/*
 	 * Unspecified range and precision? Then not necessary to adjust. Setting
-	 * typmod to -1 is the convention for all types.
+	 * typmod to -1 is the convention for all data types.
 	 */
 	if (typmod >= 0)
 	{
 		int			range = INTERVAL_RANGE(typmod);
 		int			precision = INTERVAL_PRECISION(typmod);
 
+		/*
+		 * Our interpretation of intervals with a limited set of fields
+		 * is that fields to the right of the last one specified are zeroed
+		 * out, but those to the left of it remain valid.  Thus for example
+		 * there is no operational difference between INTERVAL YEAR TO MONTH
+		 * and INTERVAL MONTH.  In some cases we could meaningfully enforce
+		 * that higher-order fields are zero; for example INTERVAL DAY could
+		 * reject nonzero "month" field.  However that seems a bit pointless
+		 * when we can't do it consistently.  (We cannot enforce a range limit
+		 * on the highest expected field, since we do not have any equivalent
+		 * of SQL's <interval leading field precision>.)
+		 *
+		 * Note: before PG 8.4 we interpreted a limited set of fields as
+		 * actually causing a "modulo" operation on a given value, potentially
+		 * losing high-order as well as low-order information.  But there is
+		 * no support for such behavior in the standard, and it seems fairly
+		 * undesirable on data consistency grounds anyway.  Now we only
+		 * perform truncation or rounding of low-order fields.
+		 */
 		if (range == INTERVAL_FULL_RANGE)
 		{
 			/* Do nothing... */
@@ -977,27 +996,21 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 		}
 		else if (range == INTERVAL_MASK(MONTH))
 		{
-			interval->month %= MONTHS_PER_YEAR;
 			interval->day = 0;
 			interval->time = 0;
 		}
 		/* YEAR TO MONTH */
 		else if (range == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
 		{
-			/* month is already year to month */
 			interval->day = 0;
 			interval->time = 0;
 		}
 		else if (range == INTERVAL_MASK(DAY))
 		{
-			interval->month = 0;
 			interval->time = 0;
 		}
 		else if (range == INTERVAL_MASK(HOUR))
 		{
-			interval->month = 0;
-			interval->day = 0;
-
 #ifdef HAVE_INT64_TIMESTAMP
 			interval->time = (interval->time / USECS_PER_HOUR) *
 				USECS_PER_HOUR;
@@ -1007,42 +1020,21 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 		}
 		else if (range == INTERVAL_MASK(MINUTE))
 		{
-			TimeOffset	hour;
-
-			interval->month = 0;
-			interval->day = 0;
-
 #ifdef HAVE_INT64_TIMESTAMP
-			hour = interval->time / USECS_PER_HOUR;
-			interval->time -= hour * USECS_PER_HOUR;
 			interval->time = (interval->time / USECS_PER_MINUTE) *
 				USECS_PER_MINUTE;
 #else
-			TMODULO(interval->time, hour, (double) SECS_PER_HOUR);
 			interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
 #endif
 		}
 		else if (range == INTERVAL_MASK(SECOND))
 		{
-			TimeOffset	minute;
-
-			interval->month = 0;
-			interval->day = 0;
-
-#ifdef HAVE_INT64_TIMESTAMP
-			minute = interval->time / USECS_PER_MINUTE;
-			interval->time -= minute * USECS_PER_MINUTE;
-#else
-			TMODULO(interval->time, minute, (double) SECS_PER_MINUTE);
-			/* return subseconds too */
-#endif
+			/* fractional-second rounding will be dealt with below */
 		}
 		/* DAY TO HOUR */
 		else if (range == (INTERVAL_MASK(DAY) |
 						   INTERVAL_MASK(HOUR)))
 		{
-			interval->month = 0;
-
 #ifdef HAVE_INT64_TIMESTAMP
 			interval->time = (interval->time / USECS_PER_HOUR) *
 				USECS_PER_HOUR;
@@ -1055,8 +1047,6 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 						   INTERVAL_MASK(HOUR) |
 						   INTERVAL_MASK(MINUTE)))
 		{
-			interval->month = 0;
-
 #ifdef HAVE_INT64_TIMESTAMP
 			interval->time = (interval->time / USECS_PER_MINUTE) *
 				USECS_PER_MINUTE;
@@ -1069,15 +1059,13 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 						   INTERVAL_MASK(HOUR) |
 						   INTERVAL_MASK(MINUTE) |
 						   INTERVAL_MASK(SECOND)))
-			interval->month = 0;
-
+		{
+			/* fractional-second rounding will be dealt with below */
+		}
 		/* HOUR TO MINUTE */
 		else if (range == (INTERVAL_MASK(HOUR) |
 						   INTERVAL_MASK(MINUTE)))
 		{
-			interval->month = 0;
-			interval->day = 0;
-
 #ifdef HAVE_INT64_TIMESTAMP
 			interval->time = (interval->time / USECS_PER_MINUTE) *
 				USECS_PER_MINUTE;
@@ -1090,25 +1078,13 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 						   INTERVAL_MASK(MINUTE) |
 						   INTERVAL_MASK(SECOND)))
 		{
-			interval->month = 0;
-			interval->day = 0;
-			/* return subseconds too */
+			/* fractional-second rounding will be dealt with below */
 		}
 		/* MINUTE TO SECOND */
 		else if (range == (INTERVAL_MASK(MINUTE) |
 						   INTERVAL_MASK(SECOND)))
 		{
-			TimeOffset	hour;
-
-			interval->month = 0;
-			interval->day = 0;
-
-#ifdef HAVE_INT64_TIMESTAMP
-			hour = interval->time / USECS_PER_HOUR;
-			interval->time -= hour * USECS_PER_HOUR;
-#else
-			TMODULO(interval->time, hour, (double) SECS_PER_HOUR);
-#endif
+			/* fractional-second rounding will be dealt with below */
 		}
 		else
 			elog(ERROR, "unrecognized interval typmod: %d", typmod);
@@ -1151,8 +1127,6 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 #endif
 		}
 	}
-
-	return;
 }
 
 
@@ -2050,26 +2024,29 @@ timestamptz_cmp_timestamp(PG_FUNCTION_ARGS)
  *
  *		collate invalid interval at the end
  */
+static inline TimeOffset
+interval_cmp_value(const Interval *interval)
+{
+	TimeOffset	span;
+
+	span = interval->time;
+
+#ifdef HAVE_INT64_TIMESTAMP
+	span += interval->month * INT64CONST(30) * USECS_PER_DAY;
+	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
+#else
+	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
+	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
+#endif
+
+	return span;
+}
+
 static int
 interval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1,
-				span2;
-
-	span1 = interval1->time;
-	span2 = interval2->time;
-
-#ifdef HAVE_INT64_TIMESTAMP
-	span1 += interval1->month * INT64CONST(30) * USECS_PER_DAY;
-	span1 += interval1->day * INT64CONST(24) * USECS_PER_HOUR;
-	span2 += interval2->month * INT64CONST(30) * USECS_PER_DAY;
-	span2 += interval2->day * INT64CONST(24) * USECS_PER_HOUR;
-#else
-	span1 += interval1->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
-	span1 += interval1->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
-	span2 += interval2->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
-	span2 += interval2->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
-#endif
+	TimeOffset	span1 = interval_cmp_value(interval1);
+	TimeOffset	span2 = interval_cmp_value(interval2);
 
 	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
 }
@@ -2137,32 +2114,24 @@ interval_cmp(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(interval_cmp_internal(interval1, interval2));
 }
 
+/*
+ * Hashing for intervals
+ *
+ * We must produce equal hashvals for values that interval_cmp_internal()
+ * considers equal.  So, compute the net span the same way it does,
+ * and then hash that, using either int64 or float8 hashing.
+ */
 Datum
 interval_hash(PG_FUNCTION_ARGS)
 {
-	Interval   *key = PG_GETARG_INTERVAL_P(0);
-	uint32		thash;
-	uint32		mhash;
+	Interval   *interval = PG_GETARG_INTERVAL_P(0);
+	TimeOffset	span = interval_cmp_value(interval);
 
-	/*
-	 * To avoid any problems with padding bytes in the struct, we figure the
-	 * field hashes separately and XOR them.  This also provides a convenient
-	 * framework for dealing with the fact that the time field might be either
-	 * double or int64.
-	 */
 #ifdef HAVE_INT64_TIMESTAMP
-	thash = DatumGetUInt32(DirectFunctionCall1(hashint8,
-											   Int64GetDatumFast(key->time)));
+	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
 #else
-	thash = DatumGetUInt32(DirectFunctionCall1(hashfloat8,
-											 Float8GetDatumFast(key->time)));
+	return DirectFunctionCall1(hashfloat8, Float8GetDatumFast(span));
 #endif
-	thash ^= DatumGetUInt32(hash_uint32(key->day));
-	/* Shift so "k days" and "k months" don't hash to the same thing */
-	mhash = DatumGetUInt32(hash_uint32(key->month));
-	thash ^= mhash << 24;
-	thash ^= mhash >> 8;
-	PG_RETURN_UINT32(thash);
 }
 
 /* overlaps_timestamp() --- implements the SQL92 OVERLAPS operator.

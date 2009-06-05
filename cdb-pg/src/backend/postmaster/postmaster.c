@@ -33,7 +33,7 @@
  *
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1311,8 +1311,11 @@ pmdaemonize(void)
 
 	MyProcPid = PostmasterPid = getpid();		/* reset PID vars to child */
 
-/* GH: If there's no setsid(), we hopefully don't need silent mode.
- * Until there's a better solution.
+	MyStartTime = time(NULL);
+
+	/*
+	 * GH: If there's no setsid(), we hopefully don't need silent mode. Until
+	 * there's a better solution.
  */
 #ifdef HAVE_SETSID
 	if (setsid() < 0)
@@ -1387,7 +1390,7 @@ ServerLoop(void)
 		int			s;
 
 		/*
-		 * Wait for something to happen.
+		 * Wait for a connection request to arrive.
 		 *
 		 * We wait at most one minute, or the minimum autovacuum delay, to
 		 * ensure that the other background tasks handled below get done even
@@ -4034,6 +4037,8 @@ SubPostmasterMain(int argc, char *argv[])
 
 	MyProcPid = getpid();		/* reset MyProcPid */
 
+	MyStartTime = time(NULL);
+
 	/*
 	 * make sure stderr is in binary mode before anything can possibly be
 	 * written to it, in case it's actually the syslogger pipe, so the pipe
@@ -4433,7 +4438,7 @@ CountChildren(void)
 
 
 /*
- * StartChildProcess -- start a non-backend child process for the postmaster
+ * StartChildProcess -- start an auxiliary process for the postmaster
  *
  * xlop determines what kind of child will be started.	All child types
  * initially go to AuxiliaryProcessMain, which will handle common setup.

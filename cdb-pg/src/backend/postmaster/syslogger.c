@@ -14,7 +14,7 @@
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
- * Copyright (c) 2004-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2009, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -588,7 +588,9 @@ SysLogger_Start(void)
     if (syslogPipe[0] < 0)
     {
         if (pgpipe(syslogPipe) < 0)
-            elog(FATAL, "Could not create pipe for syslogger: %m");
+			ereport(FATAL,
+					(errcode_for_socket_access(),
+					 (errmsg("could not create pipe for syslog: %m"))));
     }
 #else
     if (!syslogPipe[0])
@@ -600,7 +602,9 @@ SysLogger_Start(void)
         sa.bInheritHandle = TRUE;
 
         if (!CreatePipe(&syslogPipe[0], &syslogPipe[1], &sa, 32768))
-            elog(FATAL, "Could not create pipe for syslogger: %m");
+			ereport(FATAL,
+					(errcode_for_file_access(),
+					 (errmsg("could not create pipe for syslog: %m"))));
     }
 #endif
 
@@ -618,7 +622,10 @@ SysLogger_Start(void)
     syslogFile = fopen(filename, "a");
 
     if (!syslogFile)
-        elog(FATAL, "Could not create pipe for syslogger file %s: %m", filename);
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 (errmsg("could not create log file \"%s\": %m",
+						 filename))));
 
     setvbuf(syslogFile, NULL, LBF_MODE, 0);
 
@@ -631,7 +638,9 @@ SysLogger_Start(void)
 #endif
         {
             case -1:
-                elog(FATAL, "Could not fork syslogger: %m");
+			ereport(LOG,
+					(errmsg("could not fork system logger: %m")));
+			return 0;
 
 #ifndef EXEC_BACKEND
             case 0:
@@ -659,12 +668,14 @@ SysLogger_Start(void)
 #ifndef WIN32
                     fflush(stdout);
                     if (dup2(syslogPipe[1], fileno(stdout)) < 0)
-                        elog(FATAL, "Syslogger could not redirect stdout: %m");
-
+					ereport(FATAL,
+							(errcode_for_file_access(),
+							 errmsg("could not redirect stdout: %m")));
                     fflush(stderr);
                     if (dup2(syslogPipe[1], fileno(stderr)) < 0)
-                        elog(FATAL, "Syslogger could not redirect stderr: %m");
-
+					ereport(FATAL,
+							(errcode_for_file_access(),
+							 errmsg("could not redirect stderr: %m")));
                     /* Now we are done with the write end of the pipe. */
                     close(syslogPipe[1]);
                     syslogPipe[1] = -1;
@@ -680,7 +691,9 @@ SysLogger_Start(void)
                     fd = _open_osfhandle((long) syslogPipe[1],
                             _O_APPEND | _O_BINARY);
                     if (dup2(fd, _fileno(stderr)) < 0)
-                        elog(FATAL, "Syslogger could not redirect stderr: %m");
+					ereport(FATAL,
+							(errcode_for_file_access(),
+							 errmsg("could not redirect stderr: %m")));
                     close(fd);
                     _setmode(_fileno(stderr),_O_BINARY);
                     /* Now we are done with the write end of the pipe. */
@@ -1312,10 +1325,10 @@ logfile_rotate(bool time_based_rotation)
                      filename)));
 
         /*
-         * ENFILE/EMFILE are not too surprising on a busy system; just keep
-         * using the old file till we manage to get a new one. Otherwise,
-         * assume something's wrong with Log_directory and stop trying to
-         * create files.
+			 * ENFILE/EMFILE are not too surprising on a busy system; just
+			 * keep using the old file till we manage to get a new one.
+			 * Otherwise, assume something's wrong with Log_directory and stop
+			 * trying to create files.
          */
         if (saveerrno != ENFILE && saveerrno != EMFILE)
         {
@@ -1408,7 +1421,7 @@ set_next_rotation_time(void)
      * GMT.
      */
     rotinterval = Log_RotationAge * SECS_PER_MINUTE;	/* convert to seconds */
-    now = time(NULL);
+	now = (pg_time_t) time(NULL);
     tm = pg_localtime(&now, log_timezone);
     now += tm->tm_gmtoff;
     now -= now % rotinterval;

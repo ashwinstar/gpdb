@@ -837,6 +837,11 @@ typedef NameData *Name;
 # define PG_TEXTDOMAIN(domain) (domain "-" PG_MAJORVERSION)
 #endif
 
+// CDB - Temp -- make PG_TEXTDOMAIN a no-op until we are ready to use it
+#undef PG_TEXTDOMAIN
+#define PG_TEXTDOMAIN(domain) (domain)
+// CDB - End temp
+
 
 /* ----------------------------------------------------------------
  *				Section 8: system-specific hacks

@@ -64,8 +64,8 @@
 
 /*
  * Maximum length for identifiers (e.g. table names, column names,
- * function names).  It must be a multiple of sizeof(int) (typically
- * 4).
+ * function names).  Names actually are limited to one less byte than this,
+ * because the length must include a trailing zero byte.
  *
  * Changing this requires an initdb.
  */
@@ -163,7 +163,7 @@
 #define ALIGNOF_BUFFER	64
 
 /*
- * Disable UNIX sockets for those operating system.
+ * Disable UNIX sockets for certain operating systems.
  */
 #if defined(WIN32)
 #undef HAVE_UNIX_SOCKETS
@@ -222,6 +222,13 @@
 #ifdef USE_ASSERT_CHECKING
 #define MEMORY_CONTEXT_CHECKING
 #endif
+
+/*
+ * Define this to cause palloc()'d memory to be filled with random data, to
+ * facilitate catching code that depends on the contents of uninitialized
+ * memory.  Caution: this is horrendously expensive.
+ */
+/* #define RANDOMIZE_ALLOCATED_MEMORY */
 
 /*
  * Define this to force all parse and plan trees to be passed through

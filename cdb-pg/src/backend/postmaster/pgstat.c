@@ -11,7 +11,7 @@
  *			- Add a pgstat config column to pg_database, so this
  *			  entire thing can be enabled/disabled on a per db basis.
  *
- *	Copyright (c) 2001-2008, PostgreSQL Global Development Group
+ *	Copyright (c) 2001-2009, PostgreSQL Global Development Group
  *
  *	$PostgreSQL: pgsql/src/backend/postmaster/pgstat.c,v 1.140.2.5 2007/07/08 22:23:25 tgl Exp $
  * ----------
@@ -209,28 +209,6 @@ pgstat_init(void)
 	int			tries = 0;
 
 #define TESTBYTEVAL ((char) 199)
-
-	/*
-	 * Force start of collector daemon if something to collect.  Note that
-	 * pgstat_collect_querystring is now an independent facility that does not
-	 * require the collector daemon.
-	 */
-	if (pgstat_collect_tuplelevel ||
-		pgstat_collect_blocklevel)
-		pgstat_collect_startcollector = true;
-
-	/*
-	 * If we don't have to start a collector or should reset the collected
-	 * statistics on postmaster start, simply remove the stats file.
-	 */
-	if (!pgstat_collect_startcollector || pgstat_collect_resetonpmstart)
-		pgstat_reset_all();
-
-	/*
-	 * Nothing else required if collector will not get started
-	 */
-	if (!pgstat_collect_startcollector)
-		return;
 
 	/*
 	 * Create the UDP socket for sending and receiving statistic messages
@@ -456,8 +434,7 @@ startup_failed:
 /*
  * pgstat_reset_all() -
  *
- * Remove the stats file.  This is used on server start if the
- * stats_reset_on_server_start feature is enabled, or if WAL
+ * Remove the stats file.  This is currently used only if WAL
  * recovery is needed after a crash.
  */
 void
@@ -491,7 +468,7 @@ pgstat_forkexec(void)
 #endif   /* EXEC_BACKEND */
 
 
-/* ----------
+/*
  * pgstat_start() -
  *
  *	Called from postmaster at startup or after an existing collector
@@ -500,7 +477,6 @@ pgstat_forkexec(void)
  *	Returns PID of child process, or 0 if fail.
  *
  *	Note: if fail, we will be called again from the postmaster main loop.
- * ----------
  */
 int
 pgstat_start(void)
@@ -509,9 +485,10 @@ pgstat_start(void)
 	pid_t		pgStatPid;
 
 	/*
-	 * Do nothing if no collector needed
+	 * Check that the socket is there, else pgstat_init failed and we can do
+	 * nothing useful.
 	 */
-	if (!pgstat_collect_startcollector)
+	if (pgStatSock < 0)
 		return 0;
 
 	/*

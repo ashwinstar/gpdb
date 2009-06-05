@@ -38,7 +38,7 @@
  *
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -99,6 +99,17 @@ char	   *Log_line_prefix = NULL;		/* format for extra log line info */
 int			Log_destination = LOG_DESTINATION_STDERR;
 
 #ifdef HAVE_SYSLOG
+
+/*
+ * Max string length to send to syslog().  Note that this doesn't count the
+ * sequence-number prefix we add, and of course it doesn't count the prefix
+ * added by syslog itself.  On many implementations it seems that the hard
+ * limit is approximately 2K bytes including both those prefixes.
+ */
+#ifndef PG_SYSLOG_LIMIT
+#define PG_SYSLOG_LIMIT 1024
+#endif
+
 static bool openlog_done = false;
 static char *syslog_ident = NULL;
 static int	syslog_facility = LOG_LOCAL0;
@@ -118,6 +129,10 @@ static ErrorData errordata[ERRORDATA_STACK_SIZE];
 static int	errordata_stack_depth = -1; /* index of topmost active frame */
 
 static int	recursion_depth = 0;	/* to detect actual recursion */
+
+/* buffers for formatted timestamps that might be used by both
+ * log_line_prefix and csv logs.
+ */
 
 #define FORMATTED_TS_LEN 128
 static char formatted_start_time[FORMATTED_TS_LEN];
@@ -1930,7 +1945,8 @@ log_line_prefix(StringInfo buf)
 	/*
 	 * This is one of the few places where we'd rather not inherit a static
 	 * variable's value from the postmaster.  But since we will, reset it when
-	 * MyProcPid changes.
+	 * MyProcPid changes. MyStartTime also changes when MyProcPid does, so
+	 * reset the formatted start timestamp too.
 	 */
 	if (log_my_pid != MyProcPid)
 	{
@@ -2837,7 +2853,7 @@ send_message_to_server_log(ErrorData *edata)
 		if (edata->detail)
 		{
             appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Detail:  "));
+			appendStringInfoString(&buf, _("DETAIL:  "));
 			append_with_tabs(&buf, edata->detail);
 			appendStringInfoChar(&buf, '\n');
 		}
@@ -2870,7 +2886,7 @@ send_message_to_server_log(ErrorData *edata)
 			else if (edata->funcname && edata->filename)
 			{
                 appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-				appendStringInfo(&buf, gettext("Location:  %s, %s:%d\n"),
+				appendStringInfo(&buf, _("LOCATION:  %s, %s:%d\n"),
 								 edata->funcname, edata->filename,
 								 edata->lineno);
 			}
@@ -2977,9 +2993,8 @@ send_message_to_server_log(ErrorData *edata)
 		 * In a win32 service environment, there is no usable stderr. Capture
 		 * anything going there and write it to the eventlog instead.
 		 *
-		 * If stderr redirection is active, it's ok to write to stderr because
-		 * that's really a pipe to the syslogger process. Unless we're in the
-		 * postmaster, and the syslogger process isn't started yet.
+		 * If stderr redirection is active, it was OK to write to stderr above
+		 * because that's really a pipe to the syslogger process.
 		 */
 		if (pgwin32_is_service() && (!redirection_done || am_syslogger) )
 			write_eventlog(edata->elevel, buf.data);
@@ -3119,6 +3134,8 @@ send_message_to_frontend(ErrorData *edata)
 			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
 			err_sendstring(&msgbuf, edata->detail);
 		}
+
+		/* detail_log is intentionally not used here */
 
 		if (edata->hint)
 		{

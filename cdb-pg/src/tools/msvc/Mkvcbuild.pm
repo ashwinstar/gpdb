@@ -104,13 +104,15 @@ sub mkvcbuild
             }
         }
         $plperl->AddReference($postgres);
-        if (-e $solution->{options}->{perl} . '\lib\CORE\perl510.lib')
+		my @perl_libs = grep {/perl\d+.lib$/ }
+			glob($solution->{options}->{perl} . '\lib\CORE\perl*.lib');
+        if (@perl_libs == 1)
         {
-            $plperl->AddLibrary($solution->{options}->{perl} . '\lib\CORE\perl510.lib');
+            $plperl->AddLibrary($perl_libs[0]);
         }
         else
         {
-        $plperl->AddLibrary($solution->{options}->{perl} . '\lib\CORE\perl58.lib');
+			die "could not identify perl library version";
         }
     }
 
@@ -551,8 +553,8 @@ sub GenerateContribSqlFiles
                 print "Building $out from $in (contrib/$n)...\n";
                 my $cont = Project::read_file("contrib/$n/$in");
                 my $dn = $out;
-                $dn =~ s/\.sql\s*$//;
-                if ($mf =~ /^MODULE_big\s*=\s*(.*)\s*$/m) { $dn = $mf }
+                $dn =~ s/\.sql$//;
+                if ($mf =~ /^MODULE_big\s*=\s*(.*)$/m) { $dn = $1 }
                 $cont =~ s/MODULE_PATHNAME/\$libdir\/$dn/g;
                 my $o;
                 open($o,">contrib/$n/$out") || croak "Could not write to contrib/$n/$d";
