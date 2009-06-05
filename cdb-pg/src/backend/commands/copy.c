@@ -1551,7 +1551,7 @@ DoCopy(const CopyStmt *stmt)
 			&& relationOid != InvalidOid
 			&& GetCommandLogLevel((Node *) stmt) <= log_statement)
 	{
-		elog(LOG, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u",
+		elog(DEBUG1, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u",
 				autostats_cmdtype_to_string(AUTOSTATS_CMDTYPE_COPY),
 				MyDatabaseId,
 				relationOid,

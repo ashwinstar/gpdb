@@ -380,7 +380,7 @@ ProcessQuery(Portal portal,
 			if (cmdType < AUTOSTATS_CMDTYPE_SENTINEL &&			
 				GetCommandLogLevel((Node *) parsetree) <= log_statement)
 			{
-				elog(LOG, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
+				elog(DEBUG1, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
 					 autostats_cmdtype_to_string(cmdType), 
 					 MyDatabaseId, 
 					 relationOid, 
