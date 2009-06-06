@@ -522,6 +522,8 @@ errfinish(int dummy,...)
 		pfree(edata->message);
 	if (edata->detail)
 		pfree(edata->detail);
+	if (edata->detail_log)
+		pfree(edata->detail_log);
 	if (edata->hint)
 		pfree(edata->hint);
 	if (edata->context)
@@ -911,7 +913,7 @@ errdetail(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
-#if 0
+
 /*
  * errdetail_log --- add a detail_log error message text to the current error
  */
@@ -931,7 +933,7 @@ errdetail_log(const char *fmt,...)
 	recursion_depth--;
 	return 0;					/* return value does not matter */
 }
-#endif
+
 
 /*
  * errdetail_plural --- add a detail error message text to the current error,
@@ -1355,6 +1357,8 @@ CopyErrorData(void)
 		newedata->message = pstrdup(newedata->message);
 	if (newedata->detail)
 		newedata->detail = pstrdup(newedata->detail);
+	if (newedata->detail_log)
+		newedata->detail_log = pstrdup(newedata->detail_log);
 	if (newedata->hint)
 		newedata->hint = pstrdup(newedata->hint);
 	if (newedata->context)
@@ -1378,6 +1382,8 @@ FreeErrorData(ErrorData *edata)
 		pfree(edata->message);
 	if (edata->detail)
 		pfree(edata->detail);
+	if (edata->detail_log)
+		pfree(edata->detail_log);
 	if (edata->hint)
 		pfree(edata->hint);
 	if (edata->context)
@@ -1448,6 +1454,8 @@ ReThrowError(ErrorData *edata)
 		newedata->message = pstrdup(newedata->message);
 	if (newedata->detail)
 		newedata->detail = pstrdup(newedata->detail);
+	if (newedata->detail_log)
+		newedata->detail_log = pstrdup(newedata->detail_log);
 	if (newedata->hint)
 		newedata->hint = pstrdup(newedata->hint);
 	if (newedata->context)
