@@ -7,11 +7,12 @@ SYNOPSIS
 *****************************************************
 
 gpstart [-d <master_data_directory>] [-B <parallel_processes>] 
-        [-R] [-m] [-y] [-a] [-q] [-l <logfile_directory>] 
+        [-R] [-m] [-y] [-a]  [-l <logfile_directory>] [-v | -q]
         
-gpstart --recover
+gpstart --recover [-d <master_data_directory>]  
+        [-l <logfile_directory>] [-v | -q]
 
-gpstart [-? | -v]
+gpstart {-? | -h | --help}
 
 
 *****************************************************
