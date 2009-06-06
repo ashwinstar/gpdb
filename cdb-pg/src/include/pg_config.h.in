@@ -12,20 +12,29 @@
 /* Define to the return type of 'accept' */
 #undef ACCEPT_TYPE_RETURN
 
-/* The alignment requirement of a `double'. */
+/* The normal alignment of `double', in bytes. */
 #undef ALIGNOF_DOUBLE
 
-/* The alignment requirement of a `int'. */
+/* The normal alignment of `int', in bytes. */
 #undef ALIGNOF_INT
 
-/* The alignment requirement of a `long'. */
+/* The normal alignment of `long', in bytes. */
 #undef ALIGNOF_LONG
 
-/* The alignment requirement of a `long long int'. */
+/* The normal alignment of `long long int', in bytes. */
 #undef ALIGNOF_LONG_LONG_INT
 
-/* The alignment requirement of a `short'. */
+/* The normal alignment of `short', in bytes. */
 #undef ALIGNOF_SHORT
+
+/* Size of a disk block --- this also limits the size of a tuple. You can set
+   it bigger if you need bigger tuples (although TOAST should reduce the need
+   to have large tuples, since fields can be spread across multiple tuples).
+   BLCKSZ must be a power of 2. The maximum possible value of BLCKSZ is
+   currently 2^15 (32768). This is determined by the 15-bit widths of the
+   lp_off and lp_len fields in ItemIdData (see include/storage/itemid.h).
+   Changing BLCKSZ requires an initdb. */
+//#undef BLCKSZ
 
 /* Define to the default TCP port number on which the server listens and to
    which clients will try to connect. This can be overridden at run-time, but
@@ -332,6 +341,9 @@
 /* Define to 1 if you have the `on_exit' function. */
 #undef HAVE_ON_EXIT
 
+/* Define to 1 if you have the <ossp/uuid.h> header file. */
+#undef HAVE_OSSP_UUID_H
+
 /* Define to 1 if you have the <pam/pam_appl.h> header file. */
 #undef HAVE_PAM_PAM_APPL_H
 
@@ -598,6 +610,9 @@
 /* Define to 1 if you have the <utime.h> header file. */
 #undef HAVE_UTIME_H
 
+/* Define to 1 if you have the <uuid.h> header file. */
+#undef HAVE_UUID_H
+
 /* Define to 1 if you have the `vsnprintf' function. */
 #undef HAVE_VSNPRINTF
 
@@ -667,10 +682,10 @@
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
 
-/* The size of a `size_t', as computed by sizeof. */
+/* The size of `size_t', as computed by sizeof. */
 #undef SIZEOF_SIZE_T
 
-/* The size of a `unsigned long', as computed by sizeof. */
+/* The size of `unsigned long', as computed by sizeof. */
 #undef SIZEOF_UNSIGNED_LONG
 
 /* The size of `void *', as computed by sizeof. */

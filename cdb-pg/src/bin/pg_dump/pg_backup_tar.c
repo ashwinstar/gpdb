@@ -105,7 +105,7 @@ typedef struct
 	char	   *filename;
 } lclTocEntry;
 
-static char *modulename = gettext_noop("tar archiver");
+static const char *modulename = gettext_noop("tar archiver");
 
 static void _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt);
 
@@ -833,11 +833,12 @@ _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt)
 		else
 		{
 			tarClose(AH, th);
+
 			/*
-			 * Once we have found the first blob, stop at the first
-			 * non-blob entry (which will be 'blobs.toc').  This coding would
-			 * eat all the rest of the archive if there are no blobs ... but
-			 * this function shouldn't be called at all in that case.
+			 * Once we have found the first blob, stop at the first non-blob
+			 * entry (which will be 'blobs.toc').  This coding would eat all
+			 * the rest of the archive if there are no blobs ... but this
+			 * function shouldn't be called at all in that case.
 			 */
 			if (foundBlob)
 				break;
@@ -1162,8 +1163,8 @@ _tarAddFile(ArchiveHandle *AH, TAR_MEMBER *th)
 	fseeko(tmp, 0, SEEK_SET);
 
 	/*
-	 * Some compilers with throw a warning knowing this test can never be true
-	 * because pgoff_t can't exceed the compared maximum.
+	 * Some compilers will throw a warning knowing this test can never be true
+	 * because pgoff_t can't exceed the compared maximum on their platform.
 	 */
 	if (th->fileLen > MAX_TAR_MEMBER_FILELEN)
 		die_horribly(AH, modulename, "archive member too large for tar format\n");

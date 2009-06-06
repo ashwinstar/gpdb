@@ -10,7 +10,7 @@
  *
  * Because of various subtle race conditions it is critical that a backend
  * hold the correct locks while setting or clearing its MyProc->xid field.
- * See notes in GetSnapshotData.
+ * See notes in src/backend/access/transam/README.
  *
  * The process array now also includes PGPROC structures representing
  * prepared transactions.  The xid and subxids fields of these are valid,
@@ -18,7 +18,7 @@
  * backend PGPROCs at need by checking for pid == 0.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -421,9 +421,10 @@ TransactionIdIsActive(TransactionId xid)
  * This is also used to determine where to truncate pg_subtrans.  allDbs
  * must be TRUE for that case, and ignoreVacuum FALSE.
  *
- * Note: we include the currently running xids in the set of considered xids.
+ * Note: we include all currently running xids in the set of considered xids.
  * This ensures that if a just-started xact has not yet set its snapshot,
  * when it does set the snapshot it cannot set xmin less than what we compute.
+ * See notes in src/backend/access/transam/README.
  */
 TransactionId
 GetOldestXmin(bool allDbs)
@@ -1419,7 +1420,7 @@ BackendXidGetPid(TransactionId xid)
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
 
 		if (proc->xid == xid)
 		{
@@ -1464,14 +1465,28 @@ CountActiveBackends(void)
 	 */
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
+
+		/*
+		 * Since we're not holding a lock, need to check that the pointer is
+		 * valid. Someone holding the lock could have incremented numProcs
+		 * already, but not yet inserted a valid pointer to the array.
+		 *
+		 * If someone just decremented numProcs, 'proc' could also point to a
+		 * PGPROC entry that's no longer in the array. It still points to a
+		 * PGPROC struct, though, because freed PGPPROC entries just go to
+		 * the free list and are recycled. Its contents are nonsense in that
+		 * case, but that's acceptable for this function.
+		 */
+		if (proc != NULL)
+			continue;
 
 		if (proc == MyProc)
 			continue;			/* do not count myself */
 		if (proc->pid == 0)
 			continue;			/* do not count prepared xacts */
 		if (proc->xid == InvalidTransactionId)
-			continue;			/* do not count if not in a transaction */
+			continue;			/* do not count if no XID assigned */
 		if (proc->waitLock != NULL)
 			continue;			/* do not count if blocked on a lock */
 		count++;
@@ -1494,7 +1509,7 @@ CountDBBackends(Oid databaseid)
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
 
 		if (proc->pid == 0)
 			continue;			/* do not count prepared xacts */
@@ -1521,7 +1536,7 @@ CountUserBackends(Oid roleid)
 
 	for (index = 0; index < arrayP->numProcs; index++)
 	{
-		PGPROC	   *proc = arrayP->procs[index];
+		volatile PGPROC *proc = arrayP->procs[index];
 
 		if (proc->pid == 0)
 			continue;			/* do not count prepared xacts */

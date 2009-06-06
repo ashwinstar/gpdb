@@ -4,7 +4,7 @@
  *	  POSTGRES lock manager code
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -489,8 +489,7 @@ XactLockTableInsert(TransactionId xid)
  *
  * Delete the lock showing that the given transaction ID is running.
  * (This is never used for main transaction IDs; those locks are only
- * released implicitly at transaction end.	But we do use it for subtrans
- * IDs.)
+ * released implicitly at transaction end.	But we do use it for subtrans IDs.)
  */
 void
 XactLockTableDelete(TransactionId xid)

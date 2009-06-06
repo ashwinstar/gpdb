@@ -7,7 +7,7 @@
  *	  routines.
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,9 +35,12 @@
 /*
  * This struct of function pointers defines the API between smgr.c and
  * any individual storage manager module.  Note that smgr subfunctions are
- * generally expected to return TRUE on success, FALSE on error.  (For
- * nblocks and truncate we instead say that returning InvalidBlockNumber
- * indicates an error.)
+ * generally expected to report problems via elog(ERROR).  An exception is
+ * that smgr_unlink should use elog(WARNING), rather than erroring out,
+ * because we normally unlink relations during post-commit/abort cleanup,
+ * and so it's too late to raise an error.  Also, various conditions that
+ * would normally be errors should be allowed during bootstrap and/or WAL
+ * recovery --- see comments in md.c for details.
  */
 typedef struct f_smgr
 {

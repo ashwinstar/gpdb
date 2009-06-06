@@ -82,6 +82,15 @@ static char *last_file_name = NULL;
  *
  * We loop over the saved chunk, because number of buffers are small.
  */
+/*
+ * Buffers for saving partial messages from different backends. We don't expect
+ * that there will be very many outstanding at one time, so 20 seems plenty of
+ * leeway. If this array gets full we won't lose messages, but we will lose
+ * the protocol protection against them being partially written or interleaved.
+ *
+ * An inactive buffer has pid == 0 and undefined contents of data.
+ */
+
 #define CHUNK_SLOTS 20
 PipeProtoChunk saved_chunks[CHUNK_SLOTS];
 
@@ -149,7 +158,7 @@ static void sigUsr1Handler(SIGNAL_ARGS);
  * Main entry point for syslogger process
  * argc/argv parameters are valid only in EXEC_BACKEND case.
  */
-    NON_EXEC_STATIC void
+NON_EXEC_STATIC void
 SysLoggerMain(int argc, char *argv[])
 {
     char	   *currentLogDir;
@@ -540,13 +549,12 @@ SysLoggerMain(int argc, char *argv[])
 
         if (pipe_eof_seen)
         {
-
             /*
              * seeing this message on the real stderr is annoying - so we make
              * it DEBUG1 to suppress in normal use.
              */
             ereport(DEBUG1,
-                    (errmsg("Syslogger shutting down")));
+					(errmsg("logger shutting down")));
 
             /*
              * Normal exit from the syslogger is here.	Note that we
@@ -749,6 +757,7 @@ syslogger_forkexec(void)
     av[ac++] = filenobuf;
 
     av[ac] = NULL;
+	Assert(ac < lengthof(av));
 
     return postmaster_forkexec(ac, av);
 }
@@ -763,6 +772,7 @@ syslogger_parseArgs(int argc, char *argv[])
 {
     int			fd;
 
+	Assert(argc == 4);
     argv += 3;
 
 #ifndef WIN32

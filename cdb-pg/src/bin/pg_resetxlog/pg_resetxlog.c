@@ -20,7 +20,7 @@
  * step 2 ...
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/bin/pg_resetxlog/pg_resetxlog.c,v 1.53.2.1 2008/09/24 08:59:44 mha Exp $
@@ -82,11 +82,11 @@ main(int argc, char *argv[])
 	int			c;
 	bool		force = false;
 	bool		noupdate = false;
-	uint32		set_xid_epoch = -1;
+	uint32		set_xid_epoch = (uint32) -1;
 	TransactionId set_xid = 0;
 	Oid			set_oid = 0;
 	MultiXactId set_mxid = 0;
-	MultiXactOffset set_mxoff = -1;
+	MultiXactOffset set_mxoff = (MultiXactOffset) -1;
 	uint32		minXlogTli = 0,
 				minXlogId = 0,
 				minXlogSeg = 0;
@@ -97,7 +97,7 @@ main(int argc, char *argv[])
 	int			fd;
 	char		path[MAXPGPATH];
 
-	set_pglocale_pgservice(argv[0], "pg_resetxlog");
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_resetxlog"));
 
 	progname = get_progname(argv[0]);
 
@@ -481,12 +481,10 @@ GuessControlValues(void)
 	ControlFile.checkPointCopy.nextOid = FirstBootstrapObjectId;
 	ControlFile.checkPointCopy.nextMulti = FirstMultiXactId;
 	ControlFile.checkPointCopy.nextMultiOffset = 0;
-	ControlFile.checkPointCopy.time = time(NULL);
+	ControlFile.checkPointCopy.time = (pg_time_t) time(NULL);
 
 	ControlFile.state = DB_SHUTDOWNED;
-	ControlFile.time = time(NULL);
-	ControlFile.logId = 0;
-	ControlFile.logSeg = 1;
+	ControlFile.time = (pg_time_t) time(NULL);
 	ControlFile.checkPoint = ControlFile.checkPointCopy.redo;
 
 	ControlFile.maxAlign = MAXIMUM_ALIGNOF;
@@ -625,13 +623,10 @@ RewriteControlFile(void)
 	ControlFile.checkPointCopy.redo.xlogid = newXlogId;
 	ControlFile.checkPointCopy.redo.xrecoff =
 		newXlogSeg * XLogSegSize + SizeOfXLogLongPHD;
-	ControlFile.checkPointCopy.undo = ControlFile.checkPointCopy.redo;
-	ControlFile.checkPointCopy.time = time(NULL);
+	ControlFile.checkPointCopy.time = (pg_time_t) time(NULL);
 
 	ControlFile.state = DB_SHUTDOWNED;
-	ControlFile.time = time(NULL);
-	ControlFile.logId = newXlogId;
-	ControlFile.logSeg = newXlogSeg + 1;
+	ControlFile.time = (pg_time_t) time(NULL);
 	ControlFile.checkPoint = ControlFile.checkPointCopy.redo;
 	ControlFile.prevCheckPoint.xlogid = 0;
 	ControlFile.prevCheckPoint.xrecoff = 0;

@@ -11,7 +11,7 @@
  * LWLocks to protect its shared state.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -26,6 +26,7 @@
 #include "access/distributedlog.h"
 #include "access/subtrans.h"
 #include "miscadmin.h"
+#include "pg_trace.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/spin.h"
@@ -188,8 +189,8 @@ NumLWLocks(void)
     
 	/*
 	 * Add any requested by loadable modules; for backwards-compatibility
-	 * reasons, allocate at least NUM_USER_DEFINED_LWLOCKS of them even
-	 * if there are no explicit requests.
+	 * reasons, allocate at least NUM_USER_DEFINED_LWLOCKS of them even if
+	 * there are no explicit requests.
 	 */
 	lock_addin_request_allowed = false;
 	numLocks += Max(lock_addin_request, NUM_USER_DEFINED_LWLOCKS);

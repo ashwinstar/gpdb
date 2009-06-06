@@ -4,7 +4,7 @@
  *	  routines to manage per-process shared memory data structure
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -73,7 +73,7 @@ NON_EXEC_STATIC slock_t *ProcStructLock = NULL;
 
 /* Pointers to shared-memory structures */
 NON_EXEC_STATIC PROC_HDR *ProcGlobal = NULL;
-NON_EXEC_STATIC PGPROC *DummyProcs = NULL;
+NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
 
 /* If we are waiting for a lock, this points to the associated LOCALLOCK */
 static LOCALLOCK *lockAwaited = NULL;
@@ -89,8 +89,9 @@ static TimestampTz statement_fin_time;
 
 static void RemoveProcFromArray(int code, Datum arg);
 static void ProcKill(int code, Datum arg);
-static void DummyProcKill(int code, Datum arg);
+static void AuxiliaryProcKill(int code, Datum arg);
 static bool CheckStatementTimeout(void);
+
 
 /*
  * Report shared-memory space needed by InitProcGlobal.
@@ -102,9 +103,9 @@ ProcGlobalShmemSize(void)
 
 	/* ProcGlobal */
 	size = add_size(size, sizeof(PROC_HDR));
-	/* DummyProcs */
-	size = add_size(size, mul_size(NUM_DUMMY_PROCS, sizeof(PGPROC)));
-	/* MyProcs */
+	/* AuxiliaryProcs */
+	size = add_size(size, mul_size(NUM_AUXILIARY_PROCS, sizeof(PGPROC)));
+	/* MyProcs, including autovacuum */
 	size = add_size(size, mul_size(MaxBackends, sizeof(PGPROC)));
 	/* ProcStructLock */
 	size = add_size(size, sizeof(slock_t));
@@ -118,10 +119,11 @@ ProcGlobalShmemSize(void)
 int
 ProcGlobalSemas(void)
 {
-	/* We need one sema per backend, plus one for each dummy process. */
-	/* Plus another one for the global header */
-	int value = 1 + MaxBackends + NUM_DUMMY_PROCS;
-	return value;
+	/*
+	 * We need a sema per backend (including autovacuum), plus one for each
+	 * auxiliary process.
+	 */
+	return MaxBackends + NUM_AUXILIARY_PROCS;
 }
 
 /*
@@ -137,15 +139,15 @@ ProcGlobalSemas(void)
  *	  running out when trying to start another backend is a common failure.
  *	  So, now we grab enough semaphores to support the desired max number
  *	  of backends immediately at initialization --- if the sysadmin has set
- *	  MaxBackends higher than his kernel will support, he'll find out sooner
- *	  rather than later.
+ *	  MaxConnections or autovacuum_max_workers higher than his kernel will
+ *	  support, he'll find out sooner rather than later.
  *
  *	  Another reason for creating semaphores here is that the semaphore
  *	  implementation typically requires us to create semaphores in the
  *	  postmaster, not in backends.
  *
  * Note: this is NOT called by individual backends under a postmaster,
- * not even in the EXEC_BACKEND case.  The ProcGlobal and DummyProcs
+ * not even in the EXEC_BACKEND case.  The ProcGlobal and AuxiliaryProcs
  * pointers must be propagated specially for EXEC_BACKEND operation.
  */
 void
@@ -155,18 +157,17 @@ InitProcGlobal(int mppLocalProcessCounter)
 	int			i;
 	bool		found;
 
-	
 	/* Create the ProcGlobal shared structure */
 	ProcGlobal = (PROC_HDR *)
 		ShmemInitStruct("Proc Header", sizeof(PROC_HDR), &found);
 	Assert(!found);
 
 	/*
-	 * Create the PGPROC structures for dummy (bgwriter) processes, too. These
-	 * do not get linked into the freeProcs list.
+	 * Create the PGPROC structures for auxiliary (bgwriter) processes, too.
+	 * These do not get linked into the freeProcs list.
 	 */
-	DummyProcs = (PGPROC *)
-		ShmemInitStruct("DummyProcs", NUM_DUMMY_PROCS * sizeof(PGPROC),
+	AuxiliaryProcs = (PGPROC *)
+		ShmemInitStruct("AuxiliaryProcs", NUM_AUXILIARY_PROCS * sizeof(PGPROC),
 						&found);
 	Assert(!found);
 
@@ -196,11 +197,11 @@ InitProcGlobal(int mppLocalProcessCounter)
 		ProcGlobal->freeProcs = MAKE_OFFSET(&procs[i]);
 	}
 
-	MemSet(DummyProcs, 0, NUM_DUMMY_PROCS * sizeof(PGPROC));
-	for (i = 0; i < NUM_DUMMY_PROCS; i++)
+	MemSet(AuxiliaryProcs, 0, NUM_AUXILIARY_PROCS * sizeof(PGPROC));
+	for (i = 0; i < NUM_AUXILIARY_PROCS; i++)
 	{
-		DummyProcs[i].pid = 0;	/* marks dummy proc as not in use */
-		PGSemaphoreCreate(&(DummyProcs[i].sem));
+		AuxiliaryProcs[i].pid = 0;		/* marks auxiliary proc as not in use */
+		PGSemaphoreCreate(&(AuxiliaryProcs[i].sem));
 	}
 
 	/* Create ProcStructLock spinlock, too */
@@ -372,21 +373,23 @@ InitProcessPhase2(void)
 }
 
 /*
- * InitAuxiliaryProcess -- create a dummy per-process data structure
+ * InitAuxiliaryProcess -- create a per-auxiliary-process data structure
  *
  * This is called by bgwriter and similar processes so that they will have a
  * MyProc value that's real enough to let them wait for LWLocks.  The PGPROC
  * and sema that are assigned are one of the extra ones created during
  * InitProcGlobal.
  *
- * Dummy processes are presently not expected to wait for real (lockmgr)
+ * Auxiliary processes are presently not expected to wait for real (lockmgr)
  * locks, so we need not set up the deadlock checker.  They are never added
- * to the ProcArray or the sinval messaging mechanism, either.
+ * to the ProcArray or the sinval messaging mechanism, either.	They also
+ * don't get a VXID assigned, since this is only useful when we actually
+ * hold lockmgr locks.
  */
 void
 InitAuxiliaryProcess(void)
 {
-	PGPROC	   *dummyproc;
+	PGPROC	   *auxproc;
 	int			proctype;
 	int			i;
 
@@ -394,7 +397,7 @@ InitAuxiliaryProcess(void)
 	 * ProcGlobal should be set up already (if we are a backend, we inherit
 	 * this by fork() or EXEC_BACKEND mechanism from the postmaster).
 	 */
-	if (ProcGlobal == NULL || DummyProcs == NULL)
+	if (ProcGlobal == NULL || AuxiliaryProcs == NULL)
 		elog(PANIC, "proc header uninitialized");
 
 	if (MyProc != NULL)
@@ -402,7 +405,7 @@ InitAuxiliaryProcess(void)
 
 	/*
 	 * We use the ProcStructLock to protect assignment and releasing of
-	 * DummyProcs entries.
+	 * AuxiliaryProcs entries.
 	 *
 	 * While we are holding the ProcStructLock, also copy the current shared
 	 * estimate of spins_per_delay to local storage.
@@ -412,29 +415,29 @@ InitAuxiliaryProcess(void)
 	set_spins_per_delay(ProcGlobal->spins_per_delay);
 
 	/*
-	 * Find a free dummyproc ... *big* trouble if there isn't one ...
+	 * Find a free auxproc ... *big* trouble if there isn't one ...
 	 */
-	for (proctype = 0; proctype < NUM_DUMMY_PROCS; proctype++)
+	for (proctype = 0; proctype < NUM_AUXILIARY_PROCS; proctype++)
 	{
-		dummyproc = &DummyProcs[proctype];
-		if (dummyproc->pid == 0)
+		auxproc = &AuxiliaryProcs[proctype];
+		if (auxproc->pid == 0)
 			break;
 	}
-	if (proctype >= NUM_DUMMY_PROCS)
+	if (proctype >= NUM_AUXILIARY_PROCS)
 	{
 		SpinLockRelease(ProcStructLock);
-		elog(FATAL, "all DummyProcs are in use");
+		elog(FATAL, "all AuxiliaryProcs are in use");
 	}
 
-	/* Mark dummy proc as in use by me */
+	/* Mark auxiliary proc as in use by me */
 	/* use volatile pointer to prevent code rearrangement */
-	((volatile PGPROC *) dummyproc)->pid = MyProcPid;
+	((volatile PGPROC *) auxproc)->pid = MyProcPid;
 
-	MyProc = dummyproc;
+	MyProc = auxproc;
 
 	SpinLockRelease(ProcStructLock);
 	
-	lockHolderProcPtr = dummyproc;
+	lockHolderProcPtr = auxproc;
 
 	/*
 	 * Initialize all fields of MyProc, except for the semaphore which was
@@ -469,7 +472,7 @@ InitAuxiliaryProcess(void)
 	/*
 	 * Arrange to clean up at process exit.
 	 */
-	on_shmem_exit(DummyProcKill, Int32GetDatum(proctype));
+	on_shmem_exit(AuxiliaryProcKill, Int32GetDatum(proctype));
 }
 
 /*
@@ -569,6 +572,7 @@ LockWaitCancel(void)
 	 */
 	return true;
 }
+
 
 /*
  * ProcReleaseLocks() -- release locks associated with current transaction
@@ -680,28 +684,28 @@ ProcKill(int code, Datum arg)
 }
 
 /*
- * DummyProcKill() -- Cut-down version of ProcKill for dummy (bgwriter)
- *		processes.	The PGPROC and sema are not released, only marked
- *		as not-in-use.
+ * AuxiliaryProcKill() -- Cut-down version of ProcKill for auxiliary
+ *		processes (bgwriter, etc).	The PGPROC and sema are not released, only
+ *		marked as not-in-use.
  */
 static void
-DummyProcKill(int code, Datum arg)
+AuxiliaryProcKill(int code, Datum arg)
 {
 	int			proctype = DatumGetInt32(arg);
-	PGPROC	   *dummyproc;
+	PGPROC	   *auxproc;
 
-	Assert(proctype >= 0 && proctype < NUM_DUMMY_PROCS);
+	Assert(proctype >= 0 && proctype < NUM_AUXILIARY_PROCS);
 
-	dummyproc = &DummyProcs[proctype];
+	auxproc = &AuxiliaryProcs[proctype];
 
-	Assert(MyProc == dummyproc);
+	Assert(MyProc == auxproc);
 
 	/* Release any LW locks I am holding (see notes above) */
 	LWLockReleaseAll();
 
 	SpinLockAcquire(ProcStructLock);
 
-	/* Mark dummy proc no longer in use */
+	/* Mark auxiliary proc no longer in use */
 	MyProc->pid = 0;
 
 	/* PGPROC struct isn't mine anymore */
@@ -1073,8 +1077,12 @@ ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock)
  * We only get to this routine if we got SIGALRM after DeadlockTimeout
  * while waiting for a lock to be released by some other process.  Look
  * to see if there's a deadlock; if not, just return and continue waiting.
+ * (But signal ProcSleep to log a message, if log_lock_waits is true.)
  * If we have a real deadlock, remove ourselves from the lock's wait queue
  * and signal an error to ProcSleep.
+ *
+ * NB: this is run inside a signal handler, so be very wary about what is done
+ * here or in called routines.
  */
 static void
 CheckDeadLock(void)
@@ -1097,9 +1105,9 @@ CheckDeadLock(void)
 	/*
 	 * Check to see if we've been awoken by anyone in the interim.
 	 *
-	 * If we have we can return and resume our transaction -- happy day.
-	 * Before we are awoken the process releasing the lock grants it to us so
-	 * we know that we don't have to wait anymore.
+	 * If we have, we can return and resume our transaction -- happy day.
+	 * Before we are awoken the process releasing the lock grants it to us
+	 * so we know that we don't have to wait anymore.
 	 *
 	 * We check by looking to see if we've been unlinked from the wait queue.
 	 * This is quicker than checking our semaphore's state, since no kernel
@@ -1124,14 +1132,13 @@ CheckDeadLock(void)
 	 * Oops.  We have a deadlock.
 	 *
 	 * Get this process out of wait state.	(Note: we could do this more
-	 * efficiently by relying on lockAwaited, but use this coding to preserve
-	 * the flexibility to kill some other transaction than the one detecting
-	 * the deadlock.)
+		 * efficiently by relying on lockAwaited, but use this coding to
+		 * preserve the flexibility to kill some other transaction than the
+		 * one detecting the deadlock.)
 	 *
 	 * RemoveFromWaitQueue sets MyProc->waitStatus to STATUS_ERROR, so
-	 * ProcSleep will report an error after we return from the signal handler.
-	 *
-	 * If we are removing a resource lock, the calls its specific routine.
+		 * ProcSleep will report an error after we return from the signal
+		 * handler.
 	 */
 	Assert(MyProc->waitLock != NULL);
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
@@ -1391,7 +1398,8 @@ CheckStatementTimeout(void)
 		timeval.it_value.tv_sec = secs;
 		timeval.it_value.tv_usec = usecs;
 		if (setitimer(ITIMER_REAL, &timeval, NULL))
-			return false;	}
+			return false;
+	}
 
 	return true;
 }

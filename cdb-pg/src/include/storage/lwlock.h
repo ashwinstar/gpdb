@@ -4,7 +4,7 @@
  *	  Lightweight lock manager
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/storage/lwlock.h,v 1.32 2006/10/15 22:04:07 tgl Exp $
@@ -35,6 +35,10 @@
  * by allowing values not listed in the enum declaration to be assigned.
  * The extra value MaxDynamicLWLock is there to keep the compiler from
  * deciding that the enum can be represented as char or short ...
+ *
+ * If you remove a lock, please replace it with a placeholder. This retains
+ * the lock numbering, which is helpful for DTrace and other external
+ * debugging scripts.
  */
 typedef enum LWLockId
 {

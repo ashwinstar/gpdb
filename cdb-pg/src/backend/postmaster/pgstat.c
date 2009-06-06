@@ -54,6 +54,7 @@
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "cdb/cdbvars.h"
@@ -125,7 +126,7 @@ typedef struct TabStatArray
 	PgStat_MsgTabstat **tsa_messages;	/* the array itself */
 } TabStatArray;
 
-#define TABSTAT_QUANTUM		4	/* we alloc this many at a time */
+#define TABSTAT_QUANTUM		100 /* we alloc this many at a time */
 
 static TabStatArray RegularTabStat = {0, 0, NULL};
 static TabStatArray SharedTabStat = {0, 0, NULL};

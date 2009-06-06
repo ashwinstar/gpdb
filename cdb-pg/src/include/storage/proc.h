@@ -5,7 +5,7 @@
  *
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.91 2006/10/04 00:30:10 momjian Exp $
@@ -41,6 +41,15 @@ struct XidCache
 	int			nxids;
 	TransactionId xids[PGPROC_MAX_CACHED_SUBXIDS];
 };
+
+/* Flags for PGPROC->vacuumFlags */
+#define		PROC_IS_AUTOVACUUM	0x01	/* is it an autovac worker? */
+#define		PROC_IN_VACUUM		0x02	/* currently running lazy vacuum */
+#define		PROC_IN_ANALYZE		0x04	/* currently running analyze */
+#define		PROC_VACUUM_FOR_WRAPAROUND 0x08		/* set by autovac only */
+
+/* flags reset at EOXact */
+#define		PROC_VACUUM_STATE_MASK (0x0E)
 
 /*
  * Each backend has a PGPROC struct in shared memory.  There is also a list of
@@ -139,10 +148,15 @@ typedef struct PROC_HDR
 } PROC_HDR;
 
 /*
- * We set aside some extra PGPROC structures for "dummy" processes,
+ * We set aside some extra PGPROC structures for auxiliary processes,
  * ie things that aren't full-fledged backends but need shmem access.
+ *
+ * Background writer, WAL writer, and autovacuum launcher run during
+ * normal operation. Startup process also consumes one slot, but WAL
+ * writer and autovacuum launcher are launched only after it has
+ * exited.
  */
-#define NUM_DUMMY_PROCS		4
+#define NUM_AUXILIARY_PROCS		4
 
 
 /* configurable options */

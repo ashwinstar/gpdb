@@ -37,7 +37,7 @@
  * overflow.)
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -158,7 +158,8 @@ static char *expand_fmt_string(const char *fmt, ErrorData *edata);
 static const char *useful_strerror(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
-static void write_pipe_chunks(int fd, char *data, int len);
+static bool is_log_level_output(int elevel, int log_min_level);
+static void write_pipe_chunks(char *data, int len);
 static void elog_debug_linger(ErrorData *edata);
 //static void setup_formatted_log_time(void);
 static void setup_formatted_start_time(void);
@@ -294,33 +295,10 @@ errstart(int elevel, const char *filename, int lineno,
 
 	/* Determine whether message is enabled for server log output */
 	if (IsPostmasterEnvironment)
-	{
-		/* Complicated because LOG is sorted out-of-order for this purpose */
-		if (elevel == LOG || elevel == COMMERROR)
-		{
-			if (log_min_messages == LOG)
-				output_to_server = true;
-			else if (log_min_messages < FATAL)
-				output_to_server = true;
-		}
-		else
-		{
-			/* elevel != LOG */
-			if (log_min_messages == LOG)
-			{
-				if (elevel >= FATAL)
-					output_to_server = true;
-			}
-			/* Neither is LOG */
-			else if (elevel >= log_min_messages)
-				output_to_server = true;
-		}
-	}
+		output_to_server = is_log_level_output(elevel, log_min_messages);
 	else
-	{
 		/* In bootstrap/standalone case, do not sort LOG out-of-order */
 		output_to_server = (elevel >= log_min_messages);
-	}
 
 	/* Determine whether message is enabled for client output */
 	if (whereToSendOutput == DestRemote && elevel != COMMERROR)
@@ -357,9 +335,9 @@ errstart(int elevel, const char *filename, int lineno,
 
 		/*
 		 * Infinite error recursion might be due to something broken
-		 * in a context traceback routine.  Abandon them too.  We also
-		 * abandon attempting to print the error statement (which, if long,
-		 * could itself be the source of the recursive failure).
+		 * in a context traceback routine.	Abandon them too.  We also abandon
+		 * attempting to print the error statement (which, if long, could
+		 * itself be the source of the recursive failure).
 		 */
 		if (in_error_recursion_trouble())
 		{
@@ -400,6 +378,8 @@ errstart(int elevel, const char *filename, int lineno,
 	edata->filename = filename;
 	edata->lineno = lineno;
 	edata->funcname = funcname;
+	/* the default text domain is the backend's */
+	//edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
 	/* Select default errcode based on elevel */
 	if (elevel >= ERROR)
 		edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
@@ -496,7 +476,6 @@ errfinish(int dummy,...)
 		 */
 
 		recursion_depth--;
-
 		PG_RE_THROW();
 	}
 
@@ -789,6 +768,47 @@ errcode_for_socket_access(void)
 		pfree(buf.data); \
 	}
 
+/*
+ * Same as above, except for pluralized error messages.  The calling routine
+ * must be declared like "const char *fmt_singular, const char *fmt_plural,
+ * unsigned long n, ...".  Translation is assumed always wanted.
+ */
+#define EVALUATE_MESSAGE_PLURAL(targetfield, appendval)  \
+	{ \
+		const char	   *fmt; \
+		char		   *fmtbuf; \
+		StringInfoData	buf; \
+		/* Internationalize the error format string */ \
+		if (!in_error_recursion_trouble()) \
+			fmt = dngettext(edata->domain, fmt_singular, fmt_plural, n); \
+		else \
+			fmt = (n == 1 ? fmt_singular : fmt_plural); \
+		/* Expand %m in format string */ \
+		fmtbuf = expand_fmt_string(fmt, edata); \
+		initStringInfo(&buf); \
+		if ((appendval) && edata->targetfield) \
+			appendStringInfo(&buf, "%s\n", edata->targetfield); \
+		/* Generate actual output --- have to use appendStringInfoVA */ \
+		for (;;) \
+		{ \
+			va_list		args; \
+			bool		success; \
+			va_start(args, n); \
+			success = appendStringInfoVA(&buf, fmtbuf, args); \
+			va_end(args); \
+			if (success) \
+				break; \
+			enlargeStringInfo(&buf, buf.maxlen); \
+		} \
+		/* Done with expanded fmt */ \
+		pfree(fmtbuf); \
+		/* Save the completed message into the stack item */ \
+		if (edata->targetfield) \
+			pfree(edata->targetfield); \
+		edata->targetfield = pstrdup(buf.data); \
+		pfree(buf.data); \
+	}
+
 
 /*
  * errmsg --- add a primary error message text to the current error
@@ -843,7 +863,29 @@ errmsg_internal(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
-    errno = edata->saved_errno; /*CDB*/
+	return 0;					/* return value does not matter */
+}
+
+
+/*
+ * errmsg_plural --- add a primary error message text to the current error,
+ * with support for pluralization of the message text
+ */
+int
+errmsg_plural(const char *fmt_singular, const char *fmt_plural,
+			  unsigned long n, ...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(ErrorContext);
+
+	EVALUATE_MESSAGE_PLURAL(message, false);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
 	return 0;					/* return value does not matter */
 }
 
@@ -865,7 +907,50 @@ errdetail(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
-    errno = edata->saved_errno; /*CDB*/
+	return 0;					/* return value does not matter */
+}
+
+#if 0
+/*
+ * errdetail_log --- add a detail_log error message text to the current error
+ */
+int
+errdetail_log(const char *fmt,...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(ErrorContext);
+
+	EVALUATE_MESSAGE(detail_log, false, true);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
+	return 0;					/* return value does not matter */
+}
+#endif
+
+/*
+ * errdetail_plural --- add a detail error message text to the current error,
+ * with support for pluralization of the message text
+ */
+int
+errdetail_plural(const char *fmt_singular, const char *fmt_plural,
+				 unsigned long n, ...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
+
+	recursion_depth++;
+	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(ErrorContext);
+
+	EVALUATE_MESSAGE_PLURAL(detail, false);
+
+	MemoryContextSwitchTo(oldcontext);
+	recursion_depth--;
 	return 0;					/* return value does not matter */
 }
 
@@ -913,7 +998,25 @@ errcontext(const char *fmt,...)
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
-    errno = edata->saved_errno; /*CDB*/
+	return 0;					/* return value does not matter */
+}
+
+
+/*
+ * errhidestmt --- optionally suppress STATEMENT: field of log entry
+ *
+ * This should be called if the message text already includes the statement.
+ */
+int
+errhidestmt(bool hide_stmt)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	//edata->hide_stmt = hide_stmt;
+
 	return 0;					/* return value does not matter */
 }
 
@@ -997,6 +1100,23 @@ internalerrquery(const char *query)
 
     errno = edata->saved_errno; /*CDB*/
 	return 0;					/* return value does not matter */
+}
+
+/*
+ * geterrcode --- return the currently set SQLSTATE error code
+ *
+ * This is only intended for use in error callback subroutines, since there
+ * is no other place outside elog.c where the concept is meaningful.
+ */
+int
+geterrcode(void)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	return edata->sqlerrcode;
 }
 
 /*
@@ -1108,7 +1228,9 @@ elog_start(const char *filename, int lineno, const char *funcname)
 		/*
 		 * Wups, stack not big enough.	We treat this as a PANIC condition
 		 * because it suggests an infinite loop of errors during error
-		 * recovery.
+		 * recovery.  Note that the message is intentionally not localized,
+		 * else failure to convert it to client encoding could cause further
+		 * recursion.
 		 */
 		errordata_stack_depth = -1;		/* make room on stack */
 		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
@@ -1311,9 +1433,7 @@ ReThrowError(ErrorData *edata)
 		/*
 		 * Wups, stack not big enough.	We treat this as a PANIC condition
 		 * because it suggests an infinite loop of errors during error
-		 * recovery.  Note that the message is intentionally not localized,
-		 * else failure to convert it to client encoding could cause further
-		 * recursion.
+		 * recovery.
 		 */
 		errordata_stack_depth = -1;		/* make room on stack */
 		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
@@ -1337,6 +1457,71 @@ ReThrowError(ErrorData *edata)
 	recursion_depth--;
 	PG_RE_THROW();
 }
+
+/*
+ * pg_re_throw --- out-of-line implementation of PG_RE_THROW() macro
+ */
+void
+pg_re_throw(void)
+{
+	/* If possible, throw the error to the next outer setjmp handler */
+	if (PG_exception_stack != NULL)
+		siglongjmp(*PG_exception_stack, 1);
+	else
+	{
+		/*
+		 * If we get here, elog(ERROR) was thrown inside a PG_TRY block, which
+		 * we have now exited only to discover that there is no outer setjmp
+		 * handler to pass the error to.  Had the error been thrown outside
+		 * the block to begin with, we'd have promoted the error to FATAL, so
+		 * the correct behavior is to make it FATAL now; that is, emit it and
+		 * then call proc_exit.
+		 */
+		ErrorData  *edata = &errordata[errordata_stack_depth];
+
+		Assert(errordata_stack_depth >= 0);
+		Assert(edata->elevel == ERROR);
+		edata->elevel = FATAL;
+
+		/*
+		 * At least in principle, the increase in severity could have changed
+		 * where-to-output decisions, so recalculate.  This should stay in
+		 * sync with errstart(), which see for comments.
+		 */
+		if (IsPostmasterEnvironment)
+			edata->output_to_server = is_log_level_output(FATAL,
+														  log_min_messages);
+		else
+			edata->output_to_server = (FATAL >= log_min_messages);
+		if (whereToSendOutput == DestRemote)
+		{
+			if (ClientAuthInProgress)
+				edata->output_to_client = true;
+			else
+				edata->output_to_client = (FATAL >= client_min_messages);
+		}
+
+		/*
+		 * We can use errfinish() for the rest, but we don't want it to call
+		 * any error context routines a second time.  Since we know we are
+		 * about to exit, it should be OK to just clear the context stack.
+		 */
+		error_context_stack = NULL;
+
+		errfinish(0);
+	}
+
+	/* We mustn't return... */
+	ExceptionalCondition("pg_re_throw tried to return", "FailedAssertion",
+						 __FILE__, __LINE__);
+
+	/*
+	 * Since ExceptionalCondition isn't declared noreturn because of
+	 * TrapMacro(), we need this to keep gcc from complaining.
+	 */
+	abort();
+}
+
 
 
 /*
@@ -1538,7 +1723,6 @@ DebugFileOpen(void)
 }
 
 
-
 #ifdef HAVE_SYSLOG
 
 /*
@@ -1572,11 +1756,6 @@ set_syslog_parameters(const char *ident, int facility)
 		syslog_facility = facility;
 	}
 }
-
-
-#ifndef PG_SYSLOG_LIMIT
-#define PG_SYSLOG_LIMIT 128
-#endif
 
 /*
  * Write a message line to syslog
@@ -2058,13 +2237,10 @@ log_line_prefix(StringInfo buf)
 			case 't':
 				{
 					pg_time_t		stamp_time = (pg_time_t)time(NULL);
+					pg_tz	   *tz;
 					char		strfbuf[128];
 
-					/*
-					 * GP: Save the time of the last log line.
-					 */
-					LastLogTimeVal.tv_sec = stamp_time;
-					LastLogTimeVal.tv_usec = 0;
+					tz = log_timezone ? log_timezone : gmt_timezone;
 					
 					pg_strftime(strfbuf, sizeof(strfbuf),
 					/* Win32 timezone names are too long so don't print them */
@@ -2073,7 +2249,7 @@ log_line_prefix(StringInfo buf)
 #else
 							 "%Y-%m-%d %H:%M:%S",
 #endif
-							 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
+								pg_localtime(&stamp_time, tz));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;
@@ -2246,6 +2422,7 @@ unpack_sql_state(int sql_state)
 	buf[i] = '\0';
 	return buf;
 }
+
 	
 /*
  * Send the data through the pipe.
@@ -2902,7 +3079,9 @@ send_message_to_server_log(ErrorData *edata)
 	/*
 	 * If the user wants the query that generated this error logged, do it.
 	 */
-	if (edata->elevel >= log_min_error_statement && debug_query_string != NULL)
+	if (is_log_level_output(edata->elevel, log_min_error_statement) &&
+		debug_query_string != NULL /* &&
+		!edata->hide_stmt */)
 	{
 		log_line_prefix(&buf);
 		appendStringInfoString(&buf, _("STATEMENT:  "));
@@ -3005,7 +3184,7 @@ send_message_to_server_log(ErrorData *edata)
 			 * syslogger. Otherwise, go directly to stderr.
 			 */
 			if (redirection_done && !am_syslogger)
-				write_pipe_chunks(fileno(stderr), buf.data, buf.len);
+				write_pipe_chunks(buf.data, buf.len);
 			else
 				write(fileno(stderr), buf.data, buf.len);
 	}
@@ -3022,9 +3201,11 @@ send_message_to_server_log(ErrorData *edata)
  * Send data to the syslogger using the chunked protocol
  */
 static void
-write_pipe_chunks(int fd, char *data, int len)
+write_pipe_chunks(char *data, int len)
 {
 	PipeProtoChunk p;
+
+	int			fd = fileno(stderr);
 
 	Assert(len > 0);
 
@@ -3068,6 +3249,7 @@ write_pipe_chunks(int fd, char *data, int len)
 	memcpy(p.data, data, len);
 	write(fd, &p, PIPE_HEADER_SIZE + len);
 }
+
 
 /*
  * Append a text string to the error report being built for the client.
@@ -3501,6 +3683,35 @@ write_stderr(const char *fmt,...)
 	va_end(ap);
 }
 
+
+/*
+ * is_log_level_output -- is elevel logically >= log_min_level?
+ *
+ * We use this for tests that should consider LOG to sort out-of-order,
+ * between ERROR and FATAL.  Generally this is the right thing for testing
+ * whether a message should go to the postmaster log, whereas a simple >=
+ * test is correct for testing whether the message should go to the client.
+ */
+static bool
+is_log_level_output(int elevel, int log_min_level)
+{
+	if (elevel == LOG || elevel == COMMERROR)
+	{
+		if (log_min_level == LOG || log_min_level <= ERROR)
+			return true;
+	}
+	else if (log_min_level == LOG)
+	{
+		/* elevel != LOG */
+		if (elevel >= FATAL)
+			return true;
+	}
+	/* Neither is LOG */
+	else if (elevel >= log_min_level)
+		return true;
+
+	return false;
+}
 
 /*
  * elog_debug_linger

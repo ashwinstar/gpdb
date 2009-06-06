@@ -4766,8 +4766,11 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 
 	/* have a single column only and no delim specified? take the fast track */
 	if (cstate->delimiter_off)
-		return CopyReadAttributesTextNoDelim(cstate, nulls, num_phys_attrs,
+    {
+		CopyReadAttributesTextNoDelim(cstate, nulls, num_phys_attrs,
 											 attnum);
+        return;
+    }
 
 	/*
 	 * Scan through the line buffer to read all attributes data

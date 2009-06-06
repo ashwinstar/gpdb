@@ -8,12 +8,12 @@
  * dispatches to the proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/main/main.c,v 1.105.2.1 2007/01/04 00:58:01 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/main/main.c,v 1.112 2009/01/01 17:23:43 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -88,7 +88,7 @@ main(int argc, char *argv[])
 	 * error messages to be localized.
 	 */
 
-	set_pglocale_pgservice(argv[0], "postgres");
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("postgres"));
 
 #ifdef WIN32
 
@@ -399,7 +399,6 @@ get_current_username(const char *progname)
 {
 #ifndef WIN32
 	struct passwd *pw;
-	char	   *name;
 
 	pw = getpwuid(geteuid());
 	if (pw == NULL)
@@ -409,24 +408,12 @@ get_current_username(const char *progname)
 		exit(1);
 	}
 	/* Allocate new memory because later getpwuid() calls can overwrite it. */
-	name = strdup(pw->pw_name);
-	if (name == NULL)
-	{
-		write_stderr("%s: could not allocate memory for user name\n",
-					 progname);
-		exit(1);
-	}
-
-	return name;
+	return strdup(pw->pw_name);
 #else
 	long		namesize = 256 /* UNLEN */ + 1;
 	char	   *name;
 
 	name = malloc(namesize);
-
-	if (!name)
-		return NULL;
-
 	if (!GetUserName(name, &namesize))
 	{
 		write_stderr("%s: could not determine user name (GetUserName failed)\n",

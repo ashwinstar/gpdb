@@ -3,7 +3,7 @@
  * lock.c
  *	  POSTGRES primary lock mechanism
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,6 +36,7 @@
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
 #include "miscadmin.h"
+#include "pg_trace.h"
 #include "pgstat.h"
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
@@ -122,7 +123,7 @@ static const char *const lock_mode_names[] =
 static bool Dummy_trace = false;
 #endif
 
-const LockMethodData default_lockmethod = {
+static const LockMethodData default_lockmethod = {
 	AccessExclusiveLock,		/* highest valid lock mode number */
 	true,
 	LockConflicts,
@@ -134,7 +135,7 @@ const LockMethodData default_lockmethod = {
 #endif
 };
 
-const LockMethodData user_lockmethod = {
+static const LockMethodData user_lockmethod = {
 	AccessExclusiveLock,		/* highest valid lock mode number */
 	false,
 	LockConflicts,
@@ -162,7 +163,7 @@ const LockMethodData resource_lockmethod = {
 /*
  * map from lock method id to the lock table data structures
  */
-const LockMethod LockMethods[] = {
+static const LockMethod LockMethods[] = {
 	NULL,
 	&default_lockmethod,
 	&user_lockmethod,
@@ -184,14 +185,14 @@ typedef struct TwoPhaseLockRecord
  * The LockMethodLockHash and LockMethodProcLockHash hash tables are in
  * shared memory; LockMethodLocalHash is local to each backend.
  */
-HTAB *LockMethodLockHash;
-HTAB *LockMethodProcLockHash;
-HTAB *LockMethodLocalHash;
+static HTAB *LockMethodLockHash;
+static HTAB *LockMethodProcLockHash;
+static HTAB *LockMethodLocalHash;
 
 
 /* private state for GrantAwaitedLock */
-LOCALLOCK *awaitedLock;
-ResourceOwner awaitedOwner;
+static LOCALLOCK *awaitedLock;
+static ResourceOwner awaitedOwner;
 
 
 #ifdef LOCK_DEBUG
@@ -664,7 +665,7 @@ LockAcquire(const LOCKTAG *locktag,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-			errhint("You may need to increase max_locks_per_transaction.")));
+		  errhint("You might need to increase max_locks_per_transaction.")));
 	}
 	locallock->lock = lock;
 
@@ -839,7 +840,7 @@ LockAcquire(const LOCKTAG *locktag,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-			errhint("You may need to increase max_locks_per_transaction.")));
+		  errhint("You might need to increase max_locks_per_transaction.")));
 	}
 	locallock->proclock = proclock;
 
@@ -2469,7 +2470,13 @@ GetLockStatusData(void)
 		el++;
 	}
 
-	/* And release locks */
+	/*
+	 * And release locks.  We do this in reverse order for two reasons: (1)
+	 * Anyone else who needs more than one of the locks will be trying to lock
+	 * them in increasing order; we don't want to release the other process
+	 * until it can get all the locks it needs. (2) This avoids O(N^2)
+	 * behavior inside LWLockRelease.
+	 */
 	for (i = NUM_LOCK_PARTITIONS; --i >= 0;)
 		LWLockRelease(FirstLockMgrLock + i);
 
@@ -2789,7 +2796,7 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-			errhint("You may need to increase max_locks_per_transaction.")));
+		  errhint("You might need to increase max_locks_per_transaction.")));
 	}
 
 	/*
@@ -2854,7 +2861,7 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
-			errhint("You may need to increase max_locks_per_transaction.")));
+		  errhint("You might need to increase max_locks_per_transaction.")));
 	}
 
 	/*

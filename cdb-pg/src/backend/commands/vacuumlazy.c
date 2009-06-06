@@ -1024,7 +1024,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 void
 vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 {
-	BlockNumber nblocks;
+	BlockNumber nblocks = 0;
 	char	   *relname;
 	int64		num_tuples = 0;
         int64           sz = 0;
