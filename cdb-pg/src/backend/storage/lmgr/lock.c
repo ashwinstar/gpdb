@@ -123,7 +123,7 @@ static const char *const lock_mode_names[] =
 static bool Dummy_trace = false;
 #endif
 
-static const LockMethodData default_lockmethod = {
+const LockMethodData default_lockmethod = {
 	AccessExclusiveLock,		/* highest valid lock mode number */
 	true,
 	LockConflicts,
@@ -135,7 +135,7 @@ static const LockMethodData default_lockmethod = {
 #endif
 };
 
-static const LockMethodData user_lockmethod = {
+const LockMethodData user_lockmethod = {
 	AccessExclusiveLock,		/* highest valid lock mode number */
 	false,
 	LockConflicts,
@@ -163,7 +163,7 @@ const LockMethodData resource_lockmethod = {
 /*
  * map from lock method id to the lock table data structures
  */
-static const LockMethod LockMethods[] = {
+const LockMethod LockMethods[] = {
 	NULL,
 	&default_lockmethod,
 	&user_lockmethod,
@@ -185,14 +185,14 @@ typedef struct TwoPhaseLockRecord
  * The LockMethodLockHash and LockMethodProcLockHash hash tables are in
  * shared memory; LockMethodLocalHash is local to each backend.
  */
-static HTAB *LockMethodLockHash;
-static HTAB *LockMethodProcLockHash;
-static HTAB *LockMethodLocalHash;
+HTAB *LockMethodLockHash;
+HTAB *LockMethodProcLockHash;
+HTAB *LockMethodLocalHash;
 
 
 /* private state for GrantAwaitedLock */
-static LOCALLOCK *awaitedLock;
-static ResourceOwner awaitedOwner;
+LOCALLOCK *awaitedLock;
+ResourceOwner awaitedOwner;
 
 
 #ifdef LOCK_DEBUG
