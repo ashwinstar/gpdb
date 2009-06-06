@@ -379,6 +379,7 @@ errstart(int elevel, const char *filename, int lineno,
 	edata->lineno = lineno;
 	edata->funcname = funcname;
 	/* the default text domain is the backend's */
+    edata->domain = PG_TEXTDOMAIN("postgres");
 	//edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
 	/* Select default errcode based on elevel */
 	if (elevel >= ERROR)
@@ -1015,7 +1016,7 @@ errhidestmt(bool hide_stmt)
 	/* we don't bother incrementing recursion_depth */
 	CHECK_STACK_DEPTH();
 
-	//edata->hide_stmt = hide_stmt;
+	edata->hide_stmt = hide_stmt;
 
 	return 0;					/* return value does not matter */
 }
@@ -1756,6 +1757,7 @@ set_syslog_parameters(const char *ident, int facility)
 		syslog_facility = facility;
 	}
 }
+
 
 /*
  * Write a message line to syslog
@@ -3080,8 +3082,8 @@ send_message_to_server_log(ErrorData *edata)
 	 * If the user wants the query that generated this error logged, do it.
 	 */
 	if (is_log_level_output(edata->elevel, log_min_error_statement) &&
-		debug_query_string != NULL /* &&
-		!edata->hide_stmt */)
+		debug_query_string != NULL &&
+		!edata->hide_stmt)
 	{
 		log_line_prefix(&buf);
 		appendStringInfoString(&buf, _("STATEMENT:  "));

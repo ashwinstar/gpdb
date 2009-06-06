@@ -165,10 +165,32 @@ errmsg_internal(const char *fmt,...)
 __attribute__((format(printf, 1, 2)));
 
 extern int
+errmsg_plural(const char *fmt_singular, const char *fmt_plural,
+			  unsigned long n, ...)
+/* This extension allows gcc to check the format string for consistency with
+   the supplied arguments. */
+__attribute__((format(printf, 1, 4)))
+__attribute__((format(printf, 2, 4)));
+
+extern int
 errdetail(const char *fmt,...)
 /* This extension allows gcc to check the format string for consistency with
    the supplied arguments. */
 __attribute__((format(printf, 1, 2)));
+
+extern int
+errdetail_log(const char *fmt,...)
+/* This extension allows gcc to check the format string for consistency with
+   the supplied arguments. */
+__attribute__((format(printf, 1, 2)));
+
+extern int
+errdetail_plural(const char *fmt_singular, const char *fmt_plural,
+				 unsigned long n, ...)
+/* This extension allows gcc to check the format string for consistency with
+   the supplied arguments. */
+__attribute__((format(printf, 1, 4)))
+__attribute__((format(printf, 2, 4)));
 
 extern int
 errhint(const char *fmt,...)
@@ -182,12 +204,15 @@ errcontext(const char *fmt,...)
    the supplied arguments. */
 __attribute__((format(printf, 1, 2)));
 
+extern int	errhidestmt(bool hide_stmt);
+
 extern int	errfunction(const char *funcname);
 extern int	errposition(int cursorpos);
 
 extern int	internalerrposition(int cursorpos);
 extern int	internalerrquery(const char *query);
 
+extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
@@ -302,12 +327,15 @@ typedef struct ErrorData
 	bool		show_funcname;	/* true to force funcname inclusion */
     bool        omit_location;  /* CDB: don't add filename:line# */
     bool        fatal_return;   /* CDB: true => return instead of proc_exit() */
+	bool		hide_stmt;		/* true to prevent STATEMENT: inclusion */
 	const char *filename;		/* __FILE__ of ereport() call */
 	int			lineno;			/* __LINE__ of ereport() call */
 	const char *funcname;		/* __func__ of ereport() call */
+	const char *domain;			/* message domain */
 	int			sqlerrcode;		/* encoded ERRSTATE */
 	char	   *message;		/* primary error message */
 	char	   *detail;			/* detail error message */
+	char	   *detail_log;		/* detail error message for server log only */
 	char	   *hint;			/* hint message */
 	char	   *context;		/* context message */
 	int			cursorpos;		/* cursor index into query string */
@@ -323,6 +351,7 @@ extern ErrorData *CopyErrorData(void);
 extern void FreeErrorData(ErrorData *edata);
 extern void FlushErrorState(void);
 extern void ReThrowError(ErrorData *edata)  __attribute__((__noreturn__));
+extern void pg_re_throw(void) __attribute__((noreturn));
 
 /*
  * CDB: elog_demote
@@ -391,6 +420,7 @@ extern int	Log_destination;
 #define LOG_DESTINATION_STDERR	 1
 #define LOG_DESTINATION_SYSLOG	 2
 #define LOG_DESTINATION_EVENTLOG 4
+#define LOG_DESTINATION_CSVLOG	 8
 
 /* Other exported functions */
 extern void DebugFileOpen(void);
