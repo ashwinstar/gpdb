@@ -140,13 +140,13 @@ static char formatted_start_time[FORMATTED_TS_LEN];
 
 /* Macro for checking errordata_stack_depth is reasonable */
 #define CHECK_STACK_DEPTH() \
-	do { \
-		if (errordata_stack_depth < 0) \
-		{ \
-			errordata_stack_depth = -1; \
-			ereport(ERROR, (errmsg_internal("errstart was not called"))); \
-		} \
-	} while (0)
+    do { \
+        if (errordata_stack_depth < 0) \
+        { \
+            errordata_stack_depth = -1; \
+            ereport(ERROR, (errmsg_internal("errstart was not called"))); \
+        } \
+    } while (0)
 
 bool SuppressPanic = false;   /* GP */
 
@@ -235,170 +235,170 @@ elog_internalerror(const char *filename, int lineno, const char *funcname)
  */
 bool
 errstart(int elevel, const char *filename, int lineno,
-		 const char *funcname)
+         const char *funcname)
 {
-	ErrorData  *edata;
-	bool		output_to_server = false;
-	bool		output_to_client = false;
-	int			i;
+    ErrorData  *edata;
+    bool		output_to_server = false;
+    bool		output_to_client = false;
+    int			i;
 
-	/*
-	 * Check some cases in which we want to promote an error into a more
-	 * severe error.  None of this logic applies for non-error messages.
-	 */
-	if (elevel >= ERROR)
-	{
-		/*
-		 * If we are inside a critical section, all errors become PANIC
-		 * errors.	See miscadmin.h.
-		 */
-		if (CritSectionCount > 0 && !SuppressPanic)
-			elevel = PANIC;
+    /*
+     * Check some cases in which we want to promote an error into a more
+     * severe error.  None of this logic applies for non-error messages.
+     */
+    if (elevel >= ERROR)
+    {
+        /*
+         * If we are inside a critical section, all errors become PANIC
+         * errors.	See miscadmin.h.
+         */
+        if (CritSectionCount > 0 && !SuppressPanic)
+            elevel = PANIC;
 
-		/*
-		 * Check reasons for treating ERROR as FATAL:
-		 *
-		 * 1. we have no handler to pass the error to (implies we are in the
-		 * postmaster or in backend startup).
-		 *
-		 * 2. ExitOnAnyError mode switch is set (initdb uses this).
-		 *
-		 * 3. the error occurred after proc_exit has begun to run.	(It's
-		 * proc_exit's responsibility to see that this doesn't turn into
-		 * infinite recursion!)
-		 */
-		if (elevel == ERROR)
-		{
-			if (PG_exception_stack == NULL ||
-				ExitOnAnyError ||
-				proc_exit_inprogress)
-				elevel = FATAL;
-		}
+        /*
+         * Check reasons for treating ERROR as FATAL:
+         *
+         * 1. we have no handler to pass the error to (implies we are in the
+         * postmaster or in backend startup).
+         *
+         * 2. ExitOnAnyError mode switch is set (initdb uses this).
+         *
+         * 3. the error occurred after proc_exit has begun to run.	(It's
+         * proc_exit's responsibility to see that this doesn't turn into
+         * infinite recursion!)
+         */
+        if (elevel == ERROR)
+        {
+            if (PG_exception_stack == NULL ||
+                ExitOnAnyError ||
+                proc_exit_inprogress)
+                elevel = FATAL;
+        }
 
-		/*
-		 * If the error level is ERROR or more, errfinish is not going to
-		 * return to caller; therefore, if there is any stacked error already
-		 * in progress it will be lost.  This is more or less okay, except we
-		 * do not want to have a FATAL or PANIC error downgraded because the
-		 * reporting process was interrupted by a lower-grade error.  So check
-		 * the stack and make sure we panic if panic is warranted.
-		 */
-		for (i = 0; i <= errordata_stack_depth; i++)
-			elevel = Max(elevel, errordata[i].elevel);
-	}
+        /*
+         * If the error level is ERROR or more, errfinish is not going to
+         * return to caller; therefore, if there is any stacked error already
+         * in progress it will be lost.  This is more or less okay, except we
+         * do not want to have a FATAL or PANIC error downgraded because the
+         * reporting process was interrupted by a lower-grade error.  So check
+         * the stack and make sure we panic if panic is warranted.
+         */
+        for (i = 0; i <= errordata_stack_depth; i++)
+            elevel = Max(elevel, errordata[i].elevel);
+    }
 
-	/*
-	 * Now decide whether we need to process this report at all; if it's
-	 * warning or less and not enabled for logging, just return FALSE without
-	 * starting up any error logging machinery.
-	 */
+    /*
+     * Now decide whether we need to process this report at all; if it's
+     * warning or less and not enabled for logging, just return FALSE without
+     * starting up any error logging machinery.
+     */
 
-	/* Determine whether message is enabled for server log output */
-	if (IsPostmasterEnvironment)
-		output_to_server = is_log_level_output(elevel, log_min_messages);
-	else
-		/* In bootstrap/standalone case, do not sort LOG out-of-order */
-		output_to_server = (elevel >= log_min_messages);
+    /* Determine whether message is enabled for server log output */
+    if (IsPostmasterEnvironment)
+        output_to_server = is_log_level_output(elevel, log_min_messages);
+    else
+        /* In bootstrap/standalone case, do not sort LOG out-of-order */
+        output_to_server = (elevel >= log_min_messages);
 
-	/* Determine whether message is enabled for client output */
-	if (whereToSendOutput == DestRemote && elevel != COMMERROR)
-	{
-		/*
-		 * client_min_messages is honored only after we complete the
-		 * authentication handshake.  This is required both for security
-		 * reasons and because many clients can't handle NOTICE messages
-		 * during authentication.
-		 */
-		if (ClientAuthInProgress)
-			output_to_client = (elevel >= ERROR);
-		else
-			output_to_client = (elevel >= client_min_messages ||
-								elevel == INFO);
-	}
+    /* Determine whether message is enabled for client output */
+    if (whereToSendOutput == DestRemote && elevel != COMMERROR)
+    {
+        /*
+         * client_min_messages is honored only after we complete the
+         * authentication handshake.  This is required both for security
+         * reasons and because many clients can't handle NOTICE messages
+         * during authentication.
+         */
+        if (ClientAuthInProgress)
+            output_to_client = (elevel >= ERROR);
+        else
+            output_to_client = (elevel >= client_min_messages ||
+                                elevel == INFO);
+    }
 
-	/* Skip processing effort if non-error message will not be output */
-	if (elevel < ERROR && !output_to_server && !output_to_client)
-		return false;
+    /* Skip processing effort if non-error message will not be output */
+    if (elevel < ERROR && !output_to_server && !output_to_client)
+        return false;
 
-	/*
-	 * Okay, crank up a stack entry to store the info in.
-	 */
+    /*
+     * Okay, crank up a stack entry to store the info in.
+     */
 
-	if (recursion_depth++ > 0 && elevel >= ERROR)
-	{
-		/*
-		 * Ooops, error during error processing.  Clear ErrorContext as
-		 * discussed at top of file.  We will not return to the original
-		 * error's reporter or handler, so we don't need it.
-		 */
-		MemoryContextReset(ErrorContext);
+    if (recursion_depth++ > 0 && elevel >= ERROR)
+    {
+        /*
+         * Ooops, error during error processing.  Clear ErrorContext as
+         * discussed at top of file.  We will not return to the original
+         * error's reporter or handler, so we don't need it.
+         */
+        MemoryContextReset(ErrorContext);
 
-		/*
-		 * Infinite error recursion might be due to something broken
-		 * in a context traceback routine.	Abandon them too.  We also abandon
-		 * attempting to print the error statement (which, if long, could
-		 * itself be the source of the recursive failure).
-		 */
-		if (in_error_recursion_trouble())
-		{
-			error_context_stack = NULL;
-			debug_query_string = NULL;
+        /*
+         * Infinite error recursion might be due to something broken
+         * in a context traceback routine.	Abandon them too.  We also abandon
+         * attempting to print the error statement (which, if long, could
+         * itself be the source of the recursive failure).
+         */
+        if (in_error_recursion_trouble())
+        {
+            error_context_stack = NULL;
+            debug_query_string = NULL;
 
-			/*
-			 * If we recurse too many times, this could mean that we have
-			 * serious out of memory problems. We bail out immediately here.
-			 * See MPP-2440.
-			 */
-			if (recursion_depth > 2 * ERRORDATA_STACK_SIZE)
-			{
-				ImmediateInterruptOK = false;
-				fflush(stdout);
-				fflush(stderr);
-				return false;
-			}
-		}
-	}
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.	We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.
-		 */
-		errordata_stack_depth = -1;		/* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
+            /*
+             * If we recurse too many times, this could mean that we have
+             * serious out of memory problems. We bail out immediately here.
+             * See MPP-2440.
+             */
+            if (recursion_depth > 2 * ERRORDATA_STACK_SIZE)
+            {
+                ImmediateInterruptOK = false;
+                fflush(stdout);
+                fflush(stderr);
+                return false;
+            }
+        }
+    }
+    if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
+    {
+        /*
+         * Wups, stack not big enough.	We treat this as a PANIC condition
+         * because it suggests an infinite loop of errors during error
+         * recovery.
+         */
+        errordata_stack_depth = -1;		/* make room on stack */
+        ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
+    }
 
-	/* Initialize data for this error frame */
-	edata = &errordata[errordata_stack_depth];
-	MemSet(edata, 0, sizeof(ErrorData));
-	edata->elevel = elevel;
-	edata->output_to_server = output_to_server;
-	edata->output_to_client = output_to_client;
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
-	/* the default text domain is the backend's */
+    /* Initialize data for this error frame */
+    edata = &errordata[errordata_stack_depth];
+    MemSet(edata, 0, sizeof(ErrorData));
+    edata->elevel = elevel;
+    edata->output_to_server = output_to_server;
+    edata->output_to_client = output_to_client;
+    edata->filename = filename;
+    edata->lineno = lineno;
+    edata->funcname = funcname;
+    /* the default text domain is the backend's */
     edata->domain = PG_TEXTDOMAIN("postgres");
-	//edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
-	/* Select default errcode based on elevel */
-	if (elevel >= ERROR)
-		edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
-	else if (elevel == WARNING)
-		edata->sqlerrcode = ERRCODE_WARNING;
-	else
-		edata->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
-	/* errno is saved here so that error parameter eval can't change it */
-	edata->saved_errno = errno;
+    //edata->domain = domain ? domain : PG_TEXTDOMAIN("postgres");
+    /* Select default errcode based on elevel */
+    if (elevel >= ERROR)
+        edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+    else if (elevel == WARNING)
+        edata->sqlerrcode = ERRCODE_WARNING;
+    else
+        edata->sqlerrcode = ERRCODE_SUCCESSFUL_COMPLETION;
+    /* errno is saved here so that error parameter eval can't change it */
+    edata->saved_errno = errno;
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
+    edata->stacktracesize = backtrace(edata->stacktracearray, 30);
 #endif
 #endif
 
-	recursion_depth--;
-	return true;
+    recursion_depth--;
+    return true;
 }
 
 /*
@@ -412,85 +412,85 @@ errstart(int elevel, const char *filename, int lineno,
 void
 errfinish(int dummy,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	int			elevel = edata->elevel;
-	MemoryContext oldcontext;
-	ErrorContextCallback *econtext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    int			elevel = edata->elevel;
+    MemoryContext oldcontext;
+    ErrorContextCallback *econtext;
     int         saved_errno;            /*CDB*/
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
     saved_errno = edata->saved_errno;   /*CDB*/
 
-	/*
-	 * Do processing in ErrorContext, which we hope has enough reserved space
-	 * to report an error.
-	 */
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    /*
+     * Do processing in ErrorContext, which we hope has enough reserved space
+     * to report an error.
+     */
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	/*
-	 * Call any context callback functions.  Errors occurring in callback
-	 * functions will be treated as recursive errors --- this ensures we will
-	 * avoid infinite recursion (see errstart).
-	 */
-	for (econtext = error_context_stack;
-		 econtext != NULL;
-		 econtext = econtext->previous)
-		(*econtext->callback) (econtext->arg);
+    /*
+     * Call any context callback functions.  Errors occurring in callback
+     * functions will be treated as recursive errors --- this ensures we will
+     * avoid infinite recursion (see errstart).
+     */
+    for (econtext = error_context_stack;
+         econtext != NULL;
+         econtext = econtext->previous)
+        (*econtext->callback) (econtext->arg);
 
-	/*
-	 * If ERROR (not more nor less) we pass it off to the current handler.
-	 * Printing it and popping the stack is the responsibility of the handler.
-	 */
-	if (elevel == ERROR)
-	{
-		/*
-		 * GP: While doing local error try/catch, do not reset all these
-		 * important variables!
-		 */
-		if (!SuppressPanic)
-		{  // GP: Don't indent so we can watch this section...
-		
-		/*
-		 * We do some minimal cleanup before longjmp'ing so that handlers can
-		 * execute in a reasonably sane state.
-		 */
+    /*
+     * If ERROR (not more nor less) we pass it off to the current handler.
+     * Printing it and popping the stack is the responsibility of the handler.
+     */
+    if (elevel == ERROR)
+    {
+        /*
+         * GP: While doing local error try/catch, do not reset all these
+         * important variables!
+         */
+        if (!SuppressPanic)
+        {  // GP: Don't indent so we can watch this section...
+        
+        /*
+         * We do some minimal cleanup before longjmp'ing so that handlers can
+         * execute in a reasonably sane state.
+         */
 
-		/* This is just in case the error came while waiting for input */
-		ImmediateInterruptOK = false;
+        /* This is just in case the error came while waiting for input */
+        ImmediateInterruptOK = false;
 
-		/*
-		 * Reset InterruptHoldoffCount in case we ereport'd from inside an
-		 * interrupt holdoff section.  (We assume here that no handler will
-		 * itself be inside a holdoff section.	If necessary, such a handler
-		 * could save and restore InterruptHoldoffCount for itself, but this
-		 * should make life easier for most.)
-		 */
-		InterruptHoldoffCount = 0;
+        /*
+         * Reset InterruptHoldoffCount in case we ereport'd from inside an
+         * interrupt holdoff section.  (We assume here that no handler will
+         * itself be inside a holdoff section.	If necessary, such a handler
+         * could save and restore InterruptHoldoffCount for itself, but this
+         * should make life easier for most.)
+         */
+        InterruptHoldoffCount = 0;
 
-		CritSectionCount = 0;	/* should be unnecessary, but... */
-		}// GP: End watching section.
-		
-		/*
-		 * Note that we leave CurrentMemoryContext set to ErrorContext. The
-		 * handler should reset it to something else soon.
-		 */
+        CritSectionCount = 0;	/* should be unnecessary, but... */
+        }// GP: End watching section.
+        
+        /*
+         * Note that we leave CurrentMemoryContext set to ErrorContext. The
+         * handler should reset it to something else soon.
+         */
 
-		recursion_depth--;
-		PG_RE_THROW();
-	}
+        recursion_depth--;
+        PG_RE_THROW();
+    }
 
-	/*
-	 * If we are doing FATAL or PANIC, abort any old-style COPY OUT in
-	 * progress, so that we can report the message before dying.  (Without
-	 * this, pq_putmessage will refuse to send the message at all, which is
-	 * what we want for NOTICE messages, but not for fatal exits.) This hack
-	 * is necessary because of poor design of old-style copy protocol.	Note
-	 * we must do this even if client is fool enough to have set
-	 * client_min_messages above FATAL, so don't look at output_to_client.
-	 */
-	if (elevel >= FATAL && whereToSendOutput == DestRemote)
-		pq_endcopyout(true);
+    /*
+     * If we are doing FATAL or PANIC, abort any old-style COPY OUT in
+     * progress, so that we can report the message before dying.  (Without
+     * this, pq_putmessage will refuse to send the message at all, which is
+     * what we want for NOTICE messages, but not for fatal exits.) This hack
+     * is necessary because of poor design of old-style copy protocol.	Note
+     * we must do this even if client is fool enough to have set
+     * client_min_messages above FATAL, so don't look at output_to_client.
+     */
+    if (elevel >= FATAL && whereToSendOutput == DestRemote)
+        pq_endcopyout(true);
 
     /* CDB: If fatal internal error, linger so user can attach a debugger. */
     if (elevel == FATAL &&
@@ -500,7 +500,7 @@ errfinish(int dummy,...)
 
     /* Emit the message to the right places. */
     else
-	    EmitErrorReport();
+        EmitErrorReport();
 
     /* 
      * CDB: Let caller take care of terminating the process, if requested. 
@@ -511,90 +511,90 @@ errfinish(int dummy,...)
     if (elevel == FATAL &&
         edata->fatal_return)
     {
-		fflush(stdout);
-		fflush(stderr);
+        fflush(stdout);
+        fflush(stderr);
         errno = saved_errno;
         return;
     }
 
-	/* Now free up subsidiary data attached to stack entry, and release it */
-	if (edata->message)
-		pfree(edata->message);
-	if (edata->detail)
-		pfree(edata->detail);
-	if (edata->detail_log)
-		pfree(edata->detail_log);
-	if (edata->hint)
-		pfree(edata->hint);
-	if (edata->context)
-		pfree(edata->context);
-	if (edata->internalquery)
-		pfree(edata->internalquery);
+    /* Now free up subsidiary data attached to stack entry, and release it */
+    if (edata->message)
+        pfree(edata->message);
+    if (edata->detail)
+        pfree(edata->detail);
+    if (edata->detail_log)
+        pfree(edata->detail_log);
+    if (edata->hint)
+        pfree(edata->hint);
+    if (edata->context)
+        pfree(edata->context);
+    if (edata->internalquery)
+        pfree(edata->internalquery);
 
-	errordata_stack_depth--;
+    errordata_stack_depth--;
 
-	/* Exit error-handling context */
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
+    /* Exit error-handling context */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
 
-	/*
-	 * Perform error recovery action as specified by elevel.
-	 */
-	if (elevel == FATAL)
-	{
-		/*
-		 * For a FATAL error, we let proc_exit clean up and exit.
-		 */
-		ImmediateInterruptOK = false;
+    /*
+     * Perform error recovery action as specified by elevel.
+     */
+    if (elevel == FATAL)
+    {
+        /*
+         * For a FATAL error, we let proc_exit clean up and exit.
+         */
+        ImmediateInterruptOK = false;
 
-		/*
-		 * If we just reported a startup failure, the client will disconnect
-		 * on receiving it, so don't send any more to the client.
-		 */
-		if (PG_exception_stack == NULL && whereToSendOutput == DestRemote)
-			whereToSendOutput = DestNone;
+        /*
+         * If we just reported a startup failure, the client will disconnect
+         * on receiving it, so don't send any more to the client.
+         */
+        if (PG_exception_stack == NULL && whereToSendOutput == DestRemote)
+            whereToSendOutput = DestNone;
 
-		/*
-		 * fflush here is just to improve the odds that we get to see the
-		 * error message, in case things are so hosed that proc_exit crashes.
-		 * Any other code you might be tempted to add here should probably be
-		 * in an on_proc_exit or on_shmem_exit callback instead.
-		 */
-		fflush(stdout);
-		fflush(stderr);
+        /*
+         * fflush here is just to improve the odds that we get to see the
+         * error message, in case things are so hosed that proc_exit crashes.
+         * Any other code you might be tempted to add here should probably be
+         * in an on_proc_exit or on_shmem_exit callback instead.
+         */
+        fflush(stdout);
+        fflush(stderr);
 
-		/*
-		 * Do normal process-exit cleanup, then return exit code 1 to indicate
-		 * FATAL termination.  The postmaster may or may not consider this
-		 * worthy of panic, depending on which subprocess returns it.
-		 */
-		proc_exit(1);
-	}
+        /*
+         * Do normal process-exit cleanup, then return exit code 1 to indicate
+         * FATAL termination.  The postmaster may or may not consider this
+         * worthy of panic, depending on which subprocess returns it.
+         */
+        proc_exit(1);
+    }
 
-	if (elevel >= PANIC)
-	{
-		/*
-		 * Serious crash time. Postmaster will observe SIGABRT process exit
-		 * status and kill the other backends too.
-		 *
-		 * XXX: what if we are *in* the postmaster?  abort() won't kill our
-		 * children...
-		 */
-		ImmediateInterruptOK = false;
-		fflush(stdout);
-		fflush(stderr);
-		abort();
-	}
+    if (elevel >= PANIC)
+    {
+        /*
+         * Serious crash time. Postmaster will observe SIGABRT process exit
+         * status and kill the other backends too.
+         *
+         * XXX: what if we are *in* the postmaster?  abort() won't kill our
+         * children...
+         */
+        ImmediateInterruptOK = false;
+        fflush(stdout);
+        fflush(stderr);
+        abort();
+    }
 
-	/*
-	 * We reach here if elevel <= WARNING. OK to return to caller.
-	 *
-	 * But check for cancel/die interrupt first --- this is so that the user
-	 * can stop a query emitting tons of notice or warning messages, even if
-	 * it's in a loop that otherwise fails to check for interrupts.
-	 */
-	CHECK_FOR_INTERRUPTS();
-	
+    /*
+     * We reach here if elevel <= WARNING. OK to return to caller.
+     *
+     * But check for cancel/die interrupt first --- this is so that the user
+     * can stop a query emitting tons of notice or warning messages, even if
+     * it's in a loop that otherwise fails to check for interrupts.
+     */
+    CHECK_FOR_INTERRUPTS();
+    
     errno = saved_errno;                /*CDB*/
 }
 
@@ -607,14 +607,14 @@ errfinish(int dummy,...)
 int
 errcode(int sqlerrcode)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	edata->sqlerrcode = sqlerrcode;
+    edata->sqlerrcode = sqlerrcode;
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 
@@ -630,63 +630,63 @@ errcode(int sqlerrcode)
 int
 errcode_for_file_access(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	switch (edata->saved_errno)
-	{
-			/* Permission-denied failures */
-		case EPERM:				/* Not super-user */
-		case EACCES:			/* Permission denied */
+    switch (edata->saved_errno)
+    {
+            /* Permission-denied failures */
+        case EPERM:				/* Not super-user */
+        case EACCES:			/* Permission denied */
 #ifdef EROFS
-		case EROFS:				/* Read only file system */
+        case EROFS:				/* Read only file system */
 #endif
-			edata->sqlerrcode = ERRCODE_INSUFFICIENT_PRIVILEGE;
-			break;
+            edata->sqlerrcode = ERRCODE_INSUFFICIENT_PRIVILEGE;
+            break;
 
-			/* File not found */
-		case ENOENT:			/* No such file or directory */
-			edata->sqlerrcode = ERRCODE_UNDEFINED_FILE;
-			break;
+            /* File not found */
+        case ENOENT:			/* No such file or directory */
+            edata->sqlerrcode = ERRCODE_UNDEFINED_FILE;
+            break;
 
-			/* Duplicate file */
-		case EEXIST:			/* File exists */
-			edata->sqlerrcode = ERRCODE_DUPLICATE_FILE;
-			break;
+            /* Duplicate file */
+        case EEXIST:			/* File exists */
+            edata->sqlerrcode = ERRCODE_DUPLICATE_FILE;
+            break;
 
-			/* Wrong object type or state */
-		case ENOTDIR:			/* Not a directory */
-		case EISDIR:			/* Is a directory */
+            /* Wrong object type or state */
+        case ENOTDIR:			/* Not a directory */
+        case EISDIR:			/* Is a directory */
 #if defined(ENOTEMPTY) && (ENOTEMPTY != EEXIST) /* same code on AIX */
-		case ENOTEMPTY: /* Directory not empty */
+        case ENOTEMPTY: /* Directory not empty */
 #endif
-			edata->sqlerrcode = ERRCODE_WRONG_OBJECT_TYPE;
-			break;
+            edata->sqlerrcode = ERRCODE_WRONG_OBJECT_TYPE;
+            break;
 
-			/* Insufficient resources */
-		case ENOSPC:			/* No space left on device */
-			edata->sqlerrcode = ERRCODE_DISK_FULL;
-			break;
+            /* Insufficient resources */
+        case ENOSPC:			/* No space left on device */
+            edata->sqlerrcode = ERRCODE_DISK_FULL;
+            break;
 
-		case ENFILE:			/* File table overflow */
-		case EMFILE:			/* Too many open files */
-			edata->sqlerrcode = ERRCODE_INSUFFICIENT_RESOURCES;
-			break;
+        case ENFILE:			/* File table overflow */
+        case EMFILE:			/* Too many open files */
+            edata->sqlerrcode = ERRCODE_INSUFFICIENT_RESOURCES;
+            break;
 
-			/* Hardware failure */
-		case EIO:				/* I/O error */
-			edata->sqlerrcode = ERRCODE_IO_ERROR;
-			break;
+            /* Hardware failure */
+        case EIO:				/* I/O error */
+            edata->sqlerrcode = ERRCODE_IO_ERROR;
+            break;
 
-			/* All else is classified as internal errors */
-		default:
-			edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
-			break;
-	}
+            /* All else is classified as internal errors */
+        default:
+            edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+            break;
+    }
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 /*
@@ -701,28 +701,28 @@ errcode_for_file_access(void)
 int
 errcode_for_socket_access(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	switch (edata->saved_errno)
-	{
-			/* Loss of connection */
-		case EPIPE:
+    switch (edata->saved_errno)
+    {
+            /* Loss of connection */
+        case EPIPE:
 #ifdef ECONNRESET
-		case ECONNRESET:
+        case ECONNRESET:
 #endif
-			edata->sqlerrcode = ERRCODE_CONNECTION_FAILURE;
-			break;
+            edata->sqlerrcode = ERRCODE_CONNECTION_FAILURE;
+            break;
 
-			/* All else is classified as internal errors */
-		default:
-			edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
-			break;
-	}
+            /* All else is classified as internal errors */
+        default:
+            edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
+            break;
+    }
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 
@@ -739,37 +739,37 @@ errcode_for_socket_access(void)
  * really necessary.
  */
 #define EVALUATE_MESSAGE(targetfield, appendval, translateit)  \
-	{ \
-		char		   *fmtbuf; \
-		StringInfoData	buf; \
-		/* Internationalize the error format string */ \
-		if (translateit && !in_error_recursion_trouble()) \
-			fmt = gettext(fmt); \
-		/* Expand %m in format string */ \
-		fmtbuf = expand_fmt_string(fmt, edata); \
-		initStringInfo(&buf); \
-		if ((appendval) && edata->targetfield) \
-			appendStringInfo(&buf, "%s\n", edata->targetfield); \
-		/* Generate actual output --- have to use appendStringInfoVA */ \
-		for (;;) \
-		{ \
-			va_list		args; \
-			bool		success; \
-			va_start(args, fmt); \
-			success = appendStringInfoVA(&buf, fmtbuf, args); \
-			va_end(args); \
-			if (success) \
-				break; \
-			enlargeStringInfo(&buf, buf.maxlen); \
-		} \
-		/* Done with expanded fmt */ \
-		pfree(fmtbuf); \
-		/* Save the completed message into the stack item */ \
-		if (edata->targetfield) \
-			pfree(edata->targetfield); \
-		edata->targetfield = pstrdup(buf.data); \
-		pfree(buf.data); \
-	}
+    { \
+        char		   *fmtbuf; \
+        StringInfoData	buf; \
+        /* Internationalize the error format string */ \
+        if (translateit && !in_error_recursion_trouble()) \
+            fmt = gettext(fmt); \
+        /* Expand %m in format string */ \
+        fmtbuf = expand_fmt_string(fmt, edata); \
+        initStringInfo(&buf); \
+        if ((appendval) && edata->targetfield) \
+            appendStringInfo(&buf, "%s\n", edata->targetfield); \
+        /* Generate actual output --- have to use appendStringInfoVA */ \
+        for (;;) \
+        { \
+            va_list		args; \
+            bool		success; \
+            va_start(args, fmt); \
+            success = appendStringInfoVA(&buf, fmtbuf, args); \
+            va_end(args); \
+            if (success) \
+                break; \
+            enlargeStringInfo(&buf, buf.maxlen); \
+        } \
+        /* Done with expanded fmt */ \
+        pfree(fmtbuf); \
+        /* Save the completed message into the stack item */ \
+        if (edata->targetfield) \
+            pfree(edata->targetfield); \
+        edata->targetfield = pstrdup(buf.data); \
+        pfree(buf.data); \
+    }
 
 /*
  * Same as above, except for pluralized error messages.  The calling routine
@@ -777,40 +777,40 @@ errcode_for_socket_access(void)
  * unsigned long n, ...".  Translation is assumed always wanted.
  */
 #define EVALUATE_MESSAGE_PLURAL(targetfield, appendval)  \
-	{ \
-		const char	   *fmt; \
-		char		   *fmtbuf; \
-		StringInfoData	buf; \
-		/* Internationalize the error format string */ \
-		if (!in_error_recursion_trouble()) \
-			fmt = dngettext(edata->domain, fmt_singular, fmt_plural, n); \
-		else \
-			fmt = (n == 1 ? fmt_singular : fmt_plural); \
-		/* Expand %m in format string */ \
-		fmtbuf = expand_fmt_string(fmt, edata); \
-		initStringInfo(&buf); \
-		if ((appendval) && edata->targetfield) \
-			appendStringInfo(&buf, "%s\n", edata->targetfield); \
-		/* Generate actual output --- have to use appendStringInfoVA */ \
-		for (;;) \
-		{ \
-			va_list		args; \
-			bool		success; \
-			va_start(args, n); \
-			success = appendStringInfoVA(&buf, fmtbuf, args); \
-			va_end(args); \
-			if (success) \
-				break; \
-			enlargeStringInfo(&buf, buf.maxlen); \
-		} \
-		/* Done with expanded fmt */ \
-		pfree(fmtbuf); \
-		/* Save the completed message into the stack item */ \
-		if (edata->targetfield) \
-			pfree(edata->targetfield); \
-		edata->targetfield = pstrdup(buf.data); \
-		pfree(buf.data); \
-	}
+    { \
+        const char	   *fmt; \
+        char		   *fmtbuf; \
+        StringInfoData	buf; \
+        /* Internationalize the error format string */ \
+        if (!in_error_recursion_trouble()) \
+            fmt = dngettext(edata->domain, fmt_singular, fmt_plural, n); \
+        else \
+            fmt = (n == 1 ? fmt_singular : fmt_plural); \
+        /* Expand %m in format string */ \
+        fmtbuf = expand_fmt_string(fmt, edata); \
+        initStringInfo(&buf); \
+        if ((appendval) && edata->targetfield) \
+            appendStringInfo(&buf, "%s\n", edata->targetfield); \
+        /* Generate actual output --- have to use appendStringInfoVA */ \
+        for (;;) \
+        { \
+            va_list		args; \
+            bool		success; \
+            va_start(args, n); \
+            success = appendStringInfoVA(&buf, fmtbuf, args); \
+            va_end(args); \
+            if (success) \
+                break; \
+            enlargeStringInfo(&buf, buf.maxlen); \
+        } \
+        /* Done with expanded fmt */ \
+        pfree(fmtbuf); \
+        /* Save the completed message into the stack item */ \
+        if (edata->targetfield) \
+            pfree(edata->targetfield); \
+        edata->targetfield = pstrdup(buf.data); \
+        pfree(buf.data); \
+    }
 
 
 /*
@@ -825,19 +825,19 @@ errcode_for_socket_access(void)
 int
 errmsg(const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(message, false, true);
+    EVALUATE_MESSAGE(message, false, true);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 
@@ -855,18 +855,19 @@ errmsg(const char *fmt,...)
 int
 errmsg_internal(const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(message, false, false);
+    EVALUATE_MESSAGE(message, false, false);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
+    return 0;					/* return value does not matter */
 }
 
 
@@ -876,20 +877,21 @@ errmsg_internal(const char *fmt,...)
  */
 int
 errmsg_plural(const char *fmt_singular, const char *fmt_plural,
-			  unsigned long n, ...)
+              unsigned long n, ...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE_PLURAL(message, false);
+    EVALUATE_MESSAGE_PLURAL(message, false);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
+    return 0;					/* return value does not matter */
 }
 
 
@@ -899,18 +901,19 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 int
 errdetail(const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(detail, false, true);
+    EVALUATE_MESSAGE(detail, false, true);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
+    return 0;					/* return value does not matter */
 }
 
 
@@ -920,18 +923,19 @@ errdetail(const char *fmt,...)
 int
 errdetail_log(const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(detail_log, false, true);
+    EVALUATE_MESSAGE(detail_log, false, true);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
+    return 0;					/* return value does not matter */
 }
 
 
@@ -941,20 +945,21 @@ errdetail_log(const char *fmt,...)
  */
 int
 errdetail_plural(const char *fmt_singular, const char *fmt_plural,
-				 unsigned long n, ...)
+                 unsigned long n, ...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE_PLURAL(detail, false);
+    EVALUATE_MESSAGE_PLURAL(detail, false);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
+    return 0;					/* return value does not matter */
 }
 
 
@@ -964,19 +969,19 @@ errdetail_plural(const char *fmt_singular, const char *fmt_plural,
 int
 errhint(const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(hint, false, true);
+    EVALUATE_MESSAGE(hint, false, true);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 
@@ -990,18 +995,19 @@ errhint(const char *fmt,...)
 int
 errcontext(const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(context, true, true);
+    EVALUATE_MESSAGE(context, true, true);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-	return 0;					/* return value does not matter */
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
+    errno = edata->saved_errno; /*CDB*/
+    return 0;					/* return value does not matter */
 }
 
 
@@ -1013,14 +1019,14 @@ errcontext(const char *fmt,...)
 int
 errhidestmt(bool hide_stmt)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	edata->hide_stmt = hide_stmt;
+    edata->hide_stmt = hide_stmt;
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 
@@ -1034,15 +1040,15 @@ errhidestmt(bool hide_stmt)
 int
 errfunction(const char *funcname)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	edata->funcname = funcname;
-	edata->show_funcname = true;
+    edata->funcname = funcname;
+    edata->show_funcname = true;
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 /*
@@ -1051,14 +1057,14 @@ errfunction(const char *funcname)
 int
 errposition(int cursorpos)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	edata->cursorpos = cursorpos;
+    edata->cursorpos = cursorpos;
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 /*
@@ -1067,14 +1073,14 @@ errposition(int cursorpos)
 int
 internalerrposition(int cursorpos)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	edata->internalpos = cursorpos;
+    edata->internalpos = cursorpos;
 
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 /*
@@ -1087,22 +1093,22 @@ internalerrposition(int cursorpos)
 int
 internalerrquery(const char *query)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	if (edata->internalquery)
-	{
-		pfree(edata->internalquery);
-		edata->internalquery = NULL;
-	}
+    if (edata->internalquery)
+    {
+        pfree(edata->internalquery);
+        edata->internalquery = NULL;
+    }
 
-	if (query)
-		edata->internalquery = MemoryContextStrdup(ErrorContext, query);
+    if (query)
+        edata->internalquery = MemoryContextStrdup(ErrorContext, query);
 
     errno = edata->saved_errno; /*CDB*/
-	return 0;					/* return value does not matter */
+    return 0;					/* return value does not matter */
 }
 
 /*
@@ -1114,12 +1120,12 @@ internalerrquery(const char *query)
 int
 geterrcode(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	return edata->sqlerrcode;
+    return edata->sqlerrcode;
 }
 
 /*
@@ -1131,12 +1137,12 @@ geterrcode(void)
 int
 geterrposition(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	return edata->cursorpos;
+    return edata->cursorpos;
 }
 
 /*
@@ -1148,12 +1154,12 @@ geterrposition(void)
 int
 getinternalerrposition(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *edata = &errordata[errordata_stack_depth];
 
-	/* we don't bother incrementing recursion_depth */
-	CHECK_STACK_DEPTH();
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
 
-	return edata->internalpos;
+    return edata->internalpos;
 }
 
 
@@ -1224,36 +1230,36 @@ errFatalReturn(bool fatalReturn)
 void
 elog_start(const char *filename, int lineno, const char *funcname)
 {
-	ErrorData  *edata;
+    ErrorData  *edata;
 
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.	We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.  Note that the message is intentionally not localized,
-		 * else failure to convert it to client encoding could cause further
-		 * recursion.
-		 */
-		errordata_stack_depth = -1;		/* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
+    if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
+    {
+        /*
+         * Wups, stack not big enough.	We treat this as a PANIC condition
+         * because it suggests an infinite loop of errors during error
+         * recovery.  Note that the message is intentionally not localized,
+         * else failure to convert it to client encoding could cause further
+         * recursion.
+         */
+        errordata_stack_depth = -1;		/* make room on stack */
+        ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
+    }
 
-	edata = &errordata[errordata_stack_depth];
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
-	/* errno is saved now so that error parameter eval can't change it */
-	edata->saved_errno = errno;
+    edata = &errordata[errordata_stack_depth];
+    edata->filename = filename;
+    edata->lineno = lineno;
+    edata->funcname = funcname;
+    /* errno is saved now so that error parameter eval can't change it */
+    edata->saved_errno = errno;
 #ifdef USE_ASSERT_CHECKING
-	if (IsUnderPostmaster && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
-	{
+    if (IsUnderPostmaster && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
+    {
 #if defined(__darwin__)
-		write_log("elog called from thread (OS-X pthread_sigmask is broken: MPP-4923)\n");
+        write_log("elog called from thread (OS-X pthread_sigmask is broken: MPP-4923)\n");
 #else
-		write_log("elog called from thread (%s:%d)\n", filename, lineno);
+        write_log("elog called from thread (%s:%d)\n", filename, lineno);
 #endif
-	}
+    }
 #endif
 }
 
@@ -1263,34 +1269,34 @@ elog_start(const char *filename, int lineno, const char *funcname)
 void
 elog_finish(int elevel, const char *fmt,...)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	CHECK_STACK_DEPTH();
+    CHECK_STACK_DEPTH();
 
-	/*
-	 * Do errstart() to see if we actually want to report the message.
-	 */
-	errordata_stack_depth--;
-	errno = edata->saved_errno;
-	if (!errstart(elevel, edata->filename, edata->lineno, edata->funcname))
-		return;					/* nothing to do */
+    /*
+     * Do errstart() to see if we actually want to report the message.
+     */
+    errordata_stack_depth--;
+    errno = edata->saved_errno;
+    if (!errstart(elevel, edata->filename, edata->lineno, edata->funcname))
+        return;					/* nothing to do */
 
-	/*
-	 * Format error message just like errmsg_internal().
-	 */
-	recursion_depth++;
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    /*
+     * Format error message just like errmsg_internal().
+     */
+    recursion_depth++;
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	EVALUATE_MESSAGE(message, false, false);
+    EVALUATE_MESSAGE(message, false, false);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
 
-	/*
-	 * And let errfinish() finish up.
-	 */
-	errfinish(0);
+    /*
+     * And let errfinish() finish up.
+     */
+    errfinish(0);
 }
 
 /*
@@ -1303,12 +1309,12 @@ elog_finish(int elevel, const char *fmt,...)
 void
 EmitErrorReport(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	MemoryContext oldcontext;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    MemoryContext oldcontext;
 
-	recursion_depth++;
-	CHECK_STACK_DEPTH();
-	oldcontext = MemoryContextSwitchTo(ErrorContext);
+    recursion_depth++;
+    CHECK_STACK_DEPTH();
+    oldcontext = MemoryContextSwitchTo(ErrorContext);
 
     /* CDB: Tidy up the message */
     if (edata->output_to_server ||
@@ -1316,15 +1322,15 @@ EmitErrorReport(void)
         cdb_tidy_message(edata);
 
     /* Send to server log, if enabled */
-	if (edata->output_to_server)
-		send_message_to_server_log(edata);
+    if (edata->output_to_server)
+        send_message_to_server_log(edata);
 
-	/* Send to client, if enabled */
-	if (edata->output_to_client)
-		send_message_to_frontend(edata);
+    /* Send to client, if enabled */
+    if (edata->output_to_client)
+        send_message_to_frontend(edata);
 
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
+    MemoryContextSwitchTo(oldcontext);
+    recursion_depth--;
 }
 
 /*
@@ -1337,36 +1343,36 @@ EmitErrorReport(void)
 ErrorData *
 CopyErrorData(void)
 {
-	ErrorData  *edata = &errordata[errordata_stack_depth];
-	ErrorData  *newedata;
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+    ErrorData  *newedata;
 
-	/*
-	 * we don't increment recursion_depth because out-of-memory here does not
-	 * indicate a problem within the error subsystem.
-	 */
-	CHECK_STACK_DEPTH();
+    /*
+     * we don't increment recursion_depth because out-of-memory here does not
+     * indicate a problem within the error subsystem.
+     */
+    CHECK_STACK_DEPTH();
 
-	Assert(CurrentMemoryContext != ErrorContext);
+    Assert(CurrentMemoryContext != ErrorContext);
 
-	/* Copy the struct itself */
-	newedata = (ErrorData *) palloc(sizeof(ErrorData));
-	memcpy(newedata, edata, sizeof(ErrorData));
+    /* Copy the struct itself */
+    newedata = (ErrorData *) palloc(sizeof(ErrorData));
+    memcpy(newedata, edata, sizeof(ErrorData));
 
-	/* Make copies of separately-allocated fields */
-	if (newedata->message)
-		newedata->message = pstrdup(newedata->message);
-	if (newedata->detail)
-		newedata->detail = pstrdup(newedata->detail);
-	if (newedata->detail_log)
-		newedata->detail_log = pstrdup(newedata->detail_log);
-	if (newedata->hint)
-		newedata->hint = pstrdup(newedata->hint);
-	if (newedata->context)
-		newedata->context = pstrdup(newedata->context);
-	if (newedata->internalquery)
-		newedata->internalquery = pstrdup(newedata->internalquery);
+    /* Make copies of separately-allocated fields */
+    if (newedata->message)
+        newedata->message = pstrdup(newedata->message);
+    if (newedata->detail)
+        newedata->detail = pstrdup(newedata->detail);
+    if (newedata->detail_log)
+        newedata->detail_log = pstrdup(newedata->detail_log);
+    if (newedata->hint)
+        newedata->hint = pstrdup(newedata->hint);
+    if (newedata->context)
+        newedata->context = pstrdup(newedata->context);
+    if (newedata->internalquery)
+        newedata->internalquery = pstrdup(newedata->internalquery);
 
-	return newedata;
+    return newedata;
 }
 
 /*
@@ -1378,19 +1384,19 @@ CopyErrorData(void)
 void
 FreeErrorData(ErrorData *edata)
 {
-	if (edata->message)
-		pfree(edata->message);
-	if (edata->detail)
-		pfree(edata->detail);
-	if (edata->detail_log)
-		pfree(edata->detail_log);
-	if (edata->hint)
-		pfree(edata->hint);
-	if (edata->context)
-		pfree(edata->context);
-	if (edata->internalquery)
-		pfree(edata->internalquery);
-	pfree(edata);
+    if (edata->message)
+        pfree(edata->message);
+    if (edata->detail)
+        pfree(edata->detail);
+    if (edata->detail_log)
+        pfree(edata->detail_log);
+    if (edata->hint)
+        pfree(edata->hint);
+    if (edata->context)
+        pfree(edata->context);
+    if (edata->internalquery)
+        pfree(edata->internalquery);
+    pfree(edata);
 }
 
 /*
@@ -1404,16 +1410,16 @@ FreeErrorData(ErrorData *edata)
 void
 FlushErrorState(void)
 {
-	/*
-	 * Reset stack to empty.  The only case where it would be more than one
-	 * deep is if we serviced an error that interrupted construction of
-	 * another message.  We assume control escaped out of that message
-	 * construction and won't ever go back.
-	 */
-	errordata_stack_depth = -1;
-	recursion_depth = 0;
-	/* Delete all data in ErrorContext */
-	MemoryContextResetAndDeleteChildren(ErrorContext);
+    /*
+     * Reset stack to empty.  The only case where it would be more than one
+     * deep is if we serviced an error that interrupted construction of
+     * another message.  We assume control escaped out of that message
+     * construction and won't ever go back.
+     */
+    errordata_stack_depth = -1;
+    recursion_depth = 0;
+    /* Delete all data in ErrorContext */
+    MemoryContextResetAndDeleteChildren(ErrorContext);
 }
 
 /*
@@ -1427,44 +1433,44 @@ FlushErrorState(void)
 void
 ReThrowError(ErrorData *edata)
 {
-	ErrorData  *newedata;
+    ErrorData  *newedata;
 
-	Assert(edata->elevel <= ERROR); /* CDB: Ok to rethrow elog_demote'd error */
+    Assert(edata->elevel <= ERROR); /* CDB: Ok to rethrow elog_demote'd error */
 
-	/* Push the data back into the error context */
-	recursion_depth++;
-	MemoryContextSwitchTo(ErrorContext);
+    /* Push the data back into the error context */
+    recursion_depth++;
+    MemoryContextSwitchTo(ErrorContext);
 
-	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
-	{
-		/*
-		 * Wups, stack not big enough.	We treat this as a PANIC condition
-		 * because it suggests an infinite loop of errors during error
-		 * recovery.
-		 */
-		errordata_stack_depth = -1;		/* make room on stack */
-		ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
-	}
+    if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
+    {
+        /*
+         * Wups, stack not big enough.	We treat this as a PANIC condition
+         * because it suggests an infinite loop of errors during error
+         * recovery.
+         */
+        errordata_stack_depth = -1;		/* make room on stack */
+        ereport(PANIC, (errmsg_internal("ERRORDATA_STACK_SIZE exceeded")));
+    }
 
-	newedata = &errordata[errordata_stack_depth];
-	memcpy(newedata, edata, sizeof(ErrorData));
+    newedata = &errordata[errordata_stack_depth];
+    memcpy(newedata, edata, sizeof(ErrorData));
 
-	/* Make copies of separately-allocated fields */
-	if (newedata->message)
-		newedata->message = pstrdup(newedata->message);
-	if (newedata->detail)
-		newedata->detail = pstrdup(newedata->detail);
-	if (newedata->detail_log)
-		newedata->detail_log = pstrdup(newedata->detail_log);
-	if (newedata->hint)
-		newedata->hint = pstrdup(newedata->hint);
-	if (newedata->context)
-		newedata->context = pstrdup(newedata->context);
-	if (newedata->internalquery)
-		newedata->internalquery = pstrdup(newedata->internalquery);
+    /* Make copies of separately-allocated fields */
+    if (newedata->message)
+        newedata->message = pstrdup(newedata->message);
+    if (newedata->detail)
+        newedata->detail = pstrdup(newedata->detail);
+    if (newedata->detail_log)
+        newedata->detail_log = pstrdup(newedata->detail_log);
+    if (newedata->hint)
+        newedata->hint = pstrdup(newedata->hint);
+    if (newedata->context)
+        newedata->context = pstrdup(newedata->context);
+    if (newedata->internalquery)
+        newedata->internalquery = pstrdup(newedata->internalquery);
 
-	recursion_depth--;
-	PG_RE_THROW();
+    recursion_depth--;
+    PG_RE_THROW();
 }
 
 /*
@@ -1473,62 +1479,62 @@ ReThrowError(ErrorData *edata)
 void
 pg_re_throw(void)
 {
-	/* If possible, throw the error to the next outer setjmp handler */
-	if (PG_exception_stack != NULL)
-		siglongjmp(*PG_exception_stack, 1);
-	else
-	{
-		/*
-		 * If we get here, elog(ERROR) was thrown inside a PG_TRY block, which
-		 * we have now exited only to discover that there is no outer setjmp
-		 * handler to pass the error to.  Had the error been thrown outside
-		 * the block to begin with, we'd have promoted the error to FATAL, so
-		 * the correct behavior is to make it FATAL now; that is, emit it and
-		 * then call proc_exit.
-		 */
-		ErrorData  *edata = &errordata[errordata_stack_depth];
+    /* If possible, throw the error to the next outer setjmp handler */
+    if (PG_exception_stack != NULL)
+        siglongjmp(*PG_exception_stack, 1);
+    else
+    {
+        /*
+         * If we get here, elog(ERROR) was thrown inside a PG_TRY block, which
+         * we have now exited only to discover that there is no outer setjmp
+         * handler to pass the error to.  Had the error been thrown outside
+         * the block to begin with, we'd have promoted the error to FATAL, so
+         * the correct behavior is to make it FATAL now; that is, emit it and
+         * then call proc_exit.
+         */
+        ErrorData  *edata = &errordata[errordata_stack_depth];
 
-		Assert(errordata_stack_depth >= 0);
-		Assert(edata->elevel == ERROR);
-		edata->elevel = FATAL;
+        Assert(errordata_stack_depth >= 0);
+        Assert(edata->elevel == ERROR);
+        edata->elevel = FATAL;
 
-		/*
-		 * At least in principle, the increase in severity could have changed
-		 * where-to-output decisions, so recalculate.  This should stay in
-		 * sync with errstart(), which see for comments.
-		 */
-		if (IsPostmasterEnvironment)
-			edata->output_to_server = is_log_level_output(FATAL,
-														  log_min_messages);
-		else
-			edata->output_to_server = (FATAL >= log_min_messages);
-		if (whereToSendOutput == DestRemote)
-		{
-			if (ClientAuthInProgress)
-				edata->output_to_client = true;
-			else
-				edata->output_to_client = (FATAL >= client_min_messages);
-		}
+        /*
+         * At least in principle, the increase in severity could have changed
+         * where-to-output decisions, so recalculate.  This should stay in
+         * sync with errstart(), which see for comments.
+         */
+        if (IsPostmasterEnvironment)
+            edata->output_to_server = is_log_level_output(FATAL,
+                                                          log_min_messages);
+        else
+            edata->output_to_server = (FATAL >= log_min_messages);
+        if (whereToSendOutput == DestRemote)
+        {
+            if (ClientAuthInProgress)
+                edata->output_to_client = true;
+            else
+                edata->output_to_client = (FATAL >= client_min_messages);
+        }
 
-		/*
-		 * We can use errfinish() for the rest, but we don't want it to call
-		 * any error context routines a second time.  Since we know we are
-		 * about to exit, it should be OK to just clear the context stack.
-		 */
-		error_context_stack = NULL;
+        /*
+         * We can use errfinish() for the rest, but we don't want it to call
+         * any error context routines a second time.  Since we know we are
+         * about to exit, it should be OK to just clear the context stack.
+         */
+        error_context_stack = NULL;
 
-		errfinish(0);
-	}
+        errfinish(0);
+    }
 
-	/* We mustn't return... */
-	ExceptionalCondition("pg_re_throw tried to return", "FailedAssertion",
-						 __FILE__, __LINE__);
+    /* We mustn't return... */
+    ExceptionalCondition("pg_re_throw tried to return", "FailedAssertion",
+                         __FILE__, __LINE__);
 
-	/*
-	 * Since ExceptionalCondition isn't declared noreturn because of
-	 * TrapMacro(), we need this to keep gcc from complaining.
-	 */
-	abort();
+    /*
+     * Since ExceptionalCondition isn't declared noreturn because of
+     * TrapMacro(), we need this to keep gcc from complaining.
+     */
+    abort();
 }
 
 
@@ -1689,46 +1695,46 @@ elog_message(void)
 void
 DebugFileOpen(void)
 {
-	int			fd,
-				istty;
+    int			fd,
+                istty;
 
-	if (OutputFileName[0])
-	{
-		/*
-		 * A debug-output file name was given.
-		 *
-		 * Make sure we can write the file, and find out if it's a tty.
-		 */
-		if ((fd = open(OutputFileName, O_CREAT | O_APPEND | O_WRONLY,
-					   0666)) < 0)
-			ereport(FATAL,
-					(errcode_for_file_access(),
-				  errmsg("could not open file \"%s\": %m", OutputFileName)));
-		istty = isatty(fd);
-		close(fd);
+    if (OutputFileName[0])
+    {
+        /*
+         * A debug-output file name was given.
+         *
+         * Make sure we can write the file, and find out if it's a tty.
+         */
+        if ((fd = open(OutputFileName, O_CREAT | O_APPEND | O_WRONLY,
+                       0666)) < 0)
+            ereport(FATAL,
+                    (errcode_for_file_access(),
+                  errmsg("could not open file \"%s\": %m", OutputFileName)));
+        istty = isatty(fd);
+        close(fd);
 
-		/*
-		 * Redirect our stderr to the debug output file.
-		 */
-		if (!freopen(OutputFileName, "a", stderr))
-			ereport(FATAL,
-					(errcode_for_file_access(),
-					 errmsg("could not reopen file \"%s\" as stderr: %m",
-							OutputFileName)));
+        /*
+         * Redirect our stderr to the debug output file.
+         */
+        if (!freopen(OutputFileName, "a", stderr))
+            ereport(FATAL,
+                    (errcode_for_file_access(),
+                     errmsg("could not reopen file \"%s\" as stderr: %m",
+                            OutputFileName)));
 
-		/*
-		 * If the file is a tty and we're running under the postmaster, try to
-		 * send stdout there as well (if it isn't a tty then stderr will block
-		 * out stdout, so we may as well let stdout go wherever it was going
-		 * before).
-		 */
-		if (istty && IsUnderPostmaster)
-			if (!freopen(OutputFileName, "a", stdout))
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("could not reopen file \"%s\" as stdout: %m",
-								OutputFileName)));
-	}
+        /*
+         * If the file is a tty and we're running under the postmaster, try to
+         * send stdout there as well (if it isn't a tty then stderr will block
+         * out stdout, so we may as well let stdout go wherever it was going
+         * before).
+         */
+        if (istty && IsUnderPostmaster)
+            if (!freopen(OutputFileName, "a", stdout))
+                ereport(FATAL,
+                        (errcode_for_file_access(),
+                         errmsg("could not reopen file \"%s\" as stdout: %m",
+                                OutputFileName)));
+    }
 }
 
 
@@ -1740,30 +1746,30 @@ DebugFileOpen(void)
 void
 set_syslog_parameters(const char *ident, int facility)
 {
-	/*
-	 * guc.c is likely to call us repeatedly with same parameters, so don't
-	 * thrash the syslog connection unnecessarily.	Also, we do not re-open
-	 * the connection until needed, since this routine will get called whether
-	 * or not Log_destination actually mentions syslog.
-	 *
-	 * Note that we make our own copy of the ident string rather than relying
-	 * on guc.c's.  This may be overly paranoid, but it ensures that we cannot
-	 * accidentally free a string that syslog is still using.
-	 */
-	if (syslog_ident == NULL || strcmp(syslog_ident, ident) != 0 ||
-		syslog_facility != facility)
-	{
-		if (openlog_done)
-		{
-			closelog();
-			openlog_done = false;
-		}
-		if (syslog_ident)
-			free(syslog_ident);
-		syslog_ident = strdup(ident);
-		/* if the strdup fails, we will cope in write_syslog() */
-		syslog_facility = facility;
-	}
+    /*
+     * guc.c is likely to call us repeatedly with same parameters, so don't
+     * thrash the syslog connection unnecessarily.	Also, we do not re-open
+     * the connection until needed, since this routine will get called whether
+     * or not Log_destination actually mentions syslog.
+     *
+     * Note that we make our own copy of the ident string rather than relying
+     * on guc.c's.  This may be overly paranoid, but it ensures that we cannot
+     * accidentally free a string that syslog is still using.
+     */
+    if (syslog_ident == NULL || strcmp(syslog_ident, ident) != 0 ||
+        syslog_facility != facility)
+    {
+        if (openlog_done)
+        {
+            closelog();
+            openlog_done = false;
+        }
+        if (syslog_ident)
+            free(syslog_ident);
+        syslog_ident = strdup(ident);
+        /* if the strdup fails, we will cope in write_syslog() */
+        syslog_facility = facility;
+    }
 }
 
 
@@ -1773,99 +1779,99 @@ set_syslog_parameters(const char *ident, int facility)
 static void
 write_syslog(int level, const char *line)
 {
-	static unsigned long seq = 0;
+    static unsigned long seq = 0;
 
-	int			len;
-	const char *nlpos;
+    int			len;
+    const char *nlpos;
 
-	/* Open syslog connection if not done yet */
-	if (!openlog_done)
-	{
-		openlog(syslog_ident ? syslog_ident : "postgres",
-				LOG_PID | LOG_NDELAY | LOG_NOWAIT,
-				syslog_facility);
-		openlog_done = true;
-	}
+    /* Open syslog connection if not done yet */
+    if (!openlog_done)
+    {
+        openlog(syslog_ident ? syslog_ident : "postgres",
+                LOG_PID | LOG_NDELAY | LOG_NOWAIT,
+                syslog_facility);
+        openlog_done = true;
+    }
 
-	/*
-	 * We add a sequence number to each log message to suppress "same"
-	 * messages.
-	 */
-	seq++;
+    /*
+     * We add a sequence number to each log message to suppress "same"
+     * messages.
+     */
+    seq++;
 
-	/*
-	 * Our problem here is that many syslog implementations don't handle long
-	 * messages in an acceptable manner. While this function doesn't help that
-	 * fact, it does work around by splitting up messages into smaller pieces.
-	 *
-	 * We divide into multiple syslog() calls if message is too long or if the
-	 * message contains embedded newline(s).
-	 */
-	len = strlen(line);
-	nlpos = strchr(line, '\n');
-	if (len > PG_SYSLOG_LIMIT || nlpos != NULL)
-	{
-		int			chunk_nr = 0;
+    /*
+     * Our problem here is that many syslog implementations don't handle long
+     * messages in an acceptable manner. While this function doesn't help that
+     * fact, it does work around by splitting up messages into smaller pieces.
+     *
+     * We divide into multiple syslog() calls if message is too long or if the
+     * message contains embedded newline(s).
+     */
+    len = strlen(line);
+    nlpos = strchr(line, '\n');
+    if (len > PG_SYSLOG_LIMIT || nlpos != NULL)
+    {
+        int			chunk_nr = 0;
 
-		while (len > 0)
-		{
-			char		buf[PG_SYSLOG_LIMIT + 1];
-			int			buflen;
-			int			i;
+        while (len > 0)
+        {
+            char		buf[PG_SYSLOG_LIMIT + 1];
+            int			buflen;
+            int			i;
 
-			/* if we start at a newline, move ahead one char */
-			if (line[0] == '\n')
-			{
-				line++;
-				len--;
-				/* we need to recompute the next newline's position, too */
-				nlpos = strchr(line, '\n');
-				continue;
-			}
+            /* if we start at a newline, move ahead one char */
+            if (line[0] == '\n')
+            {
+                line++;
+                len--;
+                /* we need to recompute the next newline's position, too */
+                nlpos = strchr(line, '\n');
+                continue;
+            }
 
-			/* copy one line, or as much as will fit, to buf */
-			if (nlpos != NULL)
-				buflen = nlpos - line;
-			else
-				buflen = len;
-			buflen = Min(buflen, PG_SYSLOG_LIMIT);
-			memcpy(buf, line, buflen);
-			buf[buflen] = '\0';
+            /* copy one line, or as much as will fit, to buf */
+            if (nlpos != NULL)
+                buflen = nlpos - line;
+            else
+                buflen = len;
+            buflen = Min(buflen, PG_SYSLOG_LIMIT);
+            memcpy(buf, line, buflen);
+            buf[buflen] = '\0';
 
-			/* trim to multibyte letter boundary */
-			buflen = pg_mbcliplen(buf, buflen, buflen);
-			if (buflen <= 0)
-				return;
-			buf[buflen] = '\0';
+            /* trim to multibyte letter boundary */
+            buflen = pg_mbcliplen(buf, buflen, buflen);
+            if (buflen <= 0)
+                return;
+            buf[buflen] = '\0';
 
-			/* already word boundary? */
-			if (line[buflen] != '\0' &&
-				!isspace((unsigned char) line[buflen]))
-			{
-				/* try to divide at word boundary */
-				i = buflen - 1;
-				while (i > 0 && !isspace((unsigned char) buf[i]))
-					i--;
+            /* already word boundary? */
+            if (line[buflen] != '\0' &&
+                !isspace((unsigned char) line[buflen]))
+            {
+                /* try to divide at word boundary */
+                i = buflen - 1;
+                while (i > 0 && !isspace((unsigned char) buf[i]))
+                    i--;
 
-				if (i > 0)		/* else couldn't divide word boundary */
-				{
-					buflen = i;
-					buf[i] = '\0';
-				}
-			}
+                if (i > 0)		/* else couldn't divide word boundary */
+                {
+                    buflen = i;
+                    buf[i] = '\0';
+                }
+            }
 
-			chunk_nr++;
+            chunk_nr++;
 
-			syslog(level, "[%lu-%d] %s", seq, chunk_nr, buf);
-			line += buflen;
-			len -= buflen;
-		}
-	}
-	else
-	{
-		/* message short enough */
-		syslog(level, "[%lu] %s", seq, line);
-	}
+            syslog(level, "[%lu-%d] %s", seq, chunk_nr, buf);
+            line += buflen;
+            len -= buflen;
+        }
+    }
+    else
+    {
+        /* message short enough */
+        syslog(level, "[%lu] %s", seq, line);
+    }
 }
 #endif   /* HAVE_SYSLOG */
 
@@ -1876,53 +1882,53 @@ write_syslog(int level, const char *line)
 static void
 write_eventlog(int level, const char *line)
 {
-	int			eventlevel = EVENTLOG_ERROR_TYPE;
-	static HANDLE evtHandle = INVALID_HANDLE_VALUE;
+    int			eventlevel = EVENTLOG_ERROR_TYPE;
+    static HANDLE evtHandle = INVALID_HANDLE_VALUE;
 
-	if (evtHandle == INVALID_HANDLE_VALUE)
-	{
-		evtHandle = RegisterEventSource(NULL, "PostgreSQL");
-		if (evtHandle == NULL)
-		{
-			evtHandle = INVALID_HANDLE_VALUE;
-			return;
-		}
-	}
+    if (evtHandle == INVALID_HANDLE_VALUE)
+    {
+        evtHandle = RegisterEventSource(NULL, "PostgreSQL");
+        if (evtHandle == NULL)
+        {
+            evtHandle = INVALID_HANDLE_VALUE;
+            return;
+        }
+    }
 
-	switch (level)
-	{
-		case DEBUG5:
-		case DEBUG4:
-		case DEBUG3:
-		case DEBUG2:
-		case DEBUG1:
-		case LOG:
-		case COMMERROR:
-		case INFO:
-		case NOTICE:
-			eventlevel = EVENTLOG_INFORMATION_TYPE;
-			break;
-		case WARNING:
-			eventlevel = EVENTLOG_WARNING_TYPE;
-			break;
-		case ERROR:
-		case FATAL:
-		case PANIC:
-		default:
-			eventlevel = EVENTLOG_ERROR_TYPE;
-			break;
-	}
+    switch (level)
+    {
+        case DEBUG5:
+        case DEBUG4:
+        case DEBUG3:
+        case DEBUG2:
+        case DEBUG1:
+        case LOG:
+        case COMMERROR:
+        case INFO:
+        case NOTICE:
+            eventlevel = EVENTLOG_INFORMATION_TYPE;
+            break;
+        case WARNING:
+            eventlevel = EVENTLOG_WARNING_TYPE;
+            break;
+        case ERROR:
+        case FATAL:
+        case PANIC:
+        default:
+            eventlevel = EVENTLOG_ERROR_TYPE;
+            break;
+    }
 
 
-	ReportEvent(evtHandle,
-				eventlevel,
-				0,
-				0,				/* All events are Id 0 */
-				NULL,
-				1,
-				0,
-				&line,
-				NULL);
+    ReportEvent(evtHandle,
+                eventlevel,
+                0,
+                0,				/* All events are Id 0 */
+                NULL,
+                1,
+                0,
+                &line,
+                NULL);
 }
 #endif   /* WIN32 */
 
@@ -1933,30 +1939,30 @@ write_eventlog(int level, const char *line)
 static void
 setup_formatted_log_time(void)
 {
-	struct timeval tv;
-	pg_time_t	stamp_time;
-	pg_tz	   *tz;
-	char		msbuf[8];
+    struct timeval tv;
+    pg_time_t	stamp_time;
+    pg_tz	   *tz;
+    char		msbuf[8];
 
-	gettimeofday(&tv, NULL);
-	stamp_time = (pg_time_t) tv.tv_sec;
+    gettimeofday(&tv, NULL);
+    stamp_time = (pg_time_t) tv.tv_sec;
 
-	/*
-	 * Normally we print log timestamps in log_timezone, but during startup we
-	 * could get here before that's set. If so, fall back to gmt_timezone
-	 * (which guc.c ensures is set up before Log_line_prefix can become
-	 * nonempty).
-	 */
-	tz = log_timezone ? log_timezone : gmt_timezone;
-	
-	pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
-				/* leave room for milliseconds... */
-				"%Y-%m-%d %H:%M:%S     %Z",
-				pg_localtime(&stamp_time, tz));
+    /*
+     * Normally we print log timestamps in log_timezone, but during startup we
+     * could get here before that's set. If so, fall back to gmt_timezone
+     * (which guc.c ensures is set up before Log_line_prefix can become
+     * nonempty).
+     */
+    tz = log_timezone ? log_timezone : gmt_timezone;
+    
+    pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
+                /* leave room for milliseconds... */
+                "%Y-%m-%d %H:%M:%S     %Z",
+                pg_localtime(&stamp_time, tz));
 
-	/* 'paste' milliseconds into place... */
-	sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
-	strncpy(formatted_log_time + 19, msbuf, 4);
+    /* 'paste' milliseconds into place... */
+    sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
+    strncpy(formatted_log_time + 19, msbuf, 4);
 }
 #endif 
 
@@ -1966,20 +1972,20 @@ setup_formatted_log_time(void)
 static void
 setup_formatted_start_time(void)
 {
-	pg_time_t	stamp_time = (pg_time_t) MyStartTime;
-	pg_tz	   *tz;
+    pg_time_t	stamp_time = (pg_time_t) MyStartTime;
+    pg_tz	   *tz;
 
-	/*
-	 * Normally we print log timestamps in log_timezone, but during startup we
-	 * could get here before that's set. If so, fall back to gmt_timezone
-	 * (which guc.c ensures is set up before Log_line_prefix can become
-	 * nonempty).
-	 */
-	tz = log_timezone ? log_timezone : gmt_timezone;
+    /*
+     * Normally we print log timestamps in log_timezone, but during startup we
+     * could get here before that's set. If so, fall back to gmt_timezone
+     * (which guc.c ensures is set up before Log_line_prefix can become
+     * nonempty).
+     */
+    tz = log_timezone ? log_timezone : gmt_timezone;
 
-	pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
-				"%Y-%m-%d %H:%M:%S %Z",
-				pg_localtime(&stamp_time, tz));
+    pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
+                "%Y-%m-%d %H:%M:%S %Z",
+                pg_localtime(&stamp_time, tz));
 }
 
 
@@ -2110,9 +2116,9 @@ static struct timeval LastLogTimeVal = {0, 0};
 void
 GetLastLogTimeVal(struct timeval *lastLogTimeVal)
 {
-	Assert(lastLogTimeVal != NULL);
+    Assert(lastLogTimeVal != NULL);
 
-	*lastLogTimeVal = LastLogTimeVal;
+    *lastLogTimeVal = LastLogTimeVal;
 }
 
 /*
@@ -2121,204 +2127,204 @@ GetLastLogTimeVal(struct timeval *lastLogTimeVal)
 static void
 log_line_prefix(StringInfo buf)
 {
-	/* static counter for line numbers */
-	static long log_line_number = 0;
+    /* static counter for line numbers */
+    static long log_line_number = 0;
 
-	/* has counter been reset in current process? */
-	static int	log_my_pid = 0;
+    /* has counter been reset in current process? */
+    static int	log_my_pid = 0;
 
-	int			format_len;
-	int			i;
+    int			format_len;
+    int			i;
     int         j;
 
-	/*
-	 * This is one of the few places where we'd rather not inherit a static
-	 * variable's value from the postmaster.  But since we will, reset it when
-	 * MyProcPid changes. MyStartTime also changes when MyProcPid does, so
-	 * reset the formatted start timestamp too.
-	 */
-	if (log_my_pid != MyProcPid)
-	{
-		log_line_number = 0;
-		log_my_pid = MyProcPid;
-		formatted_start_time[0] = '\0';
-	}
-	log_line_number++;
+    /*
+     * This is one of the few places where we'd rather not inherit a static
+     * variable's value from the postmaster.  But since we will, reset it when
+     * MyProcPid changes. MyStartTime also changes when MyProcPid does, so
+     * reset the formatted start timestamp too.
+     */
+    if (log_my_pid != MyProcPid)
+    {
+        log_line_number = 0;
+        log_my_pid = MyProcPid;
+        formatted_start_time[0] = '\0';
+    }
+    log_line_number++;
 
-	if (Log_line_prefix == NULL)
-		return;					/* in case guc hasn't run yet */
+    if (Log_line_prefix == NULL)
+        return;					/* in case guc hasn't run yet */
 
-	format_len = strlen(Log_line_prefix);
+    format_len = strlen(Log_line_prefix);
 
-	for (i = 0; i < format_len; i++)
-	{
-		if (Log_line_prefix[i] != '%')
-		{
-			/* literal char, just copy */
-			appendStringInfoChar(buf, Log_line_prefix[i]);
-			continue;
-		}
-		/* go to char after '%' */
-		i++;
-		if (i >= format_len)
-			break;				/* format error - ignore it */
+    for (i = 0; i < format_len; i++)
+    {
+        if (Log_line_prefix[i] != '%')
+        {
+            /* literal char, just copy */
+            appendStringInfoChar(buf, Log_line_prefix[i]);
+            continue;
+        }
+        /* go to char after '%' */
+        i++;
+        if (i >= format_len)
+            break;				/* format error - ignore it */
 
-		/* process the option */
-		switch (Log_line_prefix[i])
-		{
-			case 'u':
-				if (MyProcPort)
-				{
-					const char *username = MyProcPort->user_name;
+        /* process the option */
+        switch (Log_line_prefix[i])
+        {
+            case 'u':
+                if (MyProcPort)
+                {
+                    const char *username = MyProcPort->user_name;
 
-					if (username == NULL || *username == '\0')
-						username = _("[unknown]");
-					appendStringInfo(buf, "%s", username);
-				}
-				break;
-			case 'd':
-				if (MyProcPort)
-				{
-					const char *dbname = MyProcPort->database_name;
+                    if (username == NULL || *username == '\0')
+                        username = _("[unknown]");
+                    appendStringInfo(buf, "%s", username);
+                }
+                break;
+            case 'd':
+                if (MyProcPort)
+                {
+                    const char *dbname = MyProcPort->database_name;
 
-					if (dbname == NULL || *dbname == '\0')
-						dbname = _("[unknown]");
-					appendStringInfo(buf, "%s", dbname);
-				}
-				break;
-			case 'c':
-				appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
-				break;
-			case 'p':
-				appendStringInfo(buf, "%d", MyProcPid);
-				break;
-			case 'l':
-				appendStringInfo(buf, "%ld", log_line_number);
-				break;
-			case 'm':
-				{
-					/*
-					 * Note: for %m, %t, and %s we deliberately use the C
-					 * library's strftime/localtime, and not the equivalent
-					 * functions from src/timezone.  This ensures that all
-					 * backends will report log entries in the same timezone,
-					 * namely whatever C-library setting they inherit from the
-					 * postmaster.	If we used src/timezone then local
-					 * settings of the TimeZone GUC variable would confuse the
-					 * log.
-					 * 
-					 * 	CDB:  It is not safe to call strftime since it is not async-safe, and it
-					 * is expensive to call strftime to get timezone everytime, we use
-					 * pg_strftime, but stick on a fixed timezone (log_timezone)
-					 * instead a settable timezone as PostgreSQL does, since we want all
-					 * log messages to have the same time format. See MPP-2591.
-					 * 
-					 */
-					pg_time_t		stamp_time;
-					char		strfbuf[128],
-								msbuf[8];
-					struct timeval tv;
+                    if (dbname == NULL || *dbname == '\0')
+                        dbname = _("[unknown]");
+                    appendStringInfo(buf, "%s", dbname);
+                }
+                break;
+            case 'c':
+                appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
+                break;
+            case 'p':
+                appendStringInfo(buf, "%d", MyProcPid);
+                break;
+            case 'l':
+                appendStringInfo(buf, "%ld", log_line_number);
+                break;
+            case 'm':
+                {
+                    /*
+                     * Note: for %m, %t, and %s we deliberately use the C
+                     * library's strftime/localtime, and not the equivalent
+                     * functions from src/timezone.  This ensures that all
+                     * backends will report log entries in the same timezone,
+                     * namely whatever C-library setting they inherit from the
+                     * postmaster.	If we used src/timezone then local
+                     * settings of the TimeZone GUC variable would confuse the
+                     * log.
+                     * 
+                     * 	CDB:  It is not safe to call strftime since it is not async-safe, and it
+                     * is expensive to call strftime to get timezone everytime, we use
+                     * pg_strftime, but stick on a fixed timezone (log_timezone)
+                     * instead a settable timezone as PostgreSQL does, since we want all
+                     * log messages to have the same time format. See MPP-2591.
+                     * 
+                     */
+                    pg_time_t		stamp_time;
+                    char		strfbuf[128],
+                                msbuf[8];
+                    struct timeval tv;
 
-					gettimeofday(&tv, NULL);
-					stamp_time = (pg_time_t)tv.tv_sec;
+                    gettimeofday(&tv, NULL);
+                    stamp_time = (pg_time_t)tv.tv_sec;
 
-					/*
-					 * GP: Save the time of the last log line.
-					 */
-					LastLogTimeVal = tv;
+                    /*
+                     * GP: Save the time of the last log line.
+                     */
+                    LastLogTimeVal = tv;
 
-					pg_strftime(strfbuf, sizeof(strfbuf),
-					/* leave room for microseconds... */
-					/* Win32 timezone names are too long so don't print them */
+                    pg_strftime(strfbuf, sizeof(strfbuf),
+                    /* leave room for microseconds... */
+                    /* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
-							 "%Y-%m-%d %H:%M:%S        %Z",
+                             "%Y-%m-%d %H:%M:%S        %Z",
 #else
-							 "%Y-%m-%d %H:%M:%S        ",
+                             "%Y-%m-%d %H:%M:%S        ",
 #endif
-							 pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
+                             pg_localtime(&stamp_time, log_timezone ? log_timezone : gmt_timezone));
 
-					/* 'paste' milliseconds into place... */
-					sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
-					strncpy(strfbuf + 19, msbuf, 7);
+                    /* 'paste' milliseconds into place... */
+                    sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
+                    strncpy(strfbuf + 19, msbuf, 7);
 
-					appendStringInfoString(buf, strfbuf);
-				}
-				break;
-			case 't':
-				{
-					pg_time_t		stamp_time = (pg_time_t)time(NULL);
-					pg_tz	   *tz;
-					char		strfbuf[128];
+                    appendStringInfoString(buf, strfbuf);
+                }
+                break;
+            case 't':
+                {
+                    pg_time_t		stamp_time = (pg_time_t)time(NULL);
+                    pg_tz	   *tz;
+                    char		strfbuf[128];
 
-					tz = log_timezone ? log_timezone : gmt_timezone;
-					
-					pg_strftime(strfbuf, sizeof(strfbuf),
-					/* Win32 timezone names are too long so don't print them */
+                    tz = log_timezone ? log_timezone : gmt_timezone;
+                    
+                    pg_strftime(strfbuf, sizeof(strfbuf),
+                    /* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
-							 "%Y-%m-%d %H:%M:%S %Z",
+                             "%Y-%m-%d %H:%M:%S %Z",
 #else
-							 "%Y-%m-%d %H:%M:%S",
+                             "%Y-%m-%d %H:%M:%S",
 #endif
-								pg_localtime(&stamp_time, tz));
-					appendStringInfoString(buf, strfbuf);
-				}
-				break;
-			case 's':
-				if (formatted_start_time[0] == '\0')
-									setup_formatted_start_time();
-								appendStringInfoString(buf, formatted_start_time);
-				break;
-			case 'i':
-				if (MyProcPort)
-				{
-					const char *psdisp;
-					int		displen;
+                                pg_localtime(&stamp_time, tz));
+                    appendStringInfoString(buf, strfbuf);
+                }
+                break;
+            case 's':
+                if (formatted_start_time[0] == '\0')
+                                    setup_formatted_start_time();
+                                appendStringInfoString(buf, formatted_start_time);
+                break;
+            case 'i':
+                if (MyProcPort)
+                {
+                    const char *psdisp;
+                    int		displen;
 
-					psdisp = get_ps_display(&displen);
-					appendStringInfo(buf, "%.*s", displen, psdisp);
-				}
-				break;
-			case 'r':
-				if (MyProcPort && MyProcPort->remote_host)
-				{
-					appendStringInfo(buf, "%s", MyProcPort->remote_host);
-					if (MyProcPort->remote_port &&
-						MyProcPort->remote_port[0] != '\0')
-						appendStringInfo(buf, "(%s)",
-										 MyProcPort->remote_port);
-				}
-				break;
-			case 'h':
-				if (MyProcPort && MyProcPort->remote_host)
-					appendStringInfo(buf, "%s", MyProcPort->remote_host);
-				break;
-			case 'q':
-				/* in postmaster and friends, stop if %q is seen */
-				/* in a backend, just ignore */
-				if (MyProcPort == NULL)
-					i = format_len;
-				break;
-			case 'x':
-				if (MyProcPort)
-				{
-					if (IsTransactionState())
-						appendStringInfo(buf, "%u", GetTopTransactionId());
-					else
-						appendStringInfo(buf, "%u", InvalidTransactionId);
-				}
-				break;
-				
-			/* MPP SPECIFIC OPTIONS. */	
-			case 'C':
-				/* we use -2 to indicate that it hasn't been set yet.  we'll
-				 * choose to not write anything for the very early log messages
-				 * before GUC variables are set.
-				 */
-				if( Gp_segment != UNDEF_SEGMENT )
-					appendStringInfo(buf, "%d", Gp_segment );
-				break;
-			case 'I':
-				/* prints a succinct description of an MPP process. */
+                    psdisp = get_ps_display(&displen);
+                    appendStringInfo(buf, "%.*s", displen, psdisp);
+                }
+                break;
+            case 'r':
+                if (MyProcPort && MyProcPort->remote_host)
+                {
+                    appendStringInfo(buf, "%s", MyProcPort->remote_host);
+                    if (MyProcPort->remote_port &&
+                        MyProcPort->remote_port[0] != '\0')
+                        appendStringInfo(buf, "(%s)",
+                                         MyProcPort->remote_port);
+                }
+                break;
+            case 'h':
+                if (MyProcPort && MyProcPort->remote_host)
+                    appendStringInfo(buf, "%s", MyProcPort->remote_host);
+                break;
+            case 'q':
+                /* in postmaster and friends, stop if %q is seen */
+                /* in a backend, just ignore */
+                if (MyProcPort == NULL)
+                    i = format_len;
+                break;
+            case 'x':
+                if (MyProcPort)
+                {
+                    if (IsTransactionState())
+                        appendStringInfo(buf, "%u", GetTopTransactionId());
+                    else
+                        appendStringInfo(buf, "%u", InvalidTransactionId);
+                }
+                break;
+                
+            /* MPP SPECIFIC OPTIONS. */	
+            case 'C':
+                /* we use -2 to indicate that it hasn't been set yet.  we'll
+                 * choose to not write anything for the very early log messages
+                 * before GUC variables are set.
+                 */
+                if( Gp_segment != UNDEF_SEGMENT )
+                    appendStringInfo(buf, "%d", Gp_segment );
+                break;
+            case 'I':
+                /* prints a succinct description of an MPP process. */
                 if (!MyProcPort)
                 {
                     const char *sp;
@@ -2336,40 +2342,40 @@ log_line_prefix(StringInfo buf)
                     appendStringInfo(buf, "con%d ", gp_session_id);
                 if (gp_command_count > 0)
                     appendStringInfo(buf, "cmd%d ", gp_command_count);
-				if (Gp_role == GP_ROLE_EXECUTE)
+                if (Gp_role == GP_ROLE_EXECUTE)
                     appendStringInfo(buf, "%s%d ",
                                      Gp_is_primary ? "seg" : "mir",
                                      Gp_segment);
                 if (currentSliceId > 0)
                     appendStringInfo(buf, "slice%d ", currentSliceId);
                 if (Gp_role == GP_ROLE_DISPATCHAGENT)
-                	 appendStringInfo(buf, "*DA* ");
+                     appendStringInfo(buf, "*DA* ");
                 if (j < buf->len &&
                     buf->data[buf->len - 1] == ' ')
                     buf->len--;
-				break;
-			case 'P':
-				if( Gp_role == GP_ROLE_EXECUTE )
-				{
+                break;
+            case 'P':
+                if( Gp_role == GP_ROLE_EXECUTE )
+                {
                     appendStringInfoChar(buf, Gp_is_primary?'P':'M');
-				}
-				break;
-			case 'R':
+                }
+                break;
+            case 'R':
                 if (!MyProcPort)
                 {
                     const char *uname = get_ps_display_username();
                     appendStringInfo(buf, uname && uname[0] ? uname : "postmaster");
                 }
                 else
-				    appendStringInfo(buf, "%s", role_to_string(Gp_role));	
-				break;
-			case 'S':
-				if (currentSliceId >= 0)
-				{
-					appendStringInfo(buf, "%d", currentSliceId );
-				}
-				break;
-			case 'T':
+                    appendStringInfo(buf, "%s", role_to_string(Gp_role));	
+                break;
+            case 'S':
+                if (currentSliceId >= 0)
+                {
+                    appendStringInfo(buf, "%d", currentSliceId );
+                }
+                break;
+            case 'T':
                 if (MyProcPort)
                 {
                     if (Gp_role == GP_ROLE_EXECUTE)
@@ -2379,38 +2385,38 @@ log_line_prefix(StringInfo buf)
                     else if (Gp_role == GP_ROLE_DISPATCHAGENT)
                         appendStringInfo(buf, "da");
                 }
-				break;	
-			case 'X':
-				{
-					DistributedTransactionId distribXid;
-					TransactionId localXid;
-					TransactionId subXid;
+                break;	
+            case 'X':
+                {
+                    DistributedTransactionId distribXid;
+                    TransactionId localXid;
+                    TransactionId subXid;
 
-					GetAllTransactionXids(
-									&distribXid,
-									&localXid,
-									&subXid);
+                    GetAllTransactionXids(
+                                    &distribXid,
+                                    &localXid,
+                                    &subXid);
 
-					if (localXid != InvalidTransactionId)
-					{
-						if (distribXid >= FirstDistributedTransactionId)
-						    appendStringInfo(buf, "dx%u, ", distribXid);
-						
-					    appendStringInfo(buf, "x%u", localXid);
-						
-						if (subXid >= FirstNormalTransactionId)
-						    appendStringInfo(buf, ", sx%u, ", subXid);
-					}
-				}
-				break;	
-			case '%':
-				appendStringInfoChar(buf, '%');
-				break;
-			default:
-				/* format error - ignore it */
-				break;
-		}
-	}
+                    if (localXid != InvalidTransactionId)
+                    {
+                        if (distribXid >= FirstDistributedTransactionId)
+                            appendStringInfo(buf, "dx%u, ", distribXid);
+                        
+                        appendStringInfo(buf, "x%u", localXid);
+                        
+                        if (subXid >= FirstNormalTransactionId)
+                            appendStringInfo(buf, ", sx%u, ", subXid);
+                    }
+                }
+                break;	
+            case '%':
+                appendStringInfoChar(buf, '%');
+                break;
+            default:
+                /* format error - ignore it */
+                break;
+        }
+    }
 }
 
 /*
@@ -2420,62 +2426,62 @@ log_line_prefix(StringInfo buf)
 char *
 unpack_sql_state(int sql_state)
 {
-	static char buf[12];
-	int			i;
+    static char buf[12];
+    int			i;
 
-	for (i = 0; i < 5; i++)
-	{
-		buf[i] = PGUNSIXBIT(sql_state);
-		sql_state >>= 6;
-	}
+    for (i = 0; i < 5; i++)
+    {
+        buf[i] = PGUNSIXBIT(sql_state);
+        sql_state >>= 6;
+    }
 
-	buf[i] = '\0';
-	return buf;
+    buf[i] = '\0';
+    return buf;
 }
 
-	
+    
 /*
  * Send the data through the pipe.
  */
 static inline void
 gp_write_pipe_chunk(const char *buffer, int len)
 {
-	int retval;
-	fd_set wfds;
-	struct timeval tv;
+    int retval;
+    fd_set wfds;
+    struct timeval tv;
 
-	/*
-	 * Wait up to 1 second to see if stderr is available for write.
-	 * If not, we ignore the error message. This could happen when
-	 * the logger process crashes.
-	 */
-	tv.tv_sec = 1;
-	tv.tv_usec = 0;
+    /*
+     * Wait up to 1 second to see if stderr is available for write.
+     * If not, we ignore the error message. This could happen when
+     * the logger process crashes.
+     */
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
 
-	FD_ZERO(&wfds);
-	FD_SET(fileno(stderr), &wfds);
+    FD_ZERO(&wfds);
+    FD_SET(fileno(stderr), &wfds);
 
-	retval = select(fileno(stderr) + 1, NULL, &wfds, NULL, &tv);
+    retval = select(fileno(stderr) + 1, NULL, &wfds, NULL, &tv);
 
-	if (retval == 1)
-	{
-		int bytes;
-	retry:
+    if (retval == 1)
+    {
+        int bytes;
+    retry:
 #ifdef USE_ASSERT_CHECKING
-		{
-			PipeProtoChunk *chunk = (PipeProtoChunk *) buffer;
-			Assert(chunk->hdr.zero == 0);
-			Assert(chunk->hdr.pid != 0);
-			Assert(chunk->hdr.thid != 0);
-			Assert(len <= PIPE_CHUNK_SIZE);
-		}
+        {
+            PipeProtoChunk *chunk = (PipeProtoChunk *) buffer;
+            Assert(chunk->hdr.zero == 0);
+            Assert(chunk->hdr.pid != 0);
+            Assert(chunk->hdr.thid != 0);
+            Assert(len <= PIPE_CHUNK_SIZE);
+        }
 #endif
 
-		bytes = write(fileno(stderr), buffer, len);
-	
-		if (bytes < 0 && errno == EINTR)
-			goto retry;
-	}
+        bytes = write(fileno(stderr), buffer, len);
+    
+        if (bytes < 0 && errno == EINTR)
+            goto retry;
+    }
 }
 
 /*
@@ -2491,56 +2497,56 @@ gp_write_pipe_chunk(const char *buffer, int len)
 static inline void
 append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 {
-	int len;
+    int len;
 
-	char *data = buffer->data + buffer->hdr.len;
-	
+    char *data = buffer->data + buffer->hdr.len;
+    
         if(am_syslogger)
                 return;
 
-	if (input == NULL)
-		len = 1;
-	else
-		len = strlen(input) + 1; /* include '\0' */
+    if (input == NULL)
+        len = 1;
+    else
+        len = strlen(input) + 1; /* include '\0' */
 
-	if (buffer->hdr.len == PIPE_MAX_PAYLOAD) 
-	{
+    if (buffer->hdr.len == PIPE_MAX_PAYLOAD) 
+    {
                 if(am_syslogger)
                         return;
 
-		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
-		buffer->hdr.len = 0;
-		buffer->hdr.chunk_no++;
-		data = buffer->data;
-	}
-	
-	if (len == 1)
-	{
-		*data = '\0';
-		buffer->hdr.len ++;
-	}
-	else
-	{
-		if (buffer->hdr.len + len > PIPE_MAX_PAYLOAD)
-		{
-			int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
-			
+        gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
+        buffer->hdr.len = 0;
+        buffer->hdr.chunk_no++;
+        data = buffer->data;
+    }
+    
+    if (len == 1)
+    {
+        *data = '\0';
+        buffer->hdr.len ++;
+    }
+    else
+    {
+        if (buffer->hdr.len + len > PIPE_MAX_PAYLOAD)
+        {
+            int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
+            
                         if(am_syslogger)
                                 return;
 
-			snprintf(data, bytes, "%s", input);
-			data += (bytes - 1);
-			*data = input[bytes - 1];
-			buffer->hdr.len += bytes;
+            snprintf(data, bytes, "%s", input);
+            data += (bytes - 1);
+            *data = input[bytes - 1];
+            buffer->hdr.len += bytes;
 
-			append_string_to_pipe_chunk(buffer, (input + bytes));
-		}
-		else
-		{
-			sprintf(data, "%s", input);
-			buffer->hdr.len += len;
-		}
-	}
+            append_string_to_pipe_chunk(buffer, (input + bytes));
+        }
+        else
+        {
+            sprintf(data, "%s", input);
+            buffer->hdr.len += len;
+        }
+    }
 }
 
 /*
@@ -2556,53 +2562,53 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
  */
 static inline void
 append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray, 
-				  int stacksize, bool amsyslogger)
+                  int stacksize, bool amsyslogger)
 {
 #ifndef WIN32
 #if (!defined(__darwin__))
-	int stack_no;
-	const int SYMBOL_SIZE = 512;
-	char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */
-	
-	for (stack_no = 0; stack_no < stacksize; stack_no++)
-	{
-		Dl_info dli;
-		int symbol_len;
-		
-		if (dladdr(stackarray[stack_no], &dli) != 0 &&
-			dli.dli_fname != NULL &&
-			dli.dli_fname[0] != '\0')
-		{
-			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
-								  stack_no, stackarray[stack_no], dli.dli_fname,
-								  (dli.dli_sname != NULL ? dli.dli_sname : ""),
-								  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
-		}
-		else
-		{
-			symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: <not found>\n",
-								  stack_no, stackarray[stack_no]);
-		}
+    int stack_no;
+    const int SYMBOL_SIZE = 512;
+    char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */
+    
+    for (stack_no = 0; stack_no < stacksize; stack_no++)
+    {
+        Dl_info dli;
+        int symbol_len;
+        
+        if (dladdr(stackarray[stack_no], &dli) != 0 &&
+            dli.dli_fname != NULL &&
+            dli.dli_fname[0] != '\0')
+        {
+            symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
+                                  stack_no, stackarray[stack_no], dli.dli_fname,
+                                  (dli.dli_sname != NULL ? dli.dli_sname : ""),
+                                  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
+        }
+        else
+        {
+            symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: <not found>\n",
+                                  stack_no, stackarray[stack_no]);
+        }
 
-		if (buffer != NULL)
-		{
-			append_string_to_pipe_chunk(buffer, symbol);
+        if (buffer != NULL)
+        {
+            append_string_to_pipe_chunk(buffer, symbol);
 
-			if (stack_no != stacksize - 1)
-			{
-				/* Eliminate the last '\0' */
-				buffer->hdr.len --;
-			}
-		}
-		
-		else
-		{
-			if (amsyslogger)
-				write_syslogger_file_binary(symbol, symbol_len);
-			else
-				write(fileno(stderr), symbol, symbol_len);
-		}
-	}
+            if (stack_no != stacksize - 1)
+            {
+                /* Eliminate the last '\0' */
+                buffer->hdr.len --;
+            }
+        }
+        
+        else
+        {
+            if (amsyslogger)
+                write_syslogger_file_binary(symbol, symbol_len);
+            else
+                write(fileno(stderr), symbol, symbol_len);
+        }
+    }
 #endif
 #endif
 }
@@ -2613,29 +2619,29 @@ append_stacktrace(PipeProtoChunk *buffer, void *const *stackarray,
 static inline void
 write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma)
 {
-	if (str != NULL && str[0] != '\0')
-	{
-		if (amsyslogger)
-		{
-			write_syslogger_file_binary("\"", 1);
-			syslogger_write_str(str, strlen(str), true, true);
-			write_syslogger_file_binary("\"", 1);
-		}
-		else
-		{
-			write(fileno(stderr), "\"", 1);
-			syslogger_write_str(str, strlen(str), false, true);
-			write(fileno(stderr), "\"", 1);
-		}
-	}
+    if (str != NULL && str[0] != '\0')
+    {
+        if (amsyslogger)
+        {
+            write_syslogger_file_binary("\"", 1);
+            syslogger_write_str(str, strlen(str), true, true);
+            write_syslogger_file_binary("\"", 1);
+        }
+        else
+        {
+            write(fileno(stderr), "\"", 1);
+            syslogger_write_str(str, strlen(str), false, true);
+            write(fileno(stderr), "\"", 1);
+        }
+    }
 
-	if (append_comma)
-	{
-		if (amsyslogger)
-			write_syslogger_file_binary(",", 1);
-		else
-			write(fileno(stderr), ",", 1);
-	}
+    if (append_comma)
+    {
+        if (amsyslogger)
+            write_syslogger_file_binary(",", 1);
+        else
+            write(fileno(stderr), ",", 1);
+    }
 }
 
 
@@ -2645,133 +2651,133 @@ write_syslogger_file_string(const char *str, bool amsyslogger, bool append_comma
 static void
 write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
 {
-	/* timestamp_with_millisecond */
-	syslogger_append_current_timestamp(amsyslogger);
+    /* timestamp_with_millisecond */
+    syslogger_append_current_timestamp(amsyslogger);
 
-	/* username */
-	if (MyProcPort != NULL && MyProcPort->user_name != NULL)
-		write_syslogger_file_string(MyProcPort->user_name, amsyslogger, true);
-	else
-		write_syslogger_file_string(NULL, amsyslogger, true);
-	
-	/* databasename */
-	if (MyProcPort != NULL && MyProcPort->database_name != NULL)
-		write_syslogger_file_string(MyProcPort->database_name, amsyslogger, true);
-	else
-		write_syslogger_file_string(NULL, amsyslogger, true);
-	
-	/* Process id, thread id */
-	syslogger_write_int32(false, "p", MyProcPid, amsyslogger, true);
-	syslogger_write_int32(false, "th", mythread(), amsyslogger, true);
-	
-	/* Remote host, remote port */
-	if (MyProcPort != NULL && MyProcPort->remote_host != NULL)
-		write_syslogger_file_string(MyProcPort->remote_host, amsyslogger, true);
-	else
-		write_syslogger_file_string(NULL, amsyslogger, true);
-	if (MyProcPort != NULL && MyProcPort->remote_port != NULL)
-		write_syslogger_file_string(MyProcPort->remote_port, amsyslogger, true);
-	else
-		write_syslogger_file_string(NULL, amsyslogger, true);
-	
-	/* session start timestamp */
-	syslogger_append_timestamp((MyProcPort != NULL ?
-								(pg_time_t) timestamptz_to_time_t(MyProcPort->SessionStartTime): 0),
-							   amsyslogger, true);
-	
-	/* transaction id */
-	if (MyProcPort != NULL && IsTransactionState())
-		syslogger_write_int32(false, "", GetTopTransactionId(), amsyslogger, true);
-	else
-		syslogger_write_int32(false, "", InvalidTransactionId, amsyslogger, true);
+    /* username */
+    if (MyProcPort != NULL && MyProcPort->user_name != NULL)
+        write_syslogger_file_string(MyProcPort->user_name, amsyslogger, true);
+    else
+        write_syslogger_file_string(NULL, amsyslogger, true);
+    
+    /* databasename */
+    if (MyProcPort != NULL && MyProcPort->database_name != NULL)
+        write_syslogger_file_string(MyProcPort->database_name, amsyslogger, true);
+    else
+        write_syslogger_file_string(NULL, amsyslogger, true);
+    
+    /* Process id, thread id */
+    syslogger_write_int32(false, "p", MyProcPid, amsyslogger, true);
+    syslogger_write_int32(false, "th", mythread(), amsyslogger, true);
+    
+    /* Remote host, remote port */
+    if (MyProcPort != NULL && MyProcPort->remote_host != NULL)
+        write_syslogger_file_string(MyProcPort->remote_host, amsyslogger, true);
+    else
+        write_syslogger_file_string(NULL, amsyslogger, true);
+    if (MyProcPort != NULL && MyProcPort->remote_port != NULL)
+        write_syslogger_file_string(MyProcPort->remote_port, amsyslogger, true);
+    else
+        write_syslogger_file_string(NULL, amsyslogger, true);
+    
+    /* session start timestamp */
+    syslogger_append_timestamp((MyProcPort != NULL ?
+                                (pg_time_t) timestamptz_to_time_t(MyProcPort->SessionStartTime): 0),
+                               amsyslogger, true);
+    
+    /* transaction id */
+    if (MyProcPort != NULL && IsTransactionState())
+        syslogger_write_int32(false, "", GetTopTransactionId(), amsyslogger, true);
+    else
+        syslogger_write_int32(false, "", InvalidTransactionId, amsyslogger, true);
 
-	/* GPDB specific options */
-	syslogger_write_int32(true, "con", gp_session_id, amsyslogger, true); 
-	syslogger_write_int32(true, "cmd", gp_command_count, amsyslogger, true); 
-	syslogger_write_int32(false, Gp_is_primary ? "seg" : "mir", Gp_segment, amsyslogger, true); 
-	syslogger_write_int32(true, "slice", currentSliceId, amsyslogger, true); 
-	{
-		DistributedTransactionId dist_trans_id;
-		TransactionId local_trans_id;
-		TransactionId subtrans_id;
-		
-		GetAllTransactionXids(&dist_trans_id,
-							  &local_trans_id,
-							  &subtrans_id);
+    /* GPDB specific options */
+    syslogger_write_int32(true, "con", gp_session_id, amsyslogger, true); 
+    syslogger_write_int32(true, "cmd", gp_command_count, amsyslogger, true); 
+    syslogger_write_int32(false, Gp_is_primary ? "seg" : "mir", Gp_segment, amsyslogger, true); 
+    syslogger_write_int32(true, "slice", currentSliceId, amsyslogger, true); 
+    {
+        DistributedTransactionId dist_trans_id;
+        TransactionId local_trans_id;
+        TransactionId subtrans_id;
+        
+        GetAllTransactionXids(&dist_trans_id,
+                              &local_trans_id,
+                              &subtrans_id);
 
-		syslogger_write_int32(true, "dx", dist_trans_id, amsyslogger, true);
-		syslogger_write_int32(true, "x", local_trans_id, amsyslogger, true); 
-		syslogger_write_int32(true, "sx", subtrans_id, amsyslogger, true); 
-	}
+        syslogger_write_int32(true, "dx", dist_trans_id, amsyslogger, true);
+        syslogger_write_int32(true, "x", local_trans_id, amsyslogger, true); 
+        syslogger_write_int32(true, "sx", subtrans_id, amsyslogger, true); 
+    }
 
-	/* error severity */
-	write_syslogger_file_string(error_severity(edata->elevel), amsyslogger, true);
-	
-	/* sql state code */
-	write_syslogger_file_string(unpack_sql_state(edata->sqlerrcode), amsyslogger, true);
-	
-	/* error message */
-	write_syslogger_file_string(edata->message, amsyslogger, true);
-	
-	/* errdetail */
-	write_syslogger_file_string(edata->detail, amsyslogger, true);
+    /* error severity */
+    write_syslogger_file_string(error_severity(edata->elevel), amsyslogger, true);
+    
+    /* sql state code */
+    write_syslogger_file_string(unpack_sql_state(edata->sqlerrcode), amsyslogger, true);
+    
+    /* error message */
+    write_syslogger_file_string(edata->message, amsyslogger, true);
+    
+    /* errdetail */
+    write_syslogger_file_string(edata->detail, amsyslogger, true);
 
-	/* errhint */
-	write_syslogger_file_string(edata->hint, amsyslogger, true);
+    /* errhint */
+    write_syslogger_file_string(edata->hint, amsyslogger, true);
 
-	/* internal query */
-	write_syslogger_file_string(edata->internalquery, amsyslogger, true);
+    /* internal query */
+    write_syslogger_file_string(edata->internalquery, amsyslogger, true);
 
-	/* internal query pos */
-	syslogger_write_int32(true, "", edata->internalpos, amsyslogger, true); 
+    /* internal query pos */
+    syslogger_write_int32(true, "", edata->internalpos, amsyslogger, true); 
 
-	/* error context */
-	write_syslogger_file_string(edata->context, amsyslogger, true);
-	
-	/* user query */
-	write_syslogger_file_string(debug_query_string, amsyslogger, true);
+    /* error context */
+    write_syslogger_file_string(edata->context, amsyslogger, true);
+    
+    /* user query */
+    write_syslogger_file_string(debug_query_string, amsyslogger, true);
 
-	/* cursor pos */
-	syslogger_write_int32(true, "", edata->cursorpos, amsyslogger, true); 
+    /* cursor pos */
+    syslogger_write_int32(true, "", edata->cursorpos, amsyslogger, true); 
 
-	/* func name */
-	write_syslogger_file_string(edata->funcname, amsyslogger, true);
+    /* func name */
+    write_syslogger_file_string(edata->funcname, amsyslogger, true);
 
-	/* file name */
-	write_syslogger_file_string(edata->filename, amsyslogger, true);
+    /* file name */
+    write_syslogger_file_string(edata->filename, amsyslogger, true);
 
-	/* line number */
-	syslogger_write_int32(true, "", edata->lineno, amsyslogger, true); 
+    /* line number */
+    syslogger_write_int32(true, "", edata->lineno, amsyslogger, true); 
 
-	/* stack trace */
+    /* stack trace */
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-		
-	if (edata->elevel >= ERROR &&
+        
+    if (edata->elevel >= ERROR &&
         (edata->elevel > ERROR || !edata->omit_location) &&
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
-	{
-		append_stacktrace(NULL, edata->stacktracearray, edata->stacktracesize, amsyslogger);
-	}
-	else
-	{
-		
+    {
+        append_stacktrace(NULL, edata->stacktracearray, edata->stacktracesize, amsyslogger);
+    }
+    else
+    {
+        
 #endif
 #endif
-		append_stacktrace(NULL, NULL, 0, amsyslogger);
+        append_stacktrace(NULL, NULL, 0, amsyslogger);
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-	}
+    }
 #endif
 #endif
 
-	/* EOL */
-	if (amsyslogger)
-		write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
-	else
-		write(fileno(stderr), LOG_EOL, strlen(LOG_EOL));
+    /* EOL */
+    if (amsyslogger)
+        write_syslogger_file_binary(LOG_EOL, strlen(LOG_EOL));
+    else
+        write(fileno(stderr), LOG_EOL, strlen(LOG_EOL));
 }
 
 /*
@@ -2786,154 +2792,154 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
  */
 void
 write_message_to_server_log(int elevel,
-							int sqlerrcode,
-							const char *message,
-							const char *detail,
-							const char *hint,
-							int cursorpos,
-							int internalpos,
-							const char *internalquery,
-							const char *context,
-							const char *funcname,
-							bool show_funcname,
-							const char *filename,
-							int lineno,
-							int stacktracesize,
-							bool omit_location,
-							void* const *stacktracearray
+                            int sqlerrcode,
+                            const char *message,
+                            const char *detail,
+                            const char *hint,
+                            int cursorpos,
+                            int internalpos,
+                            const char *internalquery,
+                            const char *context,
+                            const char *funcname,
+                            bool show_funcname,
+                            const char *filename,
+                            int lineno,
+                            int stacktracesize,
+                            bool omit_location,
+                            void* const *stacktracearray
                 ) 
 {
-	PipeProtoChunk buffer;
+    PipeProtoChunk buffer;
 
-	char *data = buffer.data;
-	GpErrorDataFixFields fix_fields;
-	static uint64 log_line_number = 0;
+    char *data = buffer.data;
+    GpErrorDataFixFields fix_fields;
+    static uint64 log_line_number = 0;
 
-	Assert(!am_syslogger);
-	
-	buffer.hdr.zero = 0;
-	buffer.hdr.len = 0;
-	buffer.hdr.pid = MyProcPid;
-	buffer.hdr.thid = mythread();
-	buffer.hdr.main_thid = mainthread();
-	buffer.hdr.chunk_no = 0;
-	buffer.hdr.is_last = 'f';
-	buffer.hdr.log_format = 'c';
-	buffer.hdr.log_line_number = log_line_number++;
-	buffer.hdr.next = -1;
+    Assert(!am_syslogger);
+    
+    buffer.hdr.zero = 0;
+    buffer.hdr.len = 0;
+    buffer.hdr.pid = MyProcPid;
+    buffer.hdr.thid = mythread();
+    buffer.hdr.main_thid = mainthread();
+    buffer.hdr.chunk_no = 0;
+    buffer.hdr.is_last = 'f';
+    buffer.hdr.log_format = 'c';
+    buffer.hdr.log_line_number = log_line_number++;
+    buffer.hdr.next = -1;
 
-	
-	/* Serialize edata in the order defined in GpErrorData. */
+    
+    /* Serialize edata in the order defined in GpErrorData. */
 
-	fix_fields.session_start_time =
-		(MyProcPort == NULL) ? 0 : (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
-	fix_fields.gp_is_primary = Gp_is_primary ? 't' : 'f';
-	fix_fields.gp_session_id = gp_session_id;
-	fix_fields.gp_command_count = gp_command_count;
-	fix_fields.gp_segment_id = Gp_segment;
-	fix_fields.slice_id = currentSliceId;
-	fix_fields.error_cursor_pos = cursorpos;
-	fix_fields.internal_query_pos = internalpos;
-	fix_fields.error_fileline = lineno;
-	fix_fields.top_trans_id = InvalidTransactionId;
-	if (MyProcPort != NULL && IsTransactionState())
-		fix_fields.top_trans_id = GetTopTransactionId();
+    fix_fields.session_start_time =
+        (MyProcPort == NULL) ? 0 : (pg_time_t)timestamptz_to_time_t(MyProcPort->SessionStartTime);
+    fix_fields.gp_is_primary = Gp_is_primary ? 't' : 'f';
+    fix_fields.gp_session_id = gp_session_id;
+    fix_fields.gp_command_count = gp_command_count;
+    fix_fields.gp_segment_id = Gp_segment;
+    fix_fields.slice_id = currentSliceId;
+    fix_fields.error_cursor_pos = cursorpos;
+    fix_fields.internal_query_pos = internalpos;
+    fix_fields.error_fileline = lineno;
+    fix_fields.top_trans_id = InvalidTransactionId;
+    if (MyProcPort != NULL && IsTransactionState())
+        fix_fields.top_trans_id = GetTopTransactionId();
 
-	GetAllTransactionXids(&(fix_fields.dist_trans_id),
-						  &(fix_fields.local_trans_id),
-						  &(fix_fields.subtrans_id));
+    GetAllTransactionXids(&(fix_fields.dist_trans_id),
+                          &(fix_fields.local_trans_id),
+                          &(fix_fields.subtrans_id));
 
-	Assert(buffer.hdr.len + sizeof(GpErrorDataFixFields) <= PIPE_MAX_PAYLOAD); 
-	
-	memcpy(data, &fix_fields, sizeof(GpErrorDataFixFields));
-	buffer.hdr.len += sizeof(GpErrorDataFixFields);
+    Assert(buffer.hdr.len + sizeof(GpErrorDataFixFields) <= PIPE_MAX_PAYLOAD); 
+    
+    memcpy(data, &fix_fields, sizeof(GpErrorDataFixFields));
+    buffer.hdr.len += sizeof(GpErrorDataFixFields);
 
-	/* Variable-length fields */
+    /* Variable-length fields */
 
-	/* username */
-	if (MyProcPort == NULL || MyProcPort->user_name == NULL)
-		append_string_to_pipe_chunk(&buffer, NULL);
-	else
-		append_string_to_pipe_chunk(&buffer, MyProcPort->user_name);
-	
-	/* databasename */
-	if (MyProcPort == NULL || MyProcPort->database_name == NULL)
-		append_string_to_pipe_chunk(&buffer, NULL);
-	else
-		append_string_to_pipe_chunk(&buffer, MyProcPort->database_name);
+    /* username */
+    if (MyProcPort == NULL || MyProcPort->user_name == NULL)
+        append_string_to_pipe_chunk(&buffer, NULL);
+    else
+        append_string_to_pipe_chunk(&buffer, MyProcPort->user_name);
+    
+    /* databasename */
+    if (MyProcPort == NULL || MyProcPort->database_name == NULL)
+        append_string_to_pipe_chunk(&buffer, NULL);
+    else
+        append_string_to_pipe_chunk(&buffer, MyProcPort->database_name);
 
-	/* remote_host */
-	if (MyProcPort == NULL || MyProcPort->remote_host == NULL)
-		append_string_to_pipe_chunk(&buffer, NULL);
-	else
-		append_string_to_pipe_chunk(&buffer, MyProcPort->remote_host);
+    /* remote_host */
+    if (MyProcPort == NULL || MyProcPort->remote_host == NULL)
+        append_string_to_pipe_chunk(&buffer, NULL);
+    else
+        append_string_to_pipe_chunk(&buffer, MyProcPort->remote_host);
 
-	/* remote_port */
-	if (MyProcPort == NULL || MyProcPort->remote_port == NULL)
-		append_string_to_pipe_chunk(&buffer, NULL);
-	else
-		append_string_to_pipe_chunk(&buffer, MyProcPort->remote_port);
+    /* remote_port */
+    if (MyProcPort == NULL || MyProcPort->remote_port == NULL)
+        append_string_to_pipe_chunk(&buffer, NULL);
+    else
+        append_string_to_pipe_chunk(&buffer, MyProcPort->remote_port);
 
-	/* error severity */
-	append_string_to_pipe_chunk(&buffer, error_severity(elevel));
+    /* error severity */
+    append_string_to_pipe_chunk(&buffer, error_severity(elevel));
 
-	/* sql state */
-	append_string_to_pipe_chunk(&buffer, unpack_sql_state(sqlerrcode));
+    /* sql state */
+    append_string_to_pipe_chunk(&buffer, unpack_sql_state(sqlerrcode));
 
-	/* error_message */
-	append_string_to_pipe_chunk(&buffer, message);
-	
-	/* error_detail */
-	append_string_to_pipe_chunk(&buffer, detail);
+    /* error_message */
+    append_string_to_pipe_chunk(&buffer, message);
+    
+    /* error_detail */
+    append_string_to_pipe_chunk(&buffer, detail);
 
-	/* error_hint */
-	append_string_to_pipe_chunk(&buffer, hint);
+    /* error_hint */
+    append_string_to_pipe_chunk(&buffer, hint);
 
-	/* internal_query */
-	append_string_to_pipe_chunk(&buffer, internalquery);
+    /* internal_query */
+    append_string_to_pipe_chunk(&buffer, internalquery);
 
-	/* error_context  */
-	append_string_to_pipe_chunk(&buffer, context);
-	
-	/* debug_query_string */
-	append_string_to_pipe_chunk(&buffer, debug_query_string);
+    /* error_context  */
+    append_string_to_pipe_chunk(&buffer, context);
+    
+    /* debug_query_string */
+    append_string_to_pipe_chunk(&buffer, debug_query_string);
 
-	/* error_func_name */
-	if (show_funcname)
-		append_string_to_pipe_chunk(&buffer, funcname);
-	else
-		append_string_to_pipe_chunk(&buffer, NULL);
-	
-	/* error_filename */
-	append_string_to_pipe_chunk(&buffer, filename);
-		
-	/* stacktrace */
+    /* error_func_name */
+    if (show_funcname)
+        append_string_to_pipe_chunk(&buffer, funcname);
+    else
+        append_string_to_pipe_chunk(&buffer, NULL);
+    
+    /* error_filename */
+    append_string_to_pipe_chunk(&buffer, filename);
+        
+    /* stacktrace */
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-		
-	if (elevel >= ERROR &&
+        
+    if (elevel >= ERROR &&
         (elevel > ERROR || !omit_location) &&
         stacktracesize > 0 &&
         stacktracearray != NULL)
-	{
-		append_stacktrace(&buffer, stacktracearray, stacktracesize, false);
-	}
-	else
-	{
-		
+    {
+        append_stacktrace(&buffer, stacktracearray, stacktracesize, false);
+    }
+    else
+    {
+        
 #endif
 #endif
-		append_stacktrace(&buffer, NULL, 0, false);
+        append_stacktrace(&buffer, NULL, 0, false);
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-	}
+    }
 #endif
 #endif	
 
-	/* Send the last chunk */
-	buffer.hdr.is_last = 't';
-	gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE);
+    /* Send the last chunk */
+    buffer.hdr.is_last = 't';
+    gp_write_pipe_chunk((char *)&buffer, buffer.hdr.len + PIPE_HEADER_SIZE);
 }
 
 /*
@@ -2942,44 +2948,44 @@ write_message_to_server_log(int elevel,
 static void
 send_message_to_server_log(ErrorData *edata)
 {
-	StringInfoData  buf;
+    StringInfoData  buf;
     StringInfoData  prefix;
     int             nc;
 
-	if (Log_destination & LOG_DESTINATION_STDERR)
-	{
-		if (Redirect_stderr && gp_log_format == 1)
-		{
-			if (redirection_done)
-			{
-				if (!am_syslogger)
-					write_message_to_server_log(edata->elevel,
-												edata->sqlerrcode,
-												edata->message,
-												edata->detail,
-												edata->hint,
-												edata->cursorpos,
-												edata->internalpos,
-												edata->internalquery,
-												edata->context,
-												edata->funcname,
-												edata->show_funcname,
-												edata->filename,
-												edata->lineno,
-												edata->stacktracesize,
-												edata->omit_location,
-												edata->stacktracearray);
-				else
-					write_syslogger_in_csv(edata, true);
-			}
-			else
-			{
-				write_syslogger_in_csv(edata, false);
-			}
-			
-			return;
-		}
-	}
+    if (Log_destination & LOG_DESTINATION_STDERR)
+    {
+        if (Redirect_stderr && gp_log_format == 1)
+        {
+            if (redirection_done)
+            {
+                if (!am_syslogger)
+                    write_message_to_server_log(edata->elevel,
+                                                edata->sqlerrcode,
+                                                edata->message,
+                                                edata->detail,
+                                                edata->hint,
+                                                edata->cursorpos,
+                                                edata->internalpos,
+                                                edata->internalquery,
+                                                edata->context,
+                                                edata->funcname,
+                                                edata->show_funcname,
+                                                edata->filename,
+                                                edata->lineno,
+                                                edata->stacktracesize,
+                                                edata->omit_location,
+                                                edata->stacktracearray);
+                else
+                    write_syslogger_in_csv(edata, true);
+            }
+            else
+            {
+                write_syslogger_in_csv(edata, false);
+            }
+            
+            return;
+        }
+    }
 
     /* Format message prefix. */
     initStringInfo(&buf);
@@ -2996,25 +3002,25 @@ send_message_to_server_log(ErrorData *edata)
     prefix.len += nc;
     prefix.data[prefix.len] = '\0';
 
-	if (Log_error_verbosity >= PGERROR_VERBOSE &&
+    if (Log_error_verbosity >= PGERROR_VERBOSE &&
         edata->sqlerrcode)
-	{
-		/* unpack MAKE_SQLSTATE code */
-		char		tbuf[12];
-		int			ssval;
-		int			i;
+    {
+        /* unpack MAKE_SQLSTATE code */
+        char		tbuf[12];
+        int			ssval;
+        int			i;
 
-		ssval = edata->sqlerrcode;
-		for (i = 0; i < 5; i++)
-		{
-			tbuf[i] = PGUNSIXBIT(ssval);
-			ssval >>= 6;
-		}
-		tbuf[i] = '\0';
-		appendStringInfo(&buf, "(%s) ", tbuf);
-	}
+        ssval = edata->sqlerrcode;
+        for (i = 0; i < 5; i++)
+        {
+            tbuf[i] = PGUNSIXBIT(ssval);
+            ssval >>= 6;
+        }
+        tbuf[i] = '\0';
+        appendStringInfo(&buf, "(%s) ", tbuf);
+    }
 
-	if (edata->message)
+    if (edata->message)
     {
         char   *cp = edata->message;
 
@@ -3023,188 +3029,188 @@ send_message_to_server_log(ErrorData *edata)
             cp++;
         append_with_tabs(&buf, cp);
     }
-	else
-		append_with_tabs(&buf, _("missing error text"));
+    else
+        append_with_tabs(&buf, _("missing error text"));
 
-	if (edata->cursorpos > 0)
-		appendStringInfo(&buf, _(" at character %d"),
-						 edata->cursorpos);
-	else if (edata->internalpos > 0)
-		appendStringInfo(&buf, _(" at character %d"),
-						 edata->internalpos);
+    if (edata->cursorpos > 0)
+        appendStringInfo(&buf, _(" at character %d"),
+                         edata->cursorpos);
+    else if (edata->internalpos > 0)
+        appendStringInfo(&buf, _(" at character %d"),
+                         edata->internalpos);
 
-	appendStringInfoChar(&buf, '\n');
+    appendStringInfoChar(&buf, '\n');
 
-	if (Log_error_verbosity >= PGERROR_DEFAULT)
-	{
-		if (edata->detail)
-		{
+    if (Log_error_verbosity >= PGERROR_DEFAULT)
+    {
+        if (edata->detail)
+        {
             appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, _("DETAIL:  "));
-			append_with_tabs(&buf, edata->detail);
-			appendStringInfoChar(&buf, '\n');
-		}
-		if (edata->hint)
-		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, _("HINT:  "));
-			append_with_tabs(&buf, edata->hint);
-			appendStringInfoChar(&buf, '\n');
-		}
-		if (edata->internalquery)
-		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, _("QUERY:  "));
-			append_with_tabs(&buf, edata->internalquery);
-			appendStringInfoChar(&buf, '\n');
-		}
-		if (edata->context)
-		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, _("CONTEXT:  "));
-			append_with_tabs(&buf, edata->context);
-			appendStringInfoChar(&buf, '\n');
-		}
-		if (Log_error_verbosity >= PGERROR_VERBOSE)
-		{
+            appendStringInfoString(&buf, _("DETAIL:  "));
+            append_with_tabs(&buf, edata->detail);
+            appendStringInfoChar(&buf, '\n');
+        }
+        if (edata->hint)
+        {
+            log_line_prefix(&buf);
+            appendStringInfoString(&buf, _("HINT:  "));
+            append_with_tabs(&buf, edata->hint);
+            appendStringInfoChar(&buf, '\n');
+        }
+        if (edata->internalquery)
+        {
+            log_line_prefix(&buf);
+            appendStringInfoString(&buf, _("QUERY:  "));
+            append_with_tabs(&buf, edata->internalquery);
+            appendStringInfoChar(&buf, '\n');
+        }
+        if (edata->context)
+        {
+            log_line_prefix(&buf);
+            appendStringInfoString(&buf, _("CONTEXT:  "));
+            append_with_tabs(&buf, edata->context);
+            appendStringInfoChar(&buf, '\n');
+        }
+        if (Log_error_verbosity >= PGERROR_VERBOSE)
+        {
             if (edata->elevel == INFO)
             {}
             /* assume no newlines in funcname or filename... */
-			else if (edata->funcname && edata->filename)
-			{
+            else if (edata->funcname && edata->filename)
+            {
                 appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-				appendStringInfo(&buf, _("LOCATION:  %s, %s:%d\n"),
-								 edata->funcname, edata->filename,
-								 edata->lineno);
-			}
-			else if (edata->filename)
-			{
-				log_line_prefix(&buf);
-				appendStringInfo(&buf, _("LOCATION:  %s:%d\n"),
-								 edata->filename, edata->lineno);
-			}
-		}
-	}
+                appendStringInfo(&buf, _("LOCATION:  %s, %s:%d\n"),
+                                 edata->funcname, edata->filename,
+                                 edata->lineno);
+            }
+            else if (edata->filename)
+            {
+                log_line_prefix(&buf);
+                appendStringInfo(&buf, _("LOCATION:  %s:%d\n"),
+                                 edata->filename, edata->lineno);
+            }
+        }
+    }
 
-	/*
-	 * If the user wants the query that generated this error logged, do it.
-	 */
-	if (is_log_level_output(edata->elevel, log_min_error_statement) &&
-		debug_query_string != NULL &&
-		!edata->hide_stmt)
-	{
-		log_line_prefix(&buf);
-		appendStringInfoString(&buf, _("STATEMENT:  "));
-		append_with_tabs(&buf, debug_query_string);
-		appendStringInfoChar(&buf, '\n');
-	}
+    /*
+     * If the user wants the query that generated this error logged, do it.
+     */
+    if (is_log_level_output(edata->elevel, log_min_error_statement) &&
+        debug_query_string != NULL &&
+        !edata->hide_stmt)
+    {
+        log_line_prefix(&buf);
+        appendStringInfoString(&buf, _("STATEMENT:  "));
+        append_with_tabs(&buf, debug_query_string);
+        appendStringInfoChar(&buf, '\n');
+    }
 
 #if (!defined(__darwin__))
 #if defined(__GLIBC__) || defined(pg_on_solaris)
-		
-	if (edata->elevel >= ERROR &&
+        
+    if (edata->elevel >= ERROR &&
         (edata->elevel > ERROR || !edata->omit_location) &&
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
-	{
-		char	  **strings;
-		size_t		i;
-	
-		strings = backtrace_symbols(edata->stacktracearray, edata->stacktracesize);
-		if (strings != NULL)
-		{
-			for (i = 0; i < edata->stacktracesize; i++)
-			{
-				appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-				appendStringInfo(&buf, "Traceback %d:  %.200s", (int)i, strings[i]);
-				appendStringInfoChar(&buf, '\n');
-			}
-			free(strings);
-		}
-	}
+    {
+        char	  **strings;
+        size_t		i;
+    
+        strings = backtrace_symbols(edata->stacktracearray, edata->stacktracesize);
+        if (strings != NULL)
+        {
+            for (i = 0; i < edata->stacktracesize; i++)
+            {
+                appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+                appendStringInfo(&buf, "Traceback %d:  %.200s", (int)i, strings[i]);
+                appendStringInfoChar(&buf, '\n');
+            }
+            free(strings);
+        }
+    }
 #endif
 #endif
 
 #ifdef HAVE_SYSLOG
-	/* Write to syslog, if enabled */
-	if (Log_destination & LOG_DESTINATION_SYSLOG)
-	{
-		int			syslog_level;
+    /* Write to syslog, if enabled */
+    if (Log_destination & LOG_DESTINATION_SYSLOG)
+    {
+        int			syslog_level;
 
-		switch (edata->elevel)
-		{
-			case DEBUG5:
-			case DEBUG4:
-			case DEBUG3:
-			case DEBUG2:
-			case DEBUG1:
-				syslog_level = LOG_DEBUG;
-				break;
-			case LOG:
-			case COMMERROR:
-			case INFO:
-				syslog_level = LOG_INFO;
-				break;
-			case NOTICE:
-			case WARNING:
-				syslog_level = LOG_NOTICE;
-				break;
-			case ERROR:
-				syslog_level = LOG_WARNING;
-				break;
-			case FATAL:
-				syslog_level = LOG_ERR;
-				break;
-			case PANIC:
-			default:
-				syslog_level = LOG_CRIT;
-				break;
-		}
+        switch (edata->elevel)
+        {
+            case DEBUG5:
+            case DEBUG4:
+            case DEBUG3:
+            case DEBUG2:
+            case DEBUG1:
+                syslog_level = LOG_DEBUG;
+                break;
+            case LOG:
+            case COMMERROR:
+            case INFO:
+                syslog_level = LOG_INFO;
+                break;
+            case NOTICE:
+            case WARNING:
+                syslog_level = LOG_NOTICE;
+                break;
+            case ERROR:
+                syslog_level = LOG_WARNING;
+                break;
+            case FATAL:
+                syslog_level = LOG_ERR;
+                break;
+            case PANIC:
+            default:
+                syslog_level = LOG_CRIT;
+                break;
+        }
 
-		write_syslog(syslog_level, buf.data);
-	}
+        write_syslog(syslog_level, buf.data);
+    }
 #endif   /* HAVE_SYSLOG */
 
 #ifdef WIN32
-	/* Write to eventlog, if enabled */
-	if (Log_destination & LOG_DESTINATION_EVENTLOG)
-	{
-		write_eventlog(edata->elevel, buf.data);
-	}
+    /* Write to eventlog, if enabled */
+    if (Log_destination & LOG_DESTINATION_EVENTLOG)
+    {
+        write_eventlog(edata->elevel, buf.data);
+    }
 #endif   /* WIN32 */
 
-	/* Write to stderr, if enabled */
-	if ((Log_destination & LOG_DESTINATION_STDERR) || whereToSendOutput == DestDebug)
-	{
+    /* Write to stderr, if enabled */
+    if ((Log_destination & LOG_DESTINATION_STDERR) || whereToSendOutput == DestDebug)
+    {
 #ifdef WIN32
 
-		/*
-		 * In a win32 service environment, there is no usable stderr. Capture
-		 * anything going there and write it to the eventlog instead.
-		 *
-		 * If stderr redirection is active, it was OK to write to stderr above
-		 * because that's really a pipe to the syslogger process.
-		 */
-		if (pgwin32_is_service() && (!redirection_done || am_syslogger) )
-			write_eventlog(edata->elevel, buf.data);
-		else
+        /*
+         * In a win32 service environment, there is no usable stderr. Capture
+         * anything going there and write it to the eventlog instead.
+         *
+         * If stderr redirection is active, it was OK to write to stderr above
+         * because that's really a pipe to the syslogger process.
+         */
+        if (pgwin32_is_service() && (!redirection_done || am_syslogger) )
+            write_eventlog(edata->elevel, buf.data);
+        else
 #endif
-			/* only use the chunking protocol if we know the syslogger should
-			 * be catching stderr output, and we are not ourselves the
-			 * syslogger. Otherwise, go directly to stderr.
-			 */
-			if (redirection_done && !am_syslogger)
-				write_pipe_chunks(buf.data, buf.len);
-			else
-				write(fileno(stderr), buf.data, buf.len);
-	}
+            /* only use the chunking protocol if we know the syslogger should
+             * be catching stderr output, and we are not ourselves the
+             * syslogger. Otherwise, go directly to stderr.
+             */
+            if (redirection_done && !am_syslogger)
+                write_pipe_chunks(buf.data, buf.len);
+            else
+                write(fileno(stderr), buf.data, buf.len);
+    }
 
-	/* If in the syslogger process, try to write messages direct to file */
-	if (am_syslogger)
-		write_syslogger_file_binary(buf.data, buf.len);
+    /* If in the syslogger process, try to write messages direct to file */
+    if (am_syslogger)
+        write_syslogger_file_binary(buf.data, buf.len);
 
     pfree(prefix.data);
-	pfree(buf.data);
+    pfree(buf.data);
 }
 
 /*
@@ -3213,42 +3219,42 @@ send_message_to_server_log(ErrorData *edata)
 static void
 write_pipe_chunks(char *data, int len)
 {
-	PipeProtoChunk p;
+    PipeProtoChunk p;
 
-	int			fd = fileno(stderr);
+    int			fd = fileno(stderr);
 
-	Assert(len > 0);
+    Assert(len > 0);
 
-	p.hdr.zero = 0; 
-	p.hdr.pid = MyProcPid;
+    p.hdr.zero = 0; 
+    p.hdr.pid = MyProcPid;
         p.hdr.thid = mythread();
         p.hdr.main_thid = mainthread();
         p.hdr.chunk_no = 0;
         p.hdr.log_format = 't';
         p.hdr.next = -1;
 
-	/* write all but the last chunk */
-	while (len > PIPE_MAX_PAYLOAD)
-	{
-		p.hdr.is_last = 'f';
-		p.hdr.len = PIPE_MAX_PAYLOAD;
-		memcpy(p.data, data, PIPE_MAX_PAYLOAD);
+    /* write all but the last chunk */
+    while (len > PIPE_MAX_PAYLOAD)
+    {
+        p.hdr.is_last = 'f';
+        p.hdr.len = PIPE_MAX_PAYLOAD;
+        memcpy(p.data, data, PIPE_MAX_PAYLOAD);
 
 #ifdef USE_ASSERT_CHECKING
                 Assert(p.hdr.zero == 0);
                 Assert(p.hdr.pid != 0);
                 Assert(p.hdr.thid != 0);
 #endif
-		write(fd, &p, PIPE_CHUNK_SIZE);
-		data += PIPE_MAX_PAYLOAD;
-		len -= PIPE_MAX_PAYLOAD;
+        write(fd, &p, PIPE_CHUNK_SIZE);
+        data += PIPE_MAX_PAYLOAD;
+        len -= PIPE_MAX_PAYLOAD;
 
                 ++p.hdr.chunk_no;
-	}
+    }
 
-	/* write the last chunk */
-	p.hdr.is_last = 't';
-	p.hdr.len = len;
+    /* write the last chunk */
+    p.hdr.is_last = 't';
+    p.hdr.len = len;
 
 #ifdef USE_ASSERT_CHECKING
         Assert(p.hdr.zero == 0);
@@ -3256,8 +3262,8 @@ write_pipe_chunks(char *data, int len)
         Assert(p.hdr.thid != 0);
         Assert(PIPE_HEADER_SIZE + len <= PIPE_CHUNK_SIZE);
 #endif
-	memcpy(p.data, data, len);
-	write(fd, &p, PIPE_HEADER_SIZE + len);
+    memcpy(p.data, data, len);
+    write(fd, &p, PIPE_HEADER_SIZE + len);
 }
 
 
@@ -3287,143 +3293,143 @@ err_sendstring(StringInfo buf, const char *str)
 static void
 send_message_to_frontend(ErrorData *edata)
 {
-	StringInfoData msgbuf;
+    StringInfoData msgbuf;
 
-	/* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
-	pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
+    /* 'N' (Notice) is for nonfatal conditions, 'E' is for errors */
+    pq_beginmessage(&msgbuf, (edata->elevel < ERROR) ? 'N' : 'E');
 
-	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
-	{
-		/* New style with separate fields */
-		char		tbuf[12];
-		int			ssval;
-		int			i;
+    if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
+    {
+        /* New style with separate fields */
+        char		tbuf[12];
+        int			ssval;
+        int			i;
 
-		pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY);
-		err_sendstring(&msgbuf, error_severity(edata->elevel));
+        pq_sendbyte(&msgbuf, PG_DIAG_SEVERITY);
+        err_sendstring(&msgbuf, error_severity(edata->elevel));
 
-		/* unpack MAKE_SQLSTATE code */
-		ssval = edata->sqlerrcode;
-		for (i = 0; i < 5; i++)
-		{
-			tbuf[i] = PGUNSIXBIT(ssval);
-			ssval >>= 6;
-		}
-		tbuf[i] = '\0';
+        /* unpack MAKE_SQLSTATE code */
+        ssval = edata->sqlerrcode;
+        for (i = 0; i < 5; i++)
+        {
+            tbuf[i] = PGUNSIXBIT(ssval);
+            ssval >>= 6;
+        }
+        tbuf[i] = '\0';
 
-		pq_sendbyte(&msgbuf, PG_DIAG_SQLSTATE);
-		err_sendstring(&msgbuf, tbuf);
+        pq_sendbyte(&msgbuf, PG_DIAG_SQLSTATE);
+        err_sendstring(&msgbuf, tbuf);
 
-		/* M field is required per protocol, so always send something */
-		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
-		if (edata->message)
-			err_sendstring(&msgbuf, edata->message);
-		else
-			err_sendstring(&msgbuf, _("missing error text"));
+        /* M field is required per protocol, so always send something */
+        pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
+        if (edata->message)
+            err_sendstring(&msgbuf, edata->message);
+        else
+            err_sendstring(&msgbuf, _("missing error text"));
 
-		if (edata->detail)
-		{
-			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
-			err_sendstring(&msgbuf, edata->detail);
-		}
+        if (edata->detail)
+        {
+            pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
+            err_sendstring(&msgbuf, edata->detail);
+        }
 
-		/* detail_log is intentionally not used here */
+        /* detail_log is intentionally not used here */
 
-		if (edata->hint)
-		{
-			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_HINT);
-			err_sendstring(&msgbuf, edata->hint);
-		}
+        if (edata->hint)
+        {
+            pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_HINT);
+            err_sendstring(&msgbuf, edata->hint);
+        }
 
-		if (edata->context)
-		{
-			pq_sendbyte(&msgbuf, PG_DIAG_CONTEXT);
-			err_sendstring(&msgbuf, edata->context);
-		}
+        if (edata->context)
+        {
+            pq_sendbyte(&msgbuf, PG_DIAG_CONTEXT);
+            err_sendstring(&msgbuf, edata->context);
+        }
 
-		if (edata->cursorpos > 0)
-		{
-			snprintf(tbuf, sizeof(tbuf), "%d", edata->cursorpos);
-			pq_sendbyte(&msgbuf, PG_DIAG_STATEMENT_POSITION);
-			err_sendstring(&msgbuf, tbuf);
-		}
+        if (edata->cursorpos > 0)
+        {
+            snprintf(tbuf, sizeof(tbuf), "%d", edata->cursorpos);
+            pq_sendbyte(&msgbuf, PG_DIAG_STATEMENT_POSITION);
+            err_sendstring(&msgbuf, tbuf);
+        }
 
-		if (edata->internalpos > 0)
-		{
-			snprintf(tbuf, sizeof(tbuf), "%d", edata->internalpos);
-			pq_sendbyte(&msgbuf, PG_DIAG_INTERNAL_POSITION);
-			err_sendstring(&msgbuf, tbuf);
-		}
+        if (edata->internalpos > 0)
+        {
+            snprintf(tbuf, sizeof(tbuf), "%d", edata->internalpos);
+            pq_sendbyte(&msgbuf, PG_DIAG_INTERNAL_POSITION);
+            err_sendstring(&msgbuf, tbuf);
+        }
 
-		if (edata->internalquery)
-		{
-			pq_sendbyte(&msgbuf, PG_DIAG_INTERNAL_QUERY);
-			err_sendstring(&msgbuf, edata->internalquery);
-		}
+        if (edata->internalquery)
+        {
+            pq_sendbyte(&msgbuf, PG_DIAG_INTERNAL_QUERY);
+            err_sendstring(&msgbuf, edata->internalquery);
+        }
 
-		if (edata->filename)
-		{
-			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FILE);
-			err_sendstring(&msgbuf, edata->filename);
-		}
+        if (edata->filename)
+        {
+            pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FILE);
+            err_sendstring(&msgbuf, edata->filename);
+        }
 
-		if (edata->lineno > 0)
-		{
-			snprintf(tbuf, sizeof(tbuf), "%d", edata->lineno);
-			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_LINE);
-			err_sendstring(&msgbuf, tbuf);
-		}
+        if (edata->lineno > 0)
+        {
+            snprintf(tbuf, sizeof(tbuf), "%d", edata->lineno);
+            pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_LINE);
+            err_sendstring(&msgbuf, tbuf);
+        }
 
-		if (edata->funcname)
-		{
-			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FUNCTION);
-			err_sendstring(&msgbuf, edata->funcname);
-		}
+        if (edata->funcname)
+        {
+            pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FUNCTION);
+            err_sendstring(&msgbuf, edata->funcname);
+        }
 
-		pq_sendbyte(&msgbuf, '\0');		/* terminator */
-	}
-	else
-	{
-		/* Old style --- gin up a backwards-compatible message */
-		StringInfoData buf;
+        pq_sendbyte(&msgbuf, '\0');		/* terminator */
+    }
+    else
+    {
+        /* Old style --- gin up a backwards-compatible message */
+        StringInfoData buf;
 
-		initStringInfo(&buf);
+        initStringInfo(&buf);
 
-		appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
+        appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
 
-		if (edata->show_funcname && edata->funcname)
-			appendStringInfo(&buf, "%s: ", edata->funcname);
+        if (edata->show_funcname && edata->funcname)
+            appendStringInfo(&buf, "%s: ", edata->funcname);
 
-		if (edata->message)
-			appendStringInfoString(&buf, edata->message);
-		else
-			appendStringInfoString(&buf, _("missing error text"));
+        if (edata->message)
+            appendStringInfoString(&buf, edata->message);
+        else
+            appendStringInfoString(&buf, _("missing error text"));
 
-		if (edata->cursorpos > 0)
-			appendStringInfo(&buf, _(" at character %d"),
-							 edata->cursorpos);
-		else if (edata->internalpos > 0)
-			appendStringInfo(&buf, _(" at character %d"),
-							 edata->internalpos);
+        if (edata->cursorpos > 0)
+            appendStringInfo(&buf, _(" at character %d"),
+                             edata->cursorpos);
+        else if (edata->internalpos > 0)
+            appendStringInfo(&buf, _(" at character %d"),
+                             edata->internalpos);
 
-		appendStringInfoChar(&buf, '\n');
+        appendStringInfoChar(&buf, '\n');
 
-		err_sendstring(&msgbuf, buf.data);
+        err_sendstring(&msgbuf, buf.data);
 
-		pfree(buf.data);
-	}
+        pfree(buf.data);
+    }
 
-	pq_endmessage(&msgbuf);
+    pq_endmessage(&msgbuf);
 
-	/*
-	 * This flush is normally not necessary, since postgres.c will flush out
-	 * waiting data when control returns to the main loop. But it seems best
-	 * to leave it here, so that the client has some clue what happened if the
-	 * backend dies before getting back to the main loop ... error/notice
-	 * messages should not be a performance-critical path anyway, so an extra
-	 * flush won't hurt much ...
-	 */
-	pq_flush();
+    /*
+     * This flush is normally not necessary, since postgres.c will flush out
+     * waiting data when control returns to the main loop. But it seems best
+     * to leave it here, so that the client has some clue what happened if the
+     * backend dies before getting back to the main loop ... error/notice
+     * messages should not be a performance-critical path anyway, so an extra
+     * flush won't hurt much ...
+     */
+    pq_flush();
 }
 
 
@@ -3450,50 +3456,50 @@ send_message_to_frontend(ErrorData *edata)
 static char *
 expand_fmt_string(const char *fmt, ErrorData *edata)
 {
-	StringInfoData buf;
-	const char *cp;
+    StringInfoData buf;
+    const char *cp;
 
-	initStringInfo(&buf);
+    initStringInfo(&buf);
 
-	for (cp = fmt; *cp; cp++)
-	{
-		if (cp[0] == '%' && cp[1] != '\0')
-		{
-			cp++;
-			if (*cp == 'm')
-			{
-				/*
-				 * Replace %m by system error string.  If there are any %'s in
-				 * the string, we'd better double them so that vsnprintf won't
-				 * misinterpret.
-				 */
-				const char *cp2;
+    for (cp = fmt; *cp; cp++)
+    {
+        if (cp[0] == '%' && cp[1] != '\0')
+        {
+            cp++;
+            if (*cp == 'm')
+            {
+                /*
+                 * Replace %m by system error string.  If there are any %'s in
+                 * the string, we'd better double them so that vsnprintf won't
+                 * misinterpret.
+                 */
+                const char *cp2;
 
-				cp2 = useful_strerror(edata->saved_errno);
-				for (; *cp2; cp2++)
-				{
-					if (*cp2 == '%')
-						appendStringInfoCharMacro(&buf, '%');
-					appendStringInfoCharMacro(&buf, *cp2);
-				}
+                cp2 = useful_strerror(edata->saved_errno);
+                for (; *cp2; cp2++)
+                {
+                    if (*cp2 == '%')
+                        appendStringInfoCharMacro(&buf, '%');
+                    appendStringInfoCharMacro(&buf, *cp2);
+                }
                 if (cp[1] == '%' && cp[2] == 's')   /*CDB: "%m%s" */
                 {
                     appendStringInfo(&buf, " (%%s errno %d)", edata->saved_errno);
                     cp += 2;
                 }
-			}
-			else
-			{
-				/* copy % and next char --- this avoids trouble with %%m */
-				appendStringInfoCharMacro(&buf, '%');
-				appendStringInfoCharMacro(&buf, *cp);
-			}
-		}
-		else
-			appendStringInfoCharMacro(&buf, *cp);
-	}
+            }
+            else
+            {
+                /* copy % and next char --- this avoids trouble with %%m */
+                appendStringInfoCharMacro(&buf, '%');
+                appendStringInfoCharMacro(&buf, *cp);
+            }
+        }
+        else
+            appendStringInfoCharMacro(&buf, *cp);
+    }
 
-	return buf.data;
+    return buf.data;
 }
 
 
@@ -3503,32 +3509,32 @@ expand_fmt_string(const char *fmt, ErrorData *edata)
 static const char *
 useful_strerror(int errnum)
 {
-	/* this buffer is only used if errno has a bogus value */
-	static char errorstr_buf[48];
-	const char *str;
+    /* this buffer is only used if errno has a bogus value */
+    static char errorstr_buf[48];
+    const char *str;
 
 #ifdef WIN32
-	/* Winsock error code range, per WinError.h */
-	if (errnum >= 10000 && errnum <= 11999)
-		return pgwin32_socket_strerror(errnum);
+    /* Winsock error code range, per WinError.h */
+    if (errnum >= 10000 && errnum <= 11999)
+        return pgwin32_socket_strerror(errnum);
 #endif
-	str = strerror(errnum);
+    str = strerror(errnum);
 
-	/*
-	 * Some strerror()s return an empty string for out-of-range errno. This is
-	 * ANSI C spec compliant, but not exactly useful.
-	 */
-	if (str == NULL || *str == '\0')
-	{
-		snprintf(errorstr_buf, sizeof(errorstr_buf),
-				 /*------
-				   translator: This string will be truncated at 47
-				   characters expanded. */
-				 _("operating system error %d"), errnum);
-		str = errorstr_buf;
-	}
+    /*
+     * Some strerror()s return an empty string for out-of-range errno. This is
+     * ANSI C spec compliant, but not exactly useful.
+     */
+    if (str == NULL || *str == '\0')
+    {
+        snprintf(errorstr_buf, sizeof(errorstr_buf),
+                 /*------
+                   translator: This string will be truncated at 47
+                   characters expanded. */
+                 _("operating system error %d"), errnum);
+        str = errorstr_buf;
+    }
 
-	return str;
+    return str;
 }
 
 
@@ -3538,53 +3544,53 @@ useful_strerror(int errnum)
 static const char *
 error_severity(int elevel)
 {
-	const char *prefix;
+    const char *prefix;
 
-	switch (elevel)
-	{
-		case DEBUG1:
+    switch (elevel)
+    {
+        case DEBUG1:
             prefix = gettext("DEBUG1");
             break;
-		case DEBUG2:
+        case DEBUG2:
             prefix = gettext("DEBUG2");
             break;
-		case DEBUG3:
+        case DEBUG3:
             prefix = gettext("DEBUG3");
             break;
-		case DEBUG4:
+        case DEBUG4:
             prefix = gettext("DEBUG4");
             break;
-		case DEBUG5:
-			prefix = gettext("DEBUG5");
-			break;
-		case LOG:
-		case COMMERROR:
-			prefix = _("LOG");
-			break;
-		case INFO:
-			prefix = _("INFO");
-			break;
-		case NOTICE:
-			prefix = _("NOTICE");
-			break;
-		case WARNING:
-			prefix = _("WARNING");
-			break;
-		case ERROR:
-			prefix = _("ERROR");
-			break;
-		case FATAL:
-			prefix = _("FATAL");
-			break;
-		case PANIC:
-			prefix = _("PANIC");
-			break;
-		default:
-			prefix = "???";
-			break;
-	}
+        case DEBUG5:
+            prefix = gettext("DEBUG5");
+            break;
+        case LOG:
+        case COMMERROR:
+            prefix = _("LOG");
+            break;
+        case INFO:
+            prefix = _("INFO");
+            break;
+        case NOTICE:
+            prefix = _("NOTICE");
+            break;
+        case WARNING:
+            prefix = _("WARNING");
+            break;
+        case ERROR:
+            prefix = _("ERROR");
+            break;
+        case FATAL:
+            prefix = _("FATAL");
+            break;
+        case PANIC:
+            prefix = _("PANIC");
+            break;
+        default:
+            prefix = "???";
+            break;
+    }
 
-	return prefix;
+    return prefix;
 }
 
 
@@ -3597,14 +3603,14 @@ error_severity(int elevel)
 static void
 append_with_tabs(StringInfo buf, const char *str)
 {
-	char		ch;
+    char		ch;
 
-	while ((ch = *str++) != '\0')
-	{
-		appendStringInfoCharMacro(buf, ch);
-		if (ch == '\n')
-			appendStringInfoCharMacro(buf, '\t');
-	}
+    while ((ch = *str++) != '\0')
+    {
+        appendStringInfoCharMacro(buf, ch);
+        if (ch == '\n')
+            appendStringInfoCharMacro(buf, '\t');
+    }
 }
 
 
@@ -3616,81 +3622,81 @@ append_with_tabs(StringInfo buf, const char *str)
 void
 write_stderr(const char *fmt,...)
 {
-	va_list		ap;
+    va_list		ap;
 
-	fmt = _(fmt);
+    fmt = _(fmt);
 
-	va_start(ap, fmt);
+    va_start(ap, fmt);
 
-	if (Redirect_stderr && gp_log_format == 1)
-	{
-		char		errbuf[2048];		/* Arbitrary size? */
-		
-		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
+    if (Redirect_stderr && gp_log_format == 1)
+    {
+        char		errbuf[2048];		/* Arbitrary size? */
+        
+        vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
-		if (!am_syslogger)
-		{
-			/* Write the message in the CSV format */
-			write_message_to_server_log(LOG,
-										0,
-										errbuf,
-										NULL,
-										NULL,
-										0,
-										0,
-										NULL,
-										NULL,
-										NULL,
-										false,
-										NULL,
-										0,
-										0,
-										true,
-										NULL);
-		}
-		else
-		{
-			ErrorData edata;
-			memset(&edata, 0, sizeof(ErrorData));
-			edata.elevel = LOG;
-			edata.message = errbuf;
-			edata.omit_location = true;
-			if (redirection_done)
-				write_syslogger_in_csv(&edata, true);
-			else
-				write_syslogger_in_csv(&edata, false);
-		}
+        if (!am_syslogger)
+        {
+            /* Write the message in the CSV format */
+            write_message_to_server_log(LOG,
+                                        0,
+                                        errbuf,
+                                        NULL,
+                                        NULL,
+                                        0,
+                                        0,
+                                        NULL,
+                                        NULL,
+                                        NULL,
+                                        false,
+                                        NULL,
+                                        0,
+                                        0,
+                                        true,
+                                        NULL);
+        }
+        else
+        {
+            ErrorData edata;
+            memset(&edata, 0, sizeof(ErrorData));
+            edata.elevel = LOG;
+            edata.message = errbuf;
+            edata.omit_location = true;
+            if (redirection_done)
+                write_syslogger_in_csv(&edata, true);
+            else
+                write_syslogger_in_csv(&edata, false);
+        }
 
-		va_end(ap);
-		return;
-	}
+        va_end(ap);
+        return;
+    }
 
 #ifndef WIN32
-	/* On Unix, we just fprintf to stderr */
-	vfprintf(stderr, fmt, ap);
+    /* On Unix, we just fprintf to stderr */
+    vfprintf(stderr, fmt, ap);
     fflush(stderr);
 #else
 
-	/*
-	 * On Win32, we print to stderr if running on a console, or write to
-	 * eventlog if running as a service
-	 */
-	if (pgwin32_is_service())	/* Running as a service */
-	{
-		char		errbuf[2048];		/* Arbitrary size? */
+    /*
+     * On Win32, we print to stderr if running on a console, or write to
+     * eventlog if running as a service
+     */
+    if (pgwin32_is_service())	/* Running as a service */
+    {
+        char		errbuf[2048];		/* Arbitrary size? */
 
-		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
+        vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
-		write_eventlog(EVENTLOG_ERROR_TYPE, errbuf);
-	}
-	else
+        write_eventlog(EVENTLOG_ERROR_TYPE, errbuf);
+    }
+    else
     {
         /* Not running as service, write to stderr */
         vfprintf(stderr, fmt, ap);
         fflush(stderr);
     }
 #endif
-	va_end(ap);
+    va_end(ap);
 }
 
 
@@ -3705,22 +3711,22 @@ write_stderr(const char *fmt,...)
 static bool
 is_log_level_output(int elevel, int log_min_level)
 {
-	if (elevel == LOG || elevel == COMMERROR)
-	{
-		if (log_min_level == LOG || log_min_level <= ERROR)
-			return true;
-	}
-	else if (log_min_level == LOG)
-	{
-		/* elevel != LOG */
-		if (elevel >= FATAL)
-			return true;
-	}
-	/* Neither is LOG */
-	else if (elevel >= log_min_level)
-		return true;
+    if (elevel == LOG || elevel == COMMERROR)
+    {
+        if (log_min_level == LOG || log_min_level <= ERROR)
+            return true;
+    }
+    else if (log_min_level == LOG)
+    {
+        /* elevel != LOG */
+        if (elevel >= FATAL)
+            return true;
+    }
+    /* Neither is LOG */
+    else if (elevel >= log_min_level)
+        return true;
 
-	return false;
+    return false;
 }
 
 /*
@@ -3745,8 +3751,8 @@ elog_debug_linger(ErrorData *edata)
 
     /* Log the error and notify the client. */
     EmitErrorReport();
-	fflush(stdout);
-	fflush(stderr);
+    fflush(stdout);
+    fflush(stderr);
 
     /* Terminate the client connection. */
     pq_comm_close_fatal();  
@@ -3783,103 +3789,103 @@ elog_debug_linger(ErrorData *edata)
 
 struct frame_info
 {
-	int frame;
-	int max;
-	void **addr;
+    int frame;
+    int max;
+    void **addr;
 };
 
 static int
 get_stack_frames(uintptr_t fp, int sig, void *context)
 {
-	struct frame_info *fi = (struct frame_info *)context;
-	int cur = fi->frame;
+    struct frame_info *fi = (struct frame_info *)context;
+    int cur = fi->frame;
 
-	/* stop filling in after we've hit the limit */
-	if (cur == fi->max)
-		return 0;
+    /* stop filling in after we've hit the limit */
+    if (cur == fi->max)
+        return 0;
 
-	fi->addr[cur] = (void *)fp;
-	fi->frame++;
+    fi->addr[cur] = (void *)fp;
+    fi->frame++;
 
-	return 0;
+    return 0;
 }
 
 size_t
 backtrace(void **buffer, int size)
 {
-	ucontext_t uc;
-	struct frame_info fi;
+    ucontext_t uc;
+    struct frame_info fi;
 
-	if (getcontext(&uc) != 0)
-		return 0;
+    if (getcontext(&uc) != 0)
+        return 0;
 
-	fi.addr = buffer;
-	fi.max = size;
-	fi.frame = 0;
+    fi.addr = buffer;
+    fi.max = size;
+    fi.frame = 0;
 
-	if (walkcontext(&uc, get_stack_frames, &fi) != 0)
-		return 0;
+    if (walkcontext(&uc, get_stack_frames, &fi) != 0)
+        return 0;
 
-	return fi.frame;
+    return fi.frame;
 }
 
 char **
 backtrace_symbols(void *const *buffer, int size)
 {
-	char **result;
-	size_t bufsize;
-	int i;
+    char **result;
+    size_t bufsize;
+    int i;
 
-	bufsize = size * sizeof(char *);
+    bufsize = size * sizeof(char *);
 
-	/* Calculate exact size */
-	for (i=0; i < size; i++)
-	{
-		Dl_info dli;
+    /* Calculate exact size */
+    for (i=0; i < size; i++)
+    {
+        Dl_info dli;
 
-		if (dladdr(buffer[i], &dli) == 0)
-		{
-			bufsize += snprintf(NULL, 0, "%p: <not found>", buffer[i]) + 1;
-		}
-		else
-		{
-			bufsize += snprintf(NULL, 0, "%p: %s %s+0x%x", buffer[i], 
-						dli.dli_fname, dli.dli_sname,
-						(int)((char *)(buffer[i]) - (char *)(dli.dli_saddr))) + 1;
-		}
-	}
+        if (dladdr(buffer[i], &dli) == 0)
+        {
+            bufsize += snprintf(NULL, 0, "%p: <not found>", buffer[i]) + 1;
+        }
+        else
+        {
+            bufsize += snprintf(NULL, 0, "%p: %s %s+0x%x", buffer[i], 
+                        dli.dli_fname, dli.dli_sname,
+                        (int)((char *)(buffer[i]) - (char *)(dli.dli_saddr))) + 1;
+        }
+    }
 
-	result = malloc(bufsize);
+    result = malloc(bufsize);
 
-	if(!result)
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-					errmsg("Failed to get backtrace symbol: out of memory")));
+    if(!result)
+        ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+                    errmsg("Failed to get backtrace symbol: out of memory")));
 
-	{
-		int n;
-		char *cur = (char *)(result + size);
+    {
+        int n;
+        char *cur = (char *)(result + size);
 
-		memset(result, 0, bufsize);
+        memset(result, 0, bufsize);
 
-		for (i=0; i < size; i++)
-		{
-			Dl_info dli;
+        for (i=0; i < size; i++)
+        {
+            Dl_info dli;
 
-			if (dladdr(buffer[i], &dli) == 0)
-			{
-				n = sprintf(cur, "%p: <not found>", buffer[i]);
-			}
-			else
-			{
-				n = sprintf(cur, "%p: %s %s+0x%x", buffer[i], 
-							dli.dli_fname, dli.dli_sname,
-							(int)((char *)(buffer[i]) - (char *)(dli.dli_saddr)));
-			}
+            if (dladdr(buffer[i], &dli) == 0)
+            {
+                n = sprintf(cur, "%p: <not found>", buffer[i]);
+            }
+            else
+            {
+                n = sprintf(cur, "%p: %s %s+0x%x", buffer[i], 
+                            dli.dli_fname, dli.dli_sname,
+                            (int)((char *)(buffer[i]) - (char *)(dli.dli_saddr)));
+            }
 
-			result[i] = cur;
-			cur += n + 1;
-		}
-	}
-	return result;
+            result[i] = cur;
+            cur += n + 1;
+        }
+    }
+    return result;
 }
 #endif
