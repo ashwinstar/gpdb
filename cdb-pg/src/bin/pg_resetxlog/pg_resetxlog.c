@@ -38,6 +38,7 @@
 #endif 
 
 #include "postgres.h"
+#include "pgtime.h"
 
 #include <dirent.h>
 #include <fcntl.h>
