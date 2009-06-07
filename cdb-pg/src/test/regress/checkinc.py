@@ -49,6 +49,8 @@ fileset = {
     'sys/machine.h':     [],
     'sys/sdt.h':         [],
     'sys/utime.h':       [],
+    'sys/atomic_op.h':   [],
+    'sys/tas.h':         [],
     'unix.h':            [],
     'windows.h':         [],
     'winsock.h':         [],
