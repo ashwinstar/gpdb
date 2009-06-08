@@ -33,7 +33,7 @@ sol9_sparc_32_PATH_PREPEND=/usr/local/bin
 sol8_sparc_PATH_PREPEND=/usr/local/bin
 sol8_sparc_64_PATH_PREPEND=/usr/local/bin
 sol8_sparc_32_PATH_PREPEND=/usr/local/bin
-aix_PowerPC_POWER5_PATH_PREPEND=/usr/local/bin
+aix5_ppc_64_PATH_PREPEND=/usr/local/bin
 BLD_PATH_PREPEND=$($(BLD_ARCH)_PATH_PREPEND)
 ifneq "$(BLD_PATH_PREPEND)" ""
 export PATH:=$(BLD_PATH_PREPEND):$(PATH)
@@ -77,7 +77,7 @@ sol10_x86_32_BLD_CFLAGS=-m32
 suse10_x86_64_BLD_CFLAGS=-m64
 win64_BLD_CFLAGS=-m64
 win32_BLD_CFLAGS=-m32
-#aix_PowerPC_POWER5_BLD_CFLAGS=-m64
+aix5_ppc_64_BLD_CFLAGS=
 BLD_CFLAGS=$($(BLD_ARCH)_BLD_CFLAGS)
 
 rhel5_x86_32_BLD_LDFLAGS=-m32
@@ -90,7 +90,7 @@ sol9_sparc_BLD_BITS=32
 sol8_sparc_BLD_BITS=32
 osx104_x86_BLD_BITS=32
 osx105_x86_BLD_BITS=32
-aix_PowerPC_POWER5_BLD_BITS=64
+aix5_ppc_64_BLD_BITS=64
 BLD_BITS=$($(BLD_ARCH)_BLD_BITS)
 endif
 

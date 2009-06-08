@@ -176,7 +176,7 @@ CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) --enable-thread-safety --enable-integer-d
 ifeq "$(BLD_ARCH)" "osx104_x86"
 PG_LANG=false
 endif
-ifeq "$(BLD_ARCH)" "aix_PowerPC_POWER5"
+ifeq "$(BLD_ARCH)" "aix5_ppc_64"
 PG_LANG=false
 endif
 
@@ -201,7 +201,7 @@ ifneq "$(BLD_ARCH)" "osx104_x86"
 BLD_CURL_CONFIG=CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
 endif
 # ...and do not include the authlibs on Windows
-ifeq "$(findstring $(BLD_ARCH),win32 win64,aix_PowerPC_POWER5)" ""
+ifeq "$(findstring $(BLD_ARCH),win32 win64,aix5_ppc_64)" ""
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(BLD_CURL_CONFIG)
 endif
 

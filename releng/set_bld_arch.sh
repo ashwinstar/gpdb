@@ -36,7 +36,7 @@ case "`uname -s`" in
     ;;
 
     AIX)
-    BLD_ARCH_HOST="aix_`lsattr -E -l proc0| grep ^type | awk '{print $2}'`"
+    BLD_ARCH_HOST="aix`uname -v`_`prtconf | grep 'Processor Type' | awk '{print $3}' | perl -p -i -e 's,PowerPC_POWER5,ppc,'`_`prtconf -k | perl -p -i -e 's,Kernel Type: (\d+)-bit,\1,'`"
     ;;
 
     *)
