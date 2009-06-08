@@ -25,6 +25,10 @@
 #define _WIN32_WINNT 0x0600
 #endif
 
+#ifndef PROVIDE_64BIT_CRC
+#define PROVIDE_64BIT_CRC
+#endif
+
 #include "postgres.h"
 
 #include <pthread.h>
@@ -39,6 +43,8 @@
 #include "libpq/ip.h"
 #include "utils/builtins.h"
 #include "utils/debugbreak.h"
+
+#include "utils/pg_crc.h"
 
 #include "cdb/cdbselect.h"
 #include "cdb/tupchunklist.h"
@@ -178,7 +184,7 @@ static uint64	ic_stats_dropped_acks=0;
 static uint64	ic_stats_retrans=0;
 static uint64	ic_stats_mismatch=0;
 static uint64	ic_stats_rx_overrun=0;
-
+static uint64	ic_stats_crc_error=0;
 
 /* Global hash table for connections. */
 
@@ -1897,15 +1903,17 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 	elog(DEBUG1, "TeardownUDPInterconnect: total pkt count " INT64_FORMAT
 		 " dropped acks " INT64_FORMAT " retransmits " INT64_FORMAT
-		 " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT,
+		 " conn mismatch " INT64_FORMAT " rx overrun " INT64_FORMAT
+		 " crc error" INT64_FORMAT,
 		 ic_stats_pkt_count, ic_stats_dropped_acks, ic_stats_retrans,
-		 ic_stats_mismatch, ic_stats_rx_overrun);
+		 ic_stats_mismatch, ic_stats_rx_overrun, ic_stats_crc_error);
 
 	ic_stats_pkt_count=0;
 	ic_stats_dropped_acks=0;
 	ic_stats_retrans=0;
 	ic_stats_mismatch=0;
 	ic_stats_rx_overrun=0;
+	ic_stats_crc_error=0;
 
 	pthread_mutex_unlock(&rx_thread_mutex);
 
@@ -2308,6 +2316,36 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 	return ret;
 }
 
+static inline void
+prepareXmit(MotionConn *conn)
+{
+	Assert(conn != NULL);
+	Assert(conn->pBuff != NULL);
+
+	conn->conn_info.len = conn->msgSize;
+	conn->conn_info.crc = 0;
+
+	memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
+
+	if (gp_interconnect_full_crc)
+	{
+		struct icpkthdr *pkt = (struct icpkthdr *)conn->pBuff;
+		pg_crc64 local_crc;
+
+		INIT_CRC64(local_crc);
+		COMP_CRC64(local_crc, pkt, pkt->len);
+		FIN_CRC64(local_crc);
+
+		pkt->crc = local_crc.crc0;
+	}
+
+	gettimeofday(&conn->activeXmitTime, NULL);
+
+	/* set active xmit */
+	conn->activeXmit = conn->pBuff;
+}
+
+
 static void
 sendOnce(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn)
 {
@@ -2486,18 +2524,9 @@ handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *p
 			conn->pBuff[conn->msgSize] = 'S';
 			conn->msgSize += 1;
 
-			/* prepare this for transmit */
-			conn->conn_info.len = conn->msgSize;
-
-			memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
-
-			gettimeofday(&conn->activeXmitTime, NULL);
-
-			/* active xmit, advance xmit buffer */
-			conn->activeXmit = conn->pBuff;
+			prepareXmit(conn);
 
 			/* now ready to actually send */
-
 			elog(DEBUG3, "handleStopMsgs: node %d route %d", motionId, i);
 			morestops = waitOnXmit(transportStates, pEntry, conn);
 
@@ -2556,16 +2585,12 @@ SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates, C
 	Assert(!conn->activeXmit);
 
 	/* prepare this for transmit */
-	conn->conn_info.len = conn->msgSize;
 	if (pEntry->sendingEos)
 		conn->conn_info.flags |= UDPIC_FLAGS_EOS;
 
-	memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
-
-	gettimeofday(&conn->activeXmitTime, NULL);
+	prepareXmit(conn);
 
 	/* active xmit, advance xmit buffer */
-	conn->activeXmit = conn->pBuff;
 	conn->pBuff = (conn->pBuff == conn->ping ? conn->pong : conn->ping);
 
 	conn->tupleCount = 0;
@@ -2652,16 +2677,11 @@ SendEosUDP(MotionLayerState *mlStates,
 			Assert(!conn->activeXmit);
 
 			/* prepare this for transmit */
-			conn->conn_info.len = conn->msgSize;
 			if (pEntry->sendingEos)
 				conn->conn_info.flags |= UDPIC_FLAGS_EOS;
 
-			memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
+			prepareXmit(conn);
 
-			gettimeofday(&conn->activeXmitTime, NULL);
-
-			/* active xmit, advance xmit buffer */
-			conn->activeXmit = conn->pBuff;
 			conn->pBuff = (conn->pBuff == conn->ping ? conn->pong : conn->ping);
 
 			conn->tupleCount = 0;
@@ -3155,6 +3175,34 @@ ic_rx_thread_func(void *arg)
 
 						pthread_mutex_unlock(&rx_thread_mutex);
 						continue;
+					}
+
+					/*
+					 * before delivering, check the CRC of the
+					 * payload. (header errors will likely have been
+					 * caught above)
+					 */
+					if (gp_interconnect_full_crc)
+					{
+						int64 rx_crc;
+						pg_crc64 local_crc;
+
+						rx_crc = pkt->crc;
+						pkt->crc = 0;
+
+						INIT_CRC64(local_crc);
+						COMP_CRC64(local_crc, pkt, pkt->len);
+						FIN_CRC64(local_crc);
+
+						if (rx_crc != local_crc.crc0)
+						{
+							ic_stats_crc_error++;
+
+							/* drop */
+							write_log("received network data error, dropping bad packet, user data unaffected.");
+							pthread_mutex_unlock(&rx_thread_mutex);
+							continue;
+						}
 					}
 
 					sendAck(conn, false);

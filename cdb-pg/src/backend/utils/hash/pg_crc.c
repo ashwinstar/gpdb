@@ -27,6 +27,7 @@
 /* Use c.h so that this file can be built in either frontend or backend */
 #include "c.h"
 
+#define PROVIDE_64BIT_CRC
 
 /*
  * This table is based on the polynomial

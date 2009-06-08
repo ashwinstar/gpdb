@@ -442,6 +442,13 @@ extern int	Gp_interconnect_hash_multiplier;
 extern bool gp_interconnect_aggressive_retry; /* fast-track app-level retry */
 
 /*
+ * Parameter gp_interconnect_full_crc
+ *
+ * Perform a full CRC on UDP-packets as they depart and arrive.
+ */
+extern bool gp_interconnect_full_crc;
+
+/*
  * Parameter gp_segment
  *
  * The segment (content) controlled by this QE

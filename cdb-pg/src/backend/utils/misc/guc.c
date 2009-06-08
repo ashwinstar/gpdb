@@ -1697,6 +1697,16 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
 	{
+		{"gp_interconnect_full_crc", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Sanity check incoming data stream."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_interconnect_full_crc,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_version_mismatch_error", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("QD/QE version string mismatches reported as an error"),
 			NULL,
