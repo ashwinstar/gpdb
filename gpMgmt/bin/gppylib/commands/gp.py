@@ -118,9 +118,9 @@ class SegmentStart(Command):
         if not nowait:
             cmdfrags.append('-w')
         if utilityMode:
-            cmdfrags.append("-o '-i -c gp_role=utility %s' start 2>&1" % portOption)
+            cmdfrags.append("-o '-i -c gp_role=utility %s --silent-mode=true' start 2>&1" % portOption)
         else:
-            cmdfrags.append("-o '-i %s' start 2>&1" % portOption)
+            cmdfrags.append("-o '-i %s --silent-mode=true' start 2>&1" % portOption)
         self.cmdStr=' '.join(cmdfrags)
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
     
