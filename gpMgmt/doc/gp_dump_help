@@ -7,12 +7,19 @@ then be used to restore the database using gp_restore.
 SYNOPSIS
 *****************************************************
 
-gp_dump [-a | -s] [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
+gp_dump -a [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
 [-t <table_name>] [-x] [-h <hostname>] [-p <port>] [-U <username>] 
 [-W] [-i] [-v] [--gp-c] [--gp-d=<backup_directory>] 
 [--gp-r=<reportfile>] [--gp-s=a|p] <database_name> 
 
-gp_dump --help | --version
+gp_dump -s [-c] [-d] [-D] [-n <schema>] [-o] [-O] 
+[-t <table_name>] [-x] [-h <hostname>] [-p <port>] [-U <username>] 
+[-W] [-i] [-v] [--gp-c] [--gp-d=<backup_directory>] 
+[--gp-r=<reportfile>] [--gp-s=a|p] <database_name> 
+
+gp_dump --help 
+
+gp_dump --version
 
 
 *****************************************************
