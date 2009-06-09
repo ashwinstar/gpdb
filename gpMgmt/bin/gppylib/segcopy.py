@@ -14,7 +14,7 @@ from gppylib.gplog import *
 from gppylib.commands.unix import *
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
-from gppylib.db import dbconn
+from gppylib.db import dbconn, catalog
 import pysync
 
 class SegcopyError(Exception):  pass
@@ -143,21 +143,28 @@ class GpSegCopy:
             logger.info("connecting to database: %s" % dburl)
             conn = dbconn.connect(dburl, utility=True)
             
-            # TODO: add other catalog tables
-            table_names = [
+            db_list = catalog.getDatabaseList(conn)
+            catalog_names = [
                            'pg_catalog.gp_configuration', 
                            'pg_catalog.gp_distribution_policy',
                            'pg_catalog.pg_partition',
                            'pg_catalog.pg_partition_rule',
                            'pg_catalog.gp_master_mirroring',
                            ]
-            # Can't truncate system catalog table
-            q = 'DELETE FROM %s'
-            for table in table_names:
-                logger.info("Cleaning up %s" % table)
-                dbconn.execSQL(conn, q % table)
-            conn.commit()
+            
             conn.close()
+            for db in db_list:
+                if db[0] in ['template0']:
+                    continue
+                # Can't truncate system catalog table
+                dburl.pgdb = db[0]
+                conn = dbconn.connect(dburl, utility=True)
+                q = 'DELETE FROM %s'
+                for table in catalog_names:
+                    logger.debug("Cleaning up %s.%s" % (db[0],table))
+                    dbconn.execSQL(conn, q % table)
+                conn.commit()
+                conn.close()
             
             SegmentStop.local(name, self.dstDir)
             
