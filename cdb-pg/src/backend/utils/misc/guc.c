@@ -3403,7 +3403,7 @@ static struct config_real ConfigureNamesReal[] =
             gettext_noop("(Obsolete) Planner will not choose hashed aggregation if "
                          "expected number of extra passes exceeds limit."),
 			NULL,
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_rewrite_limit,
 		2.0, 1.0, 100.0, NULL, NULL
