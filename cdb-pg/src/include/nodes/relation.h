@@ -831,10 +831,6 @@ typedef struct JoinPath
 typedef struct NestPath
 {
 	JoinPath            jpath;
-
-    /* Adaptive Join */
-	struct HashPath    *alternate;
-    int                 outer_lookahead_rows;
 } NestPath;
 
 /*

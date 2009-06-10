@@ -537,14 +537,10 @@ create_join_plan(CreatePlanContext *ctx, JoinPath *best_path)
 	Plan	   *inner_plan;
 	Plan	   *plan;
 
-    if (best_path->outerjoinpath)
-	    outer_plan = create_subplan(ctx, best_path->outerjoinpath);
-    else
-    {
-        /* Adaptive NJ alternate path is an HJ with no outer subpath. */
-        outer_plan = NULL;
-    }
+    Assert(best_path->outerjoinpath);
+    Assert(best_path->innerjoinpath);
 
+    outer_plan = create_subplan(ctx, best_path->outerjoinpath);
 	inner_plan = create_subplan(ctx, best_path->innerjoinpath);
 
 	switch (best_path->path.pathtype)
@@ -2438,16 +2434,6 @@ create_nestloop_plan(CreatePlanContext *ctx,
 
 	if (prefetch)
 		join_plan->join.prefetch_inner = true;
-
-    /* The NLJ has an alternative (HashJoin).  Always use HJ, because it
-     * will not be much worse anyway.  Safe choice.
-     */
-    if (best_path->alternate != NULL)
-	{
-        Path       *alternate_path = (Path *)best_path->alternate;
-		Plan       *alternate_plan = create_subplan(ctx, alternate_path);
-        return alternate_plan;
-	}
 
 	return (Plan *)join_plan;
 }

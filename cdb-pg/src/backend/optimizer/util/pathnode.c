@@ -43,7 +43,6 @@ static UniquePath  *make_unique_path(Path *subpath);
 static List *translate_sub_tlist(List *tlist, int relid);
 static bool query_is_distinct_for(Query *query, List *colnos);
 static bool hash_safe_tlist(List *tlist);
-static Path    *create_adaptive_join_path(PlannerInfo *root, Path *oldjoin);
 
 #define FLATCOPY(newnode, node, nodetype)  \
 	( (newnode) = makeNode(nodetype), \
@@ -254,9 +253,8 @@ pathnode_walk_kids(Path            *path,
                             v = pathnode_walk_node(nestpath->jpath.innerjoinpath, walker, context);
                             if (v != CdbVisit_Walk)     /* stop */
                                     break;
-                            v = pathnode_walk_node((Path *)nestpath->alternate, walker, context);
-                            break;
                     }
+                    break;
             case T_Append:
                     v = pathnode_walk_list(((AppendPath *)path)->subpaths, walker, context);
                     break;
@@ -483,33 +481,6 @@ set_cheapest(PlannerInfo *root, RelOptInfo *parent_rel)
 	parent_rel->cheapest_startup_path = cheapest_startup_path;
 	parent_rel->cheapest_total_path = cheapest_total_path;
 
-    /* CDB: If cheapest path is NJ, consider adaptive NJ/HJ. */
-    if (IsA(cheapest_total_path, NestPath) &&
-        ((NestPath *)cheapest_total_path)->alternate == NULL &&
-        (enable_adaptive_nestloop || mpp_trying_fallback_plan) && 
-		((JoinPath *)cheapest_total_path)->jointype != JOIN_LASJ)
-    {
-        Path   *new_path = create_adaptive_join_path(root, cheapest_total_path);
-
-        /* For now, subquery duplicate suppression property must match. */
-        if (new_path)
-        {
-            new_path->subq_complete = (!parent_rel->dedup_info ||
-                                       cdb_is_path_deduped(new_path));
-            if (new_path->subq_complete != cheapest_total_path->subq_complete)
-            {
-                pfree(new_path);
-                new_path = NULL;
-            }
-        }
-
-        /* Stuff new HJ or adaptive join in front of pathlist. */
-        if (new_path)
-        {
-            parent_rel->pathlist = lcons(new_path, parent_rel->pathlist);
-            parent_rel->cheapest_total_path = new_path;
-        }
-    }
 }                               /* set_cheapest */
 
 
@@ -770,87 +741,6 @@ cdb_is_path_deduped_walker(Path *path, void* context)
             if (status != CdbVisit_Walk)
                 return status;
 
-            /*
-             * Adaptive NJ?
-             *
-             * Either the main (NJ) or alternate (HJ) inner path might be used.
-             * Intersect their deduped subquery sets.  Note that the NJ's outer
-             * subpath will be commandeered by HJ at runtime if HJ is chosen,
-             * so the one outer subpath serves for both.
-             */
-            if (path->pathtype == T_NestLoop &&
-                ((NestPath *)path)->alternate)
-            {
-                HashPath   *hashpath = ((NestPath *)path)->alternate;
-                CdbIsPathDedupedCtx nj_context = *ctx;
-                CdbIsPathDedupedCtx hj_context = *ctx;
-
-                Assert(IsA(hashpath, HashPath) &&
-                       hashpath->jpath.outerjoinpath == NULL);
-
-                /* Tell contexts to copy the bitmap before making changes. */
-                nj_context.deduped_unshared = false;
-                hj_context.deduped_unshared = false;
-
-                /* Are subqueries on inner side of NJ deduped by JOIN_IN? */
-                if (joinpath->jointype == JOIN_IN &&
-                    inner_rel->dedup_info &&
-                    inner_rel->dedup_info->prejoin_dedup_subqrelids)
-                {
-                    deduped = inner_rel->dedup_info->prejoin_dedup_subqrelids;
-                    if (nj_context.deduped_relids == NULL)
-                    {
-                        nj_context.deduped_relids = deduped;
-                        nj_context.deduped_unshared = false;
-                    }
-                    else
-                    {
-                        nj_context.deduped_relids =
-                            bms_union(nj_context.deduped_relids, deduped);
-                        nj_context.deduped_unshared = true;
-                    }
-                }
-
-                /* Visit the NJ inner subpath. */
-                else
-                    pathnode_walk_node(joinpath->innerjoinpath,
-                                       cdb_is_path_deduped_walker,
-                                       &nj_context);
-
-                /* Visit the HJ path. */
-                pathnode_walk_node((Path *)hashpath,
-                                   cdb_is_path_deduped_walker,
-                                   &hj_context);
-
-                /* If nonempty intersection, update result bitmap. */
-                deduped = NULL;
-                if (bms_overlap(nj_context.deduped_relids,
-                                hj_context.deduped_relids))
-                {
-                    deduped = bms_intersect(nj_context.deduped_relids,
-                                            hj_context.deduped_relids);
-                    if (ctx->deduped_unshared)
-                    {
-                        ctx->deduped_relids =
-                            bms_add_members(ctx->deduped_relids, deduped);
-                        bms_free(deduped);
-                    }
-                    else
-                    {
-                        ctx->deduped_relids =
-                            bms_add_members(deduped, ctx->deduped_relids);
-                        ctx->deduped_unshared = true;
-                    }
-                }
-
-                /* Free temp bitmaps and march onward. */
-                if (nj_context.deduped_unshared)
-                    bms_free(nj_context.deduped_relids);
-                if (hj_context.deduped_unshared)
-                    bms_free(hj_context.deduped_relids);
-                goto adelante;
-            }   /* end adaptive NJ */
-
             /* Subqueries on inner side of JOIN_IN can't cause duplicates. */
             if (joinpath->jointype == JOIN_IN)
             {
@@ -893,7 +783,6 @@ put_deduped_result:
     /*
      * All found?  Then stop.
      */
-adelante:
     if (bms_equal(ctx->deduped_relids, ctx->all_subqrelids))
         return CdbVisit_Success;
 
@@ -2501,9 +2390,6 @@ create_nestloop_path(PlannerInfo *root,
 	/* we're only as rescannable as our child plans */
     pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
 
-	pathnode->alternate = NULL;
-    pathnode->outer_lookahead_rows = 0;
-
 	cost_nestloop(pathnode, root);
 
 	return pathnode;
@@ -2722,166 +2608,3 @@ create_hashjoin_path(PlannerInfo *root,
 	return pathnode;
 }
 
-
-/*
- * create_adaptive_join_path
- *      Returns a HashPath or an adaptive NestPath or NULL.
- */
-Path *
-create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
-{
-    JoinPath       *oldjoin = (JoinPath *)oldpath;
-    JoinPath       *altjoin = NULL;
-    NestPath       *adaptive_nestpath;
-    Path           *bigpath;
-    RelOptInfo     *joinrel = oldjoin->path.parent;
-    Path           *outerpath = oldjoin->outerjoinpath;
-    RelOptInfo     *outerrel = outerpath->parent;
-    RelOptInfo     *innerrel = oldjoin->innerjoinpath->parent;
-	List	       *hashclauses = NIL;
-	List	       *mergeclauses = NIL;
-    double          save_outer_rows;
-    double          oldslope;
-    double          crossover_rows;
-    double          nbytes;
-
-    Assert(IsA(oldjoin, NestPath));
-    Assert(((NestPath *)oldjoin)->alternate == NULL);
-    Insist(innerrel && innerrel->cheapest_total_path);
-
-    /* HJ doesn't support right or full outer join. */
-    if (oldjoin->jointype != JOIN_INNER &&
-        oldjoin->jointype != JOIN_LEFT &&
-        oldjoin->jointype != JOIN_IN)
-        return NULL;
-
-    /* If outer rel yields one row at most, stick with NJ. */
-    if (outerrel->onerow)
-        return NULL;
-
-    /* cdbpath_motion_for_join() doesn't accept replicated inputs, for now. */
-    if (CdbPathLocus_IsReplicated(outerpath->locus))
-        return NULL;
-
-    /* Does the join have any predicates that are hashjoinable? */
-    hashclauses = hashclauses_for_join(oldjoin->joinrestrictinfo,
-                                       outerrel,
-                                       innerrel,
-                                       oldjoin->jointype);
-    if (!hashclauses)
-        return NULL;
-
-    /* Gather mergejoinable predicates for motion planning. */
-    mergeclauses = select_mergejoin_clauses(outerrel,
-                                            innerrel,
-                                            oldjoin->joinrestrictinfo,
-                                            oldjoin->jointype);
-
-    /* Build HJ between old outer path and inner rel's cheapest total path. */
-    altjoin = (JoinPath *)create_hashjoin_path(root,
-                                               joinrel,
-                                               oldjoin->jointype,
-                                               outerpath,
-                                               innerrel->cheapest_total_path,
-                                               oldjoin->joinrestrictinfo,
-                                               mergeclauses,
-                                               hashclauses,
-                                               true);
-    if (!altjoin)
-        goto no_hj;
-
-    /* How fast does NJ cost grow if outer rel has more rows than we expect? */
-    save_outer_rows = outerrel->rows;                   /* save */
-    outerrel->rows = 2 * outerrel->rows + 100;
-
-    bigpath = pathnode_copy_node((Path *)oldjoin);
-    Assert(IsA(bigpath, NestPath));
-    cost_nestloop((NestPath *)bigpath, root);
-    oldslope = (bigpath->total_cost - oldjoin->path.total_cost) /
-               (outerrel->rows - save_outer_rows);
-    pfree(bigpath);
-
-    outerrel->rows = save_outer_rows;                   /* restore */
-
-    /*
-     * Find number of outer rows at which NJ total cost == HJ startup cost.
-     * At that point the NJ is as costly as materializing the inner rel for HJ.
-     */
-    if (oldslope < 1e-6)
-        crossover_rows = 0;
-    else
-        crossover_rows = (altjoin->path.startup_cost - oldjoin->path.startup_cost)
-                         / oldslope;
-
-    /* If NJ doesn't win with just one outer row, use HJ non-adaptively. */
-    crossover_rows = ceil(crossover_rows);
-    if (crossover_rows <= 1)
-        goto nonadaptive_hj;
-
-    /*
-     * Does the HJ produce exactly the same result as the NJ (modulo ordering)?
-     * If not, it must not be used in an Adaptive Join.
-     */
-
-    /* HJ outer path must be exactly as given (executor limitation). */
-    if (altjoin->outerjoinpath != outerpath)
-        goto no_hj;
-
-    /* Join type should be the same. */
-    if (altjoin->jointype != oldjoin->jointype)
-        goto no_hj;
-
-    /* HJ result distribution must match the old join. */
-    if (!cdbpathlocus_compare(CdbPathLocus_Comparison_Equal,
-                              oldjoin->path.locus,
-                              altjoin->path.locus))
-        goto no_hj;
-
-    /* Estimate the memory for prefetching outer rows for Adaptive Join. */
-    nbytes = (outerrel->width + sizeof(HeapTupleHeaderData) + 32) *
-             crossover_rows;
-
-    /* If AJ would use too much memory, stick with NJ. */
-    if (nbytes > 0.25 * 1024 * work_mem)
-        goto no_hj;
-
-    /*
-     * Ok, create adaptive join path by copying and modifying the NJ.
-     */
-    adaptive_nestpath = (NestPath *)pathnode_copy_node((Path *)oldjoin);
-    Assert(IsA(adaptive_nestpath, NestPath));
-
-    /* Fill in the Adaptive Join fields. */
-    adaptive_nestpath->alternate = (HashPath *)altjoin;
-    adaptive_nestpath->outer_lookahead_rows = (int)crossover_rows;
-
-    /* HJ doesn't preserve ordering.  Therefore AJ result is unordered. */
-    adaptive_nestpath->jpath.path.pathkeys = NIL;
-
-    /* Zap HJ's duplicate ptr to the outer subpath which it shares with NJ. */
-    altjoin->outerjoinpath = NULL;
-
-    /* Merge the result properties. */
-    if (altjoin->path.motionHazard)
-        adaptive_nestpath->jpath.path.motionHazard = true;
-    if (!altjoin->path.rescannable)
-        adaptive_nestpath->jpath.path.rescannable = false;
-
-    /* Success! */
-    return (Path *)adaptive_nestpath;
-
-    /* Use HJ non-adaptively. */
-nonadaptive_hj:
-    if (enable_hashjoin || mpp_trying_fallback_plan)
-        return (Path *)altjoin;
-
-    /* No dice. Stick with NJ. */
-no_hj:
-    if (mergeclauses)
-        list_free(mergeclauses);
-    if (hashclauses)
-        list_free(hashclauses);
-    if (altjoin)
-        pfree(altjoin);
-    return NULL;
-}                               /* create_adaptive_join_path */

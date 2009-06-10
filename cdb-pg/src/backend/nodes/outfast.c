@@ -1418,9 +1418,6 @@ _outNestPath(StringInfo str, NestPath *node)
 	WRITE_NODE_TYPE("NESTPATH");
 
 	_outJoinPathInfo(str, (JoinPath *) node);
-
-    WRITE_INT_FIELD(outer_lookahead_rows);
-    WRITE_NODE_FIELD(alternate);
 }
 
 static void
