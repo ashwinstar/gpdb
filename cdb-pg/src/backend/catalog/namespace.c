@@ -161,7 +161,7 @@ static void InitTempTableNamespace(void);
 static void RemoveTempRelations(Oid tempNamespaceId);
 static void RemoveTempRelationsCallback(int code, Datum arg);
 static void NamespaceCallback(Datum arg __attribute__((unused)) , Oid relid __attribute__((unused)) );
-static bool TempNamespaceValid(void);
+static bool TempNamespaceValid(bool error_if_removed);
 
 /* These don't really need to appear in any header file */
 Datum		pg_table_is_visible(PG_FUNCTION_ARGS);
@@ -1281,7 +1281,7 @@ LookupExplicitNamespace(const char *nspname)
 	/* check for pg_temp alias */
 	if (strcmp(nspname, "pg_temp") == 0)
 	{
-		if (TempNamespaceValid())
+		if (TempNamespaceValid(true))
 			return myTempNamespace;
 		/*
 		 * Since this is used only for looking up existing objects, there
@@ -1509,7 +1509,7 @@ isTempNamespace(Oid namespaceId)
 	if (IsBuiltInNameSpace(namespaceId))
 		return false;
 
-	if (TempNamespaceValid() && myTempNamespace == namespaceId)
+	if (TempNamespaceValid(false) && myTempNamespace == namespaceId)
 		return true;
 
 	return false;
@@ -1722,7 +1722,7 @@ recomputeNamespacePath(void)
 		{
 			/* pg_temp --- substitute temp namespace, if any */
 
-			if (TempNamespaceValid())
+			if (TempNamespaceValid(true))
 			{
 				if (!list_member_oid(oidlist, myTempNamespace))
 					oidlist = lappend_oid(oidlist, myTempNamespace);
@@ -1766,7 +1766,7 @@ recomputeNamespacePath(void)
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
 
-	if (TempNamespaceValid() &&
+	if (TempNamespaceValid(false) &&
 		!list_member_oid(oidlist, myTempNamespace))
 		oidlist = lcons_oid(myTempNamespace, oidlist);
 
@@ -1892,7 +1892,7 @@ InitTempTableNamespace(void)
 bool
 ExistsCommittedTempNamespace(void)
 {
-	return TempNamespaceValid() &&
+	return TempNamespaceValid(false) &&
 		   (myTempNamespaceSubID == InvalidSubTransactionId);
 }
 
@@ -2036,7 +2036,7 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		 * we start a new transaction (see previous two lines), otherwise we
 		 * wont have a valid CurrentResourceOwner.
 		 */
-		if (TempNamespaceValid())
+		if (TempNamespaceValid(false))
 		{
 			RemoveTempRelations(myTempNamespace);
 
@@ -2177,27 +2177,29 @@ NamespaceCallback(Datum arg, Oid relid)
 
 /* double check that temp name space is valid. */
 static bool
-TempNamespaceValid()
+TempNamespaceValid(bool error_if_removed)
 {
 	if (!OidIsValid(myTempNamespace))
 		return false;
 	else
 	{
-		Oid namespaceId = GetSysCacheOid(NAMESPACEOID,
+		myTempNamespace = GetSysCacheOid(NAMESPACEOID,
 									 	 ObjectIdGetDatum(myTempNamespace),
 									 	 0, 0, 0);
 
-		if (OidIsValid(namespaceId))
+		if (OidIsValid(myTempNamespace))
 			return true;
-		else if (proc_exit_inprogress)
-			return false;
-		else
+		else if (Gp_role != GP_ROLE_EXECUTE && error_if_removed) 
+			/*
+			 * We might call this on QEs if we're dropping our own
+			 * session's temp table schema. However, we want the
+			 * QD to be the one to find it not the QE.
+			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
 					 errmsg("temporary table schema removed while session "
 							"still in progress")));
 	}
-	/* quieten GCC */
 	return false;
 }
 
