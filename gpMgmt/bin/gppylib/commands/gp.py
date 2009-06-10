@@ -251,7 +251,7 @@ class GpStart(Command):
 
 #-----------------------------------------------
 class NewGpStart(Command):
-    def __init__(self, name, masterOnly=False, restricted=False, verbose=False,nostandby=False,ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, masterOnly=False, restricted=False, verbose=False,nostandby=False,ctxt=LOCAL, remoteHost=None, masterDirectory=None):
         self.cmdStr="$GPHOME/bin/gpstart -a" 
         if masterOnly:
             self.cmdStr += " -m"
@@ -261,11 +261,16 @@ class NewGpStart(Command):
             self.cmdStr += " -v"
         if nostandby:
             self.cmdStr += " -y"
+        if masterDirectory:
+            self.cmdStr += " -d " + masterDirectory
+
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
         
     @staticmethod
-    def local(name,masterOnly=False,restricted=False,verbose=False,nostandby=False):
-        cmd=NewGpStart(name,masterOnly,restricted,verbose,nostandby)
+    def local(name,masterOnly=False,restricted=False,verbose=False,nostandby=False,
+              masterDirectory=None):
+        cmd=NewGpStart(name,masterOnly,restricted,verbose,nostandby,
+                       masterDirectory=masterDirectory)
         cmd.run(validateAfter=True)
 
 #-----------------------------------------------
@@ -409,10 +414,10 @@ class GpSegCheckLocaleAndConnect(Command):
                               " Master had value: '%s' while this segment has: '%s'" %\
                               (self.expected_lc_numeric,lc_numeric)
         seg_datadir = catalog.getSessionGUC(conn, 'data_directory')
-        if seg_datadir != self.datadir:
-            self.error_str += "Segment's data directory does not match.\n" \
-                              "Expected value: '%s'\n" \
-                              "Actual value: '%s'" % (self.datadir, seg_datadir)        
+        if not os.path.samefile(seg_datadir, self.datadir):
+            self.error_str += "Segment's data directory does not match. " \
+                              "Expected value %s, " \
+                              "Actual value %s" % (self.datadir, seg_datadir)        
         conn.close()
         logger.debug("%s connection closed" % self.datadir)
         

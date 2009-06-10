@@ -110,7 +110,7 @@ class GpStop():
                 
                 if self.restart:                    
                     logger.info("Restarting System...")                    
-                    gp.NewGpStart.local('restarting system',verbose=logging_is_verbose(),nostandby=not self.stopstandby)                    
+                    gp.NewGpStart.local('restarting system',verbose=logging_is_verbose(),nostandby=not self.stopstandby, masterDirectory=self.master_datadir)                    
          
                 if self.hadFailures:
                     return False                    
