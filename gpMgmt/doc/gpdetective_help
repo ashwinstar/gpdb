@@ -11,7 +11,9 @@ gpdetective [-h <master_hostname>] [-p <master_port>]
 [-U <gp_superuser>] [-P <password>] 
 [--start_date <number_of_days> | <YYYY-MM-DD>]
 
-gpdetective -? | -v
+gpdetective -? 
+
+gpdetective -v
 
 *****************************************************
 DESCRIPTION

@@ -11,8 +11,11 @@ SYNOPSIS
 
 
 gpactivatestandby -d <standby_master_datadir> [-c <new_standby_master>] 
-[-f] [-a] [-q] [-l <logfile_directory>] [-? | -v]
+[-f] [-a] [-q] [-l <logfile_directory>]  
 
+gpactivatestandby -? | -h | --help 
+
+gpactivatestandby --version
 
 *****************************************************
 DESCRIPTION
@@ -115,7 +118,7 @@ but is still written to the log file.
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--? (help)
+-? | -h | --help
 
 Displays the online help.
 
@@ -123,6 +126,11 @@ Displays the online help.
 -v (show script version)
 
 Displays the version, status, last updated date, and check sum of this script.
+
+
+--version (show utility version)
+
+Displays the version of this utility.
 
 
 *****************************************************

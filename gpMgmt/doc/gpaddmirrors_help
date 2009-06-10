@@ -14,7 +14,9 @@ gpaddmirrors [-d <master_data_directory>] [-p <port_offset>] [-s]
 
 gpaddmirrors -o <output_sample_mirror_config>
 
-gpaddmirrors -? | --version
+gpaddmirrors -? 
+
+gpaddmirrors --version
 
 
 *****************************************************

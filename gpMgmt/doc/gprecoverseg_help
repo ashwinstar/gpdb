@@ -17,7 +17,9 @@ gprecoverseg [-d <master_data_directory>]
 
 gprecoverseg -o <output_sample_recover_config>
 
-gprecoverseg -? | --version
+gprecoverseg -? 
+
+gprecoverseg --version
 
 
 ******************************************************

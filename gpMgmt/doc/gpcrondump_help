@@ -17,7 +17,9 @@ gpcrondump -x <database_name>
 { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
 [--no-owner | --use-set-session-authorization] [--no-privileges] }
 
-gpcrondump -? | -v
+gpcrondump -? 
+
+gpcrondump -v
 
 *****************************************************
 DESCRIPTION

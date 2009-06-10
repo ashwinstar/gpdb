@@ -7,9 +7,13 @@ SYNOPSIS
 *****************************************************
 
 gpskew -t <schema>.<table_name> [-w "<WHERE_constraint>"] [-h] 
-      [-a <database_name>] [-c] [-r] [-B <parallel_processes>] 
-      [-d <master_data_directory>] [-f ] [-m] [-l <logfile_directory>] 
-      [-D] [-? | -v]
+[-a <database_name>] [-r] [-B <parallel_processes>] [-c]
+[-d <master_data_directory>] [-f ] [-m] [-l <logfile_directory>] 
+[-D] 
+
+gpskew -? 
+
+gpskew -v
 
 
 *****************************************************

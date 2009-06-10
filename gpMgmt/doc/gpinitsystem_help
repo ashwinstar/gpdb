@@ -15,7 +15,9 @@ gpinitsystem -c <gp_init_config_file>
              [-e <superuser_password>] [-n <locale>] [-S] [-a] [-q] 
              [-l <logfile_directory>] [-D]
 
-gpinitsystem -? | -v
+gpinitsystem -? 
+
+gpinitsystem -v
 
 
 *****************************************************
@@ -92,9 +94,9 @@ the utility will start up to 4 parallel processes at a time.
 
 -c <gp_init_config_file>
 
-Either one of -c or -I are required. The full path and filename 
-of the configuration file, which contains all of the defined parameters 
-to configure and initialize a new array. See
+The full path and filename of the configuration file, which 
+contains all of the defined parameters to configure and initialize 
+a new array. This flag is required. See
 $GPHOME/docs/cli_help/gp_init_config_example
 
 

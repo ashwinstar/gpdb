@@ -10,7 +10,9 @@ gpcheckperf -d <test_directory> [-d <test_directory> ...] {
 -f <host_file> | - h <hostname> [-h <hostname> ...] } [-p <ssh_port>] 
 [-r ds{n|N}] [-B <block_size>] [-S <file_size>] [-D] [-v]
 
-gpcheckperf -? | --version
+gpcheckperf -? 
+
+gpcheckperf --version
 
 *****************************************************
 DESCRIPTION

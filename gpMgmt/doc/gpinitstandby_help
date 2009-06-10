@@ -8,7 +8,11 @@ SYNOPSIS
 *****************************************************
 
 gpinitstandby -s <standby_hostname> [-r] [-n] [-a] [-q] 
-[-l <logfile_directory>] [-B <parallel_processes>] [-D] [-? | -v]
+[-l <logfile_directory>] [-B <parallel_processes>] [-D] 
+
+gpinitstandby -? 
+
+gpinitstandby -v
 
 
 *****************************************************

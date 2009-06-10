@@ -8,14 +8,14 @@ SYNOPSIS
 *****************************************************
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
-       [-M smart | fast | immediate] [-r] [-y] 
-       [-a] [-l logfile_directory] [-C] [-v | -q]
+[-M smart | fast | immediate] [-r] [-y] [-a] 
+[-l logfile_directory] [-C] [-v | -q]
 
 gpstop -m [-d master_data_directory] [-y] 
-       [-l logfile_directory] [-C] [-v | -q]
+[-l logfile_directory] [-C] [-v | -q]
 
 gpstop -u [-m] [-d master_data_directory] [-l logfile_directory]  
-       [-v | -q]
+[-v | -q]
 
 gpstop  --version
 
@@ -127,7 +127,7 @@ The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
 
--? (help)
+-? | -h | --help 
 
 Displays the online help.
 
@@ -135,6 +135,11 @@ Displays the online help.
 -v (verbose)
 
 Displays detailed status, progress and error messages output by the utility.
+
+
+--version (show utility version)
+
+Displays the version of this utility.
 
 
 *****************************************************

@@ -10,7 +10,9 @@ gpscp { -f <host_file> | - h <hostname> [-h <hostname> ...] }
 [-J <character>] [-v] [[<user>@]<hostname>:]<file_to_copy> [...] 
 [[<user>@]<hostname>:]<copy_to_path>
 
-gpscp -? | --version
+gpscp -? 
+
+gpscp --version
 
 *****************************************************
 DESCRIPTION

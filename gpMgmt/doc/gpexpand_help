@@ -11,14 +11,13 @@ gpexpand [-f hosts_file] [-D database_name]
 gpexpand -i input_file [-D database_name] [-B batch_size] [-V | --novacuum]
 
 gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']] 
-         [-a] [-n parallel_processes] [-D database_name]
-         [-v | --verbose]
+[-a] [-n parallel_processes] [-D database_name] [-v | --verbose]
 
 gpexpand -r [-D database_name]
 
 gpexpand -c [-D database_name]
 
-gpexpand -? | -h | --help 
+gpexpand -? | -h | --help
 
 gpexpand --version
 

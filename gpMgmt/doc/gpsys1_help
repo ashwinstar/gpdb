@@ -9,7 +9,9 @@ SYNOPSIS
 
 gpsys1 [ -a | -m | -p ]
 
-gpsys1 -? | --version
+gpsys1 -? 
+
+gpsys1 --version
 
 
 *****************************************************

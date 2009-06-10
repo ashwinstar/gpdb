@@ -8,9 +8,11 @@ SYNOPSIS
 *****************************************************
 
 gpload -f <control_file> [-l <log_file>] [-h <hostname>] [-p <port>] 
-       [-U <username>] [-d <database>] [-W] [-v | -V] [-q] [-D]
+[-U <username>] [-d <database>] [-W] [[-v | -V] | [-q]] [-D]
 
-gpload -? | --version
+gpload -? 
+
+gpload --version
 
 
 *****************************************************

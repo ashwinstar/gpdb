@@ -11,7 +11,9 @@ gpssh-exkeys { -f <host_file>
              | -h <hostname> [-h <hostname> ...]
              | -e <host_file> -x <host_file> }
 
-gpssh-exkeys -? | --version
+gpssh-exkeys -? 
+
+gpssh-exkeys --version
 
 
 *****************************************************

@@ -10,7 +10,11 @@ SYNOPSIS
 
 gprebuildsystem -f <gp_catalog_sql_file> -d <temp_db_data_directory> 
 [-p <temp_db_port>] [-c] [-C <number_checkpoints>] [-x] [-a] [-q] 
-[-l <logfile_directory>] [-D] [-? | -v]
+[-l <logfile_directory>] [-D] 
+
+gprebuildsystem -? 
+
+gprebuildsystem -v
 
 
 ******************************************************

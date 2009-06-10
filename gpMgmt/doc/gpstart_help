@@ -6,13 +6,15 @@ Starts a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpstart [-d <master_data_directory>] [-B <parallel_processes>] 
-        [-R] [-m] [-y] [-a]  [-l <logfile_directory>] [-v | -q]
+gpstart [-d <master_data_directory>] [-B <parallel_processes>] [-R] [-m] 
+[-y] [-a]  [-l <logfile_directory>] [-v | -q]
         
-gpstart --recover [-d <master_data_directory>]  
-        [-l <logfile_directory>] [-v | -q]
+gpstart --recover [-d <master_data_directory>]  [-l <logfile_directory>] 
+[-v | -q]
 
-gpstart {-? | -h | --help}
+gpstart -? | -h | --help
+
+gpstart --version
 
 
 *****************************************************
@@ -104,9 +106,14 @@ Optional. Do not start the standby master host. The default is to
 start the standby master host and synchronization process.
 
 
--? (help)
+-? | -h | --help 
 
 Displays the online help.
+
+
+--version (show utility version)
+
+Displays the version of this utility.
 
 
 *****************************************************

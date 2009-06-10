@@ -7,9 +7,12 @@ make sure the configuration is compatible with Greenplum Database.
 SYNOPSIS
 *****************************************************
 
-gpcheckos { [-m] -f <host_file> | - h <hostname> [-h <hostname> ...] } [-v]
+gpcheckos { [-m] -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+[-v]
 
-gpcheckos -? | --version
+gpcheckos -? 
+
+gpcheckos --version
 
 *****************************************************
 DESCRIPTION

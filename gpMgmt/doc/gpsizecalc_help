@@ -7,9 +7,12 @@ SYNOPSIS
 *****************************************************
 
 gpsizecalc {-x <database_name> [-p | -m] | {-t <schema>.<table_name> [-h] 
-               [-i] [-a <database_name>]}} [-B <parallel_processes>] 
-               [-d <data_directory>] [-s b|k|m|g|t] [-f] 
-               [-l <logfile_directory>] [-D] [-q] [-? | -v]
+[-i] [-a <database_name>]}} [-B <parallel_processes>] [-d <data_directory>] 
+[-s b|k|m|g|t] [-f] [-l <logfile_directory>] [-D | -q] 
+
+gpsizecalc -? 
+
+gpsizecalc -v
 
 
 *****************************************************

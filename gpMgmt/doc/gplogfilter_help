@@ -10,7 +10,9 @@ SYNOPSIS
 gplogfilter [<timestamp_options>] [<pattern_options>] 
 [<output_options>] [<input_options>] [<input_file>] 
 
-gplogfilter --help | --version
+gplogfilter --help 
+
+gplogfilter --version
 
 *****************************************************
 DESCRIPTION

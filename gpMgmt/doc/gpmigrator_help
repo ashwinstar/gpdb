@@ -7,18 +7,17 @@ SYNOPSIS
 *****************************************************
 
 gpmigrator <old_GPHOME_path> <new_GPHOME_path> 
-           [-d <master_data_directory>] [-l <logfile_directory>] [-q]
-           [--debug] [-R]
+[-d <master_data_directory>] [-l <logfile_directory>] [-q] 
+[--debug] [-R]
 
-gpmigrator --prepare 
-          [--master_port <port> --port_base <port> --mirror_port_base <port>] 
-          <old_GPHOME_path> <new_GPHOME_path> 
-          [-d <master_data_directory>] [-l <logfile_directory>] [-q]
+gpmigrator --prepare [--master_port <port> --port_base <port>
+--mirror_port_base <port>] <old_GPHOME_path> <new_GPHOME_path> 
+[-d <master_data_directory>] [-l <logfile_directory>] [-q]
+[--debug]
 
-gpmigrator old_GPHOME_path new_GPHOME_path -R 
+gpmigrator --version 
 
-
-gpmigrator --version | --help
+gpmigrator --help
 
 
 *****************************************************

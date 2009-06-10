@@ -15,8 +15,9 @@ gpdbrestore { -t <timestamp_key> [-L]
 [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] [-D]
 [--noanalyze]
 
-gpdbrestore -? | -v
+gpdbrestore -? 
 
+gpdbrestore -v
 
 *****************************************************
 DESCRIPTION

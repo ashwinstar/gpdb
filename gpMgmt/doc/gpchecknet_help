@@ -9,8 +9,9 @@ SYNOPSIS
 gpchecknet -d <test_directory> { -f <host_file> | - h <hostname> [-h 
 <hostname> ...] } [-r n|N] [-D] [-v | -V]
 
-gpchecknet -? | --version
+gpchecknet -?   
 
+gpchecknet --version
 
 *****************************************************
 DESCRIPTION

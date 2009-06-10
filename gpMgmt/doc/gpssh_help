@@ -10,7 +10,9 @@ SYNOPSIS
 gpssh { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
 [-v] [-e] [<bash_command>]
 
-gpssh -? | --version
+gpssh -? 
+
+gpssh --version
 
 
 *****************************************************
