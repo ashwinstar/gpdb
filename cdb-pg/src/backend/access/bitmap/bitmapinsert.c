@@ -1847,6 +1847,8 @@ buf_make_space(Relation rel, BMTidBuildBuf *locbuf, bool use_wal)
 			BMTIDBuffer *buf = (BMTIDBuffer *)lov_buf->bufs[i];
 			OffsetNumber off;
 
+			CHECK_FOR_INTERRUPTS();
+
 			/* return if we've freed enough space */
 #ifdef NOT_USED
 			if(locbuf->byte_size < (maintenance_work_mem * 1024L))
@@ -1998,6 +2000,8 @@ _bitmap_write_alltids(Relation rel, BMTidBuildBuf *tids,
 		{
 			BMTIDBuffer *buf = (BMTIDBuffer *)lov_buf->bufs[i];
 			OffsetNumber off;
+
+			CHECK_FOR_INTERRUPTS();
 
 			if(!buf || buf->num_cwords == 0)
 				continue;
