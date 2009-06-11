@@ -70,11 +70,11 @@ E061	Basic predicates and search conditions	04	LIKE predicate	YES
 E061	Basic predicates and search conditions	05	LIKE predicate ESCAPE clause	YES	
 E061	Basic predicates and search conditions	06	NULL predicate	YES	
 E061	Basic predicates and search conditions	07	Quantified comparison predicate	YES	
-E061	Basic predicates and search conditions	08	EXISTS predicate	YES	
+E061	Basic predicates and search conditions	08	EXISTS predicate	YES	not all uses work
 E061	Basic predicates and search conditions	09	Subqueries in comparison predicate	YES	
 E061	Basic predicates and search conditions	11	Subqueries in IN predicate	YES	
 E061	Basic predicates and search conditions	12	Subqueries in quantified comparison predicate	YES	
-E061	Basic predicates and search conditions	13	Correlated subqueries	YES	
+E061	Basic predicates and search conditions	13	Correlated subqueries	NO	
 E061	Basic predicates and search conditions	14	Search condition	YES	
 E071	Basic query expressions			YES	
 E071	Basic query expressions	01	UNION DISTINCT table operator	YES	
@@ -241,7 +241,7 @@ F392	Unicode escapes in identifiers			NO
 F393	Unicode escapes in literals			NO	
 F394	Optional normal form specification			NO	
 F401	Extended joined table			YES	
-F401	Extended joined table	01	NATURAL JOIN	NO	
+F401	Extended joined table	01	NATURAL JOIN	YES	
 F401	Extended joined table	02	FULL OUTER JOIN	YES	
 F401	Extended joined table	04	CROSS JOIN	YES	
 F402	Named column joins for LOBs, arrays, and multisets			NO	
@@ -471,7 +471,7 @@ T572	Multiset-returning external SQL-invoked functions			NO
 T581	Regular expression substring function			YES	
 T591	UNIQUE constraints of possibly null columns			YES	
 T601	Local cursor references			NO	
-T611	Elementary OLAP operations			NO	most forms supported
+T611	Elementary OLAP operations			YES	
 T612	Advanced OLAP operations			NO	some forms supported
 T613	Sampling			NO	
 T614	NTILE function			YES	
