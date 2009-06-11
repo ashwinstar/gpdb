@@ -764,11 +764,17 @@ def crossDbCheck():
     # we use copy (...) to stdout here in case the result set is huge (which is
     # often with pg_attribute). Otherwise, psql caches the whole result set in
     # its local memory, then copies to stdout.
+    # Note the complex sorting of relacl. This is necessary because relacls
+    # might be in different orders when you compare the master to segments.
     catalogs = {
                 'pg_class':  '''
 copy (
 SELECT nspname, relname, typname, usename, amname, spcname, relnatts,
-       relhasindex, relkind, relacl %s
+       relhasindex, relkind,
+       array(select relacl[i] from 
+               generate_series(array_lower(relacl,1), array_upper(relacl,1)) i
+               order by textin(aclitemout(relacl[i]))) as acl
+        %s
 FROM pg_catalog.pg_class x
      LEFT OUTER JOIN pg_catalog.pg_namespace n on (relnamespace = n.oid)
      LEFT OUTER JOIN pg_catalog.pg_type t on (reltype = t.oid)
