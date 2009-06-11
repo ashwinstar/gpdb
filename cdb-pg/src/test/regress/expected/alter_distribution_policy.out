@@ -7953,3 +7953,10 @@ select * from g order by 1;
 (10 rows)
 
 drop table g;
+-- MPP-6332
+create table abc (a int, b int, c int);
+Alter table abc set distributed randomly;
+Alter table abc set with (reorganize=false) distributed randomly;
+WARNING:  distribution policy of relation "abc" already set to DISTRIBUTED RANDOMLY
+HINT:  Use ALTER TABLE "abc" SET WITH (REORGANIZE=TRUE) DISTRIBUTED RANDOMLY to force a random redistribution
+drop table abc;

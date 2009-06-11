@@ -2035,3 +2035,9 @@ alter table g set with(reorganize = true) distributed randomly;
 select * from g order by 1;
 
 drop table g;
+
+-- MPP-6332
+create table abc (a int, b int, c int);
+Alter table abc set distributed randomly;
+Alter table abc set with (reorganize=false) distributed randomly;
+drop table abc;

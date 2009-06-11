@@ -10553,14 +10553,28 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	else
 	{
 		int backend_id;
+		bool reorg = true;
 
 		Assert(list_length(lprime) >= 2);
 
 		lwith = linitial(lprime);
 		qe_data = lsecond(lprime);
 
+		if (lwith)
+		{
+			if (list_length(lwith))
+			{
+				DefElem *e = linitial(lwith);
+				if (pg_strcasecmp(e->defname, "reorganize") == 0 &&
+					pg_strcasecmp(strVal(e->arg), "false") == 0)
+					reorg = false;
+			}
+		}
+		else if (!lwith)
+			reorg = false;
+
 		/* Set to random distribution on master with no reorganisation */
-		if (!lwith && list_length(qe_data) == 1 && linitial(qe_data) == NULL)
+		if (!reorg && list_length(qe_data) == 1 && linitial(qe_data) == NULL)
 		{
 			/* caller expects rel to be closed for this AT type */
 			heap_close(rel, NoLock);
