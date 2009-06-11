@@ -855,6 +855,9 @@ extern int gp_hashjoin_bloomfilter;
 /* Get statistics for partitioned parent from a child */
 extern bool gp_statistics_pullup_from_child_partition;
 
+/* Extract numdistinct from foreign key relationship */
+extern bool		gp_statistics_use_fkeys;
+
 /* Analyze tools */
 extern int gp_motion_slice_noop;
 #ifdef ENABLE_LTRACE

@@ -20,6 +20,7 @@
 #define PG_CONSTRAINT_H
 
 #include "nodes/pg_list.h"
+#include "access/attnum.h"
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
@@ -188,5 +189,11 @@ extern char *GetConstraintNameForTrigger(Oid triggerId);
 
 extern void AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
 						  Oid newNspId, bool isType);
+
+/**
+ * Identify primary key column from foreign key column.
+ */
+extern bool ConstraintGetPrimaryKeyOf(Oid relid, AttrNumber attno, 
+					Oid *pkrelid, AttrNumber *pkattno);
 
 #endif   /* PG_CONSTRAINT_H */

@@ -669,3 +669,98 @@ AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
 
 	heap_close(conRel, RowExclusiveLock);
 }
+
+/**
+ * This method determines if the input attribute is a foreign key and if so,
+ * retrieves the primary key's relation oid and attribute number. It looks at
+ * the pg_constraint system table to determine the answer.
+ * 
+ * Input:
+ * 	relid - relation whose attribute we are examining
+ *  attno - attribute number of the said column
+ *  
+ * Output:
+ * 	*pkrelid - relation id of the table that contains the primary key
+ *  *pkattno - attribute number of the primary key
+ * 	return   - true if found/ false otherwise
+ * 
+ * It returns a value of true if (relid, attno) is indeed a foreign key. It also
+ * sets the output pkrelid and pkattno. If it returns false, then this
+ * column is not a primary key and these output variables are not modified.
+ */
+
+bool
+ConstraintGetPrimaryKeyOf(Oid relid, AttrNumber attno, Oid *pkrelid, AttrNumber *pkattno)
+{
+	bool		found;
+	Relation	conDesc;
+	SysScanDesc conscan;
+	ScanKeyData skey[1];
+	HeapTuple	tup;
+
+	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
+
+	found = false;
+
+	ScanKeyInit(&skey[0],
+			Anum_pg_constraint_conrelid,
+			BTEqualStrategyNumber, F_OIDEQ,
+			ObjectIdGetDatum(relid));
+
+	conscan = systable_beginscan(conDesc, ConstraintRelidIndexId, true,
+								 SnapshotNow, 1, skey);
+
+	while (HeapTupleIsValid(tup = systable_getnext(conscan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+		
+		if (con->conrelid == relid && con->contype == CONSTRAINT_FOREIGN)
+		{
+			Datum		val;
+			bool		valisnull;
+			Datum		*valarray;
+			int          valarray_length;
+
+			/* first ensure that this is the right key */
+			val = heap_getattr(tup, Anum_pg_constraint_conkey,
+					RelationGetDescr(conDesc), &valisnull);
+
+			Assert(!valisnull);
+
+			deconstruct_array(DatumGetArrayTypeP(val),
+					INT2OID, 2, true, 's',
+					&valarray, NULL, &valarray_length);
+
+			if (valarray_length == 1 && DatumGetInt16(valarray[0]) == attno)
+			{
+				Datum		fval;
+				bool		fvalisnull;
+				Datum		*fvalarray;
+				int          fvalarray_length;
+
+				/* this is the right key, now extract the primary table,key */
+				Assert(con->confrelid != InvalidOid);
+
+				fval = heap_getattr(tup, Anum_pg_constraint_confkey,
+						RelationGetDescr(conDesc), &fvalisnull);
+
+				Assert(!fvalisnull);
+				deconstruct_array(DatumGetArrayTypeP(fval),
+						INT2OID, 2, true, 's',
+						&fvalarray, NULL, &fvalarray_length);
+
+				Assert(fvalarray_length == 1);
+
+				found = true;
+				*pkrelid = con->confrelid;
+				*pkattno = (AttrNumber) DatumGetInt16(fvalarray[0]);
+				break;
+			}
+		}
+	}
+	
+	systable_endscan(conscan);
+	heap_close(conDesc, AccessShareLock);
+
+	return found;
+}

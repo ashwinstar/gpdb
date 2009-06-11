@@ -2059,6 +2059,14 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"gp_statistics_use_fkeys", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("This guc enables the planner to utilize statistics derived from foreign key relationships."),
+			NULL
+		},
+		&gp_statistics_use_fkeys,
+		false, NULL, NULL
+	},
+	{
 		{"gp_disable_atsdb_set_with", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Disable support for all parameters other than REORGANIZE for ALTER TABLE SET WITH()."),	
 		 NULL,

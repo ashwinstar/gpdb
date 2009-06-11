@@ -84,6 +84,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_constraint.h"
 #include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
@@ -3622,6 +3623,8 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 	 */
 	vardata->statsTupleFromSysCache=true;
 
+	vardata->numdistinctFromPrimaryKey = -1.0; /* ignore by default*/
+
 	/* Look inside any binary-compatible relabeling */
 
 	if (IsA(node, RelabelType))
@@ -3644,6 +3647,33 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 
 		rte = rt_fetch(var->varno, root->parse->rtable);
 
+		/*
+		 * If this attribute has a foreign key relationship, then first look
+		 * at primary key statistics. If there exist stats on that attribute,
+		 * we utilize those. If not, continue.
+		 */
+		
+		if (gp_statistics_use_fkeys)
+		{
+			Oid         pkrelid = InvalidOid;
+			AttrNumber  pkattno = -1;
+
+			if (ConstraintGetPrimaryKeyOf(rte->relid, var->varattno, &pkrelid, &pkattno))
+			{
+				HeapTuple	pkStatsTuple = SearchSysCache(RELOID,
+						ObjectIdGetDatum(pkrelid),
+						0, 0, 0);
+				if (HeapTupleIsValid(pkStatsTuple)) 
+				{
+					Form_pg_class classForm = (Form_pg_class) GETSTRUCT(pkStatsTuple);
+					if (classForm->reltuples > 0)
+					{
+						vardata->numdistinctFromPrimaryKey = classForm->reltuples;
+					}
+				}
+				ReleaseSysCache(pkStatsTuple);
+			}
+		}
 		if (rte->inh)
 		{
 			/*
@@ -3874,6 +3904,15 @@ get_variable_numdistinct(VariableStatData *vardata)
 {
 	double		stadistinct;
 	double		ntuples;
+
+	/**
+	 * If we have an estimate from the primary key, then that is the most accurate value.
+	 */
+	if (gp_statistics_use_fkeys &&
+			vardata->numdistinctFromPrimaryKey > 0.0)
+	{
+		return vardata->numdistinctFromPrimaryKey;
+	}
 
 	/*
 	 * Determine the stadistinct value to use.	There are cases where we can
