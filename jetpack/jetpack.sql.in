@@ -405,7 +405,7 @@ AS
 --		,logdistxact
 --		,loglocalxact
 --		,logsubxact
---		,logseverity
+		,logseverity
 --		,logstate
 		,logmessage
 --		,logdetail
