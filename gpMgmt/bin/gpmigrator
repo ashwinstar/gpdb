@@ -2134,6 +2134,8 @@ This issue must be resolved before upgrade can complete.
         are:
         - "ident sameuser" becomes "ident"
         - "ident <map name>" becomes "ident map=<map name>"
+        - "ldap "ldap url" becomes "ldap ldapserver=..."
+        - "pam servicename" becomes "pam pamservice="servicename""
         '''
         f = open(frm, 'r')
         t = open(to, 'w')
@@ -2142,8 +2144,39 @@ This issue must be resolved before upgrade can complete.
         for line in f:
             # translate to new pg_hba.conf format
             if upgrdfmt:
+                # ident
                 line = re.compile('ident sameuser$').sub('ident', line)
                 line = re.compile('ident (?!map=)(.*)$').sub('ident map=\\1', line)
+                # pam
+                line = re.compile('pam (?!pamservice=)(.*)$').sub('pam pamservice=\\1', line)
+                # ldap is a little more complex
+                # our objective is to parse the following:
+                # ldap[s]://<server>[:<port>]/<basedn>[;prefix[;suffix]]
+                self.Log('DEBUG', "upgrading ldap entries")
+                r1 = re.compile('ldap "?(ldap[s]?)://([^:/]+)(:\d+)?/([^"]*)"?')
+                match = r1.search(line)
+                if match:
+                    s = "ldapserver=" + match.group(2).strip()
+                    if match.group(3):
+                        s += " ldapport=" + str(match.group(3)[1:]).strip()
+                    if match.group(4):
+                        fixes = match.group(4).strip().split(';')
+                        suffix = ""
+                        prefix = ""
+                        basedn = ""
+                        if len(fixes) > 3:
+                            raise UpgradeError('cannot rebuild ldap auth ' +
+                                               'entry: ' + line)
+                        if len(fixes) == 3:
+                            suffix = ' ldapsuffix="' + fixes[2] + '"'
+                        if len(fixes) >= 2:
+                            prefix = ' ldapprefix="' + fixes[1] + '"'
+                        if len(fixes) >= 1:
+                            basedn = "" # not used
+                        s += prefix + suffix
+                    if match.group(1) == "ldaps":
+                        s += " ldaptls=1"
+                    line = re.compile('ldap (.*)$').sub('ldap ' + s, line)
             else:
                 line = re.compile('ident$').sub('ident sameuser', line)
                 line = re.compile('ident map=(.*)$').sub('ident \\1', line)
