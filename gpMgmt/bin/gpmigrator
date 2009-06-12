@@ -39,6 +39,8 @@ try:
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
+libdir = os.path.join(sys.path[0], 'lib/')
+
 logger        = get_default_logger()
 EXECNAME      = os.path.split(__file__)[-1]
 MIGRATIONUSER = 'gpmigrator'
