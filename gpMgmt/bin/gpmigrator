@@ -15,7 +15,16 @@ Options:
 '''
 
 #============================================================
-import sys, os, subprocess, csv
+import sys, os
+
+# Python version 2.6.2 is expected, must be between 2.5-3.0
+if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
+    sys.stderr.write("Error: %s is supported on Python versions 2.5 or greater\n" 
+                     "Please upgrade python installed on this machine." 
+                     % EXECNAME)
+    sys.exit(1)
+
+import subprocess, csv
 import optparse, tempfile, re, traceback
 from datetime import date
 from time import localtime, strftime, sleep, time
@@ -23,24 +32,15 @@ from threading import Thread
 from Queue     import Queue
 import urllib    # for passing strings across gpssh
 import shutil    # for copying
-
-EXECNAME = os.path.split(__file__)[-1]
-libdir = os.path.join(sys.path[0], '..', 'lib', 'python')
-sys.path.append(libdir)
-libdir = os.path.join(sys.path[0], 'lib/')
-sys.path.append(libdir)
-try: 
-    import pg8000
+try:
+    import pg8000                        # XXX: other tools use pygresql
+    from gppylib.gplog import *          # Greenplum logging facility
+    from gppylib.commands import unix    # Greenplum layer for unix interaction
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
-if sys.version_info < (2, 5, 0):
-    sys.stderr.write("Error: %s is supported on Python versions 2.5 or greater\n" 
-                     "Please upgrade python installed on this machine." 
-                     % EXECNAME)
-    sys.exit(1)
-
-
+logger        = get_default_logger()
+EXECNAME      = os.path.split(__file__)[-1]
 MIGRATIONUSER = 'gpmigrator'
 LOCKEXT       = '.gpmigrator_orig'
 WORKDIR       = 'gpmigrator'
@@ -51,8 +51,9 @@ MAIN          = "3.3.99.99" # version number for main
 
 def make_conn(ug, user, db, options, port, sockdir):
     try:
-        ug.Log('DEBUG', "making database connection: user = %s, "
-                 "dbname = %s port = %i, unix socket connection" % (user, db, port))
+        logger.debug("making database connection: user = %s, "
+                     "dbname = %s port = %i, unix socket connection" 
+                     % (user, db, port))
         conn = pg8000.Connection(user=user,
                                  unix_sock=os.path.join(sockdir, '.s.PGSQL.%i' % port),
                                  database=db, 
@@ -63,7 +64,8 @@ def make_conn(ug, user, db, options, port, sockdir):
         # could be an issue with using UNIX sockets, try a host based
         # connection
         try:
-            ug.Log('DEBUG', "could not connect using unix socket (%s), trying host based connection" % str(e))
+            logger.debug("could not connect using unix socket (%s), "
+                         "trying host based connection" % str(e))
             conn = pg8000.Connection(user=user,
                                      host='localhost',
                                      database=db, 
@@ -71,8 +73,9 @@ def make_conn(ug, user, db, options, port, sockdir):
                                      port=port,
                                      socket_timeout=5000)
         except Exception, e:
-            ug.Log('FATAL', 'Could not establish connection to ' +
-                          'database "%s" port %d: %s' % (db, port, str(e)))
+            logger.fatal('Could not establish connection to ' +
+                         'database "%s" port %d: %s' 
+                         % (db, port, str(e)))
             raise ConnectionError(str(e))
     return conn
 
@@ -160,8 +163,8 @@ class MappingsWorker(Thread):
                     else:
                         msg = "Object '%s'" % name
                     msg += " missing relfile on segment '%s'\n" % self.upgrade.host
-                    self.upgrade.Log('FATAL', msg)
-                    self.upgrade.Log('FATAL', 'missing relfile: ' + file)
+                    logger.fatal(msg)
+                    logger.fatal('missing relfile: ' + file)
                     self.errors += 1
     
                 # Prefix each name with the database it's in
@@ -332,7 +335,7 @@ class Harness():
         # Report any errors the threads encountered
         for w in self.pool:
             for e in w.problems:
-                self.upgrader.Log('FATAL', str(e))
+                logger.fatal(str(e))
                 failed = True
             w.problems = []
 
@@ -446,8 +449,8 @@ class GPUpgrade:
 
         # Extract path from input master directory
         if self.cmd == 'MASTER':
-            self.Log('INFO', 'Beginning upgrade')
-            self.Log('INFO', 'Checking configuration')
+            logger.info('Beginning ugrade')
+            logger.info('Checking configuration')
 
             if not self.masterdir or len(self.masterdir) == 0:
                 raise UpgradeError('MASTER_DATA_DIRECTORY is not defined')
@@ -624,6 +627,12 @@ class GPUpgrade:
             self.logdir = options.logdir
         else:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
+
+        setup_tool_logging(EXECNAME,
+                           unix.getLocalHostname(),
+                           unix.getUserName(),
+                           self.logdir)
+
         if options.nocheckschema:
             self.checkschema = False
         if self.cmd != 'MASTER':
@@ -652,19 +661,19 @@ class GPUpgrade:
 
             self.pid = os.getpid()
             if self.masterdir == None:
-                self.Log('FATAL', 'MASTER_DATA_DIRECTORY parameter not set')
+                logger.fatal('MASTER_DATA_DIRECTORY parameter not set')
                 raise UpgradeError('Initialization failed')
             if not os.path.exists(self.masterdir):
-                self.Log('FATAL', 'MASTER_DATA_DIRECTORY: %s not found'
-                         % self.masterdir)
+                logger.fatal('MASTER_DATA_DIRECTORY: %s not found'
+                             % self.masterdir)
                 raise UpgradeError('Initialization failed')
             if not os.path.isabs(self.masterdir):
                 self.masterdir = os.path.abspath(self.masterdir)
             if not os.path.exists(self.oldhome):
-                self.Log('FATAL', ' directory not found: ' + self.oldhome)
+                logger.fatal(' directory not found: ' + self.oldhome)
                 raise UpgradeError('Initialization failed')
             if not os.path.exists(self.newhome):
-                self.Log('FATAL', ' directory not found: ' + self.newhome)
+                logger.fatal(' directory not found: ' + self.newhome)
                 raise UpgradeError('Initialization failed')
             if not os.path.isabs(self.oldhome):
                 self.oldhome = os.path.abspath(self.oldhome)
@@ -696,16 +705,16 @@ class GPUpgrade:
         behavior.
         '''
         if self.cmd == 'MASTER':
-            self.Log('FATAL', 'Fatal error occured - Recovering')
+            logger.fatal('Fatal error occured - Recovering')
             try:
                 self.Shutdown()
             except Exception, e:
-                self.Log('FATAL', 'Cleanup failure: ' + str(e))
+                logger.fatal('Cleanup failure: ' + str(e))
 
             try:
                 self.ReleaseLockdown(self.oldenv)
             except Exception, e:
-                self.Log('FATAL', 'Cleanup failure: ' + str(e))
+                logger.fatal('Cleanup failure: ' + str(e))
 
             if self.threadpool:
                 del self.threadpool
@@ -746,11 +755,11 @@ class GPUpgrade:
         elif type(cmd) == type(['list']):
             cmdstr = ' '.join(cmd)
         else:
-            self.Log('WARN', "Unknown RunCmd datatype '%s'" % str(type(cmd)))
+            logger.warn("Unknown RunCmd datatype '%s'" % str(type(cmd)))
             cmdstr = str(cmd)
         
         if self.debug and not supressDebug: 
-            self.Log('DEBUG', "CMD: " + cmdstr)
+            logger.debug("CMD: " + cmdstr)
 
         # If utility mode has been specified add role to env
         if env == None:
@@ -769,7 +778,7 @@ class GPUpgrade:
             raise CmdError(cmdstr, '', str(e))
 
         if self.debug and not supressDebug:
-            self.Log('DEBUG', result[1])
+            logger.debug(result[1])
 
         if pipe.returncode:
             raise CmdError(' '.join(cmd), result[0], result[1])
@@ -821,7 +830,7 @@ class GPUpgrade:
             #sys.stdout.write(result)
             #sys.stdout.flush()
         except CmdError, e:
-            self.Log('DEBUG', e.cmd)
+            logger.debug(e.cmd)
             sys.stdout.write(e.stdout)
             sys.stdout.flush()
             sys.stderr.write(e.stderr)
@@ -829,7 +838,7 @@ class GPUpgrade:
         
         # gpssh is very bad at returning useful status codes so we also need
         # to see if there was any mention of FATAL within the message
-        self.Log('GPSSH', result)
+        logger.debug('GPSSH: ' + str(result))
 
         if re.search('gpmigrator.*\[FATAL\]', result):
             raise UpgradeError('Fatal Segment Error')
@@ -846,7 +855,7 @@ class GPUpgrade:
         for d in filter(os.path.exists, datadirs):
             p = os.path.join(d, WORKDIR)
             if os.path.exists(p):
-                self.Log('WARN', '%s : File exists' % p)
+                logger.warn('%s : File exists' % p)
                 err = True
 
         if err:
@@ -887,39 +896,6 @@ class GPUpgrade:
             env['MASTER_DATA_DIRECTORY'] = masterdir
             env['PGPORT'] = str(self.masterport)
         return env
-
-    #------------------------------------------------------------
-    def Log(self, type, msg):
-
-        if type not in ['NONE', 'INFO', 'WARN', 'FATAL', 'DEBUG', 'GPSSH']:
-            print '[WARN] Odd log type: %s' % str(type)
-        
-        if type in ['DEBUG', 'GPSSH'] and not self.debug:
-            return
-
-        if type in ['WARN', 'ERROR']:
-            self.warnings = True
-
-        if type == 'NONE':
-            prefix = ''
-        else:
-            prefix = ':'.join(
-                [strftime('%Y%m%d:%H:%M:%S', localtime()), EXECNAME, 
-                 self.host, self.user, '[%s]' % type, '-'])
-
-        try:
-            for m in msg.splitlines():
-                if m.strip() == '': 
-                    continue
-
-                if (self.logfile):
-                    self.logfile.write('%s%s\n' % (prefix, m))
-                    self.logfile.flush()
-
-                if type == 'FATAL' or type == 'WARN' or not self.quiet:
-                    sys.stderr.write('%s%s\n' % (prefix, m))
-        except:
-            pass
 
     #------------------------------------------------------------
     def Select(self, qry, db='template1', port=None, forceutility=False):
@@ -977,7 +953,7 @@ class GPUpgrade:
             conn.execute(qry)
         except Exception, e:
             conn.close()
-            self.Log('FATAL', 'Error executing SQL')
+            logger.fatal('Error executing SQL')
             raise ConnectionError('%s\nsql> %s' % (str(e), qry))
 
         rows = []
@@ -1036,7 +1012,7 @@ class GPUpgrade:
         try:
             conn.execute(qry)
         except Exception, e:
-            self.Log('FATAL', 'Error executing SQL')
+            logger.fatal('Error executing SQL')
             raise ConnectionError('%s\nsql> %s' % (str(e), qry))
 
         finally:
@@ -1098,7 +1074,7 @@ class GPUpgrade:
                             msg  = 'pg_controldata: "Database cluster state: %s"\n' % m.group(1)
                             msg += 'Greenplum segment %s did not shutdown cleanly' % dir
                             if self.revert:
-                                self.Log('WARN', msg)
+                                logger.warn(msg)
                             else:
                                 raise UpgradeError(msg)
             
@@ -1118,20 +1094,20 @@ class GPUpgrade:
         env = None
 
         if olddir and os.path.exists('%s/postmaster.pid' % olddir):
-            self.Log('DEBUG', 'CheckUp: found old postmaster running')
+            logger.debug('CheckUp: found old postmaster running')
             env = self.oldenv
         if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-            self.Log('DEBUG', 'CheckUp: found new postmaster running')
+            logger.debug('CheckUp: found new postmaster running')
             env = self.newenv
 
         if not env:
-            self.Log('INFO', 'Postmaster not running')
+            logger.info('Postmaster not running')
             raise UpgradeError("Postmaster failed to start")
 
         if tryconn:
             try:
-                self.Log('DEBUG', 'trying to establish connection to database')
-                self.Log('DEBUG', 'user = %s, db = template1, port = %i, dir = %s'
+                logger.debug('trying to establish connection to database')
+                logger.debug('user = %s, db = template1, port = %i, dir = %s'
                     % (self.user, self.masterport, self.sock_dir))
                 conn = make_conn(self, self.user, 'template1', '', self.masterport,
                                  self.sock_dir)
@@ -1155,9 +1131,9 @@ class GPUpgrade:
         if utility:
             isu = " in utility mode"
         if (env == self.oldenv):
-            self.Log('INFO', 'Starting old Greenplum postmaster%s' % isu)
+            logger.info('Starting old Greenplum postmaster%s' % isu)
         else:
-            self.Log('INFO', 'Starting new Greenplum postmaster%s' % isu)
+            logger.info('Starting new Greenplum postmaster%s' % isu)
 
         try:
             if utility:  cmd = 'gpstart -a -m'
@@ -1170,11 +1146,11 @@ class GPUpgrade:
             try:
                 if os.path.exists(locked):
                     env['PGUSER'] = MIGRATIONUSER
-                    self.Log('DEBUG', "lockfile: '%s' exists" % locked)
+                    logger.debug("lockfile: '%s' exists" % locked)
                 else:
-                    self.Log('DEBUG', "lockfile: '%s' does not exist" % locked)
+                    logger.debug("lockfile: '%s' does not exist" % locked)
 
-                self.Log('DEBUG', "Starting cluster with env = %s" % str(env))
+                logger.debug("Starting cluster with env = %s" % str(env))
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
                                        stdout=self.logfile, 
@@ -1193,14 +1169,14 @@ class GPUpgrade:
 
                 except KeyboardInterrupt, e:
                     if not self.interupted:
-                        self.Log('FATAL', '***************************************')
-                        self.Log('FATAL', 'SIGINT-: Upgrade Aborted')
-                        self.Log('FATAL', '***************************************')
-                        self.Log('INFO',  'Performing clean abort')
+                        logger.fatal('***************************************')
+                        logger.fatal('SIGINT-: Upgrade Aborted')
+                        logger.fatal('***************************************')
+                        logger.info( 'Performing clean abort')
                         self.interupted = True
                         error = e
                     else:
-                        self.Log('INFO',  'SIGINT-: Still processing shutdown')
+                        logger.info( 'SIGINT-: Still processing shutdown')
 
             if retcode < 0:
                 raise UpgradeError("Startup terminated by signal");
@@ -1208,15 +1184,15 @@ class GPUpgrade:
             today = date.today().strftime('%Y%m%d')
             logname = os.path.join(self.logdir, 'gpstart_%s.log' % today)
             if retcode == 1:
-                self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated starting cluster')
-                self.Log('WARN', 'Check %s for detailed warnings' % logname)
-                self.Log('WARN', '***************************************')
+                logger.warn('***************************************')
+                logger.warn('Warnings generated starting cluster')
+                logger.warn('Check %s for detailed warnings' % logname)
+                logger.warn('***************************************')
             if retcode > 1:
-                self.Log('FATAL', '***************************************')
-                self.Log('FATAL', 'Startup failed with error code %d' % retcode)
-                self.Log('FATAL', 'Check %s for detailed warnings' % logname)
-                self.Log('FATAL', '***************************************')
+                logger.fatal('***************************************')
+                logger.fatal('Startup failed with error code %d' % retcode)
+                logger.fatal('Check %s for detailed warnings' % logname)
+                logger.fatal('***************************************')
                 raise UpgradeError('Startup failed')
 
             # If we recieved an interupt, resignal it now that the startup is done
@@ -1224,7 +1200,7 @@ class GPUpgrade:
                 raise error
 
         except OSError, e:
-            self.Log('FATAL', str(e))
+            logger.fatal(str(e))
             raise UpgradeError('Startup failed')
 
         self.CheckUp();
@@ -1242,14 +1218,14 @@ class GPUpgrade:
 
         dir = env['MASTER_DATA_DIRECTORY']
         if not os.path.exists('%s/postmaster.pid' % dir):
-            self.Log('WARN', 
+            logger.warn(
                      'Shutdown skipped - %s/postmaster.pid not found' % dir)
             return
 
         if (env == self.oldenv):
-            self.Log('INFO', 'Shutting down old Greenplum postmaster')
+            logger.info('Shutting down old Greenplum postmaster')
         else:
-            self.Log('INFO', 'Shutting down new Greenplum postmaster')
+            logger.info('Shutting down new Greenplum postmaster')
 
         locked = os.path.join(env['MASTER_DATA_DIRECTORY'],
                               'pg_hba.conf'+LOCKEXT)
@@ -1265,9 +1241,9 @@ class GPUpgrade:
             try:
                 if os.path.exists(locked):
                     env['PGUSER'] = MIGRATIONUSER
-                    self.Log('DEBUG', 'handling locked shutdown')
-                self.Log('DEBUG', 'shutting down with env: %s' % str(env))
-                self.Log('DEBUG', 'shutting down with command: %s' % cmd)
+                    logger.debug('handling locked shutdown')
+                logger.debug('shutting down with env: %s' % str(env))
+                logger.debug('shutting down with command: %s' % cmd)
 
                 pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
                                        env=env, shell=True,
@@ -1287,29 +1263,29 @@ class GPUpgrade:
 
                 except KeyboardInterrupt, e:
                     if not self.interupted:
-                        self.Log('FATAL', '***************************************')
-                        self.Log('FATAL', 'SIGINT-: Upgrade Aborted')
-                        self.Log('FATAL', '***************************************')
-                        self.Log('INFO',  'Performing clean abort')
+                        logger.fatal('***************************************')
+                        logger.fatal('SIGINT-: Upgrade Aborted')
+                        logger.fatal('***************************************')
+                        logger.info( 'Performing clean abort')
                         self.interupted = True
                         error = e
                     else:
-                        self.Log('INFO',  'SIGINT-: Still processing shutdown')
+                        logger.info( 'SIGINT-: Still processing shutdown')
 
             if retcode < 0:
                 raise UpgradeError("Shutdown terminated by signal");
             today = date.today().strftime('%Y%m%d')
             logname = os.path.join(self.logdir, 'gpstop_%s.log' % today)
             if retcode == 1:
-                self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated stopping cluster')
-                self.Log('WARN', 'Check %s for detailed warnings' % logname)
-                self.Log('WARN', '***************************************')
+                logger.warn('***************************************')
+                logger.warn('Warnings generated stopping cluster')
+                logger.warn('Check %s for detailed warnings' % logname)
+                logger.warn('***************************************')
             if retcode > 1:
-                self.Log('FATAL', '***************************************')
-                self.Log('FATAL', 'Shutdown failed with error code %d' % retcode)
-                self.Log('FATAL', 'Check %s for detailed error' % logname)
-                self.Log('FATAL', '***************************************')
+                logger.fatal('***************************************')
+                logger.fatal('Shutdown failed with error code %d' % retcode)
+                logger.fatal('Check %s for detailed error' % logname)
+                logger.fatal('***************************************')
                 raise UpgradeError('Shutdown failed')
 
             # If we recieved an interupt, resignal it now that the startup is done
@@ -1317,7 +1293,7 @@ class GPUpgrade:
                 raise error
 
         except OSError, e:
-            self.Log('FATAL', str(e))
+            logger.fatal(str(e))
             raise UpgradeError('Shutdown failed')
 
         # If we are only doing --prepare then we may shutdown the newdb with the olddb
@@ -1340,19 +1316,19 @@ class GPUpgrade:
             self.Shutdown()
             self.CheckDown()
         except BaseException, e:
-            u.Log('FATAL', '***************************************')
-            u.Log('FATAL', str(e))
-            u.Log('FATAL', '***************************************')
+            logger.fatal('***************************************')
+            logger.fatal(str(e))
+            logger.fatal('***************************************')
             raise UpgradeError("Unable to REVERT\nShutdown the running " +
                                "database and rerun gpmigrator with '-R'")
             
-        self.Log('INFO', 'Reverting to Backup')
+        logger.info('Reverting to Backup')
         self.revert = True
 
         statefile = os.path.join(self.workdir, 'state')
         if not os.path.exists(statefile):
-            self.Log('WARN', "  '%s' not found" % statefile)
-            self.Log('INFO', 'Revert aborted')
+            logger.warn("  '%s' not found" % statefile)
+            logger.info('Revert aborted')
             sys.exit(0)
         state = self.RunCmd('cat ' + statefile)
 
@@ -1373,8 +1349,8 @@ class GPUpgrade:
             # grab configuration information from generated init file
             initfile = os.path.join(self.workdir, 'gp_init_config')
             if not os.path.exists(initfile):
-                self.Log('FATAL', "  '%s' not found" % initfile)
-                self.Log('INFO', 'Revert aborted')
+                logger.fatal("  '%s' not found" % initfile)
+                logger.info('Revert aborted')
                 sys.exit(1)
 
             # Extract from gp_init_config
@@ -1424,15 +1400,15 @@ class GPUpgrade:
             # read the hosts file
             hostfile = os.path.join(self.workdir, 'hosts')
             if not os.path.exists(hostfile):
-                self.Log('FATAL', "  '%s' not found" % hostfile)
-                self.Log('INFO', 'Revert aborted')
+                logger.fatal("  '%s' not found" % hostfile)
+                logger.info('Revert aborted')
                 sys.exit(1)
             hosts = self.RunCmd('cat ' + hostfile)
             self.hosts = hosts.split('\n')
 
         # Attempt revert
         if needrevert:
-            self.Log('INFO', 'Restoring directories')
+            logger.info('Restoring directories')
             self.DeepLink('REVERT')
 
         # Truncate the statefile
@@ -1443,12 +1419,12 @@ class GPUpgrade:
             self.ReleaseLockdown(self.oldenv)
 
         self.Startup(self.oldenv)
-        self.Log('INFO', 'Removing upgrade user')
+        logger.info('Removing upgrade user')
         self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
         self.Shutdown()
         
         # done
-        self.Log('INFO', 'Revert Successful')
+        logger.info('Revert Successful')
         self.revert = False
 
 
@@ -1461,10 +1437,10 @@ class GPUpgrade:
         # Log the OS type info
         os_type = os.uname()[0]
         os_ver  = os.uname()[2]
-        self.Log('INFO', 'Operating System: %s %s' % (os_type, os_ver))
+        logger.info('Operating System: %s %s' % (os_type, os_ver))
 
         # Log version checking
-        self.Log('INFO', 'Checking version compatability')
+        logger.info('Checking version compatability')
 
         # --gp-version added in 3.2, but that doesn't help us determine
         # version information from old versions.
@@ -1486,7 +1462,7 @@ class GPUpgrade:
                 try:
                     return self.RunCmd(cmd, env=self.oldenv)
                 except Exception, e:
-                    self.Log('FATAL', str(e))
+                    logger.fatal(str(e))
             raise UpgradeError('Unable to determine version of %s' % home)
 
         oldversion = getversion(self.oldhome, self.oldenv)
@@ -1499,7 +1475,7 @@ class GPUpgrade:
         if match: 
             oldversion = match.group(1)
             oldbuild = match.group(2)
-            self.Log('INFO', 'Source Version: (Greenplum Database) %s build %s'
+            logger.info('Source Version: (Greenplum Database) %s build %s'
                      % (oldversion, oldbuild))
         else:
             raise UpgradeError('Source not a Greenplum Database: ' + oldversion)
@@ -1507,7 +1483,7 @@ class GPUpgrade:
         if match: 
             newversion = match.group(1)
             newbuild = match.group(2)
-            self.Log('INFO', 'Target Version: (Greenplum Database) %s build %s'
+            logger.info('Target Version: (Greenplum Database) %s build %s'
                      % (newversion, newbuild))
         else:
             raise UpgradeError('Target not a Greenplum Database: ' + newversion)    
@@ -1596,24 +1572,24 @@ class GPUpgrade:
             else:
                 self.method = "transform"
 
-        self.Log('DEBUG', 'Using %s method for migration' % self.method)
+        logger.debug('Using %s method for migration' % self.method)
 
         # Compare old version catalog number with the catalog in 
         # MASTER_DATA_DIRECTORY
         catalog_re = re.compile('Catalog version number: *(.*)')
         oldcat = self.RunCmd('postgres --catalog-version', env=self.oldenv)
-        self.Log('INFO', "Source %s" % oldcat)
+        logger.info("Source %s" % oldcat)
         newcat = self.RunCmd('postgres --catalog-version', env=self.newenv)
-        self.Log('INFO', "Target %s" % newcat)
+        logger.info("Target %s" % newcat)
 
         control = self.RunCmd('pg_controldata ' + self.masterdir, env=self.oldenv)
         for line in control.split('\n'):
             m = catalog_re.match(line)
             if m:
-                self.Log('INFO', "Data   %s " % line)
+                logger.info("Data   %s " % line)
                 if ((not self.revert and line != oldcat) or
                     (self.revert and line != oldcat and line != newcat)):
-                    self.Log('DEBUG', 'catalog mismatch: expected %s, found %s'
+                    logger.debug('catalog mismatch: expected %s, found %s'
                              % (oldcat, line))
                     msg = 'Catalog in %s does not match source binary' % self.masterdir
                     raise UpgradeError(msg)
@@ -1621,7 +1597,7 @@ class GPUpgrade:
 
         # For the moment everything goes:
         #   - Additional checks will be made once the old database is up
-        self.Log('INFO', 'Versions are compatible')        
+        logger.info('Versions are compatible')        
 
 
     #------------------------------------------------------------
@@ -1636,7 +1612,7 @@ class GPUpgrade:
         # done if there were directories that we failed to remove.
         doerror = False
         if self.cmd == 'MASTER':
-            self.Log('INFO', 'Removing temporary directories')
+            logger.info('Removing temporary directories')
             self.CallSlaves('RMDIR', force, self.config['SEG_PREFIX'])
             datadirs = [self.root]
         else:
@@ -1653,12 +1629,12 @@ class GPUpgrade:
                     dpid = self.RunCmd('cat ' + flag)
                     dpid = int(dpid)
                 except Exception, e:
-                    self.Log('WARN', 'Read error on file:  ' + str(e))
+                    logger.warn('Read error on file:  ' + str(e))
                     doerror = True
                     continue
 
                 if dpid != self.pid:
-                    self.Log('WARN', 'Directory %s owned by pid %s' 
+                    logger.warn('Directory %s owned by pid %s' 
                              % (dir, dpid))
                     doerror = True
                     continue
@@ -1667,8 +1643,8 @@ class GPUpgrade:
             # process running, we won't remove the directory.
             running = self.RunCmd('find %s -name postmaster.pid -print' % dir)
             if (running):
-                self.Log('INFO', running)
-                self.Log('FATAL', 'Active processes running')
+                logger.info(running)
+                logger.fatal('Active processes running')
                 doerror = True
             else:
                 self.RunCmd('rm -rf ' + dir)
@@ -1697,7 +1673,7 @@ class GPUpgrade:
                 self.RemoveDirectories(force=True)
             
 
-            self.Log('INFO', 'Creating temporary directories')                
+            logger.info('Creating temporary directories')                
 
             # Have the slaves create their directories
             self.CallSlaves('MKDIR', self.config['SEG_PREFIX'])
@@ -1723,7 +1699,7 @@ class GPUpgrade:
 
 
                 except Exception, e:
-                    self.Log('FATAL', str(e))
+                    logger.fatal(str(e))
                     raise UpgradeError('Failed to create upgrade directories')
                 
             else:
@@ -1775,7 +1751,7 @@ class GPUpgrade:
         Creates 'hosts' and 'gp_init_config' files
         '''
 
-        self.Log('INFO', 'Generating config files')        
+        logger.info('Generating config files')        
         resetports = None
         try: 
             self.CheckDown()
@@ -1863,7 +1839,7 @@ This may be specified on the commandline with:
             o.write(')\n')
 
         o.close()
-        self.Log('INFO', 'Configuration files generated')
+        logger.info('Configuration files generated')
 
 
     #------------------------------------------------------------
@@ -1873,7 +1849,7 @@ This may be specified on the commandline with:
         '''
 
         # Determine if there are any invalid segments
-        self.Log('INFO', 'Checking that all segments are valid')
+        logger.info('Checking that all segments are valid')
         invalid = self.Select(
         '''
            SELECT hostname, datadir FROM gp_configuration
@@ -1881,12 +1857,12 @@ This may be specified on the commandline with:
         ''', forceutility=True)
         if len(invalid) > 0:
             for item in invalid:
-                self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % 
+                logger.fatal('INVALID SEGMENT: %s:/%s' % 
                          (item['hostname'], item['datadir']));
             raise UpgradeError('Cannot upgrade database with invalid segments')
 
 
-        self.Log('INFO', 'Creating list of databases')
+        logger.info('Creating list of databases')
         databases = self.Select("SELECT datname from pg_database WHERE datname != 'template0'")
 
         if self.method == 'dumprestore':
@@ -1897,7 +1873,7 @@ This may be specified on the commandline with:
             # been dropped.  (This query is compatible with a similar query used in pg_dump
             # for finding a reconstruction match for dropped attributes with user-defined
             # types.
-            self.Log('INFO', 'Checking for dropped columns')
+            logger.info('Checking for dropped columns')
             for db in databases:
                 unsupportedDropped = self.Select( 
                         '''
@@ -1931,7 +1907,7 @@ This may be specified on the commandline with:
                         ''', db=db)
                 if unsupportedDropped:
                     for row in unsupportedDropped:
-                        self.Log('FATAL', 
+                        logger.fatal(
                                  'Unrecognized dropped column in database "%(database)s" - table %(table)s '
                                  '[%(attnum)d]: len=%(attlen)d, byval=%(attbyval)s, storage=%(attstorage)s, '
                                  'align=%(attalign)s, typmod=%(atttypmod)d, ndims=%(attndims)d, istoasted=%(istoasted)s'
@@ -1939,12 +1915,12 @@ This may be specified on the commandline with:
                     raise UpgradeError("non-upgradable dropped columns detected")
 
         # Look for an existing user named MIGRATIONUSER
-        self.Log('INFO', 'Checking gpmigrator user')
+        logger.info('Checking gpmigrator user')
         upgradeuser = self.Select(
             "SELECT count(*)::numeric FROM pg_user " +
             "WHERE usename = '%s'" % MIGRATIONUSER)
         if upgradeuser[0] > 0:
-            self.Log('WARN', "Database user '%s' already exists" % MIGRATIONUSER)
+            logger.warn("Database user '%s' already exists" % MIGRATIONUSER)
             self.Update('DROP USER ' + MIGRATIONUSER)
             #raise UpgradeError("Database user 'gpmigrator' already exists")
 
@@ -1954,7 +1930,7 @@ This may be specified on the commandline with:
         #    - new style partitions
         if (not self.upgrade and self.newversion < '3.2.0.0' and 
             self.oldversion >= '3.2.0.0'):
-            self.Log('INFO', 'Checking for partitioning and append only tables')
+            logger.info('Checking for partitioning and append only tables')
             c = 0
             for db in databases:
                 c = self.Select('SELECT COUNT(*)::numeric FROM pg_partition', db=db)
@@ -1988,7 +1964,7 @@ Cannot downgrade a database with 3.3 column storage    <<<<<
 ''')
 
         # Extract the information needed to construct a gp_init_config file
-        self.Log('INFO', 'Extracting configuration information')
+        logger.info('Extracting configuration information')
         gp_config = self.Select(
         '''
            SELECT content::numeric, definedprimary, dbid::numeric, hostname, port::numeric, datadir 
@@ -2125,7 +2101,7 @@ This issue must be resolved before upgrade can complete.
             self.datadirs = '%s%s ' % (self.datadirs, d)
         self.datadirs = self.datadirs.strip()
 
-        self.Log('INFO', 'Configuration acquired')
+        logger.info('Configuration acquired')
 
 
     def copy_rewrite_hba(self, frm, to, upgrdfmt):
@@ -2139,7 +2115,7 @@ This issue must be resolved before upgrade can complete.
         '''
         f = open(frm, 'r')
         t = open(to, 'w')
-        self.Log('DEBUG', 'writing %s to %s for upgrade = %s'
+        logger.debug('writing %s to %s for upgrade = %s'
                  % (frm, to, str(upgrdfmt)))
         for line in f:
             # translate to new pg_hba.conf format
@@ -2152,7 +2128,7 @@ This issue must be resolved before upgrade can complete.
                 # ldap is a little more complex
                 # our objective is to parse the following:
                 # ldap[s]://<server>[:<port>]/<basedn>[;prefix[;suffix]]
-                self.Log('DEBUG', "upgrading ldap entries")
+                logger.debug("upgrading ldap entries")
                 r1 = re.compile('ldap "?(ldap[s]?)://([^:/]+)(:\d+)?/([^"]*)"?')
                 match = r1.search(line)
                 if match:
@@ -2181,7 +2157,7 @@ This issue must be resolved before upgrade can complete.
                 line = re.compile('ident$').sub('ident sameuser', line)
                 line = re.compile('ident map=(.*)$').sub('ident \\1', line)
 
-            self.Log('DEBUG', 'writing to %s line %s' % (to, line))
+            logger.debug('writing to %s line %s' % (to, line))
             t.write(line)
         f.close()
         t.close()
@@ -2200,17 +2176,17 @@ This issue must be resolved before upgrade can complete.
         os_type = os.uname()[0].lower()
 
         if self.cmd == 'MASTER':
-            self.Log('INFO', 'Locking database')
+            logger.info('Locking database')
             self.CheckUp()
             [env, utility] = self.dbup;
             if utility:
                 raise UpgradeError("Cannot lock database in utility mode")
 
-            self.Log('INFO', '...Creating upgrade user')
+            logger.info('...Creating upgrade user')
             self.Update('DROP USER IF EXISTS ' + MIGRATIONUSER)
             self.Update('CREATE USER %s with superuser' % MIGRATIONUSER)
 
-            self.Log('INFO', '...Creating pg_hba.conf ')
+            logger.info('...Creating pg_hba.conf ')
 
             # To write out a new pg_hba.conf we need to know all the ip 
             # addresses that the master identifies with.
@@ -2288,10 +2264,10 @@ This issue must be resolved before upgrade can complete.
                     self.RunCmd('cp -f %s %s' % (ident+LOCKEXT, dir))
 
             # With the new lockfiles in place force the server to reload
-            self.Log('INFO', '...Syncing')
-            self.Log('DEBUG', 'calling gpstop -u with env: %s' % str(env))
+            logger.info('...Syncing')
+            logger.debug('calling gpstop -u with env: %s' % str(env))
             self.RunCmd('gpstop -u -a -l %s' % self.logdir, env=env)
-            self.Log('INFO', 'Database Locked')
+            logger.info('Database Locked')
 
 
     def CheckClusterReady(self, databases, port):
@@ -2327,7 +2303,7 @@ This issue must be resolved before upgrade can complete.
             if not self.execute:
                 return
 
-            self.Log('INFO', 'Unlocking database')
+            logger.info('Unlocking database')
 
             # See comment about disabling lockdown on segments in SetupLockdown()
             # self.CallSlaves('UNLOCK', self.config['SEG_PREFIX'])
@@ -2391,11 +2367,11 @@ This issue must be resolved before upgrade can complete.
             seg_prefix = self.config['SEG_PREFIX'] + '-'
             [env, utility] = self.dbup
             if (env == self.oldenv):
-                self.Log('INFO', 'Building original oid Mappings')
+                logger.info('Building original oid Mappings')
                 type = 'source'
                 datadirs = [ self.root ]
             else:
-                self.Log('INFO', 'Building upgraded oid Mappings')
+                logger.info('Building upgraded oid Mappings')
                 if self.method == "dumprestore":
                     type = 'target'
                     datadirs = [ os.path.join(self.workdir, UPGRADEDIR) ]
@@ -2429,8 +2405,8 @@ This issue must be resolved before upgrade can complete.
                     if type == 'copy':
                         source = os.path.join(d, WORKDIR, '%s_source_mapping' % seg)
                         target = os.path.join(d, WORKDIR, '%s_target_mapping' % seg)
-                        self.Log('DEBUG', 'd = %s' % d)
-                        self.Log('DEBUG', "copying %s to %s" % (source, target))
+                        logger.debug('d = %s' % d)
+                        logger.debug("copying %s to %s" % (source, target))
                         self.RunCmd("cp -f %s %s" % ( source, target ))
                         continue
 
@@ -2521,20 +2497,20 @@ This issue must be resolved before upgrade can complete.
 
                     t = MappingsWorker(self, dir, mapfilename, oidmap)
                     t.start()
-                    self.Log('DEBUG', 'started MappingsWorker thread: %s' % t.getName())
+                    logger.debug('started MappingsWorker thread: %s' % t.getName())
                     threads.append(t)
                     if len(threads) % PARALLELISM == 0:
                         for th in threads:
                             th.join()
                             if th.errors:
-                                self.Log('FATAL', 'error encountered in mappings thread')
+                                logger.fatal('error encountered in mappings thread')
                         threads = []
                         
         # Wait for all threads to be done before proceding to next stage
         for th in threads:
             th.join()
             if th.errors:
-                self.Log('FATAL', 'error encountered in mappings thread')
+                logger.fatal('error encountered in mappings thread')
             threads = []
 
         if errors > 0:
@@ -2546,7 +2522,7 @@ This issue must be resolved before upgrade can complete.
         Executes queries and creates files in the upgrade directory 'pg_stat_*.csv'
         '''
 
-        self.Log('INFO', 'Exporting Statistics')
+        logger.info('Exporting Statistics')
 
         databases = self.Select('''
         SELECT datname from pg_database
@@ -2583,7 +2559,7 @@ This issue must be resolved before upgrade can complete.
         '''
         Validate that the created catalog looks good
         '''
-        self.Log('INFO', 'Checking Catalog')
+        logger.info('Checking Catalog')
         self.CheckUp()
         [env, utility] = self.dbup
         databases = self.Select(
@@ -2605,9 +2581,9 @@ This issue must be resolved before upgrade can complete.
 
         for db in databases:
             cmd = exec_cmd + db
-            self.Log('INFO', '...Checking ' + db)
+            logger.info('...Checking ' + db)
 
-            self.Log('DEBUG', "CMD: " + cmd)
+            logger.debug("CMD: " + cmd)
 
             outfilename = os.path.join(self.workdir, 'gpcheckcat_%s.log' % db)
             outfilename = outfilename.replace(' ', '_')
@@ -2627,7 +2603,7 @@ This issue must be resolved before upgrade can complete.
         Runs pgdump_all to dump the schema.
         Run on the master in utility mode.
         '''
-        self.Log('INFO', 'Exporting schema')
+        logger.info('Exporting schema')
 
         locked = os.path.join(self.oldenv['MASTER_DATA_DIRECTORY'], 
                               'pg_hba.conf'+LOCKEXT)
@@ -2647,7 +2623,7 @@ This issue must be resolved before upgrade can complete.
         cmd += ' -U %s' % user
         cmd += ' -p %d' % self.masterport
         cmd += ' -r -s --gp-syntax --gp-migrator > %s/pgdump.sql' % self.workdir
-        self.Log('DEBUG', 'CMD: ' + cmd)
+        logger.debug('CMD: ' + cmd)
         r = subprocess.call(cmd, env=env, shell=True)
 
         if r:
@@ -2659,7 +2635,7 @@ This issue must be resolved before upgrade can complete.
         '''
         Create and configure the upgrade instance
         '''
-        self.Log('INFO', 'Initializing upgraded cluster')
+        logger.info('Initializing upgraded cluster')
         self.newenv['PGPORT'] = str(self.new_master_port)
 
         arrayname = self.config['ARRAY_NAME']
@@ -2684,7 +2660,7 @@ This issue must be resolved before upgrade can complete.
         # We create the master and one segment on the master host as 
         # the initial configuration, then copy the segment to every
         # host once it is ready.
-        self.Log('INFO', '...master')
+        logger.info('...master')
         cmd = [os.path.join(libdir, 'gpinitsegment'),
                '-A', arrayname,
                '-D', mdir,
@@ -2696,7 +2672,7 @@ This issue must be resolved before upgrade can complete.
                '-M', maxconn]
         self.RunCmd(cmd, env=self.newenv)
 
-        self.Log('INFO', '...segment')
+        logger.info('...segment')
         cmd = [os.path.join(libdir, 'gpinitsegment'),
                '-A', arrayname,
                '-C', mdir,
@@ -2709,7 +2685,7 @@ This issue must be resolved before upgrade can complete.
 
         # Shutdown won't work correctly until gp_configuration is correctly
         # initialized, so we need some extra guards for cleanup.
-        self.Log('INFO', '...adjusting configuration')
+        logger.info('...adjusting configuration')
         try:
             # Write out an initial gp_configuration
             cmd = 'pg_ctl -D %s -o "-p%s" -l %s.log start' % \
@@ -2773,8 +2749,8 @@ This issue must be resolved before upgrade can complete.
         Copies the dummyseg from the master node to all segments.
         '''
         
-        self.Log('INFO', 'Expanding cluster')
-        self.Log('INFO', '...This may take a while')
+        logger.info('Expanding cluster')
+        logger.info('...This may take a while')
 
         try:
             dummyseg = os.path.join(self.workdir, UPGRADEDIR, 'dummyseg')
@@ -2833,8 +2809,8 @@ This issue must be resolved before upgrade can complete.
         '''
         Create and configure the upgrade instance
         '''
-        self.Log('INFO', 'Initializing upgraded cluster')
-        self.Log('INFO', '...This may take a while')
+        logger.info('Initializing upgraded cluster')
+        logger.info('...This may take a while')
 
         # with --prepare the down check is invalid
         # self.CheckDown()
@@ -2856,14 +2832,14 @@ This issue must be resolved before upgrade can complete.
 
                 except KeyboardInterrupt, e:
                     if not self.interupted:
-                        self.Log('FATAL', '***************************************')
-                        self.Log('FATAL', 'SIGINT-: Upgrade Aborted')
-                        self.Log('FATAL', '***************************************')
-                        self.Log('INFO',  'Performing clean abort')
+                        logger.fatal('***************************************')
+                        logger.fatal('SIGINT-: Upgrade Aborted')
+                        logger.fatal('***************************************')
+                        logger.info( 'Performing clean abort')
                         self.interupted = True
                         error = e
                     else:
-                        self.Log('INFO',  'SIGINT-: Still processing shutdown')
+                        logger.info( 'SIGINT-: Still processing shutdown')
 
             # If we recieved an interupt, resignal it now that the startup is done
             if error: 
@@ -2874,18 +2850,18 @@ This issue must be resolved before upgrade can complete.
             today = date.today().strftime('%Y%m%d')
             logname = os.path.join(self.logdir, 'gpinitsystem_%s.log' % today)
             if retcode == 1:
-                self.Log('WARN', '***************************************')
-                self.Log('WARN', 'Warnings generated initializing upgraded cluster')
-                self.Log('WARN', 'Check %s for detailed warnings' % logname)
-                self.Log('WARN', '***************************************')
+                logger.warn('***************************************')
+                logger.warn('Warnings generated initializing upgraded cluster')
+                logger.warn('Check %s for detailed warnings' % logname)
+                logger.warn('***************************************')
             if retcode > 1:
-                self.Log('FATAL', '***************************************')
-                self.Log('FATAL', 'gpinitsystem failed with error code %d' % retcode)
-                self.Log('FATAL', 'Check %s for detailed error' % logname)
-                self.Log('FATAL', '***************************************')
+                logger.fatal('***************************************')
+                logger.fatal('gpinitsystem failed with error code %d' % retcode)
+                logger.fatal('Check %s for detailed error' % logname)
+                logger.fatal('***************************************')
                 raise UpgradeError('gpinitsystem failed')
         except OSError, e:
-            self.Log('FATAL', str(e))
+            logger.fatal(str(e))
             raise UpgradeError('gpinitsystem failed')
 
     #------------------------------------------------------------
@@ -2894,7 +2870,7 @@ This issue must be resolved before upgrade can complete.
         Resets the xlog prior to recreating the schema
         '''
         if self.cmd == 'MASTER':
-            self.Log('INFO', 'Syncing XLogs')
+            logger.info('Syncing XLogs')
             seg_prefix = self.config['SEG_PREFIX'] + '-'
             datadirs = [self.root]
             self.CallSlaves('RESETXLOG', self.config['SEG_PREFIX'])
@@ -2923,13 +2899,13 @@ This issue must be resolved before upgrade can complete.
                     newsync = self.RunCmd('pg_resetxlog -n ' + newdir, 
                                           env=self.newenv)
 
-                    self.Log('DEBUG', '*****************************')
-                    self.Log('DEBUG', ' - old xlog -')
-                    self.Log('DEBUG', oldsync)
-                    self.Log('DEBUG', '*****************************')
-                    self.Log('DEBUG', ' - new xlog -')
-                    self.Log('DEBUG', newsync)
-                    self.Log('DEBUG', '*****************************')
+                    logger.debug('*****************************')
+                    logger.debug(' - old xlog -')
+                    logger.debug(oldsync)
+                    logger.debug('*****************************')
+                    logger.debug(' - new xlog -')
+                    logger.debug(newsync)
+                    logger.debug('*****************************')
                     
 
                     # Nasty bit of code to turn the control data into a
@@ -2990,8 +2966,8 @@ This issue must be resolved before upgrade can complete.
     #------------------------------------------------------------
     def ImportSchema(self):
         self.CheckUp()
-        self.Log('INFO', 'Importing schema')
-        self.Log('INFO', '...This may take a while')
+        logger.info('Importing schema')
+        logger.info('...This may take a while')
 
         error   = False
         warning = False
@@ -3049,20 +3025,23 @@ This issue must be resolved before upgrade can complete.
                 level = 'WARN'
                 error = False
 
-            self.Log(level, line)
+            if level == 'FATAL':
+                logger.fatal(line)
+            else:
+                logger.warn(line)
 
         if error:
-            self.Log('FATAL', "Errors encountered loading '%s/pgdump.sql'" % self.workdir);
+            logger.fatal("Errors encountered loading '%s/pgdump.sql'" % self.workdir);
             raise UpgradeError('Upgrade aborted due to Schema Import Failures')
 
         if warning:
-            self.Log('WARN', '***************************************')
-            self.Log('WARN', "Warnings encountered loading '%s/pgdump.sql'" % self.workdir);
-            self.Log('WARN', '***************************************')
+            logger.warn('***************************************')
+            logger.warn("Warnings encountered loading '%s/pgdump.sql'" % self.workdir);
+            logger.warn('***************************************')
 
 
-        self.Log('INFO', 'Vacuuming catalog tables')
-        self.Log('INFO', '...This may take a while')
+        logger.info('Vacuuming catalog tables')
+        logger.info('...This may take a while')
         databases = self.Select(
             '''
             SELECT datname FROM pg_database 
@@ -3081,8 +3060,8 @@ This issue must be resolved before upgrade can complete.
         Executes queries to rebuild the database statistics stored in 'pg_stat_*.csv'
         '''
 
-        self.Log('INFO', 'Restoring statistics')
-        self.Log('INFO', '...This may take a while')
+        logger.info('Restoring statistics')
+        logger.info('...This may take a while')
         
         # Datatypes of the columns in pg_statistics, the last 4 columns,
         # not included here, are anyarray and will be cast based on the
@@ -3151,7 +3130,7 @@ This issue must be resolved before upgrade can complete.
                         try:
                             self.Update(sql, db=db)
                         except Exception, e:
-                            self.Log('WARN', str(e))
+                            logger.warn(str(e))
 
                     # Statistics where dumped with an outer join, if there are
                     # records in pg_statistics then columns 6-17 will all be
@@ -3179,7 +3158,7 @@ This issue must be resolved before upgrade can complete.
                     try:
                         self.Update(sql, db=db)
                     except Exception, e:
-                        self.Log('WARN', str(e))
+                        logger.warn(str(e))
 
     #------------------------------------------------------------
     def RemapOID(self):
@@ -3189,7 +3168,7 @@ This issue must be resolved before upgrade can complete.
 
         if self.cmd == 'MASTER':
 
-            self.Log('INFO', 'Remapping OIDs')
+            logger.info('Remapping OIDs')
 
             datadirs    = [self.root]
             seg_prefix  = self.config['SEG_PREFIX'] + '-'
@@ -3260,10 +3239,10 @@ This issue must be resolved before upgrade can complete.
             seg_prefix   = self.config['SEG_PREFIX'] + '-'
             datadirs = [self.root]
             if style == 'BACKUP':
-                self.Log('INFO', 'Linking backup')
+                logger.info('Linking backup')
             elif style == 'INSTALL':
-                self.Log('INFO', 'Linking upgrade')
-                self.Log('INFO', '...This may take a while')
+                logger.info('Linking upgrade')
+                logger.info('...This may take a while')
 
             # Have all hosts perform the link first
             self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
@@ -3299,9 +3278,9 @@ This issue must be resolved before upgrade can complete.
                         newfile = destination + '.log'
                         if os.path.exists(newfile):
                             if style == 'BACKUP':
-                                self.Log('WARN', 'File exists ' + newfile)
+                                logger.warn('File exists ' + newfile)
                             os.remove(newfile)
-                        self.Log('DEBUG', 'Linking file %s => %s' % (oldfile, newfile))
+                        logger.debug('Linking file %s => %s' % (oldfile, newfile))
                         os.link(oldfile, newfile)
 
                     # Remove any files from the destination location
@@ -3325,9 +3304,9 @@ This issue must be resolved before upgrade can complete.
                             oldfile = os.path.join(root, name)
                             newfile = os.path.join(newroot, name)
                             if os.path.exists(newfile):
-                                self.Log('WARN', 'File exists ' + newfile)
+                                logger.warn('File exists ' + newfile)
                                 os.remove(newfile)
-                            self.Log('DEBUG', 'Linking file %s => %s ' % (oldfile, newfile))
+                            logger.debug('Linking file %s => %s ' % (oldfile, newfile))
                             os.link(oldfile, newfile)
 
     #------------------------------------------------------------
@@ -3341,7 +3320,7 @@ This issue must be resolved before upgrade can complete.
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Startup(self.newenv, utility=True)
-        self.Log('INFO', 'Adjusting gp_configuration')
+        logger.info('Adjusting gp_configuration')
 
         # gp_configuration needs to point back to the original directory locations.
         # All the information should be stored in gp_config
@@ -3362,7 +3341,7 @@ This issue must be resolved before upgrade can complete.
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Startup(self.newenv, utility=True)
-        self.Log('INFO', 'Adjusting gp_configuration')
+        logger.info('Adjusting gp_configuration')
 
         # gp_configuration needs to point back to the original directory locations.
         # All the information should be stored in gp_config
@@ -3393,7 +3372,7 @@ This issue must be resolved before upgrade can complete.
         port = getconf('port')
 
         self.Startup(self.newenv, utility=True)
-        self.Log('INFO', 'Adjusting upgrade ports')
+        logger.info('Adjusting upgrade ports')
         self.Update('update gp_configuration set port=%s where content < 0'
                     % self.masterport, port=port)
         for s in self.segments:
@@ -3436,7 +3415,7 @@ This issue must be resolved before upgrade can complete.
         We write the set of files to the file system for later use.
         '''
 
-        self.Log('INFO', 'Extracting list of catalog files')
+        logger.info('Extracting list of catalog files')
 
         if self.cmd == 'MASTER':
             datadirs = [ self.root ]
@@ -3562,7 +3541,7 @@ This issue must be resolved before upgrade can complete.
         Build AO seg upgrade/downgrade files for this node
         '''
 
-        self.Log('INFO', 'Building append only segment upgrader')
+        logger.info('Building append only segment upgrader')
         
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
@@ -3606,7 +3585,7 @@ This issue must be resolved before upgrade can complete.
                     for db in dbs:
                         fname = os.path.join(logdir,
                             'aoseg_%s_rewrite.sql' % db)
-                        self.Log('DEBUG', 'creating AO rewrite: %s' % fname)
+                        logger.debug('creating AO rewrite: %s' % fname)
                         f = open(fname, 'w')
 
                         # The user might have already upgraded the database
@@ -3636,7 +3615,7 @@ This issue must be resolved before upgrade can complete.
                             i = 1
                             f.write('begin;\n')
                             for a in aos:
-                                self.Log('DEBUG', a)
+                                logger.debug(a)
                                 # need to add newline as postgres --single
                                 # uses it as a delimiter
                                 f.write(a + '\n')
@@ -3661,7 +3640,7 @@ This issue must be resolved before upgrade can complete.
         Copy data files to build a skeleton database.
         '''
 
-        self.Log('INFO', 'Building skeleton cluster')
+        logger.info('Building skeleton cluster')
         if self.cmd == 'MASTER':
             seg_prefix = self.config['SEG_PREFIX'] + '-'
             self.CallSlaves('BUILDSKEL', self.config['SEG_PREFIX'],
@@ -3677,7 +3656,7 @@ This issue must be resolved before upgrade can complete.
             '''
             Copy a directory tree
             '''
-            self.Log('DEBUG', "copying %s to %s" % (os.path.join(src, f),
+            logger.debug("copying %s to %s" % (os.path.join(src, f),
                                                     os.path.join(dst, f)))
             if os.path.isdir(os.path.join(src, f)):
                 shutil.copytree(os.path.join(src, f), os.path.join(dst, f))
@@ -3715,7 +3694,7 @@ This issue must be resolved before upgrade can complete.
                         line = line[:-1]
                         (dbname, f) = line.split(':')
                         path = os.path.join(src, f)
-                        self.Log('DEBUG', "testing " + path)
+                        logger.debug("testing " + path)
             
                         if os.path.isdir(path):
                             # will be created in do_copy()
@@ -3728,12 +3707,12 @@ This issue must be resolved before upgrade can complete.
                 
                         # only add this if the path != src
                         if not os.path.samefile(src, path):
-                            self.Log('DEBUG', 'path = %s, src = %s, adding %s'
+                            logger.debug('path = %s, src = %s, adding %s'
                                      % (path, src, f))
                             dirs.append(dirname)
                 
                     dirs = list(set(dirs)) # make unique
-                    self.Log('DEBUG', 'dirs = %s' % str(dirs))
+                    logger.debug('dirs = %s' % str(dirs))
                 
                     # make sure dst exists
                     if not os.path.exists(dst):
@@ -3741,12 +3720,12 @@ This issue must be resolved before upgrade can complete.
                 
                     dirs.append('pg_log')
                     for dir in dirs:
-                        self.Log('DEBUG', "making dir %s" % dir)
+                        logger.debug("making dir %s" % dir)
             
                         # equivalent of mkdir -p dst/dir
                         os.makedirs(os.path.join(dst, dir), 0700)
                 
-                    self.Log('DEBUG', "copying files")
+                    logger.debug("copying files")
                 
                     # rewind
                     mapfile.seek(0)
@@ -3789,7 +3768,7 @@ This issue must be resolved before upgrade can complete.
         the scripts via stdin.
         '''
  
-        self.Log('INFO', 'Performing multi-stage catalog transformation')
+        logger.info('Performing multi-stage catalog transformation')
         def get_new_files(procfile, path, dbdir):
             out = []
             f = open(procfile, 'r')
@@ -3821,20 +3800,20 @@ This issue must be resolved before upgrade can complete.
             confused.
             '''
             for f in files:
-                self.Log('DEBUG', 'touching file %s' % f)
+                logger.debug('touching file %s' % f)
                 fp = open(f, 'w')
                 fp.close()
         
         def transform(path, dbs, tfile):
             for dboid, db in dbs.iteritems():
-                self.Log('INFO', '... ' + db)
+                logger.info('... ' + db)
                 transform_db(path, db, dboid, tfile)
         
         def transform_db(path, dbname, dboid, tfile):
             '''
             Transform the specified database for a single segment.
             '''
-            self.Log('DEBUG', "transforming db = %s dboid = %s tfile = %s" % \
+            logger.debug("transforming db = %s dboid = %s tfile = %s" % \
                      (str(dbname), str(dboid), tfile))
 
             load = open(tfile, 'r')
@@ -3851,7 +3830,7 @@ This issue must be resolved before upgrade can complete.
                             '-c', 'gp_session_role=utility',
                             '-c', 'exit_on_error=true',
                             '-E', '-D', path, dbname])
-            self.Log('DEBUG', 'running ' + cmd)
+            logger.debug('running ' + cmd)
             p = subprocess.Popen(cmd, shell = True,
                                   close_fds = True,
                                   stdin = load,
@@ -3861,8 +3840,8 @@ This issue must be resolved before upgrade can complete.
             result = p.communicate()
         
             if p.returncode == 0:
-                self.Log('DEBUG', 'successfully transformed ' + dbname)
-                self.Log('DEBUG', result[0].strip())
+                logger.debug('successfully transformed ' + dbname)
+                logger.debug(result[0].strip())
             else:
                 raise CmdError(str(cmd), result[0], result[1])
         
@@ -3875,7 +3854,7 @@ This issue must be resolved before upgrade can complete.
         
             out = []
             tmpdir = tempfile.mkdtemp()
-            self.Log('DEBUG', "created temporary directory " + tmpdir)
+            logger.debug("created temporary directory " + tmpdir)
             # strings to find and the data to replace those strings with
             transforms = [['@gpupgradeschemaname@', 'pg_catalog'],
                           ['@gpinfoschemaname@', 'information_schema'],
@@ -3900,7 +3879,7 @@ This issue must be resolved before upgrade can complete.
                 outf.close()
                 inf.close()
                 out.append(outfilename)
-                self.Log('DEBUG', "created %s" % outfilename)
+                logger.debug("created %s" % outfilename)
 
             return out
         
@@ -3912,7 +3891,7 @@ This issue must be resolved before upgrade can complete.
                 t.append('%s:%s' % (a, b))
 
             t = ':'.join(t)
-            self.Log('DEBUG', 'sending database string ' + t)
+            logger.debug('sending database string ' + t)
             self.CallSlaves('TRANSFORMCAT', self.config['SEG_PREFIX'], t)
         else:
             seg_prefix = self.option
@@ -3965,10 +3944,10 @@ This issue must be resolved before upgrade can complete.
                     dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
                     if self.upgrade:
                         # fs[0] is loadcat33
-                        self.Log('INFO', 'Pass 1')
+                        logger.info('Pass 1')
                         transform(dir, dbs, fs[0])
 
-                    self.Log('INFO', 'Pass 2')
+                    logger.info('Pass 2')
                     transform(dir, dbs, conv[0])
 
                     # ao file too -- must be last because we
@@ -3981,7 +3960,7 @@ This issue must be resolved before upgrade can complete.
                         file = 'aoseg_%s_rewrite.sql' % dbname
                         aofile = os.path.join(d, WORKDIR, file)
                         f = self.RunCmd('cat ' + aofile)
-                        self.Log('DEBUG', "ao upgrade %s" % f)
+                        logger.debug("ao upgrade %s" % f)
                         transform_db(dir, dbname, dboid, aofile)
                         
 
@@ -3990,7 +3969,7 @@ This issue must be resolved before upgrade can complete.
         Set the catalog version to something different. Cluster should be down.
         '''
 
-        self.Log('INFO', 'Modifying catalog version of skeleton cluster')
+        logger.info('Modifying catalog version of skeleton cluster')
         releases = {"3.0": "200703112",
              "3.1": "200712072",
              "3.2": "200808253",
@@ -4087,7 +4066,7 @@ This issue must be resolved before upgrade can complete.
         Database must be down.
         '''
         
-        self.Log('INFO', 'Looking for highest OID')
+        logger.info('Looking for highest OID')
         self.CheckDown()
         self.highestoid = 16384 # first normal OID
         oids = []
@@ -4114,7 +4093,7 @@ This issue must be resolved before upgrade can complete.
                         if a[0] == "Latest checkpoint's NextOID":
                             oids.append(int(a[1]))
 
-        self.Log('DEBUG', "oids: %s" % str(oids))
+        logger.debug("oids: %s" % str(oids))
         for o in oids:
             # XXX: what about overflow ?
             if o > self.highestoid:
@@ -4123,7 +4102,7 @@ This issue must be resolved before upgrade can complete.
         if self.cmd != 'MASTER':
             print self.highestoid
 
-        self.Log('DEBUG', "highest oid found: %d" % self.highestoid)
+        logger.debug("highest oid found: %d" % self.highestoid)
 
 #============================================================
 if __name__ == '__main__':
@@ -4134,7 +4113,7 @@ if __name__ == '__main__':
     try:
         u.Setup()
     except Exception, e:
-        u.Log('FATAL', str(e))
+        logger.fatal(str(e))
         sys.exit(1)
     
     # GPUpgrade calls itself on individual hosts, we switch behavior based
@@ -4145,8 +4124,8 @@ if __name__ == '__main__':
         # MASTER - the main case, run on master only
         if u.cmd == 'MASTER':
     
-            u.Log('INFO', 'gpmigrator version ' + __version__)
-            u.Log('INFO', 'Python version %d.%d.%d %s %d' % sys.version_info)
+            logger.info('gpmigrator version ' + __version__)
+            logger.info('Python version %d.%d.%d %s %d' % sys.version_info)
     
             # User requested a revert to previous version
             if u.revert:
@@ -4190,7 +4169,7 @@ if __name__ == '__main__':
                     u.Shutdown()
                 except:
                     pass
-                u.Log("FATAL", "faultinjection=%d" % u.faultinjection)
+                logger.fatal("faultinjection=%d" % u.faultinjection)
                 open('/tmp/.s.PGSQL.50001.lock', 'w')
 
             # We always pull the current configuration from the old instance.
@@ -4207,7 +4186,7 @@ if __name__ == '__main__':
                     shutdown = False
                     u.dbup = [env, False]
                     if env == u.newenv:
-                        u.Log('FATAL', 'Cannot prepare with running new db')
+                        logger.fatal('Cannot prepare with running new db')
                 except:
                     shutdown = True
                     u.Startup(u.oldenv)
@@ -4241,28 +4220,28 @@ if __name__ == '__main__':
             except KeyboardInterrupt:
                 if shutdown:
                     u.Shutdown()
-                u.Log('FATAL', '***************************************')
-                u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
-                u.Log('FATAL', '***************************************')
+                logger.fatal('***************************************')
+                logger.fatal('==  Upgrade interupted by user ==        <<<<< ')
+                logger.fatal('***************************************')
                 sys.exit(1)
     
             except Exception, e:
                 if shutdown:
                     u.Shutdown()
-                u.Log('FATAL', str(e))
-                u.Log('FATAL', '***************************************')
-                u.Log('FATAL', '==  Upgrade Failed ==                    <<<<< ')
-                u.Log('FATAL', '***************************************')
+                logger.fatal(str(e))
+                logger.fatal('***************************************')
+                logger.fatal('==  Upgrade Failed ==                    <<<<< ')
+                logger.fatal('***************************************')
     
                 sys.exit(1)
     
             # Prepare done, anything done after this point may allow modifying
             # the olddb
             if u.noinit and not u.execute:
-                u.Log('INFO', 'Preparation successfully completed')
+                logger.info('Preparation successfully completed')
                 sys.exit(0)
             if u.noinit:
-                u.Log('INFO', '--noinit is only supported with --prepare')
+                logger.info('--noinit is only supported with --prepare')
                 sys.exit(1)
     
             # SetupLockdown:
@@ -4309,7 +4288,7 @@ if __name__ == '__main__':
                 # Prepare done, anything done after this point may allow modifying
                 # the olddb
                 if not u.execute:
-                    u.Log('INFO', 'Preparation successfully completed')
+                    logger.info('Preparation successfully completed')
                     sys.exit(0)
         
                 # Make sure that the database isn't running
@@ -4415,7 +4394,7 @@ if __name__ == '__main__':
                     if shutdown:
                         u.Shutdown()
     
-                    u.Log('INFO', 'Preparation successfully completed')
+                    logger.info('Preparation successfully completed')
                     sys.exit(0)
 
                 # Write configuration files 
@@ -4585,11 +4564,11 @@ if __name__ == '__main__':
                 #  - The migrator user shouldn't own anything, but if the
                 #    "dumprestore" method was ever used on this database
                 #    then it might.
-                u.Log('INFO', "Removing upgrade user");
+                logger.info("Removing upgrade user");
                 try:
                     u.Update('DROP USER ' + MIGRATIONUSER)
                 except:
-                    u.Log('WARN', 'Objects owned by gpmigrator reassigned to dba')
+                    logger.warn('Objects owned by gpmigrator reassigned to dba')
                     admin = u.Select('''select rolname from pg_authid 
                                         where oid = 10''')[0];
                     dbs = u.Select('''select datname from pg_database
@@ -4605,12 +4584,12 @@ if __name__ == '__main__':
                     raise UpgradeError("faultinjection=%d" % u.faultinjection)
         
                 if u.warnings:
-                    u.Log('WARN', '***************************************')
-                    u.Log('WARN', 'Warnings encountered during upgrade.')
-                    u.Log('WARN', '***************************************')
+                    logger.warn('***************************************')
+                    logger.warn('Warnings encountered during upgrade.')
+                    logger.warn('***************************************')
     
             except Exception, e:
-                u.Log('FATAL', str(e))
+                logger.fatal(str(e))
                 u.Revert()
                 raise e
     
@@ -4630,7 +4609,7 @@ if __name__ == '__main__':
             # -----------------
             # The current state of the world is as follows
             #    DATA_DIR/         = fully upgraded new db
-            u.Log('INFO', 
+            logger.info(
 '''
 ---------------------------------------------------
 Upgrade Successful
@@ -4697,39 +4676,39 @@ instructions to complete environment configuration
     except KeyboardInterrupt:
         try:    u.Cleanup()
         except Exception, e2: 
-            u.Log('FATAL', str(e2))
-        u.Log('FATAL', '***************************************')
-        u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
-        u.Log('FATAL', '***************************************')
+            logger.fatal(str(e2))
+        logger.fatal('***************************************')
+        logger.fatal('==  Upgrade interupted by user ==        <<<<< ')
+        logger.fatal('***************************************')
         sys.exit(1)
     
     except ConnectionError, e:
         try:   u.Cleanup()
         except Exception, e2: 
-            u.Log('FATAL', str(e2))
-        u.Log('FATAL', '***************************************')
-        u.Log('FATAL', str(e))
-        u.Log('FATAL', '***************************************')
+            logger.fatal(str(e2))
+        logger.fatal('***************************************')
+        logger.fatal(str(e))
+        logger.fatal('***************************************')
         sys.exit(1)
     
     except UpgradeError, e:
         try:   u.Cleanup()
         except Exception, e2: 
-            u.Log('FATAL', str(e2))
-        u.Log('FATAL', '***************************************')
-        u.Log('FATAL', str(e))
-        u.Log('FATAL', '***************************************')
+            logger.fatal(str(e2))
+        logger.fatal('***************************************')
+        logger.fatal(str(e))
+        logger.fatal('***************************************')
         sys.exit(1)
     
     except CmdError, e:
         try:   u.Cleanup()
         except Exception, e2:
-            u.Log('FATAL', str(e2))
-        u.Log('FATAL', '***************************************')
-        u.Log('FATAL', 'Error executing command:')
-        u.Log('FATAL', '  ' + str(e.cmd))
-        u.Log('FATAL', '  ' + str(e.stderr))
-        u.Log('FATAL', '***************************************')
+            logger.fatal(str(e2))
+        logger.fatal('***************************************')
+        logger.fatal('Error executing command:')
+        logger.fatal('  ' + str(e.cmd))
+        logger.fatal('  ' + str(e.stderr))
+        logger.fatal('***************************************')
         sys.exit(1)
     
     # Shouldn't get any of these, if they occur it is probably a bug in
@@ -4737,10 +4716,10 @@ instructions to complete environment configuration
     except Exception, e:
         try:   u.Cleanup()
         except Exception, e2: 
-            u.Log('FATAL', str(e2))
-        u.Log('FATAL', '***************************************')
-        u.Log('FATAL', str(e))
-        u.Log('FATAL', '***************************************')
+            logger.fatal(str(e2))
+        logger.fatal('***************************************')
+        logger.fatal(str(e))
+        logger.fatal('***************************************')
         sys.stderr.write(traceback.format_exc())
         sys.exit(1)
     
