@@ -247,15 +247,15 @@ default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor)
 {
 	static const char *const default_keywords[] = {
-		"fillfactor", 
-		"appendonly", 
-		"blocksize", 
+		"fillfactor",
+		"appendonly",
+		"blocksize",
 		"compresstype",
 		"compresslevel",
 		"checksum",
 		"columnstore",
 	};
-	
+
 	char	   *values[ARRAY_SIZE(default_keywords)];
 	int32		fillfactor;
 	int32		blocksize;
@@ -266,7 +266,7 @@ default_reloptions(Datum reloptions, bool validate,
 	char*		defaultCompressor = "zlib"; /* don't precede with 'const' */
 	bool 		columnstore;
 	int			j = 0;
-	
+
 	StdRdOptions *result;
 
 	parseRelOptions(reloptions, ARRAY_SIZE(default_keywords), default_keywords, values, validate);
@@ -283,9 +283,9 @@ default_reloptions(Datum reloptions, bool validate,
 						 errmsg("fillfactor=%d is out of range (should "
 								"be between %d and 100)",
 								fillfactor, minFillfactor)));
-			
+
 			fillfactor = defaultFillfactor;
-		}		
+		}
 	}
 	else
 	{
@@ -307,35 +307,35 @@ default_reloptions(Datum reloptions, bool validate,
 	}
 	else
 		appendonly = false; /* default */
-		
+
 	/* blocksize */
 	if(values[2] != NULL)
 	{
-		
+
 		if(!appendonly)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'blocksize\' for base relation. "
 							"Only valid for Append Only relations")));
-		
+
 		blocksize = pg_atoi(values[2], sizeof(int32), 0);
-		
+
 		if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||
 			blocksize % MIN_APPENDONLY_BLOCK_SIZE != 0)
-		{	
+		{
 			if (validate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("block size must be between 8KB and 2MB and "
 								"be an 8KB multiple. Got %d", blocksize)));
-			
+
 			blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
 		}
-		
+
 	}
 	else
 		blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
-		
+
 	/* compression type */
 	if(values[3] != NULL)
 	{
@@ -344,23 +344,22 @@ default_reloptions(Datum reloptions, bool validate,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'compresstype\' for base relation. "
 							"Only valid for Append Only relations")));
-		
+
 		compresstype = values[3];
-		
+
+		/*
 		if (pg_strcasecmp(compresstype, "zlib") != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid compresstype \"%s\". currently supported: "
 								 "\"zlib\" ", compresstype)));
-
-		/* TODO: re-enable when quicklz is supported again
-		if ((pg_strcasecmp(compresstype, "zlib") != 0) && 
+*/
+		if ((pg_strcasecmp(compresstype, "zlib") != 0) &&
 			(pg_strcasecmp(compresstype, "quicklz") != 0))
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid compresstype \'%s\'. valid values are "
 							"\'zlib\' and \'quicklz\'", compresstype)));
-		*/
 	}
 	else
 	{
@@ -370,13 +369,13 @@ default_reloptions(Datum reloptions, bool validate,
 	/* compression level */
 	if(values[4] != NULL)
 	{
-		
+
 		if(!appendonly)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'compresslevel\' for base relation. "
 							"Only valid for Append Only relations")));
-				
+
 		compresslevel = pg_atoi(values[4], sizeof(int32), 0);
 
 		if (compresstype && compresslevel == 0)
@@ -391,19 +390,19 @@ default_reloptions(Datum reloptions, bool validate,
 						 errmsg("compresslevel=%d is out of range (should be "
 								"between 0 and 9)",
 								compresslevel)));
-			
+
 			compresslevel = setDefaultCompressionLevel(compresstype);
-		}	
-		
+		}
+
 		/*
 		 * use the default compressor if compresslevel was indicated but not
-		 * compresstype. must make a copy otherwise str_tolower below will 
+		 * compresstype. must make a copy otherwise str_tolower below will
 		 * crash.
 		 */
 		if (compresslevel > 0 && !compresstype)
 			compresstype = pstrdup(defaultCompressor);
 
-		if (compresstype && (pg_strcasecmp(compresstype, "quicklz") == 0) && 
+		if (compresstype && (pg_strcasecmp(compresstype, "quicklz") == 0) &&
 			(compresslevel != 1) && (compresslevel != 3))
 		{
 			if (validate)
@@ -411,15 +410,15 @@ default_reloptions(Datum reloptions, bool validate,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("compresslevel=%d is out of range for quicklz "
 								 "(should be 1 or 3)", compresslevel)));
-			
+
 			compresslevel = setDefaultCompressionLevel(compresstype);
-		}		
+		}
 	}
 	else
 	{
 		compresslevel = setDefaultCompressionLevel(compresstype);
 	}
-		
+
 	/* checksum */
 	if(values[5] != NULL)
 	{
@@ -428,7 +427,7 @@ default_reloptions(Datum reloptions, bool validate,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'checksum\' for base relation. "
 							"Only valid for Append Only relations")));
-		
+
 		if (!(pg_strcasecmp(values[5], "true") == 0 ||
 			  pg_strcasecmp(values[5], "false") == 0))
 		{
@@ -441,9 +440,9 @@ default_reloptions(Datum reloptions, bool validate,
 	}
 	else
 	{
-		checksum = false; /* default */		
+		checksum = false; /* default */
 	}
-	
+
 	/* columnstore */
 	if(values[6] != NULL)
 	{
@@ -452,7 +451,7 @@ default_reloptions(Datum reloptions, bool validate,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'columnstore\' for base relation. "
 							"Only valid for Append Only relations")));
-      	
+
 		if (!(pg_strcasecmp(values[6], "true") == 0 ||
 			  pg_strcasecmp(values[6], "false") == 0))
 		{
@@ -466,7 +465,7 @@ default_reloptions(Datum reloptions, bool validate,
 	}
 	else
 	{
-		columnstore = false; /* default */		
+		columnstore = false; /* default */
 	}
 
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
@@ -490,13 +489,13 @@ void
 heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *safewrite)
 {
 	 char* default_compressor = "zlib";
-	
+
 	if (IsBootstrapProcessingMode())
 		return;
 
 	if (relkind != RELKIND_RELATION)
 		return;
-	
+
 	/*
 	 * Normally, the default is a regular table.
 	 * If the override is on, change the default to be an appendonly
@@ -509,7 +508,7 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 
 	if (!stdRdOptions->appendonly)
 		return;
-	
+
 	/*
 	 * Normally, appendonly tables are not compressed by default.
 	 * If the override is on, compress it with the override value.
@@ -517,10 +516,10 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 	if (Test_compresslevel_override != DEFAULT_COMPRESS_LEVEL)
 	{
 		stdRdOptions->compresslevel = Test_compresslevel_override;
-		
+
 		stdRdOptions->compresstype = default_compressor;
 	}
-	
+
 	/*
 	 * Normally, appendonly tables are created with the default 32KB block
 	 * size. If the override has a different value - use the override value.
@@ -538,7 +537,7 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 	{
 		stdRdOptions->checksum = Test_checksum_override;
 	}
-	
+
 	/*
 	 * Same for safefswritesize.
 	 */
@@ -546,8 +545,8 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 	{
 		*safewrite = Test_safefswritesize_override;
 	}
-	
-	
+
+
 }
 
 /*
@@ -579,7 +578,7 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
 	Assert(RegProcedureIsValid(amoptions));
 
 	/* Assume function is strict */
-	if (DatumGetPointer(reloptions) == 0) 
+	if (DatumGetPointer(reloptions) == 0)
 		return NULL;
 
 	/* Can't use OidFunctionCallN because we might get a NULL result */
@@ -605,12 +604,12 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
  *
  *		Various checks for validity of appendonly relation rules.
  */
-void validateAppendOnlyRelOptions(bool ao, 
-								  int blocksize, 
-								  int safewrite, 
-								  int complevel, 
-								  char* comptype, 
-								  bool checksum, 
+void validateAppendOnlyRelOptions(bool ao,
+								  int blocksize,
+								  int safewrite,
+								  int complevel,
+								  char* comptype,
+								  bool checksum,
 								  char relkind)
 {
 	if(relkind != RELKIND_RELATION)
@@ -624,13 +623,13 @@ void validateAppendOnlyRelOptions(bool ao,
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("checksum may only be specified for base relations")));
-		
+
 		if(comptype)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("compresstype may only be specified for base relations")));
 	}
-	
+
 	if (comptype && complevel == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -640,21 +639,20 @@ void validateAppendOnlyRelOptions(bool ao,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
-						complevel)));	
-	
+						complevel)));
+/*
 	if (comptype && (pg_strcasecmp(comptype, "zlib") != 0))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid compresstype \"%s\". currently supported: "
 							 "\"zlib\" ", comptype)));
-	/* TODO: re-enable this check when quicklz is supported again
-	if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) && 
+*/	if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) &&
 		(complevel != 1) && (complevel != 3))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("compresslevel=%d is out of range for quicklz "
 						 "(should be 1 or 3)", complevel)));
-	*/
+
 	if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||
 	    blocksize % MIN_APPENDONLY_BLOCK_SIZE != 0)
 		ereport(ERROR,
@@ -667,18 +665,18 @@ void validateAppendOnlyRelOptions(bool ao,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("safefswrite size must be less than 8MB and "
 						"be a multiple of 8")));
-	
+
 	if (gp_safefswritesize > blocksize)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("block size (%d) is smaller gp_safefswritesize (%d). "
 						"increase blocksize or decrease gp_safefswritesize if it "
 						"is safe to do so on this file system",
-						blocksize, gp_safefswritesize)));	
+						blocksize, gp_safefswritesize)));
 }
 
-/* 
- * if no compressor type was specified, we set to no compression (level 0) 
+/*
+ * if no compressor type was specified, we set to no compression (level 0)
  * otherwise default for both zlib and quicklz is level 1
  */
 static int setDefaultCompressionLevel(char* compresstype)
