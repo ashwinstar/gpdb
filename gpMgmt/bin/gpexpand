@@ -2068,13 +2068,15 @@ before continuing by re-running this utility and providing the input file. """
     mirror_type = 'none'
     
     if gparray.get_mirroring_enabled():
+        if num_new_hosts < 2:
+            raise ExpansionError('You must be adding two or more hosts when expanding a system with mirroring enabled.')
         mirror_type=ask_string("\nYou must now specify a mirroring strategy for the new hosts.  Spread mirroring places\n"\
                                "a given hosts mirrored segments each on a separate host.  You must be \n"\
                                "adding more hosts than the number of segments per host to use this. \n"\
                                "Grouped mirroring places all of a given hosts segments on a single \n"\
                                "mirrored host.  You must be adding at least 2 hosts in order to use this.\n\n",
                                "What type of mirroring strategy would you like?",
-                               'grouped', ['spread','grouped','none'])
+                               'grouped', ['spread','grouped'])
 
     try:
         gparray.addExpansionHosts(new_hosts, mirror_type)
@@ -2095,7 +2097,7 @@ before continuing by re-running this utility and providing the input file. """
     For example, if existing hosts have two primary segments, entering a value  
     of 2 will initialize two additional segments on existing hosts, and four
     segments on new hosts.  In addition, mirror segments will be added for
-    these new primary segments.
+    these new primary segments if mirroring is enabled.
     """
     num_new_datadirs = ask_int(help, "How many new primary segments per host do you want to add?", None, 0, 0, 128)
     
