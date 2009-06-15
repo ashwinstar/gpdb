@@ -65,7 +65,12 @@ class GpSegStart():
     def __init__(self,dblist,gpversion,collation):
         self.dblist=dblist
         self.expected_gpversion=gpversion
-        self.pool = base.WorkerPool(numWorkers=len(dblist))
+        # There is an issue with python 2.6.2 on linux that can cause start to 
+        # hang if it is multithreaded.
+        if unix.curr_platform == unix.LINUX:
+            self.pool = base.WorkerPool(numWorkers=1)
+        else:
+            self.pool = base.WorkerPool(numWorkers=len(dblist))
         self.expected_lc_collate=None
         self.expected_lc_monetary=None
         self.expected_lc_numeric=None
