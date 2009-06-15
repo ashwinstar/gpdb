@@ -83,15 +83,7 @@ def make_conn(ug, user, db, options, port, sockdir):
 
 
 #============================================================
-def pretty_version(v):
-    '''
-    Turns the RCS revision number into a prettier format
-    '''
-    m = re.compile('Revision: #(\d+)').search(v)
-    if m: return str('3' + '.' + m.group(1))
-    else: return str(v)
-
-__version__ = pretty_version('$Revision$')
+__version__ = '$Revision$'
 
 #============================================================
 def cli_help():
