@@ -323,6 +323,7 @@ my $glob_ignore_headers;
 my $glob_ignore_whitespace;
 my $glob_init;
 
+my $glob_orderwarn;
 my $glob_verbose;
 my $glob_fqo;
 
@@ -337,6 +338,7 @@ BEGIN
     $glob_ignore_whitespace   = 0;
     $glob_init                = 0;
 
+	$glob_orderwarn           = 0;
 	$glob_verbose             = 0;
 	$glob_fqo                 = {count => 0};
 }
@@ -350,12 +352,14 @@ BEGIN {
     my $ignore_headers;
     my $init_file;
     my $verbose;
+    my $orderwarn;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
                'gpd_ignore_headers|gp_ignore_headers|ignore_headers' => \$ignore_headers,
                'gpd_init|gp_init|init:s' => \$init_file,
                'do_equiv:s' => \$do_equiv,
+		        'order_warn|orderwarn' => \$orderwarn,
 		        'verbose' => \$verbose
                )
         or pod2usage(2);
@@ -395,6 +399,7 @@ BEGIN {
 
     $glob_init      		  = $init_file;
 
+	$glob_orderwarn           = $orderwarn;
     $glob_verbose      		  = $verbose;
 
 }
@@ -513,7 +518,7 @@ sub _build_match_subs
 BEGIN
 {
     my $here_matchsubs;
-
+	
 
 # construct a "HERE" document of match expressions followed by
 # substitution expressions.  Embedded comments and blank lines are ok
@@ -555,7 +560,7 @@ s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUM
 EOF_matchsubs
 
     $glob_match_then_sub_fnlist = [];
-
+	
     my $stat = _build_match_subs($here_matchsubs, "DEFAULT");
 
     if (scalar(@{$stat}) > 1)
@@ -839,7 +844,7 @@ sub format_explain
         }
 
         close $tmpfh;
-
+		
         if (exists($directive->{explain})
 			&& ($directive->{explain} =~ m/operator/i))
 		{
@@ -944,11 +949,11 @@ sub format_query_output
 	   }
 	   return;
     }
-
+	
     $prefix = "GP_IGNORE:"
         if (exists($directive->{ignore}));
 
-    if (exists($directive->{firstline}))
+    if (exists($directive->{sortlines}))
     {
         my $firstline = $directive->{firstline};
         my $ordercols = $directive->{order};
@@ -1331,6 +1336,51 @@ sub format_query_output
            @ggg= @ggg2;
         }
 
+        if ($glob_orderwarn)
+        {
+            # if no ordering cols specified (no directive), and
+            # SELECT has ORDER BY, see if number of order
+            # by cols matches all cols in selected lists
+            if (exists($directive->{sql_statement})
+                && (defined($directive->{sql_statement}))
+                && ($directive->{sql_statement} =~ m/select.*order.*by/is))
+            {
+               my $fl2 = $directive->{firstline};
+               my $sql_statement = $directive->{sql_statement};
+               $sql_statement =~ s/\n/ /gm;
+               my @ocols = 
+                   ($sql_statement =~ m/select.*order.*by\s+(.*)\;/is);
+
+#               print Data::Dumper->Dump(\@ocols);
+
+               # lines already have newline terminator, so just rejoin them.
+               my $line2 = join ("", @{$outarr});
+
+               my $ah2 = tablelizer($line2, $fl2);
+               my @allcols2;
+
+#               print Data::Dumper->Dump([$ah2]);
+
+               @allcols2 = (keys(%{$ah2->[0]}))
+                 if (defined($ah2) && scalar(@{$ah2}));
+
+               # treat the order by cols as a column separated list,
+               # and count them.  works ok for simple ORDER BY clauses
+               if (scalar(@ocols))
+               {
+                  my $ocolstr = shift @ocols;
+                  my @ocols2  = split (/\,/, $ocolstr);
+                  
+                  if (scalar(@ocols2) < scalar(@allcols2))
+                  {
+				     print "GP_IGNORE: ORDER_WARNING: OUTPUT ",
+                     scalar(@allcols2), " columns, but ORDER BY on ",
+                     scalar(@ocols2), " \n";
+                  }
+               }
+            }
+        } # end if $glob_orderwarn
+
         for my $line (@ggg)
         {
             print $dpref, $prefix, $line;
@@ -1662,10 +1712,12 @@ EOF_formatfix
                     && ($ini !~ m/order\s+by/i)))
             { # sort this region
 
+                $directive->{firstline} = $outarr[-1];
+
                 if (exists($directive->{order}) ||
                     exists($directive->{mvd}))
                 {
-                    $directive->{firstline} = $outarr[-1];
+                    $directive->{sortlines} = $outarr[-1];
                 }
 
                 # special case for copy select
@@ -1724,6 +1776,7 @@ EOF_formatfix
 
 #                   $sql_statement =~ s/\n/ /gm;
 #                   print "has order: ", $sql_statement, "\n";
+                    $directive->{sql_statement} = $sql_statement;
                 }
                 else
                 {
@@ -1731,6 +1784,7 @@ EOF_formatfix
 
 #                    $sql_statement =~ s/\n/ /gm;
 #                    print "no order: ", $sql_statement, "\n";
+                    $directive->{sql_statement} = $sql_statement;
                 }
                 $sql_statement = "";
 
