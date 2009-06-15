@@ -15,9 +15,9 @@ gpmigrator --prepare [--master_port <port> --port_base <port>
 [-d <master_data_directory>] [-l <logfile_directory>] [-q]
 [--debug]
 
-gpmigrator --version 
+gpmigrator --version | -v
 
-gpmigrator --help
+gpmigrator --help | -h
 
 
 *****************************************************
@@ -163,7 +163,7 @@ Run in quiet mode. Command output is not displayed on the
 screen, but is still written to the log file.
 
 
---help
+--help | -h
 
 Displays the online help.
 
@@ -173,7 +173,7 @@ Displays the online help.
 Set logging level to debug.
 
 
---version
+--version | -v
 
 Displays the version of this utility. 
 
@@ -182,29 +182,25 @@ Displays the version of this utility.
 EXAMPLES
 *****************************************************
 
-Perform pre-upgrade validation on your current system, 
-but do not execute the upgrade (first make sure you are 
-using the 3.3 software version):  
-
-source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh 
-
-/usr/local/greenplum-db-3.3.0.0/bin/gpmigrator --prepare \
-/usr/local/greenplum-db-3.2.0.6 \
-/usr/local/greenplum-db-3.3.0.0
-
 
 Upgrade to version 3.3 from version 3.2.0.6 
 (first make sure you are using the 3.3 software version):
 
 source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
 
-gpmigrator /usr/local/greenplum-db-3.2.0.6 \
+/usr/local/greenplum-db-3.3.0.0 gpmigrator \
+/usr/local/greenplum-db-3.2.0.6 \
 /usr/local/greenplum-db-3.3.0.0
 
 
 Revert a failed upgrade that was not automatically reverted:
 
-gpmigrator /usr/local/greenplum-db-3.2.0.6 \
+(first make sure you are using the 3.3 software version):
+
+source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
+
+/usr/local/greenplum-db-3.3.0.0 gpmigrator \
+/usr/local/greenplum-db-3.2.0.6 \
 /usr/local/greenplum-db-3.3.0.0 -R
 
 NOTE: These commands must be specified on a single, 
