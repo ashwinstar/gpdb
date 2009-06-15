@@ -1192,7 +1192,7 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 			rvTypeStruct = (Form_pg_type) GETSTRUCT(rvTypeTup);
 
 			/* Disallow pseudotype result, except for void */
-			if (rvTypeStruct->typtype == 'p' &&
+			if (rvTypeStruct->typtype == TYPTYPE_PSEUDO &&
 				procStruct->prorettype != VOIDOID)
 			{
 				if (procStruct->prorettype == TRIGGEROID)
@@ -1206,7 +1206,7 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 								  format_type_be(procStruct->prorettype))));
 			}
 
-			if (rvTypeStruct->typtype == 'c')
+			if (rvTypeStruct->typtype == TYPTYPE_COMPOSITE)
 			{
 				/*
 				 * Tuple: set up later, during first call to
@@ -1256,13 +1256,13 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 			argTypeStruct = (Form_pg_type) GETSTRUCT(argTypeTup);
 
 			/* Disallow pseudotype argument */
-			if (argTypeStruct->typtype == 'p')
+			if (argTypeStruct->typtype == TYPTYPE_PSEUDO)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("plpython functions cannot take type %s",
 						format_type_be(procStruct->proargtypes.values[i]))));
 
-			if (argTypeStruct->typtype != 'c')
+			if (argTypeStruct->typtype != TYPTYPE_COMPOSITE)
 				PLy_input_datum_func(&(proc->args[i]),
 									 procStruct->proargtypes.values[i],
 									 argTypeTup);
@@ -2009,7 +2009,7 @@ PLyMapping_ToTuple(PLyProcedure *proc, PyObject *mapping)
 	TupleDesc	desc;
 	HeapTuple	tuple;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	volatile int i;
 
 	Assert(PyMapping_Check(mapping));
@@ -2021,7 +2021,7 @@ PLyMapping_ToTuple(PLyProcedure *proc, PyObject *mapping)
 
 	/* Build tuple */
 	values = palloc(sizeof(Datum) * desc->natts);
-	nulls = palloc(sizeof(char) * desc->natts);
+	nulls = palloc(sizeof(bool) * desc->natts);
 	for (i = 0; i < desc->natts; ++i)
 	{
 		char	     *key;
@@ -2044,8 +2044,7 @@ PLyMapping_ToTuple(PLyProcedure *proc, PyObject *mapping)
 								 "add the value None to the mapping with the "
 								 "key named after the column.")));
 			}
-			values[i] = (att->func) (proc, att, value, &isnull);
-			nulls[i] = isnull ? 'n' : ' ';
+			values[i] = (att->func) (proc, att, value, &nulls[i]);
 
 			Py_XDECREF(value);
 			value = NULL;
@@ -2058,7 +2057,7 @@ PLyMapping_ToTuple(PLyProcedure *proc, PyObject *mapping)
 		PG_END_TRY();
 	}
 
-	tuple = heap_formtuple(desc, values, nulls);
+	tuple = heap_form_tuple(desc, values, nulls);
 	ReleaseTupleDesc(desc);
 	pfree(values);
 	pfree(nulls);
@@ -2073,7 +2072,7 @@ PLySequence_ToTuple(PLyProcedure *proc, PyObject *sequence)
 	TupleDesc	desc;
 	HeapTuple	tuple;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	volatile int i;
 
 	Assert(PySequence_Check(sequence));
@@ -2095,7 +2094,7 @@ PLySequence_ToTuple(PLyProcedure *proc, PyObject *sequence)
 
 	/* Build tuple */
 	values = palloc(sizeof(Datum) * desc->natts);
-	nulls = palloc(sizeof(char) * desc->natts);
+	nulls = palloc(sizeof(bool) * desc->natts);
 	for (i = 0; i < desc->natts; ++i)
 	{
 		PLyObToDatum *att;
@@ -2108,8 +2107,7 @@ PLySequence_ToTuple(PLyProcedure *proc, PyObject *sequence)
 		{
 			value = PySequence_GetItem(sequence, i);
 			Assert(value);
-			values[i] = (att->func) (proc, att, value, &isnull);
-			nulls[i] = isnull ? 'n' : ' ';
+			values[i] = (att->func) (proc, att, value, &nulls[i]);
 
 			Py_XDECREF(value);
 			value = NULL;
@@ -2122,7 +2120,7 @@ PLySequence_ToTuple(PLyProcedure *proc, PyObject *sequence)
 		PG_END_TRY();
 	}
 
-	tuple = heap_formtuple(desc, values, nulls);
+	tuple = heap_form_tuple(desc, values, nulls);
 	ReleaseTupleDesc(desc);
 	pfree(values);
 	pfree(nulls);
@@ -2137,7 +2135,7 @@ PLyObject_ToTuple(PLyProcedure *proc, PyObject *object)
 	TupleDesc	desc;
 	HeapTuple	tuple;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	volatile int i;
 
 	desc = lookup_rowtype_tupdesc(proc->result.out.d.typoid, -1);
@@ -2147,7 +2145,7 @@ PLyObject_ToTuple(PLyProcedure *proc, PyObject *object)
 
 	/* Build tuple */
 	values = palloc(sizeof(Datum) * desc->natts);
-	nulls = palloc(sizeof(char) * desc->natts);
+	nulls = palloc(sizeof(bool) * desc->natts);
 	for (i = 0; i < desc->natts; ++i)
 	{
 		char	     *key;
@@ -2164,7 +2162,7 @@ PLyObject_ToTuple(PLyProcedure *proc, PyObject *object)
 			if (value == Py_None)
 			{
 				values[i] = (Datum) NULL;
-				nulls[i] = 'n';
+				nulls[i] = true;
 			}
 			else if (!value)
 			{
@@ -2177,8 +2175,7 @@ PLyObject_ToTuple(PLyProcedure *proc, PyObject *object)
 			}
 			else
 			{
-				values[i] = (att->func) (proc, att, value, &isnull);
-				nulls[i] = isnull ? 'n' : ' ';
+				values[i] = (att->func) (proc, att, value, &nulls[i]);
 			}
 
 			Py_XDECREF(value);
@@ -2192,7 +2189,7 @@ PLyObject_ToTuple(PLyProcedure *proc, PyObject *object)
 		PG_END_TRY();
 	}
 
-	tuple = heap_formtuple(desc, values, nulls);
+	tuple = heap_form_tuple(desc, values, nulls);
 	ReleaseTupleDesc(desc);
 	pfree(values);
 	pfree(nulls);
@@ -2601,7 +2598,7 @@ PLy_spi_prepare(PyObject * self, PyObject * args)
 
 					plan->types[i] = HeapTupleGetOid(typeTup);
 					typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
-					if (typeStruct->typtype != 'c')
+					if (typeStruct->typtype != TYPTYPE_COMPOSITE)
 						PLy_output_datum_func(&plan->args[i], typeTup);
 					else
 						ereport(ERROR,
