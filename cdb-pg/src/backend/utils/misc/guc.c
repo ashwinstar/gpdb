@@ -220,6 +220,7 @@ bool 		Debug_appendonly_print_scan_tuple = false;
 bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_print_verify_write_block = false;
 bool 		Test_appendonly_override = false;
+bool 		gp_test_orientation_override = false;
 bool 		Test_checksum_override = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
@@ -1920,6 +1921,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&Test_appendonly_override,
 		false, NULL, NULL
 	},
+		
+	{
+		{"gp_test_orientation_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, change the default of the orientation to column."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_test_orientation_override,
+		false, NULL, NULL
+	},
+
 
 	{
 		{"test_checksum_override", PGC_SUSET, DEVELOPER_OPTIONS,

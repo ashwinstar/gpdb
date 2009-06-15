@@ -22,21 +22,21 @@ CREATE TABLE tenk_heap (
 -- of them (the first 4) for later testing.
 --
 -- valid
-CREATE TABLE tenk_aocs1 (like tenk_heap) with (appendonly=true, columnstore=true, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_aocs2 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=0, blocksize=262144) distributed by(unique1);
-CREATE TABLE tenk_aocs3 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
-CREATE TABLE tenk_aocs4 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=1, compresstype=zlib) distributed by(unique1);
-CREATE TABLE tenk_aocs5 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs1 (like tenk_heap) with (appendonly=true, orientation=column, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs2 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=0, blocksize=262144) distributed by(unique1);
+CREATE TABLE tenk_aocs3 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=6, blocksize=1048576, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs4 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=1, compresstype=zlib) distributed by(unique1);
+CREATE TABLE tenk_aocs5 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=6, compresstype=zlib, blocksize=1048576, checksum=true) distributed by(unique1);
 -- invalid
-CREATE TABLE tenk_aocs6 (like tenk_heap) with (appendonly=false, columnstore=true, compresslevel=6, checksum=true) distributed by(unique1);
+CREATE TABLE tenk_aocs6 (like tenk_heap) with (appendonly=false, orientation=column, compresslevel=6, checksum=true) distributed by(unique1);
 ERROR:  invalid option 'compresslevel' for base relation. Only valid for Append Only relations
-CREATE TABLE tenk_aocs7 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=6, compresstype=zlib) distributed by(unique1);
-CREATE TABLE tenk_aocs8 (like tenk_heap) with (appendonly=true, columnstore=true, blocksize=100) distributed by(unique1);
+CREATE TABLE tenk_aocs7 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=6, compresstype=zlib) distributed by(unique1);
+CREATE TABLE tenk_aocs8 (like tenk_heap) with (appendonly=true, orientation=column, blocksize=100) distributed by(unique1);
 ERROR:  block size must be between 8KB and 2MB and be an 8KB multiple. Got 100
-CREATE TABLE tenk_aocs9 (like tenk_heap) with (appendonly=true, columnstore=true, compresslevel=0, compresstype=zlib) distributed by(unique1);
+CREATE TABLE tenk_aocs9 (like tenk_heap) with (appendonly=true, orientation=column, compresslevel=0, compresstype=zlib) distributed by(unique1);
 ERROR:  compresstype can't be used with compresslevel 0
 -- cs without ao is invalid.
-CREATE TABLE tenk_aocs10 (like tenk_heap) with (columnstore=true) distributed by(unique1);
+CREATE TABLE tenk_aocs10 (like tenk_heap) with (orientation=column) distributed by(unique1);
 ERROR:  invalid option 'columnstore' for base relation. Only valid for Append Only relations
 -------------------- 
 -- catalog checks
@@ -349,10 +349,10 @@ DROP TABLE tenk_aocs2;
 DROP TABLE tenk_aocs3;
 DROP TABLE tenk_aocs4;
 -- CTAS
-CREATE TABLE tenk_aocs1 with(appendonly=true, columnstore=true, checksum=true) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_aocs2 with(appendonly=true, columnstore=true, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_aocs3 with(appendonly=true, columnstore=true, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
-CREATE TABLE tenk_aocs4 with(appendonly=true, columnstore=true, compresslevel=1, compresstype=zlib) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_aocs1 with(appendonly=true, orientation=column, checksum=true) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_aocs2 with(appendonly=true, orientation=column, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_aocs3 with(appendonly=true, orientation=column, compresslevel=6, blocksize=1048576, checksum=true) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_aocs4 with(appendonly=true, orientation=column, compresslevel=1, compresstype=zlib) AS SELECT * FROM tenk_heap;
 SELECT c.relname, a.blocksize, a.compresstype, a.compresslevel, a.checksum FROM pg_class c, pg_appendonly a WHERE c.relname LIKE 'tenk_aocs%' AND c.oid=a.relid ORDER BY c.relname;
   relname   | blocksize | compresstype | compresslevel | checksum 
 ------------+-----------+--------------+---------------+----------
@@ -453,7 +453,7 @@ TRUNCATE tenk_aocs2;
 -- OID with aocs NYI
 -- OIDS
 -- 
-CREATE TABLE aocswithoids(a int, b int) WITH (appendonly=true, columnstore=true, oids=true);
+CREATE TABLE aocswithoids(a int, b int) WITH (appendonly=true, orientation=column, oids=true);
 COPY aowithoids FROM STDIN;
 ERROR:  relation "aowithoids" does not exist
 1	1
@@ -474,10 +474,10 @@ SELECT oideq(oid,-1) FROM aocswithoids; -- kind of stupid but checks that oid ac
 --------------------
 -- DELETE (not supported)
 DELETE FROM tenk_aocs1 WHERE unique1 = 1;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 127.0.0.1:19002 pid=61949)
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg2 minithump4:19004 pid=15472)
 -- UPDATE (not supported)
 UPDATE tenk_aocs1 SET unique2 = 1 WHERE unique2 = 2;
-ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 127.0.0.1:19002 pid=61949)
+ERROR:  Append-only tables are not updatable. Operation not permitted.  (seg0 minithump4:19002 pid=15468)
 -- CREATE INDEX (not supported)
 CREATE INDEX tenk_aocs1_unique1 ON tenk_aocs1 USING btree(unique1 int4_ops);
 ERROR:  cannot create indexes on append only tables yet.
@@ -500,7 +500,7 @@ ALTER TABLE tenk_renamed RENAME TO tenk_aocs1;
 --------------------
 -- system columns
 --------------------
-CREATE TABLE syscoltest(a int) WITH (appendonly=true, columnstore=true);
+CREATE TABLE syscoltest(a int) WITH (appendonly=true, orientation=column);
 INSERT INTO syscoltest VALUES(1);
 SELECT ctid FROM syscoltest;
    ctid   

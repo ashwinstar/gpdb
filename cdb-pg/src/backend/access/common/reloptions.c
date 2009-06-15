@@ -253,7 +253,7 @@ default_reloptions(Datum reloptions, bool validate,
 		"compresstype",
 		"compresslevel",
 		"checksum",
-		"columnstore",
+		"orientation",
 	};
 
 	char	   *values[ARRAY_SIZE(default_keywords)];
@@ -452,8 +452,8 @@ default_reloptions(Datum reloptions, bool validate,
 					 errmsg("invalid option \'columnstore\' for base relation. "
 							"Only valid for Append Only relations")));
 
-		if (!(pg_strcasecmp(values[6], "true") == 0 ||
-			  pg_strcasecmp(values[6], "false") == 0))
+		if (!(pg_strcasecmp(values[6], "column") == 0 ||
+			  pg_strcasecmp(values[6], "row") == 0))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -461,11 +461,14 @@ default_reloptions(Datum reloptions, bool validate,
 							values[6])));
 		}
 
-		columnstore = (pg_strcasecmp(values[6], "true") == 0 ? true : false);
+		columnstore = (pg_strcasecmp(values[6], "column") == 0 ? true : false);
 	}
 	else
 	{
-		columnstore = false; /* default */
+        if (appendonly && gp_test_orientation_override)
+            columnstore = true;
+        else
+            columnstore = false; /* default */
 	}
 
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
