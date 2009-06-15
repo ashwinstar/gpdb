@@ -280,6 +280,14 @@ def gpperfmon_setup():
         except:
             # invalid conf file
             pass
+    else:
+        # check for gpmon user
+        print 'Checking for gpmon database account...'
+        if os.system('psql -U gpmon -d template1 -c \'select 1\' &> /dev/null') != 0:
+            print 'Setup was unable to connect as the database account \'gpmon\'.'
+            print 'Please refer to chapter two of the Greenplum Performance Monitor'
+            print 'Guide for detailed instructions on creating and configuring this account.'
+            sys.exit(0)
 
     # check that master data directory is correct...
     if not os.path.isfile(opt['MASTER_DATA_DIRECTORY'] + '/pg_hba.conf'):
@@ -357,7 +365,7 @@ def gpperfmon_setup():
     if create_db == 'Y':
         create_db = get_yesno('Are you sure?  All previous monitoring data for this instance will be lost. [Y]', 'Y')
         if create_db == 'Y':
-            if os.system('psql -d template1 -f %s' % (GPPERFMONHOME + '/gpperfmon.sql')) != 0:
+            if os.system('psql -U gpmon -d template1 -f %s' % (GPPERFMONHOME + '/gpperfmon.sql')) != 0:
                 print 'There was an error creating the database.  Configuration cannot continue at this time.'
                 sys.exit(1)
             print 'The gpperfmon database was created successfully.' 
