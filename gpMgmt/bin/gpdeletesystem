@@ -277,6 +277,8 @@ DELETE_CLUSTER () {
 		RUN_COMMAND_REMOTE $STANDBY_HOSTNAME "$RM -f ${STANDBY_DATADIR}.log"
 	fi
 	LOG_MSG "[INFO]:-Processing Master host $MASTER_HOSTNAME" 1
+	CWD=`pwd`
+	if [[ $CWD =~ ^${MASTER_DATA_DIRECTORY}* ]]; then cd; fi
 	RUN_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
 	RUN_COMMAND "$RM -f ${MASTER_DATA_DIRECTORY}.log"
 	LOG_MSG "[INFO]:-The Greenplum instance on Master host $MASTER_HOSTNAME, has been deleted" 1
