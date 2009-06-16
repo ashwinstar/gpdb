@@ -110,6 +110,13 @@ Run in quiet mode - do not prompt the user to enter information.
 Must supply a configuration file with -m if this option is used.
 
 
+-B <parallel_processes>
+
+The number of segments to add in parallel. If not specified, the 
+utility will start up to ten parallel processes depending on how many 
+mirror instances it needs to add.
+
+
 -i <mirror_config_file>
 
 A configuration file containing one line for each mirror segment you 
