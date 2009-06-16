@@ -170,13 +170,18 @@ DEFPORT=5432
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu
 BLD_CONFIGFLAGS=$($(BLD_ARCH)_CONFIGFLAGS)
 
-CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) --enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG))
-
-# PL/Python does not compile on Tiger
-ifeq "$(BLD_ARCH)" "osx104_x86"
-PG_LANG=false
+aix5_ppc_64_ENABLE_THREAD_SAFETY=--enable-thread-safety-force
+aix5_ppc_32_ENABLE_THREAD_SAFETY=--enable-thread-safety-force
+ifneq "$($(BLD_ARCH)_ENABLE_THREAD_SAFETY)" ""
+BLD_ENABLE_THREAD_SAFETY=$($(BLD_ARCH)_ENABLE_THREAD_SAFETY)
+else
+BLD_ENABLE_THREAD_SAFETY=--enable-thread-safety
 endif
-ifeq "$(BLD_ARCH)" "aix5_ppc_64"
+
+CONFIGFLAGS=$(strip $(BLD_CONFIGFLAGS) $(BLD_ENABLE_THREAD_SAFETY) --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-libedit-preferred $(TRACE_CFG_FLAG))
+
+# PL/Python does not compile on Tiger, skipping it on AIX
+ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
 PG_LANG=false
 endif
 
@@ -196,12 +201,12 @@ CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR))
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
 # Configure in "authlibs"...
-# ...without an ext/ dir copy of curl-config on Tiger
-ifneq "$(BLD_ARCH)" "osx104_x86"
+# ...without an ext/ dir copy of curl-config on Tiger or AIX
+ifeq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32 osx104_x86)" ""
 BLD_CURL_CONFIG=CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
 endif
 # ...and do not include the authlibs on Windows
-ifeq "$(findstring $(BLD_ARCH),win32 win64,aix5_ppc_64)" ""
+ifeq "$(findstring $(BLD_ARCH),win32 win64)" ""
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(BLD_CURL_CONFIG)
 endif
 
@@ -237,12 +242,14 @@ autoconf : RECONFIG
 #---------------------------------------------------------------------
 
 rhel5_x86_32_LD_LIBRARY_PATH=/usr/lib
-BLD_LD_LIBRARY_PATH:=$($(BLD_ARCH)_LD_LIBRARY_PATH):$(LD_LIBRARY_PATH)
-export LD_LIBRARY_PATH=$(BLD_LD_LIBRARY_PATH)
+BLD_LD_LIBRARY_PATH:=$($(BLD_ARCH)_LD_LIBRARY_PATH):$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
+export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 
-#$(warning LD_LIBRARY_PATH=$(LD_LIBRARY_PATH))
+#$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 
 # how much of GPDB to build by platform (default is "full")
+aix5_ppc_64_GPDB_BUILDSET=partial
+aix5_ppc_32_GPDB_BUILDSET=partial
 sol10_x86_32_GPDB_BUILDSET=partial
 sol10_sparc_32_GPDB_BUILDSET=partial
 sol9_sparc_32_GPDB_BUILDSET=partial
@@ -337,7 +344,7 @@ env.sh:
 	echo "export NO_M64=$(NO_M64)" >> env.sh
 	echo "export CC=\"$(strip gcc $(BLD_CFLAGS))\"" >> env.sh
 	echo "export PATH=$(PATH)" >> env.sh
-	echo "export LD_LIBRARY_PATH=$(LD_LIBRARY_PATH)" >> env.sh
+	echo "export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))" >> env.sh
 
 #---------------------------------------------------------------------
 # rsync + build
@@ -510,10 +517,10 @@ BLD_PYTHON=$($(BLD_ARCH)_PYTHON)
 ifneq "$(BLD_PYTHON)" ""
 tmpPATH=$(BLD_PYTHON)/bin:$(PATH)
 export PATH:=$(tmpPATH)
-tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_MAC_PREFIX)LD_LIBRARY_PATH)
-export $(BLD_MAC_PREFIX)LD_LIBRARY_PATH:=$(tmpLD_LIBRARY_PATH)
+tmpLD_LIBRARY_PATH=$(BLD_PYTHON)/lib:$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
+export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE):=$(tmpLD_LIBRARY_PATH)
 export PYTHONHOME=$(BLD_PYTHON)
-#$(warning $(BLD_MAC_PREFIX)LD_LIBRARY_PATH=$($(BLD_MAC_PREFIX)LD_LIBRARY_PATH))
+#$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 endif
 
 ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
@@ -878,10 +885,7 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpstart \
 		$(INSTLOC)/bin/gpstate \
 		$(INSTLOC)/bin/gpstop \
-		$(INSTLOC)/bin/gpsys1 \
-		$(INSTLOC)/bin/gpmigrator \
-		$(INSTLOC)/bin/gpload \
-		$(INSTLOC)/bin/lib/gpcheckcat
+		$(INSTLOC)/bin/gpsys1
 	# Remove unwanted files.
 	rm -rf $(INSTLOC)/bin/CVS
 	rm -rf $(INSTLOC)/doc/CVS
@@ -990,7 +994,8 @@ endif
 
 greenplum_path:
 	mkdir -p $(INSTLOC)
-	releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
+	unset LIBPATH; \
+	  releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
 
 jetpack: 
 	# ---- build and install jetpack ----

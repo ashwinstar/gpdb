@@ -1,6 +1,7 @@
 SHELL=/bin/bash
 
 BLD_TOP=$(shell echo `pwd`/../../)
+include $(BLD_TOP)/Makefile.global
 include $(BLD_TOP)/Makefile.thirdparty
 
 GPMON_DIR=../src/gpmon

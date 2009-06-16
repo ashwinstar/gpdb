@@ -1,13 +1,18 @@
-# Set the shell
+# Set the shell (check for reset condition three blocks down)
 SHELL=/bin/bash
 
 # Determine the default target architecture on this machine, if override not set
 ifeq "$(BLD_ARCH)" ""
-BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
+export BLD_ARCH:=$(shell $(BLD_TOP)/releng/set_bld_arch.sh)
 endif
 
 # get current working directory with symlinks maintained
 HERE:=$(shell pwd -L)
+
+# Reset the shell on AIX
+ifneq "$(findstring $(BLD_ARCH),aix5_ppc_64 aix5_ppc_32)" ""
+SHELL=/opt/pware/bin/bash
+endif
 
 # override MPP_ARCH values on BLD_ARCH's not native to the build server (e.g., 32-bit builds on 64-bit OSes)
 sol10_x86_32_MPP_ARCH=SOL-i386
@@ -23,6 +28,8 @@ endif
 
 # take over the path
 ifneq "$(BLD_PATH_FIXED)" "true"
+aix5_ppc_64_PATH_PREPEND=~/binutils-2.18/bin:/opt/pware/bin
+aix5_ppc_32_PATH_PREPEND=~/binutils-2.18/bin:/opt/pware/bin
 rhel4_x86_32_PATH_PREPEND=/opt/python-2.5.1/bin
 sol10_x86_32_PATH_PREPEND=/opt/python32-2.5.1/bin
 sol10_sparc_64_PATH_PREPEND=/opt/gcc-4.1.1/bin
@@ -33,27 +40,37 @@ sol9_sparc_32_PATH_PREPEND=/usr/local/bin
 sol8_sparc_PATH_PREPEND=/usr/local/bin
 sol8_sparc_64_PATH_PREPEND=/usr/local/bin
 sol8_sparc_32_PATH_PREPEND=/usr/local/bin
-aix5_ppc_64_PATH_PREPEND=/usr/local/bin
 BLD_PATH_PREPEND=$($(BLD_ARCH)_PATH_PREPEND)
 ifneq "$(BLD_PATH_PREPEND)" ""
 export PATH:=$(BLD_PATH_PREPEND):$(PATH)
 endif
 export BLD_PATH_FIXED=true
 endif
-#$(warning PATH=$(PATH))
+$(warning PATH=$(PATH))
 
-# take over the path
+BLD_WHERE_THE_LIBRARY_THINGS_ARE=LD_LIBRARY_PATH
+aix5_ppc_64_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
+aix5_ppc_32_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
+osx104_x86_WHERE_THE_LIBRARY_THINGS_ARE=DYLD_LIBRARY_PATH
+osx105_x86_WHERE_THE_LIBRARY_THINGS_ARE=DYLD_LIBRARY_PATH
+ifneq "$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)" ""
+BLD_WHERE_THE_LIBRARY_THINGS_ARE=$($(BLD_ARCH)_WHERE_THE_LIBRARY_THINGS_ARE)
+endif
+
+# take over the library search path
+aix5_ppc_64_LD_LIBRARY_PATH_PREPEND=~/binutils-2.18/lib:/opt/pware/lib
+aix5_ppc_32_LD_LIBRARY_PATH_PREPEND=~/binutils-2.18/lib:/opt/pware/lib
 ifneq "$(BLD_LD_LIBRARY_PATH_FIXED)" "true"
 rhel4_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python-2.5.1/lib:/opt/gcc-4.1.1/lib
 sol10_x86_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
 sol10_sparc_32_LD_LIBRARY_PATH_PREPEND=/opt/python32-2.5.1/lib
+endif
 BLD_LD_LIBRARY_PATH_PREPEND=$($(BLD_ARCH)_LD_LIBRARY_PATH_PREPEND)
 ifneq "$(BLD_LD_LIBRARY_PATH_PREPEND)" ""
-export LD_LIBRARY_PATH:=$(BLD_LD_LIBRARY_PATH_PREPEND):$(LD_LIBRARY_PATH)
+export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE):=$(BLD_LD_LIBRARY_PATH_PREPEND):$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
 endif
 export BLD_LD_LIBRARY_PATH_FIXED=true
-endif
-#$(warning LD_LIBRARY_PATH=$(LD_LIBRARY_PATH))
+$(warning $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE)))
 
 # disable our gcc wrapper
 export NO_M64=1
@@ -77,11 +94,21 @@ sol10_x86_32_BLD_CFLAGS=-m32
 suse10_x86_64_BLD_CFLAGS=-m64
 win64_BLD_CFLAGS=-m64
 win32_BLD_CFLAGS=-m32
-aix5_ppc_64_BLD_CFLAGS=
+aix5_ppc_64_BLD_CFLAGS=-maix64
+aix5_ppc_32_BLD_CFLAGS=
 BLD_CFLAGS=$($(BLD_ARCH)_BLD_CFLAGS)
 
+aix5_ppc_64_BLD_LDFLAGS=-Wl,-bbigtoc
 rhel5_x86_32_BLD_LDFLAGS=-m32
 BLD_LDFLAGS=$($(BLD_ARCH)_BLD_LDFLAGS)
+
+# See http://www.postgresql.org/docs/faqs.FAQ_AIX.html for an explanation of this
+ifeq "$(BLD_ARCH)" "aix5_ppc_64"
+export OBJECT_MODE=64
+endif
+ifeq "$(BLD_ARCH)" "aix5_ppc_32"
+export OBJECT_MODE=32
+endif
 
 BLD_BITS:=$(strip $(findstring 32,$(BLD_ARCH)) $(findstring 64,$(BLD_ARCH)))
 ifeq "$(BLD_BITS)" ""
@@ -91,6 +118,7 @@ sol8_sparc_BLD_BITS=32
 osx104_x86_BLD_BITS=32
 osx105_x86_BLD_BITS=32
 aix5_ppc_64_BLD_BITS=64
+aix5_ppc_32_BLD_BITS=32
 BLD_BITS=$($(BLD_ARCH)_BLD_BITS)
 endif
 
