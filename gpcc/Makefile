@@ -71,7 +71,7 @@ mkgpfdist: mkext
 	mkdir -p src/gpfdist/include
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
-	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 	mkdir -p build/bin
 	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
 
