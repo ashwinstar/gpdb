@@ -23,6 +23,9 @@ import os.path
 import re
 import sys
 
+# Max recursion level for postgresql.conf include directives.
+# The max value is 10 in the postgres code, so it's the same here.
+MAX_RECURSION_LEVEL=10
 
 def readfile(filename='postgresql.conf', defaultpath=None):
     """
@@ -42,6 +45,8 @@ def readfile(filename='postgresql.conf', defaultpath=None):
         dictionary = gucdict()
         dictionary.populate(file, filename)
         return dictionary
+    except Exception:
+        raise
     finally:
         file.close()
 
@@ -60,7 +65,7 @@ class gucdict(dict):
     value from the dictionary, converted to internal form.
     """
 
-    def populate(self, lines, filename=''):
+    def populate(self, lines, filename='', recurLevel=0):
         '''
         Given a postgresql.conf input file (or a list of strings, or some
         iterable object yielding lines), look for lines of the form
@@ -68,13 +73,29 @@ class gucdict(dict):
         For each one found, construct a pgconf.setting object and put it
         into our dictionary.
         '''
+        if recurLevel == MAX_RECURSION_LEVEL:
+            raise Exception('could not open configuration file "%s": maximum nesting depth exceeded' % filename)
+        
         linenumber = 0
         for line in lines:
             linenumber += 1
             m = _setpat.match(line)
             if m:
                 name, value, pos = m.group(1), m.group(3), m.start(3)
-                self[name.lower()] = setting(name, value, filename, linenumber, pos)
+                if name == 'include':
+                    try:
+                        # Remove the ' from the filename and then convert to abspath if needed.
+                        incfilename = value.strip("'")
+                        if not incfilename.startswith('/') and filename != '':
+                            incfilename = '%s/%s' % (filename[0:filename.rfind('/')], incfilename)
+                        file = open(incfilename)
+                        self.populate(file, incfilename, recurLevel+1)
+                    except IOError, ex:
+                        raise Exception('File %s included from %s:%d does not exist' % (incfilename, filename, linenumber))
+                    finally:
+                        if file: file.close()
+                else:
+                    self[name.lower()] = setting(name, value, filename, linenumber, pos)
 
     def str(self, name, default=None):
         """
