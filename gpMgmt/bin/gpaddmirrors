@@ -514,8 +514,9 @@ try:
 
     try:
         pghost = os.getenv('PGHOST', '127.0.0.1')
+        pgpassword = os.getenv('PGPASSWORD', None)
         db = pg8000.Connection(host=pghost, port=master_port, 
-        user=ENV.USER, database=ENV.DBNAME, 
+        user=ENV.USER, database=ENV.DBNAME, password=pgpassword,
         options='-c gp_session_role=utility')
     except pg8000.errors.InterfaceError, e:
         gpmlib.log_error('Database is not started.')
@@ -592,8 +593,9 @@ try:
     standby_qd = None
     try:
         pghost = os.getenv('PGHOST', '127.0.0.1')
+        pgpassword = os.getenv('PGPASSWORD', None)
         db = pg8000.Connection(host=pghost, port=master_port, 
-        user=ENV.USER, database=ENV.DBNAME, 
+        user=ENV.USER, database=ENV.DBNAME, password=pgpassword,
         options='-c gp_session_role=utility')
 
         # update gp_configuration
