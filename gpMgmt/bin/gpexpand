@@ -2080,6 +2080,7 @@ before continuing by re-running this utility and providing the input file. """
 
     try:
         gparray.addExpansionHosts(new_hosts, mirror_type)
+        gparray.validateExpansionSegs()
     except Exception, ex:
         num_new_hosts = 0
         if ex.__str__() == 'No new hosts to add':
@@ -2124,6 +2125,11 @@ before continuing by re-running this utility and providing the input file. """
                 
 
         gparray.addExpansionDatadirs(new_datadirs, new_mirrordirs, mirror_type)
+        try:
+            gparray.validateExpansionSegs()
+        except Exception, ex:
+            if ex.__str__().find('Port') == 0:
+                raise ExpansionError('Current primary and mirror ports are contiguous.  The input file for gpexpand will need to be created manually.')
     elif num_new_hosts == 0:
         raise ExpansionError('No new hosts or segments were entered.')
             
