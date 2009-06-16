@@ -872,7 +872,9 @@ STANDBY_HOST_DETAILS () {
 	LOG_MSG "[INFO]:-Summary state: $summary_state" 1
 	LOG_MSG "[INFO]:-Detail state: $detail_state" 1
 	LOG_MSG "[INFO]:-Log time: $log_time" 1
-	LOG_MSG "[INFO]:-Error message: $error_message" 1
+	if [ "$error_message" != "" ];then
+		LOG_MSG "[INFO]:-Error message: $error_message" 1
+	fi
 	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
 	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
