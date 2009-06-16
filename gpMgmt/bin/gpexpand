@@ -2130,10 +2130,11 @@ before continuing by re-running this utility and providing the input file. """
     print "\nGenerating configuration file...\n"
 
     outfile=gp_expand.generate_inputfile()
+
     print """\nInput configuration file was written to:
 '%s'.  Please review the file and make sure that its correct then re-run 
-with: gpexpand -i %s
-                """ % (outfile,outfile)
+with: gpexpand -i %s %s
+                """ % (outfile,outfile, '-D %s' % options.database if options.database else '')
     
     
 def sig_handler(sig, arg):
