@@ -362,7 +362,7 @@ class GpExpandStatus():
     """Class that manages gpexpand status file.
     
     The status file is placed in the master data directory on both the master and 
-    the standby master.  its used to keep track of where we are in the progression.
+    the standby master.  it's used to keep track of where we are in the progression.
     """
     def __init__(self, logger, master_data_directory, master_mirror=None):
         self.logger=logger
@@ -2131,8 +2131,8 @@ before continuing by re-running this utility and providing the input file. """
 
     outfile=gp_expand.generate_inputfile()
 
-    print """\nInput configuration file was written to:
-'%s'.  Please review the file and make sure that its correct then re-run 
+    print """\nInput configuration file was written to '%s'.  
+Please review the file and make sure that it is correct then re-run 
 with: gpexpand -i %s %s
                 """ % (outfile,outfile, '-D %s' % options.database if options.database else '')
     
