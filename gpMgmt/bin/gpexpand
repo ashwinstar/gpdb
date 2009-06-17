@@ -166,6 +166,17 @@ def parseargs():
         parser.print_help()
         parser.exit()
         
+    if options.end and options.duration:
+        logger.warn('Both end and duration options were given.')
+        # Both a duration and an end time were given.
+        if options.end > datetime.datetime.now() + options.duration:
+            logger.warn('The duration argument will be used for the expansion end time.')
+            options.end = datetime.datetime.now() + options.duration
+        else:
+            logger.warn('The end argument will be used for the expansion end time.')
+    elif options.duration:
+        options.end = datetime.datetime.now() + options.duration
+        
     try:
         options.master_data_directory = get_masterdatadir()
         options.gphome = get_gphome()
@@ -1678,8 +1689,6 @@ UPDATE gp_distribution_policy
         stoppedEarly = False
         if options.end:
             stopTime = options.end
-        elif options.duration:
-            stopTime = expansionStart + options.duration
         
         #wait till done.
         while not self.queue.isDone():
