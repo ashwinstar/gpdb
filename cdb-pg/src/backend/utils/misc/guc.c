@@ -1926,7 +1926,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_test_orientation_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the orientation to column."),
 			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_test_orientation_override,
 		false, NULL, NULL
@@ -3102,7 +3102,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("(Obsolete) Minimum number of spill batches of HashAgg"),
 		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL 
 		},
 		&gp_hashagg_spillbatch_min,
 		0, 0, 1000000, NULL, NULL
@@ -3112,7 +3112,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("(Obsolete) Maximum number of spill batches of HashAgg"),
 		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"),
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL 
 		},
 		&gp_hashagg_spillbatch_max,
 		0, 0, 1000000, NULL, NULL
@@ -3260,7 +3260,7 @@ static struct config_int ConfigureNamesInt[] =
 					  "aggregate computation will be rewritten based on the multi-phrase aggregation. "
 					  "The rest of grouping sets in the same query will not be rewritten."),
 		 NULL,
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
 		},
 		&gp_distinct_grouping_sets_threshold,
 		32, 0, 1024, NULL, NULL
@@ -3423,7 +3423,7 @@ static struct config_real ConfigureNamesReal[] =
             gettext_noop("(Obsolete) Planner will not choose hashed aggregation if "
                          "expected number of extra passes exceeds limit."),
 			NULL,
-			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_rewrite_limit,
 		2.0, 1.0, 100.0, NULL, NULL

@@ -86,7 +86,7 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel, int32 segno, SegfileLo
 
         bool forupdate = (lkst != SegfileNoLock);
         LOCKMODE lkmode = (forupdate ? RowExclusiveLock : AccessShareLock);
-	Snapshot usesnapshot = (forupdate ? SnapshotDirty : GetTransactionSnapshot());
+        Snapshot usesnapshot = (forupdate ? SnapshotSelf : GetTransactionSnapshot());
 
         if(forupdate)
                 LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);

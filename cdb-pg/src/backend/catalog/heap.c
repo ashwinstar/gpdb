@@ -984,6 +984,7 @@ heap_create_with_catalog(const char *relname,
 							  safefswritesize,
 							  stdRdOptions->compresslevel,
 							  stdRdOptions->checksum,
+                              stdRdOptions->columnstore,
 							  stdRdOptions->compresstype);
 	}
 			

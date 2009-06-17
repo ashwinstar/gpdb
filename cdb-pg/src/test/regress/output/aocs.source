@@ -37,7 +37,7 @@ CREATE TABLE tenk_aocs9 (like tenk_heap) with (appendonly=true, orientation=colu
 ERROR:  compresstype can't be used with compresslevel 0
 -- cs without ao is invalid.
 CREATE TABLE tenk_aocs10 (like tenk_heap) with (orientation=column) distributed by(unique1);
-ERROR:  invalid option 'columnstore' for base relation. Only valid for Append Only relations
+ERROR:  invalid option "orientation" for base relation. Only valid for Append Only relations
 -------------------- 
 -- catalog checks
 --------------------

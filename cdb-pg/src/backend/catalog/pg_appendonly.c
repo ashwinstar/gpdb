@@ -35,11 +35,12 @@ InsertAppendOnlyEntry(Oid relid,
 					  int safefswritesize, 
 					  int compresslevel,
 					  bool checksum,
+                      bool columnstore,
 					  char* compresstype)
 {
 	Relation	pg_appendonly_rel;
 	HeapTuple	pg_appendonly_tuple = NULL;
-	char	   *nulls;
+	bool	   *nulls;
 	Datum	   *values;
 	int			natts = 0;
 	
@@ -53,8 +54,7 @@ InsertAppendOnlyEntry(Oid relid,
 	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 	natts = RelationGetDescr(pg_appendonly_rel)->natts;
 	values = palloc0(sizeof(Datum) * natts);
-	nulls = palloc(sizeof(char) * natts);
-	MemSet(nulls, ' ', sizeof(char) * natts);
+	nulls = palloc0(sizeof(bool) * natts);
 	
 	values[Anum_pg_appendonly_relid - 1] = ObjectIdGetDatum(relid);
 	values[Anum_pg_appendonly_blocksize - 1] = Int32GetDatum(blocksize);
@@ -63,6 +63,7 @@ InsertAppendOnlyEntry(Oid relid,
 	values[Anum_pg_appendonly_majorversion - 1] = Int32GetDatum(majorversion);
 	values[Anum_pg_appendonly_minorversion - 1] = Int32GetDatum(minorversion);
 	values[Anum_pg_appendonly_checksum - 1] = BoolGetDatum(checksum);
+	values[Anum_pg_appendonly_columnstore - 1] = BoolGetDatum(columnstore);
 	
 	if(compresstype)
 	{
@@ -85,15 +86,15 @@ InsertAppendOnlyEntry(Oid relid,
 	else
 	{
 		Assert(compresslevel == 0);
-		nulls[Anum_pg_appendonly_compresstype - 1] = 'n';
+		nulls[Anum_pg_appendonly_compresstype - 1] = true;
 	}
 	
 	
 	/*
 	 * form the tuple and insert it
 	 */
-	pg_appendonly_tuple = heap_formtuple(RelationGetDescr(pg_appendonly_rel), 
-										 values, nulls);
+	pg_appendonly_tuple = heaptuple_form_to(RelationGetDescr(pg_appendonly_rel), 
+										 values, nulls, NULL, NULL);
 	simple_heap_insert(pg_appendonly_rel, pg_appendonly_tuple);
 	CatalogUpdateIndexes(pg_appendonly_rel, pg_appendonly_tuple);
 	
@@ -103,7 +104,6 @@ InsertAppendOnlyEntry(Oid relid,
 	 * held until end of transaction.
      */
     heap_close(pg_appendonly_rel, NoLock);
-	
 }
 
 /*
@@ -118,14 +118,17 @@ GetAppendOnlyEntry(Oid relid)
 	HeapTuple	tuple;
 	ScanKeyData	key;
 	SysScanDesc	aoscan;
+
 	Datum		blocksize,
 				safefswritesize,
 				compresslevel,
 				compresstype,
 				majorversion,
-				minorversion;
-	bool		checksum,
-				isNull;
+				minorversion,
+                checksum,
+                columnstore;
+
+	bool		isNull;
 	AppendOnlyEntry *aoentry;
 	
 	/*
@@ -223,6 +226,16 @@ GetAppendOnlyEntry(Oid relid)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid checksum value: NULL")));	
 
+	columnstore = heap_getattr(tuple, 
+							Anum_pg_appendonly_columnstore, 
+							pg_appendonly_rel->rd_att, 
+							&isNull);
+    Assert(!isNull);
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid columnstore value: NULL")));	
+
 	/* get the compressor type */
 	compresstype = heap_getattr(tuple, 
 								Anum_pg_appendonly_compresstype, 
@@ -243,6 +256,7 @@ GetAppendOnlyEntry(Oid relid)
 	aoentry->majorversion = DatumGetInt16(majorversion);
 	aoentry->minorversion = DatumGetInt16(minorversion);
 	aoentry->checksum = DatumGetBool(checksum);
+    aoentry->columnstore = DatumGetBool(columnstore);
 	
 	/* Finish up scan and close pg_appendonly catalog. */
 	systable_endscan(aoscan);

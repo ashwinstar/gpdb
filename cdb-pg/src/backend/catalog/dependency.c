@@ -2078,7 +2078,7 @@ getRelationDescription(StringInfo buffer, Oid relid)
 		case RELKIND_RELATION:
 			if(relForm->relstorage == RELSTORAGE_AO)
 				appendStringInfo(buffer, _("append only table %s"), relname);
-                        else if (relForm->relstorage == RELSTORAGE_AOCS)
+            else if (relForm->relstorage == RELSTORAGE_AOCS)
 				appendStringInfo(buffer, _("append only column store table %s"), relname);
 			else
 				appendStringInfo(buffer, _("table %s"), relname);

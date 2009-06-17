@@ -449,7 +449,7 @@ default_reloptions(Datum reloptions, bool validate,
 		if(!appendonly)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-					 errmsg("invalid option \'columnstore\' for base relation. "
+					 errmsg("invalid option \"orientation\" for base relation. "
 							"Only valid for Append Only relations")));
 
 		if (!(pg_strcasecmp(values[6], "column") == 0 ||
@@ -457,7 +457,7 @@ default_reloptions(Datum reloptions, bool validate,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid parameter value for \"columnstore\": \"%s\"",
+					 errmsg("invalid parameter value for \"orientation\": \"%s\"",
 							values[6])));
 		}
 

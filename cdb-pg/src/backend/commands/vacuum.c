@@ -1318,7 +1318,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	} 
 	else if (relstorage == RELSTORAGE_AOCS)
 	{
-                vacuum_aocs_rel(onerel, vacrelstats, true);
+        vacuum_aocs_rel(onerel, vacrelstats, true);
 	}
 	else
 	{
@@ -3882,7 +3882,7 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	if (!onerel)
 		return NULL;
 
-	is_appendonly = (onerel->rd_rel->relstorage == RELSTORAGE_AO ? true : false);
+	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage); 
 
 	/*
 	 * Check permissions.

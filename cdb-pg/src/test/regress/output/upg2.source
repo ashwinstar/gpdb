@@ -1187,7 +1187,8 @@ order by c.relname, a.attnum;
  pg_appendonly            | majorversion                      |      5 | int2            |      2 |        -1
  pg_appendonly            | minorversion                      |      6 | int2            |      2 |        -1
  pg_appendonly            | checksum                          |      7 | bool            |      1 |        -1
- pg_appendonly            | compresstype                      |      8 | text            |     -1 |        -1
+ pg_appendonly            | columnstore                       |      8 | bool            |      1 |        -1
+ pg_appendonly            | compresstype                      |      9 | text            |     -1 |        -1
  pg_appendonly_alter_column | relid                           |      1 | oid         |      4 |        -1
  pg_appendonly_alter_column | changenum                       |      2 | int4        |      4 |        -1
  pg_appendonly_alter_column | segfilenums                     |      3 | _int4       |     -1 |        -1
@@ -1518,7 +1519,7 @@ order by c.relname, a.attnum;
  pg_window                | winpretype                        |      8 | oid             |      4 |        -1
  pg_window                | winfinfunc                        |      9 | regproc         |      4 |        -1
  pg_window                | winkind                           |     10 | char            |      1 |        -1
-(409 rows)
+(410 rows)
 
 -- end_equivalent
 -- make sure nothing is missing
@@ -1564,8 +1565,9 @@ from old_attribute a,
 	 and c.relkind = 'r';
     relname    |   attname    | attnum | typname | typlen | atttypmod 
 ---------------+--------------+--------+---------+--------+-----------
- pg_appendonly | compresstype |      8 | text    |     -1 |        -1
-(1 row)
+ pg_appendonly | columnstore  |      8 | bool    |      1 |        -1
+ pg_appendonly | compresstype |      9 | text    |     -1 |        -1
+(2 rows)
 
 -- begin_equivalent 
 -- compare old vs new catalog views

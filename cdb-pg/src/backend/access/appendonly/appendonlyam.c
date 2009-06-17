@@ -117,13 +117,19 @@ errcontext_appendonly_scan_block(AppendOnlyScanDesc scan)
 
 	// Debug checking logic for MPP-5775
 	if (bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
+    {
+        Assert(!"Debug buffer count error");
 		elog(ERROR, 
 		     "Debug buffer count is 1 but the offset is not 0");
+    }
 	
 	if (scan->debugTrackReadPosition != headerOffsetInFile)
+    {
+        Assert(!"Debug track ppsition error");
 		elog(ERROR, 
 		     "Debug read position " INT64_FORMAT " does not match " INT64_FORMAT " !!!",
 		     scan->debugTrackReadPosition, headerOffsetInFile);
+    }
 
 	errcontext( 
 		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "
@@ -527,14 +533,20 @@ errcontext_appendonly_insert_block(AppendOnlyInsertDesc aoInsertDesc)
 	
 	// Debug checking logic for MPP-5775
 	if (bufferCount == 1 && headerOffsetInFile != INT64CONST(0))
+    {
+        Assert(!"Debug buffer count failed");
 		elog(ERROR, 
 		     "Debug buffer count is 1 but the offset is not 0 (more: expected write position " INT64_FORMAT ", write position " INT64_FORMAT ")",
 			aoInsertDesc->debugTrackWritePosition, headerOffsetInFile);
+    }
 	
 	if (aoInsertDesc->debugTrackWritePosition != headerOffsetInFile)
+    {
+        Assert(!"Debug write position failed");
 		elog(ERROR, 
 		     "Debug write position " INT64_FORMAT " does not match " INT64_FORMAT " !!!",
 		     aoInsertDesc->debugTrackWritePosition, headerOffsetInFile);
+    }
 
 	errcontext( 
 		 "Append-Only table '%s', segment file #%d, block header offset in file = " INT64_FORMAT ", "

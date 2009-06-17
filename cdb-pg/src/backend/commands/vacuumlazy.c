@@ -185,7 +185,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	} 
 	else if (relstorage == RELSTORAGE_AOCS)
 	{
-                vacuum_aocs_rel(onerel, vacrelstats, /* FULL */ false);
+        vacuum_aocs_rel(onerel, vacrelstats, /* FULL */ false);
 	}
 	else
 	{

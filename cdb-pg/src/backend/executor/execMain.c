@@ -4009,7 +4009,7 @@ intorel_shutdown(DestReceiver *self)
 	if (relstorage == RELSTORAGE_AO && myState->ao_insertDesc)
 		appendonly_insert_finish(myState->ao_insertDesc);	
 	else if (relstorage == RELSTORAGE_AOCS && myState->aocs_ins)
-                aocs_insert_finish(myState->aocs_ins);
+        aocs_insert_finish(myState->aocs_ins);
 }
 
 /*

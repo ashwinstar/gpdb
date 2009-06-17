@@ -23,6 +23,7 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
 	int2			majorversion;		/* major version indicating what's stored in this table  */
 	int2			minorversion;		/* minor version indicating what's stored in this table  */
 	bool			checksum;			/* true if checksum is stored with data and checked */
+    bool            columnstore;        /* true if orientation is column */ 
 	text			compresstype;		/* the compressor used (zlib, or quicklz) */
 } FormData_pg_appendonly;
 
@@ -42,7 +43,8 @@ typedef FormData_pg_appendonly *Form_pg_appendonly;
 #define Anum_pg_appendonly_majorversion		5
 #define Anum_pg_appendonly_minorversion		6
 #define Anum_pg_appendonly_checksum			7
-#define Anum_pg_appendonly_compresstype		8
+#define Anum_pg_appendonly_columnstore      8	
+#define Anum_pg_appendonly_compresstype		9
 
 /*
  * Descriptor of a single AO relation.
@@ -56,6 +58,7 @@ typedef struct AppendOnlyEntry
 	int		majorversion;
 	int		minorversion;
 	bool	checksum;
+    bool    columnstore;
 	char*	compresstype;
 } AppendOnlyEntry;
 
@@ -67,6 +70,7 @@ InsertAppendOnlyEntry(Oid relid,
 					  int safefswritesize, 
 					  int compresslevel,
 					  bool checksum,
+                      bool columnstore,
 					  char* compresstype);
 
 extern AppendOnlyEntry *

@@ -2076,8 +2076,45 @@ CopyTo(CopyState cstate)
 			}
 			else if(relstorage == RELSTORAGE_AOCS)
 			{
-				Assert(!"AOCS NYI");
-			}
+                AOCSScanDesc scan = NULL;
+                TupleTableSlot *slot = MakeSingleTupleTableSlot(tupDesc);
+                bool *proj = NULL;
+
+                int nvp = tupDesc->natts;
+                int i;
+
+                if (tupDesc->tdhasoid)
+                {
+                    Assert(!"AOCS NYI");
+                    elog(ERROR, "AOCS does not support oid");
+                }
+
+                proj = palloc(sizeof(bool) * nvp);
+                for(i=0; i<nvp; ++i)
+                    proj[i] = true;
+
+                scan = aocs_beginscan(rel, ActiveSnapshot, 0, NULL, proj);
+
+                for(;;)
+                {
+                    CHECK_FOR_INTERRUPTS();
+
+                    aocs_getnext(scan, ForwardScanDirection, slot);
+                    if (TupIsNull(slot))
+                        break;
+
+                    slot_getallattrs(slot);
+                    values = slot_get_values(slot);
+                    nulls = slot_get_isnull(slot);
+
+					CopyOneRowTo(cstate, InvalidOid, values, nulls);
+                }
+
+				ExecDropSingleTupleTableSlot(slot);
+                aocs_endscan(scan);
+
+                pfree(proj);
+            }
 			else
 			{
 				/* should never get here */
@@ -3918,8 +3955,8 @@ CopyFrom(CopyState cstate)
 					resultRelInfo->ri_aocsInsertDesc == NULL)
 				{
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
-                                        resultRelInfo->ri_aocsInsertDesc =
-						aocs_insert_init(resultRelInfo->ri_RelationDesc, resultRelInfo->ri_aosegno);
+                    resultRelInfo->ri_aocsInsertDesc =
+                        aocs_insert_init(resultRelInfo->ri_RelationDesc, resultRelInfo->ri_aosegno);
 				}
 
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -3940,7 +3977,7 @@ CopyFrom(CopyState cstate)
 				}
 				else if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS)
 				{
-                                        tuple = NULL;
+                    tuple = NULL;
 				}
 				else
 				{
@@ -4012,7 +4049,7 @@ CopyFrom(CopyState cstate)
 					}
 					else if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS)
 					{
-                                                aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls);
+                        aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls);
 					}
 					else
 					{

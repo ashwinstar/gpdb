@@ -337,11 +337,11 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		return;
 	}
 	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCS) 
-        {
-		add_path(root, rel, (Path *) create_aocs_path(root, rel));
-		set_cheapest(root, rel);
-		return;
-        }
+    {
+        add_path(root, rel, (Path *) create_aocs_path(root, rel));
+        set_cheapest(root, rel);
+        return;
+    }
 
 	
 	/* Consider sequential scan. */

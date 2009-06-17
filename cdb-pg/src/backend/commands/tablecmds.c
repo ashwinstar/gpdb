@@ -9484,7 +9484,7 @@ relopts_for_ctas(Relation rel)
 	 * class reloptions isn't to be trusted.
 	 */
 	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
-	if (rel->rd_rel->relstorage == RELSTORAGE_AO)
+	if (relstorage_is_ao(rel->rd_rel->relstorage)) 
 	{
 		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel));
 
@@ -9493,6 +9493,7 @@ relopts_for_ctas(Relation rel)
 		out->compresslevel = opts->compresslevel;
 		out->checksum = opts->checksum;
 		out->compresstype = opts->compresstype ? pstrdup(opts->compresstype) : NULL;
+        out->columnstore = opts->columnstore;
 	}
 	else
 	{
@@ -10190,6 +10191,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
 	bool		is_ao = false;
+    char        relstorage = RELSTORAGE_HEAP; 
 	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
 
 	/* Permissions checks */
@@ -10253,10 +10255,33 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 					if (pg_strcasecmp(def->defname, "appendonly") == 0)
 					{
 						if (pg_strcasecmp(strVal(def->arg), "true") == 0)
+                        {
 							is_ao = true;
+                            relstorage = RELSTORAGE_AO;
+                        }
 						else
 							is_ao = false;
 					}
+
+                    if (pg_strcasecmp(def->defname, "orientation") == 0)
+                    {
+                        if (!is_ao)
+                            ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("specify orientation requires appendonly")));
+
+                        Assert(relstorage == RELSTORAGE_AO);
+
+						if (pg_strcasecmp(strVal(def->arg), "column") == 0)
+                            relstorage = RELSTORAGE_AOCS;
+                        else 
+                        {
+                            if (pg_strcasecmp(strVal(def->arg), "row") != 0)
+                                ereport(ERROR,
+                                        (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                         errmsg("valid orientation option is \"column\" or \"row\"")));
+                        }
+                    }
 
 					nlist = lappend(nlist, def);
 				}
@@ -10591,9 +10616,15 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		{
 			Value *v = lthird(lprime);
 			if (intVal(v))
+            {
 				is_ao = true;
+                relstorage = RELSTORAGE_AO;
+            }
 			else
+            {
 				is_ao = false;
+                relstorage = RELSTORAGE_HEAP;
+            }
 		}
 
 		newOptions = new_rel_opts(rel, lwith);
@@ -10620,8 +10651,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		MemSet(repl_null, ' ', sizeof(repl_null));
 		MemSet(repl_repl, ' ', sizeof(repl_repl));
 
-		repl_val[Anum_pg_class_relstorage - 1] = is_ao ? 
-			CharGetDatum(RELSTORAGE_AO) : CharGetDatum(RELSTORAGE_HEAP);
+		repl_val[Anum_pg_class_relstorage - 1] = CharGetDatum(relstorage); 
 		repl_repl[Anum_pg_class_relstorage - 1] = 'r';
 
 		if (newOptions != (Datum) 0)
@@ -18273,9 +18303,13 @@ ATPExecPartSplit(Relation rel,
 	ExprState *bchk = NULL;
 	HeapScanDesc heapscan = NULL;
 	AppendOnlyScanDesc aoscan = NULL;
+    AOCSScanDesc aocsscan = NULL;
+    bool *aocsproj = NULL;
 	MemoryContext oldCxt;
 	AppendOnlyInsertDesc aoinsertdesc_a = NULL;
 	AppendOnlyInsertDesc aoinsertdesc_b = NULL;
+    AOCSInsertDesc aocsinsertdesc_a = NULL;
+    AOCSInsertDesc aocsinsertdesc_b = NULL;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -19054,7 +19088,14 @@ ATPExecPartSplit(Relation rel,
 		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
 	else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
 	{
-		Assert(!"AOCS NYI");
+        int nvp = temprel->rd_att->natts;
+        int i;
+
+        aocsproj = (bool *) palloc(sizeof(bool) * nvp); 
+        for(i=0; i<nvp; ++i)
+            aocsproj[i] = true;
+    
+        aocsscan = aocs_beginscan(temprel, SnapshotNow, 0, NULL, aocsproj);
 	}
 
 	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -19085,7 +19126,7 @@ ATPExecPartSplit(Relation rel,
 		}
 		else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
 		{
-			Assert(!"AOCS NYI");
+            aocs_getnext(aocsscan, ForwardScanDirection, tts);
 		}
 
 		econtext->ecxt_scantuple = tts;
@@ -19108,10 +19149,18 @@ ATPExecPartSplit(Relation rel,
 
 					appendonly_insert(aoinsertdesc_a, mtuple);
 				}
+                else if (intoa->rd_rel->relstorage == RELSTORAGE_AOCS)
+                {
+                    if (!aocsinsertdesc_a)
+                        aocsinsertdesc_a = aocs_insert_init(intoa, RESERVED_SEGNO);
+
+                    aocs_insert(aocsinsertdesc_a, tts);
+                }
 				else
 				{
 					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
 
+                    Assert(intoa->rd_rel->relstorage == RELSTORAGE_HEAP);
 					simple_heap_insert(intoa, tuple);
 				}
 			}
@@ -19131,6 +19180,12 @@ ATPExecPartSplit(Relation rel,
 
 					appendonly_insert(aoinsertdesc_b, mtuple);
 				}
+                else if (intob->rd_rel->relstorage == RELSTORAGE_AOCS)
+                {
+                    if (!aocsinsertdesc_b)
+                        aocsinsertdesc_b = aocs_insert_init(intoa, RESERVED_SEGNO);
+                    aocs_insert(aocsinsertdesc_b, tts);
+                }
 				else
 				{
 					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
@@ -19174,7 +19229,10 @@ ATPExecPartSplit(Relation rel,
 	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
 		appendonly_endscan(aoscan);
 	else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
-		Assert(!"AOCS NYI");
+    {
+        pfree(aocsproj);
+        aocs_endscan(aocsscan);
+    }
 
 	elog(DEBUG5, "dropping temp rel %s", RelationGetRelationName(temprel));
 	temprelid = RelationGetRelid(temprel);
