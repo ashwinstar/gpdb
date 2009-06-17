@@ -120,6 +120,7 @@ test: partition
 test: appendonly
 test: aocs
 test: gp_hashagg
+test: gp_dqa
 test: gpic
 test: gpic_bigtup
 test: filter

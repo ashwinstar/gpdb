@@ -162,6 +162,8 @@ typedef struct DqaInfo
 	double num_rows; /* Estimated cardinality of grouping key, dqa arg */
 	Plan *coplan; /* Coplan for this (later this and all prior) coplan */
 	Query *parse; /* Plausible root->parse for the coplan. */
+	bool distinctkey_collocate; /* Whether the input plan collocates on this
+								 * distinct key */
 	
 	/* These fields are for costing and planning.  Before constructing
 	 * the coplan for this DQA argument, determine cheapest way to get
@@ -193,6 +195,8 @@ typedef struct AggPlanInfo
 	MppGroupPrep group_prep;
 	MppGroupType group_type;
 	CdbPathLocus output_locus;
+	bool distinctkey_collocate; /* Whether the input plan collocates on the
+								 * distinct key */
 	
 	/* These are extra for 3-phase plans */
 	DqaJoinStrategy join_strategy;
@@ -229,6 +233,11 @@ typedef struct MppGroupContext
 	bool use_hashed_grouping;
 	CdbPathLocus input_locus;
 	CdbPathLocus output_locus;
+	/* Indicate whether the input plan collocates on the distinct key if any.
+	 * It is used for one or two-phase aggregation. For three-phase aggregation,
+	 * distinctkey_collocate inside DqaInfo is used.
+	 */
+	bool distinctkey_collocate;
 	List *current_pathkeys;
 
 	/* Indicate if root->parse has been changed during planning */
@@ -447,6 +456,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		/* Can use base plan with no motion yielding same locus. */
 		plan_1p.group_prep = MPP_GRP_PREP_NONE;
 		plan_1p.output_locus = plan_1p.input_locus;
+		plan_1p.distinctkey_collocate = true;
 	}
 	else if ( has_groups ) /* and not single or replicated */
 	{
@@ -455,6 +465,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		{
 			plan_1p.group_prep = MPP_GRP_PREP_NONE;
 			plan_1p.output_locus = plan_1p.input_locus; /* may be less discriminating that group locus */
+			plan_1p.distinctkey_collocate = true;
 		}
 		else
 		{
@@ -480,11 +491,18 @@ cdb_grouping_planner(PlannerInfo* root,
 	 * If the sequential planner can handle the situation with no Motion
 	 * involved, let it do so.  Don't bother to investigate the 2-stage
 	 * approach.
+	 *
+	 * If the GUC enable_groupagg is set to off and this is a DQA
+	 * query, we won't use the sequential plan. This is because
+	 * the sequential plan for a DQA query always uses GroupAgg.
 	 */
 	if ( plan_1p.group_prep == MPP_GRP_PREP_NONE )
 	{
-		*(group_context->pcurrent_pathkeys) = NIL;
-		return NULL;
+		if (enable_groupagg || agg_counts->numDistinctAggs == 0)
+		{
+			*(group_context->pcurrent_pathkeys) = NIL;
+			return NULL;
+		}
 	}
 
 	/*
@@ -596,38 +614,44 @@ cdb_grouping_planner(PlannerInfo* root,
 		initAggPlanInfo(&plan_2p, group_context->best_path,
 						group_context->subplan); /* but why? */
 		
+		/* Common 2-phase setup. */
+		if ( has_groups )
+		{
+			plan_2p.group_type = MPP_GRP_TYPE_GROUPED_2STAGE;
+			CdbPathLocus_MakeHashed(&plan_2p.output_locus, root->group_pathkeys);
+		}
+		else
+		{
+			plan_2p.group_type = MPP_GRP_TYPE_PLAIN_2STAGE;
+			CdbPathLocus_MakeSingleQE(&plan_2p.output_locus);
+		}
+
 		if ( consider_agg & AGG_2PHASE_DQA )
-			{
-				List *distinct_pathkeys;
+		{
+			List *distinct_pathkeys;
 				
-				 /* Either have DQA or not! */
-				Assert(! (consider_agg & AGG_2PHASE) );
-				
-				Insist( IsA(agg_counts->dqaArgs, List) &&
-						list_length((List*)agg_counts->dqaArgs) == 1 );
-				distinct_pathkeys = cdb_make_pathkey_for_expr(root,
-						linitial(agg_counts->dqaArgs),
-						list_make1(makeString("=")));
-				distinct_pathkeys = list_make1(distinct_pathkeys);
-
-				if ( ! cdbpathlocus_collocates(plan_2p.input_locus, distinct_pathkeys))
-				{
-					plan_2p.group_prep = MPP_GRP_PREP_HASH_DISTINCT;
-					CdbPathLocus_MakeHashed(&plan_2p.input_locus, distinct_pathkeys);
-				}
-			}
-
-			/* Common 2-phase setup. */
-			if ( has_groups )
+			/* Either have DQA or not! */
+			Assert(! (consider_agg & AGG_2PHASE) );
+			
+			Insist( IsA(agg_counts->dqaArgs, List) &&
+					list_length((List*)agg_counts->dqaArgs) == 1 );
+			distinct_pathkeys = cdb_make_pathkey_for_expr(root,
+														  linitial(agg_counts->dqaArgs),
+														  list_make1(makeString("=")));
+			distinct_pathkeys = list_make1(distinct_pathkeys);
+			
+			if ( ! cdbpathlocus_collocates(plan_2p.input_locus, distinct_pathkeys))
 			{
-				plan_2p.group_type = MPP_GRP_TYPE_GROUPED_2STAGE;
-				CdbPathLocus_MakeHashed(&plan_2p.output_locus, root->group_pathkeys);
+				plan_2p.group_prep = MPP_GRP_PREP_HASH_DISTINCT;
+				CdbPathLocus_MakeHashed(&plan_2p.input_locus, distinct_pathkeys);
 			}
 			else
 			{
-				plan_2p.group_type = MPP_GRP_TYPE_PLAIN_2STAGE;
-				CdbPathLocus_MakeSingleQE(&plan_2p.output_locus);
+				plan_2p.group_prep = MPP_GRP_PREP_HASH_DISTINCT;
+				plan_2p.output_locus = plan_2p.input_locus;
+				plan_2p.distinctkey_collocate = true;
 			}
+		}
 	}
 	
 	if ( consider_agg & AGG_3PHASE )
@@ -665,6 +689,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.subplan = group_context->subplan;
 	ctx.input_locus = plan_1p.input_locus;
 	ctx.output_locus = plan_1p.output_locus;
+	ctx.distinctkey_collocate = plan_1p.distinctkey_collocate;
 	ctx.agg_counts = agg_counts;
 	ctx.tuple_fraction = group_context->tuple_fraction;
 	ctx.p_dNumGroups = group_context->p_dNumGroups;
@@ -694,7 +719,24 @@ cdb_grouping_planner(PlannerInfo* root,
 		 */
 		for ( i = 0; i < ctx.numDistinctCols; i++ )
 		{
+			List *distinct_pathkeys;
+			
 			set_coplan_strategies(root, &ctx, &ctx.dqaArgs[i], plan_3p.input_path);
+
+			/* Determine if the input plan already collocates on the distinct
+			 * key.
+			 */
+			distinct_pathkeys = cdb_make_pathkey_for_expr(root,
+														  ctx.dqaArgs[i].distinctExpr,
+														  list_make1(makeString("=")));
+			distinct_pathkeys = list_make1(distinct_pathkeys);
+			
+			if (cdbpathlocus_collocates(plan_3p.input_locus, distinct_pathkeys))
+			{
+				ctx.dqaArgs[i].distinctkey_collocate = true;
+			}
+
+			list_free(distinct_pathkeys);
 		}
 	}
 	
@@ -724,7 +766,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		cost_3phase_aggregation(root, &ctx, &plan_3p);
 		if ( gp_dev_notice_agg_cost )
 			elog(NOTICE, "3-phase cost: %.6f", plan_3p.plan_cost);
-		if ( plan_info == NULL || plan_info->plan_cost > plan_3p.plan_cost )
+		if ( plan_info == NULL || !enable_groupagg || plan_info->plan_cost > plan_3p.plan_cost )
 			plan_info = &plan_3p;
 	}
 	
@@ -734,6 +776,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.type = plan_info->group_type;
 	ctx.input_locus = plan_info->input_locus;
 	ctx.output_locus = plan_info->output_locus;
+	ctx.distinctkey_collocate = plan_info->distinctkey_collocate;
 	ctx.join_strategy = plan_info->join_strategy;
 	ctx.use_sharing = plan_info->use_sharing;
 
@@ -1148,13 +1191,17 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	case MPP_GRP_PREP_HASH_DISTINCT:
 		Assert(list_length( ctx->agg_counts->dqaArgs) == 1 );
 		Assert( ctx->agg_counts->dqaArgs != NIL);
-		distinctExpr = list_make1(linitial(ctx->agg_counts->dqaArgs));
-		distinctExpr = copyObject(distinctExpr);
-		result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExpr);
-		result_plan->total_cost += 
-			incremental_motion_cost(result_plan->plan_rows,
-									result_plan->plan_rows);
-		current_pathkeys = NIL; /* No longer sorted. */
+		if (!ctx->distinctkey_collocate)
+		{
+			distinctExpr = list_make1(linitial(ctx->agg_counts->dqaArgs));
+			distinctExpr = copyObject(distinctExpr);
+			result_plan = (Plan*)make_motion_hash(root, result_plan, distinctExpr);
+			result_plan->total_cost += 
+				incremental_motion_cost(result_plan->plan_rows,
+										result_plan->plan_rows);
+			current_pathkeys = NIL; /* No longer sorted. */
+		}
+		
 		break;
 			
 	case MPP_GRP_PREP_FOCUS_QD:
@@ -1737,6 +1784,8 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	int i, n;
 	DqaInfo *dqaArg = &ctx->dqaArgs[dqa_index];
 	bool sort_coplans = ( ctx->join_strategy == DqaJoinMerge );
+	bool groupkeys_collocate = cdbpathlocus_collocates(ctx->input_locus, root->group_pathkeys);
+	bool need_inter_agg = false;
 	
 	/* Planning will perturb root->parse, so we copy it's content aside
 	 * so we can restore it later.  We flat copy instead of resetting
@@ -1874,19 +1923,23 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	switch ( ctx->type )
 	{
 	case MPP_GRP_TYPE_GROUPED_DQA_2STAGE:
-		groupExprs = NIL;
-		Assert(ctx->numGroupCols > 0);
-		for ( i = 0; i < ctx->numGroupCols; i++)
+		if (!groupkeys_collocate)
 		{
-			TargetEntry *tle;
-
-			tle = get_tle_by_resno(prelim_tlist, prelimGroupColIdx[i]);
-			groupExprs = lappend(groupExprs, copyObject(tle->expr));
+			groupExprs = NIL;
+			Assert(ctx->numGroupCols > 0);
+			for ( i = 0; i < ctx->numGroupCols; i++)
+			{
+				TargetEntry *tle;
+				
+				tle = get_tle_by_resno(prelim_tlist, prelimGroupColIdx[i]);
+				groupExprs = lappend(groupExprs, copyObject(tle->expr));
+			}
+			result_plan = (Plan*)make_motion_hash(root, result_plan, groupExprs);
+			result_plan->total_cost += 
+				incremental_motion_cost(result_plan->plan_rows,
+										result_plan->plan_rows);
 		}
-		result_plan = (Plan*)make_motion_hash(root, result_plan, groupExprs);
-		result_plan->total_cost += 
-			incremental_motion_cost(result_plan->plan_rows,
-									result_plan->plan_rows);
+		
 		break;
 			
 	case MPP_GRP_TYPE_PLAIN_DQA_2STAGE:
@@ -1918,59 +1971,62 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 		coplan_type = dqaArg->coplan_type_cheapest;
 	}
 	
-	/* Intermediate Aggregation: Grouping key values are colocated so group 
-	 * by the combined grouping key and DQA argument while intermediate-
-	 * aggregating any non-DQAs.  This once again (and finally) eliminates
-	 * duplicate values of the DQA argument on each QE.
-	 */
-	 
-	switch (coplan_type)
+	if (!dqaArg->distinctkey_collocate && !groupkeys_collocate)
 	{
-	case DQACOPLAN_GGS:
-	case DQACOPLAN_PGS:
-		aggstrategy = AGG_SORTED;
+		/* Intermediate Aggregation: Grouping key values are colocated so group 
+		 * by the combined grouping key and DQA argument while intermediate-
+		 * aggregating any non-DQAs.  This once again (and finally) eliminates
+		 * duplicate values of the DQA argument on each QE.
+		 */
+		need_inter_agg = true;
+	 
+		switch (coplan_type)
+		{
+			case DQACOPLAN_GGS:
+			case DQACOPLAN_PGS:
+				aggstrategy = AGG_SORTED;
+				
+				/* pre-sort required on combined grouping key and DQA argument */
+				result_plan = (Plan *)
+					make_sort_from_groupcols(root,
+											 extendedGroupClause,
+											 prelimGroupColIdx,
+											 false,
+											 result_plan);
+				groups_sorted = true;
+				current_pathkeys = root->group_pathkeys;
+				mark_sort_locus(result_plan);
+				break;
 		
-		/* pre-sort required on combined grouping key and DQA argument */
-		result_plan = (Plan *)
-			make_sort_from_groupcols(root,
-									 extendedGroupClause,
-									 prelimGroupColIdx,
-									 false,
-									 result_plan);
-		groups_sorted = true;
-		current_pathkeys = root->group_pathkeys;
-		mark_sort_locus(result_plan);
-		break;
+			case DQACOPLAN_GSH:
+			case DQACOPLAN_SHH:
+			case DQACOPLAN_HH:
+			case DQACOPLAN_PH:
+				aggstrategy = AGG_HASHED;
+				groups_sorted = false;
+				break;
+		}
 		
-	case DQACOPLAN_GSH:
-	case DQACOPLAN_SHH:
-	case DQACOPLAN_HH:
-	case DQACOPLAN_PH:
-		aggstrategy = AGG_HASHED;
-		groups_sorted = false;
-		break;
+		result_plan = add_second_stage_agg(root,
+										   true,
+										   prelim_tlist,
+										   inter_tlist,
+										   NULL,
+										   aggstrategy,
+										   ctx->numGroupCols + 1,
+										   prelimGroupColIdx,
+										   0, /* num_nullcols */
+										   0, /* input_grouping */
+										   0, /* grouping */
+										   0, /* rollup_gs_times */
+										   dqaArg->num_rows,
+										   ctx->agg_counts->numAggs,
+										   ctx->agg_counts->transitionSpace,
+										   "partial_aggregation",
+										   &current_pathkeys,
+										   result_plan, 
+										   true);
 	}
-	
-	result_plan = add_second_stage_agg(root,
-									   true,
-									   prelim_tlist,
-									   inter_tlist,
-									   NULL,
-									   aggstrategy,
-									   ctx->numGroupCols + 1,
-									   prelimGroupColIdx,
-									   0, /* num_nullcols */
-									   0, /* input_grouping */
-									   0, /* grouping */
-									   0, /* rollup_gs_times */
-									   dqaArg->num_rows,
-									   ctx->agg_counts->numAggs,
-									   ctx->agg_counts->transitionSpace,
-									   "partial_aggregation",
-									   &current_pathkeys,
-									   result_plan, 
-									   true);
-
 	
 	/* Final Aggregation: Group by the grouping key, aggregate the now
 	 * distinct values of the DQA argument using non-distinct-qualified
@@ -2012,7 +2068,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	
 	result_plan = add_second_stage_agg(root,
 									   true,
-									   inter_tlist,
+									   need_inter_agg ? inter_tlist : prelim_tlist,
 									   final_tlist,
 									   final_qual,
 									   aggstrategy,
@@ -4009,7 +4065,6 @@ Cost cost_1phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 }
 
 
-
 /* Function cost_2phase_aggregation 
  *
  * May be used for 2 phase costing with 0 or 1 DQAs.
@@ -4024,7 +4079,7 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 						(*(ctx->p_dNumGroups) > LONG_MAX) ? LONG_MAX :
 						(long)*(ctx->p_dNumGroups);
 	double input_rows;
-	double streaming_fudge = 1.3; 
+	double streaming_fudge = 1.3;
 	
 	cost_common_agg(root, ctx, info, &input_dummy);
 	input_rows = input_dummy.plan_rows;
@@ -4169,8 +4224,7 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 						 ctx->agg_counts->transitionSpace);
 		}
 	}
-	
-	
+
 	info->plan_cost = gp_eager_two_phase_agg ? (Cost)0.0 : input_dummy.total_cost;
 	info->valid = true;
 	info->join_strategy = DqaJoinNone;
@@ -4179,7 +4233,6 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 	info->plan_cost *= gp_coefficient_2phase_agg;
 	return info->plan_cost;
 }
-
 
 
 /* Function cost_3phase_aggregation
@@ -4435,6 +4488,7 @@ void initAggPlanInfo(AggPlanInfo *info, Path *input_path, Plan *input_plan)
 	info->group_type = MPP_GRP_TYPE_BASEPLAN;
 	info->group_prep = MPP_GRP_PREP_NONE;
 	CdbPathLocus_MakeNull(&info->output_locus);
+	info->distinctkey_collocate = false;
 	
 	info->valid = false;
 	info->plan_cost = 0;
@@ -4541,7 +4595,7 @@ void set_coplan_strategies(PlannerInfo *root, MppGroupContext *ctx, DqaInfo *dqa
 	{
 		cost_base = sort_input + gagg_input;
 	}
-	
+
 	/* Collocating motion */
 	cost_base += incremental_motion_cost(darg_rows, darg_rows);
 	
@@ -4611,6 +4665,7 @@ void set_coplan_strategies(PlannerInfo *root, MppGroupContext *ctx, DqaInfo *dqa
 	dqaArg->coplan_type_sorted = type_sorted;
 	dqaArg->cost_cheapest = cost_base + cost_cheapest;
 	dqaArg->coplan_type_cheapest = type_cheapest;
+	dqaArg->distinctkey_collocate = false;
 }
 
 

@@ -730,6 +730,9 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										"rollup", &context->current_pathkeys,
 										agg_node, false);
 
+		if (context->aggstrategy == AGG_HASHED)
+			context->current_pathkeys = NIL; /* No longer sorted */
+
 		if (context->is_agg || context->aggstrategy == AGG_HASHED)
 			((Agg *)agg_node)->inputHasGrouping = true;
 		else
@@ -853,7 +856,7 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	else if (rewrite_agg_plan != NULL)
 	{
 		/* Choose a cheaper plan */
-		if (rewrite_agg_plan->total_cost < gather_agg_plan->total_cost)
+		if (!enable_groupagg || rewrite_agg_plan->total_cost < gather_agg_plan->total_cost)
 			result_plan = rewrite_agg_plan;
 		else if (rewrite_agg_plan->total_cost == gather_agg_plan->total_cost &&
 				 rewrite_agg_plan->startup_cost < rewrite_agg_plan->startup_cost)
