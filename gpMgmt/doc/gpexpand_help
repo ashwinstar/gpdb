@@ -13,7 +13,7 @@ gpexpand -i input_file [-D database_name] [-B batch_size] [-V | --novacuum]
 gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']] 
 [-a] [-n parallel_processes] [-D database_name] [-v | --verbose]
 
-gpexpand -r [-D database_name]
+gpexpand -r | --rollback [-D database_name]
 
 gpexpand -c [-D database_name]
 
@@ -152,9 +152,11 @@ specify -a.
 Remove the expansion schema.
 
 
--r (roll back)
+-r | --rollback (roll back)
 
-Roll back a failed expansion setup operation.
+Roll back a failed expansion setup operation. If the rollback command fails, 
+attempt again using the -D option to specify the database that contains the 
+expansion schema for the operation that you want to roll back. 
 
 
 -V | --novacuum
