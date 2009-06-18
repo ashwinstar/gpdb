@@ -69,6 +69,11 @@ int64 gp_mp_fault(int32 reason, int64 arg)
 }
 #endif
 
+int64 getMOPHighWaterMark(void)
+{
+    return 0;
+}
+
 #else
 
 /* Helpers */
