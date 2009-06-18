@@ -37,7 +37,7 @@ GP_VERSION=$$(< $(GPCC)/../VERSION)
 ifeq "$(BLD_ARCH)" "win32"
 BLD_THIRDPARTY_BIN_DIR=$(GPCC)/ext/bin
 endif
-INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --includes)
+INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. 
 CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
@@ -71,7 +71,7 @@ mkgpfdist: mkext
 	mkdir -p src/gpfdist/include
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
-	  $(GPFDISTFILES) $(APULIBS) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+	  $(GPFDISTFILES) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
 	mkdir -p build/bin
 	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
 
