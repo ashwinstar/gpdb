@@ -56,6 +56,7 @@
 #include "utils/pg_locale.h"
 
 #ifdef WIN32
+#undef StrNCpy
 #include <shlwapi.h>
 #endif
 
