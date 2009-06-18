@@ -401,7 +401,7 @@ gfile_open(gfile_t *fd, const char *fpath, int *response_code,
 			}
 			else
 			{
-				gfile_printf_then_putc_newline("gfile stat %s failure", fpath);
+				gfile_printf_then_putc_newline("gfile stat %s failure: %s", fpath, strerror(errno));
 				*response_code = 404;
 				*response_string = "file not found";
 				return 1;				
