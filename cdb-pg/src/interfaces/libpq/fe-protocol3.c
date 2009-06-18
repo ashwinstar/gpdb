@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.38 2009/01/09 18:50:03 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.39 2009/06/11 14:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1388,8 +1388,8 @@ pqGetCopyData3(PGconn *conn, char **buffer, int async)
 			/*
 			 * On end-of-copy, exit COPY_OUT mode and let caller read status
 			 * with PQgetResult().  The normal case is that it's Copy Done,
-			 * but we let parseInput read that.  If error, we expect the
-			 * state was already changed.
+			 * but we let parseInput read that.  If error, we expect the state
+			 * was already changed.
 			 */
 			if (msgLength == -1)
 				conn->asyncStatus = PGASYNC_BUSY;

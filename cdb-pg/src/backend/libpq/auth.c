@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/auth.c,v 1.181 2009/05/27 21:08:22 mha Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/auth.c,v 1.182 2009/06/11 14:48:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -289,10 +289,9 @@ ClientAuthentication(Port *port)
 				 errhint("See server log for details.")));
 
 	/*
-	 * This is the first point where we have access to the hba record for
-	 * the current connection, so perform any verifications based on the
-	 * hba options field that should be done *before* the authentication
-	 * here.
+	 * This is the first point where we have access to the hba record for the
+	 * current connection, so perform any verifications based on the hba
+	 * options field that should be done *before* the authentication here.
 	 */
 	if (port->hba->clientcert)
 	{
@@ -311,9 +310,10 @@ ClientAuthentication(Port *port)
 					 errmsg("connection requires a valid client certificate")));
 		}
 #else
+
 		/*
-		 * hba.c makes sure hba->clientcert can't be set unless OpenSSL
-		 * is present.
+		 * hba.c makes sure hba->clientcert can't be set unless OpenSSL is
+		 * present.
 		 */
 		Assert(false);
 #endif
@@ -750,9 +750,9 @@ pg_krb5_recvauth(Port *port)
 	if (cp)
 	{
 		/*
-		 * If we are not going to include the realm in the username that is passed
-		 * to the ident map, destructively modify it here to remove the realm. Then
-		 * advance past the separator to check the realm.
+		 * If we are not going to include the realm in the username that is
+		 * passed to the ident map, destructively modify it here to remove the
+		 * realm. Then advance past the separator to check the realm.
 		 */
 		if (!port->hba->include_realm)
 			*cp = '\0';
@@ -879,8 +879,8 @@ pg_GSS_recvauth(Port *port)
 	/*
 	 * GSS auth is not supported for protocol versions before 3, because it
 	 * relies on the overall message length word to determine the GSS payload
-	 * size in AuthenticationGSSContinue and PasswordMessage messages.
-	 * (This is, in fact, a design error in our GSS support, because protocol
+	 * size in AuthenticationGSSContinue and PasswordMessage messages. (This
+	 * is, in fact, a design error in our GSS support, because protocol
 	 * messages are supposed to be parsable without relying on the length
 	 * word; but it's not worth changing it now.)
 	 */
@@ -1042,9 +1042,9 @@ pg_GSS_recvauth(Port *port)
 		char	   *cp = strchr(gbuf.value, '@');
 
 		/*
-		 * If we are not going to include the realm in the username that is passed
-		 * to the ident map, destructively modify it here to remove the realm. Then
-		 * advance past the separator to check the realm.
+		 * If we are not going to include the realm in the username that is
+		 * passed to the ident map, destructively modify it here to remove the
+		 * realm. Then advance past the separator to check the realm.
 		 */
 		if (!port->hba->include_realm)
 			*cp = '\0';
@@ -1140,8 +1140,8 @@ pg_SSPI_recvauth(Port *port)
 	/*
 	 * SSPI auth is not supported for protocol versions before 3, because it
 	 * relies on the overall message length word to determine the SSPI payload
-	 * size in AuthenticationGSSContinue and PasswordMessage messages.
-	 * (This is, in fact, a design error in our SSPI support, because protocol
+	 * size in AuthenticationGSSContinue and PasswordMessage messages. (This
+	 * is, in fact, a design error in our SSPI support, because protocol
 	 * messages are supposed to be parsable without relying on the length
 	 * word; but it's not worth changing it now.)
 	 */
@@ -2207,4 +2207,5 @@ CheckCertAuth(Port *port)
 	/* Just pass the certificate CN to the usermap check */
 	return check_usermap(port->hba->usermap, port->user_name, port->peer_cn, false);
 }
+
 #endif

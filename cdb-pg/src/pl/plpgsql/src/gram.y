@@ -16,7 +16,20 @@
 
 #include "plpgsql.h"
 
+#include "catalog/pg_type.h"
 #include "parser/parser.h"
+
+
+/*
+ * Bison doesn't allocate anything that needs to live across parser calls,
+ * so we can easily have it use palloc instead of malloc.  This prevents
+ * memory leaks if we error out during parsing.  Note this only works with
+ * bison >= 2.0.  However, in bison 1.875 the default is to use alloca()
+ * if possible, so there's not really much problem anyhow, at least if
+ * you're building with gcc.
+ */
+#define YYMALLOC palloc
+#define YYFREE   pfree
 
 
 static PLpgSQL_expr		*read_sql_construct(int until,
@@ -47,6 +60,7 @@ static	void			 check_labels(const char *start_label,
 
 %}
 
+%expect 0
 %name-prefix="plpgsql_yy"
 
 %union {
@@ -559,9 +573,7 @@ decl_defkey		: K_ASSIGN
 				;
 
 proc_sect		:
-					{
-						$$ = NIL;
-					}
+					{ $$ = NIL; }
 				| proc_stmts
 					{ $$ = $1; }
 				;
@@ -576,7 +588,7 @@ proc_stmts		: proc_stmts proc_stmt
 				| proc_stmt
 						{
 							if ($1 == NULL)
-								$$ = NULL;
+								$$ = NIL;
 							else
 								$$ = list_make1($1);
 						}

@@ -26,7 +26,7 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/contrib/pgcrypto/openssl.c,v 1.30 2006/10/04 00:29:46 momjian Exp $
+ * $PostgreSQL: pgsql/contrib/pgcrypto/openssl.c,v 1.33 2009/06/11 14:48:52 momjian Exp $
  */
 
 #include "postgres.h"
@@ -98,10 +98,13 @@ static void
 AES_cbc_encrypt(const uint8 *src, uint8 *dst, int len, AES_KEY *ctx, uint8 *iv, int enc)
 {
 	memcpy(dst, src, len);
-	if (enc) {
+	if (enc)
+	{
 		aes_cbc_encrypt(ctx, iv, dst, len);
 		memcpy(iv, dst + len - 16, 16);
-	} else {
+	}
+	else
+	{
 		aes_cbc_decrypt(ctx, iv, dst, len);
 		memcpy(iv, src + len - 16, 16);
 	}
@@ -413,7 +416,8 @@ bf_check_supported_key_len(void)
 	BF_ecb_encrypt(data, out, &bf_key, BF_ENCRYPT);
 
 	if (memcmp(out, res, 8) != 0)	
-		return 0;	/* Output does not match -> strong cipher is not supported */ 
+		return 0;				/* Output does not match -> strong cipher is
+								 * not supported */
 	return 1;
 }
 
@@ -424,8 +428,9 @@ bf_init(PX_Cipher * c, const uint8 *key, unsigned klen, const uint8 *iv)
 	static int bf_is_strong = -1;
 
 	/*
-	 * Test if key len is supported. BF_set_key silently cut large keys and it could be
-	 * be a problem when user transfer crypted data from one server to another.
+	 * Test if key len is supported. BF_set_key silently cut large keys and it
+	 * could be be a problem when user transfer crypted data from one server
+	 * to another.
 	 */
 	
 	if( bf_is_strong == -1)
@@ -751,9 +756,10 @@ static int
 ossl_aes_key_init(ossldata * od, int type)
 {
 	int err;
+
 	/*
-	 * Strong key support could be missing on some openssl installations.
-	 * We must check return value from set key function.
+	 * Strong key support could be missing on some openssl installations. We
+	 * must check return value from set key function.
 	 */ 
 	if (type == AES_ENCRYPT)
 	    err = AES_set_encrypt_key(od->key, od->klen * 8, &od->u.aes_key);

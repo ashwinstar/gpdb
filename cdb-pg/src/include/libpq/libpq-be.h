@@ -11,7 +11,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/libpq-be.h,v 1.70 2009/04/19 22:37:13 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/libpq-be.h,v 1.71 2009/06/11 14:49:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -78,6 +78,7 @@ typedef enum CAC_state
 	CAC_OK, CAC_STARTUP, CAC_SHUTDOWN, CAC_RECOVERY, CAC_TOOMANY,
 	CAC_WAITBACKUP
 } CAC_state;
+
 
 /*
  * GSSAPI specific state information

@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.185 2009/04/15 21:42:50 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.186 2009/06/11 14:48:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -972,8 +972,9 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 			else if (strcmp(token, "clientcert") == 0)
 			{
 				/*
-				 * Since we require ctHostSSL, this really can never happen on non-SSL-enabled
-				 * builds, so don't bother checking for USE_SSL.
+				 * Since we require ctHostSSL, this really can never happen on
+				 * non-SSL-enabled builds, so don't bother checking for
+				 * USE_SSL.
 				 */
 				if (parsedline->conntype != ctHostSSL)
 				{
@@ -1091,8 +1092,8 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 	}
 
 	/*
-	 * Check if the selected authentication method has any mandatory arguments that
-	 * are not set.
+	 * Check if the selected authentication method has any mandatory arguments
+	 * that are not set.
 	 */
 	if (parsedline->auth_method == uaLDAP)
 	{
@@ -1167,11 +1168,13 @@ check_hba(hbaPort *port)
 					  port->raddr.addr.ss_family == AF_INET6)
 			{
 				/*
-				 * Wrong address family.  We allow only one case: if the file has
-				 * IPv4 and the port is IPv6, promote the file address to IPv6 and
-				 * try to match that way.
+				 * Wrong address family.  We allow only one case: if the file
+				 * has IPv4 and the port is IPv6, promote the file address to
+				 * IPv6 and try to match that way.
 				 */
-				struct sockaddr_storage addrcopy, maskcopy;
+				struct sockaddr_storage addrcopy,
+							maskcopy;
+
 				memcpy(&addrcopy, &hba->addr, sizeof(addrcopy));
 				memcpy(&maskcopy, &hba->mask, sizeof(maskcopy));
 				pg_promote_v4_to_v6_addr(&addrcopy);
@@ -1204,8 +1207,8 @@ check_hba(hbaPort *port)
 	port->hba = hba;
 	return true;
 
-	/* XXX:
-	 * Return false only happens if we have a parsing error, which we can 
+	/*
+	 * XXX: Return false only happens if we have a parsing error, which we can
 	 * no longer have (parsing now in postmaster). Consider changing API.
 	 */
 }
@@ -1297,6 +1300,7 @@ clean_hba_list(List *lines)
 	foreach(line, lines)
 	{
 		HbaLine *parsed = (HbaLine *)lfirst(line);
+
 		if (parsed)
 			free_hba_record(parsed);
 	}
@@ -1316,7 +1320,8 @@ load_hba(void)
 	FILE	   *file;
 	List *hba_lines = NIL;
 	List *hba_line_nums = NIL;
-	ListCell   *line, *line_num;
+	ListCell   *line,
+			   *line_num;
 	List *new_parsed_lines = NIL;
 	bool ok = true;
 
@@ -1327,10 +1332,11 @@ load_hba(void)
 				(errcode_for_file_access(),
 				 errmsg("could not open configuration file \"%s\": %m",
 						HbaFileName)));
+
 		/*
 		 * Caller will take care of making this a FATAL error in case this is
-		 * the initial startup. If it happens on reload, we just keep the
-		 * old version around.
+		 * the initial startup. If it happens on reload, we just keep the old
+		 * version around.
 		 */
 		return false;
 	}
@@ -1352,9 +1358,9 @@ load_hba(void)
 			pfree(newline);
 
 			/*
-			 * Keep parsing the rest of the file so we can report errors
-			 * on more than the first row. Error has already been reported
-			 * in the parsing function, so no need to log it here.
+			 * Keep parsing the rest of the file so we can report errors on
+			 * more than the first row. Error has already been reported in the
+			 * parsing function, so no need to log it here.
 			 */
 			ok = false;
 			continue;
@@ -1474,10 +1480,10 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 	if (file_ident_user[0] == '/')
 	{
 		/*
-		 * When system username starts with a slash, treat it as a regular expression.
-		 * In this case, we process the system username as a regular expression that
-		 * returns exactly one match. This is replaced for \1 in the database username
-		 * string, if present.
+		 * When system username starts with a slash, treat it as a regular
+		 * expression. In this case, we process the system username as a
+		 * regular expression that returns exactly one match. This is replaced
+		 * for \1 in the database username string, if present.
 		 */
 		int			r;
 		regex_t		re;
@@ -1491,8 +1497,8 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 		wlen = pg_mb2wchar_with_len(file_ident_user+1, wstr, strlen(file_ident_user+1));
 
 		/*
-		 * XXX: Major room for optimization: regexps could be compiled when the file is loaded
-		 * and then re-used in every connection.
+		 * XXX: Major room for optimization: regexps could be compiled when
+		 * the file is loaded and then re-used in every connection.
 		 */
 		r = pg_regcomp(&re, wstr, wlen, REG_ADVANCED);
 		if (r)
@@ -1542,7 +1548,11 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 						(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 						 errmsg("regular expression \"%s\" has no subexpressions as requested by backreference in \"%s\"",
 								file_ident_user+1, file_pgrole)));
-			/* length: original length minus length of \1 plus length of match plus null terminator */
+
+			/*
+			 * length: original length minus length of \1 plus length of match
+			 * plus null terminator
+			 */
 			regexp_pgrole = palloc0(strlen(file_pgrole) - 2 + (matches[1].rm_eo-matches[1].rm_so) + 1);
 			strncpy(regexp_pgrole, file_pgrole, (ofs-file_pgrole));
 			memcpy(regexp_pgrole+strlen(regexp_pgrole),
@@ -1558,7 +1568,10 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 
 		pg_regfree(&re);
 
-		/* now check if the username actually matched what the user is trying to connect as */
+		/*
+		 * now check if the username actually matched what the user is trying
+		 * to connect as
+		 */
 		if (case_insensitive)
 		{
 			if (pg_strcasecmp(regexp_pgrole, pg_role) == 0)
@@ -1630,7 +1643,8 @@ check_usermap(const char *usermap_name,
 			if (pg_strcasecmp(pg_role, auth_user) == 0)
 				return STATUS_OK;
 		}
-		else {
+		else
+		{
 			if (strcmp(pg_role, auth_user) == 0)
 				return STATUS_OK;
 		}

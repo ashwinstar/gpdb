@@ -1,3 +1,6 @@
+/*
+ * $PostgreSQL: pgsql/src/backend/port/nextstep/port.c,v 1.12 2009/06/11 14:49:00 momjian Exp $
+ */
 #include "postgres.h"
 
 #ifndef _POSIX_SOURCE
@@ -27,26 +30,12 @@ putenv(char *name)
 
 		was_mallocated = 1;
 		environ = malloc(size * sizeof(char *));
-
-		if(!environ)
-			ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Put env failed: out of memory"));
-
 		for (i = 0; i < size; i++)
 			environ[i] = tmp[i];
 	}
 
 	environ = realloc(environ, (size + 1) * sizeof(char *));
-	if(!environ)
-		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Put env failed: out of memory"));
-
-	environ[size - 1] = malloc(strlen(name) + 1);
-	if(!environ[size - 1])
-		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Put env failed: out of memory"));
-
-	strcpy(environ[size-1], name);
+	environ[size - 1] = strcpy(malloc(strlen(name) + 1), name);
 	environ[size] = NULL;
 }
 

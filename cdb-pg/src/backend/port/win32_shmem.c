@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/win32_shmem.c,v 1.7 2009/01/01 17:23:46 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/win32_shmem.c,v 1.11 2009/06/11 14:49:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -57,11 +57,11 @@ GetSharedMemName(void)
 		elog(FATAL, "could not generate full pathname for datadir %s: %lu",
 			 DataDir, GetLastError());
 
-	/* 
+	/*
 	 * XXX: Intentionally overwriting the Global\ part here. This was not the
 	 * original approach, but putting it in the actual Global\ namespace
-	 * causes permission errors in a lot of cases, so we leave it in
-	 * the default namespace for now.
+	 * causes permission errors in a lot of cases, so we leave it in the
+	 * default namespace for now.
 	 */
 	for (cp = retptr; *cp; cp++)
 		if (*cp == '\\')
@@ -123,6 +123,7 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port)
 	HANDLE		hmap,
 				hmap2;
 	char	   *szShareMem;
+	int			i;
 
 	/* Room for a header? */
 	Assert(size > MAXALIGN(sizeof(PGShmemHeader)));
@@ -131,47 +132,56 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port)
 
 	UsedShmemSegAddr = NULL;
 
-	hmap = CreateFileMapping((HANDLE) 0xFFFFFFFF,		/* Use the pagefile */
-							 NULL,		/* Default security attrs */
-							 PAGE_READWRITE,	/* Memory is Read/Write */
-							 0L,	/* Size Upper 32 Bits	*/
-							 (DWORD) size,		/* Size Lower 32 bits */
-							 szShareMem);
-
-	if (!hmap)
-		ereport(FATAL,
-				(errmsg("could not create shared memory segment: %lu", GetLastError()),
-				 errdetail("Failed system call was CreateFileMapping(size=%lu, name=%s).",
-						   (unsigned long) size, szShareMem)));
-
 	/*
-	 * If the segment already existed, CreateFileMapping() will return a
-	 * handle to the existing one.
+	 * When recycling a shared memory segment, it may take a short while
+	 * before it gets dropped from the global namespace. So re-try after
+	 * sleeping for a second, and continue retrying 10 times. (both the 1
+	 * second time and the 10 retries are completely arbitrary)
 	 */
-	if (GetLastError() == ERROR_ALREADY_EXISTS)
+	for (i = 0; i < 10; i++)
 	{
 		/*
-		 * When recycling a shared memory segment, it may take a short while
-		 * before it gets dropped from the global namespace. So re-try after
-		 * sleeping for a second.
+		 * In case CreateFileMapping() doesn't set the error code to 0 on
+		 * success
 		 */
-		CloseHandle(hmap);		/* Close the old handle, since we got a valid
-								 * one to the previous segment. */
+		SetLastError(0);
 
-		Sleep(1000);
+		hmap = CreateFileMapping((HANDLE) 0xFFFFFFFF,	/* Use the pagefile */
+								 NULL,	/* Default security attrs */
+								 PAGE_READWRITE,		/* Memory is Read/Write */
+								 0L,	/* Size Upper 32 Bits	*/
+								 (DWORD) size,	/* Size Lower 32 bits */
+								 szShareMem);
 
-		hmap = CreateFileMapping((HANDLE) 0xFFFFFFFF, NULL, PAGE_READWRITE, 0L, (DWORD) size, szShareMem);
 		if (!hmap)
 			ereport(FATAL,
 					(errmsg("could not create shared memory segment: %lu", GetLastError()),
 					 errdetail("Failed system call was CreateFileMapping(size=%lu, name=%s).",
 							   (unsigned long) size, szShareMem)));
 
+		/*
+		 * If the segment already existed, CreateFileMapping() will return a
+		 * handle to the existing one and set ERROR_ALREADY_EXISTS.
+		 */
 		if (GetLastError() == ERROR_ALREADY_EXISTS)
-			ereport(FATAL,
-				 (errmsg("pre-existing shared memory block is still in use"),
-				  errhint("Check if there are any old server processes still running, and terminate them.")));
+		{
+			CloseHandle(hmap);	/* Close the handle, since we got a valid one
+								 * to the previous segment. */
+			hmap = NULL;
+			Sleep(1000);
+			continue;
+		}
+		break;
 	}
+
+	/*
+	 * If the last call in the loop still returned ERROR_ALREADY_EXISTS, this
+	 * shared memory segment exists and we assume it belongs to somebody else.
+	 */
+	if (!hmap)
+		ereport(FATAL,
+				(errmsg("pre-existing shared memory block is still in use"),
+				 errhint("Check if there are any old server processes still running, and terminate them.")));
 
 	free(szShareMem);
 

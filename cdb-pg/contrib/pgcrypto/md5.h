@@ -1,4 +1,4 @@
-/*	$PostgreSQL: pgsql/contrib/pgcrypto/md5.h,v 1.9 2005/10/15 02:49:06 momjian Exp $ */
+/*	$PostgreSQL: pgsql/contrib/pgcrypto/md5.h,v 1.10 2009/06/11 14:48:52 momjian Exp $ */
 /*	   $KAME: md5.h,v 1.3 2000/02/22 14:01:18 itojun Exp $	   */
 
 /*
