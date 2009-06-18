@@ -92,28 +92,32 @@ class GpSegCopy:
             if self.masterDataDir != self.srcDir:
                 raise SegcopyError, "Schema only copy requires source directory be master data directory"
         
-        if self.method == 'copy':
-            #TODO:  may want to change this to either always use pysync or to use a 'tar | ssh tar'
-            scpCmd=RemoteCopy(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
-            scpCmd.run(validateAfter=True)
-            res=scpCmd.get_results()
+        if self.dstHost in ['localhost', '127.0.0.1']:
+            cpCmd=LocalCopy(name,'%s/*' % self.srcDir,self.dstDir)
+            cpCmd.run(validateAfter=True)
+            res=cpCmd.get_results()
         else:
-
-            # Call pysync.LocalPysync directly
-            pysyncOptions = []
-            if self.verbose:
-                pysyncOptions += ["-v"]
-            if self.progressBytes:
-                pysyncOptions += ["--progress-bytes", self.progressBytes]
-            if self.progressTime:
-                pysyncOptions += ["--progress-time", self.progressTime]
-            pysyncCmd = [pysync.__name__] + pysyncOptions + [self.srcDir, "%s:%s" % (self.dstHost, self.dstDir)]
-            sync = pysync.LocalPysync(pysyncCmd, 
-                                      recordProgressCallback=_SyncProgress(self.logger.info, self).mark_sync_progress)
-            ok = (sync.run() == 0)
-            if not ok:
-                raise SegcopyError, ("Copy data from (%s:%s) to (%s:%s) failed" 
-                                     % (self.srcHost, self.srcDir, self.dstHost, self.dstDir))
+            if self.method == 'copy':
+                #TODO:  may want to change this to either always use pysync or to use a 'tar | ssh tar'
+                scpCmd=RemoteCopy(name,self.srcDir,self.dstHost,self.dstDir,ctxt=REMOTE,remoteHost=self.srcHost)
+                scpCmd.run(validateAfter=True)
+                res=scpCmd.get_results()
+            else:
+                # Call pysync.LocalPysync directly
+                pysyncOptions = []
+                if self.verbose:
+                    pysyncOptions += ["-v"]
+                if self.progressBytes:
+                    pysyncOptions += ["--progress-bytes", self.progressBytes]
+                if self.progressTime:
+                    pysyncOptions += ["--progress-time", self.progressTime]
+                pysyncCmd = [pysync.__name__] + pysyncOptions + [self.srcDir, "%s:%s" % (self.dstHost, self.dstDir)]
+                sync = pysync.LocalPysync(pysyncCmd, 
+                                          recordProgressCallback=_SyncProgress(self.logger.info, self).mark_sync_progress)
+                ok = (sync.run() == 0)
+                if not ok:
+                    raise SegcopyError, ("Copy data from (%s:%s) to (%s:%s) failed" 
+                                         % (self.srcHost, self.srcDir, self.dstHost, self.dstDir))
         
         #basic validation
         dstDirSize=DiskUsage.get_size(name,self.dstHost,self.dstDir)

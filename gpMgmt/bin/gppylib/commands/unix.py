@@ -436,6 +436,15 @@ class RemoteCopy(Command):
         cmdStr="%s -r %s %s:%s" % (findCmdInPath('scp'),srcDirectory,dstHost,dstDirectory)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
+
+#-------------cp------------------
+class LocalCopy(Command):
+    def __init__(self,name,srcDirectory,dstDirectory,ctxt=LOCAL,remoteHost=None):
+        self.srcDirectory=srcDirectory
+        self.dstDirectory=dstDirectory        
+        cmdStr="%s -R -p %s %s" % (findCmdInPath('cp'),srcDirectory,dstDirectory)
+        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
 #------------ ssh + tar ------------------
 #TODO:  impl this.
 #tar czf - srcDir/ | ssh user@dstHost tar xzf - -C dstDir
@@ -550,6 +559,11 @@ class Chmod(Command):
     def __init__(self, name, dir, perm, ctxt=LOCAL, remoteHost=None):
         cmdStr = '%s %s %s' % (findCmdInPath('chmod'), perm, dir)
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
+    
+    @staticmethod
+    def local(name, dir, perm):
+        cmd=Chmod(name, dir, perm)
+        cmd.run(validateAfter=True)
         
 #--------------global variable initialization ----------------------
 

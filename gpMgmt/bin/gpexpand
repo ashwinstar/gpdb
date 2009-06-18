@@ -626,6 +626,7 @@ class SegmentTemplate:
             catalog.vacuum_catalog(self.dburl,self.conn,full=True,utility=True)
         
         MakeDirectory.local('gpexpand create temp dir',self.tempDir)    
+        Chmod.local('set template permissions',self.tempDir,'0700')
                 
         self._select_src_segment()
 
@@ -646,8 +647,8 @@ class SegmentTemplate:
             raise SegmentTemplateError('Failed to stop the array.  pg_controldata return state of %s' % state)
         
         try:    
-            gp_segcopy = GpSegCopy(self.logger, self.gparray.master.hostname, self.masterDataDirectory,
-                                   self.gparray.master.hostname, self.tempDir, True, True, 'sync',
+            gp_segcopy = GpSegCopy(self.logger, '127.0.0.1', self.masterDataDirectory,
+                                   '127.0.0.1', self.tempDir, True, True, 'copy',
                                    verbose=options.verbose)
             gp_segcopy.copy()
         except SegcopyError, msg:
