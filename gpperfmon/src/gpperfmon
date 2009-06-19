@@ -18,7 +18,7 @@ Usage: gpperfmon -D <MASTER DATA DIRECTORY> --start|--stop|--restart|--status|--
 
 '''
 
-import os, sys, getopt, signal, time, socket, ConfigParser
+import os, sys, getopt, signal, time, socket, ConfigParser, subprocess
 
 script_name = os.path.split(__file__)[-1]
 script_version = '2.0.0.3'
@@ -283,7 +283,10 @@ def gpperfmon_setup():
     else:
         # check for gpmon user
         print 'Checking for gpmon database account...'
-        if os.system('psql -U gpmon -d template1 -c \'select 1\' &> /dev/null') != 0:
+        p = subprocess.Popen('psql -U gpmon -d template1 -c \'select 1\'', 
+                             shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p.wait()
+        if p.returncode != 0:
             print 'Setup was unable to connect as the database account \'gpmon\'.'
             print 'Please refer to chapter two of the Greenplum Performance Monitor'
             print 'Guide for detailed instructions on creating and configuring this account.'
