@@ -615,6 +615,7 @@ class GPUpgrade:
             self.option2  = urllib.unquote(options.option2)
         if options.debug:
             self.debug = True
+            enable_verbose_logging()
         if options.quiet:
             self.quiet = True
         if options.logdir:
@@ -834,7 +835,8 @@ class GPUpgrade:
         # to see if there was any mention of FATAL within the message
         logger.debug('GPSSH: ' + str(result))
 
-        if re.search('gpmigrator.*\[FATAL\]', result):
+        if (re.search('gpmigrator.*\[FATAL\]', result) or
+            re.search('gpmigrator.*\[CRITICAL\]', result)):
             raise UpgradeError('Fatal Segment Error')
         return result
 
