@@ -203,10 +203,12 @@ thirdparty-test:
 
 .PHONY: thirdparty-dist thirdparty-dist-base thirdparty-dist-exceptions
 
+BLD_DYLIB_NAME=so
 ifeq "$(findstring osx,$(BLD_ARCH))" "osx"
 BLD_DYLIB_NAME=dylib
-else
-BLD_DYLIB_NAME=so
+endif
+ifeq "$(findstring aix,$(BLD_ARCH))" "aix"
+BLD_DYLIB_NAME=a
 endif
 
 BLD_THIRDPARTY_BASE_SHARED_OBJECTS=$(wildcard $(BLD_THIRDPARTY_LIB_DIR)/*.$(BLD_DYLIB_NAME)*)
