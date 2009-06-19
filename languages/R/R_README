@@ -1,5 +1,5 @@
 ************************************************************************
-ABOUT R AND PL/R IN GREENPLUM DATABASE 3.2
+ABOUT R AND PL/R IN GREENPLUM DATABASE 3.3
 ************************************************************************
 
 R is a programming language and environment for statistical computing and
@@ -25,19 +25,22 @@ INSTALLING R FOR USE WITH GREENPLUM DATABASE
 
 NOTE: You will need root access to install R.
 
-1. Download the compiled R-2.6.1-<platform>.zip distribution package 
-   from http://gpn.greenplum.com.
+1. Obtain the compiled R-2.6.1-<platform>.zip distribution package 
+   from Greenplum customer support.
 
 2. Unzip the package:
 
     $ unzip R-2.6.1-<platform>.zip
 
 3. Run the following script to modify the installation path for R. 
-   R should be installed in the system shared library location -
-   typically /usr/lib64/R-2.6.1 on 64-bit systems or /usr/lib/R-2.6.1 
-   on 32-bit systems.
+   R should be installed in the system shared library location, which
+   varies among the supported platforms
+ 
+   Solaris 64-bit		/usr/lib/64/R-2.6.1 
+   RHEL 64-bit		/usr/lib64/R-2.6.1
+   RHEL 32-bit   		/usr/lib/R-2.6.1
+   SLES 64-bit          /usr/lib64/R-2.6.1
 
-    $ ./modify-R-startup-path.sh /usr/lib64/R-2.6.1
 
 4. As root, copy the R installation to the correct location on the 
    master:
@@ -52,20 +55,11 @@ NOTE: You will need root access to install R.
 
 6. Set the R_HOME environment variable on all hosts in your Greenplum 
    array. This must be set for the 'gpadmin' user on all hosts. For example,
-   modify the .bashrc file of the 'gpadmin' user on all hosts and add the
-   following line depending on your operating system.
-
-   #For Linux 32-bit:
-
-    export R_HOME=/usr/lib/R-2.6.1/lib/R 
-   
-   #For Linux 64-bit:
+   modify the .bashrc file of the 'gpadmin' user on all hosts and add a line like
+   the following:
+  
     
     export R_HOME=/usr/lib64/R-2.6.1/lib64/R
-
-   #For Solaris 64-bit: 
-
-    export R_HOME=/usr/lib64/R-2.6.1/lib/R
  
 
 7. The R libraries must be findable by your runtime linker. On Linux, 
@@ -91,16 +85,16 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 1. To use PL/R. you must have R installed on all Greenplum hosts 
    (see instructions above).
 
-2. Download the greenplum-db-3.2.0.0-plr-<platform>.zip distribution 
-   package from http://gpn.greenplum.com.
+2. Obtain the greenplum-db-3.3.0.0-plr-<platform>.zip distribution 
+   package from Greenplum customer support.
 
 3. Unzip the package:
 
-    $ unzip greenplum-db-3.2.0.0-plr-<platform>.zip
+    $ unzip greenplum-db-3.3.0.0-plr-<platform>.zip
 
 4. Copy the plr.so file to $GPHOME/lib/postgresql on all hosts:
 
-    $ gpscp -f <all_hosts_file> ./greenplum-db-devel-plr/plr.so =:/usr/local/greenplum-db-3.2.0.0/lib/postgresql
+    $ gpscp -f <all_hosts_file> ./greenplum-db-devel-plr/plr.so =:/usr/local/greenplum-db-3.3.0.0/lib/postgresql
 
 5. Make sure $R_HOME is set on all Greenplum hosts:
 
