@@ -3530,6 +3530,21 @@ This issue must be resolved before upgrade can complete.
                     for f in meta:
                         mapfile.write('meta:%s\n' % f)
 
+                    # files to just link, like SSL key files, backup
+                    # postgresql.conf, other stuff admins leave lying around
+                    nolink = ['pg_hba.conf',
+                              'pg_ident.conf',
+                              'pg_hba.conf.gpmigrator_orig',
+                              'pg_ident.conf.gpmigrator_orig',
+                              'postmaster.pid',
+                              'postmaster.opts']
+                    for f in os.listdir(dir):
+                        if (os.path.isfile(os.path.join(dir, f)) and 
+                            f not in meta and
+                            f not in nolink):
+                            logger.debug('adding link for file %s' % f)
+                            mapfile.write('link:%s\n' % f)
+
                     mapfile.close()
                     
     def ExtractAosegs(self):
@@ -3728,7 +3743,13 @@ This issue must be resolved before upgrade can complete.
                     for line in mapfile:
                         (dbname, f) = line.split(':')
                         f = f[:-1]
-                        do_copy(src, dst, f)
+                        if dbname == 'link':
+                            left = os.path.join(src, f)
+                            right = os.path.join(dst, f)
+                            logger.debug('linking %s to %s' % (left, right))
+                            os.link(left, right)
+                        else:
+                            do_copy(src, dst, f)
 
                     def overwrite(frm, to):
                         if not os.path.exists(frm): return
