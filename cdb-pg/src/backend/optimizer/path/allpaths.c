@@ -313,37 +313,37 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 
 	/* early exit for external and append only relations */
-	if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+	if(get_rel_relstorage(rte->relid) == RELSTORAGE_EXTERNAL)
 	{
-	/*
-	 * If the relation is external, create an external path for
-	 * it and select it (only external path is considered for
+		/*
+		 * If the relation is external, create an external path for
+		 * it and select it (only external path is considered for
 		 * an external base rel).
 		 */
 		add_path(root, rel, (Path *) create_external_path(root, rel));
-		
+
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AO) 
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AO)
 	{
 		/*
-		 * If the relation is append-only, create an append-only 
-		 * path for it and select it (only append-only path is 
+		 * If the relation is append-only, create an append-only
+		 * path for it and select it (only append-only path is
 		 * considered for an append-only base rel).
 		 */
 		add_path(root, rel, (Path *) create_appendonly_path(root, rel));
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCS) 
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCS)
     {
         add_path(root, rel, (Path *) create_aocs_path(root, rel));
         set_cheapest(root, rel);
         return;
     }
 
-	
+
 	/* Consider sequential scan. */
     seqpath = create_seqscan_path(root, rel);
     if (enable_seqscan)
@@ -700,7 +700,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		subquery_pathkeys = rte->subquery_pathkeys;
 		/* XXX rel->onerow = ??? */
 	}
-	
+
 	/* Copy number of output rows from subplan */
     if (rel->onerow)
         rel->tuples = 1;
@@ -998,7 +998,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
  * 4. If the subquery target list has expressions containing calls to
  * window functions, we must not push down any quals since this could
  * change the meaning of the query.  At runtime, window functions refer
- * to the executor state of their Window node.  If a pushed-down qual 
+ * to the executor state of their Window node.  If a pushed-down qual
  * removed a tuple, the state seen by later tuples (hence the values
  * of window functions) could be affected.
  *
@@ -1014,7 +1014,7 @@ subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 	/* Check point 1 */
 	if (subquery->limitOffset != NULL || subquery->limitCount != NULL)
 		return false;
-	
+
 	/* Check point 4 */
 	if ( contain_window_functions((Node*)subquery->targetList) )
 		return false;

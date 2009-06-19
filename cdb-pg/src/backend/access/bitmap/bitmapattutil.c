@@ -67,10 +67,10 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	Assert(rel != NULL);
 
 	/* create the new names for the new lov heap and index */
-	snprintf(lovHeapName, sizeof(lovHeapName), 
-			 "pg_bm_%u", RelationGetRelid(rel)); 
-	snprintf(lovIndexName, sizeof(lovIndexName), 
-			 "pg_bm_%u_index", RelationGetRelid(rel)); 
+	snprintf(lovHeapName, sizeof(lovHeapName),
+			 "pg_bm_%u", RelationGetRelid(rel));
+	snprintf(lovIndexName, sizeof(lovIndexName),
+			 "pg_bm_%u_index", RelationGetRelid(rel));
 
 
 	heapid = get_relname_relid(lovHeapName, PG_BITMAPINDEX_NAMESPACE);
@@ -143,15 +143,15 @@ _bitmap_create_lov_heapandindex(Relation rel,
 
  	MemSet(&policy, 0, sizeof(policy));
  	policy.ptype = POLICYTYPE_PARTITIONED;
- 
+
 	Assert(rel->rd_rel != NULL);
-	
+
   	heapid =
 		heap_create_with_catalog(lovHeapName, PG_BITMAPINDEX_NAMESPACE,
-								 rel->rd_rel->reltablespace, 
-								 *lovHeapOid, rel->rd_rel->relowner, 
-								 tupDesc, RELKIND_RELATION,
-								 rel->rd_rel->relisshared, false, 0, 
+								 rel->rd_rel->reltablespace,
+								 *lovHeapOid, rel->rd_rel->relowner,
+								 tupDesc, RELKIND_RELATION, RELSTORAGE_HEAP,
+								 rel->rd_rel->relisshared, false, 0,
 								 ONCOMMIT_NOOP, &policy, (Datum)0, true,
 								 &lovComptypeOid);
 	Assert(heapid == *lovHeapOid);
@@ -173,7 +173,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	recordDependencyOn(&objAddr, &referenced, DEPENDENCY_INTERNAL);
 
 	/*
-	 * create a btree index on the newly-created heap. 
+	 * create a btree index on the newly-created heap.
 	 * The key includes all attributes to be indexed in this bitmap index.
 	 */
 	indattrs = tupDesc->natts - 2;
@@ -196,9 +196,9 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	}
 
 	idxid = index_create(*lovHeapOid, lovIndexName, *lovIndexOid,
-						 indexInfo, BTREE_AM_OID, 
-						 rel->rd_rel->reltablespace, 
-						 classObjectId, 0, false, false, true, 
+						 indexInfo, BTREE_AM_OID,
+						 rel->rd_rel->reltablespace,
+						 classObjectId, 0, false, false, true,
 						 false, false);
 	Assert(idxid == *lovIndexOid);
 
@@ -229,7 +229,7 @@ _bitmap_create_lov_heapTupleDesc(Relation rel)
 	for (attno = 1; attno <= oldTupDesc->natts; attno++)
 	{
 		/* copy the attribute to be indexed. */
-		memcpy(tupDesc->attrs[attno - 1], oldTupDesc->attrs[attno - 1], 
+		memcpy(tupDesc->attrs[attno - 1], oldTupDesc->attrs[attno - 1],
 			   ATTRIBUTE_TUPLE_SIZE);
 		tupDesc->attrs[attno - 1]->attnum = attno;
 	}
@@ -262,7 +262,7 @@ _bitmap_open_lov_heapandindex(Relation rel, BMMetaPage metapage,
  * _bitmap_insert_lov() -- insert a new data into the given heap and index.
  */
 void
-_bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum, 
+_bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 				   bool *nulls, bool use_wal)
 {
 	TupleDesc	tupDesc;
@@ -282,7 +282,7 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 	indexNulls = palloc0((tupDesc->natts - 2) * sizeof(bool));
 	memcpy(indexDatum, datum, (tupDesc->natts - 2) * sizeof(Datum));
 	memcpy(indexNulls, nulls, (tupDesc->natts - 2) * sizeof(bool));
-	result = index_insert(lovIndex, indexDatum, indexNulls, 
+	result = index_insert(lovIndex, indexDatum, indexNulls,
 					 	  &(tuple->t_self), lovHeap, true);
 
 	pfree(indexDatum);
@@ -297,7 +297,7 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
  * _bitmap_close_lov_heapandindex() -- close the heap and the index.
  */
 void
-_bitmap_close_lov_heapandindex(Relation lovHeap, Relation lovIndex, 
+_bitmap_close_lov_heapandindex(Relation lovHeap, Relation lovIndex,
 							   LOCKMODE lockMode)
 {
 	heap_close(lovHeap, lockMode);
@@ -307,7 +307,7 @@ _bitmap_close_lov_heapandindex(Relation lovHeap, Relation lovIndex,
 /*
  * _bitmap_findvalue() -- find a row in a given heap using
  *  a given index that satisfies the given scan key.
- * 
+ *
  * If this value exists, this function returns true. Otherwise,
  * returns false.
  *

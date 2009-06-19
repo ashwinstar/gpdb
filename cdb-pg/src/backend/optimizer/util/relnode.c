@@ -113,11 +113,11 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	{
 		case RTE_RELATION:
 			/* Table --- retrieve statistics from the system catalogs */
-			
+
 			/* if external table - get locations and format from catalog */
-			if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+			if(get_rel_relstorage(rte->relid) == RELSTORAGE_EXTERNAL)
 				get_external_relation_info(root, rte->relid, rte->inh, rel);
-			
+
 			get_relation_info(root, rte->relid, rte->inh, rel);
 
 			/* if we've been asked to, force the dist-policy to be partitioned-randomly. */

@@ -191,7 +191,7 @@ flagInhTables(TableInfo *tblinfo, int numTables,
 		/* Sequences, views and external tables never have parents */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE ||
 			tblinfo[i].relkind == RELKIND_VIEW ||
-			tblinfo[i].relkind == RELKIND_EXTERNAL)
+			tblinfo[i].relstorage == RELSTORAGE_EXTERNAL)
 			continue;
 
 		/* Don't bother computing anything for non-target tables, either */
@@ -233,7 +233,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 		/* Sequences, views and external tables never have parents */
 		if (tbinfo->relkind == RELKIND_SEQUENCE ||
 			tbinfo->relkind == RELKIND_VIEW ||
-			tbinfo->relkind == RELKIND_EXTERNAL)
+			tbinfo->relstorage == RELSTORAGE_EXTERNAL)
 			continue;
 
 		/* Don't bother computing anything for non-target tables, either */

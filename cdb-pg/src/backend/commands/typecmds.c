@@ -130,7 +130,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	/*
 	 * Type names must be one character shorter than other names, allowing
 	 * room to create the corresponding array type name with prepended "_".
-	 */										  
+	 */
 	if (strlen(typeName) > (NAMEDATALEN - 2))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_NAME),
@@ -184,7 +184,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 					 errmsg("type \"%s\" already exists", typeName)));
 	}
 
-	foreach(pl, parameters)										  
+	foreach(pl, parameters)
 	{
 		DefElem    *defel = (DefElem *) lfirst(pl);
 
@@ -448,7 +448,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			   shadowOid);
 
 	pfree(shadow_type);
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
@@ -514,7 +514,7 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   TypeNameToString(typname));
-	
+
 	ReleaseSysCache(tup);
 
 	/*
@@ -731,7 +731,7 @@ DefineDomain(CreateDomainStmt *stmt)
 					 * we also require a valid textual representation (mainly
 					 * to make life easier for pg_dump).
 					 */
-					defaultValue = 
+					defaultValue =
 						deparse_expression(defaultExpr,
 										   deparse_context_for(domainName,
 															   InvalidOid),
@@ -1180,7 +1180,7 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 	createStmt->oidInfo.toastIndexOid = 0;
 	createStmt->oidInfo.aosegOid = 0;
 	createStmt->oidInfo.aosegIndexOid = 0;
-	
+
 
 	if (coldeflist == NIL)
 		ereport(ERROR,
@@ -1202,11 +1202,11 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 	/*
 	 * finally create the relation...
 	 */
-	return  DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE);
-	
+	return  DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, RELSTORAGE_VIRTUAL);
+
 	/*
 	 * DefineRelation already dispatches this.
-	 * 
+	 *
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CompositeTypeStmt *stmt = makeNode(CompositeTypeStmt);
@@ -1217,7 +1217,7 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}*/
-	 
+
 }
 
 /*
@@ -2234,7 +2234,7 @@ AlterTypeOwner(List *names, Oid newOwnerId)
 /*
  * AlterTypeOwnerInternal - change type owner unconditionally
  *
- * This is currently only used to propagate ALTER TABLE/TYPE OWNER to a 
+ * This is currently only used to propagate ALTER TABLE/TYPE OWNER to a
  * table's rowtype or an array type, and to implement REASSIGN OWNED BY.
  * It assumes the caller has done all needed checks.  The function will
  * automatically recurse to an array type if the type has one.
@@ -2356,7 +2356,7 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot move objects into or out of AO SEGMENT schema")));
-	
+
 	/* check for duplicate name (more friendly than unique-index failure) */
 	if (SearchSysCacheExists(TYPENAMENSP,
 							 CStringGetDatum(NameStr(typform->typname)),

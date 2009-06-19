@@ -902,8 +902,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
     /*
      * initialize Greenplum Database partitioning info
      */
-    if ((relation->rd_rel->relkind == RELKIND_RELATION ||
-		 relation->rd_rel->relkind == RELKIND_EXTERNAL) &&
+    if (relation->rd_rel->relkind == RELKIND_RELATION &&
         !IsSystemRelation(relation))
         relation->rd_cdbpolicy = GpPolicyFetch(CacheMemoryContext, targetRelId);
 

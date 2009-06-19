@@ -446,7 +446,7 @@ ERROR:  relation "bad_whois" does not exist
 LINE 1: select count(*) from bad_whois;
                              ^
 drop external table bad_whois;
-ERROR:  external table "bad_whois" does not exist
+ERROR:  table "bad_whois" does not exist
 -- start_ignore
 select * from gpfdist_status;
                                   x                                   

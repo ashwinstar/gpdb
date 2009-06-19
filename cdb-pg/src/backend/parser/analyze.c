@@ -147,9 +147,9 @@ static Query *transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 static List *transformInsertRow(ParseState *pstate, List *exprlist,
 				   List *stmtcols, List *icolumns, List *attrnos);
 
-/* 
+/*
  * MPP-2506 [insert/update/delete] RETURNING clause not supported:
- *   We have problems processing the returning clause, so for now we have 
+ *   We have problems processing the returning clause, so for now we have
  *   simply removed it and replaced it with an error message.
  */
 #define MPP_RETURNING_NOT_SUPPORTED
@@ -185,8 +185,8 @@ static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
-								   CreateStmtContext *cxt, 
-								   List *distributedBy, 
+								   CreateStmtContext *cxt,
+								   List *distributedBy,
 								   GpPolicy ** policy, List *likeDistributedBy,
 								   bool bQuiet);
 static void transformPartitionBy(ParseState *pstate,
@@ -873,9 +873,9 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
 
-	/* 
+	/*
 	 * MPP-2506 [insert/update/delete] RETURNING clause not supported:
-	 *   We have problems processing the returning clause, so for now we have 
+	 *   We have problems processing the returning clause, so for now we have
 	 *   simply removed it and replaced it with an error message.
 	 */
 #ifdef MPP_RETURNING_NOT_SUPPORTED
@@ -1202,9 +1202,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 	}
 
 
-	/* 
+	/*
 	 * MPP-2506 [insert/update/delete] RETURNING clause not supported:
-	 *   We have problems processing the returning clause, so for now we have 
+	 *   We have problems processing the returning clause, so for now we have
 	 *   simply removed it and replaced it with an error message.
 	 */
 #ifdef MPP_RETURNING_NOT_SUPPORTED
@@ -1454,7 +1454,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	 * Postprocess Greenplum Database distribution columns
 	 */
 	if (stmt->is_part_child ||
-		(stmt->partitionBy && 
+		(stmt->partitionBy &&
 		 (
 			 /* be very quiet if set subpartn template */
 			 (((PartitionBy *)(stmt->partitionBy))->partQuiet ==
@@ -1462,7 +1462,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 			 (
 				 /* quiet for partitions of depth > 0 */
 				 (((PartitionBy *)(stmt->partitionBy))->partDepth != 0) &&
-				 (((PartitionBy *)(stmt->partitionBy))->partQuiet != 
+				 (((PartitionBy *)(stmt->partitionBy))->partQuiet !=
 				  PART_VERBO_NORMAL)
 					 )
 				 )
@@ -1851,8 +1851,7 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 
 	relation = heap_openrv(inhRelation->relation, AccessShareLock);
 
-	if (relation->rd_rel->relkind != RELKIND_RELATION &&
-		relation->rd_rel->relkind != RELKIND_EXTERNAL)
+	if (relation->rd_rel->relkind != RELKIND_RELATION)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("inherited relation \"%s\" is not a table",
@@ -2645,13 +2644,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					column = (ColumnDef *) lfirst(columns);
 					Assert(IsA(column, ColumnDef));
 					colindex++;
-	
+
 					if (strcmp(column->colname, key) == 0)
 					{
 						Oid typeOid = typenameTypeId(NULL, column->typname);
-	
+
 						/*
-						 * To be a part of a distribution key, this type must 
+						 * To be a part of a distribution key, this type must
 						 * be supported for hashing internally in Greenplum
 						 * Database. We check if the base type is supported
 						 * for hashing or if it is an array type (we support
@@ -2665,7 +2664,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 											"distribution key",
 											format_type_be(typeOid))));
 						}
-	
+
 						found = true;
 						break;
 					}
@@ -5134,7 +5133,7 @@ L_setprevElem:
 
 		}
 
-		/* 
+		/*
 		 * If values are equal, but not inclusive to both,
 		 * then append is possible
 		 */
@@ -5166,12 +5165,12 @@ L_setprevElem:
 	} /* end compare to last */
 
 #if 0
-	/* 
+	/*
 	 * XXX: this would be a nice test to add in, perhaps we enable it when
 	 * cassert is enabled?
 	 */
 	{
-		/* 
+		/*
 		 * Better make sure the current boundary specification doesn't
 		 * overlap an existing one. It's not enough to just do the
 		 * previous spec as they might be out of order.
@@ -5546,7 +5545,7 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 						break;
 			case PARTTYP_RANGE:
 						specTName = "RANGE ";
-						break;					
+						break;
 				default:
 						break;
 		}
@@ -5599,7 +5598,7 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 		ReleaseSysCache(typ);
 		out = (Node *)c;
 
-		/* 
+		/*
 		 * coerce again for typmod: if we can't coerce the type mod,
 		 * we'll error out
 		 */
@@ -9626,9 +9625,9 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
 
-	/* 
+	/*
 	 * MPP-2506 [insert/update/delete] RETURNING clause not supported:
-	 *   We have problems processing the returning clause, so for now we have 
+	 *   We have problems processing the returning clause, so for now we have
 	 *   simply removed it and replaced it with an error message.
 	 */
 #ifdef MPP_RETURNING_NOT_SUPPORTED
@@ -9739,9 +9738,9 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 }
 
 
-/* 
+/*
  * MPP-2506 [insert/update/delete] RETURNING clause not supported:
- *   We have problems processing the returning clause, so for now we have 
+ *   We have problems processing the returning clause, so for now we have
  *   simply removed it and replaced it with an error message.
  */
 #ifndef MPP_RETURNING_NOT_SUPPORTED
@@ -10466,7 +10465,7 @@ transformLockingClause(Query *qry, LockingClause *lc)
 			switch (rte->rtekind)
 			{
 				case RTE_RELATION:
-					if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+					if(get_rel_relstorage(rte->relid) == RELSTORAGE_EXTERNAL)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables")));
@@ -10506,7 +10505,7 @@ transformLockingClause(Query *qry, LockingClause *lc)
 					switch (rte->rtekind)
 					{
 						case RTE_RELATION:
-							if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+							if(get_rel_relstorage(rte->relid) == RELSTORAGE_EXTERNAL)
 								ereport(ERROR,
 										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 										 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables")));

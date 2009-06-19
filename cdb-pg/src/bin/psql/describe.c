@@ -440,12 +440,12 @@ permissionsList(const char *pattern)
 	printfPQExpBuffer(&buf,
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
-					  "  CASE c.relkind WHEN 'r' THEN '%s' WHEN 'x' THEN '%s' WHEN 'v' THEN '%s' WHEN 'S' THEN '%s' END as \"%s\",\n"
+					  "  CASE c.relkind WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'S' THEN '%s' END as \"%s\",\n"
 					  "  c.relacl as \"%s\"\n"
 					  "FROM pg_catalog.pg_class c\n"
 	   "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
-					  "WHERE c.relkind IN ('r', 'v', 'S', 'x')\n",
-					  _("Schema"), _("Name"), _("table"), _("table"), _("view"), _("sequence"), _("Type"), _("Access privileges"));
+					  "WHERE c.relkind IN ('r', 'v', 'S')\n",
+					  _("Schema"), _("Name"), _("table"), _("view"), _("sequence"), _("Type"), _("Access privileges"));
 
 	/*
 	 * Unless a schema pattern is specified, we suppress system and temp
@@ -570,12 +570,12 @@ objectDescription(const char *pattern)
 					  "  n.nspname as nspname,\n"
 					  "  CAST(c.relname AS pg_catalog.text) as name,\n"
 					  "  CAST(\n"
-					  "    CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' END"
+					  "    CASE c.relkind WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' END"
 					  "  AS pg_catalog.text) as object\n"
 					  "  FROM pg_catalog.pg_class c\n"
 	 "       LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
-					  "  WHERE c.relkind IN ('r', 'x', 'v', 'i', 'S')\n",
-					  _("external"), _("table"), _("view"), _("index"), _("sequence"));
+					  "  WHERE c.relkind IN ('r', 'v', 'i', 'S')\n",
+					  _("table"), _("view"), _("index"), _("sequence"));
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
 						  "pg_catalog.pg_table_is_visible(c.oid)");
@@ -784,7 +784,7 @@ describeOneTableDetails(const char *schemaname,
 	tableinfo.hasoids = strcmp(PQgetvalue(res, 0, 5), "t") == 0;
 	tableinfo.tablespace = (pset.sversion >= 80000) ?
 		atooid(PQgetvalue(res, 0, 7)) : 0;
-	tableinfo.relstorage = (pset.sversion > 80206) ? 
+	tableinfo.relstorage = (pset.sversion > 80206) ?
 		*(PQgetvalue(res, 0, 6)) : 'h';
 	PQclear(res);
 
@@ -792,8 +792,8 @@ describeOneTableDetails(const char *schemaname,
 	headers[1] = _("Type");
 	cols = 2;
 
-	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v' || 
-		tableinfo.relkind == 'x')
+	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v' ||
+		tableinfo.relstorage == 'x')
 	{
 		show_modifiers = true;
 		cols++;
@@ -911,13 +911,12 @@ describeOneTableDetails(const char *schemaname,
 			else if(tableinfo.relstorage == 'c')
 				printfPQExpBuffer(&title, _("Append-Only Columnar Table \"%s.%s\""),
 								  schemaname, relationname);
+			else if(tableinfo.relstorage == 'x')
+				printfPQExpBuffer(&title, _("External table \"%s.%s\""),
+								  schemaname, relationname);
 			else
 				printfPQExpBuffer(&title, _("Table \"%s.%s\""),
-								  schemaname, relationname);				
-			break;
-		case 'x':
-			printfPQExpBuffer(&title,_("External table \"%s.%s\""),
-							  schemaname, relationname);
+								  schemaname, relationname);
 			break;
 		case 'v':
 			printfPQExpBuffer(&title, _("View \"%s.%s\""),
@@ -1014,7 +1013,7 @@ describeOneTableDetails(const char *schemaname,
 
 		PQclear(result);
 	}
-	else if (tableinfo.relkind == 'x')
+	else if (tableinfo.relstorage == 'x')
 	{
 		/* Footer information about an external table */
 		PGresult   *result;
@@ -1028,7 +1027,7 @@ describeOneTableDetails(const char *schemaname,
 								  "pg_catalog.pg_encoding_to_char(x.encoding) "
 						  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
 						  "WHERE x.reloid = c.oid AND c.oid = '%s'\n", oid);
-						  
+
 		result = PSQLexec(buf.data, false);
 		if (!result)
 			goto error_return;
@@ -1050,19 +1049,19 @@ describeOneTableDetails(const char *schemaname,
 			int			count_footers = 0;
 
 			footers = pg_malloc_zero(8 * sizeof(*footers));
-			
+
 			/* encoding */
 			printfPQExpBuffer(&tmpbuf, _("Encoding: %s"), extencoding);
 			footers[count_footers++] = pg_strdup(tmpbuf.data);
-			
+
 			/* format type */
 			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), fmttype[0] == 't' ? "text" : "csv");
 			footers[count_footers++] = pg_strdup(tmpbuf.data);
-			
+
 			/* format options */
 			printfPQExpBuffer(&tmpbuf, _("Format options: %s"), fmtopts);
 			footers[count_footers++] = pg_strdup(tmpbuf.data);
-			
+
 			if(command && strlen(command) > 0)
 			{
 				/* EXECUTE type table - show command and command location */
@@ -1072,7 +1071,7 @@ describeOneTableDetails(const char *schemaname,
 
 				location[strlen(location) - 1] = '\0'; /* don't print the '}' character */
 				location++; /* don't print the '{' character */
-				
+
 				if(strncmp(location, "HOST:", strlen("HOST:")) == 0)
 					printfPQExpBuffer(&tmpbuf, _("Execute on: host '%s'"), location + strlen("HOST:"));
 				else if(strncmp(location, "PER_HOST", strlen("PER_HOST")) == 0)
@@ -1087,19 +1086,19 @@ describeOneTableDetails(const char *schemaname,
 					printfPQExpBuffer(&tmpbuf, _("Execute on: all segments"));
 				else
 					printfPQExpBuffer(&tmpbuf, _("Execute on: ERROR: invalid catalog entry (describe.c)"));
-				
-				footers[count_footers++] = pg_strdup(tmpbuf.data);				
+
+				footers[count_footers++] = pg_strdup(tmpbuf.data);
 			}
 			else
 			{
 				/* LOCATION type table - show external location */
-				
+
 				location[strlen(location) - 1] = '\0'; /* don't print the '}' character */
 				location++; /* don't print the '{' character */
 				printfPQExpBuffer(&tmpbuf, _("External location: %s"), location);
-				footers[count_footers++] = pg_strdup(tmpbuf.data);				
+				footers[count_footers++] = pg_strdup(tmpbuf.data);
 			}
-			
+
 			/* Single row error handling */
 			if(rejlim && strlen(rejlim) > 0)
 			{
@@ -1108,22 +1107,22 @@ describeOneTableDetails(const char *schemaname,
 								  rejlim,
 								  (rejlimtype[0] == 'p' ? "percent" : "rows"));
 				footers[count_footers++] = pg_strdup(tmpbuf.data);
-			
+
 				if(errtblname && strlen(errtblname) > 0)
 				{
 					printfPQExpBuffer(&tmpbuf, _("Error table: %s"), errtblname);
-					footers[count_footers++] = pg_strdup(tmpbuf.data);					
+					footers[count_footers++] = pg_strdup(tmpbuf.data);
 				}
 			}
-				
-			
+
+
 			add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
 								  footers, &count_footers, tmpbuf, true);
 			footers[count_footers] = NULL;
 		}
 
 		PQclear(result);
-	
+
 	}
 	else if (view_def)
 	{
@@ -1197,7 +1196,7 @@ describeOneTableDetails(const char *schemaname,
 					aoinfo_count = 0;
 		int			count_footers = 0;
 
-		
+
 		/* count indexes */
 		if (tableinfo.hasindex)
 		{
@@ -1316,17 +1315,17 @@ describeOneTableDetails(const char *schemaname,
 		}
 		else
 			inherits_count = PQntuples(result6);
-		
+
 		/* count and get Append Only footers */
 		if (tableinfo.relstorage == 'a' || tableinfo.relstorage == 'c')
 		{
 			aoinfo_count = 4; /* always have 4 footers: blocksize, compresstype, compresslevel and checksum */
-			
+
 			printfPQExpBuffer(&buf,
 							  "SELECT a.compresstype, a.compresslevel, a.blocksize, a.checksum\n"
 							  "FROM pg_catalog.pg_appendonly a, pg_catalog.pg_class c\n"
 							  "WHERE c.oid = a.relid AND c.oid = '%s'", oid);
-			
+
 			result9 = PSQLexec(buf.data, false);
 			if (!result9)
 			{
@@ -1339,7 +1338,7 @@ describeOneTableDetails(const char *schemaname,
 				goto error_return;
 			}
 		}
-		
+
 		footers = pg_malloc_zero((index_count + check_count + rule_count + trigger_count + foreignkey_count + inherits_count + aoinfo_count + 7 + 1)
 								 * sizeof(*footers));
 
@@ -1351,15 +1350,15 @@ describeOneTableDetails(const char *schemaname,
 			else
 				printfPQExpBuffer(&buf, _("Compression Type: %s"), PQgetvalue(result9, 0, 0));
 
-			footers[count_footers++] = pg_strdup(buf.data);			
+			footers[count_footers++] = pg_strdup(buf.data);
 			printfPQExpBuffer(&buf, _("Compression Level: %s"), PQgetvalue(result9, 0, 1));
 			footers[count_footers++] = pg_strdup(buf.data);
 			printfPQExpBuffer(&buf, _("Block Size: %s"), PQgetvalue(result9, 0, 2));
-			footers[count_footers++] = pg_strdup(buf.data);			
+			footers[count_footers++] = pg_strdup(buf.data);
 			printfPQExpBuffer(&buf, _("Checksum: %s"), PQgetvalue(result9, 0, 3));
-			footers[count_footers++] = pg_strdup(buf.data);			
+			footers[count_footers++] = pg_strdup(buf.data);
 		}
-		
+
 		/* print indexes */
 		if (index_count > 0)
 		{
@@ -1510,7 +1509,7 @@ describeOneTableDetails(const char *schemaname,
 							  (tableinfo.hasoids ? _("yes") : _("no")));
 			footers[count_footers++] = pg_strdup(buf.data);
 		}
-		
+
 		{
 			/* mpp addition start: dump distributed by clause */
 			printfPQExpBuffer(&buf,
@@ -1518,11 +1517,11 @@ describeOneTableDetails(const char *schemaname,
 							  "FROM pg_catalog.gp_distribution_policy t\n"
 							  "WHERE localoid = '%s' ",
 							  oid);
-			
+
 			result7 = PSQLexec(buf.data, false);
 			if (!result7)
 			{
-				/* Error:  Well, so what?  Best to continue */	 
+				/* Error:  Well, so what?  Best to continue */
 			}
 			else
 			{
@@ -1532,14 +1531,14 @@ describeOneTableDetails(const char *schemaname,
 					char *col;
 					char *dist_columns = PQgetvalue(result7, 0, 0);
 					char *dist_colname;
-					if(dist_columns && strlen(dist_columns) > 0)  
+					if(dist_columns && strlen(dist_columns) > 0)
 					{
 						PQExpBufferData tempbuf;
 
 						initPQExpBuffer(&tempbuf);
 						dist_columns[strlen(dist_columns)-1] = '\0'; /* remove '}' */
 						dist_columns++;  /* skip '{' */
-				 
+
 						/* Get the attname for the first distribution column.*/
 						printfPQExpBuffer(&tempbuf,
 							"SELECT attname FROM pg_attribute \n"
@@ -1553,12 +1552,12 @@ describeOneTableDetails(const char *schemaname,
 						dist_colname = PQgetvalue(result8, 0, 0);
 						if (!dist_colname)
 							goto error_return;
-						printfPQExpBuffer(&buf, "Distributed by: (%s", 
+						printfPQExpBuffer(&buf, "Distributed by: (%s",
 										  dist_colname);
 						PQclear(result8);
 						dist_colname = NULL;
 						col = strchr(dist_columns,',');
-						
+
 						while(col!=NULL)
 						{
 							col++;
@@ -1586,13 +1585,13 @@ describeOneTableDetails(const char *schemaname,
 					{
 						printfPQExpBuffer(&buf, "Distributed randomly");
 					}
-					
+
 					footers[count_footers++] = pg_strdup(buf.data);
 				}
-				
+
 			}
 		}
-		
+
 
 		add_tablespace_footer(tableinfo.relkind, tableinfo.tablespace,
 							  footers, &count_footers, buf, true);
@@ -1607,7 +1606,7 @@ describeOneTableDetails(const char *schemaname,
 		PQclear(result6);
 		PQclear(result7);
 		PQclear(result9);
-		
+
 	}
 
 	printTable(title.data, headers,
@@ -1778,7 +1777,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 
 	if (!(showTables || showIndexes || showViews || showSeq || showExternal))
 		showTables = showViews = showSeq = showExternal = true;
-		
+
 	if (strchr(tabtypes, 'P') != NULL)
 	{
 		showTables = true;
@@ -1794,18 +1793,18 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	printfPQExpBuffer(&buf,
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
-					  "  CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
-	
+					  "  CASE c.relkind WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
+
 					  "  r.rolname as \"%s\"\n",
 					  _("Schema"), _("Name"),
-				  	  _("external table"), _("table"), _("view"), _("index"), 
+				  	  _("table"), _("view"), _("index"),
 				  	  _("sequence"), _("special"), _("Type"), _("Owner"));
 
 	if (pset.sversion > 80206)
 		appendPQExpBuffer(&buf,
-				  ", CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'a' "
+				  ", CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'x' THEN '%s' WHEN 'a' "
 				  "THEN '%s' WHEN 'v' THEN '%s' WHEN 'c' THEN '%s' END as \"%s\"\n",
-				  _("heap"), _("append only"), _("none"), _("append only columnar"), _("Storage"));
+				  _("heap"), _("external"), _("append only"), _("none"), _("append only columnar"), _("Storage"));
 
 	if (showIndexes)
 		appendPQExpBuffer(&buf,
@@ -1827,7 +1826,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 		   "\n     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid");
 
 	appendPQExpBuffer(&buf, "\nWHERE c.relkind IN (");
-	if (showTables)
+	if (showTables || showExternal)
 		appendPQExpBuffer(&buf, "'r',");
 	if (showViews)
 		appendPQExpBuffer(&buf, "'v',");
@@ -1835,10 +1834,18 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 		appendPQExpBuffer(&buf, "'i',");
 	if (showSeq)
 		appendPQExpBuffer(&buf, "'S',");
-	if (showExternal)
-		appendPQExpBuffer(&buf, "'x',");
 	if (showSystem && showTables)
 		appendPQExpBuffer(&buf, "'s',");
+	appendPQExpBuffer(&buf, "''");		/* dummy */
+	appendPQExpBuffer(&buf, ")\n");
+
+	appendPQExpBuffer(&buf, "AND c.relstorage IN (");
+	if (showTables || showIndexes || showSeq || (showSystem && showTables))
+		appendPQExpBuffer(&buf, "'h', 'a', 'c',");
+	if (showExternal)
+		appendPQExpBuffer(&buf, "'x',");
+	if (showViews)
+		appendPQExpBuffer(&buf, "'v',");
 	appendPQExpBuffer(&buf, "''");		/* dummy */
 	appendPQExpBuffer(&buf, ")\n");
 
@@ -1854,7 +1861,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 
 	if (!showChildren)
 		appendPQExpBuffer(&buf, "      AND c.oid NOT IN (select inhrelid from pg_catalog.pg_inherits)\n");
-		
+
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
 						  "pg_catalog.pg_table_is_visible(c.oid)");

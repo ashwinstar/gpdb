@@ -1423,7 +1423,7 @@ typedef enum PartitionByVerbosity		/* control Partition messaging */
 {
 	PART_VERBO_NORMAL, 		/* normal (all messages) */
 	PART_VERBO_NODISTRO, 	/* NO DISTRIBution policy messages */
-	PART_VERBO_NOPARTNAME   /* NO distro or partition name messages 
+	PART_VERBO_NOPARTNAME   /* NO distro or partition name messages
 							   (for SET SUBPARTITION TEMPLATE) */
 } PartitionByVerbosity;
 

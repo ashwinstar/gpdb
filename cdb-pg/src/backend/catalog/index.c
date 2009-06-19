@@ -496,7 +496,7 @@ index_create(Oid heapRelationId,
 	 */
 	heap_lockmode = (concurrent ? ShareUpdateExclusiveLock : ShareLock);
 	heapRelation = heap_open(heapRelationId, heap_lockmode);
-						
+
 
 	/*
 	 * The index will be in the same namespace as its parent table, and is
@@ -533,11 +533,11 @@ index_create(Oid heapRelationId,
 	 * there's no way to make the entry in other databases' pg_class).
 	 */
 	if (shared_relation &&  !IsBootstrapProcessingMode())
-		/* 
+		/*
 		 * Special test for allowing upgrade from Greenplum Database 2.2 to 2.3.
 		 */
-		if (indexRelationId != ResQueueOidIndexId && 
-			indexRelationId != ResQueueRsqnameIndexId && 
+		if (indexRelationId != ResQueueOidIndexId &&
+			indexRelationId != ResQueueRsqnameIndexId &&
 			indexRelationId != AuthIdRolResQueueIndexId)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -582,6 +582,7 @@ index_create(Oid heapRelationId,
 								indexRelationId,
 								indexTupDesc,
 								RELKIND_INDEX,
+								RELSTORAGE_HEAP,
 								shared_relation,
 								allow_system_table_mods);
 
@@ -795,20 +796,20 @@ index_create(Oid heapRelationId,
 		Assert(indexRelation->rd_indexcxt != NULL);
 
 	/*
-	 * If we are playing tricks to upgrade Greenplum Database 2.2 to 2.3, we might be doing a CREATE INDEX 
+	 * If we are playing tricks to upgrade Greenplum Database 2.2 to 2.3, we might be doing a CREATE INDEX
 	 * on a shared index that already exists.  If so, we don't need or want to recreate it.
-	 * 
+	 *
 	 * Does the index data already exist?
-	
-	 if (indexRelationId == ResQueueOidIndexId || 
-			indexRelationId == ResQueueRsqnameIndexId || 
+
+	 if (indexRelationId == ResQueueOidIndexId ||
+			indexRelationId == ResQueueRsqnameIndexId ||
 			indexRelationId == AuthIdRolResQueueIndexId)
 	 {
 	 	if (RelationGetNumberOfBlocks(indexRelation) > 0)
 	 		skip_build = true;
 	 }
 	 */
-	 
+
 	/*
 	 * If this is bootstrap (initdb) time, then we don't actually fill in the
 	 * index yet.  We'll be creating more indexes and classes later, so we
@@ -1127,7 +1128,7 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
 		if (rel->rd_id > 15000)
 			cdbanalyze_get_relstats(rel, &relpages, &reltuples);
-	
+
 	/*
 	 * We always update the pg_class row using a non-transactional,
 	 * overwrite-in-place update.  There are several reasons for this:
@@ -1230,7 +1231,7 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 			rd_rel->relaosegidxid = relaosegidxid;
 			dirty = true;
 		}
-	}	
+	}
 	if (rd_rel->reltuples != (float4) reltuples)
 	{
 		rd_rel->reltuples = (float4) reltuples;
@@ -1276,7 +1277,7 @@ setNewRelfilenode(Relation relation)
 	HeapTuple	tuple;
 	Form_pg_class rd_rel;
 	Oid			oldrelfilenode;
-	
+
 	/* Can't change relfilenode for nailed tables (indexes ok though) */
 	Assert(!relation->rd_isnailed ||
 		   relation->rd_rel->relkind == RELKIND_INDEX);
@@ -1334,10 +1335,10 @@ setNewRelfilenode(Relation relation)
 	heap_freetuple(tuple);
 
 	heap_close(pg_class, RowExclusiveLock);
-	
+
 	/* Make sure the relfilenode change is visible */
 	CommandCounterIncrement();
-	
+
 	return newrelfilenode;
 }
 
@@ -1364,7 +1365,7 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 		   relation->rd_rel->relkind == RELKIND_INDEX);
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
-	
+
 	elog(DEBUG3, "setNewRelfilenodeToOid called.  newrelfilenode = %d",
 		 newrelfilenode);
 
@@ -1410,10 +1411,10 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	heap_freetuple(tuple);
 
 	heap_close(pg_class, RowExclusiveLock);
-		   
+
 	/* Make sure the relfilenode change is visible */
 	CommandCounterIncrement();
-	
+
 	return newrelfilenode;
 }
 
@@ -1989,10 +1990,10 @@ validate_index_heapscan(Relation heapRelation,
 				pfree(indexcursor);
 
 			if(gp_enable_mk_sort)
-				tuplesort_empty = !tuplesort_getdatum_mk((Tuplesortstate_mk *) state->tuplesort, 
+				tuplesort_empty = !tuplesort_getdatum_mk((Tuplesortstate_mk *) state->tuplesort,
 						true, &ts_val, &ts_isnull);
 			else
-				tuplesort_empty = !tuplesort_getdatum((Tuplesortstate *) state->tuplesort, 
+				tuplesort_empty = !tuplesort_getdatum((Tuplesortstate *) state->tuplesort,
 						true, &ts_val, &ts_isnull);
 
 			Assert(tuplesort_empty || !ts_isnull);
@@ -2191,7 +2192,7 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 			/* Truncate the actual file (and discard buffers) */
 			RelationTruncate(iRel, 0);
 			retrelfilenode = iRel->rd_rel->relfilenode;
-			Assert(newrelfilenode == newrelfilenode || 
+			Assert(newrelfilenode == newrelfilenode ||
 				   !OidIsValid(newrelfilenode));
 		}
 		else
@@ -2313,7 +2314,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 
 	toast_relid = rel->rd_rel->reltoastrelid;
 	aoseg_relid = rel->rd_rel->relaosegrelid;
-	
+
 	/*
 	 * Get the list of index OIDs for this relation.  (We trust to the
 	 * relcache to get this with a sequential scan if ignoring system
@@ -2361,13 +2362,13 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 			*oidmap)
 		{
 			ListCell *c;
-			
+
 			/* Yes, this is O(N^2) but N is small */
 			foreach(c, *oidmap)
 			{
 				List *map = lfirst(c);
 				Oid ind = linitial_oid(map);
-				
+
 				if (ind == indexOid)
 				{
 					mapoid = lsecond_oid(map);
@@ -2375,13 +2376,13 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 					if (list_length(map) > 2)
 					{
 						Assert(list_length(map) == 4);
-						
+
 						extra_oids = lappend_oid(extra_oids, lthird_oid(map));
 						extra_oids = lappend_oid(extra_oids, lfourth_oid(map));
 					}
-					
+
 					break;
-				}	
+				}
 			}
 			Assert(OidIsValid(mapoid));
 		}
@@ -2405,7 +2406,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 				map = lappend_oid(map, linitial_oid(extra_oids));
 				map = lappend_oid(map, lsecond_oid(extra_oids));
 			}
-			
+
 			*oidmap = lappend(*oidmap, map);
 		}
 
@@ -2436,10 +2437,10 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
 	{
-		Assert(relstorage_is_ao(rel->rd_rel->relstorage)); 
+		Assert(relstorage_is_ao(rel->rd_rel->relstorage));
 		result |= reindex_relation(aoseg_relid, false, false, oidmap, build_map);
 	}
-		
-	
+
+
 	return result;
 }

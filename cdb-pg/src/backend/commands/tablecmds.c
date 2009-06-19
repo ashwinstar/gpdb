@@ -106,7 +106,7 @@ typedef enum
 	PART_STATUS_INTERIOR,	/* a non-leaf part of a partitioned table */
 	PART_STATUS_LEAF	/* a leaf part of a partitioned table */
 } PartStatus;
-		
+
 
 /*
  * ON COMMIT action list
@@ -334,7 +334,7 @@ static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
 static void ATExecAddInherit(Relation rel, Node *node);
 static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
-static void ATExecSetDistributedBy(Relation rel, Node *node, 
+static void ATExecSetDistributedBy(Relation rel, Node *node,
 								   AlterTableCmd *cmd);
 static PartStatus rel_part_status(Oid relid);
 static bool can_implement_dist_on_part(Relation rel, List *dist_cnames);
@@ -394,7 +394,7 @@ static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols);
-static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
+static Oid DefineRelation_int(CreateStmt *stmt, char relkind, char relstorage,
 							  struct CdbDispatchResults **pPrimaryResults,
 							  struct CdbDispatchResults **pMirrorResults,
 							  struct CdbDispatchCmdThreads **pDispatchThreads);
@@ -406,8 +406,8 @@ static List *get_part_constraints(List *part, Relation pgcon, Relation rel);
 
 static Oid  rel_partition_get_master(Oid relid);
 static List *rel_get_part_path(Oid relid);
-static char *rel_get_part_path_pretty(Oid relid, 
-									  char *separator, 
+static char *rel_get_part_path_pretty(Oid relid,
+									  char *separator,
 									  char *lastsep);
 
 static List *
@@ -431,7 +431,7 @@ static void ATPartitionCheck(Relation rel, AlterTableType typ);
  * ----------------------------------------------------------------
  */
 Oid
-DefineRelation(CreateStmt *stmt, char relkind)
+DefineRelation(CreateStmt *stmt, char relkind, char relstorage)
 {
     struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
@@ -442,7 +442,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
     PG_TRY();
     {
-        reloid = DefineRelation_int(stmt, relkind, &primaryResults, &mirrorResults, &dispatchThreads);
+        reloid = DefineRelation_int(stmt, relkind, relstorage, &primaryResults, &mirrorResults, &dispatchThreads);
     }
 	PG_CATCH();
 	{
@@ -469,6 +469,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 Oid
 DefineRelation_int(CreateStmt *stmt,
                    char relkind,
+                   char relstorage,
                    struct CdbDispatchResults **pPrimaryResults,
                    struct CdbDispatchResults **pMirrorResults,
 				   struct CdbDispatchCmdThreads **pDispatchThreads)
@@ -714,6 +715,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  GetUserId(),
 										  descriptor,
 										  relkind,
+										  relstorage,
 										  shared_relation,
 										  localHasOids,
 										  parentOidCount,
@@ -915,7 +917,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * QEs.
 	 */
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
-		reloid = DefineRelation(createStmt, RELKIND_EXTERNAL);
+		reloid = DefineRelation(createStmt, RELKIND_RELATION, RELSTORAGE_EXTERNAL);
 
 	/*
 	 * Now we take care of pg_exttable and dependency with error table (if any).
@@ -1081,8 +1083,8 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior,
 	if (stmt && rel_is_child_partition(relOid) && !stmt->bAllowPartn)
 	{
 		Oid		 master = rel_partition_get_master(relOid);
-		char	*pretty	= rel_get_part_path_pretty(relOid, 
-												   " ALTER PARTITION ", 
+		char	*pretty	= rel_get_part_path_pretty(relOid,
+												   " ALTER PARTITION ",
 												   " DROP PARTITION ");
 
 		ereport(ERROR,
@@ -1498,18 +1500,17 @@ truncate_check_rel(Relation rel)
 {
 	/* Only allow truncate on regular or append-only tables */
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
-	{
-		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("\"%s\" is an external relation and can't be truncated",
-							RelationGetRelationName(rel))));
-		else
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is not a table",
 							RelationGetRelationName(rel))));
-	}
+
+	if (rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an external relation and can't be truncated",
+						RelationGetRelationName(rel))));
+
 
 	/* Permissions checks */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
@@ -2527,8 +2528,8 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	if (stmt && rel_is_child_partition(myrelid) && !stmt->bAllowPartn)
 	{
 		Oid		 master = rel_partition_get_master(myrelid);
-		char	*pretty	= rel_get_part_path_pretty(myrelid, 
-												   " ALTER PARTITION ", 
+		char	*pretty	= rel_get_part_path_pretty(myrelid,
+												   " ALTER PARTITION ",
 												   " RENAME PARTITION ");
 
 		ereport(ERROR,
@@ -3155,7 +3156,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_AddColumn:		/* ADD COLUMN */
 			ATSimplePermissions(rel, false);
 
-			/* 
+			/*
 			 * test that this is allowed for partitioning, but only if we aren't
 			 * recursing.
 			 */
@@ -3320,7 +3321,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			{
 				Oid relid = RelationGetRelid(rel);
 				PartStatus ps = rel_part_status(relid);
-				
+
 				if ( recurse ) /* Normal ALTER TABLE */
 				{
 					switch (ps)
@@ -3329,8 +3330,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						case PART_STATUS_ROOT:
 						case PART_STATUS_LEAF:
 							break;
-							
-						case PART_STATUS_INTERIOR: 
+
+						case PART_STATUS_INTERIOR:
 							/*Reject interior branches of partitioned tables.*/
 							ereport(ERROR,
 									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -3338,7 +3339,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 											" policy of \"%s\"",
 											RelationGetRelationName(rel)),
 									 errhint("Distribution policy may be set"
-											 " for an entire partitioned table" 
+											 " for an entire partitioned table"
 											 " or one of its leaf parts;"
 											 " not for an interior branch."
 											 )));
@@ -3352,7 +3353,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						case PART_STATUS_NONE:
 						case PART_STATUS_LEAF:
 							break;
-							
+
 						case PART_STATUS_ROOT:
 						case PART_STATUS_INTERIOR:
 							ereport(ERROR,
@@ -3361,28 +3362,28 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 											"of ONLY \"%s\"",
 											RelationGetRelationName(rel)),
 									 errhint("Distribution policy may be set "
-											 "for an entire partitioned table" 
+											 "for an entire partitioned table"
 											 " or one of its leaf parts."
 											 )));
 							break; /* tidy */
 					}
 				}
-				
+
 				if ( ps == PART_STATUS_LEAF )
 				{
 					Oid ptrelid = rel_partition_get_master(relid);
 					List *dist_cnames = lsecond((List*)cmd->def);
-					
-					/*	might be null if no policy set, e.g. just 
-					 *  a change of storage options... 
+
+					/*	might be null if no policy set, e.g. just
+					 *  a change of storage options...
 					 */
 					if (dist_cnames)
 					{
-						Relation ptrel = heap_open(ptrelid, 
+						Relation ptrel = heap_open(ptrelid,
 												   AccessShareLock);
-						Assert(IsA(dist_cnames, List)); 
-						
-						if (! can_implement_dist_on_part(ptrel, 
+						Assert(IsA(dist_cnames, List));
+
+						if (! can_implement_dist_on_part(ptrel,
 														 dist_cnames) )
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -3609,7 +3610,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				{
 					AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
 
-					prule3 = get_part_rule(rel, 
+					prule3 = get_part_rule(rel,
 										   (AlterPartitionId *)pc2->partid,
 										   true, true,
 										   CurrentMemoryContext, NULL, false);
@@ -3622,7 +3623,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						ereport(ERROR,
 							(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 								 errmsg("cannot merge HASH partition%s "
-									    "of relation \"%s\"", 
+									    "of relation \"%s\"",
 										prule1->partIdStr,
 										RelationGetRelationName(rel))));
 				}
@@ -3783,9 +3784,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						l1 = ri->partRangeVal;
 					}
 
-					if (IsA(linitial(l1), A_Const) || 
+					if (IsA(linitial(l1), A_Const) ||
 						IsA(linitial(l1), TypeCast) ||
-						IsA(linitial(l1), FuncExpr) || 
+						IsA(linitial(l1), FuncExpr) ||
 						IsA(linitial(l1), OpExpr))
 					{
 						List *new = NIL;
@@ -3826,11 +3827,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						foreach(lc2, vals)
 						{
 							Node *n = lfirst(lc2);
-							AttrNumber attnum = 
+							AttrNumber attnum =
 									prule1->pNode->part->paratts[i];
-							Oid typid = 
+							Oid typid =
 									rel->rd_att->attrs[attnum - 1]->atttypid;
-							int32 typmod = 
+							int32 typmod =
 									rel->rd_att->attrs[attnum - 1]->atttypmod;
 							char parkind = prule1->pNode->part->parkind;
 							PartitionByType t = (parkind == 'r') ?
@@ -3989,7 +3990,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						Const *end = NULL;
 						Const *atval = NULL;
 						Oid opclass = prule1->pNode->part->parclass[0];
-						Oid funcid = get_opclass_proc(opclass, 0, 
+						Oid funcid = get_opclass_proc(opclass, 0,
 													  BTORDER_PROC);
 						Node *n;
 						Datum res;
@@ -4025,7 +4026,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							if (prule1->topRule->parrangeend)
 							{
 								end = linitial((List *)prule1->topRule->parrangeend);
-								res = OidFunctionCall2(funcid, 
+								res = OidFunctionCall2(funcid,
 													   atval->constvalue,
 											   		   end->constvalue);
 
@@ -4059,7 +4060,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				{
 					cmd2 = (AlterPartitionCmd *)pc->arg2;
 
-					prule2 = get_part_rule(rel, 
+					prule2 = get_part_rule(rel,
 										   (AlterPartitionId *)cmd2->partid,
 										   false, false, CurrentMemoryContext,
 										   NULL, false);
@@ -4235,15 +4236,15 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 		Oid tiOid = InvalidOid;
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 		Oid	*toastComptypeOid = NULL;
-		bool is_part = !rel_needs_long_lock(tab->relid); 
+		bool is_part = !rel_needs_long_lock(tab->relid);
 
 		if (tab->relkind == RELKIND_RELATION &&
 			(tab->subcmds[AT_PASS_ADD_COL] ||
 			 tab->subcmds[AT_PASS_ALTER_TYPE] ||
 			 tab->subcmds[AT_PASS_COL_ATTRS]))
 		{
-			/* 
-			 * For 3.3 upgrade, don't create a toast table for 
+			/*
+			 * For 3.3 upgrade, don't create a toast table for
 			 * pg_appendonly.
 			 */
 			if (!IsUnderPostmaster && tab->relid == AppendOnlyRelationId)
@@ -5040,7 +5041,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 
 
 			aocs_getnext(sdesc, ForwardScanDirection, oldslot);
-            
+
 			while(!TupIsNull(oldslot))
 			{
 				oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
@@ -5062,8 +5063,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 					foreach(l, tab->newvals)
 					{
 						NewColumnValue *ex = lfirst(l);
-                                                
-						slotvalues[ex->attnum-1] = 
+
+						slotvalues[ex->attnum-1] =
 								ExecEvalExpr(ex->exprstate,
 											 econtext,
 											 &slotnulls[ex->attnum-1],
@@ -5080,7 +5081,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 					{
 						case CONSTR_CHECK:
 							if(!ExecQual(con->qualstate, econtext, true))
-									ereport(ERROR, 
+									ereport(ERROR,
 											(errcode(ERRCODE_CHECK_VIOLATION),
 											 errmsg("check constraint \"%s\" is violated",
 													con->name
@@ -5112,7 +5113,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 
 			if(newrel)
 				aocs_insert_finish(idesc);
-			
+
 			pfree(proj);
 		}
 		else if(relstorage_is_ao(relstorage) && Gp_role == GP_ROLE_DISPATCH)
@@ -5220,7 +5221,7 @@ ATSimplePermissions(Relation rel, bool allowView)
 {
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
 	{
-		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
+		if (rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -5239,7 +5240,7 @@ ATSimplePermissions(Relation rel, bool allowView)
 		else if (!IsUnderPostmaster &&
 				 rel->rd_rel->relkind == RELKIND_AOSEGMENTS)
 		{
-			/* 
+			/*
 			 * Allow ALTER TABLE operations in standard alone mode on
 			 * AO segment tables.
 			 */
@@ -5617,7 +5618,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * 20,000 columns for AO, for example.
 	 */
 	if (!(!IsUnderPostmaster && rel->rd_rel->relkind == RELKIND_AOSEGMENTS))
-	{	
+	{
 		if (SearchSysCacheExists(ATTNAME,
 								 ObjectIdGetDatum(myrelid),
 								 PointerGetDatum(colDef->colname),
@@ -6274,7 +6275,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 			{
 				/*
 				 * If the child column has other definition sources,
-				 * just decrement its inheritance count; 
+				 * just decrement its inheritance count;
 				 * if not or if this is part of a partition
 				 * configuration, recurse to delete it.
 				 */
@@ -7383,7 +7384,7 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 		ATSimpleRecursion(wqueue, rel, childCmd, recurse);
 	}
 
-	/* 
+	/*
 	 * If this is a partition child, make sure the user isn't dropping the
 	 * partitioning rule.
 	 */
@@ -7409,7 +7410,7 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 						 errmsg("cannot remove constraint \"%s\" on \"%s\" "
 							"as it is part of a partitioning configuration",
 								cmd->name, RelationGetRelationName(rel))));
-		
+
 			}
 		}
 		heap_close(conrel, AccessShareLock);
@@ -8199,7 +8200,6 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 	{
 		case RELKIND_RELATION:
 		case RELKIND_VIEW:
-		case RELKIND_EXTERNAL:
 			/* ok to change owner */
 			break;
 		case RELKIND_INDEX:
@@ -8560,7 +8560,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 		|| (rel->rd_rel->relkind == RELKIND_TOASTVALUE)) */
 			)
 	{
-		ListCell   *cell;	
+		ListCell   *cell;
 
 		foreach(cell, defList)
 		{
@@ -8593,7 +8593,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 			if(relstorage_is_ao(rel->rd_rel->relstorage))
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("altering reloptions for append only tables" 
+						 errmsg("altering reloptions for append only tables"
 								" is not permitted")));
 
 			(void) heap_reloptions(rel->rd_rel->relkind, newOptions, true);
@@ -8708,7 +8708,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", tableOid);
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
-	
+
 	/*
 	 * Relfilenodes are not unique across tablespaces, so we need to allocate
 	 * a new one in the new tablespace.
@@ -9029,7 +9029,7 @@ ATExecAddInherit(Relation child_rel, Node *node)
 
 			/* MPP-5397: ignore dropped cols */
 			if (!attribute->attisdropped)
-				inhAttrNameList = 
+				inhAttrNameList =
 						lappend(inhAttrNameList,
 								makeString(attributeName));
 		}
@@ -9479,7 +9479,7 @@ ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 static StdRdOptions *
 relopts_for_ctas(Relation rel)
 {
-	/* 
+	/*
 	 * AO table so go get the options out of pg_appendonly. The
 	 * class reloptions isn't to be trusted.
 	 */
@@ -9562,7 +9562,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	DestReceiver *dest;
 	QueryDesc *queryDesc;
 	List *wo = NIL;
-	StdRdOptions *opts = newopts ? newopts : 
+	StdRdOptions *opts = newopts ? newopts :
 			(StdRdOptions *)relopts_for_ctas(rel);
 	RangeVar *tmprel = make_temp_table_name(rel, MyBackendId);
 	bool pre_built;
@@ -9654,7 +9654,7 @@ new_rel_opts(Relation rel, List *lwith)
 		ListCell *lc;
 		bool new_opts = false;
 
-		/* 
+		/*
 		 * See if user has specified appendonly = false. If so, we
 		 * have no use for the existing reloptions
 		 */
@@ -9717,7 +9717,7 @@ make_temp_table_name(Relation rel, BackendId id)
  * of an existing type that matches the given internal length, and alignment.
  *
  * If none can be found, return NULL, else return the given TypeName
- * pointer.  
+ * pointer.
  *
  * It may seem as if we should include by-value in the test, but built-in
  * types cover the allowable internal lengths for these and we don't want
@@ -9732,33 +9732,33 @@ pick_name_of_similar_type(TypeName *tname, int2 typlen, char typalign)
 	SysScanDesc scan;
 	ScanKeyData key[2];
 	HeapTuple	tuple;
-	
+
 	catalogRelation = heap_open(TypeRelationId, RowExclusiveLock);
-	
+
 	ScanKeyInit(&key[0],
 				Anum_pg_type_typlen,
 				InvalidStrategy, F_INT2EQ,
 				Int16GetDatum(typlen));
-	
+
 	ScanKeyInit(&key[1],
 				Anum_pg_type_typalign,
 				InvalidStrategy, F_CHAREQ,
 				CharGetDatum(typalign));
-	
+
 	scan = systable_beginscan(catalogRelation, InvalidOid, false,
 							  SnapshotNow, 2, &key[0]);
-	
+
 	tuple = systable_getnext(scan);
 	if (HeapTupleIsValid(tuple))
 	{
 		Form_pg_type typtuple = (Form_pg_type)GETSTRUCT(tuple);
-		tname->names = 
+		tname->names =
 			list_make2(makeString(get_namespace_name(typtuple->typnamespace)),
 					   makeString(pstrdup(NameStr(typtuple->typname))));
 	}
 	else
 		tname = NULL;
-	
+
 	systable_endscan(scan);
 	heap_close(catalogRelation, RowExclusiveLock);
 	return tname;
@@ -9775,13 +9775,13 @@ build_iofunc(char *newname, char *iotype, char *baseio, char *returns)
 	char ioname[NAMEDATALEN];
 	FunctionParameter *param;
 	List *args;
-   
+
 	if (strcmp("in", iotype) == 0)
 	   args = list_make2(makeString("pg_catalog"), makeString("cstring"));
 	else
 		args = list_make1(makeString(newname));
 
-	/* 
+	/*
 	 * CREATE FUNCTION F(cstring) RETURNS shelltype AS 'int4(cstring)' language
 	 * internal;
 	 */
@@ -9849,7 +9849,7 @@ build_hidden_type(Form_pg_attribute att)
 	ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
 	CommandCounterIncrement();
 
-	/* 
+	/*
 	 * Now for the input function.
 	 */
 	iofunc = build_iofunc(newname, "in", "int4in", newname);
@@ -9915,16 +9915,16 @@ build_hidden_type(Form_pg_attribute att)
 	return typname;
 }
 
-/* Allocate and return a pointer to a TypeName node specifying the 
+/* Allocate and return a pointer to a TypeName node specifying the
  * qualified name of an existing type that matches the internal length
  * and alignment of the given pg_attribute tuple.
  *
  * First we try a few hard-coded builtin types. Internal types exist for
- *    select distinct typlen, typalign 
+ *    select distinct typlen, typalign
  *    from pg_type where typlen > 0;
  * on a new catalog.  Names are not unique.
  *
- * MPP-5483: If that fails, we look in pg_type for a match.  If even that 
+ * MPP-5483: If that fails, we look in pg_type for a match.  If even that
  * fails, we issue an error.
  *
  * Specifically for use by prebuilt_temp_table.
@@ -10003,7 +10003,7 @@ make_typname(Form_pg_attribute att, bool *built)
 	{
 		dig_in_catalog = true;
     }
-	
+
 	*built = false; /* assume we found an existing type */
 	if ( dig_in_catalog )
 	{
@@ -10018,7 +10018,7 @@ make_typname(Form_pg_attribute att, bool *built)
 	{
 		tname->names = list_make2(makeString(pstrdup("pg_catalog")), typname);
 	}
-	
+
 	tname->typmod = att->atttypmod;
 	tname->location = -1;
 	return tname;
@@ -10105,7 +10105,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 				ReleaseSysCache(typ);
 				tname->typmod = att->atttypmod;
 
-				/* 
+				/*
 				 * If this is a built in array type, like _int4, then reduce
 				 * the array dimensions by 1. This is an annoying postgres
 				 * hack which I wish would go away.
@@ -10209,7 +10209,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Assert(IsA(node, List));
 
 	/* linitial is WITH definition, lsecond is distro */
-	lprime = (List *)node; 
+	lprime = (List *)node;
 
 	lwith   = (List *)linitial(lprime);
 	ldistro = (List *)lsecond(lprime);
@@ -10237,12 +10237,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			ListCell	*lc;
 			char		*reorg_str = "reorganize";
 			List		*nlist = NIL;
-	
+
 			/* remove the "REORGANIZE=true/false" from the WITH clause */
 			foreach(lc, lwith)
 			{
 				DefElem	*def = lfirst(lc);
-	
+
 				if (pg_strcasecmp(reorg_str, def->defname) != 0)
 				{
 					if (gp_disable_atsdb_set_with)
@@ -10293,7 +10293,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("\"%s\" specified more than once",
 										reorg_str)));
-	
+
 					seen_reorg = true;
 					if (!def->arg)
 						force_reorg = true;
@@ -10331,8 +10331,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 									 "index(es) on the table and "
 									 "try again.")));
 			}
-	
-			/* 
+
+			/*
 			 * If there are other storage options, but REORGANIZE is not
 			 * specified, then the storage must be re-org'd.  But if
 			 * REORGANIZE was specified use that setting.
@@ -10351,7 +10351,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 			newOptions = new_rel_opts(rel, lwith);
 			if (newOptions)
-				newopts = 
+				newopts =
 					(StdRdOptions *) heap_reloptions(rel->rd_rel->relkind,
 													 newOptions, true);
 		}
@@ -10433,11 +10433,11 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				foreach(lc, ldistro)
 				{
 					char *colName = strVal((Value *)lfirst(lc));
-					HeapTuple tuple = 
+					HeapTuple tuple =
 						SearchSysCacheAttName(RelationGetRelid(rel),
 											  colName);
 					AttrNumber	attnum;
-	
+
 					if (list_member(cols, lfirst(lc)))
 							ereport(ERROR,
 									(errcode(ERRCODE_DUPLICATE_OBJECT),
@@ -10450,7 +10450,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 									(errcode(ERRCODE_UNDEFINED_COLUMN),
 									 errmsg("column \"%s\" of "
 											"relation \"%s\" does not exist",
-											colName, 
+											colName,
 											RelationGetRelationName(rel))));
 
 					attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
@@ -10469,7 +10469,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 				Assert(policy->nattrs > 0);
 
-				/* 
+				/*
 				 * See if the the old policy is the same as the new one but
 				 * remember, we still might have to rebuild if there are new
 				 * storage options.
@@ -10517,9 +10517,9 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						/* Tell QEs to do nothing */
 						linitial(lprime) = NULL;
 						lsecond(lprime) = list_make1(NULL);
-	
+
 						return;
-					}	
+					}
 				}
 			}
 		}
@@ -10534,7 +10534,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 				TupleDesc tupdesc = RelationGetDescr(rel);
 				Value *attstr;
 				NameData attname;
-			   
+
 				attname = tupdesc->attrs[attno - 1]->attname;
 				attstr = makeString(pstrdup(NameStr(attname)));
 
@@ -10549,7 +10549,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		}
 
 		/* Step (b) - build CTAS */
-		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv, 
+		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv,
 										 &hidden_types);
 
 		/* Step (c) - run on all nodes */
@@ -10565,7 +10565,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		 *   necessary so that the toast tables/indices have the correct
 		 *   owner after we swap them.
 		 */
-		ATExecChangeOwner(RangeVarGetRelid(tmprv, false), 
+		ATExecChangeOwner(RangeVarGetRelid(tmprv, false),
 						  rel->rd_rel->relowner, true);
 		CommandCounterIncrement(); /* see the effects of the command */
 
@@ -10694,12 +10694,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 		if (is_ao)
 		{
-			/* 
+			/*
 			 * We changed this to make it an AO table. We need to duplicate
 			 * the pg_appendonly tuple for the temp table, replace relid
 			 * with our relid and insert it into the table. There's no
 			 * point just updating the tuple because when we delete it below
-			 * (see the performDeletion call) it's reasonable for the 
+			 * (see the performDeletion call) it's reasonable for the
 			 * dependency code to expect an entry for the temp table in
 			 * pg_appendonly.
 			 */
@@ -10717,7 +10717,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			{
 				Insist(HeapTupleIsValid(tuple));
 				tuple = heaptuple_copy_to(tuple, NULL, NULL);
-				((Form_pg_appendonly)GETSTRUCT(tuple))->relid = 
+				((Form_pg_appendonly)GETSTRUCT(tuple))->relid =
 						RelationGetRelid(rel);
 				simple_heap_insert(class, tuple);
 				CatalogUpdateIndexes(class, tuple);
@@ -10726,7 +10726,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		}
 		heap_close(class, RowExclusiveLock);
 
-		/* 
+		/*
 		 * Increment cmd counter to make updates visible; this is
 		 * needed because the same tuple has to be updated again
 		 */
@@ -11111,7 +11111,7 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
  * true, then only treat the partition spec as a template.
  */
 static void
-add_part_to_catalog(Oid relid, PartitionBy *pby, 
+add_part_to_catalog(Oid relid, PartitionBy *pby,
 					bool bTemplate_Only /* = false */)
 {
 	char pt = parttype_to_char(pby->partType);
@@ -11134,7 +11134,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 	 * Get the partitioned table relid.
 	 */
 	rootrelid = RangeVarGetRelid(pby->parentRel, false);
-	paroid = get_part_oid(rootrelid, pby->partDepth, 
+	paroid = get_part_oid(rootrelid, pby->partDepth,
 						  bTemplate_Only /* = false */);
 
 	/* create a partition for this level, if one doesn't exist */
@@ -12046,7 +12046,7 @@ rel_is_partitioned(Oid relid)
  *   select parrelid
  *   from pg_partition
  *   where oid = (
- *     select paroid 
+ *     select paroid
  *     from pg_partition_rule
  *     where parchildrelid = relid);
  */
@@ -12115,7 +12115,7 @@ static List *rel_get_part_path1(Oid relid)
 	SysScanDesc	 scan;
 	HeapTuple	 tuple;
 	Oid			 paroid		   = InvalidOid;
-	Oid			 parparentrule = InvalidOid; 
+	Oid			 parparentrule = InvalidOid;
 	List		*lrelid		   = NIL;
 
 	/* use the relid of the table to find the first rule */
@@ -12139,7 +12139,7 @@ static List *rel_get_part_path1(Oid relid)
 
 		/* prepend relid of child table to list */
 		lrelid = lcons_oid(rule_desc->parchildrelid, lrelid);
-		
+
 	}
 
 	systable_endscan(scan);
@@ -12167,7 +12167,7 @@ static List *rel_get_part_path1(Oid relid)
 		{
 			Form_pg_partition_rule rule_desc =
 					(Form_pg_partition_rule)GETSTRUCT(tuple);
-			
+
 			paroid = rule_desc->paroid;
 			parparentrule = rule_desc->parparentrule;
 
@@ -12181,7 +12181,7 @@ static List *rel_get_part_path1(Oid relid)
 	}
 
 	return lrelid;
-	
+
 } /* end rel_get_part_path1 */
 
 static List *rel_get_part_path(Oid relid)
@@ -12209,12 +12209,12 @@ static List *rel_get_part_path(Oid relid)
 	part = pNode->part;
 
 	/* get the relids for each table that corresponds to the partition
-	 * heirarchy from the master to the specified partition 
+	 * heirarchy from the master to the specified partition
 	 */
 	lrelid = rel_get_part_path1(relid);
 
 	/* walk the partition tree, finding the partition for each relid,
-	 * and extract useful information (name, rank, value) 
+	 * and extract useful information (name, rank, value)
 	 */
 	foreach(lc, lrelid)
 	{
@@ -12247,7 +12247,7 @@ static List *rel_get_part_path(Oid relid)
 
 		/* default partition must have a name (and no rank) */
 		Assert (prule->parname && strlen(prule->parname));
-		
+
 		pNode = prule->children;
 		rulerank = 0;
 
@@ -12260,7 +12260,7 @@ static List *rel_get_part_path(Oid relid)
 		}
 		else if (part->parkind == 'l') /* list partition by value */
 		{
-			char				*idval	= NULL;				
+			char				*idval	= NULL;
 			ListCell			*lc3;
 			List				*l1		= (List *)prule->parlistvalues;
 			StringInfoData       sid1;
@@ -12268,19 +12268,19 @@ static List *rel_get_part_path(Oid relid)
 			int2				 parcol = 0;
 
 			initStringInfo(&sid1);
-				
+
 /*			foreach(lc3, l1) */
 			/* don't loop -- just need first set of values */
 
 			lc3 = list_head(l1);
 
 			if (lc3)
-			{	
+			{
 				List		*vals = lfirst(lc3);
 				ListCell	*lcv  = list_head(vals);
 
 				/* Note: similar code in
-				 * ruleutils.c:partition_rule_def_worker 
+				 * ruleutils.c:partition_rule_def_worker
 				 */
 
 				for (parcol = 0; parcol < nkeys; parcol++)
@@ -12305,7 +12305,7 @@ static List *rel_get_part_path(Oid relid)
 			lnrv = list_make3(prule->parname, NULL, sid1.data);
 		}
 		else /* range (or hash) - use rank (though rank is not really
-			  * appropriate for hash) 
+			  * appropriate for hash)
 			  */
 		{
 			char *rtxt = palloc(NAMEDATALEN);
@@ -12320,12 +12320,12 @@ static List *rel_get_part_path(Oid relid)
 		lnamerank = lappend(lnamerank, lnrv);
 
 	} /* end foreach lc (walking list of relids) */
-	
+
 	return lnamerank;
 } /* end rel_get_part_path */
 
-static char *rel_get_part_path_pretty(Oid relid, 
-									  char *separator, 
+static char *rel_get_part_path_pretty(Oid relid,
+									  char *separator,
 									  char *lastsep)
 {
 	List				*lnamerank = NIL;
@@ -12376,7 +12376,7 @@ static char *rel_get_part_path_pretty(Oid relid,
 					break;
 
 				case 1:
-					if (str && strlen(str))					
+					if (str && strlen(str))
 					{
 						appendStringInfo(&sid2, "FOR(RANK(%s))", str);
 						goto l_pretty;
@@ -12384,7 +12384,7 @@ static char *rel_get_part_path_pretty(Oid relid,
 					break;
 
 				case 2:
-					if (str && strlen(str))					
+					if (str && strlen(str))
 					{
 						appendStringInfo(&sid2, "FOR(%s)", str);
 						goto l_pretty;
@@ -12395,7 +12395,7 @@ static char *rel_get_part_path_pretty(Oid relid,
 			}
 			lcnt++;
 		}
-			
+
 		l_pretty:
 
 		appendStringInfo(&sid1, "%s", sid2.data);
@@ -12448,7 +12448,7 @@ rel_get_table_oid(Relation rel)
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(toid));
 
-		/* 
+		/*
 		 * We use SnapshotAny because the ordering of the dependency code means
 		 * that some times we've already deleted the pg_depend tuple. So, we do
 		 * an extra test below to see that, if this tuple is deleted, it was
@@ -12490,7 +12490,7 @@ rel_needs_long_lock(Oid relid)
 	Relation rel = relation_open(relid, NoLock);
 
 	relid = rel_get_table_oid(rel);
-	
+
 	relation_close(rel, NoLock);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -12554,10 +12554,10 @@ rel_is_leaf_partition(Oid relid)
 	int maxdepth = 0;
 	int mylevel = 0;
 	Oid partitioned_rel = InvalidOid; /* OID of the root table of the
-									   * partition set 
+									   * partition set
 									   */
 
-	/* 
+	/*
 	 * Find the pg_partition_rule entry to see if this is a child at
 	 * all and, if so, to locate the OID for the pg_partition entry.
 	 */
@@ -12608,7 +12608,7 @@ rel_is_leaf_partition(Oid relid)
 	scan = systable_beginscan(rel, PartitionParrelidIndexId,
 							  true, SnapshotNow, 1, &key);
 
-	/* 
+	/*
 	 * Of course, we could just maxdepth++ but this seems safer -- we
 	 * don't have to worry about the starting depth being 0, 1 or
 	 * something else.
@@ -12622,7 +12622,7 @@ rel_is_leaf_partition(Oid relid)
 			maxdepth = Max(maxdepth, depth);
 		}
 	}
-	
+
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 	return maxdepth == mylevel;
@@ -14150,7 +14150,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	/* don't check if splitting or setting a subpartition template */
 	if (!is_split && !bSetTemplate)
 		/* We complain if partition already exists, so prule should be NULL */
-		prule = get_part_rule(rel, pid, true, false, 
+		prule = get_part_rule(rel, pid, true, false,
 							  CurrentMemoryContext, NULL,
 							  false);
 
@@ -14159,7 +14159,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		bool isDefault = intVal(pc->arg1);
 
 		/* DEFAULT checks */
-		if (!isDefault && (pNode->default_part) && 
+		if (!isDefault && (pNode->default_part) &&
 			!is_split && !bSetTemplate) /* MPP-6093: ok to reset template */
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -15838,7 +15838,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			/* normal case - add partitions using CREATE statements
 			 * that get dispatched to the segments
 			 */
-			if (!bSetTemplate) 
+			if (!bSetTemplate)
 				ProcessUtility(q->utilityStmt, NULL, dest, NULL);
 			else
 			{ /* setting subpartition template only */
@@ -15861,7 +15861,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 						if (ac2->subtype == AT_PartAddInternal)
 						{
-							PartitionBy *templ_pby = 
+							PartitionBy *templ_pby =
 									(PartitionBy *)ac2->def;
 
 							Assert(IsA(templ_pby, PartitionBy));
@@ -15895,7 +15895,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 											(PartitionBy *)ac2->def,
 											true);
 							}
-								
+
 						}
 					} /* end foreach lc2 l2 */
 				}
@@ -15983,7 +15983,7 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		pid2->partiddef = (Node *)pidlst;
 		pid2->location  = -1;
 
-		prule = get_part_rule(rel, pid2, true, true, 
+		prule = get_part_rule(rel, pid2, true, true,
 							  CurrentMemoryContext, NULL,
 							  false);
 
@@ -16019,24 +16019,24 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 							 AccessExclusiveLock);
 
 			/* MPP-5524: check if can change distribution policy */
-			if (atc->subtype == AT_SetDistributedBy) 
+			if (atc->subtype == AT_SetDistributedBy)
 			{
 				List *dist_cnames = NIL;
 				Assert(IsA(atc->def, List));
-                         
+
 				dist_cnames = lsecond((List*)atc->def);
 
 				/*	might be null if no policy set, e.g. just a change
-				 *	of storage options... 
+				 *	of storage options...
 				 */
 				if (dist_cnames)
 				{
-					Assert(IsA(dist_cnames, List)); 
-					
+					Assert(IsA(dist_cnames, List));
+
 					if (! can_implement_dist_on_part(rel, dist_cnames) )
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("cannot ALTER PARTITION ... SET " 
+								 errmsg("cannot ALTER PARTITION ... SET "
 										"DISTRIBUTED BY for %s",
 										prule->relname),
 										errhint("distribution policy of "
@@ -16046,9 +16046,9 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 
 			}
 
-			/* 
+			/*
 			 * Give the notice first, because it looks weird if it
-			 * comes after a failure message 
+			 * comes after a failure message
 			 */
 			ereport(NOTICE,
 					(errmsg("altering table \"%s\" "
@@ -16073,10 +16073,10 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 	{
 		/* NOTE: for the case of Set Distro,
 		 * ATExecSetDistributedBy rebuilds the relation, so rel2
-		 * is already gone!  
+		 * is already gone!
 		 */
 		if (atc->subtype != AT_SetDistributedBy)
-			heap_close(rel2, NoLock);			
+			heap_close(rel2, NoLock);
 	}
 
 } /* end ATPExecPartAlter */
@@ -18156,7 +18156,7 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
                        AlterPartitionCmd *pc)
 {
 	AlterPartitionId	*pid   = (AlterPartitionId *)pc->partid;
-	PgPartRule			*prule = NULL; 
+	PgPartRule			*prule = NULL;
 	int					 lvl   = 1;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
@@ -18168,7 +18168,7 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 		Assert((pid->idtype == AT_AP_IDRule) && IsA(pid->partiddef, List));
 
 		/* MPP-5941: work correctly with many levels of templates */
-		/* wah! the idrule is invalid, so can't use get_part_rule.  
+		/* wah! the idrule is invalid, so can't use get_part_rule.
 		 * So pull the pgpartrule directly from the idrule (yuck!)
 		 */
 		prule = (PgPartRule *)linitial((List*)pid->partiddef);
@@ -18212,8 +18212,8 @@ ATPExecPartSetTemplate(AlteredTableInfo *tab,
 				}
 				break;
 			case 1:
-					/* if have new spec, 
-					 * note old spec is being replaced, 
+					/* if have new spec,
+					 * note old spec is being replaced,
 					 * else just note it is dropped
 					 */
 					ereport(NOTICE,
@@ -20611,7 +20611,7 @@ PartStatus rel_part_status(Oid relid)
 				(errmsg("requesting part status outside dispatch - returning none")));
 		return PART_STATUS_NONE;
 	}
-	
+
 	if ( rel_is_partitioned(relid) )
 	{
 		Assert( !rel_is_child_partition(relid) && !rel_is_leaf_partition(relid) );
@@ -20630,7 +20630,7 @@ PartStatus rel_part_status(Oid relid)
 /* Determine whether we can implement a requested distribution on a part of
  * the specified partitioned table.
  *
- * In 3.3 
+ * In 3.3
  *   DISTRIBUTED RANDOMLY or distributed just like the whole partitioned
  *   table is implementable.  Anything else is not.
  *
@@ -20648,15 +20648,15 @@ bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
 				(errmsg("requesting redistribution outside dispatch - returning no")));
 		return false;
 	}
-	
+
 	/* Random is okay.  It is represented by a list of one empty list. */
 	if ( list_length(dist_cnames) == 1 && linitial(dist_cnames) == NIL )
 			return true;
-	
+
 	/* Require an exact match to the policy of the parent. */
 	if ( list_length(dist_cnames) != rel->rd_cdbpolicy->nattrs )
 			return false;
-	
+
 	i = 0;
 	foreach(lc, dist_cnames)
 	{
@@ -20665,25 +20665,25 @@ bool can_implement_dist_on_part(Relation rel, List *dist_cnames)
 		HeapTuple tuple;
 		Node *item = lfirst(lc);
 		bool ok = false;
-			
+
 		if ( !(item && IsA(item, String)) )
 				return false;
-			
+
 		cname = strVal((Value *)item);
 		tuple = SearchSysCacheAttName(RelationGetRelid(rel), cname);
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
 					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							cname, 
+							cname,
 							RelationGetRelationName(rel))));
-			
+
 		attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
 		ok = attnum == rel->rd_cdbpolicy->attrs[i++];
 		ReleaseSysCache(tuple);
-			
+
 		if ( ! ok )
 			return false;
-	}	
+	}
 	return true;
-}	
+}

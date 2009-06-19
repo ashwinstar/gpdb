@@ -47,7 +47,7 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP
 	Oid			reltoastrelid;	/* OID of toast table; 0 if none */
 	Oid			reltoastidxid;	/* if toast table, OID of chunk_id index */
 	Oid			relaosegrelid;	/* OID of aoseg table; 0 if none */
-	Oid			relaosegidxid;	/* if aoseg table, OID of segno index */	
+	Oid			relaosegidxid;	/* if aoseg table, OID of segno index */
 	bool		relhasindex;	/* T if has (or has had) any indexes */
 	bool		relisshared;	/* T if shared across databases */
 	char		relkind;		/* see RELKIND_xxx constants below */
@@ -159,7 +159,6 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
 #define		  RELKIND_AOSEGMENTS	  'o'		/* AO segment files and eof's */
 #define		  RELKIND_VIEW		  'v'		/* view */
 #define		  RELKIND_COMPOSITE_TYPE  'c'		/* composite type */
-#define		  RELKIND_EXTERNAL	  'x'		/* external relation */
 
 /*
  * relstorage describes how a relkind is physically stored in the database.
@@ -168,14 +167,15 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
  * RELSTORAGE_AO      - stored on disk using append only storage.
  * RELSTORAGE_VOCS    - stored on dist using append only column storage.
  * RELSTORAGE_VIRTUAL - has virtual storage, meaning, relation has no
- *						data directly stored forit or data is external (right
- *						now this relates to views, external tables, and comp
- *						types).
+ *						data directly stored forit  (right now this
+ *						relates to views and comp types).
+ * RELSTORAGE_EXTERNAL	stored externally using external tables.
  */
 #define		  RELSTORAGE_HEAP	'h'
 #define		  RELSTORAGE_AO		'a'
-#define 	  RELSTORAGE_AOCS 	'c'	
+#define 	  RELSTORAGE_AOCS 	'c'
 #define		  RELSTORAGE_VIRTUAL	'v'
+#define		  RELSTORAGE_EXTERNAL 'x'
 
 static inline bool relstorage_is_ao(char c)
 {

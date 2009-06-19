@@ -83,13 +83,7 @@ static const struct msgstrings msgstringarray[] = {
 		gettext_noop("table \"%s\" does not exist"),
 		gettext_noop("table \"%s\" does not exist, skipping"),
 		gettext_noop("\"%s\" is not a base table"),
-	gettext_noop("Use DROP TABLE to remove a table.")},
-	{RELKIND_EXTERNAL,
-		ERRCODE_UNDEFINED_TABLE,
-		gettext_noop("external table \"%s\" does not exist"),
-		gettext_noop("external table \"%s\" does not exist, skipping"),
-		gettext_noop("\"%s\" is not an external table"),
-		gettext_noop("Use DROP EXTERNAL TABLE to remove an external table.")},	
+	gettext_noop("Use DROP TABLE to remove a table, or DROP EXTERNAL TABLE if external.")},
 	{RELKIND_SEQUENCE,
 		ERRCODE_UNDEFINED_TABLE,
 		gettext_noop("sequence \"%s\" does not exist"),
@@ -170,7 +164,7 @@ DropErrorMsgNonExistent(RangeVar *rel, char rightkind, bool missing_ok)
                 break;
             }
     	}
-			
+
 	}
 
 	Assert(rentry->kind != '\0');		/* Should be impossible */
@@ -204,7 +198,7 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
 	classform = (Form_pg_class) GETSTRUCT(tuple);
-	
+
 	if (classform->relkind != rightkind)
 		DropErrorMsgWrongType(rel->relname, classform->relkind,
 							  rightkind);
@@ -319,12 +313,12 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateStmt:
 			{
 				CreateStmt *createStmt;
-				
+
 				createStmt = (CreateStmt *) parsetree;
 
 				if (createStmt->relation->istemp)
 					return;		// Permit creation of TEMPORARY tables in read-only mode.
-					
+
 				ereport(ERROR,
 						(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 						 errmsg("transaction is read-only")));
@@ -346,13 +340,13 @@ check_xact_readonly(Node *parsetree)
 					RangeVar   *rel;
 
 					rel = makeRangeVarFromNameList(names);
-					
+
 					if (dropStmt->removeType != OBJECT_TABLE ||
 					    !RelationToRemoveIsTemp(rel, dropStmt->missing_ok))
 						ereport(ERROR,
 								(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 								 errmsg("transaction is read-only")));
-						
+
 				}
 			}
 			return;		// All objects are TEMPORARY tables.
@@ -460,7 +454,7 @@ ProcessUtility(Node *parsetree,
 							ListCell   *lc;
 
 							BeginTransactionBlock();
-							
+
 							foreach(lc, stmt->options)
 							{
 								DefElem    *item = (DefElem *) lfirst(lc);
@@ -498,7 +492,7 @@ ProcessUtility(Node *parsetree,
 											errcode(ERRCODE_GP_COMMAND_ERROR),
 									 errmsg("PREPARE TRANSACTION is not yet supported in Greenplum Database.")
 											));
-			
+
 						}
 						if (!PrepareTransactionBlock(stmt->gid))
 						{
@@ -515,7 +509,7 @@ ProcessUtility(Node *parsetree,
 											errcode(ERRCODE_GP_COMMAND_ERROR),
 									 errmsg("COMMIT PREPARED is not yet supported in Greenplum Database.")
 											));
-			
+
 						}
 						PreventTransactionChain(stmt, "COMMIT PREPARED");
 						FinishPreparedTransaction(stmt->gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
@@ -528,7 +522,7 @@ ProcessUtility(Node *parsetree,
 											errcode(ERRCODE_GP_COMMAND_ERROR),
 									 errmsg("ROLLBACK PREPARED is not yet supported in Greenplum Database.")
 											));
-			
+
 						}
 						PreventTransactionChain(stmt, "ROLLBACK PREPARED");
 						FinishPreparedTransaction(stmt->gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
@@ -618,31 +612,46 @@ ProcessUtility(Node *parsetree,
 			{
 				Oid			relOid;
 				char		relKind = RELKIND_RELATION;
+				char		relStorage;
 
 				if (Gp_role == GP_ROLE_EXECUTE)
 					if (((CreateStmt *) parsetree)->relKind != 0)
 						relKind = ((CreateStmt *) parsetree)->relKind;
 
+				/*
+				 * set the appropriate relstorage
+				 *
+				 * Note that we only care about virtual storages here. all the
+				 * others are heap storage, besides AO, AOCS and external tables.
+				 * however AO and AOCS will get set later on when the relopts
+				 * are checked, and external tables never use CreateStmt so it's
+				 * safe to assign heap storage for them.
+				 */
+				if(relKind == RELKIND_VIEW || relKind == RELKIND_COMPOSITE_TYPE)
+					relStorage = RELSTORAGE_VIRTUAL;
+				else
+					relStorage = RELSTORAGE_HEAP;
+
 				relOid = DefineRelation((CreateStmt *) parsetree,
-										relKind);
+										relKind, relStorage);
 
 				/*
 				 * Let AlterTableCreateToastTable decide if this one needs a
 				 * secondary relation too.
 				 */
 				CommandCounterIncrement();
-				
+
 				DefinePartitionedRelation((CreateStmt *) parsetree, relOid);
 
 				elog(DEBUG2,"CreateStmt: rel Oid %d toast Oid %d AoSeg Oid %d",
-							relOid, 
+							relOid,
 							((CreateStmt *) parsetree)->oidInfo.toastOid,
 							((CreateStmt *) parsetree)->oidInfo.aosegOid);
-		
-				if (relKind != RELKIND_COMPOSITE_TYPE && relKind != RELKIND_EXTERNAL)
+
+				if (relKind != RELKIND_COMPOSITE_TYPE)
 				{
 					AlterTableCreateToastTableWithOid(relOid,
-						((CreateStmt *) parsetree)->oidInfo.toastOid, 
+						((CreateStmt *) parsetree)->oidInfo.toastOid,
 						((CreateStmt *) parsetree)->oidInfo.toastIndexOid,
 					    &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid),
 						((CreateStmt *)parsetree)->is_part_child);
@@ -658,7 +667,7 @@ ProcessUtility(Node *parsetree,
 		case T_CreateExternalStmt:
 			DefineExternalRelation((CreateExternalStmt *) parsetree);
 			break;
-			
+
 		case T_CreateTableSpaceStmt:
 			CreateTableSpace((CreateTableSpaceStmt *) parsetree);
 			break;
@@ -698,13 +707,13 @@ ProcessUtility(Node *parsetree,
 
 						case OBJECT_EXTTABLE:
 							rel = makeRangeVarFromNameList(names);
-							if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
+							if (CheckDropPermissions(rel, RELKIND_RELATION,
 													 stmt->missing_ok))
 								RemoveRelation(rel, stmt->behavior, stmt);
 							else
 								dispatchDrop = false;
 							break;
-							
+
 
 						case OBJECT_SEQUENCE:
 							rel = makeRangeVarFromNameList(names);
@@ -1040,7 +1049,7 @@ ProcessUtility(Node *parsetree,
 		case T_NotifyStmt:
 			{
 				NotifyStmt *stmt = (NotifyStmt *) parsetree;
-				
+
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
 								errcode(ERRCODE_GP_COMMAND_ERROR),
@@ -1054,7 +1063,7 @@ ProcessUtility(Node *parsetree,
 		case T_ListenStmt:
 			{
 				ListenStmt *stmt = (ListenStmt *) parsetree;
-				
+
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
 								errcode(ERRCODE_GP_COMMAND_ERROR),
@@ -1068,7 +1077,7 @@ ProcessUtility(Node *parsetree,
 		case T_UnlistenStmt:
 			{
 				UnlistenStmt *stmt = (UnlistenStmt *) parsetree;
-				
+
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (
 								errcode(ERRCODE_GP_COMMAND_ERROR),
@@ -1079,14 +1088,14 @@ ProcessUtility(Node *parsetree,
 			}
 			break;
 
-		case T_LoadStmt: 
+		case T_LoadStmt:
 			{
 				LoadStmt   *stmt = (LoadStmt *) parsetree;
 
 				closeAllVfds(); /* probably not necessary... */
 				/* Allowed names are restricted if you're not superuser */
 				load_file(stmt->filename, !superuser());
-				
+
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					StringInfoData buffer;
@@ -1095,7 +1104,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false, 
+					CdbDoCommand(buffer.data, false, /*no txn*/ false,
 								 /* mirrors */ true, /* primaries */ true);
 				}
 			}
@@ -1188,7 +1197,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "RESET %s", n->name);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false, 
+					CdbDoCommand(buffer.data, false, /*no txn*/ false,
 								 /* mirrors */ true, /* primaries */ true);
 				}
 			}
@@ -1200,7 +1209,7 @@ ProcessUtility(Node *parsetree,
 			{
 				CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
 			}
-			
+
 			break;
 
 		case T_DropPropertyStmt:
@@ -1354,7 +1363,7 @@ ProcessUtility(Node *parsetree,
 						else
 							appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false, 
+						CdbDoCommand(buffer.data, false, /*no txn*/ false,
 									 /* mirrors */ true, /* primaries */ true);
 					}
 				}
@@ -1647,10 +1656,10 @@ CreateCommandTag(Node *parsetree)
 		case T_CreateStmt:
 			tag = "CREATE TABLE";
 			break;
-			
+
 		case T_CreateExternalStmt:
 			tag = "CREATE EXTERNAL TABLE";
-			break;			
+			break;
 
 		case T_CreateTableSpaceStmt:
 			tag = "CREATE TABLESPACE";
@@ -1668,7 +1677,7 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_EXTTABLE:
 					tag = "DROP EXTERNAL TABLE";
-					break;					
+					break;
 				case OBJECT_SEQUENCE:
 					tag = "DROP SEQUENCE";
 					break;
@@ -2214,10 +2223,10 @@ GetCommandLogLevel(Node *parsetree)
 		case T_CreateStmt:
 			lev = LOGSTMT_DDL;
 			break;
-			
+
 		case T_CreateExternalStmt:
 			lev = LOGSTMT_DDL;
-			break;			
+			break;
 
 		case T_CreateTableSpaceStmt:
 			lev = LOGSTMT_DDL;

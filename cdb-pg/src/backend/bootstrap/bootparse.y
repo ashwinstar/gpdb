@@ -207,6 +207,7 @@ Boot_CreateStmt:
 												   $6,
 												   tupdesc,
 												   RELKIND_RELATION,
+												   RELSTORAGE_HEAP,
 												   $3,
 												   true);
 						elog(DEBUG4, "bootstrap relation created");
@@ -242,6 +243,7 @@ Boot_CreateStmt:
 													  BOOTSTRAP_SUPERUSERID,
 													  tupdesc,
 													  RELKIND_RELATION,
+													  RELSTORAGE_HEAP,
 													  $3,
 													  true,
 													  0,

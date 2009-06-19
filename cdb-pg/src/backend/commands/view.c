@@ -121,7 +121,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	createStmt->oidInfo.toastIndexOid = 0;
 	createStmt->oidInfo.aosegOid = 0;
 	createStmt->oidInfo.aosegIndexOid = 0;
-	
+
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of the
 	 * (non-junk) targetlist items from the view's SELECT list.
@@ -225,7 +225,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 		 * existing view, so we don't need more code to complain if "replace"
 		 * is false).
 		 */
-		newviewOid =  DefineRelation(createStmt, RELKIND_VIEW);
+		newviewOid =  DefineRelation(createStmt, RELKIND_VIEW, RELSTORAGE_VIRTUAL);
 		if(comptypeOid)
 			*comptypeOid = createStmt->oidInfo.comptypeOid;
 		return newviewOid;
@@ -488,7 +488,7 @@ RemoveView(const RangeVar *view, DropBehavior behavior)
 	object.classId = RelationRelationId;
 	object.objectId = viewOid;
 	object.objectSubId = 0;
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		LockRelationOid(RelationRelationId, RowExclusiveLock);

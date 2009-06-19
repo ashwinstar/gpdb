@@ -640,7 +640,7 @@ addRangeTableEntry(ParseState *pstate,
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 	char	   *refname = alias ? alias->aliasname : relation->relname;
 	Relation	rel;
-	
+
 	/*
 	 * Get the rel's OID.  This access also ensures that we have an up-to-date
 	 * relcache entry for the rel.	Since this is typically the first access
@@ -652,12 +652,12 @@ addRangeTableEntry(ParseState *pstate,
 	rte->relid = RelationGetRelid(rel);
 	rte->alias = alias;
 	rte->rtekind = RTE_RELATION;
-	
+
 	/* external tables don't allow inheritance */
-	if(rel->rd_rel->relkind == RELKIND_EXTERNAL)
+	if(rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL)
 		inh = false;
 
-	
+
 	/*
 	 * Build the list of effective column names using user-supplied aliases
 	 * and/or actual column names.
@@ -1061,8 +1061,8 @@ addRangeTableEntryForJoin(ParseState *pstate,
 	rte->joinaliasvars = aliasvars;
 	rte->alias = alias;
 
-	/* 
-	 * CDB: Bug fix JIRA MPP-3797  
+	/*
+	 * CDB: Bug fix JIRA MPP-3797
 	 */
 	fixup_unknown_vars_in_exprlist(pstate, rte->joinaliasvars);
 
@@ -1119,10 +1119,10 @@ lockSourceRel(Relation srcrel, ParseState *pstate, char *refname)
 		foreach(l, pstate->p_locking_clause)
 		{
 			LockingClause *lc = (LockingClause *) lfirst(l);
-			
+
 			forUpdate = lc->forUpdate;
 			noWait = lc->noWait;
-			
+
 			if (lc->lockedRels == NIL)
 			{
 				/* all tables used in query */
@@ -1144,7 +1144,7 @@ lockSourceRel(Relation srcrel, ParseState *pstate, char *refname)
 		}
 		pstate = pstate->parentParseState;
 	}
-	
+
     /* Default: Don't let the relation definition be changed by other xacts. */
     if (pstate == NULL)
         LockRelation(srcrel, AccessShareLock);

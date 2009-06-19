@@ -136,7 +136,7 @@ DefineSequence(CreateSeqStmt *seq)
 	int			i;
 	NameData	name;
 
-	
+
 	bool shouldDispatch =  Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	/* Check and set all option values */
@@ -151,17 +151,17 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oidInfo.toastIndexOid = 0;
 	stmt->oidInfo.aosegOid = 0;
 	stmt->oidInfo.aosegIndexOid = 0;
-	
+
 	if (shouldDispatch)
 	{
-		
+
 			/* stmt->relOid = newOid(); */
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
 
 			stmt->oidInfo.relOid = seq->relOid;
-	
+
 	}
 	stmt->tableElts = NIL;
 	for (i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
@@ -238,7 +238,7 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->relKind = RELKIND_SEQUENCE;
 	stmt->oidInfo.comptypeOid = seq->comptypeOid;
 
-	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE);
+	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE, RELSTORAGE_HEAP);
 
     /*
      * Open and lock the new sequence.  (This lock is redundant; an
@@ -457,7 +457,7 @@ AlterSequence(AlterSeqStmt *stmt)
 		process_owned_by(seqrel, owned_by);
 
 	relation_close(seqrel, NoLock);
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *)stmt, "AlterSequence");
@@ -496,7 +496,7 @@ nextval_internal(Oid relid)
 {
 	SeqTable	elm;
 	Relation	seqrel;
-															
+
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
@@ -555,7 +555,7 @@ cdb_sequence_nextval(Relation   seqrel,
 				next,
 				rescnt = 0;
 	bool		logit = false;
-															
+
 	/* lock page' buffer and read tuple */
 	seq = read_info(seqrel, &buf);
 	page = BufferGetPage(buf);
@@ -705,18 +705,18 @@ cdb_sequence_nextval(Relation   seqrel,
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
-		
+
 		/* need to update where we've inserted to into shmem so that the QD can flush it
 		 * when necessary
 		 */
 		LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
-		
+
 		if (XLByteLT(seqServerCtl->lastXlogEntry, recptr))
-		{	
+		{
 			seqServerCtl->lastXlogEntry.xlogid = recptr.xlogid;
 			seqServerCtl->lastXlogEntry.xrecoff = recptr.xrecoff;
 		}
-		
+
 		LWLockRelease(SeqServerControlLock);
 	}
 
@@ -746,7 +746,7 @@ currval_oid(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 				 errmsg("currval() not supported")));
 	}
-	
+
 	if (Gp_role == GP_ROLE_EXECUTE  && !Gp_is_primary)
 	{
 		elog(ERROR,"currval() cannot be used in this statement when mirroring is active");
@@ -847,7 +847,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 				 errmsg("setval() not supported in this context")));
 	}
-	
+
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
 

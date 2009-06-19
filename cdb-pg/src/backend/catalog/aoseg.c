@@ -4,7 +4,7 @@
  *	  This file contains routines to support creation of append-only segment
  *    entry tables. This file is identical in functionality to toasting.c that
  *    exists in the same directory. One is in charge of creating toast tables
- *    (pg_toast_<reloid>) and the other append only segment position tables 
+ *    (pg_toast_<reloid>) and the other append only segment position tables
  *    (pg_aoseg_<reloid>).
  *
  * Portions Copyright (c) 2008, Greenplum Inc.
@@ -75,7 +75,7 @@ AlterTableCreateAoSegTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
 		rel = heap_open(relOid, NoLock);
 	else
 		rel = heap_open(relOid, AccessExclusiveLock);
-	
+
 	/* create_aoseg_table does all the work */
 	(void) create_aoseg_table(rel, newOid, newIndexOid, comptypeOid);
 
@@ -106,7 +106,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 				aosegobject;
 
 	shared_relation = rel->rd_rel->relisshared;
-	
+
 	/* can't have shared AO tables after initdb */
 	/* TODO: disallow it at CREATE TABLE time */
 	Assert(!(shared_relation && !IsBootstrapProcessingMode()) );
@@ -167,10 +167,10 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 		snprintf(aoseg_idxname, sizeof(aoseg_idxname),
 				"pg_aocsseg_%u_index", relOid);
 
-		/* 
-		 * XXX 
-		 * At this moment, we hardwire the rel aocs info.  
-		 * Essentially, we assume total vertical partition, and 
+		/*
+		 * XXX
+		 * At this moment, we hardwire the rel aocs info.
+		 * Essentially, we assume total vertical partition, and
 		 * we do not do datatype specific compression.
 		 *
 		 * In order to make things right, we need to first fix
@@ -179,14 +179,14 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 		 * info here.
 		 */
 
-		/* 
+		/*
 		 * XXX We do not handle add/drop column etc nicely yet.
 		 */
 
-		/* 
+		/*
 		 * Assuming full vertical partition, we want to include
 		 * the following in the seg table.
-		 * 
+		 *
 		 * segno int,			-- whatever purpose ao use it
 		 * tupcount bigint 		-- total tup
 		 * varblockcount bigint,	-- total varblock
@@ -212,7 +212,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
                                 VARBITOID,
 				-1, 0);
 	}
-	
+
 	/*
 	 * Note: the aoseg relation is placed in the regular pg_aoseg namespace
 	 * even if its master relation is a temp table.  There cannot be any
@@ -229,6 +229,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 										   rel->rd_rel->relowner,
 										   tupdesc,
 										   RELKIND_AOSEGMENTS,
+										   RELSTORAGE_HEAP,
 										   shared_relation,
 										   true,
 										   0,
@@ -281,7 +282,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 
 	((Form_pg_class) GETSTRUCT(reltup))->relaosegrelid = aoseg_relid;
 
-	
+
 	/* normal case, use a transactional update */
 	simple_heap_update(class_rel, &reltup->t_self, reltup);
 
@@ -294,7 +295,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 
 	/*
 	 * Register dependency from the aoseg table to the master, so that the
-	 * aoseg table will be deleted if the master is.  	 
+	 * aoseg table will be deleted if the master is.
 	 */
 	baseobject.classId = RelationRelationId;
 	baseobject.objectId = relOid;
@@ -309,7 +310,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	 * Make changes visible
 	 */
 	CommandCounterIncrement();
-	
+
 	return true;
 }
 

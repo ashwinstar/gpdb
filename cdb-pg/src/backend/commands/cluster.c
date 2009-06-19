@@ -174,7 +174,7 @@ cluster(ClusterStmt *stmt)
 
 		/* Do the job */
 		cluster_rel(&rvtc, false, stmt);
-		
+
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			CdbDispatchUtilityStatement((Node *) stmt, "cluster");
@@ -231,10 +231,10 @@ cluster(ClusterStmt *stmt)
 				stmt->new_ind_oids = NIL; /* reset OID map for each iteration */
 
 			cluster_rel(rvtc, true, stmt);
-			
+
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				
+
 				stmt->relation = makeNode(RangeVar);
 				stmt->relation->schemaname = get_namespace_name(get_rel_namespace(rvtc->tableOid));
 				stmt->relation->relname = get_rel_name(rvtc->tableOid);
@@ -248,11 +248,11 @@ cluster(ClusterStmt *stmt)
 
 		/* Clean up working storage */
 		MemoryContextDelete(cluster_context);
-		
-		
+
+
 	}
 
-	
+
 }
 
 /*
@@ -432,7 +432,7 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 						 ? errhint("You may be able to work around this by marking column \"%s\" NOT NULL, or use ALTER TABLE ... SET WITHOUT CLUSTER to remove the cluster specification from the table.",
 								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))
 						 : errhint("You may be able to work around this by marking column \"%s\" NOT NULL.",
-								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));						
+								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));
 		}
 		else if (colno < 0)
 		{
@@ -580,7 +580,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	Oid			OIDNewHeap;
 	char		NewHeapName[NAMEDATALEN];
 	ObjectAddress object;
-	
+
 	/* Mark the correct index as clustered */
 	mark_index_clustered(OldHeap, indexOid);
 
@@ -672,10 +672,10 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		Relation	pg_type_desc;
 
 		cdb_sync_oid_to_segments();
-	
+
 		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
-	
+
 		/*
 		 * Pre-Allocate an OID for the relfilenode, plus one for the toast table
 		 * and another for an aoseg table (just in case).
@@ -683,23 +683,23 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		 * The OID will be the relfilenode as well, so make sure it doesn't collide
 		 * with either pg_class OIDs or existing physical files.
 		 */
-	
+
 		oidInfo->relOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		OIDNewHeap = oidInfo->relOid;
-		
+
 		oidInfo->comptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
 		oidInfo->toastOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		oidInfo->toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		oidInfo->aosegOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
 		oidInfo->aosegIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		
+
 		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
-		
+
 		oidInfo->toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
 		oidInfo->aosegComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		
+
 		heap_close(pg_type_desc, RowExclusiveLock);
-		
+
 		tOid = oidInfo->toastOid;
 		tiOid = oidInfo->toastIndexOid;
 		toastComptypeOid = &oidInfo->toastComptypeOid;
@@ -746,6 +746,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 										  OldHeap->rd_rel->relowner,
 										  tupdesc,
 										  OldHeap->rd_rel->relkind,
+										  OldHeap->rd_rel->relstorage,
 										  OldHeap->rd_rel->relisshared,
 										  true,
 										  0,
@@ -757,7 +758,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 
 	if(oidInfo)
 		oidInfo->relOid = OIDNewHeap;
-	
+
 	ReleaseSysCache(tuple);
 
 	/*
@@ -768,15 +769,15 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 
 	/*
 	 * If necessary, create a TOAST table for the new relation, or an Append
-	 * Only segment table. Note that AlterTableCreateXXXTable ends with 
-	 * CommandCounterIncrement(), so that the new tables will be visible for 
+	 * Only segment table. Note that AlterTableCreateXXXTable ends with
+	 * CommandCounterIncrement(), so that the new tables will be visible for
 	 * insertion.
 	 */
 	AlterTableCreateToastTableWithOid(OIDNewHeap, tOid, tiOid,
 									  toastComptypeOid, is_part);
 	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid,
 									  aosegComptypeOid, is_part);
-		
+
 	heap_close(OldHeap, NoLock);
 
 	return OIDNewHeap;
@@ -935,10 +936,10 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 	swaptemp = relform1->reltoastrelid;
 	relform1->reltoastrelid = relform2->reltoastrelid;
 	relform2->reltoastrelid = swaptemp;
-	
+
 	swaptemp = relform1->relaosegrelid;
 	relform1->relaosegrelid = relform2->relaosegrelid;
-	relform2->relaosegrelid = swaptemp;	
+	relform2->relaosegrelid = swaptemp;
 
 	/* we should not swap reltoastidxid nor relaosegidxid */
 
@@ -1036,7 +1037,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 		ObjectAddress baseobject,
 					  aosegobject;
 		long		count;
-		
+
 		/* Delete old dependencies */
 		if (relform1->relaosegrelid)
 		{
@@ -1054,20 +1055,20 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 				elog(ERROR, "expected one dependency record for aoseg table, found %ld",
 					 count);
 		}
-		
+
 		/* Register new dependencies */
 		baseobject.classId = RelationRelationId;
 		baseobject.objectSubId = 0;
 		aosegobject.classId = RelationRelationId;
 		aosegobject.objectSubId = 0;
-		
+
 		if (relform1->relaosegrelid)
 		{
 			baseobject.objectId = r1;
 			aosegobject.objectId = relform1->relaosegrelid;
 			recordDependencyOn(&aosegobject, &baseobject, DEPENDENCY_INTERNAL);
 		}
-		
+
 		if (relform2->relaosegrelid)
 		{
 			baseobject.objectId = r2;
@@ -1075,7 +1076,7 @@ swap_relation_files(Oid r1, Oid r2, bool swap_stats)
 			recordDependencyOn(&aosegobject, &baseobject, DEPENDENCY_INTERNAL);
 		}
 	}
-	
+
 	/*
 	 * Blow away the old relcache entries now.	We need this kluge because
 	 * relcache.c keeps a link to the smgr relation for the physical file, and

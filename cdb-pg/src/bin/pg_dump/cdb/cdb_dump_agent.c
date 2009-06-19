@@ -1454,7 +1454,7 @@ getTableData(TableInfo *tblinfo, int numTables, bool oids)
 		if (tblinfo[i].relkind == RELKIND_VIEW)
 			continue;
 		/* Skip EXTERNAL TABLESs */
-		if (tblinfo[i].relkind == RELKIND_EXTERNAL)
+		if (tblinfo[i].relstorage == RELSTORAGE_EXTERNAL)
 			continue;
 		/* Skip SEQUENCEs (handled elsewhere) */
 		if (tblinfo[i].relkind == RELKIND_SEQUENCE)
@@ -4488,7 +4488,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	}
 
 	/* START MPP ADDITION */
-    else if(tbinfo->relkind == RELKIND_EXTERNAL)
+    else if(tbinfo->relstorage == RELSTORAGE_EXTERNAL)
     {
         char       *locations;
         char       *location;

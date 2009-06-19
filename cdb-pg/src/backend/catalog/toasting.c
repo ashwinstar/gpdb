@@ -80,9 +80,9 @@ AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
 		rel = heap_open(relOid, NoLock);
 	else
 		rel = heap_open(relOid, AccessExclusiveLock);
-	
-	
-	
+
+
+
 	/* create_toast_table does all the work */
 	(void) create_toast_table(rel, newOid, newIndexOid,
 							  comptypeOid, is_part_child);
@@ -217,6 +217,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   rel->rd_rel->relowner,
 										   tupdesc,
 										   RELKIND_TOASTVALUE,
+										   RELSTORAGE_HEAP,
 										   shared_relation,
 										   true,
 										   0,
@@ -262,7 +263,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 							   classObjectId, (Datum) 0,
 							   true, false, true, false, false);
 
-	/* 
+	/*
 	 * If this is a partitioned child, we can unlock since the master is
 	 * already locked.
 	 */

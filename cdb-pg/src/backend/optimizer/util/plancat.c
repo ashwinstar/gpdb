@@ -310,7 +310,7 @@ void
 get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 						   RelOptInfo *rel)
 {
-	
+
 	Relation	pg_exttable_rel;
 	Relation	pg_class_rel;
 	TupleDesc	pg_exttable_dsc;
@@ -330,7 +330,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	Datum	   *elems;
 	int			nelems;
 	int			i;
-	
+
 	pg_class_rel = heap_open(relationObjectId, NoLock);
 
 	/*
@@ -338,44 +338,44 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	 * (in the external table case it will always be NULL entry).
      */
     rel->cdbpolicy = RelationGetPartitioningKey(pg_class_rel);
-	
+
 	heap_close(pg_class_rel, NoLock);
 
 	/*
-	 * Check the pg_exttable relation to be certain the ext table 
-	 * is there. 
+	 * Check the pg_exttable relation to be certain the ext table
+	 * is there.
 	 */
 	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
 	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
-	
+
 	ScanKeyInit(&key,
 				Anum_pg_exttable_reloid,
 				BTEqualStrategyNumber,
 				F_OIDEQ,
 				ObjectIdGetDatum(relationObjectId));
-	
-    extscan = systable_beginscan(pg_exttable_rel, 
-								 ExtTableRelOidIndexId, 
+
+    extscan = systable_beginscan(pg_exttable_rel,
+								 ExtTableRelOidIndexId,
 								 true,
-								 SnapshotNow, 
-								 1, 
+								 SnapshotNow,
+								 1,
 								 &key);
-	
+
     tuple = systable_getnext(extscan);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("external table object id \"%d\" does not exist",
 						relationObjectId)));
-	
+
 	/*
 	 * get the location text array from the catalog (pg_exttable).
 	 */
-	locations = heap_getattr(tuple, 
-							 Anum_pg_exttable_location, 
-							 pg_exttable_rel->rd_att, 
+	locations = heap_getattr(tuple,
+							 Anum_pg_exttable_location,
+							 pg_exttable_rel->rd_att,
 							 &isNull);
-	
+
 	if (isNull)
 	{
 		/* should not happen, TODO: error */
@@ -385,89 +385,89 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 		deconstruct_array(DatumGetArrayTypeP(locations),
 						  TEXTOID, -1, false, 'i',
 						  &elems, NULL, &nelems);
-		
+
 		for (i = 0; i < nelems; i++)
 		{
 			loc_str = DatumGetCString(DirectFunctionCall1(textout, elems[i]));
-			
+
 			/* append to a list of Value nodes, size nelems */
 			rel->locationlist = lappend(rel->locationlist, makeString(pstrdup(loc_str)));
 		}
 	}
-	
-	/* 
+
+	/*
 	 * get the exec command string (or NULL if doesn't exist)
 	 */
 	execcommand = heap_getattr(tuple,
 							   Anum_pg_exttable_command,
-							   pg_exttable_rel->rd_att, 
+							   pg_exttable_rel->rd_att,
 							   &isNull);
-							   
+
 	if(isNull)
 		rel->execcommand = NULL; /* tell planner no EXECUTE for this ext table */
 	else
 		rel->execcommand = DatumGetCString(DirectFunctionCall1(textout, execcommand));
-		
+
 	/*
 	 * external web tables are non rescannable, regular ext tables are
 	 */
-	if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) ) 
+	if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) )
 		rel->isrescannable = true;
 	else
 		rel->isrescannable = false; /* ext web table */
-	
+
 	/*
 	 * Now get the format type
 	 */
-	fmttype = heap_getattr(tuple, 
-						   Anum_pg_exttable_fmtcode, 
-						   pg_exttable_rel->rd_att, 
+	fmttype = heap_getattr(tuple,
+						   Anum_pg_exttable_fmtcode,
+						   pg_exttable_rel->rd_att,
 						   &isNull);
-	
+
 	rel->fmttype = DatumGetChar(fmttype);
 	Assert(rel->fmttype == 'c' || rel->fmttype == 't');
-	
+
 	/*
 	 * And the format string
 	 */
-	fmtopts = heap_getattr(tuple, 
-						   Anum_pg_exttable_fmtopts, 
-						   pg_exttable_rel->rd_att, 
+	fmtopts = heap_getattr(tuple,
+						   Anum_pg_exttable_fmtopts,
+						   pg_exttable_rel->rd_att,
 						   &isNull);
-	
+
 	rel->fmtopts = DatumGetCString(DirectFunctionCall1(textout, fmtopts));
 	Assert(rel->fmtopts != NULL);
-	
-	/* 
+
+	/*
 	 * reject limit
 	 */
-	rejectlimit = heap_getattr(tuple, 
-							   Anum_pg_exttable_rejectlimit, 
-							   pg_exttable_rel->rd_att, 
+	rejectlimit = heap_getattr(tuple,
+							   Anum_pg_exttable_rejectlimit,
+							   pg_exttable_rel->rd_att,
 							   &isNull);
 	if(!isNull)
 		rel->rejectlimit = DatumGetInt32(rejectlimit);
 	else
 		rel->rejectlimit = -1; /* mark that no SREH requested */
-	
+
 	/*
 	 * Now get the reject limit type
 	 */
-	rejectlimittype = heap_getattr(tuple, 
-								   Anum_pg_exttable_rejectlimittype, 
-								   pg_exttable_rel->rd_att, 
+	rejectlimittype = heap_getattr(tuple,
+								   Anum_pg_exttable_rejectlimittype,
+								   pg_exttable_rel->rd_att,
 								   &isNull);
-	
+
 	rel->rejectlimittype = DatumGetChar(rejectlimittype);
 	if(!isNull)
 		Assert(rel->rejectlimittype == 'r' || rel->rejectlimittype == 'p');
-	
+
 	/*
 	 * format error table
 	 */
-	fmterrtbl = heap_getattr(tuple, 
-							 Anum_pg_exttable_fmterrtbl, 
-							 pg_exttable_rel->rd_att, 
+	fmterrtbl = heap_getattr(tuple,
+							 Anum_pg_exttable_fmterrtbl,
+							 pg_exttable_rel->rd_att,
 							 &isNull);
 	if(isNull)
 		rel->fmterrtbl = InvalidOid;
@@ -477,19 +477,19 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * data encoding
 	 */
-	encoding = heap_getattr(tuple, 
-							Anum_pg_exttable_encoding, 
-							pg_exttable_rel->rd_att, 
+	encoding = heap_getattr(tuple,
+							Anum_pg_exttable_encoding,
+							pg_exttable_rel->rd_att,
 							&isNull);
-	
+
 	rel->ext_encoding = DatumGetInt32(encoding);
 	Insist(PG_VALID_ENCODING(rel->ext_encoding));
-	
+
 	/* Finish up scan and close exttable catalog. */
 	systable_endscan(extscan);
-	
+
 	heap_close(pg_exttable_rel, RowExclusiveLock);
-		
+
 }
 
 /*
@@ -524,32 +524,32 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
         estimate_rel_size(rel, attr_widths, pages, tuples);
         return;
     }
-	
-	
+
+
 	/* coerce values in pg_class to more desirable types */
 	relpages = (BlockNumber) rel->rd_rel->relpages;
 	reltuples = (double) rel->rd_rel->reltuples;
-	
+
 	/*
 	 * Asking the QE for the size of the relation is a bit expensive.
 	 * Do we want to do it all the time?  Or only for tables that have never had analyze run?
 	 */
-	 
+
 	if (relpages > 0 && reltuples >= 1.0)
 	{
-		
+
 		/*
 		 * Let's trust the values we had from analyze, even though they might be out of date.
-		 * 
+		 *
 		 * NOTE: external tables are created with estimated larger than zero values. therefore
 		 * we will get here too even though we can never analyze them.
 		 */
-		 
+
 		curpages = relpages;
 	}
 	else
 	{
-		
+
 		/*
 		 * Let's ask the QEs for the size of the relation.
 		 * In the future, it would be better to send the command to only one QE.
@@ -557,23 +557,23 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * NOTE: External tables should always have >0 values in pg_class
 		 * (created this way). Therefore we should never get here. However, as
 		 * a security measure (if values in pg_class were somehow changed) we
-		 * plug in our 1K pages 1M tuples estimate here as well, and skip 
+		 * plug in our 1K pages 1M tuples estimate here as well, and skip
 		 * cdbRelSize as we can't calculate ext table size.
 		 */
-		if(rel->rd_rel->relkind != RELKIND_EXTERNAL)
-		  {
-		    size = cdbRelSize(rel->rd_id);			
-		  }
+		if(rel->rd_rel->relstorage != RELSTORAGE_EXTERNAL)
+		{
+		    size = cdbRelSize(rel->rd_id);
+		}
 		else
 		{
-			/* 
-			 * Estimate a default of 1000 pages - see comment above. 
+			/*
+			 * Estimate a default of 1000 pages - see comment above.
 			 * NOTE: if you change this look at AddNewRelationTuple in heap.c).
 			 */
 			size = 1000 * BLCKSZ;
 		}
-		
-		
+
+
 		if (size < 0)
 		{
 			curpages = 100;
@@ -583,11 +583,11 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		{
 			curpages = size / BLCKSZ;  /* average blocks per primary segment DB */
 		}
-		
+
 		if (curpages == 0 && size > 0)
 			curpages = 1;
 	}
-	
+
 	/* report estimated # pages */
 	*pages = curpages;
 	/* quick exit if rel is clearly empty */
@@ -596,7 +596,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		*tuples = 0;
 		return;
 	}
-	
+
 	/*
 	 * If it's an index, discount the metapage.  This is a kluge
 	 * because it assumes more than it ought to about index contents;
@@ -622,7 +622,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
         estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
 	}
 	*tuples = ceil(density * curpages);
-	
+
 	elog(DEBUG2,"cdb_estimate_rel_size  estimated %g tuples and %d pages",*tuples,(int)*pages);
 
 }                               /* cdb_estimate_rel_size */

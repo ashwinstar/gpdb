@@ -2080,13 +2080,11 @@ getRelationDescription(StringInfo buffer, Oid relid)
 				appendStringInfo(buffer, _("append only table %s"), relname);
             else if (relForm->relstorage == RELSTORAGE_AOCS)
 				appendStringInfo(buffer, _("append only column store table %s"), relname);
+            else if (relForm->relstorage == RELSTORAGE_EXTERNAL)
+    			appendStringInfo(buffer, _("external table %s"), relname);
 			else
 				appendStringInfo(buffer, _("table %s"), relname);
-			break;			
-		case RELKIND_EXTERNAL:
-			appendStringInfo(buffer, _("external table %s"),
-							 relname);
-			break;			
+			break;
 		case RELKIND_INDEX:
 			appendStringInfo(buffer, _("index %s"),
 							 relname);
@@ -2106,7 +2104,7 @@ getRelationDescription(StringInfo buffer, Oid relid)
 		case RELKIND_AOSEGMENTS:
 			appendStringInfo(buffer, _("append only file segment listing %s"),
 							 relname);
-			break;			
+			break;
 		case RELKIND_VIEW:
 			appendStringInfo(buffer, _("view %s"),
 							 relname);

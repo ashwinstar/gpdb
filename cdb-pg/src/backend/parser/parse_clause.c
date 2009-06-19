@@ -167,7 +167,7 @@ expr_contains_null_const(Expr *expr)
 }
 
 static void
-transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e, 
+transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 						 WindowSpec *spec, Query *qry, bool is_rows)
 {
 	/* Only bound frame edges will have a value */
@@ -180,7 +180,7 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			if (IsA(e->val, Const))
 			{
 				Const *con = (Const *)e->val;
-				
+
 				if (con->consttype != INT4OID)
 					ereport(ERROR,
 							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
@@ -207,20 +207,20 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			List *oprname;
 			Operator tup;
 			int32 typmod;
-						
+
 			if (list_length(spec->order) != 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("only one ORDER BY column may be specified when"
 								" RANGE is used in a window specification")));
-	
+
 			/* e->val should already be transformed */
 			typmod = exprTypmod(e->val);
-	
+
 			if (IsA(e->val, Const))
 			{
 				Const *con = (Const *)e->val;
-				
+
 				if (con->constisnull)
 					ereport(ERROR,
 							(errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
@@ -228,7 +228,7 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 			}
 
 			sort = (SortClause *)linitial(spec->order);
-			te = getTargetBySortGroupRef(sort->tleSortGroupRef, 
+			te = getTargetBySortGroupRef(sort->tleSortGroupRef,
 										 qry->targetList);
 			otype = exprType((Node *)te->expr);
 			rtype = exprType(e->val);
@@ -240,13 +240,13 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				oprname = lappend(NIL, makeString("-"));
 
 			tup = oper(pstate, oprname, otype, rtype, true, 0);
-				
+
 			if (!HeapTupleIsValid(tup))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("window specification RANGE parameter type "
 								"must be coercible to ORDER BY column type")));
-			
+
 			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
 			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
 			ReleaseSysCache(tup);
@@ -254,17 +254,17 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 
 			if (rtype != newrtype)
 			{
-				/* 
+				/*
 				 * We have to coerce the RHS to the new type so that we'll be
 				 * able to trivially find an operator later on.
 				 */
 
 				/* XXX: we assume that the typmod for the new RHS type
 				 * is the same as before... is that safe?
-				 */ 
-				Expr *expr = 
+				 */
+				Expr *expr =
 					(Expr *)coerce_to_target_type(NULL,
-												  e->val, 
+												  e->val,
 											 	  rtype,
 											 	  newrtype, typmod,
 									 			  COERCION_EXPLICIT,
@@ -283,7 +283,7 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				else
 					e->val = (Node *)expr;
 			}
-			
+
 			if (oprresult != otype)
 			{
 				/* see if it can be coerced */
@@ -313,7 +313,7 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 
 					zero = stringTypeDatum(typ, "0", exprTypmod(e->val));
 
-					/* 
+					/*
 					 * As we know the value is a const and since transformExpr()
 					 * will have parsed the type into its internal format, we can
 					 * just poke directly into the Const structure.
@@ -385,7 +385,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 	List *winout = NIL;
 	List *winin = pstate->p_win_clauses;
 	Index clauseno = -1;
-	
+
 	/*
 	 * We have two lists of window specs: one in the ParseState -- put there
 	 * when we find the OVER(...) clause in the targetlist and the other
@@ -425,7 +425,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		 */
 		if (ws->parent || ws->name)
 		{
-			/* 
+			/*
 			 * Firstly, check that the parent is not a reference to this
 			 * window specification.
 			 */
@@ -438,8 +438,8 @@ transformWindowClause(ParseState *pstate, Query *qry)
 			foreach(tmp, winout)
 			{
 				WindowSpec *ws2 = lfirst(tmp);
-		
-				/* Only check if the name exists if wc->name is not NULL */	
+
+				/* Only check if the name exists if wc->name is not NULL */
 				if (ws->name != NULL && strcmp(ws2->name, ws->name) == 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
@@ -459,10 +459,10 @@ transformWindowClause(ParseState *pstate, Query *qry)
 
 				/*
 				 * XXX: these errors could apply to any number of clauses in the
-				 * query and may be considered ambiguous by the user. Perhaps a 
+				 * query and may be considered ambiguous by the user. Perhaps a
 				 * location (see FuncCall) would help?
 				 */
-				if (ws->parent && ws2->name && 
+				if (ws->parent && ws2->name &&
 					strcmp(ws->parent, ws2->name) == 0)
 				{
 					found = true;
@@ -479,7 +479,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 										"specification")));
 
 					/*
-					 * We only want to disallow the specification of a 
+					 * We only want to disallow the specification of a
 					 * framing clause when the target list form is like:
 					 *
 					 *  foo() OVER (w1 ORDER BY baz) ...
@@ -505,10 +505,10 @@ transformWindowClause(ParseState *pstate, Query *qry)
 					newspec->parent = ws2->name;
 					/* XXX: some parameters might not be processed! */
 					newspec->partition = copyObject(ws2->partition);
-	
+
 					if (ws->order == NIL && ws2->order != NIL)
 						newspec->order = copyObject(ws2->order);
-				
+
 					newspec->frame = copyObject(ws2->frame);
 
 				}
@@ -562,15 +562,15 @@ transformWindowClause(ParseState *pstate, Query *qry)
 			ctx.has_order = PointerIsValid(newspec->order);
 			ctx.has_frame = PointerIsValid(ws->frame);
 
-			expression_tree_walker((Node *)qry->targetList, 
+			expression_tree_walker((Node *)qry->targetList,
 								   winref_not_distinct_walker, (void *)&ctx);
 
 		}
-		
-		/* 
+
+		/*
 		 * Finally, process the framing clause. parseProcessWindFunc() will
 		 * have picked up window functions that do not support framing.
-		 * 
+		 *
 		 * What we do need to do is the following:
 		 * - If BETWEEN has been specified, the trailing bound is not
 		 *   UNBOUNDED FOLLOWING; the leading bound is not UNBOUNDED
@@ -592,8 +592,8 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		{
 			/* with that out of the way, we may proceed */
 			WindowFrame *nf = copyObject(ws->frame);
-		
-			/* 
+
+			/*
 			 * Framing is only supported on specifications with an ordering
 			 * clause.
 			 */
@@ -612,7 +612,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("conflicting bounds in window framing "
-									"clause"), 
+									"clause"),
 							 errhint("First bound of BETWEEN clause in window "
 									"specification cannot be UNBOUNDED FOLLOWING")));
 				if (nf->lead->kind == WINDOW_UNBOUND_PRECEDING)
@@ -646,11 +646,11 @@ transformWindowClause(ParseState *pstate, Query *qry)
 			else
 			{
 				/*
-				 * If only a single bound has been specified, set the 
+				 * If only a single bound has been specified, set the
 				 * leading bound to CURRENT ROW
 				 */
 				WindowFrameEdge *e = makeNode(WindowFrameEdge);
-				
+
 				Assert(!PointerIsValid(nf->lead));
 
 				e->kind = WINDOW_CURRENT_ROW;
@@ -663,7 +663,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 									 nf->is_rows);
 			newspec->frame = nf;
 		}
-		
+
 		winout = lappend(winout, newspec);
 	}
 
@@ -738,12 +738,12 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	PG_END_TRY();
 
 	/* External relations are read-only */
-	if (pstate->p_target_relation->rd_rel->relkind == RELKIND_EXTERNAL &&
+	if (pstate->p_target_relation->rd_rel->relstorage == RELSTORAGE_EXTERNAL &&
 		requiredPerms != ACL_SELECT)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("External tables are read only. Operation not permitted.")));
-		
+
 	if (pstate->p_is_insert && !pstate->p_is_update)
 		LockRelation(pstate->p_target_relation, RowExclusiveLock);
 	else
@@ -1842,11 +1842,11 @@ static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 	{
 		ListCell *gl;
 		GroupingClause *gc = (GroupingClause*)node;
-		
+
 		foreach(gl, gc->groupsets)
 		{
 			List *subresult_list;
-			
+
 			subresult_list = findListTargetlistEntries(pstate, lfirst(gl),
 													   tlist, true, ignore_in_grpext);
 
@@ -2253,7 +2253,7 @@ grouping_rewrite_walker(Node *node, void *context)
 	}
 	else if(IsA(node, SortBy))
 	{
-		/* 
+		/*
 		 * When WindowSpec leaves the main parser, partition and order
 		 * clauses will be lists of SortBy structures. Process them here to
 		 * avoid muddying up the expression_tree_walker().
@@ -2416,7 +2416,7 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 			 *
 			 * Note that RowExprs are not added into the final targetlist.
 			 */
-			result = 
+			result =
 				transformRowExprToGroupClauses(pstate, (RowExpr *)node,
 											   result, *targetlist);
 		}
@@ -2809,7 +2809,7 @@ targetIsInSortGroupList(TargetEntry *tle, List *sortgroupList)
 
 /*
  * Given a sort group reference, find the TargetEntry for it.
- */ 
+ */
 
 static TargetEntry *
 getTargetBySortGroupRef(Index ref, List *tl)
@@ -2819,7 +2819,7 @@ getTargetBySortGroupRef(Index ref, List *tl)
 	foreach(tmp, tl)
 	{
 		TargetEntry *te = (TargetEntry *)lfirst(tmp);
-		
+
 		if (te->ressortgroupref == ref)
 			return te;
 	}
@@ -2829,8 +2829,8 @@ getTargetBySortGroupRef(Index ref, List *tl)
 /*
  * Re-order entries in a given GROUP BY list, which includes expressions or
  * grouping extension clauses, such as ROLLUP, CUBE, GROUPING_SETS.
- * 
- * In each grouping set level, all non grouping extension clauses (or 
+ *
+ * In each grouping set level, all non grouping extension clauses (or
  * expressions) will appear in front of grouping extension clauses.
  * See the following GROUP BY clause:
  *
@@ -2842,7 +2842,7 @@ getTargetBySortGroupRef(Index ref, List *tl)
  *
  * We make a fresh copy for each entries in the result list. The caller
  * needs to free the list eventually.
- */ 
+ */
 static List *
 reorderGroupList(List *grouplist)
 {
@@ -2867,7 +2867,7 @@ reorderGroupList(List *grouplist)
 
 			new_gc->groupType = gc->groupType;
 			new_gc->groupsets = reorderGroupList(gc->groupsets);
-			
+
 			sub_list = lappend(sub_list, new_gc);
 		}
 		else

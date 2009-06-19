@@ -226,6 +226,7 @@ typedef struct _tableInfo
 	char	   *rolname;		/* name of owner, or empty string */
 	char	   *relacl;
 	char		relkind;
+	char		relstorage;
 	char	   *reltablespace;	/* relation tablespace */
 	char	   *reloptions;		/* options specified by WITH (...) */
 	bool		hasindex;		/* does it have any indexes? */

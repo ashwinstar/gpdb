@@ -22,7 +22,7 @@
 #include "nodes/relation.h"
 #include "parser/parse_node.h"
 
-extern Oid	DefineRelation(CreateStmt *stmt, char relkind);
+extern Oid	DefineRelation(CreateStmt *stmt, char relkind, char relstorage);
 
 extern void	DefineExternalRelation(CreateExternalStmt *stmt);
 
@@ -90,11 +90,11 @@ extern AttrNumber max_partition_attr(PartitionNode *pn);
 extern List *get_partition_attrs(PartitionNode *pn);
 extern int num_partition_levels(PartitionNode *pn);
 extern bool rel_is_child_partition(Oid relid);
-extern PartitionRule *ruleMakePartitionRule(HeapTuple tuple, 
-											TupleDesc tupdesc, 
+extern PartitionRule *ruleMakePartitionRule(HeapTuple tuple,
+											TupleDesc tupdesc,
 											MemoryContext mcxt);
-extern Partition *partMakePartition(HeapTuple tuple, 
-									TupleDesc tupdesc, 
+extern Partition *partMakePartition(HeapTuple tuple,
+									TupleDesc tupdesc,
 									MemoryContext mcxt);
 extern List *all_partition_relids(PartitionNode *pn);
 extern bool rel_is_partitioned(Oid relid);

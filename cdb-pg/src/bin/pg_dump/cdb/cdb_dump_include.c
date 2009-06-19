@@ -497,9 +497,8 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 						  "SELECT c.oid"
 						  "\nFROM pg_catalog.pg_class c"
 						  "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
-						  "\nWHERE c.relkind in ('%c', '%c', '%c', '%c')\n",
-						  RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW,
-						  RELKIND_EXTERNAL);
+						  "\nWHERE c.relkind in ('%c', '%c', '%c')\n",
+						  RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW);
 		processSQLNamePattern(g_conn, query, cell->val, true, false,
 							  "n.nspname", "c.relname", NULL,
 							  "pg_catalog.pg_table_is_visible(c.oid)");
@@ -1260,6 +1259,7 @@ getTables(int *numTables)
 	int			i_relname;
 	int			i_relnamespace;
 	int			i_relkind;
+	int			i_relstorage;
 	int			i_relacl;
 	int			i_rolname;
 	int			i_relchecks;
@@ -1301,7 +1301,7 @@ getTables(int *numTables)
 	 */
 	appendPQExpBuffer(query,
 					  "SELECT c.tableoid, c.oid, relname, "
-					  "relacl, relkind, relnamespace, "
+					  "relacl, relkind, relstorage, relnamespace, "
 					  "(%s relowner) as rolname, "
 					  "relchecks, reltriggers, "
 					  "relhasindex, relhasrules, relhasoids, "
@@ -1315,13 +1315,12 @@ getTables(int *numTables)
 					  "d.classid = c.tableoid and d.objid = c.oid and "
 					  "d.objsubid = 0 and "
 					  "d.refclassid = c.tableoid and d.deptype = 'a') "
-					  "where relkind in ('%c', '%c', '%c', '%c', '%c') %s"
+					  "where relkind in ('%c', '%c', '%c', '%c') %s"
 					  "order by c.oid",
 					  username_subquery,
 					  RELKIND_SEQUENCE,
 					  RELKIND_RELATION, RELKIND_SEQUENCE,
 					  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE,
-					  RELKIND_EXTERNAL, /* MPP ADDITION */
 					  g_gp_supportsPartitioning ?
 						  "AND c.oid NOT IN (select parchildrelid from "
 						  "pg_partition_rule)" : "");
@@ -1350,6 +1349,7 @@ getTables(int *numTables)
 	i_relnamespace = PQfnumber(res, "relnamespace");
 	i_relacl = PQfnumber(res, "relacl");
 	i_relkind = PQfnumber(res, "relkind");
+	i_relstorage = PQfnumber(res, "relstorage");
 	i_rolname = PQfnumber(res, "rolname");
 	i_relchecks = PQfnumber(res, "relchecks");
 	i_reltriggers = PQfnumber(res, "reltriggers");
@@ -1373,6 +1373,7 @@ getTables(int *numTables)
 		tblinfo[i].rolname = strdup(PQgetvalue(res, i, i_rolname));
 		tblinfo[i].relacl = strdup(PQgetvalue(res, i, i_relacl));
 		tblinfo[i].relkind = *(PQgetvalue(res, i, i_relkind));
+		tblinfo[i].relstorage = *(PQgetvalue(res, i, i_relstorage));
 		tblinfo[i].hasindex = (strcmp(PQgetvalue(res, i, i_relhasindex), "t") == 0);
 		tblinfo[i].hasrules = (strcmp(PQgetvalue(res, i, i_relhasrules), "t") == 0);
 		tblinfo[i].hasoids = (strcmp(PQgetvalue(res, i, i_relhasoids), "t") == 0);

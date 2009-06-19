@@ -25,7 +25,7 @@
 
 /*
  * Macros to simplify reading of different kinds of fields.  Use these
- * wherever possible to reduce the chance for silly typos.	
+ * wherever possible to reduce the chance for silly typos.
  */
 
 
@@ -155,7 +155,7 @@ _readQuery(const char ** str)
 {
 	READ_LOCALS(Query);
 
-	READ_ENUM_FIELD(commandType, CmdType); Assert(local_node->commandType <= CMD_NOTHING);	
+	READ_ENUM_FIELD(commandType, CmdType); Assert(local_node->commandType <= CMD_NOTHING);
 	READ_ENUM_FIELD(querySource, QuerySource); 	Assert(local_node->querySource <= QSRC_PLANNER);
 	READ_BOOL_FIELD(canSetTag);
 	READ_NODE_FIELD(utilityStmt);
@@ -184,18 +184,18 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(result_partitions);
 	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
-	                     
+
     READ_OID_FIELD(intoOidInfo.relOid);
-    READ_OID_FIELD(intoOidInfo.comptypeOid);                     
-    READ_OID_FIELD(intoOidInfo.toastOid);                  
-    READ_OID_FIELD(intoOidInfo.toastIndexOid);                 
+    READ_OID_FIELD(intoOidInfo.comptypeOid);
+    READ_OID_FIELD(intoOidInfo.toastOid);
+    READ_OID_FIELD(intoOidInfo.toastIndexOid);
     READ_OID_FIELD(intoOidInfo.toastComptypeOid);
-    READ_OID_FIELD(intoOidInfo.aosegOid);                  
-    READ_OID_FIELD(intoOidInfo.aosegIndexOid);                 
+    READ_OID_FIELD(intoOidInfo.aosegOid);
+    READ_OID_FIELD(intoOidInfo.aosegIndexOid);
     READ_OID_FIELD(intoOidInfo.aosegComptypeOid);
-    
+
 	local_node->intoPolicy = NULL;
-	
+
 
 	READ_DONE();
 }
@@ -235,13 +235,13 @@ static SingleRowErrorDesc *
 _readSingleRowErrorDesc(const char ** str)
 {
 	READ_LOCALS(SingleRowErrorDesc);
-		
+
 	READ_NODE_FIELD(errtable);
 	READ_INT_FIELD(rejectlimit);
 	READ_BOOL_FIELD(is_keep);
 	READ_BOOL_FIELD(is_limit_in_rows);
 	READ_BOOL_FIELD(reusing_existing_errtable);
-	
+
 	READ_DONE();
 }
 
@@ -482,10 +482,10 @@ _readConstraint(const char ** str)
 	READ_LOCALS(Constraint);
 
 	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
-	
+
 	READ_ENUM_FIELD(contype,ConstrType);
 	Assert(local_node->contype <= CONSTR_ATTR_IMMEDIATE);
-	 
+
 
 	switch (local_node->contype)
 	{
@@ -495,13 +495,13 @@ _readConstraint(const char ** str)
 			READ_NODE_FIELD(options);
 			READ_STRING_FIELD(indexspace);
 		break;
-		
+
 		case CONSTR_CHECK:
 		case CONSTR_DEFAULT:
 			READ_NODE_FIELD(raw_expr);
 			READ_STRING_FIELD(cooked_expr);
 		break;
-		
+
 		case CONSTR_NULL:
 		case CONSTR_NOTNULL:
 		case CONSTR_ATTR_DEFERRABLE:
@@ -509,13 +509,13 @@ _readConstraint(const char ** str)
 		case CONSTR_ATTR_DEFERRED:
 		case CONSTR_ATTR_IMMEDIATE:
 		break;
-		
+
 		default:
 			elog(WARNING,"Can't deserialize constraint %d",(int)local_node->contype);
 			break;
 	}
 
-	
+
 	READ_DONE();
 }
 
@@ -558,16 +558,16 @@ static ReindexStmt *
 _readReindexStmt(const char ** str)
 {
 	READ_LOCALS(ReindexStmt);
-	
+
 	READ_ENUM_FIELD(kind,ObjectType); Assert(local_node->kind <= OBJECT_VIEW);
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(name);
 	READ_BOOL_FIELD(do_system);
 	READ_BOOL_FIELD(do_user);
 	READ_NODE_FIELD(new_ind_oids);
-	
+
 	READ_DONE();
-	
+
 }
 
 static ViewStmt *
@@ -591,13 +591,13 @@ _readRuleStmt(const char ** str)
 	READ_LOCALS(RuleStmt);
 
 	READ_NODE_FIELD(relation);
-	READ_STRING_FIELD(rulename);	
+	READ_STRING_FIELD(rulename);
 	READ_NODE_FIELD(whereClause);
 	READ_ENUM_FIELD(event,CmdType);
 	READ_BOOL_FIELD(instead);
-	READ_NODE_FIELD(actions);	
-	READ_BOOL_FIELD(replace);	
-	
+	READ_NODE_FIELD(actions);
+	READ_BOOL_FIELD(replace);
+
 	READ_DONE();
 }
 
@@ -636,18 +636,18 @@ _readDropOwnedStmt(const char ** str)
 
 	READ_NODE_FIELD(roles);
 	READ_ENUM_FIELD(behavior, DropBehavior);
-	
+
 	READ_DONE();
 }
 
-static ReassignOwnedStmt * 
+static ReassignOwnedStmt *
 _readReassignOwnedStmt(const char ** str)
 {
 	READ_LOCALS(ReassignOwnedStmt);
 
 	READ_NODE_FIELD(roles);
 	READ_STRING_FIELD(newrole);
-	
+
 	READ_DONE();
 }
 
@@ -659,7 +659,7 @@ _readTruncateStmt(const char ** str)
 	READ_NODE_FIELD(relations);
 	READ_ENUM_FIELD(behavior, DropBehavior);
 	Assert(local_node->behavior <= DROP_CASCADE);
-	
+
 	READ_NODE_FIELD(relids);
 	READ_NODE_FIELD(new_heap_oids);
 	READ_NODE_FIELD(new_toast_oids);
@@ -695,7 +695,7 @@ _readAlterTableStmt(const char ** str)
 			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
 		}
 	}
-	
+
 	READ_DONE();
 }
 
@@ -730,7 +730,7 @@ _readAlterPartitionCmd(const char ** str)
 	READ_NODE_FIELD(partid);
 	READ_NODE_FIELD(arg1);
 	READ_NODE_FIELD(arg2);
-	
+
 	READ_DONE();
 }
 
@@ -741,7 +741,7 @@ _readAlterPartitionId(const char ** str)
 
 	READ_ENUM_FIELD(idtype, AlterPartitionIdType);
 	READ_NODE_FIELD(partiddef);
-	
+
 	READ_DONE();
 }
 
@@ -749,7 +749,7 @@ static CreateRoleStmt *
 _readCreateRoleStmt(const char ** str)
 {
 	READ_LOCALS(CreateRoleStmt);
-	
+
 	READ_ENUM_FIELD(stmt_type, RoleStmtType);
 	READ_STRING_FIELD(role);
 	READ_NODE_FIELD(options);
@@ -767,7 +767,7 @@ _readDropRoleStmt(const char ** str)
 	READ_BOOL_FIELD(missing_ok);
 
 	READ_DONE();
-	
+
 }
 
 static  AlterRoleStmt *
@@ -779,7 +779,7 @@ _readAlterRoleStmt(const char ** str)
 	READ_NODE_FIELD(options);
 	READ_INT_FIELD(action);
 	READ_DONE();
-	
+
 }
 
 static  AlterRoleSetStmt *
@@ -790,23 +790,23 @@ _readAlterRoleSetStmt(const char ** str)
 	READ_STRING_FIELD(role);
 	READ_STRING_FIELD(variable);
 	READ_NODE_FIELD(value);
-	
+
 	READ_DONE();
-	
+
 }
 
 static AlterObjectSchemaStmt *
 _readAlterObjectSchemaStmt(const char ** str)
 {
 	READ_LOCALS(AlterObjectSchemaStmt);
-	
+
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(object);
 	READ_NODE_FIELD(objarg);
 	READ_STRING_FIELD(addname);
 	READ_STRING_FIELD(newschema);
 	READ_ENUM_FIELD(objectType,ObjectType); Assert(local_node->objectType <= OBJECT_VIEW);
-	
+
 	READ_DONE();
 }
 
@@ -876,9 +876,9 @@ _readAConst(const char ** str)
 	READ_LOCALS(A_Const);
 
 	READ_ENUM_FIELD(val.type, NodeTag);
-	 
 
-	
+
+
 	switch (local_node->val.type)
 	{
 		case T_Integer:
@@ -888,12 +888,12 @@ _readAConst(const char ** str)
 		case T_String:
 		case T_BitString:
 		{
-			int slen; char * nn;  
-			memcpy(&slen, *str, sizeof(int));  
-			(*str)+=sizeof(int);  
-			nn = palloc(slen+1);   
-			memcpy(nn,*str,slen); 
-			nn[slen] = '\0'; 
+			int slen; char * nn;
+			memcpy(&slen, *str, sizeof(int));
+			(*str)+=sizeof(int);
+			nn = palloc(slen+1);
+			memcpy(nn,*str,slen);
+			nn[slen] = '\0';
 			local_node->val.val.str = nn; (*str)+=slen;
 		}
 			break;
@@ -901,8 +901,8 @@ _readAConst(const char ** str)
 	 	default:
 	 		break;
 	}
-		
-	
+
+
 	local_node->typname = NULL;
 	READ_NODE_FIELD(typname);
     READ_INT_FIELD(location);   /*CDB*/
@@ -914,11 +914,11 @@ static A_Expr *
 _readAExpr(const char ** str)
 {
 	READ_LOCALS(A_Expr);
-	
+
 	READ_ENUM_FIELD(kind, A_Expr_Kind);
-	
+
 	Assert(local_node->kind <= AEXPR_IN);
-	
+
 	switch (local_node->kind)
 	{
 		case AEXPR_OP:
@@ -932,32 +932,32 @@ _readAExpr(const char ** str)
 
 			break;
 		case AEXPR_NOT:
-			
+
 			break;
 		case AEXPR_OP_ANY:
-		
+
 			READ_NODE_FIELD(name);
-		
+
 			break;
 		case AEXPR_OP_ALL:
-	
+
 			READ_NODE_FIELD(name);
-		
+
 			break;
 		case AEXPR_DISTINCT:
 
 			READ_NODE_FIELD(name);
 			break;
 		case AEXPR_NULLIF:
-	
+
 			READ_NODE_FIELD(name);
 			break;
 		case AEXPR_OF:
-		
+
 			READ_NODE_FIELD(name);
 			break;
 		case AEXPR_IN:
-		
+
 			READ_NODE_FIELD(name);
 			break;
 		default:
@@ -965,13 +965,13 @@ _readAExpr(const char ** str)
 			break;
 	}
 
- 
-	
+
+
 
 	READ_NODE_FIELD(lexpr);
 	READ_NODE_FIELD(rexpr);
 	READ_INT_FIELD(location);
-	
+
 	READ_DONE();
 }
 
@@ -1678,20 +1678,19 @@ _readCreateStmt(const char ** str)
 	READ_CHAR_FIELD(relKind);
 	READ_BOOL_FIELD(is_part_child);
 	local_node->policy = NULL;
-	
+
 	/*
 	 * Some extra checks to make sure we didn't get lost
 	 * during serialization/deserialization
 	 */
-	Assert(local_node->relKind == RELKIND_INDEX || 
-			local_node->relKind == RELKIND_RELATION || 
-			local_node->relKind == RELKIND_SEQUENCE || 
-			local_node->relKind == RELKIND_UNCATALOGED || 
-			local_node->relKind == RELKIND_TOASTVALUE || 
+	Assert(local_node->relKind == RELKIND_INDEX ||
+			local_node->relKind == RELKIND_RELATION ||
+			local_node->relKind == RELKIND_SEQUENCE ||
+			local_node->relKind == RELKIND_UNCATALOGED ||
+			local_node->relKind == RELKIND_TOASTVALUE ||
 			local_node->relKind == RELKIND_VIEW ||
-			local_node->relKind == RELKIND_EXTERNAL || 
 			local_node->relKind == RELKIND_COMPOSITE_TYPE ||
-		    local_node->relKind == RELKIND_AOSEGMENTS); 
+		    local_node->relKind == RELKIND_AOSEGMENTS);
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
 	READ_DONE();
@@ -1701,7 +1700,7 @@ static PartitionBy *
 _readPartitionBy(const char **str)
 {
 	READ_LOCALS(PartitionBy);
-	
+
 	READ_ENUM_FIELD(partType, PartitionByType);
 	READ_NODE_FIELD(keys);
 	READ_NODE_FIELD(keyopclass);
@@ -1749,7 +1748,7 @@ static PartitionRangeItem *
 _readPartitionRangeItem(const char **str)
 {
 	READ_LOCALS(PartitionRangeItem);
-	
+
 	READ_NODE_FIELD(partEveryNum);
 	READ_NODE_FIELD(partRangeVal);
 	READ_ENUM_FIELD(partedge, PartitionEdgeBounding);
@@ -1775,7 +1774,7 @@ static PartitionValuesSpec *
 _readPartitionValuesSpec(const char **str)
 {
 	READ_LOCALS(PartitionValuesSpec);
-	
+
 	READ_NODE_FIELD(partValues);
 	READ_INT_FIELD(location);
 
@@ -1865,12 +1864,12 @@ static ExtTableTypeDesc *
 _readExtTableTypeDesc(const char ** str)
 {
 	READ_LOCALS(ExtTableTypeDesc);
-	
+
 	READ_ENUM_FIELD(exttabletype, ExtTableType);
 	READ_NODE_FIELD(location_list);
 	READ_NODE_FIELD(on_clause);
 	READ_STRING_FIELD(command_string);
-	
+
 	READ_DONE();
 }
 
@@ -1878,7 +1877,7 @@ static CreateExternalStmt *
 _readCreateExternalStmt(const char ** str)
 {
 	READ_LOCALS(CreateExternalStmt);
-	
+
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(tableElts);
 	READ_NODE_FIELD(exttypedesc);
@@ -1887,7 +1886,7 @@ _readCreateExternalStmt(const char ** str)
 	READ_BOOL_FIELD(isweb);
 	READ_NODE_FIELD(sreh);
 	READ_NODE_FIELD(encoding);
-	
+
 	READ_DONE();
 }
 
@@ -1910,7 +1909,7 @@ _readFkConstraint(const char ** str)
 	READ_OID_FIELD(trig2Oid);
 	READ_OID_FIELD(trig3Oid);
 	READ_OID_FIELD(trig4Oid);
-	
+
 	READ_DONE();
 }
 
@@ -1932,12 +1931,12 @@ static CreatePLangStmt *
 _readCreatePLangStmt(const char ** str)
 {
 	READ_LOCALS(CreatePLangStmt);
-	
+
 	READ_STRING_FIELD(plname);
 	READ_NODE_FIELD(plhandler);
 	READ_NODE_FIELD(plvalidator);
 	READ_BOOL_FIELD(pltrusted);
-	
+
 	READ_DONE();
 
 }
@@ -1950,7 +1949,7 @@ _readDropPLangStmt(const char ** str)
 	READ_STRING_FIELD(plname);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
-	
+
 	READ_DONE();
 
 }
@@ -1961,10 +1960,10 @@ _readCreateSeqStmt(const char ** str)
 	READ_LOCALS(CreateSeqStmt);
 	READ_NODE_FIELD(sequence);
 	READ_NODE_FIELD(options);
-	
+
 	READ_OID_FIELD(relOid);
 	READ_OID_FIELD(comptypeOid);
-	
+
 	READ_DONE();
 }
 
@@ -1994,7 +1993,7 @@ _readClusterStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.aosegIndexOid);
 	READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	READ_NODE_FIELD(new_ind_oids);
-	
+
 	READ_DONE();
 }
 
@@ -2004,9 +2003,9 @@ _readCreatedbStmt(const char ** str)
 	READ_LOCALS(CreatedbStmt);
 	READ_STRING_FIELD(dbname);
 	READ_NODE_FIELD(options);
-	
+
 	READ_OID_FIELD(dbOid);
-	
+
 	READ_DONE();
 }
 
@@ -2014,10 +2013,10 @@ static DropdbStmt *
 _readDropdbStmt(const char ** str)
 {
 	READ_LOCALS(DropdbStmt);
-	
+
 	READ_STRING_FIELD(dbname);
 	READ_BOOL_FIELD(missing_ok);
-	
+
 	READ_DONE();
 }
 
@@ -2030,7 +2029,7 @@ _readCreateDomainStmt(const char ** str)
 	READ_NODE_FIELD(typname);
 	READ_NODE_FIELD(constraints);
 	READ_OID_FIELD(domainOid);
-		
+
 	READ_DONE();
 }
 
@@ -2044,7 +2043,7 @@ _readAlterDomainStmt(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(def);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
-		
+
 	READ_DONE();
 }
 
@@ -2060,7 +2059,7 @@ _readCreateFunctionStmt(const char ** str)
 	READ_NODE_FIELD(withClause);
 	READ_OID_FIELD(funcOid);
 	READ_OID_FIELD(shelltypeOid);
-			
+
 	READ_DONE();
 }
 
@@ -2071,7 +2070,7 @@ _readFunctionParameter(const char ** str)
 	READ_STRING_FIELD(name);
 	READ_NODE_FIELD(argType);
 	READ_ENUM_FIELD(mode, FunctionParameterMode);
-			
+
 	READ_DONE();
 }
 
@@ -2084,7 +2083,7 @@ _readRemoveFuncStmt(const char ** str)
 	READ_NODE_FIELD(args);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
-			
+
 	READ_DONE();
 }
 
@@ -2094,7 +2093,7 @@ _readAlterFunctionStmt(const char ** str)
 	READ_LOCALS(AlterFunctionStmt);
 	READ_NODE_FIELD(func);
 	READ_NODE_FIELD(actions);
-	
+
 	READ_DONE();
 }
 
@@ -2110,9 +2109,9 @@ _readDefineStmt(const char ** str)
 	READ_NODE_FIELD(definition);
 	READ_OID_FIELD(newOid);
 	READ_OID_FIELD(shadowOid);
-	
+
 	READ_DONE();
-	
+
 }
 
 static CompositeTypeStmt *
@@ -2123,9 +2122,9 @@ _readCompositeTypeStmt(const char ** str)
 	READ_NODE_FIELD(typevar);
 	READ_NODE_FIELD(coldeflist);
 	READ_OID_FIELD(comptypeOid);
-	
+
 	READ_DONE();
-	
+
 }
 
 static CreateCastStmt *
@@ -2137,7 +2136,7 @@ _readCreateCastStmt(const char ** str)
 	READ_NODE_FIELD(func);
 	READ_ENUM_FIELD(context, CoercionContext);
 	READ_OID_FIELD(castOid);
-		
+
 	READ_DONE();
 }
 
@@ -2149,7 +2148,7 @@ _readDropCastStmt(const char ** str)
 	READ_NODE_FIELD(targettype);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
-			
+
 	READ_DONE();
 }
 
@@ -2163,7 +2162,7 @@ _readCreateOpClassStmt(const char ** str)
 	READ_NODE_FIELD(items);
 	READ_BOOL_FIELD(isDefault);
 	READ_OID_FIELD(opclassOid);
-				
+
 	READ_DONE();
 }
 
@@ -2177,10 +2176,10 @@ _readCreateOpClassItem(const char ** str)
 	READ_INT_FIELD(number);
 	READ_BOOL_FIELD(recheck);
 	READ_NODE_FIELD(storedtype);
-				
+
 	READ_DONE();
 }
-	
+
 static RemoveOpClassStmt *
 _readRemoveOpClassStmt(const char ** str)
 {
@@ -2189,7 +2188,7 @@ _readRemoveOpClassStmt(const char ** str)
 	READ_STRING_FIELD(amname);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_BOOL_FIELD(missing_ok);
-				
+
 	READ_DONE();
 }
 
@@ -2203,7 +2202,7 @@ _readCreateConversionStmt(const char ** str)
 	READ_NODE_FIELD(func_name);
 	READ_BOOL_FIELD(def);
 	READ_OID_FIELD(convOid);
-					
+
 	READ_DONE();
 }
 
@@ -2211,7 +2210,7 @@ static CopyStmt *
 _readCopyStmt(const char ** str)
 {
 	READ_LOCALS(CopyStmt);
-	
+
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(attlist);
 	READ_BOOL_FIELD(is_from);
@@ -2220,25 +2219,25 @@ _readCopyStmt(const char ** str)
 	READ_NODE_FIELD(sreh);
 	READ_NODE_FIELD(partitions);
 	READ_NODE_FIELD(ao_segnos);
-	
-	READ_DONE();	
+
+	READ_DONE();
 
 }
 static GrantStmt *
 _readGrantStmt(const char ** str)
 {
 	READ_LOCALS(GrantStmt);
-	
-	READ_BOOL_FIELD(is_grant);		
-	READ_ENUM_FIELD(objtype,GrantObjectType);	
-	READ_NODE_FIELD(objects);		
-	READ_NODE_FIELD(privileges);		
-	READ_NODE_FIELD(grantees);		
-	READ_BOOL_FIELD(grant_option);	
-	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);	
+
+	READ_BOOL_FIELD(is_grant);
+	READ_ENUM_FIELD(objtype,GrantObjectType);
+	READ_NODE_FIELD(objects);
+	READ_NODE_FIELD(privileges);
+	READ_NODE_FIELD(grantees);
+	READ_BOOL_FIELD(grant_option);
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
 	READ_NODE_FIELD(cooked_privs);
-	
-	READ_DONE();	
+
+	READ_DONE();
 }
 
 static PrivGrantee *
@@ -2246,18 +2245,18 @@ _readPrivGrantee(const char ** str)
 {
 	READ_LOCALS(PrivGrantee);
 	READ_STRING_FIELD(rolname);
-		
-	READ_DONE();		
+
+	READ_DONE();
 }
 
 static FuncWithArgs *
 _readFuncWithArgs(const char ** str)
 {
 	READ_LOCALS(FuncWithArgs);
-	READ_NODE_FIELD(funcname);		
-	READ_NODE_FIELD(funcargs);	
-		
-	READ_DONE();		 	
+	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(funcargs);
+
+	READ_DONE();
 }
 
 static GrantRoleStmt *
@@ -2269,8 +2268,8 @@ _readGrantRoleStmt(const char ** str)
 	READ_BOOL_FIELD(is_grant);
 	READ_BOOL_FIELD(admin_opt);
 	READ_STRING_FIELD(grantor);
-	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);		
-	
+	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
+
 	READ_DONE();
 }
 
@@ -2281,7 +2280,7 @@ _readLockStmt(const char ** str)
 	READ_NODE_FIELD(relations);
 	READ_INT_FIELD(mode);
 	READ_BOOL_FIELD(nowait);
-		
+
 	READ_DONE();
 }
 
@@ -2291,7 +2290,7 @@ _readConstraintsSetStmt(const char ** str)
 	READ_LOCALS(ConstraintsSetStmt);
 	READ_NODE_FIELD(constraints);
 	READ_BOOL_FIELD(deferred);
-	
+
 	READ_DONE();
 }
 
@@ -2421,9 +2420,9 @@ static AppendOnlyScan *
 _readAppendOnlyScan(const char ** str)
 {
 	READ_LOCALS(AppendOnlyScan);
-	
+
 	readScanInfo(str, (Scan *)local_node);
-	
+
 	READ_DONE();
 }
 
@@ -2448,19 +2447,19 @@ static ExternalScan *
 _readExternalScan(const char ** str)
 {
 	READ_LOCALS(ExternalScan);
-	
+
 	readScanInfo(str, (Scan *)local_node);
-	
+
 	READ_NODE_FIELD(uriList);
 	READ_NODE_FIELD(fmtOpts);
 	READ_BOOL_FIELD(isText);
-	READ_BOOL_FIELD(isMasterOnly);	
+	READ_BOOL_FIELD(isMasterOnly);
 	READ_INT_FIELD(rejLimit);
 	READ_BOOL_FIELD(rejLimitInRows);
 	READ_OID_FIELD(fmterrtbl);
 	READ_INT_FIELD(encoding);
 	READ_INT_FIELD(scancounter);
-	
+
 	READ_DONE();
 }
 
@@ -2498,7 +2497,7 @@ _readBitmapIndexScan(const char ** str)
 	READ_NODE_FIELD(indexqualorig);
 	READ_NODE_FIELD(indexstrategy);
 	READ_NODE_FIELD(indexsubtype);
-	
+
 	READ_DONE();
 }
 
@@ -2510,7 +2509,7 @@ _readBitmapHeapScan(const char ** str)
 	readScanInfo(str, (Scan *)local_node);
 
 	READ_NODE_FIELD(bitmapqualorig);
-	
+
 	READ_DONE();
 }
 
@@ -2595,7 +2594,7 @@ _readNestLoop(const char ** str)
 	readJoinInfo(str, (Join *)local_node);
 
     READ_BOOL_FIELD(outernotreferencedbyinner); /*CDB*/
-	READ_BOOL_FIELD(shared_outer); 
+	READ_BOOL_FIELD(shared_outer);
 	READ_BOOL_FIELD(singleton_outer); /*CDB-OLAP*/
 
     READ_DONE();
@@ -2712,7 +2711,7 @@ _readGroup(const char ** str)
 	READ_BOOL_FIELD(inputHasGrouping);
 	READ_INT_FIELD(rollupGSTimes);
 	READ_BOOL_FIELD(lastGroup);
-		
+
 	READ_DONE();
 }
 
@@ -2838,7 +2837,7 @@ _readLimit(const char ** str)
 
 	READ_DONE();
 }
-	
+
 
 /*
  * _readHash
@@ -2886,19 +2885,19 @@ _readMotion(const char ** str)
 	READ_LOCALS(Motion);
 
 	READ_INT_FIELD(motionID);
-	READ_ENUM_FIELD(motionType, MotionType);  
-	
+	READ_ENUM_FIELD(motionType, MotionType);
+
 	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH);
 
 	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
-	
+
     READ_INT_FIELD(numInputSegs);
     if (local_node->numInputSegs > 0)
     {
     	bool array_is_null;
     	array_is_null = ((*str)[0] != 0);
-    	 	
+
     	(*str)++;
     	if (array_is_null)
     	{
@@ -2955,13 +2954,13 @@ static CdbProcess *
 _readCdbProcess(const char ** str)
 {
 	READ_LOCALS(CdbProcess);
-	
+
 	READ_STRING_FIELD(listenerAddr);
 	READ_INT_FIELD(listenerPort);
 	READ_INT_FIELD(pid);
 	READ_INT_FIELD(contentid);
 	READ_INT_FIELD(routeid);
-	
+
 	READ_DONE();
 }
 
@@ -2969,7 +2968,7 @@ static Slice *
 _readSlice(const char ** str)
 {
 	READ_LOCALS(Slice);
-	
+
 	READ_INT_FIELD(sliceIndex);
 	READ_INT_FIELD(rootIndex);
 	READ_ENUM_FIELD(gangType, GangType);  Assert(local_node->gangType <= GANGTYPE_MIRROR_WRITER);
@@ -2982,7 +2981,7 @@ _readSlice(const char ** str)
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
 	READ_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
-	
+
 	READ_DONE();
 }
 
@@ -2990,7 +2989,7 @@ static SliceTable *
 _readSliceTable(const char ** str)
 {
 	READ_LOCALS(SliceTable);
-	
+
 	READ_INT_FIELD(nMotions);
 	READ_INT_FIELD(nSubplans);
 	READ_INT_FIELD(localSlice);
@@ -2999,7 +2998,7 @@ _readSliceTable(const char ** str)
 	READ_INT_FIELD(seqServerPort);
     READ_BOOL_FIELD(doInstrument);
 	READ_INT_FIELD(ic_instance_id);
-	
+
 	READ_DONE();
 }
 
@@ -3010,7 +3009,7 @@ _readVariableResetStmt(const char ** str)
 {
 	READ_LOCALS(VariableResetStmt);
 	READ_STRING_FIELD(name);
-	
+
 	READ_DONE();
 }
 
@@ -3074,19 +3073,19 @@ bitmapsetRead(const char ** str)
 	Bitmapset *bms = NULL;
 	int nwords;
 	int i;
-	
+
 	memcpy(&nwords, *str, sizeof(int)); (*str)+=sizeof(int);
 	if (nwords==0)
 		return bms;
-		
+
 	bms = palloc(sizeof(int)+nwords*sizeof(bitmapword));
 	bms->nwords = nwords;
 	for (i = 0; i < nwords; i++)
 	{
 		memcpy(&bms->words[i], *str, sizeof(bitmapword)); (*str)+=sizeof(bitmapword);
 	}
-		
-	
+
+
 
 
 	return bms;
@@ -3096,29 +3095,29 @@ static CreateTrigStmt *
 _readCreateTrigStmt(const char ** str)
 {
 	READ_LOCALS(CreateTrigStmt);
-	
+
 	READ_STRING_FIELD(trigname);
 	READ_NODE_FIELD(relation);
 	READ_NODE_FIELD(funcname);
 	READ_NODE_FIELD(args);
 	READ_BOOL_FIELD(before);
 	READ_BOOL_FIELD(row);
-	{ int slen; 
-		memcpy(&slen, *str, sizeof(int)); 
-		(*str)+=sizeof(int); 
-		memcpy(local_node->actions,*str,slen); 
+	{ int slen;
+		memcpy(&slen, *str, sizeof(int));
+		(*str)+=sizeof(int);
+		memcpy(local_node->actions,*str,slen);
 		(*str)+=slen; }
 	READ_BOOL_FIELD(isconstraint);
 	READ_BOOL_FIELD(deferrable);
 	READ_BOOL_FIELD(initdeferred);
 	READ_NODE_FIELD(constrrel);
 	READ_OID_FIELD(trigOid);
-	
+
 	READ_DONE();
 
 }
 
-static Node * 
+static Node *
 _readValue(const char ** str, NodeTag nt)
 {
 	Node * result = NULL;
@@ -3136,27 +3135,27 @@ _readValue(const char ** str, NodeTag nt)
 	}
 	else
 	{
-		int slen; 
-		char * nn = NULL; 
-		memcpy(&slen, *str, sizeof(int)); 
-		(*str)+=sizeof(int);  
+		int slen;
+		char * nn = NULL;
+		memcpy(&slen, *str, sizeof(int));
+		(*str)+=sizeof(int);
 
-		/* 
+		/*
 		 * For the String case we want to create an empty string if slen is
 		 * equal to zero, since otherwise we'll set the string to NULL, which
 		 * has a different meaning and the NULL case is handed above.
 		 */
-		if (slen > 0 || nt == T_String) 
-		{  
+		if (slen > 0 || nt == T_String)
+		{
 		    nn = palloc(slen + 1);
 
 			if (slen > 0)
-			    memcpy(nn, *str, slen);  
+			    memcpy(nn, *str, slen);
 
 		    (*str) += (slen);
-			nn[slen] = '\0';  
-		}  
- 
+			nn[slen] = '\0';
+		}
+
 		if (nt == T_Float)
 			result = (Node *) makeFloat(nn);
 		else if (nt == T_String)
@@ -3166,7 +3165,7 @@ _readValue(const char ** str, NodeTag nt)
 		else
 			elog(ERROR, "unknown Value node type %i", nt);
 	}
-	
+
 	return result;
 
 }
@@ -3180,23 +3179,23 @@ readNodeBinary(const char ** str)
 
 	if (str==NULL || *str==NULL)
 		return NULL;
-		
+
 	memcpy(&ntt,*str,sizeof(int16));
 	(*str)+=sizeof(int16);
 	nt = (NodeTag) ntt;
-	
+
 	if (nt==0)
 		return NULL;
-		
+
 	if (nt == T_List || nt == T_IntList || nt == T_OidList)
 	{
 		List	   *l = NIL;
 		int listsize = 0;
 		int i;
-		
+
 		memcpy(&listsize,*str,sizeof(int));
 		(*str)+=sizeof(int);
-		
+
 		if (nt == T_IntList)
 		{
 			int val;
@@ -3217,9 +3216,9 @@ readNodeBinary(const char ** str)
 				l = lappend_oid(l, val);
 			}
 		}
-		else 
+		else
 		{
-			
+
 			for (i = 0; i < listsize; i++)
 			{
 				l = lappend(l, readNodeBinary(str));
@@ -3229,13 +3228,13 @@ readNodeBinary(const char ** str)
 
 		return l;
 	}
-	
+
 	if (nt == T_Integer || nt == T_Float || nt == T_String ||
 	   	nt == T_BitString || nt == T_Null)
 	{
 		return _readValue(str, nt);
 	}
-	
+
 	switch(nt)
 	{
 		case T_Plan:
@@ -3264,10 +3263,10 @@ readNodeBinary(const char ** str)
 				break;
 			case T_AppendOnlyScan:
 				return_value = _readAppendOnlyScan(str);
-				break;				
+				break;
 			case T_AOCSScan:
 				return_value = _readAOCSScan(str);
-				break;				
+				break;
 			case T_ExternalScan:
 				return_value = _readExternalScan(str);
 				break;
@@ -3527,8 +3526,8 @@ readNodeBinary(const char ** str)
 			case T_AppendRelInfo:
 				return_value = _readAppendRelInfo(str);
 				break;
-#endif 			
-				
+#endif
+
 			case T_GrantStmt:
 				return_value = _readGrantStmt(str);
 				break;
@@ -3540,7 +3539,7 @@ readNodeBinary(const char ** str)
 				break;
 			case T_GrantRoleStmt:
 				return_value = _readGrantRoleStmt(str);
-				break;				
+				break;
 			case T_LockStmt:
 				return_value = _readLockStmt(str);
 				break;
@@ -3593,11 +3592,11 @@ readNodeBinary(const char ** str)
 			case T_ReindexStmt:
 				return_value = _readReindexStmt(str);
 				break;
-				
+
 			case T_ConstraintsSetStmt:
 				return_value = _readConstraintsSetStmt(str);
 				break;
-				
+
 			case T_CreateFunctionStmt:
 				return_value = _readCreateFunctionStmt(str);
 				break;
@@ -3614,7 +3613,7 @@ readNodeBinary(const char ** str)
 			case T_DefineStmt:
 				return_value = _readDefineStmt(str);
 				break;
-				
+
 			case T_CompositeTypeStmt:
 				return_value = _readCompositeTypeStmt(str);
 				break;
@@ -3636,8 +3635,8 @@ readNodeBinary(const char ** str)
 			case T_CreateConversionStmt:
 				return_value = _readCreateConversionStmt(str);
 				break;
-			
-				
+
+
 			case T_ViewStmt:
 				return_value = _readViewStmt(str);
 				break;
@@ -3650,14 +3649,14 @@ readNodeBinary(const char ** str)
 			case T_DropPropertyStmt:
 				return_value = _readDropPropertyStmt(str);
 				break;
-				
+
 			case T_DropOwnedStmt:
 				return_value = _readDropOwnedStmt(str);
 				break;
 			case T_ReassignOwnedStmt:
 				return_value = _readReassignOwnedStmt(str);
 				break;
-				
+
 			case T_TruncateStmt:
 				return_value = _readTruncateStmt(str);
 				break;
@@ -3694,15 +3693,15 @@ readNodeBinary(const char ** str)
 			case T_AlterObjectSchemaStmt:
 				return_value = _readAlterObjectSchemaStmt(str);
 				break;
-				
+
 			case T_AlterOwnerStmt:
 				return_value = _readAlterOwnerStmt(str);
 				break;
-				
+
 			case T_RenameStmt:
 				return_value = _readRenameStmt(str);
 				break;
-				
+
 			case T_CreateSeqStmt:
 				return_value = _readCreateSeqStmt(str);
 				break;
@@ -3729,14 +3728,14 @@ readNodeBinary(const char ** str)
 			case T_TransactionStmt:
 				return_value = _readTransactionStmt(str);
 				break;
-#endif 
+#endif
 			case T_NotifyStmt:
 				return_value = _readNotifyStmt(str);
 				break;
 			case T_DeclareCursorStmt:
 				return_value = _readDeclareCursorStmt(str);
 				break;
-			
+
 			case T_SingleRowErrorDesc:
 				return_value = _readSingleRowErrorDesc(str);
 				break;
@@ -3747,7 +3746,7 @@ readNodeBinary(const char ** str)
 			case T_SelectStmt:
 				return_value = _readSelectStmt(str);
 				break;
-#endif 
+#endif
 			case T_ColumnDef:
 				return_value = _readColumnDef(str);
 				break;
@@ -3812,11 +3811,11 @@ readNodeBinary(const char ** str)
 			case T_ParamRef:
 				return_value = _readParamRef(str);
 				break;
-#endif 
+#endif
 			case T_A_Const:
 				return_value = _readAConst(str);
 				break;
-#if 0 
+#if 0
 			case T_A_Indices:
 				return_value = _readA_Indices(str);
 				break;
@@ -3826,13 +3825,13 @@ readNodeBinary(const char ** str)
 			case T_ResTarget:
 				return_value = _readResTarget(str);
 				break;
-#endif 
+#endif
 			case T_Constraint:
 				return_value = _readConstraint(str);
 				break;
 			case T_FkConstraint:
 				return_value = _readFkConstraint(str);
-				break; 
+				break;
 			case T_FuncCall:
 				return_value = _readFuncCall(str);
 				break;
@@ -3850,7 +3849,7 @@ readNodeBinary(const char ** str)
 				break;
 			case T_VacuumStmt:
 				return_value = _readVacuumStmt(str);
-				break;			
+				break;
 			case T_CdbProcess:
 				return_value = _readCdbProcess(str);
 				break;
@@ -3868,7 +3867,7 @@ readNodeBinary(const char ** str)
 				return_value = _readLockingClause(str);
 				break;
 #endif
-				
+
 			case T_CreateTrigStmt:
 				return_value = _readCreateTrigStmt(str);
 				break;
@@ -3877,7 +3876,7 @@ readNodeBinary(const char ** str)
 				return_value = NULL; /* keep the compiler silent */
 				elog(ERROR, "could not deserialize unrecognized node type: %d",
 						 (int) nt);
-				
+
 				break;
 	}
 
@@ -3889,15 +3888,15 @@ readNodeFromBinaryString(const char * str, int len)
 {
 	Node * node;
 	int16 tg = 0;
-	
+
 	node = readNodeBinary(&str);
-	
-	memcpy(&tg, str, sizeof(int16)); 
+
+	memcpy(&tg, str, sizeof(int16));
 	if (tg != (int16)0xDEAD)
 		elog(ERROR,"Deserialization lost sync.");
-	
+
 	return node;
-	
+
 }
 /*
  * readDatum
