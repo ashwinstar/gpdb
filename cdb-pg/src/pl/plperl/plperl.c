@@ -476,6 +476,7 @@ plperl_init_interp(void)
 	if (interp_state == INTERP_NONE)
 	{
 		char	   *dummy_env[1] = {NULL};
+		dummy_env[0] = NULL;	// this quiets a warning when using perl 5.8
 
 		PERL_SYS_INIT3(&nargs, (char ***) &embedding, (char ***) &dummy_env);
 	}
@@ -918,7 +919,7 @@ plperl_call_handler(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		if (CALLED_AS_TRIGGER(fcinfo))
-			retval = PointerGetDatum(plperl_trigger_handler(fcinfo));
+			retval = plperl_trigger_handler(fcinfo);
 		else
 			retval = plperl_func_handler(fcinfo);
 	}
