@@ -16,6 +16,9 @@
 #include <locale.h>
 
 /* postgreSQL stuff */
+#include "catalog/pg_language.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "funcapi.h"
@@ -26,10 +29,15 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/syscache.h"
 #include "utils/typcache.h"
-#include "utils/hsearch.h"
+
+/* define our text domain for translations */
+#undef TEXTDOMAIN
+#define TEXTDOMAIN PG_TEXTDOMAIN("plperl")
 
 /* perl stuff */
 #include "plperl.h"
@@ -131,7 +139,6 @@ static bool plperl_use_strict = false;
 
 /* this is saved and restored by plperl_call_handler */
 static plperl_call_data *current_call_data = NULL;
-
 
 /**********************************************************************
  * Forward declarations
@@ -388,9 +395,7 @@ check_interp(bool trusted)
 	{
 		elog(ERROR, 
 			 "can not allocate second Perl interpreter on this platform");
-
 	}
-	
 }
 
 
@@ -413,7 +418,6 @@ plperl_init_interp(void)
 	static char *embedding[3] = {
 		"", "-e", PERLBOOT
 	};
-
 	int nargs = 3;
 
 #ifdef WIN32
@@ -458,11 +462,23 @@ plperl_init_interp(void)
 	save_time = loc ? pstrdup(loc) : NULL;
 #endif
 
-
-#ifdef PERL_SYS_INIT3
+	/****
+	 * The perl API docs state that PERL_SYS_INIT3 should be called before
+	 * allocating interprters. Unfortunately, on some platforms this fails
+	 * in the Perl_do_taint() routine, which is called when the platform is
+	 * using the system's malloc() instead of perl's own. Other platforms,
+	 * notably Windows, fail if PERL_SYS_INIT3 is not called. So we call it
+	 * if it's available, unless perl is using the system malloc(), which is
+	 * true when MYMALLOC is set.
+	 */
+#if defined(PERL_SYS_INIT3) && !defined(MYMALLOC)
 	/* only call this the first time through, as per perlembed man page */
 	if (interp_state == INTERP_NONE)
-		PERL_SYS_INIT3(&nargs, (char ***) &embedding, NULL);
+	{
+		char	   *dummy_env[1] = {NULL};
+
+		PERL_SYS_INIT3(&nargs, (char ***) &embedding, (char ***) &dummy_env);
+	}
 #endif
 
 	plperl_held_interp = perl_alloc();
@@ -577,11 +593,10 @@ plperl_safe_init(void)
 		if (GetDatabaseEncoding() == PG_UTF8)
 		{
 			/* 
-			 * Fill in just enough information to set up this perl
-			 * function in the safe container and call it.
-			 * For some reason not entirely clear, it prevents errors that
-			 * can arise from the regex code later trying to load
-			 * utf8 modules.
+			 * Fill in just enough information to set up this perl function in
+			 * the safe container and call it. For some reason not entirely
+			 * clear, it prevents errors that can arise from the regex code
+			 * later trying to load utf8 modules.
 			 */
 			plperl_proc_desc desc;			
 			FunctionCallInfoData fcinfo;
@@ -602,7 +617,7 @@ plperl_safe_init(void)
 			desc.arg_is_rowtype[0] = false;
 			fmgr_info(F_TEXTOUT, &(desc.arg_out_func[0]));
 
-			fcinfo.arg[0] = DirectFunctionCall1(textin, CStringGetDatum("a"));
+			fcinfo.arg[0] = CStringGetTextDatum("a");
 			fcinfo.argnull[0] = false;
 			
 			/* and make the call */
@@ -651,9 +666,8 @@ plperl_build_tuple_result(plperl_call_data *call_data, HV *perlhash)
 		if (attn <= 0 || td->attrs[attn - 1]->attisdropped)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("Invalid return value from Perl function \"%s\"",
-							call_data->prodesc->proname),
-					 errdetail("Perl hash contains nonexistent column \"%s\"", key)));
+					 errmsg("Perl hash contains nonexistent column \"%s\"",
+							key)));
 		if (SvOK(val))
 			values[attn - 1] = SvPV(val, PL_na);
 	}
@@ -844,10 +858,8 @@ plperl_modify_tuple(plperl_proc_desc *prodesc, HV *hvTD, TriggerData *tdata,
 		if (attn <= 0 || tupdesc->attrs[attn - 1]->attisdropped)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("Invalid return value from Perl Trigger function \"%s\"",
-							prodesc->proname),
-					 errdetail("Perl hash contains nonexistent column \"%s\"", key)));
-
+					 errmsg("Perl hash contains nonexistent column \"%s\"",
+							key)));
 		/* XXX would be better to cache these lookups */
 		getTypeInputInfo(tupdesc->attrs[attn - 1]->atttypid,
 						 &typinput, &typioparam);
@@ -906,7 +918,7 @@ plperl_call_handler(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		if (CALLED_AS_TRIGGER(fcinfo))
-			retval = plperl_trigger_handler(fcinfo);
+			retval = PointerGetDatum(plperl_trigger_handler(fcinfo));
 		else
 			retval = plperl_func_handler(fcinfo);
 	}
