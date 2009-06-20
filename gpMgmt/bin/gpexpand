@@ -1430,11 +1430,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
             if dbname == 'template0':
                 continue
             self.logger.info('Populating %s.%s with data from database %s' % (gpexpand_schema, status_detail_table, dbname) )
-            c = self.connect_database(dbname)
-            self._populate_regular_tables(dbname,c)
-            self._populate_partitioned_tables(dbname,c)            
-            c.commit()
-            c.close()
+            self._populate_regular_tables(dbname)
+            self._populate_partitioned_tables(dbname)
 
         nowStr = datetime.datetime.now()
         statusSQL = "INSERT INTO %s.%s VALUES ( 'SETUP DONE', '%s' ) " % (gpexpand_schema,status_table,nowStr)
@@ -1454,7 +1451,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         GpStop.local('gpexpand setup complete', fast=True)
     
     
-    def _populate_regular_tables(self,dbname,table_conn):
+    def _populate_regular_tables(self,dbname):
         """ we don't do 3.2+ style partitioned tables here, but we do 
             all other table types.
         """
@@ -1481,6 +1478,7 @@ WHERE
 
                   """ 
         self.logger.debug(sql)
+        table_conn = self.connect_database(dbname)
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
         try:
@@ -1518,6 +1516,9 @@ WHERE
         finally:
             os.unlink(sql_file)
         
+        table_conn.commit()
+        table_conn.close()
+        table_conn = self.connect_database(dbname)
         #null out the dist policies
         sql = """
 UPDATE  gp_distribution_policy 
@@ -1535,10 +1536,12 @@ WHERE
       
         self.logger.debug(sql)
         dbconn.execSQL(table_conn,sql)
+        table_conn.commit()
+        table_conn.close()
         pass
     
     
-    def _populate_partitioned_tables(self,dbname,table_conn):
+    def _populate_partitioned_tables(self,dbname):
         """population of status_detail for partitioned tables. """
         sql="""
 SELECT 
@@ -1568,6 +1571,7 @@ WHERE
 ORDER BY tablename, c2.oid desc;
                   """
         self.logger.debug(sql)
+        table_conn = self.connect_database(dbname)
         curs = dbconn.execSQL(table_conn, sql)
         rows = curs.fetchall()            
 
@@ -1607,7 +1611,10 @@ ORDER BY tablename, c2.oid desc;
         finally:
             os.unlink(sql_file)
 
-        
+        table_conn.commit()
+        table_conn.close()
+        table_conn = self.connect_database(dbname)
+      
         sql = """
 UPDATE gp_distribution_policy
     SET attrnums = NULL 
@@ -1628,7 +1635,8 @@ UPDATE gp_distribution_policy
 """        
         self.logger.debug(sql)
         dbconn.execSQL(table_conn,sql)
-        pass
+        table_conn.commit()
+        table_conn.close()
  
     
     def form_dist_policy_name(self,conn,rs_val,table_oid):        
