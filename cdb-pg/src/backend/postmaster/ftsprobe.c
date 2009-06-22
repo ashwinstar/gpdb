@@ -26,8 +26,6 @@
 #include <sys/time.h>
 #include <netinet/in.h>
 
-#include "access/genam.h"
-#include "access/heapam.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "gp-libpq-fe.h"
@@ -45,7 +43,6 @@
 #include "storage/pmsignal.h"			/* PostmasterIsAlive */
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
-#include "utils/fmgroids.h"
 #include "utils/ps_status.h"
 
 #include "utils/relcache.h"
@@ -621,72 +618,54 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo, char *dbName, char *userName
 	return ret;
 }
 
-/*
- * wrapper for catalog lookup
- */
-static char *
-find_user(bool try_bootstrap)
-{
-	char *suser = NULL;
-	Relation auth_rel;
-	HeapTuple	auth_tup;
-	HeapScanDesc auth_scan;
-	ScanKeyData key[3];
-	bool	isNull;
-	ScanKeyInit(&key[0],
-				Anum_pg_authid_rolsuper,
-				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
-
-	ScanKeyInit(&key[1],
-				Anum_pg_authid_rolcanlogin,
-				BTEqualStrategyNumber, F_BOOLEQ,
-                BoolGetDatum(true));
-
-	if (try_bootstrap)
-	{
-		ScanKeyInit(&key[2],
-					ObjectIdAttributeNumber,
-					BTEqualStrategyNumber, F_OIDEQ,
-            	    ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID));
-	}
-
-	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
-	auth_scan = heap_beginscan(auth_rel, SnapshotNow, try_bootstrap ? 3 : 2, key);
-	if (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
-	{
-		Datum	attrName;
-		Datum	attrNameOid;
-		Oid		userOid;
-
-		attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
-		Assert(!isNull);
-		suser = pstrdup(DatumGetCString(attrName));
-
-		attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber, auth_rel->rd_att, &isNull);
-		Assert(!isNull);
-		userOid = DatumGetObjectId(attrNameOid);
-
-		SetSessionUserId(userOid, true);
-	}
-	heap_endscan(auth_scan);
-	heap_close(auth_rel, AccessShareLock);
-	return suser;
-}
-
-
-/*
- * Get a user for the FTS prober to connect as
- */
 static void
 retrieveUserAndDb(char **probeUser)
 {
+	Relation auth_rel;
+	HeapTuple	auth_tup;
+	HeapScanDesc auth_scan;
+
+	bool	isNull;
+
 	Assert(probeUser != NULL);
 
-	/* first, let's try the bootstrap super user */
-	*probeUser = find_user(true);
-	if (!(*probeUser))
-		*probeUser = find_user(false);
+	auth_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	auth_scan = heap_beginscan(auth_rel, SnapshotNow, 0, NULL);
+	while (HeapTupleIsValid(auth_tup = heap_getnext(auth_scan, ForwardScanDirection)))
+	{
+		Datum	attrName;
+		Datum	attrNameOid;
+		Datum	attrSuper;
+		Datum	attrLogin;
+		bool	is_super;
+		bool	login_allowed;
+		Oid		userOid;
+
+		attrSuper = heap_getattr(auth_tup, Anum_pg_authid_rolsuper, auth_rel->rd_att, &isNull);
+		Assert(!isNull);
+		is_super = DatumGetBool(attrSuper);
+
+		attrLogin = heap_getattr(auth_tup, Anum_pg_authid_rolcanlogin, auth_rel->rd_att, &isNull);
+		Assert(!isNull);
+		login_allowed = DatumGetBool(attrLogin);
+
+		if (is_super && login_allowed)
+		{
+			attrName = heap_getattr(auth_tup, Anum_pg_authid_rolname, auth_rel->rd_att, &isNull);
+			Assert(!isNull);
+			*probeUser = pstrdup(DatumGetCString(attrName));
+
+			attrNameOid = heap_getattr(auth_tup, ObjectIdAttributeNumber, auth_rel->rd_att, &isNull);
+			Assert(!isNull);
+			userOid = DatumGetObjectId(attrNameOid);
+
+			SetSessionUserId(userOid, true);
+
+			break;
+		}
+	}
+	heap_endscan(auth_scan);
+	heap_close(auth_rel, AccessShareLock);
 
 	Assert(*probeUser != NULL);
 }
