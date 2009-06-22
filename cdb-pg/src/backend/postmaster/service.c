@@ -147,26 +147,27 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 	{
 		SUPPRESS_PANIC();
 
-		/*
-		 * Open a connection to the service.
-		 */
-		serviceClient->sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(listenerPort);
-		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
 		for (;;)
 		{
+			/*
+			 * Open a connection to the service.
+			 */
+			serviceClient->sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(listenerPort);
+			addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
 			if ((n = connect(serviceClient->sockfd, (struct sockaddr *)&addr, sizeof(addr))) < 0)
 			{
 				saved_err = errno;
 
+				close(serviceClient->sockfd);
+				serviceClient->sockfd = -1;
+
 				if (errno == EINTR)
 					continue;
 
-				close(serviceClient->sockfd);
-				serviceClient->sockfd = -1;
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("Could not connect to '%s': %s",
 									   serviceConfig->title,
