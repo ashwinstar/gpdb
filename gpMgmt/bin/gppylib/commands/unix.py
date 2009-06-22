@@ -437,13 +437,15 @@ class RemoteCopy(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
 
-#-------------cp------------------
-class LocalCopy(Command):
-    def __init__(self,name,srcDirectory,dstDirectory,ctxt=LOCAL,remoteHost=None):
+#-------------local copy------------------
+class LocalDirCopy(Command):
+    def __init__(self,name,srcDirectory,dstDirectory):
+        # tar is much faster than cp for directories with lots of files
         self.srcDirectory=srcDirectory
-        self.dstDirectory=dstDirectory        
-        cmdStr="%s -R -p %s %s" % (findCmdInPath('cp'),srcDirectory,dstDirectory)
-        Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+        self.dstDirectory=dstDirectory
+        tarCmd = SYSTEM.getTarCmd()        
+        cmdStr="%s -cf - -C %s . | %s -xf - -C %s" % (tarCmd,srcDirectory,tarCmd,dstDirectory)
+        Command.__init__(self,name,cmdStr,LOCAL, None)
 
 #------------ ssh + tar ------------------
 #TODO:  impl this.

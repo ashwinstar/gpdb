@@ -93,7 +93,7 @@ class GpSegCopy:
                 raise SegcopyError, "Schema only copy requires source directory be master data directory"
         
         if self.dstHost in ['localhost', '127.0.0.1']:
-            cpCmd=LocalCopy(name,'%s/*' % self.srcDir,self.dstDir)
+            cpCmd=LocalDirCopy(name,'%s' % self.srcDir,self.dstDir)
             cpCmd.run(validateAfter=True)
             res=cpCmd.get_results()
         else:
@@ -133,6 +133,8 @@ class GpSegCopy:
 
         if self.schema_only:
             logger.info("Cleaning up catalog for schema only copy on destination")
+            # We need 700 permissions or postgres won't start
+            Chmod.local('set template permissions',self.dstDir,'0700')
             # get an available port
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.bind(("",0))

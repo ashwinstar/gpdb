@@ -626,7 +626,6 @@ class SegmentTemplate:
             catalog.vacuum_catalog(self.dburl,self.conn,full=True,utility=True)
         
         MakeDirectory.local('gpexpand create temp dir',self.tempDir)    
-        Chmod.local('set template permissions',self.tempDir,'0700')
                 
         self._select_src_segment()
 
