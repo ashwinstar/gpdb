@@ -2218,6 +2218,7 @@ static bool can_zap_result(Result *res)
 	ListCell *lc;
 
 	if(!res->plan.lefttree
+      || res->plan.initPlan
 	  || !IsA(res->plan.lefttree, Append)
 	  || res->resconstantqual
 	  || res->hashFilter
