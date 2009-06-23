@@ -1387,6 +1387,8 @@ logfile_getname(pg_time_t timestamp)
     char	   *filename;
     int			len;
     struct pg_tm *tm;
+	char *suffix;
+#define CSV_SUFFIX ".csv"
 
     filename = palloc(MAXPGPATH);
 
@@ -1406,6 +1408,32 @@ logfile_getname(pg_time_t timestamp)
         snprintf(filename + len, MAXPGPATH - len, "%s.%lu",
                 Log_filename, (unsigned long) timestamp);
     }
+
+	/*
+	 * If the logging format is 'TEXT' and the filename ends with ".csv",
+	 * replace ".csv" with ".log".
+	 *
+	 * If the logging format is 'CSV' and the filename does not end with ".csv",
+	 * replace the last four characters in the filename with ".cvs".
+	 */
+	if (strlen(filename) - sizeof(CSV_SUFFIX) + 1 > 0)
+		suffix = filename + (strlen(filename) - sizeof(CSV_SUFFIX) + 1);
+	else
+		/*
+		 * Point the suffix to the end of string if the length of
+		 * the filename is less than ".csv".
+		 */
+		suffix = filename + strlen(filename);
+	
+	if (gp_log_format == 0 && strcasecmp(suffix, CSV_SUFFIX) == 0)
+	{
+		snprintf(suffix, sizeof(CSV_SUFFIX), ".log");
+	}
+	
+	if (gp_log_format == 1 && strcasecmp(suffix, CSV_SUFFIX) != 0)
+	{
+		snprintf(suffix, sizeof(CSV_SUFFIX), CSV_SUFFIX);
+	}
 
     return filename;
 }
