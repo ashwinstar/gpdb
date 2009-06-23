@@ -2956,7 +2956,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
                     !superuser() && 
                     queryDesc->plantree &&
                     queryDesc->plantree->dispatch == DISPATCH_PARALLEL && 
-                    !ActivePortal->releaseResLock
+                    ActivePortal && !ActivePortal->releaseResLock
                )
             {
                 PortalSetStatus(ActivePortal, PORTAL_QUEUE);
