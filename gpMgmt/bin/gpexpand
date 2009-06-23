@@ -118,7 +118,7 @@ def parseargs():
     parser.add_option('-i','--input', dest="filename",
                         help="input expansion configuration file.", metavar="FILE")
     parser.add_option('-f', '--hosts-file', metavar='<hosts_file>',
-                      help='file containing new host names used to generate input file')        
+                      help='file containing new host names used to generate input file')
     parser.add_option('-D','--database', dest='database',
                       help='Database to create the gpexpand schema and tables in.  If this ' \
                       'option is not given, PGDATABASE will be used.  The template1, ' \
@@ -858,7 +858,7 @@ class gpexpand:
         
         self.tempDir = self.statusLogger.get_temp_dir()
         if not self.tempDir:
-            self.tempDir = '%s/gpexpand_%s_%d' % (os.getcwd(), 
+            self.tempDir = '%s/gpexpand_%s_%d' % (os.sep.join(os.path.normpath(options.master_data_directory).split(os.sep)[:-1]), 
                                                   datetime.datetime.now().strftime('%m%d%Y'), 
                                                   os.getpid()) 
         self.queue = None
