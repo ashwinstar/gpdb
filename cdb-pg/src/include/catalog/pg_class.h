@@ -181,4 +181,10 @@ static inline bool relstorage_is_ao(char c)
 {
 	return c == RELSTORAGE_AO || c == RELSTORAGE_AOCS;
 }
+
+static inline bool relstorage_is_external(char c)
+{
+	return c == RELSTORAGE_EXTERNAL;
+}
+
 #endif   /* PG_CLASS_H */

@@ -262,13 +262,13 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 		clear_relsize_cache();
-		
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
-		
+
 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
 
@@ -296,7 +296,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 
 
 
-	/* 
+	/*
      * Greenplum Database: send a scary warning message about vacuum full. its not safe
 	 *		for large tables.
 	 */
@@ -377,7 +377,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 											ALLOCSET_DEFAULT_MINSIZE,
 											ALLOCSET_DEFAULT_INITSIZE,
 											ALLOCSET_DEFAULT_MAXSIZE);
-	
+
 	/*
 	 * vacuum_rel expects to be entered with no transaction active; it will
 	 * start and commit its own transaction.  But we are called by an SQL
@@ -435,7 +435,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			{
 				if (use_own_xacts)
 					CommitTransactionCommand();
-				
+
 				continue;
 			}
 
@@ -449,19 +449,19 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			{
 				char *namespace_name = get_namespace_name(get_rel_namespace(relid));
 				char *relname = get_rel_name(relid);
-				
+
 				if (relname == NULL)
 				{
 					elog(ERROR, "Relation name does not exist for relation with oid %d", relid);
 					return;
 				}
-				
+
 				if (namespace_name == NULL)
 				{
 					elog(ERROR, "Namespace does not exist for relation with oid %d", relid);
 					return;
 				}
-				
+
 				vacstmt->relation = makeRangeVar(namespace_name, relname);
 			}
 
@@ -477,7 +477,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				AppendRelToVacuumRels(onerel);
 				MemoryContextSwitchTo(oldctx);
 			}
-			
+
 			/*
 			 * If we are in the dispatch mode, dispatch this modified vacuum statement
 			 * to QEs, and wait for them to finish.
@@ -491,7 +491,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				stats_context.onerel = onerel;
 				stats_context.updated_stats = NIL;
 				stats_context.vac_stats = NULL;
-				
+
 				/* Generate extra oids for relfilenodes to be used in bitmap indexes if any. */
 				gen_oids_for_bitmaps(vacstmt, onerel);
 
@@ -511,7 +511,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 			if (vacstmt->vacuum)
 			{
 				lmode = vacstmt->full ? AccessExclusiveLock : ShareUpdateExclusiveLock;
-				
+
 				/*
 				 * Get a session-level lock too. This will protect our access to the
 				 * relation across multiple transactions, so that we can vacuum the
@@ -565,7 +565,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 				list_free(vacstmt->extra_oids);
 				vacstmt->extra_oids = NIL;
 			}
-			
+
 			/*
 			 * Close source relation now, but keep lock so that no one deletes it
 			 * before we commit.  (If someone did, they'd fail to clean up the entries
@@ -859,7 +859,7 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 			if (stats->relid == relid && stats->type == PG_CLASS_STATS)
 			{
 				VPgClassStats *pgclass_stats = (VPgClassStats *)stats;
-				
+
 				num_pages = pgclass_stats->rel_pages;
 				num_tuples = pgclass_stats->rel_tuples;
 
@@ -1315,7 +1315,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	{
 		/* append-only relation. has a special path */
 		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ true);
-	} 
+	}
 	else if (relstorage == RELSTORAGE_AOCS)
 	{
         vacuum_aocs_rel(onerel, vacrelstats, true);
@@ -1340,7 +1340,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 				for (i = 0; i < nindexes; i++)
 				{
 					List *extra_oids = get_oids_for_bitmap(vacstmt->extra_oids, Irel[i]);
-					
+
 					vacuum_index(&vacuum_pages, Irel[i],
 								 vacrelstats->rel_tuples, 0, updated_stats, extra_oids);
 					list_free(extra_oids);
@@ -2622,7 +2622,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			for (i = 0; i < nindexes; i++)
 			{
 				List *extra_oids = get_oids_for_bitmap(all_extra_oids, Irel[i]);
-				
+
 				vacuum_index(&Nvacpagelist, Irel[i],
 							 vacrelstats->rel_tuples, keep_tuples, updated_stats, extra_oids);
 				list_free(extra_oids);
@@ -3722,7 +3722,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	/*
 	 * Our rule is that VACUUM gets dispatched to primaries and mirrors
 	 * while ANALYZE should get dispatched only to the primaries. Therefore,
-	 * if our vacstmt includes both a VACUUM and an ANALYZE clauses we 
+	 * if our vacstmt includes both a VACUUM and an ANALYZE clauses we
 	 * dispatch it to the primaries only and create an identical statement
 	 * without the ANALYZE clause to dispatch to the mirrors.
 	 *
@@ -3733,9 +3733,9 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	if((vacstmt->vacuum && !vacstmt->analyze) || (!vacstmt->vacuum && vacstmt->analyze))
 	{
 		/* statement is either VACUUM with no ANALYZE, or ANALYZE with no VACUUM */
-			
+
 		bool dispatchToMirrors = vacstmt->vacuum;
-		
+
 		if (needTwoPhase)
 		{
 			/* mark the dtx as dirty */
@@ -3747,7 +3747,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 								true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
 								true /* withSnapshot */, false /* mirrors */, true /* primaries */,
 								&primaryResults, &mirrorResults, &dispatchThreads);
-							
+
 		elog(DEBUG2, "Sent %s command to primary QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
 
 		/*
@@ -3775,7 +3775,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 									true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
 									true /* withSnapshot */, true /* mirrors */, false /* primaries */,
 									&primaryResults, &mirrorResults, &dispatchThreads);
-				
+
 			elog(DEBUG2, "Sent %s command to mirror QEs", (vacstmt->vacuum ? "vacuum" : "analyze"));
 			cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
 								  &cdbanalyze_combine_stats, ctx);
@@ -3783,7 +3783,7 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 	}
 	else
 	{
-		/* the statement is VACUUM [OPTIONS] ANALYZE */			
+		/* the statement is VACUUM [OPTIONS] ANALYZE */
 		char	   *pszVacuumNoAnalyze;
 		int			pszVacuumNoAnalyze_len;
 
@@ -3793,57 +3793,57 @@ dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 			setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
 		}
 
-		/* 
-		 * dispatch the full statement to primaries only 
+		/*
+		 * dispatch the full statement to primaries only
 		 */
 		cdbdisp_dispatchCommand("vacuum analyze", pszVacuum, pszVacuum_len,
 								true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
 								true /* withSnapshot */, false /* mirrors */, true /* primaries */,
 								&primaryResults, &mirrorResults, &dispatchThreads);
-			
+
 		elog(DEBUG2, "Sent vacuum analyze command to primary QEs");
-			
+
 		/*
 		 * Wait for all QEs to finish. If not all of our QEs were successful,
 		 * report the error and throw up.
 		 */
 		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
 							  &cdbanalyze_combine_stats, ctx);
-			
+
 		Assert(((VacuumStmt *)q->utilityStmt)->analyze);
-							
+
 		/* strip off ANALYZE from statement */
-		((VacuumStmt *)q->utilityStmt)->analyze = false; 
-			
+		((VacuumStmt *)q->utilityStmt)->analyze = false;
+
 		pszVacuumNoAnalyze = serializeNode((Node *) q, &pszVacuumNoAnalyze_len);
-			
+
 		Assert(pszVacuumNoAnalyze != NULL);
-						
+
 		if (needTwoPhase)
 		{
 			/* mark the dtx as dirty */
 			setCurrentDtxTwoPhase("cdbdisp_dispatchCommand", "(none)");
 		}
 
-		/* 
-		 * dispatch analyze-stripped vacuum statement to mirrors only 
+		/*
+		 * dispatch analyze-stripped vacuum statement to mirrors only
 		 */
 		cdbdisp_dispatchCommand("vacuum", pszVacuumNoAnalyze, pszVacuumNoAnalyze_len,
 								true /* cancelOnError */, needTwoPhase /* needTwoPhase */,
 								/* withSnapshot */true, true /* mirrors */, false /* primaries */,
 								&primaryResults, &mirrorResults, &dispatchThreads);
-			
+
 		elog(DEBUG2, "Sent vacuum command to mirror QEs");
-			
+
 		/* must reset to original value since it's a pointer to vacstmt. We'll need it later */
-		((VacuumStmt *)q->utilityStmt)->analyze = true; 
-			
+		((VacuumStmt *)q->utilityStmt)->analyze = true;
+
 		cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads,
 							  &cdbanalyze_combine_stats, ctx);
 	}
 
 	pfree(q);
-	
+
 }
 
 /*
@@ -3859,7 +3859,8 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	Relation onerel;
 	LOCKMODE lmode;
 	bool is_appendonly;
-	
+	bool is_external;
+
 	/*
 	 * Determine the type of lock we want --- hard exclusive lock for a FULL
 	 * vacuum, but just ShareUpdateExclusiveLock for concurrent vacuum. Either
@@ -3882,7 +3883,8 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	if (!onerel)
 		return NULL;
 
-	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage); 
+	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage);
+	is_external = relstorage_is_external(onerel->rd_rel->relstorage);
 
 	/*
 	 * Check permissions.
@@ -3909,15 +3911,15 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	 * Check that it's a plain table; we used to do this in get_rel_oids() but
 	 * seems safer to check after we've locked the relation.
 	 */
-	if (onerel->rd_rel->relkind != expected_relkind && !is_appendonly)
+	if (onerel->rd_rel->relkind != expected_relkind || is_external)
 	{
 		ereport(WARNING,
-				(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, or special system tables",
+				(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables",
 						RelationGetRelationName(onerel))));
 		relation_close(onerel, lmode);
 		return NULL;
 	}
-	
+
 	/*
 	 * Silently ignore tables that are temp tables of other backends ---
 	 * trying to vacuum these will lead to great unhappiness, since their
@@ -3958,7 +3960,7 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
 	Relation *Irel = NULL;
 	int nindexes;
 	int index_no;
-	
+
 	vac_open_indexes(onerel, AccessShareLock, &nindexes, &Irel);
 	if (Irel == NULL)
 		return;
@@ -3988,7 +3990,7 @@ gen_oids_for_bitmaps(VacuumStmt *vacstmt, Relation onerel)
 																NULL));
 		}
 	}
-	
+
 	vac_close_indexes(nindexes, Irel, AccessShareLock);
 }
 
@@ -4007,10 +4009,10 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel)
 	int count = 0;
 	bool found = false;
 	ListCell *lc;
-	
+
 	if (Irel->rd_rel->relam != BITMAP_AM_OID)
 		return extra_oids;
-	
+
 	foreach(lc, all_extra_oids)
 	{
 		if (found)
@@ -4019,7 +4021,7 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel)
 			if (count % 4 == 3)
 				break;
 		}
-		
+
 		if (count%4 == 0 &&
 			lfirst_oid(lc) == RelationGetRelid(Irel))
 		{

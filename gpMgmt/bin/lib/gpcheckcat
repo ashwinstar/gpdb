@@ -456,7 +456,7 @@ def checkPGExtTable():
     prntmsg('Checking pg_exttable ...')
     qry = '''SELECT reloid
          FROM pg_exttable te left outer join 
-              pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
+              pg_class tc on (te.reloid = tc.oid and tc.relstorage = 'x')
         WHERE tc.oid is NULL'''
     err = connect2run(qry, ('reloid',))
     if not err:

@@ -131,7 +131,8 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 				totalbytes = 0.0;
 	HeapTuple  *rows;
 	bool		is_appendonly;
-	char 		relstorage; 
+	bool		is_external;
+	char 		relstorage;
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -139,13 +140,13 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 		elevel = INFO;
 	else
 		elevel = DEBUG2;
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 		clear_relsize_cache();
-		
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
-		
+
 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
 
@@ -164,6 +165,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 
 	relstorage = onerel->rd_rel->relstorage;
 	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage);
+	is_external = relstorage_is_external(onerel->rd_rel->relstorage);
 
 	/*
 	 * Check permissions --- this should match vacuum's check!
@@ -185,7 +187,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 * Check that it's a plain table; we used to do this in get_rel_oids() but
 	 * seems safer to check after we've locked the relation.
 	 */
-	if (onerel->rd_rel->relkind != RELKIND_RELATION && !is_appendonly)
+	if (onerel->rd_rel->relkind != RELKIND_RELATION || is_external)
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
@@ -391,7 +393,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	else
 	{
 		if(relstorage == RELSTORAGE_AOCS)
-			numrows = acquire_sample_aocs_rows(onerel, rows, targrows, 
+			numrows = acquire_sample_aocs_rows(onerel, rows, targrows,
 					&totalrows, &totaldeadrows, &totalbytes);
 		else
 			numrows = acquire_sample_ao_rows(onerel, rows, targrows,
@@ -411,18 +413,18 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 		{
 			MemoryContext col_context,
 						old_context;
-	
+
 			col_context = AllocSetContextCreate(anl_context,
 												"Analyze Column",
 												ALLOCSET_DEFAULT_MINSIZE,
 												ALLOCSET_DEFAULT_INITSIZE,
 												ALLOCSET_DEFAULT_MAXSIZE);
 			old_context = MemoryContextSwitchTo(col_context);
-	
+
 			for (i = 0; i < attr_cnt; i++)
 			{
 				VacAttrStats *stats = vacattrstats[i];
-	
+
 				stats->rows = rows;
 				stats->tupDesc = onerel->rd_att;
 				(*stats->compute_stats) (stats,
@@ -431,13 +433,13 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 										 totalrows);
 				MemoryContextResetAndDeleteChildren(col_context);
 			}
-	
+
 			if (hasindex)
 				compute_index_stats(onerel, totalrows,
 									indexdata, nindexes,
 									rows, numrows,
 									col_context);
-	
+
 			MemoryContextSwitchTo(old_context);
 			MemoryContextDelete(col_context);
 		}
@@ -470,10 +472,10 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 */
 	if (!vacstmt->vacuum)
 	{
-		BlockNumber numblocks = (is_appendonly ? 
-								 RelationGuessNumberOfBlocks(totalbytes) : 
+		BlockNumber numblocks = (is_appendonly ?
+								 RelationGuessNumberOfBlocks(totalbytes) :
 								 RelationGetNumberOfBlocks(onerel));
-			
+
 		vac_update_relstats(onerel,
 							numblocks,
 							totalrows, hasindex,
@@ -1003,14 +1005,14 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
  * and since it can not be randomly accessed we need a separate routine for
  * append only tables column level analysis and statistics.
  *
- * In here we try to stick with Vitter's algorithms and using a reservoir 
+ * In here we try to stick with Vitter's algorithms and using a reservoir
  * while calculating the number of tuples to skip as we go. The main change
  * is that we don't sample (var)block numbers. Since varblocks vary in size
  * (unlike heap table blocks) we may theoretically choose to sample varblocks
  * of size 1 tuple if such exist (idealy they won't but it's possible). But,
- * we could probably come up with a way of getting this done better/faster 
+ * we could probably come up with a way of getting this done better/faster
  * if we see that it's slower than heap tables analysis. For now keep it simple.
- * 
+ *
  */
 static int
 acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
@@ -1026,24 +1028,24 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	FileSegTotals		*fstotal;
 	AppendOnlyScanDesc	aoscandesc = NULL;
 	TupleTableSlot		*slot;
-	
+
 	Assert(targrows > 1);
-	
+
 	/* early exit - no data on the QD */
 	if(Gp_role == GP_ROLE_DISPATCH)
 		return 0;
-	
+
 	/* get table level statistics from the pg_aoseg table */
 	fstotal = GetSegFilesTotals(onerel);
-	
+
 	totalvarblocks = (BlockNumber)fstotal->totalvarblocks;
 	*totalbytes = (double)fstotal->totalbytes;
-	
+
 	/* Prepare for sampling rows */
 	rstate = init_selection_state(targrows);
-	
+
 	aoscandesc = appendonly_beginscan(onerel, SnapshotNow, 0, NULL);
-		
+
 	slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
 
 	for(;;)
@@ -1053,11 +1055,11 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 		/* no more data. done */
 		if(targtuple == NULL)
 			break;
-		
+
 		/* check for interrupts once in a while */
 		if((int)liverows % 400 == 0)
 			vacuum_delay_point();
-		
+
 		/*
 		 * The first targrows live rows are simply copied into the
 		 * reservoir. Then we start replacing tuples in the sample
@@ -1082,7 +1084,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 			 */
 			if (rowstoskip < 0)
 				rowstoskip = get_next_S(liverows, targrows, &rstate);
-			
+
 			if (rowstoskip <= 0)
 			{
 				/*
@@ -1090,31 +1092,31 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 				 * old tuple at random
 				 */
 				int			k = (int) (targrows * random_fract());
-				
+
 				Assert(k >= 0 && k < targrows);
 				heap_freetuple(rows[k]);
 				rows[k] = ExecCopySlotHeapTuple(slot);
 			}
-			
+
 			rowstoskip -= 1;
 		}
-		
+
 		liverows += 1;
 	}
-	
-	ExecDropSingleTupleTableSlot(slot);
-	
-	appendonly_endscan(aoscandesc);			
 
-	/* 
-	 * In the heap table version acquire_sample_rows will now sort the sample 
+	ExecDropSingleTupleTableSlot(slot);
+
+	appendonly_endscan(aoscandesc);
+
+	/*
+	 * In the heap table version acquire_sample_rows will now sort the sample
 	 * tuples by position (itempointer). However with AO tables we can't sort
-	 * because we have no valid TIDs to use. Kurt explains why this is ok to 
-	 * skip: The sort is used to give a (poor) indication of whether an index 
+	 * because we have no valid TIDs to use. Kurt explains why this is ok to
+	 * skip: The sort is used to give a (poor) indication of whether an index
 	 * scan, in key order, will cause base rel pages to be accessed sequentially
 	 * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
 	 */
-	 	
+
 	/*
 	 * Set total numbers of rows in relation.
 	 */
@@ -1132,9 +1134,9 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 					totalvarblocks, totalvarblocks,
 					liverows, deadrows,
 					numrows, *totalrows)));
-	
+
 	pfree(fstotal);
-	
+
 	return numrows;
 }
 
@@ -1181,7 +1183,7 @@ acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
         return 0;
     }
 
-    for(i = 0; i<totalseg; ++i) 
+    for(i = 0; i<totalseg; ++i)
     {
         for(j=0; j<nvp; ++j)
         {
@@ -1249,7 +1251,7 @@ acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
 
                 Assert(k >= 0 && k < targrows);
                 heap_freetuple(rows[k]);
-                rows[k] = ExecCopySlotHeapTuple(slot); 
+                rows[k] = ExecCopySlotHeapTuple(slot);
             }
 
             rowstoskip -= 1;
@@ -1260,13 +1262,13 @@ acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
 
     ExecDropSingleTupleTableSlot(slot);
 
-    aocs_endscan(scandesc);			
+    aocs_endscan(scandesc);
 
-    /* 
-     * In the heap table version acquire_sample_rows will now sort the sample 
+    /*
+     * In the heap table version acquire_sample_rows will now sort the sample
      * tuples by position (itempointer). However with AO tables we can't sort
-     * because we have no valid TIDs to use. Kurt explains why this is ok to 
-     * skip: The sort is used to give a (poor) indication of whether an index 
+     * because we have no valid TIDs to use. Kurt explains why this is ok to
+     * skip: The sort is used to give a (poor) indication of whether an index
      * scan, in key order, will cause base rel pages to be accessed sequentially
      * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
      */
@@ -1288,7 +1290,7 @@ acquire_sample_aocs_rows(Relation onerel, HeapTuple *rows, int targrows,
                     numrows, *totalrows)));
 
     pfree(proj);
-    for(i = 0; i<totalseg; ++i) 
+    for(i = 0; i<totalseg; ++i)
         pfree(allseg[i]);
     pfree(allseg);
 
@@ -1478,7 +1480,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 		VacAttrStats *stats = vacattrstats[attno];
 		VPgStatisticStats *pgstat_stats;
 		PgStatistic *pgstat = &(stats->pgstat);
-		
+
 		HeapTuple	stup,
 					oldtup;
 		int			i,
@@ -1487,7 +1489,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 		Datum		values[Natts_pg_statistic];
 		char		nulls[Natts_pg_statistic];
 		char		replaces[Natts_pg_statistic];
-		
+
 		/*
 		 * If this is QD, use the stats collected from QE instead of the
 		 * one provided in vacattrstats[attno].
@@ -1624,7 +1626,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats,
 		{
 			VUpdatedStats tmp_stats;
 			StringInfoData buf;
-			
+
 			tmp_stats.type = PG_STATISTIC_STATS;
 			tmp_stats.relid = relid;
 
@@ -1829,7 +1831,7 @@ std_typanalyze(VacAttrStats *stats)
 	 * quite weak; even at n = 1 billion, the error fraction doesn't
 	 * increase too much. So there's no real need to scale for n,
 	 * which is a good thing because we don't necessarily know it at
-	 * this point.  
+	 * this point.
 	 *--------------------
 	 */
 	row_target = 76.45 * attr->attstattarget / (analyze_relative_error * analyze_relative_error);
@@ -2277,7 +2279,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		cxt.tupnoLink = tupnoLink;
 
 		if(!lc_collate_is_c() && (
-				f_cmpfn.fn_addr == bpcharcmp || 
+				f_cmpfn.fn_addr == bpcharcmp ||
 				f_cmpfn.fn_addr == bttextcmp)
 		  )
 		{
@@ -2297,7 +2299,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 			/* Now prepare all the char ptrs */
 			for(i=0; i<values_cnt; ++i)
 			{
-				varattrib_untoast_ptr_len(values[i].value, &p, &len, &tofree); 
+				varattrib_untoast_ptr_len(values[i].value, &p, &len, &tofree);
 
 				if(f_cmpfn.fn_addr == bpcharcmp)
 				{
@@ -2336,7 +2338,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 
 			qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
 					compare_scalars, (void *) &cxt);
-			
+
 			for(i=0; i<values_cnt; ++i)
 			{
 				Assert(values[i].ptr);
@@ -2722,7 +2724,7 @@ compare_scalars(const void *a, const void *b, void *arg)
 	{
 		/* Compare two str.  First we do the strcmp of the collate converted str.
 		 * if they are equal, we break tie by byte compare original datum.
-		 * 
+		 *
 		 * See varstr_cmp.
 		 */
 		compare = strcmp(((ScalarItem *) a)->ptr, ((ScalarItem *) b)->ptr);
