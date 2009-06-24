@@ -129,6 +129,14 @@ int datumstream_put(DatumStream *acc, Datum d, bool null)
 {
     Assert(acc && !acc->is_reader);
 
+    /* 
+     * npbuf is allocated according to maxsz.  If we reach
+     * here, we must have seen tons of nulls.  If we continue,
+     * we will overrun the nullp buffer.
+     */
+    if (acc->nth >= acc->maxsz || acc->nth >= MAXDATUM_PER_AOCS_BLOCK)
+        return -1;
+
     if(null)
     {
         acc->has_null = true;
@@ -252,7 +260,9 @@ DatumStream *create_datumstream(CompressorType compType, int32 compLevel, int32 
                     errmsg("AOCS cannot open file %s", fn)));
 
     /* Set up buffers */
-    acc->npbufsz = MAXALIGN((acc->maxsz+7) >> 3);
+    acc->npbufsz = MAXALIGN(
+            ((acc->maxsz > MAXDATUM_PER_AOCS_BLOCK ? MAXDATUM_PER_AOCS_BLOCK : acc->maxsz)
+               +7) >> 3);
     acc->npbuf = palloc0(acc->npbufsz);
     acc->dpbufsz = MAXALIGN(maxsz);
     acc->dpbuf = palloc(acc->dpbufsz);
@@ -339,11 +349,7 @@ int64 datumstream_write_block(DatumStream *acc)
     Assert(acc->compress_option == 0);
 
     /* Nothing to write, this is just no op */
-    if(acc->nth == 0)
-    {
-        Assert(!"Should not hit me");
-        return 0;
-    }
+    Assert(acc->nth > 0);
 
     /* Has to got something to write */
     /* First fill in header info */

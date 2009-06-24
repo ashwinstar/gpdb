@@ -31,6 +31,16 @@ enum {
     DSB_HAS_NULLBITMAP = 1,
 };
 
+/* 
+ * Magic number.  Max number of datum in one block.  
+ * MUST fit in 15 bit.  Or we overflow ndatum (int16), defined
+ * in DatumStreamBlock.
+ * 
+ * Yes, I know it should be uint16 and 65535, but the negative 
+ * numbers has not been carefully debugged, so, don't go there.
+ */
+#define MAXDATUM_PER_AOCS_BLOCK 32000
+
 typedef struct DatumStream
 {
     /* Info determined by schema */
@@ -60,7 +70,7 @@ typedef struct DatumStream
     DatumStreamBlock block; 
 
     /* current pointer and nullbit */
-    int32 nth;		/* Nth datum in the block */
+    int32 nth;		    /* Nth datum in the block */
     bool  has_null;		/* if we have null at all */
     char* nullp;		/* pointer to current null bitmap char */
     char  nullbit;		/* current null bit */ 
