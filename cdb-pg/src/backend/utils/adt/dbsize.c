@@ -2,7 +2,7 @@
  * dbsize.c
  *		object size functions
  *
- * Copyright (c) 2002-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/dbsize.c,v 1.9.2.1 2007/03/11 06:44:11 alvherre Exp $
@@ -24,7 +24,9 @@
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/relcache.h"
 
@@ -220,7 +222,7 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "select pg_database_size('%s')", quote_identifier(NameStr(*dbName)));
+		appendStringInfo(&buffer, "select pg_database_size('%s')", NameStr(*dbName));
 		
 		size += get_size_from_segDBs(buffer.data);
 	}
@@ -330,7 +332,7 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 		
-		appendStringInfo(&buffer, "select pg_tablespace_size('%s')", quote_identifier(NameStr(*tblspcName)));
+		appendStringInfo(&buffer, "select pg_tablespace_size('%s')", NameStr(*tblspcName));
 		
 		size += get_size_from_segDBs(buffer.data);
 	}
