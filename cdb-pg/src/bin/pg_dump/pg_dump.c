@@ -464,10 +464,20 @@ main(int argc, char **argv)
 				break;
 
 			case 1:				/* gp-syntax */
+				if(gp_syntax_option != GPS_NOT_SPECIFIED)
+				{
+					write_msg(NULL, "options \"--gp-syntax\" and \"--no-gp-syntax\" cannot be used together\n");
+					exit(1);
+				}
 				gp_syntax_option = GPS_ENABLED;
 				break;
 
 			case 2:				/* no-gp-syntax */
+				if(gp_syntax_option != GPS_NOT_SPECIFIED)
+				{
+					write_msg(NULL, "options \"--gp-syntax\" and \"--no-gp-syntax\" cannot be used together\n");
+					exit(1);
+				}
 				gp_syntax_option = GPS_DISABLED;
 				break;
 
@@ -816,9 +826,8 @@ help(const char *progname)
 			 "                              use SESSION AUTHORIZATION commands instead of\n"
 			 "                              ALTER OWNER commands to set ownership\n"));
 	/* START MPP ADDITION */
-	printf(_("  --gp-syntax                 dump with Greenplum Database syntax\n"));
-	printf(_("  --gp-migrator               dump using internal gp_migrator mode;\n"
-			 "                              Valid only with --schema-only\n"));
+	printf(_("  --gp-syntax                 dump with Greenplum Database syntax (default if gpdb)\n"));
+	printf(_("  --no-gp-syntax              dump without Greenplum Database syntax (default if postgresql)\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));

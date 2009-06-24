@@ -430,8 +430,6 @@ help(void)
 			 "                           OWNER TO commands\n"));
 	/* START MPP ADDITION */
 	printf(_("  --gp-syntax              dump with Greenplum Database syntax\n"));
-	printf(_("  --gp-migrator            dump using internal gp_migrator mode;\n"
-			 "                           Valid only with --schema-only\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));
