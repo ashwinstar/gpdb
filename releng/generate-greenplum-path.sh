@@ -63,6 +63,11 @@ PYTHONPATH=\$GPHOME/lib/python
 PYTHONHOME=\$GPHOME/ext/python
 EOF
 
+# openssl configuration file path
+cat <<EOF
+OPENSSL_CONF=\$GPHOME/etc/openssl.cnf
+EOF
+
 cat <<EOF
 export GPHOME
 export PATH
@@ -81,4 +86,8 @@ fi
 cat <<EOF
 export PYTHONPATH
 export PYTHONHOME
+EOF
+
+cat <<EOF
+export OPENSSL_CONF
 EOF
