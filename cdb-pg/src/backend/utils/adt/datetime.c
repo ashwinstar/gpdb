@@ -1145,8 +1145,11 @@ DecodeDateTime(char **field, int *ftype, int nf,
 					flen = strlen(field[i]);
 					cp = strchr(field[i], '.');
 
-					/* Embedded decimal and no date yet? */
-					if (cp != NULL && !(fmask & DTK_DATE_M))
+					/* 
+					 * Embedded decimal and no date yet? Only do this if
+					 * we're not looking at something like YYYYMMDDHHMMSS.mm
+					 */
+					if (cp != NULL && !(fmask & DTK_DATE_M) && flen <= 14)
 					{
 						dterr = DecodeDate(field[i], fmask,
 										   &tmask, &is2digits, tm);
@@ -2616,6 +2619,7 @@ DecodeNumberField(int len, char *str, int fmask,
 				int *tmask, struct pg_tm * tm, fsec_t *fsec, bool *is2digits)
 {
 	char	   *cp;
+	bool		have_frac = false;
 
 	/*
 	 * Have a decimal point? Then this is a date or something with a seconds
@@ -2629,6 +2633,7 @@ DecodeNumberField(int len, char *str, int fmask,
 		 */
 		double		frac;
 
+		have_frac = true;
 		errno = 0;
 		frac = strtod(cp, NULL);
 		if (errno != 0)
@@ -2643,7 +2648,7 @@ DecodeNumberField(int len, char *str, int fmask,
 		len = strlen(str);
 	}
 	/* No decimal point and no complete date yet? */
-	else if ((fmask & DTK_DATE_M) != DTK_DATE_M)
+	if ((fmask & DTK_DATE_M) != DTK_DATE_M && len <= 8 && !have_frac)
 	{
 		/* yyyymmdd? */
 		if (len == 8)
@@ -2671,8 +2676,12 @@ DecodeNumberField(int len, char *str, int fmask,
 
 			return DTK_DATE;
 		}
+	}
+	else if ((fmask & DTK_DATE_M) != DTK_DATE_M && 
+			 (fmask & DTK_TIME_M) != DTK_TIME_M)
+	{
         /* yyyymmddhhmmss? */ 
-        else if (len == 14) 
+        if (len == 14) 
         { 
             *tmask = DTK_DATE_M | DTK_TIME_M; 
 
