@@ -407,7 +407,7 @@ static void
 _outAppendOnlyScan(StringInfo str, AppendOnlyScan *node)
 {
 	WRITE_NODE_TYPE("APPENDONLYSCAN");
-	
+
 	_outScanInfo(str, (Scan *) node);
 }
 
@@ -415,7 +415,7 @@ static void
 _outAOCSScan(StringInfo str, AOCSScan *node)
 {
 	WRITE_NODE_TYPE("AOCSSCAN");
-	
+
 	_outScanInfo(str, (Scan *) node);
 }
 
@@ -423,9 +423,9 @@ static void
 _outExternalScan(StringInfo str, ExternalScan *node)
 {
 	WRITE_NODE_TYPE("EXTERNALSCAN");
-	
+
 	_outScanInfo(str, (Scan *) node);
-	
+
 	WRITE_NODE_FIELD(uriList);
 	WRITE_NODE_FIELD(fmtOpts);
 	WRITE_BOOL_FIELD(isText);
@@ -596,7 +596,7 @@ _outWindowKey(StringInfo str, WindowKey *node)
 	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
-		
+
 	WRITE_NODE_FIELD(frame);
 }
 
@@ -764,7 +764,7 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_NODE_TYPE("MOTION");
 
-	WRITE_INT_FIELD(motionID);	
+	WRITE_INT_FIELD(motionID);
 	WRITE_ENUM_FIELD(motionType, MotionType);
 
 	WRITE_BOOL_FIELD(sendToSecondary);
@@ -1014,7 +1014,7 @@ _outSubLink(StringInfo str, SubLink *node)
 	WRITE_ENUM_FIELD(subLinkType, SubLinkType);
 	WRITE_NODE_FIELD(testexpr);
 	WRITE_NODE_FIELD(operName);
-    /* 
+    /*
      * CDB: For now we don't serialize the 'location' field, for compatibility
      * so stored sublinks can be read by pre-3.2 releases.  Anyway it's only
      * meaningful with the original source string, which isn't kept when a
@@ -1279,14 +1279,14 @@ static void
 _outFlow(StringInfo str, Flow *node)
 {
 	int i;
-	
+
 	WRITE_NODE_TYPE("FLOW");
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
 	WRITE_ENUM_FIELD(req_move, Movement);
 	WRITE_ENUM_FIELD(locustype, CdbLocusType);
 	WRITE_INT_FIELD(segindex);
-	
+
 	/* This array format as in Group and Sort nodes. */
 	WRITE_INT_FIELD(numSortCols);
 	if(node->numSortCols > 0)
@@ -1591,9 +1591,9 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_NODE_FIELD(subplan);
 	WRITE_NODE_FIELD(locationlist);
-	WRITE_STRING_FIELD(execcommand);	
+	WRITE_STRING_FIELD(execcommand);
 	WRITE_CHAR_FIELD(fmttype);
-	WRITE_STRING_FIELD(fmtopts);	
+	WRITE_STRING_FIELD(fmtopts);
 	WRITE_INT_FIELD(rejectlimit);
 	WRITE_CHAR_FIELD(rejectlimittype);
 	WRITE_OID_FIELD(fmterrtbl);
@@ -1780,6 +1780,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
+	WRITE_CHAR_FIELD(relStorage);
 	WRITE_BOOL_FIELD(is_part_child);
 }
 
@@ -1787,18 +1788,18 @@ static void
 _outExtTableTypeDesc(StringInfo str, ExtTableTypeDesc *node)
 {
 	WRITE_NODE_TYPE("EXTTABLETYPEDESC");
-	
+
 	WRITE_ENUM_FIELD(exttabletype, ExtTableType);
 	WRITE_NODE_FIELD(location_list);
 	WRITE_NODE_FIELD(on_clause);
-	WRITE_STRING_FIELD(command_string);		
+	WRITE_STRING_FIELD(command_string);
 }
 
 static void
 _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEEXTERNALSTMT");
-	
+
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(tableElts);
 	WRITE_NODE_FIELD(exttypedesc);
@@ -1834,14 +1835,14 @@ static void
 _outReindexStmt(StringInfo str, ReindexStmt *node)
 {
 	WRITE_NODE_TYPE("REINDEXSTMT");
-	
+
 	WRITE_ENUM_FIELD(kind,ObjectType);
 	WRITE_NODE_FIELD(relation);
 	WRITE_STRING_FIELD(name);
 	WRITE_BOOL_FIELD(do_system);
 	WRITE_BOOL_FIELD(do_user);
 	WRITE_NODE_FIELD(new_ind_oids);
-	
+
 }
 
 
@@ -1864,11 +1865,11 @@ _outRuleStmt(StringInfo str, RuleStmt *node)
 	WRITE_NODE_TYPE("RULESTMT");
 
 	WRITE_NODE_FIELD(relation);
-	WRITE_STRING_FIELD(rulename);	
+	WRITE_STRING_FIELD(rulename);
 	WRITE_NODE_FIELD(whereClause);
 	WRITE_ENUM_FIELD(event,CmdType);
 	WRITE_BOOL_FIELD(instead);
-	WRITE_NODE_FIELD(actions);	
+	WRITE_NODE_FIELD(actions);
 	WRITE_BOOL_FIELD(replace);
 }
 
@@ -1883,7 +1884,7 @@ _outDropStmt(StringInfo str, DropStmt *node)
 	WRITE_BOOL_FIELD(missing_ok);
 	WRITE_BOOL_FIELD(bAllowPartn);
 
-	
+
 }
 
 static void
@@ -1908,8 +1909,8 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	WRITE_NODE_FIELD(relids);
 	WRITE_NODE_FIELD(new_heap_oids);
-	WRITE_NODE_FIELD(new_toast_oids);	
-	WRITE_NODE_FIELD(new_aoseg_oids);	
+	WRITE_NODE_FIELD(new_toast_oids);
+	WRITE_NODE_FIELD(new_aoseg_oids);
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
@@ -2044,14 +2045,14 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	WRITE_STRING_FIELD(newname);
 	WRITE_ENUM_FIELD(renameType,ObjectType);
 	WRITE_BOOL_FIELD(bAllowPartn);
-	
+
 }
 
 static void
 _outAlterObjectSchemaStmt(StringInfo str, AlterObjectSchemaStmt *node)
 {
 	WRITE_NODE_TYPE("ALTEROBJECTSCHEMASTMT");
-	
+
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(object);
 	WRITE_NODE_FIELD(objarg);
@@ -2328,7 +2329,7 @@ _outSegfileMapNode(StringInfo str, SegfileMapNode *node)
 	WRITE_INT_FIELD(segno);
 }
 
-	
+
 static void
 _outDefineStmt(StringInfo str, DefineStmt *node)
 {
@@ -2340,7 +2341,7 @@ _outDefineStmt(StringInfo str, DefineStmt *node)
 	WRITE_NODE_FIELD(definition);
 	WRITE_OID_FIELD(newOid);
 	WRITE_OID_FIELD(shadowOid);
-	
+
 }
 
 static void
@@ -2352,7 +2353,7 @@ _outCompositeTypeStmt(StringInfo str, CompositeTypeStmt *node)
 	WRITE_NODE_FIELD(coldeflist);
 	WRITE_OID_FIELD(relOid);
 	WRITE_OID_FIELD(comptypeOid);
-	
+
 }
 
 static void
@@ -2399,7 +2400,7 @@ _outCreateOpClassItem(StringInfo str, CreateOpClassItem *node)
 	WRITE_BOOL_FIELD(recheck);
 	WRITE_NODE_FIELD(storedtype);
 }
-	
+
 static void
 _outRemoveOpClassStmt(StringInfo str, RemoveOpClassStmt *node)
 {
@@ -2421,7 +2422,7 @@ _outCreateConversionStmt(StringInfo str, CreateConversionStmt *node)
 	WRITE_BOOL_FIELD(def);
 	WRITE_OID_FIELD(convOid);
 }
-	
+
 static void
 _outTransactionStmt(StringInfo str, TransactionStmt *node)
 {
@@ -2480,13 +2481,13 @@ static void
 _outGrantStmt(StringInfo str, GrantStmt *node)
 {
 	WRITE_NODE_TYPE("GRANTSTMT");
-	WRITE_BOOL_FIELD(is_grant);		
-	WRITE_ENUM_FIELD(objtype,GrantObjectType);	
-	WRITE_NODE_FIELD(objects);		
-	WRITE_NODE_FIELD(privileges);		
-	WRITE_NODE_FIELD(grantees);		
-	WRITE_BOOL_FIELD(grant_option);	
-	WRITE_ENUM_FIELD(behavior, DropBehavior);		
+	WRITE_BOOL_FIELD(is_grant);
+	WRITE_ENUM_FIELD(objtype,GrantObjectType);
+	WRITE_NODE_FIELD(objects);
+	WRITE_NODE_FIELD(privileges);
+	WRITE_NODE_FIELD(grantees);
+	WRITE_BOOL_FIELD(grant_option);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	WRITE_NODE_FIELD(cooked_privs);
 }
 
@@ -2494,27 +2495,27 @@ static void
 _outPrivGrantee(StringInfo str, PrivGrantee *node)
 {
 	WRITE_NODE_TYPE("PRIVGRANTEE");
-	WRITE_STRING_FIELD(rolname);	
+	WRITE_STRING_FIELD(rolname);
 }
 
 static void
 _outFuncWithArgs(StringInfo str, FuncWithArgs *node)
 {
 	WRITE_NODE_TYPE("FUNCWITHARGS");
-	WRITE_NODE_FIELD(funcname);		
-	WRITE_NODE_FIELD(funcargs);		 	
+	WRITE_NODE_FIELD(funcname);
+	WRITE_NODE_FIELD(funcargs);
 }
 
 static void
 _outGrantRoleStmt(StringInfo str, GrantRoleStmt *node)
-{	
-	WRITE_NODE_TYPE("GRANTROLESTMT");	
+{
+	WRITE_NODE_TYPE("GRANTROLESTMT");
 	WRITE_NODE_FIELD(granted_roles);
 	WRITE_NODE_FIELD(grantee_roles);
 	WRITE_BOOL_FIELD(is_grant);
 	WRITE_BOOL_FIELD(admin_opt);
 	WRITE_STRING_FIELD(grantor);
-	WRITE_ENUM_FIELD(behavior, DropBehavior);		
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
 static void
@@ -2692,18 +2693,18 @@ _outQuery(StringInfo str, Query *node)
 			case T_AlterTableCmd:
 			case T_ViewStmt:
 			case T_RuleStmt:
-			
+
 			case T_CreateRoleStmt:
 			case T_AlterRoleStmt:
 			case T_AlterRoleSetStmt:
 			case T_DropRoleStmt:
-			
+
 			case T_CreateSchemaStmt:
 			case T_CreatePLangStmt:
 			case T_DropPLangStmt:
 			case T_AlterOwnerStmt:
 			case T_AlterObjectSchemaStmt:
-			
+
 			case T_RenameStmt:
 			case T_IndexStmt:
 			case T_NotifyStmt:
@@ -2717,11 +2718,11 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreateDomainStmt:
 			case T_AlterDomainStmt:
 			case T_ClusterStmt:
-			
+
 			case T_CreateFunctionStmt:
 			case T_RemoveFuncStmt:
 			case T_AlterFunctionStmt:
-			
+
 			case T_TransactionStmt:
 			case T_GrantStmt:
 			case T_GrantRoleStmt:
@@ -2775,7 +2776,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
 	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
-	
+
 	WRITE_OID_FIELD(intoOidInfo.relOid);
 	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
 	WRITE_OID_FIELD(intoOidInfo.toastOid);
@@ -2970,12 +2971,12 @@ _outAExpr(StringInfo str, A_Expr *node)
 		case AEXPR_OP_ANY:
 			appendStringInfoLiteral(str, " ANY ");
 			WRITE_NODE_FIELD(name);
-		
+
 			break;
 		case AEXPR_OP_ALL:
 			appendStringInfoLiteral(str, " ALL ");
 			WRITE_NODE_FIELD(name);
-		
+
 			break;
 		case AEXPR_DISTINCT:
 			appendStringInfoLiteral(str, " DISTINCT ");
@@ -3071,7 +3072,7 @@ _outAConst(StringInfo str, A_Const *node)
 
 	_outValue(str, &(node->val));
 	WRITE_NODE_FIELD_AS(typname, typename);
-    /* 
+    /*
      * CDB: For now we don't serialize the 'location' field, for compatibility
      * so stored constants can be read by pre-3.2 releases.  Anyway it's only
      * meaningful with the original source string, which isn't kept when a
@@ -3183,14 +3184,14 @@ _outCreateSchemaStmt(StringInfo str, CreateSchemaStmt *node)
 	WRITE_STRING_FIELD(schemaname);
 	WRITE_STRING_FIELD(authid);
 	WRITE_OID_FIELD(schemaOid);
-	
+
 }
 
 static void
 _outCreatePLangStmt(StringInfo str, CreatePLangStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEPLANGSTMT");
-	
+
 	WRITE_STRING_FIELD(plname);
 	WRITE_NODE_FIELD(plhandler);
 	WRITE_NODE_FIELD(plvalidator);
@@ -3275,7 +3276,7 @@ static void
 _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 {
 	WRITE_NODE_TYPE("CREATETRIGSTMT");
-	
+
 	WRITE_STRING_FIELD(trigname);
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(funcname);
@@ -3341,13 +3342,13 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AppendOnlyScan:
 				_outAppendOnlyScan(str, obj);
-				break;				
+				break;
 			case T_AOCSScan:
 				_outAOCSScan(str, obj);
-				break;				
+				break;
 			case T_ExternalScan:
 				_outExternalScan(str, obj);
-				break;				
+				break;
 			case T_IndexScan:
 				_outIndexScan(str, obj);
 				break;
@@ -3613,8 +3614,8 @@ _outNode(StringInfo str, void *obj)
 			case T_AppendRelInfo:
 				_outAppendRelInfo(str, obj);
 				break;
-			
-				
+
+
 			case T_GrantStmt:
 				_outGrantStmt(str, obj);
 				break;
@@ -3626,7 +3627,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_GrantRoleStmt:
 				_outGrantRoleStmt(str, obj);
-				break;				
+				break;
 			case T_LockStmt:
 				_outLockStmt(str, obj);
 				break;
@@ -3669,7 +3670,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_ExtTableTypeDesc:
 				_outExtTableTypeDesc(str, obj);
-				break;				
+				break;
 			case T_CreateExternalStmt:
 				_outCreateExternalStmt(str, obj);
 				break;
@@ -3682,11 +3683,11 @@ _outNode(StringInfo str, void *obj)
 			case T_ReindexStmt:
 				_outReindexStmt(str, obj);
 				break;
-				
+
 			case T_ConstraintsSetStmt:
 				_outConstraintsSetStmt(str, obj);
 				break;
-				
+
 			case T_CreateFunctionStmt:
 				_outCreateFunctionStmt(str, obj);
 				break;
@@ -3703,7 +3704,7 @@ _outNode(StringInfo str, void *obj)
 			case T_DefineStmt:
 				_outDefineStmt(str,obj);
 				break;
-				
+
 			case T_CompositeTypeStmt:
 				_outCompositeTypeStmt(str,obj);
 				break;
@@ -3725,8 +3726,8 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateConversionStmt:
 				_outCreateConversionStmt(str,obj);
 				break;
-			
-				
+
+
 			case T_ViewStmt:
 				_outViewStmt(str, obj);
 				break;
@@ -3777,15 +3778,15 @@ _outNode(StringInfo str, void *obj)
 			case T_AlterObjectSchemaStmt:
 				_outAlterObjectSchemaStmt(str, obj);
 				break;
-				
+
 			case T_AlterOwnerStmt:
 				_outAlterOwnerStmt(str, obj);
 				break;
-				
+
 			case T_RenameStmt:
 				_outRenameStmt(str, obj);
 				break;
-				
+
 			case T_CreateSeqStmt:
 				_outCreateSeqStmt(str, obj);
 				break;
@@ -3931,7 +3932,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_VacuumStmt:
 				_outVacuumStmt(str, obj);
-				break;			
+				break;
 			case T_CdbProcess:
 				_outCdbProcess(str, obj);
 				break;
@@ -3944,11 +3945,11 @@ _outNode(StringInfo str, void *obj)
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
 				break;
-				
+
 			case T_LockingClause:
 				_outLockingClause(str, obj);
 				break;
-				
+
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
 				break;

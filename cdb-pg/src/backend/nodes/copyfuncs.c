@@ -87,8 +87,8 @@
 static void
 CopyPlanFields(Plan *from, Plan *newnode)
 {
-	
-	COPY_SCALAR_FIELD(plan_node_id); 
+
+	COPY_SCALAR_FIELD(plan_node_id);
 	COPY_SCALAR_FIELD(plan_parent_node_id);
 
 	COPY_SCALAR_FIELD(startup_cost);
@@ -191,7 +191,7 @@ _copyAppend(Append *from)
 	 */
 	COPY_NODE_FIELD(appendplans);
 	COPY_SCALAR_FIELD(isTarget);
-	COPY_SCALAR_FIELD(isZapped); 
+	COPY_SCALAR_FIELD(isZapped);
 
 	return newnode;
 }
@@ -292,12 +292,12 @@ static AppendOnlyScan *
 _copyAppendOnlyScan(AppendOnlyScan *from)
 {
 	AppendOnlyScan    *newnode = makeNode(AppendOnlyScan);
-	
+
 	/*
 	 * copy node superclass fields
 	 */
 	CopyScanFields((Scan *) from, (Scan *) newnode);
-	
+
 	return newnode;
 }
 
@@ -308,12 +308,12 @@ static AOCSScan *
 _copyAOCSScan(AOCSScan *from)
 {
 	AOCSScan    *newnode = makeNode(AOCSScan);
-	
+
 	/*
 	 * copy node superclass fields
 	 */
 	CopyScanFields((Scan *) from, (Scan *) newnode);
-	
+
 	return newnode;
 }
 /*
@@ -331,7 +331,7 @@ _copyExternalScan(ExternalScan *from)
 
 	/*
 	 * copy remainder of node
-	 */	
+	 */
 	COPY_NODE_FIELD(uriList);
 	COPY_NODE_FIELD(fmtOpts);
 	COPY_SCALAR_FIELD(isText);
@@ -341,7 +341,7 @@ _copyExternalScan(ExternalScan *from)
 	COPY_SCALAR_FIELD(fmterrtbl);
 	COPY_SCALAR_FIELD(encoding);
 	COPY_SCALAR_FIELD(scancounter);
-	
+
 	return newnode;
 }
 
@@ -598,7 +598,7 @@ static ShareInputScan *
 _copyShareInputScan(ShareInputScan *from)
 {
 	ShareInputScan *newnode = makeNode(ShareInputScan);
-	
+
 	/* copy node superclass fields */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 	COPY_SCALAR_FIELD(share_type);
@@ -625,7 +625,7 @@ _copyMaterial(Material *from)
 	COPY_SCALAR_FIELD(share_id);
 	COPY_SCALAR_FIELD(driver_slice);
 	COPY_SCALAR_FIELD(nsharer);
-	COPY_SCALAR_FIELD(nsharer_xslice); 
+	COPY_SCALAR_FIELD(nsharer_xslice);
 
     return newnode;
 }
@@ -842,7 +842,7 @@ _copyLimit(Limit *from)
  * _copyMotion
  */
 static Motion *
-_copyMotion(Motion *from) 
+_copyMotion(Motion *from)
 {
 	Motion	   *newnode = makeNode(Motion);
 
@@ -865,7 +865,7 @@ _copyMotion(Motion *from)
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
 	COPY_NODE_FIELD(hashExpr);
 	COPY_NODE_FIELD(hashDataTypes);
-	
+
 	COPY_SCALAR_FIELD(numOutputSegs);
 	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
 
@@ -1528,7 +1528,7 @@ _copyFlow(Flow *from)
 	COPY_SCALAR_FIELD(segindex);
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols*sizeof(AttrNumber));
-	COPY_POINTER_FIELD(sortOperators, from->numSortCols*sizeof(Oid));	
+	COPY_POINTER_FIELD(sortOperators, from->numSortCols*sizeof(Oid));
 	COPY_NODE_FIELD(hashExpr);
 	COPY_NODE_FIELD(flow_before_req_move);
 
@@ -1789,7 +1789,7 @@ static WindowSpecParse *
 _copyWindowSpecParse(WindowSpecParse *from)
 {
 	WindowSpecParse *newnode = makeNode(WindowSpecParse);
-	
+
 	COPY_STRING_FIELD(name);
 	COPY_NODE_FIELD(elems);
 
@@ -1815,7 +1815,7 @@ static WindowFrame *
 _copyWindowFrame(WindowFrame *from)
 {
 	WindowFrame *newnode = makeNode(WindowFrame);
-	
+
 	COPY_SCALAR_FIELD(is_rows);
 	COPY_SCALAR_FIELD(is_between);
 	COPY_NODE_FIELD(trail);
@@ -2404,14 +2404,14 @@ static SingleRowErrorDesc *
 _copySingleRowErrorDesc(SingleRowErrorDesc *from)
 {
 	SingleRowErrorDesc *newnode = makeNode(SingleRowErrorDesc);
-	
+
 	COPY_NODE_FIELD(errtable);
 	COPY_SCALAR_FIELD(rejectlimit);
 	COPY_SCALAR_FIELD(is_keep);
 	COPY_SCALAR_FIELD(is_limit_in_rows);
 	COPY_SCALAR_FIELD(reusing_existing_errtable);
-	
-	return newnode;	
+
+	return newnode;
 }
 
 static CopyStmt *
@@ -2449,6 +2449,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(oidInfo.toastIndexOid);
 	COPY_SCALAR_FIELD(oidInfo.toastComptypeOid);
 	COPY_SCALAR_FIELD(relKind);
+	COPY_SCALAR_FIELD(relStorage);
 	if (from->policy)
 	{
 		COPY_POINTER_FIELD(policy,sizeof(GpPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
@@ -2464,7 +2465,7 @@ static PartitionBy *
 _copyPartitionBy(PartitionBy *from)
 {
 	PartitionBy *newnode = makeNode(PartitionBy);
-	
+
 	COPY_SCALAR_FIELD(partType);
 	COPY_NODE_FIELD(keys);
 	COPY_NODE_FIELD(keyopclass);
@@ -2507,7 +2508,7 @@ static PartitionElem *
 _copyPartitionElem(PartitionElem *from)
 {
 	PartitionElem *newnode = makeNode(PartitionElem);
-	
+
 	COPY_NODE_FIELD(partName);
 	COPY_NODE_FIELD(boundSpec);
 	COPY_NODE_FIELD(subSpec);
@@ -2524,7 +2525,7 @@ static PartitionRangeItem *
 _copyPartitionRangeItem(PartitionRangeItem *from)
 {
 	PartitionRangeItem *newnode = makeNode(PartitionRangeItem);
-	
+
 	COPY_NODE_FIELD(partEveryNum);
 	COPY_NODE_FIELD(partRangeVal);
 	COPY_SCALAR_FIELD(partedge);
@@ -2565,7 +2566,7 @@ static Partition *
 _copyPartition(Partition *from)
 {
 	Partition *newnode = makeNode(Partition);
-	
+
 	COPY_SCALAR_FIELD(partid);
 	COPY_SCALAR_FIELD(parrelid);
 	COPY_SCALAR_FIELD(parkind);
@@ -2623,15 +2624,15 @@ _copyExtTableTypeDesc(ExtTableTypeDesc *from)
 	COPY_NODE_FIELD(location_list);
 	COPY_NODE_FIELD(on_clause);
 	COPY_STRING_FIELD(command_string);
-	
-	return newnode;	
+
+	return newnode;
 }
 
 static CreateExternalStmt *
 _copyCreateExternalStmt(CreateExternalStmt *from)
 {
 	CreateExternalStmt *newnode = makeNode(CreateExternalStmt);
-	
+
 	COPY_NODE_FIELD(relation);
 	COPY_NODE_FIELD(tableElts);
 	COPY_NODE_FIELD(exttypedesc);
@@ -2640,7 +2641,7 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	COPY_SCALAR_FIELD(isweb);
 	COPY_NODE_FIELD(sreh);
 	COPY_NODE_FIELD(encoding);
-	
+
 	return newnode;
 }
 
@@ -3416,13 +3417,13 @@ static CdbProcess *
 _copyCdbProcess(CdbProcess *from)
 {
 	CdbProcess *newnode = makeNode(CdbProcess);
-	
+
 	COPY_STRING_FIELD(listenerAddr);
 	COPY_SCALAR_FIELD(listenerPort);
 	COPY_SCALAR_FIELD(pid);
 	COPY_SCALAR_FIELD(contentid);
 	COPY_SCALAR_FIELD(routeid);
-	
+
 	return newnode;
 }
 
@@ -3430,7 +3431,7 @@ static Slice *
 _copySlice(Slice *from)
 {
 	Slice *newnode = makeNode(Slice);
-	
+
 	COPY_SCALAR_FIELD(sliceIndex);
 	COPY_SCALAR_FIELD(rootIndex);
 	COPY_SCALAR_FIELD(gangType);
@@ -3443,7 +3444,7 @@ _copySlice(Slice *from)
 	COPY_NODE_FIELD(children);
 	COPY_NODE_FIELD(primaryProcesses);
 	COPY_NODE_FIELD(mirrorProcesses);
-	
+
 	return newnode;
 }
 
@@ -3451,7 +3452,7 @@ static SliceTable *
 _copySliceTable(SliceTable *from)
 {
 	SliceTable *newnode = makeNode(SliceTable);
-	
+
 	COPY_SCALAR_FIELD(nMotions);
 	COPY_SCALAR_FIELD(nSubplans);
 	COPY_SCALAR_FIELD(localSlice);
@@ -3460,7 +3461,7 @@ _copySliceTable(SliceTable *from)
 	COPY_SCALAR_FIELD(seqServerPort);
     COPY_SCALAR_FIELD(doInstrument);
     COPY_SCALAR_FIELD(ic_instance_id);
-		
+
 	return newnode;
 }
 
@@ -3581,7 +3582,7 @@ _copyValue(Value *from)
  * substructure is copied too, recursively.
  */
 void *
-copyObject(void *from) 
+copyObject(void *from)
 {
 	void	   *retval;
 
@@ -3619,13 +3620,13 @@ copyObject(void *from)
 			break;
 		case T_AppendOnlyScan:
 			retval = _copyAppendOnlyScan(from);
-			break;		
+			break;
                 case T_AOCSScan:
 			retval = _copyAOCSScan(from);
                         break;
 		case T_ExternalScan:
 			retval = _copyExternalScan(from);
-			break;			
+			break;
 		case T_IndexScan:
 			retval = _copyIndexScan(from);
 			break;
@@ -3813,7 +3814,7 @@ copyObject(void *from)
 		case T_Flow:
 			retval = _copyFlow(from);
 			break;
-	
+
 			/*
 			 * RELATION NODES
 			 */
@@ -3961,7 +3962,7 @@ copyObject(void *from)
 			break;
 		case T_CreateExternalStmt:
 			retval = _copyCreateExternalStmt(from);
-			break;						
+			break;
 		case T_InhRelation:
 			retval = _copyInhRelation(from);
 			break;

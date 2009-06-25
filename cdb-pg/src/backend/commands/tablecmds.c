@@ -682,6 +682,7 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.aosegComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
 
 		stmt->relKind = relkind;
+		stmt->relStorage = relstorage;
 
 		oldContext = MemoryContextSwitchTo(CacheMemoryContext);
 		stmt->relation->schemaname = get_namespace_name(namespaceId);
@@ -9484,7 +9485,7 @@ relopts_for_ctas(Relation rel)
 	 * class reloptions isn't to be trusted.
 	 */
 	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
-	if (relstorage_is_ao(rel->rd_rel->relstorage)) 
+	if (relstorage_is_ao(rel->rd_rel->relstorage))
 	{
 		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel));
 
@@ -10191,7 +10192,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
 	bool		is_ao = false;
-    char        relstorage = RELSTORAGE_HEAP; 
+    char        relstorage = RELSTORAGE_HEAP;
 	List	   *hidden_types = NIL; /* types we need to build for dropped columns */
 
 	/* Permissions checks */
@@ -10274,7 +10275,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 						if (pg_strcasecmp(strVal(def->arg), "column") == 0)
                             relstorage = RELSTORAGE_AOCS;
-                        else 
+                        else
                         {
                             if (pg_strcasecmp(strVal(def->arg), "row") != 0)
                                 ereport(ERROR,
@@ -10651,7 +10652,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		MemSet(repl_null, ' ', sizeof(repl_null));
 		MemSet(repl_repl, ' ', sizeof(repl_repl));
 
-		repl_val[Anum_pg_class_relstorage - 1] = CharGetDatum(relstorage); 
+		repl_val[Anum_pg_class_relstorage - 1] = CharGetDatum(relstorage);
 		repl_repl[Anum_pg_class_relstorage - 1] = 'r';
 
 		if (newOptions != (Datum) 0)
@@ -19091,10 +19092,10 @@ ATPExecPartSplit(Relation rel,
         int nvp = temprel->rd_att->natts;
         int i;
 
-        aocsproj = (bool *) palloc(sizeof(bool) * nvp); 
+        aocsproj = (bool *) palloc(sizeof(bool) * nvp);
         for(i=0; i<nvp; ++i)
             aocsproj[i] = true;
-    
+
         aocsscan = aocs_beginscan(temprel, SnapshotNow, 0, NULL, aocsproj);
 	}
 

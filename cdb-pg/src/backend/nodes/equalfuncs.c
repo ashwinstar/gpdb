@@ -611,7 +611,7 @@ _equalFlow(Flow *a, Flow *b)
 	COMPARE_POINTER_FIELD(sortColIdx, a->numSortCols*sizeof(AttrNumber));
 	COMPARE_POINTER_FIELD(sortOperators, a->numSortCols*sizeof(Oid));
 	COMPARE_NODE_FIELD(hashExpr);
-	
+
 	return true;
 }
 
@@ -949,7 +949,7 @@ _equalSingleRowErrorDesc(SingleRowErrorDesc *a, SingleRowErrorDesc *b)
 	COMPARE_SCALAR_FIELD(is_keep);
 	COMPARE_SCALAR_FIELD(is_limit_in_rows);
 	COMPARE_SCALAR_FIELD(reusing_existing_errtable);
-	
+
 	return true;
 }
 
@@ -984,6 +984,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(oidInfo.toastOid);
 	COMPARE_SCALAR_FIELD(oidInfo.toastIndexOid);
 	COMPARE_SCALAR_FIELD(relKind);
+	COMPARE_SCALAR_FIELD(relStorage);
 	COMPARE_SCALAR_FIELD(is_part_child);
 
 	return true;
@@ -1007,7 +1008,7 @@ _equalExtTableTypeDesc(ExtTableTypeDesc *a, ExtTableTypeDesc *b)
 	COMPARE_NODE_FIELD(location_list);
 	COMPARE_NODE_FIELD(on_clause);
 	COMPARE_STRING_FIELD(command_string);
-	
+
 	return true;
 }
 
@@ -1022,7 +1023,7 @@ _equalCreateExternalStmt(CreateExternalStmt *a, CreateExternalStmt *b)
 	COMPARE_SCALAR_FIELD(isweb);
 	COMPARE_NODE_FIELD(sreh);
 	COMPARE_NODE_FIELD(encoding);
-	
+
 	return true;
 }
 
@@ -1654,7 +1655,7 @@ _equalDropOwnedStmt(DropOwnedStmt *a, DropOwnedStmt *b)
 {
 	COMPARE_NODE_FIELD(roles);
 	COMPARE_SCALAR_FIELD(behavior);
-	
+
 	return true;
 }
 
@@ -2358,7 +2359,7 @@ equal(void *a, void *b)
 			break;
 		case T_CreateExternalStmt:
 			retval = _equalCreateExternalStmt(a, b);
-			break;						
+			break;
 		case T_InhRelation:
 			retval = _equalInhRelation(a, b);
 			break;
@@ -2536,7 +2537,7 @@ equal(void *a, void *b)
 		case T_DropOwnedStmt:
 			retval = _equalDropOwnedStmt(a, b);
 			break;
-			
+
 		case T_ReassignOwnedStmt:
 			retval = _equalReassignOwnedStmt(a, b);
 			break;

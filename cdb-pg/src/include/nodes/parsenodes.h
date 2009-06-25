@@ -1276,6 +1276,7 @@ typedef struct CreateStmt
 	Node       *partitionBy;     /* what columns we partition the data by */
 	TableOidInfo oidInfo;
 	char	    relKind;         /* CDB: force relkind to this */
+	char		relStorage;
 	struct GpPolicy  *policy;
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
 	bool		is_part_child;	/* CDB: partition child table? */

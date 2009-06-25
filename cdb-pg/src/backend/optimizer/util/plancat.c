@@ -651,6 +651,11 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
+
+			/* skip external tables */
+			if(relstorage_is_external(rel->rd_rel->relstorage))
+				break;
+
 			/* it has storage, ok to call the smgr */
 			curpages = RelationGetNumberOfBlocks(rel);
 

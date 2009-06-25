@@ -10,7 +10,7 @@
  *
  * NOTES
  *	  Every node type that can appear in an Greenplum Database serialized query or plan
- *    tree must have an output function defined here.  
+ *    tree must have an output function defined here.
  *
  * 	  There *MUST* be a one-to-one correspondence between this routine
  *    and readfast.c.  If not, you will likely crash the system.
@@ -19,7 +19,7 @@
  *     serializeNode in cdbsrlz.c.  Other callers beware.
  *
  *    This file is based on outfuncs.c, however, it is optimized for speed
- *    at the expense legibility.  
+ *    at the expense legibility.
  *
  * 	  Rather than serialize to a (somewhat human-readable) string, these
  *    routines create a binary serialization via a simple depth-first walk
@@ -47,9 +47,9 @@
  * routine.
  */
 
-/* 
- * Write the label for the node type.  nodelabel is accepted for 
- * compatibility with outfuncs.c, but is ignored 
+/*
+ * Write the label for the node type.  nodelabel is accepted for
+ * compatibility with outfuncs.c, but is ignored
  */
 #define WRITE_NODE_TYPE(nodelabel) \
 	{ int16 nt =nodeTag(node); appendBinaryStringInfo(str, (const char *)&nt, sizeof(int16)); }
@@ -107,7 +107,7 @@
  * _outNode() */
 #define WRITE_LIST_FIELD(fldname) \
 	(_outList(str, node->fldname))
-	
+
 /* Write a bitmapset field */
 #define WRITE_BITMAPSET_FIELD(fldname) \
 	 _outBitmapset(str, node->fldname)
@@ -119,7 +119,7 @@
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
 	{ /*int * dummy = 0; appendBinaryStringInfo(str,(const char *)&dummy, sizeof(int *)) ;*/ }
-	
+
 	/* Read an integer array */
 #define WRITE_INT_ARRAY(fldname, count, Type) \
 	if ( node->count > 0 ) \
@@ -130,7 +130,7 @@
 			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(Type)); \
 		} \
 	}
-	
+
 /* Write an Trasnaction ID array  */
 #define WRITE_XID_ARRAY(fldname, count) \
 	if ( node->count > 0 ) \
@@ -163,7 +163,7 @@ static void
 _outList(StringInfo str, List *node)
 {
 	ListCell   *lc;
-	
+
 	if (node == NULL)
 	{
 		int16 tg = 0;
@@ -179,7 +179,7 @@ _outList(StringInfo str, List *node)
 
 		if (IsA(node, List))
 		{
-			_outNode(str, lfirst(lc));	
+			_outNode(str, lfirst(lc));
 		}
 		else if (IsA(node, IntList))
 		{
@@ -212,7 +212,7 @@ _outBitmapset(StringInfo str, Bitmapset *bms)
 	{
 		appendBinaryStringInfo(str, (char *)&bms->words[i], sizeof(bitmapword));
 	}
-	
+
 }
 
 /*
@@ -400,7 +400,7 @@ static void
 _outAppendOnlyScan(StringInfo str, AppendOnlyScan *node)
 {
 	WRITE_NODE_TYPE("APPENDONLYSCAN");
-	
+
 	_outScanInfo(str, (Scan *) node);
 }
 
@@ -408,7 +408,7 @@ static void
 _outAOCSScan(StringInfo str, AOCSScan *node)
 {
 	WRITE_NODE_TYPE("AOCSSCAN");
-	
+
 	_outScanInfo(str, (Scan *) node);
 }
 
@@ -417,9 +417,9 @@ static void
 _outExternalScan(StringInfo str, ExternalScan *node)
 {
 	WRITE_NODE_TYPE("EXTERNALSCAN");
-	
+
 	_outScanInfo(str, (Scan *) node);
-	
+
 	WRITE_NODE_FIELD(uriList);
 	WRITE_NODE_FIELD(fmtOpts);
 	WRITE_BOOL_FIELD(isText);
@@ -661,7 +661,7 @@ _outSort(StringInfo str, Sort *node)
 	WRITE_INT_ARRAY(sortColIdx, numCols, AttrNumber);
 
 	WRITE_OID_ARRAY(sortOperators, numCols);
-	
+
     /* CDB */
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
@@ -730,7 +730,7 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_NODE_TYPE("MOTION");
 
-	WRITE_INT_FIELD(motionID);	
+	WRITE_INT_FIELD(motionID);
 	WRITE_ENUM_FIELD(motionType, MotionType);
 	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
@@ -743,7 +743,7 @@ _outMotion(StringInfo str, Motion *node)
         {
  			array_is_null = 1;
             appendBinaryStringInfo(str, &array_is_null, 1);
-        } 
+        }
         else
         {
         	appendBinaryStringInfo(str, &array_is_null, 1);
@@ -934,8 +934,8 @@ _outScalarArrayOpExpr(StringInfo str, ScalarArrayOpExpr *node)
 static void
 _outBoolExpr(StringInfo str, BoolExpr *node)
 {
- 
- 
+
+
 	WRITE_NODE_TYPE("BOOLEXPR");
 	WRITE_ENUM_FIELD(boolop, BoolExprType);
 
@@ -1207,20 +1207,20 @@ _outFromExpr(StringInfo str, FromExpr *node)
 static void
 _outFlow(StringInfo str, Flow *node)
 {
-	
+
 	WRITE_NODE_TYPE("FLOW");
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
 	WRITE_ENUM_FIELD(req_move, Movement);
 	WRITE_ENUM_FIELD(locustype, CdbLocusType);
 	WRITE_INT_FIELD(segindex);
-	
+
 	/* This array format as in Group and Sort nodes. */
 	WRITE_INT_FIELD(numSortCols);
-	
+
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	WRITE_OID_ARRAY(sortOperators, numSortCols);
-	
+
 
 	WRITE_NODE_FIELD(hashExpr);
 
@@ -1504,11 +1504,11 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_NODE_FIELD(subplan);
 	WRITE_NODE_FIELD(locationlist);
-	WRITE_STRING_FIELD(execcommand);	
+	WRITE_STRING_FIELD(execcommand);
 	WRITE_CHAR_FIELD(fmttype);
 	WRITE_STRING_FIELD(fmtopts);
 	WRITE_INT_FIELD(rejectlimit);
-	WRITE_CHAR_FIELD(rejectlimittype);	
+	WRITE_CHAR_FIELD(rejectlimittype);
 	WRITE_OID_FIELD(fmterrtbl);
 	WRITE_INT_FIELD(ext_encoding);
 	WRITE_BOOL_FIELD(isrescannable);
@@ -1669,6 +1669,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
+	WRITE_CHAR_FIELD(relStorage);
 	WRITE_BOOL_FIELD(is_part_child);
 }
 
@@ -1812,18 +1813,18 @@ static void
 _outExtTableTypeDesc(StringInfo str, ExtTableTypeDesc *node)
 {
 	WRITE_NODE_TYPE("EXTTABLETYPEDESC");
-	
+
 	WRITE_ENUM_FIELD(exttabletype, ExtTableType);
 	WRITE_NODE_FIELD(location_list);
 	WRITE_NODE_FIELD(on_clause);
-	WRITE_STRING_FIELD(command_string);	
+	WRITE_STRING_FIELD(command_string);
 }
 
 static void
 _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEEXTERNALSTMT");
-	
+
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(tableElts);
 	WRITE_NODE_FIELD(exttypedesc);
@@ -1860,7 +1861,7 @@ static void
 _outReindexStmt(StringInfo str, ReindexStmt *node)
 {
 	WRITE_NODE_TYPE("REINDEXSTMT");
-	
+
 	WRITE_ENUM_FIELD(kind,ObjectType);
 	WRITE_NODE_FIELD(relation);
 	WRITE_STRING_FIELD(name);
@@ -1889,11 +1890,11 @@ _outRuleStmt(StringInfo str, RuleStmt *node)
 	WRITE_NODE_TYPE("RULESTMT");
 
 	WRITE_NODE_FIELD(relation);
-	WRITE_STRING_FIELD(rulename);	
+	WRITE_STRING_FIELD(rulename);
 	WRITE_NODE_FIELD(whereClause);
 	WRITE_ENUM_FIELD(event,CmdType);
 	WRITE_BOOL_FIELD(instead);
-	WRITE_NODE_FIELD(actions);	
+	WRITE_NODE_FIELD(actions);
 	WRITE_BOOL_FIELD(replace);
 }
 
@@ -1908,7 +1909,7 @@ _outDropStmt(StringInfo str, DropStmt *node)
 	WRITE_BOOL_FIELD(missing_ok);
 	WRITE_BOOL_FIELD(bAllowPartn);
 
-	
+
 }
 
 static void
@@ -1933,14 +1934,14 @@ _outDropOwnedStmt(StringInfo str, DropOwnedStmt *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
-static void 
+static void
 _outReassignOwnedStmt(StringInfo str, ReassignOwnedStmt *node)
 {
 	WRITE_NODE_TYPE("REASSIGNOWNEDSTMT");
 
 	WRITE_NODE_FIELD(roles);
 	WRITE_STRING_FIELD(newrole)
-	
+
 }
 
 static void
@@ -1977,7 +1978,7 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 		WRITE_OID_FIELD(oidInfo[m].toastComptypeOid);
 		WRITE_OID_FIELD(oidInfo[m].aosegOid);
 		WRITE_OID_FIELD(oidInfo[m].aosegIndexOid);
-		WRITE_OID_FIELD(oidInfo[m].aosegComptypeOid);		
+		WRITE_OID_FIELD(oidInfo[m].aosegComptypeOid);
 	}
 }
 
@@ -2089,14 +2090,14 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	WRITE_STRING_FIELD(newname);
 	WRITE_ENUM_FIELD(renameType,ObjectType);
 	WRITE_BOOL_FIELD(bAllowPartn);
-	
+
 }
 
 static void
 _outAlterObjectSchemaStmt(StringInfo str, AlterObjectSchemaStmt *node)
 {
 	WRITE_NODE_TYPE("ALTEROBJECTSCHEMASTMT");
-	
+
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(object);
 	WRITE_NODE_FIELD(objarg);
@@ -2237,7 +2238,7 @@ _outDefineStmt(StringInfo str, DefineStmt *node)
 	WRITE_NODE_FIELD(definition);
 	WRITE_OID_FIELD(newOid);
 	WRITE_OID_FIELD(shadowOid);
-	
+
 }
 
 static void
@@ -2249,7 +2250,7 @@ _outCompositeTypeStmt(StringInfo str, CompositeTypeStmt *node)
 	WRITE_NODE_FIELD(coldeflist);
 	WRITE_OID_FIELD(relOid);
 	WRITE_OID_FIELD(comptypeOid);
-	
+
 }
 
 static void
@@ -2296,7 +2297,7 @@ _outCreateOpClassItem(StringInfo str, CreateOpClassItem *node)
 	WRITE_BOOL_FIELD(recheck);
 	WRITE_NODE_FIELD(storedtype);
 }
-	
+
 static void
 _outRemoveOpClassStmt(StringInfo str, RemoveOpClassStmt *node)
 {
@@ -2376,13 +2377,13 @@ static void
 _outGrantStmt(StringInfo str, GrantStmt *node)
 {
 	WRITE_NODE_TYPE("GRANTSTMT");
-	WRITE_BOOL_FIELD(is_grant);		
-	WRITE_ENUM_FIELD(objtype,GrantObjectType);	
-	WRITE_NODE_FIELD(objects);		
-	WRITE_NODE_FIELD(privileges);		
-	WRITE_NODE_FIELD(grantees);		
-	WRITE_BOOL_FIELD(grant_option);	
-	WRITE_ENUM_FIELD(behavior, DropBehavior);		
+	WRITE_BOOL_FIELD(is_grant);
+	WRITE_ENUM_FIELD(objtype,GrantObjectType);
+	WRITE_NODE_FIELD(objects);
+	WRITE_NODE_FIELD(privileges);
+	WRITE_NODE_FIELD(grantees);
+	WRITE_BOOL_FIELD(grant_option);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
 	WRITE_NODE_FIELD(cooked_privs);
 }
 
@@ -2390,27 +2391,27 @@ static void
 _outPrivGrantee(StringInfo str, PrivGrantee *node)
 {
 	WRITE_NODE_TYPE("PRIVGRANTEE");
-	WRITE_STRING_FIELD(rolname);	
+	WRITE_STRING_FIELD(rolname);
 }
 
 static void
 _outFuncWithArgs(StringInfo str, FuncWithArgs *node)
 {
 	WRITE_NODE_TYPE("FUNCWITHARGS");
-	WRITE_NODE_FIELD(funcname);		
-	WRITE_NODE_FIELD(funcargs);		 	
+	WRITE_NODE_FIELD(funcname);
+	WRITE_NODE_FIELD(funcargs);
 }
 
 static void
 _outGrantRoleStmt(StringInfo str, GrantRoleStmt *node)
-{	
-	WRITE_NODE_TYPE("GRANTROLESTMT");	
+{
+	WRITE_NODE_TYPE("GRANTROLESTMT");
 	WRITE_NODE_FIELD(granted_roles);
 	WRITE_NODE_FIELD(grantee_roles);
 	WRITE_BOOL_FIELD(is_grant);
 	WRITE_BOOL_FIELD(admin_opt);
 	WRITE_STRING_FIELD(grantor);
-	WRITE_ENUM_FIELD(behavior, DropBehavior);		
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
 static void
@@ -2581,8 +2582,8 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(resultRelations);
 	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(result_aosegnos);
-	WRITE_NODE_FIELD(returningLists); 
-		
+	WRITE_NODE_FIELD(returningLists);
+
 	WRITE_OID_FIELD(intoOidInfo.relOid);
 	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
 	WRITE_OID_FIELD(intoOidInfo.toastOid);
@@ -2591,7 +2592,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_OID_FIELD(intoOidInfo.aosegOid);
 	WRITE_OID_FIELD(intoOidInfo.aosegIndexOid);
 	WRITE_OID_FIELD(intoOidInfo.aosegComptypeOid);
-	
+
 }
 
 static void
@@ -2759,7 +2760,7 @@ _outAExpr(StringInfo str, A_Expr *node)
 {
 	WRITE_NODE_TYPE("AEXPR");
 	WRITE_ENUM_FIELD(kind, A_Expr_Kind);
-	
+
 	switch (node->kind)
 	{
 		case AEXPR_OP:
@@ -2773,36 +2774,36 @@ _outAExpr(StringInfo str, A_Expr *node)
 
 			break;
 		case AEXPR_NOT:
-			
+
 			break;
 		case AEXPR_OP_ANY:
-		
+
 			WRITE_NODE_FIELD(name);
-		
+
 			break;
 		case AEXPR_OP_ALL:
-	
+
 			WRITE_NODE_FIELD(name);
-		
+
 			break;
 		case AEXPR_DISTINCT:
 
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_NULLIF:
-	
+
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_OF:
-		
+
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_IN:
-		
+
 			WRITE_NODE_FIELD(name);
 			break;
 		default:
-	
+
 			break;
 	}
 
@@ -2825,10 +2826,10 @@ _outValue(StringInfo str, Value *value)
 		case T_Float:
 		case T_String:
 		case T_BitString:
-			{ 
-				int slen = (value->val.str != NULL ? strlen(value->val.str) : 0); 
-				appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); 
-				if (slen > 0) 
+			{
+				int slen = (value->val.str != NULL ? strlen(value->val.str) : 0);
+				appendBinaryStringInfo(str, (const char *)&slen, sizeof(int));
+				if (slen > 0)
 					appendBinaryStringInfo(str, value->val.str, slen);
 			}
 			break;
@@ -2867,7 +2868,7 @@ _outAConst(StringInfo str, A_Const *node)
 	_outValue(str, &(node->val));
 	WRITE_NODE_FIELD(typname);
 	WRITE_INT_FIELD(location);  /*CDB*/
-	
+
 }
 
 static void
@@ -2907,7 +2908,7 @@ _outConstraint(StringInfo str, Constraint *node)
 	WRITE_STRING_FIELD(name);
 
 	WRITE_ENUM_FIELD(contype,ConstrType);
- 
+
 	switch (node->contype)
 	{
 		case CONSTR_PRIMARY:
@@ -2930,7 +2931,7 @@ _outConstraint(StringInfo str, Constraint *node)
 		case CONSTR_ATTR_DEFERRED:
 		case CONSTR_ATTR_IMMEDIATE:
 			break;
-			
+
 		default:
 			elog(WARNING,"serialization doesn't know what to do with this constraint");
 			break;
@@ -2966,14 +2967,14 @@ _outCreateSchemaStmt(StringInfo str, CreateSchemaStmt *node)
 	WRITE_STRING_FIELD(schemaname);
 	WRITE_STRING_FIELD(authid);
 	WRITE_OID_FIELD(schemaOid);
-	
+
 }
 
 static void
 _outCreatePLangStmt(StringInfo str, CreatePLangStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEPLANGSTMT");
-	
+
 	WRITE_STRING_FIELD(plname);
 	WRITE_NODE_FIELD(plhandler);
 	WRITE_NODE_FIELD(plvalidator);
@@ -3057,7 +3058,7 @@ static void
 _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 {
 	WRITE_NODE_TYPE("CREATETRIGSTMT");
-	
+
 	WRITE_STRING_FIELD(trigname);
 	WRITE_NODE_FIELD(relation);
 	WRITE_NODE_FIELD(funcname);
@@ -3127,13 +3128,13 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AppendOnlyScan:
 				_outAppendOnlyScan(str, obj);
-				break;				
+				break;
 			case T_AOCSScan:
 				_outAOCSScan(str, obj);
-				break;				
+				break;
 			case T_ExternalScan:
 				_outExternalScan(str, obj);
-				break;								
+				break;
 			case T_IndexScan:
 				_outIndexScan(str, obj);
 				break;
@@ -3396,8 +3397,8 @@ _outNode(StringInfo str, void *obj)
 			case T_AppendRelInfo:
 				_outAppendRelInfo(str, obj);
 				break;
-			
-				
+
+
 			case T_GrantStmt:
 				_outGrantStmt(str, obj);
 				break;
@@ -3409,7 +3410,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_GrantRoleStmt:
 				_outGrantRoleStmt(str, obj);
-				break;				
+				break;
 			case T_LockStmt:
 				_outLockStmt(str, obj);
 				break;
@@ -3451,25 +3452,25 @@ _outNode(StringInfo str, void *obj)
 			case T_SegfileMapNode:
 				_outSegfileMapNode(str, obj);
 				break;
-				
+
 			case T_ExtTableTypeDesc:
 				_outExtTableTypeDesc(str, obj);
 				break;
             case T_CreateExternalStmt:
 				_outCreateExternalStmt(str, obj);
 				break;
-                
+
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);
 				break;
 			case T_ReindexStmt:
 				_outReindexStmt(str, obj);
 				break;
-				
+
 			case T_ConstraintsSetStmt:
 				_outConstraintsSetStmt(str, obj);
 				break;
-				
+
 			case T_CreateFunctionStmt:
 				_outCreateFunctionStmt(str, obj);
 				break;
@@ -3486,7 +3487,7 @@ _outNode(StringInfo str, void *obj)
 			case T_DefineStmt:
 				_outDefineStmt(str,obj);
 				break;
-				
+
 			case T_CompositeTypeStmt:
 				_outCompositeTypeStmt(str,obj);
 				break;
@@ -3508,8 +3509,8 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateConversionStmt:
 				_outCreateConversionStmt(str,obj);
 				break;
-			
-				
+
+
 			case T_ViewStmt:
 				_outViewStmt(str, obj);
 				break;
@@ -3565,15 +3566,15 @@ _outNode(StringInfo str, void *obj)
 			case T_AlterObjectSchemaStmt:
 				_outAlterObjectSchemaStmt(str, obj);
 				break;
-				
+
 			case T_AlterOwnerStmt:
 				_outAlterOwnerStmt(str, obj);
 				break;
-				
+
 			case T_RenameStmt:
 				_outRenameStmt(str, obj);
 				break;
-				
+
 			case T_CreateSeqStmt:
 				_outCreateSeqStmt(str, obj);
 				break;
@@ -3713,7 +3714,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_VacuumStmt:
 				_outVacuumStmt(str, obj);
-				break;			
+				break;
 			case T_CdbProcess:
 				_outCdbProcess(str, obj);
 				break;
@@ -3726,11 +3727,11 @@ _outNode(StringInfo str, void *obj)
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
 				break;
-				
+
 			case T_LockingClause:
 				_outLockingClause(str, obj);
 				break;
-				
+
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
 				break;
@@ -3756,12 +3757,12 @@ nodeToBinaryStringFast(void *obj, int * length)
 
 	/* see stringinfo.h for an explanation of this maneuver */
 	initStringInfoOfSize(&str, 4096);
-	
+
 	_outNode(&str, obj);
 
 	/* Add something special at the end that we can check in readfast.c */
 	appendBinaryStringInfo(&str, (const char *)&tg, sizeof(int16));
-	
+
 	*length = str.len;
 	return str.data;
 }

@@ -612,25 +612,35 @@ ProcessUtility(Node *parsetree,
 			{
 				Oid			relOid;
 				char		relKind = RELKIND_RELATION;
-				char		relStorage;
+				char		relStorage = RELSTORAGE_HEAP;
 
+				/*
+				 * If this T_CreateStmt was dispatched and we're a QE
+				 * receiving it, extract the relkind and relstorage from
+				 * it
+				 */
 				if (Gp_role == GP_ROLE_EXECUTE)
+				{
 					if (((CreateStmt *) parsetree)->relKind != 0)
 						relKind = ((CreateStmt *) parsetree)->relKind;
 
-				/*
-				 * set the appropriate relstorage
-				 *
-				 * Note that we only care about virtual storages here. all the
-				 * others are heap storage, besides AO, AOCS and external tables.
-				 * however AO and AOCS will get set later on when the relopts
-				 * are checked, and external tables never use CreateStmt so it's
-				 * safe to assign heap storage for them.
-				 */
-				if(relKind == RELKIND_VIEW || relKind == RELKIND_COMPOSITE_TYPE)
-					relStorage = RELSTORAGE_VIRTUAL;
-				else
-					relStorage = RELSTORAGE_HEAP;
+					if (((CreateStmt *) parsetree)->relStorage != 0)
+						relStorage = ((CreateStmt *) parsetree)->relStorage;
+
+					/* sanity check */
+					switch(relKind)
+					{
+						case RELKIND_VIEW:
+						case RELKIND_COMPOSITE_TYPE:
+							Assert(relStorage = RELSTORAGE_VIRTUAL);
+							break;
+						default:
+							Assert(relStorage == RELSTORAGE_HEAP ||
+								   relStorage == RELSTORAGE_AO ||
+								   relStorage == RELSTORAGE_AOCS ||
+								   relStorage == RELSTORAGE_EXTERNAL);
+					}
+				}
 
 				relOid = DefineRelation((CreateStmt *) parsetree,
 										relKind, relStorage);
