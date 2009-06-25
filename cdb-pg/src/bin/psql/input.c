@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/input.c,v 1.60.2.1 2006/12/24 19:14:41 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/input.c,v 1.66 2009/01/01 17:23:55 momjian Exp $
  */
 #include "postgres_fe.h"
 
@@ -147,7 +147,7 @@ pg_send_history(PQExpBuffer history_buf)
  * gets_fromFile
  *
  * Gets a line of noninteractive input from a file (which could be stdin).
- * The result is a malloc'd string.
+ * The result is a malloc'd string, or NULL on EOF or input error.
  *
  * Caller *must* have set up sigint_interrupt_jmp before calling.
  *
@@ -179,11 +179,25 @@ gets_fromFile(FILE *source)
 		/* Disable SIGINT again */
 		sigint_interrupt_enabled = false;
 
-		/* EOF? */
+		/* EOF or error? */
 		if (result == NULL)
+		{
+			if (ferror(source))
+			{
+				psql_error("could not read from input file: %s\n",
+						   strerror(errno));
+				return NULL;
+			}
 			break;
+		}
 
 		appendPQExpBufferStr(buffer, line);
+
+		if (PQExpBufferBroken(buffer))
+		{
+			psql_error("out of memory\n");
+			return NULL;
+		}
 
 		/* EOL? */
 		if (buffer->data[buffer->len - 1] == '\n')

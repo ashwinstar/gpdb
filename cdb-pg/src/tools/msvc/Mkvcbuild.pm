@@ -362,9 +362,14 @@ sub mkvcbuild
                 $proj->AddFile('src\backend\parser\keywords.c');
                 $proj->AddIncludeDir('src\backend');
             }
-               elsif ($f eq 'kwlookup.c')
+            elsif ($f eq '$(top_builddir)/src/backend/parser/keywords.c')
             {
-                #$proj->AddFile('src\backend\parser\kwlookup.c');
+                $proj->AddFile('src\backend\parser\keywords.c');
+                $proj->AddIncludeDir('src\backend');
+            }
+            elsif ($f eq 'kwlookup.c')
+            {
+                $proj->AddFile('src\backend\parser\kwlookup.c');
             }
             elsif ($f eq 'dumputils.c')
             {

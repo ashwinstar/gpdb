@@ -87,7 +87,7 @@ typedef struct
  * A frontend isn't required to support anything other than the current
  * version.
  */
-
+/* Upper four bits used special by GPDB */
 #define PG_PROTOCOL_MAJOR(v)	(((v) >> 16) & 0xfff)
 #define PG_PROTOCOL_MINOR(v)	((v) & 0x0000ffff)
 #define PG_PROTOCOL(m,n)	(((m) << 16) | (n))

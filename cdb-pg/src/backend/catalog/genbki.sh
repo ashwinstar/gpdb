@@ -6,12 +6,12 @@
 #    files.  These .bki files are used to initialize the postgres template
 #    database.
 #
-# Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/catalog/genbki.sh,v 1.40 2006/07/31 01:16:36 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/catalog/genbki.sh,v 1.46 2009/01/01 17:23:36 momjian Exp $
 #
 # NOTES
 #    non-essential whitespace is removed from the generated file.
@@ -59,7 +59,7 @@ do
             echo "  $CMDNAME [ -I dir ] --set-version=VERSION -o prefix files..."
             echo
             echo "Options:"
-            echo "  -I  path to postgres_ext.h and pg_config_manual.h files"
+            echo "  -I  path to include files"
             echo "  -o  prefix of output files"
             echo "  --set-version  PostgreSQL version number for initdb cross-check"
             echo
@@ -104,6 +104,7 @@ fi
 TMPFILE="genbkitmp$$.c"
 
 trap "rm -f $TMPFILE ${OUTPUT_PREFIX}.bki.$$ ${OUTPUT_PREFIX}.description.$$ ${OUTPUT_PREFIX}.shdescription.$$" 0 1 2 3 15
+
 
 # CAUTION: be wary about what symbols you substitute into the .bki file here!
 # It's okay to substitute things that are expected to be really constant

@@ -3,7 +3,7 @@
  * 1996-06-05 by Arthur David Olson.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/localtime.c,v 1.20 2008/02/16 21:16:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/localtime.c,v 1.21 2009/06/11 14:49:15 momjian Exp $
  */
 
 /*
@@ -271,10 +271,10 @@ tzload(const char *name, char *canonname, struct state * sp, int doextend)
 					return -1;
 			}
 		}
+
 		/*
-		 * Out-of-sort ats should mean we're running on a
-		 * signed time_t system but using a data file with
-		 * unsigned values (or vice versa).
+		 * Out-of-sort ats should mean we're running on a signed time_t system
+		 * but using a data file with unsigned values (or vice versa).
 		 */
 		for (i = 0; i < sp->timecnt - 2; ++i)
 			if (sp->ats[i] > sp->ats[i + 1])
@@ -303,6 +303,7 @@ tzload(const char *name, char *canonname, struct state * sp, int doextend)
 				}
 				break;
 			}
+
 		/*
 		 * If this is an old file, we're done.
 		 */
@@ -311,6 +312,7 @@ tzload(const char *name, char *canonname, struct state * sp, int doextend)
 		nread -= p - u.buf;
 		for (i = 0; i < nread; ++i)
 			u.buf[i] = p[i];
+
 		/*
 		 * If this is a narrow integer time_t system, we're done.
 		 */
@@ -1018,7 +1020,8 @@ localsub(const pg_time_t *timep, long offset,
  
 		if (t < sp->ats[0])
 			seconds = sp->ats[0] - t;
-		else    seconds = t - sp->ats[sp->timecnt - 1];
+		else
+			seconds = t - sp->ats[sp->timecnt - 1];
 		--seconds;
 		tcycles = seconds / YEARSPERREPEAT / AVGSECSPERYEAR;
 		++tcycles;
@@ -1030,7 +1033,8 @@ localsub(const pg_time_t *timep, long offset,
 		seconds *= AVGSECSPERYEAR;
 		if (t < sp->ats[0])
 			newt += seconds;
-		else    newt -= seconds;
+		else
+			newt -= seconds;
 		if (newt < sp->ats[0] ||
 			newt > sp->ats[sp->timecnt - 1])
 			return NULL;    /* "cannot happen" */
@@ -1042,7 +1046,8 @@ localsub(const pg_time_t *timep, long offset,
 			newy = tmp->tm_year;
 			if (t < sp->ats[0])
 				newy -= icycles * YEARSPERREPEAT;
-			else    newy += icycles * YEARSPERREPEAT;
+			else
+				newy += icycles * YEARSPERREPEAT;
 			tmp->tm_year = newy;
 			if (tmp->tm_year != newy)
 				return NULL;
@@ -1070,7 +1075,8 @@ localsub(const pg_time_t *timep, long offset,
  
 			if (t < sp->ats[mid])
 				hi = mid;
-			else    lo = mid + 1;
+			else
+				lo = mid + 1;
 		}
 		i = (int) sp->types[lo - 1];
 	}
@@ -1209,6 +1215,7 @@ timesub(const pg_time_t *timep, long offset,
 		tdays = seconds / SECSPERDAY;
 		rem += seconds - tdays * SECSPERDAY;
 	}
+
 	/*
 	 * Given the range, we can now fearlessly cast...
 	 */
@@ -1240,6 +1247,7 @@ timesub(const pg_time_t *timep, long offset,
 	if (increment_overflow(&tmp->tm_year, -TM_YEAR_BASE))
 		return NULL;
 	tmp->tm_yday = idays;
+
 	/*
 	 * The "extra" mods below avoid overflow problems.
 	 */
@@ -1346,7 +1354,8 @@ pg_next_dst_boundary(const pg_time_t *timep,
 		
 		if (t < sp->ats[0])
 			seconds = sp->ats[0] - t;
-		else    seconds = t - sp->ats[sp->timecnt - 1];
+		else
+			seconds = t - sp->ats[sp->timecnt - 1];
 		--seconds;
 		tcycles = seconds / YEARSPERREPEAT / AVGSECSPERYEAR;
 		++tcycles;
@@ -1358,7 +1367,8 @@ pg_next_dst_boundary(const pg_time_t *timep,
 		seconds *= AVGSECSPERYEAR;
 		if (t < sp->ats[0])
 			newt += seconds;
-		else    newt -= seconds;
+		else
+			newt -= seconds;
 		if (newt < sp->ats[0] ||
 			newt > sp->ats[sp->timecnt - 1])
 			return -1;    /* "cannot happen" */
@@ -1417,7 +1427,8 @@ pg_next_dst_boundary(const pg_time_t *timep,
  
 			if (t < sp->ats[mid])
 				hi = mid;
-			else    lo = mid + 1;
+			else
+				lo = mid + 1;
 		}
 		i = lo;
 	}

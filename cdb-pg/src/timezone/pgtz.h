@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/pgtz.h,v 1.23 2009/01/01 17:24:04 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/pgtz.h,v 1.24 2009/06/11 14:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

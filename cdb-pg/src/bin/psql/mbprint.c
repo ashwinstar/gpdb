@@ -1,17 +1,47 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/mbprint.c,v 1.23.2.1 2006/12/27 19:45:51 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/mbprint.c,v 1.35 2009/06/11 14:49:08 momjian Exp $
+ *
+ * XXX this file does not really belong in psql/.  Perhaps move to libpq?
+ * It also seems that the mbvalidate function is redundant with existing
+ * functionality.
  */
 
 #include "postgres_fe.h"
+#include "mbprint.h"
+#include "libpq-fe.h"
 #ifndef PGSCRIPTS
 #include "settings.h"
 #endif
-#include "mbprint.h"
-#include "mb/pg_wchar.h"
+
+/*
+ * To avoid version-skew problems, this file must not use declarations
+ * from pg_wchar.h: the encoding IDs we are dealing with are determined
+ * by the libpq.so we are linked with, and that might not match the
+ * numbers we see at compile time.	(If this file were inside libpq,
+ * the problem would go away...)
+ *
+ * Hence, we have our own definition of pg_wchar, and we get the values
+ * of any needed encoding IDs on-the-fly.
+ */
+
+typedef unsigned int pg_wchar;
+
+static int
+get_utf8_id(void)
+{
+	static int	utf8_id = -1;
+
+	if (utf8_id < 0)
+		utf8_id = pg_char_to_encoding("utf8");
+	return utf8_id;
+}
+
+#define PG_UTF8		get_utf8_id()
+
 
 static pg_wchar
 utf2ucs(const unsigned char *c)
@@ -174,13 +204,16 @@ pg_wcswidth(const unsigned char *pwcs, size_t len, int encoding)
 /*
  * pg_wcssize takes the given string in the given encoding and returns three
  * values:
- *	  result_width: Width in display character of longest line in string
- *	  result_hieght: Number of lines in display output
- *	  result_format_size: Number of bytes required to store formatted representation of string
+ *	  result_width: Width in display characters of the longest line in string
+ *	  result_height: Number of lines in display output
+ *	  result_format_size: Number of bytes required to store formatted
+ *		representation of string
+ *
+ * This MUST be kept in sync with pg_wcsformat!
  */
-int
-pg_wcssize(unsigned char *pwcs, size_t len, int encoding, int *result_width,
-		   int *result_height, int *result_format_size)
+void
+pg_wcssize(unsigned char *pwcs, size_t len, int encoding,
+		   int *result_width, int *result_height, int *result_format_size)
 {
 	int			w,
 				chlen = 0,
@@ -211,6 +244,14 @@ pg_wcssize(unsigned char *pwcs, size_t len, int encoding, int *result_width,
 				linewidth += 2;
 				format_size += 2;
 			}
+			else if (*pwcs == '\t')		/* Tab */
+			{
+				do
+				{
+					linewidth++;
+					format_size++;
+				} while (linewidth % 8 != 0);
+			}
 			else if (w < 0)		/* Other control char */
 			{
 				linewidth += 4;
@@ -236,7 +277,7 @@ pg_wcssize(unsigned char *pwcs, size_t len, int encoding, int *result_width,
 	}
 	if (linewidth > width)
 		width = linewidth;
-	format_size += 1;
+	format_size += 1;			/* For NUL char */
 
 	/* Set results */
 	if (result_width)
@@ -245,10 +286,14 @@ pg_wcssize(unsigned char *pwcs, size_t len, int encoding, int *result_width,
 		*result_height = height;
 	if (result_format_size)
 		*result_format_size = format_size;
-
-	return width;
 }
 
+/*
+ *	Format a string into one or more "struct lineptr" lines.
+ *	lines[i].ptr == NULL indicates the end of the array.
+ *
+ * This MUST be kept in sync with pg_wcssize!
+ */
 void
 pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 			 struct lineptr * lines, int count)
@@ -274,9 +319,10 @@ pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 				linewidth = 0;
 				lines++;
 				count--;
-				if (count == 0)
+				if (count <= 0)
 					exit(1);	/* Screwup */
 
+				/* make next line point to remaining memory */
 				lines->ptr = ptr;
 			}
 			else if (*pwcs == '\r')		/* Linefeed */
@@ -284,6 +330,14 @@ pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 				strcpy((char *) ptr, "\\r");
 				linewidth += 2;
 				ptr += 2;
+			}
+			else if (*pwcs == '\t')		/* Tab */
+			{
+				do
+				{
+					*ptr++ = ' ';
+					linewidth++;
+				} while (linewidth % 8 != 0);
 			}
 			else if (w < 0)		/* Other control char */
 			{
@@ -302,14 +356,14 @@ pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 			if (encoding == PG_UTF8)
 				sprintf((char *) ptr, "\\u%04X", utf2ucs(pwcs));
 			else
-
+			{
 				/*
 				 * This case cannot happen in the current code because only
 				 * UTF-8 signals multibyte control characters. But we may need
 				 * to support it at some stage
 				 */
 				sprintf((char *) ptr, "\\u????");
-
+			}
 			ptr += 6;
 			linewidth += 6;
 		}
@@ -323,12 +377,13 @@ pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 		}
 		len -= chlen;
 	}
-	*ptr++ = '\0';
 	lines->width = linewidth;
-	lines++;
-	count--;
-	if (count > 0)
-		lines->ptr = NULL;
+	*ptr++ = '\0';				/* Terminate formatted string */
+
+	if (count <= 0)
+		exit(1);				/* Screwup */
+
+	(lines + 1)->ptr = NULL;	/* terminate line array */
 }
 
 unsigned char *

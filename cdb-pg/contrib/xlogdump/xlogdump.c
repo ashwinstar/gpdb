@@ -13,6 +13,9 @@
  *
  *-------------------------------------------------------------------------
  */
+#ifndef  FRONTEND
+#define  FRONTEND 1
+#endif 
 
 #include "postgres.h"
 

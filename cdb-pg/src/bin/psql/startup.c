@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2009, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.138 2006/10/04 00:30:06 momjian Exp $
  */
@@ -26,7 +26,6 @@ int			optreset;
 #endif
 
 #include <locale.h>
-
 
 #include "command.h"
 #include "common.h"

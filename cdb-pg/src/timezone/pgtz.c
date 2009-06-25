@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/pgtz.c,v 1.62 2009/01/01 17:24:04 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/pgtz.c,v 1.63 2009/06/11 14:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -39,8 +39,8 @@ static pg_tz gmt_timezone_data;
 
 
 static bool scan_directory_ci(const char *dirname,
-							  const char *fname, int fnamelen,
-							  char *canonname, int canonnamelen);
+				  const char *fname, int fnamelen,
+				  char *canonname, int canonnamelen);
 static const char *identify_system_timezone(void);
 static pg_tz *get_pg_tz_for_zone(const char *tzname);
 static pg_tz *select_default_timezone(void);
@@ -100,7 +100,7 @@ pg_open_tzfile(const char *name, char *canonname)
 	for (;;)
 	{
 		const char *slashptr;
-		int		fnamelen;
+		int			fnamelen;
 
 		slashptr = strchr(fname, '/');
 		if (slashptr)
@@ -130,7 +130,7 @@ pg_open_tzfile(const char *name, char *canonname)
 
 /*
  * Scan specified directory for a case-insensitive match to fname
- * (of length fnamelen --- fname may not be null terminated!).  If found,
+ * (of length fnamelen --- fname may not be null terminated!).	If found,
  * copy the actual filename into canonname and return true.
  */
 static bool
@@ -153,7 +153,7 @@ scan_directory_ci(const char *dirname, const char *fname, int fnamelen,
 	while ((direntry = ReadDir(dirdesc, dirname)) != NULL)
 	{
 		/*
-		 * Ignore . and .., plus any other "hidden" files.  This is a security
+		 * Ignore . and .., plus any other "hidden" files.	This is a security
 		 * measure to prevent access to files outside the timezone directory.
 		 */
 		if (direntry->d_name[0] == '.')
@@ -387,15 +387,15 @@ identify_system_timezone(void)
 	 * enough to identify DST transition rules, since everybody switches on
 	 * Sundays.)  This is sufficient to cover most of the Unix time_t range,
 	 * and we don't want to look further than that since many systems won't
-	 * have sane TZ behavior further back anyway.  The further
-	 * back the zone matches, the better we score it.  This may seem like a
-	 * rather random way of doing things, but experience has shown that
-	 * system-supplied timezone definitions are likely to have DST behavior
-	 * that is right for the recent past and not so accurate further back.
-	 * Scoring in this way allows us to recognize zones that have some
-	 * commonality with the zic database, without insisting on exact match.
-	 * (Note: we probe Thursdays, not Sundays, to avoid triggering
-	 * DST-transition bugs in localtime itself.)
+	 * have sane TZ behavior further back anyway.  The further back the zone
+	 * matches, the better we score it.  This may seem like a rather random
+	 * way of doing things, but experience has shown that system-supplied
+	 * timezone definitions are likely to have DST behavior that is right for
+	 * the recent past and not so accurate further back. Scoring in this way
+	 * allows us to recognize zones that have some commonality with the zic
+	 * database, without insisting on exact match. (Note: we probe Thursdays,
+	 * not Sundays, to avoid triggering DST-transition bugs in localtime
+	 * itself.)
 	 */
 	tnow = time(NULL);
 	tm = localtime(&tnow);
@@ -404,6 +404,7 @@ identify_system_timezone(void)
 	thisyear = tm->tm_year + 1900;
 
 	t = build_time_t(thisyear, 1, 15);
+
 	/*
 	 * Round back to GMT midnight Thursday.  This depends on the knowledge
 	 * that the time_t origin is Thu Jan 01 1970.  (With a different origin
@@ -731,7 +732,7 @@ static const struct
 		"Central Standard Time (Mexico)", "Central Daylight Time (Mexico)",
 		"America/Mexico_City"
 	},							/* (GMT-06:00) Guadalajara, Mexico City,
-								   Monterrey - New */
+								 * Monterrey - New */
 	{
 		"China Standard Time", "China Daylight Time",
 		"Asia/Hong_Kong"
@@ -852,8 +853,8 @@ static const struct
 	{
 		"Mountain Standard Time (Mexico)", "Mountain Daylight Time (Mexico)",
 		"America/Chihuahua"
-	},							/* (GMT-07:00) Chihuahua, La Paz, 
-								   Mazatlan - New */
+	},							/* (GMT-07:00) Chihuahua, La Paz, Mazatlan -
+								 * New */
 	{
 		"Myanmar Standard Time", "Myanmar Daylight Time",
 		"Asia/Rangoon"
@@ -974,7 +975,7 @@ static const struct
 		"Australia/Perth"
 	},							/* (GMT+08:00) Perth */
 /*	{"W. Central Africa Standard Time", "W. Central Africa Daylight Time",
-	 *	 *	 *	 *	 *	 *	 *	""}, Could not find a match for this one. Excluded for now. *//* (
+	 *	 *	 *	 *	 *	 *	 *	 *	""}, Could not find a match for this one. Excluded for now. *//* (
 	 * G MT+01:00) West Central Africa */
 	{
 		"W. Europe Standard Time", "W. Europe Daylight Time",
@@ -1297,7 +1298,6 @@ get_pg_tz_for_zone(const char *tzname)
 	return tz;
 }
 
-
 /*
  * Identify a suitable default timezone setting based on the environment.
  *
@@ -1328,6 +1328,7 @@ select_default_timezone(void)
 			 errdetail("It appears that your GMT time zone uses leap seconds. PostgreSQL does not support leap seconds.")));
 	return NULL;				/* keep compiler quiet */
 }
+
 
 /*
  * Pre-initialize timezone library
@@ -1385,7 +1386,7 @@ pg_timezone_initialize(void)
 		/* Tell GUC about the value. Will redundantly call pg_tzset() */
 		SetConfigOption("log_timezone", pg_get_timezone_name(def_tz),
 						PGC_POSTMASTER, PGC_S_ARGV);
-    }
+	}
 }
 
 
@@ -1492,7 +1493,7 @@ pg_tzenumerate_next(pg_tzenum *dir)
 		 * Load this timezone using tzload() not pg_tzset(), so we don't fill
 		 * the cache
 		 */
-		if (tzload(fullname + dir->baselen, dir->tz.TZname, &dir->tz.state, 
+		if (tzload(fullname + dir->baselen, dir->tz.TZname, &dir->tz.state,
 				   TRUE) != 0)
 		{
 			/* Zone could not be loaded, ignore it */

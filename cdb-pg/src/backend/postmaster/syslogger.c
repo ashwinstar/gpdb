@@ -143,8 +143,12 @@ static volatile sig_atomic_t rotation_requested = false;
 static pid_t syslogger_forkexec(void);
 static void syslogger_parseArgs(int argc, char *argv[]);
 #endif
-
 #ifdef WIN32
+static void process_pipe_input(char *logbuffer, int *bytes_in_logbuffer);
+static void flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer);
+static void open_csvlogfile(void);
+
+
 static unsigned int __stdcall pipeThread(void *arg);
 #endif
 static void logfile_rotate(bool time_based_rotation);
@@ -1206,6 +1210,222 @@ static void syslogger_handle_chunk(PipeProtoChunk *chunk)
 }
 
 
+#ifdef WIN32
+/* --------------------------------
+ *		pipe protocol handling
+ * --------------------------------
+ */
+
+/*
+ * Process data received through the syslogger pipe.
+ *
+ * This routine interprets the log pipe protocol which sends log messages as
+ * (hopefully atomic) chunks - such chunks are detected and reassembled here.
+ *
+ * The protocol has a header that starts with two nul bytes, then has a 16 bit
+ * length, the pid of the sending process, and a flag to indicate if it is
+ * the last chunk in a message. Incomplete chunks are saved until we read some
+ * more, and non-final chunks are accumulated until we get the final chunk.
+ *
+ * All of this is to avoid 2 problems:
+ * . partial messages being written to logfiles (messes rotation), and
+ * . messages from different backends being interleaved (messages garbled).
+ *
+ * Any non-protocol messages are written out directly. These should only come
+ * from non-PostgreSQL sources, however (e.g. third party libraries writing to
+ * stderr).
+ *
+ * logbuffer is the data input buffer, and *bytes_in_logbuffer is the number
+ * of bytes present.  On exit, any not-yet-eaten data is left-justified in
+ * logbuffer, and *bytes_in_logbuffer is updated.
+ */
+static void
+process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
+{
+	char	   *cursor = logbuffer;
+	int			count = *bytes_in_logbuffer;
+	int			dest = LOG_DESTINATION_STDERR;
+
+	/* While we have enough for a header, process data... */
+	while (count >= (int) sizeof(PipeProtoHeader))
+	{
+		PipeProtoHeader p;
+		int			chunklen;
+
+		/* Do we have a valid header? */
+		memcpy(&p, cursor, sizeof(PipeProtoHeader));
+		if (p.zero == 0 && 
+			p.len > 0 && p.len <= PIPE_MAX_PAYLOAD &&
+			p.pid != 0 &&
+            p.thid != 0 &&
+			(p.is_last == 't' || p.is_last == 'f' ||
+			 p.is_last == 'T' || p.is_last == 'F'))
+		{
+			chunklen = PIPE_HEADER_SIZE + p.len;
+
+			/* Fall out of loop if we don't have the whole chunk yet */
+			if (count < chunklen)
+				break;
+
+			dest = (p.log_format == 'c' || p.log_format == 'f') ?
+			 	LOG_DESTINATION_CSVLOG : LOG_DESTINATION_STDERR;
+#if 0
+			if (p.is_last == 'f' || p.is_last == 'F')
+			{
+				/*
+				 * Save a complete non-final chunk in the per-pid buffer if
+				 * possible - if not just write it out.
+				 */
+				int			free_slot = -1,
+							existing_slot = -1;
+				int			i;
+				StringInfo	str;
+
+				for (i = 0; i < CHUNK_SLOTS; i++)
+				{
+					if (saved_chunks[i].hdr.pid == p.pid)
+					{
+						existing_slot = i;
+						break;
+					}
+					if (free_slot < 0 && saved_chunks[i].hdr.pid == 0)
+						free_slot = i;
+				}
+				if (existing_slot >= 0)
+				{
+					str = &(saved_chunks[existing_slot].data);
+					appendBinaryStringInfo(str,
+										   cursor + PIPE_HEADER_SIZE,
+										   p.len);
+				}
+				else if (free_slot >= 0)
+				{
+					saved_chunks[free_slot].hdr.pid = p.pid;
+					str = &(saved_chunks[free_slot].data);
+					initStringInfo(str);
+					appendBinaryStringInfo(str,
+										   cursor + PIPE_HEADER_SIZE,
+										   p.len);
+				}
+				else
+				{
+					/*
+					 * If there is no free slot we'll just have to take our
+					 * chances and write out a partial message and hope that
+					 * it's not followed by something from another pid.
+					 */
+					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len /*,dest*/);
+				}
+			}
+			else
+			{
+				/*
+				 * Final chunk --- add it to anything saved for that pid, and
+				 * either way write the whole thing out.
+				 */
+				int			existing_slot = -1;
+				int			i;
+				StringInfo	str;
+
+				for (i = 0; i < CHUNK_SLOTS; i++)
+				{
+					if (saved_chunks[i].hdr.pid == p.pid)
+					{
+						existing_slot = i;
+						break;
+					}
+				}
+				if (existing_slot >= 0)
+				{
+					str = &(saved_chunks[existing_slot].data);
+					appendBinaryStringInfo(str,
+										   cursor + PIPE_HEADER_SIZE,
+										   p.len);
+					write_syslogger_file(str->data, str->len /*, dest*/);
+					saved_chunks[existing_slot].hdr.pid = 0;
+					pfree(str->data);
+				}
+				else
+				{
+					/* The whole message was one chunk, evidently. */
+					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len /*, dest*/);
+				}
+			}
+#endif 
+
+			/* Finished processing this chunk */
+			cursor += chunklen;
+			count -= chunklen;
+		}
+		else
+		{
+			/* Process non-protocol data */
+
+			/*
+			 * Look for the start of a protocol header.  If found, dump data
+			 * up to there and repeat the loop.  Otherwise, dump it all and
+			 * fall out of the loop.  (Note: we want to dump it all if at all
+			 * possible, so as to avoid dividing non-protocol messages across
+			 * logfiles.  We expect that in many scenarios, a non-protocol
+			 * message will arrive all in one read(), and we want to respect
+			 * the read() boundary if possible.)
+			 */
+			for (chunklen = 1; chunklen < count; chunklen++)
+			{
+				if (cursor[chunklen] == '\0')
+					break;
+			}
+			/* fall back on the stderr log as the destination */
+			write_syslogger_file(cursor, chunklen /*, LOG_DESTINATION_STDERR*/);
+			cursor += chunklen;
+			count -= chunklen;
+		}
+	}
+
+	/* We don't have a full chunk, so left-align what remains in the buffer */
+	if (count > 0 && cursor != logbuffer)
+		memmove(logbuffer, cursor, count);
+	*bytes_in_logbuffer = count;
+}
+
+/*
+ * Force out any buffered data
+ *
+ * This is currently used only at syslogger shutdown, but could perhaps be
+ * useful at other times, so it is careful to leave things in a clean state.
+ */
+static void
+flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
+{
+    syslogger_flush_chunks();
+#if 0
+	int			i;
+	StringInfo	str;
+
+	/* Dump any incomplete protocol messages */
+	for (i = 0; i < CHUNK_SLOTS; i++)
+	{
+		if (saved_chunks[i].pid != 0)
+		{
+			str = &(saved_chunks[i].data);
+			write_syslogger_file(str->data, str->len, LOG_DESTINATION_STDERR);
+			saved_chunks[i].pid = 0;
+			pfree(str->data);
+		}
+	}
+
+	/*
+	 * Force out any remaining pipe data as-is; we don't bother trying to
+	 * remove any protocol headers that may exist in it.
+	 */
+	if (*bytes_in_logbuffer > 0)
+		write_syslogger_file(logbuffer, *bytes_in_logbuffer,
+							 LOG_DESTINATION_STDERR);
+	*bytes_in_logbuffer = 0;
+#endif 
+}
+#endif
+
 /* --------------------------------
  *		logfile routines
  * --------------------------------
@@ -1233,7 +1453,10 @@ void write_syslogger_file_binary(const char *buffer, int count)
     if (rc != count)
         write_stderr("could not write to log file: %s\n", strerror(errno));
 }
-
+void write_syslogger_file(const char *buffer, int count)
+{
+    write_syslogger_file_binary(buffer,count);
+}
 #ifdef WIN32
 
 /*
