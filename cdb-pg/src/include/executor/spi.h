@@ -1,6 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * spi.h
+ *				Server Programming Interface public declarations
  *
  * $PostgreSQL: pgsql/src/include/executor/spi.h,v 1.58.2.2 2009/01/07 20:39:15 tgl Exp $
  *
@@ -40,7 +41,8 @@
 #include "utils/syscache.h"
 #include "executor/execdefs.h"
 
-typedef struct
+
+typedef struct SPITupleTable
 {
 	MemoryContext tuptabcxt;	/* memory context of result table */
 	uint32		alloced;		/* # of alloced vals */

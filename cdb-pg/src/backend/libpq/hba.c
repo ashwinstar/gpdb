@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.186 2009/06/11 14:48:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.188 2009/06/24 13:39:42 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -705,7 +705,7 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 		{
 			ereport(LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("end-of-line before ip address specification"),
+					 errmsg("end-of-line before IP address specification"),
 					 errcontext("line %d of configuration file \"%s\"",
 							line_num, HbaFileName)));
 			return false;
@@ -1506,7 +1506,7 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 			char errstr[100];
 
 			pg_regerror(r, &re, errstr, sizeof(errstr));
-			ereport(ERROR,
+			ereport(LOG,
 					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 					 errmsg("invalid regular expression \"%s\": %s", file_ident_user+1, errstr)));
 
@@ -1528,7 +1528,7 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 			{
 				/* REG_NOMATCH is not an error, everything else is */
 				pg_regerror(r, &re, errstr, sizeof(errstr));
-				ereport(ERROR,
+				ereport(LOG,
 						(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 						 errmsg("regular expression match for \"%s\" failed: %s", file_ident_user+1, errstr)));
 				*error_p = true;
@@ -1544,10 +1544,15 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 		{
 			/* substitution of the first argument requested */
 			if (matches[1].rm_so < 0)
-				ereport(ERROR,
+			{
+				ereport(LOG,
 						(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 						 errmsg("regular expression \"%s\" has no subexpressions as requested by backreference in \"%s\"",
 								file_ident_user+1, file_pgrole)));
+				pg_regfree(&re);
+				*error_p = true;
+				return;
+			}
 
 			/*
 			 * length: original length minus length of \1 plus length of match

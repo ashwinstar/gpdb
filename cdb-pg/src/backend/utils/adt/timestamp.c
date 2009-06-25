@@ -43,6 +43,7 @@
 
 /* Set at postmaster start */
 TimestampTz PgStartTime;
+
 /* Set at configuration reload */
 TimestampTz PgReloadTime;
 
@@ -966,16 +967,16 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 		int			precision = INTERVAL_PRECISION(typmod);
 
 		/*
-		 * Our interpretation of intervals with a limited set of fields
-		 * is that fields to the right of the last one specified are zeroed
-		 * out, but those to the left of it remain valid.  Thus for example
-		 * there is no operational difference between INTERVAL YEAR TO MONTH
-		 * and INTERVAL MONTH.  In some cases we could meaningfully enforce
-		 * that higher-order fields are zero; for example INTERVAL DAY could
-		 * reject nonzero "month" field.  However that seems a bit pointless
-		 * when we can't do it consistently.  (We cannot enforce a range limit
-		 * on the highest expected field, since we do not have any equivalent
-		 * of SQL's <interval leading field precision>.)
+		 * Our interpretation of intervals with a limited set of fields is
+		 * that fields to the right of the last one specified are zeroed out,
+		 * but those to the left of it remain valid.  Thus for example there
+		 * is no operational difference between INTERVAL YEAR TO MONTH and
+		 * INTERVAL MONTH.	In some cases we could meaningfully enforce that
+		 * higher-order fields are zero; for example INTERVAL DAY could reject
+		 * nonzero "month" field.  However that seems a bit pointless when we
+		 * can't do it consistently.  (We cannot enforce a range limit on the
+		 * highest expected field, since we do not have any equivalent of
+		 * SQL's <interval leading field precision>.)
 		 *
 		 * Note: before PG 8.4 we interpreted a limited set of fields as
 		 * actually causing a "modulo" operation on a given value, potentially

@@ -1425,12 +1425,12 @@ logfile_getname(pg_time_t timestamp)
 		 */
 		suffix = filename + strlen(filename);
 	
-	if (gp_log_format == 0 && strcasecmp(suffix, CSV_SUFFIX) == 0)
+	if (gp_log_format == 0 && pg_strcasecmp(suffix, CSV_SUFFIX) == 0)
 	{
 		snprintf(suffix, sizeof(CSV_SUFFIX), ".log");
 	}
 	
-	if (gp_log_format == 1 && strcasecmp(suffix, CSV_SUFFIX) != 0)
+	if (gp_log_format == 1 && pg_strcasecmp(suffix, CSV_SUFFIX) != 0)
 	{
 		snprintf(suffix, sizeof(CSV_SUFFIX), CSV_SUFFIX);
 	}

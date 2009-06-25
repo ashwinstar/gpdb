@@ -310,7 +310,8 @@ PQcopyResult(const PGresult *src, int flags)
 	/* Wants to copy tuples? */
 	if (flags & PG_COPYRES_TUPLES)
 	{
-		int tup, field;
+		int			tup,
+					field;
 
 		for (tup = 0; tup < src->ntups; tup++)
 		{

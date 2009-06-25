@@ -6,7 +6,7 @@
  *
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/open.c,v 1.27 2009/01/01 17:24:04 momjian Exp $
+ * $PostgreSQL: pgsql/src/port/open.c,v 1.28 2009/06/11 14:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -95,10 +95,11 @@ pgwin32_open(const char *fileName, int fileFlags,...)
 	{
 		/*
 		 * Sharing violation or locking error can indicate antivirus, backup
-		 * or similar software that's locking the file. Try again for 30 seconds
-		 * before giving up.
+		 * or similar software that's locking the file. Try again for 30
+		 * seconds before giving up.
 		 */
 		DWORD err = GetLastError();
+
 		if (err == ERROR_SHARING_VIOLATION || 
 			err == ERROR_LOCK_VIOLATION)
 		{

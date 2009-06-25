@@ -486,8 +486,8 @@ static void
 AppendTimestampSeconds(char *cp, struct pg_tm * tm, fsec_t fsec)
 {
 	/*
-	 * In float mode, don't print fractional seconds before 1 AD,
-	 * since it's unlikely there's any precision left ...
+	 * In float mode, don't print fractional seconds before 1 AD, since it's
+	 * unlikely there's any precision left ...
 	 */
 #ifndef HAVE_INT64_TIMESTAMP
 	if (tm->tm_year <= 0)
@@ -2624,8 +2624,8 @@ DecodeNumberField(int len, char *str, int fmask,
 	if ((cp = strchr(str, '.')) != NULL)
 	{
 		/*
-		 * Can we use ParseFractionalSecond here?  Not clear whether
-		 * trailing junk should be rejected ...
+		 * Can we use ParseFractionalSecond here?  Not clear whether trailing
+		 * junk should be rejected ...
 		 */
 		double		frac;
 
@@ -2906,16 +2906,16 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 			case DTK_TZ:
 
 				/*
-				 * Timezone is a token with a leading sign character and
-				 * at least one digit; there could be ':', '.', '-'
-				 * embedded in it as well.
+				 * Timezone is a token with a leading sign character and at
+				 * least one digit; there could be ':', '.', '-' embedded in
+				 * it as well.
 				 */
 				Assert(*field[i] == '-' || *field[i] == '+');
 
 				/*
 				 * Try for hh:mm or hh:mm:ss.  If not, fall through to
-				 * DTK_NUMBER case, which can handle signed float numbers
-				 * and signed year-month values.
+				 * DTK_NUMBER case, which can handle signed float numbers and
+				 * signed year-month values.
 				 */
 				if (strchr(field[i] + 1, ':') != NULL &&
 					DecodeTime(field[i] + 1, fmask, INTERVAL_FULL_RANGE,
@@ -3207,8 +3207,8 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 		if (!more_signs)
 		{
 			/*
-			 * Rather than re-determining which field was field[0], just
-			 * force 'em all negative.
+			 * Rather than re-determining which field was field[0], just force
+			 * 'em all negative.
 			 */
 			if (*fsec > 0)
 				*fsec = -(*fsec);
@@ -3380,7 +3380,8 @@ DecodeISO8601Interval(char *str,
 						continue;
 					}
 					/* Else fall through to extended alternative format */
-				case '-': /* ISO 8601 4.4.3.3 Alternative Format, Extended */
+				case '-':		/* ISO 8601 4.4.3.3 Alternative Format,
+								 * Extended */
 					if (havefield)
 						return DTERR_BAD_FORMAT;
 
@@ -3457,7 +3458,8 @@ DecodeISO8601Interval(char *str,
 						return 0;
 					}
 					/* Else fall through to extended alternative format */
-				case ':': /* ISO 8601 4.4.3.3 Alternative Format, Extended */
+				case ':':		/* ISO 8601 4.4.3.3 Alternative Format,
+								 * Extended */
 					if (havefield)
 						return DTERR_BAD_FORMAT;
 
@@ -3953,9 +3955,10 @@ AddPostgresIntPart(char *cp, int value, const char *units,
 			value,
 			units,
 			(value != 1) ? "s" : "");
+
 	/*
-	 * Each nonzero field sets is_before for (only) the next one.  This is
-	 * a tad bizarre but it's how it worked before...
+	 * Each nonzero field sets is_before for (only) the next one.  This is a
+	 * tad bizarre but it's how it worked before...
 	 */
 	*is_before = (value < 0);
 	*is_zero = FALSE;
@@ -4062,10 +4065,9 @@ EncodeInterval(struct pg_tm * tm, fsec_t fsec, int style, char *str)
 			else if (!sql_standard_value)
 			{
 				/*
-				 * For non sql-standard interval values,
-				 * force outputting the signs to avoid
-				 * ambiguities with intervals with mixed
-				 * sign components.
+					 * For non sql-standard interval values, force outputting
+					 * the signs to avoid ambiguities with intervals with
+					 * mixed sign components.
 				 */
 				char year_sign = (year < 0 || mon < 0) ? '-' : '+';
 				char day_sign = (mday < 0) ? '-' : '+';

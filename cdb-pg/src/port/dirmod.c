@@ -10,7 +10,7 @@
  *	Win32 (NT4 and newer).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.57 2009/05/04 09:30:06 mha Exp $
+ *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.58 2009/06/11 14:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -412,11 +412,11 @@ rmtree(const char *path, bool rmtopdir)
 		 * delete it anyway.
 		 *
 		 * This is not an academic possibility. One scenario where this
-		 * happens is when bgwriter has a pending unlink request for a file
-		 * in a database that's being dropped. In dropdb(), we call
+		 * happens is when bgwriter has a pending unlink request for a file in
+		 * a database that's being dropped. In dropdb(), we call
 		 * ForgetDatabaseFsyncRequests() to flush out any such pending unlink
-		 * requests, but because that's asynchronous, it's not guaranteed
-		 * that the bgwriter receives the message in time.
+		 * requests, but because that's asynchronous, it's not guaranteed that
+		 * the bgwriter receives the message in time.
 		 */
 		if (lstat(pathbuf, &statbuf) != 0)
 		{
@@ -509,8 +509,8 @@ pgwin32_safestat(const char *path, struct stat *buf)
 	}
 
 	/*
-	 * XXX no support for large files here, but we don't do that in
-	 * general on Win32 yet.
+	 * XXX no support for large files here, but we don't do that in general on
+	 * Win32 yet.
 	 */
 	buf->st_size = attr.nFileSizeLow;
 

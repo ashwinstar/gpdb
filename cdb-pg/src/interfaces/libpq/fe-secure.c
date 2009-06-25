@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-secure.c,v 1.125 2009/05/03 17:16:58 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-secure.c,v 1.127 2009/06/23 18:13:23 mha Exp $
  *
  * NOTES
  *
@@ -31,6 +31,7 @@
 #include "libpq-fe.h"
 #include "fe-auth.h"
 #include "pqsignal.h"
+#include "libpq-int.h"
 
 #ifdef WIN32
 #include "win32.h"
@@ -62,7 +63,7 @@
 #if (SSLEAY_VERSION_NUMBER >= 0x00907000L)
 #include <openssl/conf.h>
 #endif
-#if (SSLEAY_VERSION_NUMBER >= 0x00907000L) && !defined(OPENSSL_NO_ENGINE)
+#ifdef USE_SSL_ENGINE
 #include <openssl/engine.h>
 #endif
 
@@ -111,9 +112,7 @@ static pthread_mutex_t ssl_config_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t ssl_config_mutex = NULL;
 static long win32_ssl_create_mutex = 0;
 #endif
-
 #endif	/* ENABLE_THREAD_SAFETY */
-
 #endif /* SSL */
 
 
@@ -141,7 +140,6 @@ static long win32_ssl_create_mutex = 0;
 
 #define RESTORE_SIGPIPE() \
 	pq_reset_sigpipe(&osigmask, sigpipe_pending, got_epipe)
-
 #else	/* !ENABLE_THREAD_SAFETY */
 
 #define DISABLE_SIGPIPE(failaction) \
@@ -151,14 +149,12 @@ static long win32_ssl_create_mutex = 0;
 
 #define RESTORE_SIGPIPE() \
 	pqsignal(SIGPIPE, oldsighandler)
-
 #endif	/* ENABLE_THREAD_SAFETY */
 #else	/* WIN32 */
 
 #define DISABLE_SIGPIPE(failaction)
 #define REMEMBER_EPIPE(cond)
 #define RESTORE_SIGPIPE()
-
 #endif	/* WIN32 */
 
 /* ------------------------------------------------------------ */
@@ -185,9 +181,10 @@ PQinitOpenSSL(int do_ssl, int do_crypto)
 {
 #ifdef USE_SSL
 #ifdef ENABLE_THREAD_SAFETY
+
 	/*
-	 * Disallow changing the flags while we have open connections, else
-	 * we'd get completely confused.
+	 * Disallow changing the flags while we have open connections, else we'd
+	 * get completely confused.
 	 */
 	if (ssl_open_connections != 0)
 		return;
@@ -501,11 +498,19 @@ wildcard_certificate_match(const char *pattern, const char *string)
 		return 0;
 
 	if (pg_strcasecmp(pattern+1, string+lenstr-lenpat+1) != 0)
-		/* If string does not end in pattern (minus the wildcard), we don't match */
+
+		/*
+		 * If string does not end in pattern (minus the wildcard), we don't
+		 * match
+		 */
 		return 0;
 
 	if (strchr(string, '.') < string+lenstr-lenpat)
-		/* If there is a dot left of where the pattern started to match, we don't match (rule 3) */
+
+		/*
+		 * If there is a dot left of where the pattern started to match, we
+		 * don't match (rule 3)
+		 */
 		return 0;
 
 	/* String ended with pattern, and didn't have a dot before, so we match */
@@ -520,8 +525,8 @@ static bool
 verify_peer_name_matches_certificate(PGconn *conn)
 {
 	/*
-	 * If told not to verify the peer name, don't do it. Return
-	 * 0 indicating that the verification was successful.
+	 * If told not to verify the peer name, don't do it. Return 0 indicating
+	 * that the verification was successful.
 	 */
 	if (strcmp(conn->sslmode, "verify-full") != 0)
 		return true;
@@ -650,14 +655,14 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 	BIO_free(bio);
 
 	/*
-	 * Read the SSL key. If a key is specified, treat it as an engine:key combination
-	 * if there is colon present - we don't support files with colon in the name. The
-	 * exception is if the second character is a colon, in which case it can be a Windows
-	 * filename with drive specification.
+	 * Read the SSL key. If a key is specified, treat it as an engine:key
+	 * combination if there is colon present - we don't support files with
+	 * colon in the name. The exception is if the second character is a colon,
+	 * in which case it can be a Windows filename with drive specification.
 	 */
 	if (conn->sslkey && strlen(conn->sslkey) > 0)
 	{
-#if (SSLEAY_VERSION_NUMBER >= 0x00907000L) && !defined(OPENSSL_NO_ENGINE)
+#ifdef USE_SSL_ENGINE
 		if (strchr(conn->sslkey, ':')
 #ifdef WIN32
 			&& conn->sslkey[1] != ':'
@@ -665,15 +670,14 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 		   )
 		{
 			/* Colon, but not in second character, treat as engine:key */
-			ENGINE	   *engine_ptr;
 			char	   *engine_str = strdup(conn->sslkey);
 			char	   *engine_colon = strchr(engine_str, ':');
 
 			*engine_colon = '\0';	/* engine_str now has engine name */
 			engine_colon++;			/* engine_colon now has key name */
 
-			engine_ptr = ENGINE_by_id(engine_str);
-			if (engine_ptr == NULL)
+			conn->engine = ENGINE_by_id(engine_str);
+			if (conn->engine == NULL)
 			{
 				char	   *err = SSLerrmessage();
 
@@ -686,7 +690,22 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 				return 0;
 			}
 
-			*pkey = ENGINE_load_private_key(engine_ptr, engine_colon,
+			if (ENGINE_init(conn->engine) == 0)
+			{
+				char	   *err = SSLerrmessage();
+
+				printfPQExpBuffer(&conn->errorMessage,
+					 libpq_gettext("could not initialize SSL engine \"%s\": %s\n"),
+								  engine_str, err);
+				SSLerrfree(err);
+				ENGINE_free(conn->engine);
+				conn->engine = NULL;
+				free(engine_str);
+				ERR_pop_to_mark();
+				return 0;
+			}
+
+			*pkey = ENGINE_load_private_key(conn->engine, engine_colon,
 											NULL, NULL);
 			if (*pkey == NULL)
 			{
@@ -696,13 +715,17 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 								  libpq_gettext("could not read private SSL key \"%s\" from engine \"%s\": %s\n"),
 								  engine_colon, engine_str, err);
 				SSLerrfree(err);
+				ENGINE_finish(conn->engine);
+				ENGINE_free(conn->engine);
+				conn->engine = NULL;
 				free(engine_str);
 				ERR_pop_to_mark();
 				return 0;
 			}
 			free(engine_str);
 
-			fnbuf[0] = '\0'; /* indicate we're not going to load from a file */
+			fnbuf[0] = '\0';	/* indicate we're not going to load from a
+								 * file */
 		}
 		else
 #endif /* support for SSL engines */
@@ -959,12 +982,11 @@ destroy_ssl_system(void)
 		CRYPTO_set_id_callback(NULL);
 
 		/*
-		 * We don't free the lock array. If we get another connection
-		 * in this process, we will just re-use it with the existing
-		 * mutexes.
+		 * We don't free the lock array. If we get another connection in this
+		 * process, we will just re-use it with the existing mutexes.
 		 *
-		 * This means we leak a little memory on repeated load/unload
-		 * of the library.
+		 * This means we leak a little memory on repeated load/unload of the
+		 * library.
 		 */
 	}
 
@@ -991,15 +1013,16 @@ initialize_SSL(PGconn *conn)
 	 * verification. If set to "verify-full" we will also do further
 	 * verification after the connection has been completed.
 	 *
-	 * If we are going to look for either root certificate or CRL in the home directory,
-	 * we need pqGetHomeDirectory() to succeed. In other cases, we don't need to
-	 * get the home directory explicitly.
+	 * If we are going to look for either root certificate or CRL in the home
+	 * directory, we need pqGetHomeDirectory() to succeed. In other cases, we
+	 * don't need to get the home directory explicitly.
 	 */
 	if (!conn->sslrootcert || !conn->sslcrl)
 	{
 		if (!pqGetHomeDirectory(homedir, sizeof(homedir)))
 		{
-			if (conn->sslmode[0] == 'v') /* "verify-ca" or "verify-full" */
+			if (conn->sslmode[0] == 'v')		/* "verify-ca" or
+												 * "verify-full" */
 			{
 				printfPQExpBuffer(&conn->errorMessage,
 								  libpq_gettext("could not get home directory to locate root certificate file"));
@@ -1153,8 +1176,8 @@ open_client_SSL(PGconn *conn)
 	}
 
 	/*
-	 * We already checked the server certificate in initialize_SSL()
-	 * using SSL_CTX_set_verify() if root.crt exists.
+	 * We already checked the server certificate in initialize_SSL() using
+	 * SSL_CTX_set_verify() if root.crt exists.
 	 */
 
 	/* pull out server distinguished and common names */
@@ -1212,6 +1235,15 @@ close_SSL(PGconn *conn)
 		X509_free(conn->peer);
 		conn->peer = NULL;
 	}
+
+#ifdef USE_SSL_ENGINE
+	if (conn->engine)
+	{
+		ENGINE_finish(conn->engine);
+		ENGINE_free(conn->engine);
+		conn->engine = NULL;
+	}
+#endif
 }
 
 /*

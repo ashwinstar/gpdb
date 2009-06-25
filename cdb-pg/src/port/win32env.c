@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/win32env.c,v 1.2 2009/02/12 12:53:34 mha Exp $
+ *	  $PostgreSQL: pgsql/src/port/win32env.c,v 1.3 2009/06/11 14:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,9 +27,9 @@ pgwin32_putenv(const char *envval)
 	 * Each version of MSVCRT has its own _putenv() call in the runtime
 	 * library.
 	 *
-	 * If we're in VC 7.0 or later (means != mingw), update in
-	 * the 6.0 MSVCRT.DLL environment as well, to work with third party
-	 * libraries linked against it (such as gnuwin32 libraries).
+	 * If we're in VC 7.0 or later (means != mingw), update in the 6.0
+	 * MSVCRT.DLL environment as well, to work with third party libraries
+	 * linked against it (such as gnuwin32 libraries).
 	 */
 #if defined(_MSC_VER) && (_MSC_VER >= 1300)
 	typedef int 		(_cdecl *PUTENVPROC)(const char *);
@@ -53,8 +53,8 @@ pgwin32_putenv(const char *envval)
 
 
 	/*
-	 * Update the process environment - to make modifications visible
-	 * to child processes.
+	 * Update the process environment - to make modifications visible to child
+	 * processes.
 	 *
 	 * Need a copy of the string so we can modify it.
 	 */
@@ -68,8 +68,8 @@ pgwin32_putenv(const char *envval)
 	{
 		/*
 		 * Only call SetEnvironmentVariable() when we are adding a variable,
-		 * not when removing it. Calling it on both crashes on at least certain
-		 * versions of MingW.
+		 * not when removing it. Calling it on both crashes on at least
+		 * certain versions of MingW.
 		 */
 		if (!SetEnvironmentVariable(envcpy, cp))
 		{

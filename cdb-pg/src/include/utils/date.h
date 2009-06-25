@@ -29,13 +29,23 @@ typedef float8 TimeADT;
 
 typedef struct
 {
-#ifdef HAVE_INT64_TIMESTAMP
-	int64		time;			/* all time units other than months and years */
-#else
-	double		time;			/* all time units other than months and years */
-#endif
+	TimeADT		time;			/* all time units other than months and years */
 	int32		zone;			/* numeric time zone, in seconds */
 } TimeTzADT;
+
+/*
+ * Infinity and minus infinity must be the max and min values of DateADT.
+ * We could use INT_MIN and INT_MAX here, but seems better to not assume that
+ * int32 == int.
+ */
+#define DATEVAL_NOBEGIN		((DateADT) (-0x7fffffff - 1))
+#define DATEVAL_NOEND		((DateADT) 0x7fffffff)
+
+#define DATE_NOBEGIN(j)		((j) = DATEVAL_NOBEGIN)
+#define DATE_IS_NOBEGIN(j)	((j) == DATEVAL_NOBEGIN)
+#define DATE_NOEND(j)		((j) = DATEVAL_NOEND)
+#define DATE_IS_NOEND(j)	((j) == DATEVAL_NOEND)
+#define DATE_NOT_FINITE(j)	(DATE_IS_NOBEGIN(j) || DATE_IS_NOEND(j))
 
 /*
  * Macros for fmgr-callable functions.

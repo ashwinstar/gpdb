@@ -3,7 +3,7 @@
  * pl_exec.c		- Executor for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -253,6 +253,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 						/* Build a temporary HeapTuple control structure */
 						tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 						ItemPointerSetInvalid(&(tmptup.t_self));
+						//tmptup.t_tableOid = InvalidOid;
 						tmptup.t_data = td;
 						exec_move_row(&estate, NULL, row, &tmptup, tupdesc);
 						ReleaseTupleDesc(tupdesc);
@@ -269,6 +270,8 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 				elog(ERROR, "unrecognized dtype: %d", func->datums[i]->dtype);
 		}
 	}
+
+	estate.err_text = gettext_noop("during function entry");
 
 	/*
 	 * Set the magic variable FOUND to false
@@ -293,8 +296,8 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 		estate.err_text = NULL;
 
 		/*
-		 * Provide a more helpful message if a CONTINUE has been used outside
-		 * a loop.
+		 * Provide a more helpful message if a CONTINUE or RAISE has been used
+		 * outside the context it can work in.
 		 */
 		if (rc == PLPGSQL_RC_CONTINUE)
 			ereport(ERROR,
@@ -387,7 +390,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 			 * sure it is labeled with the caller-supplied tuple type.
 			 */
 			estate.retval =
-				PointerGetDatum(SPI_returntuple((HeapTuple) (DatumGetPointer(estate.retval)),
+				PointerGetDatum(SPI_returntuple((HeapTuple) DatumGetPointer(estate.retval),
 												tupdesc));
 		}
 		else
@@ -410,12 +413,14 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 				void	   *tmp;
 
 				len = datumGetSize(estate.retval, false, func->fn_rettyplen);
-				tmp = (void *) SPI_palloc(len);
+				tmp = SPI_palloc(len);
 				memcpy(tmp, DatumGetPointer(estate.retval), len);
 				estate.retval = PointerGetDatum(tmp);
 			}
 		}
 	}
+
+	estate.err_text = gettext_noop("during function exit");
 
 	/*
 	 * Let the instrumentation plugin peek at this function
@@ -611,6 +616,8 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
 						   CStringGetDatum(trigdata->tg_trigger->tgargs[i]));
 	}
 
+	estate.err_text = gettext_noop("during function entry");
+
 	/*
 	 * Set the magic variable FOUND to false
 	 */
@@ -634,8 +641,8 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
 		estate.err_text = NULL;
 
 		/*
-		 * Provide a more helpful message if a CONTINUE has been used outside
-		 * a loop.
+		 * Provide a more helpful message if a CONTINUE or RAISE has been used
+		 * outside the context it can work in.
 		 */
 		if (rc == PLPGSQL_RC_CONTINUE)
 			ereport(ERROR,
@@ -646,6 +653,9 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
 			   (errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
 				errmsg("control reached end of trigger procedure without RETURN")));
 	}
+
+	estate.err_stmt = NULL;
+	estate.err_text = gettext_noop("during function exit");
 
 	if (estate.retisset)
 		ereport(ERROR,
@@ -672,7 +682,7 @@ plpgsql_exec_trigger(PLpgSQL_function *func,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("returned tuple structure does not match table of trigger event")));
 		/* Copy tuple to upper executor memory */
-		rettup = SPI_copytuple((HeapTuple) (DatumGetPointer(estate.retval)));
+		rettup = SPI_copytuple((HeapTuple) DatumGetPointer(estate.retval));
 	}
 
 	/*
@@ -714,30 +724,48 @@ plpgsql_exec_error_callback(void *arg)
 	if (estate->err_text == raise_skip_msg)
 		return;
 
-	if (estate->err_stmt != NULL)
-	{
-		/* translator: last %s is a plpgsql statement type name */
-		errcontext("PL/pgSQL function \"%s\" line %d at %s",
-				   estate->err_func->fn_name,
-				   estate->err_stmt->lineno,
-				   plpgsql_stmt_typename(estate->err_stmt));
-	}
-	else if (estate->err_text != NULL)
+	if (estate->err_text != NULL)
 	{
 		/*
 		 * We don't expend the cycles to run gettext() on err_text unless we
 		 * actually need it.  Therefore, places that set up err_text should
 		 * use gettext_noop() to ensure the strings get recorded in the
 		 * message dictionary.
+		 *
+		 * If both err_text and err_stmt are set, use the err_text as
+		 * description, but report the err_stmt's line number.  When err_stmt
+		 * is not set, we're in function entry/exit, or some such place not
+		 * attached to a specific line number.
 		 */
-
+		if (estate->err_stmt != NULL)
+		{
+			/*
+			 * translator: last %s is a phrase such as "during statement block
+			 * local variable initialization"
+			 */
+			errcontext("PL/pgSQL function \"%s\" line %d %s",
+					   estate->err_func->fn_name,
+					   estate->err_stmt->lineno,
+					   _(estate->err_text));
+		}
+		else
+		{
 		/*
 		 * translator: last %s is a phrase such as "while storing call
 		 * arguments into local variables"
 		 */
 		errcontext("PL/pgSQL function \"%s\" %s",
 				   estate->err_func->fn_name,
-				   gettext(estate->err_text));
+					   _(estate->err_text));
+		}
+	}
+	else if (estate->err_stmt != NULL)
+	{
+		/* translator: last %s is a plpgsql statement type name */
+		errcontext("PL/pgSQL function \"%s\" line %d at %s",
+				   estate->err_func->fn_name,
+				   estate->err_stmt->lineno,
+				   plpgsql_stmt_typename(estate->err_stmt));
 	}
 	else
 		errcontext("PL/pgSQL function \"%s\"",
@@ -849,6 +877,8 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 	/*
 	 * First initialize all variables declared in this block
 	 */
+	estate->err_text = gettext_noop("during statement block local variable initialization");
+
 	for (i = 0; i < block->n_initvars; i++)
 	{
 		n = block->initvarnos[i];
@@ -870,11 +900,11 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 					{
 						/*
 						 * If needed, give the datatype a chance to reject
-						 * NULLs, by assigning a NULL to the variable.
-						 * We claim the value is of type UNKNOWN, not the
-						 * var's datatype, else coercion will be skipped.
-						 * (Do this before the notnull check to be
-						 * consistent with exec_assign_value.)
+						 * NULLs, by assigning a NULL to the variable. We
+						 * claim the value is of type UNKNOWN, not the var's
+						 * datatype, else coercion will be skipped. (Do this
+						 * before the notnull check to be consistent with
+						 * exec_assign_value.)
 						 */
 						if (!var->datatype->typinput.fn_strict)
 						{
@@ -937,6 +967,8 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		EState	   *old_eval_estate = estate->eval_estate;
 		long int	old_eval_estate_simple_id = estate->eval_estate_simple_id;
 
+		estate->err_text = gettext_noop("during statement block entry");
+
 		BeginInternalSubTransaction(NULL);
 		/* Want to run statements inside function's memory context */
 		MemoryContextSwitchTo(oldcontext);
@@ -951,14 +983,18 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 			 */
 			plpgsql_create_econtext(estate);
 
+			estate->err_text = NULL;
+
 			/* Run the block's statements */
 			rc = exec_stmts(estate, block->body);
 
+			estate->err_text = gettext_noop("during statement block exit");
+
 			/*
 			 * If the block ended with RETURN, we may need to copy the return
-			 * value out of the subtransaction eval_context.  This is currently
-			 * only needed for scalar result types --- rowtype values will
-			 * always exist in the function's own memory context.
+			 * value out of the subtransaction eval_context.  This is
+			 * currently only needed for scalar result types --- rowtype
+			 * values will always exist in the function's own memory context.
 			 */
 			if (rc == PLPGSQL_RC_RETURN &&
 				!estate->retisset &&
@@ -993,6 +1029,8 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		{
 			ErrorData  *edata;
 			ListCell   *e;
+
+			estate->err_text = gettext_noop("during exception cleanup");
 
 			/* Save error info */
 			MemoryContextSwitchTo(oldcontext);
@@ -1068,8 +1106,12 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		/*
 		 * Just execute the statements in the block's body
 		 */
+		estate->err_text = NULL;
+
 		rc = exec_stmts(estate, block->body);
 	}
+
+	estate->err_text = NULL;
 
 	/*
 	 * Handle the return code.
@@ -1584,13 +1626,12 @@ exec_stmt_fori(PLpgSQL_execstate *estate, PLpgSQL_stmt_fori *stmt)
 			 * current statement's label, if any: return RC_EXIT so that the
 			 * EXIT continues to propagate up the stack.
 			 */
-
 			break;
 		}
 		else if (rc == PLPGSQL_RC_CONTINUE)
 		{
 			if (estate->exitlabel == NULL)
-				/* anonymous continue, so re-run the current loop */
+				/* unlabelled continue, so re-run the current loop */
 				rc = PLPGSQL_RC_OK;
 			else if (stmt->label != NULL &&
 					 strcmp(stmt->label, estate->exitlabel) == 0)
@@ -1611,7 +1652,8 @@ exec_stmt_fori(PLpgSQL_execstate *estate, PLpgSQL_stmt_fori *stmt)
 		}
 
 		/*
-		 * Increase/decrease loop var
+		 * Increase/decrease loop value, unless it would overflow, in which
+		 * case exit the loop.
 		 */
 		if (stmt->reverse)
 			var->value -= by_value;
@@ -3245,7 +3287,7 @@ exec_assign_value(PLpgSQL_execstate *estate,
 				if (*isNull && var->notnull)
 					ereport(ERROR,
 							(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-							 errmsg("NULL cannot be assigned to variable \"%s\" declared NOT NULL",
+							 errmsg("null value cannot be assigned to variable \"%s\" declared NOT NULL",
 									var->refname)));
 
 				/*
@@ -4822,8 +4864,10 @@ plpgsql_xact_cb(XactEvent event, void *arg)
 /*
  * plpgsql_subxact_cb --- post-subtransaction-commit-or-abort cleanup
  *
- * If a simple-expression EState was created in the current subtransaction,
- * it has to be cleaned up.
+ * Make sure any simple-expression econtexts created in the current
+ * subtransaction get cleaned up.  We have to do this explicitly because
+ * no other code knows which child econtexts of simple_eval_estate belong
+ * to which level of subxact.
  */
 void
 plpgsql_subxact_cb(SubXactEvent event, SubTransactionId mySubid,

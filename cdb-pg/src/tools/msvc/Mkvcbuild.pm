@@ -82,6 +82,8 @@ sub mkvcbuild
     my $plpgsql = $solution->AddProject('plpgsql','dll','PLs','src\pl\plpgsql\src');
     $plpgsql->AddFiles('src\pl\plpgsql\src','scan.l','gram.y');
     $plpgsql->AddReference($postgres);
+    $plpgsql->AddLibrary('wsock32.lib');
+    $plpgsql->AddLibrary('ws2_32.lib');
 
     if ($solution->{options}->{perl})
     {
@@ -236,22 +238,22 @@ sub mkvcbuild
     $pgdump->AddFile('src\bin\pg_dump\pg_dump.c');
     $pgdump->AddFile('src\bin\pg_dump\common.c');
     $pgdump->AddFile('src\bin\pg_dump\pg_dump_sort.c');
-    $pgdump->AddFile('src\bin\pg_dump\keywords.c');
-    $pgdump->AddFile('src\backend\parser\kwlookup.c');
+    #$pgdump->AddFile('src\bin\pg_dump\keywords.c');
+    #$pgdump->AddFile('src\backend\parser\kwlookup.c');
 
     my $pgdumpall = AddSimpleFrontend('pg_dump', 1);
     $pgdumpall->{name} = 'pg_dumpall';
     $pgdumpall->AddIncludeDir('src\backend');
     $pgdumpall->AddFile('src\bin\pg_dump\pg_dumpall.c');
-    $pgdumpall->AddFile('src\bin\pg_dump\keywords.c');
-    $pgdumpall->AddFile('src\backend\parser\kwlookup.c');
+    #$pgdumpall->AddFile('src\bin\pg_dump\keywords.c');
+    #$pgdumpall->AddFile('src\backend\parser\kwlookup.c');
 
     my $pgrestore = AddSimpleFrontend('pg_dump', 1);
     $pgrestore->{name} = 'pg_restore';
     $pgrestore->AddIncludeDir('src\backend');
     $pgrestore->AddFile('src\bin\pg_dump\pg_restore.c');
-    $pgrestore->AddFile('src\bin\pg_dump\keywords.c');
-    $pgrestore->AddFile('src\backend\parser\kwlookup.c');
+    #$pgrestore->AddFile('src\bin\pg_dump\keywords.c');
+    #$pgrestore->AddFile('src\backend\parser\kwlookup.c');
 
     my $zic = $solution->AddProject('zic','exe','utils');
     $zic->AddFiles('src\timezone','zic.c','ialloc.c','scheck.c','localtime.c');
@@ -362,7 +364,7 @@ sub mkvcbuild
             }
                elsif ($f eq 'kwlookup.c')
             {
-                $proj->AddFile('src\backend\parser\kwlookup.c');
+                #$proj->AddFile('src\backend\parser\kwlookup.c');
             }
             elsif ($f eq 'dumputils.c')
             {

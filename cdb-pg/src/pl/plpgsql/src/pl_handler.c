@@ -147,8 +147,8 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	functyptype = get_typtype(proc->prorettype);
 
 	/* Disallow pseudotype result */
-	/* except for TRIGGER, RECORD, VOID, ANYARRAY, or ANYELEMENT */
-	if (functyptype == 'p')
+	/* except for TRIGGER, RECORD, VOID, or polymorphic */
+	if (functyptype == TYPTYPE_PSEUDO)
 	{
 		/* we assume OPAQUE with no arguments means a trigger */
 		if (proc->prorettype == TRIGGEROID ||
@@ -160,23 +160,23 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 				 proc->prorettype != ANYELEMENTOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("plpgsql functions cannot return type %s",
+					 errmsg("PL/pgSQL functions cannot return type %s",
 							format_type_be(proc->prorettype))));
 	}
 
 	/* Disallow pseudotypes in arguments (either IN or OUT) */
-	/* except for ANYARRAY or ANYELEMENT */
+	/* except for polymorphic */
 	numargs = get_func_arg_info(tuple,
 								&argtypes, &argnames, &argmodes);
 	for (i = 0; i < numargs; i++)
 	{
-		if (get_typtype(argtypes[i]) == 'p')
+		if (get_typtype(argtypes[i]) == TYPTYPE_PSEUDO)
 		{
 			if (argtypes[i] != ANYARRAYOID &&
 				argtypes[i] != ANYELEMENTOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("plpgsql functions cannot take type %s",
+						 errmsg("PL/pgSQL functions cannot accept type %s",
 								format_type_be(argtypes[i]))));
 		}
 	}
