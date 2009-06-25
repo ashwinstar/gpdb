@@ -179,6 +179,7 @@ try:
                 output=GV.session.executeCommand(GV.argcmd)
                 GV.session.writeCommandOutput(output)
                 if GV.session.verbose: print '[INFO] completed successfully'
+                sys.stdout.flush()
             except gplib.Session.SessionError, e:
                 print 'Error: %s' % e
                 pass
