@@ -90,10 +90,9 @@ class gucdict(dict):
                             incfilename = '%s/%s' % (filename[0:filename.rfind('/')], incfilename)
                         file = open(incfilename)
                         self.populate(file, incfilename, recurLevel+1)
+                        file.close()
                     except IOError, ex:
                         raise Exception('File %s included from %s:%d does not exist' % (incfilename, filename, linenumber))
-                    finally:
-                        if file: file.close()
                 else:
                     self[name.lower()] = setting(name, value, filename, linenumber, pos)
 
