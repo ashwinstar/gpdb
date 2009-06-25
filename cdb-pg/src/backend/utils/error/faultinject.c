@@ -138,6 +138,9 @@ int64 gp_fault_inject_impl(int32 reason, int64 arg)
 				} while(true);
 			}
 			break;
+		case GP_FAULT_USER_ASSERT_FAILURE:
+			Assert(!"Inject an assert failure");
+			break;
 
 		case GP_FAULT_USER_MP_CONFIG:
 		case GP_FAULT_USER_MP_ALLOC:
