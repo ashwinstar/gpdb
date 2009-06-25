@@ -258,8 +258,9 @@ qual_may_have_node_replaced_walker(Node *node, Node *checkForNode)
 
     if ( equal(node, checkForNode))
     {
-        // safe.  Do not recurse because the caller is going to be replacing
-        //   node with checkForNode
+        /* safe.  Do not recurse because the caller is going to be replacing
+         *   node with checkForNode
+		 */
         return false;
     }
 
@@ -273,11 +274,12 @@ qual_may_have_node_replaced_walker(Node *node, Node *checkForNode)
               IsA(node, CoalesceExpr) ||
               IsA(node, Const)  ||
               IsA(node, DistinctExpr) ||
-              IsA(node, FuncExpr) || // for function calls.  caller will check
-                                     // checked volatility already so we can
-                                     // accept the function call
+              IsA(node, FuncExpr) || /* for function calls.  caller will check
+                                      * checked volatility already so we can
+                                      * accept the function call
+									  */
 
-              IsA(node, List) || // this includes IntList and OidList
+              IsA(node, List) || /* this includes IntList and OidList */
               IsA(node, MinMaxExpr) ||
               IsA(node, NullIfExpr)  ||
               IsA(node, NullTest) ||
@@ -286,7 +288,7 @@ qual_may_have_node_replaced_walker(Node *node, Node *checkForNode)
 
               )
     {
-        // allow...fall-through to check any args
+        /* allow...fall-through to check any args */
     }
     else
     {
@@ -404,7 +406,7 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
     int		  	 i1;
     int			 nitems = list_length(curset);
 
-    // find the relids for each item in the equivalence set
+    /* find the relids for each item in the equivalence set */
     relids = (Relids *) palloc(nitems * sizeof(Relids));
     foreach_with_count(ptr1, curset, i1)
     {
@@ -428,8 +430,9 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
         membership = bms_membership(relids[i1]);
         if ( membership != BMS_SINGLETON)
         {
-            // ignore const and multiple-relation equivalence
-            //   members
+            /* ignore const and multiple-relation equivalence
+             *   members
+			 */
             continue;
         }
 
@@ -441,20 +444,20 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
         rel1 = find_base_rel(root, relId);
         restrictlist = rel1->baserestrictinfo;
 
-        //
-        // Scan the restrict info, looking for a clause that uses this
-        //      PathKeyItem's Var
-        //
-        // If we find one then we can try to apply it to all other items
-        //      in this equivalence class
-        //
+        /*
+		 * Scan the restrict info, looking for a clause that uses this
+         *      PathKeyItem's Var
+         *
+         * If we find one then we can try to apply it to all other items
+         *      in this equivalence class
+         */
         foreach_with_count(itm, restrictlist, restrictIndex)
         {
             ListCell *ptr2;
             int i2 = 0;
             Node *clause;
 
-            // don't try to replicated a newly created one
+            /* don't try to replicated a newly created one */
             if ( restrictIndex >= initialNumRestrictionsByRelId[relId])
             {
                 continue;
@@ -462,8 +465,9 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
 
             restrictinfo = (RestrictInfo *) lfirst(itm);
 
-            // walk the restrictInfo, checking that the only non-constant
-            // value it refers to is the node for this equivalence item.
+            /* walk the restrictInfo, checking that the only non-constant
+             * value it refers to is the node for this equivalence item.
+			 */
             clause = (Node *)restrictinfo->clause;
             if ( contain_volatile_functions(clause) ||
                  qual_may_have_node_replaced_walker(
@@ -472,7 +476,7 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
                 continue;
             }
 
-           // now try to apply to others in the equivalence class
+			/* now try to apply to others in the equivalence class */
             foreach_with_count(ptr2, curset, i2)
             {
                 BMS_Membership item2Membership;
@@ -483,28 +487,31 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
 
                 if ( i1 == i2 )
                 {
-                    // don't copy to qual to self!
+                    /* don't copy to qual to self! */
                     continue;
                 }
 
                 item2Membership = bms_membership(relids[i2]);
                 if ( item2Membership != BMS_SINGLETON)
                 {
-                    // ignore const and multiple-relation equivalence
-                    //   members
+                    /* ignore const and multiple-relation equivalence
+                     *   members
+					 */
                     continue;
                 }
 
                 if ( ! isCompatibleOuterJoinLocation(root,relids[i1],relids[i2]))
                 {
-                    // these two relations appear at different points
-                    //   in the outer join structure
+                    /* these two relations appear at different points
+                     *   in the outer join structure
+					 */
                     continue;
                 }
                 item2 = (PathKeyItem *) lfirst(ptr2);
 
-                // must match type+mod exactly or we won't try to
-                //   transfer
+                /* must match type+mod exactly or we won't try to
+                 *   transfer
+				 */
                 if ( exprTypeVal != exprType(item2->key) ||
                      exprTypmodVal != exprTypmod(item2->key))
                 {
@@ -513,21 +520,22 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
 
                 belowOuterJoin = isBelowNullableSideOfOuterJoin(root, relids[i2]);
 
-                // clone the clause, replacing first node with
-                //    clone of second
+                /* clone the clause, replacing first node with
+                 *    clone of second
+				 */
                 repl.replaceThis = item1->key;
                 repl.withThis = item2->key;
                 newClause = (Node*) implied_quals_mutator(
                     (Node*)restrictinfo->clause, &repl);
 
                 distribute_qual_to_rels(root, newClause,
-                                        true, // is_deduced
-                                        true, // is_deduced_but_not_equijoin
+                                        true, /* is_deduced */
+                                        true, /* is_deduced_but_not_equijoin */
                                         belowOuterJoin,
-                                        relids[i2], // qualscope
-                                        NULL, // ojscope
-                                        NULL, // outerjoin_nonnullable
-                                        NULL // local equi join scope
+                                        relids[i2], /* qualscope */
+                                        NULL, /* ojscope */
+                                        NULL, /* outerjoin_nonnullable */
+                                        NULL /* local equi join scope */
                                         );
             }
         }
@@ -536,14 +544,14 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
     pfree(relids);
 }
 
-// Future:
-//
-// note that we require types to be the same.  We could try converting them
-//   (introducing relabel nodes) as long as the conversion is a widening
-//   conversion (clause on int4 can be applied to int2 type by widening the
-//   int2 to an int4 when creating the replicated clause)
-//   likewise, is varchar(10) vs varchar(50) an issue at this point?
-//
+/* TODO:
+ *
+ * note that we require types to be the same.  We could try converting them
+ *   (introducing relabel nodes) as long as the conversion is a widening
+ *   conversion (clause on int4 can be applied to int2 type by widening the
+ *   int2 to an int4 when creating the replicated clause)
+ *   likewise, is varchar(10) vs varchar(50) an issue at this point?
+ */
 void
 generate_implied_quals(PlannerInfo *root)
 {
@@ -555,7 +563,7 @@ generate_implied_quals(PlannerInfo *root)
     if ( ! gp_enable_predicate_propagation )
         return;
 
-    // get the initial number of restrictions per relation id
+    /* get the initial number of restrictions per relation id */
     initialNumRestrictionsByRelId = (int *)
                 palloc( root->simple_rel_array_size * sizeof(int));
     for ( i = 1; i < root->simple_rel_array_size; i++)
@@ -569,7 +577,7 @@ generate_implied_quals(PlannerInfo *root)
         else initialNumRestrictionsByRelId[i] = 0;
     }
 
-    // generate using the query-global equi-key-list
+    /* generate using the query-global equi-key-list */
 	foreach(cursetlink, root->equi_key_list)
 	{
 		List *curset = (List *) lfirst(cursetlink);
@@ -577,12 +585,12 @@ generate_implied_quals(PlannerInfo *root)
                 root, curset, initialNumRestrictionsByRelId);
 	}
 
-    // generate using the local (to nullable side of outer join) equi-key-lists
+    /* generate using the local (to nullable side of outer join) equi-key-lists */
     foreach(curOuterJoinInfo, root->oj_info_list)
     {
         OuterJoinInfo * oj = (OuterJoinInfo *) lfirst(curOuterJoinInfo);
 
-        // left equi key lists exist only for full outer join
+        /* left equi key lists exist only for full outer join */
         Assert(oj->left_equi_key_list == NULL || oj->join_type == JOIN_FULL);
 
         foreach(cursetlink, oj->left_equi_key_list)

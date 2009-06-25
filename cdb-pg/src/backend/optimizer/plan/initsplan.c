@@ -452,7 +452,7 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode, bool below_outer_join,
                     break;
                 default:
                     Assert(0);
-                    localEquiKeyList = NULL; // should not hit
+                    localEquiKeyList = NULL; /* should not hit */
                     break;
             }
 
@@ -1351,8 +1351,10 @@ process_implied_equality(PlannerInfo *root,
 	 */
 	distribute_qual_to_rels(root, (Node *) clause,
 							true, true, false, relids, NULL, NULL,
-							NULL // NULL is okay for local equi list because
-							     //  we are recording a global equivalence
+							NULL 
+							/* NULL is okay for local equi list because
+							 *  we are recording a global equivalence
+							 */
 							);
 }
 
