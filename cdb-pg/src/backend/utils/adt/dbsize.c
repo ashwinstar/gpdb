@@ -44,7 +44,7 @@ get_size_from_segDBs(const char * cmd)
 {
 	int			spiresult;
 	bool		succeeded = false;
-	int64		result;
+	int64		result = 0;
 	volatile bool connected = false;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
