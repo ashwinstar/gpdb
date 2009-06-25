@@ -465,7 +465,7 @@ def checkPGExtTable():
         GV.retcode = 1
         prntmsg('[ERROR] pg_exttable has %d issue(s)' % len(err))
         prntmsg('[ERROR] %s' % qry)
-        for e in err: prntmsg('[ERROR]', formatErr(e[0], e[1], e[2]))
+        for e in err: prntmsg('[ERROR] %s' % formatErr(e[0], e[1], e[2]))
         relids = {}
         for e in err:
             seg = e[0]['dbid'] 
