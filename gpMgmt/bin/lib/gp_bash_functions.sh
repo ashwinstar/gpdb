@@ -992,13 +992,47 @@ GET_MASTER_PORT () {
 		fi
 		if [ -r $MASTER_DATA_DIRECTORY/$PG_CONF ];then
 			MASTER_PORT=`$AWK 'split($0,a,"#")>0 && split(a[1],b,"=")>1 {print b[1] " " b[2]}' $MASTER_DATA_DIRECTORY/$PG_CONF | $AWK '$1=="port" {print $2}' | $TAIL -1`
-			if [ x"" == x"$MASTER_PORT" ];then
-			ERROR_EXIT "[FATAL]:-Failed to obtain master port number from $MASTER_DATA_DIRECTORY/$PG_CONF" 2
+			if [ x"" == x"$MASTER_PORT" ] ; then
+                #look for include files
+                for INC_FILE in `$AWK '/^[ ]*include /{print $2}' $MASTER_DATA_DIRECTORY/$PG_CONF | $TR -d "'\""` ; do
+                    if [[ $INC_FILE == /* ]] ; then
+                        GET_MASTER_PORT_RECUR "$INC_FILE" 1
+                    else
+                        GET_MASTER_PORT_RECUR "$MASTER_DATA_DIRECTORY/$INC_FILE" 1
+                    fi
+                done
+                if [ x"" == x"$MASTER_PORT" ] ; then
+			        ERROR_EXIT "[FATAL]:-Failed to obtain master port number from $MASTER_DATA_DIRECTORY/$PG_CONF" 2
+                fi
 			fi
 		else
 			ERROR_EXIT "[FATAL]:-Do not have read access to $MASTER_DATA_DIRECTORY/$PG_CONF" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_MASTER_PORT_RECUR () {
+    INCLUDED_FILE=$1
+    RECUR=$2
+    if [ $RECUR -le 10 ] ; then
+        MASTER_PORT=`$AWK 'split($0,a,"#")>0 && split(a[1],b,"=")>1 {print b[1] " " b[2]}' $INCLUDED_FILE | $AWK '$1=="port" {print $2}' | $TAIL -1`
+        if [ x"" == x"$MASTER_PORT" ] ; then
+            #look for include files
+            let CURR_DEPTH=$RECUR+1
+            for INC_FILE in `$AWK '/^[ ]*include /{print $2}' $INC_FILE | $TR -d "'\""` ; do
+                if [[ $INC_FILE == /* ]] ; then
+                    GET_MASTER_PORT_RECUR "$INC_FILE" $CURR_DEPTH
+                else
+                    GET_MASTER_PORT_RECUR "$MASTER_DATA_DIRECTORY/$INC_FILE" $CURR_DEPTH
+                fi
+                if [ x"" != x"$MASTER_PORT" ] ; then
+                    break
+                fi
+            done
+        fi
+    else
+        ERROR_EXIT "[FATAL]:-Could not open configuration file \"$INCLUDED_FILE\": maximum nesting depth exceeded"
+    fi
 }
 
 CHK_ON_PASSIVE_STANDBY () {
