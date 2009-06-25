@@ -2,7 +2,7 @@
  * dbsize.c
  *		object size functions
  *
- * Copyright (c) 2002-2009, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/dbsize.c,v 1.9.2.1 2007/03/11 06:44:11 alvherre Exp $
@@ -24,11 +24,11 @@
 #include "commands/tablespace.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
-#include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/relcache.h"
+
+#include "executor/spi.h"
 
 #include "gp-libpq-fe.h"
 #include "lib/stringinfo.h"
@@ -42,53 +42,71 @@
 static int64
 get_size_from_segDBs(const char * cmd)
 {
+	int			spiresult;
+	bool		succeeded = false;
+	int64		result;
+	volatile bool connected = false;
 
-	int64	size = 0;
-	int		i;
-	int 	resultCount = 0;
-	struct pg_result **results = NULL;
-	
-	StringInfoData errbuf;
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	initStringInfo(&errbuf);
-
-	results = cdbdisp_dispatchRMCommand(cmd, true, false, &errbuf, &resultCount);
-
-	if (errbuf.len > 0)
-		ereport(ERROR, (errmsg("dbsize error (gathered %d results from cmd '%s')", resultCount, cmd),
-						errdetail("%s", errbuf.data)));
-										
-	for (i = 0; i < resultCount; i++)
+	PG_TRY();
 	{
-		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+		HeapTuple	tup;
+		TupleDesc	tupdesc;
+		bool		isnull;
+		Datum		size;
+
+		do
 		{
-			elog(ERROR,"dbsize: resultStatus not tuples_Ok");
+			/* Establish an SPI session as a client of myself. */
+			if (SPI_connect() != SPI_OK_CONNECT)
+				break;
+
+			connected = true;
+
+			/* Do the query. */
+			spiresult = SPI_execute(cmd, false, 0);
+
+			/* Did the query succeed? */
+			if (spiresult != SPI_OK_SELECT)
+				break;
+
+			if (SPI_processed < 1)
+				break;
+
+			tup = SPI_tuptable->vals[0];
+			tupdesc = SPI_tuptable->tupdesc;
+
+			size = heap_getattr(SPI_tuptable->vals[0], 1, SPI_tuptable->tupdesc, &isnull);
+			if (isnull)
+				break;
+
+			result = DatumGetInt64(size);
+
+			succeeded = true;
 		}
-		else
-		{
-			/*
-			 * Due to funkyness in the current dispatch agent code, instead of 1 result 
-			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-			 * one row per QE controlled by that agent.
-			 */
-			int j;
-			for (j = 0; j < PQntuples(results[i]); j++)
-			{
-				int64 tempsize = 0;
-				(void) scanint8(PQgetvalue(results[i], j, 0), false, &tempsize);
-				 size += tempsize;
-			}
-		}
+		while (0);
+
+		/* End recursive session. */
+		connected = false;
+		SPI_finish();
+
+		if (!succeeded)
+			elog(ERROR, "Unable to get sizes from segments");
 	}
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		/* End recursive session. */
+		if (connected)
+			SPI_finish();
 
-	pfree(errbuf.data);
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-
-	free(results);
-	
-	return size;
+	return result;
 }
 
 /* Return physical size of directory contents, or 0 if dir doesn't exist */
@@ -193,8 +211,8 @@ pg_database_size_oid(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "select pg_database_size(%u)", dbOid);
-		
+		appendStringInfo(&buffer, "select sum(pg_database_size(%u))::int8 from gp_dist_random('gp_id');", dbOid);
+
 		size += get_size_from_segDBs(buffer.data);
 	}
 
@@ -222,8 +240,8 @@ pg_database_size_name(PG_FUNCTION_ARGS)
 		
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "select pg_database_size('%s')", NameStr(*dbName));
-		
+		appendStringInfo(&buffer, "select sum(pg_database_size(%s))::int8 from gp_dist_random('gp_id');", quote_identifier(NameStr(*dbName)));
+
 		size += get_size_from_segDBs(buffer.data);
 	}
 
@@ -302,9 +320,9 @@ pg_tablespace_size_oid(PG_FUNCTION_ARGS)
 		StringInfoData buffer;
 		
 		initStringInfo(&buffer);
-		
-		appendStringInfo(&buffer, "select pg_tablespace_size(%u)", tblspcOid);
-		
+
+		appendStringInfo(&buffer, "select sum(pg_tablespace_size(%u))::int8 from gp_dist_random('gp_id');", tblspcOid);
+
 		size += get_size_from_segDBs(buffer.data);
 	}
 
@@ -331,9 +349,9 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 		StringInfoData buffer;
 		
 		initStringInfo(&buffer);
-		
-		appendStringInfo(&buffer, "select pg_tablespace_size('%s')", NameStr(*tblspcName));
-		
+
+		appendStringInfo(&buffer, "select sum(pg_tablespace_size(%s))::int8 from gp_dist_random('gp_id');", quote_identifier(NameStr(*tblspcName)));
+
 		size += get_size_from_segDBs(buffer.data);
 	}
 
@@ -478,8 +496,8 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 		}
 
 		initStringInfo(&buffer);
-		
-		appendStringInfo(&buffer, "select pg_relation_size('%s.%s')", quote_identifier(schemaName), quote_identifier(relName));
+
+		appendStringInfo(&buffer, "select sum(pg_relation_size('%s.%s'))::int8 from gp_dist_random('gp_id');", quote_identifier(schemaName), quote_identifier(relName));
 
 		size += get_size_from_segDBs(buffer.data);
 	}
@@ -542,8 +560,10 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 		rawname = DatumGetCString(DirectFunctionCall1(textout,
 													  PointerGetDatum(relname)));
 		
-		appendStringInfo(&buffer, "select pg_relation_size('%s')", rawname);
-		
+		initStringInfo(&buffer);
+
+		appendStringInfo(&buffer, "select sum(pg_relation_size('%s'))::int8 from gp_dist_random('gp_id');", rawname);
+
 		size += get_size_from_segDBs(buffer.data);
 	}
 
@@ -635,7 +655,8 @@ pg_total_relation_size_oid(PG_FUNCTION_ARGS)
 		}
 
 		initStringInfo(&buffer);
-		appendStringInfo(&buffer, "select pg_total_relation_size('%s.%s')", quote_identifier(schemaName), quote_identifier(relName));
+
+		appendStringInfo(&buffer, "select sum(pg_total_relation_size('%s.%s'))::int8 from gp_dist_random('gp_id');", quote_identifier(schemaName), quote_identifier(relName));
 
 		size += get_size_from_segDBs(buffer.data);
 	}
@@ -681,7 +702,7 @@ pg_total_relation_size_name(PG_FUNCTION_ARGS)
 		rawname = DatumGetCString(DirectFunctionCall1(textout,
 													  PointerGetDatum(relname)));
 		
-		appendStringInfo(&buffer, "select pg_total_relation_size('%s')", rawname);
+		appendStringInfo(&buffer, "select sum(pg_total_relation_size('%s'))::int8 from gp_dist_random('gp_id');", rawname);
 		
 		size += get_size_from_segDBs(buffer.data);
 	}
