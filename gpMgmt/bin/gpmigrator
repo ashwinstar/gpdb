@@ -2120,7 +2120,7 @@ This issue must be resolved before upgrade can complete.
                 line = re.compile('ident sameuser$').sub('ident', line)
                 line = re.compile('ident (?!map=)(.*)$').sub('ident map=\\1', line)
                 # pam
-                line = re.compile('pam (?!pamservice=)(.*)$').sub('pam pamservice=\\1', line)
+                line = re.compile('pam (?!pamservice=)(.*)$').sub('pam pamservice="\\1"', line)
                 # ldap is a little more complex
                 # our objective is to parse the following:
                 # ldap[s]://<server>[:<port>]/<basedn>[;prefix[;suffix]]
