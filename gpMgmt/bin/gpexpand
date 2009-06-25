@@ -1743,7 +1743,7 @@ UPDATE gp_distribution_policy
     
     def shutdown(self):
         """used if the script is closed abrubtly"""
-        logger.info('Shutting down')
+        logger.info('Shutting down gpexpand...')
         if self.pool:
             self.pool.haltWork()
             self.pool.joinWorkers()
@@ -2286,7 +2286,7 @@ try:
         interview_setup(gparray)            
     else:
         logger.error('The last gpexpand setup did not complete successfully.')
-        logger.error('Please run gpexpand -r to rollback to the original state.')                  
+        logger.error('Please run gpexpand -r to rollback to the original state.')
 
     logger.info("Exiting...")
     sys.exit(0)
@@ -2297,6 +2297,11 @@ except Exception,e:
     else:
         logger.error("gpexpand failed: %s \n\nExiting..." % e )
     if gp_expand is not None:
+        if gpexpand_db_status is None and gp_expand.get_state() is None:
+            logger.info('Bringing Greenplum Database back online...')
+            gpexpand.get_gpdb_in_state(GPDB_STARTED)
+        else:
+            logger.error('Please run gpexpand -r to rollback to the original state.')
         gp_expand.shutdown()
     sys.exit(3)
 except KeyboardInterrupt:
