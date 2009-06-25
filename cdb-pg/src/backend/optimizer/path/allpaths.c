@@ -56,6 +56,7 @@ bool		enable_mergejoin = false;
 bool		enable_hashjoin = true;
 bool        gp_enable_hashjoin_size_heuristic = false;  /*CDB*/
 bool		gp_enable_fallback_plan = true;
+bool        gp_enable_predicate_propagation = false;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 

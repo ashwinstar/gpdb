@@ -33,6 +33,7 @@ extern bool enable_mergejoin;
 extern bool enable_hashjoin;
 extern bool gp_enable_hashjoin_size_heuristic;          /*CDB*/
 extern bool gp_enable_fallback_plan;
+extern bool gp_enable_predicate_propagation;
 extern bool enable_geqo;
 extern int	geqo_threshold;
 
@@ -130,8 +131,12 @@ typedef enum
 } PathKeysComparison;
 
 extern void add_equijoined_keys(PlannerInfo *root, RestrictInfo *restrictinfo);
+extern void add_equijoined_keys_to_list(List **ptrToList,
+            RestrictInfo *restrictinfo);
+
 extern bool exprs_known_equal(PlannerInfo *root, Node *item1, Node *item2);
 extern void generate_implied_equalities(PlannerInfo *root);
+extern void generate_implied_quals(PlannerInfo *root);
 extern List *canonicalize_pathkeys(PlannerInfo *root, List *pathkeys);
 extern PathKeysComparison compare_pathkeys(List *keys1, List *keys2);
 extern bool pathkeys_contained_in(List *keys1, List *keys2);

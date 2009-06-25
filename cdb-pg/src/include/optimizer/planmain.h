@@ -215,6 +215,15 @@ extern void process_implied_equality(PlannerInfo *root,
 						 Oid sortop1, Oid sortop2,
 						 Relids item1_relids, Relids item2_relids,
 						 bool delete_it);
+extern void distribute_qual_to_rels(PlannerInfo *root, Node *clause,
+						bool is_deduced,
+						bool is_deduced_but_not_equijoin,
+						bool below_outer_join,
+						Relids qualscope,
+						Relids ojscope,
+						Relids outerjoin_nonnullable,
+						List **ptrToLocalEquiKeyList);
+
 
 /*
  * prototypes for plan/setrefs.c

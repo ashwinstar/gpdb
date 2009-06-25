@@ -197,6 +197,12 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 */
 	generate_implied_equalities(root);
 
+	/**
+	 * Use the list of equijoined keys to transfer quals between relations.  For example,
+	 *   A=B AND f(A) implies A=B AND f(A) and F(B), under some restrictions on f().
+	 */
+	generate_implied_quals(root);
+
 	/*
 	 * We should now have all the pathkey equivalence sets built, so it's now
 	 * possible to convert the requested query_pathkeys to canonical form.

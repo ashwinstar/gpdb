@@ -1105,6 +1105,21 @@ typedef struct OuterJoinInfo
 	JoinType	join_type;		/* LEFT, FULL, or ANTI */
 	bool		lhs_strict;		/* joinclause is strict for some LHS rel */
 	bool		delay_upper_joins;	/* can't commute with upper RHS */
+
+	/**
+	 * list of lists of equijoined PathKeyItems
+	 * only valid for FULL joins.  Will contain equi_key sets but ONLY
+	 * for tables that are below the LEFT nullable side of the outer join.
+	 */
+	List	   *left_equi_key_list;
+
+	/**
+	 * list of lists of equijoined PathKeyItems
+	 * Will contain equi_key sets but ONLY
+	 * for tables that are below the RIGHT nullable side of the outer join.
+	 */
+	List	   *right_equi_key_list;
+
 } OuterJoinInfo;
 
 /*

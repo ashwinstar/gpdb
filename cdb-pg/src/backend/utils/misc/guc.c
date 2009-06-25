@@ -637,6 +637,16 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
+		{"gp_enable_predicate_propagation", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("When two expressions are equivalent (such as with "
+			             "equijoined keys) then the planner applies predicates "
+			             "on one expression to the other expression."),
+			gettext_noop("If false, planner does not copy predicates.")
+		},
+		&gp_enable_predicate_propagation,
+		true, NULL, NULL
+	},
+	{
 		{"constraint_exclusion", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Enables the planner to use constraints to optimize queries."),
 			gettext_noop("Child table scans will be skipped if their "

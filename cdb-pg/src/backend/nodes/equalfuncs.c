@@ -655,6 +655,8 @@ _equalOuterJoinInfo(OuterJoinInfo *a, OuterJoinInfo *b)
 	COMPARE_SCALAR_FIELD(join_type);
 	COMPARE_SCALAR_FIELD(lhs_strict);
 	COMPARE_SCALAR_FIELD(delay_upper_joins);
+    // do not compare derived equi_key_list COMPARE_NODE_FIELD(left_equi_key_list);
+    // do not compare derived equi_key_list COMPARE_NODE_FIELD(right_equi_key_list);
 
 	return true;
 }
