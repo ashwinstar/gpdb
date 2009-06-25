@@ -560,7 +560,11 @@ GET_TABLE_IDENTIFIER () {
                 SQL_NAME[2]="\"${BASH_REMATCH[5]}\""
             else
                 # Unquoted name; make lower-case
-                SQL_NAME[0]=$($ECHO "${BASH_REMATCH[2]}" | $TR '[:upper:]' '[:lower:]')
+                if [ "$OS_TYPE" == "sunos" ] ; then
+                	SQL_NAME[0]=$($ECHO "${BASH_REMATCH[2]}" | $MBTR '[:upper:]' '[:lower:]')
+                else
+                	SQL_NAME[0]=$($ECHO "${BASH_REMATCH[2]}" | $TR '[:upper:]' '[:lower:]')
+                fi
                 SQL_NAME[2]="${SQL_NAME[0]}"
             fi
         else
@@ -573,7 +577,11 @@ GET_TABLE_IDENTIFIER () {
             SQL_NAME[3]="\"${BASH_REMATCH[12]}\""
         else
             # Unquoted name; make lower-case
-            SQL_NAME[1]=$($ECHO "${BASH_REMATCH[9]}" | $TR '[:upper:]' '[:lower:]')
+            if [ "$OS_TYPE" == "sunos" ] ; then
+                SQL_NAME[1]=$($ECHO "${BASH_REMATCH[9]}" | $MBTR '[:upper:]' '[:lower:]')
+            else
+                SQL_NAME[1]=$($ECHO "${BASH_REMATCH[9]}" | $TR '[:upper:]' '[:lower:]')
+            fi            
             SQL_NAME[3]="${SQL_NAME[1]}"
         fi
     else
@@ -1778,6 +1786,8 @@ case $OS_TYPE in
 		PING_TIME="1"
 		GTAR=`findCmdInPath gtar`
 		DF=`findCmdInPath df`
+		# Multi-byte tr needed on Solaris to handle [:upper:], [:lower:], etc.
+		MBTR=/usr/xpg4/bin/tr
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
