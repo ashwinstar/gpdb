@@ -33,6 +33,13 @@ sub genbki
     $version =~ /^(\d+\.\d+)/ || die "Bad format verison $version\n";
     my $majorversion = $1;
 
+	# In PG 8.2, NAMEDATALEN is in postgres_ext.h.  it moves
+	# to pg_config_manual.h in PG 8.3
+    my $pgext = read_file("src/include/pg_config_manual.h");
+    $pgext =~ /^#define\s+NAMEDATALEN\s+(\d+)$/mg
+      || die "Could not read NAMEDATALEN from pg_config_manual.h\n";
+    my $namedatalen = $1;
+
     my $pgauthid = read_file("src/include/catalog/pg_authid.h");
     $pgauthid =~ /^#define\s+BOOTSTRAP_SUPERUSERID\s+(\d+)\s*$/mg
       || die "Could not read BOOTSTRAUP_SUPERUSERID from pg_authid.h\n";
@@ -65,6 +72,7 @@ sub genbki
     $indata =~ s{^TransactionId}{xid}gm;
     $indata =~ s{\(TransactionId}{(xid}g;
     $indata =~ s{PGUID}{$bootstrapsuperuserid}g;
+    $indata =~ s{NAMEDATALEN}{$namedatalen}g;
     $indata =~ s{PGNSP}{$pgcatalognamespace}g;
 
     #print $indata;
