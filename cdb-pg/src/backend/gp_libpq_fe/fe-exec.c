@@ -5,13 +5,13 @@
  *   This is similar to interfaces/libpq/fe-exec.c, but contains GP enhancements
  *   and doesn't support protocol2.
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2006-2009, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.202 2009/05/27 14:16:51 meskes Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.203 2009/06/11 14:49:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -134,10 +134,6 @@ static int check_field_number(const PGresult *res, int field_num);
  *	 returns a newly allocated, initialized PGresult with given status.
  *	 If conn is not NULL and status indicates an error, the conn's
  *	 errorMessage is copied.  Also, any PGEvents are copied from the conn.
- *
- * Note this is exported --- you wouldn't think an application would need
- * to build its own PGresults, but this has proven useful in both libpgtcl
- * and the Perl5 interface, so maybe it's not so unreasonable.
  */
 PGresult *
 PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
@@ -333,7 +329,8 @@ PQcopyResult(const PGresult *src, int flags)
 	/* Wants to copy tuples? */
 	if (flags & PG_COPYRES_TUPLES)
 	{
-		int tup, field;
+		int			tup,
+					field;
 
 		for (tup = 0; tup < src->ntups; tup++)
 		{
@@ -1883,6 +1880,7 @@ parseInput(PGconn *conn)
 {
 		pqParseInput3(conn);
 }
+
 /*
  * PQisBusy
  *	 Return TRUE if PQgetResult would block waiting for input.

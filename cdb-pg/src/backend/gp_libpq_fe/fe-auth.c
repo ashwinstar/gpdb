@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.141 2009/03/22 18:06:35 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.142 2009/06/11 14:49:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -266,12 +266,11 @@ pg_fe_getauthname(PQExpBuffer errorMessage)
 #endif
 
 	/*
-	 * Some users are using configure
-	 * --enable-thread-safety-force, so we might as well do the locking within
-	 * our library to protect pqGetpwuid(). In fact, application developers
-	 * can use getpwuid() in their application if they use the locking call we
-	 * provide, or install their own locking function using
-	 * PQregisterThreadLock().
+	 * Some users are using configure --enable-thread-safety-force, so we
+	 * might as well do the locking within our library to protect
+	 * pqGetpwuid(). In fact, application developers can use getpwuid() in
+	 * their application if they use the locking call we provide, or install
+	 * their own locking function using PQregisterThreadLock().
 	 */
 	pglock_thread();
 

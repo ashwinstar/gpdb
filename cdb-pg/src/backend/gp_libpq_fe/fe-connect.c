@@ -3,13 +3,13 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
- * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 2006-2009, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.374 2009/05/18 16:15:22 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.375 2009/06/11 14:49:13 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -154,9 +154,9 @@ static const PQconninfoOption PQconninfoOptions[] = {
 
 	/*
 	 * ssl options are allowed even without client SSL support because the
-	 * client can still handle SSL modes "disable" and "allow". Other parameters
-	 * have no effect on non-SSL connections, so there is no reason to exclude them
-	 * since none of them are mandatory.
+	 * client can still handle SSL modes "disable" and "allow". Other
+	 * parameters have no effect on non-SSL connections, so there is no reason
+	 * to exclude them since none of them are mandatory.
 	 */
 	{"sslmode", "PGSSLMODE", DefaultSSLMode, NULL,
 	"SSL-Mode", "", 8},			/* sizeof("disable") == 8 */
@@ -834,6 +834,7 @@ connectDBStart(PGconn *conn)
 	conn->addrlist = addrs;
 	conn->addr_cur = addrs;
 	conn->addrlist_family = hint.ai_family;
+    // GPDB uses the high bits of the major version to indicate special internal communications
 	conn->pversion = PG_PROTOCOL(3 + 0x7000, 0);
 	conn->status = CONNECTION_NEEDED;
 
@@ -903,7 +904,11 @@ connectDBComplete(PGconn *conn)
 		switch (flag)
 		{
 			case PGRES_POLLING_OK:
-				/* Reset stored error messages since we now have a working connection */
+
+				/*
+				 * Reset stored error messages since we now have a working
+				 * connection
+				 */
 				resetPQExpBuffer(&conn->errorMessage);
 				return 1;		/* success! */
 
@@ -1244,7 +1249,10 @@ keep_going:						/* We will come back to here until there is
 														EnvironmentOptions);
 				if (!startpacket)
 				{
-					/* will not appendbuffer here, since it's likely to also run out of memory */
+					/*
+					 * will not appendbuffer here, since it's likely to also
+					 * run out of memory
+					 */
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext("out of memory\n"));
 					goto error_return;

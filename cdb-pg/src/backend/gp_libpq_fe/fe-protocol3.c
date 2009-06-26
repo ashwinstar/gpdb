@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.38 2009/01/09 18:50:03 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.39 2009/06/11 14:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1627,9 +1627,8 @@ getCopyDataMessage(PGconn *conn)
 		/*
 		 * If it's a legitimate async message type, process it.  (NOTIFY
 		 * messages are not currently possible here, but we handle them for
-		 * completeness.  NOTICE is definitely possible, and ParameterStatus
-		 * could probably be made to happen.)  Otherwise, if it's anything
-		 * except Copy Data, report end-of-copy.
+		 * completeness.)  Otherwise, if it's anything except Copy Data,
+		 * report end-of-copy.
 		 */
 		switch (id)
 		{
@@ -1683,8 +1682,8 @@ pqGetCopyData3(PGconn *conn, char **buffer, int async)
 			/*
 			 * On end-of-copy, exit COPY_OUT mode and let caller read status
 			 * with PQgetResult().  The normal case is that it's Copy Done,
-			 * but we let parseInput read that.  If error, we expect the
-			 * state was already changed.
+			 * but we let parseInput read that.  If error, we expect the state
+			 * was already changed.
 			 */
 			if (msgLength == -1)
 				conn->asyncStatus = PGASYNC_BUSY;
