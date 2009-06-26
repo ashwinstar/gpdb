@@ -164,22 +164,22 @@ DATA(insert OID = 3250    ( nb_classification PGNSP 3251 PGUID 0 3250 0 0 0 0 0 
  * relstorage describes how a relkind is physically stored in the database.
  *
  * RELSTORAGE_HEAP    - stored on disk using heap storage.
- * RELSTORAGE_AO      - stored on disk using append only storage.
- * RELSTORAGE_VOCS    - stored on dist using append only column storage.
+ * RELSTORAGE_AOROWS  - stored on disk using append only storage.
+ * RELSTORAGE_AOCOLS  - stored on dist using append only column storage.
  * RELSTORAGE_VIRTUAL - has virtual storage, meaning, relation has no
  *						data directly stored forit  (right now this
  *						relates to views and comp types).
  * RELSTORAGE_EXTERNAL	stored externally using external tables.
  */
 #define		  RELSTORAGE_HEAP	'h'
-#define		  RELSTORAGE_AO		'a'
-#define 	  RELSTORAGE_AOCS 	'c'
+#define		  RELSTORAGE_AOROWS	'a'
+#define 	  RELSTORAGE_AOCOLS	'c'
 #define		  RELSTORAGE_VIRTUAL	'v'
 #define		  RELSTORAGE_EXTERNAL 'x'
 
 static inline bool relstorage_is_ao(char c)
 {
-	return c == RELSTORAGE_AO || c == RELSTORAGE_AOCS;
+	return c == RELSTORAGE_AOROWS || c == RELSTORAGE_AOCOLS;
 }
 
 static inline bool relstorage_is_external(char c)

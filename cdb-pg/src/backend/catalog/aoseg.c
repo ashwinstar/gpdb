@@ -123,7 +123,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	if (!needs_aoseg_table(rel))
 		return false;
 
-	if(rel->rd_rel->relstorage == RELSTORAGE_AO)
+	if(RelationIsAoRows(rel))
 	{
 
 		/*
@@ -159,7 +159,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 	}
 	else
 	{
-		Assert(rel->rd_rel->relstorage == RELSTORAGE_AOCS);
+		Assert(RelationIsAoCols(rel));
 		/* Create AOCS seg table */
 
 		snprintf(aoseg_relname, sizeof(aoseg_relname),
@@ -321,5 +321,5 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 static bool
 needs_aoseg_table(Relation rel)
 {
-	return RelationIsAppendOnly(rel);
+	return (RelationIsAoRows(rel) || RelationIsAoCols(rel));
 }

@@ -282,11 +282,18 @@ typedef struct StdRdOptions
 	((bool)((relation)->rd_rel->relstorage == RELSTORAGE_EXTERNAL))
 
 /*
- * RelationIsAppendOnly
- * 		True iff relation has append only storage
+ * RelationIsAoRows
+ * 		True iff relation has append only storage with row orientation
  */
-#define RelationIsAppendOnly(relation) \
-	((bool)(((relation)->rd_rel->relstorage == RELSTORAGE_AO) || ((relation)->rd_rel->relstorage == RELSTORAGE_AOCS)))
+#define RelationIsAoRows(relation) \
+	((bool)(((relation)->rd_rel->relstorage == RELSTORAGE_AOROWS)))
+
+/*
+ * RelationIsAoCols
+ * 		True iff relation has append only storage with column orientation
+ */
+#define RelationIsAoCols(relation) \
+	((bool)(((relation)->rd_rel->relstorage == RELSTORAGE_AOCOLS)))
 
 /*
  * RelationHasReferenceCountZero

@@ -1194,7 +1194,7 @@ ExecUpdateAOtupCount(ResultRelInfo *result_rels,
 
 	for (i = num_result_rels; i > 0; i--)
 	{
-		if(RelationIsAppendOnly(result_rels->ri_RelationDesc))
+		if(RelationIsAoRows(result_rels->ri_RelationDesc) || RelationIsAoCols(result_rels->ri_RelationDesc))
 		{
 			Assert(result_rels->ri_aosegno != InvalidFileSegNumber);
 			UpdateMasterAosegTotals(result_rels->ri_RelationDesc,

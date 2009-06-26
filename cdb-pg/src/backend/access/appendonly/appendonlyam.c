@@ -2352,7 +2352,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
     Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->usableBlockSize * 2);
 	Assert(aoInsertDesc->toast_tuple_threshold > 0 && aoInsertDesc->toast_tuple_target > 0);
 
-	Insist(relation->rd_rel->relstorage == RELSTORAGE_AO);
+	Insist(RelationIsAoRows(relation));
 	if (relation->rd_rel->relhasoids)
 	{
 

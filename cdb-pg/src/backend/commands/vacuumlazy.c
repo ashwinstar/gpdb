@@ -162,7 +162,6 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	Relation   *Irel;
 	int			nindexes;
 	BlockNumber possibly_freeable;
-	char		relstorage = onerel->rd_rel->relstorage;
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -178,12 +177,12 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	 * Execute the various vaccum operations. Appendonly tables are treated
 	 * differently as they are not heap based and have no indexes.
 	 */
-	if(relstorage == RELSTORAGE_AO)
+	if (RelationIsAoRows(onerel))
 	{
 		/* append-only relation. has a special path */
 		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ false);
 	} 
-	else if (relstorage == RELSTORAGE_AOCS)
+	else if (RelationIsAoCols(onerel))
 	{
         vacuum_aocs_rel(onerel, vacrelstats, /* FULL */ false);
 	}

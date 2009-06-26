@@ -636,8 +636,8 @@ ProcessUtility(Node *parsetree,
 							break;
 						default:
 							Assert(relStorage == RELSTORAGE_HEAP ||
-								   relStorage == RELSTORAGE_AO ||
-								   relStorage == RELSTORAGE_AOCS ||
+								   relStorage == RELSTORAGE_AOROWS ||
+								   relStorage == RELSTORAGE_AOCOLS ||
 								   relStorage == RELSTORAGE_EXTERNAL);
 					}
 				}

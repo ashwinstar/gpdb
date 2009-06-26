@@ -4903,7 +4903,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			heap_endscan(heapscan);
 
 		}
-		else if(relstorage == RELSTORAGE_AO && Gp_role != GP_ROLE_DISPATCH)
+		else if(relstorage == RELSTORAGE_AOROWS && Gp_role != GP_ROLE_DISPATCH)
 		{
 			/*
 			 * When rewriting an appendonly table we choose to always insert
@@ -5025,7 +5025,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			if(newrel)
 				appendonly_insert_finish(aoInsertDesc);
 		}
-		else if(relstorage == RELSTORAGE_AOCS && Gp_role != GP_ROLE_DISPATCH)
+		else if(relstorage == RELSTORAGE_AOCOLS && Gp_role != GP_ROLE_DISPATCH)
 		{
 			int segno = RESERVED_SEGNO;
 			AOCSInsertDesc idesc = NULL;
@@ -5526,7 +5526,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	Form_pg_type tform;
 	Expr	   *defval;
 
-	if(rel->rd_rel->relstorage == RELSTORAGE_AOCS)
+	if(RelationIsAoCols(rel))
 	{
         ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
@@ -5544,7 +5544,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * it ok because the whole table will get re-written in phase 3. Let's
 	 * catch this now before doing any real work.
 	 */
-	if (rel->rd_rel->relstorage == RELSTORAGE_AO && !colDef->raw_default)
+	if (RelationIsAoRows(rel) && !colDef->raw_default)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
@@ -8591,7 +8591,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
-			if(RelationIsAppendOnly(rel))
+			if(RelationIsAoRows(rel) || RelationIsAoCols(rel))
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("altering reloptions for append only tables"
@@ -9485,7 +9485,7 @@ relopts_for_ctas(Relation rel)
 	 * class reloptions isn't to be trusted.
 	 */
 	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
-	if (RelationIsAppendOnly(rel))
+	if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 	{
 		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel));
 
@@ -10258,7 +10258,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						if (pg_strcasecmp(strVal(def->arg), "true") == 0)
                         {
 							is_ao = true;
-                            relstorage = RELSTORAGE_AO;
+                            relstorage = RELSTORAGE_AOROWS;
                         }
 						else
 							is_ao = false;
@@ -10271,10 +10271,10 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("specify orientation requires appendonly")));
 
-                        Assert(relstorage == RELSTORAGE_AO);
+                        Assert(relstorage == RELSTORAGE_AOROWS);
 
 						if (pg_strcasecmp(strVal(def->arg), "column") == 0)
-                            relstorage = RELSTORAGE_AOCS;
+                            relstorage = RELSTORAGE_AOCOLS;
                         else
                         {
                             if (pg_strcasecmp(strVal(def->arg), "row") != 0)
@@ -10619,7 +10619,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			if (intVal(v))
             {
 				is_ao = true;
-                relstorage = RELSTORAGE_AO;
+                relstorage = RELSTORAGE_AOROWS;
             }
 			else
             {
@@ -19083,11 +19083,11 @@ ATPExecPartSplit(Relation rel,
 	}
 
 	/* be careful about AO vs. normal heap tables */
-	if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+	if (RelationIsHeap(temprel))
 		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
-	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
+	else if (RelationIsAoRows(temprel))
 		aoscan = appendonly_beginscan(temprel, SnapshotNow, 0, NULL);
-	else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
+	else if (RelationIsAoCols(temprel))
 	{
         int nvp = temprel->rd_att->natts;
         int i;
@@ -19105,7 +19105,7 @@ ATPExecPartSplit(Relation rel,
 	{
 		ExprContext *econtext = GetPerTupleExprContext(estate);
 
-		if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+		if (RelationIsHeap(temprel))
 		{
 			HeapTuple tuple;
 
@@ -19115,7 +19115,7 @@ ATPExecPartSplit(Relation rel,
 
 			ExecStoreHeapTuple(tuple, tts, InvalidBuffer, false);
 		}
-		else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
+		else if (RelationIsAoRows(temprel))
 		{
 			MemTuple mtuple;
 
@@ -19125,7 +19125,7 @@ ATPExecPartSplit(Relation rel,
 
 			ExecStoreMemTuple(mtuple, tts, false);
 		}
-		else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
+		else if (RelationIsAoCols(temprel))
 		{
             aocs_getnext(aocsscan, ForwardScanDirection, tts);
 		}
@@ -19137,7 +19137,7 @@ ATPExecPartSplit(Relation rel,
 			if (ExecQual((List *)achk, econtext, true))
 			{
 				/* insert into intoa */
-				if (intoa->rd_rel->relstorage == RELSTORAGE_AO)
+				if (RelationIsAoRows(intoa))
 				{
 					MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
 
@@ -19150,7 +19150,7 @@ ATPExecPartSplit(Relation rel,
 
 					appendonly_insert(aoinsertdesc_a, mtuple);
 				}
-                else if (intoa->rd_rel->relstorage == RELSTORAGE_AOCS)
+                else if (RelationIsAoCols(intoa))
                 {
                     if (!aocsinsertdesc_a)
                         aocsinsertdesc_a = aocs_insert_init(intoa, RESERVED_SEGNO);
@@ -19161,14 +19161,14 @@ ATPExecPartSplit(Relation rel,
 				{
 					HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
 
-                    Assert(intoa->rd_rel->relstorage == RELSTORAGE_HEAP);
+                    Assert(RelationIsHeap(intoa));
 					simple_heap_insert(intoa, tuple);
 				}
 			}
 			else
 			{
 				/* belongs in intob */
-				if (intob->rd_rel->relstorage == RELSTORAGE_AO)
+				if (RelationIsAoRows(intob))
 				{
 					MemTuple mtuple = ExecFetchSlotMemTuple(tts, false);
 
@@ -19181,7 +19181,7 @@ ATPExecPartSplit(Relation rel,
 
 					appendonly_insert(aoinsertdesc_b, mtuple);
 				}
-                else if (intob->rd_rel->relstorage == RELSTORAGE_AOCS)
+                else if (RelationIsAoCols(intob))
                 {
                     if (!aocsinsertdesc_b)
                         aocsinsertdesc_b = aocs_insert_init(intoa, RESERVED_SEGNO);
@@ -19225,11 +19225,11 @@ ATPExecPartSplit(Relation rel,
 	MemoryContextSwitchTo(oldCxt);
 	ExecDropSingleTupleTableSlot(tts);
 
-	if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+	if (RelationIsHeap(temprel))
 		heap_endscan(heapscan);
-	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
+	else if (RelationIsAoRows(temprel))
 		appendonly_endscan(aoscan);
-	else if (temprel->rd_rel->relstorage == RELSTORAGE_AOCS)
+	else if (RelationIsAoCols(temprel))
     {
         pfree(aocsproj);
         aocs_endscan(aocsscan);

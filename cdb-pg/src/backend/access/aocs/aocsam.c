@@ -351,7 +351,7 @@ Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool * null)
         Relation rel = idesc->aoi_rel;
         int i;
         
-        Assert(rel->rd_rel->relstorage == RELSTORAGE_AOCS);
+        Assert(RelationIsAoCols(rel));
         Assert(!rel->rd_rel->relhasoids);
 
         /* As usual, at this momnet, we assume one col per vp */

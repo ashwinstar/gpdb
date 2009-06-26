@@ -1449,13 +1449,13 @@ ExecARInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 	TriggerDesc *trigdesc = relinfo->ri_TrigDesc;
 
 	if (trigdesc && trigdesc->n_after_row[TRIGGER_EVENT_INSERT] > 0)
-        {
-                if(relinfo->ri_RelationDesc->rd_rel->relstorage == RELSTORAGE_AOCS)
-                        elog(ERROR, "Trigger is not supported on AOCS yet");
+	{
+		if(RelationIsAoCols(relinfo->ri_RelationDesc))
+			elog(ERROR, "Trigger is not supported on AOCS yet");
 
 		AfterTriggerSaveEvent(relinfo, TRIGGER_EVENT_INSERT,
-							  true, NULL, trigtuple);
-        }
+								true, NULL, trigtuple);
+		}
 }
 
 void

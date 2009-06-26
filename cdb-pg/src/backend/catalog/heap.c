@@ -838,9 +838,9 @@ heap_create_with_catalog(const char *relname,
 	if(appendOnlyRel)
 	{
 		if(stdRdOptions->columnstore)
-            relstorage = RELSTORAGE_AOCS;
+            relstorage = RELSTORAGE_AOCOLS;
 		else
-			relstorage = RELSTORAGE_AO;
+			relstorage = RELSTORAGE_AOROWS;
 	}
 
 	CheckAttributeNamesTypes(tupdesc, relkind);
@@ -1461,7 +1461,7 @@ heap_drop_with_catalog(Oid relid)
 	 */
 	rel = relation_open(relid, AccessExclusiveLock);
 
-	is_appendonly_rel = RelationIsAppendOnly(rel);
+	is_appendonly_rel = (RelationIsAoRows(rel) || RelationIsAoCols(rel));
 	is_external_rel = RelationIsExternal(rel);
 
 	/*

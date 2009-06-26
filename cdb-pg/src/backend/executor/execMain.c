@@ -2375,7 +2375,10 @@ ExecInsert(TupleTableSlot *slot,
 	Relation	resultRelationDesc;
 	Oid			newId;
 	Oid         sourceTableOid;
-	char		relstorage;
+
+	bool		rel_is_heap,
+				rel_is_aorows,
+				rel_is_aocols;
 
 	/*
 	 * get information on the (current) result relation
@@ -2395,13 +2398,16 @@ ExecInsert(TupleTableSlot *slot,
 		resultRelInfo = estate->es_result_relation_info;
 
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
-	relstorage = resultRelationDesc->rd_rel->relstorage;
-
+	
+	rel_is_heap = RelationIsHeap(resultRelationDesc);
+	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
+	rel_is_aorows = RelationIsAoRows(resultRelationDesc);
+	
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
-	if (relstorage == RELSTORAGE_AO)
+	if (rel_is_aorows)
     {
         TupleDesc dslot = slot->tts_tupleDescriptor;
         TupleDesc drel = resultRelationDesc->rd_att;
@@ -2440,13 +2446,16 @@ ExecInsert(TupleTableSlot *slot,
             tofree = tuple;
         }
     }
-	else if(relstorage == RELSTORAGE_AOCS)
+	else if(rel_is_aocols)
 	{
 		/* We will not serialize slot for ao cs table */
 		tuple = NULL;
 	}
 	else
+	{
+		Assert(RelationIsHeap(resultRelationDesc));
 		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
+	}
 
 
 	/* BEFORE ROW INSERT Triggers */
@@ -2456,7 +2465,7 @@ ExecInsert(TupleTableSlot *slot,
 		HeapTuple	newtuple;
 
 		/* NYI */
-		Assert(relstorage != RELSTORAGE_AOCS);
+		Assert(!rel_is_aocols);
 
 		newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
 
@@ -2500,7 +2509,7 @@ ExecInsert(TupleTableSlot *slot,
 	 *
 	 * NOTE: for append-only relations we use the append-only access methods.
 	 */
-	if (relstorage == RELSTORAGE_AO)
+	if (rel_is_aorows)
 	{
 		if (resultRelInfo->ri_aoInsertDesc == NULL)
 		{
@@ -2515,7 +2524,7 @@ ExecInsert(TupleTableSlot *slot,
 
 		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);
 	}
-	else if (relstorage == RELSTORAGE_AOCS)
+	else if (rel_is_aocols)
 	{
 		if (resultRelInfo->ri_aocsInsertDesc == NULL)
 		{
@@ -2527,6 +2536,8 @@ ExecInsert(TupleTableSlot *slot,
 	}
 	else
 	{
+		Insist(rel_is_heap);
+		
 		if (heap_enableHeapInsertDesc)
 		{
 			if (estate->es_HeapInsertDesc == NULL)
@@ -2555,7 +2566,7 @@ ExecInsert(TupleTableSlot *slot,
 	sourceTableOid = slot->tts_tableOid;
 	slot->tts_tableOid = RelationGetRelid(resultRelationDesc);
 
-	if (!relstorage_is_ao(relstorage))
+	if (!rel_is_aocols && !rel_is_aorows)
 	{
 		setLastTid(&(((HeapTuple)tuple)->t_self));
 
@@ -3791,7 +3802,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
 	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
 	if(stdRdOptions->appendonly)
-		relstorage = stdRdOptions->columnstore ? RELSTORAGE_AOCS : RELSTORAGE_AO;
+		relstorage = stdRdOptions->columnstore ? RELSTORAGE_AOCOLS : RELSTORAGE_AOROWS;
 	else
 		relstorage = RELSTORAGE_HEAP;
 
@@ -3878,7 +3889,7 @@ CloseIntoRel(QueryDesc *queryDesc)
 	if (rel)
 	{
 		/* APPEND_ONLY is closed in the intorel_shutdown */
-		if (!RelationIsAppendOnly(rel))
+		if (!(RelationIsAoRows(rel) || RelationIsAoCols(rel)))
 		{
 			/*
 			 * If we skipped using WAL, and it's not a temp relation, we must
@@ -3949,11 +3960,10 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	DR_intorel *myState = (DR_intorel *) self;
 	EState	   *estate = myState->estate;
 	Relation	into_rel = estate->es_into_relation_descriptor;
-	char		relstorage = into_rel->rd_rel->relstorage;
 
 	Assert(estate->es_result_partitions == NULL);
 
-	if (relstorage == RELSTORAGE_AO)
+	if (RelationIsAoRows(into_rel))
 	{
 		MemTuple	tuple = ExecCopySlotMemTuple(slot);
 
@@ -3964,13 +3974,13 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		appendonly_insert(myState->ao_insertDesc, tuple);
 		pfree(tuple);
 	}
-	else if (relstorage == RELSTORAGE_AOCS)
-        {
-                if(myState->aocs_ins == NULL)
-                        myState->aocs_ins = aocs_insert_init(into_rel, RESERVED_SEGNO);
+	else if (RelationIsAoCols(into_rel))
+	{
+		if(myState->aocs_ins == NULL)
+			myState->aocs_ins = aocs_insert_init(into_rel, RESERVED_SEGNO);
 
-                aocs_insert(myState->aocs_ins, slot);
-        }
+		aocs_insert(myState->aocs_ins, slot);
+	}
 	else
 	{
 		HeapTuple	tuple = ExecCopySlotHeapTuple(slot);
@@ -4000,12 +4010,11 @@ intorel_shutdown(DestReceiver *self)
 	DR_intorel *myState = (DR_intorel *) self;
 	EState	   *estate = myState->estate;
 	Relation	into_rel = estate->es_into_relation_descriptor;
-	char		relstorage = into_rel->rd_rel->relstorage;
 
 
-	if (relstorage == RELSTORAGE_AO && myState->ao_insertDesc)
+	if (RelationIsAoRows(into_rel) && myState->ao_insertDesc)
 		appendonly_insert_finish(myState->ao_insertDesc);
-	else if (relstorage == RELSTORAGE_AOCS && myState->aocs_ins)
+	else if (RelationIsAoCols(into_rel) && myState->aocs_ins)
         aocs_insert_finish(myState->aocs_ins);
 }
 

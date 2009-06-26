@@ -2437,7 +2437,7 @@ reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
 	 */
 	if (aoseg_too && OidIsValid(aoseg_relid))
 	{
-		Assert(RelationIsAppendOnly(rel));
+		Assert(RelationIsAoRows(rel) || RelationIsAoCols(rel));
 		result |= reindex_relation(aoseg_relid, false, false, oidmap, build_map);
 	}
 

@@ -373,14 +373,12 @@ calculate_relation_size(Relation rel)
 	char	   *relationpath;
 	char		pathname[MAXPGPATH];
 
-    char relstorage; 
     struct stat fst;
     int i;
 
 	relationpath = relpath(rel->rd_node);
-    relstorage = rel->rd_rel->relstorage;
 
-    if(relstorage == RELSTORAGE_HEAP)
+    if(RelationIsHeap(rel))
     {
         /* Ordinary relation, including heap and index.
          * They take form of relationpath, or relationpath.%d
@@ -407,7 +405,7 @@ calculate_relation_size(Relation rel)
             }
         }
     }
-    else if (relstorage == RELSTORAGE_AO)
+    else if (RelationIsAoRows(rel))
     {
         /* AO: same as heap, it will look like relationpath, or relationpath.%d,
          * but it may contains holes.  We need to looping till reach MAX_AOREL_CONCURRENCY.
@@ -430,7 +428,7 @@ calculate_relation_size(Relation rel)
             }
         }
     }
-    else if (relstorage == RELSTORAGE_AOCS)
+    else if (RelationIsAoCols(rel))
     {
         /* AOCS: It looks like relpath.col.segno.  Also, segno may have
          * holes, so we will test till MAX_AOREL_CONCURRENCY. 
@@ -438,9 +436,9 @@ calculate_relation_size(Relation rel)
         int nvp = rel->rd_att->natts;
         int j = 0;
 
-        for(i=0; i<MAX_AOREL_CONCURRENCY; ++i)
+        for(i = 0; i < MAX_AOREL_CONCURRENCY; ++i)
         {
-            for(j=0; j<nvp; ++j)
+            for(j = 0; j < nvp; ++j)
             {
                 snprintf(pathname, MAXPGPATH, "%s.%d.%d", relationpath, j, i);
  

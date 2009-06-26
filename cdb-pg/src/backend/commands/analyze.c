@@ -130,7 +130,6 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 				totaldeadrows=0.0,
 				totalbytes = 0.0;
 	HeapTuple  *rows;
-	char 		relstorage;
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -160,8 +159,6 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 * transaction, so xact.c doesn't issue useless WARNING.
 	 */
 	CHECK_FOR_INTERRUPTS();
-
-	relstorage = onerel->rd_rel->relstorage;
 
 	/*
 	 * Check permissions --- this should match vacuum's check!
@@ -384,11 +381,11 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 * Acquire the sample rows
 	 */
 	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
-	if(!RelationIsAppendOnly(onerel))
+	if(!RelationIsAoRows(onerel) && !RelationIsAoCols(onerel))
 		numrows = acquire_sample_rows(onerel, rows, targrows, &totalrows, &totaldeadrows);
 	else
 	{
-		if(relstorage == RELSTORAGE_AOCS)
+		if(RelationIsAoCols(onerel))
 			numrows = acquire_sample_aocs_rows(onerel, rows, targrows,
 					&totalrows, &totaldeadrows, &totalbytes);
 		else
@@ -468,7 +465,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 */
 	if (!vacstmt->vacuum)
 	{
-		BlockNumber numblocks = (RelationIsAppendOnly(onerel) ?
+		BlockNumber numblocks = ((RelationIsAoRows(onerel) || RelationIsAoCols(onerel)) ?
 								 RelationGuessNumberOfBlocks(totalbytes) :
 								 RelationGetNumberOfBlocks(onerel));
 

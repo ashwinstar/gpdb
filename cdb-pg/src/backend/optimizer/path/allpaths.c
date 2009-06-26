@@ -326,7 +326,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AO)
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOROWS)
 	{
 		/*
 		 * If the relation is append-only, create an append-only
@@ -337,7 +337,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCS)
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AOCOLS)
     {
         add_path(root, rel, (Path *) create_aocs_path(root, rel));
         set_cheapest(root, rel);

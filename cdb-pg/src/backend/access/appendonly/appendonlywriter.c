@@ -600,7 +600,7 @@ List *assignPerRelSegno(List *all_relids)
 		Oid cur_relid = lfirst_oid(cell);
 		Relation rel = heap_open(cur_relid, NoLock);
 
-		if (RelationIsAppendOnly(rel))
+		if (RelationIsAoCols(rel) || RelationIsAoRows(rel))
 		{
 			SegfileMapNode *n;
 
@@ -657,7 +657,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 
 	tupcount_float8 = DatumGetFloat8(DirectFunctionCall1(i8tod, (int64) tupcount));
 
-	if(parentrel->rd_rel->relstorage == RELSTORAGE_AO)
+	if(RelationIsAoRows(parentrel))
 	{
 		FileSegInfo		*fsinfo;
 
@@ -674,7 +674,7 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
     else
     {
     	/* AO column store */
-    	Assert(parentrel->rd_rel->relstorage == RELSTORAGE_AOCS);
+    	Assert(RelationIsAoCols(parentrel));
     	GetAOCSFileSegInfoForWrite(parentrel, segno);
     	AOCSFileSegInfoAddCount(parentrel, segno, tupcount, 0);
     }

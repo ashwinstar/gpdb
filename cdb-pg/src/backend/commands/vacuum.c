@@ -1298,7 +1298,6 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	int			nindexes,
 				i;
 	VRelStats  *vacrelstats;
-	char		relstorage = onerel->rd_rel->relstorage;
 
 	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 						  &OldestXmin, &FreezeLimit);
@@ -1311,18 +1310,19 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 	vacrelstats->rel_tuples = 0;
 	vacrelstats->hasindex = false;
 
-	if(relstorage == RELSTORAGE_AO)
+	if(RelationIsAoRows(onerel))
 	{
 		/* append-only relation. has a special path */
 		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ true);
 	}
-	else if (relstorage == RELSTORAGE_AOCS)
+	else if (RelationIsAoCols(onerel))
 	{
         vacuum_aocs_rel(onerel, vacrelstats, true);
 	}
 	else
 	{
-
+		Assert(RelationIsHeap(onerel));
+		
 		/* scan the heap */
 		vacuum_pages.num_pages = fraged_pages.num_pages = 0;
 		scan_heap(vacrelstats, onerel, &vacuum_pages, &fraged_pages);

@@ -1490,7 +1490,7 @@ DoCopy(const CopyStmt *stmt)
 				 * utility mode (or dispatch mode for no policy table).
 				 * create a one entry map for our one and only relation
 				 */
-				if(RelationIsAppendOnly(cstate->rel))
+				if(RelationIsAoRows(cstate->rel) || RelationIsAoCols(cstate->rel))
 				{
 					SegfileMapNode *n = makeNode(SegfileMapNode);
 					n->relid = RelationGetRelid(cstate->rel);
@@ -2020,7 +2020,6 @@ CopyTo(CopyState cstate)
 			Relation rel = lfirst(lc);
 			Datum	   *values;
 			bool	   *nulls;
-			char		relstorage = rel->rd_rel->relstorage;
 			HeapScanDesc scandesc = NULL;			/* used if heap table */
 			AppendOnlyScanDesc aoscandesc = NULL;	/* append only table */
 
@@ -2038,7 +2037,7 @@ CopyTo(CopyState cstate)
 			values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 			nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 
-			if (relstorage == RELSTORAGE_HEAP)
+			if (RelationIsHeap(rel))
 			{
 				HeapTuple	tuple;
 
@@ -2056,7 +2055,7 @@ CopyTo(CopyState cstate)
 
 				heap_endscan(scandesc);
 			}
-			else if(relstorage == RELSTORAGE_AO)
+			else if(RelationIsAoRows(rel))
 			{
 				MemTuple		tuple;
 				TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
@@ -2081,7 +2080,7 @@ CopyTo(CopyState cstate)
 
 				appendonly_endscan(aoscandesc);
 			}
-			else if(relstorage == RELSTORAGE_AOCS)
+			else if(RelationIsAoCols(rel))
 			{
                 AOCSScanDesc scan = NULL;
                 TupleTableSlot *slot = MakeSingleTupleTableSlot(tupDesc);
@@ -3686,7 +3685,8 @@ CopyFrom(CopyState cstate)
 			{
 				bool		skip_tuple;
 				Oid			loaded_oid = InvalidOid;
-
+				char		relstorage;
+				
 				CHECK_FOR_INTERRUPTS();
 
 				/* Reset the per-tuple exprcontext */
@@ -3710,7 +3710,7 @@ CopyFrom(CopyState cstate)
 				}
 				PG_CATCH();
 				{
-					/* got here? encoding conversion/check error occured */
+					/* got here? encoding conversion/check error occurred */
 					COPY_HANDLE_ERROR;
 				}
 				PG_END_TRY();
@@ -3948,7 +3948,8 @@ CopyFrom(CopyState cstate)
 					QE_GOTO_NEXT_ROW;
 				}
 
-				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO &&
+				relstorage = RelinfoGetStorage(resultRelInfo);
+				if (relstorage == RELSTORAGE_AOROWS &&
 					resultRelInfo->ri_aoInsertDesc == NULL)
 				{
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
@@ -3958,7 +3959,7 @@ CopyFrom(CopyState cstate)
 
 				}
 
-				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS &&
+				if (relstorage == RELSTORAGE_AOCOLS &&
 					resultRelInfo->ri_aocsInsertDesc == NULL)
 				{
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
@@ -3971,7 +3972,7 @@ CopyFrom(CopyState cstate)
 				/*
 				 * And now we can form the input tuple.
 				 */
-				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+				if (relstorage == RELSTORAGE_AOROWS)
 				{
 					/* form a mem tuple */
 					tuple = (MemTuple)
@@ -3982,7 +3983,7 @@ CopyFrom(CopyState cstate)
 					if (cstate->oids && file_has_oids)
 						MemTupleSetOid(tuple, resultRelInfo->ri_aoInsertDesc->mt_bind, loaded_oid);
 				}
-				else if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS)
+				else if (relstorage == RELSTORAGE_AOCOLS)
 				{
                     tuple = NULL;
 				}
@@ -4030,31 +4031,33 @@ CopyFrom(CopyState cstate)
 
 				if (!skip_tuple)
 				{
-                                        if (RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AOCS)
-                                        {
-                                                /* XXX TODO:
-                                                 * AOCS does not do constraint checking yet.
-                                                 */
-                                                /* Place tuple in tuple slot */
-                                                ExecStoreGenericTuple(tuple, slot, false);
+					char relstorage = RelinfoGetStorage(resultRelInfo);
+					
+					if (relstorage != RELSTORAGE_AOCOLS)
+					{
+						/* XXX TODO:
+						 * AOCS does not do constraint checking yet.
+						 */
+						/* Place tuple in tuple slot */
+						ExecStoreGenericTuple(tuple, slot, false);
 
-                                                /*
-                                                 * Check the constraints of the tuple
-                                                 */
-                                                if (resultRelInfo->ri_RelationDesc->rd_att->constr)
-                                                        ExecConstraints(resultRelInfo, slot, estate);
-                                        }
+						/*
+						 * Check the constraints of the tuple
+						 */
+						if (resultRelInfo->ri_RelationDesc->rd_att->constr)
+								ExecConstraints(resultRelInfo, slot, estate);
+					}
 
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+					if (relstorage == RELSTORAGE_AOROWS)
 					{
 						/* inserting into an append only relation */
 						appendonly_insert(resultRelInfo->ri_aoInsertDesc,
 										  tuple);
 					}
-					else if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AOCS)
+					else if (relstorage == RELSTORAGE_AOCOLS)
 					{
                         aocs_insert_values(resultRelInfo->ri_aocsInsertDesc, values, nulls);
 					}
@@ -4093,7 +4096,7 @@ CopyFrom(CopyState cstate)
 					 * count, so this counter is meaningless.
 					 */
 					cstate->processed++;
-					if (relstorage_is_ao(RelinfoGetStorage(resultRelInfo)))
+					if (relstorage_is_ao(relstorage))
 						resultRelInfo->ri_aoprocessed++;
 				}
 
