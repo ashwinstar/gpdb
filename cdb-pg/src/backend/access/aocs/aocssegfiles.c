@@ -490,3 +490,28 @@ void AOCSFileSegInfoAddCount(Relation prel, int32 segno, int64 tupadded, int64 v
         heap_close(segrel, RowExclusiveLock);
 }
 
+extern Datum aocsvpinfo_decode(PG_FUNCTION_ARGS);
+Datum aocsvpinfo_decode(PG_FUNCTION_ARGS)
+{
+    AOCSVPInfo *vpinfo = (AOCSVPInfo *) PG_GETARG_BYTEA_P(0);
+    int i = PG_GETARG_INT32(1);
+    int j = PG_GETARG_INT32(2);
+    int64 result;
+
+    if (i<0 || i>=vpinfo->nEntry)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("invalid entry for decoding aocsvpinfo")
+                    ));
+
+    if (j<0 || j>1)
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("invalid entry for decoding aocsvpinfo")
+                    ));
+
+    if (j==0)
+        result = vpinfo->entry[i].eof;
+    else
+        result = vpinfo->entry[i].eof_uncompressed;
+
+    PG_RETURN_INT64(result);
+}

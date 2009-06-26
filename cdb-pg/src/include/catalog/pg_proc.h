@@ -4842,8 +4842,16 @@ DESCR("bitmap(internal)");
 DATA(insert OID = 3011 (  bmoptions		   PGNSP PGUID 12 f f t f s 2 17 f "1009 16" _null_ _null_ _null_  bmoptions - _null_ ));
 DESCR("btree(internal)");
 
+/* AOCS functions. */
+
+DATA(insert OID = 9900 (  aocsvpinfo_decode	   PGNSP PGUID 12 f f t f i 3 20 f "1562 23 23" _null_ _null_ _null_ aocsvpinfo_decode - _null_ ));
+
+/* An convinient utility */
+DATA(insert OID = 9998 (  pg_objname_to_oid		   PGNSP PGUID 12 f f t f i 1 26 f "25" _null_ _null_ _null_ pg_objname_to_oid - _null_ ));
+DESCR("convert an object name to oid.");
 /* Fault injection */
 DATA(insert OID = 9999 (  gp_fault_inject		   PGNSP PGUID 12 f f t f v 2 20 f "23 20" _null_ _null_ _null_ gp_fault_inject - _null_ ));
+DESCR("Greenplum fault testing only");
 
 
 /*

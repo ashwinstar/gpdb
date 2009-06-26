@@ -6893,8 +6893,10 @@ select * from pg_catalog.pg_proc where oid < 10000 order by oid;
  lag                                |           11 |       10 |      12 | f        | f         | f           | f         | i           |        1 |         28 | t        | 28                                      |                                |                 |                                                           | window_dummy                                                                                                                                                                       | -                          | 
  lag_xid                            |           11 |       10 |      12 | f        | f         | t           | f         | i           |        2 |         28 | t        | 2281 28                                 |                                |                 |                                                           | lag_generic                                                                                                                                                                        | -                          | 
  lag                                |           11 |       10 |      12 | f        | f         | f           | f         | i           |        3 |         16 | t        | 16 20 16                                |                                |                 |                                                           | window_dummy                                                                                                                                                                       | -                          | 
+ aocsvpinfo_decode                  |           11 |       10 |      12 | f        | f         | t           | f         | i           |        3 |         20 | f        | 1562 23 23                              |                                |                 |                                                           | aocsvpinfo_decode                                                                                                                                                                  | -      | 
+ pg_objname_to_oid                  |           11 |       10 |      12 | f        | f         | t           | f         | i           |        1 |         26 | f        | 25                                      |                                |                 |                                                           | pg_objname_to_oid                                                                                                                                                                  | -      | 
  gp_fault_inject                    |           11 |       10 |      12 | f        | f         | t           | f         | v           |        2 |         20 | f        | 23 20                                   |                                |                 |                                                           | gp_fault_inject                                                                                                                                                                    | -                          | 
-(2547 rows)
+(2549 rows)
 
 -- end_equivalent
 -- begin_equivalent
@@ -7199,8 +7201,10 @@ select * from pg_catalog.pg_conversion;
 select * from pg_catalog.pg_description where objoid < 10000
 except select * from public.old_description where objoid < 10000;
  objoid | classoid | objsubid | description 
---------+----------+----------+-------------
-(0 rows)
+--------+----------+----------+--------------------------------
+   9998 |     1255 |        0 | convert an object name to oid.
+   9999 |     1255 |        0 | Greenplum fault testing only
+(2 rows)
 
 select * from public.pg_description where objoid < 10000 except
 select * from public.old_description where objoid < 10000;
@@ -7213,7 +7217,9 @@ select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
 except select * from public.old_depend where objid < 10000 and refobjid < 10000;
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype 
 ---------+-------+----------+------------+----------+-------------+---------
-(0 rows)
+       0 |     0 |        0 |       1255 |     9900 |           0 | p
+       0 |     0 |        0 |       1255 |     9998 |           0 | p
+(2 rows)
 
 select * from public.pg_depend where objid < 10000 and refobjid < 10000 except
 select * from public.old_depend where objid < 10000 and refobjid < 10000;
