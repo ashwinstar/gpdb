@@ -32,8 +32,8 @@
  * the Tuplestore's state.
  *
  *
- * Portions Copyright (c) 2007-2008, Greenplum inc
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2007-2009, Greenplum inc
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -211,11 +211,11 @@ FREEMEM(Tuplestorestate *state, int amt)
  * may or may not match the in-memory representation of the tuple ---
  * any conversion needed is the job of the writetup and readtup routines.
  *
- * If state->randomAccess is true, then the stored representation of the
- * tuple must be followed by another "unsigned int" that is a copy of the
+ * If state->backward is true, then the stored representation of
+ * the tuple must be followed by another "unsigned int" that is a copy of the
  * length --- so the total tape space used is actually sizeof(unsigned int)
  * more than the stored length value.  This allows read-backwards.	When
- * randomAccess is not true, the write/read routines may omit the extra
+ * state->backward is not set, the write/read routines may omit the extra
  * length word.
  *
  * writetup is expected to write both length words as well as the tuple
@@ -235,6 +235,7 @@ FREEMEM(Tuplestorestate *state, int amt)
  * We count space allocated for tuples against the maxKBytes limit,
  * plus the space used by the variable-size array memtuples.
  * Fixed-size space (primarily the BufFile I/O buffer) is not counted.
+ * We don't worry about the size of the read pointer array, either.
  *
  * Note that we count actual space used (as shown by GetMemoryChunkSpace)
  * rather than the originally-requested size.  This is important since
@@ -500,10 +501,10 @@ static void
 tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tuple)
 {
 
-#ifdef DEBUG
-	Assert(!state->otherAccessed);
-	Assert(&state.pos == pos);
-#endif
+//#ifdef DEBUG
+//	Assert(!state->otherAccessed);
+//	Assert(&state.pos == pos);
+//#endif
 
 	switch (state->status)
 	{
@@ -595,10 +596,10 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 
 	Assert(forward || state->randomAccess);
 
-#ifdef DEBUG
-	if(&state->pos != pos)
-		state->otherAccessed = true;
-#endif
+//#ifdef DEBUG
+//	if(&state->pos != pos)
+//		state->otherAccessed = true;
+//#endif
 
 	switch (state->status)
 	{
