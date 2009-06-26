@@ -6,7 +6,7 @@
  *
  * (See .h file for usage comments)
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2009, greenplum inc
  *
  *-------------------------------------------------------------------------
  */
@@ -320,15 +320,15 @@ VarBlockByteLen VarBlockMakerFinish(
 	
 	bufferLen = offsetToOffsetArray + offsetArrayLenRounded;
 
-#ifdef DEBUG
-	if(VarBlockIsValid(buffer, bufferLen) != VarBlockCheckOk)
-	{
-		// UNDONE: Use elog.
-		fprintf(stderr, "VarBlockIsValid not ok (detail = '%s')",
-			    VarBlockCheckErrorStr);
-		exit(1);
-	}
-#endif
+//#ifdef DEBUG
+//	if(VarBlockIsValid(buffer, bufferLen) != VarBlockCheckOk)
+//	{
+//		// UNDONE: Use elog.
+//		fprintf(stderr, "VarBlockIsValid not ok (detail = '%s')",
+//			    VarBlockCheckErrorStr);
+//		exit(1);
+//	}
+//#endif
 
 	return bufferLen;
 }
@@ -653,15 +653,15 @@ VarBlockByteLen VarBlockLenFromHeader(
 	}
 	Assert(peekLen >= VARBLOCK_HEADER_LEN);
 
-#ifdef DEBUG
-	if(!VarBlockHeaderIsValid(buffer, peekLen))
-	{
-		// UNDONE: Use elog.
-		fprintf(stderr, "VarBlockHeaderIsValid not ok (detail = '%s')",
-			    VarBlockCheckErrorStr);
-		exit(1);
-	}
-#endif
+//#ifdef DEBUG
+//	if(!VarBlockHeaderIsValid(buffer, peekLen))
+//	{
+//		// UNDONE: Use elog.
+//		fprintf(stderr, "VarBlockHeaderIsValid not ok (detail = '%s')",
+//			    VarBlockCheckErrorStr);
+//		exit(1);
+//	}
+//#endif
 
 	header = (VarBlockHeader*)buffer;
 	
@@ -710,15 +710,15 @@ void VarBlockReaderInit(
 	Assert(varBlockReader != NULL);
 	Assert(buffer != NULL);								// UNDONE: And ALIGN(4)
 	Assert(bufferLen >= VARBLOCK_HEADER_LEN);			// UNDONE: And even.
-#ifdef DEBUG
-	if(VarBlockIsValid(buffer, bufferLen) != VarBlockCheckOk)
-	{
-		// UNDONE: Use elog.
-		fprintf(stderr, "VarBlockIsValid not ok (detail = '%s')",
-			    VarBlockCheckErrorStr);
-		exit(1);
-	}
-#endif
+//#ifdef DEBUG
+//	if(VarBlockIsValid(buffer, bufferLen) != VarBlockCheckOk)
+//	{
+//		// UNDONE: Use elog.
+//		fprintf(stderr, "VarBlockIsValid not ok (detail = '%s')",
+//			    VarBlockCheckErrorStr);
+//		exit(1);
+//	}
+//#endif
 	
 	header = (VarBlockHeader*)buffer;
 	
