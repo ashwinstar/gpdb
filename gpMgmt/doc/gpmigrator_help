@@ -35,6 +35,11 @@ The following tasks should be performed prior to executing an upgrade:
   for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
   (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
 
+* Taction to copy or preserve any additional folders or files (such as 
+  backup folders) that you have added in the Greenplum data directories 
+  or $GPHOME directory. Only files or folders strictly related to 
+  Greenplum Database operation are preserved by the migration utility.
+
 * Check for and recover any failed segments in your current 
   Greenplum Database system (gpstate, gprecoverseg).
 
