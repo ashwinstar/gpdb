@@ -130,8 +130,6 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 				totaldeadrows=0.0,
 				totalbytes = 0.0;
 	HeapTuple  *rows;
-	bool		is_appendonly;
-	bool		is_external;
 	char 		relstorage;
 	Oid			save_userid;
 	bool		save_secdefcxt;
@@ -164,8 +162,6 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	CHECK_FOR_INTERRUPTS();
 
 	relstorage = onerel->rd_rel->relstorage;
-	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage);
-	is_external = relstorage_is_external(onerel->rd_rel->relstorage);
 
 	/*
 	 * Check permissions --- this should match vacuum's check!
@@ -187,7 +183,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 * Check that it's a plain table; we used to do this in get_rel_oids() but
 	 * seems safer to check after we've locked the relation.
 	 */
-	if (onerel->rd_rel->relkind != RELKIND_RELATION || is_external)
+	if (onerel->rd_rel->relkind != RELKIND_RELATION || RelationIsExternal(onerel))
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
@@ -388,7 +384,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 * Acquire the sample rows
 	 */
 	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
-	if(!is_appendonly)
+	if(!RelationIsAppendOnly(onerel))
 		numrows = acquire_sample_rows(onerel, rows, targrows, &totalrows, &totaldeadrows);
 	else
 	{
@@ -472,7 +468,7 @@ analyze_rel(Relation onerel, VacuumStmt *vacstmt, VacuumStatsContext *stats_cont
 	 */
 	if (!vacstmt->vacuum)
 	{
-		BlockNumber numblocks = (is_appendonly ?
+		BlockNumber numblocks = (RelationIsAppendOnly(onerel) ?
 								 RelationGuessNumberOfBlocks(totalbytes) :
 								 RelationGetNumberOfBlocks(onerel));
 

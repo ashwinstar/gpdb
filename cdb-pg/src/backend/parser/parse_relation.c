@@ -654,7 +654,7 @@ addRangeTableEntry(ParseState *pstate,
 	rte->rtekind = RTE_RELATION;
 
 	/* external tables don't allow inheritance */
-	if(rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL)
+	if(RelationIsExternal(rel))
 		inh = false;
 
 

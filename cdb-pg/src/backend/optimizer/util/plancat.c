@@ -560,7 +560,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * plug in our 1K pages 1M tuples estimate here as well, and skip
 		 * cdbRelSize as we can't calculate ext table size.
 		 */
-		if(rel->rd_rel->relstorage != RELSTORAGE_EXTERNAL)
+		if(!RelationIsExternal(rel))
 		{
 		    size = cdbRelSize(rel->rd_id);
 		}
@@ -653,7 +653,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_AOSEGMENTS:
 
 			/* skip external tables */
-			if(relstorage_is_external(rel->rd_rel->relstorage))
+			if(RelationIsExternal(rel))
 				break;
 
 			/* it has storage, ok to call the smgr */

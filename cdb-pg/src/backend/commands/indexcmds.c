@@ -175,11 +175,11 @@ DefineIndex(RangeVar *heapRelation,
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
 
-	if(relstorage_is_ao(rel->rd_rel->relstorage))
+	if(RelationIsAppendOnly(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("cannot create indexes on append only tables yet.")));
-	
+
 	/* Note: during bootstrap may see uncataloged relation */
 	if (rel->rd_rel->relkind != RELKIND_RELATION &&
 		rel->rd_rel->relkind != RELKIND_UNCATALOGED)
@@ -447,7 +447,7 @@ DefineIndex(RangeVar *heapRelation,
 	ComputeIndexAttrs(indexInfo, classObjectId, attributeList,
 					  relationId, accessMethodName, accessMethodId,
 					  isconstraint);
-	
+
 	if (shouldDispatch)
 	{
 		if (stmt)
@@ -459,10 +459,10 @@ DefineIndex(RangeVar *heapRelation,
 		}
 
 		if ((primary || unique) && rel->rd_cdbpolicy)
-			checkPolicyForUniqueIndex(rel, 
+			checkPolicyForUniqueIndex(rel,
 									  indexInfo->ii_KeyAttrNumbers,
 									  indexInfo->ii_NumIndexAttrs,
-									  primary, 
+									  primary,
 									  list_length(indexInfo->ii_Expressions),
 									  relationHasPrimaryKey(rel),
 									  relationHasUniqueIndex(rel));
@@ -492,7 +492,7 @@ DefineIndex(RangeVar *heapRelation,
 			quiet = true;
 		}
 	}
-	
+
 	/*
 	 * Report index creation if appropriate (delay this till after most of the
 	 * error checks)
@@ -519,11 +519,11 @@ DefineIndex(RangeVar *heapRelation,
 		{
 			Relation pg_class;
 			Relation pg_type;
-			
+
 			cdb_sync_oid_to_segments();
-			
+
 			pg_class = heap_open(RelationRelationId, RowExclusiveLock);
-			
+
 			indexRelationId = GetNewRelFileNode(tablespaceId, false, pg_class);
 		    iiopaque->heapOid = GetNewRelFileNode(tablespaceId, false, pg_class);
 			iiopaque->indexOid = GetNewRelFileNode(tablespaceId, false, pg_class);
@@ -533,10 +533,10 @@ DefineIndex(RangeVar *heapRelation,
 
 			pg_type = heap_open(TypeRelationId, RowExclusiveLock);
 			iiopaque->comptypeOid = GetNewOid(pg_type);
-			heap_close(pg_type, NoLock);		
-			
+			heap_close(pg_type, NoLock);
+
 		}
-	
+
 		/* create the index on the QEs first, so we can get their stats when we create on the QD */
 		if (stmt)
 		{
@@ -567,7 +567,7 @@ DefineIndex(RangeVar *heapRelation,
 		 * index_create(), because that call will *wait*
 		 * for any other transactions touching this new relation,
 		 * which can cause a non-local deadlock if we've already
-		 * dispatched 
+		 * dispatched
 		 */
 		indexRelationId =
 			index_create(relationId, indexRelationName, indexRelationId,
@@ -846,7 +846,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("cannot use window function in index expression")));
-	
+
 
 			/*
 			 * A expression using mutable functions is probably wrong, since
@@ -1348,7 +1348,7 @@ ReindexIndex(ReindexStmt *stmt)
 			{
 				List *map = lfirst(lc);
 				Oid ind = linitial_oid(map);
-				
+
 				if (ind == indOid)
 				{
 					mapoid = lsecond_oid(map);
@@ -1356,13 +1356,13 @@ ReindexIndex(ReindexStmt *stmt)
 					if (list_length(map) > 2)
 					{
 						Assert(list_length(map) == 4);
-						
+
 						extra_oids = lappend_oid(extra_oids, lthird_oid(map));
 						extra_oids = lappend_oid(extra_oids, lfourth_oid(map));
 					}
-						
+
 					break;
-				}	
+				}
 			}
 			Assert(OidIsValid(mapoid));
 		}
@@ -1372,7 +1372,7 @@ ReindexIndex(ReindexStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		List *map = list_make2_oid(indOid, newOid);
-	
+
 		if (extra_oids != NULL)
 		{
 			Assert(list_length(extra_oids) == 2);

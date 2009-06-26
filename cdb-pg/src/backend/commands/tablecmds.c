@@ -1506,7 +1506,7 @@ truncate_check_rel(Relation rel)
 					 errmsg("\"%s\" is not a table",
 							RelationGetRelationName(rel))));
 
-	if (rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL)
+	if (RelationIsExternal(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is an external relation and can't be truncated",
@@ -5222,7 +5222,7 @@ ATSimplePermissions(Relation rel, bool allowView)
 {
 	if (rel->rd_rel->relkind != RELKIND_RELATION)
 	{
-		if (rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL)
+		if (RelationIsExternal(rel))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -8591,7 +8591,7 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
-			if(relstorage_is_ao(rel->rd_rel->relstorage))
+			if(RelationIsAppendOnly(rel))
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("altering reloptions for append only tables"
@@ -9485,7 +9485,7 @@ relopts_for_ctas(Relation rel)
 	 * class reloptions isn't to be trusted.
 	 */
 	StdRdOptions *out = palloc0(sizeof(StdRdOptions));
-	if (relstorage_is_ao(rel->rd_rel->relstorage))
+	if (RelationIsAppendOnly(rel))
 	{
 		AppendOnlyEntry *opts = GetAppendOnlyEntry(RelationGetRelid(rel));
 

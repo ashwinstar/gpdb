@@ -3877,10 +3877,8 @@ CloseIntoRel(QueryDesc *queryDesc)
 	/* OpenIntoRel might never have gotten called */
 	if (rel)
 	{
-		char		relstorage = rel->rd_rel->relstorage;
-
 		/* APPEND_ONLY is closed in the intorel_shutdown */
-		if (!relstorage_is_ao(relstorage))
+		if (!RelationIsAppendOnly(rel))
 		{
 			/*
 			 * If we skipped using WAL, and it's not a temp relation, we must

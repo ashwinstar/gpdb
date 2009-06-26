@@ -3858,8 +3858,6 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 {
 	Relation onerel;
 	LOCKMODE lmode;
-	bool is_appendonly;
-	bool is_external;
 
 	/*
 	 * Determine the type of lock we want --- hard exclusive lock for a FULL
@@ -3882,9 +3880,6 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 
 	if (!onerel)
 		return NULL;
-
-	is_appendonly = relstorage_is_ao(onerel->rd_rel->relstorage);
-	is_external = relstorage_is_external(onerel->rd_rel->relstorage);
 
 	/*
 	 * Check permissions.
@@ -3911,7 +3906,7 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	 * Check that it's a plain table; we used to do this in get_rel_oids() but
 	 * seems safer to check after we've locked the relation.
 	 */
-	if (onerel->rd_rel->relkind != expected_relkind || is_external)
+	if (onerel->rd_rel->relkind != expected_relkind || RelationIsExternal(onerel))
 	{
 		ereport(WARNING,
 				(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables, or special system tables",

@@ -321,5 +321,5 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 static bool
 needs_aoseg_table(Relation rel)
 {
-	return relstorage_is_ao(rel->rd_rel->relstorage);
+	return RelationIsAppendOnly(rel);
 }

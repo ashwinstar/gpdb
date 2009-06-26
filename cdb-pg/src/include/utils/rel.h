@@ -199,7 +199,7 @@ typedef struct RelationData
 
 	/* statistics collection area */
 	PgStat_Info pgstat_info;
-	
+
 } RelationData;
 
 typedef RelationData *Relation;
@@ -231,7 +231,7 @@ typedef struct StdRdOptions
 	int			compresslevel;  /* compression level (AO rels only) */
 	char*		compresstype;   /* compression type (AO rels only) */
 	bool		checksum;		/* checksum (AO rels only) */
-	bool 		columnstore;		/* columnstore (AO only) */ 
+	bool 		columnstore;		/* columnstore (AO only) */
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -266,6 +266,27 @@ typedef struct StdRdOptions
 #define RelationIsValid(relation) PointerIsValid(relation)
 
 #define InvalidRelation ((Relation) NULL)
+
+/*
+ * RelationIsHeap
+ * 		True iff relation has heap storage
+ */
+#define RelationIsHeap(relation) \
+	((bool)((relation)->rd_rel->relstorage == RELSTORAGE_HEAP))
+
+/*
+ * RelationIsExternal
+ * 		True iff relation has external storage
+ */
+#define RelationIsExternal(relation) \
+	((bool)((relation)->rd_rel->relstorage == RELSTORAGE_EXTERNAL))
+
+/*
+ * RelationIsAppendOnly
+ * 		True iff relation has append only storage
+ */
+#define RelationIsAppendOnly(relation) \
+	((bool)(((relation)->rd_rel->relstorage == RELSTORAGE_AO) || ((relation)->rd_rel->relstorage == RELSTORAGE_AOCS)))
 
 /*
  * RelationHasReferenceCountZero

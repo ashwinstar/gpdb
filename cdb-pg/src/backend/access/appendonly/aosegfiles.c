@@ -31,7 +31,7 @@
 #include "utils/fmgroids.h"
 #include "utils/numeric.h"
 
-static FileSegInfo *GetFileSegInfo(Relation parentrel, int segno, 
+static FileSegInfo *GetFileSegInfo(Relation parentrel, int segno,
                 SegfileLockStrategy lockstrategy);
 
 
@@ -703,7 +703,6 @@ gp_update_ao_master_stats_internal(Oid relid)
 	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
-	char			relstorage;
 	int 			proc;
 	int 			ret;
 	float8			total_count = 0;
@@ -717,11 +716,10 @@ gp_update_ao_master_stats_internal(Oid relid)
 	 */
 	parentrel = heap_open(relid, RowExclusiveLock);
 
-	relstorage = parentrel->rd_rel->relstorage;
-	if(!relstorage_is_ao(relstorage))
+	if(!RelationIsAppendOnly(parentrel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("'%s' is not an append-only relation", 
+				errmsg("'%s' is not an append-only relation",
 						RelationGetRelationName(parentrel))));
 
 	/*
@@ -924,7 +922,6 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 	Relation		parentrel;
 	Relation		aosegrel;
 	char			aoseg_relname[32];
-	char			relstorage;
 	int 			ret;
 	Oid				relid = PG_GETARG_OID(0);
 
@@ -959,8 +956,7 @@ get_ao_distribution_oid(PG_FUNCTION_ARGS)
 		/*
 		 * verify this is an AO relation
 		 */
-		relstorage = parentrel->rd_rel->relstorage;
-		if(!relstorage_is_ao(relstorage))
+		if(!RelationIsAppendOnly(parentrel))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("'%s' is not an append-only relation",
@@ -1095,7 +1091,6 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 	Relation		parentrel;
 	Relation		aosegrel;
 	char			aoseg_relname[32];
-	char			relstorage;
 	int 			ret;
 	text	   		*relname = PG_GETARG_TEXT_P(0);
 	Oid				relid;
@@ -1134,8 +1129,7 @@ get_ao_distribution_name(PG_FUNCTION_ARGS)
 		/*
 		 * verify this is an AO relation
 		 */
-		relstorage = parentrel->rd_rel->relstorage;
-		if(!relstorage_is_ao(relstorage))
+		if(!RelationIsAppendOnly(parentrel))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("'%s' is not an append-only relation",
@@ -1307,7 +1301,6 @@ ao_compression_ratio_internal(Oid relid)
 	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
-	char			relstorage;
 	int 			proc;
 	int 			ret;
 	float8			compress_ratio = -1; /* the default, meaning "not available" */
@@ -1319,8 +1312,7 @@ ao_compression_ratio_internal(Oid relid)
 	/* open the parent (main) relation */
 	parentrel = heap_open(relid, AccessShareLock);
 
-	relstorage = parentrel->rd_rel->relstorage;
-	if(!relstorage_is_ao(relstorage))
+	if(!RelationIsAppendOnly(parentrel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("'%s' is not an append-only relation",
@@ -1392,15 +1384,15 @@ ao_compression_ratio_internal(Oid relid)
 				if(DatumGetFloat8(eof) > 0.0)
 				{
 					char  buf[8];
-					
+
 					/* calculate the compression ratio */
 					float8 compress_ratio_raw = DatumGetFloat8(DirectFunctionCall2(float8div,
 																				eof_uncomp,
 																				eof));
-	
+
 					/* format to 2 digits past the decimal point */
 					sprintf(buf, "%.2f", compress_ratio_raw);
-	
+
 					/* format to 2 digit decimal precision */
 					compress_ratio = DatumGetFloat8(DirectFunctionCall1(float8in,
 													CStringGetDatum(buf)));

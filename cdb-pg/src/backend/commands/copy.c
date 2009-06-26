@@ -1379,13 +1379,11 @@ DoCopy(const CopyStmt *stmt)
 		bool		shouldDispatch = ((Gp_role == GP_ROLE_DISPATCH ||
 									   Gp_role == GP_ROLE_DISPATCHAGENT)
 									   && cstate->rel->rd_cdbpolicy != NULL);
-		char		relkind,
-					relstorage;
+		char		relkind;
 
 		Assert(cstate->rel);
 
 		relkind = cstate->rel->rd_rel->relkind;
-		relstorage = cstate->rel->rd_rel->relstorage;
 
 		if (relkind != RELKIND_RELATION)
 		{
@@ -1405,6 +1403,13 @@ DoCopy(const CopyStmt *stmt)
 						 errmsg("cannot copy to non-table relation \"%s\"",
 								RelationGetRelationName(cstate->rel))));
 		}
+
+		if (RelationIsExternal(cstate->rel))
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("cannot copy to external relation \"%s\"",
+							RelationGetRelationName(cstate->rel))));
+
 
 		if(stmt->sreh && Gp_role != GP_ROLE_EXECUTE && !cstate->rel->rd_cdbpolicy)
 			ereport(ERROR,
@@ -1485,7 +1490,7 @@ DoCopy(const CopyStmt *stmt)
 				 * utility mode (or dispatch mode for no policy table).
 				 * create a one entry map for our one and only relation
 				 */
-				if(relstorage_is_ao(relstorage))
+				if(RelationIsAppendOnly(cstate->rel))
 				{
 					SegfileMapNode *n = makeNode(SegfileMapNode);
 					n->relid = RelationGetRelid(cstate->rel);
@@ -1586,7 +1591,6 @@ DoCopyTo(CopyState cstate)
 	if (cstate->rel)
 	{
 		char		relkind = cstate->rel->rd_rel->relkind;
-		char		relstorage = cstate->rel->rd_rel->relstorage;
 
 		if (relkind != RELKIND_RELATION)
 		{
@@ -1607,7 +1611,7 @@ DoCopyTo(CopyState cstate)
 						 errmsg("cannot copy from non-table relation \"%s\"",
 								RelationGetRelationName(cstate->rel))));
 		}
-		else if (relstorage == RELSTORAGE_EXTERNAL)
+		else if (RelationIsExternal(cstate->rel))
 		{
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),

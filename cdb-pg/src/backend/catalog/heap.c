@@ -273,7 +273,7 @@ heap_create(const char *relname,
 			reltablespace = InvalidOid;
 			break;
 		default:
-			if(relstorage == RELSTORAGE_EXTERNAL)
+			if(relstorage_is_external(relstorage))
 				create_storage = false;
 			else
 				create_storage = true;
@@ -688,7 +688,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 
 			/* estimated stats for external tables */
 			/* NOTE: look at cdb_estimate_rel_size() if changing these values */
-			if(relstorage == RELSTORAGE_EXTERNAL)
+			if(relstorage_is_external(relstorage))
 			{
 				new_rel_reltup->relpages = 1000;
 				new_rel_reltup->reltuples = 1000000;
@@ -1452,17 +1452,17 @@ heap_drop_with_catalog(Oid relid)
 	Relation	rel;
 	const struct GpPolicy *policy;
 	bool		removePolicy = false;
-	bool		is_appendonly_table = false;
-	bool 		is_ext_table;
 	bool		is_part_child = false;
+	bool		is_appendonly_rel;
+	bool		is_external_rel;
 
 	/*
 	 * Open and lock the relation.
 	 */
 	rel = relation_open(relid, AccessExclusiveLock);
 
-	is_appendonly_table = relstorage_is_ao(rel->rd_rel->relstorage);
-	is_ext_table = rel->rd_rel->relstorage == RELSTORAGE_EXTERNAL;
+	is_appendonly_rel = RelationIsAppendOnly(rel);
+	is_external_rel = RelationIsExternal(rel);
 
 	/*
  	 * Get the distribution policy and figure out if it is to be removed.
@@ -1479,7 +1479,7 @@ heap_drop_with_catalog(Oid relid)
 	 */
 	if (rel->rd_rel->relkind != RELKIND_VIEW &&
 		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
-		rel->rd_rel->relstorage != RELSTORAGE_EXTERNAL)
+		!RelationIsExternal(rel))
 	{
 		RelationOpenSmgr(rel);
 		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
@@ -1538,13 +1538,13 @@ heap_drop_with_catalog(Oid relid)
 	/*
 	 * append-only table? delete the corresponding pg_appendonly tuple
 	 */
-	if(is_appendonly_table)
+	if(is_appendonly_rel)
 		RemoveAppendonlyEntry(relid);
 
 	/*
 	 * External table? If so, delete the pg_exttable tuple.
 	 */
-	if (is_ext_table)
+	if (is_external_rel)
 		remove_exttable_tuple(relid);
 
 	/*

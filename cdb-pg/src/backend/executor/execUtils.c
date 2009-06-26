@@ -281,7 +281,7 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
 	estate->dispatchThreads = NULL;
-	
+
 	/*
 	 * Return the executor state structure
 	 */
@@ -934,12 +934,12 @@ ExecOpenScanExternalRelation(EState *estate, Index scanrelid)
 	RangeTblEntry *rtentry;
 	Oid			reloid;
 	LOCKMODE	lockmode;
-	
+
 	lockmode = NoLock;
-	
+
 	rtentry = rt_fetch(scanrelid, estate->es_range_table);
 	reloid = rtentry->relid;
-	
+
 	return relation_open(reloid, NoLock);
 }
 
@@ -1184,29 +1184,26 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
  *		Update the tuple count on the master for an append only relation segfile.
  */
 static void
-ExecUpdateAOtupCount(ResultRelInfo *result_rels, 
-					 int num_result_rels, 
+ExecUpdateAOtupCount(ResultRelInfo *result_rels,
+					 int num_result_rels,
 					 uint64 processed)
 {
 	int		i;
-	
+
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
 	for (i = num_result_rels; i > 0; i--)
 	{
-		Relation rel = result_rels->ri_RelationDesc;
-		char relstorage = rel->rd_rel->relstorage;
-		
-		if(relstorage_is_ao(relstorage))
+		if(RelationIsAppendOnly(result_rels->ri_RelationDesc))
 		{
 			Assert(result_rels->ri_aosegno != InvalidFileSegNumber);
 			UpdateMasterAosegTotals(result_rels->ri_RelationDesc,
 									result_rels->ri_aosegno,
-									processed /* WRONG if partitioned! */);
+									processed);
 		}
-		
+
 		result_rels++;
-	}	
+	}
 }
 
 /*
@@ -1329,7 +1326,7 @@ ShutdownExprContext(ExprContext *econtext)
 
 
 /* ---------------------------------------------------------------
- * 		Share Input utilities 
+ * 		Share Input utilities
  * ---------------------------------------------------------------
  */
 ShareNodeEntry *
@@ -1342,7 +1339,7 @@ ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 
 	if(!fCreate)
 	{
-		if(shareidx >= list_length(*estate->es_sharenode)) 
+		if(shareidx >= list_length(*estate->es_sharenode))
 			return NULL;
 	}
 	else
@@ -1353,10 +1350,10 @@ ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
 			n->sharePlan = NULL;
 			n->shareState = NULL;
 
-			*estate->es_sharenode = lappend(*estate->es_sharenode, n); 
+			*estate->es_sharenode = lappend(*estate->es_sharenode, n);
 		}
 	}
-		
+
 	return (ShareNodeEntry *) list_nth(*estate->es_sharenode, shareidx);
 }
 
@@ -1405,7 +1402,7 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->mirrorGang = NULL;
 		slice->primary_gang_id = 0;
 		slice->mirror_gang_id = 0;
-		slice->parentIndex = -1; 
+		slice->parentIndex = -1;
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
 		slice->mirrorProcesses = NIL;
@@ -1826,7 +1823,7 @@ getCurrentSlice(EState *estate, int sliceIndex)
 	SliceTable *sliceTable = estate->es_sliceTable;
 
     if (sliceTable &&
-        sliceIndex >= 0 && 
+        sliceIndex >= 0 &&
         sliceIndex < list_length(sliceTable->slices))
 	    return (Slice *)list_nth(sliceTable->slices, sliceIndex);
 
@@ -1882,7 +1879,7 @@ getGpExecIdentity(QueryDesc *queryDesc,
 				   EState	   *estate)
 {
 	Slice              *currentSlice;
-	
+
 	currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
 	if (currentSlice)
     {
@@ -1890,7 +1887,7 @@ getGpExecIdentity(QueryDesc *queryDesc,
             sliceRunsOnQD(currentSlice))
             currentSliceId = currentSlice->sliceIndex;
     }
-	
+
 	/* select the strategy */
 	if (direction == NoMovementScanDirection)
 	{
@@ -1929,14 +1926,14 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 
 	/*
 	 * If QD, wait for QEs to finish and check their results.
-	 */	
+	 */
 	if (estate->primaryResults)
 	{
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
 		HTAB 			   *aopartcounts = NULL;
-				
+
 		/*
 		 * If we are finishing a query before all the tuples of the query
 		 * plan were fetched we must call ExecSquelchNode before checking
@@ -1963,12 +1960,12 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 
 		/* sum up rejected rows if any (single row error handling only) */
 		cdbdisp_sumRejectedRows(pr);
-		
+
 		/* sum up inserted rows into any AO relation */
 		if (aopartcounts)
 		{
 			/* counts from a partitioned AO table */
-			
+
 			ListCell *lc;
 
 			foreach(lc, estate->es_result_aosegnos)
@@ -1997,8 +1994,8 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		else
 		{
 			/* counts from a (non partitioned) AO table */
-			
-			ExecUpdateAOtupCount(estate->es_result_relations, 
+
+			ExecUpdateAOtupCount(estate->es_result_relations,
 								 estate->es_num_result_relations,
 								 estate->es_processed);
 		}
@@ -2024,7 +2021,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/* Teardown the Interconnect */
 	if (estate->es_interconnect_is_setup)
 	{
-		/* 
+		/*
 		 * MPP-3413: If we got here during cancellation of a cursor,
 		 * we need to set the "forceEos" argument correctly --
 		 * otherwise we potentially hang (cursors cancel on the QEs,
@@ -2032,7 +2029,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * normal interconnect teardown).
 		 */
 		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, estate->cancelUnfinished);
-		estate->es_interconnect_is_setup = false;		
+		estate->es_interconnect_is_setup = false;
 	}
 }
 
@@ -2069,14 +2066,14 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		estate->mirrorResults = NULL;
 		estate->dispatchThreads = NULL;
 	}
-	
+
 	/* Clean up the Sequence Server */
 	if (estate->es_seqserver_is_setup)
 	{
 		TeardownSequenceServer();
 		estate->es_seqserver_is_setup = false;
 	}
-	
+
 	/* Clean up the interconnect. */
 	if (estate->es_interconnect_is_setup)
 	{
