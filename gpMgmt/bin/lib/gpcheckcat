@@ -10,8 +10,7 @@ Usage: gpcheckcat <option> [dbname]
 	-P passwd  : DB password
 	-o         : check OID consistency
 	-U uname   : DB User Name
-	-v         : logger.debug
-	-V         : very logger.debug
+	-v         : verbose
 
 '''
 import sys, os, subprocess, tempfile, stat
@@ -106,25 +105,25 @@ def getversion():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVog:t')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:t')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':	  usage(0)
         elif switch[1] in 'hpBPUg': GV.opt[switch] = val
-        elif switch[1] in 'vVot':   GV.opt[switch] = True
+        elif switch[1] in 'vot':   GV.opt[switch] = True
 
     def setdef(x, v):
         if not GV.opt[x]:
             t = os.environ.get(v)
             GV.opt[x] = t
             if t:
-                logger.debug('[INFO] %s not specified; default to %s (from %s)' % 
+                logger.debug('%s not specified; default to %s (from %s)' % 
                         (x, t, v))
 
-    if GV.opt['-V']:
-        enable_logger.debug_logging()
+    if GV.opt['-v']:
+        enable_verbose_logging()
 
     setdef('-h', 'PGHOST')
     setdef('-P', 'PGPASSWORD')
@@ -137,14 +136,14 @@ def parseCommandLine():
 
     if not GV.opt['-h']:
         GV.opt['-h'] = 'localhost'
-        logger.debug('[INFO] -h not specified; default to %s' % GV.opt['-h'])
+        logger.debug('-h not specified; default to %s' % GV.opt['-h'])
     
     if (len(args) != 0 and len(args) != 1):
         usage('Too many arguments')
 
     if len(args) == 0:
         GV.dbname = os.environ.get('PGDATABASE') or GV.opt['-U']
-        logger.debug('[INFO] database is %s' % GV.dbname)
+        logger.debug('database is %s' % GV.dbname)
     else:
         GV.dbname = args[0]
     
@@ -159,7 +158,7 @@ def parseCommandLine():
     if GV.opt['-B'] < 1:
         usage('Error: parallelism must be 1 or greater')
 
-    logger.debug('[INFO] degree of parallelism: %s' % GV.opt['-B'])
+    logger.debug('degree of parallelism: %s' % GV.opt['-B'])
     
 #############
 def connect(user=None, password=None, host=None, port=None, 
@@ -172,7 +171,7 @@ def connect(user=None, password=None, host=None, port=None,
     if not port: port = GV.opt['-p']
     if not database: database = GV.dbname
     try:
-        logger.debug('[INFO] connecting to %s:%s %s' % (host, port, database))
+        logger.debug('connecting to %s:%s %s' % (host, port, database))
         db = pg.connect(host=host, port=port, user=user,
                         passwd=password, dbname=database, opt=options)
     except pg.InternalError, ex:
@@ -188,7 +187,7 @@ def connect2(cfgrec, user=None, password=None, database=None, utilityMode=True):
     host = cfgrec['hostname']
     port = cfgrec['port']
     datadir = cfgrec['datadir']
-    logger.debug('[INFO] connect %s:%s:%s' % (host, port, datadir))
+    logger.debug('connect %s:%s:%s' % (host, port, datadir))
     key = "%s.%s.%s.%s.%s.%s.%s" % (host, port, datadir, user, password, database,
                                  str(utilityMode))
     conns = GV.db.get(key)
@@ -215,7 +214,7 @@ class execThread(Thread):
 
 #############
 def connect2run(qry, col):
-    logger.debug('[INFO] %s' % qry)
+    logger.debug('%s' % qry)
         
     batch = []
     threads = []
@@ -228,14 +227,14 @@ def connect2run(qry, col):
 
         thread = execThread(db, qry)
         thread.start()
-        logger.debug('[INFO] launching query thread %s for dbid %i' % 
+        logger.debug('launching query thread %s for dbid %i' % 
                 (thread.getName(), dbid))
         threads.append(thread)
 
         # we don't want too much going on at once
         if (i % GV.opt['-B']) == 0:
             for th in threads:
-                logger.debug('[INFO] waiting on thread %s' % th.getName())
+                logger.debug('waiting on thread %s' % th.getName())
                 th.join()
                 batch.append(th.curs)
 
@@ -244,7 +243,7 @@ def connect2run(qry, col):
         i += 1
 
     for th in threads:
-        logger.debug('[INFO] waiting on thread %s' % th.getName())
+        logger.debug('waiting on thread %s' % th.getName())
         th.join()
 
     err = []
@@ -713,7 +712,7 @@ class sysCatThread(Thread):
         host    = GV.cfg[dbid]['hostname']
         port    = GV.cfg[dbid]['port']
         datadir = GV.cfg[dbid]['datadir']
-        logger.debug('[INFO] fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
+        logger.debug('fetching %s from %s:%s:%s' % (catalog, host, port, datadir))
     
         if dbid == 1:
             outfile = "%s/gpcheckcat_m" % GV.tmpdir
@@ -823,14 +822,14 @@ ORDER BY nspname
         for dbid in GV.cfg:
             thread = sysCatThread(dbid, cid, catalogs[cid])
             thread.start()
-            logger.debug('[INFO] launching query thread %s for dbid %i' %
+            logger.debug('launching query thread %s for dbid %i' %
                         (thread.getName(), dbid))
             threads.append(thread)
 
             # we don't want too much going on at once
             if (i % GV.opt['-B']) == 0:
                 for th in threads:
-                    logger.debug('[INFO] waiting on thread %s' % 
+                    logger.debug('waiting on thread %s' % 
                             th.getName())
                     th.join()
                 threads = []
@@ -838,7 +837,7 @@ ORDER BY nspname
 
         # process leftovers
         for th in threads:
-            logger.debug('[INFO] waiting on thread %s' % 
+            logger.debug('waiting on thread %s' % 
                             th.getName())
             th.join()
 
@@ -1010,7 +1009,7 @@ def checkBitmapIndexes():
 
         if (len(threads) % mod) == 0:
             for th in threads:
-                logger.debug('[INFO] waiting on thread %s' % th.getName())
+                logger.debug('waiting on thread %s' % th.getName())
                 th.join()
                 badinds += th.badinds
 
@@ -1018,7 +1017,7 @@ def checkBitmapIndexes():
 
     # stragglers 
     for th in threads:
-        logger.debug('[INFO] waiting on thread %s' % 
+        logger.debug('waiting on thread %s' % 
                        th.getName())
         th.join()
         badinds += th.badinds
@@ -1095,7 +1094,7 @@ if __name__ == '__main__':
 
     try:
         GV.tmpdir = tempfile.mkdtemp()
-        logger.debug('[INFO] Created temporary working directory %s' % GV.tmpdir)
+        logger.debug('Created temporary working directory %s' % GV.tmpdir)
     except Exception, e:
         logger.info('[ERROR] ' + str(e))
         logger.info('[ERROR] Unable to create temporary directory')
@@ -1236,6 +1235,6 @@ if __name__ == '__main__':
             logger.info('[FATAL] could not write script: %s' % str(e))
             sys.exit(1)
 
-        logger.info('[INFO] repair scripts generated in directory %s' % GV.opt['-g'])
+        logger.info('repair scripts generated in directory %s' % GV.opt['-g'])
     subprocess.call('rm -rf ' + GV.tmpdir, shell=True, close_fds=True)
     sys.exit(GV.retcode)
