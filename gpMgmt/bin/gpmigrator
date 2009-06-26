@@ -623,10 +623,15 @@ class GPUpgrade:
         else:
             self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
 
-        setup_tool_logging(EXECNAME,
-                           unix.getLocalHostname(),
-                           unix.getUserName(),
-                           self.logdir)
+        try:
+            setup_tool_logging(EXECNAME,
+                               unix.getLocalHostname(),
+                               unix.getUserName(),
+                               self.logdir)
+        except OSError, e:
+            logger.fatal('cannot log to %s: %s' % (self.logdir, str(e)))
+            exit(1)
+            
 
         if options.nocheckschema:
             self.checkschema = False
