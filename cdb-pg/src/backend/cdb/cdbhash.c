@@ -193,6 +193,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	
 	Numeric		num;
 	bool		bool_buf;
+	char        char_buf;
 	Name		namebuf;
 	
 	ArrayType  *arrbuf;
@@ -303,7 +304,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 		 * ====== CHARACTER TYPES =======
 		 */
 		case CHAROID:			/* char(1), single character */
-			buf = DatumGetCString(datum);
+			char_buf = DatumGetChar(datum);
+			buf = &char_buf;
 			len = 1;
 			break;
 
