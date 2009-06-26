@@ -18,19 +18,10 @@
  */
 #include "postgres.h"
 
-#include "utils/elog.h" /* backtrace() prototype for solaris */
-#include "utils/debugbreak.h"
-
+#include "libpq/pqsignal.h"
 #include "cdb/cdbvars.h"                /* currentSliceId */
 
 #include <unistd.h>
-
-#if (!defined(__darwin__)) && (!defined(pg_on_solaris))
-#if defined(__GLIBC__)
-#include <execinfo.h>
-#endif
-#endif
-
 
 /*
  * ExceptionalCondition - Handles the failure of an Assert()
@@ -41,70 +32,33 @@ ExceptionalCondition(const char *conditionName,
 					 const char *fileName,
 					 int         lineNumber)
 {
-	if (!PointerIsValid(conditionName)
-		|| !PointerIsValid(fileName)
-		|| !PointerIsValid(errorType))
-		write_stderr("TRAP: ExceptionalCondition: bad arguments\n");
-	else
-	{
-		write_stderr("TRAP: %s(\"%s\", File: \"%s\", Line: %d, sliceNum %d)\n",
-					 errorType, conditionName,
-					 fileName, lineNumber, currentSliceId);
-	}
-    fflush(stdout);
-	
-#if (!defined(__darwin__))
-#if defined(__GLIBC__) || defined(pg_on_solaris)
-		
-	{
-		void	   *array[20];
-		size_t		size;
-		char	  **strings;
-		size_t		i;
-	
-		size = backtrace(array, 20);
-		if (size > 0)
-		{
-			strings = backtrace_symbols(array, size);
-			for (i = 0; i < size; i++)
-			{
-				write_stderr("%s\n",strings[i]);
-			}
-		}
-	}
-#endif
-#endif
-
-#ifdef SLEEP_ON_ASSERT 
-	/*
-	 * It would be nice to use pg_usleep() here, but only does 2000 sec or 33
-	 * minutes, which seems too short.
-	 */
-	sleep(1000000);
-#endif
-
-#if 1
-    /* Assert should always be painful.  Force a segment fault.
-     * For reasons, cdb2 does not dump a core without the following
-     * hack.
-     */
-	{
-		*( (int *) NULL ) = 1234;
-	}
-#endif
-
     /* CDB: Try to tell the QD or client what happened. */
     if (errstart(FATAL, fileName, lineNumber, NULL))
     {
-        errfinish(errcode(ERRCODE_INTERNAL_ERROR),
-                  errmsg("Unexpected internal error"),
-                  errdetail("%s(\"%s\", File: \"%s\", Line: %d)\n",
-				            errorType, conditionName, fileName, lineNumber)
-                  );
-        /* not reached */
-    }
-
+		if (!PointerIsValid(conditionName)
+			|| !PointerIsValid(fileName)
+			|| !PointerIsValid(errorType))
+			errfinish(errcode(ERRCODE_INTERNAL_ERROR),
+					  errFatalReturn(gp_reraise_signal),
+					  errmsg("TRAP: ExceptionalCondition: bad arguments"));
+		else
+			errfinish(errcode(ERRCODE_INTERNAL_ERROR),
+					  errFatalReturn(gp_reraise_signal),
+					  errmsg("Unexpected internal error"),
+					  errdetail("%s(\"%s\", File: \"%s\", Line: %d)\n",
+								errorType, conditionName, fileName, lineNumber)
+				);
+		/*
+		 * Force to generate a core dump by sending the current process
+		 * a SIGSEGV signal
+		 */
+		PG_SETMASK(&BlockSig);
+#ifdef SIGSEGV
+		pqsignal(SIGSEGV, SIG_DFL);
+#endif
+		raise(SIGSEGV);
+	}
+	
     abort();
-
 	return 0;
 }
