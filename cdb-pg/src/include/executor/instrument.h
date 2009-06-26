@@ -28,13 +28,6 @@ struct CdbExplain_NodeSummary;          /* private def in cdb/cdbexplain.c */
  */
 #ifndef WIN32
 
-typedef struct timeval instr_time;
-
-#define INSTR_TIME_IS_ZERO(t)	((t).tv_sec == 0 && (t).tv_usec == 0)
-#define INSTR_TIME_SET_ZERO(t)	((t).tv_sec = 0, (t).tv_usec = 0)
-#define INSTR_TIME_SET_CURRENT(t)	gettimeofday(&(t), NULL)
-#define INSTR_TIME_GET_DOUBLE(t) \
-	(((double) (t).tv_sec) + ((double) (t).tv_usec) / 1000000.0)
 
 static inline void
 InstrTimeAdd(instr_time *sum, const instr_time *a, const instr_time *b)
@@ -102,11 +95,6 @@ InstrTimeIsEqual(const instr_time *a, const instr_time *b)
 
 typedef LARGE_INTEGER instr_time;
 
-#define INSTR_TIME_IS_ZERO(t)	((t).QuadPart == 0)
-#define INSTR_TIME_SET_ZERO(t)	((t).QuadPart = 0)
-#define INSTR_TIME_SET_CURRENT(t)	QueryPerformanceCounter(&(t))
-#define INSTR_TIME_GET_DOUBLE(t) \
-	(((double) (t).QuadPart) / GetTimerFrequency())
 
 extern double InstrTimerFrequency;
 
