@@ -998,6 +998,14 @@ sub genpartdefs4
         {
             my $newname = $kk . "_" . $magic_suffix;
             my $oldname = $kk . "_" . $old_suffix;
+			my $schema = $vv->{Schema};
+            my $cln_oldname = $oldname;
+            my $cln_name = $kk;
+
+			# MPP-6453: remove schema prefix -- not valid for RENAME
+#			print Data::Dumper->Dump([$vv]), "\n";
+			$cln_oldname =~ s/^$schema\.//;
+			$cln_name    =~ s/^$schema\.//;
 
             my $cln_txt = "";
             my $xfr_txt = "";
@@ -1005,15 +1013,16 @@ sub genpartdefs4
 
             $xfr_txt .= "insert into $newname select * from $kk;\n";
 
-            $cln_txt .= "alter table $kk rename to $oldname;\n";
+            $cln_txt .= "alter table $kk rename to $cln_oldname;\n";
 
             if (0)
             {
             $cln_txt .= "-- NOTE: $oldname should contain no rows\n";
             $cln_txt .= "-- if data remains you may need to add default partitions(s) to table $kk\n";
             $cln_txt .= "select count(*) from $oldname; \n";
-        }
-            $cln_txt .= "alter table $newname rename to $kk;\n";
+			}
+
+            $cln_txt .= "alter table $newname rename to $cln_name;\n";
 
             my $ct_txt  = "create table $newname" . " (like " . $kk . ") ";
             my $pby_txt = "partition by $vv->{pby}->{typ} " .
@@ -2615,6 +2624,8 @@ if (1)
         }
 
     }
+
+#	print Data::Dumper->Dump($rowarr),"\n";
 
     while (my ($kk, $vv) = each (%reg_tabs))
     {
