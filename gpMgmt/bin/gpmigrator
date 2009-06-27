@@ -49,7 +49,9 @@ WORKDIR       = 'gpmigrator'
 BACKUPDIR     = 'backup'
 UPGRADEDIR    = 'upgrade'
 PARALLELISM   = 16
-MAIN          = "3.3.99.99" # version number for main
+MAIN          = [3,4,99,99]    # version number for main
+
+
 
 def make_conn(ug, user, db, options, port, sockdir):
     try:
@@ -335,6 +337,141 @@ class Harness():
 
         if failed:
             raise UpgradeError('Error encountered in threaded execution')
+
+#============================================================
+class GPVersion:
+    '''
+    The gpversion class is an abstraction of a given Greenplum release 
+    version.  It exists in order to facilitate version comparisons,
+    formating, printing, etc.
+    
+      x = GPVersion([3,2,0,4]) => Greenplum 3.2.0.4
+      x = GPVersion('3.2')     => Greenplum 3.2 dev
+      x = GPVersion('main')    => Greenplum main 
+      x.major()                => Major release, eg "3.2"
+      x.isrelease('3.2')       => Major version comparison
+      x.issupported()          => Returns true for supported releases
+    '''
+
+    version = None    # this is stored as a list of int, eg [3,2,1,0]
+
+    #------------------------------------------------------------
+    def __init__(self, version):
+        '''
+        The initializer for GPVersion is complicated so that it can handle
+        creation via several methods:
+           x = GPVersion('3.2 dev')  => via string
+           x = GPVersion([3,2])  => via tuple
+           y = GPVersion(x)      => copy constructor
+
+        If the input datatype is not recognised then it is first cast to
+        a string and then converted.
+        '''
+        try:
+            # Local copy that we can safely manipulate
+            v = version
+
+            # Copy constructor
+            if isinstance(v, GPVersion):
+                self.version = v.version
+                return
+
+            # if version isn't a type we recognise then convert to a string first
+            if not (isinstance(v, str) or
+                    isinstance(v, list) or
+                    isinstance(v, tuple)):
+                v = str(v)
+
+            # Convert a string into a list, split by '.'
+            if isinstance(v, str):
+                if v == 'main':
+                    v = MAIN
+                else:
+                    v = v.replace(' dev', '')
+                    v = v.split('.')
+
+            # Convert a list into a real version
+            if isinstance(v, list) or isinstance(v, tuple):
+                v = map(int, v)
+                if len(v) < 2:
+                    raise StandardError("Version too short")
+                if len(v) < 4:
+                    v.extend([99,99,99,99])
+                self.version = v[:4]
+
+        # If part of the conversion process above failed, throw an error
+        except:
+            raise StandardError("Unrecognised Greenplum Version '%s'" % str(version))
+
+    #------------------------------------------------------------
+    def __cmp__(self, other):
+        '''
+        One of the main reasons for this class is so that we can safely compare
+        versions with each other.  This needs to be pairwise integer comparison
+        of the tuples, not a string comparison, which is why we maintain the
+        internal version as a list.       
+        '''
+        if isinstance(other, GPVersion):
+            return cmp(self.version, other.version)
+        else:
+            return cmp(self, GPVersion(other))
+    
+    #------------------------------------------------------------
+    def __str__(self):
+        ''' 
+        The other main reason for this class is that the display version is
+        not the same as the internal version for main and development releases.
+        '''
+        if self.version == MAIN:       
+            return 'main'
+        elif self.version[2] == 99 and self.version[3] == 99: 
+            return '.'.join(map(str,self.version[:2])) + ' dev'
+        else:
+            return '.'.join(map(str,self.version[:4]))
+
+    #------------------------------------------------------------
+    def __repr__(self):
+        '''
+        Return the version as we store it internally.
+        '''
+        return self.version
+
+    #------------------------------------------------------------
+    def major(self):
+        '''
+        Returns the major (first 2 values) portion of the version.
+        '''
+        return '.'.join(map(str,self.version[:2]))
+
+    #------------------------------------------------------------
+    def isrelease(self, version):
+        '''
+        Returns true if the version matches a particular major release.
+        '''
+        return self.major() == GPVersion(version).major()
+
+    #------------------------------------------------------------
+    def issupported(self, upgrade=True):
+        '''
+        Checks that the specified version is supported for upgrade
+        '''
+        if upgrade:
+            upstr = "upgrade"
+        else:
+            upstr = "downgrade"
+
+        if self.version >= [3,2,0,0] and self.version <= MAIN:
+            return True
+
+        if self.version < [3,2,0,0]:
+            raise UpgradeError(
+                "Greenplum Version '%s' is not supported for %s"
+                % (str(self.version), upstr))
+        else:
+            raise UpgradeError(
+                "To %s Greenplum Version '%s' use the %s tool "
+                "shipped with that release" 
+                % (upstr, v, upstr))
 
 
 #============================================================
@@ -636,8 +773,8 @@ class GPUpgrade:
         if options.nocheckschema:
             self.checkschema = False
         if self.cmd != 'MASTER':
-            self.oldversion = options.oldversion
-            self.newversion = options.newversion
+            self.oldversion = GPVersion(options.oldversion)
+            self.newversion = GPVersion(options.newversion)
             self.method = options.method
             if options.upgrade:
                 self.upgrade = True
@@ -842,6 +979,7 @@ class GPUpgrade:
 
         if (re.search('gpmigrator.*\[FATAL\]', result) or
             re.search('gpmigrator.*\[CRITICAL\]', result)):
+            logger.fatal(str(result))
             raise UpgradeError('Fatal Segment Error')
         return result
 
@@ -1489,86 +1627,37 @@ class GPUpgrade:
         else:
             raise UpgradeError('Target not a Greenplum Database: ' + newversion)    
 
-        def canonical_ver(v):
-            '''
-            Make a standard a.b.c.d greenplum database version string.
-            Some releases don't look like this, but rather
-            3.2 dev.
-            '''
-            if v == 'main': return MAIN
-            vs = v.split('.')
-
-            # all released versions have 4 integer version components
-            # but dev builds may have anywhere from 2-4
-            try:
-                vs = map(int, vs)
-            except:
-                raise UpgradeError("Unrecognised Greenplum Version '%s'" % v)
-            if len(vs) < 4:
-                vs.extend([99,99,99,99])
-
-            vs = map(str, vs)
-            v = '.'.join(vs[:4])
-            return v
-
-        def reverse_canon_ver(v):
-            '''
-            Back the other way
-            '''
-            if v == MAIN: return "main"
-            elif v == "3.2.99.99": return "3.2 dev"
-            elif v == "3.1.99.99": return "3.1 dev"
-            else: return v
-
-        oldversion = canonical_ver(oldversion)
-        newversion = canonical_ver(newversion)
+        oldversion = GPVersion(oldversion)
+        newversion = GPVersion(newversion)
         self.oldversion = oldversion
         self.newversion = newversion
+        self.upgrade = (newversion >= oldversion)
 
-        # Versions supported by this version of the upgrader
-        #  [3.1.0.0 - 3.3.0.0] + (main) by default
-        def checkversion(v, frm):
-            if v == 'main': return
-            vs = v.split('.')
-
-            if frm: upstr = "upgrade"
-            else: upstr = "downgrade"
-            try:
-                vs = map(int, vs)
-            except:
-                raise UpgradeError("Unrecognised Greenplum Version '%s'" % v)
-
-            # Acceptable versions are 3.2.x - 3.3.x
-            if ((vs[0] < 3) or (vs[0] == 3 and vs[1] < 2)):
-                raise UpgradeError(
-                    "Greenplum Version '%s' not supported for %s" % (v, upstr))
-            if ((vs[0] > 3) or (vs[0] == 3 and vs[1] > 3)):
-                raise UpgradeError(
-                    "To upgrade to Greenplum Version '%s' use the %s tool "
-                    "shipped with that release" % (v, upstr))
-        
-        checkversion(oldversion, True)
-        checkversion(newversion, False)
+        oldversion.issupported(self.upgrade)
+        newversion.issupported(self.upgrade)
 
         if newversion == oldversion:
-            raise UpgradeError("Greenplum Database is already version %s"
-                    % reverse_canon_ver(newversion))
-        elif newversion[:3] == oldversion[:3]:
-            raise UpgradeError("Upgrade not needed to go from version %s to version %s" % (reverse_canon_ver(oldversion), reverse_canon_ver(newversion)))
-        if newversion == 'main' or newversion >= oldversion:
-            self.upgrade = True
-        else:
-            self.upgrade = False    # Downgrade
-            raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" % newversion[:3])
+            raise UpgradeError("Greenplum Database is already version %s" 
+                               % str(newversion))
+        elif newversion.isrelease(oldversion):
+            raise UpgradeError("Upgrade not needed to go from version %s to version %s" 
+                               % (str(oldversion), str(newversion)))
 
-        if self.upgrade and newversion[:3] == "3.2":
+        # We don't support downgrade
+        if not self.upgrade:
+            raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" 
+                               % str(oldversion))
+
+        if self.upgrade and not newversion.isrelease(MAIN):
             raise UpgradeError(
-"""Upgrade from %s to %s not supported. Target version should be Greenplum Database 3.3""" % (reverse_canon_ver(oldversion), reverse_canon_ver(newversion)))
+                "Upgrade from %s to %s not supported. Target version should be Greenplum Database %s.%s" 
+                % (str(oldversion), str(newversion), MAIN[:2]))
 
+        # Determine method if it wasn't specified on the command line.
+        # Note, this should always result in "transform" since only support 
+        # upgrade from releases >= 3.2
         if not self.method:
-            oldvers = ["3.1"]
-            if (self.oldversion[:3] in oldvers or
-                self.newversion[:3] in oldvers):
+            if (oldversion.isrelease("3.1") or newversion.isrelease("3.1")):
                 self.method = "dumprestore"
             else:
                 self.method = "transform"
@@ -1929,8 +2018,9 @@ This may be specified on the commandline with:
         # be downgraded:
         #    - append only tables
         #    - new style partitions
-        if (not self.upgrade and self.newversion < '3.2.0.0' and 
-            self.oldversion >= '3.2.0.0'):
+        if (not self.upgrade 
+            and self.newversion < '3.2.0.0' 
+            and self.oldversion >= '3.2.0.0'):
             logger.info('Checking for partitioning and append only tables')
             c = 0
             for db in databases:
@@ -1951,8 +2041,9 @@ Cannot downgrade a database with append only tables     <<<<<
 ---------------------------------------------------
 ''')
 
-        if (not self.upgrade and self.newversion < '3.3.0.0' and
-            (self.oldversion >= '3.3.0.0' or self.oldversion == 'main')):
+        if (not self.upgrade
+            and self.newversion < '3.3.0.0'
+            and self.oldversion >= '3.3.0.0'):
             c = 0
             for db in databases:
                 c = self.Select('SELECT COUNT(*)::numeric FROM pg_catalog.pg_aocs;', db=db)
@@ -3932,15 +4023,27 @@ This issue must be resolved before upgrade can complete.
         # files for upgrading from 3.2 to 3.3
         files = []
         if self.upgrade:
-            files = ["loadcat33.source.in",
-                     "upg2_pg_class_toadd.data.in",
-                     "upg2_pg_attribute_toadd.data.in",
-                     "upg2_pg_type_toadd.data.in",
-                     "upg2_pg_index_toadd.data.in",
-                     "upg2_pg_proc_toadd.data",
-                     "upg2_pg_namespace_toadd.data",
-                     "upg2_pg_description_toadd.data",
-                     "upg2_pg_depend_toadd.data"]
+            files = []
+            if (self.oldversion <= '3.2' and self.newversion >= '3.3.0.0'):
+                files.extend(["loadcat33.source.in",
+                              "upg33_pg_class_toadd.data.in",
+                              "upg33_pg_attribute_toadd.data.in",
+                              "upg33_pg_type_toadd.data.in",
+                              "upg33_pg_index_toadd.data.in",
+                              "upg33_pg_proc_toadd.data",
+                              "upg33_pg_namespace_toadd.data",
+                              "upg33_pg_description_toadd.data",
+                              "upg33_pg_depend_toadd.data"])
+            if (self.oldversion <= '3.3' and self.newversion >= '3.4.0.0'):
+                files.extend(["loadcat34.source.in",
+                              "upg34_pg_class_toadd.data.in",
+                              "upg34_pg_attribute_toadd.data.in",
+                              "upg34_pg_type_toadd.data.in",
+                              "upg34_pg_index_toadd.data.in",
+                              "upg34_pg_proc_toadd.data",
+                              "upg34_pg_namespace_toadd.data",
+                              "upg34_pg_description_toadd.data",
+                              "upg34_pg_depend_toadd.data"])
 
             h = self.newhome
             conv = make_files(['upgrade_conversion.sql.in'],
@@ -3995,7 +4098,8 @@ This issue must be resolved before upgrade can complete.
         releases = {"3.0": "200703112",
              "3.1": "200712072",
              "3.2": "200808253",
-             "3.3": "200905011"}
+             "3.3": "200905011",
+             "3.4": "200906191"}
         
         self.CheckDown()
 
@@ -4465,8 +4569,8 @@ if __name__ == '__main__':
                     u.BuildSkel()
                     u.SetState('BUILDSKEL')
     
-                sov = u.oldversion[:3]
-                snv = u.newversion[:3]
+                sov = u.oldversion.major()
+                snv = u.newversion.major()
                 if 'SETCATVERSION' not in current_state:
                     u.SetCatVersion(sov, snv)
                     u.SetState('SETCATVERSION')
@@ -4679,7 +4783,7 @@ instructions to complete environment configuration
         elif u.cmd == 'BUILDSKEL':
             u.BuildSkel()
         elif u.cmd == 'SETCATVERSION':
-            u.SetCatVersion(u.oldversion[:3], u.newversion[:3])
+            u.SetCatVersion(u.oldversion.major(), u.newversion.major())
         elif u.cmd == 'TRANSFORMCAT':
             u.TransformDbs(u.option2)
         elif u.cmd == 'EXTRACTAOSEGS':

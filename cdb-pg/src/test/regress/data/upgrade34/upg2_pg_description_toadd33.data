@@ -1,0 +1,3 @@
+objoid|classoid|objsubid|description
+9998|1255|0|convert an object name to oid.
+9999|1255|0|Greenplum fault testing only

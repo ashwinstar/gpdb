@@ -17,17 +17,10 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 OBJS= gpmodcatversion.o pg_crc.o
 
-UPGRADEFILES=$(top_srcdir)/src/test/regress/input/loadcat33.source.in \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_class_toadd.data.in \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_attribute_toadd.data.in \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_type_toadd.data.in \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_index_toadd.data.in \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_proc_toadd.data \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_namespace_toadd.data \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_description_toadd.data \
-	$(top_srcdir)/src/test/regress/data/upgrade_conversion.sql.in \
-	$(top_srcdir)/src/test/regress/data/downgrade_conversion.sql.in \
-	$(top_srcdir)/src/test/regress/data/upg2_pg_depend_toadd.data
+UPGRADEFILES := $(top_srcdir)/src/test/regress/input/loadcat33.source.in
+UPGRADEFILES += $(top_srcdir)/src/test/regress/input/loadcat34.source.in 
+UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade33/*.data)
+UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade34/*.in)
 
 all: gpmodcatversion
 

@@ -3,105 +3,132 @@
 --
 
 --
--- Load in data which represents the difference between the 3.2 catalog
--- and 3.3 catalog
+-- Load in data which represents the difference between the 3.2 catalog,
+-- 3.3 catalog, and 3.4 catalogs
 --
 
 --
 -- save the catalog info for previous revision
--- COPY pg_attribute 
+-- COPY pg_attribute
 --   to '@abs_srcdir@/data/pg_attribute32.data'  csv header;
--- COPY pg_class 
+-- COPY pg_class
 --   to '@abs_srcdir@/data/pg_class32.data' with oids csv header;
--- COPY pg_type 
+-- COPY pg_type
 --   to '@abs_srcdir@/data/pg_type32.data' with oids csv header;
 --
 
--- build "old" catalog tables
-create table public.pg_appendonly (reloid oid,
-								   blocksize integer,
-								   safefswritesize integer,
-								   compresslevel smallint,
-								   majorversion smallint,
-								   minorversion smallint,
-								   checksum boolean);
-create table old_attribute_v32 (like pg_attribute) ;
-create table old_class_v32 (like pg_class) with oids;
-create table old_type_v32 (like pg_type) with oids;
-create table old_index_v32 (like pg_index);
-create table old_proc_v32 (like pg_proc) with oids;
-create table old_namespace_v32 (like pg_namespace) with oids;
--- don't use LIKE, as 3.2 has a different structure
-create table old_aggregate_v32 (aggfnoid        regproc  not null,
-								aggtransfn      regproc  not null,
-								agginvtransfn   regproc  not null,
-								aggprelimfn     regproc  not null,
-								agginvprelimfn  regproc  not null,
-								aggfinalfn      regproc  not null,
-								aggsortop       oid      not null,
-								aggtranstype    oid      not null,
-								agginitval      text) with oids;
-create table old_depend_v32 (like pg_catalog.pg_depend);
-create table old_description_v32(like pg_catalog.pg_description);
-create table old_shdepend_v32 (like pg_catalog.pg_shdepend);
-create table old_shdescription_v32(like pg_catalog.pg_shdescription);
-create table old_rewrite_v32(like pg_catalog.pg_rewrite) with oids;
+-- The structure of this test is:
+--    1. Build the 32 catalog
+--    2. Bulid the 33 catalog
+--    3. Load the 32 catalog into public
+--    4. Load the 33 catalog into public (with different names)
+--    5. Run the scripts that upgrade from 32->33
+--    6. Compare upgraded 32 to loaded 33
+--    7. Run the scripts that upgrade from 33->34
+--    8. Compare upgraded 33 to actual 34
+--    9. Final sanity checks and cleanup
+--
 
--- load the "old" catalog
-COPY old_attribute_v32 
-  from '@abs_srcdir@/data/pg_attribute32.data'  csv header;
-COPY old_class_v32 
-  from '@abs_srcdir@/data/pg_class32.data' with oids csv header;
-COPY old_type_v32 
-  from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
-COPY old_index_v32
-  from '@abs_srcdir@/data/pg_index32.data' csv header;
-COPY old_proc_v32
-  from '@abs_srcdir@/data/pg_proc32.data' with oids csv header;
-COPY old_aggregate_v32
-  from '@abs_srcdir@/data/pg_aggregate32.data' csv header;
-COPY old_namespace_v32
-  from '@abs_srcdir@/data/pg_namespace32.data' with oids csv header;
-COPY old_description_v32 from '@abs_srcdir@/data/pg_description32.data' 
-  csv header; 
-COPY old_depend_v32 from '@abs_srcdir@/data/pg_depend32.data' csv header;
-COPY old_shdepend_v32 from '@abs_srcdir@/data/pg_shdepend32.data' csv header;
-COPY old_shdescription_v32 from '@abs_srcdir@/data/pg_shdescription32.data' 
-  csv header; 
-COPY old_rewrite_v32 from '@abs_srcdir@/data/pg_rewrite32.data' oids csv header; 
-
-create table public.pg_class(like pg_catalog.pg_class) with oids;
-create table public.pg_attribute(like pg_catalog.pg_attribute);
-create table public.pg_type(like pg_catalog.pg_type) with oids;
-create table public.pg_index(like pg_catalog.pg_index);
-create table public.pg_proc(like pg_catalog.pg_proc) with oids;
-create table public.pg_aggregate(like pg_catalog.pg_aggregate);
-create table public.pg_namespace(like pg_catalog.pg_namespace) with oids;
-create table public.pg_conversion(like pg_catalog.pg_conversion);
+--
+-- 1. Build the 32 catalog
+--
+create table public.pg_attribute (like pg_catalog.pg_attribute);
+create table public.pg_class (like pg_catalog.pg_class) with oids;
+create table public.pg_type (like pg_catalog.pg_type) with oids;
+create table public.pg_index (like pg_catalog.pg_index);
+create table public.pg_proc (like pg_catalog.pg_proc) with oids;
+create table public.pg_namespace (like pg_catalog.pg_namespace) with oids;
+create table public.pg_depend (like pg_catalog.pg_depend);
 create table public.pg_description(like pg_catalog.pg_description);
-create table public.pg_depend(like pg_catalog.pg_depend);
-create table public.pg_shdescription(like pg_catalog.pg_shdescription);
-create table public.pg_shdepend(like pg_catalog.pg_shdepend);
-create table public.pg_rewrite(like pg_catalog.pg_rewrite) with oids;
+create table public.pg_shdepend (like pg_catalog.pg_shdepend);
+create table public.pg_shdescription (like pg_catalog.pg_shdescription);
+create table public.pg_rewrite (like pg_catalog.pg_rewrite) with oids;
+create table public.pg_conversion (like pg_catalog.pg_conversion);
+
+-- don't use LIKE, as 3.2 has a different structure
+create table public.pg_aggregate (aggfnoid        regproc  not null,
+                                  aggtransfn      regproc  not null,
+                                  agginvtransfn   regproc  not null,
+                                  aggprelimfn     regproc  not null,
+                                  agginvprelimfn  regproc  not null,
+                                  aggfinalfn      regproc  not null,
+                                  aggsortop       oid      not null,
+                                  aggtranstype    oid      not null,
+                                  agginitval      text) with oids;
+create table public.pg_appendonly (reloid oid,
+                                   blocksize integer,
+                                   safefswritesize integer,
+                                   compresslevel smallint,
+                                   majorversion smallint,
+                                   minorversion smallint,
+                                   checksum boolean);
+
+--
+-- 2. Build the 33 catalog
+--
+create table public.pg_appendonly_v33 (like pg_catalog.pg_appendonly);
+create table public.pg_attribute_v33 (like pg_catalog.pg_attribute);
+create table public.pg_class_v33 (like pg_catalog.pg_class) with oids;
+create table public.pg_type_v33 (like pg_catalog.pg_type) with oids;
+create table public.pg_index_v33 (like pg_catalog.pg_index);
+create table public.pg_proc_v33 (like pg_catalog.pg_proc) with oids;
+create table public.pg_namespace_v33 (like pg_catalog.pg_namespace) with oids;
+create table public.pg_aggregate_v33 (like pg_catalog.pg_aggregate) with oids;
+create table public.pg_depend_v33 (like pg_catalog.pg_depend);
+create table public.pg_description_v33(like pg_catalog.pg_description);
+create table public.pg_shdepend_v33 (like pg_catalog.pg_shdepend);
+create table public.pg_shdescription_v33(like pg_catalog.pg_shdescription);
+create table public.pg_rewrite_v33(like pg_catalog.pg_rewrite) with oids;
+create table public.pg_conversion_v33(like pg_catalog.pg_conversion);
+
+--
+-- 3. Load the 32 catalog into public
+--
+COPY public.pg_attribute
+  from '@abs_srcdir@/data/pg_attribute32.data'  csv header;
+COPY public.pg_class
+  from '@abs_srcdir@/data/pg_class32.data' with oids csv header;
+COPY public.pg_type
+  from '@abs_srcdir@/data/pg_type32.data' with oids csv header;
+COPY public.pg_index
+  from '@abs_srcdir@/data/pg_index32.data' csv header;
+COPY public.pg_proc
+  from '@abs_srcdir@/data/pg_proc32.data' with oids csv header;
+COPY public.pg_aggregate
+  from '@abs_srcdir@/data/pg_aggregate32.data' csv header;
+COPY public.pg_namespace
+  from '@abs_srcdir@/data/pg_namespace32.data' with oids csv header;
+COPY public.pg_description
+  from '@abs_srcdir@/data/pg_description32.data' csv header;
+COPY public.pg_depend
+  from '@abs_srcdir@/data/pg_depend32.data' csv header;
+COPY public.pg_shdepend
+  from '@abs_srcdir@/data/pg_shdepend32.data' csv header;
+COPY public.pg_shdescription
+  from '@abs_srcdir@/data/pg_shdescription32.data' csv header;
+COPY public.pg_rewrite
+  from '@abs_srcdir@/data/pg_rewrite32.data' oids csv header;
+COPY public.pg_conversion
+  from '@abs_srcdir@/data/pg_conversion32.data' csv header;
 
 -- pg_partitions from 3.2
 create view public.pg_partitions as
-SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel, 
+SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablename, p1.partitionname, p1.parentpartitiontablename, p1.parentpartitionname, p1.partitiontype, p1.partitionlevel,
         CASE
             WHEN p1.partitiontype <> 'range'::text THEN NULL::bigint
             WHEN p1.partitionnodefault > 0 THEN p1.partitionrank
             WHEN p1.partitionrank = 1 THEN NULL::bigint
             ELSE p1.partitionrank - 1
-        END AS partitionrank, p1.partitionposition, p1.partitionlistvalues, p1.partitionrangestart, 
+        END AS partitionrank, p1.partitionposition, p1.partitionlistvalues, p1.partitionrangestart,
         CASE
             WHEN p1.partitiontype = 'range'::text THEN p1.partitionstartinclusive
             ELSE NULL::boolean
-        END AS partitionstartinclusive, p1.partitionrangeend, 
+        END AS partitionstartinclusive, p1.partitionrangeend,
         CASE
             WHEN p1.partitiontype = 'range'::text THEN p1.partitionendinclusive
             ELSE NULL::boolean
         END AS partitionendinclusive, p1.partitioneveryclause, p1.parisdefault AS partitionisdefault, p1.partitionboundary
-   FROM ( SELECT n.nspname AS schemaname, cl.relname AS tablename, n2.nspname AS partitionschemaname, cl2.relname AS partitiontablename, pr1.parname AS partitionname, cl3.relname AS parentpartitiontablename, pr2.parname AS parentpartitionname, 
+   FROM ( SELECT n.nspname AS schemaname, cl.relname AS tablename, n2.nspname AS partitionschemaname, cl2.relname AS partitiontablename, pr1.parname AS partitionname, cl3.relname AS parentpartitiontablename, pr2.parname AS parentpartitionname,
                 CASE
                     WHEN pp.parkind = 'h'::"char" THEN 'hash'::text
                     WHEN pp.parkind = 'r'::"char" THEN 'range'::text
@@ -117,74 +144,52 @@ SELECT p1.schemaname, p1.tablename, p1.partitionschemaname, p1.partitiontablenam
    LEFT JOIN pg_class cl3 ON pr2.parchildrelid = cl3.oid
   WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid) p1;
 
-COPY public.pg_conversion
-  from '@abs_srcdir@/data/pg_conversion32.data' csv header;
-\i @abs_srcdir@/data/upgrade_conversion.sql
+--
+-- 4. Load the 33 catalog into public (with different names)
+--
+COPY public.pg_attribute_v33
+  from '@abs_srcdir@/data/pg_attribute33.data'  csv header;
+COPY public.pg_class_v33
+  from '@abs_srcdir@/data/pg_class33.data' with oids csv header;
+COPY public.pg_type_v33
+  from '@abs_srcdir@/data/pg_type33.data' with oids csv header;
+COPY public.pg_index_v33
+  from '@abs_srcdir@/data/pg_index33.data' csv header;
+COPY public.pg_proc_v33
+  from '@abs_srcdir@/data/pg_proc33.data' with oids csv header;
+COPY public.pg_aggregate_v33
+  from '@abs_srcdir@/data/pg_aggregate33.data' csv header;
+COPY public.pg_namespace_v33
+  from '@abs_srcdir@/data/pg_namespace33.data' with oids csv header;
+COPY public.pg_description_v33
+  from '@abs_srcdir@/data/pg_description33.data' csv header;
+COPY public.pg_depend_v33
+  from '@abs_srcdir@/data/pg_depend33.data' csv header;
+COPY public.pg_shdepend_v33
+  from '@abs_srcdir@/data/pg_shdepend33.data' csv header;
+COPY public.pg_shdescription_v33
+  from '@abs_srcdir@/data/pg_shdescription33.data' csv header;
+COPY public.pg_rewrite_v33
+  from '@abs_srcdir@/data/pg_rewrite33.data' oids csv header;
+COPY public.pg_conversion_v33
+  from '@abs_srcdir@/data/pg_conversion33.data' csv header;
 
--- new tables and attributes. 
+--
+-- 5. Run the scripts that upgrade from 32->33
+--      phase 1:  loadcat33
+--      phase 2:  upg2_conversion32.sql
+--
 \i @abs_srcdir@/sql/loadcat33.sql
+\i @abs_srcdir@/data/upg2_conversion32.sql
 
-create view old_class as
-select oid, relname, relnamespace, reltype, relowner,
-	   relam, relfilenode, reltablespace,
-	   /* relpages, reltuples, -- these can differ */
-	   reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid,
-	   relhasindex, relisshared, relkind, relstorage, relnatts, relchecks,
-	   reltriggers, relukeys, relfkeys, relrefs, relhasoids, relhaspkey,
-	   relhasrules, relhassubclass, /* relfrozenxid -- different */
-	   relacl, reloptions from old_class_v32
-union all
-select oid, relname, relnamespace, reltype, relowner,
-	   relam, relfilenode, reltablespace,
-	   /* relpages, reltuples, -- these can differ */
-	   reltoastrelid, reltoastidxid, relaosegrelid, relaosegidxid,
-	   relhasindex, relisshared, relkind, relstorage, relnatts, relchecks,
-	   reltriggers, relukeys, relfkeys, relrefs, relhasoids, relhaspkey,
-	   relhasrules, relhassubclass, /* relfrozenxid -- different */
-	   relacl, reloptions from public.pg_class;
+--
+-- 6. Compare upgraded 32 to loaded 33
+--
 
-create view old_attribute as 
-select attrelid, attname, atttypid, /* attstattarget, -- can differ */ 
-	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
-	   attalign, attnotnull,
-	   atthasdef, attisdropped, attislocal, attinhcount from old_attribute_v32
-union all
-select  attrelid, attname, atttypid, /* attstattarget, -- can differ */
-	   attlen, attnum, attndims, attcacheoff, atttypmod, attbyval, attstorage, 
-	   attalign, attnotnull,
-	   atthasdef, attisdropped, attislocal, attinhcount from public.pg_attribute;
-
-create view old_type as select oid, * from old_type_v32 union all
-select oid, * from public.pg_type;
-
-create view old_index as select * from old_index_v32 union all
-select * from public.pg_index;
-
-create view old_proc as select oid, * from old_proc_v32 union all
-select oid, * from public.pg_proc;
-create view old_aggregate as select * from old_aggregate_v32 union all
-select * from public.pg_aggregate;
-
-create view old_namespace as select oid, * from old_namespace_v32 union all
-select oid, * from public.pg_namespace;
-
-create view old_description as select * from old_description_v32 union all
-select * from public.pg_description;
-
-create view old_depend as select * from old_depend_v32 union all
-select * from public.pg_depend;
-
-create view old_shdescription as select * from old_shdescription_v32 union all
-select * from public.pg_shdescription;
-
-create view old_shdepend as select * from old_shdepend_v32 union all
-select * from public.pg_shdepend;
-
-create view old_rewrite as select oid, * from old_rewrite_v32 union all
-select oid, * from public.pg_rewrite;
-
-
--- pg_catalog.pg_partitions should be the same as public.pg_partitions
+-- new pg_partitions 
+--   note that the view changed, pg_catalog.pg_partitions should now
+--   be the same as public.pg_partitions
+--
 select pg_get_viewdef(a.ev_class) = pg_get_viewdef(b.ev_class)
 from pg_rewrite a, pg_rewrite b
 where
@@ -192,202 +197,453 @@ a.ev_class = 'public.pg_partitions'::regclass and
 b.ev_class = 'pg_catalog.pg_partitions'::regclass;
 
 
--- begin_equivalent 
--- compare old vs new catalog tables
+-- pg_attribute 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from old_attribute a,
-old_class c,
-old_type t
-where c.oid = a.attrelid and a.attnum > 0
-and t.oid = a.atttypid
-and c.oid < 10000
-and c.relkind = 'r'
-order by c.relname, a.attnum;
-
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_attribute a,
-pg_class c,
-pg_type t
-where c.oid = a.attrelid and a.attnum > 0
-and t.oid = a.atttypid
-and c.oid < 10000
-and c.relkind = 'r'
-order by c.relname, a.attnum;
--- end_equivalent
-
--- make sure nothing is missing
-select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from old_attribute a,
-	 old_class c,
-	 old_type t
-	 where c.oid = a.attrelid and a.attnum > 0
-	 and t.oid = a.atttypid
-	 and c.oid < 10000
-	 and c.relkind = 'r'
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_attribute a,
-	 pg_class c,
-	 pg_type t
-	 where c.oid = a.attrelid and a.attnum > 0
-	 and t.oid = a.atttypid
-	 and c.oid < 10000
-	 and c.relkind = 'r';
+from public.pg_attribute_v33 a,
+     public.pg_class_v33 c,
+     public.pg_type_v33 t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r';
 
--- we expect one difference here: the only table for which we alter a column:
--- pg_appendonly
+-- we expect one difference here: 
+--   we added a column "compresstype" to pg_appendonly
+--
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from pg_attribute a,
-	 pg_class c,
-	 pg_type t
-	 where c.oid = a.attrelid and a.attnum > 0
-	 and t.oid = a.atttypid
-	 and c.oid < 10000
-	 and c.relkind = 'r'
+from public.pg_attribute_v33 a,
+     public.pg_class_v33 c,
+     public.pg_type_v33 t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r'
 except
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from old_attribute a,
-	 old_class c,
-	 old_type t
-	 where c.oid = a.attrelid and a.attnum > 0
-	 and t.oid = a.atttypid
-	 and c.oid < 10000
-	 and c.relkind = 'r';
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r';
 
--- begin_equivalent 
+-- The above diff occurs despite the alter table in the transform
+-- because the alter table effected the "real" catalog, not our copy.
+-- Validate that the new column exists in the "real" catalog
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_catalog.pg_attribute a,
+     pg_catalog.pg_class c,
+     pg_catalog.pg_type t
+where c.oid = a.attrelid and a.attnum > 0
+  and t.oid = a.atttypid
+  and c.oid = 'public.pg_appendonly'::regclass
+order by attnum;
 
--- compare old vs new catalog views
+-- Add the column to our phoney catalog
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where a.attrelid = 'public.pg_appendonly'::regclass and a.attnum = 8;
 
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from old_attribute a,
-old_class c,
-old_type t
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
 where c.oid = a.attrelid and a.attnum > 0
-and t.oid = a.atttypid
-and c.oid < 10000
-and c.relkind = 'v'
-order by c.relname, a.attnum;
+  and t.oid = a.atttypid
+  and c.oid = 'pg_catalog.pg_appendonly'::regclass
+order by attnum;
 
+-- Recheck, now there should be no diffs
 select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
-from 
-pg_catalog.pg_attribute a,
-pg_catalog.pg_class c,
-pg_catalog.pg_type t
-where c.oid = a.attrelid and a.attnum > 0
-and t.oid = a.atttypid
-and c.oid < 10000
-and c.relkind = 'v'
-order by c.relname, a.attnum;
+from public.pg_attribute_v33 a,
+     public.pg_class_v33 c,
+     public.pg_type_v33 t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r';
 
--- end_equivalent
-
--- begin_equivalent
 -- compare old and new pg_index
-select * from old_index where indexrelid < 10000 order by indexrelid, indrelid;
+select * from public.pg_index_v33 where indexrelid < 10000
+except
+select * from public.pg_index where indexrelid < 10000;
 
-select * from pg_catalog.pg_index where indexrelid < 10000 order by indexrelid,
-	   indrelid;
+select * from public.pg_index where indexrelid < 10000
+except
+select * from public.pg_index_v33 where indexrelid < 10000;
 
--- end_equivalent
+-- compare old and new pg_proc (all columns except acl which has sort issues)
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from public.pg_proc_v33 where oid < 10000
+except
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from public.pg_proc where oid < 10000;
 
--- begin_equivalent
--- compare old and new pg_proc
-select * from old_proc where oid < 10000 order by oid;
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from public.pg_proc where oid < 10000
+except
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from public.pg_proc_v33 where oid < 10000;
 
-select * from pg_catalog.pg_proc where oid < 10000 order by oid;
-
--- end_equivalent
-
--- begin_equivalent
 -- compare old and new pg_aggregate
-select * from old_aggregate where aggfnoid::oid < 10000 order by aggfnoid;
+select * from public.pg_aggregate_v33 where aggfnoid::oid < 10000
+except
+select * from public.pg_aggregate where aggfnoid::oid < 10000;
 
-select * from pg_catalog.pg_aggregate where aggfnoid < 10000 order by aggfnoid;
+select * from public.pg_aggregate where aggfnoid::oid < 10000
+except
+select * from public.pg_aggregate_v33 where aggfnoid::oid < 10000;
 
--- end_equivalent
+-- pg_namespace
+select oid, nspname, nspowner from public.pg_namespace_v33 where oid < 10000
+except
+select oid, nspname, nspowner from public.pg_namespace where oid < 10000;
 
--- begin_equivalent
-select oid, nspname, nspowner from old_namespace where oid < 10000 order by oid;
+select oid, nspname, nspowner from public.pg_namespace where oid < 10000 
+except
+select oid, nspname, nspowner from public.pg_namespace_v33 where oid < 10000;
 
-select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000 order by oid;
--- end_equivalent
+-- pg_conversion
+select * from public.pg_conversion_v33
+except
+select * from public.pg_conversion;
+
+select * from public.pg_conversion
+except
+select * from public.pg_conversion_v33;
+
+-- pg_description
+select * from public.pg_description_v33 where objoid < 10000
+except
+select * from public.pg_description where objoid < 10000;
+
+select * from public.pg_description where objoid < 10000
+except
+select * from public.pg_description_v33 where objoid < 10000;
+
+-- pg_depend
+select * from public.pg_depend_v33 where objid < 10000 and refobjid < 10000
+except
+select * from public.pg_depend where objid < 10000 and refobjid < 10000;
+
+select * from public.pg_depend where objid < 10000 and refobjid < 10000
+except
+select * from public.pg_depend_v33 where objid < 10000 and refobjid < 10000;
+
+-- pg_shdescription
+select * from public.pg_shdescription_v33 where objoid < 10000
+except
+select * from public.pg_shdescription where objoid < 10000;
+
+select * from public.pg_shdescription where objoid < 10000
+except
+select * from public.pg_shdescription_v33 where objoid < 10000;
+
+-- pg_shdepend
+select * from public.pg_shdepend_v33 where objid < 10000 and refobjid < 10000
+except
+select * from public.pg_shdepend where objid < 10000 and refobjid < 10000;
+
+select * from public.pg_shdepend where objid < 10000 and refobjid < 10000
+except
+select * from public.pg_shdepend_v33 where objid < 10000 and refobjid < 10000;
+
+-- compare old and new pg_rewrite
+select * from public.pg_rewrite where oid < 10000;
+
+select * from public.pg_rewrite_v33 where oid < 10000;
+
+--
+-- 7. Run the scripts that upgrade from 33->34
+--      phase 1:  loadcat34
+--
+\i @abs_srcdir@/sql/loadcat34.sql
+
+--
+-- 8. Compare upgraded 33 to actual 34
+--
+
+-- pg_attribute 
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_catalog.pg_attribute a,
+     pg_catalog.pg_class c,
+     pg_catalog.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r';
+
+-- we expect one difference here: 
+--   we added a column "columnstore" to pg_appendonly
+--
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_catalog.pg_attribute a,
+     pg_catalog.pg_class c,
+     pg_catalog.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r';
+
+-- The above diff occurs despite the alter table in the transform
+-- because the alter table effected the "real" catalog, not our copy.
+-- Validate that the new column exists in the "real" catalog
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from pg_catalog.pg_attribute a,
+     pg_catalog.pg_class c,
+     pg_catalog.pg_type t
+where c.oid = a.attrelid and a.attnum > 0
+  and t.oid = a.atttypid
+  and c.oid = 'public.pg_appendonly'::regclass
+order by attnum;
+
+-- Add the column to our phoney catalog
+insert into public.pg_attribute 
+  select 'pg_catalog.pg_appendonly'::regclass, a.attname, a.atttypid,
+    a.attstattarget, a.attlen, a.attnum, a.attndims, a.attcacheoff,
+    a.atttypmod, a.attbyval, a.attstorage, a.attalign, a.attnotnull,
+    a.atthasdef, a.attisdropped, a.attislocal, a.attinhcount
+  from pg_catalog.pg_attribute a
+  where a.attrelid = 'public.pg_appendonly'::regclass and a.attnum = 9;
+
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+where c.oid = a.attrelid and a.attnum > 0
+  and t.oid = a.atttypid
+  and c.oid = 'pg_catalog.pg_appendonly'::regclass
+order by attnum;
+
+-- Recheck, now there should be no diffs
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from public.pg_attribute_v33 a,
+     public.pg_class_v33 c,
+     public.pg_type_v33 t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r'
+except
+select c.relname, a.attname, a.attnum, t.typname, t.typlen, a.atttypmod
+from public.pg_attribute a,
+     public.pg_class c,
+     public.pg_type t
+     where c.oid = a.attrelid and a.attnum > 0
+     and t.oid = a.atttypid
+     and c.oid < 10000
+     and c.relkind = 'r';
+
+-- compare old and new pg_index
+select * from pg_catalog.pg_index where indexrelid < 10000
+except
+select * from public.pg_index where indexrelid < 10000;
+
+select * from public.pg_index where indexrelid < 10000
+except
+select * from pg_catalog.pg_index where indexrelid < 10000;
+
+-- compare old and new pg_proc (all columns except acl which has sort issues)
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from pg_catalog.pg_proc where oid < 10000
+except
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from public.pg_proc where oid < 10000;
+
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from public.pg_proc where oid < 10000
+except
+select proname, pronamespace, proowner, prolang, proisagg, prosecdef,
+       proisstrict, proretset, provolatile, pronargs, prorettype,
+       proiswin, proargtypes, proallargtypes, proargmodes, proargnames,
+       prosrc, probin
+from pg_catalog.pg_proc where oid < 10000;
+
+-- compare old and new pg_aggregate
+select * from pg_catalog.pg_aggregate where aggfnoid::oid < 10000
+except
+select * from public.pg_aggregate where aggfnoid::oid < 10000;
+
+select * from public.pg_aggregate where aggfnoid::oid < 10000
+except
+select * from pg_catalog.pg_aggregate where aggfnoid::oid < 10000;
+
+-- pg_namespace
+select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000
+except
+select oid, nspname, nspowner from public.pg_namespace where oid < 10000;
+
+select oid, nspname, nspowner from public.pg_namespace where oid < 10000 
+except
+select oid, nspname, nspowner from pg_catalog.pg_namespace where oid < 10000;
 
 -- pg_conversion
 select * from pg_catalog.pg_conversion
-except select * from public.pg_conversion;
+except
+select * from public.pg_conversion;
 
-select * from public.pg_conversion except
+select * from public.pg_conversion
+except
 select * from pg_catalog.pg_conversion;
 
 -- pg_description
 select * from pg_catalog.pg_description where objoid < 10000
-except select * from public.old_description where objoid < 10000;
+except
+select * from public.pg_description where objoid < 10000;
 
-select * from public.pg_description where objoid < 10000 except
-select * from public.old_description where objoid < 10000;
+select * from public.pg_description where objoid < 10000
+except
+select * from pg_catalog.pg_description where objoid < 10000;
 
 -- pg_depend
 select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000
-except select * from public.old_depend where objid < 10000 and refobjid < 10000;
+except
+select * from public.pg_depend where objid < 10000 and refobjid < 10000;
 
-select * from public.pg_depend where objid < 10000 and refobjid < 10000 except
-select * from public.old_depend where objid < 10000 and refobjid < 10000;
+select * from public.pg_depend where objid < 10000 and refobjid < 10000
+except
+select * from pg_catalog.pg_depend where objid < 10000 and refobjid < 10000;
 
 -- pg_shdescription
 select * from pg_catalog.pg_shdescription where objoid < 10000
-except select * from public.old_shdescription where objoid < 10000;
+except
+select * from public.pg_shdescription where objoid < 10000;
 
-select * from public.pg_shdescription where objoid < 10000 except
-select * from public.old_shdescription where objoid < 10000;
+select * from public.pg_shdescription where objoid < 10000
+except
+select * from pg_catalog.pg_shdescription where objoid < 10000;
 
 -- pg_shdepend
 select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000
-except select * from public.old_shdepend where objid < 10000 and refobjid < 10000;
+except
+select * from public.pg_shdepend where objid < 10000 and refobjid < 10000;
 
-select * from public.pg_shdepend where objid < 10000 and refobjid < 10000 except
-select * from public.old_shdepend where objid < 10000 and refobjid < 10000;
+select * from public.pg_shdepend where objid < 10000 and refobjid < 10000
+except
+select * from pg_catalog.pg_shdepend where objid < 10000 and refobjid < 10000;
 
--- begin_equivalent
 -- compare old and new pg_rewrite
+select * from public.pg_rewrite where oid < 10000;
+
 select * from pg_catalog.pg_rewrite where oid < 10000;
 
-select * from public.old_rewrite where oid < 10000;
--- end_equivalent
+
+--
+-- 9. Final sanity checks and cleanup
+--
 
 -- Check for duplicate oids
-SELECT oid, count(*) 
-FROM (          SELECT oid FROM pg_authid
-      UNION ALL SELECT oid FROM pg_type
-      UNION ALL SELECT oid FROM pg_proc
-      UNION ALL SELECT oid FROM pg_class
-      UNION ALL SELECT oid FROM pg_attrdef
-      UNION ALL SELECT oid FROM pg_constraint
-      UNION ALL SELECT oid FROM pg_operator
-      UNION ALL SELECT oid FROM pg_opclass
-	  UNION ALL SELECT oid FROM pg_am
-	  UNION ALL SELECT oid FROM pg_language
-	  UNION ALL SELECT oid FROM pg_rewrite
-	  UNION ALL SELECT oid FROM pg_trigger
-	  UNION ALL SELECT oid FROM pg_cast
-	  UNION ALL SELECT oid FROM pg_namespace
-	  UNION ALL SELECT oid FROM pg_conversion
-	  UNION ALL SELECT oid FROM pg_tablespace
-	  UNION ALL SELECT oid FROM pg_resqueue
-	  UNION ALL SELECT oid FROM pg_partition
-	  UNION ALL SELECT oid FROM pg_partition_rule
-	  UNION ALL SELECT oid FROM pg_database
+SELECT oid, count(*)
+FROM (          SELECT oid FROM pg_catalog.pg_authid
+      UNION ALL SELECT oid FROM pg_catalog.pg_type
+      UNION ALL SELECT oid FROM pg_catalog.pg_proc
+      UNION ALL SELECT oid FROM pg_catalog.pg_class
+      UNION ALL SELECT oid FROM pg_catalog.pg_attrdef
+      UNION ALL SELECT oid FROM pg_catalog.pg_constraint
+      UNION ALL SELECT oid FROM pg_catalog.pg_operator
+      UNION ALL SELECT oid FROM pg_catalog.pg_opclass
+      UNION ALL SELECT oid FROM pg_catalog.pg_am
+      UNION ALL SELECT oid FROM pg_catalog.pg_language
+      UNION ALL SELECT oid FROM pg_catalog.pg_rewrite
+      UNION ALL SELECT oid FROM pg_catalog.pg_trigger
+      UNION ALL SELECT oid FROM pg_catalog.pg_cast
+      UNION ALL SELECT oid FROM pg_catalog.pg_namespace
+      UNION ALL SELECT oid FROM pg_catalog.pg_conversion
+      UNION ALL SELECT oid FROM pg_catalog.pg_tablespace
+      UNION ALL SELECT oid FROM pg_catalog.pg_resqueue
+      UNION ALL SELECT oid FROM pg_catalog.pg_partition
+      UNION ALL SELECT oid FROM pg_catalog.pg_partition_rule
+      UNION ALL SELECT oid FROM pg_catalog.pg_database
      ) oid_tables
 GROUP BY oid
 HAVING count(*) > 1;
 
-drop view old_class, old_type, old_attribute, old_index, old_aggregate,
-	 old_proc, old_namespace, public.pg_partitions, old_description,
-	 old_depend, old_shdescription, old_shdepend, old_rewrite;
-drop table public.pg_class, public.pg_attribute, public.pg_type,
-	 public.pg_index, public.pg_aggregate, public.pg_proc, public.pg_namespace,
-	 public.pg_conversion, public.pg_appendonly,
-	 old_aggregate_v32, old_attribute_v32, old_class_v32,
-	 old_index_v32, old_namespace_v32, old_proc_v32, old_type_v32,
-	 old_description_v32, public.pg_description, public.pg_depend,
-	 old_depend_v32, old_shdescription_v32, public.pg_shdescription,
-	 public.pg_shdepend, old_shdepend_v32, public.pg_rewrite, old_rewrite_v32;
+drop table
+  public.pg_class,
+  public.pg_attribute,
+  public.pg_type,
+  public.pg_index,
+  public.pg_aggregate,
+  public.pg_proc,
+  public.pg_namespace,
+  public.pg_conversion,
+  public.pg_description,
+  public.pg_depend,
+  public.pg_shdescription,
+  public.pg_shdepend,
+  public.pg_rewrite,
+  public.pg_class_v33,
+  public.pg_attribute_v33,
+  public.pg_type_v33,
+  public.pg_index_v33,
+  public.pg_aggregate_v33,
+  public.pg_proc_v33,
+  public.pg_namespace_v33,
+  public.pg_conversion_v33,
+  public.pg_description_v33,
+  public.pg_depend_v33,
+  public.pg_shdescription_v33,
+  public.pg_shdepend_v33,
+  public.pg_rewrite_v33;

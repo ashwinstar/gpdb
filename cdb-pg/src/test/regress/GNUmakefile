@@ -118,7 +118,7 @@ endif
 
 # And finally some extra C modules...
 
-all: all-spi tablespace-setup includecheck
+all: all-spi tablespace-setup includecheck upg2-setup ugpart-setup
 
 .PHONY: all-spi
 all-spi:
@@ -149,24 +149,6 @@ installcheck-parallel: all
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
 installcheck-good: all $(srcdir)/current_good_schedule
-	@cp -f data/pg_class32.data.in data/pg_class32.data
-	@cp -f data/upg2_pg_class_toadd.data.in data/upg2_pg_class_toadd.data
-	@cp -f data/upg2_pg_attribute_toadd.data.in data/upg2_pg_attribute_toadd.data
-	@cp -f data/upg2_pg_type_toadd.data.in data/upg2_pg_type_toadd.data
-	@cp -f data/upg2_pg_index_toadd.data.in data/upg2_pg_index_toadd.data
-	@cp -f data/pg_namespace32.data.in data/pg_namespace32.data
-	@cp -f data/upgrade_conversion.sql.in data/upgrade_conversion.sql
-	@cp -f input/loadcat33.source.in input/loadcat33.source
-	@cp -f data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql
-	@gpstringsubs.pl data/pg_class32.data
-	@gpstringsubs.pl data/upg2_pg_class_toadd.data
-	@gpstringsubs.pl data/upg2_pg_attribute_toadd.data
-	@gpstringsubs.pl data/upg2_pg_type_toadd.data
-	@gpstringsubs.pl data/upg2_pg_index_toadd.data
-	@gpstringsubs.pl input/loadcat33.source
-	@gpstringsubs.pl data/pg_namespace32.data
-	@gpstringsubs.pl data/upgrade_conversion.sql
-	@gpstringsubs.pl data/upgrade_pg_partitions.sql
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
 .PHONY: $(srcdir)/current_good_schedule
@@ -176,6 +158,34 @@ ifneq ($(origin TT), undefined)
 else
 	./makeschedule $< $@
 endif
+
+# Copy and transform all of the upgrade related data files
+upg2_data := $(wildcard data/upgrade*/*.data)
+upg2_in   := $(wildcard data/upgrade*/*.in)
+upg2_out  := $(basename $(addprefix data/, $(notdir $(upg2_in))))
+upg2-setup:
+	@cp -f input/loadcat33.source.in input/loadcat33.source
+	@gpstringsubs.pl input/loadcat33.source
+	@cp -f input/loadcat34.source.in input/loadcat34.source
+	@gpstringsubs.pl input/loadcat34.source
+	@cp -f $(upg2_data) data/.
+	@cp -f $(upg2_in) data/.
+	$(MAKE) upg2-transform
+
+upg2-transform: $(upg2_out)
+
+data/%.data: data/%.data.in
+	@cp -f $< $@ 
+	@gpstringsubs.pl $@
+
+data/%.sql: data/%.sql.in
+	@cp -f $< $@ 
+	@gpstringsubs.pl $@
+
+ugpart-setup:
+	@cp -f data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql
+	@gpstringsubs.pl data/upgrade_pg_partitions.sql	
+
 
 # old interfaces follow...
 

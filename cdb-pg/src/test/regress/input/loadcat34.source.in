@@ -1,0 +1,24 @@
+begin;
+copy @gpupgradeschemaname@.pg_class from '@gpupgradedatadir@/upg2_pg_class_toadd33.data' oids null E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_attribute from '@gpupgradedatadir@/upg2_pg_attribute_toadd33.data' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_index from '@gpupgradedatadir@/upg2_pg_index_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd33.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd33.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd33.data' null as E'\\N' csv delimiter '|' header;
+
+-- fix up pg_appendonly
+alter table @gpupgradeschemaname@.pg_appendonly add column columnstore boolean;
+update @gpupgradeschemaname@.pg_appendonly set columnstore='f';
+alter table @gpupgradeschemaname@.pg_appendonly alter column columnstore set not null;
+
+commit;
+
+reindex table @gpupgradeschemaname@.pg_appendonly;
+-- will error out in regression tests, this is expected
+reindex table @gpupgradeschemaname@.gp_configuration_history;
+-- will error out in regression tests, this is expected
+reindex table @gpupgradeschemaname@.gp_db_interfaces;
+-- will error out in regression tests, this is expected
+reindex table @gpupgradeschemaname@.gp_interfaces;

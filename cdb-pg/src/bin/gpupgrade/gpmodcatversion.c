@@ -30,7 +30,8 @@ static struct verarray versions[] =
 	{"3.0", 200703112},
 	{"3.1", 200712072},
 	{"3.2", 200808253},
-	{"3.3", CATALOG_VERSION_NO},
+	{"3.3", 200905011},
+	{"3.4", CATALOG_VERSION_NO},
 	{NULL, 0}
 };
 
@@ -39,14 +40,14 @@ usage(const char *progname)
 {
 	printf(_("%s modifies control information of a PostgreSQL database cluster.\n\n"), progname);
 	printf(_("WARNING! This tool should only be used to upgrade/downgrade \n"
-			 "Greenplum 3.0, 3.1, 3.2 and 3.3 systems!\n\n"));
+			 "Greenplum 3.0, 3.1, 3.2, 3.3, and 3.4 systems!\n\n"));
 	printf
 		(
 		 _(
 		   "Usage:\n"
 		   "  %s [OPTION] [DATADIR]\n\n"
 		   "Options:\n"
-		   "  --catversion [3.0 | 3.1 | 3.2 | 3.3]  replace catalog version with <version>\n"
+		   "  --catversion [3.0 | 3.1 | 3.2 | 3.3 | 3.4]  replace catalog version with <version>\n"
 		   "  --help                    show this help, then exit\n"
 		   "  --version                 output version information, then exit\n"
 		   ),

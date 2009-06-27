@@ -1,12 +1,12 @@
 begin;
-copy @gpupgradeschemaname@.pg_class from '@gpupgradedatadir@/upg2_pg_class_toadd.data' oids null E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_attribute from '@gpupgradedatadir@/upg2_pg_attribute_toadd.data' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_index from '@gpupgradedatadir@/upg2_pg_index_toadd.data' null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd.data' oids null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd.data' oids null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd.data' oids null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd.data' null as E'\\N' csv delimiter '|' header;
-copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_class from '@gpupgradedatadir@/upg2_pg_class_toadd32.data' oids null E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_attribute from '@gpupgradedatadir@/upg2_pg_attribute_toadd32.data' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_index from '@gpupgradedatadir@/upg2_pg_index_toadd32.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_type from '@gpupgradedatadir@/upg2_pg_type_toadd32.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_proc from '@gpupgradedatadir@/upg2_pg_proc_toadd32.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_namespace from '@gpupgradedatadir@/upg2_pg_namespace_toadd32.data' oids null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_description from '@gpupgradedatadir@/upg2_pg_description_toadd32.data' null as E'\\N' csv delimiter '|' header;
+copy @gpupgradeschemaname@.pg_depend from '@gpupgradedatadir@/upg2_pg_depend_toadd32.data' null as E'\\N' csv delimiter '|' header;
 
 -- fix up pg_appendonly
 alter table @gpupgradeschemaname@.pg_appendonly add column compresstype text;
@@ -33,10 +33,4 @@ delete from @gpupgradeschemaname@.pg_shdepend using @gpupgradeschemaname@.pg_cla
 
 commit;
 
-reindex table @gpupgradeschemaname@.pg_appendonly;
--- will error out in regression tests, this is expected
-reindex table @gpupgradeschemaname@.gp_configuration_history;
--- will error out in regression tests, this is expected
-reindex table @gpupgradeschemaname@.gp_db_interfaces;
--- will error out in regression tests, this is expected
-reindex table @gpupgradeschemaname@.gp_interfaces;
+-- will reindex at the end of loadcat34
