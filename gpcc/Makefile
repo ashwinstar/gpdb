@@ -21,7 +21,8 @@ GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
 GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32
 EXT_EXE=.exe
 else
-GPFDIST_LIBS=-lz -lbz2
+# statically link libz.a to avoid conflicts on platforms like AIX
+GPFDIST_LIBS=$(BLD_THIRDPARTY_LIB_DIR)/libz.a -lbz2
 endif
 
 export CC
