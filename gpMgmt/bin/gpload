@@ -604,6 +604,8 @@ class CatThread(threading.Thread):
         threading.Thread.__init__(self)
         self.gpload = gpload
         self.fd = fd
+        self.die = False
+        self.condition = threading.Condition()
     def run(self):
         while 1:
             line = self.fd.readline()
@@ -1210,9 +1212,28 @@ class gpload:
                 cfds = True
                 if platform.system() in ['Windows', 'Microsoft']: # not supported on win32
                     cfds = False
+                    cmd = ' '.join(popenList)
+                    needshell = False
+                else:
+                    srcfile = None
+                    if os.environ.get('GPHOME_LOADERS'):
+                        srcfile = os.path.join(os.environ.get('GPHOME_LOADERS'),
+                                           'greenplum_loaders_path.sh')
+                    elif os.environ.get('GPHOME'):
+                        srcfile = os.path.join(os.environ.get('GPHOME'),
+                                           'greenplum_path.sh')
 
-                a = subprocess.Popen(popenList,stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE,close_fds=cfds)
+                    if (not (srcfile and os.path.exists(srcfile))):
+                        self.log(self.ERROR, 'cannot find greenplum environment ' +
+                                    'file: environment misconfigured')
+
+                    cmd = 'source %s ; exec ' % srcfile
+                    cmd += ' '.join(popenList)
+                    needshell = True
+
+                a = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE,
+                                     close_fds=cfds, shell=needshell)
                 self.subprocesses.append(a)
             except Exception, e:
                 self.log(self.ERROR, "could not run %s: %s" % \
@@ -1863,7 +1884,7 @@ class gpload:
                                              stderr=subprocess.PIPE) 
 
                         else:
-                            os.kill(a.pid,signal.SIGTERM)
+                            os.kill(a.pid, signal.SIGTERM)
                     except OSError:
                         pass
             for t in self.threads:
