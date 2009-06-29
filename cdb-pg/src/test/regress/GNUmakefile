@@ -118,7 +118,7 @@ endif
 
 # And finally some extra C modules...
 
-all: all-spi tablespace-setup includecheck upg2-setup ugpart-setup
+all: all-spi tablespace-setup includecheck
 
 .PHONY: all-spi
 all-spi:
@@ -139,16 +139,16 @@ includecheck:
 ## Run tests
 ##
 
-check: all
+check: all upg2-setup ugpart-setup
 	./pg_regress --temp-install=./tmp_check --top-builddir=$(top_builddir) --srcdir=$(abs_srcdir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
-installcheck: all
+installcheck: all upg2-setup ugpart-setup
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/serial_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) $(NOLOCALE)
 
-installcheck-parallel: all
+installcheck-parallel: all upg2-setup ugpart-setup
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
-installcheck-good: all $(srcdir)/current_good_schedule
+installcheck-good: all $(srcdir)/current_good_schedule upg2-setup ugpart-setup
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
 .PHONY: $(srcdir)/current_good_schedule
