@@ -52,12 +52,12 @@ GRANT SELECT ON gp_distributed_log TO PUBLIC;
 ------------------------------------------------------------------
 -- relation size
 -- ------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION gpf_rel_size_seg(int, Oid) returns bigint AS
+CREATE OR REPLACE FUNCTION gp_rel_size_seg(int, Oid) returns bigint AS
 $$
 DECLARE result bigint;
 BEGIN
     if gp_execution_segment() <> $1 then
-         raise exception 'gpf_rel_size_seg called on different segment';
+         raise exception 'gp_rel_size_seg called on different segment';
     end if;
     select pg_relation_size($2)::bigint into result;
     return result;
@@ -65,25 +65,25 @@ END
 $$
 LANGUAGE PLPGSQL;
 
-CREATE OR REPLACE VIEW gpv_rel_size_oid AS
-    select c.oid, sum(gpf_rel_size_seg(c.gp_segment_id, c.oid))::bigint relsize
+CREATE OR REPLACE VIEW gp_rel_size_oid AS
+    select c.oid, sum(gp_rel_size_seg(c.gp_segment_id, c.oid))::bigint relsize
     from gp_dist_random('pg_class') c
     group by c.oid;
-GRANT SELECT ON gpv_rel_size_oid TO PUBLIC;
+GRANT SELECT ON gp_rel_size_oid TO PUBLIC;
 
-CREATE OR REPLACE FUNCTION gpf_relation_size(Oid) returns bigint AS
-    'select relsize from gpv_rel_size_oid where oid = $1;'
+CREATE OR REPLACE FUNCTION gp_relation_size(Oid) returns bigint AS
+    'select relsize from gp_rel_size_oid where oid = $1;'
 LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION gpf_relation_size(text) returns bigint AS
-    'select gpf_relation_size(pg_objname_to_oid($1));'
+CREATE OR REPLACE FUNCTION gp_relation_size(text) returns bigint AS
+    'select gp_relation_size(pg_objname_to_oid($1));'
 LANGUAGE SQL;
 
 -----------------------------------------------------------------
 -- ao related.
 ----------------------------------------------------------------
 
-CREATE TABLE gpt_aoseg_info_rectype (
+CREATE TYPE gp_type_aoseg_info AS (
     segmentid Oid,
     segno int,
     colno int,
@@ -92,16 +92,15 @@ CREATE TABLE gpt_aoseg_info_rectype (
     varblockcount bigint,
     eofuncompressed bigint
     );
-GRANT SELECT ON gpt_aoseg_info_rectype TO PUBLIC;
 
-CREATE OR REPLACE FUNCTION gpf_aoseg_info(Oid)
-RETURNS SETOF gpt_aoseg_info_rectype
+CREATE OR REPLACE FUNCTION gp_aoseg_info(Oid)
+RETURNS SETOF gp_type_aoseg_info
 AS
 $$
 DECLARE relst CHAR(1);
 DECLARE ncol int;
 DECLARE sqlstr TEXT;
-DECLARE rec gpt_aoseg_info_rectype; 
+DECLARE rec gp_type_aoseg_info; 
 BEGIN
     select relstorage into relst from pg_class where oid = $1; 
     if relst = 'a' then
@@ -149,20 +148,20 @@ END
 $$
 LANGUAGE PLPGSQL;
 
-CREATE OR REPLACE FUNCTION gpf_aoseg_info(text)
-RETURNS SETOF gpt_aoseg_info_rectype
+CREATE OR REPLACE FUNCTION gp_aoseg_info(text)
+RETURNS SETOF gp_type_aoseg_info
 AS
-'select * from gpf_aoseg_info(pg_objname_to_oid($1));'
+'select * from gp_aoseg_info(pg_objname_to_oid($1));'
 LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION gpf_ao_compression_ratio(Oid)
+CREATE OR REPLACE FUNCTION gp_ao_compression_ratio(Oid)
 RETURNS float AS
-'select sum(eof)::float / sum(eofuncompressed)::float from gpf_aoseg_info($1);'
+'select sum(eof)::float / sum(eofuncompressed)::float from gp_aoseg_info($1);'
 LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION gpf_ao_compression_ratio(text)
+CREATE OR REPLACE FUNCTION gp_ao_compression_ratio(text)
 RETURNS float AS
-'select gpf_ao_compression_ratio(pg_objname_to_oid($1));'
+'select gp_ao_compression_ratio(pg_objname_to_oid($1));'
 LANGUAGE SQL;
 
 RESET log_min_messages;

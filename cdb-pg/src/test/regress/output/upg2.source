@@ -1012,8 +1012,8 @@ from pg_catalog.pg_attribute a,
      and t.oid = a.atttypid
      and c.oid < 10000
      and c.relkind = 'r';
-    relname    |   attname    | attnum | typname | typlen | atttypmod 
----------------+--------------+--------+---------+--------+-----------
+ relname | attname | attnum | typname | typlen | atttypmod 
+---------+---------+--------+---------+--------+-----------
 (0 rows)
 
 -- we expect one difference here: 
@@ -1036,10 +1036,10 @@ from public.pg_attribute a,
      and t.oid = a.atttypid
      and c.oid < 10000
      and c.relkind = 'r';
-    relname    |   attname    | attnum | typname | typlen | atttypmod 
----------------+--------------+--------+---------+--------+-----------
- pg_appendonly | columnstore  |      9 | bool    |      1 |        -1
-(2 rows)
+    relname    |   attname   | attnum | typname | typlen | atttypmod 
+---------------+-------------+--------+---------+--------+-----------
+ pg_appendonly | columnstore |      9 | bool    |      1 |        -1
+(1 row)
 
 -- The above diff occurs despite the alter table in the transform
 -- because the alter table effected the "real" catalog, not our copy.
