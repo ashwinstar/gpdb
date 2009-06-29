@@ -604,8 +604,6 @@ class CatThread(threading.Thread):
         threading.Thread.__init__(self)
         self.gpload = gpload
         self.fd = fd
-        self.die = False
-        self.condition = threading.Condition()
     def run(self):
         while 1:
             line = self.fd.readline()
