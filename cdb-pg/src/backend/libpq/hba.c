@@ -936,6 +936,11 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 			 *
 			 * XXX: attempt to do some backwards compatible parsing here?
 			 */
+			ereport(LOG,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("authentication option not in name=value format: %s", token),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, HbaFileName)));
 			
 			if (parsedline->auth_method == uaIdent && strcmp(token,"sameuser")==0)
 			{
@@ -949,11 +954,6 @@ parse_hba_line(List *line, int line_num, HbaLine *parsedline)
 				continue;
 			}
 			
-			ereport(LOG,
-					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("authentication option not in name=value format: %s", token),
-					 errcontext("line %d of configuration file \"%s\"",
-								line_num, HbaFileName)));
 			return false;
 		}
 		else
