@@ -156,7 +156,7 @@ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION gp_ao_compression_ratio(Oid)
 RETURNS float AS
-'select sum(eof)::float / sum(eofuncompressed)::float from gp_aoseg_info($1);'
+'select sum(eofuncompressed)::float / sum(eof)::float from gp_aoseg_info($1);'
 LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION gp_ao_compression_ratio(text)
