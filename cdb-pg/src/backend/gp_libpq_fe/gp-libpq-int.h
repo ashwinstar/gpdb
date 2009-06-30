@@ -41,43 +41,6 @@
 /* include stuff found in fe only */
 #include "pqexpbuffer.h"
 
-#ifdef ENABLE_GSS
-#if defined(HAVE_GSSAPI_H)
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif
-#endif
-
-#ifdef ENABLE_SSPI
-#define SECURITY_WIN32
-#if defined(WIN32) && !defined(WIN32_ONLY_COMPILER)
-#include <ntsecapi.h>
-#endif
-#include <security.h>
-#undef SECURITY_WIN32
-
-#ifndef ENABLE_GSS
-
-#ifndef GSS_BUFFER_DESC_DEFINED
-/*
- * Define a fake structure compatible with GSSAPI on Unix.
- */
-typedef struct
-{
-	void	   *value;
-	int			length;
-}	gss_buffer_desc;
-#define GSS_BUFFER_DESC_DEFINED
-#endif
-#endif
-#endif   /* ENABLE_SSPI */
-
-#ifdef USE_SSL
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#endif
-
 /*
  * POSTGRES backend dependent Constants.
  */
@@ -153,16 +116,6 @@ typedef struct
 	void	   *noticeProcArg;
 } PGNoticeHooks;
 
-#if 0
-typedef struct PGEvent
-{
-	PGEventProc	proc;			/* the function to call on events */
-	char	   *name;			/* used only for error messages */
-	void	   *passThrough;	/* pointer supplied at registration time */
-	void	   *data;			/* optional state (instance) data */
-	bool		resultInitialized;	/* T if RESULTCREATE/COPY succeeded */
-} PGEvent;
-#endif
 
 /* CDB: Statistical response message list element */
 typedef struct pgCdbStatCell
@@ -329,15 +282,8 @@ struct pg_conn
 	char	   *dbName;			/* database name */
 	char	   *pguser;			/* Postgres username and password, if any */
 	char	   *pgpass;
-	char	   *sslmode;		/* SSL mode (require,prefer,allow,disable) */
-	char	   *sslkey;			/* client key filename */
-	char	   *sslcert;		/* client certificate filename */
-	char	   *sslrootcert;	/* root certificate filename */
-	char	   *sslcrl;			/* certificate revocation list filename */
 
-#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
-	char	   *krbsrvname;		/* Kerberos service name */
-#endif
+
     char       *gpqeid;        /* MPP: session id & startup info for qExec */
     char       *gpqdid;        /* MPP: session id & startup info for QD callback */
     char       *gpdaid;        /* MPP: session id & startup info for QDA relay */
@@ -428,37 +374,6 @@ struct pg_conn
 	PGresult   *result;			/* result being constructed */
 	PGresAttValue *curTuple;	/* tuple currently being read */
 
-#ifdef USE_SSL
-	bool		allow_ssl_try;	/* Allowed to try SSL negotiation */
-	bool		wait_ssl_try;	/* Delay SSL negotiation until after
-								 * attempting normal connection */
-	SSL		   *ssl;			/* SSL status, if have SSL connection */
-	X509	   *peer;			/* X509 cert of server */
-	char		peer_dn[256 + 1];		/* peer distinguished name */
-	char		peer_cn[SM_USER + 1];	/* peer common name */
-#endif
-
-#ifdef ENABLE_GSS
-	gss_ctx_id_t gctx;			/* GSS context */
-	gss_name_t	gtarg_nam;		/* GSS target name */
-	gss_buffer_desc ginbuf;		/* GSS input token */
-	gss_buffer_desc goutbuf;	/* GSS output token */
-#endif
-
-#ifdef ENABLE_SSPI
-#ifndef ENABLE_GSS
-	gss_buffer_desc ginbuf;		/* GSS input token */
-#else
-	char	   *gsslib;			/* What GSS librart to use ("gssapi" or
-								 * "sspi") */
-#endif
-	CredHandle *sspicred;		/* SSPI credentials handle */
-	CtxtHandle *sspictx;		/* SSPI context */
-	char	   *sspitarget;		/* SSPI target name */
-	int			usesspi;		/* Indicate if SSPI is in use on the
-								 * connection */
-#endif
-
 
 	/* Buffer for current error message */
 	PQExpBufferData errorMessage;		/* expansible string */
@@ -538,6 +453,8 @@ extern void pqHandleSendFailure(PGconn *conn);
 
 /* === in fe-protocol2.c === */
 /*
+ *  fe-protocol2 isn't used for QD to QE communications
+ *
 extern PostgresPollingStatusType pqSetenvPoll(PGconn *conn);
 
 extern char *pqBuildStartupPacket2(PGconn *conn, int *packetlen,
@@ -604,6 +521,9 @@ extern PostgresPollingStatusType pqsecure_open_client(PGconn *);
 extern void pqsecure_close(PGconn *);
 extern ssize_t pqsecure_read(PGconn *, void *ptr, size_t len);
 extern ssize_t pqsecure_write(PGconn *, const void *ptr, size_t len);
+*/
+
+/*
 
 #if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
 extern int	pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending);
@@ -611,6 +531,7 @@ extern void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
 				 bool got_epipe);
 #endif
 */
+
 /*
  * this is so that we can check if a connection is non-blocking internally
  * without the overhead of a function call

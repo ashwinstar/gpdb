@@ -700,10 +700,6 @@ retry3:
 	 * since in normal practice we should not be trying to read data unless
 	 * the file selected for reading already.
 	 *
-	 * In SSL mode it's even worse: SSL_read() could say WANT_READ and then
-	 * data could arrive before we make the pqReadReady() test.  So we must
-	 * play dumb and assume there is more data, relying on the SSL layer to
-	 * detect true EOF.
 	 */
 
 	switch (pqReadReady(conn))
@@ -953,8 +949,6 @@ pqFlush(PGconn *conn)
 /*
  * pqWait: wait until we can read or write the connection socket
  *
- * JAB: If SSL enabled and used and forRead, buffered bytes short-circuit the
- * call to select().
  *
  * We also stop waiting and return if the kernel flags an exception condition
  * on the socket.  The actual error condition will be detected and reported
@@ -1019,9 +1013,6 @@ pqWriteReady(PGconn *conn)
  * Checks a socket, using poll or select, for data to be read, written,
  * or both.  Returns >0 if one or more conditions are met, 0 if it timed
  * out, -1 if an error occurred.
- *
- * If SSL is in use, the SSL buffer is checked prior to checking the socket
- * for read data directly.
  */
 static int
 pqSocketCheck(PGconn *conn, int forRead, int forWrite, time_t end_time)

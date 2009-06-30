@@ -86,7 +86,10 @@ typedef struct
 /*
  * POSTGRES backend dependent Constants.
  */
-#define CMDSTATUS_LEN 64		/* should match COMPLETION_TAG_BUFSIZE */
+
+/* Note:  GPDB uses 72 for COMPLETION_TAG_BUFSIZE, PostgreSQL uses 64.  Does this cause a problem? */
+
+#define CMDSTATUS_LEN 72		/* should match COMPLETION_TAG_BUFSIZE */
 
 /*
  * PGresult and the subsidiary types PGresAttDesc, PGresAttValue

@@ -81,7 +81,9 @@
 #define DefaultOption	""
 #define DefaultAuthtype		  ""
 #define DefaultPassword		  ""
-#define DefaultSSLMode	"disable"
+
+// Internal QD to QE communications don't use SSL
+//#define DefaultSSLMode	"disable"
 
 
 /* ----------
@@ -153,25 +155,8 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	"Backend-Debug-Options", "D", 40},
 
 	/*
-	 * ssl options are allowed even without client SSL support because the
-	 * client can still handle SSL modes "disable" and "allow". Other
-	 * parameters have no effect on non-SSL connections, so there is no reason
-	 * to exclude them since none of them are mandatory.
-	 */
-	{"sslmode", "PGSSLMODE", DefaultSSLMode, NULL,
-	"SSL-Mode", "", 8},			/* sizeof("disable") == 8 */
-
-	{"sslcert", "PGSSLCERT", NULL, NULL,
-	"SSL-Client-Cert", "", 64},
-
-	{"sslkey", "PGSSLKEY", NULL, NULL,
-	"SSL-Client-Key", "", 64},
-
-	{"sslrootcert", "PGSSLROOTCERT", NULL, NULL,
-	"SSL-Root-Certificate", "", 64},
-
-	{"sslcrl", "PGSSLCRL", NULL, NULL,
-	"SSL-Revocation-List", "", 64},
+     * Internal QD to QE communications don't use SSL
+     */
 
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
     {"gpqeid", NULL, "", NULL,
@@ -397,16 +382,9 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->pgpass = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "connect_timeout");
 	conn->connect_timeout = tmp ? strdup(tmp) : NULL;
-	tmp = conninfo_getval(connOptions, "sslmode");
-	conn->sslmode = tmp ? strdup(tmp) : NULL;
-	tmp = conninfo_getval(connOptions, "sslkey");
-	conn->sslkey = tmp ? strdup(tmp) : NULL;
-	tmp = conninfo_getval(connOptions, "sslcert");
-	conn->sslcert = tmp ? strdup(tmp) : NULL;
-	tmp = conninfo_getval(connOptions, "sslrootcert");
-	conn->sslrootcert = tmp ? strdup(tmp) : NULL;
-	tmp = conninfo_getval(connOptions, "sslcrl");
-	conn->sslcrl = tmp ? strdup(tmp) : NULL;
+/*
+ * Internal communications from QD to QE don't use SSL
+ */
 
 	tmp = conninfo_getval(connOptions, "gpqeid");
 	conn->gpqeid = tmp ? strdup(tmp) : NULL;
@@ -470,48 +448,6 @@ connectOptions2(PGconn *conn)
 		conn->pgunixsocket = conn->pghost;
 		conn->pghost = NULL;
 	}
-
-	/*
-	 * validate sslmode option
-	 */
-	if (conn->sslmode)
-	{
-		if (strcmp(conn->sslmode, "disable") != 0
-			&& strcmp(conn->sslmode, "allow") != 0
-			&& strcmp(conn->sslmode, "prefer") != 0
-			&& strcmp(conn->sslmode, "require") != 0
-			&& strcmp(conn->sslmode, "verify-ca") != 0
-			&& strcmp(conn->sslmode, "verify-full") != 0)
-		{
-			conn->status = CONNECTION_BAD;
-			printfPQExpBuffer(&conn->errorMessage,
-							libpq_gettext("invalid sslmode value: \"%s\"\n"),
-							  conn->sslmode);
-			return false;
-		}
-
-		switch (conn->sslmode[0])
-		{
-			case 'a':			/* "allow" */
-			case 'p':			/* "prefer" */
-
-				/*
-				 * warn user that an SSL connection will never be negotiated
-				 * since SSL was not compiled in?
-				 */
-				break;
-
-			case 'r':			/* "require" */
-			case 'v':			/* "verify-ca" or "verify-full" */
-				conn->status = CONNECTION_BAD;
-				printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext("sslmode value \"%s\" invalid when SSL support is not compiled in\n"),
-								  conn->sslmode);
-				return false;
-		}
-	}
-	else
-		conn->sslmode = strdup(DefaultSSLMode);
 
 	/*
 	 * Only if we get this far is it appropriate to try to connect. (We need a
@@ -1711,16 +1647,6 @@ freePGconn(PGconn *conn)
 		free(conn->pguser);
 	if (conn->pgpass)
 		free(conn->pgpass);
-	if (conn->sslmode)
-		free(conn->sslmode);
-	if (conn->sslcert)
-		free(conn->sslcert);
-	if (conn->sslkey)
-		free(conn->sslkey);
-	if (conn->sslrootcert)
-		free(conn->sslrootcert);
-	if (conn->sslcrl)
-		free(conn->sslcrl);
 
     if (conn->gpqeid)			/* CDB */
         free(conn->gpqeid);

@@ -313,11 +313,15 @@ extern int	PQclientEncoding(const PGconn *conn);
 extern int	PQsetClientEncoding(PGconn *conn, const char *encoding);
 
 /* Get the OpenSSL structure associated with a connection. Returns NULL for
- * unencrypted connections or if any other TLS library is in use. */
-extern void *PQgetssl(PGconn *conn);
+ * unencrypted connections or if any other TLS library is in use.  
+ *
+ * We don't support SSL for QD to QE internal communications, so this is moot.
 
-/* Tell libpq whether it needs to initialize OpenSSL */
-extern void PQinitSSL(int do_init);
+    extern void *PQgetssl(PGconn *conn);
+    extern void PQinitSSL(int do_init);
+
+ */
+
 
 /* Set verbosity for PQerrorMessage and PQresultErrorMessage */
 extern PGVerbosity PQsetErrorVerbosity(PGconn *conn, PGVerbosity verbosity);
