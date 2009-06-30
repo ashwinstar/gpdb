@@ -22,13 +22,6 @@
 
 #include "postgres.h"
 
-#undef KRB5
-#undef ENABLE_GSS
-#undef ENABLE_SSPI
-#undef USE_SSL
-#undef USE_LDAP
-
-
 #ifdef WIN32
 #include "win32.h"
 #else

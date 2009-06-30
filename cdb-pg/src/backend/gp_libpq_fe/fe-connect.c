@@ -28,12 +28,6 @@
 #include "gp-fe-auth.h"
 #include "pg_config_paths.h"
 
-#undef KRB5
-#undef ENABLE_GSS
-#undef ENABLE_SSPI
-#undef USE_LDAP
-#undef USE_SSL
-
 #ifdef WIN32
 #include "win32.h"
 #ifdef _WIN32_IE
@@ -2954,8 +2948,7 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	struct stat stat_buf;
 	char	   *passfile_env;
 
-#define LINELEN NAMEDATALEN*5
-	char		buf[LINELEN];
+	char		buf[NAMEDATALEN * 5]; 
 
 	if (dbname == NULL || strlen(dbname) == 0)
 		return NULL;
@@ -3051,8 +3044,6 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 
 	fclose(fp);
 	return NULL;
-
-#undef LINELEN
 }
 
 /*

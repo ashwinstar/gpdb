@@ -53,9 +53,6 @@
 #include <sys/select.h>
 #endif
 
-#undef USE_LDAP
-#undef USE_SSL
-
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
 #include "libpq/pqsignal.h"
