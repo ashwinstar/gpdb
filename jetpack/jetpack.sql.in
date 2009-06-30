@@ -15,9 +15,8 @@
 
 -- Must be superuser to create a language;
 -- Attempt this outside the transaction as this language might already be installed;
--- Now we install plpgsql into template1.  So no need to do it here.
 --
--- CREATE LANGUAGE plpgsql;
+CREATE LANGUAGE plpgsql;
 
 
 -- All other definitions in this file are run in a single transaction
