@@ -87,7 +87,15 @@ typedef struct
  * POSTGRES backend dependent Constants.
  */
 
-/* Note:  GPDB uses 72 for COMPLETION_TAG_BUFSIZE, PostgreSQL uses 64.  Does this cause a problem? */
+/* 
+ * Note:  GPDB uses 72 for COMPLETION_TAG_BUFSIZE, PostgreSQL uses 64.  
+ * Does this cause a problem?   It seems like it will if any application is compiled with
+ * the PostgreSQL header files, and "cheats" by looking directly in to the pg_result struct,
+ * instead of accessing the struct through the normal functions.
+ *
+ * If we set this to 64, we avoid that problem, but strings copied into cmdStatus might overflow
+ * the field, so we'd need to check on that.  And the number of rows could get truncated... Ugh.
+ */
 
 #define CMDSTATUS_LEN 72		/* should match COMPLETION_TAG_BUFSIZE */
 
