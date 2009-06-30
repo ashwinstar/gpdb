@@ -1,88 +1,115 @@
 COMMAND NAME: gpstop
 
-Stops or restarts a Greenplum Database system. Can also be used to
-reload the postgresql.conf file without a restart.
+Stops or restarts a Greenplum Database system.
+
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 gpstop [-d master_data_directory] [-B parallel_processes] 
-[-M smart | fast | immediate] [-r] [-y] [-a] 
-[-l logfile_directory] [-C] [-v | -q]
+       [-M smart | fast | immediate] [-r] [-y] [-a] 
+       [-l logfile_directory] [-C] [-v | -q]
 
-gpstop -m [-d master_data_directory] [-y] 
-[-l logfile_directory] [-C] [-v | -q]
+gpstop -m [-d master_data_directory] [-y] [-l logfile_directory] 
+       [-C] [-v | -q]
 
-gpstop -u [-m] [-d master_data_directory] [-l logfile_directory]  
-[-v | -q]
+gpstop -u [-d master_data_directory] [-u] [-l logfile_directory] 
+       [-v | -q] 
 
-gpstop  --version
+gpstop --version
 
-gpstop {-? | -h | --help}
+gpstop -? | -h | --help
+
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
+The gpstop utility is used to stop the database servers that 
+comprise a Greenplum Database system. When you stop a Greenplum 
+Database system, you are actually stopping several postgres database 
+server processes at once (the master and all of the segment instances). 
+The gpstop utility handles the shutdown of the individual 
+instances. Each instance is shutdown in parallel. 
 
-The gpstop utility is used to stop the database servers that comprise 
-a Greenplum Database system. When you stop a Greenplum Database system, 
-you are actually stopping several postgres database server processes at 
-once (the master and all of the segment instances). The gpstop utility 
-handles the shutdown of the individual instances. Each instance is 
-shutdown in parallel. 
+By default, you are not allowed to shut down Greenplum Database 
+if there are any client connections to the database. Use the 
+-C option to terminate any connections before shutting down. 
+If there are any transactions in progress, the default behavior is 
+to wait for them to commit before shutting down. Use the 
+-M fast or -M immediate options to either roll back or abort 
+open transactions.
 
-By default, you are not allowed to shut down Greenplum Database if 
-there are any client connections to the database. Use the -C option to 
-terminate any connections before shutting down. If there are any 
-transactions in progess, the default behavior is to wait for them to 
-commit before shutting down. Use the -M fast or -M immediate options 
-to either rollback or abort open transactions.
-
-With the -u option, the utility uploads changes made to the master 
-postgresql.conf and pg_hba.conf files without interruption of service. 
-Note that any active sessions will not pickup the changes until they 
-reconnect to the database.
-
-The following options are deprecated in version 3.3:[-f | -i | -s]. 
-Instead, use [-M smart] | fast] | immediate].  Also -z is deprecated.
+With the -u option, the utility uploads changes made to the 
+master postgresql.conf and pg_hba.conf files without interruption 
+of service. Note that any active sessions will not pickup the 
+changes until they reconnect to the database.
 
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--d <master_data_directory>
+-a (do not prompt)
 
-Optional. The master host data directory. If not specified, the value set 
-for $MASTER_DATA_DIRECTORY will be used.
+Do not prompt the user for confirmation.
 
 
--B <parallel_processes>
+-B parallel_processes
 
-The number of segments to stop in parallel. If not specified, the script 
-will start up to 60 parallel processes depending on how many segment 
-instances it needs to stop.
+The number of segments to stop in parallel. If not specified, the 
+utility will start up to 60 parallel processes depending on how 
+many segment instances it needs to stop.
 
+
+-C (cancel active connections)
+
+If the database has any active client connections, terminate 
+those sessions before shutting down. The default is to not allow 
+shutdown if users are connected to the database.
+
+
+-d master_data_directory
+
+Optional. The master host data directory. If not specified, the 
+value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-l logfile_directory
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-m (master only)
+
+Optional. Shuts down a Greenplum master instance that was 
+started in maintenance mode.
 
 
 -M fast (fast shutdown - rollback)
 
-Fast shut down. Any transactions in progress are interrupted and rolled back.
+Fast shut down. Any transactions in progress are interrupted 
+and rolled back.
 
 
 -M immediate (immediate shutdown - abort)
 
-Immediate shut down. Any transactions in progress are aborted. Use this 
-option with care if you are running in continue fault tolerance mode 
-(read-write), as this could cause data corruption.
+Immediate shut down. Any transactions in progress are aborted. 
+Use this option with care if you are running in continue fault 
+tolerance mode (read-write), as this could cause data corruption.
 
 
 -M smart (smart shutdown - wait for commits)
 
-Smart shut down. Waits for active transactions to complete before shutting 
-down. This is the default shutdown mode.
+Smart shut down. Waits for active transactions to complete 
+before shutting down. This is the default shutdown mode.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on 
+the screen, but is still written to the log file.
 
 
 -r (restart)
@@ -90,56 +117,35 @@ down. This is the default shutdown mode.
 Restart after shutdown is complete.
 
 
--m (master only)
+-u (reload pg_hba.conf and postgresql.conf only)
 
-Optional. Shuts down a Greenplum master instance that was started in 
-maintenance mode.
-
-
--y (do not stop standby master)
-
-Do not stop the standby master process. The default is to stop the standby 
-master.
-
-
--u (reload postgresql.conf only)
-
-This option tells the master instance to reload the postgresql.conf and 
-pg_hba.conf files but does not shutdown the Greenplum Database array. 
-Use this option to make new configuration settings active after editing 
+This option tells the master instance to reload the pg_hba.conf 
+file and runtime parameters of the postgresql.conf file but 
+does not shutdown the Greenplum Database array. Use this option 
+to make new configuration settings active after editing 
 postgresql.conf or pg_hba.conf.
 
 
--a (do not prompt)
+-v (verbose output)
 
-Do not prompt the user for confirmation.
-
-
--q (no screen output)
-
-Run in quiet mode. Command output is not displayed on the screen, but is 
-still written to the log file.
-
-
--l <logfile_directory>
-
-The directory to write the log file. Defaults to ~/gpAdminLogs.
-
-
-
--? | -h | --help 
-
-Displays the online help.
-
-
--v (verbose)
-
-Displays detailed status, progress and error messages output by the utility.
+Displays detailed status, progress and error messages 
+output by the utility.
 
 
 --version (show utility version)
 
 Displays the version of this utility.
+
+
+-y (do not stop standby master)
+
+Do not stop the standby master process. The default is to 
+stop the standby master.
+
+
+-? | -h | --help (help)
+
+Displays the online help.
 
 
 *****************************************************
@@ -151,10 +157,10 @@ Stop a Greenplum Database system in smart mode:
 gpstop
 
 
-Stop a Greenplum Database system in fast mode:
+Stop a Greenplum Database system in fast mode and 
+terminate active client connections:
 
-gpstop -M fast
-
+gpstop -M fast -C
 
 
 Stop all segment instances and then restart the system:
@@ -167,13 +173,9 @@ Stop a master instance that was started in maintenance mode:
 gpstop -m
 
 
-Display the online help for the gpstop script:
-
-gpstop -?
-
-
-Reload the postgresql.conf file after making configuration changes but do 
-not shutdown the Greenplum Database array:
+Reload the master postgresql.conf file and pg_hba.conf after
+making configuration changes but do not shutdown the 
+Greenplum Database array:
 
 gpstop -u
 
@@ -183,4 +185,3 @@ SEE ALSO
 *****************************************************
 
 gpstart
-
