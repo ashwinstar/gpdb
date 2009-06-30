@@ -17,12 +17,17 @@ OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
 
 BKIFILES = postgres.bki postgres.description postgres.shdescription
 
-all: cdb_schema.sql SUBSYS.o $(BKIFILES)
+all: cdb_util.sql cdb_schema.sql SUBSYS.o $(BKIFILES)
 
 cdb_schema.sql: cdb_schema.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
                 -e 's,@dlsuffix@,$(DLSUFFIX),g' \
              $< > cdb_schema.sql
+
+cdb_util.sql: cdb_util.in
+			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
+                -e 's,@dlsuffix@,$(DLSUFFIX),g' \
+             $< > cdb_util.sql
 
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
@@ -65,6 +70,7 @@ install-data: $(BKIFILES) installdirs
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
 	$(INSTALL_DATA) cdb_schema.sql '$(DESTDIR)$(datadir)/cdb_schema.sql'
+	$(INSTALL_DATA) cdb_util.sql '$(DESTDIR)$(datadir)/cdb_util.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
 
 installdirs:
