@@ -90,7 +90,10 @@ valid_tokens = {
     "match_columns": {'parse_children': False, 'parent': "output"},
     "update_columns": {'parse_children': False, 'parent': "output"},
     "update_condition": {'parse_children': True, 'parent': "output"}, 
-    "mapping": {'parse_children': False, 'parent': "output"}}
+    "mapping": {'parse_children': False, 'parent': "output"},
+    "sql": {'parse_children': True, 'parent': 'gpload'},
+    "before": {'parse_children': False, 'parent': 'sql'},
+    "after": {'parse_children': False, 'parent': 'sql'}}
 
 _abbrevs = [
     (1<<50L, ' PB'),
@@ -1814,6 +1817,23 @@ class gpload:
             self.pg8000.execute(sql.encode('utf-8'))
 
     def do_method(self):
+        # sql pre or post processing?
+        sql = self.getconfig('gpload:sql', list, default=None)
+        before = None
+        after = None
+        if sql:
+            before = self.getconfig('gpload:sql:before', unicode, default=None)
+            after = self.getconfig('gpload:sql:after', unicode, default=None)
+
+        if before:
+            self.log(self.LOG, "Pre-SQL from user: %s" % before)
+            if not self.options.D:
+                try:
+                    self.pg8000.execute(before.encode('utf-8'))
+                except pg8000.ProgrammingError, p:
+                    self.log(self.ERROR, 'could not execute SQL "%s": %s' %
+                             (before, p[2]))
+
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         if method=='insert':
             self.do_method_insert()
@@ -1823,6 +1843,15 @@ class gpload:
             self.do_method_merge()
         else:
             self.log(self.ERROR, 'unsupported method %s' % method)
+
+        if after:
+            self.log(self.LOG, "Post-SQL from user: %s" % after)
+            if not self.options.D:
+                try:
+                    self.pg8000.execute(after.encode('utf-8'))
+                except pg8000.ProgrammingError, p:
+                    self.log(self.ERROR, 'could not execute SQL "%s": %s' %
+                             (after, p[2]))
 
     def run2(self):
         self.log(self.DEBUG, 'config ' + str(self.config))
