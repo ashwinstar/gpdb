@@ -19,8 +19,10 @@ OBJS= gpmodcatversion.o pg_crc.o
 
 UPGRADEFILES := $(top_srcdir)/src/test/regress/input/loadcat33.source.in
 UPGRADEFILES += $(top_srcdir)/src/test/regress/input/loadcat34.source.in 
-UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade33/*.data)
-UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade34/*.in)
+UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade33/upg2*.data)
+UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade33/upg2*.in)
+UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade34/upg2*.data)
+UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade34/upg2*.in)
 
 all: gpmodcatversion
 

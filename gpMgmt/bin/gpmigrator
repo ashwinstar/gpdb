@@ -2212,42 +2212,48 @@ This issue must be resolved before upgrade can complete.
         for line in f:
             # translate to new pg_hba.conf format
             if upgrdfmt:
-                # ident
-                line = re.compile('ident sameuser$').sub('ident', line)
-                line = re.compile('ident (?!map=)(.*)$').sub('ident map=\\1', line)
-                # pam
-                line = re.compile('pam (?!pamservice=)(.*)$').sub('pam pamservice="\\1"', line)
-                # ldap is a little more complex
-                # our objective is to parse the following:
-                # ldap[s]://<server>[:<port>]/<basedn>[;prefix[;suffix]]
-                logger.debug("upgrading ldap entries")
-                r1 = re.compile('ldap "?(ldap[s]?)://([^:/]+)(:\d+)?/([^"]*)"?')
-                match = r1.search(line)
-                if match:
-                    s = "ldapserver=" + match.group(2).strip()
-                    if match.group(3):
-                        s += " ldapport=" + str(match.group(3)[1:]).strip()
-                    if match.group(4):
-                        fixes = match.group(4).strip().split(';')
-                        suffix = ""
-                        prefix = ""
-                        basedn = ""
-                        if len(fixes) > 3:
-                            raise UpgradeError('cannot rebuild ldap auth ' +
-                                               'entry: ' + line)
-                        if len(fixes) == 3:
-                            suffix = ' ldapsuffix="' + fixes[2] + '"'
-                        if len(fixes) >= 2:
-                            prefix = ' ldapprefix="' + fixes[1] + '"'
-                        if len(fixes) >= 1:
-                            basedn = "" # not used
-                        s += prefix + suffix
-                    if match.group(1) == "ldaps":
-                        s += " ldaptls=1"
-                    line = re.compile('ldap (.*)$').sub('ldap ' + s, line)
+
+                # translate from 3.2 format => 3.3 format:
+                if self.oldversion < '3.3.0.0' and self.newversion >= '3.3.0.0':
+                    # ident
+                    line = re.compile('ident sameuser$').sub('ident', line)
+                    line = re.compile('ident (?!map=)(.*)$').sub('ident map=\\1', line)
+                    # pam
+                    line = re.compile('pam (?!pamservice=)(.*)$').sub('pam pamservice="\\1"', line)
+                    # ldap is a little more complex
+                    # our objective is to parse the following:
+                    # ldap[s]://<server>[:<port>]/<basedn>[;prefix[;suffix]]
+                    logger.debug("upgrading ldap entries")
+                    r1 = re.compile('ldap "?(ldap[s]?)://([^:/]+)(:\d+)?/([^"]*)"?')
+                    match = r1.search(line)
+                    if match:
+                        s = "ldapserver=" + match.group(2).strip()
+                        if match.group(3):
+                            s += " ldapport=" + str(match.group(3)[1:]).strip()
+                        if match.group(4):
+                            fixes = match.group(4).strip().split(';')
+                            suffix = ""
+                            prefix = ""
+                            basedn = ""
+                            if len(fixes) > 3:
+                                raise UpgradeError('cannot rebuild ldap auth ' +
+                                                   'entry: ' + line)
+                            if len(fixes) == 3:
+                                suffix = ' ldapsuffix="' + fixes[2] + '"'
+                            if len(fixes) >= 2:
+                                prefix = ' ldapprefix="' + fixes[1] + '"'
+                            if len(fixes) >= 1:
+                                basedn = "" # not used
+                            s += prefix + suffix
+                        if match.group(1) == "ldaps":
+                            s += " ldaptls=1"
+                        line = re.compile('ldap (.*)$').sub('ldap ' + s, line)
+
             else:
-                line = re.compile('ident$').sub('ident sameuser', line)
-                line = re.compile('ident map=(.*)$').sub('ident \\1', line)
+                # downgrade
+                if self.newversion < '3.3.0.0' and self.oldversion >= '3.3.0.0':
+                    line = re.compile('ident$').sub('ident sameuser', line)
+                    line = re.compile('ident map=(.*)$').sub('ident \\1', line)
 
             logger.debug('writing to %s line %s' % (to, line))
             t.write(line)
@@ -3882,6 +3888,9 @@ This issue must be resolved before upgrade can complete.
         '''
  
         logger.info('Performing multi-stage catalog transformation')
+        tmpdir = tempfile.mkdtemp()
+        logger.debug("created temporary directory " + tmpdir)
+
         def get_new_files(procfile, path, dbdir):
             out = []
             f = open(procfile, 'r')
@@ -3933,7 +3942,13 @@ This issue must be resolved before upgrade can complete.
             # create files to back new relations
             if os.path.basename(tfile) == 'loadcat33.source':
                 cl = os.path.join(os.path.dirname(tfile),
-                                  'upg2_pg_class_toadd.data')
+                                  'upg2_pg_class_toadd32.data')
+                dbdir = os.path.join('base', str(dboid))
+                new_files = get_new_files(cl, path, dbdir)
+                touch_files(new_files)
+            if os.path.basename(tfile) == 'loadcat34.source':
+                cl = os.path.join(os.path.dirname(tfile),
+                                  'upg2_pg_class_toadd33.data')
                 dbdir = os.path.join('base', str(dboid))
                 new_files = get_new_files(cl, path, dbdir)
                 touch_files(new_files)
@@ -3966,8 +3981,6 @@ This issue must be resolved before upgrade can complete.
             """
         
             out = []
-            tmpdir = tempfile.mkdtemp()
-            logger.debug("created temporary directory " + tmpdir)
             # strings to find and the data to replace those strings with
             transforms = [['@gpupgradeschemaname@', 'pg_catalog'],
                           ['@gpinfoschemaname@', 'information_schema'],
@@ -4021,44 +4034,48 @@ This issue must be resolved before upgrade can complete.
                 dbs[f] = g
 
         # files for upgrading from 3.2 to 3.3
-        files = []
+        datafiles = []
+        runfiles = []
         if self.upgrade:
-            files = []
+            runfiles = []
             if (self.oldversion <= '3.2' and self.newversion >= '3.3.0.0'):
-                files.extend(["loadcat33.source.in",
-                              "upg33_pg_class_toadd.data.in",
-                              "upg33_pg_attribute_toadd.data.in",
-                              "upg33_pg_type_toadd.data.in",
-                              "upg33_pg_index_toadd.data.in",
-                              "upg33_pg_proc_toadd.data",
-                              "upg33_pg_namespace_toadd.data",
-                              "upg33_pg_description_toadd.data",
-                              "upg33_pg_depend_toadd.data"])
+                runfiles.extend(["loadcat33.source.in",
+                                 "upg2_conversion.sql.in"])
+                datafiles.extend(["upg2_pg_class32_toadd.data.in",
+                                  "upg2_pg_attribute_toadd32.data.in",
+                                  "upg2_pg_type_toadd.data32.in",
+                                  "upg2_pg_index_toadd.data32.in",
+                                  "upg2_pg_proc_toadd32.data",
+                                  "upg2_pg_namespace_toadd32.data",
+                                  "upg2_pg_description_toadd32.data",
+                                  "upg2_pg_depend_toadd32.data"])
+
             if (self.oldversion <= '3.3' and self.newversion >= '3.4.0.0'):
-                files.extend(["loadcat34.source.in",
-                              "upg34_pg_class_toadd.data.in",
-                              "upg34_pg_attribute_toadd.data.in",
-                              "upg34_pg_type_toadd.data.in",
-                              "upg34_pg_index_toadd.data.in",
-                              "upg34_pg_proc_toadd.data",
-                              "upg34_pg_namespace_toadd.data",
-                              "upg34_pg_description_toadd.data",
-                              "upg34_pg_depend_toadd.data"])
+                runfiles.extend(["loadcat34.source.in"])
+                datafiles.extend(["upg2_pg_class_toadd33.data.in",
+                                  "upg2_pg_attribute_toadd33.data.in",
+                                  "upg2_pg_type_toadd33.data.in",
+                                  "upg2_pg_index_toadd33.data.in",
+                                  "upg2_pg_proc_toadd33.data",
+                                  "upg2_pg_namespace_toadd33.data",
+                                  "upg2_pg_description_toadd33.data",
+                                  "upg2_pg_depend_toadd33.data"])
 
             h = self.newhome
-            conv = make_files(['upgrade_conversion.sql.in'],
-                              '%s/share/postgresql/upgrade/' % self.newhome,
-                              self.user)
+            
         else:
             # need to use self.oldhome here as downgrade_conversion.sql.in
             # is only available for 3.3
             h = self.oldhome
-            conv = make_files(['downgrade_conversion.sql.in'],
-                              '%s/share/postgresql/upgrade/' % h,
-                              self.user)
-        fs = make_files(files,
-                        '%s/share/postgresql/upgrade/' % h,
-                        self.user)
+            # Not actually supported, errors out earlier
+            runfiles.extend(["downgrade_conversion.sql.in"])
+
+        make_files(datafiles, 
+                   '%s/share/postgresql/upgrade/' % h,
+                   self.user)
+        rfs = make_files(runfiles,
+                         '%s/share/postgresql/upgrade/' % h,
+                         self.user)
 
         seg_re  = re.compile('^(%s\d+|dummyseg)$' % seg_prefix)        
         for d in datadirs:
@@ -4067,13 +4084,9 @@ This issue must be resolved before upgrade can complete.
                     
                     # The directory for this segment
                     dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-                    if self.upgrade:
-                        # fs[0] is loadcat33
-                        logger.info('Pass 1')
-                        transform(dir, dbs, fs[0])
-
-                    logger.info('Pass 2')
-                    transform(dir, dbs, conv[0])
+                    for i in range(len(rfs)):
+                        logger.info('Pass %d' % i)
+                        transform(dir, dbs, rfs[i])
 
                     # ao file too -- must be last because we
                     # use this file to VACUUM FREEZE template databases
