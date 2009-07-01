@@ -41,12 +41,21 @@ typedef struct Gang
 	int			segdb_count;
 	bool		all_valid_segdbs_connected;
 	bool		allocated;
-	bool		active;
-	char		*portal_name; /* the named portal that owns this gang, NULL if none */
-	struct DispatchAgentSet * dispatchagents;		/* NULL if gang is directly connected */
-	struct SegmentDatabaseDescriptor *db_descriptors;	/* Array of QEs/segDBs
-														 * that make up this
-														 * gang */
+	bool		active; /* ?? */
+
+	/* MPP-6253: on *writer* gangs keep track of dispatcher use
+	 * (reader gangs already track this properly, since they get
+	 * allocated from a list of available gangs.*/
+	bool		dispatcherActive; 
+
+	/* the named portal that owns this gang, NULL if none */
+	char		*portal_name;
+
+	/* link to agent-set, NULL if gang is directly connected */
+	struct DispatchAgentSet *dispatchagents;
+
+	/* Array of QEs/segDBs that make up this gang */
+	struct SegmentDatabaseDescriptor *db_descriptors;	
 } Gang;
 
 typedef struct GpSegmentConnectionInfo

@@ -521,7 +521,6 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 
 		}
 
-
 		for (j = 0; j < newGangDefinition->size; j++)
 		{
 			/*
@@ -548,7 +547,6 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 			conninfo->seginfo[i].port = newGangDefinition->db_descriptors[j].segment_database_info->port;
 			conninfo->nsegs++;
 		}
-
 
 		newGangDefinition->active = true;
 
@@ -2615,7 +2613,6 @@ allocateWriterGang(GangType type)
 	 * if it exists, we return it.
 	 * Else, we create a new gang
 	 */
-
 	if ((type == GANGTYPE_PRIMARY_WRITER && writer_gang == NULL) ||
 		(type == GANGTYPE_MIRROR_WRITER && writer_gang == NULL && !mirroringNotConfigured))
 	{

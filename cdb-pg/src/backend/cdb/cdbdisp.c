@@ -164,8 +164,7 @@ checkSegmentDown(const char *strCommand, int nsegdb,
 			strncmp(strCommand, COMMIT_STR, sizeof(COMMIT_STR) - 1) != 0 &&
 			strncmp(strCommand, ROLLBACK_STR, sizeof(ROLLBACK_STR) - 1) != 0 &&
 			strncmp(strCommand, PG_RELATION_SIZE_STR, sizeof(PG_RELATION_SIZE_STR) - 1) != 0 &&
-			strncmp(strCommand, PG_HIGHEST_OID_STR, sizeof(PG_HIGHEST_OID_STR) - 1) != 0
-			)
+			strncmp(strCommand, PG_HIGHEST_OID_STR, sizeof(PG_HIGHEST_OID_STR) - 1) != 0)
 		{
 			if (strncmp(strCommand, MPPEXEC_CAP_STR, sizeof(MPPEXEC_CAP_STR) - 1) == 0 ||
 				strncmp(strCommand, MPPEXEC_STR, sizeof(MPPEXEC_STR) - 1) == 0)
@@ -173,6 +172,23 @@ checkSegmentDown(const char *strCommand, int nsegdb,
 			else
 				elog(NOTICE, "Segment failures detected in system - normal query processing continuing with mirror segments (%.50s).", strCommand);
 		}
+	}
+}
+
+/*
+ * NOT THREAD SAFE
+ */
+static void
+cdbdisp_clearGangActiveFlag(CdbDispatchResults *primaryResults, CdbDispatchResults *mirrorResults, int line)
+{
+	if (primaryResults && primaryResults->writer_gang)
+	{
+		primaryResults->writer_gang->dispatcherActive = false;
+	}
+
+	if (mirrorResults && mirrorResults->writer_gang)
+	{
+		mirrorResults->writer_gang->dispatcherActive = false;
 	}
 }
 
@@ -222,7 +238,6 @@ static MemoryContext DispatchContext = NULL;
  * 
  * Ugly:  This write in a fixed format, and ignore what the log_prefix guc says.
  */
-
 static pthread_mutex_t send_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef WIN32
@@ -296,7 +311,7 @@ write_log(const char *fmt,...)
 
 	if (Redirect_stderr && gp_log_format == 1)
 	{
-		char		errbuf[2048];		/* Arbitrary size? */
+		char		errbuf[2048]; /* Arbitrary size? */
 		
 		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
@@ -404,6 +419,7 @@ write_log(const char *fmt,...)
 
 /*--------------------------------------------------------------------*/
 
+
 /*
  * cdbdisp_dispatchToGang:
  * Send the strCommand SQL statement to the subset of all segdbs in the cluster
@@ -443,7 +459,6 @@ write_log(const char *fmt,...)
  * slices in a plan. For dispatch of single commands (ie most uses of
  * cdbdisp_dispatchToGang()), setting it to 1 is fine.
  */
-
 void
 cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 					   GpDispatchCommandType		mppDispatchCommandType,
@@ -451,7 +466,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex,
-                       unsigned int                 maxSlices)
+                       unsigned int                 maxSlices, int caller)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	int	i,
@@ -466,12 +481,26 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
 	Assert(gp && gp->size > 0);
-	Assert(dispatchResults &&
-			   dispatchResults->resultArray);
+	Assert(dispatchResults && dispatchResults->resultArray);
+
+	if (dispatchResults->writer_gang)
+	{
+		/* Are we dispatching to the writer-gang when it is already busy ? */
+		if (gp == dispatchResults->writer_gang)
+		{
+			if (dispatchResults->writer_gang->dispatcherActive)
+			{
+				elog(ERROR, "Statement Error, writer gang busy: possible attempt to execute volatile function in unsupported context caller %d", caller);
+				/* not reached */
+			}
+
+			dispatchResults->writer_gang->dispatcherActive = true;
+		}
+	}
 
 	switch (mppDispatchCommandType)
 	{
-	case GP_DISPATCH_COMMAND_TYPE_QUERY:
+		case GP_DISPATCH_COMMAND_TYPE_QUERY:
 		{
 			DispatchCommandQueryParms *pQueryParms = (DispatchCommandQueryParms *) commandTypeParms;
 
@@ -489,7 +518,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		}
 		break;
 
-	case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+		case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 		{
 			DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
 			
@@ -508,9 +537,9 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		}
 		break;
 
-	default:
-		elog(FATAL, "Unrecognized MPP dispatch command type: %d",
-			(int) mppDispatchCommandType);
+		default:
+			elog(FATAL, "Unrecognized MPP dispatch command type: %d",
+				 (int) mppDispatchCommandType);
 	}
 
 	db_descriptors_size = gp->size;
@@ -547,10 +576,10 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	if (DispatchContext == NULL)
 	{
 		DispatchContext = AllocSetContextCreate(TopMemoryContext,
-											 "Dispatch Context",
-											 ALLOCSET_DEFAULT_MINSIZE,
-											 ALLOCSET_DEFAULT_INITSIZE,
-											 ALLOCSET_DEFAULT_MAXSIZE);
+												"Dispatch Context",
+												ALLOCSET_DEFAULT_MINSIZE,
+												ALLOCSET_DEFAULT_INITSIZE,
+												ALLOCSET_DEFAULT_MAXSIZE);
 	}
 	Assert(DispatchContext != NULL);
 	
@@ -642,10 +671,10 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 	if (segdbs_in_thread_pool == 0)
 		newThreads += 0;
 	else
-	if (gp_connections_per_thread == 0)
-		newThreads += 1;
-	else
-		newThreads += 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
+		if (gp_connections_per_thread == 0)
+			newThreads += 1;
+		else
+			newThreads += 1 + (segdbs_in_thread_pool - 1) / gp_connections_per_thread;
 
 	/*
 	 * Create the threads. (which also starts the dispatching).
@@ -750,7 +779,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 		
 		switch (mppDispatchCommandType)
 		{
-		case GP_DISPATCH_COMMAND_TYPE_QUERY:
+			case GP_DISPATCH_COMMAND_TYPE_QUERY:
 			{
 				DispatchCommandQueryParms *pQueryParms = (DispatchCommandQueryParms *) commandTypeParms;
 
@@ -826,7 +855,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 			}
 			break;
 		
-		case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 			{
 				DispatchCommandDtxProtocolParms *pDtxProtocolParms = (DispatchCommandDtxProtocolParms *) commandTypeParms;
 
@@ -840,9 +869,9 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 			}
 			break;
 
-		default:
-			elog(FATAL, "Unrecognized MPP dispatch command type: %d",
-				(int) mppDispatchCommandType);
+			default:
+				elog(FATAL, "Unrecognized MPP dispatch command type: %d",
+					 (int) mppDispatchCommandType);
 		}
 		
 		pParms->sessUserId = GetSessionUserId();
@@ -890,6 +919,7 @@ CdbCheckDispatchResult(struct CdbDispatchCmdThreads  *dispatchThreads, bool canc
 	if (DEBUG1 >= log_min_messages)
 	{
 		char		msec_str[32];
+
 		switch (check_log_duration(msec_str, false))
 		{
 			case 1:
@@ -933,8 +963,7 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 	 * Wait for threads to finish.
 	 */
 	for (i = 0; i < dispatchThreads->threadCount; i++)
-	{							/* loop over threads */
-		
+	{							/* loop over threads */		
 		pParms = &dispatchThreads->dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
 		
@@ -944,7 +973,6 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
 		}
 		else
 		{
-
 			elog(DEBUG4, "CheckDispatchResult: Joining to thread %d of %d",
 				 i + 1, dispatchThreads->threadCount);
 	
@@ -1069,9 +1097,9 @@ CdbCheckDispatchResultInt(struct CdbDispatchCmdThreads  *dispatchThreads,
  */
 struct pg_result **
 cdbdisp_returnResults(CdbDispatchResults *primaryResults,
-						CdbDispatchResults *mirrorResults,
-						StringInfo errmsgbuf,
-						int *numresults)
+					  CdbDispatchResults *mirrorResults,
+					  StringInfo errmsgbuf,
+					  int *numresults)
 {
 	CdbDispatchResults *gangResults;
 	CdbDispatchResult *dispatchResult;
@@ -1091,7 +1119,7 @@ cdbdisp_returnResults(CdbDispatchResults *primaryResults,
 
 	if(!resultSets)
 		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("cdbdisp_returnResults failed: out of memory")));
+						errmsg("cdbdisp_returnResults failed: out of memory")));
 
 	/* Collect results from primary gang. */
 	gangResults = primaryResults;
@@ -1163,21 +1191,19 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 						  bool dispatchToMirrors,
 						  StringInfo errmsgbuf,
 						  int *numresults)
-
 {
-
-	CdbDispatchResults *primaryResults;
-	CdbDispatchResults *mirrorResults;
+	CdbDispatchResults *primaryResults=NULL;
+	CdbDispatchResults *mirrorResults=NULL;
 
 	CdbDispatchCmdThreads  *dispatchThreads;
 	
 	PGresult  **resultSets = NULL;
 
-	
 	/* never want to start a global transaction for these */
 	bool		needTwoPhase = false;
 
-	elog(((Debug_print_full_dtm | Debug_print_snapshot_dtm) ? LOG : DEBUG5), "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
+	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
+		 "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
 	     strCommand, (withSnapshot ? "true" : "false"));
 
 	/* Launch the command.	Don't cancel on error. */
@@ -1190,11 +1216,13 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
 
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
+
 	resultSets = cdbdisp_returnResults(primaryResults,mirrorResults,errmsgbuf,numresults);
 	
 	/* free memory allocated for the dispatch threads struct */
 	cdbdisp_destroyDispatchThreads(dispatchThreads);
-	
+
 	return resultSets;
 }	/* cdbdisp_dispatchRMCommand */
 
@@ -1212,15 +1240,14 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
  */
 struct pg_result **				/* returns ptr to array of PGresult ptrs */
 cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
-						  int						flags,
-						  char*						dtxProtocolCommandLoggingStr,
-						  char*						gid,
-						  DistributedTransactionId	gxid,
-						  bool dispatchToMirrors,
-						  StringInfo errmsgbuf,
-						  int *numresults,
-						  bool *badGangs)
-
+								   int	flags,
+								   char	*dtxProtocolCommandLoggingStr,
+								   char	*gid,
+								   DistributedTransactionId	gxid,
+								   bool dispatchToMirrors,
+								   StringInfo errmsgbuf,
+								   int *numresults,
+								   bool *badGangs)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
@@ -1235,7 +1262,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: %s for gid = %s", 
 		 dtxProtocolCommandLoggingStr, gid);
-	
+
 	Assert(dispatchToMirrors);	/* Dispatch agent assumes this for now */
 
 	*badGangs = false;
@@ -1275,14 +1302,17 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
     dispatchThreads = NULL;
 
 	primaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
-	
+
+	primaryResults->writer_gang = primaryGang;
+
 	if (Gp_role == GP_ROLE_DISPATCH && gp_use_dispatch_agent)
 		dispatchToMirrors = false;	/* The dispatch agent will handle sending to the mirrors */
 
-	
 	if (dispatchToMirrors && mirrorGang)
 	{
         mirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, /* cancelOnError */ false);
+
+		mirrorResults->writer_gang = mirrorGang;
 	}
 	else
 		mirrorResults = NULL;
@@ -1291,8 +1321,8 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	cdbdisp_dispatchToGang(&dispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 						   &dtxProtocolParms,
-						   primaryGang, primaryResults, -1, 1);
-	
+						   primaryGang, primaryResults, -1, 1, __LINE__);
+
 	/*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
 	 * mirror gang.  So, we don't need to send it ourselves.
@@ -1303,18 +1333,21 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		cdbdisp_dispatchToGang(&dispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 							   &dtxProtocolParms,
-							   mirrorGang, mirrorResults, -1, 1);
+							   mirrorGang, mirrorResults, -1, 1, __LINE__);
 	}
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
-	
+
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
 
 	if (!gangOK(primaryGang) ||
 		(dispatchToMirrors && mirrorGang && !gangOK(mirrorGang)))
 	{
 		*badGangs = true;
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "cdbdisp_dispatchDtxProtocolCommand: Bad gang from dispatch of %s for gid = %s", 
+
+		elog((Debug_print_full_dtm ? LOG : DEBUG5),
+			 "cdbdisp_dispatchDtxProtocolCommand: Bad gang from dispatch of %s for gid = %s", 
 			 dtxProtocolCommandLoggingStr, gid);
 	}
 
@@ -1322,9 +1355,9 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	
 	/* free memory allocated for the dispatch threads struct */
 	cdbdisp_destroyDispatchThreads(dispatchThreads);
-	
+
 	return resultSets;
-}	/* cdbdisp_dispatchRMCommand */
+}	/* cdbdisp_dispatchDtxProtocolCommand */
 
 
 /*--------------------------------------------------------------------*/
@@ -1376,7 +1409,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		ResetUsage();
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
-	
+
 	if (DEBUG5 >= log_min_messages)
     	elog(DEBUG3, "cdbdisp_dispatchCommand: %s (needTwoPhase = %s)", 
 	    	 strCommand, (needTwoPhase ? "true" : "false"));
@@ -1394,7 +1427,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	queryParms.strCommand = strCommand;
 	queryParms.serializedQuerytree = serializedQuerytree;
 	queryParms.serializedQuerytreelen = serializedQuerytreelen;
-	
+
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
@@ -1424,14 +1457,13 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		 * If we are the QD, and sending via Dispatch Agents, we want to send only
 		 * once.  The DA will send to the primary and/or mirror gang based on what we tell it.
 		 */
-		
 		elog(DEBUG1,"mirror only dispatch");
 		
 		*pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
 	    cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1);
+							   mirrorGang, *pMirrorResults, -1, 1, __LINE__);
 	    
 	    /*
 	     * make sure we don't dispatch again 
@@ -1446,24 +1478,27 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	if (dispatchToPrimaries)
 	{
 		*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+		(*pPrimaryResults)->writer_gang = primaryGang;
+
 		cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   primaryGang, *pPrimaryResults, -1, 1);
+							   primaryGang, *pPrimaryResults, -1, 1, __LINE__);
 	}
-	
+
 	/*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
 	 * mirror gang.  So, we don't need to send it ourselves.
 	 */
-	
 	if (dispatchToMirrors && mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+		(*pMirrorResults)->writer_gang = mirrorGang;
+
         cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1);
+							   mirrorGang, *pMirrorResults, -1, 1, __LINE__);
     }
 
 	/*
@@ -1500,6 +1535,8 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 
 	/* Wait for all QEs to finish. Don't cancel them. */
 	CdbCheckDispatchResult(dispatchThreads, false);
+
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
 
 	/* If no errors, free the CdbDispatchResults objects and return. */
 	if (primaryResults)
@@ -1583,6 +1620,8 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 	 * cleanup of the results from the async command executions.
 	 */
 	CdbCheckDispatchResult(dispatchThreads, true);   /* cancel any QEs still running */
+
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
 
     /*
      * When a QE stops executing a command due to an error, as a
@@ -1733,10 +1772,12 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
      */
 	gangCount = 1 + list_length(readerGangs);
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * gangCount, 0, cancelOnError);
+
+	(*pPrimaryResults)->writer_gang = primaryGang;
     cdbdisp_dispatchToGang(pDispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_QUERY,
 						   &queryParms,
-						   primaryGang, *pPrimaryResults, -1, gangCount);
+						   primaryGang, *pPrimaryResults, -1, gangCount, __LINE__);
 
     /*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
@@ -1745,12 +1786,13 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	if (mirrorGang && (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent))
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+		(*pMirrorResults)->writer_gang = mirrorGang;
         cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, gangCount);
+							   mirrorGang, *pMirrorResults, -1, gangCount, __LINE__);
     }
-	
+
 	/*
 	 * TODO: Uh oh... We don't yet have a way to send to all the reader gangs
 	 * when we are using Dispatch Agents.
@@ -1763,7 +1805,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 			cdbdisp_dispatchToGang(pDispatchThreads, 
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 								   &queryParms,
-								   rg, *pPrimaryResults, -1, gangCount);
+								   rg, *pPrimaryResults, -1, gangCount, __LINE__);
 		}
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
@@ -1779,44 +1821,44 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 
 	switch (pParms->mppDispatchCommandType)
 	{
-	case GP_DISPATCH_COMMAND_TYPE_QUERY:
+		case GP_DISPATCH_COMMAND_TYPE_QUERY:
 		{
 			DispatchCommandQueryParms *pQueryParms = &pParms->queryParms;
 			
 			pParms->query_text = PQbuildGpQueryString(
-						pQueryParms->strCommand, pQueryParms->strCommandlen, 
-						pQueryParms->serializedQuerytree, pQueryParms->serializedQuerytreelen, 
-						pQueryParms->serializedPlantree, pQueryParms->serializedPlantreelen, 
-						pQueryParms->serializedParams, pQueryParms->serializedParamslen, 
-						pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
-						pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
-						0 /* unused flags*/, pParms->cmdID, pParms->localSlice, pQueryParms->rootIdx,
-						pQueryParms->primary_gang_id, pQueryParms->mirror_gang_id,
-						GetCurrentStatementStartTimestamp(),
-						pParms->sessUserId, pParms->sessUserId_is_super,
-						pParms->outerUserId, pParms->outerUserId_is_super, pParms->currUserId,
-						&pParms->query_text_len);
+				pQueryParms->strCommand, pQueryParms->strCommandlen, 
+				pQueryParms->serializedQuerytree, pQueryParms->serializedQuerytreelen, 
+				pQueryParms->serializedPlantree, pQueryParms->serializedPlantreelen, 
+				pQueryParms->serializedParams, pQueryParms->serializedParamslen, 
+				pQueryParms->serializedSliceInfo, pQueryParms->serializedSliceInfolen, 
+				pQueryParms->serializedDtxContextInfo, pQueryParms->serializedDtxContextInfolen, 
+				0 /* unused flags*/, pParms->cmdID, pParms->localSlice, pQueryParms->rootIdx,
+				pQueryParms->primary_gang_id, pQueryParms->mirror_gang_id,
+				GetCurrentStatementStartTimestamp(),
+				pParms->sessUserId, pParms->sessUserId_is_super,
+				pParms->outerUserId, pParms->outerUserId_is_super, pParms->currUserId,
+				&pParms->query_text_len);
 		}
 		break;
 
-	case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+		case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 		{
 			pParms->query_text = PQbuildGpDtxProtocolCommand(
-						(int)pParms->dtxProtocolParms.dtxProtocolCommand,
-						pParms->dtxProtocolParms.flags,
-						pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr,
-						pParms->dtxProtocolParms.gid,
-						pParms->dtxProtocolParms.gxid,
-						pParms->dtxProtocolParms.primary_gang_id,
-						pParms->dtxProtocolParms.mirror_gang_id,
-						&pParms->query_text_len);
+				(int)pParms->dtxProtocolParms.dtxProtocolCommand,
+				pParms->dtxProtocolParms.flags,
+				pParms->dtxProtocolParms.dtxProtocolCommandLoggingStr,
+				pParms->dtxProtocolParms.gid,
+				pParms->dtxProtocolParms.gxid,
+				pParms->dtxProtocolParms.primary_gang_id,
+				pParms->dtxProtocolParms.mirror_gang_id,
+				&pParms->query_text_len);
 		}
 		break;
 
-	default:
-		write_log("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
-		pParms->query_text_len = 0;
-		return false;
+		default:
+			write_log("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
+			pParms->query_text_len = 0;
+			return false;
 	}
 
 	if (pParms->query_text == NULL)
@@ -1840,7 +1882,7 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 			if (dispatchResult->segdbDesc->conn)
 			{
 				write_log("thread_DispatchCommand working on %d of %d commands.  asyncStatus %d\n",
-	                         i + 1, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
+						  i + 1, db_count, dispatchResult->segdbDesc->conn->asyncStatus);
 			}
 		}
 
@@ -1925,34 +1967,34 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 			
 			switch (pParms->mppDispatchCommandType)
 			{
-			case GP_DISPATCH_COMMAND_TYPE_QUERY:
-	            dispatchCommandQuery(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->queryParms.strCommand);
-				break;
+				case GP_DISPATCH_COMMAND_TYPE_QUERY:
+					dispatchCommandQuery(dispatchResult, pParms->query_text, pParms->query_text_len, pParms->queryParms.strCommand);
+					break;
 				
-			case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
+				case GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL:
 
-				if (Debug_dtm_action == DEBUG_DTM_ACTION_DELAY &&
-					Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
-					Debug_dtm_action_protocol == pParms->dtxProtocolParms.dtxProtocolCommand &&
-					Debug_dtm_action_segment == dispatchResult->segdbDesc->segment_database_info->segindex &&
-					Debug_dtm_action_primary == dispatchResult->segdbDesc->segment_database_info->isprimary)
-				{
-					write_log("Delaying '%s' broadcast for segment %d (%s) by %d milliseconds.\n",
-					             DtxProtocolCommandToString(Debug_dtm_action_protocol),
-					             Debug_dtm_action_segment,
-					             (Debug_dtm_action_primary ? "primary" : "mirror"),
-					             Debug_dtm_action_delay_ms);
-					pg_usleep(Debug_dtm_action_delay_ms * 1000);
-				}
+					if (Debug_dtm_action == DEBUG_DTM_ACTION_DELAY &&
+						Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
+						Debug_dtm_action_protocol == pParms->dtxProtocolParms.dtxProtocolCommand &&
+						Debug_dtm_action_segment == dispatchResult->segdbDesc->segment_database_info->segindex &&
+						Debug_dtm_action_primary == dispatchResult->segdbDesc->segment_database_info->isprimary)
+					{
+						write_log("Delaying '%s' broadcast for segment %d (%s) by %d milliseconds.\n",
+								  DtxProtocolCommandToString(Debug_dtm_action_protocol),
+								  Debug_dtm_action_segment,
+								  (Debug_dtm_action_primary ? "primary" : "mirror"),
+								  Debug_dtm_action_delay_ms);
+						pg_usleep(Debug_dtm_action_delay_ms * 1000);
+					}
 				
-	            dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 
-					                       pParms->dtxProtocolParms.dtxProtocolCommand);
-				break;
+					dispatchCommandDtxProtocol(dispatchResult, pParms->query_text, pParms->query_text_len, 
+											   pParms->dtxProtocolParms.dtxProtocolCommand);
+					break;
 				
-			default:
-				write_log("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
-				pParms->query_text_len = 0;
-				return false;
+				default:
+					write_log("bad dispatch command type %d\n", (int) pParms->mppDispatchCommandType);
+					pParms->query_text_len = 0;
+					return false;
 			}
 			
             dispatchResult->hasDispatched = true;
@@ -2207,7 +2249,7 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 	segdbDesc = dispatchResult->segdbDesc;
 	
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
-	/* Lost the connection. */
+		/* Lost the connection. */
 	{
 		msg = PQerrorMessage(segdbDesc->conn);
 
@@ -2281,8 +2323,8 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 					char	   *cmdStatus = PQcmdStatus(pRes);
 
 					write_log("%s -> ok %s\n",
-							     segdbDesc->whoami,
-							     cmdStatus ? cmdStatus : "(no cmdStatus)");
+							  segdbDesc->whoami,
+							  cmdStatus ? cmdStatus : "(no cmdStatus)");
 				}
 				
 				if (resultStatus == PGRES_COPY_IN ||
@@ -2302,10 +2344,10 @@ thread_DispatchWaitSingle(DispatchCommandParms		*pParms)
 				{
 					/* Don't use elog, it's not thread-safe */
 					write_log("%s -> %s %s  %s",
-	                             segdbDesc->whoami,
-							     PQresStatus(resultStatus),
-							     sqlstate ? sqlstate : "(no SQLSTATE)",
-							     msg ? msg : "\n");
+							  segdbDesc->whoami,
+							  PQresStatus(resultStatus),
+							  sqlstate ? sqlstate : "(no SQLSTATE)",
+							  msg ? msg : "\n");
 				}
 
 				/*
@@ -2434,7 +2476,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 			{
 				/* Don't use elog, it's not thread-safe */
 				write_log("Error cleanup in progress; command not sent to %s\n", 
-						     segdbDesc->whoami);
+						  segdbDesc->whoami);
 			}
 			return false;
 		}
@@ -2450,7 +2492,7 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 		dispatchResult->wasCanceled = true;
 		if (DEBUG4 >= log_min_messages)
 			write_log("Cancellation request pending; command not sent to %s\n",
-					     segdbDesc->whoami);
+					  segdbDesc->whoami);
 		return false;
 	}
 
@@ -3033,7 +3075,7 @@ CdbDoCommand(const char *strCommand,
 	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommand for command = '%s', needTwoPhase = %s",
 		 strCommand, (needTwoPhase ? "true" : "false"));
-		
+
 	if (needTwoPhase)
 	{
 		/* Mark this txn as needing a two-phase distributed transaction */
@@ -3049,7 +3091,6 @@ CdbDoCommand(const char *strCommand,
 	 * report the error and throw up.
 	 */
 	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
-
 }	/* CdbDoCommandNoTxn */
 
 
@@ -3064,14 +3105,13 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "CdbDoCommandOnAllGangs for command = '%s', needTwoPhase = %s",
 		 strCommand, (needTwoPhase ? "true" : "false"));
-		
 
 	if (needTwoPhase)
 	{
 		/* mark this txn as dirty */
 		setCurrentDtxTwoPhase("CdbDoCommandOnAllGangs", strCommand);
 	}
-	
+
 	cdbdisp_dispatchCommandToAllGangs(strCommand, NULL, 0, NULL, 0, cancelOnError, needTwoPhase,
 							&primaryResults, &mirrorResults, &dispatchThreads);
 
@@ -3097,7 +3137,7 @@ CdbDoCommandOnAllGangs(const char *strCommand,
 
 static Node *
 pre_dispatch_function_evaluation_mutator(Node *node,
-						  pre_dispatch_function_evaluation_context * context)
+										 pre_dispatch_function_evaluation_context * context)
 {
 	List * savetargets = NIL;
 	Node * new_node = 0;
@@ -3141,8 +3181,8 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		 * directly rather than recursing to self.
 		 */
 		args = (List *) expression_tree_mutator((Node *) expr->args,
-									pre_dispatch_function_evaluation_mutator,
-										  (void *) context);
+												pre_dispatch_function_evaluation_mutator,
+												(void *) context);
 										
 		funcid = expr->funcid;
 
@@ -3215,9 +3255,9 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			}
 
 			if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
-				 /* okay */ ;
+				/* okay */ ;
 			else if (funcform->provolatile == PROVOLATILE_STABLE)
-				 /* okay */ ;
+				/* okay */ ;
 			else if (context->single_row_insert && is_seq_func)
 				;				/* Volatile, but special sequence function */
 			else
@@ -3301,7 +3341,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		 * rather than recursing to self.
 		 */
 		args = (List *) expression_tree_mutator((Node *) expr->args,
-											  pre_dispatch_function_evaluation_mutator,
+												pre_dispatch_function_evaluation_mutator,
 												(void *) context);
 
 		/*
@@ -3338,7 +3378,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	}
 
 	new_node =  plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
-													 (void *) context);
+								  (void *) context);
 
 	if (savetargets != NIL)
 	{
@@ -3357,11 +3397,11 @@ pre_dispatch_function_evaluation_mutator(Node *node,
  */
 void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-					 bool cancelOnError,
-					 SliceTable *sliceTbl,
-					 struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
-					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
-					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
+				  bool cancelOnError,
+				  SliceTable *sliceTbl,
+				  struct CdbDispatchResults ** pPrimaryResults,		/* OUT */
+				  struct CdbDispatchResults ** pMirrorResults,       /* OUT */
+				  struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
 {
 	int			oldLocalSlice = 0;
 	sliceVec	*sliceVector = NULL;
@@ -3418,8 +3458,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			Assert(pMirrorResults);
 			if (pMirrorResults)
 				*pMirrorResults = cdbdisp_makeDispatchResults(largestGangsize(),
-														  sliceLim,
-														  cancelOnError);
+															  sliceLim,
+															  cancelOnError);
 			cdbdisp_markDispatchMelee(*pPrimaryResults, *pMirrorResults);
 		}
 	}
@@ -3428,8 +3468,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	{
 		Assert(pMirrorResults);
 		*pMirrorResults = cdbdisp_makeDispatchResults(largestGangsize(),
-				  sliceLim,
-				  cancelOnError);
+													  sliceLim,
+													  cancelOnError);
 
 		cdbdisp_markDispatchMelee(*pPrimaryResults, *pMirrorResults);
 	}
@@ -3464,8 +3504,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 *
 	 * So, for each slice in the tree...
 	 */
-
-	
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
 		Gang	   *primaryGang = NULL;
@@ -3522,7 +3560,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				
 				if (primaryGang == NULL && mirrorGang == NULL)
 					continue;
-				
 			}
 		}
 		else
@@ -3539,7 +3576,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		}
 		if (primaryGang == NULL && mirrorGang == NULL)
 		{
-			
 			/*
 			 * When using dispatch agents, and we are on the QD, we just send the 
 			 * request to the dispatch agents... To get a list of dispatch agents,
@@ -3569,7 +3605,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		{
 			/*
 			 * If we are the QD, and relying on dispatch agents, we only send once to the 
-			 * dispath agents, and let them send to the primaries or mirrors or both, as
+			 * dispatch agents, and let them send to the primaries or mirrors or both, as
 			 * appropriate.
 			 */
 			primaryGang = mirrorGang;
@@ -3579,7 +3615,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		if (primaryGang)
 		{
 			Assert((*pPrimaryResults) &&
-					(*pPrimaryResults)->resultArray);
+				   (*pPrimaryResults)->resultArray);
 		}
 
 		/* Bail out if already got an error or cancellation request. */
@@ -3598,13 +3634,15 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		 * Doesn't wait for it to finish.
 		 */
 		if (primaryGang != NULL)
-		cdbdisp_dispatchToGang(pDispatchThreads,
-							   GP_DISPATCH_COMMAND_TYPE_QUERY,
-							   pQueryParms,
-                               primaryGang,
-                               *pPrimaryResults,
-                               si, sliceLim);
+		{
+			if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
+				(*pPrimaryResults)->writer_gang = primaryGang;
 
+			cdbdisp_dispatchToGang(pDispatchThreads,
+								   GP_DISPATCH_COMMAND_TYPE_QUERY,
+								   pQueryParms, primaryGang, *pPrimaryResults,
+								   si, sliceLim, __LINE__);
+		}
 
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
@@ -3615,24 +3653,24 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		 * 
 		 */
 		if (Gp_role == GP_ROLE_DISPATCHAGENT || !gp_use_dispatch_agent)
-		if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
 		{
+			if (mirrorGang != NULL /*&& (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)*/)
+			{
+				Assert(mirrorGang != NULL);	/* Must have a gang to dispatch to */
+				Assert(mirrorGang->size > 0);
+				Assert(pMirrorResults);
+				Assert((*pMirrorResults) &&
+					   (*pMirrorResults)->resultArray);
 
-			Assert(mirrorGang != NULL);	/* Must have a gang to dispatch to */
-			Assert(mirrorGang->size > 0);
-			Assert(pMirrorResults);
-			Assert((*pMirrorResults) &&
-					(*pMirrorResults)->resultArray);
-			
-            cdbdisp_dispatchToGang(pDispatchThreads,
-								   GP_DISPATCH_COMMAND_TYPE_QUERY,
-								   pQueryParms,
-                                   mirrorGang,
-                                   *pMirrorResults,
-                                   si, sliceLim);
+				(*pMirrorResults)->writer_gang = mirrorGang;
+
+				cdbdisp_dispatchToGang(pDispatchThreads,
+									   GP_DISPATCH_COMMAND_TYPE_QUERY,
+									   pQueryParms, mirrorGang, *pMirrorResults,
+									   si, sliceLim, __LINE__);
+			}
 		}
-		
-	}	
+	}
 
 	if (sliceVector)
 		pfree(sliceVector);
@@ -3672,7 +3710,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg_internal("Unable to dispatch plan.")));
 	}
-	
+
 	if (DEBUG1 >= log_min_messages)
 	{
 		char		msec_str[32];
@@ -3782,9 +3820,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	rootIdx = queryDesc->estate->es_cur_root_idx;
 
 	Assert(sliceTbl != NULL);
-	Assert(rootIdx == 0
-		   || (rootIdx > sliceTbl->nMotions
-			   && rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
+	Assert(rootIdx == 0 ||
+		   (rootIdx > sliceTbl->nMotions && rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
 
 	/*
 	 * Keep old value so we can restore it.  We use this field as a parameter.
@@ -3978,12 +4015,12 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
-	
+
 	cdbdisp_dispatchX(&queryParms,
 			 cancelOnError,
 			 sliceTbl,
 			 pPrimaryResults,		/* OUT */
-			 pMirrorResults,       /* OUT */
+			 pMirrorResults,        /* OUT */
 			 pDispatchThreads)	;	/* OUT */
 	
 
@@ -4234,7 +4271,6 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 	/* Wait for all QEs to finish.	Throw up if error. */
 	cdbdisp_finishCommand(primaryResults, mirrorResults, dispatchThreads, NULL, NULL);
 
-
 }	/* CdbDispatchUtilityStatement */
 
 
@@ -4309,10 +4345,10 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 			
 			snapshot = LatestSnapshot;
 			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Latest* currcid = %d (gxid = %u, '%s')", 
-			 	  LatestSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId,
-			 	  LatestSnapshot->curcid,
-			 	  getDistributedTransactionId(),
-			 	  DtxContextToString(DistributedTransactionContext));
+				 LatestSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId,
+				 LatestSnapshot->curcid,
+				 getDistributedTransactionId(),
+				 DtxContextToString(DistributedTransactionContext));
 		}
 		else if (SerializableSnapshot != NULL)
 		{
@@ -4320,10 +4356,10 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 			
 			snapshot = SerializableSnapshot;
 			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Serializable* currcid = %d (gxid = %u, '%s')", 
-			 	  SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId,
-			 	  SerializableSnapshot->curcid,
-			 	  getDistributedTransactionId(),
-			 	  DtxContextToString(DistributedTransactionContext));
+				 SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId,
+				 SerializableSnapshot->curcid,
+				 getDistributedTransactionId(),
+				 DtxContextToString(DistributedTransactionContext));
 
 		}
 	}
@@ -4331,44 +4367,44 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 	
 	switch (DistributedTransactionContext)
 	{
-	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-	case DTX_CONTEXT_LOCAL_ONLY:
-		if (snapshot != NULL)
-			DtxContextInfo_CreateOnMaster(
-				&TempQDDtxContextInfo, 
-				&snapshot->distribSnapshotWithLocalMapping, 
-				snapshot->curcid, 
-				txnOptions);
-		else
-			DtxContextInfo_CreateOnMaster(
-				&TempQDDtxContextInfo, 
-				NULL, 
-				0, 
-				txnOptions);
+		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		case DTX_CONTEXT_LOCAL_ONLY:
+			if (snapshot != NULL)
+				DtxContextInfo_CreateOnMaster(
+					&TempQDDtxContextInfo, 
+					&snapshot->distribSnapshotWithLocalMapping, 
+					snapshot->curcid, 
+					txnOptions);
+			else
+				DtxContextInfo_CreateOnMaster(
+					&TempQDDtxContextInfo, 
+					NULL, 
+					0, 
+					txnOptions);
 
-		if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
-			snapshot != NULL)
-		{
-			updateSharedLocalSnapshot(&TempQDDtxContextInfo, snapshot, "qdSerializeDtxContextInfo");
-		}
+			if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+				snapshot != NULL)
+			{
+				updateSharedLocalSnapshot(&TempQDDtxContextInfo, snapshot, "qdSerializeDtxContextInfo");
+			}
 
-		pDtxContextInfo = &TempQDDtxContextInfo;
-		break;
+			pDtxContextInfo = &TempQDDtxContextInfo;
+			break;
 
-	case DTX_CONTEXT_QD_RETRY_PHASE_2:
-	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
-	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-	case DTX_CONTEXT_QE_READER:
-	case DTX_CONTEXT_QE_PREPARED:
-	case DTX_CONTEXT_QE_FINISH_PREPARED:
-		elog(FATAL, "Unexpected distribute transaction context: '%s'",
-			 DtxContextToString(DistributedTransactionContext));
+		case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+		case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+		case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+		case DTX_CONTEXT_QE_READER:
+		case DTX_CONTEXT_QE_PREPARED:
+		case DTX_CONTEXT_QE_FINISH_PREPARED:
+			elog(FATAL, "Unexpected distribute transaction context: '%s'",
+				 DtxContextToString(DistributedTransactionContext));
 
-	default:
-		elog(FATAL, "Unrecognized DTX transaction context: %d",
-			(int) DistributedTransactionContext);
+		default:
+			elog(FATAL, "Unrecognized DTX transaction context: %d",
+				 (int)DistributedTransactionContext);
 	}
 	
 	serializedLen = DtxContextInfo_SerializeSize(pDtxContextInfo);
@@ -4416,7 +4452,7 @@ cdbdisp_makeDispatchThreads(int paramCount)
 	CdbDispatchCmdThreads *dThreads = palloc0(sizeof(*dThreads));
 
 	dThreads->dispatchCommandParmsAr =
-		(DispatchCommandParms *) palloc0(paramCount * sizeof(DispatchCommandParms));
+		(DispatchCommandParms *)palloc0(paramCount * sizeof(DispatchCommandParms));
 	
 	dThreads->dispatchCommandParmsArSize = paramCount;
 

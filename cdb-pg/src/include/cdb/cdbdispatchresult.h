@@ -216,16 +216,20 @@ typedef struct CdbDispatchResults
 
     /*
      * Map: sliceIndex => resultArray index
+	 * -> array [0..sliceCapacity-1] of CdbDispatchResults_SliceInfo;
+	 *      or NULL
      */
     CdbDispatchResults_SliceInfo   *sliceMap;
-                                        /* -> array [0..sliceCapacity-1] of
-                                         *      CdbDispatchResults_SliceInfo;
-                                         *    or NULL
-                                         */
+
     int                 sliceCapacity;  /* num of slots in sliceMap */
 
 	/* see cdbdisp_markDispatchMelee() */
 	struct CdbDispatchResults	*peerMelee;
+
+	/* MPP-6253: during dispatch, it is important to check to see that
+	 * the writer gang isn't already doing something -- this is an
+	 * important, missing sanity check */
+	struct Gang *writer_gang;
 } CdbDispatchResults;
 
 

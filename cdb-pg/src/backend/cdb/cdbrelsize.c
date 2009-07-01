@@ -65,13 +65,14 @@ int64 cdbRelSize(Oid relOid)
 	char	*relName;	
 
 	if (last_cache_entry  >= 0)
+	{
 		for (i=0; i < relsize_cache_size; i++)
 		{
 			if (relsize_cache[i].relOid == relOid)
 				return relsize_cache[i].size;
 		}
-	
-	
+	}
+
 	/*
 	 * Let's ask the QEs for the size of the relation
 	 */
@@ -146,6 +147,7 @@ int64 cdbRelSize(Oid relOid)
 	{
 		if (last_cache_entry < 0)
 			last_cache_entry = 0;
+
 		relsize_cache[last_cache_entry].relOid = relOid;
 		relsize_cache[last_cache_entry].size = size;
 		last_cache_entry = (last_cache_entry+1) % relsize_cache_size;
