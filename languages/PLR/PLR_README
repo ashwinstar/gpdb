@@ -25,12 +25,12 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 1. To use PL/R. you must have R installed on all Greenplum hosts 
    (see instructions below).
 
-2. Obtain the greenplum-db-3.3.0.0-plr-<platform>.zip distribution 
+2. Obtain the greenplum-db-3.3.x.x-plr-<platform>.zip distribution 
    package from Greenplum customer support.
 
-3. Unzip the package:
+3. Unzip the package, for example:
 
-    $ unzip greenplum-db-3.3.0.0-plr-<platform>.zip
+    $ unzip greenplum-db-3.3.1.0-plr-<platform>.zip
 
 4. Copy the plr.so file to $GPHOME/lib/postgresql on all hosts:
 
@@ -97,7 +97,7 @@ NOTE: You will need root access to install R.
 4. As root, copy the R installation to the correct location on the 
    master:
 
-    # cp R-2.6.1 /usr/lib64 -R
+    # cp -R R-2.6.1 /usr/lib64
 
 5. Using gpscp, copy the R installation to the correct location on the 
    segment hosts:
