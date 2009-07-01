@@ -15,6 +15,10 @@
 typedef long ssize_t;
 #endif
 
+/* Support Large File (ENGINF-176) */
+#define _FILE_OFFSET_BITS 64
+#define _LARGEFILE_SOURCE
+
 /* The struct gfile_t is private.  Please do not use any of its fields. */
 typedef struct gfile_t
 {
