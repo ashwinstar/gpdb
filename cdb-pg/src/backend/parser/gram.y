@@ -1003,7 +1003,7 @@ CreateQueueStmt:
  */
 OptQueueList:
 			OptQueueList OptQueueElem				{ $$ = lappend($1, $2); }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 OptQueueElem:
@@ -1090,7 +1090,7 @@ opt_with:	WITH									{}
  */
 OptRoleList:
 			OptRoleList OptRoleElem					{ $$ = lappend($1, $2); }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 OptRoleElem:
@@ -1451,12 +1451,12 @@ CreateSchemaStmt:
 
 OptSchemaName:
 			ColId									{ $$ = $1; }
-			| /* EMPTY */							{ $$ = NULL; }
+			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
 OptSchemaEltList:
 			OptSchemaEltList schema_stmt			{ $$ = lappend($1, $2); }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 /*
@@ -2041,7 +2041,7 @@ opt_table_partition_split_into:
                     pc->location = @5;
 					$$ = (Node *)pc;
                 }
-			| /* EMPTY */					{ $$ = NULL; /* default */ }
+			| /*EMPTY*/						{ $$ = NULL; /* default */ }
 		;
 
 opt_table_partition_merge_into: 
@@ -2057,7 +2057,7 @@ opt_table_partition_merge_into:
 					$$ = (Node *)pc;
                 }
 
-			| /* EMPTY */					{ $$ = NULL; /* default */ }
+			| /*EMPTY*/						{ $$ = NULL; /* default */ }
 		;
 
 table_partition_modify:
@@ -2150,7 +2150,7 @@ table_partition_modify:
 opt_table_partition_exchange_validate: 
 			WITH VALIDATION						{ $$ = +1; }
 			| WITHOUT VALIDATION				{ $$ = +0; }
-			| /* EMPTY */						{ $$ = +1; /* default */ }
+			| /*EMPTY*/							{ $$ = +1; /* default */ }
 		;
 
 alter_table_partition_id_spec: 
@@ -2208,7 +2208,7 @@ alter_table_partition_id_spec_with_opt_default:
                     n->location  = @1;
 					$$ = (Node *)n;
 				}
-
+		;
 
 alter_table_partition_cmd:
 			ADD_P PARTITION 
@@ -2797,12 +2797,12 @@ alter_column_default:
 opt_drop_behavior:
 			CASCADE						{ $$ = DROP_CASCADE; }
 			| RESTRICT					{ $$ = DROP_RESTRICT; }
-			| /* EMPTY */				{ $$ = DROP_RESTRICT; /* default */ }
+			| /*EMPTY*/					{ $$ = DROP_RESTRICT; /* default */ }
 		;
 
 alter_using:
 			USING a_expr				{ $$ = $2; }
-			| /* EMPTY */				{ $$ = NULL; }
+			| /*EMPTY*/					{ $$ = NULL; }
 		;
 
 /*****************************************************************************
@@ -2898,7 +2898,7 @@ copy_file_name:
 
 copy_opt_list:
 			copy_opt_list copy_opt_item				{ $$ = lappend($1, $2); }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 
@@ -3292,7 +3292,7 @@ TableLikeClause:
 
 TableLikeOptionList:
 				TableLikeOptionList TableLikeOption	{ $$ = lappend_int($1, $2); }
-				| /* EMPTY */						{ $$ = NIL; }
+				| /*EMPTY*/							{ $$ = NIL; }
 		;
 
 TableLikeOption:
@@ -3980,7 +3980,7 @@ TabPartitionByType:
 			RANGE 				{ $$ = PARTTYP_RANGE; }
 			| partition_hash_keyword { $$ = PARTTYP_HASH; }
 			| LIST				{ $$ = PARTTYP_LIST; }
-			| /* EMPTY */ 
+			| /*EMPTY*/
 				{
 					$$ = PARTTYP_RANGE; 
 
@@ -4215,7 +4215,7 @@ CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptE
 						;
 
 OptWeb:		WEB						{ $$ = TRUE; }
-			| /* empty */			{ $$ = FALSE; }
+			| /*EMPTY*/				{ $$ = FALSE; }
 						;
 
 ExtTypedesc:
@@ -4250,7 +4250,7 @@ ExtTypedesc:
 
 ext_on_clause_list:
 			ext_on_clause_list ext_on_clause_item		{ $$ = lappend($1, $2); }
-			| /* EMPTY */								{ $$ = NIL; }
+			| /*EMPTY*/									{ $$ = NIL; }
 			;
 	
 ext_on_clause_item:
@@ -4282,12 +4282,12 @@ ext_on_clause_item:
 
 format_opt: 
 			'(' format_opt_list ')'				{ $$ = $2; }
-			| /* EMPTY */						{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
 			;
 
 format_opt_list:
 			format_opt_list format_opt_item		{ $$ = lappend($1, $2); }
-			| /* EMPTY */						{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
 			;
 
 
@@ -4386,12 +4386,12 @@ OptSingleRowErrorHandling:
 			
 			$$ = (Node *)n;
 		}
-		| /* empty */	{ $$ = NULL; }
+		| /*EMPTY*/		{ $$ = NULL; }
 		;
 	
 OptErrorTableName:
 		LOG_P ERRORS INTO qualified_name 	{ $$ = $4; }
-		| /* empty */						{ $$ = NULL; }
+		| /*EMPTY*/							{ $$ = NULL; }
 		;
 	
 OptSrehLimitType:		
@@ -4402,7 +4402,7 @@ OptSrehLimitType:
 
 OptSrehKeep:
 		KEEP				{ $$ = TRUE; }
-		| /* empty */		{ $$ = FALSE; }
+		| /*EMPTY*/			{ $$ = FALSE; }
 		;
 
 /*
@@ -4410,7 +4410,7 @@ OptSrehKeep:
  */
 ext_opt_encoding_list:
 		ext_opt_encoding_list ext_opt_encoding_item		{ $$ = lappend($1, $2); }
-		| /* EMPTY */									{ $$ = NIL; }
+		| /*EMPTY*/										{ $$ = NIL; }
 		;
 	
 ext_opt_encoding_item:
@@ -4422,7 +4422,7 @@ ext_opt_encoding_item:
 		{
 			$$ = makeDefElem("encoding", (Node *)makeInteger($3));
 		}
-		
+		;
 
 /*****************************************************************************
  *
@@ -4505,7 +4505,7 @@ OptSeqElem: CACHE NumericOnly
 		;
 
 opt_by:		BY				{}
-			| /* empty */	{}
+			| /*EMPTY*/		{}
 	  ;
 
 NumericOnly:
@@ -4631,17 +4631,17 @@ CreateTableSpaceStmt: CREATE TABLESPACE name OptTableSpaceOwner LOCATION cdb_str
 		;
 
 OptTableSpaceOwner: OWNER name			{ $$ = $2; }
-			| /*EMPTY */				{ $$ = NULL; }
+			| /*EMPTY*/					{ $$ = NULL; }
 		;
 
 opt_mirror_location:
 				MIRROR LOCATION cdb_string_list 	{ $$ = $3; }
-			|	/*EMPTY*/				 	{ $$ = NULL; }
+			|	/*EMPTY*/						 	{ $$ = NULL; }
 		;
 
 opt_master_location:
 				MASTER LOCATION Sconst 	{ $$ = $3; }
-			|	/*EMPTY*/				 	{ $$ = NULL; }
+			|	/*EMPTY*/			 	{ $$ = NULL; }
 		;
 			
 			
@@ -4759,7 +4759,7 @@ TriggerForSpec:
 				{
 					$$ = $3;
 				}
-			| /* EMPTY */
+			| /*EMPTY*/
 				{
 					/*
 					 * If ROW/STATEMENT not specified, default to
@@ -6168,7 +6168,7 @@ alterfunc_opt_list:
 /* Ignored, merely for SQL compliance */
 opt_restrict:
 			RESTRICT
-			| /* EMPTY */
+			| /*EMPTY*/
 		;
 
 
@@ -6371,7 +6371,7 @@ reindex_type:
 		;
 
 opt_force:	FORCE									{  $$ = TRUE; }
-			| /* EMPTY */							{  $$ = FALSE; }
+			| /*EMPTY*/								{  $$ = FALSE; }
 		;
 
 
@@ -6948,7 +6948,7 @@ transaction_mode_list:
 
 transaction_mode_list_or_empty:
 			transaction_mode_list
-			| /* EMPTY */
+			| /*EMPTY*/
 					{ $$ = NIL; }
 		;
 
@@ -7009,7 +7009,7 @@ opt_check_option:
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("WITH CHECK OPTION is not implemented")));
 				}
-		| /* EMPTY */							{ $$ = NIL; }
+		| /*EMPTY*/							{ $$ = NIL; }
 		;
 
 /*****************************************************************************
@@ -7047,7 +7047,7 @@ CreatedbStmt:
 
 createdb_opt_list:
 			createdb_opt_list createdb_opt_item		{ $$ = lappend($1, $2); }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
 		;
 
 createdb_opt_item:
@@ -7148,7 +7148,7 @@ AlterDatabaseSetStmt:
 
 alterdb_opt_list:
 			alterdb_opt_list alterdb_opt_item		{ $$ = lappend($1, $2); }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
 		;
 
 alterdb_opt_item:
@@ -7249,7 +7249,7 @@ AlterDomainStmt:
 			;
 
 opt_as:		AS										{}
-			| /* EMPTY */							{}
+			| /*EMPTY*/							{}
 		;
 
 
@@ -7447,7 +7447,7 @@ ExplainableStmt:
 
 opt_analyze:
 			analyze_keyword			{ $$ = TRUE; }
-			| /* EMPTY */			{ $$ = FALSE; }
+			| /*EMPTY*/			{ $$ = FALSE; }
 		;
 
 /*****************************************************************************
@@ -7468,7 +7468,7 @@ PrepareStmt: PREPARE name prep_type_clause AS PreparableStmt
 		;
 
 prep_type_clause: '(' prep_type_list ')'	{ $$ = $2; }
-				| /* EMPTY */				{ $$ = NIL; }
+				| /*EMPTY*/				{ $$ = NIL; }
 		;
 
 prep_type_list: Typename			{ $$ = list_make1($1); }
@@ -7520,7 +7520,7 @@ ExecuteStmt: EXECUTE name execute_param_clause
 		;
 
 execute_param_clause: '(' expr_list ')'				{ $$ = $2; }
-					| /* EMPTY */					{ $$ = NIL; }
+					| /*EMPTY*/					{ $$ = NIL; }
 					;
 
 /*****************************************************************************
@@ -7552,7 +7552,7 @@ DeallocateStmt: DEALLOCATE name
 
 
 cdb_string_list:
-			cdb_string							{ $$ = list_make1($1); }								
+			cdb_string							{ $$ = list_make1($1); }  
 			| cdb_string_list ',' cdb_string	{ $$ = lappend($1, $3); }
 		;
 
@@ -7621,7 +7621,7 @@ insert_column_item:
 
 returning_clause:
 			RETURNING target_list		{ $$ = $2; }
-			| /* EMPTY */				{ $$ = NIL; }
+			| /*EMPTY*/				{ $$ = NIL; }
 		;
 
 
@@ -7789,7 +7789,7 @@ cursor_options: /*EMPTY*/					{ $$ = 0; }
 			| cursor_options INSENSITIVE	{ $$ = $1 | CURSOR_OPT_INSENSITIVE; }
 		;
 
-opt_hold: /* EMPTY */						{ $$ = FALSE; }
+opt_hold: /*EMPTY*/						{ $$ = FALSE; }
 			| WITH HOLD						{ $$ = TRUE; }
 			| WITHOUT HOLD					{ $$ = FALSE; }
 		;
@@ -8073,7 +8073,7 @@ select_limit:
 
 opt_select_limit:
 			select_limit							{ $$ = $1; }
-			| /* EMPTY */
+			| /*EMPTY*/
 					{ $$ = list_make2(NULL,NULL); }
 		;
 
@@ -8302,7 +8302,7 @@ for_locking_clause:
 
 opt_for_locking_clause:
 			for_locking_clause						{ $$ = $1; }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
 		;
 
 for_locking_items:
@@ -8331,7 +8331,7 @@ for_locking_item:
 
 locked_rels_list:
 			OF name_list							{ $$ = $2; }
-			| /* EMPTY */							{ $$ = NIL; }
+			| /*EMPTY*/							{ $$ = NIL; }
 		;
 
 
