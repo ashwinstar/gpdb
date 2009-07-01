@@ -179,7 +179,7 @@ checkSegmentDown(const char *strCommand, int nsegdb,
  * NOT THREAD SAFE
  */
 static void
-cdbdisp_clearGangActiveFlag(CdbDispatchResults *primaryResults, CdbDispatchResults *mirrorResults, int line)
+cdbdisp_clearGangActiveFlag(CdbDispatchResults *primaryResults, CdbDispatchResults *mirrorResults)
 {
 	if (primaryResults && primaryResults->writer_gang)
 	{
@@ -466,7 +466,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex,
-                       unsigned int                 maxSlices, int caller)
+                       unsigned int                 maxSlices)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	int	i,
@@ -1216,7 +1216,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
 
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
 
 	resultSets = cdbdisp_returnResults(primaryResults,mirrorResults,errmsgbuf,numresults);
 	
@@ -1321,7 +1321,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	cdbdisp_dispatchToGang(&dispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 						   &dtxProtocolParms,
-						   primaryGang, primaryResults, -1, 1, __LINE__);
+						   primaryGang, primaryResults, -1, 1);
 
 	/*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
@@ -1333,13 +1333,13 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		cdbdisp_dispatchToGang(&dispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_DTX_PROTOCOL,
 							   &dtxProtocolParms,
-							   mirrorGang, mirrorResults, -1, 1, __LINE__);
+							   mirrorGang, mirrorResults, -1, 1);
 	}
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(dispatchThreads, false);
 
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
 
 	if (!gangOK(primaryGang) ||
 		(dispatchToMirrors && mirrorGang && !gangOK(mirrorGang)))
@@ -1463,7 +1463,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	    cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1, __LINE__);
+							   mirrorGang, *pMirrorResults, -1, 1);
 	    
 	    /*
 	     * make sure we don't dispatch again 
@@ -1483,7 +1483,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 		cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   primaryGang, *pPrimaryResults, -1, 1, __LINE__);
+							   primaryGang, *pPrimaryResults, -1, 1);
 	}
 
 	/*
@@ -1498,7 +1498,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
         cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, 1, __LINE__);
+							   mirrorGang, *pMirrorResults, -1, 1);
     }
 
 	/*
@@ -1536,7 +1536,7 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 	/* Wait for all QEs to finish. Don't cancel them. */
 	CdbCheckDispatchResult(dispatchThreads, false);
 
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
 
 	/* If no errors, free the CdbDispatchResults objects and return. */
 	if (primaryResults)
@@ -1621,7 +1621,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 	 */
 	CdbCheckDispatchResult(dispatchThreads, true);   /* cancel any QEs still running */
 
-	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults, __LINE__);
+	cdbdisp_clearGangActiveFlag(primaryResults, mirrorResults);
 
     /*
      * When a QE stops executing a command due to an error, as a
@@ -1777,7 +1777,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
     cdbdisp_dispatchToGang(pDispatchThreads, 
 						   GP_DISPATCH_COMMAND_TYPE_QUERY,
 						   &queryParms,
-						   primaryGang, *pPrimaryResults, -1, gangCount, __LINE__);
+						   primaryGang, *pPrimaryResults, -1, gangCount);
 
     /*
 	 * If we are the QD, and are relying on Dispatch Agents, we let the DA send the request to the
@@ -1790,7 +1790,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
         cdbdisp_dispatchToGang(pDispatchThreads, 
 							   GP_DISPATCH_COMMAND_TYPE_QUERY,
 							   &queryParms,
-							   mirrorGang, *pMirrorResults, -1, gangCount, __LINE__);
+							   mirrorGang, *pMirrorResults, -1, gangCount);
     }
 
 	/*
@@ -1805,7 +1805,7 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 			cdbdisp_dispatchToGang(pDispatchThreads, 
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 								   &queryParms,
-								   rg, *pPrimaryResults, -1, gangCount, __LINE__);
+								   rg, *pPrimaryResults, -1, gangCount);
 		}
 
 }	/* cdbdisp_dispatchCommandToAllGangs */
@@ -3641,7 +3641,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			cdbdisp_dispatchToGang(pDispatchThreads,
 								   GP_DISPATCH_COMMAND_TYPE_QUERY,
 								   pQueryParms, primaryGang, *pPrimaryResults,
-								   si, sliceLim, __LINE__);
+								   si, sliceLim);
 		}
 
 		/*
@@ -3667,7 +3667,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				cdbdisp_dispatchToGang(pDispatchThreads,
 									   GP_DISPATCH_COMMAND_TYPE_QUERY,
 									   pQueryParms, mirrorGang, *pMirrorResults,
-									   si, sliceLim, __LINE__);
+									   si, sliceLim);
 			}
 		}
 	}
