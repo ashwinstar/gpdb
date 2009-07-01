@@ -352,6 +352,11 @@ pqParseInput3(PGconn *conn)
                             return;
 						if (pqGetInt(&version_len, 4, conn))
 							return;
+						if (conn->qe_version != NULL && version_len > 0)
+						{
+							free(conn->qe_version);
+							conn->qe_version = NULL;
+						}
 						conn->qe_version = malloc(version_len);
 						if (conn->qe_version == NULL)
 							return;
