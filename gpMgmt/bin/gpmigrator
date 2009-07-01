@@ -3617,10 +3617,18 @@ This issue must be resolved before upgrade can complete.
                     if len(r) > 0:
                         files['template0'] = [os.path.join('base', str(r[0]))]
                 
+                    # make sure tblspc dir is empty
+                    pgtblspc = os.path.join(dir, 'pg_tblspc')
+                    if os.path.exists(pgtblspc):
+                        if os.listdir(pgtblspc):
+                            raise UpgradeError('cannot upgrade system using ' +
+                                               'tablespaces')
+
                     # meta data directories, like commit log
                     meta = ['global', 'pg_clog', 'pg_distributedlog',
                             'pg_distributedxidmap', 'pg_multixact', 'pg_subtrans',
                             'pg_twophase', 'pg_utilitymodedtmredo', 'pg_xlog',
+                            'pg_tblspc',
                             'postgresql.conf',
                             'pg_hba.conf', 'pg_ident.conf',
                             'PG_VERSION']
