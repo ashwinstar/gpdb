@@ -773,8 +773,8 @@ class GPUpgrade:
         if options.nocheckschema:
             self.checkschema = False
         if self.cmd != 'MASTER':
-            self.oldversion = GPVersion(options.oldversion)
-            self.newversion = GPVersion(options.newversion)
+            self.oldversion = GPVersion(urllib.unquote(options.oldversion))
+            self.newversion = GPVersion(urllib.unquote(options.newversion))
             self.method = options.method
             if options.upgrade:
                 self.upgrade = True
@@ -948,8 +948,8 @@ class GPUpgrade:
             exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.oldhome, EXECNAME)
 
         exec_cmd += self.oldhome + ' ' + self.newhome
-        exec_cmd += ' --internal-oldversion=' + str(self.oldversion)
-        exec_cmd += ' --internal-newversion=' + str(self.newversion)
+        exec_cmd += ' --internal-oldversion=' + urllib.quote(str(self.oldversion))
+        exec_cmd += ' --internal-newversion=' + urllib.quote(str(self.newversion))
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
         exec_cmd += ' --internal-dirs=%s' % urllib.quote(str(self.datadirs))
@@ -3636,8 +3636,8 @@ This issue must be resolved before upgrade can complete.
                     # postgresql.conf, other stuff admins leave lying around
                     nolink = ['pg_hba.conf',
                               'pg_ident.conf',
-                              'pg_hba.conf.gpmigrator_orig',
-                              'pg_ident.conf.gpmigrator_orig',
+                              'pg_hba.conf'+LOCKEXT,
+                              'pg_ident.conf'+LOCKEXT,
                               'postmaster.pid',
                               'postmaster.opts']
                     for f in os.listdir(dir):
@@ -4040,11 +4040,11 @@ This issue must be resolved before upgrade can complete.
             runfiles = []
             if (self.oldversion <= '3.2' and self.newversion >= '3.3.0.0'):
                 runfiles.extend(["loadcat33.source.in",
-                                 "upg2_conversion.sql.in"])
-                datafiles.extend(["upg2_pg_class32_toadd.data.in",
+                                 "upg2_conversion32.sql.in"])
+                datafiles.extend(["upg2_pg_class_toadd32.data.in",
                                   "upg2_pg_attribute_toadd32.data.in",
-                                  "upg2_pg_type_toadd.data32.in",
-                                  "upg2_pg_index_toadd.data32.in",
+                                  "upg2_pg_type_toadd32.data.in",
+                                  "upg2_pg_index_toadd32.data.in",
                                   "upg2_pg_proc_toadd32.data",
                                   "upg2_pg_namespace_toadd32.data",
                                   "upg2_pg_description_toadd32.data",
