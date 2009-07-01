@@ -490,7 +490,7 @@ cdbdisp_dispatchToGang(struct CdbDispatchCmdThreads **dispatchThreads, /* OUT */
 		{
 			if (dispatchResults->writer_gang->dispatcherActive)
 			{
-				elog(ERROR, "Statement Error, writer gang busy: possible attempt to execute volatile function in unsupported context caller %d", caller);
+				elog(ERROR, "Statement Error, writer gang busy: possible attempt to execute volatile function in unsupported context");
 				/* not reached */
 			}
 
