@@ -233,9 +233,6 @@ typedef struct part_rule_cxt
 	Oid new;
 } part_rule_cxt;
 
-/* temporary GUC to wire off SET WITH() for parameters other than REORGANIZE */
-bool gp_disable_atsdb_set_with = true;
-
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, bool istemp,
 				List **supOids, List **supconstr, int *supOidCount);
@@ -10246,13 +10243,6 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 				if (pg_strcasecmp(reorg_str, def->defname) != 0)
 				{
-					if (gp_disable_atsdb_set_with)
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("cannot change storage option(s) for "
-										"relation \"%s\"",
-										RelationGetRelationName(rel))));
-
 					if (pg_strcasecmp(def->defname, "appendonly") == 0)
 					{
 						if (pg_strcasecmp(strVal(def->arg), "true") == 0)
