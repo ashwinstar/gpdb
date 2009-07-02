@@ -3313,7 +3313,7 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	Append	   *node = makeNode(Append);
 	Plan	   *plan = &node->plan;
 	ListCell   *subnode;
-	unsigned int	weighted_total_width = 0;	/* maintain weighted total */
+	double		weighted_total_width = 0.0;	/* maintain weighted total */
 	/*
 	 * Compute cost as sum of subplan costs.  We charge nothing extra for the
 	 * Append itself, which perhaps is too optimistic, but since it doesn't do
@@ -3331,9 +3331,9 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 			plan->startup_cost = subplan->startup_cost;
 		plan->total_cost += subplan->total_cost;
 		plan->plan_rows += subplan->plan_rows;
-		weighted_total_width += subplan->plan_rows * subplan->plan_width;
+		weighted_total_width += (double) subplan->plan_rows * (double) subplan->plan_width;
 	}
-	plan->plan_width = weighted_total_width / plan->plan_rows;
+	plan->plan_width = (int) ceil(weighted_total_width / plan->plan_rows);
 	plan->targetlist = tlist;
 	plan->qual = NIL;
 	plan->lefttree = NULL;
