@@ -3333,7 +3333,7 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 		plan->plan_rows += subplan->plan_rows;
 		weighted_total_width += (double) subplan->plan_rows * (double) subplan->plan_width;
 	}
-	plan->plan_width = (int) ceil(weighted_total_width / plan->plan_rows);
+	plan->plan_width = (int) ceil(weighted_total_width / Max(1.0,plan->plan_rows));
 	plan->targetlist = tlist;
 	plan->qual = NIL;
 	plan->lefttree = NULL;
