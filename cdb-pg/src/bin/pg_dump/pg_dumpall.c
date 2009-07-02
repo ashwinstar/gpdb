@@ -81,6 +81,8 @@ main(int argc, char *argv[])
 	bool		globals_only = false;
 	bool		schema_only = false;
 	static int  gp_migrator = 0;
+	bool		gp_syntax = false;
+	bool		no_gp_syntax = false;
 	PGconn	   *conn;
 	int			encoding;
 	const char *std_strings;
@@ -117,6 +119,7 @@ main(int argc, char *argv[])
 
 		/* START MPP ADDITION */
 		{"gp-syntax", no_argument, NULL, 1},
+		{"no-gp-syntax", no_argument, NULL, 2},
 		{"gp-migrator", no_argument, &gp_migrator, 1},
 		/* END MPP ADDITION */
 
@@ -289,8 +292,15 @@ main(int argc, char *argv[])
 			case 1:
 				/* gp-format */
 				appendPQExpBuffer(pgdumpopts, " --gp-syntax");
+				gp_syntax = true;
 				resource_queues = true;			/* -r is implied by --gp-syntax */
 				break;
+			case 2:
+				/* no-gp-format */
+				appendPQExpBuffer(pgdumpopts, " --no-gp-syntax");
+				no_gp_syntax = true;
+				break;
+				
 			/* END MPP ADDITION */
 
 			default:
@@ -328,6 +338,13 @@ main(int argc, char *argv[])
 		{
 			appendPQExpBuffer(pgdumpopts, " --gp-migrator");
 		}
+	}
+
+	if (gp_syntax && no_gp_syntax)
+	{
+		fprintf(stderr, _("%s: options \"--gp-syntax\" and \"--no-gp-syntax\" cannot be used together\n"),
+				progname);
+		exit(1);
 	}
 
 	/*
@@ -429,7 +446,8 @@ help(void)
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
 	/* START MPP ADDITION */
-	printf(_("  --gp-syntax              dump with Greenplum Database syntax\n"));
+	printf(_("  --gp-syntax              dump with Greenplum Database syntax (default if gpdb)\n"));
+	printf(_("  --no-gp-syntax           dump without Greenplum Database syntax (default if postgresql)\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));
