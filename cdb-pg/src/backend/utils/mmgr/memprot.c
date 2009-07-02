@@ -53,12 +53,20 @@ union semun
  */
 void GPMemoryProtectInit()
 {
+#ifdef WIN32
+    elog(DEBUG2, "GPDB on this platform does not use SysV Semeaphore.  Physical Mem Protection not implemented");
+#else
 	elog(LOG, "GPDB on this platform does not use SysV Semeaphore.  Physical Mem Protection not implemented");
+#endif
 }
 
 void GPMemoryProtectReset()
 {
+#ifdef WIN32
+    elog(DEBUG2, "GPDB on this platform does not use SysV Semeaphore.  Physical Mem Protection not implemented");
+#else
 	elog(LOG, "GPDB on this platform does not use SysV Semeaphore.  Physical Mem Protection not implemented");
+#endif 
 }
 
 #ifdef USE_FAULT_INJECTION
