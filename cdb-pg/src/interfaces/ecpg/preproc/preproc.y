@@ -355,7 +355,7 @@ add_additional_variables(char *name, bool insert)
 %token	TYPECAST
 
 /* ordinary key words in alphabetical order */
-%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
+%token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ACTIVE ADD_P ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT AUTHORIZATION
 
@@ -365,70 +365,70 @@ add_additional_variables(char *name, bool insert)
 	CACHE CALLED CASCADE CASCADED CASE CAST CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY CREATE CREATEDB
+	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY COST CREATE CREATEDB
 	CREATEROLE CREATEUSER CROSS CSV CURRENT_DATE CURRENT_ROLE CURRENT_TIME
 	CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
 	DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
-	DESC DISABLE_P DISTINCT DO DOMAIN_P DOUBLE_P DROP
+	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EXCEPT EXCLUSIVE EXCLUDING
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ERRORS ESCAPE EVERY EXCEPT EXCHANGE EXCLUSIVE EXCLUDING
 	EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FIRST_P FLOAT_P FOR FORCE FOREIGN FORWARD FREEZE FROM
+	FALSE_P FETCH FIELDS FILL FIRST_P FLOAT_P FOR FORCE FOREIGN FORMAT FORWARD FREEZE FROM
 	FULL FUNCTION
 
 	GET GLOBAL GRANT GRANTED GREATEST GROUP_P
 
-	HANDLER HAVING HEADER_P HOLD HOUR_P
+	HANDLER HASH HAVING HEADER_P HOLD HOST HOUR_P
 
-	IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING INCREMENT
+	IF_P IGNORE_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IN_P INCLUDING INCLUSIVE INCREMENT
 	INDEX INDEXES INHERIT INHERITS INITIALLY INNER_P INOUT INPUT_P
 	INSENSITIVE INSERT INSTEAD INT_P INTEGER INTERSECT
 	INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
 	JOIN
 
-	KEY
+	KEEP KEY
 
 	LANCOMPILER LANGUAGE LARGE_P LAST_P LEADING LEAST LEFT LEVEL
-	LIKE LIMIT LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
-	LOCK_P LOGIN_P
+	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
+	LOCK_P LOG_P LOGIN_P
 
-	MATCH MAXVALUE MINUTE_P MINVALUE MODE MONTH_P MOVE
+	MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MISSING MODE MODIFY MONTH_P MOVE
 
 	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
-	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOSUPERUSER
+	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR ORDER
-	OUT_P OUTER_P OVERLAPS OVERLAY OWNED OWNER
+	OUT_P OUTER_P OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PASSWORD PLACING POSITION
+	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
 	PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
-	QUOTE
+	QUEUE QUOTE
 
-	READ REAL REASSIGN RECHECK REFERENCES REINDEX RELATIVE_P RELEASE RENAME
-	REPEATABLE REPLACE RESET RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT
+	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P RELEASE RENAME
+	REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SELECT SEQUENCE
+	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE START STATEMENT
-	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBSTRING SUPERUSER_P SYMMETRIC
+	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
+	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBPARTITION SUBPARTITIONS SUBSTRING SUPERUSER_P SYMMETRIC
 	SYSID SYSTEM_P
 
-	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN TIME TIMESTAMP TO 
+	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN THRESHOLD TIME TIMESTAMP TO 
 	TRAILING TRANSACTION TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TYPE_P
 
 	UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
-	VACUUM VALID VALIDATOR VALUES VARCHAR VARYING VERBOSE VIEW VOLATILE
-	WHEN WHERE WITH WITHOUT WORK WRITE
+	VACUUM VALID VALIDATION VALIDATOR VALUES VARCHAR VARYING VERBOSE VIEW VOLATILE
+	WEB WHEN WHERE WITH WITHOUT WORK WRITE
 	YEAR_P
 	ZONE
 
@@ -474,7 +474,7 @@ add_additional_variables(char *name, bool insert)
 %left		'.'
 %left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
 
-%type  <str>	Iconst Fconst Sconst TransactionStmt CreateStmt RoleId
+%type  <str>	Iconst Fconst Sconst TransactionStmt CreateStmt RoleId QueueId
 %type  <str>	CreateAsElement OptCreateAs CreateAsList CreateAsStmt
 %type  <str>	comment_text ConstraintDeferrabilitySpec TableElementList
 %type  <str>	key_match ColLabel SpecialRuleRelation ColId columnDef
@@ -595,6 +595,38 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	set_target_list	set_clause_list set_clause multiple_set_clause
 %type  <str>	ctext_expr_list ctext_row single_set_clause set_target
 
+
+
+%type  <str>	AlterQueueStmt CreateExternalStmt CreateQueueStmt DistributedBy
+%type  <str>	DropQueueStmt ExtTableElement ExtTableElementList ExtTypedesc
+%type  <str>	ExtcolumnDef OptDistributedBy OptErrorTableName OptExtTableElementList
+%type  <str>	OptNumericOnly OptQueueElem OptQueueList OptSingleRowErrorHandling
+%type  <str>	OptSrehKeep OptSrehLimitType OptTabPartitionBoundarySpec
+%type  <str>	OptTabPartitionBoundarySpecEnd OptTabPartitionBoundarySpecEvery
+%type  <str>	OptTabPartitionBoundarySpecValList OptTabPartitionBy
+%type  <str>	OptTabPartitionRangeInclusive OptTabPartitionSpec
+%type  <str>	OptTabPartitionStorageAttr OptTabPartitionsNumber
+%type  <str>	OptTabSubPartitionSpec OptTabSubPartitionsNumber OptWeb 
+%type  <str>	TabPartitionBoundarySpec TabPartitionBoundarySpecEnd
+%type  <str>	TabPartitionBoundarySpecStart TabPartitionBoundarySpecValList
+%type  <str>	TabPartitionByType TabPartitionDefaultNameDecl TabPartitionElem
+%type  <str>	TabPartitionElemList TabPartitionNameDecl TabSubPartitionBy
+%type  <str>	TabSubPartitionDefaultNameDecl TabSubPartitionElem
+%type  <str>	TabSubPartitionElemList TabSubPartitionNameDecl
+%type  <str>	TabSubPartitionTemplate alter_table_partition_cmd
+%type  <str>	alter_table_partition_id_spec
+%type  <str>	alter_table_partition_id_spec_with_opt_default ext_on_clause_item
+%type  <str>	ext_on_clause_list ext_opt_encoding_item ext_opt_encoding_list
+%type  <str>	format_opt format_opt_item format_opt_list list_subparts
+%type  <str>	multi_spec_value_list opt_comma opt_list_subparts
+%type  <str>	opt_table_partition_exchange_validate opt_table_partition_merge_into
+%type  <str>	opt_table_partition_split_into part_values_clause
+%type  <str>	part_values_or_spec_list part_values_single partition_coalesce_keyword
+%type  <str>	partition_hash_keyword tab_part_val tab_part_val_no_paran
+%type  <str>	table_partition_modify NumericOnly FloatOnly IntegerOnly SignedIconst
+%type  <str>	cdb_string_list cdb_string 
+
+
 %type  <struct_union> s_struct_union_symbol
 
 %type  <descriptor> ECPGGetDescriptor ECPGSetDescriptor
@@ -650,6 +682,7 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 		| AlterGroupStmt	{ output_statement($1, 0, connection); }
 		| AlterObjectSchemaStmt	{ output_statement($1, 0, connection); }
 		| AlterOwnerStmt	{ output_statement($1, 0, connection); }
+		| AlterQueueStmt	{ output_statement($1, 0, connection); }
 		| AlterSeqStmt		{ output_statement($1, 0, connection); }
 		| AlterTableStmt	{ output_statement($1, 0, connection); }
 		| AlterRoleSetStmt	{ output_statement($1, 0, connection); }
@@ -690,9 +723,11 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 		| CreateCastStmt	{ output_statement($1, 0, connection); }
 		| CreateConversionStmt	{ output_statement($1, 0, connection); }
 		| CreateDomainStmt	{ output_statement($1, 0, connection); }
+		| CreateExternalStmt	{ output_statement($1, 0, connection); }
 		| CreateFunctionStmt	{ output_statement($1, 0, connection); }
 		| CreateGroupStmt	{ output_statement($1, 0, connection); }
 		| CreatePLangStmt	{ output_statement($1, 0, connection); }
+		| CreateQueueStmt	{ output_statement($1, 0, connection); }
 		| CreateOpClassStmt	{ output_statement($1, 0, connection); }
 		| CreateRoleStmt	{ output_statement($1, 0, connection); }
 		| CreateSchemaStmt	{ output_statement($1, 0, connection); }
@@ -712,6 +747,7 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 		| DropOpClassStmt	{ output_statement($1, 0, connection); }
 		| DropOwnedStmt		{ output_statement($1, 0, connection); }
 		| DropPLangStmt		{ output_statement($1, 0, connection); }
+		| DropQueueStmt		{ output_statement($1, 0, connection); }
 		| DropRoleStmt		{ output_statement($1, 0, connection); }
 		| DropRuleStmt		{ output_statement($1, 0, connection); }
 		| DropStmt			{ output_statement($1, 0, connection); }
@@ -918,6 +954,77 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 /*
  * We start with a lot of stuff that's very similar to the backend's parsing
  */
+
+/*****************************************************************************
+ *
+ * Create a new Postgres Resource Queue
+ *
+ *****************************************************************************/
+
+CreateQueueStmt:
+			CREATE RESOURCE QUEUE QueueId OptQueueList
+				{
+					$$ = cat_str(3,make_str("create resource queue"),$4,$5);
+				}
+		;
+
+
+/*
+ * Options for CREATE and ALTER RESOURCE QUEUE 
+ */
+OptQueueList:
+			OptQueueList OptQueueElem				{ $$ = cat_str(2,$1,$2);}
+			| /*EMPTY*/								{ $$=EMPTY; }
+		;
+OptQueueElem:
+			ACTIVE THRESHOLD NumericOnly
+				{
+					$$ = cat_str(2,make_str("active threshold"),$3);
+				}
+			| COST THRESHOLD FloatOnly
+				{
+					$$ = cat_str(2,make_str("cost threshold"),$3);
+				}
+			| IGNORE_P THRESHOLD FloatOnly
+				{
+					$$ = cat_str(2,make_str("ignore threshold"),$3);
+				}
+			| OVERCOMMIT
+				{
+					$$ = make_str("overcommit");
+				}
+			| NOOVERCOMMIT
+				{
+					$$ = make_str("noovercommit");
+				}
+		;
+
+/*****************************************************************************
+ *
+ * Alter a postgrse Resource Queue
+ *
+ *****************************************************************************/
+
+AlterQueueStmt:
+			ALTER RESOURCE QUEUE QueueId OptQueueList
+				 {
+					$$ = cat_str(3,make_str("alter resource queue"),$4,$5);
+				 }
+		;
+
+
+/*****************************************************************************
+ *
+ * Drop a postgrse Resource Queue
+ *
+ *****************************************************************************/
+
+DropQueueStmt:
+			DROP RESOURCE QUEUE QueueId
+				 {
+					$$ = cat_str(2,make_str("drop resource queue"),$4);
+				 }
+		;
 
 /*****************************************************************************
  *
@@ -1329,8 +1436,221 @@ alter_table_cmd:
 /* ALTER TABLE <name> NO INHERITS <parent> */
 		| NO INHERIT qualified_name
 			{ $$ = cat2_str(make_str("no inherit"), $3); }
+
+			/* distro only */
+			| SET DistributedBy
+				{
+					$$ = cat_str(2,make_str("set"),$2);
+				}
+
+			/* storage and distro */
+			| SET WITH definition DistributedBy
+				{
+					$$ = cat_str(3,make_str("set with"),$3,$4);
+				}
+
+			/* storage only */
+			| SET WITH definition
+				{
+					$$ = cat_str(2,make_str("set with"),$3);
+				}
+
+			| alter_table_partition_cmd
+				{
+					$$ = $1;
+				}
 		| alter_rel_cmd
 			{ $$ = $1; }
+		;
+
+opt_table_partition_split_into: 
+			INTO '(' 
+            alter_table_partition_id_spec_with_opt_default ','
+            alter_table_partition_id_spec_with_opt_default ')'	
+				{
+					$$ = cat_str(5,make_str("into ("),$3,make_str(","),$5,make_str(")"));
+                }
+			| /*EMPTY*/						{ $$=EMPTY; }
+		;
+opt_table_partition_merge_into: 
+			INTO 
+            alter_table_partition_id_spec_with_opt_default
+				{
+					$$ = cat_str(2,make_str("into"),$2);
+                }
+
+			| /*EMPTY*/						{ $$=EMPTY; }
+		;
+table_partition_modify:
+			TabPartitionBoundarySpecStart
+            OptTabPartitionBoundarySpecEnd
+            OptTabPartitionBoundarySpecEvery  
+				{
+					$$ = cat_str(3,$1,$2,$3);
+                }
+			| TabPartitionBoundarySpecEnd
+              OptTabPartitionBoundarySpecEvery	
+				{
+					$$ = cat_str(2,$1,$2);
+                }
+			| add_drop part_values_clause
+				{
+					$$ = cat_str(2,$1,$2);
+                }
+		;
+
+opt_table_partition_exchange_validate: 
+			WITH VALIDATION						{ $$ = make_str("with validation");}
+			| WITHOUT VALIDATION				{ $$ = make_str("without validation");}
+			| /*EMPTY*/							{ $$=EMPTY; }
+		;
+alter_table_partition_id_spec: 
+            IDENT								
+				{
+					$$ = $1;
+				}
+            | FOR 
+            '(' TabPartitionBoundarySpecValList ')'	
+				{
+					$$ = cat_str(3,make_str("for ("),$3,make_str(")"));
+				}
+            | FOR '(' function_name '(' NumericOnly ')' ')'	
+				{
+					$$ = cat_str(5,make_str("for ("),$3,make_str("("),$5,make_str(") )"));
+				}
+		;
+
+alter_table_partition_id_spec_with_opt_default:
+			PARTITION alter_table_partition_id_spec
+				{
+                    $$ = cat_str(2,make_str("partition"),$2);
+				}
+			| DEFAULT PARTITION alter_table_partition_id_spec
+				{
+					$$ = cat_str(2,make_str("default partition"),$3);
+				}
+			| DEFAULT PARTITION 
+				{
+					$$ = make_str("default partition");
+				}
+		;
+
+alter_table_partition_cmd:
+			ADD_P PARTITION 
+            OptTabPartitionBoundarySpec
+ 			OptTabPartitionStorageAttr
+			OptTabSubPartitionSpec
+           
+				{
+					$$ = cat_str(4,make_str("add partition"),$3,$4,$5);
+				}
+			| ADD_P DEFAULT PARTITION 
+            alter_table_partition_id_spec 
+            OptTabPartitionBoundarySpec
+            OptTabPartitionStorageAttr
+			OptTabSubPartitionSpec 
+				{
+					$$ = cat_str(5,make_str("add default partition"),$4,$5,$6,$7);
+				}
+			| ADD_P PARTITION 
+            alter_table_partition_id_spec 
+            OptTabPartitionBoundarySpec
+            OptTabPartitionStorageAttr
+			OptTabSubPartitionSpec 
+				{
+					$$ = cat_str(5,make_str("add partition"),$3,$4,$5,$6);
+				}
+			| ALTER 
+            alter_table_partition_id_spec_with_opt_default
+            alter_table_cmd
+				{
+					$$ = cat_str(3,make_str("alter"),$2,$3);
+				}
+			| partition_coalesce_keyword PARTITION 	 
+				{
+					$$ = cat_str(2,$1,make_str("partition"));
+				}
+			| partition_coalesce_keyword PARTITION 
+            alter_table_partition_id_spec 
+				{
+					$$ = cat_str(3,$1,make_str("partition"),$3);
+				}
+			| DROP PARTITION IF_P EXISTS 
+            alter_table_partition_id_spec	 
+            opt_drop_behavior
+				{
+					$$ = cat_str(3,make_str("drop partition if exists"),$5,$6);
+				}
+			| DROP DEFAULT PARTITION IF_P EXISTS 
+            opt_drop_behavior
+				{
+					$$ = cat_str(2,make_str("drop default partition if exists"),$6);
+				}
+			| DROP 
+            alter_table_partition_id_spec_with_opt_default
+            opt_drop_behavior
+				{
+					$$ = cat_str(3,make_str("drop"),$2,$3);
+				}
+			| DROP PARTITION 
+				{
+					$$ = make_str("drop partition");
+				}
+			| EXCHANGE 
+            alter_table_partition_id_spec_with_opt_default 
+            WITH TABLE qualified_name
+            opt_table_partition_exchange_validate	
+				{
+					$$ = cat_str(5,make_str("exchange"),$2,make_str("with table"),$5,$6);
+				}
+			| MERGE 
+            alter_table_partition_id_spec_with_opt_default ','
+            alter_table_partition_id_spec_with_opt_default
+            opt_table_partition_merge_into	
+				{
+					$$ = cat_str(5,make_str("merge"),$2,make_str(","),$4,$5);
+				}
+			| MODIFY 
+            alter_table_partition_id_spec_with_opt_default
+            table_partition_modify
+				{
+					$$ = cat_str(3,make_str("modify"),$2,$3);
+				}
+			| RENAME 
+            alter_table_partition_id_spec_with_opt_default TO IDENT	
+				{
+					$$ = cat_str(4,make_str("rename"),$2,make_str("to"),$4);
+				}
+			| SET SUBPARTITION TEMPLATE
+            '(' TabSubPartitionElemList ')' 
+				{
+					$$ = cat_str(3,make_str("set subpartition template ("),$5,make_str(")"));
+				}
+			| SET SUBPARTITION TEMPLATE
+            '('  ')' 
+				{
+					$$ = make_str("set subpartition template ( )");
+				}
+			| SPLIT 
+            DEFAULT PARTITION TabPartitionBoundarySpecStart
+            TabPartitionBoundarySpecEnd
+            opt_table_partition_split_into	
+				{
+					$$ = cat_str(4,make_str("split default partition"),$4,$5,$6);
+				}
+			| SPLIT 
+            alter_table_partition_id_spec_with_opt_default AT 
+            '(' part_values_or_spec_list ')'	
+            opt_table_partition_split_into	
+				{
+					$$ = cat_str(6,make_str("split"),$2,make_str("at ("),$5,make_str(")"),$7);
+				}
+			| TRUNCATE 
+            alter_table_partition_id_spec_with_opt_default
+            opt_drop_behavior
+				{
+					$$ = cat_str(3,make_str("truncate"),$2,$3);
+				}
 		;
 
 alter_rel_cmds: alter_rel_cmd  				{ $$ = $1; }
@@ -1459,11 +1779,14 @@ opt_using:	USING		{ $$ = make_str("using"); }
  *****************************************************************************/
 
 CreateStmt:  CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-				OptInherit OptWith OnCommitOption OptTableSpace
-			{ $$ = cat_str(11, make_str("create"), $2, make_str("table"), $4, make_str("("), $6, make_str(")"), $8, $9, $10, $11); }
+				OptInherit OptWith OnCommitOption OptTableSpace OptDistributedBy
+			OptTabPartitionBy
+{ $$ = cat_str(13, make_str("create"), $2, make_str("table"), $4, make_str("("), $6, make_str(")"), $8, $9, $10, $11, $12, $13); }
 		| CREATE OptTemp TABLE qualified_name OF qualified_name
 			'(' OptTableElementList ')' OptWith OnCommitOption OptTableSpace
-			{ $$ = cat_str(12, make_str("create"), $2, make_str("table"), $4, make_str("of"), $6, make_str("("), $8, make_str(")"), $10, $11, $12); }
+		    OptDistributedBy 
+			OptTabPartitionBy
+{ $$ = cat_str(14, make_str("create"), $2, make_str("table"), $4, make_str("of"), $6, make_str("("), $8, make_str(")"), $10, $11, $12, $13, $14); }
 		;
 
 /*
@@ -1666,6 +1989,332 @@ OptConsTableSpace: USING INDEX TABLESPACE name	{ $$ = cat2_str(make_str("using i
 			| /*EMPTY*/		{ $$ = EMPTY; }
 			;
 
+DistributedBy:   DISTRIBUTED BY  '(' columnList ')'						{	$$=cat_str(3,make_str("distributed by ("),$4,make_str(")")); }
+			| DISTRIBUTED RANDOMLY			{ $$ = make_str("distributed randomly");}
+		;
+
+OptDistributedBy:   DistributedBy			{ $$ = $1;}
+			| /*EMPTY*/										{ $$=EMPTY; }
+		;
+
+/* START PARTITION RULES */
+
+OptTabPartitionStorageAttr: WITH definition TABLESPACE name 
+				{
+					$$ = cat_str(4,make_str("with"),$2,make_str("tablespace"),$4);
+                }
+			| WITH definition
+				{
+					$$ = cat_str(2,make_str("with"),$2);
+				}
+			| TABLESPACE name 
+				{
+					$$ = cat_str(2,make_str("tablespace"),$2);
+				}
+			| /*EMPTY*/ { $$ = EMPTY;}
+		;
+OptTabPartitionsNumber: PARTITIONS IntegerOnly 		
+				{
+                    $$ = cat_str(2,make_str("partitions"),$2); 
+				}
+			| /*EMPTY*/								{ $$ = EMPTY;}
+		;
+OptTabSubPartitionsNumber: SUBPARTITIONS IntegerOnly 
+				{
+                    $$ = cat_str(2,make_str("subpartitions"),$2); 
+                }
+			| /*EMPTY*/								{ $$ = EMPTY;}
+		;
+OptTabPartitionSpec: '(' TabPartitionElemList ')'
+				{
+                        $$ = cat_str(3,make_str("("),$2,make_str(")")); 
+				}
+			| /*EMPTY*/								{ $$ = EMPTY;}
+		;
+OptTabSubPartitionSpec: 
+            '(' TabSubPartitionElemList ')' 
+				{
+                        $$ = cat_str(3,make_str("("),$2,make_str(")")); 
+				}
+			| /*EMPTY*/								{ $$ = EMPTY;}
+		;
+
+TabPartitionElemList:
+            TabPartitionElem						{ $$=$1; }
+			| TabPartitionElemList ',' 
+              TabPartitionElem						{ $$ = cat_str(3,$1,make_str(","),$3);}
+		;
+TabSubPartitionElemList:
+            TabSubPartitionElem						{ $$ = $1;}
+			| TabSubPartitionElemList ',' 
+              TabSubPartitionElem					{ $$ = cat_str(3,$1,make_str(","),$3);}
+		;
+tab_part_val_no_paran: AexprConst { $$ = $1;}
+			| CAST '(' tab_part_val AS Typename ')'
+				{ 
+					$$ = cat_str(5,make_str("cast ("),$3,make_str("as"),$5,make_str(")"));
+				}
+			| tab_part_val_no_paran TYPECAST Typename
+				{ 
+					$$ = cat_str(3,$1,make_str("::"),$3);
+				}
+			| '-' tab_part_val_no_paran { $$ = cat_str(2,make_str("-"),$2);}
+		;
+tab_part_val: tab_part_val_no_paran { $$ = $1;}
+			| '(' tab_part_val_no_paran ')' { $$ = cat_str(3,make_str("("),$2,make_str(")"));}
+			| '(' tab_part_val_no_paran ')' TYPECAST Typename
+				{ 
+					$$ = cat_str(4,make_str("("),$2,make_str(") ::"),$5);
+				}
+		; 
+		
+
+TabPartitionBoundarySpecValList:
+              tab_part_val				{ $$ = $1;}
+			| TabPartitionBoundarySpecValList ',' 
+              tab_part_val				{ $$ = cat_str(3,$1,make_str(","),$3);}
+		;
+/* only optional for START and END in ALTER TABLE...MODIFY PARTITION */
+OptTabPartitionBoundarySpecValList:
+            TabPartitionBoundarySpecValList			{ $$ = $1;}
+			| /*EMPTY*/								{ $$ = make_str("inclusive");}
+		;
+OptTabPartitionRangeInclusive:
+			INCLUSIVE			{ $$=EMPTY; }
+			| EXCLUSIVE			{ $$ = make_str("exclusive");}
+			| /*EMPTY*/			{ $$ = EMPTY; }
+		;
+TabPartitionBoundarySpecStart:
+			START opt_with 
+            '(' OptTabPartitionBoundarySpecValList ')' 
+			OptTabPartitionRangeInclusive
+				{
+                        $$ = cat_str(6,make_str("start"),$2,make_str("("),$4,make_str(")"),$6);
+				}
+            ;
+
+TabPartitionBoundarySpecEnd:
+			END_P opt_with 
+            '(' OptTabPartitionBoundarySpecValList ')' 
+			OptTabPartitionRangeInclusive
+				{
+                        $$ = cat_str(6,make_str("end"),$2,make_str("("),$4,make_str(")"),$6);
+				}
+            ;
+
+OptNumericOnly:
+            NumericOnly 							{ $$ = $1;}
+			| /*EMPTY*/								{ $$ = EMPTY; }            
+            ;
+OptTabPartitionBoundarySpecEvery:
+            EVERY OptNumericOnly 
+            '(' TabPartitionBoundarySpecValList ')' 
+				{
+                        $$ = cat_str(5,make_str("every"),$2,make_str("("),$4,make_str(")"));
+				}
+			| /*EMPTY*/								{ $$ = EMPTY;}
+            ;
+OptTabPartitionBoundarySpecEnd:
+            TabPartitionBoundarySpecEnd 			{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = EMPTY;}
+		;
+/* VALUES for LIST, start..end for RANGE. */
+TabPartitionBoundarySpec:
+			part_values_clause
+				{
+                        $$ = $1; 
+				}
+			| TabPartitionBoundarySpecStart
+              OptTabPartitionBoundarySpecEnd
+              OptTabPartitionBoundarySpecEvery  
+				{
+                        $$ = cat_str(3,$1,$2,$3);
+				}
+			| TabPartitionBoundarySpecEnd
+              OptTabPartitionBoundarySpecEvery	
+				{
+                        $$ = cat_str(2,$1,$2);
+				}
+            ;
+
+OptTabPartitionBoundarySpec:
+            TabPartitionBoundarySpec				{ $$ = $1;}
+			| /*EMPTY*/								{ $$ = EMPTY; }
+		;
+multi_spec_value_list: '(' part_values_single ')'
+				{
+					$$ = cat_str(3,make_str("("),$2,make_str(")"));
+				}
+			| multi_spec_value_list ',' '(' part_values_single ')'
+				{
+					$$ = cat_str(4,$1,make_str(", ("),$4,make_str(")"));
+				}
+		;
+
+part_values_single: tab_part_val_no_paran
+				{
+					$$ = $1;
+				}
+			| part_values_single ',' tab_part_val_no_paran
+				{
+					$$ = cat_str(3,$1,make_str(","),$3);
+				}
+		;
+
+part_values_clause:
+			VALUES '(' part_values_single ')'
+				{
+					$$ = cat_str(3,make_str("values ("),$3,make_str(")"));
+				}
+			| VALUES '(' multi_spec_value_list ')'
+				{
+					$$ = cat_str(3,make_str("values ("),$3,make_str(")"));
+				}
+		;
+
+part_values_or_spec_list: TabPartitionBoundarySpecValList { $$ = $1;}
+			| part_values_clause { $$ = $1;}
+		;
+/* a "Partition Element" closely corresponds to a "Partition Declaration" */
+TabPartitionElem: 
+            TabPartitionNameDecl 
+            OptTabPartitionBoundarySpec	OptTabPartitionStorageAttr
+			OptTabSubPartitionSpec 
+
+				{
+                        $$ = cat_str(4,$1,$2,$3,$4);
+				}
+
+/* allow boundary spec for default partition in parser, but complain later */
+			| TabPartitionDefaultNameDecl 
+              OptTabPartitionBoundarySpec
+              OptTabPartitionStorageAttr
+			  OptTabSubPartitionSpec 
+				{
+                        $$ = cat_str(4,$1,$2,$3,$4);
+				}
+			| TabPartitionBoundarySpec 
+              OptTabPartitionStorageAttr
+			  OptTabSubPartitionSpec 
+				{
+                        $$ = cat_str(3,$1,$2,$3);
+				}
+            ;
+
+TabSubPartitionElem: 
+            TabSubPartitionNameDecl OptTabPartitionBoundarySpec	
+			OptTabPartitionStorageAttr
+            OptTabSubPartitionSpec
+				{
+                        $$ = cat_str(4,$1,$2,$3,$4);
+				}
+
+/* allow boundary spec for default partition in parser, but complain later */
+			| TabSubPartitionDefaultNameDecl OptTabPartitionBoundarySpec	
+ 			  OptTabPartitionStorageAttr
+              OptTabSubPartitionSpec
+				{
+                        $$ = cat_str(4,$1,$2,$3,$4);
+				}
+			| TabPartitionBoundarySpec
+              OptTabPartitionStorageAttr
+ 			  OptTabSubPartitionSpec	
+				{
+                        $$ = cat_str(3,$1,$2,$3);
+				}
+            ;
+
+TabPartitionNameDecl: PARTITION IDENT			
+				{
+					$$ = cat_str(2,make_str("partition"),$2);
+				}
+		;
+TabPartitionDefaultNameDecl: DEFAULT PARTITION IDENT			
+				{
+					$$ = cat_str(2,make_str("default partition"),$3);
+				}
+		;
+
+TabSubPartitionNameDecl: SUBPARTITION IDENT			
+				{
+					$$ = cat_str(2,make_str("subpartition"),$2);
+				}
+		;
+
+TabSubPartitionDefaultNameDecl: DEFAULT SUBPARTITION IDENT			
+				{
+					$$ = cat_str(2,make_str("default subpartition"),$3);
+				}
+		;
+
+partition_hash_keyword: 			HASH
+				{
+                    $$ = make_str("hash");
+                }
+		;
+
+partition_coalesce_keyword: 			COALESCE
+				{
+                    $$ = make_str("coalesce");
+                }
+		;
+
+TabPartitionByType:
+			RANGE 				{ $$ = make_str("range");}
+			| partition_hash_keyword { $$ = $1;}
+			| LIST				{ $$ = make_str("list");}
+			| /*EMPTY*/
+				{
+					$$ = EMPTY;
+				}
+		;
+
+OptTabPartitionBy:
+			PARTITION BY 
+            TabPartitionByType '(' columnList ')' 
+            OptTabPartitionsNumber 
+			opt_list_subparts
+            OptTabPartitionSpec						
+				{
+					$$=cat_str(8,make_str("partition by"),$3,make_str("("),$5,make_str(")"),$7,$8,$9);
+				}
+			| /*EMPTY*/								{ $$ = EMPTY; }
+		;
+TabSubPartitionTemplate:
+			SUBPARTITION TEMPLATE 
+            '(' TabSubPartitionElemList ')' 
+				{
+					$$=cat_str(3,make_str("subpartition template ("),$4,make_str(")"));
+				}
+		;
+
+opt_list_subparts: list_subparts { $$ = $1;}
+			| /*EMPTY*/ { $$ = EMPTY; }
+		;
+opt_comma: ',' { $$=make_str(",");}
+			| /*EMPTY*/ { $$ = EMPTY;}
+		;
+list_subparts: TabSubPartitionBy { $$=$1; }
+			| list_subparts opt_comma TabSubPartitionBy
+				{
+					$$ = cat_str(3,$1,$2,$3);
+				}
+		;
+
+TabSubPartitionBy:
+			SUBPARTITION BY 
+            TabPartitionByType '(' columnList ')' 
+            OptTabSubPartitionsNumber 
+				{
+                        $$ = cat_str(6,make_str("subpartition by"),$3,make_str("("),$5,make_str(")"),$7);
+				}
+			| TabSubPartitionTemplate
+				{
+					$$ = $1;
+				}
+		;
+/* END PARTITION RULES */
+
 /*
  * Note: CREATE TABLE ... AS SELECT ... is just another spelling for
  * SELECT ... INTO.
@@ -1695,6 +2344,177 @@ CreateAsList:  CreateAsList ',' CreateAsElement
 		;
 
 CreateAsElement:  ColId { $$ = $1; }
+		;
+
+
+/*****************************************************************************
+ *
+ *		QUERY :
+ *				CREATE EXTERNAL [WEB] TABLE relname
+ *
+ *****************************************************************************/
+	
+CreateExternalStmt:	CREATE EXTERNAL OptWeb OptTemp TABLE qualified_name '(' OptExtTableElementList ')' 
+					ExtTypedesc FORMAT Sconst format_opt ext_opt_encoding_list OptSingleRowErrorHandling
+						{
+							$$ = cat_str(14,make_str("create external"),$3,$4,make_str("table"),$6,make_str("("),$8,make_str(")"),$10,make_str("format"),$12,$13,$14,$15);
+						}
+						;
+
+OptWeb:		WEB						{ $$ = make_str("web");}
+			| /*EMPTY*/				{ $$=EMPTY; }
+						;
+ExtTypedesc:
+			LOCATION '(' cdb_string_list ')'		
+			{
+				$$ = cat_str(3,make_str("location ("),$3,make_str(")"));
+			}
+			| EXECUTE Sconst ext_on_clause_list
+			{
+				$$ = cat_str(3,make_str("execute"),$2,$3);
+			}
+			;
+
+ext_on_clause_list:
+			ext_on_clause_list ext_on_clause_item		{ $$ = cat_str(2,$1,$2);}
+			| /*EMPTY*/									{ $$=EMPTY; }
+			;
+ext_on_clause_item:
+			ON ALL	
+			{
+				$$ = make_str("on all");
+			}
+			| ON HOST Sconst
+			{
+				$$ = cat_str(2,make_str("on host"),$3);
+			}
+			| ON HOST
+			{
+				$$ = make_str("on host");
+			}
+			| ON MASTER
+			{
+				$$ = make_str("on master");
+			}
+			| ON SEGMENT Iconst
+			{
+				$$ = cat_str(2,make_str("on segment"),$3);
+			}
+			| ON Iconst
+			{
+				$$ = cat_str(2,make_str("on"),$2);
+			}
+			;
+
+format_opt: 
+			'(' format_opt_list ')'				{ $$ = cat_str(3,make_str("("),$2,make_str(")"));}
+			| /*EMPTY*/							{ $$=EMPTY; }
+			;
+format_opt_list:
+			format_opt_list format_opt_item		{ $$ = cat_str(2,$1,$2);}
+			| /*EMPTY*/							{ $$=EMPTY; }
+			;
+format_opt_item:
+			DELIMITER opt_as Sconst
+			{
+				$$ = cat_str(3,make_str("delimiter"),$2,$3);
+			}
+			| NULL_P opt_as Sconst
+			{
+				$$ = cat_str(3,make_str("null"),$2,$3);
+			}
+			| CSV
+			{
+				$$ = make_str("csv");
+			}
+			| HEADER_P
+			{
+				$$ = make_str("header");
+			}
+			| QUOTE opt_as Sconst
+			{
+				$$ = cat_str(3,make_str("quote"),$2,$3);
+			}
+			| ESCAPE opt_as Sconst
+			{
+				$$ = cat_str(3,make_str("escape"),$2,$3);
+			}
+			| FORCE NOT NULL_P columnList
+			{
+				$$ = cat_str(2,make_str("force not null"),$4);
+			}
+			| FILL MISSING FIELDS
+			{
+				$$ = make_str("fill missing fields");
+			}
+		;
+
+OptExtTableElementList:
+			ExtTableElementList				{ $$ = $1;}
+			| /*EMPTY*/						{ $$=EMPTY; }
+			;
+ExtTableElementList:
+			ExtTableElement
+			{
+				$$ = $1;
+			}
+			| ExtTableElementList ',' ExtTableElement
+			{
+				$$ = cat_str(3,$1,make_str(","),$3);
+			}
+			;
+
+ExtTableElement:
+			ExtcolumnDef					{ $$ = $1;}
+			| TableLikeClause				{ $$ = $1;}
+			;
+/* column def for ext table - doesn't have room for constraints */
+ExtcolumnDef:	ColId Typename
+		{
+			$$ = cat_str(2,$1,$2);
+		}
+		;
+
+	
+/*
+ * Single row error handling SQL
+ */
+OptSingleRowErrorHandling:
+		OptErrorTableName OptSrehKeep SEGMENT REJECT_P LIMIT Iconst OptSrehLimitType
+		{
+			$$ = cat_str(5,$1,$2,make_str("segment reject limit"),$6,$7);
+		}
+		| /*EMPTY*/		{ $$=EMPTY; }
+		;
+OptErrorTableName:
+		LOG_P ERRORS INTO qualified_name 	{ $$ = cat_str(2,make_str("log errors into"),$4);}
+		| /*EMPTY*/							{ $$=EMPTY; }
+		;
+OptSrehLimitType:		
+		ROWS					{ $$ = make_str("rows");}
+		| PERCENT				{ $$ = make_str("percent");}
+		| /* default is ROWS */	{ $$=EMPTY; }
+		;
+OptSrehKeep:
+		KEEP				{ $$ = make_str("keep");}
+		| /*EMPTY*/			{ $$=EMPTY; }
+		;
+/*
+ * ENCODING. (we cheat a little and use a list, even though it's 1 item max).
+ */
+ext_opt_encoding_list:
+		ext_opt_encoding_list ext_opt_encoding_item		{ $$ = cat_str(2,$1,$2);}
+		| /*EMPTY*/										{ $$=EMPTY; }
+		;
+ext_opt_encoding_item:
+		ENCODING opt_equal Sconst
+		{
+			$$ = cat_str(3,make_str("encoding"),$2,$3);
+		}
+		| ENCODING opt_equal Iconst
+		{
+			$$ = cat_str(3,make_str("encoding"),$2,$3);
+		}
 		;
 
 /*****************************************************************************
@@ -1744,6 +2564,19 @@ OptSeqElem:  CACHE NumConst
 opt_by:		BY	{ $$ = make_str("by"); }
 		| /*EMPTY*/	{ $$ = EMPTY; }
 		;
+
+NumericOnly:
+			FloatOnly								{ $$ = $1;}
+			| IntegerOnly							{ $$ = $1;}
+		;
+FloatOnly:	Fconst									{ $$ = $1;}
+			| '-' Fconst
+				{
+					$$ = cat_str(2,make_str("-"),$2);
+				}
+		;
+
+IntegerOnly: SignedIconst							{ $$ = $1;};
 
 /*****************************************************************************
  *
@@ -2084,6 +2917,8 @@ DropStmt:  DROP drop_type IF_P EXISTS any_name_list opt_drop_behavior
 		;
 
 drop_type:	TABLE		{ $$ = make_str("table"); }
+			| EXTERNAL TABLE						{ $$ = make_str("external table");}
+			| EXTERNAL WEB TABLE					{ $$ = make_str("external web table");}
 		| SEQUENCE		{ $$ = make_str("sequence"); }
 		| VIEW			{ $$ = make_str("view"); }
 		| INDEX			{ $$ = make_str("index"); }
@@ -3101,6 +3936,21 @@ DeallocateStmt: DEALLOCATE name		{ $$ = cat2_str(make_str("deallocate"), $2); }
 		| DEALLOCATE PREPARE name	{ $$ = cat2_str(make_str("deallocate prepare"), $3); }
 		;
 */
+
+/*****************************************************************************
+ *
+ */
+
+cdb_string_list:
+			cdb_string							{ $$ = $1;}
+			| cdb_string_list ',' cdb_string	{ $$ = cat_str(3,$1,make_str(","),$3);}
+		;
+cdb_string:
+			Sconst
+				{
+					$$ = $1;
+				}
+		;
 
 /*****************************************************************************
  *
@@ -4618,6 +5468,8 @@ PosAllConst:	Sconst		{ $$ = $1; }
 		;
 
 RoleId:  ColId		{ $$ = $1;};
+QueueId:  ColId		{ $$ = $1;};
+SignedIconst: IntConst		{ $$ = $1;};
 
 SpecialRuleRelation:  OLD
 		{
@@ -6229,6 +7081,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| ABSOLUTE_P		{ $$ = make_str("absolute"); }
 		| ACCESS			{ $$ = make_str("access"); }
 		| ACTION			{ $$ = make_str("action"); }
+		| ACTIVE				{ $$ = make_str("active"); }
 		| ADD_P				{ $$ = make_str("add"); }
 		| ADMIN				{ $$ = make_str("admin"); }
 		| AFTER				{ $$ = make_str("after"); }
@@ -6259,6 +7112,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| CONSTRAINTS		{ $$ = make_str("constraints"); }
 		| CONVERSION_P		{ $$ = make_str("conversion"); }
 		| COPY				{ $$ = make_str("copy"); }
+		| COST				{ $$ = make_str("cost"); } /* gp */
 		| CREATEDB			{ $$ = make_str("createdb"); }
 		| CREATEROLE		{ $$ = make_str("createrole"); }
 		| CREATEUSER		{ $$ = make_str("createuser"); }
@@ -6282,27 +7136,37 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| ENABLE_P			{ $$ = make_str("enable"); }
 		| ENCODING			{ $$ = make_str("encoding"); }
 		| ENCRYPTED			{ $$ = make_str("encrypted"); }
+		| ERRORS				{ $$ = make_str("errors"); } /* gp */
 		| ESCAPE			{ $$ = make_str("escape"); }
+		| EVERY				{ $$ = make_str("every"); } /* gp */
+		| EXCHANGE				{ $$ = make_str("exchange"); } /* gp */
 		| EXCLUDING			{ $$ = make_str("excluding"); }
 		| EXCLUSIVE			{ $$ = make_str("exclusive"); }
 		| EXECUTE			{ $$ = make_str("execute"); }
 		| EXPLAIN			{ $$ = make_str("explain"); }
 		| FETCH				{ $$ = make_str("fetch"); }
+		| FIELDS				{ $$ = make_str("fields"); } /* gp */
+		| FILL				{ $$ = make_str("fill"); } /* gp */
 		| FIRST_P			{ $$ = make_str("first"); }
 		| FORCE				{ $$ = make_str("force"); }
+		| FORMAT				{ $$ = make_str("format"); } /* gp */
 		| FORWARD			{ $$ = make_str("forward"); }
 		| FUNCTION			{ $$ = make_str("function"); }
 		| GLOBAL			{ $$ = make_str("global"); }
 		| GRANTED			{ $$ = make_str("granted"); }
 		| HANDLER			{ $$ = make_str("handler"); }
+		| HASH				{ $$ = make_str("hash"); } /* gp */
 		| HEADER_P			{ $$ = make_str("header"); }
 		| HOLD				{ $$ = make_str("hold"); }
+		| HOST				{ $$ = make_str("host"); } /* gp */
 /*		| HOUR_P			{ $$ = make_str("hour"); }*/
 		| IF_P				{ $$ = make_str("if"); }
+		| IGNORE_P				{ $$ = make_str("ignore"); } /* gp */
 		| IMMEDIATE			{ $$ = make_str("immediate"); }
 		| IMMUTABLE			{ $$ = make_str("immutable"); }
 		| IMPLICIT_P		{ $$ = make_str("implicit"); }
 		| INCLUDING			{ $$ = make_str("including"); }
+		| INCLUSIVE				{ $$ = make_str("inclusive"); } /* gp */
 		| INCREMENT			{ $$ = make_str("increment"); }
 		| INDEX				{ $$ = make_str("index"); }
 		| INDEXES			{ $$ = make_str("indexes"); }
@@ -6318,17 +7182,22 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| LARGE_P			{ $$ = make_str("large"); }
 		| LAST_P			{ $$ = make_str("last"); }
 		| LEVEL				{ $$ = make_str("level"); }
+		| LIST				{ $$ = make_str("list"); } /* gp */
 		| LISTEN			{ $$ = make_str("listen"); }
 		| LOAD				{ $$ = make_str("load"); }
 		| LOCAL				{ $$ = make_str("local"); }
 		| LOCATION			{ $$ = make_str("location"); }
 		| LOCK_P			{ $$ = make_str("lock"); }
 		| LOGIN_P			{ $$ = make_str("login"); }
+		| MASTER				{ $$ = make_str("master"); } /* gp */
 		| MATCH				{ $$ = make_str("match"); }
 		| MAXVALUE			{ $$ = make_str("maxvalue"); }
+		| MERGE				{ $$ = make_str("merge"); } /* gp */
 /*		| MINUTE_P			{ $$ = make_str("minute"); }*/
 		| MINVALUE			{ $$ = make_str("minvalue"); }
+		| MISSING				{ $$ = make_str("missing"); } /* gp */
 		| MODE				{ $$ = make_str("mode"); }
+		| MODIFY				{ $$ = make_str("modify"); } /* gp */
 /*		| MONTH_P			{ $$ = make_str("month"); }*/
 		| MOVE				{ $$ = make_str("move"); }
 		| NAMES				{ $$ = make_str("names"); }
@@ -6339,6 +7208,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| NOCREATEUSER		{ $$ = make_str("nocreateuser"); }
 		| NOINHERIT			{ $$ = make_str("noinherit"); }
 		| NOLOGIN_P 		{ $$ = make_str("nologin"); }
+		| NOOVERCOMMIT				{ $$ = make_str("noovercommit"); } /* gp */
 		| NOSUPERUSER		{ $$ = make_str("nosuperuser"); }
 		| NOTHING			{ $$ = make_str("nothing"); }
 		| NOTIFY			{ $$ = make_str("notify"); }
@@ -6348,10 +7218,13 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| OIDS				{ $$ = make_str("oids"); }
 		| OPERATOR			{ $$ = make_str("operator"); }
 		| OPTION			{ $$ = make_str("option"); }
+		| OVERCOMMIT				{ $$ = make_str("overcommit"); } /* gp */
 		| OWNED				{ $$ = make_str("owned"); }
 		| OWNER				{ $$ = make_str("owner"); }
 		| PARTIAL			{ $$ = make_str("partial"); }
+		| PARTITIONS				{ $$ = make_str("partitions"); } /* gp */
 		| PASSWORD			{ $$ = make_str("password"); }
+		| PERCENT				{ $$ = make_str("percent"); } /* gp */
 		| PREPARE			{ $$ = make_str("prepare"); }
 		| PREPARED			{ $$ = make_str("prepared"); }
 		| PRESERVE			{ $$ = make_str("preserver"); }
@@ -6359,6 +7232,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| PRIVILEGES		{ $$ = make_str("privileges"); }
 		| PROCEDURAL		{ $$ = make_str("procedural"); }
 		| PROCEDURE			{ $$ = make_str("procedure"); }
+		| QUEUE				{ $$ = make_str("queue"); } /* gp */
 		| QUOTE				{ $$ = make_str("quote"); }
 		| READ				{ $$ = make_str("read"); }
 		| REASSIGN			{ $$ = make_str("reassign"); }
@@ -6370,6 +7244,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| REPEATABLE		{ $$ = make_str("repeatable"); }
 		| REPLACE			{ $$ = make_str("replace"); }
 		| RESET				{ $$ = make_str("reset"); }
+		| RESOURCE				{ $$ = make_str("resource"); } /* gp */
 		| RESTART			{ $$ = make_str("restart"); }
 		| RESTRICT			{ $$ = make_str("restrict"); }
 		| RETURNS			{ $$ = make_str("returns"); }
@@ -6382,6 +7257,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| SCHEMA			{ $$ = make_str("schema"); }
 		| SCROLL			{ $$ = make_str("scroll"); }
 /*		| SECOND_P			{ $$ = make_str("second"); }*/
+		| SEGMENT				{ $$ = make_str("segment"); } /* gp */
 		| SEQUENCE			{ $$ = make_str("sequence"); }
 		| SERIALIZABLE		{ $$ = make_str("serializable"); }
 		| SESSION			{ $$ = make_str("session"); }
@@ -6389,6 +7265,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| SHARE				{ $$ = make_str("share"); }
 		| SHOW				{ $$ = make_str("show"); }
 		| SIMPLE			{ $$ = make_str("simple"); }
+		| SPLIT				{ $$ = make_str("split"); } /* gp */
 		| STABLE			{ $$ = make_str("stable"); }
 		| START				{ $$ = make_str("start"); }
 		| STATEMENT			{ $$ = make_str("statement"); }
@@ -6396,6 +7273,8 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| STDIN				{ $$ = make_str("stdin"); }
 		| STDOUT			{ $$ = make_str("stdout"); }
 		| STORAGE			{ $$ = make_str("storage"); }
+		| SUBPARTITION				{ $$ = make_str("subpartition"); } /* gp */
+		| SUBPARTITIONS				{ $$ = make_str("subpartitions"); } /* gp */
 		| SUPERUSER_P		{ $$ = make_str("superuser"); }
 		| STRICT_P			{ $$ = make_str("strict"); }
 		| SYSTEM_P			{ $$ = make_str("system"); }
@@ -6404,6 +7283,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| TEMP				{ $$ = make_str("temp"); }
 		| TEMPLATE			{ $$ = make_str("template"); }
 		| TEMPORARY			{ $$ = make_str("temporary"); }
+		| THRESHOLD				{ $$ = make_str("threshold"); } /* gp */
 		| TRANSACTION		{ $$ = make_str("transaction"); }
 		| TRIGGER			{ $$ = make_str("trigger"); }
 		| TRUNCATE			{ $$ = make_str("truncate"); }
@@ -6575,7 +7455,9 @@ reserved_keyword:
 		| ONLY				{ $$ = make_str("only"); }
 		| OR				{ $$ = make_str("or"); }
 		| ORDER				{ $$ = make_str("order"); }
+		| PARTITION				{ $$ = make_str("partition"); } /* gp */
 		| PRIMARY			{ $$ = make_str("primary"); }
+		| RANGE				{ $$ = make_str("range"); } /* gp */
 		| REFERENCES			{ $$ = make_str("references"); }
 		| RETURNING			{ $$ = make_str("returning"); }
 		| SELECT			{ $$ = make_str("select"); }

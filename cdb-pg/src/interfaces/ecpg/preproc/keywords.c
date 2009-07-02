@@ -32,6 +32,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"absolute", ABSOLUTE_P},
 	{"access", ACCESS},
 	{"action", ACTION},
+		{"active", ACTIVE}, /* gp */
 	{"add", ADD_P},
 	{"admin", ADMIN},
 	{"after", AFTER},
@@ -88,6 +89,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"conversion", CONVERSION_P},
 	{"convert", CONVERT},
 	{"copy", COPY},
+		{"cost", COST}, /* gp */
 	{"create", CREATE},
 	{"createdb", CREATEDB},
 	{"createrole", CREATEROLE},
@@ -117,6 +119,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"desc", DESC},
 	{"disable", DISABLE_P},
 	{"distinct", DISTINCT},
+		{"distributed", DISTRIBUTED}, /* gp */
 	{"do", DO},
 	{"domain", DOMAIN_P},
 	{"double", DOUBLE_P},
@@ -127,8 +130,11 @@ static ScanKeyword ScanKeywords[] = {
 	{"encoding", ENCODING},
 	{"encrypted", ENCRYPTED},
 	{"end", END_P},
+		{"errors", ERRORS}, /* gp */
 	{"escape", ESCAPE},
+		{"every", EVERY}, /* gp */
 	{"except", EXCEPT},
+		{"exchange", EXCHANGE}, /* gp */
 	{"excluding", EXCLUDING},
 	{"exclusive", EXCLUSIVE},
 	{"execute", EXECUTE},
@@ -138,11 +144,14 @@ static ScanKeyword ScanKeywords[] = {
 	{"extract", EXTRACT},
 	{"false", FALSE_P},
 	{"fetch", FETCH},
+		{"fields", FIELDS}, /* gp */
+		{"fill", FILL}, /* gp */
 	{"first", FIRST_P},
 	{"float", FLOAT_P},
 	{"for", FOR},
 	{"force", FORCE},
 	{"foreign", FOREIGN},
+		{"format", FORMAT}, /* gp */
 	{"forward", FORWARD},
 	{"freeze", FREEZE},
 	{"from", FROM},
@@ -155,17 +164,21 @@ static ScanKeyword ScanKeywords[] = {
 	{"greatest", GREATEST},
 	{"group", GROUP_P},
 	{"handler", HANDLER},
+		{"hash", HASH}, /* gp */
 	{"having", HAVING},
 	{"header", HEADER_P},
 	{"hold", HOLD},
+		{"host", HOST}, /* gp */
 	{"hour", HOUR_P},
 	{"if", IF_P},
+		{"ignore", IGNORE_P}, /* gp */
 	{"ilike", ILIKE},
 	{"immediate", IMMEDIATE},
 	{"immutable", IMMUTABLE},
 	{"implicit", IMPLICIT_P},
 	{"in", IN_P},
 	{"including", INCLUDING},
+		{"inclusive", INCLUSIVE}, /* gp */
 	{"increment", INCREMENT},
 	{"index", INDEX},
 	{"indexes", INDEXES},
@@ -188,6 +201,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"isnull", ISNULL},
 	{"isolation", ISOLATION},
 	{"join", JOIN},
+		{"keep", KEEP}, /* gp */
 	{"key", KEY},
 	{"lancompiler", LANCOMPILER},
 	{"language", LANGUAGE},
@@ -199,17 +213,23 @@ static ScanKeyword ScanKeywords[] = {
 	{"level", LEVEL},
 	{"like", LIKE},
 	{"limit", LIMIT},
+		{"list", LIST}, /* gp */
 	{"listen", LISTEN},
 	{"load", LOAD},
 	{"local", LOCAL},
 	{"location", LOCATION},
 	{"lock", LOCK_P},
+		{"log", LOG_P}, /* gp */
 	{"login", LOGIN_P},
+		{"master", MASTER}, /* gp */
 	{"match", MATCH},
 	{"maxvalue", MAXVALUE},
+		{"merge", MERGE}, /* gp */
 	{"minute", MINUTE_P},
 	{"minvalue", MINVALUE},
+		{"missing", MISSING}, /* gp */
 	{"mode", MODE},
+		{"modify", MODIFY}, /* gp */
 	{"month", MONTH_P},
 	{"move", MOVE},
 	{"names", NAMES},
@@ -225,6 +245,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"noinherit", NOINHERIT},
 	{"nologin", NOLOGIN_P},
 	{"none", NONE},
+		{"noovercommit", NOOVERCOMMIT}, /* gp */
 	{"nosuperuser", NOSUPERUSER},
 	{"not", NOT},
 	{"nothing", NOTHING},
@@ -248,11 +269,15 @@ static ScanKeyword ScanKeywords[] = {
 	{"order", ORDER},
 	{"out", OUT_P},
 	{"outer", OUTER_P},
+		{"overcommit", OVERCOMMIT}, /* gp */
 	{"overlaps", OVERLAPS},
 	{"owned", OWNED},
 	{"owner", OWNER},
 	{"partial", PARTIAL},
+		{"partition", PARTITION}, /* gp */
+		{"partitions", PARTITIONS}, /* gp */
 	{"password", PASSWORD},
+		{"percent", PERCENT}, /* gp */
 	{"position", POSITION},
 	{"precision", PRECISION},
 	{"prepare", PREPARE},
@@ -263,19 +288,24 @@ static ScanKeyword ScanKeywords[] = {
 	{"privileges", PRIVILEGES},
 	{"procedural", PROCEDURAL},
 	{"procedure", PROCEDURE},
+		{"queue", QUEUE}, /* gp */
 	{"quote", QUOTE},
+		{"randomly", RANDOMLY}, /* gp */
+		{"range", RANGE}, /* gp */
 	{"read", READ},
 	{"real", REAL},
 	{"reassign", REASSIGN},
 	{"recheck", RECHECK},
 	{"references", REFERENCES},
 	{"reindex", REINDEX},
+		{"reject", REJECT_P}, /* gp */
 	{"relative", RELATIVE_P},
 	{"release", RELEASE},
 	{"rename", RENAME},
 	{"repeatable", REPEATABLE},
 	{"replace", REPLACE},
 	{"reset", RESET},
+		{"resource", RESOURCE}, /* gp */
 	{"restart", RESTART},
 	{"restrict", RESTRICT},
 	{"returning", RETURNING},
@@ -292,6 +322,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"scroll", SCROLL},
 	{"second", SECOND_P},
 	{"security", SECURITY},
+		{"segment", SEGMENT}, /* gp */
 	{"select", SELECT},
 	{"sequence", SEQUENCE},
 	{"serializable", SERIALIZABLE},
@@ -305,6 +336,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"simple", SIMPLE},
 	{"smallint", SMALLINT},
 	{"some", SOME},
+		{"split", SPLIT}, /* gp */
 	{"stable", STABLE},
 	{"start", START},
 	{"statement", STATEMENT},
@@ -313,6 +345,8 @@ static ScanKeyword ScanKeywords[] = {
 	{"stdout", STDOUT},
 	{"storage", STORAGE},
 	{"strict", STRICT_P},
+		{"subpartition", SUBPARTITION}, /* gp */
+		{"subpartitions", SUBPARTITIONS}, /* gp */
 	{"substring", SUBSTRING},
 	{"superuser", SUPERUSER_P},
 	{"symmetric", SYMMETRIC},
@@ -324,6 +358,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"template", TEMPLATE},
 	{"temporary", TEMPORARY},
 	{"then", THEN},
+		{"threshold", THRESHOLD}, /* gp */
 	{"time", TIME},
 	{"timestamp", TIMESTAMP},
 	{"to", TO},
@@ -348,6 +383,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"using", USING},
 	{"vacuum", VACUUM},
 	{"valid", VALID},
+		{"validation", VALIDATION}, /* gp */
 	{"validator", VALIDATOR},
 	{"values", VALUES},
 	{"varchar", VARCHAR},
@@ -355,6 +391,7 @@ static ScanKeyword ScanKeywords[] = {
 	{"verbose", VERBOSE},
 	{"view", VIEW},
 	{"volatile", VOLATILE},
+		{"web", WEB}, /* gp */
 	{"when", WHEN},
 	{"where", WHERE},
 	{"with", WITH},
