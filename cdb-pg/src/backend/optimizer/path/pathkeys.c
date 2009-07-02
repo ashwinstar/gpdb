@@ -406,6 +406,22 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
     int		  	 i1;
     int			 nitems = list_length(curset);
 
+    if ( CdbPathkeyEqualsConstant(curset))
+    {
+        /*
+         * Skip this entire equivalance set -- when an equivalence set contains a constant,
+         *  implied equality should transfer over Var=Constant to each relation.  We can not beat
+         *  that by copying over F(Var)
+         *
+         * If there is a constant in the equiv set then it will be at the front, so there
+         *   is no risk of us checking a non-constant one before a constant one.
+         *
+         * See MPP-5478 for a poor plan caused by this problem.
+         */
+        
+        return;
+    }
+
     /* find the relids for each item in the equivalence set */
     relids = (Relids *) palloc(nitems * sizeof(Relids));
     foreach_with_count(ptr1, curset, i1)
@@ -430,8 +446,8 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
         membership = bms_membership(relids[i1]);
         if ( membership != BMS_SINGLETON)
         {
-            /* ignore const and multiple-relation equivalence
-             *   members
+            /*
+             * Ignore multiple-relation equivalence members
 			 */
             continue;
         }
@@ -494,8 +510,8 @@ gen_implied_quals_for_equi_key_list(PlannerInfo *root, List *curset,
                 item2Membership = bms_membership(relids[i2]);
                 if ( item2Membership != BMS_SINGLETON)
                 {
-                    /* ignore const and multiple-relation equivalence
-                     *   members
+                    /* ignore multiple-relation equivalence
+                     *   members (for const, the entire equivalence set has been skipped by earlier check)
 					 */
                     continue;
                 }
