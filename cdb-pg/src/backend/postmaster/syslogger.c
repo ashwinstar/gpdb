@@ -191,7 +191,7 @@ SysLoggerMain(int argc, char *argv[])
      * come through elog.c and will be sent to write_syslogger_file.
      */
     {
-        int			fd = open(NULL_DEV, O_WRONLY, 0);
+        int			fd = open(DEVNULL, O_WRONLY, 0);
 
         /*
          * The closes might look redundant, but they are not: we want to be

@@ -39,6 +39,8 @@ extern int	PostmasterMain(int argc, char *argv[]);
 extern void ClosePostmasterPorts(bool am_syslogger);
 extern int gpsyncMain(int argc, char *argv[]);
 
+extern int	MaxLivePostmasterChildren(void);
+
 #ifdef EXEC_BACKEND
 extern pid_t postmaster_forkexec(int argc, char *argv[]);
 extern int	SubPostmasterMain(int argc, char *argv[]);

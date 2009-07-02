@@ -32,7 +32,7 @@
  *	  clients.
  *
  *
- * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -317,7 +317,7 @@ static bool FatalError = false; /* T if recovering from backend crash */
 bool		ClientAuthInProgress = false;		/* T during new-client
 												 * authentication */
 
-bool redirection_done = false;
+bool		redirection_done = false;	/* stderr redirected for syslogger? */
 
 static bool force_autovac = false; /* received START_AUTOVAC signal */
 
@@ -327,18 +327,20 @@ static bool force_autovac = false; /* received START_AUTOVAC signal */
  * backend from the postmaster to that backend (via fork).
  */
 static unsigned int random_seed = 0;
+static struct timeval random_start_time;
 
 extern char *optarg;
 extern int	optind,
 			opterr;
 
 #ifdef HAVE_INT_OPTRESET
-extern int	optreset;
+extern int	optreset;			/* might not be declared by system headers */
 #endif
 
 /*
  * postmaster.c - function prototypes
  */
+static void getInstallationPaths(const char *argv0);
 static void checkDataDir(void);
 
 #ifdef USE_BONJOUR
@@ -389,14 +391,17 @@ static void setProcAffinity(int id);
 #ifdef EXEC_BACKEND
 
 #ifdef WIN32
-static void win32_AddChild(pid_t pid, HANDLE handle);
-static void win32_RemoveChild(pid_t pid);
 static pid_t win32_waitpid(int *exitstatus);
-static DWORD WINAPI win32_sigchld_waiter(LPVOID param);
+static void WINAPI pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired);
 
-static pid_t *win32_childPIDArray;
-static HANDLE *win32_childHNDArray;
-static unsigned long win32_numChildren = 0;
+static HANDLE win32ChildQueue;
+
+typedef struct
+{
+	HANDLE		waitHandle;
+	HANDLE		procHandle;
+	DWORD		procId;
+} win32_deadchild_waitinfo;
 
 HANDLE		PostmasterHandle;
 #endif
@@ -556,11 +561,8 @@ PostmasterMain(int argc, char *argv[])
 											  ALLOCSET_DEFAULT_MAXSIZE);
 	MemoryContextSwitchTo(PostmasterContext);
 
-	if (find_my_exec(argv[0], my_exec_path) < 0)
-		elog(FATAL, "%s: could not locate my own executable path",
-			 argv[0]);
-
-	get_pkglib_path(my_exec_path, pkglib_path);
+	/* Initialize paths to installation files */
+	getInstallationPaths(argv[0]);
 
 	/*
 	 * Options setup
@@ -767,15 +769,6 @@ PostmasterMain(int argc, char *argv[])
 					 progname);
 		ExitPostmaster(1);
 	}
-
-#ifdef EXEC_BACKEND
-	/* Locate executable backend before we change working directory */
-	if (find_other_exec(argv[0], "postgres", PG_VERSIONSTR,
-						postgres_exec_path) < 0)
-		ereport(FATAL,
-				(errmsg("%s: could not locate matching postgres executable",
-						progname)));
-#endif
 
 	/*
 	 * Locate the proper configuration files and data directory, and read
@@ -1048,16 +1041,12 @@ PostmasterMain(int argc, char *argv[])
 #ifdef WIN32
 
 	/*
-	 * Initialize the child pid/HANDLE arrays for signal handling.
+	 * Initialize I/O completion port used to deliver list of dead children.
 	 */
-	win32_childPIDArray = (pid_t *)
-		malloc(mul_size(NUM_BACKENDARRAY_ELEMS, sizeof(pid_t)));
-	win32_childHNDArray = (HANDLE *)
-		malloc(mul_size(NUM_BACKENDARRAY_ELEMS, sizeof(HANDLE)));
-	if (!win32_childPIDArray || !win32_childHNDArray)
+	win32ChildQueue = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
+	if (win32ChildQueue == NULL)
 		ereport(FATAL,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
+		   (errmsg("could not create I/O completion port for child queue")));
 
 	/*
 	 * Set up a handle that child processes can use to check whether the
@@ -1164,6 +1153,8 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	PgStartTime = GetCurrentTimestamp();
 #endif
+	/* PostmasterRandom wants its own copy */
+	gettimeofday(&random_start_time, NULL);
 
 	/*
 	 * We're ready to rock and roll...
@@ -1179,6 +1170,58 @@ PostmasterMain(int argc, char *argv[])
 	ExitPostmaster(status != STATUS_OK);
 
 	return 0;					/* not reached */
+}
+
+
+/*
+ * Compute and check the directory paths to files that are part of the
+ * installation (as deduced from the postgres executable's own location)
+ */
+static void
+getInstallationPaths(const char *argv0)
+{
+	DIR		   *pdir;
+
+	/* Locate the postgres executable itself */
+	if (find_my_exec(argv0, my_exec_path) < 0)
+		elog(FATAL, "%s: could not locate my own executable path", argv0);
+
+#ifdef EXEC_BACKEND
+	/* Locate executable backend before we change working directory */
+	if (find_other_exec(argv0, "postgres", PG_BACKEND_VERSIONSTR,
+						postgres_exec_path) < 0)
+		ereport(FATAL,
+				(errmsg("%s: could not locate matching postgres executable",
+						argv0)));
+#endif
+
+	/*
+	 * Locate the pkglib directory --- this has to be set early in case we try
+	 * to load any modules from it in response to postgresql.conf entries.
+	 */
+	get_pkglib_path(my_exec_path, pkglib_path);
+
+	/*
+	 * Verify that there's a readable directory there; otherwise the Postgres
+	 * installation is incomplete or corrupt.  (A typical cause of this
+	 * failure is that the postgres executable has been moved or hardlinked to
+	 * some directory that's not a sibling of the installation lib/
+	 * directory.)
+	 */
+	pdir = AllocateDir(pkglib_path);
+	if (pdir == NULL)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open directory \"%s\": %m",
+						pkglib_path),
+				 errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.",
+						 my_exec_path)));
+	FreeDir(pdir);
+
+	/*
+	 * XXX is it worth similarly checking the share/ directory?  If the lib/
+	 * directory is there, then share/ probably is too.
+	 */
 }
 
 
@@ -1281,7 +1324,6 @@ checkDataDir(void)
 static void
 reg_reply(DNSServiceRegistrationReplyErrorType errorCode, void *context)
 {
-
 }
 #endif   /* USE_BONJOUR */
 
@@ -1325,7 +1367,7 @@ pmdaemonize(void)
 		ExitPostmaster(1);
 	}
 #endif
-	i = open(NULL_DEV, O_RDWR, 0);
+	i = open(DEVNULL, O_RDWR, 0);
 	dup2(i, 0);
 	dup2(i, 1);
 	dup2(i, 2);
@@ -1588,6 +1630,7 @@ initMasks(fd_set *rmask)
 		if (fd == -1)
 			break;
 		FD_SET(fd, rmask);
+
 		if (fd > maxsock)
 			maxsock = fd;
 	}
@@ -1944,7 +1987,7 @@ processCancelRequest(Port *port, void *pkt)
 	{
 		bp = (Backend *) DLE_VAL(curr);
 #else
-	for (i = 0; i < NUM_BACKENDARRAY_ELEMS; i++)
+	for (i = MaxLivePostmasterChildren() - 1; i >= 0; i--)
 	{
 		bp = (Backend *) &ShmemBackendArray[i];
 #endif
@@ -1996,10 +2039,10 @@ canAcceptConnections(void)
 	 * MaxBackends limit is enforced when a new backend tries to join the
 	 * shared-inval backend array.
 	 *
-	 * In the EXEC_BACKEND case, the limit here must match the size of the
-	 * ShmemBackendArray, since all these processes will have cancel codes.
+	 * The limit here must match the sizes of the per-child-process arrays;
+	 * see comments for MaxLivePostmasterChildren().
 	 */
-	if (CountChildren() >= 2 * MaxBackends)
+	if (CountChildren() >= MaxLivePostmasterChildren())
 		return CAC_TOOMANY;
 
 	return CAC_OK;
@@ -2100,20 +2143,6 @@ ClosePostmasterPorts(bool am_syslogger)
 			ListenSocket[i] = -1;
 		}
 	}
-
-
-/* XXX XXX:
-#ifndef WIN32
-#define INVALID_PIPE_VAL -1
-#else
-#define INVALID_PIPE_VAL 0
-#endif
-
-		if (syslogPipe[0] > INVALID_PIPE_VAL)
-			close(syslogPipe[0]);
-		syslogPipe[0] = INVALID_PIPE_VAL;
-*/
-
 
 	/* If using syslogger, close the read side of the pipe */
 	if (!am_syslogger)
@@ -2387,6 +2416,7 @@ pmdie(SIGNAL_ARGS)
 			 */
 			ereport(LOG,
 					(errmsg("received immediate shutdown request")));
+			SignalChildren(SIGQUIT);
 			if (StartupPID != 0)
 				signal_child(StartupPID, SIGQUIT);
  			StopServices(0, SIGQUIT);
@@ -2398,8 +2428,6 @@ pmdie(SIGNAL_ARGS)
 				signal_child(PgArchPID, SIGQUIT);
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
-			if (DLGetHead(BackendList))
-				SignalChildren(SIGQUIT);
 			ExitPostmaster(0);
 			break;
 	}
@@ -2461,7 +2489,7 @@ static void do_reaper()
 		 * to be called on all children when we are done with them. Could move
 		 * to LogChildExit, but that seems like asking for future trouble...
 		 */
-		win32_RemoveChild(pid);
+		//win32_RemoveChild(pid);
 #endif   /* WIN32 */
 #endif   /* HAVE_WAITPID */
 
@@ -2847,6 +2875,7 @@ reaper_done:
 	if (Debug_print_server_processes && didServiceProcessWork)
 		elog(LOG,"returning from reaper");
 
+	/* Done with signal handler */
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
@@ -2935,8 +2964,8 @@ CleanupBackend(int pid,
 	/*
 	 * If a backend dies in an ugly way then we must signal all other backends
 	 * to quickdie.  If exit status is zero (normal) or one (FATAL exit), we
-	 * assume everything is all right and simply remove the backend from the
-	 * active backend list.
+	 * assume everything is all right and proceed to remove the backend from
+	 * the active backend list.
 	 */
 	if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 	{
@@ -3013,6 +3042,9 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 * and let the user know what's going on. But if SendStop is set
 			 * (-s on command line), then we send SIGSTOP instead, so that we
 			 * can get core dumps from all backends by hand.
+			 *
+			 * We could exclude dead_end children here, but at least in the
+			 * SIGSTOP case it seems better to include them.
 			 */
 			if (!FatalError)
 			{
@@ -3049,8 +3081,12 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(AutoVacPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-	/* Force a power-cycle of the pgarch process too */
-	/* (Shouldn't be necessary, but just for luck) */
+	/*
+	 * Force a power-cycle of the pgarch process too.  (This isn't absolutely
+	 * necessary, but it seems like a good idea for robustness, and it
+	 * simplifies the state-machine logic in the case where a shutdown request
+	 * arrives during crash processing.)
+	 */
 	if (PgArchPID != 0 && !FatalError)
 	{
 		ereport((Debug_print_server_processes ? LOG : DEBUG2),
@@ -3111,6 +3147,26 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 				(errmsg("%s (PID %d) exited with exit code %d",
 						procname, pid, WEXITSTATUS(exitstatus))));
 	else if (WIFSIGNALED(exitstatus))
+#if defined(WIN32)
+		ereport(lev,
+
+		/*------
+		  translator: %s is a noun phrase describing a child process, such as
+		  "server process" */
+				(errmsg("%s (PID %d) was terminated by exception 0x%X",
+						procname, pid, WTERMSIG(exitstatus)),
+				 errhint("See C include file \"ntstatus.h\" for a description of the hexadecimal value.")));
+#elif defined(HAVE_DECL_SYS_SIGLIST) && HAVE_DECL_SYS_SIGLIST
+	ereport(lev,
+
+	/*------
+	  translator: %s is a noun phrase describing a child process, such as
+	  "server process" */
+			(errmsg("%s (PID %d) was terminated by signal %d: %s",
+					procname, pid, WTERMSIG(exitstatus),
+					WTERMSIG(exitstatus) < NSIG ?
+					sys_siglist[WTERMSIG(exitstatus)] : "(unknown)")));
+#else
 		ereport(lev,
 
 		/*------
@@ -3118,13 +3174,14 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 		  "server process" */
 				(errmsg("%s (PID %d) was terminated by signal %d",
 						procname, pid, WTERMSIG(exitstatus))));
+#endif
 	else
 		ereport(lev,
 
 		/*------
 		  translator: %s is a noun phrase describing a child process, such as
 		  "server process" */
-				(errmsg("%s (PID %d) exited with unexpected status %d",
+				(errmsg("%s (PID %d) exited with unrecognized status %d",
 						procname, pid, exitstatus)));
 }
 
@@ -3235,15 +3292,8 @@ BackendStartup(Port *port)
 	pid_t		pid;
 
 	/*
-	 * Compute the cancel key that will be assigned to this backend. The
-	 * backend will have its own copy in the forked-off process' value of
-	 * MyCancelKey, so that it can transmit the key to the frontend.
-	 */
-	MyCancelKey = PostmasterRandom();
-
-	/*
-	 * Make room for backend data structure.  Better before the fork() so we
-	 * can handle failure cleanly.
+	 * Create backend data structure.  Better before the fork() so we can
+	 * handle failure cleanly.
 	 */
 	bn = (Backend *) malloc(sizeof(Backend));
 	if (!bn)
@@ -3253,6 +3303,14 @@ BackendStartup(Port *port)
 				 errmsg("out of memory")));
 		return STATUS_ERROR;
 	}
+
+	/*
+	 * Compute the cancel key that will be assigned to this backend. The
+	 * backend will have its own copy in the forked-off process' value of
+	 * MyCancelKey, so that it can transmit the key to the frontend.
+	 */
+	MyCancelKey = PostmasterRandom();
+	bn->cancel_key = MyCancelKey;
 
 	/* Pass down canAcceptConnections state */
 	port->canAcceptConnections = canAcceptConnections();
@@ -3273,6 +3331,8 @@ BackendStartup(Port *port)
 		IsUnderPostmaster = true;		/* we are a postmaster subprocess now */
 
 		MyProcPid = getpid();	/* reset MyProcPid */
+
+		MyStartTime = time(NULL);
 
 		/* We don't want the postmaster's proc_exit() handlers */
 		on_exit_reset();
@@ -3850,27 +3910,17 @@ internal_forkexec(int argc, char *argv[], Port *port)
 	int			i;
 	int			j;
 	char		cmdLine[MAXPGPATH * 2];
-	HANDLE		childHandleCopy;
-	HANDLE		waiterThread;
 	HANDLE		paramHandle;
 	BackendParameters *param;
 	SECURITY_ATTRIBUTES sa;
 	char		paramHandleStr[32];
+	win32_deadchild_waitinfo *childinfo;
 
 	/* Make sure caller set up argv properly */
 	Assert(argc >= 3);
 	Assert(argv[argc] == NULL);
 	Assert(strncmp(argv[1], "--fork", 6) == 0);
 	Assert(argv[2] == NULL);
-
-	/* Verify that there is room in the child list */
-	if (win32_numChildren >= NUM_BACKENDARRAY_ELEMS)
-	{
-		elog(LOG, "no room for child entry in backend list");
-		/* Report same error as for a fork failure on Unix */
-		errno = EAGAIN;
-		return -1;
-	}
 
 	/* Set up shared memory for parameter passing */
 	ZeroMemory(&sa, sizeof(sa));
@@ -3981,34 +4031,35 @@ internal_forkexec(int argc, char *argv[], Port *port)
 		return -1;
 	}
 
-	if (!IsUnderPostmaster)
-	{
-		/* We are the Postmaster creating a child... */
-		win32_AddChild(pi.dwProcessId, pi.hProcess);
-	}
-
-	/* Set up the thread to handle the SIGCHLD for this process */
-	if (DuplicateHandle(GetCurrentProcess(),
-						pi.hProcess,
-						GetCurrentProcess(),
-						&childHandleCopy,
-						0,
-						FALSE,
-						DUPLICATE_SAME_ACCESS) == 0)
+	/*
+	 * Queue a waiter for to signal when this child dies. The wait will be
+	 * handled automatically by an operating system thread pool.
+	 *
+	 * Note: use malloc instead of palloc, since it needs to be thread-safe.
+	 * Struct will be free():d from the callback function that runs on a
+	 * different thread.
+	 */
+	childinfo = malloc(sizeof(win32_deadchild_waitinfo));
+	if (!childinfo)
 		ereport(FATAL,
-		  (errmsg_internal("could not duplicate child handle: error code %d",
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+
+	childinfo->procHandle = pi.hProcess;
+	childinfo->procId = pi.dwProcessId;
+
+	if (!RegisterWaitForSingleObject(&childinfo->waitHandle,
+						pi.hProcess,
+									 pgwin32_deadchild_callback,
+									 childinfo,
+									 INFINITE,
+								WT_EXECUTEONLYONCE | WT_EXECUTEINWAITTHREAD))
+		ereport(FATAL,
+		(errmsg_internal("could not register process for wait: error code %d",
 						   (int) GetLastError())));
 
-	waiterThread = CreateThread(NULL, 64 * 1024, win32_sigchld_waiter,
-								(LPVOID) childHandleCopy, 0, NULL);
-	if (!waiterThread)
-		ereport(FATAL,
-				(errmsg_internal("could not create sigchld waiter thread: error code %d",
-								 (int) GetLastError())));
-	CloseHandle(waiterThread);
+	/* Don't close pi.hProcess here - the wait thread needs access to it */
 
-	if (IsUnderPostmaster)
-		CloseHandle(pi.hProcess);
 	CloseHandle(pi.hThread);
 
 	return pi.dwProcessId;
@@ -4109,10 +4160,10 @@ SubPostmasterMain(int argc, char *argv[])
 	read_nondefault_variables();
 
 	/*
-	 * Reload any libraries that were preloaded by the postmaster.  Since
-	 * we exec'd this process, those libraries didn't come along with us;
-	 * but we should load them into all child processes to be consistent
-	 * with the non-EXEC_BACKEND behavior.
+	 * Reload any libraries that were preloaded by the postmaster.	Since we
+	 * exec'd this process, those libraries didn't come along with us; but we
+	 * should load them into all child processes to be consistent with the
+	 * non-EXEC_BACKEND behavior.
 	 */
 	process_shared_preload_libraries();
 
@@ -4377,7 +4428,6 @@ dummy_handler(SIGNAL_ARGS)
 {
 }
 
-
 /*
  * RandomSalt
  */
@@ -4565,6 +4615,24 @@ CreateOptsFile(int argc, char *argv[], char *fullprogname)
 	}
 
 	return true;
+}
+
+
+/*
+ * MaxLivePostmasterChildren
+ *
+ * This reports the number of entries needed in per-child-process arrays
+ * (the PMChildFlags array, and if EXEC_BACKEND the ShmemBackendArray).
+ * These arrays include regular backends and autovac workers, but not special
+ * children nor dead_end children.	This allows the arrays to have a fixed
+ * maximum size, to wit the same too-many-children limit enforced by
+ * canAcceptConnections().	The exact value isn't too critical as long as
+ * it's more than MaxBackends.
+ */
+int
+MaxLivePostmasterChildren(void)
+{
+	return 2 * MaxBackends;
 }
 
 
@@ -4855,7 +4923,7 @@ restore_backend_variables(BackendParameters * param, Port *port)
 Size
 ShmemBackendArraySize(void)
 {
-	return mul_size(NUM_BACKENDARRAY_ELEMS, sizeof(Backend));
+	return mul_size(MaxLivePostmasterChildren(), sizeof(Backend));
 }
 
 void
@@ -4911,6 +4979,7 @@ ShmemBackendArrayRemove(pid_t pid)
 
 #ifdef WIN32
 
+#if 0
 /*
  * Note: The following three functions must not be interrupted (eg. by
  * signals).  As the Postgres Win32 signalling architecture (currently)
@@ -4963,85 +5032,74 @@ win32_RemoveChild(pid_t pid)
 			(errmsg_internal("could not find child entry with pid %lu",
 							 (unsigned long) pid)));
 }
+#endif 
 
 static pid_t
 win32_waitpid(int *exitstatus)
 {
+	DWORD		dwd;
+	ULONG_PTR	key;
+	OVERLAPPED *ovl;
+
 	/*
-	 * Note: Do NOT use WaitForMultipleObjectsEx, as we don't want to run
-	 * queued APCs here.
+	 * Check if there are any dead children. If there are, return the pid of
+	 * the first one that died.
 	 */
-	int			index;
-	DWORD		exitCode;
-	DWORD		ret;
-	unsigned long offset;
-
-	Assert(win32_childPIDArray && win32_childHNDArray);
-	elog(DEBUG3, "waiting on %lu children", win32_numChildren);
-
-	for (offset = 0; offset < win32_numChildren; offset += MAXIMUM_WAIT_OBJECTS)
+	if (GetQueuedCompletionStatus(win32ChildQueue, &dwd, &key, &ovl, 0))
 	{
-		unsigned long num = Min(MAXIMUM_WAIT_OBJECTS, win32_numChildren - offset);
-
-		ret = WaitForMultipleObjects(num, &win32_childHNDArray[offset], FALSE, 0);
-		switch (ret)
-		{
-			case WAIT_FAILED:
-				ereport(LOG,
-						(errmsg_internal("failed to wait on %lu of %lu children: error code %d",
-							 num, win32_numChildren, (int) GetLastError())));
-				return -1;
-
-			case WAIT_TIMEOUT:
-				/* No children (in this chunk) have finished */
-				break;
-
-			default:
-
-				/*
-				 * Get the exit code, and return the PID of, the respective
-				 * process
-				 */
-				index = offset + ret - WAIT_OBJECT_0;
-				Assert(index >= 0 && index < win32_numChildren);
-				if (!GetExitCodeProcess(win32_childHNDArray[index], &exitCode))
-				{
-					/*
-					 * If we get this far, this should never happen, but, then
-					 * again... No choice other than to assume a catastrophic
-					 * failure.
-					 */
-					ereport(FATAL,
-					(errmsg_internal("failed to get exit code for child %lu",
-							   (unsigned long) win32_childPIDArray[index])));
-				}
-				*exitstatus = (int) exitCode;
-				return win32_childPIDArray[index];
-		}
+		*exitstatus = (int) key;
+		return dwd;
 	}
 
-	/* No children have finished */
 	return -1;
 }
 
 /*
- * Note! Code below executes on separate threads, one for
- * each child process created
+ * Note! Code below executes on a thread pool! All operations must
+ * be thread safe! Note that elog() and friends must *not* be used.
  */
-static DWORD WINAPI
-win32_sigchld_waiter(LPVOID param)
+static void WINAPI
+pgwin32_deadchild_callback(PVOID lpParameter, BOOLEAN TimerOrWaitFired)
 {
-	HANDLE		procHandle = (HANDLE) param;
+	win32_deadchild_waitinfo *childinfo = (win32_deadchild_waitinfo *) lpParameter;
+	DWORD		exitcode;
 
-	DWORD		r = WaitForSingleObject(procHandle, INFINITE);
+	if (TimerOrWaitFired)
+		return;					/* timeout. Should never happen, since we use
+								 * INFINITE as timeout value. */
 
-	if (r == WAIT_OBJECT_0)
-		pg_queue_signal(SIGCHLD);
-	else
-		write_stderr("could not wait on child process handle: error code %d\n",
-					 (int) GetLastError());
-	CloseHandle(procHandle);
-	return 0;
+	/*
+	 * Remove handle from wait - required even though it's set to wait only
+	 * once
+	 */
+	UnregisterWaitEx(childinfo->waitHandle, NULL);
+
+	if (!GetExitCodeProcess(childinfo->procHandle, &exitcode))
+		{
+		/*
+		 * Should never happen. Inform user and set a fixed exitcode.
+		 */
+		write_stderr("could not read exit code for process\n");
+		exitcode = 255;
+	}
+
+	if (!PostQueuedCompletionStatus(win32ChildQueue, childinfo->procId, (ULONG_PTR) exitcode, NULL))
+		write_stderr("could not post child completion status\n");
+
+	/*
+	 * Handle is per-process, so we close it here instead of in the
+	 * originating thread
+	 */
+	CloseHandle(childinfo->procHandle);
+
+	/*
+	 * Free struct that was allocated before the call to
+	 * RegisterWaitForSingleObject()
+	 */
+	free(childinfo);
+
+	/* Queue SIGCHLD signal */
+	pg_queue_signal(SIGCHLD);
 }
 
 #endif   /* WIN32 */
