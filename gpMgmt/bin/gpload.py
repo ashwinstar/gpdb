@@ -1,0 +1,1929 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# gpload - load file(s) into Greenplum Database
+# Copyright Greenplum 2008
+
+'''gpload [options] -f configuration file
+
+Options:
+    -h hostname: host to connect to
+    -p port: port to connect to
+    -U username: user to connect as
+    -d database: database to connect to
+    -W: force password authentication
+    -q: quiet mode
+    -D: do not actually load data
+    -v: verbose
+    -V: very verbose
+    -l logfile: log output to logfile
+    --version: print version number and exit
+    -?: help
+'''
+
+import sys
+if sys.hexversion<0x2040400:
+    sys.stderr.write("gpload needs python 2.4.4 or higher\n")
+    sys.exit(2)
+
+try:
+    import yaml
+except ImportError:
+    sys.stderr.write("gpload needs pyyaml.  You can get it from http://pyyaml.org.\n")
+    sys.exit(2)
+
+try:
+    import pg8000
+except ImportError:
+    sys.stderr.write("gpload needs pg8000")
+    sys.exit(2)
+except Exception, e:
+    sys.stderr.write("could not import pg8000");
+    sys.exit(2)
+ 
+import datetime,getpass,os,signal,socket,subprocess,threading,time,traceback,re
+import platform
+
+EXECNAME = os.path.split(__file__)[-1]
+
+NUM_WARN_ROWS = 0
+
+# Mapping for validing our configuration file. We're only concerned with
+# keys -- stuff left of ':'. It gets complex in two cases: firstly when 
+# we handle blocks which have keys which are not keywords -- such as under 
+# COLUMNS:. Secondly, we want to detect when users put keywords in the wrong
+# place. To that end, the mapping is structured such that:
+#
+#       key -> { 'parse_children' -> [ True | False ],
+#                'parent' -> <parent name> }
+#
+# Each key is a keyword in the configuration file. parse_children tells us
+# whether children are expected to be keywords. parent tells us the parent
+# keyword or None 
+valid_tokens = {
+    "version": {'parse_children': True, 'parent': None},
+    "database": {'parse_children': True, 'parent': None}, 
+    "user": {'parse_children': True, 'parent': None}, 
+    "host": {'parse_children': True, 'parent': None}, 
+    "port": {'parse_children': True, 'parent': [None, "source"]},
+    "password": {'parse_children': True, 'parent': None},
+    "gpload": {'parse_children': True, 'parent': None},
+    "input": {'parse_children': True, 'parent': "gpload"},
+    "source": {'parse_children': True, 'parent': "input"},
+    "local_hostname": {'parse_children': False, 'parent': "source"},
+    "port_range": {'parse_children': False, 'parent': "source"},
+    "file": {'parse_children': False, 'parent': "source"},
+    "columns": {'parse_children': False, 'parent': "input"},
+    "format": {'parse_children': True, 'parent': "input"},
+    "delimiter": {'parse_children': True, 'parent': "input"}, 
+    "escape": {'parse_children': True, 'parent': "input"},
+    "null_as": {'parse_children': True, 'parent': "input"},
+    "quote": {'parse_children': True, 'parent': "input"}, 
+    "encoding": {'parse_children': True, 'parent': "input"},
+    "force_not_null": {'parse_children': False, 'parent': "input"},
+    "error_limit": {'parse_children': True, 'parent': "input"}, 
+    "error_percent": {'parse_children': True, 'parent': "input"},
+    "error_table": {'parse_children': True, 'parent': "input"},
+    "header": {'parse_children': True, 'parent': "input"},
+    "output": {'parse_children': True, 'parent': "gpload"},
+    "table": {'parse_children': True, 'parent': "output"}, 
+    "mode": {'parse_children': True, 'parent': "output"},
+    "match_columns": {'parse_children': False, 'parent': "output"},
+    "update_columns": {'parse_children': False, 'parent': "output"},
+    "update_condition": {'parse_children': True, 'parent': "output"}, 
+    "mapping": {'parse_children': False, 'parent': "output"},
+    "sql": {'parse_children': True, 'parent': 'gpload'},
+    "before": {'parse_children': False, 'parent': 'sql'},
+    "after": {'parse_children': False, 'parent': 'sql'}}
+
+_abbrevs = [
+    (1<<50L, ' PB'),
+    (1<<40L, ' TB'),
+    (1<<30L, ' GB'),
+    (1<<20L, ' MB'),
+    (1<<10L, ' kB'),
+    (1, ' bytes')
+    ]
+
+received_kill = False
+keywords = {
+	"abort": True,
+	"absolute": True,
+	"access": True,
+	"action": True,
+	"active": True,
+	"add": True,
+	"admin": True,
+	"after": True,
+	"aggregate": True,
+	"all": True,
+	"also": True,
+	"alter": True,
+	"analyse": True,
+	"analyze": True,
+	"and": True,
+	"any": True,
+	"array": True,
+	"as": True,
+	"asc": True,
+	"assertion": True,
+	"assignment": True,
+	"asymmetric": True,
+	"at": True,
+	"authorization": True,
+	"backward": True,
+	"before": True,
+	"begin": True,
+	"between": True,
+	"bigint": True,
+	"binary": True,
+	"bit": True,
+	"boolean": True,
+	"both": True,
+	"by": True,
+	"cache": True,
+	"called": True,
+	"cascade": True,
+	"cascaded": True,
+	"case": True,
+	"cast": True,
+	"chain": True,
+	"char": True,
+	"character": True,
+	"characteristics": True,
+	"check": True,
+	"checkpoint": True,
+	"class": True,
+	"close": True,
+	"cluster": True,
+	"coalesce": True,
+	"collate": True,
+	"column": True,
+	"comment": True,
+	"commit": True,
+	"committed": True,
+	"concurrently": True,
+	"connection": True,
+	"constraint": True,
+	"constraints": True,
+	"conversion": True,
+	"convert": True,
+	"copy": True,
+	"cost": True,
+	"create": True,
+	"createdb": True,
+	"createrole": True,
+	"createuser": True,
+	"cross": True,
+	"csv": True,
+	"cube": True,
+	"current": True,
+	"current_date": True,
+	"current_role": True,
+	"current_time": True,
+	"current_timestamp": True,
+	"current_user": True,
+	"cursor": True,
+	"cycle": True,
+	"database": True,
+	"day": True,
+	"deallocate": True,
+	"dec": True,
+	"decimal": True,
+	"declare": True,
+	"default": True,
+	"defaults": True,
+	"deferrable": True,
+	"deferred": True,
+	"definer": True,
+	"delete": True,
+	"delimiter": True,
+	"delimiters": True,
+	"desc": True,
+	"disable": True,
+	"distinct": True,
+	"distributed": True,
+	"do": True,
+	"domain": True,
+	"double": True,
+	"drop": True,
+	"each": True,
+	"else": True,
+	"enable": True,
+	"encoding": True,
+	"encrypted": True,
+	"end": True,
+	"errors": True,
+	"escape": True,
+	"every": True,
+	"except": True,
+	"exchange": True,
+	"exclude": True,
+	"excluding": True,
+	"exclusive": True,
+	"execute": True,
+	"exists": True,
+	"explain": True,
+	"external": True,
+	"extract": True,
+	"false": True,
+	"fetch": True,
+	"fields": True,
+	"fill": True,
+	"filter": True,
+	"first": True,
+	"float": True,
+	"following": True,
+	"for": True,
+	"force": True,
+	"foreign": True,
+	"format": True,
+	"forward": True,
+	"freeze": True,
+	"from": True,
+	"full": True,
+	"function": True,
+	"global": True,
+	"grant": True,
+	"granted": True,
+	"greatest": True,
+	"group": True,
+	"group_id": True,
+	"grouping": True,
+	"handler": True,
+	"hash": True,
+	"having": True,
+	"header": True,
+	"hold": True,
+	"host": True,
+	"hour": True,
+	"if": True,
+	"ignore": True,
+	"ilike": True,
+	"immediate": True,
+	"immutable": True,
+	"implicit": True,
+	"in": True,
+	"including": True,
+	"inclusive": True,
+	"increment": True,
+	"index": True,
+	"indexes": True,
+	"inherit": True,
+	"inherits": True,
+	"initially": True,
+	"inner": True,
+	"inout": True,
+	"input": True,
+	"insensitive": True,
+	"insert": True,
+	"instead": True,
+	"int": True,
+	"integer": True,
+	"intersect": True,
+	"interval": True,
+	"into": True,
+	"invoker": True,
+	"is": True,
+	"isnull": True,
+	"isolation": True,
+	"join": True,
+	"keep": True,
+	"key": True,
+	"lancompiler": True,
+	"language": True,
+	"large": True,
+	"last": True,
+	"leading": True,
+	"least": True,
+	"left": True,
+	"level": True,
+	"like": True,
+	"limit": True,
+	"list": True,
+	"listen": True,
+	"load": True,
+	"local": True,
+	"localtime": True,
+	"localtimestamp": True,
+	"location": True,
+	"lock": True,
+	"log": True,
+	"login": True,
+	"master": True,
+	"match": True,
+	"maxvalue": True,
+	"merge": True,
+	"minute": True,
+	"minvalue": True,
+	"mirror": True,
+	"missing": True,
+	"mode": True,
+	"modify": True,
+	"month": True,
+	"move": True,
+	"names": True,
+	"national": True,
+	"natural": True,
+	"nchar": True,
+	"new": True,
+	"next": True,
+	"no": True,
+	"nocreatedb": True,
+	"nocreaterole": True,
+	"nocreateuser": True,
+	"noinherit": True,
+	"nologin": True,
+	"none": True,
+	"noovercommit": True,
+	"nosuperuser": True,
+	"not": True,
+	"nothing": True,
+	"notify": True,
+	"notnull": True,
+	"nowait": True,
+	"null": True,
+	"nullif": True,
+	"numeric": True,
+	"object": True,
+	"of": True,
+	"off": True,
+	"offset": True,
+	"oids": True,
+	"old": True,
+	"on": True,
+	"only": True,
+	"operator": True,
+	"option": True,
+	"or": True,
+	"order": True,
+	"others": True,
+	"out": True,
+	"outer": True,
+	"over": True,
+	"overcommit": True,
+	"overlaps": True,
+	"overlay": True,
+	"owned": True,
+	"owner": True,
+	"partial": True,
+	"partition": True,
+	"partitions": True,
+	"password": True,
+	"percent": True,
+	"placing": True,
+	"position": True,
+	"preceding": True,
+	"precision": True,
+	"prepare": True,
+	"prepared": True,
+	"preserve": True,
+	"primary": True,
+	"prior": True,
+	"privileges": True,
+	"procedural": True,
+	"procedure": True,
+	"queue": True,
+	"quote": True,
+	"randomly": True,
+	"range": True,
+	"read": True,
+	"real": True,
+	"reassign": True,
+	"recheck": True,
+	"references": True,
+	"reindex": True,
+	"reject": True,
+	"relative": True,
+	"release": True,
+	"rename": True,
+	"repeatable": True,
+	"replace": True,
+	"reset": True,
+	"resource": True,
+	"restart": True,
+	"restrict": True,
+	"returning": True,
+	"returns": True,
+	"revoke": True,
+	"right": True,
+	"role": True,
+	"rollback": True,
+	"rollup": True,
+	"row": True,
+	"rows": True,
+	"rule": True,
+	"savepoint": True,
+	"schema": True,
+	"scroll": True,
+	"second": True,
+	"security": True,
+	"segment": True,
+	"select": True,
+	"sequence": True,
+	"serializable": True,
+	"session": True,
+	"session_user": True,
+	"set": True,
+	"setof": True,
+	"sets": True,
+	"share": True,
+	"show": True,
+	"similar": True,
+	"simple": True,
+	"smallint": True,
+	"some": True,
+	"split": True,
+	"stable": True,
+	"start": True,
+	"statement": True,
+	"statistics": True,
+	"stdin": True,
+	"stdout": True,
+	"storage": True,
+	"strict": True,
+	"subpartition": True,
+	"subpartitions": True,
+	"substring": True,
+	"superuser": True,
+	"symmetric": True,
+	"sysid": True,
+	"system": True,
+	"table": True,
+	"tablespace": True,
+	"temp": True,
+	"template": True,
+	"temporary": True,
+	"then": True,
+	"threshold": True,
+	"ties": True,
+	"time": True,
+	"timestamp": True,
+	"to": True,
+	"trailing": True,
+	"transaction": True,
+	"treat": True,
+	"trigger": True,
+	"trim": True,
+	"true": True,
+	"truncate": True,
+	"trusted": True,
+	"type": True,
+	"unbounded": True,
+	"uncommitted": True,
+	"unencrypted": True,
+	"union": True,
+	"unique": True,
+	"unknown": True,
+	"unlisten": True,
+	"until": True,
+	"update": True,
+	"user": True,
+	"using": True,
+	"vacuum": True,
+	"valid": True,
+	"validation": True,
+	"validator": True,
+	"values": True,
+	"varchar": True,
+	"varying": True,
+	"verbose": True,
+	"view": True,
+	"volatile": True,
+	"web": True,
+	"when": True,
+	"where": True,
+	"window": True,
+	"with": True,
+	"without": True,
+	"work": True,
+	"write": True,
+	"year": True,
+	"zone": True
+}
+
+def is_keyword(tab):
+    if tab in keywords:
+        return True
+    else:
+        return False
+
+def quote_ident(tab):
+    safe = True
+
+    l = len(tab)
+    i = 0
+    while i < l:
+        if not (tab[i] == '_' and tab[i] >= 'a' and tab[i] <= 'z'):
+            safe = False
+            break
+        i += 1
+
+    if safe:
+        # see if it is a keyword
+        if not is_keyword(tab):
+            return tab
+
+    return '"' + tab.replace('"', '""') + '"'
+
+def build_safe_table_name(conn, tab, into_cols = None):
+    """
+    quote any multibyte, capitalised or keyword table names. Break
+    up schema.table too.
+    """
+    to_quote = []
+    if tab[0] == '"':
+        # user did it for us
+        return tab
+
+    if into_cols and re.search("\W", tab):
+        # Before proceeding, see if this is just an expression 
+        # such as orderkey + 1. To do so, we see if there's a reference
+        # to an into column in the clause
+        # only do it if this isn't an exact known col name
+        f = filter(lambda x:x[0] == tab, into_cols)
+        if not f:
+            for colname, type, map, a in into_cols:
+                reg = "(?<=[^\w])%s(?=[^\w])" % colname
+                stab = " %s " % tab
+                r = re.compile(reg)
+                if re.search(reg, stab):
+                    return tab
+
+    i = tab.find('.')
+    if i >= 0:
+        to_quote.append(tab[:i])
+        to_quote.append(tab[i + 1:])
+    else:
+        to_quote.append(tab)
+
+    res = []
+    for t in to_quote:
+        res.append(quote_ident(t))
+    return '.'.join(res)
+
+def notice_processor(a):
+    r = re.compile("^Found (\d) data formatting errors.*")
+    m = r.match(a.msg)
+    if m:
+        global NUM_WARN_ROWS
+        NUM_WARN_ROWS = int(m.group(1))
+
+def handle_kill(signum, frame):
+    # already dying?
+    global received_kill
+    if received_kill:
+        return
+
+    received_kill = True
+
+    g.log(g.INFO, "received signal %d" % signum)
+    g.exitValue = 2
+    sys.exit(2)
+
+
+def bytestr(size, precision=1):
+    """Return a string representing the greek/metric suffix of a size"""
+    if size==1:
+        return '1 byte'
+    for factor, suffix in _abbrevs:
+        if size >= factor:
+            break
+
+    float_string_split = `size/float(factor)`.split('.')
+    integer_part = float_string_split[0]
+    decimal_part = float_string_split[1]
+    if int(decimal_part[0:precision]):
+        float_string = '.'.join([integer_part, decimal_part[0:precision]])
+    else:
+        float_string = integer_part
+    return float_string + suffix
+
+class CatThread(threading.Thread):
+    """
+    Simply therading wrapper to read a file descriptor and put the contents
+    in the log file.
+    """
+    def __init__(self,gpload,fd):
+        threading.Thread.__init__(self)
+        self.gpload = gpload
+        self.fd = fd
+    def run(self):
+        while 1:
+            line = self.fd.readline()
+            if line=='':
+                break
+            self.gpload.log(self.gpload.DEBUG, 'gpfdist: ' + line.strip('\n'))
+
+class Progress(threading.Thread):
+    """
+    Determine our progress from the gpfdist daemon
+    """
+    def __init__(self,gpload,ports):
+        threading.Thread.__init__(self)
+        self.gpload = gpload
+        self.ports = ports
+        self.number = 0
+        self.condition = threading.Condition()
+
+    def get(self,port):
+        """
+        Connect to gpfdist and issue an HTTP query. No need to do this with
+        httplib as the transaction is extremely simple
+        """
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect(('127.0.0.1',port))
+        s.sendall('GET gpfdist/status HTTP/1.0\r\n\r\n')
+        f = s.makefile()
+        read_bytes = -1
+        total_bytes = -1
+        total_sessions = -1
+        for line in f:
+            self.gpload.log(self.gpload.DEBUG, "gpfdist stat: %s" % \
+                        line.strip('\n'))
+            a = line.split(' ')
+            if not a:
+                continue
+            if a[0]=='read_bytes':
+                read_bytes = int(a[1])
+            elif a[0]=='total_bytes':
+                total_bytes = int(a[1])
+            elif a[0]=='total_sessions':
+                total_sessions = int(a[1])
+        s.close()
+        f.close()
+        return read_bytes,total_bytes,total_sessions
+
+    def get1(self):
+        """
+        Parse gpfdist output
+        """
+        read_bytes = 0
+        total_bytes = 0
+        for port in self.ports:
+            a = self.get(port)
+            if a[2]<1:
+                return
+            if a[0]!=-1:
+                read_bytes += a[0]
+            if a[1]!=-1:
+                total_bytes += a[1]
+        self.gpload.log(self.gpload.INFO,'transferred %s of %s' % \
+            (bytestr(read_bytes),bytestr(total_bytes)))
+
+    def run(self):
+        """
+        Thread worker
+        """
+        while 1:
+            try:
+                self.condition.acquire()
+                n = self.number
+                self.condition.release()
+                self.get1()
+                if n:
+                    self.gpload.log(self.gpload.DEBUG, "gpfdist status thread told to stop")
+                    self.condition.acquire()
+                    self.condition.notify()
+                    self.condition.release()
+                    break
+            except socket.error, e:
+                self.gpload.log(self.gpload.DEBUG, "got socket exception: %s" % e)
+                break
+            time.sleep(1)
+def cli_help():
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + 
+                             '_help');
+    f = None
+    try:
+        try:
+            f = open(help_path);
+            return f.read(-1)
+        except:
+            return ''
+    finally:
+        if f: f.close()
+
+#============================================================
+def usage(error = None):
+    print cli_help() or __doc__
+    sys.stdout.flush()
+    if error:
+        sys.stderr.write('ERROR: ' + error + '\n')
+        sys.stderr.write('\n')
+        sys.stderr.flush()
+  
+    sys.exit(2)
+
+def quote(a):
+    """
+    SQLify a string
+    """
+    return "'"+a.replace("'","''").replace('\\','\\\\')+"'"
+
+def splitPgpassLine(a):
+    """
+    If the user has specified a .pgpass file, we'll have to parse it. We simply
+    split the string into arrays at :. We could just use a native python
+    function but we need to escape the ':' character.
+    """
+    b = []
+    escape = False
+    d = ''
+    for c in a:
+        if not escape and c=='\\':
+            escape = True
+        elif not escape and c==':':
+            b.append(d)
+            d = ''
+        else:
+            d += c
+            escape = False
+    if escape:
+        d += '\\'
+    b.append(d)
+    return b
+
+def test_key(gp, key, crumb):
+    """
+    Make sure that a key is a valid keyword in the configuration grammar and
+    that it appears in the configuration file where we expect -- that is, where
+    it has the parent we expect
+    """
+    val = valid_tokens.get(key)
+    if val == None:
+        gp.log(gp.ERROR, 'unrecognized key: "%s"' % key)
+    
+    p = val['parent']
+
+    # simplify for when the same keyword can appear in multiple places
+    if type(p) != list:
+        p = [p]
+
+    c = None
+    if len(crumb):
+        c = crumb[-1]
+
+    found = False
+    for m in p:
+        if m == c:
+            found = True
+            break
+
+    if not found:
+        gp.log(gp.ERROR, 'unexpected key: "%s"' % key)
+
+    return val
+
+def yaml_walk(gp, node, crumb):
+    if type(node) == list:
+        for a in node:
+            if type(a) == tuple:
+                key = a[0].value.lower()
+
+                val = test_key(gp, key, crumb)
+
+                if (len(a) > 1 and val['parse_children'] and
+                    (isinstance(a[1], yaml.nodes.MappingNode) or
+                     isinstance(a[1], yaml.nodes.SequenceNode))):
+                    crumb.append(key)
+                    yaml_walk(gp, a[1], crumb)
+                    crumb.pop()
+            elif isinstance(a, yaml.nodes.ScalarNode):
+                test_key(gp, a.value, crumb)
+            else:
+                yaml_walk(gp, a, crumb)
+    elif isinstance(node, yaml.nodes.MappingNode):
+        yaml_walk(gp, node.value, crumb)
+
+    elif isinstance(node, yaml.nodes.ScalarNode):
+        pass
+
+    elif isinstance(node, yaml.nodes.SequenceNode):
+        yaml_walk(gp, node.value, crumb)
+
+    elif isinstance(node, yaml.nodes.CollectionNode):
+        pass
+
+
+def dictKeyToLower(a):
+    """
+    down case all entries in a list or dict
+    """
+    if type(a) == list:
+        return map(dictKeyToLower,a)
+    if type(a) == dict:
+        b = dict()
+        for key,value in a.iteritems():
+            if type(key) == str:
+                key = unicode(key.lower())
+            b[key] = dictKeyToLower(value)
+        return b
+    if type(a) == str:
+        a = unicode(a)
+    return a
+
+class options:
+    pass
+
+class gpload:
+    """
+    Main class wrapper
+    """
+
+    def __init__(self,argv):
+        self.threads = [] # remember threads so that we can join() against them
+        self.exitValue = 0
+        self.options = options()
+        self.options.h = None
+        self.options.p = None
+        self.options.U = None
+        self.options.W = False
+        self.options.D = False
+        self.options.password = None
+        self.options.d = None
+        self.DEBUG = 5
+        self.LOG = 4
+        self.INFO = 3
+        self.WARN = 2
+        self.ERROR = 1
+        self.options.qv = self.INFO
+
+        seenv = False
+        seenq = False
+
+        # default to gpAdminLogs for a log file, may be overwritten
+        self.options.l = os.path.join(os.environ.get('HOME', '.'),'gpAdminLogs')
+        if not os.path.isdir(self.options.l):
+            os.mkdir(self.options.l)
+
+        self.options.l = os.path.join(self.options.l, 'gpload_' + \
+                        datetime.date.today().strftime('%Y%m%d') + '.log')
+
+        self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
+
+        # SQL to run in order to undo our temporary work
+        self.cleanupSql = []
+        self.distkey = None
+        configFilename = None
+        while argv:
+            try:
+                try:
+                    if argv[0]=='-h':
+                        self.options.h = argv[1]
+                        argv = argv[2:]
+                    elif argv[0]=='-p':
+                        self.options.p = int(argv[1])
+                        argv = argv[2:]
+                    elif argv[0]=='-l':
+                        self.options.l = argv[1]
+                        argv = argv[2:]
+                    elif argv[0]=='-q':
+                        self.options.qv -= 1
+                        argv = argv[1:]
+                        seenq = True
+                    elif argv[0]=='--version':
+                        sys.stderr.write("gpload version $Revision$\n")
+                        sys.exit(0)
+                    elif argv[0]=='-v':
+                        self.options.qv = self.LOG
+                        argv = argv[1:]
+                        seenv = True
+                    elif argv[0]=='-V':
+                        self.options.qv = self.DEBUG
+                        argv = argv[1:]
+                        seenv = True
+                    elif argv[0]=='-W':
+                        self.options.W = True
+                        argv = argv[1:]
+                    elif argv[0]=='-D':
+                        self.options.D = True
+                        argv = argv[1:]
+                    elif argv[0]=='-U':
+                        self.options.U = argv[1]
+                        argv = argv[2:]
+                    elif argv[0]=='-d':
+                        self.options.d = argv[1]
+                        argv = argv[2:]
+                    elif argv[0]=='-f':
+                        configFilename = argv[1]
+                        argv = argv[2:]
+                    elif argv[0]=='-?':
+                        usage()
+                    else:
+                        break
+                except IndexError:
+                    sys.stderr.write("Option %s needs a parameter.\n"%argv[0])
+                    sys.exit(2)
+            except ValueError:
+                sys.stderr.write("Parameter for option %s must be an integer.\n"%argv[0])
+                sys.exit(2)
+
+        if configFilename==None:
+            usage('configuration file required')
+        elif argv:
+            a = ""
+            if len(argv) > 1:
+                a = "s"
+            usage('unrecognized argument%s: %s' % (a, ' '.join(argv)))
+
+
+        try:
+            self.logfile = open(self.options.l,'a')
+        except Exception, e:
+            self.log(self.ERROR, "could not open logfile %s: %s" % \
+                      (self.options.l, e))
+
+        if seenv and seenq:
+            self.log(self.ERROR, "-q conflicts with -v and -V")
+
+        if self.options.D:
+            self.log(self.INFO, 'gpload has the -D option, so it does not actually load any data')
+
+        try:
+            f = open(configFilename,'r')
+        except IOError,e:
+            self.log(self.ERROR, "could not open configuration file: %s" % e)
+
+        # pull in the config file, which should be in valid YAML
+        try:
+            # do an initial parse, validating the config file
+            doc = f.read()
+            self.config = yaml.load(doc)
+
+            self.config = dictKeyToLower(self.config)
+            ver = self.getconfig('version', unicode, extraStuff = ' tag')
+            if ver != '1.0.0.1':
+                self.log(self.ERROR, "gpload configuration schema " +
+                    "version must be 1.0.0.1")
+            # second parse, to check that the keywords are sensible
+            y = yaml.compose(doc)
+            # first should be MappingNode
+            if not isinstance(y, yaml.MappingNode):
+                self.log(self.ERROR, "configuration file must begin with a " +
+                         "mapping")
+
+            yaml_walk(self, y.value, [])
+        except yaml.scanner.ScannerError,e:
+            self.log(self.ERROR, "configuration file error: %s, line %s" % \
+                (e.problem, e.problem_mark.line))
+        except yaml.reader.ReaderError, e:
+            es = ""
+            if isinstance(e.character, str):
+                es = "'%s' codec can't decode byte #x%02x: %s position %d" % \
+                        (e.encoding, ord(e.character), e.reason,
+                         e.position)
+            else:
+                es = "unacceptable character #x%04x at byte %d: %s"    \
+                    % (ord(e.character), e.position, e.reason)
+            self.log(self.ERROR, es)
+        except yaml.error.MarkedYAMLError, e:
+            self.log(self.ERROR, "configuration file error: %s, line %s" % \
+                (e.problem, e.problem_mark.line))
+
+        f.close()
+        self.subprocesses = []
+        self.log(self.INFO,'gpload session started ' + \
+                 datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+    def elevel2str(self, level):
+        if level == self.DEBUG:
+            return "DEBUG"
+        elif level == self.LOG:
+            return "LOG"
+        elif level == self.INFO:
+            return "INFO"
+        elif level == self.ERROR:
+            return "ERROR"
+        elif level == self.WARN:
+            return "WARN"
+        else:
+            self.log(self.ERROR, "unknown log type %i" % level)
+
+    def log(self, level, a):
+        """
+        Level is either DEBUG, LOG, INFO, ERROR. a is the message
+        """
+        t = time.localtime()
+        str = '|'.join(
+                       [datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
+                        self.elevel2str(level), a]) + '\n'
+
+        str = str.encode('utf-8')
+        if level <= self.options.qv:
+            sys.stdout.write(str)
+
+        if level <= self.options.qv or level <= self.INFO:
+            try:
+               self.logfile.write(str)
+               self.logfile.flush()
+            except AttributeError, e:
+                pass
+
+        if level == self.ERROR:
+            self.exitValue = 2;
+            sys.exit(self.exitValue)
+
+    def getconfig(self, a, typ=None, default='error', extraStuff=''):
+        """
+        Look for a config entry, via a column delimited string. a:b:c points to
+        
+        a:
+            b:
+                c
+
+        Make sure that end point is of type 'typ' when not set to None.
+        """
+        self.log(self.DEBUG, "getting config for " + a)
+        config = self.config
+        for s in a.split(':'):
+            self.log(self.DEBUG, "trying " + s)
+            index = 1
+
+            if s[-1:]==')':
+                j = s.index('(')
+                index = int(s[j+1:-1])
+                s = s[:j]
+
+            if type(config)!=list:
+                config = [config]
+
+            for c in config:
+                if type(c)==dict and s in c:
+                    index -= 1
+                    if not index:
+                        self.log(self.DEBUG, "found " + s)
+                        config = c[s]
+                        break
+            else:
+                if default=='error':
+                    self.log(self.ERROR,
+                             "configuration must contain %s%s"%(a,extraStuff))
+                    sys.exit(2)
+                return default
+
+        if typ != None and type(config) != typ:
+            if typ == list:
+                self.log(self.ERROR,
+                         "%s must be a sequence %s"% (a ,extraStuff))
+            elif typ == dict:
+                self.log(self.ERROR,
+                         "%s must be a mapping %s"% (a, extraStuff))
+            elif typ == unicode or typ == str:
+                self.log(self.ERROR, "%s must be a string %s" % (a, extraStuff))
+            elif typ == int:
+                self.log(self.ERROR,
+                         "%s must be an integer %s" % (a, extraStuff))
+            else:
+                assert 0
+
+            self.log(self.ERROR,"unknown configuration type %s"% type(config))
+            sys.exit(2)
+        return config
+
+    def read_config(self):
+        """
+        Configure ourselves
+        """
+
+        # ensure output is of type list
+        self.getconfig('gpload:output', list)
+        self.table = self.getconfig('gpload:output:table', unicode)
+
+        # Precendence for configuration: command line > config file > env
+        # variable
+        
+        # host to connect to
+        if not self.options.h:
+            self.options.h = self.getconfig('host', unicode, None)
+            if self.options.h:
+                self.options.h = str(self.options.h)
+        if not self.options.h:
+            self.options.h = os.environ.get('PGHOST')
+        if not self.options.h or len(self.options.h) == 0:
+            self.log(self.INFO, "no host supplied, defaulting to localhost")
+            self.options.h = "localhost"
+
+        # Port to connect to
+        if not self.options.p:
+            self.options.p = self.getconfig('port',int,None)
+        if not self.options.p:
+            try:
+                    self.options.p = int(os.environ.get('PGPORT'))
+            except (ValueError, TypeError):
+                    pass
+        if not self.options.p:
+            self.options.p = 5432
+
+        # User to connect as
+        if not self.options.U:
+            self.options.U = self.getconfig('user', unicode, None)
+        if not self.options.U:
+            self.options.U = os.environ.get('PGUSER')
+        if not self.options.U:
+            self.options.U = os.environ.get('USER') or \
+                    os.environ.get('LOGNAME') or \
+                    os.environ.get('USERNAME')
+
+        if not self.options.U or len(self.options.U) == 0:
+            self.log(self.ERROR,
+                       "You need to specify your username with the -U " +
+                       "option or in your configuration or in your " +
+                       "environment as PGUSER")
+
+        # database to connect to
+        if not self.options.d:
+            self.options.d = self.getconfig('database', unicode, None)
+        if not self.options.d:
+            self.options.d = os.environ.get('PGDATABASE')
+        if not self.options.d:
+            # like libpq, just inherit USER
+            self.options.d = self.options.U
+
+    def start_gpfdists(self):
+        """
+        Start gpfdist daemon(s)
+        """
+        self.locations = []
+        self.ports = []
+        sourceIndex = 0
+        availablePorts = set(xrange(1,65535))
+        found_source = False
+
+        self.getconfig('gpload:input', list)
+
+        while 1:
+            sourceIndex += 1
+            name = 'gpload:input:source(%d)'%sourceIndex
+            a = self.getconfig(name,None,None)
+            if not a:
+                break
+            found_source = True
+            local_hostname = self.getconfig(name+':local_hostname', list, False)
+
+            # do default host, the current one
+            if not local_hostname:
+                try:
+                    pipe = subprocess.Popen("hostname",
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE)
+                    result  = pipe.communicate();
+                except OSError, e:
+                    self.log(self.ERROR, "command failed: " + str(e))
+                
+                local_hostname = [result[0].strip()]
+
+            port = self.getconfig(name + ':port', int, None)
+            port_range = self.getconfig(name+':port_range', list, None)
+
+            if port:
+                startPort = endPort = port
+                endPort += 1
+            elif port_range:
+                try:
+                    startPort = int(port_range[0])
+                    endPort = int(port_range[1])
+                except (IndexError,ValueError):
+                    self.log(self.ERROR,
+                             name+":port_range must be a sequence of " +
+                             "two integers")
+            else:
+                startPort = self.getconfig(name+':port',int,8000)
+                endPort = self.getconfig(name+':port',int,9000)
+
+            if (startPort > 65535 or endPort > 65535):
+                # Do not allow invalid ports
+                self.log(self.ERROR, "invalid port")
+            elif not (set(xrange(startPort,endPort+1)) & availablePorts):
+                self.log(self.ERROR, "no more ports available for gpfdist")
+
+            file = self.getconfig(name+':file',list)
+            for i in file:
+                if type(i)!= unicode and type(i) != str:
+                    self.log(self.ERROR,
+                             name+":file must be a sequence of strings")
+            popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
+                         '-f',' '.join(file), '-t', '30']
+            if self.options.qv == self.LOG:
+                popenList.append('-v')
+            elif self.options.qv > self.LOG:
+                popenList.append('-V')
+
+            try:
+                self.log(self.LOG, 'trying to run %s' % ' '.join(popenList))
+                cfds = True
+                if platform.system() in ['Windows', 'Microsoft']: # not supported on win32
+                    cfds = False
+                    cmd = ' '.join(popenList)
+                    needshell = False
+                else:
+                    srcfile = None
+                    if os.environ.get('GPHOME_LOADERS'):
+                        srcfile = os.path.join(os.environ.get('GPHOME_LOADERS'),
+                                           'greenplum_loaders_path.sh')
+                    elif os.environ.get('GPHOME'):
+                        srcfile = os.path.join(os.environ.get('GPHOME'),
+                                           'greenplum_path.sh')
+
+                    if (not (srcfile and os.path.exists(srcfile))):
+                        self.log(self.ERROR, 'cannot find greenplum environment ' +
+                                    'file: environment misconfigured')
+
+                    cmd = 'source %s ; exec ' % srcfile
+                    cmd += ' '.join(popenList)
+                    needshell = True
+
+                a = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE,
+                                     close_fds=cfds, shell=needshell)
+                self.subprocesses.append(a)
+            except Exception, e:
+                self.log(self.ERROR, "could not run %s: %s" % \
+                                (' '.join(popenList), str(e)))
+
+            # get all the output from the daemon(s)
+            t = CatThread(self,a.stderr)
+            t.start()
+            self.threads.append(t)
+
+            while 1:
+                line = a.stdout.readline()
+                if line=='':
+                    self.log(self.ERROR,'failed to start gpfdist: ' +
+                             'gpfdist command line: ' + ' '.join(popenList))
+
+                line = line.strip('\n')
+                self.log(self.LOG,'gpfdist says: ' + line)
+                if line.startswith('Serving HTTP on port '):
+                    port = int(line[21:line.index(',')])
+                    break
+
+            self.log(self.INFO, 'started %s' % ' '.join(popenList))
+            self.log(self.LOG,'gpfdist is running on port %d'%port)
+            if port in availablePorts:
+                availablePorts.remove(port)
+            self.ports.append(port)
+            t = CatThread(self,a.stdout)
+            t.start()
+            self.threads.append(t)
+
+            for l in local_hostname:
+                if type(l) != str and type(l) != unicode:
+                    self.log(self.ERROR,
+                             name + ":local_hostname must be a sequence " +
+                               "of strings")
+                l = str(l)
+                sep = ''
+                if file[0] != '/':
+                    sep = '/'
+                self.locations.append('gpfdist://%s:%d%s%s' % \
+                                       (l, port, sep, '%20'.join(file)))
+        if not found_source:
+            self.log(self.ERROR, "configuration file must contain source " +
+                                 "definition")
+
+    def readPgpass(self,pgpassname):
+        """
+        Get password form .pgpass file
+        """
+        try:
+            f = open(pgpassname,'r')
+        except IOError:
+            return
+        for line in map(splitPgpassLine,f):
+            try:
+                if line[0]!='*' and line[0].lower()!=self.options.h.lower():
+                    continue
+                if line[1]!='*' and int(line[1])!=self.options.p:
+                    continue
+                if line[2]!='*' and line[2]!=self.options.d:
+                    continue
+                if line[3]!='*' and line[3]!=self.options.U:
+                    continue
+                self.options.password = line[4]
+                break
+            except (ValueError,IndexError):
+                pass
+        f.close()
+
+    def setup_connection(self, recurse = 0):
+        """
+        Connect to the backend
+        """
+        if self.pg8000 != None:
+            self.pg8000.close()
+        if self.options.W:
+            if self.options.password==None:
+                self.options.password = getpass.getpass()
+        else:
+            if self.options.password==None:
+                self.options.password = self.getconfig('password', unicode,
+                                                       None)
+            if self.options.password==None:
+                self.options.password = os.environ.get('PGPASSWORD')
+            if self.options.password==None:
+                self.readPgpass(os.environ.get('PGPASSFILE',
+                                os.environ.get('HOME','.')+'/.pgpass'))
+        try:
+            self.log(self.DEBUG, "connection string:" + 
+                     " user=" + str(self.options.U) +
+                     " host=" + str(self.options.h) +
+                     " port=" + str(self.options.p) +
+                     " database=" + str(self.options.d))
+            self.pg8000 = pg8000.Connection(user=self.options.U,
+                                            host=self.options.h,
+                                            port=self.options.p,
+                                            database=self.options.d,
+                                            password=self.options.password,
+                                            socket_timeout=None)
+        except pg8000.errors.InterfaceError,e:
+            if e[0] == "server requesting MD5 password authentication, but no password was provided":
+                self.options.password = getpass.getpass()
+                recurse += 1
+                if recurse > 10:
+                    self.log(self.ERROR, "too many login attempt failures")
+
+                self.setup_connection(recurse)
+            else: 
+                self.log(self.ERROR, "could not connect to database: %s. Is " \
+                    "the Greenplum Database running on port %i?" % (e[0],
+                    self.options.p))
+        except pg8000.errors.ProgrammingError, e:
+            self.log(self.ERROR, "could not connect to database: %s" % e[2])
+
+    def read_columns(self):
+        columns = self.getconfig('gpload:input:columns',list,None)
+        if columns != None:
+            self.from_cols_from_user = True # user specified from columns
+            self.from_columns = []
+            for d in columns:
+                if type(d)!=dict:
+                    self.log(self.ERROR,
+                               "gpload:input:columns must be a sequence of " +
+                               "mappings")
+                key = d.keys()[0]
+                if d[key] == None:
+                    self.log(self.DEBUG, 
+                             'getting source column data type from target')
+                    for name, typ, mapto, hasseq in self.into_columns:
+                        if name == key:
+                            d[key] = typ
+                            break
+
+                # perform the same kind of magic type change that postgres does
+                if d[key] == 'bigserial':
+                    d[key] = 'bigint'
+                elif d[key] == 'serial':
+                    d[key] = 'int4'
+
+                # Mark this column as having no mapping, which is important
+                # for do_insert()
+                self.from_columns.append([key,d[key],None, False])
+        else:
+            self.from_columns = self.into_columns
+            self.from_cols_from_user = False
+
+        # make sure that all columns have a type
+        for name, typ, map, hasseq in self.from_columns:
+            if typ == None:
+                self.log(self.ERROR, 'column "%s" has no type ' % name +
+                       'and does not appear in target table "%s"' % self.table)
+        self.log(self.DEBUG, 'from columns are:')
+        for c in self.from_columns:
+            name = c[0]
+            typ = c[1]
+            self.log(self.DEBUG, '%s: %s'%(name,typ))
+
+
+
+    def read_table_metadata(self):
+        tableSchema = 'public'
+        tableName = self.table
+        i = tableName.find('.')
+        if i>=0:
+            tableSchema = tableName[:i]
+            tableName = tableName[i+1:]
+        self.pg8000.execute("""select *, data_type in ('int4', 'bigint') and 
+                               column_default ~ E'nextval\\\\(.*regclass' as 
+                               has_sequence 
+                               from information_schema.columns where 
+                               table_name=$1 and table_schema=$2 order by 
+                               ordinal_position""", tableName, tableSchema)
+        count = 0
+        self.into_columns = []
+        self.into_columns_dict = dict()
+        for row in self.pg8000.iterate_dict():
+            count += 1
+            ct = unicode(row['data_type'])
+            if ct=='numeric':
+                stuff = ('numeric_precision','numeric_scale')
+            elif ct=='character' or ct=='character varying' or ct == 'bpchar':
+                stuff = ('character_maximum_length',)
+            elif ct == 'bigserial':
+                ct = 'bigint'
+            elif ct == 'serial':
+                ct = 'int4'
+            elif ct == 'bit' or ct == 'varbit':
+                stuff = ('character_maximum_length',)
+            else:
+                stuff = ()
+            stuff2 = []
+            for a in stuff:
+                if row[a]!=None:
+                    stuff2.append(unicode(row[a]))
+            if stuff2:
+                ct += '('+','.join(stuff2)+')'
+            name = unicode(row['column_name']).lower()
+            if row['has_sequence'] == True:
+                has_seq = True
+            else:
+                has_seq = False
+            i = [name,ct,None, has_seq]
+            self.into_columns.append(i)
+            self.into_columns_dict[name] = i
+            self.log(self.DEBUG, "found input column: " + str(i))
+        if count == 0:
+            # see if it's a permissions issue or it actually doesn't exist
+            sql = """select 1 from pg_class c, pg_namespace n
+                        where c.relname = '%s' and 
+                        n.nspname = '%s' and 
+                        n.oid = c.relnamespace""" % (tableName, tableSchema)
+            self.pg8000.execute(sql.encode('utf-8'))
+            if self.pg8000.row_count > 0:
+                self.log(self.ERROR, "permission denied for table %s.%s" % \
+                            (tableSchema, tableName))
+            else:
+               self.log(self.ERROR, 'table %s.%s does not exist in database %s'% (tableSchema, tableName, self.options.d))
+
+    def read_mapping(self):
+        mapping = self.getconfig('gpload:output:mapping',dict,None)
+
+        if mapping:
+            for key,value in mapping.iteritems():
+                if type(key) != unicode or type(value) != unicode:
+                    self.log(self.ERROR,'gpload:output:mapping must be a ' +
+                                        'mapping from strings to strings')
+                try:
+                    i = map(lambda a:a[0],self.into_columns).index(key)
+                except ValueError:
+                    self.log(self.ERROR,'%s in mapping is not in table %s'% \
+                                    (key, self.table))
+                self.into_columns[i][2] = value.lower()
+        else:
+
+            # Now, map anything yet to be mapped to itself, picking up on those
+            # columns which are not found in the table.
+            for x in self.from_columns:
+                i = filter(lambda a:a[2] == x[0], self.into_columns)
+                if not i:
+                    i = filter(lambda a:a[0] == x[0], self.into_columns)
+                    if i:
+                        i = i[0]
+                        if i[2] == None: i[2] = i[0]
+                    else:
+                        self.log(self.ERROR, 'no mapping for input column ' +
+                                 '"%s" to output table' % x[0])
+
+#        for a in self.from_columns:
+#                if a[0] in map(lambda a:a[0],self.into_columns):
+#                    b = filter(lambda x:x[0] == a[0], self.into_columns)
+#                    print b
+#                    b = b[0]
+#                    b[2] = b[0]
+#                    self.log(self.LOG, "mapping %s to itself" % b[0])
+#                else:
+#                    # There is a difference between the input columns and
+#                    # the table's column layout. We do not have a mapping
+#                    # from the user so give up
+        for name,typ,mapto,seq in self.into_columns:
+            self.log(self.DEBUG,'%s: %s = %s'%(name,typ,mapto))
+
+    def create_external_table(self):
+        self.error_table = self.getconfig('gpload:input:error_table', unicode,
+                                          None)
+        format = self.getconfig('gpload:input:format', unicode, 'text').lower()
+        sql = "create external table ext_%s"%self.name
+
+        if not self.from_cols_from_user:
+            # don't put values serial columns
+            from_cols = filter(lambda a: a[3] != True,
+                               self.from_columns)
+        else:
+            from_cols = self.from_columns
+
+        sql += "(%s)"%','.join(map(lambda a:'%s %s' % (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols))
+
+        sql += "location(%s)"%','.join(map(quote,self.locations))
+        sql += "format%s("%quote(format)
+        if self.getconfig('gpload:input:delimiter', unicode, False):
+            sql += "delimiter%s" % \
+                quote(self.getconfig('gpload:input:delimiter', unicode))
+
+        nullas = self.getconfig('gpload:input:null_as', unicode, False)
+        self.log(self.DEBUG, "null as " + unicode(nullas))
+        if nullas != False: # could be empty string
+            sql += " null as %s " % quote(nullas)
+
+        if self.getconfig('gpload:input:header',bool,False):
+            sql += "header "
+        if format=='csv':
+            sql += "quote as%s" % quote(self.getconfig('gpload:input:quote', 
+                    unicode, extraStuff='for csv formatted data'))
+
+        esc = self.getconfig('gpload:input:escape', None, None)
+        if esc:
+            if type(esc) != unicode and type(esc) != str:
+                self.log(self.ERROR, "gpload:input:escape must be a string")
+            if esc.lower() == 'off':
+                if format == 'csv':
+                    self.log(self.ERROR, "ESCAPE cannot be set to OFF for in CSV mode")
+                sql += "escape 'off'"
+            else:
+                sql += 'escape as ' + quote(esc)
+
+        force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
+        if force_not_null_columns:
+            for i in force_not_null_columns:
+                if type(i) != unicode and type(i) != str:
+                    self.log(self.ERROR,'gpload:input:force_not_null must be a sequence of strings')
+            sql += "force not null %s " % ','.join(force_not_null_columns)
+
+        sql += ")"
+
+        encoding = self.getconfig('gpload:input:encoding', unicode, None)
+        if encoding:
+            sql += "encoding%s"%quote(encoding)
+
+        limit = self.getconfig('gpload:input:error_limit',int, None)
+        if self.error_table and not limit:
+            self.log(self.ERROR, "gpload:input:error_table requires " +
+                    "gpload:input:error_limit to be specified")
+        if self.error_table:
+            sql += "log errors into %s " % self.error_table
+
+        if limit:
+            if limit < 2:
+                self.log(self.ERROR, "error_limit must be 2 or higher")
+            sql += "segment reject limit %s "%limit
+        self.log(self.LOG, sql)
+
+        self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
+
+        try:
+                self.pg8000.execute(sql.encode('utf-8'))
+        except Exception, e:
+            self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
+
+    def count_errors(self):
+        if self.error_table and not self.options.D:
+            # make sure we only get errors for our own instance
+            self.pg8000.execute('select count(*) from ' + self.error_table +
+                                " WHERE relname = 'ext_%s'" % self.name)
+            return self.pg8000.iterate_dict().next()['count']
+        return NUM_WARN_ROWS
+
+    def report_errors(self):
+        errors = self.count_errors()
+        if errors==1:
+            self.log(self.WARN, '1 bad row')
+            self.exitValue = 1
+        elif errors:
+            self.log(self.WARN, '%d bad rows'%errors)
+            self.exitValue = 1
+
+    def do_insert(self, dest):
+        """
+        Handle the INSERT case
+        """
+        self.log(self.DEBUG, "into columns " + str(self.into_columns))
+        cols = filter(lambda a:a[2]!=None, self.into_columns)
+        
+        # only insert non-serial columns, unless the user told us to 
+        # insert the serials explicitly
+        if not self.from_cols_from_user:
+            cols = filter(lambda a:a[3] == False, cols)
+
+
+        self.pg8000.NoticeReceived += notice_processor
+        sql = 'INSERT INTO %s' % dest
+        sql += ' (%s)'%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[0]),cols))
+        sql += ' SELECT %s '%','.join(map(lambda a:build_safe_table_name(self.pg8000,a[2], self.from_columns), cols))
+        sql += ' FROM ext_%s'%self.name
+
+        # cktan: progress thread is not reliable. revisit later.
+        #progress = Progress(self,self.ports)
+        #progress.start()
+        #self.threads.append(progress)
+        self.log(self.LOG, sql)
+        if not self.options.D:
+            try:
+                self.pg8000.execute(sql.encode('utf-8'))
+
+            except pg8000.ProgrammingError, p:
+                # See if we hit the segment reject limit
+                if p[1] == '42000': # invalid schema
+                    self.log(self.ERROR, 'error in schema: %s' % p[2])
+                elif p[1] == '42703':
+                    self.log(self.ERROR, '%s: likely error in mapping configuration' % p[2])
+                elif p[1] == '40M00':
+                    # seems like we did
+                    self.log(self.ERROR, 'error limit reached while loading ' +
+                        'data')
+                else:
+                    errstr = p[2]
+                    r = re.compile("^http response code 404 while gpfdist://" +
+                        "([^/]+):\d+/([^ ]+)")
+                    m = r.match(errstr)
+                    if m:
+                        e = m.group(2)
+                        if e[-1] == ',': # trim trailing ,
+                            e = e[:-1]
+                        self.log(self.ERROR, 'file "' + e + '"' +
+                                ' does not exist on host ' + m.group(1))
+                    else:
+                        errstr = errstr.decode('utf-8')
+                        self.log(self.ERROR, u'%s ' % (errstr)  + 
+                                 u'encountered while running %s' % (sql))
+
+
+        #progress.condition.acquire()
+        #progress.number = 1
+        #progress.condition.wait()
+        #progress.condition.release()
+        self.report_errors()
+
+    def do_method_insert(self):
+        self.create_external_table()
+        self.do_insert(self.table_quoted)
+
+    def map_stuff(self,config,format,index):
+        lis = []
+        for i in self.getconfig(config,list):
+            if type(i) != unicode and type(i) != str:
+                self.log(self.ERROR,'%s must be a sequence of strings'%config)
+            j = self.into_columns_dict.get(i.lower())
+            if not j:
+                self.log(self.ERROR,'column %s in %s does not exist'%(i,config))
+            if not j[index]:
+                self.log(self.ERROR,'there is no mapping from the column %s in %s'%(i,config))
+            lis.append(format(j[0],j[index]))
+        return lis
+
+    def fix_update_cond(self, match):
+        self.log(self.DEBUG, match.group(0))
+        return 'into_table.' + match.group(0)
+
+    def do_update(self,fromname,index):
+        """
+        UPDATE case
+        """
+        sql = 'update %s into_table ' % self.table_quoted
+
+        sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',lambda x,y:'%s=from_table.%s' % (build_safe_table_name(self.pg8000, x), build_safe_table_name(self.pg8000, y)),index))
+
+        sql += 'from %s from_table' % build_safe_table_name(self.pg8000, fromname)
+
+        match = self.map_stuff('gpload:output:match_columns',
+                    lambda x,y:'into_table.%s=from_table.%s' % \
+                    (build_safe_table_name(self.pg8000, x),
+                     build_safe_table_name(self.pg8000, y)), index)
+
+        update_condition = self.getconfig('gpload:output:update_condition',
+                            unicode, None)
+        if update_condition:
+            # place table alias infront of column references
+
+            update_condition = ' ' + update_condition + ' '
+            for name, type, mapto, seq in self.into_columns:
+                regexp = '(?<=[^\w])%s(?=[^\w])' % name
+                self.log(self.DEBUG, 'update_condition re: ' + regexp)
+                update_condition = re.sub(regexp,
+                                    self.fix_update_cond,
+                                    update_condition)
+
+            self.log(self.DEBUG, "updated update_condition to %s" %
+                         update_condition)
+            match.append(update_condition)
+        sql += ' where %s' % ' and '.join(match)
+        self.log(self.LOG, sql)
+        if not self.options.D:
+            try:
+                self.pg8000.execute(sql.encode('utf-8'))
+            except pg8000.ProgrammingError, p:
+                self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, p[2]))
+
+    def get_table_dist_key(self):
+        sql = "select attname from pg_attribute a, gp_distribution_policy p "+\
+              "where a.attrelid = '" + self.table + "'::regclass and " + \
+              "a.attrelid = " + \
+              "p.localoid and a.attnum = any (p.attrnums);"
+        self.pg8000.execute(sql.encode('utf-8'))
+        attrs = []
+        for a in self.pg8000.iterate_tuple():
+            attrs.append(a[0])
+
+        return attrs
+
+    def table_supports_update(self):
+        '''
+        Columns being updated cannot appear in the distribution key. Further,
+        match_columns must be equal to the distribution key as we do not
+        support UPDATE ... FROM unless this is the case.
+        '''
+
+        distkey = set(self.get_table_dist_key())
+
+        if len(distkey) == 0: # randomly distributed
+            self.log(self.ERROR, 'table "' + self.table + '" is ' +
+                        'distributed randomly and ' +
+                        'therefore does not support update or merge via gpload')
+
+        self.distkey = distkey
+        # update_columns better not be in distkey
+        update_columns = set(self.getconfig('gpload:output:update_columns', 
+                                            list))
+        a = distkey.intersection(update_columns)
+        if len(a):
+            self.log(self.ERROR, 'update_columns cannot reference column(s) ' +
+                        'in distribution key (%s)' % ', '.join(distkey))
+
+        # remember, match_columns might be a superset of the key
+        match_columns = set(self.getconfig('gpload:output:match_columns', list))
+        a = distkey.intersection(match_columns)
+        if a != distkey:
+            self.log(self.ERROR, 
+                    'match_columns (' + ', '.join(match_columns) + ') ' +
+                    'must contain all attributes in distribution key '+
+                    '(' + ', '.join(distkey) + ')')
+
+    def do_method_update(self):
+        """Load the data in and update an existing table based upon it"""
+
+        self.table_supports_update()
+        a = self.getconfig('gpload:output:update_columns', list)
+
+        # it would be tempting to use LIKE here but we cannot as it
+        # inherits NOT NULL and other constraints from the target table
+        # which might not actually be violated by this update 
+        sql = 'create temp table temp_%s' % self.name
+        if not self.from_cols_from_user:
+            # don't put values serial columns
+            from_cols = filter(lambda a: a[3] != True,
+                               self.from_columns)
+        else:
+            from_cols = self.from_columns
+        
+        cols = map(lambda a:'%s %s' %
+                   (build_safe_table_name(self.pg8000, a[0]), a[1]), from_cols)
+
+        sql += "(%s)" % ','.join(cols)
+
+        self.log(self.LOG, sql)
+
+        if not self.options.D:
+            self.cleanupSql.append('drop table if exists temp_%s'%self.name)
+            self.pg8000.execute(sql.encode('utf-8'))
+
+        self.create_external_table()
+        self.do_insert('temp_%s' % self.name)
+        self.do_update('temp_%s' % self.name, 0)
+
+    def do_method_merge(self):
+        """insert data not already in the table, update remaining items"""
+
+        self.table_supports_update()
+
+        sql = 'create temp table temp_%s(like %s)'%(self.name,self.table_quoted)
+        self.log(self.DEBUG, sql)
+        if not self.options.D:
+            self.cleanupSql.append('drop table if exists temp_%s'%self.name)
+            self.pg8000.execute(sql.encode('utf-8'))
+        self.create_external_table()
+        self.do_insert('temp_%s' % self.name)
+        self.do_update('temp_%s' % self.name,0)
+        sql = 'insert into %s(' % self.table_quoted
+        match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
+        matchColumns = self.getconfig('gpload:output:match_columns',list)
+        sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % build_safe_table_name(self.pg8000, a[0]),self.into_columns))
+        sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
+        sql += 'from temp_%s)as from_table '%self.name
+        sql += 'left outer join %s into_table ' % self.table_quoted
+        sql += 'on %s '%' and '.join(match)
+        where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s is null'%x,0)
+        sql += 'where %s '%' and '.join(where)
+        sql += 'and gpload_row_number=1 '
+        sql += ')'
+        self.log(self.LOG, sql)
+        if not self.options.D:
+            self.pg8000.execute(sql.encode('utf-8'))
+
+    def do_method(self):
+        # sql pre or post processing?
+        sql = self.getconfig('gpload:sql', list, default=None)
+        before = None
+        after = None
+        if sql:
+            before = self.getconfig('gpload:sql:before', unicode, default=None)
+            after = self.getconfig('gpload:sql:after', unicode, default=None)
+
+        if before:
+            self.log(self.LOG, "Pre-SQL from user: %s" % before)
+            if not self.options.D:
+                try:
+                    self.pg8000.execute(before.encode('utf-8'))
+                except pg8000.ProgrammingError, p:
+                    self.log(self.ERROR, 'could not execute SQL "%s": %s' %
+                             (before, p[2]))
+
+        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+        if method=='insert':
+            self.do_method_insert()
+        elif method=='update':
+            self.do_method_update()
+        elif method=='merge':
+            self.do_method_merge()
+        else:
+            self.log(self.ERROR, 'unsupported method %s' % method)
+
+        if after:
+            self.log(self.LOG, "Post-SQL from user: %s" % after)
+            if not self.options.D:
+                try:
+                    self.pg8000.execute(after.encode('utf-8'))
+                except pg8000.ProgrammingError, p:
+                    self.log(self.ERROR, 'could not execute SQL "%s": %s' %
+                             (after, p[2]))
+
+    def run2(self):
+        self.log(self.DEBUG, 'config ' + str(self.config))
+        start = time.time()
+        self.read_config()
+        self.setup_connection()
+        self.table_quoted = build_safe_table_name(self.pg8000, self.table)
+        self.read_table_metadata()
+        self.read_columns()
+        self.read_mapping()
+        self.start_gpfdists()
+        self.do_method()
+        self.log(self.INFO, 'running time: %.2f seconds'%(time.time()-start))
+
+    def run(self):
+        self.pg8000 = None
+        signal.signal(signal.SIGINT, handle_kill)
+        signal.signal(signal.SIGTERM, handle_kill)
+        # win32 doesn't do SIGQUIT
+        if not platform.system() in ['Windows', 'Microsoft']:
+            signal.signal(signal.SIGQUIT, handle_kill)
+            signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
+        try:
+            try:
+                self.run2()
+            except Exception:
+                traceback.print_exc(file=self.logfile)
+                self.logfile.flush()
+                self.exitValue = 2
+                if (self.options.qv > self.INFO):
+                    traceback.print_exc()
+                else:
+                    self.log(self.ERROR, "unexpected error -- backtrace " +
+                             "written to log file")
+        finally:
+            if self.cleanupSql:
+                self.log(self.LOG, 'removing temporary data')
+                self.setup_connection()
+                for a in self.cleanupSql:
+                    try:
+                        self.log(self.DEBUG, a)
+                        self.pg8000.execute(a.encode('utf-8'))
+                    except (pg8000.errors.InternalError,pg8000.errors.ProgrammingError):
+                        traceback.print_exc(file=self.logfile)
+                        self.logfile.flush()
+                        traceback.print_exc()
+            if self.subprocesses:
+                self.log(self.LOG, 'killing gpfdist')
+                for a in self.subprocesses:
+                    try:
+                        if platform.system() in ['Windows', 'Microsoft']:
+                            # win32 API is better but hard for us
+                            # to install, so we use the crude method
+                            subprocess.Popen("taskkill /F /T /PID %i" % a.pid,
+                                             shell=True, stdout=subprocess.PIPE,
+                                             stderr=subprocess.PIPE) 
+
+                        else:
+                            os.kill(a.pid, signal.SIGTERM)
+                    except OSError:
+                        pass
+            for t in self.threads:
+                t.join()
+
+            if self.exitValue==0:
+                self.log(self.INFO, 'gpload succeeded')
+            elif self.exitValue==1:
+                self.log(self.INFO, 'gpload succeeded with warnings')
+            else:
+                self.log(self.INFO, 'gpload failed')
+
+g = gpload(sys.argv[1:])
+g.run()
+sys.exit(g.exitValue)
