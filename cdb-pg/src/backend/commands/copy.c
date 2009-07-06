@@ -5049,13 +5049,28 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 						else if (nextc == escapec)
 							newc = escapec;
 						else
-							/* no escape sequence, take next char literaly */
-							newc = nextc;
-
-						/* don't skip over the EOL. we don't escape it anymore */
-						if((nextc == '\n' && cstate->eol_type == EOL_NL) ||
-						   (nextc == '\r' && cstate->eol_type == EOL_CR))
-							skip--;
+						{
+							/* no escape sequence found. it's a lone escape */
+							
+							bool next_is_eol = ((nextc == '\n' && cstate->eol_type == EOL_NL) ||
+											    (nextc == '\r' && (cstate->eol_type == EOL_CR || 
+																   cstate->eol_type == EOL_CRNL)));
+							
+							if(!next_is_eol)
+							{
+								/* take next char literally */
+								newc = nextc;
+							}
+							else
+							{
+								/* there isn't a next char (end of data in line). we keep the 
+								 * backslash as a literal character. We don't skip over the EOL,
+								 * since we don't support escaping it anymore (unlike PG).
+								 */
+								newc = escapec;
+								skip--;
+							}
+						}
 
 						break;
 				}
@@ -5068,9 +5083,9 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 				/*
 				 * Need to get rid of the escape character. This is done by
 				 * loading the chunk up to including the escape character
-				 * into the attribute buffer. Then overwritting the escape char
+				 * into the attribute buffer. Then overwriting the escape char
 				 * with the escaped sequence or char, and continuing to scan
-				 * from *after* the char than is after the escape in line buf.
+				 * from *after* the char than is after the escape in line_buf.
 				 */
 				*(cstate->attribute_buf.data + cstate->attribute_buf.len - 1) = newc;
 				cstate->line_buf.cursor = scan_end - cstate->line_buf.data + skip;
