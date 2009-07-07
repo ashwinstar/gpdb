@@ -55,8 +55,8 @@ NOTE: You will need root access to install R.
 
 6. Set the R_HOME environment variable on all hosts in your Greenplum 
    array. This must be set for the 'gpadmin' user on all hosts. For example,
-   modify the .bashrc file of the 'gpadmin' user on all hosts and add a line like
-   the following:
+   modify the .bashrc file of the 'gpadmin' user on all hosts and 
+   add a line like the following:
   
     
     export R_HOME=/usr/lib64/R-2.6.1/lib64/R
@@ -94,7 +94,7 @@ INSTALLING AND ENABLING PL/R IN GREENPLUM DATABASE
 
 4. Copy the plr.so file to $GPHOME/lib/postgresql on all hosts:
 
-    $ gpscp -f <all_hosts_file> ./greenplum-db-devel-plr/plr.so =:/usr/local/greenplum-db-3.3.0.0/lib/postgresql
+    $ gpscp -f <all_hosts_file> ./greenplum-db-3.3.1.0-plr/plr.so =:/usr/local/greenplum-db-3.3.1.0/lib/postgresql
 
 5. Make sure $R_HOME is set on all Greenplum hosts:
 
