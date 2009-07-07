@@ -5,3 +5,4 @@ libgpupgradefuncs.so
 libgpupgradefuncs.so.0
 libgpupgradefuncs.so.0.0
 pg_crc.c
+gpmodcatversion

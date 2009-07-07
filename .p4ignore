@@ -18,3 +18,7 @@ ext
 Linux GCC
 Linux\ GCC
 
+greenplum-clients-main-build-dev-SOL-x86_64.tar.gz
+greenplum-loaders-main-build-dev-SOL-x86_64.bin
+greenplum-loaders-main-build-dev-SOL-x86_64.tar.gz
+env.sh

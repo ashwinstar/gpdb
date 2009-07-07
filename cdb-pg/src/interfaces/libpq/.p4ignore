@@ -16,3 +16,4 @@ pgstrcasecmp.c
 thread.c
 wchar.c
 lipq-dist.rc
+libpq.so.5.2
