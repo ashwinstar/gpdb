@@ -75,9 +75,9 @@ to dump.
 -c (clear old dump files first)
 
 Clear out old dump files before doing the dump. The default is not 
-to clear out old dump files. This will remove the oldest dump directory 
-except not the current date's dump directory. All dump sets within 
-that directory will be removed.
+to clear out old dump files. This will remove all old dump directories 
+in the db_dumps directory, except for the dump directory of 
+the current date.
 
 
 -C (clean old catalog dumps)
