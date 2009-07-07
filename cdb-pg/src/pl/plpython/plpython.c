@@ -2027,7 +2027,7 @@ PLyMapping_ToTuple(PLyProcedure *proc, PyObject *mapping)
 		char	     *key;
 		PLyObToDatum *att;
 		PyObject     *volatile value;
-		bool          isnull;
+		//bool          isnull;
 
 		att = &proc->result.out.r.atts[i];
 		key = NameStr(desc->attrs[i]->attname);
@@ -2099,7 +2099,7 @@ PLySequence_ToTuple(PLyProcedure *proc, PyObject *sequence)
 	{
 		PLyObToDatum *att;
 		PyObject     *volatile value;
-		bool          isnull;
+		//bool          isnull;
 
 		att = &proc->result.out.r.atts[i];
 		value = NULL;
@@ -2151,7 +2151,7 @@ PLyObject_ToTuple(PLyProcedure *proc, PyObject *object)
 		char	     *key;
 		PLyObToDatum *att;
 		PyObject     *volatile value;
-		bool          isnull;
+		//bool          isnull;
 
 		att = &proc->result.out.r.atts[i];
 		key = NameStr(desc->attrs[i]->attname);
