@@ -14,8 +14,7 @@ gpstop [-d master_data_directory] [-B parallel_processes]
 gpstop -m [-d master_data_directory] [-y] [-l logfile_directory] 
        [-C] [-v | -q]
 
-gpstop -u [-d master_data_directory] [-u] [-l logfile_directory] 
-       [-v | -q] 
+gpstop -u [-d master_data_directory] [-l logfile_directory] [-v | -q] 
 
 gpstop --version
 
