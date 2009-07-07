@@ -466,12 +466,12 @@ class GPVersion:
         if self.version < [3,2,0,0]:
             raise UpgradeError(
                 "Greenplum Version '%s' is not supported for %s"
-                % (str(self.version), upstr))
+                % (str(self), upstr))
         else:
             raise UpgradeError(
                 "To %s Greenplum Version '%s' use the %s tool "
                 "shipped with that release" 
-                % (upstr, v, upstr))
+                % (upstr, str(self), upstr))
 
 
 #============================================================
@@ -1646,7 +1646,7 @@ class GPUpgrade:
         # We don't support downgrade
         if not self.upgrade:
             raise UpgradeError("Downgrade to Greenplum Database %s not supported from gpmigrator" 
-                               % str(oldversion))
+                               % str(newversion))
 
         if self.upgrade and not newversion.isrelease(MAIN):
             raise UpgradeError(
