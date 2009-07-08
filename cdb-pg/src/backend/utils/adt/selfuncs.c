@@ -114,25 +114,16 @@ static double ineq_histogram_selectivity(VariableStatData *vardata,
 						   Datum constval, Oid consttype);
 static bool convert_to_scalar(Datum value, Oid valuetypid, double *scaledvalue,
 				  Datum lobound, Datum hibound, Oid boundstypid,
-				  double *scaledlobound, double *scaledhibound);
+				  double *scaledlobound, double *scaledhibound, bool isgt);
 static double convert_numeric_to_scalar(Datum value, Oid typid);
-static void convert_string_to_scalar(char *value,
-						 double *scaledvalue,
-						 char *lobound,
-						 double *scaledlobound,
-						 char *hibound,
-						 double *scaledhibound);
 static void convert_bytea_to_scalar(Datum value,
 						double *scaledvalue,
 						Datum lobound,
 						double *scaledlobound,
 						Datum hibound,
 						double *scaledhibound);
-static double convert_one_string_to_scalar(char *value,
-							 int rangelo, int rangehi);
 static double convert_one_bytea_to_scalar(unsigned char *value, int valuelen,
 							int rangelo, int rangehi);
-static char *convert_string_datum(Datum value, Oid typid);
 static double convert_timevalue_to_scalar(Datum value, Oid typid);
 static bool get_variable_maximum(PlannerInfo *root, VariableStatData *vardata,
 					 Oid sortop, Datum *max);
@@ -705,7 +696,7 @@ ineq_histogram_selectivity(VariableStatData *vardata,
 				if (convert_to_scalar(constval, consttype, &val,
 									  values[i - 1], values[i],
 									  vardata->vartype,
-									  &low, &high))
+									  &low, &high, isgt))
 				{
 					if (high <= low)
 					{
@@ -2807,9 +2798,10 @@ estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey, double nbuckets)
  * "double" values.  (NUMERIC values that are outside the range of "double"
  * are clamped to +/- HUGE_VAL.)
  *
- * String datatypes are converted by convert_string_to_scalar(),
- * which is explained below.  The reason why this routine deals with
- * three values at a time, not just one, is that we need it for strings.
+ * String datatypes are converted to have hi and lo bound be constants, with
+ *    the scaledvalue equally either hi or lo, depending on the value of isgt
+ *    (done so that the caller will include the entire bucket in the final
+ *     computed selectivity, even after inverting for the isgt case)
  *
  * The bytea datatype is just enough different from strings that it has
  * to be treated separately.
@@ -2822,11 +2814,16 @@ estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey, double nbuckets)
  *
  * The several datatypes representing relative times (intervals) are all
  * converted to measurements expressed in seconds.
+ *
+ * isgt can be used by datatypes which cannot interpolate and instead must
+ *   return an appropriate default
+ *
  */
 static bool
 convert_to_scalar(Datum value, Oid valuetypid, double *scaledvalue,
 				  Datum lobound, Datum hibound, Oid boundstypid,
-				  double *scaledlobound, double *scaledhibound)
+				  double *scaledlobound, double *scaledhibound,
+				  bool isgt)
 {
 	/*
 	 * Both the valuetypid and the boundstypid should exactly match the
@@ -2876,16 +2873,9 @@ convert_to_scalar(Datum value, Oid valuetypid, double *scaledvalue,
 		case TEXTOID:
 		case NAMEOID:
 			{
-				char	   *valstr = convert_string_datum(value, valuetypid);
-				char	   *lostr = convert_string_datum(lobound, boundstypid);
-				char	   *histr = convert_string_datum(hibound, boundstypid);
-
-				convert_string_to_scalar(valstr, scaledvalue,
-										 lostr, scaledlobound,
-										 histr, scaledhibound);
-				pfree(valstr);
-				pfree(lostr);
-				pfree(histr);
+			    *scaledlobound = 1;
+			    *scaledhibound = 2;
+			    *scaledvalue = isgt ? 1 : 2;
 				return true;
 			}
 
@@ -2978,247 +2968,9 @@ convert_numeric_to_scalar(Datum value, Oid typid)
 }
 
 /*
- * Do convert_to_scalar()'s work for any character-string data type.
- *
- * String datatypes are converted to a scale that ranges from 0 to 1,
- * where we visualize the bytes of the string as fractional digits.
- *
- * We do not want the base to be 256, however, since that tends to
- * generate inflated selectivity estimates; few databases will have
- * occurrences of all 256 possible byte values at each position.
- * Instead, use the smallest and largest byte values seen in the bounds
- * as the estimated range for each byte, after some fudging to deal with
- * the fact that we probably aren't going to see the full range that way.
- *
- * An additional refinement is that we discard any common prefix of the
- * three strings before computing the scaled values.  This allows us to
- * "zoom in" when we encounter a narrow data range.  An example is a phone
- * number database where all the values begin with the same area code.
- * (Actually, the bounds will be adjacent histogram-bin-boundary values,
- * so this is more likely to happen than you might think.)
- */
-static void
-convert_string_to_scalar(char *value,
-						 double *scaledvalue,
-						 char *lobound,
-						 double *scaledlobound,
-						 char *hibound,
-						 double *scaledhibound)
-{
-	int			rangelo,
-				rangehi;
-	char	   *sptr;
-
-	rangelo = rangehi = (unsigned char) hibound[0];
-	for (sptr = lobound; *sptr; sptr++)
-	{
-		if (rangelo > (unsigned char) *sptr)
-			rangelo = (unsigned char) *sptr;
-		if (rangehi < (unsigned char) *sptr)
-			rangehi = (unsigned char) *sptr;
-	}
-	for (sptr = hibound; *sptr; sptr++)
-	{
-		if (rangelo > (unsigned char) *sptr)
-			rangelo = (unsigned char) *sptr;
-		if (rangehi < (unsigned char) *sptr)
-			rangehi = (unsigned char) *sptr;
-	}
-	/* If range includes any upper-case ASCII chars, make it include all */
-	if (rangelo <= 'Z' && rangehi >= 'A')
-	{
-		if (rangelo > 'A')
-			rangelo = 'A';
-		if (rangehi < 'Z')
-			rangehi = 'Z';
-	}
-	/* Ditto lower-case */
-	if (rangelo <= 'z' && rangehi >= 'a')
-	{
-		if (rangelo > 'a')
-			rangelo = 'a';
-		if (rangehi < 'z')
-			rangehi = 'z';
-	}
-	/* Ditto digits */
-	if (rangelo <= '9' && rangehi >= '0')
-	{
-		if (rangelo > '0')
-			rangelo = '0';
-		if (rangehi < '9')
-			rangehi = '9';
-	}
-
-	/*
-	 * If range includes less than 10 chars, assume we have not got enough
-	 * data, and make it include regular ASCII set.
-	 */
-	if (rangehi - rangelo < 9)
-	{
-		rangelo = ' ';
-		rangehi = 127;
-	}
-
-	/*
-	 * Now strip any common prefix of the three strings.
-	 */
-	while (*lobound)
-	{
-		if (*lobound != *hibound || *lobound != *value)
-			break;
-		lobound++, hibound++, value++;
-	}
-
-	/*
-	 * Now we can do the conversions.
-	 */
-	*scaledvalue = convert_one_string_to_scalar(value, rangelo, rangehi);
-	*scaledlobound = convert_one_string_to_scalar(lobound, rangelo, rangehi);
-	*scaledhibound = convert_one_string_to_scalar(hibound, rangelo, rangehi);
-}
-
-static double
-convert_one_string_to_scalar(char *value, int rangelo, int rangehi)
-{
-	int			slen = strlen(value);
-	double		num,
-				denom,
-				base;
-
-	if (slen <= 0)
-		return 0.0;				/* empty string has scalar value 0 */
-
-	/*
-	 * Since base is at least 10, need not consider more than about 20 chars
-	 */
-	if (slen > 20)
-		slen = 20;
-
-	/* Convert initial characters to fraction */
-	base = rangehi - rangelo + 1;
-	num = 0.0;
-	denom = base;
-	while (slen-- > 0)
-	{
-		int			ch = (unsigned char) *value++;
-
-		if (ch < rangelo)
-			ch = rangelo - 1;
-		else if (ch > rangehi)
-			ch = rangehi + 1;
-		num += ((double) (ch - rangelo)) / denom;
-		denom *= base;
-	}
-
-	return num;
-}
-
-/*
- * Convert a string-type Datum into a palloc'd, null-terminated string.
- *
- * When using a non-C locale, we must pass the string through strxfrm()
- * before continuing, so as to generate correct locale-specific results.
- */
-static char *
-convert_string_datum(Datum value, Oid typid)
-{
-	char	   *val;
-
-	switch (typid)
-	{
-		case CHAROID:
-			val = (char *) palloc(2);
-			val[0] = DatumGetChar(value);
-			val[1] = '\0';
-			break;
-		case BPCHAROID:
-		case VARCHAROID:
-		case TEXTOID:
-			{
-				char	   *str = (char *) VARDATA(DatumGetPointer(value));
-				int			strlength = VARSIZE(DatumGetPointer(value)) - VARHDRSZ;
-
-				val = (char *) palloc(strlength + 1);
-				memcpy(val, str, strlength);
-				val[strlength] = '\0';
-				break;
-			}
-		case NAMEOID:
-			{
-				NameData   *nm = (NameData *) DatumGetPointer(value);
-
-				val = pstrdup(NameStr(*nm));
-				break;
-			}
-		default:
-
-			/*
-			 * Can't get here unless someone tries to use scalarltsel on an
-			 * operator with one string and one non-string operand.
-			 */
-			elog(ERROR, "unsupported type: %u", typid);
-			return NULL;
-	}
-
-	if (!lc_collate_is_c())
-	{
-		char	   *xfrmstr;
-		size_t		xfrmlen;
-		size_t		xfrmlen2;
-
-		/*
-		 * Note: originally we guessed at a suitable output buffer size, and
-		 * only needed to call strxfrm twice if our guess was too small.
-		 * However, it seems that some versions of Solaris have buggy strxfrm
-		 * that can write past the specified buffer length in that scenario.
-		 * So, do it the dumb way for portability.
-		 *
-		 * Yet other systems (e.g., glibc) sometimes return a smaller value
-		 * from the second call than the first; thus the Assert must be <= not
-		 * == as you'd expect.  Can't any of these people program their way
-		 * out of a paper bag?
-		 *
-		 * XXX: strxfrm doesn't support UTF-8 encoding on Win32, it can return
-		 * bogus data or set an error. This is not really a problem unless it 
-		 * crashes since it will only give an estimation error and nothing fatal.
-		 */
-#if _MSC_VER == 1400			/* VS.Net 2005 */
-
-		/*
-		 * http://connect.microsoft.com/VisualStudio/feedback/ViewFeedback.aspx
-		 * ?FeedbackID=99694
-		 */
-		{
-			char		x[1];
-
-			xfrmlen = strxfrm(x, val, 0);
-		}
-#else
-		xfrmlen = strxfrm(NULL, val, 0);
-#endif
-#ifdef WIN32
-		/*
-		 * On Windows, strxfrm returns INT_MAX when an error occurs. Instead of
-		 * trying to allocate this much memory (and fail), just return the
-		 * original string unmodified as if we were in the C locale.
-		 */
-		if (xfrmlen == INT_MAX)
-			return val;
-#endif
-		xfrmstr = (char *) palloc(xfrmlen + 1);
-		xfrmlen2 = strxfrm(xfrmstr, val, xfrmlen + 1);
-		Assert(xfrmlen2 <= xfrmlen);
-		pfree(val);
-		val = xfrmstr;
-	}
-
-	return val;
-}
-
-/*
  * Do convert_to_scalar()'s work for any bytea data type.
  *
- * Very similar to convert_string_to_scalar except we can't assume
+ * Very similar to the old convert_string_to_scalar except we can't assume
  * null-termination and therefore pass explicit lengths around.
  *
  * Also, assumptions about likely "normal" ranges of characters have been
