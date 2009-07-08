@@ -1,92 +1,97 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 3.2.x.x system to 3.3.
+Upgrades an existing Greenplum Database 3.2.x.x system to 3.3.x.x.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 gpmigrator <old_GPHOME_path> <new_GPHOME_path> 
-[-d <master_data_directory>] [-l <logfile_directory>] 
-[-q | --debug] [-R]
+           [-d <master_data_directory>] [-l <logfile_directory>] 
+           [-q] [--debug] [-R]
 
-gpmigrator --prepare [--master_port <port> --port_base <port>
---mirror_port_base <port>] <old_GPHOME_path> <new_GPHOME_path> 
-[-d <master_data_directory>] [-l <logfile_directory>] [-q | --debug]
+gpmigrator --prepare [--master_port <port> --port_base <port> 
+             --mirror_port_base <port>] <old_GPHOME_path> <new_GPHOME_path> 
+          [-d <master_data_directory>] [-l <logfile_directory>] [-q] [--debug]
 
-gpmigrator --version | -v
+gpmigrator --version | -h
 
-gpmigrator --help | -h
+gpmigrator --help | -v
 
 
 *****************************************************
 PREREQUISITES
 *****************************************************
 
-The following tasks should be performed prior to executing an upgrade:
+The following tasks should be performed prior to executing 
+an upgrade:
 
 * Make sure you are logged in to the master host as the 
   Greenplum Database superuser (gpadmin).
 
 * Install the Greenplum Database 3.3 binaries on all Greenplum hosts.
 
-* Copy any custom modules from your current installation to your 3.3 
-  installation on all Greenplum hosts. For example, shared library files 
-  for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
-  (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
+* Copy any custom modules from your existing installation to 
+  your 3.3 installation on all Greenplum hosts. For example, 
+  shared library files for user-defined functions in $GPHOME/lib 
+  or PostgreSQL add-on modules (such as plr.so or pgcrypto.so) 
+  in $GPHOME/lib/postgresql.
 
-* Taction to copy or preserve any additional folders or files (such as 
-  backup folders) that you have added in the Greenplum data directories 
-  or $GPHOME directory. Only files or folders strictly related to 
+* Copy or preserve any additional folders or files (such as backup 
+  folders) that you have added in the Greenplum data directories or 
+  $GPHOME directory. Only files or folders strictly related to 
   Greenplum Database operation are preserved by the migration utility.
 
 * Check for and recover any failed segments in your current 
   Greenplum Database system (gpstate, gprecoverseg).
 
-* Update your environment to source your Greenplum Database 3.3 
-  installation
+* Update your environment to source the 3.3 installation.
 
-* Verify the integrity of your current system catalogs using the 
-  --prepare step of gpmigrator. This will check your system catalogs 
-  and indexes and initialize a temporary 3.3 system. If problems are 
-  found, contact Greenplum customer support.
+* Verify the integrity of your current system catalogs using 
+  the --prepare step of gpmigrator. This will check your system 
+  catalogs and indexes and initialize a temporary 3.3 system. 
+  If problems are found, contact Greenplum customer support.
 
-* Update your environment to temporarily source your Greenplum Database 3.2 
+* Update your environment to temporarily source the 3.2 
   installation (required to back up and shut down the 3.2 system).
 
-* Backup your current databases (gpcrondump or ZFS snapshots). If you find
-  any issues when testing your upgraded system, you can restore this backup.
- 
+* Backup your current databases (gpcrondump or ZFS snapshots). 
+  If you find any issues when testing your upgraded system, 
+  you can restore this backup.
+
 * Remove the standby master from your system configuration 
   (gpinitstandby -r).
 
-* Do a clean shutdown of your current system (gpstop).
+* Do a clean shutdown of your current system 3.2 (gpstop).
 
-* Update your environment to source your Greenplum Database 3.3 
-  installation
+* Update your environment to source the 3.3.1 installation.
 
-* Inform all database users of the upgrade and lockout time frame. 
-  Once the upgrade is in process, users will not be allowed on the 
-  system until the upgrade is complete.
+* Inform all database users of the upgrade and lockout time 
+  frame. Once the upgrade is in process, users will not be 
+  allowed on the system until the upgrade is complete.
 
-IMPORTANT: Failing to meet any of these prerequisites can result in an 
-aborted upgrade, placing your system in an unusable or even unrecoverable 
-state. Make sure you meet all the prerequisites before running gpmigrator.
+
+***NOTE***
+ Failing to meet any of these prerequisites can result in an 
+ aborted upgrade, placing your system in an unusable or 
+ even unrecoverable state. Make sure you meet all the 
+ prerequisites before running gpmigrator.
+
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
 The gpmigrator utility upgrades an existing Greenplum Database 
-3.2.x.x system to 3.3. This utility updates the system catalog 
+3.2.x.x system to 3.3.x.x. This utility updates the system catalog 
 and internal version number, but not the actual software binaries.
 
 During the migration process, all client connections to the master 
 will be locked out. The migration utility locks all client access 
 to the master, however it does not block direct utility mode access 
-to the segments. To ensure a safe upgrade, make sure users are aware 
-that any connections to a Greenplum segment are not safe during the 
-upgrade time frame.
+to the segments. To ensure a safe upgrade, make sure users 
+are aware that any connections to a Greenplum segment are not 
+safe during the upgrade time frame.
 
 Prior to executing the upgrade, you can optionally run gpmigrator 
 in prepare mode to perform some pre-upgrade validation without 
@@ -95,11 +100,9 @@ it runs a utility called gpcheckcat to verify your system catalogs,
 it checks for invalid indexes that need rebuilding, and it initializes 
 a temporary 3.3 system.
 
-
 *****************************************************
 OPTIONS
 *****************************************************
-
 
 <old_GPHOME_path>
 
@@ -120,40 +123,41 @@ perform some pre-upgrade validation, but not execute the upgrade.
 The prepare phase does three things; it runs a utility called 
 gpcheckcat to verify your system catalogs, it checks for invalid 
 indexes that need rebuilding, and it initializes a temporary 
-3.3 system. 
+3.3.1 system. 
 
---master_port port
---port_base port
---mirror_port_base port
+
+--master_port <port>
+--port_base <port>
+--mirror_port_base <port>
 
 Optional. Used with the --prepare option to supply a temporary 
 master port, primary segment port base, and mirror segment port 
-base for the temporary 3.3 system to be initialized. These must 
+base for the temporary 3.3.1 system to be initialized. These must 
 be different than what your current system is using. 
 
 
 -R (revert)
 
-Restores the backup directory in the event of a failed upgrade.
- 
-If the migration procedure fails and you cannot start the system using 
-the prior version's binary files, it is probable that gpmigrator was not 
-able to revert automatically. In these cases, you can run gpmigrator -R 
-to attempt to restore the backup directory. 
+Restores the backup directory in the event of a failed upgrade. 
 
-Cases in which the migration is not automatically reverted include:
+If the migration procedure fails and you cannot start the 
+system using the prior version’s binary files, it is probable 
+that gpmigrator was not able to revert automatically. In these 
+cases, you can run gpmigrator -R to attempt to restore the 
+backup directory. Cases in which the migration is not 
+automatically reverted include:
 
 * The gpmigrator process is killed with a command such as kill -9
 * The system crashes during the migration procedure
 
-If a ZFS snapshot is available, backing up from those resources is preferred.
+If a ZFS snapshot is available, backing up from those 
+resources is preferred.
 
 
 -d <master_data_directory>
 
 Optional. The current master host data directory. If not 
-specified, the value set for $MASTER_DATA_DIRECTORY will 
-be used.
+specified, the value set for $MASTER_DATA_DIRECTORY will be used.
 
 
 -l <logfile_directory>
@@ -174,7 +178,7 @@ Displays the online help.
 
 --debug
 
-Set logging level to debug.
+Sets logging level to debug.
 
 
 --version | -v
@@ -186,33 +190,24 @@ Displays the version of this utility.
 EXAMPLES
 *****************************************************
 
+Upgrade to version 3.3.1.0 from version 3.2.1.2 (first make 
+sure you are using the 3.3.1.0 software version):
 
-Upgrade to version 3.3 from version 3.2.0.6 
-(first make sure you are using the 3.3 software version):
+source /usr/local/greenplum-db-3.3.1.0/greenplum_path.sh
 
-source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
-
-/usr/local/greenplum-db-3.3.0.0 gpmigrator \
-/usr/local/greenplum-db-3.2.0.6 \
-/usr/local/greenplum-db-3.3.0.0
-
+/usr/local/greenplum-db-3.3.1.0/bin/gpmigrator \
+/usr/local/greenplum-db-3.2.1.2 \
+/usr/local/greenplum-db-3.3.1.0
 
 Revert a failed upgrade that was not automatically reverted:
 
-(first make sure you are using the 3.3 software version):
-
-source /usr/local/greenplum-db-3.3.0.0/greenplum_path.sh
-
-/usr/local/greenplum-db-3.3.0.0 gpmigrator \
-/usr/local/greenplum-db-3.2.0.6 \
-/usr/local/greenplum-db-3.3.0.0 -R
-
-NOTE: These commands must be specified on a single, 
-unbroken line.
+/usr/local/greenplum-db-3.3.1.0/bin/gpmigrator \
+/usr/local/greenplum-db-3.2.1.2 \
+/usr/local/greenplum-db-3.3.1.0 -R
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpstop, gpstate
+gpstop, gpstate, gprecoverseg, gpcrondump
