@@ -7,10 +7,11 @@ Runs Greenplum MapReduce jobs as defined in a YAML specification document.
 SYNOPSIS
 *****************************************************
 
-gpmapreduce [options ...] -f yaml_file [dbname [username]]
-[-k name=value | --key name=value] [-h hostname | --host hostname] 
-[-p port| --port port] [-U username | --username username] 
-[-W] [-v]
+gpmapreduce -f <yaml_file> [<dbname> [<username>]]
+            [-k <name>=<value> | --key <name>=<value>] 
+            [-h <hostname> | --host <hostname>] 
+            [-p <port>| --port <port>] 
+            [-U <username> | --username <username>] [-W] [-v]
 
 gpmapreduce -V | --version
 
@@ -22,14 +23,17 @@ PREREQUISITES
 
 The following are required prior to running this program:
 
-* You must have your MapReduce job defined in a YAML document.
+* You must have your MapReduce job defined in a YAML file.
 
-* You must be a Greenplum Database superuser to run MapReduce 
-jobs written in untrusted perl or python.
+* You must be a Greenplum Database superuser to run MapReduce jobs 
+  written in untrusted Perl or Python.
 
-* Certain inputs to MapReduce jobs (EXEC, FILE and GPFDIST) 
-require superuser permissions.
+* You must be a Greenplum Database superuser to run MapReduce jobs 
+  with EXEC and FILE inputs.
 
+* You must be a Greenplum Database superuser to run MapReduce jobs 
+  with GPFDIST input unless the server configuration parameter 
+  gp_external_grant_privileges is set to on.
 
 *****************************************************
 DESCRIPTION
@@ -77,7 +81,7 @@ Show version information, then exit.
 Show verbose output.
 
 
--k | --key name=value
+-k | --key <name>=<value>
 
 Sets a YAML variable.  A value is required. Defaults to “key” 
 if no variable name is specified. 
