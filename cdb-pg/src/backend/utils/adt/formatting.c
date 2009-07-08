@@ -170,6 +170,13 @@ typedef struct
 	FromCharDateMode date_mode;
 } KeyWord;
 
+typedef enum
+{
+	FORMAT_TOCHAR,
+	FORMAT_TONUMBER,
+	FORMAT_TOTIMESTAMP
+} FormatFunction;
+
 struct FormatNode
 {
 	int			type;			/* node type			*/
@@ -953,9 +960,10 @@ typedef struct NUMProc
 static const KeyWord *index_seq_search(char *str, const KeyWord *kw,
 				 const int *index);
 static KeySuffix *suff_search(char *str, KeySuffix *suf, int type);
-static void NUMDesc_prepare(NUMDesc *num, FormatNode *n);
+static void NUMDesc_prepare(NUMDesc *num, FormatNode *n, char *func);
 static void parse_format(FormatNode *node, char *str, const KeyWord *kw,
-			 KeySuffix *suf, const int *index, int ver, NUMDesc *Num);
+			 KeySuffix *suf, const int *index, int ver, NUMDesc *Num,
+			 char *func);
 
 static void DCH_to_char(FormatNode *node, bool is_interval,
 						TmToChar *in, char *out);
@@ -1046,9 +1054,8 @@ suff_search(char *str, KeySuffix *suf, int type)
  * ----------
  */
 static void
-NUMDesc_prepare(NUMDesc *num, FormatNode *n)
+NUMDesc_prepare(NUMDesc *num, FormatNode *n, char *func)
 {
-
 	if (n->type != NODE_TYPE_ACTION)
 		return;
 
@@ -1060,7 +1067,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("\"9\" must be ahead of \"PR\"")));
+						 errmsg("\"9\" must be ahead of \"PR\" for function \"%s\"", func)));
 			}
 			if (IS_MULTI(num))
 			{
@@ -1079,7 +1086,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("\"0\" must be ahead of \"PR\"")));
+						 errmsg("\"0\" must be ahead of \"PR\" for function \"%s\"", func)));
 			}
 			if (!IS_ZERO(num) && !IS_DECIMAL(num))
 {
@@ -1104,19 +1111,19 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 			num->need_locale = TRUE;
 		case NUM_DEC:
 			if (IS_DECIMAL(num))
-		{
+			{
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("multiple decimal points")));
-	}
+						 errmsg("multiple decimal points for function \"%s\"", func)));
+			}
 			if (IS_MULTI(num))
 			{
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("cannot use \"V\" and decimal point together")));
-}
+					 errmsg("cannot use \"V\" and decimal point together for function \"%s\"", func)));
+			}
 			num->flag |= NUM_F_DECIMAL;
 			break;
 
@@ -1126,19 +1133,19 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 
 		case NUM_S:
 			if (IS_LSIGN(num))
-	{
+			{
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot use \"S\" twice")));
-	}
+						 errmsg("cannot use \"S\" twice for function \"%s\"", func)));
+			}
 			if (IS_PLUS(num) || IS_MINUS(num) || IS_BRACKET(num))
 			{
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot use \"S\" and \"PL\"/\"MI\"/\"SG\"/\"PR\" together")));
-}
+						 errmsg("cannot use \"S\" and \"PL\"/\"MI\"/\"SG\"/\"PR\" together for function \"%s\"", func)));
+			}
 			if (!IS_DECIMAL(num))
 			{
 				num->lsign = NUM_LSIGN_PRE;
@@ -1147,7 +1154,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				num->flag |= NUM_F_LSIGN;
 			}
 			else if (num->lsign == NUM_LSIGN_NONE)
-{
+			{
 				num->lsign = NUM_LSIGN_POST;
 				num->need_locale = TRUE;
 				num->flag |= NUM_F_LSIGN;
@@ -1160,7 +1167,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot use \"S\" and \"MI\" together")));
+						 errmsg("cannot use \"S\" and \"MI\" together for function \"%s\"", func)));
 			}
 			num->flag |= NUM_F_MINUS;
 			if (IS_DECIMAL(num))
@@ -1173,7 +1180,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot use \"S\" and \"PL\" together")));
+						 errmsg("cannot use \"S\" and \"PL\" together for function \"%s\"", func)));
 			}
 			num->flag |= NUM_F_PLUS;
 			if (IS_DECIMAL(num))
@@ -1186,7 +1193,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot use \"S\" and \"SG\" together")));
+						 errmsg("cannot use \"S\" and \"SG\" together for function \"%s\"", func)));
 			}
 			num->flag |= NUM_F_MINUS;
 			num->flag |= NUM_F_PLUS;
@@ -1198,7 +1205,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot use \"PR\" and \"S\"/\"PL\"/\"MI\"/\"SG\" together")));
+						 errmsg("cannot use \"PR\" and \"S\"/\"PL\"/\"MI\"/\"SG\" together for function \"%s\"", func)));
 			}
 			num->flag |= NUM_F_BRACKET;
 			break;
@@ -1219,7 +1226,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 				NUM_cache_remove(last_NUMCacheEntry);
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("cannot use \"V\" and decimal point together")));
+					 errmsg("cannot use \"V\" and decimal point together for function \"%s\"", func)));
 			}
 			num->flag |= NUM_F_MULTI;
 			break;
@@ -1228,7 +1235,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 			NUM_cache_remove(last_NUMCacheEntry);
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("\"E\" is not supported")));
+					 errmsg("\"E\" is not supported for function \"%s\"", func)));
 	}
 
 	return;
@@ -1243,7 +1250,8 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
  */
 static void
 parse_format(FormatNode *node, char *str, const KeyWord *kw,
-			 KeySuffix *suf, const int *index, int ver, NUMDesc *Num)
+			 KeySuffix *suf, const int *index, int ver, NUMDesc *Num,
+			 char *func)
 {
 	KeySuffix  *s;
 	FormatNode *n;
@@ -1286,7 +1294,7 @@ parse_format(FormatNode *node, char *str, const KeyWord *kw,
 			 * NUM version: Prepare global NUMDesc struct
 			 */
 			if (ver == NUM_TYPE)
-				NUMDesc_prepare(Num, n);
+				NUMDesc_prepare(Num, n, func);
 
 			/*
 			 * Postfix
@@ -1308,17 +1316,17 @@ parse_format(FormatNode *node, char *str, const KeyWord *kw,
 				int			x = 0;
 
 				while (*(++str))
-			{
+				{
 					if (*str == '"' && x != '\\')
-			{
+					{
 						str++;
 						break;
-			}
+					}
 					else if (*str == '\\' && x != '\\')
-			{
+					{
 						x = '\\';
 						continue;
-			}
+					}
 					n->type = NODE_TYPE_CHAR;
 					n->character = *str;
 					n->key = NULL;
@@ -1456,7 +1464,7 @@ get_th(char *num, int type)
 		 */
 static char *
 str_numth(char *dest, char *num, int type)
-		{
+{
 	if (dest != num)
 		strcpy(dest, num);
 	strcat(dest, get_th(num, type));
@@ -1489,7 +1497,7 @@ str_tolower(const char *buff, size_t nbytes)
 
 #ifdef USE_WIDE_UPPER_LOWER
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
-				{
+	{
 		wchar_t		*workspace;
 		size_t		curr_char;
 		size_t		result_size;
@@ -1514,10 +1522,10 @@ str_tolower(const char *buff, size_t nbytes)
 
 		wchar2char(result, workspace, result_size);
 		pfree(workspace);
-			}
+	}
 	else
 #endif		/* USE_WIDE_UPPER_LOWER */
-			{
+	{
 		char *p;
 
 		result = pnstrdup(buff, nbytes);
@@ -1545,7 +1553,7 @@ str_toupper(const char *buff, size_t nbytes)
 
 #ifdef USE_WIDE_UPPER_LOWER
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
-{
+	{
 		wchar_t		*workspace;
 		size_t		curr_char;
 		size_t		result_size;
@@ -1570,10 +1578,10 @@ str_toupper(const char *buff, size_t nbytes)
 
 		wchar2char(result, workspace, result_size);
 		pfree(workspace);
-		}
-		else
+	}
+	else
 #endif		/* USE_WIDE_UPPER_LOWER */
-		{
+	{
 		char *p;
 
 		result = pnstrdup(buff, nbytes);
@@ -1602,7 +1610,7 @@ str_initcap(const char *buff, size_t nbytes)
 
 #ifdef USE_WIDE_UPPER_LOWER
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
-{
+	{
 		wchar_t		*workspace;
 		size_t		curr_char;
 		size_t		result_size;
@@ -1619,13 +1627,13 @@ str_initcap(const char *buff, size_t nbytes)
 		char2wchar(workspace, nbytes + 1, buff, nbytes);
 
 		for (curr_char = 0; workspace[curr_char] != 0; curr_char++)
-	{
+		{
 			if (wasalnum)
 				workspace[curr_char] = towlower(workspace[curr_char]);
-		else
+			else
 				workspace[curr_char] = towupper(workspace[curr_char]);
 			wasalnum = iswalnum(workspace[curr_char]);
-}
+		}
 
 		/* Make result large enough; case change might change number of bytes */
 		result_size = curr_char * pg_database_encoding_max_length() + 1;
@@ -1809,7 +1817,7 @@ from_char_set_mode(TmFromChar *tmfc, const FromCharDateMode mode)
  */
 static void
 from_char_set_int(int *dest, const int value, const FormatNode *node)
-	{
+{
 	if (*dest != 0 && *dest != value)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
@@ -1818,7 +1826,7 @@ from_char_set_int(int *dest, const int value, const FormatNode *node)
 				 errdetail("This value contradicts a previous setting for "
 						   "the same field type.")));
 	*dest = value;
-	}
+}
 
 /*
  * Read a single integer from the source string, into the int pointed to by
@@ -1842,7 +1850,7 @@ from_char_set_int(int *dest, const int value, const FormatNode *node)
  */
 static int
 from_char_parse_int_len(int *dest, char **src, const int len, FormatNode *node)
-			{
+{
 	long		result;
 	char		copy[DCH_MAX_ITEM_SIZ + 1];
 	char	   *init = *src;
@@ -1852,7 +1860,7 @@ from_char_parse_int_len(int *dest, char **src, const int len, FormatNode *node)
 	used = (int) strlcpy(copy, *src, len + 1);
 
 	if (S_FM(node->suffix) || is_next_separator(node))
-			{
+	{
 		/*
 		 * This node is in Fill Mode, or the next node is known to be a
 		 * non-digit value, so we just slurp as many characters as we
@@ -1860,9 +1868,9 @@ from_char_parse_int_len(int *dest, char **src, const int len, FormatNode *node)
 		 */
 		errno = 0;
 		result = strtol(init, src, 10);
-			}
+	}
 	else
-{
+	{
 		/*
 		 * We need to pull exactly the number of characters given in 'len' out
 		 * of the string, and convert those.
@@ -1928,7 +1936,7 @@ from_char_parse_int_len(int *dest, char **src, const int len, FormatNode *node)
  */
 static int
 from_char_parse_int(int *dest, char **src, FormatNode *node)
-		{
+{
 	return from_char_parse_int_len(dest, src, node->key->len, node);
 }
 
@@ -1957,7 +1965,7 @@ seq_search(char *name, char **array, int type, int max, int *len)
 		*name = pg_tolower((unsigned char) *name);
 
 	for (last = 0, a = array; *a != NULL; a++)
-{
+	{
 		/* comperate first chars */
 		if (*name != **a)
 			continue;
@@ -1980,11 +1988,11 @@ seq_search(char *name, char **array, int type, int max, int *len)
 			if (*n == '\0')
 				break;
 
-	/*
+			/*
 			 * Convert (but convert new chars only)
-	 */
+			 */
 			if (i > last)
-	{
+			{
 				if (type == ONE_UPPER || type == ALL_LOWER)
 					*n = pg_tolower((unsigned char) *n);
 				else if (type == ALL_UPPER)
@@ -2692,7 +2700,7 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 					if (matched != 2)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								 errmsg("invalid input string for \"Y,YYY\"")));
+								 errmsg("invalid input string for \"Y,YYY\" in function \"to_date\"")));
 					years += (millenia * 1000);
 					from_char_set_int(&out->year, years, n);
 					out->yysz = 4;
@@ -2883,7 +2891,8 @@ datetime_to_char_body(TmToChar *tmtc, text *fmt, bool is_interval)
 		incache = FALSE;
 
 		parse_format(format, fmt_str, DCH_keywords,
-					 DCH_suff, DCH_index, DCH_TYPE, NULL);
+					 DCH_suff, DCH_index, DCH_TYPE, NULL,
+					 "to_char");
 
 		(format + fmt_len)->type = NODE_TYPE_END;		/* Paranoia? */
 	}
@@ -2897,7 +2906,7 @@ datetime_to_char_body(TmToChar *tmtc, text *fmt, bool is_interval)
 		incache = TRUE;
 
 		if ((ent = DCH_cache_search(fmt_str)) == NULL)
-	{
+		{
 			ent = DCH_cache_getnew(fmt_str);
 
 			/*
@@ -2905,7 +2914,8 @@ datetime_to_char_body(TmToChar *tmtc, text *fmt, bool is_interval)
 			 * to the cache.
 			 */
 			parse_format(ent->format, fmt_str, DCH_keywords,
-						 DCH_suff, DCH_index, DCH_TYPE, NULL);
+						 DCH_suff, DCH_index, DCH_TYPE, NULL,
+						 "to_char");
 
 			(ent->format + fmt_len)->type = NODE_TYPE_END;		/* Paranoia? */
 
@@ -2959,7 +2969,7 @@ timestamp_to_char(PG_FUNCTION_ARGS)
 	if (timestamp2tm(dt, NULL, tm, &tmtcFsec(&tmtc), NULL, NULL) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range for function \"to_char\"")));
 
 	thisdate = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
 	tm->tm_wday = (thisdate + 1) % 7;
@@ -2991,7 +3001,7 @@ timestamptz_to_char(PG_FUNCTION_ARGS)
 	if (timestamp2tm(dt, &tz, tm, &tmtcFsec(&tmtc), &tmtcTzn(&tmtc), NULL) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range for function \"to_char\"")));
 
 	thisdate = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
 	tm->tm_wday = (thisdate + 1) % 7;
@@ -3059,7 +3069,7 @@ to_timestamp(PG_FUNCTION_ARGS)
 	if (tm2timestamp(&tm, fsec, &tz, &result) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("timestamp out of range")));
+				 errmsg("timestamp out of range for function \"to_timestamp\"")));
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -3130,7 +3140,8 @@ do_to_timestamp(text *date_txt, text *fmt,
 			incache = FALSE;
 
 			parse_format(format, fmt_str, DCH_keywords,
-						 DCH_suff, DCH_index, DCH_TYPE, NULL);
+						 DCH_suff, DCH_index, DCH_TYPE, NULL,
+						 "to_timestamp");
 
 			(format + fmt_len)->type = NODE_TYPE_END;	/* Paranoia? */
 		}
@@ -3152,7 +3163,8 @@ do_to_timestamp(text *date_txt, text *fmt,
 				 * format-picture to the cache.
 				 */
 				parse_format(ent->format, fmt_str, DCH_keywords,
-							 DCH_suff, DCH_index, DCH_TYPE, NULL);
+							 DCH_suff, DCH_index, DCH_TYPE, NULL,
+							 "to_timestamp");
 
 				(ent->format + fmt_len)->type = NODE_TYPE_END;	/* Paranoia? */
 #ifdef DEBUG_TO_FROM_CHAR
@@ -3208,19 +3220,19 @@ do_to_timestamp(text *date_txt, text *fmt,
 			if (tm->tm_hour > 12 && !tmfc.pm)
 			{
 				ereport(WARNING,
-									(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-									 errmsg("hour \"%d\" is invalid for the 12-hour clock",
-											tm->tm_hour),
-									 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
+						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+						 errmsg("hour \"%d\" is invalid for the 12-hour clock",
+								tm->tm_hour),
+						 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
 				tmfc.pm = TRUE;
 				tm->tm_hour = tm->tm_hour - 12;
 			}
 			else
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-					 errmsg("hour \"%d\" is invalid for the 12-hour clock",
-							tm->tm_hour),
-					 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+						 errmsg("hour \"%d\" is invalid for the 12-hour clock",
+								tm->tm_hour),
+						 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
 		}
 
 		if (tmfc.pm && tm->tm_hour < 12)
@@ -3512,7 +3524,8 @@ NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree)
 		zeroize_NUM(Num);
 
 		parse_format(format, str, NUM_keywords,
-					 NULL, NUM_index, NUM_TYPE, Num);
+					 NULL, NUM_index, NUM_TYPE, Num,
+					 "to_char");
 
 		(format + len)->type = NODE_TYPE_END;	/* Paranoia? */
 	}
@@ -3534,7 +3547,8 @@ NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree)
 			 * to the cache.
 			 */
 			parse_format(ent->format, str, NUM_keywords,
-						 NULL, NUM_index, NUM_TYPE, &ent->Num);
+						 NULL, NUM_index, NUM_TYPE, &ent->Num,
+						 "to_char");
 
 			(ent->format + len)->type = NODE_TYPE_END;	/* Paranoia? */
 		}
@@ -4168,7 +4182,7 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout, char *number,
 		if (!Np->is_to_char)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("\"RN\" not supported")));
+					 errmsg("\"RN\" not supported with function \"to_number\"")));
 
 		Np->Num->lsign = Np->Num->pre_lsign_num = Np->Num->post =
 			Np->Num->pre = Np->num_pre = Np->sign = 0;
