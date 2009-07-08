@@ -1179,7 +1179,7 @@ addlitchar(unsigned char ychar)
         if ((literallen+1) >= literalalloc)
         {
                 literalalloc *= 2;
-                literalbuf = (char *) yy_flex_realloc(literalbuf, literalalloc);
+                literalbuf = (char *) realloc(literalbuf, literalalloc);
         }
 	/* append new data, add trailing null */
 	literalbuf[literallen] = ychar;
