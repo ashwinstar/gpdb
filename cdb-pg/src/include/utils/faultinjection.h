@@ -19,6 +19,7 @@
 #define GP_FAULT_USER_ABORT             8   /* Simply call abort */
 #define GP_FAULT_USER_INFINITE_LOOP     9   /* Infinite loop */
 #define GP_FAULT_USER_ASSERT_FAILURE   10   /* Assert failure */
+#define GP_FAULT_USER_DEBUGBREAK       11   /* Calling debug break */
 
 /* Fault group 2: From User, cause some fault in MP */
 #define GP_FAULT_USER_MP_CONFIG 	100	/* Show vmem_max guc */

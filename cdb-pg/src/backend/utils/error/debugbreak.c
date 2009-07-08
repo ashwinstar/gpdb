@@ -6,6 +6,7 @@
 
 #include "postgres.h"
 #include "utils/debugbreak.h"
+#include "miscadmin.h"
 
 #include <unistd.h>
 /* How to use debug_break
@@ -64,7 +65,10 @@ debug_break()
 		elog(LOG, "Debug break");
 
 	while(debug_break_loop == 1)
+    {
+        CHECK_FOR_INTERRUPTS();
 		sleep(1);
+    }
 }
 
 #define DEBUG_BREAK_N_MAX (sizeof(int) * 8)
@@ -93,7 +97,10 @@ debug_break_n(int n)
 		elog(LOG, "Debug break n: %d", n);
 
 	while((debug_break_n_flags & checkbit) && debug_break_n_loop == 1)
+    {
+        CHECK_FOR_INTERRUPTS();
 		sleep(1);
+    }
 }
 
 void
