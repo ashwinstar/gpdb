@@ -391,7 +391,7 @@ devel : CONNECTIVITYINSTLOC=$(CONNECTIVITYDEVPATH)
 devel : LOADERSINSTLOC=$(LOADERSDEVPATH)
 devel : PWXINSTLOC=$(PWXDEVPATH)
 devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
-devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
 

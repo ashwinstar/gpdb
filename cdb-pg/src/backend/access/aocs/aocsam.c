@@ -381,8 +381,6 @@ void aocs_insert_finish(AOCSInsertDesc idesc)
         Relation rel = idesc->aoi_rel;
         int i;
 
-        debug_break();
-
         for(i=0; i<rel->rd_att->natts; ++i)
                 datumstream_write_block(idesc->ds[i]);
 
