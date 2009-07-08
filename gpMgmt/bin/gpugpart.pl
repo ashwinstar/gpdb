@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2008
+# copyright (c) 2008, 2009
 # Author: Jeffrey I Cohen
 #
 #
@@ -88,7 +88,7 @@ Upgrade rule-based partition tables to 3.2 catalog tables.
 
 Jeffrey I Cohen
 
-Copyright (c) 2008 GreenPlum.  All rights reserved.  
+Copyright (c) 2008, 2009 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -505,7 +505,7 @@ sub makespec
     return $pspec;
 } # end makespec
 
-# genpartdefs: generate partition defintitions.  Pass 1 - generate the
+# genpartdefs: generate partition definitions.  Pass 1 - generate the
 # specs and sort the range partitions.
 sub genpartdefs
 {
@@ -982,6 +982,33 @@ sub genpartdefs3
 
 } # end genpartdefs3
 
+
+sub typename_fixup_in
+{
+	my $v1 = shift;
+	# XXX XXX: with/without time zone fixup
+	# MPP-6502, QA-271: fixup types with spaces in name
+
+	$v1 =~ s/timestamp without time zone/timestamp\_without\_time\_zone/gm;
+	$v1 =~ s/timestamp with time zone/timestamp\_with\_time\_zone/gm;
+
+	$v1 =~ s/character varying/character_varying/gm;
+
+	return $v1;
+}
+
+sub typename_fixup_out
+{
+	my $v1 = shift;
+
+	$v1 =~ s/timestamp\_without\_time\_zone/timestamp without time zone/gm;
+	$v1 =~ s/timestamp\_with\_time\_zone/timestamp with time zone/gm;
+
+	$v1 =~ s/character_varying/character varying/gm;
+
+	return $v1;
+}
+
 # genpartdefs4: Pass 4 - build text and comments for partition by clause
 sub genpartdefs4
 {
@@ -1117,6 +1144,8 @@ sub genpartdefs4
 
                     if (defined($v1))
                     {
+						$v1 = typename_fixup_out($v1);
+
                         $spec_txt .= " START (" .  $v1 . ") ";
 
                         $incex1 = $pspec->{start}->{inclusive} ?
@@ -1127,6 +1156,8 @@ sub genpartdefs4
 
                     if (defined($v2))
                     {
+						$v2 = typename_fixup_out($v1);
+
                         $incex2 = $pspec->{end}->{inclusive} ?
                             "INCLUSIVE" : "EXCLUSIVE";
 
@@ -1149,12 +1180,17 @@ sub genpartdefs4
                     {
                         my @baz;
 
-                        push @baz, @{$pspec->{start}->{values}};
+						for my $v1 (@{$pspec->{start}->{values}})
+						{
+							$v1 = typename_fixup_out($v1);
+							push @baz, $v1;
+						}
 
                         while (scalar(@baz))
                         {
 #                            print "a: ", scalar(@baz), "\n";
 
+							# split array into "numkeys" size pieces
                             my @foo = splice(@baz, 0, $numkeys);
 
 #                            print "b: ", scalar(@baz), "\n";
@@ -1164,7 +1200,11 @@ sub genpartdefs4
                     }
                     else
                     {
-                        push @outi, @{$pspec->{start}->{values}};
+						for my $v1 (@{$pspec->{start}->{values}})
+						{
+							$v1 = typename_fixup_out($v1);
+							push @outi, $v1;
+						}
                     }
                     
                     $spec_txt .= "values (" . join(", ", @outi) . ")";
@@ -1932,7 +1972,11 @@ sub classify_fn
             return $partSpec;
         }
 
+		# remove the "new." prefix
         $colname =~ s/^new\.//;
+
+		# weird fixup for case like : new.bb::text = 'golf'::character varying
+		$colname =~ s/\:\:\w+$//;
 
         $partSpec->{colh}->{$colname} = []
             unless (exists($partSpec->{colh}->{$colname}));
@@ -2745,7 +2789,6 @@ if (1)
 
         $vv->{rules} = $rules;
 
-
 #        print Data::Dumper->Dump([$vv]), "\n";
 
     } # end while each reg_tabs
@@ -2768,11 +2811,7 @@ if (1)
 #                    print "  where: ", $txt, "\n";
 
                     # parse words
-
-					# XXX XXX: with/without time zone fixup
-
-					$txt =~ s/timestamp without time zone/timestamp\_without\_time\_zone/gm;
-					$txt =~ s/timestamp with time zone/timestamp\_with\_time\_zone/gm;
+					$txt = typename_fixup_in($txt);
 
                     my $biga = pw1($txt);
 
