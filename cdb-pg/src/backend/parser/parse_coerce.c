@@ -483,6 +483,14 @@ coerce_unknown_var(ParseState *pstate, Var *var,
 
     Assert(IsA(var, Var));
 
+	/* 
+	 * If the parser isn't set up, we can't do anything here so just return the
+	 * Var as is. This can happen if we call back into the parser from the
+	 * planner (calls to addRangeTableEntryForJoin()).
+	 */
+	if (!PointerIsValid(pstate))
+		return var;
+
     rte = GetRTEByRangeTablePosn(pstate, var->varno, netlevelsup);
 
     switch (rte->rtekind)

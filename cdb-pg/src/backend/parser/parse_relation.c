@@ -1061,6 +1061,9 @@ addRangeTableEntryForJoin(ParseState *pstate,
 	rte->joinaliasvars = aliasvars;
 	rte->alias = alias;
 
+	/* transform any Vars of type UNKNOWNOID if we can */
+	fixup_unknown_vars_in_exprlist(pstate, rte->joinaliasvars);
+
 	eref = alias ? (Alias *) copyObject(alias) : makeAlias("unnamed_join", NIL);
 	numaliases = list_length(eref->colnames);
 
