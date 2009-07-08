@@ -33,7 +33,7 @@ from Queue     import Queue
 import urllib    # for passing strings across gpssh
 import shutil    # for copying
 try:
-    import pg8000                        # XXX: other tools use pygresql
+    from pygresql import pg              # Database interaction
     from gppylib.gplog import *          # Greenplum logging facility
     from gppylib.commands import unix    # Greenplum layer for unix interaction
 except ImportError, e:
@@ -56,31 +56,14 @@ MAIN          = [3,4,99,99]    # version number for main
 def make_conn(ug, user, db, options, port, sockdir):
     try:
         logger.debug("making database connection: user = %s, "
-                     "dbname = %s port = %i, unix socket connection" 
+                     "dbname = %s port = %i" 
                      % (user, db, port))
-        conn = pg8000.Connection(user=user,
-                                 unix_sock=os.path.join(sockdir, '.s.PGSQL.%i' % port),
-                                 database=db, 
-                                 options=options,
-                                 port=port,
-                                 socket_timeout=5000)
-    except Exception, e:
-        # could be an issue with using UNIX sockets, try a host based
-        # connection
-        try:
-            logger.debug("could not connect using unix socket (%s), "
-                         "trying host based connection" % str(e))
-            conn = pg8000.Connection(user=user,
-                                     host='localhost',
-                                     database=db, 
-                                     options=options,
-                                     port=port,
-                                     socket_timeout=5000)
-        except Exception, e:
-            logger.fatal('Could not establish connection to ' +
-                         'database "%s" port %d: %s' 
-                         % (db, port, str(e)))
-            raise ConnectionError(str(e))
+        conn = pg.connect(user=user,
+                          dbname=db, 
+                          opt=options,
+                          port=port)
+    except pg.InternalError, e:
+        raise ConnectionError(str(e))
     return conn
 
 
@@ -1088,15 +1071,16 @@ class GPUpgrade:
             sockdir = '/tmp/'
         conn = make_conn(self, user, db, options, port, sockdir)
 
+        curs = None
         try:
-            conn.execute(qry)
+            curs = conn.query(qry)
         except Exception, e:
             conn.close()
             logger.fatal('Error executing SQL')
             raise ConnectionError('%s\nsql> %s' % (str(e), qry))
 
         rows = []
-        for tuple in conn.iterate_dict():
+        for tuple in curs.dictresult():
             if len(tuple) == 1: 
                 rows.append(tuple.values()[0])
             else: 
@@ -1149,7 +1133,7 @@ class GPUpgrade:
         conn = make_conn(self, user, db, options, port, self.sock_dir)
 
         try:
-            conn.execute(qry)
+            conn.query(qry)
         except Exception, e:
             logger.fatal('Error executing SQL')
             raise ConnectionError('%s\nsql> %s' % (str(e), qry))
