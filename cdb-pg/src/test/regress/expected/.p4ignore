@@ -4,3 +4,10 @@ create_function_2.out
 aocs.out
 appendonly.out
 exttab1.out
+constraints.out
+gptokencheck.out
+mapred.out
+misc.out
+sreh.out
+tablespace.out
+upg2.out
