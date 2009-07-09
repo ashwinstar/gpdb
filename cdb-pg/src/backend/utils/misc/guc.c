@@ -3237,8 +3237,8 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_vmem_protect_gang_cache_limit", PGC_POSTMASTER, RESOURCES_MEM,
-			gettext_noop("Max virtual memory limit (in MB) for a gang to be cachable."), 
+		{"gp_vmem_protect_segworker_cache_limit", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Max virtual memory limit (in MB) for a segworker to be cachable."), 
 			NULL,
 		},
 		&gp_vmem_protect_gang_cache_limit,
