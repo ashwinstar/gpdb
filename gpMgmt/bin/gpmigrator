@@ -32,6 +32,7 @@ from threading import Thread
 from Queue     import Queue
 import urllib    # for passing strings across gpssh
 import shutil    # for copying
+import glob      # for globbing
 try:
     from pygresql import pg              # Database interaction
     from gppylib.gplog import *          # Greenplum logging facility
@@ -168,6 +169,16 @@ class RemapOidWorker(Thread):
         Thread.__init__(self)
 
     def run(self):
+        # This wrapper around dowork ensures that if any error occurs then
+        # we will set the error fields for the thread in such a way that
+        # the main thread can detect that a failure occured.
+        try:
+            self.dowork()
+        except Exception, e:
+            self.errors += 1
+            self.errstr = str(e)
+
+    def dowork(self):
         oldmapfile = open(self.mapspec+'_source_mapping', 'r')
         newmapfile = open(self.mapspec+'_target_mapping', 'r')
         for oldline in oldmapfile:
@@ -223,11 +234,15 @@ class RemapOidWorker(Thread):
 
                 # Large tables will have additional extensions, these
                 # are named 'relfilenode.extension#'.
-                ext = 1
-                while (os.path.exists(oldfile + '.' + str(ext))):
-                    os.link('%s.%s' % (oldfile, str(ext)),
-                            '%s.%s' % (newfile, str(ext)))
-                    ext = ext + 1
+                #
+                # Previously this just incremented until the extension wasn't 
+                # found, but this is not valid for AO tables which may have 
+                # gaps in the range [MPP-6526].  Resolved by switching to use 
+                # of a glob.
+                for fglob in glob.iglob(oldfile+'.[0-9]*'):
+                    extension = fglob.rsplit('.', 1)[1]    # get the extension 
+                    nf = '%s.%s' % (newfile, extension)
+                    os.link(fglob, nf)
         
 class Worker(Thread):
     def __init__(self, harness):
