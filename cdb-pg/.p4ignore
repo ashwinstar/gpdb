@@ -1,3 +1,6 @@
 GNUmakefile
 config.status
 a.out.dSYM
+confdefs.h
+conftest.c
+conftest.err
