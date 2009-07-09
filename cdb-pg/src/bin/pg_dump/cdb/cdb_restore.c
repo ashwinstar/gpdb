@@ -1454,12 +1454,12 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 
 		if (!pParm->bSuccess)
             failCount++;
-		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
+		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{\n";
 		pszMsg = pParm->pszErrorMsg;
 		if ( pszMsg == NULL )
 			pszMsg = "";
 
-		appendPQExpBuffer(reportBuf, "\tRestore of %s on dbid %d (%s:%d) from file on dbid %d (%s:%d) %s: %s %s%s\n",
+		appendPQExpBuffer(reportBuf, "\tRestore of %s on dbid %d (%s:%d) from file on dbid %d (%s:%d) %s: %s%s%s\n",
 				pParm->pTargetSegDBData->pszDBName,
 				pParm->pTargetSegDBData->dbid,
 				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),

@@ -1692,7 +1692,7 @@ void* threadProc(void *arg)
 												 "there are various reasons that may cause this to happen. Please "
 												 "inspect the server log of dbid %d on host %s and the correctness "
 												 "of all the gp_id tables\n."
-												 "Detail from remote status file: %s ",
+												 "Detail from remote status file: %s\n",
 												 pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"),
 												 ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory,
 																		pszKey, BFT_BACKUP_STATUS, pszProgName));

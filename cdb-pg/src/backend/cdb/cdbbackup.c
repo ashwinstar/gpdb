@@ -551,7 +551,9 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	int			fileType = 0;
 	char	   *pszFileName;
 	struct stat info;
-	char	   *pszBackup;
+	char	   *pszFullStatus = NULL;
+	char	   *pszFirstErr = NULL;
+	char 	   *defaultNoErr = "No extra error information available";
 	FILE	   *f;
 
 	if (!PG_ARGISNULL(0))
@@ -616,8 +618,8 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	}
 
 	/* Allocate enough memory for entire file, and read it in. */
-	pszBackup = (char *) palloc(info.st_size + 1);
-	if (pszBackup == NULL)
+	pszFullStatus = (char *) palloc(info.st_size + 1);
+	if (pszFullStatus == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -632,7 +634,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 				 errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType)));
 	}
 
-	if (info.st_size != fread(pszBackup, 1, info.st_size, f))
+	if (info.st_size != fread(pszFullStatus, 1, info.st_size, f))
 	{
 		fclose(f);
 		ereport(ERROR,
@@ -642,9 +644,39 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 
 	fclose(f);
 	f = NULL;
-	pszBackup[info.st_size] = '\0';
+	pszFullStatus[info.st_size] = '\0';
+	
+	/* 
+	 * we are only interested in ERRORs. therefore, search for the first ERROR
+	 * and return the rest of the status file starting from that point. if no error
+	 * found, return a "no error found" string.
+	 */
+	pszFirstErr = strstr((const char*)pszFullStatus, "[ERROR]");
+	
+	if(!pszFirstErr)
+	{
+		/* no [ERROR] found */
+		pszFirstErr = defaultNoErr;
+	}
+	else
+	{
+		/* found [ERROR]. go back to beginning of the line */
+		char *p;
+		
+		for (p = pszFirstErr ; p > pszFullStatus ; p--)
+		{
+			if (*p == '\n')
+			{
+				p++; /* skip the LF */
+				break;
+			}
+		}
+		
+		pszFirstErr = p;
+	}
+	
 
-	return DirectFunctionCall1(textin, CStringGetDatum(pszBackup));
+	return DirectFunctionCall1(textin, CStringGetDatum(pszFirstErr));
 }
 
 /*
