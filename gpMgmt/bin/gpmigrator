@@ -1087,6 +1087,7 @@ class GPUpgrade:
         conn = make_conn(self, user, db, options, port, sockdir)
 
         curs = None
+        logger.debug('executing query ' + qry)
         try:
             curs = conn.query(qry)
         except Exception, e:
@@ -1147,6 +1148,7 @@ class GPUpgrade:
 
         conn = make_conn(self, user, db, options, port, self.sock_dir)
 
+        logger.debug('executing query ' + qry)
         try:
             conn.query(qry)
         except Exception, e:
@@ -1650,7 +1652,7 @@ class GPUpgrade:
         if self.upgrade and not newversion.isrelease(MAIN):
             raise UpgradeError(
                 "Upgrade from %s to %s not supported. Target version should be Greenplum Database %s.%s" 
-                % (str(oldversion), str(newversion), MAIN[:2]))
+                % (str(oldversion), str(newversion), MAIN[0], MAIN[1]))
 
         # Determine method if it wasn't specified on the command line.
         # Note, this should always result in "transform" since only support 
