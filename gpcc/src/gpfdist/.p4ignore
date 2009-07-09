@@ -1,2 +1,4 @@
 gpfdist
 gpfdist.dSYM
+fstream.c
+gfile.c

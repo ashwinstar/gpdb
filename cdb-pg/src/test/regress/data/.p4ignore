@@ -68,3 +68,4 @@ upg2_pg_type_toadd32.data.in
 upg2_pg_type_toadd33.data
 upg2_pg_type_toadd33.data.in
 upgrade_pg_partitions.sql
+pg_class32.data
