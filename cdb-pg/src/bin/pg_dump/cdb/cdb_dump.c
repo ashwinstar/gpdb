@@ -1687,12 +1687,16 @@ void* threadProc(void *arg)
 				DoCancelNotifyListen( pConn, false, pszKey, pSegDB->role, pSegDB->dbid, -1, NULL );
 				bSentCancelMessage = true;
 
-				pParm->pszErrorMsg = MakeString( "backup failed to set transaction level serializable "
-												 "for dbid %d on host %s in the required "
-												 "time interval\n. Detail from remote status file: %s ",
+				/* this historically reported "failed to set transaction level serializable" */
+				pParm->pszErrorMsg = MakeString( "backup failed before being able to begin the backup transaction. "
+												 "there are various reasons that may cause this to happen. Please "
+												 "inspect the server log of dbid %d on host %s and the correctness "
+												 "of all the gp_id tables\n."
+												 "Detail from remote status file: %s ",
 												 pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"),
 												 ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory,
 																		pszKey, BFT_BACKUP_STATUS, pszProgName));
+
 				break;
 			case STATE_BACKUP_ERROR:
 				/* Make call to get error message from file on server */
