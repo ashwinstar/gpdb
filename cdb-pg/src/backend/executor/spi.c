@@ -2947,32 +2947,6 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 				res = SPI_OK_SELECT;
 
             /* 
-             * MPP-6421
-             *
-             * If everything goes right, at this moment, we should already have
-             * an valid portal.  However, if user (mistakenly) declared a stable
-             * or volatile function as immutable, we will try to do constant folding
-             * for the immutable function.  Constand folding happends at planning
-             * time, when we did not start portal yet.
-             *
-             * Ideally we catch this in create function ddl, but that is hard.
-             * So at least we should not fail with SIGSEGV.  The RIGHT way is to
-             * elog error here. However, customer depends on this constant folding
-             * feature in order to do partition pruning.  So we will issue a warning
-             * instead.
-             *
-             * NOTE: This is tricky, in under certain work, it may give the wrong
-             * , or, should I say, unexpected results!
-             *
-             * We need better partition pruning strategy.  
-             */
-            if (!ActivePortal)
-                ereport(WARNING,
-                        (errcode(ERRCODE_WARNING),
-                         errmsg("A stable or volatile function is used as if it is immutable"),
-                         errhint("The function should be declared as stable or volatile in create function statement.")));
-
-            /* 
              * Checking if we need to put this through resource queue.
              * Same as in pquery.c, except we check ActivePortal->releaseResLock.
              * If the Active portal already hold a lock on the queue, we cannot
@@ -2981,13 +2955,42 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
             if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler &&
                     !superuser() && 
                     queryDesc->plantree &&
-                    queryDesc->plantree->dispatch == DISPATCH_PARALLEL && 
-                    ActivePortal && !ActivePortal->releaseResLock
+                    queryDesc->plantree->dispatch == DISPATCH_PARALLEL 
                )
             {
-                PortalSetStatus(ActivePortal, PORTAL_QUEUE);
-                ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plantree);
-                PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
+
+                /* 
+                 * MPP-6421
+                 *
+                 * If everything goes right, at this moment, we should already have
+                 * an valid portal.  However, if user (mistakenly) declared a stable
+                 * or volatile function as immutable, we will try to do constant folding
+                 * for the immutable function.  Constand folding happends at planning
+                 * time, when we did not start portal yet.
+                 *
+                 * Ideally we catch this in create function ddl, but that is hard.
+                 * So at least we should not fail with SIGSEGV.  The RIGHT way is to
+                 * elog error here. However, customer depends on this constant folding
+                 * feature in order to do partition pruning.  So we will issue a warning
+                 * instead.
+                 *
+                 * NOTE: This is tricky, in under certain work, it may give the wrong
+                 * , or, should I say, unexpected results!
+                 *
+                 * We need better partition pruning strategy.  
+                 */
+                if (!ActivePortal)
+                    ereport(WARNING,
+                            (errcode(ERRCODE_WARNING),
+                             errmsg("A stable or volatile function is used as if it is immutable"),
+                             errhint("The function should be declared as stable or volatile in create function statement.")));
+
+                else if (!ActivePortal->releaseResLock)
+                {
+                    PortalSetStatus(ActivePortal, PORTAL_QUEUE);
+                    ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc->plantree);
+                    PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
+                }
             }
 
 			break;
