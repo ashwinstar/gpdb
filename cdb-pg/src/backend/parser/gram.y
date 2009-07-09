@@ -372,6 +372,8 @@ static void doNegateFloat(Value *v);
 %type <str>		QueueId
 %type <list>	var_list var_list_or_default
 %type <str>		ColId ColLabel ColLabelNoAs var_name type_name param_name
+%type <keyword> PartitionIdentKeyword	
+%type <str>		PartitionColId
 %type <node>	var_value zone_value
 
 %type <keyword> unreserved_keyword func_name_keyword
@@ -2154,7 +2156,7 @@ opt_table_partition_exchange_validate:
 		;
 
 alter_table_partition_id_spec: 
-            IDENT								
+			PartitionColId
 				{
 					AlterPartitionId *n = makeNode(AlterPartitionId);
 					n->idtype = AT_AP_IDName;
@@ -3676,34 +3678,34 @@ OptTabPartitionRangeInclusive:
 		;
 
 TabPartitionBoundarySpecStart:
-			START opt_with 
+			START 
             '(' OptTabPartitionBoundarySpecValList ')' 
 			OptTabPartitionRangeInclusive
 				{
                         PartitionRangeItem *n = makeNode(PartitionRangeItem); 
                         n->partEveryNum  = NULL; 
-                        n->partRangeVal  = $4;
-                        if (!($6))
+                        n->partRangeVal  = $3;
+                        if (!($5))
                             n->partedge = PART_EDGE_INCLUSIVE;
                         else
-                            n->partedge = $6;
+                            n->partedge = $5;
                         n->location  = @1;
                         $$ = (Node *)n;
 				}
             ;
 
 TabPartitionBoundarySpecEnd:
-			END_P opt_with 
+			END_P 
             '(' OptTabPartitionBoundarySpecValList ')' 
 			OptTabPartitionRangeInclusive
 				{
                         PartitionRangeItem *n = makeNode(PartitionRangeItem); 
                         n->partEveryNum  = NULL; 
-                        n->partRangeVal  = $4;
-                        if (!($6))
+                        n->partRangeVal  = $3;
+                        if (!($5))
                             n->partedge = PART_EDGE_EXCLUSIVE;
                         else
-                            n->partedge = $6;
+                            n->partedge = $5;
                         n->location  = @1;
                         $$ = (Node *)n;
 				}
@@ -3917,24 +3919,24 @@ TabSubPartitionElem:
 				}
             ;
 
-TabPartitionNameDecl: PARTITION IDENT			
+TabPartitionNameDecl: PARTITION PartitionColId
 				{
 					$$ = (Node *) makeString($2);
 				}
 		;
-TabPartitionDefaultNameDecl: DEFAULT PARTITION IDENT			
+TabPartitionDefaultNameDecl: DEFAULT PARTITION PartitionColId
 				{
 					$$ = (Node *) makeString($3);
 				}
 		;
 
-TabSubPartitionNameDecl: SUBPARTITION IDENT			
+TabSubPartitionNameDecl: SUBPARTITION PartitionColId
 				{
 					$$ = (Node *) makeString($2);
 				}
 		;
 
-TabSubPartitionDefaultNameDecl: DEFAULT SUBPARTITION IDENT			
+TabSubPartitionDefaultNameDecl: DEFAULT SUBPARTITION PartitionColId
 				{
 					$$ = (Node *) makeString($3);
 				}
@@ -11314,21 +11316,29 @@ unreserved_keyword:
 
 ColLabelNoAs:   keywords_ok_in_alias_no_as   { $$=pstrdup($1); }
 				;
-keywords_ok_in_alias_no_as:
-			  ABORT_P
+
+keywords_ok_in_alias_no_as: PartitionIdentKeyword
+			| TABLESPACE
+			| ADD_P
+			| ALTER
+			| AT
+			;
+
+PartitionColId: PartitionIdentKeyword { $$ = pstrdup($1); }
+			| IDENT { $$ = pstrdup($1); }
+			;
+
+PartitionIdentKeyword: ABORT_P
 			| ABSOLUTE_P
 			| ACCESS
 			| ACTION
 			| ACTIVE
-			| ADD_P
 			| ADMIN
 			| AFTER
 			| AGGREGATE
 			| ALSO
-			| ALTER
 			| ASSERTION
 			| ASSIGNMENT
-			| AT
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
@@ -11519,7 +11529,6 @@ keywords_ok_in_alias_no_as:
 			| SYSID
 			| SYSTEM_P
 			| STRICT_P
-			| TABLESPACE
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY
@@ -11591,9 +11600,8 @@ keywords_ok_in_alias_no_as:
 			| LOG_P
 			| OUTER_P
 			| VERBOSE
-			 
-			
 			;
+
 /* Column identifier --- keywords that can be column, table, etc names.
  *
  * Many of these keywords will in fact be recognized as type or function

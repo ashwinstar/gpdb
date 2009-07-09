@@ -146,7 +146,7 @@ create table fff (a char(1), b char(2), d char(3)) distributed by
 -- ERROR: Invalid use of RANGE boundary specification in partition
 --   number 1 of type LIST
 create table fff (a char(1), b char(2), d char(3)) distributed by (a)
-partition by list (b) (start with ('a') );
+partition by list (b) (start ('a') );
 
 
 -- should work
@@ -162,7 +162,7 @@ partition by hash (b) subpartition by hash (d),
 subpartition by hash (e) 
 subpartition template ( subpartition ee, subpartition ff ) (
 partition aa (subpartition cc, subpartition dd), partition bb
-(subpartition cc start with ('a') , subpartition dd) );
+(subpartition cc start ('a') , subpartition dd) );
 
 -- this is subtly wrong -- it defines 4 partitions
 -- the problem is the comma before "end", which causes us to

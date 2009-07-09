@@ -192,9 +192,9 @@ LINE 2: (a) partition by list (b) (partition aa );
 -- ERROR: Invalid use of RANGE boundary specification in partition
 --   number 1 of type LIST
 create table fff (a char(1), b char(2), d char(3)) distributed by (a)
-partition by list (b) (start with ('a') );
+partition by list (b) (start ('a') );
 ERROR:  invalid boundary specification for LIST partition
-LINE 2: partition by list (b) (start with ('a') );
+LINE 2: partition by list (b) (start ('a') );
                                ^
 -- should work
 create table fff (a char(1), b char(2), d char(3)) distributed by (a)
@@ -208,7 +208,7 @@ partition by hash (b) subpartition by hash (d),
 subpartition by hash (e) 
 subpartition template ( subpartition ee, subpartition ff ) (
 partition aa (subpartition cc, subpartition dd), partition bb
-(subpartition cc start with ('a') , subpartition dd) );
+(subpartition cc start ('a') , subpartition dd) );
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_cc" for table "ggg_1_prt_aa"
@@ -218,7 +218,7 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_cc_3_prt_ff" for
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_dd_3_prt_ee" for table "ggg_1_prt_aa_2_prt_dd"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_dd_3_prt_ff" for table "ggg_1_prt_aa_2_prt_dd"
 ERROR:  invalid use of RANGE boundary specification in partition "cc" of type HASH (at depth 2)
-LINE 6: (subpartition cc start with ('a') , subpartition dd) );
+LINE 6: (subpartition cc start ('a') , subpartition dd) );
                          ^
 -- this is subtly wrong -- it defines 4 partitions
 -- the problem is the comma before "end", which causes us to
