@@ -170,17 +170,26 @@ EndCommand(const char *commandTag, CommandDest dest)
 				 * Extra information that indicates if the transaction made
 				 * updates.
 				 */
+				sendQEDetails();
+
 				pq_beginmessage(&buf, 'g');
 				pq_sendstring(&buf, commandTag);
+
 				AddQEWriterTransactionInfo(&buf);
+
+				pq_endmessage(&buf);
+			}
+			else if (Gp_role == GP_ROLE_EXECUTE)
+			{
+				sendQEDetails();
+
+				pq_beginmessage(&buf, 'C');
+				pq_sendstring(&buf, commandTag);
 				pq_endmessage(&buf);
 			}
 			else
-			{
 				pq_puttextmessage('C', commandTag);
-			}
 			break;
-
 		case DestNone:
 		case DestDebug:
 		case DestSPI:
@@ -253,12 +262,18 @@ ReadyForQuery(CommandDest dest)
 			{
 				StringInfoData buf;
 
+				if (Gp_role == GP_ROLE_EXECUTE)
+				{
+					sendQEDetails();
+				}
+
 				pq_beginmessage(&buf, 'Z');
 				pq_sendbyte(&buf, TransactionBlockStatusCode());
 				pq_endmessage(&buf);
 			}
 			else if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
 				pq_putemptymessage('Z');
+
 			/* Flush output at end of cycle in any case. */
 			pq_flush();
 			break;
@@ -275,9 +290,13 @@ ReadyForQuery(CommandDest dest)
 
 /* ----------------
  *		ReadyForQuery_QE - tell dest that we are ready for a new query that
- *          includes QE Writer transaction informatin.
+ *          includes QE Writer transaction information.
  *
  * ----------------
+ *
+ * NOTE: this is GPDB specific, and shouldn't fall inside the codepath
+ * of QD->client communication.
+ *
  */
 void
 ReadyForQuery_QEWriter(CommandDest dest)
@@ -290,6 +309,8 @@ ReadyForQuery_QEWriter(CommandDest dest)
 			{
 				StringInfoData buf;
 
+				sendQEDetails();
+
 				pq_beginmessage(&buf, 'z');
 				pq_sendbyte(&buf, TransactionBlockStatusCode());
 				AddQEWriterTransactionInfo(&buf);
@@ -297,6 +318,7 @@ ReadyForQuery_QEWriter(CommandDest dest)
 			}
 			else if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
 				pq_putemptymessage('Z');
+
 			/* Flush output at end of cycle in any case. */
 			pq_flush();
 			break;
@@ -322,10 +344,8 @@ AddQEWriterTransactionInfo(StringInfo buf)
 	CommandId					QECommandId;
 	bool						QEDirty;
 
-	TransactionInformationQEWriter(
-				&QEDistributedTransactionId,
-				&QECommandId,
-				&QEDirty);
+	TransactionInformationQEWriter(&QEDistributedTransactionId, &QECommandId, &QEDirty);
+
 	elog(DEBUG5,"QEWriterTransactionInfo: (DistributedTransactionId = %u, CommandId = %u, and Dirty = %s)",
 	     QEDistributedTransactionId, QECommandId, (QEDirty ? "true" : "false"));
 
@@ -334,3 +354,18 @@ AddQEWriterTransactionInfo(StringInfo buf)
 	pq_sendbyte(buf, (QEDirty ? 'T' : 'F'));
 }
 
+/*
+ * Send a gpdb libpq message.
+ */
+void
+sendQEDetails(void)
+{
+	StringInfoData buf;
+
+	pq_beginmessage(&buf, 'w');
+	pq_sendint(&buf, (int32) Gp_listener_port, sizeof(int32));			
+	pq_sendint64(&buf, getMOPHighWaterMark());
+	pq_sendint(&buf, sizeof(PG_VERSION_STR), sizeof(int32));
+	pq_sendbytes(&buf, PG_VERSION_STR, sizeof(PG_VERSION_STR));
+	pq_endmessage(&buf);
+}

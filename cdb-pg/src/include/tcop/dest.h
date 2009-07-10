@@ -135,4 +135,6 @@ extern void NullCommand(CommandDest dest);
 extern void ReadyForQuery(CommandDest dest);
 extern void ReadyForQuery_QEWriter(CommandDest dest);
 
+extern void sendQEDetails(void);
+
 #endif   /* DEST_H */

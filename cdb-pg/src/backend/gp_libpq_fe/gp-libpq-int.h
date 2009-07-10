@@ -300,6 +300,7 @@ struct pg_conn
 	PGTransactionStatusType xactStatus; /* never changes to ACTIVE */
 
 	/* Transaction information passed from EXECUTOR to DISPATCHER */
+	bool						utility_mode;
 	bool						QEWriter_HaveInfo;
 	DistributedTransactionId 	QEWriter_DistributedTransactionId;
 	CommandId 					QEWriter_CommandId;

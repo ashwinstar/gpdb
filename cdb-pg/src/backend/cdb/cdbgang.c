@@ -3150,9 +3150,7 @@ getMaxGangMop(Gang *g)
 			continue;
 		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
-			int			err = PQgetQEdetail(segdbDesc->conn, true);
-
-			if (err != -1 && segdbDesc->conn->mop_high_watermark > maxmop)
+			if (segdbDesc->conn->mop_high_watermark > maxmop)
 				maxmop = segdbDesc->conn->mop_high_watermark;
 		}
 	}

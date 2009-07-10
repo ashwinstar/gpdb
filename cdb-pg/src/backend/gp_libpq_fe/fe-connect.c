@@ -28,6 +28,8 @@
 #include "gp-fe-auth.h"
 #include "pg_config_paths.h"
 
+#include "cdb/cdbvars.h"
+
 #ifdef WIN32
 #include "win32.h"
 #ifdef _WIN32_IE
@@ -376,10 +378,10 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	conn->pgpass = tmp ? strdup(tmp) : NULL;
 	tmp = conninfo_getval(connOptions, "connect_timeout");
 	conn->connect_timeout = tmp ? strdup(tmp) : NULL;
-/*
- * Internal communications from QD to QE don't use SSL
- */
 
+	/*
+	 * Internal communications from QD to QE don't use SSL
+	 */
 	tmp = conninfo_getval(connOptions, "gpqeid");
 	conn->gpqeid = tmp ? strdup(tmp) : NULL;
 	
@@ -388,6 +390,28 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	
 	tmp = conninfo_getval(connOptions, "gpdaid");
 	conn->gpdaid = tmp ? strdup(tmp) : NULL;
+
+	/*
+	 * All we want to do here is figure out if this out-bound
+	 * connection is a utility-mode connection automatically.
+	 */
+	tmp = conninfo_getval(connOptions, "options");
+	if (tmp)
+	{
+		char *end = tmp + strlen(tmp);
+		char *s = strstr(tmp, "gp_session_role");
+
+		if (s)
+		{
+			s += sizeof("gp_session_role"); /* advance to just beyond '=' */
+
+			if (s > end)
+			{
+				if (pg_strncasecmp(s, "UTILITY", sizeof("UTILITY") - 1) == 0)
+					conn->utility_mode = true;
+			}
+		}
+	}
 
 	/*
 	 * Free the option info - all is in conn now

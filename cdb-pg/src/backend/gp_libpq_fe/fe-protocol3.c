@@ -65,7 +65,6 @@ static void reportErrorPosition(PQExpBuffer msg, const char *query,
 static int build_startup_packet(const PGconn *conn, char *packet,
 					 const PQEnvironmentOption *options);
 
-
 /*
  * parseInput: if appropriate, parse input data from backend
  * until input is exhausted or a stopping state is reached.
@@ -164,6 +163,32 @@ pqParseInput3(PGconn *conn)
 			if (pqGetErrorNotice3(conn, false))
 				return;
 		}
+		else if (id == 'w')
+		{
+			int version_len=0;
+
+			if (pqGetInt(&(conn->motion_listener), 4, conn))
+				return;
+
+			if (pqGetInt64(&(conn->mop_high_watermark), conn))
+				return;
+
+			if (pqGetInt(&version_len, 4, conn))
+				return;
+
+			if (conn->qe_version != NULL && version_len > 0)
+			{
+				free(conn->qe_version);
+				conn->qe_version = NULL;
+			}
+			conn->qe_version = malloc(version_len);
+
+			if (conn->qe_version == NULL)
+				return;
+
+			if (pqGetnchar(conn->qe_version, version_len, conn))
+				return;
+		}
 		else if (conn->asyncStatus != PGASYNC_BUSY)
 		{
 			/* If not IDLE state, just wait ... */
@@ -192,7 +217,7 @@ pqParseInput3(PGconn *conn)
 			else
 			{
 				pqInternalNotice(&conn->noticeHooks,
-						"message type 0x%02x arrived from server while idle",
+								 "message type 0x%02x arrived from server while idle",
 								 id);
 				/* Discard the unexpected message */
 				conn->inCursor += msgLength;
@@ -215,9 +240,9 @@ pqParseInput3(PGconn *conn)
 						if (!conn->result)
 							return;
 					}
-					strncpy(conn->result->cmdStatus, conn->workBuffer.data,
-							CMDSTATUS_LEN);
+					strncpy(conn->result->cmdStatus, conn->workBuffer.data, CMDSTATUS_LEN);
 					conn->asyncStatus = PGASYNC_READY;
+
 					break;
 				case 'g':		/* command complete with QE Writer transaction information */
 					if (pqGets(&conn->workBuffer, conn))
@@ -225,10 +250,12 @@ pqParseInput3(PGconn *conn)
 					
 					if (getQEWriterTransactionInfo(conn))
 						return;
-//					pqInternalNotice(&conn->noticeHooks,
-//							"Called getQEWriterTransactionInfo from pqParseInput3 (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)\n",
-//							conn->QEWriter_DistributedTransactionId, conn->QEWriter_CommandId,
-//							(conn->QEWriter_Dirty ? "true" : "false"));
+#if 0
+					pqInternalNotice(&conn->noticeHooks,
+									 "Called getQEWriterTransactionInfo from pqParseInput3 (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)\n",
+									 conn->QEWriter_DistributedTransactionId, conn->QEWriter_CommandId,
+									 (conn->QEWriter_Dirty ? "true" : "false"));
+#endif
 
 					if (conn->result == NULL)
 					{
@@ -243,34 +270,34 @@ pqParseInput3(PGconn *conn)
 					conn->asyncStatus = PGASYNC_READY;
 					break;
 				case 'o':
+				{
+					int i;
+					PQaoRelTupCount *ao;
+
+					/* row count for AO partitioned tables */
+					conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+					if (!conn->result)
+						return;
+							
+					if (pqGetInt(&(conn->result->naotupcounts), 4, conn))
+						return;
+							
+					/* now just loop through */
+					conn->result->aotupcounts = 
+						malloc(sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
+					ao = conn->result->aotupcounts;
+					for (i = 0; i < conn->result->naotupcounts; i++)
 					{
-						int i;
-						PQaoRelTupCount *ao;
-
-						/* row count for AO partitioned tables */
-						conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-						if (!conn->result)
+						if (pqGetInt((int *)&(ao->aorelid), 4, conn))
 							return;
-							
-						if (pqGetInt(&(conn->result->naotupcounts), 4, conn))
+						if (pqGetInt64(&(ao->tupcount), conn))
 							return;
-							
-						/* now just loop through */
-						conn->result->aotupcounts = 
-							malloc(sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
-						ao = conn->result->aotupcounts;
-						for (i = 0; i < conn->result->naotupcounts; i++)
-						{
-							if (pqGetInt((int *)&(ao->aorelid), 4, conn))
-								return;
-							if (pqGetInt64(&(ao->tupcount), conn))
-								return;
 
-							ao++;
-						}
+						ao++;
 					}
-					conn->asyncStatus = PGASYNC_READY;
-					break;
+				}
+				conn->asyncStatus = PGASYNC_READY;
+				break;
 				case 'E':		/* error return */
 					if (pqGetErrorNotice3(conn, true))
 						return;
@@ -315,7 +342,7 @@ pqParseInput3(PGconn *conn)
 						if (conn->result == NULL)
 						{
 							conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
+															   PGRES_COMMAND_OK);
 							if (!conn->result)
 								return;
 						}
@@ -341,29 +368,6 @@ pqParseInput3(PGconn *conn)
 						return;
 					if (pqGetInt(&(conn->be_key), 4, conn))
 						return;
-					break;
-				case 'w':  /* get the GPDB QE details (Motion Listener) */
-					{
-						int version_len=0;
-
-						if (pqGetInt(&(conn->motion_listener), 4, conn))
-							return;
-                        if (pqGetInt64(&(conn->mop_high_watermark), conn))
-                            return;
-						if (pqGetInt(&version_len, 4, conn))
-							return;
-						if (conn->qe_version != NULL && version_len > 0)
-						{
-							free(conn->qe_version);
-							conn->qe_version = NULL;
-						}
-						conn->qe_version = malloc(version_len);
-						if (conn->qe_version == NULL)
-							return;
-						if (pqGetnchar(conn->qe_version, version_len, conn))
-							return;
-					}
-					conn->asyncStatus = PGASYNC_IDLE;
 					break;
 				case 'T':		/* Row Description */
 					if (conn->result == NULL ||
@@ -407,10 +411,10 @@ pqParseInput3(PGconn *conn)
 					 */
 					if (conn->queryclass == PGQUERY_DESCRIBE)
 					{
-					if (conn->result == NULL)
+						if (conn->result == NULL)
 						{
-						conn->result = PQmakeEmptyPGresult(conn,
-														   PGRES_COMMAND_OK);
+							conn->result = PQmakeEmptyPGresult(conn,
+															   PGRES_COMMAND_OK);
 							if (!conn->result)
 								return;
 						}
@@ -492,25 +496,25 @@ pqParseInput3(PGconn *conn)
 							
 					conn->asyncStatus = PGASYNC_READY;
 					break;
-                case 'Y':       /* CDB: statistical response from QE to QD */
+				case 'Y':       /* CDB: statistical response from QE to QD */
 					/* for certain queries, the stats may arrive
 					 * before the completion status -- for this case
 					 * we're responsible for allocating the result
 					 * struct */
 					if (conn->result == NULL)
-                        conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-                    if (conn->result)
-                        saveCdbStatMsg(conn->result,
-                                       conn->inBuffer + conn->inCursor,
-                                       msgLength);
-                    conn->inCursor += msgLength;
-                    break;
-                case 'y':
+						conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+					if (conn->result)
+						saveCdbStatMsg(conn->result,
+									   conn->inBuffer + conn->inCursor,
+									   msgLength);
+					conn->inCursor += msgLength;
+					break;
+				case 'y':
 					/*
 					 * CDB: for gang management and stats collection for Vacuum/Analyze
 					 * commands.
 					 */
-                	if (pqGets(&conn->workBuffer, conn))
+					if (pqGets(&conn->workBuffer, conn))
 						return;
 					if (conn->result == NULL)
 					{
@@ -530,12 +534,12 @@ pqParseInput3(PGconn *conn)
 						return;
 					conn->asyncStatus = PGASYNC_READY;
 
-                    break;
+					break;
 
-                default:
+				default:
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
-													"unexpected response from server; first received character was \"%c\"\n"),
+										  "unexpected response from server; first received character was \"%c\"\n"),
 									  id);
 					/* build an error result holding the error message */
 					pqSaveErrorResult(conn);
@@ -577,7 +581,7 @@ handleSyncLoss(PGconn *conn, char id, int msgLength)
 {
 	printfPQExpBuffer(&conn->errorMessage,
 					  libpq_gettext(
-	"lost synchronization with server: got message type \"%c\", length %d\n"),
+						  "lost synchronization with server: got message type \"%c\", length %d\n"),
 					  id, msgLength);
 	/* build an error result holding the error message */
 	pqSaveErrorResult(conn);
@@ -1445,10 +1449,10 @@ getQEWriterTransactionInfo(PGconn *conn)
 {
 	char						dirty;
 
-	//
-	// Between the EXECUTOR and DISPATCHER, send back a dirty flag plus
-	// transaction information for verification purposes.
-	//
+	/*
+	 * Between the EXECUTOR and DISPATCHER, send back a dirty flag plus
+	 * transaction information for verification purposes.
+	 */
 	if (pqGetInt((int*)&conn->QEWriter_DistributedTransactionId, 4, conn))
 		return EOF;
 	if (pqGetInt((int*)&conn->QEWriter_CommandId, 4, conn))
@@ -1468,9 +1472,9 @@ getQEWriterTransactionInfo(PGconn *conn)
 static int
 getStandbyMasterEndLocation(PGconn *conn)
 {
-	//
-	// Between the Standby Master and Primary, send back a XLOG end location.
-	//
+	/*
+	 * Between the Standby Master and Primary, send back a XLOG end location.
+	 */
 	if (pqGetInt((int*)&conn->Standby_xlogid, 4, conn))
 		return EOF;
 	if (pqGetInt((int*)&conn->Standby_xrecoff, 4, conn))
@@ -1487,9 +1491,10 @@ static int
 getReadyForQuery(PGconn *conn)
 {
 	char		xact_status;
-	
+
 	if (pqGetc(&xact_status, conn))
 		return EOF;
+
 	switch (xact_status)
 	{
 		case 'I':
@@ -1517,9 +1522,10 @@ static int
 getReadyForQuery_QEWriter(PGconn *conn)
 {
 	char		xact_status;
-	
+
 	if (pqGetc(&xact_status, conn))
 		return EOF;
+
 	switch (xact_status)
 	{
 		case 'I':
@@ -1538,11 +1544,6 @@ getReadyForQuery_QEWriter(PGconn *conn)
 
 	if (getQEWriterTransactionInfo(conn))
 		return EOF;
-
-//	pqInternalNotice(&conn->noticeHooks,
-//		"Called getQEWriterTransactionInfo from getReadyForQuery_QEWriter (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)\n",
-//		conn->QEWriter_DistributedTransactionId, conn->QEWriter_CommandId,
-//		(conn->QEWriter_Dirty ? "true" : "false"));
 
 	return 0;
 }
