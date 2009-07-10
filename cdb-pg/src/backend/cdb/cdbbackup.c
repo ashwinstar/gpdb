@@ -651,7 +651,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	 * and return the rest of the status file starting from that point. if no error
 	 * found, return a "no error found" string.
 	 */
-	pszFirstErr = strstr((const char*)pszFullStatus, "[ERROR]");
+	pszFirstErr = strstr((const char*)pszFullStatus, "ERROR");
 	
 	if(!pszFirstErr)
 	{
