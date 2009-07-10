@@ -1336,4 +1336,6 @@ drop table
   public.pg_depend_v33,
   public.pg_shdescription_v33,
   public.pg_shdepend_v33,
-  public.pg_rewrite_v33;
+  public.pg_rewrite_v33,
+  public.pg_appendonly,
+  public.pg_appendonly_v33;
