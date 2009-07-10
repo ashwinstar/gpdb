@@ -35,6 +35,7 @@ static char *relativeToAbsolute(char *pszRelativeDirectory);
 static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
 static char *testProgramExists(char *pszProgramName);
 static void validateBackupDirectory(char *pszBackupDirectory);
+static char *positionToError(char *source);
 
 static char *compPg = NULL,
 		   *bkPg = NULL;
@@ -552,8 +553,6 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	char	   *pszFileName;
 	struct stat info;
 	char	   *pszFullStatus = NULL;
-	char	   *pszFirstErr = NULL;
-	char 	   *defaultNoErr = "No extra error information available";
 	FILE	   *f;
 
 	if (!PG_ARGISNULL(0))
@@ -646,37 +645,7 @@ gp_read_backup_file__(PG_FUNCTION_ARGS)
 	f = NULL;
 	pszFullStatus[info.st_size] = '\0';
 	
-	/* 
-	 * we are only interested in ERRORs. therefore, search for the first ERROR
-	 * and return the rest of the status file starting from that point. if no error
-	 * found, return a "no error found" string.
-	 */
-	pszFirstErr = strstr((const char*)pszFullStatus, "ERROR");
-	
-	if(!pszFirstErr)
-	{
-		/* no [ERROR] found */
-		pszFirstErr = defaultNoErr;
-	}
-	else
-	{
-		/* found [ERROR]. go back to beginning of the line */
-		char *p;
-		
-		for (p = pszFirstErr ; p > pszFullStatus ; p--)
-		{
-			if (*p == '\n')
-			{
-				p++; /* skip the LF */
-				break;
-			}
-		}
-		
-		pszFirstErr = p;
-	}
-	
-
-	return DirectFunctionCall1(textin, CStringGetDatum(pszFirstErr));
+	return DirectFunctionCall1(textin, CStringGetDatum(positionToError(pszFullStatus)));
 }
 
 /*
@@ -1346,4 +1315,67 @@ validateBackupDirectory(char *pszBackupDirectory)
 					 errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory)));
 		}
 	}
+}
+
+/* 
+ * positionToError - given a char buffer, position to the first error msg in it.
+ * 
+ * we are only interested in ERRORs. therefore, search for the first ERROR
+ * and return the rest of the status file starting from that point. if no error
+ * found, return a "no error found" string. We are only interested in occurrences
+ * of "ERROR:" (from the backend), or [ERROR] (from dump/restore log). others,
+ * like "ON_ERROR_STOP" should be ignored.
+ */
+static char *positionToError(char *source)
+{
+	char*	sourceCopy = source;
+	char*	firstErr = NULL;
+	char*	defaultNoErr = "No extra error information available";
+
+	while(true)
+	{
+		firstErr = strstr((const char*)sourceCopy, "ERROR");
+		
+		if(!firstErr)
+		{
+			break;
+		}
+		else
+		{
+			/* found "ERROR". only done if it's "ERROR:" or "[ERROR]" */
+			if(firstErr[5] == ']' || firstErr[5] == ':')
+			{
+				break; /* done */
+			}
+			else
+			{
+				sourceCopy = ++firstErr; /* start from stopping point */
+				firstErr = NULL;
+			}
+		}
+	}
+	
+	if(!firstErr)
+	{
+		/* no [ERROR] found */
+		firstErr = defaultNoErr;
+	}
+	else
+	{
+		/* found [ERROR]. go back to beginning of the line */
+		char *p;
+		
+		for (p = firstErr ; p > source ; p--)
+		{
+			if (*p == '\n')
+			{
+				p++; /* skip the LF */
+				break;
+			}
+		}
+		
+		firstErr = p;
+	}
+	
+	return firstErr;
 }
