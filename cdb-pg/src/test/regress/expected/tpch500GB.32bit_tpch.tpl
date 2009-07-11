@@ -3182,12 +3182,14 @@ order by
                                                                            Filter: l_shipdate >= '01-01-1997'::date AND l_shipdate < 'Thu Jan 01 00:00:00 1998'::timestamp without time zone
                                              ->  Hash  (cost=220616.08..220616.08 rows=10 width=4)
                                                    ->  Broadcast Motion 2:2  (slice5)  (cost=220615.78..220616.08 rows=10 width=4)
-                                                         ->  HashAggregate  (cost=220615.78..220615.88 rows=10 width=4)
+                                                         ->  Unique  (cost=267942.56..270442.46 rows=499979 width=4)
                                                                Group By: part.p_partkey
-                                                               ->  Seq Scan on part  (cost=0.00..220615.75 rows=10 width=4)
-                                                                     Filter: p_name::text ~~ 'burnished%'::text
+                                                               ->  Sort  (cost=267942.56..269192.51 rows=499979 width=4)
+                                                                     Sort Key (Distinct): part.p_partkey
+                                                                     ->  Seq Scan on part  (cost=0.00..220615.75 rows=499979 width=4)
+                                                                           Filter: p_name::text ~~ 'burnished%'::text
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(45 rows)
+(47 rows)
 
 --
 --
