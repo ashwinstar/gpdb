@@ -136,6 +136,9 @@ def parseCommandLine():
     else:
         os.environ['MASTER_DATA_DIRECTORY'] = opt['-d']
 
+    if opt['-i'] and opt['-p']:
+        gpmlib.log_warn('-p option not valid when used with -i option.  -p will be ignored')
+
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s does not exist or is not a directory' % opt['-d'])
 
@@ -530,7 +533,8 @@ try:
         if gpmlib.chk_mirrors_configured(db):
             gpmlib.error('gpaddmirrors can only be run without mirrors configured')
 
-        calc_mirror_port_base(db)
+        if not opt['-i']:
+            calc_mirror_port_base(db)
 
         qes = gpmlib.get_qe_details(db, 'content')
         qe_hosts = [ x['hostname'] for x in qes ]
