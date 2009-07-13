@@ -40,6 +40,8 @@ static bool	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
 static bool parmValNeedsQuotes( const char* Value );
 static void usage(void);
 static void* threadProc(void *arg);
+static void myHandler(SIGNAL_ARGS);
+static void installSignalHandlers(void);
 static bool restoreMaster( InputOptions* pInputOpts, PGconn *pConn, SegmentDatabase *sSegDB, SegmentDatabase *tSegDB, ThreadParm* pParm );
 static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const const RestorePairArray *restorePair, ThreadParmArray* pParmAr );
 static int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr );
@@ -136,6 +138,9 @@ main(int argc, char **argv)
 			break;
 		}
     }
+
+	/* Install the SIGINT and SIGTERM handlers */
+	installSignalHandlers();
 
 	/*
 	 * restore master first. However, if we restore only data, or if
@@ -1066,6 +1071,56 @@ void* threadProc(void *arg)
 	PQfinish(pConn);
 
 	return(NULL);
+}
+
+/*
+ * installSignalHandlers: This function sets both the SIGINT and SIGTERM signal handlers
+ * to the routine myHandler.
+ */
+void installSignalHandlers(void)
+{
+	struct sigaction act, oact;
+
+	act.sa_handler = myHandler;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	act.sa_flags |= SA_RESTART;
+
+	// Install SIGINT interrupt handler
+	if ( sigaction(SIGINT, &act, &oact) < 0 )
+	{
+		mpp_err_msg_cache(logError, pszProgName,"Error trying to set SIGINT interrupt handler\n");
+	}
+
+	act.sa_handler = myHandler;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	act.sa_flags |= SA_RESTART;
+
+	// Install SIGTERM interrupt handler
+	if ( sigaction(SIGTERM, &act, &oact) < 0 )
+	{
+		mpp_err_msg_cache(logError, pszProgName,"Error trying to set SIGTERM interrupt handler\n");
+	}
+}
+
+/*
+ * myHandler: This function is the signal handler for both SIGINT and SIGTERM signals.
+ * It simply sets a global variable, which is checked by each thread to see whether it 
+ * should cancel the restore running on the remote database.
+ */
+void myHandler(SIGNAL_ARGS)
+{
+	static bool bAlreadyHere = false;
+
+	if ( bAlreadyHere )
+	{
+		return;
+	}
+
+	bAlreadyHere = true;
+
+	g_b_SendCancelMessage = true;
 }
 
 bool restoreMaster( InputOptions* pInputOpts,
