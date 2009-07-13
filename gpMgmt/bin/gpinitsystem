@@ -158,15 +158,14 @@ CHK_PARAMS () {
 		if [ x"" == x"$CLUSTER_CONFIG" ] && [ x"" == x"$INPUT_CONFIG" ] ; then
 				ERROR_EXIT "[FATAL]:-Greenplum configuration filename [-c] option or [-I] option not provided." 2
 		fi
-
 	
 		if [ x"" != x"$CLUSTER_CONFIG" ] ; then
 		#Check that we have a non-zero configuration file
-		    CHK_FILE $CLUSTER_CONFIG
+		CHK_FILE $CLUSTER_CONFIG
 		    
-		    if [ $EXISTS -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:-Problem with $CLUSTER_CONFIG file" 2
-		    fi
+		if [ $EXISTS -ne 0 ]; then
+		        ERROR_EXIT "[FATAL]:-Configuration file $CLUSTER_CONFIG does not exist." 2
+		fi
 	
 		#Make sure old CLUSTER_CONFIG settings are not hanging around.
 		    unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
