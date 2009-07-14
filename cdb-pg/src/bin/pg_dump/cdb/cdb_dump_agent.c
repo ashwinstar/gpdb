@@ -203,7 +203,7 @@ static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti);
 
 /* MPP additions start */
-static void   forkMPPCatalogDumper(void);
+static void   forkGpCatalogDumper(void);
 static void   _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 extern void   makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void*  monitorThreadProc(void *arg  __attribute__((unused)));
@@ -213,7 +213,8 @@ static char*  formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBack
 static char*  formGenericFilePathName( char *keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
 static void   dumpMain(bool oids, const char* dumpencoding, int outputBlobs, int plainText, RestoreOptions *ropt);
 static void   dumpDatabaseDefinition(void);
-extern void reset(void);
+static void   installSignalHandlers(void);
+extern void   reset(void);
 /* MPP additions end */
 
 
@@ -246,7 +247,6 @@ main(int argc, char **argv)
 	unsigned int     nBytes;
     char*            pszDBPswd;
     ArchiveHandle*   AH;
-    struct sigaction act, oact;
     StatusOp*        pOp;
 	/* MPP additions end */
 
@@ -668,27 +668,8 @@ main(int argc, char **argv)
 					   NULL );
 
         /* Install Ctrl-C interrupt handler, now that we have a connection */
-        act.sa_handler = myHandler;
-        sigemptyset(&act.sa_mask);
-        act.sa_flags = 0;
-        act.sa_flags |= SA_RESTART;
-        if ( sigaction(SIGINT, &act, &oact) < 0 )
-            mpp_err_msg( logError, progname, "Error trying to set SIGINT interrupt handler\n");
-
-        act.sa_handler = myHandler;
-        sigemptyset(&act.sa_mask);
-        act.sa_flags = 0;
-        act.sa_flags |= SA_RESTART;
-        if ( sigaction(SIGINT, &act, &oact) < 0 )
-            mpp_err_msg( logError, progname, "Error trying to set SIGINT interrupt handler\n");
-
-        act.sa_handler = myHandler;
-        sigemptyset(&act.sa_mask);
-        act.sa_flags = 0;
-        act.sa_flags |= SA_RESTART;
-        if ( sigaction(SIGTERM, &act, &oact) < 0 )
-            mpp_err_msg( logError, progname, "Error trying to set SIGTERM interrupt handler\n");
-
+        installSignalHandlers();
+        
 		/* create an initial status operator that indicates we are STARTing */
         pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
@@ -711,7 +692,7 @@ main(int argc, char **argv)
     if (g_role == ROLE_MASTER && !g_gp_catalog_only && !dataOnly)
     {
 		mpp_err_msg( logInfo, progname, "Forking process to dump Greenplum Database catalog\n");
-        forkMPPCatalogDumper();
+        forkGpCatalogDumper();
 
 		mpp_err_msg( logInfo, progname, "Dumping CREATE DATABASE statement\n");
 		dumpDatabaseDefinition();
@@ -6130,7 +6111,7 @@ void* monitorThreadProc(void *arg  __attribute__((unused)))
 
 
 		/*
-			* Now deal with any insert requests, where we need to notify of status update
+		 * Now deal with any insert requests, where we need to notify of status update
 		 */
 
 		Lock( g_pStatusOpList );
@@ -6194,13 +6175,13 @@ void myHandler(int signo)
 }
 
 /*
- * forkMPPCatalogDumper:
- *	  create a plpgsql function for the restore of the data in CDB catalog tables
+ * forkGpCatalogDumper:
+ *	  create a plpgsql function for the restore of the data in Greenplum catalog tables
  * N.B. The deletes have to happen in the order listed, so the constraints don't get violated.
  * The inserts have to happen in the reverse order from the deletes, again so the contraints
  * don't get violated.
  */
-void forkMPPCatalogDumper(void)
+void forkGpCatalogDumper(void)
 {
     char* pszBackupFileName, *pszCmdLine;
     pid_t newpid;
@@ -6219,13 +6200,12 @@ void forkMPPCatalogDumper(void)
         sprintf(port, "%d", g_SegDB.port);
 
         /* Child Process */
-        /* launch psql, wait for it to finish */
+        /* launch gp_dump_agent, wait for it to finish */
 
-        len = 14 + 1 +                            /* gp_dump_agent */
+        len = 14 + 1 +                          /* gp_dump_agent */
 			2 + 1 + strlen(port) + 1 +          /* -p port */
 			3 + 1 +                             /* -a */
-			18 + 1 +							  /* --gp-catalog-only */
-			//2 + 1 + 3 + 1 +                     /* -n mpp */
+			18 + 1 +							/* --gp-catalog-only */
 			7 + 1 + strlen(g_CDBDumpInfo) + 1 + /* --gp-k key */
 			strlen(g_SegDB.pszDBName) + 1 +     /* db name */
 			1 + 1 +                             /* > */
@@ -6236,7 +6216,6 @@ void forkMPPCatalogDumper(void)
         strcat( pszCmdLine, port);
         strcat( pszCmdLine, " -a ");
 		strcat( pszCmdLine, " --gp-catalog-only");
-		//strcat( pszCmdLine, " -n mpp");
         strcat( pszCmdLine, " --gp-k ");
         strcat( pszCmdLine, g_CDBDumpInfo);
 		strcat( pszCmdLine, " ");
@@ -6534,5 +6513,24 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  * End MPP Additions
  */
 
+static void installSignalHandlers(void)
+{
+    struct sigaction act, oact;
+
+    /* Install Ctrl-C interrupt handler, now that we have a connection */
+    act.sa_handler = myHandler;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_flags |= SA_RESTART;
+    if ( sigaction(SIGINT, &act, &oact) < 0 )
+        mpp_err_msg( logError, progname, "Error trying to set SIGINT interrupt handler\n");
+
+    act.sa_handler = myHandler;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_flags |= SA_RESTART;
+    if ( sigaction(SIGTERM, &act, &oact) < 0 )
+        mpp_err_msg( logError, progname, "Error trying to set SIGTERM interrupt handler\n");
+}
 
 
