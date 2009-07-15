@@ -1100,7 +1100,8 @@ CHK_DB_RUNNING () {
 				ERROR_EXIT "[FATAL]:-No Master $MASTER_DATA_DIRECTORY directory" 2
 		fi
 		if [ ! -f $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
+			LOG_MSG "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 1
+			ERROR_EXIT "[FATAL]:-Run gpstart to start the Greenplum database." 2
 		fi		
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		export $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -A -t -c"SELECT d.datname as \"Name\",
