@@ -178,6 +178,7 @@ static bool main_thread_waiting = false;
 static int main_thread_waiting_node = -1;
 static int main_thread_waiting_route = ANY_ROUTE;
 
+static uint32	ic_id_last_teardown=0;
 
 static uint64	ic_stats_pkt_count=0;
 static uint64	ic_stats_dropped_acks=0;
@@ -1872,6 +1873,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		rx_buf_maxcount -= (pEntry->numConns * Gp_interconnect_queue_depth);
 		pfree(pEntry->conns);
 
+		ic_id_last_teardown = gp_interconnect_id;
+
 		pthread_mutex_unlock(&rx_thread_mutex);
 
 		/* remove it */
@@ -3080,6 +3083,19 @@ ic_rx_thread_func(void *arg)
 						if (DEBUG3 >= log_min_messages)
 							write_log("received packet with EOS motid %d route %d seq %d\n",
 									  pkt->motNodeId, conn->route, pkt->seq);
+
+					/*
+					 * if we got a stop, but didn't request a stop --
+					 * ignore, this is a startup blip: we must have
+					 * acked with a stop -- we don't want to do
+					 * anything further with the stop-message if we
+					 * didn't request a stop!
+					 *
+					 * this is especially important when
+					 * gp_interconnect_elide_setup is enabled.
+					 */
+					if (!conn->stopRequested && (pkt->flags & UDPIC_FLAGS_STOP))
+						continue;
 
 					if (conn->stopRequested && conn->stillActive)
 					{
