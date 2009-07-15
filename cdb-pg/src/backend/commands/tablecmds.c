@@ -349,7 +349,8 @@ static Node *atpxPartAddList(AlteredTableInfo *tab,
 							 PartitionByType part_type,
 							 PgPartRule* par_prule,
 							 char *lrelname,
-							 bool bSetTemplate);
+							 bool bSetTemplate,
+							 Oid ownerid);
 
 static void ATPExecPartAdd(AlteredTableInfo *tab,
 						   Relation rel,
@@ -681,6 +682,9 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->relKind = relkind;
 		stmt->relStorage = relstorage;
 
+		if (!OidIsValid(stmt->ownerid))
+			stmt->ownerid = GetUserId();
+
 		oldContext = MemoryContextSwitchTo(CacheMemoryContext);
 		stmt->relation->schemaname = get_namespace_name(namespaceId);
 		MemoryContextSwitchTo(oldContext);
@@ -698,6 +702,7 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.toastIndexOid = InvalidOid;
 		stmt->oidInfo.aosegOid = InvalidOid;
 		stmt->oidInfo.aosegIndexOid = InvalidOid;
+		stmt->ownerid = GetUserId();
 	}
 
     if (stmt->oidInfo.relOid)
@@ -710,7 +715,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  namespaceId,
 										  tablespaceId,
 										  stmt->oidInfo.relOid,
-										  GetUserId(),
+										  stmt->ownerid,
 										  descriptor,
 										  relkind,
 										  relstorage,
@@ -10061,6 +10066,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		cs->distributedBy = distro;
 		cs->options = opts;
 		cs->relation = tmpname;
+		cs->ownerid = rel->rd_rel->relowner;
 
 		for (attno = 0; attno < tupdesc->natts; attno++)
 		{
@@ -14198,6 +14204,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		}
 
 		/* Do the real work for add ... */
+		
 
 		if ('r' == pNode->part->parkind)
 		{
@@ -14210,7 +14217,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 							PARTTYP_RANGE,
 							par_prule,
 							lrelname,
-							bSetTemplate);
+							bSetTemplate,
+							rel->rd_rel->relowner);
 
 		}
 		else if ('l' == pNode->part->parkind)
@@ -14224,7 +14232,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 							PARTTYP_LIST,
 							par_prule,
 							lrelname,
-							bSetTemplate);
+							bSetTemplate,
+							rel->rd_rel->relowner);
 		}
 
 	}
@@ -14580,7 +14589,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 				PartitionByType part_type,
 				PgPartRule* par_prule,
 				char *lrelname,
-				bool bSetTemplate)
+				bool bSetTemplate,
+				Oid ownerid)
 {
 	CreateStmt 			*ct    	   = NULL;
 	DestReceiver 		*dest  	   = None_Receiver;
@@ -14610,6 +14620,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	ct = (CreateStmt *)linitial(utils);
 	Assert(IsA(ct, CreateStmt));
+
+	ct->ownerid = ownerid;
 
 	if (bSetTemplate)
 		/* if creating a template, silence partition name messages */
@@ -15825,6 +15837,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 				}
 
 			} /* end first alter table fixup */
+			else if (IsA(q->utilityStmt, CreateStmt))
+			{
+				/* propagate owner */
+				((CreateStmt *)q->utilityStmt)->ownerid = ownerid;
+			}
 
 			/* normal case - add partitions using CREATE statements
 			 * that get dispatched to the segments
@@ -18530,6 +18547,7 @@ ATPExecPartSplit(Relation rel,
 		tmprv = makeRangeVar(nspname, tmpname);
 		ct->relation = tmprv;
 		ct->relKind = RELKIND_RELATION;
+		ct->ownerid = rel->rd_rel->relowner;
 		parsetrees = parse_analyze((Node *)ct, NULL, NULL, 0);
 		Assert(list_length(parsetrees) == 1);
 		q = (Query *)linitial(parsetrees);

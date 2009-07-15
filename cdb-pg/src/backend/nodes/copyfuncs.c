@@ -2458,6 +2458,7 @@ _copyCreateStmt(CreateStmt *from)
 	else
 		newnode->policy = NULL;
 	COPY_SCALAR_FIELD(is_part_child);
+	COPY_SCALAR_FIELD(ownerid);
 
 	return newnode;
 }

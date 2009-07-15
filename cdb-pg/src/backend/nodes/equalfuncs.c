@@ -988,6 +988,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(relKind);
 	COMPARE_SCALAR_FIELD(relStorage);
 	COMPARE_SCALAR_FIELD(is_part_child);
+	COMPARE_SCALAR_FIELD(ownerid);
 
 	return true;
 }

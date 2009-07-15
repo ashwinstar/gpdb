@@ -1867,6 +1867,7 @@ _readCreateStmt(void)
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
 	READ_BOOL_FIELD(is_part_child);
+	READ_OID_FIELD(ownerid);
 	local_node->policy = NULL;
 	Assert(local_node->oidInfo.relOid == InvalidOid);
 

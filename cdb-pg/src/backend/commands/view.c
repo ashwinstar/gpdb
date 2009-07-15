@@ -121,6 +121,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	createStmt->oidInfo.toastIndexOid = 0;
 	createStmt->oidInfo.aosegOid = 0;
 	createStmt->oidInfo.aosegIndexOid = 0;
+	createStmt->ownerid = GetUserId();
 
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of the

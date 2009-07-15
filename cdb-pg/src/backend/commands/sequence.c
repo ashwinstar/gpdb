@@ -237,6 +237,7 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->tablespacename = NULL;
 	stmt->relKind = RELKIND_SEQUENCE;
 	stmt->oidInfo.comptypeOid = seq->comptypeOid;
+	stmt->ownerid = GetUserId();
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE, RELSTORAGE_HEAP);
 

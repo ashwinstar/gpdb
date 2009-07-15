@@ -1180,7 +1180,7 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 	createStmt->oidInfo.toastIndexOid = 0;
 	createStmt->oidInfo.aosegOid = 0;
 	createStmt->oidInfo.aosegIndexOid = 0;
-
+	createStmt->ownerid = GetUserId();
 
 	if (coldeflist == NIL)
 		ereport(ERROR,

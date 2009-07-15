@@ -1671,6 +1671,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_CHAR_FIELD(relKind);
 	WRITE_CHAR_FIELD(relStorage);
 	WRITE_BOOL_FIELD(is_part_child);
+	WRITE_OID_FIELD(ownerid);
 }
 
 static void
