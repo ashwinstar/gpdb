@@ -127,6 +127,10 @@ def parseargs():
     optgrp.add_option('-t', '--trouble',  action='store_true',
                       help='select log entries having ERROR:, FATAL:, or PANIC: '
                         'in the first line')
+    optgrp.add_option('-C', '--columns', type='str', metavar='string',
+                      dest='filters', action='MatchColumns',
+                      help='select specific log file columns, provided as a '
+                           'comma delimiter string counting from 1')
     parser.add_option_group(optgrp)
 
     optgrp = OptionGroup(parser, 'Mode flags',

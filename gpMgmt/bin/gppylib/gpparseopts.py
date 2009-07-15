@@ -16,7 +16,7 @@ import os.path
 import re
 import sys
 
-from logfilter import MatchRegex, NoMatchRegex, filterize
+from logfilter import MatchRegex, NoMatchRegex, filterize, MatchColumns
 from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
 
 
@@ -143,6 +143,7 @@ class OptChecker(Option):
             
     _addactions = {"MatchRegex"        : (filterAction, MatchRegex),
                    "NoMatchRegex"      : (filterAction, NoMatchRegex),
+                   "MatchColumns"      : (filterAction, MatchColumns),
                    "briefhelp"         : (brief_help,None),
                    "optionalSecondArg" : (optionalSecondArgAction, None)}
                    
