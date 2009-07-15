@@ -1786,6 +1786,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	bool sort_coplans = ( ctx->join_strategy == DqaJoinMerge );
 	bool groupkeys_collocate = cdbpathlocus_collocates(ctx->input_locus, root->group_pathkeys);
 	bool need_inter_agg = false;
+	bool dqaduphazard = false;
 	
 	/* Planning will perturb root->parse, so we copy it's content aside
 	 * so we can restore it later.  We flat copy instead of resetting
@@ -1911,6 +1912,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 								ctx->agg_counts->numAggs - ctx->agg_counts->numDistinctAggs + 1,
 								ctx->agg_counts->transitionSpace, /* worst case */
 								result_plan);
+	dqaduphazard = (aggstrategy == AGG_HASHED && gp_hashagg_streambottom);
 	/* May lose useful locus and sort. Unlikely, but could do better. */
 	mark_plan_strewn(result_plan);
 	current_pathkeys = NIL;
@@ -1971,7 +1973,8 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 		coplan_type = dqaArg->coplan_type_cheapest;
 	}
 	
-	if (!dqaArg->distinctkey_collocate && !groupkeys_collocate)
+	if ( dqaduphazard ||
+		(!dqaArg->distinctkey_collocate && !groupkeys_collocate) )
 	{
 		/* Intermediate Aggregation: Grouping key values are colocated so group 
 		 * by the combined grouping key and DQA argument while intermediate-
