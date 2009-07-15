@@ -49,57 +49,74 @@ enum config_group
 	CONN_AUTH,
 	CONN_AUTH_SETTINGS,
 	CONN_AUTH_SECURITY,
+
 	EXTERNAL_TABLES,                    /*CDB*/
 	APPENDONLY_TABLES,                  /*CDB*/
 	RESOURCES,
 	RESOURCES_MEM,
 	RESOURCES_FSM,
+
 	RESOURCES_KERNEL,
 	RESOURCES_MGM,
 	WAL,
 	WAL_SETTINGS,
 	WAL_CHECKPOINTS,
+
 	QUERY_TUNING,
 	QUERY_TUNING_METHOD,
 	QUERY_TUNING_COST,
 	QUERY_TUNING_GEQO,
 	QUERY_TUNING_OTHER,
+
 	LOGGING,
 	LOGGING_WHERE,
 	LOGGING_WHEN,
 	LOGGING_WHAT,
 	STATS,
+
     STATS_ANALYZE,                      /*CDB*/
 	STATS_MONITORING,
 	STATS_COLLECTOR,
 	AUTOVACUUM,
 	CLIENT_CONN,
+
 	CLIENT_CONN_STATEMENT,
 	CLIENT_CONN_LOCALE,
 	CLIENT_CONN_OTHER,
 	LOCK_MANAGEMENT,
 	COMPAT_OPTIONS,
+
 	COMPAT_OPTIONS_PREVIOUS,
 	COMPAT_OPTIONS_CLIENT,
     COMPAT_OPTIONS_IGNORED,             /*CDB*/
     GP_ARRAY_CONFIGURATION,            /*CDB*/
     GP_ARRAY_TUNING,                   /*CDB*/
+
     GP_WORKER_IDENTITY,                /*CDB*/
 	GP_ERROR_HANDLING,				   /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
 	DEVELOPER_OPTIONS,
+
 	/*
 	 * GPDB: deprecated GUCs. In this group, the GUCs are still functioning,
 	 * but we don't recommend customers to use them. They may be defunct in
 	 * the future release.
 	 */
 	DEPRECATED_OPTIONS,
+
 	/*
 	 * GPDB: defunct GUCs. In this group, the GUCs are defunct. The GUCs are still
 	 * there, but attempting to change their values will not have any effects.
 	 */
-	DEFUNCT_OPTIONS
+	DEFUNCT_OPTIONS,
+
+
+
+
+
+
+	___CONFIG_GROUP_COUNT /* sentinel to indicate end of enumeration */
 };
 
 /*

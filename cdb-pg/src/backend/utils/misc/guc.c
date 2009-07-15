@@ -397,14 +397,20 @@ const char *const config_group_names[] =
 	gettext_noop("Connections and Authentication / Connection Settings"),
 	/* CONN_AUTH_SECURITY */
 	gettext_noop("Connections and Authentication / Security and Authentication"),
+
+
 	/* EXTERNAL_TABLES */
 	gettext_noop("External Tables"),
+	/* APPENDONLY_TABLES */
+	gettext_noop("Append-Only Tables"),
 	/* RESOURCES */
 	gettext_noop("Resource Usage"),
 	/* RESOURCES_MEM */
 	gettext_noop("Resource Usage / Memory"),
 	/* RESOURCES_FSM */
 	gettext_noop("Resource Usage / Free Space Map"),
+
+
 	/* RESOURCES_KERNEL */
 	gettext_noop("Resource Usage / Kernel Resources"),
 	/* RESOURCES_MGM */
@@ -415,6 +421,8 @@ const char *const config_group_names[] =
 	gettext_noop("Write-Ahead Log / Settings"),
 	/* WAL_CHECKPOINTS */
 	gettext_noop("Write-Ahead Log / Checkpoints"),
+
+
 	/* QUERY_TUNING */
 	gettext_noop("Query Tuning"),
 	/* QUERY_TUNING_METHOD */
@@ -425,6 +433,8 @@ const char *const config_group_names[] =
 	gettext_noop("Query Tuning / Genetic Query Optimizer"),
 	/* QUERY_TUNING_OTHER */
 	gettext_noop("Query Tuning / Other Planner Options"),
+
+
 	/* LOGGING */
 	gettext_noop("Reporting and Logging"),
 	/* LOGGING_WHERE */
@@ -435,6 +445,8 @@ const char *const config_group_names[] =
 	gettext_noop("Reporting and Logging / What to Log"),
 	/* STATS */
 	gettext_noop("Statistics"),
+
+
 	/* STATS_ANALYZE */
 	gettext_noop("Statistics / ANALYZE Database Contents"),
 	/* STATS_MONITORING */
@@ -445,6 +457,8 @@ const char *const config_group_names[] =
 	gettext_noop("Autovacuum"),
 	/* CLIENT_CONN */
 	gettext_noop("Client Connection Defaults"),
+
+
 	/* CLIENT_CONN_STATEMENT */
 	gettext_noop("Client Connection Defaults / Statement Behavior"),
 	/* CLIENT_CONN_LOCALE */
@@ -455,6 +469,8 @@ const char *const config_group_names[] =
 	gettext_noop("Lock Management"),
 	/* COMPAT_OPTIONS */
 	gettext_noop("Version and Platform Compatibility"),
+
+
 	/* COMPAT_OPTIONS_PREVIOUS */
 	gettext_noop("Version and Platform Compatibility / Previous PostgreSQL Versions"),
 	/* COMPAT_OPTIONS_CLIENT */
@@ -465,6 +481,8 @@ const char *const config_group_names[] =
     gettext_noop(PACKAGE_NAME " / Array Configuration"),
     /* GP_ARRAY_TUNING */
     gettext_noop(PACKAGE_NAME " / Array Tuning"),
+
+
     /* GP_WORKER_IDENTITY */
     gettext_noop(PACKAGE_NAME " / Worker Process Identity"),
 	/* GP_ERROR_HANDLING */
@@ -475,8 +493,12 @@ const char *const config_group_names[] =
 	gettext_noop("Customized Options"),
 	/* DEVELOPER_OPTIONS */
 	gettext_noop("Developer Options"),
+
+
 	/* DEPRECATED_OPTIONS */
 	gettext_noop("Deprecated Options"),
+
+
 	/* DEFUNCT_OPTIONS */
 	gettext_noop("Defunct Options"),
 
@@ -4290,6 +4312,13 @@ build_guc_variables(void)
 	int			num_vars = 0;
 	struct config_generic **guc_vars;
 	int			i;
+
+	/* validate that the config_group array has same # of elements as config_group enumeration */
+	for ( i = 0; i < ___CONFIG_GROUP_COUNT; i++)
+	{
+	    Assert(config_group_names[i] != NULL);
+	}
+	Assert(config_group_names[___CONFIG_GROUP_COUNT] == NULL); 
 
 	for (i = 0; ConfigureNamesBool[i].gen.name; i++)
 	{
