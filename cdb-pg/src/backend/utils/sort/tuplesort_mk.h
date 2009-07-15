@@ -182,8 +182,10 @@ static inline void mk_prepare_array(MKEntry *a, int i, int j, int32 lv, void *ct
     MKEntry *last = a+j;
     MKEntry *cur = a+i;
 
+    Assert(a && j>=0);
     do {
-        (prep)(cur, ctxt);
+        if (prep)
+            (prep)(cur, ctxt);
         mke_set_lv(cur, lv);
     } while (++cur <= last);
 }

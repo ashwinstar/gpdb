@@ -89,6 +89,8 @@ static inline int32 mkheap_compare(MKHeap *heap, MKEntry *a, MKEntry *b)
         if (needcmp)
         {
             int32 lv = mke_get_lv(a);
+            Assert(lv < heap->mkctxt->total_lv);
+
             ret = (heap->mkctxt->comp[lv])(a, b, mk_get_ctxt(heap->mkctxt, lv));
         }
         ret = (ret & (~limitmask)) + ((-ret) & limitmask);
@@ -141,9 +143,7 @@ MKHeap *mkheap_from_array(MKEntry *entries, int alloc_sz, int cnt, MKContext *mk
     }
 #endif
 
-    if(mkctxt->prep[0])
-        mk_prepare_array(entries, 0, cnt-1, 0, mk_get_ctxt(mkctxt, 0), mkctxt->prep[0]);
-
+    mk_prepare_array(entries, 0, cnt-1, 0, mk_get_ctxt(mkctxt, 0), mkctxt->prep[0]);
     mkheap_heapify(heap, true); 
     return heap;
 }
@@ -183,9 +183,7 @@ MKHeap *mkheap_from_reader(MKHeapReader *readers, int nreader, MKContext *ctxt)
     heap->count = j; 
     heap->maxentry = j; 
 
-    if(ctxt->prep[0])
-        mk_prepare_array(heap->p, 0, j-1, 0, mk_get_ctxt(ctxt, 0), ctxt->prep[0]);
-
+    mk_prepare_array(heap->p, 0, j-1, 0, mk_get_ctxt(ctxt, 0), ctxt->prep[0]);
     mkheap_heapify(heap, true); 
     return heap;
 }
@@ -348,6 +346,8 @@ static void mkheap_heapify(MKHeap *mkheap, bool doLv0)
         int nlv = mke_get_lv(mkheap->p) + 1;
         MKPrepare prep = mkheap->mkctxt->prep[nlv];
         void *ctxtnext = mk_get_ctxt(mkheap->mkctxt, nlv); 
+
+        Assert(nlv < mkheap->mkctxt->total_lv);
 
         mkheap_save_lvtop(mkheap);
         mkheap_prep_siftdown_lv(mkheap, nlv, 0, prep, ctxtnext);

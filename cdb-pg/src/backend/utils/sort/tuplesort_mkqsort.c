@@ -214,8 +214,8 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 		return;
 	
 	/* Prepare at level lv */
-	if(lvdown && ctxt->prep && ctxt->prep[lv])
-		mk_prepare_array(a, left, right, lv, mk_get_ctxt(ctxt, lv), ctxt->prep[lv]);
+	if(lvdown && ctxt->prep) 
+        mk_prepare_array(a, left, right, lv, mk_get_ctxt(ctxt, lv), ctxt->prep[lv]);
 
 	/* 
 	 * According to Bentley & McIlroy [1] (1993), using insert sort for case 
