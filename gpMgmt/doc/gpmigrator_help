@@ -140,12 +140,11 @@ be different than what your current system is using.
 
 Restores the backup directory in the event of a failed upgrade. 
 
-If the migration procedure fails and you cannot start the 
-system using the prior version’s binary files, it is probable 
-that gpmigrator was not able to revert automatically. In these 
-cases, you can run gpmigrator -R to attempt to restore the 
-backup directory. Cases in which the migration is not 
-automatically reverted include:
+If the migration procedure fails and you cannot start the system using 
+the binary files of the prior version, it is probable that gpmigrator 
+was not able to revert automatically. In these cases, you can run 
+gpmigrator -R to attempt to restore the backup directory. 
+Cases in which the migration is not automatically reverted include:
 
 * The gpmigrator process is killed with a command such as kill -9
 * The system crashes during the migration procedure
