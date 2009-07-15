@@ -59,7 +59,7 @@ struct icpkthdr
 	int32		dstContentId;
 
 	/* MPP-6042: add CRC field */
-	int64		crc;
+	uint32		crc;
 
 	/* packet specific info */
 	int32		flags;

@@ -2330,13 +2330,13 @@ prepareXmit(MotionConn *conn)
 	if (gp_interconnect_full_crc)
 	{
 		struct icpkthdr *pkt = (struct icpkthdr *)conn->pBuff;
-		pg_crc64 local_crc;
+		pg_crc32 local_crc;
 
-		INIT_CRC64(local_crc);
-		COMP_CRC64(local_crc, pkt, pkt->len);
-		FIN_CRC64(local_crc);
+		INIT_CRC32(local_crc);
+		COMP_CRC32(local_crc, pkt, pkt->len);
+		FIN_CRC32(local_crc);
 
-		pkt->crc = local_crc.crc0;
+		pkt->crc = local_crc;
 	}
 
 	gettimeofday(&conn->activeXmitTime, NULL);
@@ -3185,16 +3185,16 @@ ic_rx_thread_func(void *arg)
 					if (gp_interconnect_full_crc)
 					{
 						int64 rx_crc;
-						pg_crc64 local_crc;
+						pg_crc32 local_crc;
 
 						rx_crc = pkt->crc;
 						pkt->crc = 0;
 
-						INIT_CRC64(local_crc);
-						COMP_CRC64(local_crc, pkt, pkt->len);
-						FIN_CRC64(local_crc);
+						INIT_CRC32(local_crc);
+						COMP_CRC32(local_crc, pkt, pkt->len);
+						FIN_CRC32(local_crc);
 
-						if (rx_crc != local_crc.crc0)
+						if (rx_crc != local_crc)
 						{
 							ic_stats_crc_error++;
 
