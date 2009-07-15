@@ -14,9 +14,9 @@ gpmigrator --prepare [--master_port <port> --port_base <port>
              --mirror_port_base <port>] <old_GPHOME_path> <new_GPHOME_path> 
           [-d <master_data_directory>] [-l <logfile_directory>] [-q] [--debug]
 
-gpmigrator --version | -h
+gpmigrator --version | -v
 
-gpmigrator --help | -v
+gpmigrator --help | -h
 
 
 *****************************************************
