@@ -53,7 +53,12 @@ differences in the column naming and format widths globally.
 =item B<-init> <file>
 
 Specify an initialization file containing a series of directives
-(mainly for match_subs) that get applied to the input files.
+(mainly for match_subs) that get applied to the input files.  To
+specify multiple initialization files, use multiple init arguments,
+eg:
+
+  -init file1 -init file2 
+
 
 =item B<-do_equiv>
     
@@ -336,7 +341,7 @@ BEGIN
     $glob_make_equiv_expected = 0;
     $glob_ignore_headers      = 0;
     $glob_ignore_whitespace   = 0;
-    $glob_init                = 0;
+    $glob_init                = [];
 
 	$glob_orderwarn           = 0;
 	$glob_verbose             = 0;
@@ -350,14 +355,14 @@ BEGIN {
     my $make_equiv_expected = 0;
     my $do_equiv;
     my $ignore_headers;
-    my $init_file;
+    my @init_file;
     my $verbose;
     my $orderwarn;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
                'gpd_ignore_headers|gp_ignore_headers|ignore_headers' => \$ignore_headers,
-               'gpd_init|gp_init|init:s' => \$init_file,
+               'gpd_init|gp_init|init:s' => \@init_file,
                'do_equiv:s' => \$do_equiv,
 		        'order_warn|orderwarn' => \$orderwarn,
 		        'verbose' => \$verbose
@@ -397,7 +402,8 @@ BEGIN {
 
     $glob_ignore_whitespace   = $ignore_headers; # XXX XXX: for now
 
-    $glob_init      		  = $init_file;
+	# ENGINF-200: allow multiple init files
+    push @{$glob_init}, @init_file;
 
 	$glob_orderwarn           = $orderwarn;
     $glob_verbose      		  = $verbose;
@@ -1848,13 +1854,17 @@ L_push_outarr:
 
 if (1)
 {
-	if (defined($glob_init))
+	goto l_big_bigloop
+		unless (defined($glob_init) && scalar(@{$glob_init}));
+
+	# ENGINF-200: allow multiple init files
+	for my $init_file (@{$glob_init})
 	{
-		die "no such file: $glob_init"
-			unless (-e $glob_init);
+		die "no such file: $init_file"
+			unless (-e $init_file);
 
 		# redirect stdin and stdout to perform initialization from
-		# the glob_init file
+		# the init_file file
 
 		open my $oldout, ">&STDOUT"     or die "Can't dup STDOUT: $!";
 		
@@ -1863,7 +1873,7 @@ if (1)
  
 		open my $oldin, "<&STDIN"     or die "Can't dup STDIN: $!";
 		close STDIN;
-		open STDIN, "< $glob_init" or die "could not open $glob_init: $!";
+		open STDIN, "< $init_file" or die "could not open $init_file: $!";
 
 		# run the standard loop
 
@@ -1878,6 +1888,7 @@ if (1)
 		open STDOUT, ">&", $oldout or die "Can't dup \$oldout: $!";
 	}
 
+l_big_bigloop:
 	# loop over existing stdin
 	bigloop();
 }

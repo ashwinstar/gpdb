@@ -62,7 +62,10 @@ differences in the column naming and format widths globally.
 =item B<-gpd_init> <file>
 
 Specify an initialization file containing a series of directives
-(mainly for match_subs) that get applied to the input files.
+(mainly for match_subs) that get applied to the input files.  To
+specify multiple initialization files, use multiple gpd_init arguments, eg:
+
+  -gpd_init file1 -gpd_init file2 
 
 =back
 
@@ -110,7 +113,7 @@ our $ATMSORT;
 our $ATMDIFF = "diff";
 
 my $glob_ignore_headers;
-my $glob_init_file;
+my $glob_init_file = [];
 
 # assume atmsort.pl in same directory
 BEGIN 
@@ -120,6 +123,8 @@ BEGIN
     return 0 unless (scalar(@foo));
     pop @foo;
     $ATMSORT = File::Spec->catfile( @foo, "atmsort.pl"); 
+
+	$glob_init_file = [];
 }
 
 sub gpdiff_files
@@ -333,6 +338,7 @@ if (1)
     my $verzion		= 0;
     my $pmsg		= "";
 	my @arg2;              # arg list for diff
+	my %init_dup;
 
 #    getatm();
 
@@ -372,16 +378,41 @@ if (1)
 					die "no init file"
 						unless (2 == scalar(@foo));
 
-					$glob_init_file = pop @foo;
+					my $init_file = pop @foo;
+
+					# ENGINF-200: allow multiple init files
+					if (exists($init_dup{$init_file}))
+					{
+						warn "duplicate init file \'$init_file\', skipping...";
+					}
+					else
+					{
+						push @{$glob_init_file}, $init_file;
+						
+						$init_dup{$init_file} = 1;
+					}
 
 				}
 				else # next arg must be init file
 				{
 					$argc++;
-					$glob_init_file = $ARGV[$argc];
 
 					die "no init file"
 						unless (defined($ARGV[$argc]));
+
+					my $init_file = $ARGV[$argc];
+
+					# ENGINF-200: allow multiple init files
+					if (exists($init_dup{$init_file}))
+					{
+						warn "duplicate init file \'$init_file\', skipping...";
+					}
+					else
+					{
+						push @{$glob_init_file}, $init_file;
+
+						$init_dup{$init_file} = 1;
+					}
 
 				}
 				next;
@@ -475,9 +506,10 @@ if (1)
 	{
 		$ATMSORT .= " --ignore_headers ";
 	}
-	if ($glob_init_file)
+	# ENGINF-200: allow multiple init files
+	if (defined($glob_init_file) && scalar(@{$glob_init_file}))
 	{
-		$ATMSORT .= " --init=" . $glob_init_file . " ";
+		$ATMSORT .= " --init=". join(" --init=", @{$glob_init_file}) . " ";
 	}
 
     exit(filefunc($f1, $f2));
