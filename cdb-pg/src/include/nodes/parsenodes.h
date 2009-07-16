@@ -1895,7 +1895,8 @@ typedef enum FunctionParameterMode
 	/* the assigned enum values appear in pg_proc, don't change 'em! */
 	FUNC_PARAM_IN = 'i',		/* input only */
 	FUNC_PARAM_OUT = 'o',		/* output only */
-	FUNC_PARAM_INOUT = 'b'		/* both */
+	FUNC_PARAM_INOUT = 'b',		/* both */
+	FUNC_PARAM_TABLE = 't'      /* table function column */
 } FunctionParameterMode;
 
 typedef struct FunctionParameter

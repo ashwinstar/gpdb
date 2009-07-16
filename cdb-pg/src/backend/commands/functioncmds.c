@@ -217,7 +217,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("functions cannot accept set arguments")));
 
-		if (fp->mode != FUNC_PARAM_OUT)
+		if (fp->mode != FUNC_PARAM_OUT && fp->mode != FUNC_PARAM_TABLE)
 			inTypes[inCount++] = toid;
 
 		if (fp->mode != FUNC_PARAM_IN)

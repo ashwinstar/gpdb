@@ -190,6 +190,11 @@ static char *format_function_arguments(FuncInfo *finfo, int nallargs,
 									   char **argmodes,
 									   char **argnames);
 static char *format_function_signature(FuncInfo *finfo, bool honor_quotes);
+static bool is_returns_table_function(int nallargs, char **argmodes);
+static char *format_table_function_columns(FuncInfo *finfo, int nallargs,
+						  char **allargtypes,
+						  char **argmodes,
+						  char **argnames);
 static const char *convertRegProcReference(const char *proc);
 static const char *convertOperatorReference(const char *opr);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
@@ -3054,15 +3059,19 @@ format_function_arguments(FuncInfo *finfo, int nallargs,
 		{
 			switch (argmodes[j][0])
 			{
-				case 'i':
+				case PROARGMODE_IN:
 					argmode = "";
 					break;
-				case 'o':
+				case PROARGMODE_OUT:
 					argmode = "OUT ";
 					break;
-				case 'b':
+				case PROARGMODE_INOUT:
 					argmode = "INOUT ";
 					break;
+				case PROARGMODE_TABLE:
+					/* skip table column's names */
+					free(typname);
+					continue;
 				default:
 					mpp_err_msg(logWarn, progname, "WARNING: bogus value in proargmodes array\n");
 					argmode = "";
@@ -3087,6 +3096,71 @@ format_function_arguments(FuncInfo *finfo, int nallargs,
 	appendPQExpBuffer(&fn, ")");
 	return fn.data;
 }
+
+
+/* 
+ *  is_returns_table_function: returns true if function id declared as 
+ *  RETURNS TABLE, i.e. at least one argument is PROARGMODE_TABLE
+ */
+static bool
+is_returns_table_function(int nallargs, char **argmodes)
+{
+	int j;
+	
+	if (argmodes)
+		for (j = 0; j < nallargs; j++)
+			if (argmodes[j][0] == PROARGMODE_TABLE)
+				return true;    
+				
+	return false;
+}
+
+
+/*
+ * format_table_function_columns: generate column list for
+ * table functions.
+ */ 
+static char *
+format_table_function_columns(FuncInfo *finfo, int nallargs,
+						  char **allargtypes,
+						  char **argmodes,
+						  char **argnames)
+{
+	PQExpBufferData fn;
+	int			j;
+	bool 	first_column	= true;
+
+	initPQExpBuffer(&fn);
+	appendPQExpBuffer(&fn, "(");
+		
+	for (j = 0; j < nallargs; j++)
+	{
+		Oid			typid;
+		char	   *typname;
+			
+		/* 
+		 * argmodes are checked in format_function_arguments. Isn't
+		 * neccessery check argmodes here again 
+		 */
+		if (argmodes[j][0] == PROARGMODE_TABLE)
+		{
+			typid = allargtypes ? atooid(allargtypes[j]) : finfo->argtypes[j];
+			typname = getFormattedTypeName(typid, zeroAsOpaque);
+
+			/* column's name is always NOT NULL (checked in gram.y) */
+			appendPQExpBuffer(&fn, "%s%s %s",
+						    first_column ? "" : ", ",
+						    fmtId(argnames[j]),
+						    typname);
+			free(typname);
+			first_column = false;
+		}
+	}
+
+	appendPQExpBuffer(&fn, ")");
+	return fn.data;
+}
+
 
 /*
  * format_function_signature: generate function name and argument list
@@ -3294,16 +3368,31 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 					  fmtId(finfo->dobj.namespace->dobj.name),
 					  funcsig);
 
-	rettypename = getFormattedTypeName(finfo->prorettype, zeroAsOpaque);
-
 	appendPQExpBuffer(q, "CREATE FUNCTION %s ", funcsig);
-	appendPQExpBuffer(q, "RETURNS %s%s\n    %s\n    LANGUAGE %s",
-					  (proretset[0] == 't') ? "SETOF " : "",
-					  rettypename,
-					  asPart->data,
-					  fmtId(lanname));
 
-	free(rettypename);
+	/* switch between RETURNS SETOF RECORD and RETURNS TABLE functions */
+	if (!is_returns_table_function(nallargs, argmodes))
+	{
+		rettypename = getFormattedTypeName(finfo->prorettype, zeroAsOpaque);
+		appendPQExpBuffer(q, "RETURNS %s%s\n    %s\n    LANGUAGE %s",
+						  (proretset[0] == 't') ? "SETOF " : "",
+						  rettypename,
+						  asPart->data,
+						  fmtId(lanname));
+		free(rettypename);
+	}
+	else
+	{
+		char *func_cols;
+		
+		func_cols = format_table_function_columns(finfo, nallargs, allargtypes,
+										argmodes, argnames);
+		appendPQExpBuffer(q, "RETURNS TABLE %s\n    %s\n    LANGUAGE %s",
+						  func_cols,
+						  asPart->data,
+						  fmtId(lanname));
+		free(func_cols);		  
+	}
 
 	if (provolatile[0] != PROVOLATILE_VOLATILE)
 	{

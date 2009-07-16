@@ -4874,7 +4874,7 @@ DESCR("Greenplum fault testing only");
 #define PROARGMODE_IN		'i'
 #define PROARGMODE_OUT		'o'
 #define PROARGMODE_INOUT	'b'
-
+#define PROARGMODE_TABLE	't'
 
 /*
  * prototypes for functions in pg_proc.c

@@ -94,6 +94,7 @@ ignore: copy2
 test: temp
 ignore: domain
 ignore: rangefuncs
+test: rangefuncs_cdb
 test: prepare
 test: without_oid
 test: conversion
