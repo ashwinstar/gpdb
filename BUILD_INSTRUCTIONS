@@ -1,0 +1,37 @@
+Instruction for Building the Greenplum Database, PerfMon, Clients, Loaders, and Connectivity Packages
+
+July, 2009
+
+Along with this file you will find the complete source to the above Greenplum products and pre-built
+versions of all of the third-party libraries that they use.  In addition, you will need the following
+tools:
+
+autoconf	2.59 on Linux, 2.61 on Solaris
+binutils	2.15
+bison		1.875 or later
+diffutils	2.8.1
+flex		2.5.4
+gcc		4.1.1 on CentOS and Solaris, 4.1.2 on SuSE
+gfortran	4.1.1 on CentOS and Solaris, 4.1.2 on SuSE
+greptools	2.5.1 on Linux, 2.5 on Solaris
+libtool		1.4.6 on CentOS, 1.5.22 on SuSE
+make		3.80 or later
+perl		5.8.8
+python		2.6.2
+tar (GNU)	1.14 (named or symlinked to gtar on Solaris)
+
+Most of these tools can be installed anywhere on the PATH.  A few, however, need to be installed into
+specific locations:
+
+/opt/gcc-4.1.1 on CentOS and Solaris
+/opt/perl-5.8.8
+/opt/python-2.6.2
+
+In addition, there is one GNU library that is not included in the source set.  That is readline-5.2.
+It is only required if you want readline support on Solaris for Python-2.6.2.  It just needs to be in
+LD_LIBRARY_PATH when you build Python and when you run it.  Again, this is only for Solaris as CentOS
+and SuSE already include readline.
+
+
+
+
