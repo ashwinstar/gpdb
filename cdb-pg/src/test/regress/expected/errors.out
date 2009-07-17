@@ -67,7 +67,7 @@ LINE 1: delete from;
                    ^
 -- no such relation 
 delete from nonesuch;
-ERROR:  relation "nonesuch" does not exist (parse_clause.c:735)
+ERROR:  relation "nonesuch" does not exist
 --
 -- DROP
  
