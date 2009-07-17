@@ -730,9 +730,22 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	}
 	PG_CATCH();
 	{
-		/* Throw a friendlier error than:
-		 * "could not open relation with relid 1234" */
-		elog(ERROR, "relation \"%s\" does not exist", relation->relname);
+		/* 
+		 * In the case of the table being dropped concurrently, 
+		 * throw a friendlier error than:
+		 * 
+		 * "could not open relation with relid 1234"
+		 */
+		if (relation->schemaname)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s.%s\" does not exist",
+							relation->schemaname, relation->relname)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s\" does not exist",
+							relation->relname)));
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
