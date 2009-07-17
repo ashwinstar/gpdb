@@ -991,8 +991,14 @@ sub typename_fixup_in
 
 	$v1 =~ s/timestamp without time zone/timestamp\_without\_time\_zone/gm;
 	$v1 =~ s/timestamp with time zone/timestamp\_with\_time\_zone/gm;
+	$v1 =~ s/time without time zone/time\_without\_time\_zone/gm;
+	$v1 =~ s/time with time zone/time\_with\_time\_zone/gm;
 
 	$v1 =~ s/character varying/character_varying/gm;
+
+	$v1 =~ s/double precision/double_precision/gm;
+
+
 
 	return $v1;
 }
@@ -1003,8 +1009,12 @@ sub typename_fixup_out
 
 	$v1 =~ s/timestamp\_without\_time\_zone/timestamp without time zone/gm;
 	$v1 =~ s/timestamp\_with\_time\_zone/timestamp with time zone/gm;
+	$v1 =~ s/time\_without\_time\_zone/time without time zone/gm;
+	$v1 =~ s/time\_with\_time\_zone/time with time zone/gm;
 
 	$v1 =~ s/character_varying/character varying/gm;
+
+	$v1 =~ s/double_precision/double precision/gm;
 
 	return $v1;
 }
@@ -1156,7 +1166,7 @@ sub genpartdefs4
 
                     if (defined($v2))
                     {
-						$v2 = typename_fixup_out($v1);
+						$v2 = typename_fixup_out($v2);
 
                         $incex2 = $pspec->{end}->{inclusive} ?
                             "INCLUSIVE" : "EXCLUSIVE";
@@ -1927,6 +1937,7 @@ sub classify_fn
         $lpartSpec = classify_fn($node->{right}, $lpartSpec);
     }
     
+#		print  Data::Dumper->Dump([$node]), "\n";
 
     if ($node->{val} =~ m/^(\<|\>|\=|\<\>|\<\=|\>\=)$/)
     {
@@ -1985,6 +1996,9 @@ sub classify_fn
         push @{$partSpec->{colh}->{$colname}}, $colval;
 
         $partSpec->{oper} = $oper;
+
+#		print  Data::Dumper->Dump([$node]), "\n";
+#		print  Data::Dumper->Dump([$partSpec]), "\n";
 
         # equality comparison indicates a LIST partition, while
         # greater than/leass than comparison indicates a RANGE
