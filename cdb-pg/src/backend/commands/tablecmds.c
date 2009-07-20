@@ -10838,7 +10838,7 @@ parttypeGetName(PartitionByType type)
 static PartitionByType
 char_to_parttype(char c)
 {
-	PartitionByType pt;
+	PartitionByType pt = PARTTYP_RANGE; /* just to shut GCC up */
 
 	switch(c)
 	{
