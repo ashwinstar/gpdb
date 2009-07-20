@@ -154,9 +154,10 @@ timeouts[] =
  *
  * we use bit operations to test these, flags are powers of two only
  */
-#define UDPIC_FLAGS_ACK  (1)
-#define UDPIC_FLAGS_STOP (2)
-#define UDPIC_FLAGS_EOS  (4)
+#define UDPIC_FLAGS_ACK			(1)
+#define UDPIC_FLAGS_STOP		(2)
+#define UDPIC_FLAGS_EOS			(4)
+#define UDPIC_FLAGS_NAK			(8)
 
 /* synchronization */
 #define RX_THREAD_POLL_TIMEOUT (250) /* 1/4 sec in msec */
@@ -1125,6 +1126,16 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		return;
 #endif
 
+	if (gp_interconnect_elide_setup && gp_interconnect_id > 1)
+	{
+		conn->state = mcsStarted;
+		conn->msgPos = NULL;
+		conn->msgSize = sizeof(conn->conn_info);
+		conn->stillActive = true;
+		conn->conn_info.seq = 1;
+		return;
+	}
+
 	n = sendto(pEntry->txfd, (const char *)&conn->conn_info, sizeof(conn->conn_info), 0,
 			   (struct sockaddr *)&saddr, (socklen_t)sizeof(saddr));
 
@@ -1275,6 +1286,16 @@ SetupUDPInterconnect(EState *estate)
 			/* connection header info (defining characteristics of this connection) */
 			MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
 			conn->route = i;
+
+			if (gp_interconnect_elide_setup && gp_interconnect_id > 1)
+			{
+				conn->conn_info.seq = 1;
+				conn->state = mcsStarted;
+				conn->stillActive = true;
+
+				incoming_count++;
+			}
+
 			conn->conn_info.motNodeId = pEntry->motNodeId;
 			conn->conn_info.recvSliceIndex = mySlice->sliceIndex;
 			conn->conn_info.sendSliceIndex = aSlice->sliceIndex;
@@ -1289,7 +1310,11 @@ SetupUDPInterconnect(EState *estate)
 			conn->conn_info.sessionId = gp_session_id;
 			conn->conn_info.icId = gp_interconnect_id;
 
-			estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
+			/* If we're doing full interconnect setup*/
+			if (!gp_interconnect_elide_setup || gp_interconnect_id <= 1)
+			{
+				estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
+			}
 
 			if (!conn_addhash(conn))
 			{
@@ -1357,6 +1382,14 @@ SetupUDPInterconnect(EState *estate)
 			if (conn->state == mcsStarted)
 				continue;
 
+			/* if we're skipping setup, we don't have to bother with the wait-loop */
+			if (gp_interconnect_elide_setup && gp_interconnect_id > 1)
+			{
+				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
+				outgoing_count++;
+				continue;
+			}
+
 			/* Time to (re)connect? */
 			if (conn->state == mcsSetupOutgoingConnection &&
 				conn->wakeup_ms <= elapsed_ms + 1)
@@ -1384,10 +1417,16 @@ SetupUDPInterconnect(EState *estate)
 		if (timeout < 0)
 			timeout = 0;
 
-		nfd.fd = sendingChunkTransportState->txfd;
-		nfd.events = POLLIN;
+		if (iteration > 1)
+		{
+			nfd.fd = sendingChunkTransportState->txfd;
+			nfd.events = POLLIN;
 
-		n = poll(&nfd, 1, timeout);
+			n = poll(&nfd, 1, timeout);
+		}
+		else
+			n = 0;
+
 		if (n < 0)
 		{
 			if (errno == EINTR)
@@ -1649,7 +1688,12 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
         int     elevel = 0;
 
         if (forceEOS || !transportStates->activated)
-			elevel = LOG;
+		{
+			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				elevel = LOG;
+			else
+				elevel = DEBUG1;
+		}
         else if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 			elevel = DEBUG4;
 
@@ -2277,6 +2321,14 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			/* haven't gotten a stop request, maybe this is one ? */
 			if (pkt.flags & UDPIC_FLAGS_STOP)
 			{
+				if (pkt.seq == 1 && (pkt.flags & UDPIC_FLAGS_NAK))
+				{
+					/* this packet needs to get retried -- the receiver isn't ready to receive it yet. */
+					elog(DEBUG2, "got NAK with stop; srcpid %d dstpid %d srccontent %d dstcontent %d cmd %d flags 0x%x pktseq %d connseq %d",
+						 pkt.srcPid, pkt.dstPid, pkt.srcContentId, pkt.dstContentId, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+					continue;
+				}
+
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
 
@@ -2567,8 +2619,9 @@ SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates, C
 	Assert(conn->msgSize > 0);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
+	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d conn seq %d", conn->msgSize, tcItem->chunk_length, conn->conn_info.seq);
 #endif
+
 
 	if (conn->msgSize + length <= Gp_max_packet_size)
 	{
@@ -2739,6 +2792,7 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 			{
 				/* we have a queued packet that has EOS in it. We've acked it, so we're done */
 				elog(DEBUG4, "do sendstop: already have queued EOS packet, we're done. node %d route %d", motNodeID, i);
+
 				Assert(conn->pBuff != NULL);
 				conn->stillActive = false;
 
@@ -2752,6 +2806,7 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 				conn->stopRequested = true;
 				conn->conn_info.flags |= UDPIC_FLAGS_STOP;
 				sendAck(conn, true);
+
 				elog(DEBUG4, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
 			}
 		}
@@ -3078,11 +3133,27 @@ ic_rx_thread_func(void *arg)
 						continue;
 					}
 
+					/* 
+					 * when we're not doing a full-setup on every
+					 * statement, we've got to update the peer info --
+					 * full setups do this at setup-time.
+					 */
+					if (gp_interconnect_elide_setup && pkt->seq == 1)
+					{
+						/* fill in the peer */
+						conn->peer = peer;
+
+						/* MPP-4194: fill in the dstListenerPort from the peer (may have mirror marking) */
+						conn->conn_info.dstListenerPort = pkt->dstListenerPort;
+					}
+
 					/* data packet */
 					if (pkt->flags & UDPIC_FLAGS_EOS)
+					{
 						if (DEBUG3 >= log_min_messages)
 							write_log("received packet with EOS motid %d route %d seq %d\n",
 									  pkt->motNodeId, conn->route, pkt->seq);
+					}
 
 					/*
 					 * if we got a stop, but didn't request a stop --
@@ -3294,6 +3365,23 @@ ic_rx_thread_func(void *arg)
 					MotionConn dummyconn;
 
 					memcpy(&dummyconn.conn_info, pkt, sizeof(struct icpkthdr));
+
+					/*
+					 * If we aren't doing the setup hand-shake, the
+					 * stop message we're about to send is ambiguous.
+					 * We disambiguate using a NAK flag -- our peer
+					 * will continue retrying.
+					 *
+					 * We want to "ACK the past, but NAK the future."
+					 *
+					 * handleAcks() on our sender will retransmit.
+					 */
+					if (gp_interconnect_elide_setup &&
+						pkt->seq == 1 && pkt->icId > ic_id_last_teardown)
+					{
+						dummyconn.conn_info.flags |= UDPIC_FLAGS_NAK;
+					}
+
 					dummyconn.peer = peer;
 
 					if (DEBUG4 >= log_min_messages)

@@ -192,6 +192,14 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	{
 		if (conn->msgSize - bytesProcessed < TUPLE_CHUNK_HEADER_SIZE)
 		{
+			struct icpkthdr *pkt=(struct icpkthdr *) conn->pBuff;
+
+			elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d", 
+				 pkt->len, pkt->seq, pkt->flags, conn->stillActive, conn->stopRequested, pkt->icId, gp_interconnect_id);
+
+			elog(LOG, "Interconnect parse details continued: peer: srcpid %d dstpid %d recvslice %d sendslice %d srccontent %d dstcontent %d",
+				 pkt->srcPid, pkt->dstPid, pkt->recvSliceIndex, pkt->sendSliceIndex, pkt->srcContentId, pkt->dstContentId);
+
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error parsing message: insufficient data received."),
 							errdetail("conn->msgSize %d bytesProcessed %d < chunk-header %d",

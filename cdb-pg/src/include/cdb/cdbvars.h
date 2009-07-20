@@ -449,6 +449,13 @@ extern bool gp_interconnect_aggressive_retry; /* fast-track app-level retry */
 extern bool gp_interconnect_full_crc;
 
 /*
+ * Parameter gp_interconnect_elide_setup
+ *
+ * Perform a full initial handshake for every statement ?
+ */
+extern bool gp_interconnect_elide_setup;
+
+/*
  * Parameter gp_segment
  *
  * The segment (content) controlled by this QE
