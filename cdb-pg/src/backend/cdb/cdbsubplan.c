@@ -147,6 +147,12 @@ preprocess_initplans(QueryDesc *queryDesc)
 				sps->planstate->ps_ExprContext = CreateExprContext(estate);
 			
 			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, queryDesc);
+
+			/*
+			 * We dispatched, and have returned. We may have used the
+			 * interconnect; so let's bump the interconnect-id.
+			 */
+			queryDesc->estate->es_sliceTable->ic_instance_id = ++gp_interconnect_id;
 		}
 
 		queryDesc->params = originalPli;
