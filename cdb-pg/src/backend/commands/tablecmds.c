@@ -10829,6 +10829,12 @@ parttypeGetName(PartitionByType type)
 	return pName;
 }
 
+#endif
+
+/*
+ * Translate a catalog partition type indication ('r', 'h' or 'l') to the
+ * internal representation.
+ */
 static PartitionByType
 char_to_parttype(char c)
 {
@@ -10852,10 +10858,9 @@ char_to_parttype(char c)
 			break;
 	} /* end switch */
 
-return pt;
+	return pt;
 }
 
-#endif
 
 static void
 add_partition(Partition *part)
@@ -12736,11 +12741,8 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 				/* see coerce_partition_value */
 				Node *out;
 
-				out = coerce_to_target_type(NULL, n1, exprType(n1),
-											lhsid, attribute->atttypmod,
-											COERCION_EXPLICIT,
-											COERCE_IMPLICIT_CAST);
-
+				out = coerce_partition_value(n1, lhsid, attribute->atttypmod,
+											 char_to_parttype(partnode->part->parkind));
 				if (!out)
 					ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -12748,25 +12750,9 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 								format_type_be(c1->consttype),
 								format_type_be(lhsid))));
 
-				/* explicit coerce */
-				if (IsA(out, FuncExpr))
-				{
-					bool null = false;
-					Datum d = partition_arg_get_val(out, &null);
-					Type typ = typeidType(lhsid);
+				Assert(IsA(out, Const));
 
-					/* pfree(out); */
-
-					c1 = makeConst(lhsid, typeLen(typ), d, null,
-								  typeByVal(typ));
-					ReleaseSysCache(typ);
-				}
-				else
-				{
-					Assert(IsA(out, Const));
-
-					c1 = (Const *)out;
-				}
+				c1 = (Const *)out;
 			}
 
 			/* XXX: cache */

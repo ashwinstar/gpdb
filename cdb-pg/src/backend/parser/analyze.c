@@ -5584,7 +5584,7 @@ coerce_partition_value(Node *node, Oid typid, int32 typmod,
 
 
 	/* explicit coerce */
-	if (IsA(out, FuncExpr) || IsA(out, OpExpr))
+	if (IsA(out, FuncExpr) || IsA(out, OpExpr) || IsA(out, CoerceToDomain))
 	{
 		bool isnull;
 		Datum d = partition_arg_get_val(out, &isnull);
@@ -6190,6 +6190,12 @@ partition_arg_get_val(Node *node, bool *isnull)
 		case T_Const:
 			*isnull = ((Const *)node)->constisnull;
 			return ((Const *)node)->constvalue;
+			break;
+		case T_CoerceToDomain:
+			{
+				CoerceToDomain *c = (CoerceToDomain *)node;
+				return partition_arg_get_val((Node *)c->arg, isnull);
+			}
 			break;
 		default:
 			elog(ERROR, "unknown partitioning argument type: %d",

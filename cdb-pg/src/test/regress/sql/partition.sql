@@ -3334,3 +3334,42 @@ partition p1 start('1') end('10001') every(10000)
 );
 select pg_get_partition_def('supplier_hybrid_part'::regclass, true);
 drop table supplier_hybrid_part;
+
+-- MPP-3544
+-- Domain
+create domain domainvarchar varchar(5);
+create domain domainnumeric numeric(8,2);
+create domain domainint4 int4;
+create domain domaintext text;
+
+-- Test tables using domains
+-- list
+create table basictest1
+           ( testint4 domainint4
+           , testtext domaintext
+           , testvarchar domainvarchar
+           , testnumeric domainnumeric
+           )
+partition by LIST(testvarchar)
+(
+partition aa values ('aaaaa'),
+partition bb values ('bbbbb'),
+partition cc values ('ccccc')
+);
+
+alter table basictest1 add partition dd values('ddddd');
+insert into basictest1 values(1, 1, 'ddddd', 1);
+insert into basictest1 values(1, 1, 'ccccc', 1);
+insert into basictest1 values(1, 1, 'bbbbb', 1);
+insert into basictest1 values(1, 1, 'aaaaa', 1);
+drop table basictest1;
+--range
+create table basictest1 (testnumeric domainint4)
+partition by range(testnumeric)
+ (start(1) end(10) every(5));
+insert into basictest1 values(1);
+insert into basictest1 values(2);
+alter table basictest1 add partition ff start(10) end(20);
+insert into basictest1 values(10);
+drop table basictest1;
+drop domain domainvarchar, domainnumeric, domainint4, domaintext;
