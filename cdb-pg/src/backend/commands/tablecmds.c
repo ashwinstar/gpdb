@@ -15936,7 +15936,13 @@ ATPExecPartAlter(AlteredTableInfo *tab, Relation rel,
 		  AT_SetDistributedBy) &&
 		Gp_role != GP_ROLE_DISPATCH)
 		return;
-
+/* 
+	if (!((atc->subtype == AT_PartExchange) || 
+		  (atc->subtype == AT_PartSplit) ||
+		  (atc->subtype == AT_SetDistributedBy)) &&
+		Gp_role != GP_ROLE_DISPATCH)
+		return;
+*/
 
 	switch(atc->subtype)
 	{

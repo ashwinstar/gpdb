@@ -11206,6 +11206,7 @@ unreserved_keyword:
 			| INSTEAD
 			| INVOKER
 			| ISOLATION
+			| KEEP /* gp */
 			| KEY
 			| LANCOMPILER
 			| LANGUAGE
@@ -11267,10 +11268,12 @@ unreserved_keyword:
 			| PROCEDURE
 			| QUEUE
 			| QUOTE
+			| RANDOMLY /* gp */
 			| READ
 			| REASSIGN
 			| RECHECK
 			| REINDEX
+			| REJECT_P /* gp */
 			| RELATIVE_P
 			| RELEASE
 			| RENAME
@@ -11331,10 +11334,12 @@ unreserved_keyword:
 			| UPDATE
 			| VACUUM
 			| VALID
+			| VALIDATION /* gp */
 			| VALIDATOR
 			| VARYING
 			| VIEW
 			| VOLATILE
+			| WEB /* gp */
 			| WITH
 			| WITHOUT
 			| WORK
@@ -11766,6 +11771,7 @@ reserved_keyword:
 			| DEFERRABLE
 			| DESC
 			| DISTINCT
+			| DISTRIBUTED /* gp */
 			| DO
 			| ELSE
 			| END_P
