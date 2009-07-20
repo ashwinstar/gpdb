@@ -1831,8 +1831,9 @@ class gpload:
                 try:
                     self.pg8000.execute(before.encode('utf-8'))
                 except pg8000.ProgrammingError, p:
-                    self.log(self.ERROR, 'could not execute SQL "%s": %s' %
-                             (before, p[2]))
+                    print p
+                    self.log(self.ERROR, 'could not execute SQL in sql:before "%s": %s' %
+                             (before, str(p)))
 
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         if method=='insert':
@@ -1850,7 +1851,7 @@ class gpload:
                 try:
                     self.pg8000.execute(after.encode('utf-8'))
                 except pg8000.ProgrammingError, p:
-                    self.log(self.ERROR, 'could not execute SQL "%s": %s' %
+                    self.log(self.ERROR, 'could not execute SQL in sql:after "%s": %s' %
                              (after, p[2]))
 
     def run2(self):
