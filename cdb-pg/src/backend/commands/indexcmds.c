@@ -180,6 +180,11 @@ DefineIndex(RangeVar *heapRelation,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("cannot create indexes on append only tables yet.")));
 
+	if(RelationIsExternal(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot create indexes on external tables.")));
+		
 	/* Note: during bootstrap may see uncataloged relation */
 	if (rel->rd_rel->relkind != RELKIND_RELATION &&
 		rel->rd_rel->relkind != RELKIND_UNCATALOGED)
